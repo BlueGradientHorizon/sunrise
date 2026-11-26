@@ -1,5 +1,4 @@
 //! The `living_breathe` hook: declarations the mod API generator reads (see `hooks/mod.rs`).
-// catalog-order: 0151
 
 pub trait Hooks {
     /// An entity's breathing this tick (`LivingBreatheEvent`, posted from
@@ -29,7 +28,6 @@ pub trait Hooks {
     /// granted at once, not through the transaction. Mod effects that this
     /// tick's air update causes (drowning, drying out) are not part of the call.
     #[hook(
-        target = "sunrise_gameplay::game::native_hooks::living_breathe::ServerGame<'_>::native_living_breathe",
         dispatch = "flat",
         side = "server",
         contract = "listen",

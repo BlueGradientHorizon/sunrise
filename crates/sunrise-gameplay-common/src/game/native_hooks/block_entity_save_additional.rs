@@ -122,7 +122,7 @@ pub trait BlockEntitySaveAdditionalGameExt1<'__sg>: crate::game::SideGame<'__sg>
             && mod_api::__private::has_part_hook(HookId::BlockEntitySaveAdditional)
             && let Some(level) = self.level(self.dim.id())
         {
-            let host = ReadLevel::new(self, level);
+            let host = ReadLevel::new(self, level, &self.world);
             save_additional(
                 level,
                 pos,

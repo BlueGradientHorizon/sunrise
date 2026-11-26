@@ -2,11 +2,40 @@
 //! getting off, and who holds its lead. Basic topology reads also answer from the client's
 //! packet state; riding writes and the remaining reads are server-only.
 use super::{commands::Target, mounts_common::steering_item};
-use mod_api::{EntityRef, LeashHolder, LivingRef, StartRidingRefusal};
+use core::ops::ControlFlow;
+use mod_api::{EntityReadError, EntityRef, LeashHolder, LivingRef, StartRidingRefusal};
 use sunrise_sim::{
     lan::playerdata::ints_uuid,
     mobs::{Mob, Species, equine, happy_ghast, leash::Holder, nautilus},
 };
+
+pub(in crate::game) fn visit_passenger_tree(
+    root: u32,
+    mut next_rider: impl FnMut(u32, Option<u32>) -> Option<u32>,
+    parent: impl Fn(u32) -> Option<u32>,
+    mut visit: impl FnMut(u32) -> ControlFlow<()>,
+) -> ControlFlow<()> {
+    let mut vehicle = root;
+    let mut after = None;
+    loop {
+        if let Some(rider) = next_rider(vehicle, after) {
+            if rider == root {
+                after = Some(rider);
+                continue;
+            }
+            visit(rider)?;
+            vehicle = rider;
+            after = None;
+        } else if vehicle != root
+            && let Some(parent) = parent(vehicle)
+        {
+            after = Some(vehicle);
+            vehicle = parent;
+        } else {
+            return ControlFlow::Continue(());
+        }
+    }
+}
 
 impl crate::game::ServerGame<'_> {
     /// The dismount search with a vehicle or passenger lent out of `self.mobs`.
@@ -78,45 +107,6 @@ impl crate::game::ServerGame<'_> {
             && target.is_some_and(|target| self.native_root_vehicle_id(mount, target) == Some(root))
     }
 
-    /// Every entity riding this one, at any depth (`Entity.getIndirectPassengers`): each
-    /// passenger in boarding order, followed by those riding it. Traverse off-level
-    /// intermediaries but return only resident handles.
-    pub(in crate::game) fn entity_indirect_passengers(
-        &self,
-        entity: EntityRef,
-    ) -> Option<Vec<EntityRef>> {
-        self.native_entity_target(entity)?;
-        let mut all: Vec<EntityRef> = Vec::new();
-        // This vector allocates only when a retained, unrepresentable object is
-        // actually encountered; ordinary resident-only trees keep two buffers.
-        let mut visited_off_level = Vec::new();
-        let mut next: Vec<u32> = self
-            .seated_passengers(entity.id())
-            .into_iter()
-            .rev()
-            .map(|(_, id, _)| id)
-            .collect();
-        while let Some(passenger) = next.pop() {
-            if passenger == entity.id()
-                || all.iter().any(|r| r.id() == passenger)
-                || visited_off_level.contains(&passenger)
-            {
-                continue;
-            }
-            if let Some(handle) = self.entity(passenger) {
-                all.push(handle);
-            } else {
-                visited_off_level.push(passenger);
-            }
-            next.extend(
-                self.seated_passengers(passenger)
-                    .into_iter()
-                    .rev()
-                    .map(|(_, id, _)| id),
-            );
-        }
-        Some(all)
-    }
     /// Whether the player `t` holds the stick that steers `species` in either hand.
     pub(in crate::game::server_side) fn native_player_steers(
         &self,
@@ -774,9 +764,17 @@ impl crate::game::ServerGame<'_> {
     /// first as vanilla walks the list, so `mob_ride` hears them in its
     /// order. False when nothing rode it, or for a stale handle.
     pub fn entity_eject_passengers(&mut self, entity: EntityRef) -> bool {
-        let Some(passengers) = self.entity_passengers(entity) else {
+        // Dismount hooks may change the live seat list, so take the initial handles first.
+        let mut passengers = Vec::new();
+        if self
+            .entity_visit_passengers(entity, &mut |rider| {
+                passengers.push(rider);
+                ControlFlow::Continue(())
+            })
+            .is_err()
+        {
             return false;
-        };
+        }
         let mut any = false;
         for p in passengers.into_iter().rev() {
             any |= self.entity_stop_riding(p);
@@ -799,6 +797,12 @@ impl crate::game::ServerGame<'_> {
         Some(vehicle.is_some())
     }
 
+    /// Whether the HUD draws this entity's hearts while the local player rides it
+    /// (`Entity.showVehicleHealth`, which is `instanceof LivingEntity`).
+    pub fn entity_shows_vehicle_health(&self, entity: EntityRef) -> Option<bool> {
+        Some(self.native_entity_target(entity)?.is_living())
+    }
+
     /// The lowest vehicle under the entity (`Entity.getRootVehicle`): the
     /// entity itself when it rides nothing. Off-level intermediaries are traversed;
     /// an off-level root or a cycle returns no handle, never a descendant substitute.
@@ -807,21 +811,46 @@ impl crate::game::ServerGame<'_> {
         self.entity(self.native_root_vehicle_id(entity.id(), target)?)
     }
 
-    /// The entities riding this one (`Entity.getPassengers`), in `addPassenger`'s order.
-    pub fn entity_passengers(&self, entity: EntityRef) -> Option<Vec<EntityRef>> {
-        self.native_entity_target(entity)?;
-        Some(
-            self.seated_passengers(entity.id())
-                .into_iter()
-                .filter_map(|(_, id, _)| self.entity(id))
-                .collect(),
-        )
+    /// `Entity.getPassengers`: resident handles in boarding order.
+    pub fn entity_visit_passengers(
+        &self,
+        entity: EntityRef,
+        visit: &mut dyn FnMut(EntityRef) -> ControlFlow<()>,
+    ) -> Result<ControlFlow<()>, EntityReadError> {
+        self.native_server_entity_target(entity)?;
+        let mut after = None;
+        let result = std::iter::from_fn(|| {
+            let id = self.next_passenger_seat(entity.id(), after)?;
+            after = Some(id);
+            Some(id)
+        })
+        .filter_map(|id| self.entity(id))
+        .try_for_each(visit);
+        Ok(result)
     }
 
     /// Whether any object rides the entity, even one without a handle.
     pub fn entity_is_vehicle(&self, entity: EntityRef) -> Option<bool> {
         self.native_entity_target(entity)?;
         Some(self.has_seated_passengers(entity.id()))
+    }
+
+    /// `Entity.getIndirectPassengers`: traverse retained riders, but lend only resident handles.
+    pub(in crate::game) fn entity_visit_indirect_passengers(
+        &self,
+        entity: EntityRef,
+        visit: &mut dyn FnMut(EntityRef) -> ControlFlow<()>,
+    ) -> Result<ControlFlow<()>, EntityReadError> {
+        self.native_server_entity_target(entity)?;
+        Ok(visit_passenger_tree(
+            entity.id(),
+            |vehicle, after| self.next_passenger_seat(vehicle, after),
+            |rider| self.seated_passenger_vehicle(rider),
+            |rider| {
+                self.entity(rider)
+                    .map_or(ControlFlow::Continue(()), &mut *visit)
+            },
+        ))
     }
 
     /// Follow full object links, returning no root for a cycle without allocating a visited set.

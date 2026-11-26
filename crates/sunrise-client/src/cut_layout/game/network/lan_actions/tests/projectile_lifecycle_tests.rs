@@ -31,7 +31,7 @@ static VALUE: AttachmentType<i32> = AttachmentType {
     default: || 0,
     codec: None,
     copy_on_death: false,
-    sync: false,
+    sync_codec: None,
 };
 
 fn exercise_restore<'g, G: SideGame<'g>>(
@@ -94,7 +94,7 @@ fn projectile_restore_entries_keep_the_bound_arrow() {
                 let mut picked = arrow(72, at);
                 let state = picked.arrow.as_mut().unwrap();
                 state.in_ground = true;
-                state.pickup = sunrise_sim::arrows::Pickup::Allowed;
+                state.pickup = sunrise_sim::entities::arrows::Pickup::Allowed;
                 for id in [73, 74] {
                     game.creatures.projectiles.push(arrow(id, at));
                 }

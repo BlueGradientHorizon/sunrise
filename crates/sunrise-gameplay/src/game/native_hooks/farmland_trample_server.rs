@@ -29,18 +29,26 @@ impl crate::game::ServerGame<'_> {
             let Some(living) = self.entity(entity).and_then(|e| self.living(e)) else {
                 return;
             };
-            self.storage_transaction(|game, _| {
+            self.storage_transaction_settled(|game, _| {
                 let mut cancel = false;
                 game.native_farmland_trample(living, pos, state, distance, &mut cancel);
+                if cancel {
+                    return Ok::<bool, ()>(false);
+                }
                 let valid =
                     |game: &Self| game.entity(entity) == Some(living.entity()) && still(game);
-                (!cancel && game.apply_farmland_trample(player, trample, valid, true))
-                    .then_some(())
-                    .ok_or(())
+                let applied = game
+                    .storage_transaction(|game, _| {
+                        game.apply_farmland_trample(trample, valid, true)
+                            .then_some(())
+                            .ok_or(())
+                    })
+                    .is_ok();
+                Ok(applied)
             })
-            .is_ok()
+            .unwrap_or(false)
         } else {
-            self.apply_farmland_trample(player, trample, still, false)
+            self.apply_farmland_trample(trample, still, false)
         };
         if applied {
             let who = if player {
@@ -52,7 +60,7 @@ impl crate::game::ServerGame<'_> {
                 sunrise_gameplay_common::game::transactions::After::BlockGameEvent(
                     "minecraft:block_change",
                     at,
-                    who,
+                    Some(who),
                     base,
                 ),
             );

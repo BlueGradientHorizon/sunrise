@@ -25,7 +25,7 @@ static VALUE: AttachmentType<i32> = AttachmentType {
         },
     }),
     copy_on_death: false,
-    sync: false,
+    sync_codec: None,
 };
 static OTHER: AttachmentType<i32> = AttachmentType {
     namespace: "test",
@@ -33,7 +33,7 @@ static OTHER: AttachmentType<i32> = AttachmentType {
     default: || 0,
     codec: None,
     copy_on_death: false,
-    sync: false,
+    sync_codec: None,
 };
 
 fn painting(uuid: [i32; 4], contents: Tag) -> Tag {
@@ -238,7 +238,7 @@ fn first_write_painting_publication_and_rollback() {
             default: || 0i32,
             codec: None,
             copy_on_death: true,
-            sync: false,
+            sync_codec: None,
         };
         let store: &mut dyn sunrise_mod_runtime::attachments::AttachmentStore = game;
         assert_eq!(

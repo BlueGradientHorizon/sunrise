@@ -163,7 +163,7 @@ impl ClientGame<'_> {
         if data == 1 {
             let at = [pos.x, pos.y, pos.z].map(|v| f64::from(v) + 0.5);
             let pitch = self.common.world.random.next_float() * 0.1 + 0.9;
-            self.client.audio.0.play(
+            self.play_audio(
                 "minecraft:entity.dragon_fireball.explode",
                 Some(at),
                 1.0,
@@ -281,7 +281,7 @@ impl ClientGame<'_> {
             [0, 1, 2].map(|k| eye[k] + d[k] / length * 2.0)
         });
         // Each guest plays it from the global packet.
-        self.client.audio.0.play_unshared(sound, at, volume, 1.0);
+        self.play_audio_unshared(sound, at, volume, 1.0);
     }
     /// `LevelEventHandler.potionSplashParticles` (2002 with `Effect`, 2007
     /// with `InstantEffect`): eight splash potion crumbs, and a hundred

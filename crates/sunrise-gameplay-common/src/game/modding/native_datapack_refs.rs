@@ -1,11 +1,13 @@
 //! Datapack registry reads through a level handle.
-use mod_api::LevelRef;
+use mod_api::{DatapackReadError, LevelRef};
+use std::ops::ControlFlow;
 
 pub trait NativeDatapackRefsGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// The datapack registry set of this level's world session: on the logical server, the
     /// server's own set for both the active dimension and any parked loaded dimension
-    /// (matching vanilla `Level.registryAccess()` on `ServerLevel`); on a client, the set its
-    /// server sent at the join for the active client level.
+    /// (matching vanilla `Level.registryAccess()` on `ServerLevel`); on a client, the
+    /// synchronized set its connection received (also available for the constructing level
+    /// during `client_level_load` before installation).
     fn level_datapack_set(
         &self,
         level: LevelRef,
@@ -13,16 +15,17 @@ pub trait NativeDatapackRefsGameExt1<'__sg>: crate::game::SideGame<'__sg> {
         self.side_level_datapack_set(level)
     }
 
-    /// The entry ids of a mod's datapack registry as the world last loaded it.
-    fn level_datapack_entries(&self, level: LevelRef, registry: &str) -> Option<Vec<String>> {
-        let entries = self
-            .level_datapack_set(level)?
-            .entries(registry)
-            .ok()?
-            .into_iter()
-            .map(str::to_owned)
-            .collect();
-        Some(entries)
+    /// Visit the IDs of a mod's datapack registry as the world last loaded them.
+    fn level_visit_datapack_entries(
+        &self,
+        level: LevelRef,
+        registry: &str,
+        visit: &mut dyn FnMut(&str) -> ControlFlow<()>,
+    ) -> Result<ControlFlow<()>, DatapackReadError> {
+        let set = self
+            .level_datapack_set(level)
+            .ok_or(DatapackReadError::UnknownRegistry)?;
+        Ok(set.entries(registry)?.try_for_each(visit))
     }
 
     /// Visit the published entry `entry` of `registry`.
@@ -32,12 +35,12 @@ pub trait NativeDatapackRefsGameExt1<'__sg>: crate::game::SideGame<'__sg> {
         registry: &str,
         entry: &str,
         visit: &mut dyn FnMut(&mod_api::DatapackEntry),
-    ) -> Result<(), mod_api::DatapackReadError> {
+    ) -> Result<(), DatapackReadError> {
         let set = self
             .level_datapack_set(level)
-            .ok_or(mod_api::DatapackReadError::UnknownRegistry)?;
+            .ok_or(DatapackReadError::UnknownRegistry)?;
         if !set.registry_available(registry) {
-            return Err(mod_api::DatapackReadError::UnknownRegistry);
+            return Err(DatapackReadError::UnknownRegistry);
         }
         visit(set.get(registry, entry)?);
         Ok(())

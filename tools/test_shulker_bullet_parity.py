@@ -7,10 +7,11 @@ from pathlib import Path
 import struct
 import subprocess
 
-try:
-    from . import lab, oracle_harness as harness, test_model_baking_parity as baking, test_rust_parity as base
-except ImportError:
-    import lab, oracle_harness as harness, test_model_baking_parity as baking, test_rust_parity as base
+import sys
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+from tools import lab, oracle_harness as harness, test_model_baking_parity as baking, test_rust_parity as base
 
 
 WITNESS = lab.LOCAL / 'witness' / lab.VERSION / 'shulker_bullet_turn' / 'shulker_bullet_turn.tsv'

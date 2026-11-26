@@ -5,7 +5,7 @@ use crate::{
 };
 use std::{
     collections::{
-        VecDeque,
+        BTreeSet, VecDeque,
         hash_map::{Iter, ValuesMut},
     },
     ops::Deref,
@@ -114,11 +114,18 @@ pub enum ChunkMembershipDelta {
 /// Tokens are process-wide: replacing the entire map also invalidates caches.
 pub struct ChunkMap {
     columns: Columns,
+    // The x-then-z projection of visible membership; gameplay still iterates the hash map.
+    ordered: BTreeSet<Key>,
     /// In-range coordinates already uniquely index their ring slots. Only hidden occupants
     /// need a modulo index. They retain their blocks, attachments and light, but none of
     /// the normal map reads (including mesh/tick membership) can see them.
     hidden: FxHashMap<(i64, i64), Arc<Chunk>>,
     cache_range: Option<ClientChunkRange>,
+    /// Columns a server keeps on this client past the cache's view (`sunrise:levels` `far`): a
+    /// centre move never hides one, and one is admitted wherever it is.
+    far: FxHashSet<Key>,
+    /// Bumped each time `far` changes, for the consumers that cache what it held.
+    far_changes: u64,
     revision: u64,
     /// The oldest revision `recent_deltas` still answers for: the revision of
     /// the change it last dropped, or the revision that cleared them. A
@@ -143,8 +150,11 @@ impl Default for ChunkMap {
         let revision = next_revision();
         Self {
             columns: Columns::default(),
+            ordered: BTreeSet::new(),
             hidden: FxHashMap::default(),
             cache_range: None,
+            far: FxHashSet::default(),
+            far_changes: 0,
             revision,
             min_valid_revision: revision,
             recent_deltas: VecDeque::new(),
@@ -232,6 +242,22 @@ impl ChunkMap {
         }
     }
 
+    /// Read an existing loaded column without creating saved extras or an index binding.
+    pub fn attachments(&self, key: &Key) -> Result<Option<&Attachments>, AttachmentError> {
+        use sunrise_core::nbt::JavaString;
+        static KEY: std::sync::LazyLock<JavaString> =
+            std::sync::LazyLock::new(|| ATTACHMENTS_KEY.into());
+        let column = self
+            .columns
+            .get(key)
+            .ok_or(AttachmentError::MissingHolder)?;
+        let Some(saved) = &column.saved else {
+            return Ok(None);
+        };
+        attachment_compound(saved.root.get(&KEY))?;
+        Ok(Some(&saved.attachments))
+    }
+
     /// The live map, rebound after extras COW but never merely for lighting COW.
     pub fn attachments_mut(&mut self, key: &Key) -> Result<&mut Attachments, AttachmentError> {
         let chunk = self
@@ -276,7 +302,7 @@ impl ChunkMap {
             .columns
             .keys()
             .copied()
-            .filter(|&key| !range.contains(key))
+            .filter(|&key| !range.contains(key) && !self.far.contains(&key))
             .collect();
         for &key in &hidden {
             let chunk = self
@@ -294,12 +320,65 @@ impl ChunkMap {
     /// An in-range admission can collide only with a hidden column. The caller must
     /// unload it before inserting, while that column's state is still resident.
     pub fn client_chunk_alias(&self, key: Key) -> Option<Key> {
-        if self.hidden.is_empty() {
+        let range = self.cache_range?;
+        // A far column outside the view has no slot.
+        if self.hidden.is_empty() || !range.contains(key) {
             return None;
         }
-        let slot = self.cache_range?.slot(key);
+        let slot = range.slot(key);
         let chunk = self.hidden.get(&slot)?;
         Some((chunk.x, chunk.z))
+    }
+
+    /// Whether the column is one a server keeps here past the cache's view.
+    pub fn is_far(&self, key: Key) -> bool {
+        self.far.contains(&key)
+    }
+
+    /// How many far columns there are, and a number that changes whenever they do.
+    pub fn far_state(&self) -> (usize, u64) {
+        (self.far.len(), self.far_changes)
+    }
+
+    /// The server keeps `keys` here past the cache's view from now on. One hidden in its slot
+    /// is visible again: those come back, for the caller to draw again.
+    #[must_use]
+    pub fn keep_far(&mut self, keys: &[Key]) -> Vec<Key> {
+        let mut shown = Vec::new();
+        for &key in keys {
+            if !self.far.insert(key) {
+                continue;
+            }
+            let Some(range) = self.cache_range else {
+                continue;
+            };
+            let slot = range.slot(key);
+            if self.hidden.get(&slot).is_some_and(|c| (c.x, c.z) == key) {
+                let chunk = self.hidden.remove(&slot).expect("hidden in its slot");
+                self.add_visible(key);
+                self.columns.insert(key, chunk);
+                shown.push(key);
+            }
+        }
+        self.far_changes += 1;
+        shown
+    }
+
+    /// The server keeps `keys` here no more: the resident ones outside the cache's view, which
+    /// the caller forgets.
+    #[must_use]
+    pub fn release_far(&mut self, keys: &[Key]) -> Vec<Key> {
+        let gone = keys
+            .iter()
+            .copied()
+            .filter(|key| self.far.remove(key))
+            .filter(|&key| {
+                self.columns.contains_key(&key)
+                    && self.cache_range.is_some_and(|range| !range.contains(key))
+            })
+            .collect();
+        self.far_changes += 1;
+        gone
     }
 
     /// Includes hidden occupants for a storage resize or level teardown.
@@ -427,6 +506,7 @@ impl ChunkMap {
         previous
     }
     fn add_visible(&mut self, key: Key) {
+        self.ordered.insert(key);
         for dz in -1..=1 {
             for dx in -1..=1 {
                 let near = (key.0.wrapping_add(dx), key.1.wrapping_add(dz));
@@ -437,6 +517,7 @@ impl ChunkMap {
         self.record_delta(ChunkMembershipDelta::Added(key));
     }
     fn remove_visible(&mut self, key: Key) {
+        self.ordered.remove(&key);
         for dz in -1..=1 {
             for dx in -1..=1 {
                 let near = (key.0.wrapping_add(dx), key.1.wrapping_add(dz));
@@ -477,6 +558,10 @@ impl ChunkMap {
         previous
     }
     pub fn clear(&mut self) {
+        if !self.far.is_empty() {
+            self.far.clear();
+            self.far_changes += 1;
+        }
         if !self.columns.is_empty() || !self.hidden.is_empty() {
             self.unload_attachments();
             self.columns.clear();
@@ -484,6 +569,7 @@ impl ChunkMap {
             if let Some(residency) = &mut self.group_residency {
                 residency.replace(residency.occupied, 0);
             }
+            self.ordered.clear();
             self.fresh.clear();
             self.near.clear();
             self.revision = next_revision();
@@ -493,6 +579,11 @@ impl ChunkMap {
             self.min_valid_revision = self.revision;
         }
     }
+    /// Resident columns in lexical (x, z) order, independently of hash iteration.
+    pub fn ordered_keys(&self) -> impl ExactSizeIterator<Item = Key> + '_ {
+        self.ordered.iter().copied()
+    }
+
     /// Whether the column at `key` and its eight neighbours are all resident.
     #[inline]
     pub fn surrounded(&self, key: Key) -> bool {
@@ -621,7 +712,7 @@ mod tests {
             },
         }),
         copy_on_death: false,
-        sync: false,
+        sync_codec: None,
     };
     fn observe(map: &mut ChunkMap, index: &Index, dimension: DimensionKey) -> Arc<AtomicUsize> {
         let calls = Arc::new(AtomicUsize::new(0));
@@ -645,7 +736,7 @@ mod tests {
     fn saved_chunk() -> Arc<Chunk> {
         let mut source = Attachments::default();
         VALUE.set(&mut source, Holder::Chunk([3, 5]), 7).unwrap();
-        let form = source.to_nbt();
+        let form = source.try_to_nbt().unwrap();
         let mut chunk = Chunk::empty(3, 5);
         chunk.saved = Some(Arc::new(crate::chunk::ChunkExtras {
             attachments: Attachments::from_nbt(form),
@@ -803,7 +894,7 @@ mod tests {
             default: || unreachable!(),
             codec: None,
             copy_on_death: false,
-            sync: false,
+            sync_codec: None,
         };
         let index = Index::default();
         let drops = Arc::new(Mutex::new(Vec::new()));
@@ -845,7 +936,7 @@ mod tests {
         map.insert((0, 0), chunk.clone());
         let inserted = map.membership_revision();
         assert_ne!(empty, inserted);
-        map.insert((0, 0), chunk.clone());
+        map.insert((0, 0), chunk);
         Arc::make_mut(map.get_mut(&(0, 0)).unwrap()).lit = true;
         for column in map.values_mut() {
             Arc::make_mut(column).light_loaded = true;
@@ -859,15 +950,20 @@ mod tests {
             &mut crate::light::LightChanges::default(),
         );
         assert_eq!(inserted, map.membership_revision());
+        assert!(map.ordered_keys().eq([(0, 0)]), "replacement keeps one key");
         map.remove(&(0, 0));
-        map.insert((1, 0), chunk);
-        assert_eq!(map.len(), 1);
+        for (x, z) in [(1, -3), (-2, 4), (-2, -1)] {
+            map.insert((x, z), Arc::new(Chunk::empty(x, z)));
+        }
+        assert!(map.ordered_keys().eq([(-2, -1), (-2, 4), (1, -3)]));
         assert_ne!(inserted, map.membership_revision());
         let replaced = map.membership_revision();
         map.clear();
+        assert!(map.ordered_keys().next().is_none());
         assert_ne!(replaced, map.membership_revision());
         let cleared = map.membership_revision();
         map = ChunkMap::default();
+        assert!(map.ordered_keys().next().is_none());
         assert_ne!(cleared, map.membership_revision());
     }
 

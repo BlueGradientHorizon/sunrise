@@ -38,6 +38,14 @@ pub(crate) mod client_camera_tests;
 #[path = "riptide_tests_client.rs"]
 pub(crate) mod riptide_tests;
 
+#[cfg(all(test, feature = "client"))]
+#[path = "recipe_properties/client_logging_out_tests.rs"]
+mod client_logging_out_tests;
+
+#[cfg(all(test, feature = "client"))]
+#[path = "attack_target_tests_client.rs"]
+mod attack_target_tests;
+
 #[cfg(feature = "client")]
 #[cfg(test)]
 pub(crate) mod tests {

@@ -61,7 +61,7 @@ fn requirements_draw_the_level_random_before_each_effect() {
             game.start_audio_capture();
             let shot = Projectile::new(ProjectileKind::Snowball, Vec3::new(0.5, 70.0, 0.5), None)
                 .with_entity_random(LegacyRandom::new(seed));
-            let id = game.spawn_projectile(shot, &stack);
+            let id = game.spawn_projectile(shot, &stack).unwrap();
             assert_eq!(played(game), expected, "seed {seed}");
             let p = game
                 .creatures
@@ -145,7 +145,7 @@ fn stack_then_weapon_in_component_order() {
             .map(str::to_owned)
             .collect();
         game.start_audio_capture();
-        let id = game.spawn_projectile(arrow(&bow), &ammo);
+        let id = game.spawn_projectile(arrow(&bow), &ammo).unwrap();
         assert_eq!(names(played(game)), order);
         let p = game
             .creatures
@@ -156,7 +156,7 @@ fn stack_then_weapon_in_component_order() {
         // igniteForTicks keeps the longer fire: the weapon's 5 s.
         assert_eq!(p.arrow.as_ref().unwrap().fire_ticks, 100);
         // The weapon is the ammo's own item: its effects run once.
-        let id = game.spawn_projectile(arrow(&ammo), &ammo);
+        let id = game.spawn_projectile(arrow(&ammo), &ammo).unwrap();
         assert_eq!(names(played(game)).len(), 2);
         let p = game
             .creatures

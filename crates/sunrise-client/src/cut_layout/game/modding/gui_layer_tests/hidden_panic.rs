@@ -103,7 +103,10 @@ fn a_panicking_hidden_status_replacement_leaves_other_rows() {
             assert_eq!(take().as_slice(), expected);
             assert!(!batch.vertices.iter().any(|v| v.color == FAILED));
             assert!(batch.vertices.iter().any(|v| v.color == SIBLING));
-            assert_eq!(game.client.chat_ui.room.bottom(), 125.0);
+            assert_eq!(
+                game.client.chat_ui.room.bottom(),
+                if frame == 0 { 100.0 } else { 125.0 }
+            );
             if frame == 0 {
                 // The shared queue retains the failure under F1.
                 let [

@@ -2,6 +2,7 @@ use crate::game::server_side::native_entity_refs::tests::with_client_game;
 use mod_api::{ArmPose, ClientHost, CustomArmPose, Hooks, ModEntry};
 use std::{collections::HashMap, sync::OnceLock};
 use sunrise_core::geometry::Vec3;
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;
 use sunrise_items::equipment::MAINHAND;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::mobs::{
@@ -86,8 +87,8 @@ fn registered_angles_reach_local_remote_and_humanoid_before_species_animation() 
         mod_platform::testing::with_mods(
             vec![ModEntry::new("skillet", Box::new(Skillet(OnceLock::new())))].into(),
             || {
-                game.tick_remote_arm_poses();
-                game.tick_player_model();
+                game.extract_remote_arm_poses();
+                game.extract_player_arm_pose();
                 let models = game.client_res().client_mob_models();
                 for mob in [
                     game.client.player_model.as_ref().unwrap(),
@@ -116,7 +117,7 @@ fn registered_angles_reach_local_remote_and_humanoid_before_species_animation() 
                 assert_eq!(arms(&game.mobs[2], models), baseline[2]);
             },
         );
-        game.tick_remote_arm_poses();
+        game.extract_remote_arm_poses();
         let models = game.client_res().client_mob_models();
         assert_eq!(
             game.mobs
@@ -193,7 +194,97 @@ fn suppressed_custom_offhand_never_calls_its_transformer() {
             .into(),
             || {
                 game.tick_player_model();
+                game.extract_player_arm_pose();
                 assert_eq!(*calls.lock().unwrap(), [true]);
+            },
+        );
+    });
+}
+
+/// `AvatarRenderer.extractRenderState` selects held poses on every draw, so the swing a
+/// `get_arm_pose` listener reads is `LivingEntity.isSwinging` at that draw: for the local
+/// player, a remote player and a skeleton, in both hands.
+#[test]
+#[ignore = "daily"]
+fn held_arm_pose_reads_the_active_swing_on_every_draw() {
+    use mod_api::Hand;
+    use std::sync::{Arc, Mutex};
+    use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameExt as _;
+    use sunrise_items::equipment::OFFHAND;
+    use sunrise_sim::first_person_sim::{Hand as SwingHand, SwingAnimation};
+
+    struct Watcher(Arc<Mutex<Vec<(u32, Hand, bool)>>>);
+    #[mod_api::__subscriptions]
+    impl Hooks for Watcher {
+        fn get_arm_pose(
+            &self,
+            _: &dyn ClientHost,
+            event: &mut mod_api::GetArmPoseEvent<'_>,
+        ) -> Option<ArmPose> {
+            self.0
+                .lock()
+                .unwrap()
+                .push((event.entity_id, event.hand, event.humanoid.is_swinging));
+            None
+        }
+    }
+    with_client_game(|game| {
+        game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
+        game.common.inventory[game.common.selected] = Some(ItemStack::new("minecraft:stick", 1));
+        game.offhand = Some(ItemStack::new("minecraft:stick", 1));
+        game.tick_player_model();
+        for (id, kind) in [
+            (60, game.client_res().player_type().clone().unwrap()),
+            (
+                61,
+                game.res
+                    .mob_types()
+                    .get("minecraft:skeleton")
+                    .unwrap()
+                    .clone(),
+            ),
+        ] {
+            let mut mob = Mob::new(id, kind, Vec3::ZERO, 0.0);
+            for slot in [MAINHAND, OFFHAND] {
+                mob.extra
+                    .set_slot_stack(slot, Some(ItemStack::new("minecraft:stick", 1)));
+            }
+            game.mobs.push(mob);
+        }
+        let own = game.own_entity_id() as u32;
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        mod_platform::testing::with_mods(
+            vec![ModEntry::new("watcher", Box::new(Watcher(seen.clone())))].into(),
+            || {
+                let swings = |expected: bool| {
+                    let mut seen = seen.lock().unwrap();
+                    let mut rows: Vec<_> = seen.drain(..).collect();
+                    rows.sort_by_key(|(id, hand, _)| (*id, *hand == Hand::Off));
+                    let want: Vec<_> = [own, 60, 61]
+                        .into_iter()
+                        .flat_map(|id| {
+                            [Hand::Main, Hand::Off].map(move |hand| (id, hand, expected))
+                        })
+                        .collect();
+                    assert_eq!(rows, want);
+                };
+                game.extract_arm_poses();
+                swings(false);
+                // A swing started between ticks is already seen by the next draw's extraction.
+                game.swing_hand(SwingHand::Main, SwingAnimation::DEFAULT);
+                game.tick_player_model();
+                game.mobs[0].swing_hand(false, 6);
+                game.mobs[1].swing_hand(true, 6);
+                game.extract_arm_poses();
+                swings(true);
+                for mob in &mut game.mobs {
+                    mob.ai.swinging = false;
+                    mob.extra.swing_right_arm = None;
+                }
+                game.extract_remote_arm_poses();
+                let mut rows = seen.lock().unwrap();
+                assert_eq!(rows.len(), 4);
+                assert!(rows.drain(..).all(|(_, _, swinging)| !swinging));
             },
         );
     });

@@ -74,12 +74,11 @@ pub(crate) mod tests {
                 .collect::<Vec<_>>()
                 .into(),
         );
-        assert!(brewing::register_mod_effects([(
-            "test:effect".into(),
+        assert!(brewing::register_mod_effects([brewing::ModEffect::new(
+            "test:effect",
             0,
             brewing::Category::Neutral,
-            None,
-            "test-potions".into(),
+            "test-potions",
         )]));
         applied
     }
@@ -318,12 +317,11 @@ pub(crate) mod tests {
                         ("test:nourishment", "effect-owner"),
                         ("other-mod:foreign", "other-mod"),
                     ]
-                    .map(|(id, owner)| (
-                        id.into(),
+                    .map(|(id, owner)| brewing::ModEffect::new(
+                        id,
                         0,
                         brewing::Category::Beneficial,
-                        None,
-                        owner.into(),
+                        owner,
                     ))
                 ));
                 super::super::native_entity_refs::tests::with_game(|game| {
@@ -620,6 +618,244 @@ pub(crate) mod tests {
             assert_eq!(game.player.as_ref().unwrap().health.health(), 1.0);
         });
     }
+
+    #[test]
+    #[ignore = "daily"]
+    fn mob_effect_added_event_and_part_on_effect_added_contract() {
+        use std::sync::{
+            Arc, Mutex,
+            atomic::{AtomicBool, Ordering},
+        };
+        if super::super::native_entity_refs::tests::run_fresh_cases(
+            "game::server_side::potions_server::tests::mob_effect_added_event_and_part_on_effect_added_contract",
+            "SUNRISE_EFFECT_ADDED_CHILD",
+            &["added"],
+        ) {
+            return;
+        }
+        #[derive(Debug, PartialEq, Eq)]
+        enum Record {
+            Bus {
+                entity: u32,
+                effect: Option<String>,
+                old: Option<(i32, i32)>,
+                new: (i32, i32),
+                live: Option<(i32, i32)>,
+                source: Option<u32>,
+            },
+            Part {
+                entity: u32,
+                effect: Option<String>,
+                amplifier: i32,
+                live: Option<(i32, i32)>,
+            },
+        }
+        #[derive(Clone)]
+        struct Observer {
+            log: Arc<Mutex<Vec<Record>>>,
+            deny: Arc<AtomicBool>,
+        }
+        #[mod_api::sunrise_part]
+        impl mod_api::MobEffectPart for Observer {
+            fn on_effect_added(
+                &self,
+                host: &mut dyn mod_api::ServerHost,
+                event: &mut mod_api::OnEffectAddedEvent,
+            ) {
+                let live = event
+                    .entity
+                    .effect(host, event.effect)
+                    .map(|e| (e.duration, e.amplifier));
+                self.log.lock().unwrap().push(Record::Part {
+                    entity: event.entity.entity().id(),
+                    effect: event.effect.id(host).map(str::to_owned),
+                    amplifier: event.amplifier,
+                    live,
+                });
+            }
+        }
+        #[mod_api::__subscriptions]
+        impl mod_api::Hooks for Observer {
+            fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
+                let effect = r.effect_key("test:comfort");
+                r.mob_effect_part(&effect, self.clone()).unwrap();
+            }
+            fn mob_effect_applicable(
+                &self,
+                _: &mut dyn mod_api::ServerHost,
+                _: &mut mod_api::MobEffectApplicableEvent,
+            ) -> Option<mod_api::EffectApplicable> {
+                self.deny
+                    .load(Ordering::SeqCst)
+                    .then_some(mod_api::EffectApplicable::Deny)
+            }
+            fn mob_effect_added(
+                &self,
+                host: &mut dyn mod_api::ServerHost,
+                event: &mut mod_api::MobEffectAddedEvent<'_>,
+            ) {
+                let live = event
+                    .entity
+                    .effect(host, event.new_effect.id)
+                    .map(|e| (e.duration, e.amplifier));
+                self.log.lock().unwrap().push(Record::Bus {
+                    entity: event.entity.entity().id(),
+                    effect: event.new_effect.id.id(host).map(str::to_owned),
+                    old: event.old_effect.map(|e| (e.duration, e.amplifier)),
+                    new: (event.new_effect.duration, event.new_effect.amplifier),
+                    live,
+                    source: event.source.map(|s| s.id()),
+                });
+            }
+        }
+
+        let log = Arc::new(Mutex::new(Vec::new()));
+        let deny = Arc::new(AtomicBool::new(false));
+        let observer = Observer {
+            log: log.clone(),
+            deny: deny.clone(),
+        };
+        mod_platform::testing::with_mods(
+            Arc::from([mod_api::ModEntry::new("effect-owner", Box::new(observer))]),
+            || {
+                assert!(brewing::register_mod_effects([brewing::ModEffect::new(
+                    "test:comfort",
+                    0,
+                    brewing::Category::Beneficial,
+                    "effect-owner",
+                )]));
+                super::super::native_entity_refs::tests::with_game(|game| {
+                    game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
+                    game.player.as_mut().unwrap().entity_id = 20;
+                    super::super::native_entity_refs::tests::bind_local_player(game, 20, 123);
+                    let cow = game.res.mob_types().get("minecraft:cow").unwrap().clone();
+                    let spider = game
+                        .res
+                        .mob_types()
+                        .get("minecraft:spider")
+                        .unwrap()
+                        .clone();
+                    let wither = game
+                        .res
+                        .mob_types()
+                        .get("minecraft:wither")
+                        .unwrap()
+                        .clone();
+                    game.mobs.push(Mob::new(21, cow, Vec3::ZERO, 0.0));
+                    game.mobs.push(Mob::new(22, spider, Vec3::ZERO, 0.0));
+                    game.mobs.push(Mob::new(23, wither, Vec3::ZERO, 0.0));
+
+                    sunrise_gameplay_common::game::test_fixtures::fixture_resident_column(
+                        &mut game.world,
+                        (0, 0),
+                    );
+                    let player_source = game.entity(20);
+                    let cow_source = game.entity(21);
+
+                    // 1. Vanilla effect on player: first add and unchanged reapplication both fire
+                    //    the global bus event pre-mutation, with source and old/new snapshots.
+                    assert!(game.add_player_effect_from(
+                        EffectInstance::new("speed", 200, 0),
+                        cow_source,
+                    ));
+                    assert!(!game.add_player_effect(EffectInstance::new("speed", 100, 0)));
+                    assert_eq!(
+                        std::mem::take(&mut *log.lock().unwrap()),
+                        vec![
+                            Record::Bus {
+                                entity: 20,
+                                effect: Some("minecraft:speed".into()),
+                                old: None,
+                                new: (200, 0),
+                                live: None,
+                                source: Some(21),
+                            },
+                            Record::Bus {
+                                entity: 20,
+                                effect: Some("minecraft:speed".into()),
+                                old: Some((200, 0)),
+                                new: (100, 0),
+                                live: Some((200, 0)),
+                                source: None,
+                            },
+                        ]
+                    );
+
+                    // 2. Mod effect on mob: first add fires bus pre-mutation then Part post-insert;
+                    //    stronger and unchanged reapplications fire bus pre-mutation only.
+                    let comfort = brewing::effect("test:comfort").unwrap();
+                    assert!(game.add_mob_effect(
+                        21,
+                        EffectInstance::from_def(comfort, 100, 1),
+                        player_source,
+                    ));
+                    assert!(game.add_mob_effect(
+                        21,
+                        EffectInstance::from_def(comfort, 200, 2),
+                        None,
+                    ));
+                    assert!(!game.add_mob_effect(
+                        21,
+                        EffectInstance::from_def(comfort, 50, 0),
+                        None,
+                    ));
+                    assert_eq!(
+                        std::mem::take(&mut *log.lock().unwrap()),
+                        vec![
+                            Record::Bus {
+                                entity: 21,
+                                effect: Some("test:comfort".into()),
+                                old: None,
+                                new: (100, 1),
+                                live: None,
+                                source: Some(20),
+                            },
+                            Record::Part {
+                                entity: 21,
+                                effect: Some("test:comfort".into()),
+                                amplifier: 1,
+                                live: Some((100, 1)),
+                            },
+                            Record::Bus {
+                                entity: 21,
+                                effect: Some("test:comfort".into()),
+                                old: Some((100, 1)),
+                                new: (200, 2),
+                                live: Some((100, 1)),
+                                source: None,
+                            },
+                            Record::Bus {
+                                entity: 21,
+                                effect: Some("test:comfort".into()),
+                                old: Some((200, 2)),
+                                new: (50, 0),
+                                live: Some((200, 2)),
+                                source: None,
+                            },
+                        ]
+                    );
+
+                    // 3. Refused effects (spider poison, WitherBoss.addEffect, mob_effect_applicable
+                    //    Deny) and load_effect emit neither the bus event nor the Part callback.
+                    assert!(!game.add_mob_effect(22, EffectInstance::new("poison", 100, 0), None));
+                    assert!(!game.add_mob_effect(
+                        23,
+                        EffectInstance::from_def(comfort, 100, 0),
+                        None,
+                    ));
+                    deny.store(true, Ordering::SeqCst);
+                    assert!(!game.add_player_effect(EffectInstance::from_def(comfort, 100, 0)));
+                    deny.store(false, Ordering::SeqCst);
+                    game.mobs[0].load_effect(sunrise_sim::mobs::StoredEffect::new(
+                        "minecraft:regeneration",
+                        100,
+                        0,
+                    ));
+                    assert!(log.lock().unwrap().is_empty());
+                });
+            },
+        );
+    }
 }
 
 #[cfg(test)]
@@ -700,6 +936,7 @@ pub(crate) mod xp_bottle_tests {
                     at,
                     None,
                     face,
+                    0,
                     0,
                     &PotionOwner::default(),
                     false,
@@ -1566,7 +1803,7 @@ pub(crate) mod arrow_contents {
             arrow.stuck = true;
             let rain = |_| false;
             let scene = game.arrow_scene(&rain);
-            sunrise_sim::arrows::tick(&mut arrow, &scene, &[]);
+            sunrise_sim::entities::arrows::tick(&mut arrow, &scene, &[]);
             let st = arrow.arrow.as_ref().unwrap();
             let item599 = st
                 .pickup_item
@@ -1574,7 +1811,7 @@ pub(crate) mod arrow_contents {
                 .trim_start_matches("minecraft:")
                 .to_owned();
             let color599 = st.potion_color().map_or(-1, |v| v as i32);
-            sunrise_sim::arrows::tick(&mut arrow, &scene, &[]);
+            sunrise_sim::entities::arrows::tick(&mut arrow, &scene, &[]);
             let st = arrow.arrow.as_ref().unwrap();
             results.push(json!({"id":id,"item599":item599,"color599":color599,"item600":st.pickup_item.item.trim_start_matches("minecraft:"),"color600":st.potion_color().map_or(-1,|v|v as i32)}));
             assert_eq!(
@@ -1587,5 +1824,237 @@ pub(crate) mod arrow_contents {
         std::fs::write(output, serde_json::to_vec_pretty(&results).unwrap()).unwrap();
     }
 }
+
+#[cfg(test)]
+pub(crate) mod tick_effects_tests {
+    use super::*;
+    use std::sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    };
+    use sunrise_level::chunk::Chunk;
+
+    #[test]
+    #[ignore = "daily"]
+    fn bad_omen_production_tick_stops_on_raid_omen_insert_and_borrows_hidden_chains() {
+        struct CountExpired(Arc<AtomicUsize>);
+        #[mod_api::__subscriptions]
+        impl mod_api::Hooks for CountExpired {
+            fn mob_effect_expired(
+                &self,
+                _: &dyn mod_api::Host,
+                _: &mut mod_api::MobEffectExpiredEvent,
+            ) -> mod_api::Flow {
+                self.0.fetch_add(1, Ordering::Relaxed);
+                mod_api::Flow::Continue
+            }
+        }
+
+        let expired_calls = Arc::new(AtomicUsize::new(0));
+        let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
+            "row6-prod-test",
+            Box::new(CountExpired(expired_calls.clone())),
+        )]
+        .into();
+        mod_platform::testing::with_mods(mods, || {
+            super::super::native_entity_refs::tests::with_game(|game| {
+                game.enter_level(sunrise_gameplay_common::game::Dim::Overworld)
+                    .unwrap();
+                game.options.dedicated = Some(Vec::new());
+                for cx in -1..=1 {
+                    for cz in -1..=1 {
+                        game.world
+                            .chunks
+                            .insert((cx, cz), Arc::new(Chunk::empty(cx, cz)));
+                    }
+                }
+                let registry = game.pack.assets.registry;
+                let foot = registry.default_state("minecraft:white_bed").unwrap();
+                let mut head_state = registry.state(foot).unwrap().clone();
+                head_state.properties.insert("part".into(), "head".into());
+                let head = registry.id(&head_state).unwrap();
+                game.world.set(2, 64, 2, foot).unwrap();
+                game.world.set(2, 64, 1, head).unwrap();
+                let kind = game
+                    .res
+                    .mob_types()
+                    .get("minecraft:villager")
+                    .unwrap()
+                    .clone();
+                let mut villager = Mob::new(162, kind, Vec3::new(3.5, 64.0, 2.5), 0.0);
+                villager.no_ai = true;
+                villager.extra.bed = Some([2, 64, 1]);
+                game.mobs.push(villager);
+                game.player = Some(
+                    sunrise_sim::motion::PlayerMotion::new(
+                        game.motion,
+                        Vec3::new(2.5, 64.0, 2.5),
+                    )
+                    .unwrap(),
+                );
+                assert!(!game.village_centers().is_empty());
+
+                // 1. Production Bad Omen -> Raid Omen insertion order:
+                // strength (before bad_omen) ticks; bad_omen inserts raid_omen and stops
+                // the pass (vanilla CME), so bad_omen and speed stay un-decremented.
+                game.potions.effects = PlayerEffects::default();
+                game.potions
+                    .effects
+                    .add(EffectInstance::new("strength", 50, 0));
+                game.potions
+                    .effects
+                    .add(EffectInstance::new("bad_omen", 100, 1));
+                game.potions
+                    .effects
+                    .add(EffectInstance::new("speed", 50, 0));
+
+                game.tick_mob_effects();
+                assert_eq!(game.potions.effects.get("strength").unwrap().duration, 49);
+                assert_eq!(game.potions.effects.get("bad_omen").unwrap().duration, 100);
+                assert_eq!(game.potions.effects.get("speed").unwrap().duration, 50);
+                let raid_omen = game
+                    .potions
+                    .effects
+                    .get("raid_omen")
+                    .expect("raid_omen inserted");
+                assert_eq!((raid_omen.duration, raid_omen.amplifier), (600, 1));
+
+                // Second tick: strength ticks, bad_omen refreshes raid_omen and is removed,
+                // speed and raid_omen both tick down in order.
+                game.tick_mob_effects();
+                assert_eq!(game.potions.effects.get("strength").unwrap().duration, 48);
+                assert!(game.potions.effects.get("bad_omen").is_none());
+                assert_eq!(game.potions.effects.get("speed").unwrap().duration, 49);
+                let raid_omen = game
+                    .potions
+                    .effects
+                    .get("raid_omen")
+                    .expect("raid_omen survives");
+                assert_eq!((raid_omen.duration, raid_omen.amplifier), (599, 1));
+
+                // 2. Hidden effect promotion on duration == 1 must not fire MobEffectExpired.
+                game.potions.effects = PlayerEffects::default();
+                game.potions
+                    .effects
+                    .add(EffectInstance::new("speed", 100, 0));
+                game.potions.effects.add(EffectInstance::new("speed", 1, 1));
+                expired_calls.store(0, Ordering::Relaxed);
+                game.tick_mob_effects();
+                assert_eq!(
+                    expired_calls.load(Ordering::Relaxed),
+                    0,
+                    "promoted hidden effect must not fire MobEffectExpired"
+                );
+                let speed = game.potions.effects.get("speed").unwrap();
+                assert_eq!((speed.amplifier, speed.duration), (0, 99));
+
+                // 3. Steady-state tick_on over boxed hidden chains makes zero heap allocations.
+                game.potions.effects = PlayerEffects::default();
+                for id in ["speed", "haste", "strength", "jump_boost"] {
+                    game.potions.effects.add(EffectInstance::new(id, 400, 0));
+                    game.potions.effects.add(EffectInstance::new(id, 200, 1));
+                }
+                let ((), allocs) = sunrise_threads::allocation_count::measure(|| {
+                    PlayerEffects::tick_on(game);
+                });
+                assert_eq!(
+                    allocs, 0,
+                    "borrowed PlayerEffects::tick_on must not allocate"
+                );
+            });
+        });
+    }
+}
+
+/// #4473: the player's own attribute map, which its movement, the hits and
+/// the sync read, takes a content mod's declared modifier as vanilla's
+/// effects' (`onEffectAdded`, `onEffectUpdated`, `onEffectsRemoved`).
+#[cfg(test)]
+pub(crate) mod declared_modifier_player_tests {
+    use super::*;
+    use sunrise_level::brewing::{Category, ModEffect, register_mod_effects};
+    use sunrise_sim::motion::PlayerMotion;
+
+    /// `testfx:lucky`, +1 luck per level, in the mod API's registry too (the
+    /// removal and the tick ask its events): process-wide, so the test runs
+    /// in a fresh child process.
+    fn lucky_mod() {
+        use mod_api::{self, *};
+        struct LuckyMod;
+        #[mod_api::__subscriptions]
+        impl Hooks for LuckyMod {
+            fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
+                r.effect_key("testfx:lucky");
+            }
+        }
+        mod_platform::__private::install(vec![ModEntry::new("testfx", Box::new(LuckyMod))].into());
+        assert!(register_mod_effects([ModEffect {
+            modifiers: vec![(
+                "minecraft:luck".into(),
+                "testfx:effect/lucky".into(),
+                1.0,
+                sunrise_world::attributes::Operation::AddValue,
+            )],
+            ..ModEffect::new("testfx:lucky", 1, Category::Beneficial, "testfx")
+        }]));
+    }
+
+    /// The modifier is written on add, rewritten for a higher amplifier and
+    /// for the hidden instance taking over in the effect tick, and taken off
+    /// by a removal and by the effect running out: the tick's actions carry
+    /// the instance's registry index to the writes.
+    #[test]
+    #[ignore = "daily"]
+    fn a_declared_modifier_follows_the_players_effect_in_its_attribute_map() {
+        if super::super::native_entity_refs::tests::run_fresh_cases(
+            "game::server_side::potions_server::declared_modifier_player_tests::a_declared_modifier_follows_the_players_effect_in_its_attribute_map",
+            "SUNRISE_DECLARED_MODIFIER_PLAYER_CHILD",
+            &["lucky"],
+        ) {
+            return;
+        }
+        lucky_mod();
+        super::super::native_entity_refs::tests::with_game(|game| {
+            let lucky = brewing::effect("testfx:lucky").unwrap();
+            game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
+            let luck = |game: &mut sunrise_gameplay::game::ServerGame<'_>| {
+                game.player
+                    .as_mut()
+                    .unwrap()
+                    .attribute("minecraft:luck")
+                    .unwrap()
+            };
+            assert_eq!(luck(game), 0.0);
+            assert!(game.apply_player_effect(EffectInstance::from_def(lucky, -1, 0)));
+            assert_eq!(luck(game), 1.0);
+            assert!(game.apply_player_effect(EffectInstance::from_def(lucky, -1, 2)));
+            assert_eq!(luck(game), 3.0);
+            assert!(game.remove_player_effects(None));
+            assert_eq!(luck(game), 0.0);
+            // Amplifier 1 for 2 ticks over amplifier 0 for 6: the hidden
+            // instance takes over, then runs out.
+            assert!(game.apply_player_effect(EffectInstance::from_def(lucky, 6, 0)));
+            assert!(game.apply_player_effect(EffectInstance::from_def(lucky, 2, 1)));
+            assert_eq!(luck(game), 2.0);
+            let active = |game: &sunrise_gameplay::game::ServerGame<'_>| {
+                game.potions.effects.get(lucky.id).map(|e| e.amplifier)
+            };
+            for _ in 0..3 {
+                game.tick_mob_effects();
+            }
+            assert_eq!(active(game), Some(0));
+            assert_eq!(luck(game), 1.0);
+            for _ in 0..10 {
+                game.tick_mob_effects();
+            }
+            assert_eq!(active(game), None);
+            assert_eq!(luck(game), 0.0);
+        });
+    }
+}
+
 #[cfg(test)]
 use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+
+#[cfg(test)]
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

@@ -254,7 +254,7 @@ mod tests {
             "minecraft:cow".into(),
             ClientMobVisuals {
                 shadow: None,
-                model: Arc::new(crate::mobs::Part::parse("root", &serde_json::Value::Null)),
+                model: Arc::new(crate::mobs::Part::empty("root")),
                 layers: Default::default(),
                 texture: String::new(),
             },

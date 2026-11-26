@@ -1,66 +1,16 @@
 //! `/forceload`, `/fillbiome`, `/worldborder` and `/loot`.
 use super::{Arg, Context, R, err};
-use sunrise_core::position::ChunkPos;
+use crate::game::world_border::BorderTarget;
 #[allow(unused_imports)]
 use sunrise_game_data::text::Text;
 #[allow(unused_imports)]
 use sunrise_items::items::ItemStack;
 #[allow(unused_imports)]
-use sunrise_level::worldborder::{MAX_CENTER, MAX_SIZE};
-#[allow(unused_imports)]
 use sunrise_sim::scoreboard_cmd::{Holder, Tracker};
 
-/// `LocationCheck.test` / `BlockPredicate`: the measured loaded block-state subset.
-pub(in crate::game) fn loot_location_block(
-    condition: &serde_json::Value,
-    origin: [i32; 3],
-    chunks: &sunrise_level::chunk_map::ChunkMap,
-    registry: &sunrise_world::registry::BlockRegistry,
-    items: &sunrise_items::items::Items,
-) -> Option<bool> {
-    let condition = condition.as_object()?;
-    if condition.keys().any(|k| {
-        !matches!(
-            k.as_str(),
-            "type" | "predicate" | "offsetX" | "offsetY" | "offsetZ"
-        )
-    }) {
-        return None;
-    }
-    let predicate = condition.get("predicate")?.as_object()?;
-    if predicate.len() != 1 || !predicate.contains_key("block") {
-        return None;
-    }
-    let block = predicate.get("block")?.as_object()?;
-    if block
-        .keys()
-        .any(|k| !matches!(k.as_str(), "blocks" | "state"))
-        || block.get("blocks")?.as_str().is_none()
-    {
-        return None;
-    }
-    if let Some(state) = block.get("state")
-        && state.as_object()?.values().any(|v| !v.is_string())
-    {
-        return None;
-    }
-    let mut at = origin;
-    for (axis, key) in ["offsetX", "offsetY", "offsetZ"].iter().enumerate() {
-        let offset = match condition.get(*key) {
-            None => 0,
-            Some(value) => i32::try_from(value.as_i64()?).ok()?,
-        };
-        // floor(integer block origin + .5 + integer offset), also for negatives.
-        at[axis] = origin[axis].checked_add(offset)?;
-    }
-    // Unloaded positions are unsupported: never load or invent a block here.
-    // `LocationPredicate.matches`: a block check fails where `Level.isLoaded` is false.
-    let Some(chunk) = chunks.get(&(at[0] >> 4, at[2] >> 4)) else {
-        return Some(false);
-    };
-    let state = registry.state(chunk.block(at[0] & 15, at[1], at[2] & 15))?;
-    Some(items.matches_block_state(&predicate["block"], &state.name, &state.properties))
-}
+// `WorldBorderCommand.setCenter` / `setSize` bounds (not the extent's bounds).
+const MAX_CENTER: f64 = 29_999_984.0;
+const MAX_SIZE: f64 = 59_999_968.0;
 
 pub(in crate::game) fn num(n: impl std::fmt::Display) -> Text {
     Text::literal(n.to_string())
@@ -108,20 +58,19 @@ impl crate::game::ServerGame<'_> {
         let dim = Text::literal(self.common.dim.id());
         match id {
             "forceload.query" if ctx.get("pos").is_none() => {
-                let mut forced: Vec<(i32, i32)> =
-                    self.server.streaming.commanded().iter().copied().collect();
-                // ForceLoadCommand sorts its LongStream before formatting chunks.
-                forced.sort_unstable_by_key(|&(x, z)| ChunkPos::new(x, z).pack());
-                if forced.is_empty() {
+                let count = self.server.streaming.commanded().len();
+                if count == 0 {
                     self.command_failure(Text::translate("commands.forceload.added.none", &[dim]));
                     return Ok(0);
                 }
-                let list = forced
-                    .iter()
+                let list = self
+                    .server
+                    .streaming
+                    .commanded_in_order()
                     .map(|(x, z)| format!("[{x}, {z}]"))
                     .collect::<Vec<_>>()
                     .join(", ");
-                let message = if forced.len() == 1 {
+                let message = if count == 1 {
                     Text::translate(
                         "commands.forceload.list.single",
                         &[dim, Text::literal(list)],
@@ -129,11 +78,11 @@ impl crate::game::ServerGame<'_> {
                 } else {
                     Text::translate(
                         "commands.forceload.list.multiple",
-                        &[num(forced.len()), dim, Text::literal(list)],
+                        &[num(count), dim, Text::literal(list)],
                     )
                 };
                 self.feedback(message);
-                Ok(forced.len() as i32)
+                Ok(count as i32)
             }
             "forceload.query" => {
                 let [x, z] = self.column_arg(ctx, "pos")?;
@@ -381,69 +330,14 @@ impl crate::game::ServerGame<'_> {
 
     // ---- /worldborder -----------------------------------------------------------------------
 
-    /// Every tick: the size change, the wall the player cannot pass and
-    /// damage outside the border.
-    /// `BorderChangeListener.DelegateBorderChangeListener`'s packets: what
-    /// changed on the border since the guests were last told of it.
-    pub(in crate::game) fn lan_sync_border(&mut self) {
-        let Some(host) = self.server.lan.as_mut() else {
-            return;
-        };
-        let now = sunrise_sim::lan::border::Sent::of(&self.common.border);
-        if let Some(sent) = host.border_sent.replace(now) {
-            for packet in sent.changes(&self.common.border) {
-                // PlayerList$1: only the players of the border's own level.
-                host.hub.broadcast_level(&packet);
-            }
-        }
-    }
-    pub(in crate::game::server_side) fn tick_worldborder(&mut self) {
-        let remaining = self.common.border.remaining_ticks();
-        self.common.border.tick();
-        if remaining > 0
-            && self.common.border.remaining_ticks() == 0
-            && (self.server.serving.is_some() || self.common.options.dedicated.is_some())
-        {
-            self.native_world_border_bounds_change_finish();
-        }
-        self.common.player_border();
-        self.border_damage();
-    }
-    /// `LivingEntity.baseTick`: a player outside the border, further than
-    /// its safe zone, is hurt by the blocks beyond it. The game's player, or
-    /// a guest's in their turn (`as_guest`).
-    pub(in crate::game::server_side) fn border_damage(&mut self) {
-        let Some((px, pz, half)) = self.common.player.as_ref().map(|p| {
-            (
-                p.position.x,
-                p.position.z,
-                f64::from(p.dimensions.width) / 2.0,
-            )
-        }) else {
-            return;
-        };
-        let inside = self.common.border.contains(px - half, pz - half)
-            && self.common.border.contains(px + half, pz + half);
-        if inside {
-            return;
-        }
-        let dist = self.common.border.distance(px, pz) + self.common.border.safe_zone;
-        if dist < 0.0
-            && self.common.border.damage_per_block > 0.0
-            && self.common.ticks.is_multiple_of(10)
-        {
-            let amount = (-dist * self.common.border.damage_per_block)
-                .floor()
-                .max(1.0) as f32;
-            self.hurt_player_by("minecraft:outside_border", amount);
-        }
-    }
     pub(in crate::game::server_side) fn cmd_worldborder(
         &mut self,
         id: &str,
         ctx: &Context,
     ) -> R<i32> {
         let float2 = |v: f64| super::percent_f(v, 2);
+        let target = BorderTarget::InPlace;
+        let failed = |_| err("command.failed", &[]);
         let double = match ctx.get("distance") {
             Some(Arg::Double(d)) => *d,
             _ => 0.0,
@@ -467,9 +361,10 @@ impl crate::game::ServerGame<'_> {
                 // time, keeps a change in flight going for its remaining ticks
                 // plus the argument (`getLerpTime() + time`); `set` replaces it.
                 let (distance, ticks) = match (id, time) {
-                    ("worldborder.add", Some(t)) => {
-                        (current + double, self.common.border.remaining_ticks() + t)
-                    }
+                    ("worldborder.add", Some(t)) => (
+                        current + double,
+                        self.common.border.remaining_ticks().wrapping_add(t),
+                    ),
                     ("worldborder.add", None) => (current + double, 0),
                     (_, t) => (double, t.unwrap_or(0)),
                 };
@@ -485,9 +380,10 @@ impl crate::game::ServerGame<'_> {
                         &[&size_limit_text()],
                     ));
                 }
+                self.set_border_size(target, distance, ticks)
+                    .map_err(failed)?;
                 let shown = Text::literal(super::percent_f(distance, 1));
                 if ticks > 0 {
-                    self.common.border.lerp_to(distance, ticks);
                     let key = if distance > current {
                         "commands.worldborder.set.grow"
                     } else {
@@ -498,13 +394,11 @@ impl crate::game::ServerGame<'_> {
                         &[shown, Text::literal(ticks_to_seconds(ticks))],
                     ));
                 } else {
-                    self.common.border.set_size(distance);
                     self.feedback(Text::translate(
                         "commands.worldborder.set.immediate",
                         &[shown],
                     ));
                 }
-                self.native_world_border_bounds_changed();
                 Ok((distance - current) as i32)
             }
             "worldborder.center" => {
@@ -521,8 +415,7 @@ impl crate::game::ServerGame<'_> {
                         &[&"2.9999984E7"],
                     ));
                 }
-                self.common.border.set_center([x, z]);
-                self.native_world_border_center_changed();
+                self.set_border_center(target, [x, z]).map_err(failed)?;
                 self.feedback(Text::translate(
                     "commands.worldborder.center.success",
                     &[Text::literal(float2(x)), Text::literal(float2(z))],
@@ -535,12 +428,12 @@ impl crate::game::ServerGame<'_> {
                     Some(Arg::Float(v)) => f64::from(*v),
                     _ => 0.0,
                 };
-                let slot = if amount {
-                    &mut self.common.border.damage_per_block
+                let current = if amount {
+                    self.common.border.damage_per_block
                 } else {
-                    &mut self.common.border.safe_zone
+                    self.common.border.safe_zone
                 };
-                if *slot == value {
+                if current == value {
                     return Err(err(
                         if amount {
                             "commands.worldborder.damage.amount.failed"
@@ -550,7 +443,12 @@ impl crate::game::ServerGame<'_> {
                         &[],
                     ));
                 }
-                *slot = value;
+                let mut border = self.border_mut(target).map_err(failed)?;
+                if amount {
+                    Self::set_border_damage_per_block(&mut border, value);
+                } else {
+                    Self::set_border_safe_zone(&mut border, value);
+                }
                 self.feedback(Text::translate(
                     if amount {
                         "commands.worldborder.damage.amount.success"
@@ -569,7 +467,7 @@ impl crate::game::ServerGame<'_> {
                 if self.common.border.warning_distance == d {
                     return Err(err("commands.worldborder.warning.distance.failed", &[]));
                 }
-                self.common.border.warning_distance = d;
+                Self::set_border_warning_blocks(&mut self.border_mut(target).map_err(failed)?, d);
                 self.feedback(Text::translate(
                     "commands.worldborder.warning.distance.success",
                     &[num(d)],
@@ -584,7 +482,7 @@ impl crate::game::ServerGame<'_> {
                 if self.common.border.warning_time == ticks {
                     return Err(err("commands.worldborder.warning.time.failed", &[]));
                 }
-                self.common.border.warning_time = ticks;
+                Self::set_border_warning_time(&mut self.border_mut(target).map_err(failed)?, ticks);
                 self.feedback(Text::translate(
                     "commands.worldborder.warning.time.success",
                     &[Text::literal(ticks_to_seconds(i64::from(ticks)))],
@@ -634,14 +532,74 @@ pub mod loot_mine_location_tests {
 
 #[cfg(test)]
 pub(in crate::game) mod loot_location_shape_tests {
-    use super::*;
-    use serde_json::json;
+    use serde_json::{Value, json};
+    use std::collections::BTreeMap;
     use std::sync::Arc;
     use sunrise_level::{chunk::Chunk, chunk_map::ChunkMap};
-    use sunrise_world::registry::BlockRegistry;
+    use sunrise_sim::advancements::{World, location_check};
+    use sunrise_world::{
+        chunk::BlockState, loot::validate_typed_loot_condition, registry::BlockRegistry,
+    };
+
+    struct TestLevel {
+        chunks: ChunkMap,
+        registry: BlockRegistry,
+    }
+
+    impl World for TestLevel {
+        fn dimension(&self) -> &str {
+            "minecraft:overworld"
+        }
+
+        fn is_loaded(&self, [x, _, z]: [i32; 3]) -> bool {
+            self.chunks.contains_key(&(x >> 4, z >> 4))
+        }
+
+        fn weather(&self) -> (bool, bool) {
+            (false, false)
+        }
+
+        fn biome(&self, _: [i32; 3]) -> String {
+            "minecraft:plains".into()
+        }
+
+        fn structures(&self, _: [i32; 3]) -> Vec<String> {
+            Vec::new()
+        }
+
+        fn block(&self, pos: [i32; 3]) -> (String, BTreeMap<String, String>) {
+            let state = self.block_state(pos).unwrap();
+            (state.name.clone(), state.properties.clone().into())
+        }
+
+        fn block_state(&self, [x, y, z]: [i32; 3]) -> Option<&BlockState> {
+            let chunk = self.chunks.get(&(x >> 4, z >> 4))?;
+            self.registry.state(chunk.block(x & 15, y, z & 15))
+        }
+
+        fn fluid(&self, _: [i32; 3]) -> Option<String> {
+            None
+        }
+
+        fn can_see_sky(&self, _: [i32; 3]) -> bool {
+            false
+        }
+
+        fn light(&self, _: [i32; 3]) -> i32 {
+            12
+        }
+
+        fn smokey(&self, _: [i32; 3]) -> bool {
+            false
+        }
+
+        fn in_tag(&self, _: &str, _: &str, _: &str) -> bool {
+            false
+        }
+    }
 
     #[test]
-    fn location_shape_uses_loaded_facts_and_rejects_whole_unsupported_conjunctions() {
+    fn location_check_uses_loaded_facts_and_matches_every_predicate() {
         let registry = BlockRegistry::from_facts_json(
             &br#"{"defaults":{"minecraft:air":0,"minecraft:oak_log":1},"states":[
             ["air",true,false,"","minecraft:air"],
@@ -656,47 +614,51 @@ pub(in crate::game) mod loot_location_shape_tests {
         let mut chunks = ChunkMap::default();
         chunks.insert((0, 0), Arc::new(positive));
         chunks.insert((-1, -1), Arc::new(negative));
-        let items = sunrise_items::items::Items::for_tests(Default::default());
+        let level = TestLevel { chunks, registry };
+        let check = |condition: &Value, pos| location_check(condition, Some(pos), [0.0; 3], &level);
         let valid = json!({"type":"minecraft:location_check","offsetX":1,"predicate":{"block":{"blocks":"minecraft:oak_log","state":{"axis":"x"}}}});
-        assert_eq!(
-            loot_location_block(&valid, [4, 200, 4], &chunks, &registry, &items),
-            Some(true)
-        );
-        assert_eq!(
-            loot_location_block(&valid, [-4, 200, -4], &chunks, &registry, &items),
-            Some(true)
-        );
-        assert_eq!(
-            loot_location_block(&valid, [8, 200, 4], &chunks, &registry, &items),
-            Some(false)
-        );
-        for (key, value) in [
-            ("biomes", json!("minecraft:plains")),
-            ("light", json!({"light":15})),
-            ("dimension", json!("minecraft:overworld")),
+        assert!(check(&valid, [4, 200, 4]));
+        assert!(check(&valid, [-4, 200, -4]));
+        assert!(!check(&valid, [8, 200, 4]));
+        for (key, matching, mismatching) in [
+            ("biomes", json!("minecraft:plains"), json!("minecraft:desert")),
+            ("light", json!({"light":12}), json!({"light":15})),
+            (
+                "dimension",
+                json!("minecraft:overworld"),
+                json!("minecraft:the_nether"),
+            ),
         ] {
-            let mut unsupported = valid.clone();
-            unsupported["predicate"][key] = value;
-            assert_eq!(
-                loot_location_block(&unsupported, [4, 200, 4], &chunks, &registry, &items),
-                None
-            );
+            let mut conjunction = valid.clone();
+            conjunction["predicate"][key] = matching;
+            assert!(check(&conjunction, [4, 200, 4]));
+            assert!(!check(&conjunction, [8, 200, 4]));
+            conjunction["predicate"][key] = mismatching;
+            assert!(!check(&conjunction, [4, 200, 4]));
         }
-        for value in [json!(1.5), json!(2147483648_i64), json!("1")] {
-            let mut unsupported = valid.clone();
-            unsupported["offsetX"] = value;
-            assert_eq!(
-                loot_location_block(&unsupported, [4, 200, 4], &chunks, &registry, &items),
-                None
-            );
+        let mut condition = valid.clone();
+        for (offset, matches) in [
+            (json!(1.5), true),
+            (json!(2_147_483_648_i64), false),
+            (json!(4_294_967_297_i64), true),
+        ] {
+            condition["offsetX"] = offset;
+            assert!(validate_typed_loot_condition(&condition).is_ok());
+            assert_eq!(check(&condition, [4, 200, 4]), matches);
         }
-        let count = chunks.len();
-        assert_eq!(
-            loot_location_block(&valid, [32, 200, 32], &chunks, &registry, &items),
-            Some(false),
+        condition["offsetX"] = json!("1");
+        assert!(validate_typed_loot_condition(&condition).is_err());
+        assert!(!check(&condition, [4, 200, 4]));
+        let count = level.chunks.len();
+        assert!(
+            !check(&valid, [32, 200, 32]),
             "an unloaded counterpart fails, as Level.isLoaded does"
         );
-        assert_eq!(chunks.len(), count, "no chunk is loaded as a side effect");
+        assert_eq!(
+            level.chunks.len(),
+            count,
+            "no chunk is loaded as a side effect"
+        );
     }
 }
 

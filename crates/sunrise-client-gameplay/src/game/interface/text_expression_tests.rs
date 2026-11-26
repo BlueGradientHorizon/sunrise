@@ -136,7 +136,7 @@ fn the_loading_screen_draws_zeros(game: &mut crate::game::ClientGame<'_>) {
     sunrise_client::level_loading::draw_progress(&mut hud, &game.client.gui.atlas, "Loading", 0.5);
     let loading = |game: &mut crate::game::ClientGame<'_>| {
         let frame = super::loading_frame(&hud);
-        game.client.renderer.0.as_mut().unwrap().render(&frame)
+        game.client.renderer.0.as_mut().unwrap().render(&frame, None)
     };
     assert_eq!(corner(game, loading), [0, 128, 0]);
 }

@@ -12,7 +12,6 @@ pub trait Hooks {
     /// within 8 blocks), so this is asked every tick for each orb: answer
     /// fast.
     #[hook(
-        target = "sunrise_gameplay::game::native_hooks::xp_orb_targeting::ServerGame<'_>::native_xp_orb_targeting",
         dispatch = "flat",
         side = "server",
         contract = "listen",

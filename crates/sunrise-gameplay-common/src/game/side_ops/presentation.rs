@@ -9,9 +9,18 @@ pub trait PresentationSideGameExt<'__sg>: crate::game::SideGame<'__sg> {
         self.try_swing_hand(hand, animation);
     }
 
-    /// `swing(hand)` for the hand that acts, with the default animation.
+    /// `swing(hand)` for the hand that acts, with the default animation. None while a mod's
+    /// `PlayerRef::attack` runs `Player.attack`, which has no swing: the swing is its packet's.
     fn swing_arm(&mut self) {
+        if self.side_fake_action_unswung() {
+            return;
+        }
         self.swing_hand(self.hand, SwingAnimation::DEFAULT);
+    }
+
+    #[inline(always)]
+    fn side_fake_action_unswung(&self) -> bool {
+        <Self::State as SideOps>::side_fake_action_unswung(self)
     }
 
     #[inline(always)]
@@ -124,6 +133,7 @@ pub trait SideOps: Sized {
     type Game<'g>;
 
     fn side_swing_hand(game: &mut Self::Game<'_>, hand: Hand, animation: SwingAnimation) -> bool;
+    fn side_fake_action_unswung(game: &Self::Game<'_>) -> bool;
     fn side_sound_event_names(game: &Self::Game<'_>) -> Vec<String>;
     fn side_sync_pack_tag_ids(game: &mut Self::Game<'_>);
     fn side_sync_hub_clocks(game: &mut Self::Game<'_>);

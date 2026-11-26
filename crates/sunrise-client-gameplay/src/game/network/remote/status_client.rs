@@ -93,15 +93,16 @@ impl crate::game::ClientGame<'_> {
             &r.skin_textures,
             &mut r.level_player_textures,
         );
-        // Each profile's textures stay behind their `Arc`: only the
-        // signed-in account's merge is copied.
-        let entries: Vec<(u128, &skins::Textures)> = {
+        // Unpacked and verified on the skin downloader's threads: the game
+        // thread reads answers and starts the rest (`SkinManager.getOrLoad`).
+        let entries: Vec<(u128, Arc<skins::Textures>)> = {
             let keys = r.services_keys.lock().unwrap_or_else(|e| e.into_inner());
+            let mut downloads = self.client.skin_downloads.0.borrow_mut();
             listed
                 .iter()
                 .filter_map(|(uuid, property)| {
                     property
-                        .unpack(&keys, skins::texture_uris(), *uuid != local)
+                        .unpack(&mut downloads, &keys, *uuid != local)
                         .map(|textures| (*uuid, textures))
                 })
                 .collect()
@@ -112,8 +113,10 @@ impl crate::game::ClientGame<'_> {
         // sent none, and its cape where the server sent none.
         let own = match &r.own_profile {
             OwnProfile::Done(Some(own)) => match entries.iter().find(|(u, _)| *u == local) {
+                // Each profile's textures stay behind their `Arc`: only the
+                // signed-in account's merge is copied.
                 Some((_, textures)) => {
-                    let mut merged = (*textures).clone();
+                    let mut merged = textures.as_ref().clone();
                     if merged.skin.is_none() {
                         merged.skin.clone_from(&own.skin);
                         if own.skin.is_some() {

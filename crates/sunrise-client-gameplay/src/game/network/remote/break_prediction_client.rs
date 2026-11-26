@@ -2,6 +2,8 @@ pub(in crate::game) use super::prediction_state::{Prediction, RemovedEntity};
 use super::*;
 use crate::game::native_connection_groups::{GroupUpdates, ReceivedGroup, check_group_updates};
 use sunrise_core::position::BlockPos;
+use sunrise_gameplay_common::game::native_hooks::player_destroyed_block::GameHooks as _;
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;
 
 #[cfg(feature = "client")]
 impl crate::game::ClientGame<'_> {
@@ -75,6 +77,7 @@ impl crate::game::ClientGame<'_> {
             direction: 0,
             sequence: 0,
         }));
+        self.native_client_break_progress(self.own_entity_id(), pos, -1);
         self.reset_attack_strength();
         true
     }
@@ -120,6 +123,7 @@ impl crate::game::ClientGame<'_> {
         // Run the local shape updates over the removal, including the fluid left behind.
         // Keep every resulting write under the break's sequence, so packet reconciliation
         // can correct them without running the local rules again.
+        let broken = pos;
         let [x, y, z] = pos;
         let pos = BlockPos::new(x, y, z);
         let (mut changes, order) = self.with_level(|b, base, ticks| {
@@ -140,16 +144,21 @@ impl crate::game::ClientGame<'_> {
         // Apply every final state before publishing anything. Emit one notice per net
         // change, in the simulation's after-shape order (the last notice for each position).
         let mut applied = Vec::with_capacity(changes.len());
+        let mut removed = false;
         for at in order.into_iter().rev() {
             if let Some(state) = changes.remove(&at) {
                 let pos = [at.x, at.y, at.z];
                 if let Some(previous) = self.predict_block(pos, state, sequence) {
+                    removed |= pos == broken && previous != state;
                     applied.push((pos, previous, state));
                 }
             }
         }
         for (pos, previous, state) in applied.into_iter().rev() {
             self.finish_client_block_write(pos, Some(previous), state, true);
+        }
+        if removed && mod_api::__private::listened(mod_api::HookId::PlayerDestroyedBlock) {
+            self.native_player_destroyed_block(broken, state, None);
         }
         self.set_client_mining(None);
     }
@@ -242,7 +251,7 @@ impl crate::game::ClientGame<'_> {
         if let Err(error) =
             check_group_updates(&self.common.world, updates, self.connection_group_limit())
         {
-            return self.refuse_play_payload(error);
+            return self.refuse_remote_input(error);
         }
         for (pos, prediction) in settled {
             let [x, y, z] = pos;

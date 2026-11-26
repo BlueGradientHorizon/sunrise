@@ -1,25 +1,5 @@
 #[cfg(feature = "client")]
 #[cfg(any(test, feature = "test-support"))]
-thread_local! {
-    pub(in crate::game) static DYNAMIC_TEXTURE_POOL_OVERRIDE: std::cell::Cell<Option<bool>> =
-        const { std::cell::Cell::new(None) };
-}
-
-#[cfg(feature = "client")]
-#[cfg(any(test, feature = "test-support"))]
-pub fn with_dynamic_texture_pool_override<R>(pool: bool, f: impl FnOnce() -> R) -> R {
-    struct Restore(Option<bool>);
-    impl Drop for Restore {
-        fn drop(&mut self) {
-            DYNAMIC_TEXTURE_POOL_OVERRIDE.set(self.0);
-        }
-    }
-    let _restore = Restore(DYNAMIC_TEXTURE_POOL_OVERRIDE.replace(Some(pool)));
-    f()
-}
-
-#[cfg(feature = "client")]
-#[cfg(any(test, feature = "test-support"))]
 impl crate::game::client_side::resource_tables_client::UiResources {
     pub fn clone_for_tests(&self) -> Self {
         use crate::game::client_side::resource_tables_client::PlainTexts;

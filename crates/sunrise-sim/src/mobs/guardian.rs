@@ -17,7 +17,10 @@ use crate::health::DamageLevel;
 use std::f32::consts::PI;
 use std::ops::ControlFlow;
 use sunrise_core::geometry::trig::Mth;
-use sunrise_core::{geometry::Vec3, random::RandomSource};
+use sunrise_core::{
+    geometry::{Axis, Vec3},
+    random::RandomSource,
+};
 
 // Guardian state: `flag` an active beam target (DATA_ID_ATTACK_TARGET),
 // `flag2` moving (DATA_ID_MOVING), `counter2` the client attack time.
@@ -75,21 +78,26 @@ struct GuardianAttack {
 }
 impl Goal for GuardianAttack {
     goal_clone!();
+    #[inline]
     fn flags(&self) -> u8 {
         MOVE | LOOK
     }
+    #[inline]
     fn every_tick(&self) -> bool {
         true
     }
+    #[inline]
     fn can_use(&mut self, m: &mut Mob, cx: &mut Cx) -> bool {
         m.target_info(cx.w).is_some_and(|t| t.alive)
     }
+    #[inline]
     fn can_continue(&mut self, m: &mut Mob, cx: &mut Cx) -> bool {
         self.can_use(m, cx)
             && (is_elder(m)
                 || m.target_info(cx.w)
                     .is_some_and(|t| t.position.distance_squared(m.position) > 9.0))
     }
+    #[inline]
     fn start(&mut self, m: &mut Mob, cx: &mut Cx) {
         self.attack_time = -10;
         m.ai.nav.stop();
@@ -97,10 +105,12 @@ impl Goal for GuardianAttack {
             m.look_at_speed([t.position.x, t.eye_y, t.position.z], 90.0, 90.0);
         }
     }
+    #[inline]
     fn stop(&mut self, m: &mut Mob, cx: &mut Cx) {
         m.extra.flag = false;
         m.set_ai_target(cx.w, None);
     }
+    #[inline]
     fn tick(&mut self, m: &mut Mob, cx: &mut Cx) {
         let (Some(who), Some(t)) = (m.ai.target, m.target_info(cx.w)) else {
             return;
@@ -137,6 +147,7 @@ impl Goal for GuardianAttack {
                         amount: magic,
                         from,
                         kind: "minecraft:indirect_magic",
+                        wielder: None,
                     })),
                 Who::Mob(id) => cx.events.push(MobEvent::DamageMob {
                     target: id,
@@ -145,6 +156,7 @@ impl Goal for GuardianAttack {
                         kind: DamageKind::Magic,
                         attacker: Some(Who::Mob(m.id)),
                         from: Some(from),
+                        direct: None,
                         attacker_species: Some(m.species()),
                     },
                 }),
@@ -217,12 +229,19 @@ pub(super) fn travel(
     pause: bool,
 ) -> ControlFlow<super::living::TravelPause> {
     m.move_relative(0.1, input);
-    m.travel_move(w, level, events, pause, |m, _, _, _| {
-        m.velocity = m.velocity.scale(0.9);
-        if !m.extra.flag2 && m.ai.target.is_none() {
-            m.velocity.y -= 0.005;
-        }
-    })
+    m.travel_move(
+        w,
+        level,
+        events,
+        pause,
+        sunrise_world::travel::TravelMode::Water,
+        |m, _, _, _| {
+            m.set_velocity(m.velocity.scale(0.9));
+            if !m.extra.flag2 && m.ai.target.is_none() {
+                m.set_velocity(m.velocity.with_component(Axis::Y, m.velocity.y - 0.005));
+            }
+        },
+    )
 }
 /// `Guardian.aiStep`'s client-only tail and spikes animation update.
 pub fn tail_and_spikes(m: &mut Mob) {
@@ -321,6 +340,7 @@ pub fn hurt_server(m: &mut Mob, d: &Damage) {
             amount: 2.0,
             from,
             kind: "minecraft:thorns",
+            wielder: None,
         }),
         Some(Who::Mob(id)) => m.outbox.push(MobEvent::DamageMob {
             target: id,
@@ -329,6 +349,7 @@ pub fn hurt_server(m: &mut Mob, d: &Damage) {
                 kind: DamageKind::Thorns,
                 attacker: Some(Who::Mob(m.id)),
                 from: Some(from),
+                direct: None,
                 attacker_species: Some(m.species()),
             },
         }),

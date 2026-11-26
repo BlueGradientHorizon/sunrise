@@ -2437,8 +2437,8 @@ fn item_tooltip_font_wraps_in_gather_pre_replaces_without_rewrap_and_anchor_quan
         game.client.armor_stand_assets.0.extensions =
             sunrise_client_gameplay::game::ClientGame::prepare_client_item_extensions(
                 &game.client.gui,
-            )
-            .unwrap();
+                &mut game.client.client_item_extension_owners,
+            );
 
         let stick = ItemStack::new("minecraft:stick", 1);
         let text = sunrise_game_data::text::Text::literal("aa aa");

@@ -30,8 +30,21 @@ impl crate::game::ClientGame<'_> {
             });
             return Ok(());
         }
-        if self.client.title.0.is_some() || self.client.saved_for_exit {
-            // A quit from the title still needs the event loop to finish.
+        if self.client.saved_for_exit {
+            self.client.pending_save.0 = Some(ClosingSave {
+                quit,
+                close: true,
+                reply: None,
+                started: Instant::now(),
+                stage: Stage::Quit,
+            });
+            return Ok(());
+        }
+        if self.client.title.0.is_some() {
+            if quit {
+                self.client_logging_out();
+                self.client.saved_for_exit = true;
+            }
             self.client.pending_save.0 = Some(ClosingSave {
                 quit,
                 close: true,
@@ -220,7 +233,7 @@ impl crate::game::ClientGame<'_> {
             "Saving world...",
             progress,
         );
-        renderer.render(&loading_frame(&hud))?;
+        renderer.render(&loading_frame(&hud), None)?;
         Ok(())
     }
     /// `Minecraft.stop`: record the request without reentering the client from a hook.

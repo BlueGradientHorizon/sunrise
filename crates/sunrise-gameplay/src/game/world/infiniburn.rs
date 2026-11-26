@@ -3,11 +3,11 @@ use super::*;
 
 impl crate::game::ServerGame<'_> {
     pub fn refresh_infiniburn(&mut self) {
+        let golem_heads = self.resolve_golem_heads();
+        self.common.world.golem_heads = Some(golem_heads.clone());
         self.common.world.infiniburn = Some(self.resolve_level_infiniburn(self.dimension_type()));
         let parked: Vec<_> = self
-            .server
-            .levels
-            .0
+            .server.levels.0
             .parked
             .keys()
             .copied()
@@ -19,14 +19,9 @@ impl crate::game::ServerGame<'_> {
             })
             .collect();
         for (dim, set) in parked {
-            self.server
-                .levels
-                .0
-                .parked
-                .get_mut(&dim)
-                .unwrap()
-                .world
-                .infiniburn = Some(set);
+            let world = &mut self.server.levels.0.parked.get_mut(&dim).unwrap().world;
+            world.infiniburn = Some(set);
+            world.golem_heads = Some(golem_heads.clone());
         }
     }
 

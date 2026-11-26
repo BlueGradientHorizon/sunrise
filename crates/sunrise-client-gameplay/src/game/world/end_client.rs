@@ -360,7 +360,7 @@ impl crate::game::ClientGame<'_> {
                 flash.x_angle,
                 flash.y_angle,
             );
-            self.client.audio.0.play_instance_after(instance, 30);
+            self.play_audio_instance_after(instance, 30);
         }
     }
 }

@@ -1,11 +1,15 @@
-use crate::game::ClientGame;
+use crate::game::{ClientGame, stock_layer_mask::StockLayerMask};
 use std::{collections::HashMap, sync::Arc};
 use sunrise_assets::resource_source::ResourceSource;
 use sunrise_client::trims::{TrimOverride, TrimRegistry};
 use sunrise_client::{
     cit::{Hand, Kind, Rule},
     mesher::Vertex,
-    mobs::Part,
+    mobs::{
+        Part,
+        render::{WornLayer, WornModel},
+        skin::Paint,
+    },
     trims::TrimTexture,
 };
 use sunrise_core::geometry::Vec3;
@@ -15,7 +19,11 @@ use sunrise_gameplay_common::game::armor_stands_common::{
 use sunrise_items::items::ItemStack;
 use sunrise_sim::{
     entities::ArmorStand,
-    mobs::{Mob, anim::Poses},
+    mobs::{
+        Mob,
+        anim::Poses,
+        finalize::{self, EquipmentRead},
+    },
 };
 
 /// `EquipmentLayerRenderer.getColorForLayer`: a dyeable layer takes the stack's
@@ -48,7 +56,7 @@ pub struct ArmorStandAssets {
     /// (slot model suffix, small) -> model.
     pub layers: HashMap<(&'static str, bool), Arc<Part>>,
     /// The player's armour models by slot (helmet, chestplate, leggings, boots).
-    pub player: HashMap<&'static str, Part>,
+    pub player: HashMap<&'static str, Arc<Part>>,
     /// Asset id -> layer kind -> ordered textures with dyeability and optional undyed colour.
     pub(in crate::game) equipment: super::equipment_piece::EquipmentAssets,
     pub extensions: super::client_item_extensions::ArmorExtensions,
@@ -84,7 +92,7 @@ impl ArmorStandAssets {
         let mut player = HashMap::new();
         for slot in ["helmet", "chestplate", "leggings", "boots"] {
             if let Some(part) = load(&format!("minecraft:player#{slot}")) {
-                player.insert(slot, part);
+                player.insert(slot, Arc::new(part));
             }
             for (small, model) in [(false, "armor_stand"), (true, "armor_stand_small")] {
                 if let Some(part) = load(&format!("minecraft:{model}#{slot}")) {
@@ -97,7 +105,7 @@ impl ArmorStandAssets {
             ("minecraft:elytra_baby#main", "elytra_baby"),
         ] {
             if let Some(part) = load(key) {
-                player.insert(name, part);
+                player.insert(name, Arc::new(part));
             }
         }
         let mut equipment = HashMap::new();
@@ -121,7 +129,14 @@ impl ArmorStandAssets {
                 let Ok(v) = v else { continue };
                 let id = format!("{namespace}:{name}");
                 let mut kinds = HashMap::new();
-                for kind in ["humanoid", "humanoid_leggings", "humanoid_baby", "wings"] {
+                for kind in [
+                    "humanoid",
+                    "humanoid_leggings",
+                    "humanoid_baby",
+                    "wings",
+                    "horse_body",
+                    "nautilus_body",
+                ] {
                     // Every layer of the kind: leather's overlay is layer 1.
                     let layers: Vec<super::equipment_piece::EquipmentAssetLayer> = v["layers"]
                         [kind]
@@ -219,7 +234,7 @@ impl ArmorStandAssets {
         self.equipment = fresh.equipment;
         self.extensions = fresh.extensions;
         self.trim_overrides = fresh.trim_overrides;
-        self.trims = fresh.trims;
+        self.trims.reloaded(fresh.trims);
         self.root = fresh.root;
     }
     /// `TrimTextureKey`: the trim texture of `stack` on its humanoid
@@ -228,10 +243,9 @@ impl ArmorStandAssets {
         &self,
         asset: &str,
         kind: &str,
-        stack: &ItemStack,
+        trim: &sunrise_items::item_data::Trim,
     ) -> Option<TrimTexture> {
-        let (material, pattern) =
-            sunrise_items::item_data::trim::named(stack.extra.as_ref()?.trim.as_ref()?)?;
+        let (material, pattern) = sunrise_items::item_data::trim::named(trim)?;
         let overrides = self
             .trim_overrides
             .get(asset)
@@ -243,10 +257,11 @@ impl ArmorStandAssets {
 impl ClientGame<'_> {
     /// The layers of the armour items `worn` (with their stacks when known,
     /// for trims and CIT armour rules), head to feet.
-    pub(in crate::game::client_side) fn armor_layers(
+    fn armor_layers(
         &self,
-        worn: [Option<(&str, Option<&ItemStack>)>; 4],
-    ) -> Vec<(&Part, [f32; 4], u32, u32, bool)> {
+        worn: [Option<EquipmentRead<'_>>; 4],
+        hidden_layers: StockLayerMask,
+    ) -> Vec<WornLayer<'_>> {
         let assets = &self.client.armor_stand_assets.0;
         let mut out = Vec::new();
         for (item, (layer, slot)) in worn.into_iter().zip([
@@ -255,24 +270,30 @@ impl ClientGame<'_> {
             ("leggings", "legs"),
             ("boots", "feet"),
         ]) {
-            let Some((item, stack)) = item else {
+            let Some(stack) = item else {
                 continue;
             };
-            let Some(piece) = self.equipment_piece(item, stack, slot, layer == "leggings", false)
-            else {
+            let Some(piece) = self.equipment_piece(&stack, slot, layer == "leggings", false) else {
                 continue;
             };
             let Some(part) = assets.player.get(layer) else {
                 continue;
             };
-            for material in
-                self.equipment_materials(&piece, stack, super::equipment_piece::EquipmentPass::Draw)
-            {
+            for material in self.equipment_materials(
+                &piece,
+                &stack,
+                super::equipment_piece::EquipmentPass::Draw,
+            ) {
+                let Some(overlay) = material.visible_overlay(piece.slot, hidden_layers) else {
+                    continue;
+                };
                 out.push((
-                    material.model.map_or(part, |model| &**model),
+                    material.model.map_or(WornModel::Vanilla(part), |model| {
+                        WornModel::Override(model, piece.slot)
+                    }),
                     material.binding.uv,
                     material.color,
-                    material.overlay,
+                    overlay,
                     material.glows,
                 ));
             }
@@ -455,7 +476,7 @@ impl ClientGame<'_> {
         }
         // `CustomHeadLayer`: a worn skull draws the skull model.
         if let Some(stack) = &a.equipment[5]
-            && let Some(kind) = skull_kind(&stack.item)
+            && let Some(kind) = skull_kind(&self.client.client_pack.item_renderer.models, &stack.item)
             && let Some(head) = part_matrix(model, base, poses, "head", 0.0)
         {
             let pose = head * glam::Mat4::from_scale(glam::Vec3::splat(1.1875));
@@ -623,9 +644,8 @@ impl ClientGame<'_> {
             let Some(stack) = &a.equipment[slot] else {
                 continue;
             };
-            let Some(piece) =
-                self.equipment_piece(&stack.item, Some(stack), worn, layer == "leggings", false)
-            else {
+            let stack = EquipmentRead::resident(stack);
+            let Some(piece) = self.equipment_piece(&stack, worn, layer == "leggings", false) else {
                 continue;
             };
             let Some(part) = assets.layers.get(&(layer, a.small)) else {
@@ -636,23 +656,27 @@ impl ClientGame<'_> {
             self.setup_armor_stand_pose(a, partial, &mut layer_poses);
             for material in self.equipment_materials(
                 &piece,
-                Some(stack),
+                &stack,
                 super::equipment_piece::EquipmentPass::Draw,
             ) {
-                put(
+                let model = material.model.map_or(WornModel::Vanilla(part), |model| {
+                    WornModel::Override(model, piece.slot)
+                });
+                model.submit(
                     &mut skin,
-                    material.model.unwrap_or(part),
                     base,
                     &layer_poses,
-                    material.binding.uv,
-                    0.0,
-                    material.color,
-                    if material.glows {
-                        sunrise_client::mobs::render::FULL_BRIGHT
-                    } else {
-                        packed
+                    Paint {
+                        uv: material.binding.uv,
+                        scroll: 0.0,
+                        color: material.color,
+                        light: if material.glows {
+                            sunrise_client::mobs::render::FULL_BRIGHT
+                        } else {
+                            packed
+                        },
+                        overlay: material.overlay,
                     },
-                    material.overlay,
                     out,
                 );
             }
@@ -690,6 +714,7 @@ impl ClientGame<'_> {
             baby: a.small,
             partial,
             observer: None,
+            data: None,
         };
         let mut humanoid = anim::Hum::new(ArmPose::Empty, ArmPose::Empty);
         humanoid.passenger = a.vehicle.is_some();
@@ -711,6 +736,7 @@ impl ClientGame<'_> {
                 use_hand: None,
                 ticks_using_item: 0,
                 use_animation: mod_api::UseAnimation::None,
+                is_swinging: false,
                 main_arm_pose: mod_api::ArmPose::Empty,
                 off_arm_pose: mod_api::ArmPose::Empty,
             };
@@ -849,8 +875,9 @@ impl ClientGame<'_> {
     /// overlay) of each worn piece, head to feet.
     pub(in crate::game::client_side) fn player_armor_layers(
         &self,
-    ) -> Vec<(&Part, [f32; 4], u32, u32, bool)> {
-        self.stack_armor_layers(&self.common.armor)
+        hidden_layers: StockLayerMask,
+    ) -> Vec<WornLayer<'_>> {
+        self.stack_armor_layers(&self.common.armor, hidden_layers)
     }
     /// `PalettedTextureManager.getOrPrepare` for the trims drawn this frame
     /// (the player's armour and the armour stands'): each generated texture
@@ -860,24 +887,26 @@ impl ClientGame<'_> {
         let assets = &self.client.armor_stand_assets.0;
         let items = self.items();
         let mut wanted: Vec<TrimTexture> = Vec::new();
-        let stacks =
-            self.common
-                .armor
-                .iter()
-                .chain(self.common.mobs.iter().flat_map(|m| {
-                    sunrise_items::equipment::ARMOR.map(|slot| &m.extra.equipment[slot])
-                }))
-                .zip(
-                    ["helmet", "chestplate", "leggings", "boots"]
-                        .into_iter()
-                        .cycle(),
-                )
-                .chain(self.common.armor_stands.iter().flat_map(|a| {
-                    [5usize, 4, 3, 2]
-                        .map(|slot| &a.equipment[slot])
-                        .into_iter()
-                        .zip(["helmet", "chestplate", "leggings", "boots"])
-                }));
+        use sunrise_core::equipment_slot::EquipmentSlot::{Chest, Feet, Head, Legs};
+        let layers = ["helmet", "chestplate", "leggings", "boots"];
+        let stacks = self
+            .common
+            .armor
+            .iter()
+            .map(|s| s.as_ref().map(EquipmentRead::resident))
+            .zip(layers.into_iter().cycle())
+            .chain(self.common.mobs.iter().flat_map(|m| {
+                [Head, Chest, Legs, Feet]
+                    .map(|slot| finalize::equipment_slot(m, slot))
+                    .into_iter()
+                    .zip(layers)
+            }))
+            .chain(self.common.armor_stands.iter().flat_map(|a| {
+                [5usize, 4, 3, 2]
+                    .map(|slot| a.equipment[slot].as_ref().map(EquipmentRead::resident))
+                    .into_iter()
+                    .zip(layers)
+            }));
         // The smithing screen's preview stand wears the result slot's item.
         let preview = self
             .common
@@ -894,15 +923,17 @@ impl ClientGame<'_> {
                     5 => "helmet",
                     _ => "",
                 };
-                (Some(stack), layer)
+                (Some(EquipmentRead::resident(stack)), layer)
             });
-        let stacks = stacks.map(|(s, l)| (s.as_ref(), l)).chain(preview);
-        for (stack, layer) in stacks {
-            let Some(stack) = stack.filter(|s| s.extra.is_some()) else {
+        for (stack, layer) in stacks.chain(preview) {
+            let Some(stack) = stack else {
+                continue;
+            };
+            let Some(trim) = stack.trim() else {
                 continue;
             };
             let Some(asset) =
-                sunrise_sim::item_sync::equippable(stack, items).and_then(|e| e.asset_id)
+                sunrise_sim::item_sync::equippable(stack.base(), items).and_then(|e| e.asset_id)
             else {
                 continue;
             };
@@ -911,7 +942,7 @@ impl ClientGame<'_> {
             } else {
                 "humanoid"
             };
-            if let Some(t) = assets.trim_texture(&asset, kind, stack)
+            if let Some(t) = assets.trim_texture(&asset, kind, trim)
                 && !wanted.contains(&t)
             {
                 wanted.push(t);
@@ -928,11 +959,13 @@ impl ClientGame<'_> {
     pub(in crate::game::client_side) fn stack_armor_layers(
         &self,
         armor: &[Option<ItemStack>; 4],
-    ) -> Vec<(&Part, [f32; 4], u32, u32, bool)> {
+        hidden_layers: StockLayerMask,
+    ) -> Vec<WornLayer<'_>> {
         self.armor_layers(
             armor
                 .each_ref()
-                .map(|s| s.as_ref().map(|s| (&*s.item, Some(s)))),
+                .map(|s| s.as_ref().map(EquipmentRead::resident)),
+            hidden_layers,
         )
     }
     /// `HumanoidArmorLayer` for another player's model: the armour it wears
@@ -940,11 +973,12 @@ impl ClientGame<'_> {
     pub(in crate::game::client_side) fn worn_armor_layers(
         &self,
         m: &Mob,
-    ) -> Vec<(&Part, [f32; 4], u32, u32, bool)> {
-        let e = &m.extra;
+        hidden_layers: StockLayerMask,
+    ) -> Vec<WornLayer<'_>> {
+        use sunrise_core::equipment_slot::EquipmentSlot::{Chest, Feet, Head, Legs};
         self.armor_layers(
-            sunrise_items::equipment::ARMOR
-                .map(|slot| e.slot_stack(slot).map(|stack| (&*stack.item, Some(stack)))),
+            [Head, Chest, Legs, Feet].map(|slot| finalize::equipment_slot(m, slot)),
+            hidden_layers,
         )
     }
 }

@@ -181,6 +181,10 @@ mod off_level_tests {
     #[ignore = "daily"]
     fn retained_boat_passenger_occupies_a_seat_without_being_positioned() {
         sunrise_gameplay::game::native_entity_refs::tests::with_game(|game| {
+            sunrise_gameplay_common::game::test_fixtures::fixture_resident_column(
+                &mut game.world,
+                (0, 0),
+            );
             let pig = game.res.mob_types().get("minecraft:pig").unwrap().clone();
             let boat = Boat::new(71, "oak".into(), Vec3::new(1.0, 80.0, 0.5), 0.0);
             let mut ghost = sunrise_sim::mobs::Mob::new(72, pig.clone(), Vec3::ZERO, 0.0);
@@ -259,6 +263,10 @@ mod boat_callback_review_tests {
         .into();
         mod_platform::testing::with_mods(mods, || {
             super::super::native_entity_refs::tests::with_game(|game| {
+                sunrise_gameplay_common::game::test_fixtures::fixture_resident_column(
+                    &mut game.world,
+                    (0, 0),
+                );
                 game.options.dedicated = Some(Vec::new());
                 game.boats
                     .push(sunrise_gameplay_common::game::boats_common::Boat::new(
@@ -304,6 +312,10 @@ mod boat_callback_review_tests {
         .into();
         mod_platform::testing::with_mods(mods, || {
             super::super::native_entity_refs::tests::with_game(|game| {
+                sunrise_gameplay_common::game::test_fixtures::fixture_resident_column(
+                    &mut game.world,
+                    (0, 0),
+                );
                 game.options.dedicated = Some(Vec::new());
                 game.boats
                     .push(sunrise_gameplay_common::game::boats_common::Boat::new(

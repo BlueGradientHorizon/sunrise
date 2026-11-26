@@ -10,12 +10,14 @@ pub use sunrise_sim::advancements;
 pub mod ambience;
 pub mod animate_tick;
 pub use sunrise_sim::api_text;
-pub use sunrise_sim::arrows;
+pub use sunrise_sim::entities::arrows;
 pub use sunrise_sim::bed_geometry;
 pub use sunrise_sim::block_contact;
 pub use sunrise_sim::block_sounds;
 pub use sunrise_sim::item_damage;
 pub use sunrise_sim::mod_packet_builders;
+#[cfg(test)]
+mod fresh_process;
 pub mod packet_source;
 pub use sunrise_sim::parallel;
 pub use sunrise_sim::powder_snow;
@@ -33,7 +35,7 @@ pub use sunrise_client_render::{
     effects, environment, extras, fast_hash, fluid_models, fluid_render, fog, font, gfx, graphics,
     graphics_style, graphics_ui, hdr_calibration, hud, hud_kit, hud_layout, hud_overlays,
     inventory_effects, java_text, jigsaw_block, json_folder, level_loading, light, lod, logging,
-    mark_sprite, menu_blur, menu_style, mesher, mipmap, mod_browser, mod_chunk_tickets, mod_list,
+    mark_sprite, menu_blur, menu_style, mesher, mipmap, mod_chunk_tickets, mod_hooks, mod_list,
     mod_pipelines, model_library, models, mods_screen, monitor, multiline_edit, native_emissive,
     options_file, options_fixes, options_ui, overlay, pack_browser, pack_formats, pack_hooks,
     pack_image, pack_palette, pack_screen, packs, pad_cursor, pad_glyph, par, particle_options,
@@ -131,7 +133,6 @@ pub mod mobs;
 pub mod mobs_render;
 pub use sunrise_sim::mod_content;
 pub mod mod_content_client;
-pub mod mod_registry;
 pub use sunrise_sim::modgen;
 pub use sunrise_sim::motion;
 pub mod multiplayer;
@@ -167,7 +168,7 @@ pub use sunrise_sim::save;
 // save.rs below it. Not part of the mods' API surface.
 #[cfg(test)]
 mod carrier_recover_tests;
-pub use sunrise_sim::carrier_store;
+pub use sunrise_sim::save::carrier as carrier_store;
 #[cfg(test)]
 mod carrier_store_tests;
 pub use sunrise_sim::scoreboard_cmd;

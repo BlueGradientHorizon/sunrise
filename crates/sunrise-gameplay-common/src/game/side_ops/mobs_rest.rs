@@ -1,6 +1,9 @@
 //! Two-arm side dispatchers owned by lane `mobs-rest`.
 use crate::game::minecarts;
-use crate::game::{boats_common::Boat, collision_source::Mover, commands_common::Target};
+use crate::game::{
+    boats_common::Boat, collision_source::Mover, commands_common::Target,
+    entity_common::InsideSources,
+};
 use std::cell::Ref;
 use std::collections::HashMap;
 use sunrise_core::{
@@ -26,6 +29,10 @@ pub trait MobsRestSideGameExt<'__sg>: crate::game::SideGame<'__sg> {
     #[inline(always)]
     fn side_move_guest_entity_id(&self, conn: u32) -> Option<u32> {
         <Self::State as SideOps>::side_move_guest_entity_id(self.side_state(), conn)
+    }
+
+    fn side_boat_client_controlled(&self, id: u32) -> bool {
+        <Self::State as SideOps>::side_boat_client_controlled(self, id)
     }
 
     #[inline(always)]
@@ -119,8 +126,25 @@ pub trait MobsRestSideGameExt<'__sg>: crate::game::SideGame<'__sg> {
         <Self::State as SideOps>::side_item_fall_on(self, id, on, distance)
     }
 
-    fn side_item_post_move_contacts(&mut self, item: &mut ItemEntity, client: bool) -> bool {
-        <Self::State as SideOps>::side_item_post_move_contacts(self, item, client)
+    fn side_item_post_move_contacts(
+        &mut self,
+        item: &mut ItemEntity,
+        client: bool,
+        sources: InsideSources<'_>,
+    ) -> bool {
+        <Self::State as SideOps>::side_item_post_move_contacts(self, item, client, sources)
+    }
+
+    fn side_hurt_lent_item_entity(&mut self, item: &mut ItemEntity, amount: f32, damage_type: &str) {
+        <Self::State as SideOps>::side_hurt_lent_item_entity(self, item, amount, damage_type);
+    }
+
+    fn side_queue_boat_contact_hurts(&mut self, id: u32, hurts: Vec<(&'static str, f32)>) {
+        <Self::State as SideOps>::side_queue_boat_contact_hurts(self, id, hurts);
+    }
+
+    fn side_apply_boat_contact_hurts(&mut self, id: u32) -> bool {
+        <Self::State as SideOps>::side_apply_boat_contact_hurts(self, id)
     }
 
     fn side_boat_collision_root(&self, id: u32, target: Target) -> Option<u32> {
@@ -182,6 +206,7 @@ pub trait SideOps: Sized {
     ) -> minecarts::Shape;
     fn side_remote_general_type_slot(&self, id: u32) -> Option<usize>;
     fn side_move_guest_entity_id(&self, conn: u32) -> Option<u32>;
+    fn side_boat_client_controlled(game: &Self::Game<'_>, id: u32) -> bool;
     fn side_remote_general_rotation(&self, id: u32) -> Option<[f32; 2]>;
 
     fn side_passenger_riding_position(
@@ -228,7 +253,20 @@ pub trait SideOps: Sized {
         game: &mut Self::Game<'_>,
         item: &mut ItemEntity,
         client: bool,
+        sources: InsideSources<'_>,
     ) -> bool;
+    fn side_hurt_lent_item_entity(
+        game: &mut Self::Game<'_>,
+        item: &mut ItemEntity,
+        amount: f32,
+        damage_type: &str,
+    );
+    fn side_queue_boat_contact_hurts(
+        game: &mut Self::Game<'_>,
+        id: u32,
+        hurts: Vec<(&'static str, f32)>,
+    );
+    fn side_apply_boat_contact_hurts(game: &mut Self::Game<'_>, id: u32) -> bool;
     fn side_boat_collision_root(game: &Self::Game<'_>, id: u32, target: Target) -> Option<u32>;
     fn side_vehicle_solids(
         game: &Self::Game<'_>,

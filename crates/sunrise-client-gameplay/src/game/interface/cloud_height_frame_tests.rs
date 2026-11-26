@@ -61,7 +61,8 @@ fn join_overworld(game: &mut crate::game::ClientGame<'_>, height: f64) {
             Some(sunrise_game_data::scoreboard::json_to_tag(&json)),
         )],
     );
-    game.set_registries(std::sync::Arc::new(registries));
+    game.set_registries(std::sync::Arc::new(registries))
+        .unwrap();
     game.handle_packet(C::Login(play::Login {
         player_id: 7,
         hardcore: false,
@@ -100,7 +101,7 @@ fn drawn_pixel(game: &mut crate::game::ClientGame<'_>) -> [u8; 4] {
         scaled: false,
         background: false,
     });
-    game.render_with(|renderer, frame| renderer.render(frame))
+    game.render_with(|renderer, frame| renderer.render(frame, None))
         .unwrap();
     let result = game
         .client

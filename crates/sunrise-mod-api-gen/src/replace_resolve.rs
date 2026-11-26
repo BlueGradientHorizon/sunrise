@@ -2527,6 +2527,22 @@ fn parse_relative_path(module: &str, prefix: &[String]) -> (Anchor, Vec<String>)
     }
 }
 
+impl OwnerTypes {
+    pub(crate) fn declaring_module(&self, module: &str, name: &str) -> Option<String> {
+        let workspace = WorkspaceTraits::empty();
+        Resolver::new(
+            crate_of(module),
+            self,
+            &workspace,
+            ResolveMode::Owner,
+            false,
+        )
+        .resolve_owner(module, name)
+        .ok()
+        .map(|owner| owner.module)
+    }
+}
+
 pub(crate) fn is_game_nominal(
     module: &str,
     name: &str,

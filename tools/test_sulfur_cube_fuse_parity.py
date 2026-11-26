@@ -24,16 +24,17 @@ import os
 from pathlib import Path
 import subprocess
 import tempfile
-try:
-    from . import (
-        lab,
-        oracle_harness as harness,
-        test_model_baking_parity as baking,
-        test_rust_parity as base,
-        integration_env,
-    )
-except ImportError:
-    import lab, oracle_harness as harness, test_model_baking_parity as baking, test_rust_parity as base, integration_env
+import sys
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+from tools import (
+    lab,
+    oracle_harness as harness,
+    test_model_baking_parity as baking,
+    test_rust_parity as base,
+    integration_env,
+)
 
 SERVER_LINES = 1 + 14 * 3
 CLIENT_LINES = 1 + 24
@@ -132,6 +133,9 @@ def main():
                lab.ROOT / 'tools/integration_env.py', lab.ROOT / 'Cargo.toml', lab.ROOT / 'Cargo.lock',
                lab.ROOT / 'crates/sunrise-sim/src/mobs.rs',
                lab.ROOT / 'crates/sunrise-sim/src/entity_nbt.rs',
+               lab.ROOT / 'crates/sunrise-sim/src/entity_nbt/common.rs',
+               lab.ROOT / 'crates/sunrise-sim/src/entity_nbt/mob_read.rs',
+               lab.ROOT / 'crates/sunrise-sim/src/entity_nbt/mob_write.rs',
                lab.ROOT / 'crates/sunrise-sim/src/mobs/sulfur_cube.rs',
                lab.ROOT / 'crates/sunrise-gameplay/src/game/network/lan/mod.rs',
                lab.ROOT / 'crates/sunrise-gameplay/src/game/network/lan/sulfur_cube_meta_tests.rs',

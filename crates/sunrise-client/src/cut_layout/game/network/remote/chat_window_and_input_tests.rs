@@ -1,4 +1,3 @@
-use super::*;
 use crate::game::server_side::native_entity_refs::tests::with_client_game;
 use sunrise_protocol::connection::{Connection, Pipe};
 
@@ -35,15 +34,4 @@ fn a_mod_chat_line_shows_locally_and_sends_nothing() {
             "a local chat line sends nothing to the server"
         );
     });
-}
-
-#[test]
-fn typed_chat_is_sent_as_the_client_chat_event_leaves_it() {
-    assert_eq!(chat_after_event("hello", |_, _| {}), Some("hello".into()));
-    assert_eq!(
-        chat_after_event("hello", |m, _| m.push_str(" world")),
-        Some("hello world".into())
-    );
-    assert_eq!(chat_after_event("hello", |_, c| *c = true), None);
-    assert_eq!(chat_after_event("hello", |m, _| m.clear()), None);
 }

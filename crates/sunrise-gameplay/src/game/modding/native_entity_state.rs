@@ -48,6 +48,12 @@ fn player_pose(pose: Pose) -> &'static str {
 }
 
 impl crate::game::ServerGame<'_> {
+    pub fn entity_is_sitting(&self, entity: EntityRef) -> Option<bool> {
+        match self.native_target_body(self.native_entity_read_target(entity)?)? {
+            Body::Mob(mob) => mob.sitting(),
+            Body::Player(_) | Body::Other(_) => None,
+        }
+    }
     /// The player's body or the mob a handle names, or its target.
     fn native_entity_body(&self, entity: EntityRef) -> Option<Body<'_>> {
         self.native_target_body(self.native_entity_target(entity)?)
@@ -92,17 +98,22 @@ impl crate::game::ServerGame<'_> {
     /// Whether the entity crouches (`Entity.isCrouching`: the crouching
     /// pose).
     pub(in crate::game) fn entity_is_crouching(&self, entity: EntityRef) -> Option<bool> {
+        if !self.common.is_logical_server() && self.native_entity_read_target(entity)? == Target::Player {
+            return Some(self.common.player.as_ref()?.local_crouching);
+        }
         Some(self.entity_pose(entity)? == "crouching")
     }
     /// Whether the entity sprints (`Entity.isSprinting`): a player, or a
     /// cat or ocelot dashing after its target (their shared sprinting flag);
     /// false for the other kinds.
     pub fn entity_is_sprinting(&self, entity: EntityRef) -> Option<bool> {
-        Some(match self.native_entity_body(entity)? {
-            Body::Player(p) => p.sprinting,
-            Body::Mob(m) => m.extra.sprinting,
-            _ => false,
-        })
+        Some(
+            match self.native_target_body(self.native_entity_read_target(entity)?)? {
+                Body::Player(p) => p.sprinting,
+                Body::Mob(m) => m.extra.sprinting,
+                _ => false,
+            },
+        )
     }
     /// `Entity.setSprinting` for a player (the flag and the speed modifier) or a mob (the
     /// flag, sent to the clients). False for other kinds, a stale handle and a client.
@@ -158,7 +169,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// Whether the entity is in lava (`Entity.isInLava`): players and mobs.
     pub(in crate::game) fn entity_is_in_lava(&self, entity: EntityRef) -> Option<bool> {
-        match self.native_entity_body(entity)? {
+        match self.native_target_body(self.native_entity_read_target(entity)?)? {
             Body::Player(p) => Some(p.is_in_lava()),
             Body::Mob(m) => Some(m.fluids.in_lava),
             Body::Other(_) => None,
@@ -227,6 +238,10 @@ impl crate::game::ServerGame<'_> {
             ),
             Body::Other(Target::Item(id)) => {
                 Some(self.common.dropped.iter().find(|i| i.id == id)?.fire_ticks)
+            }
+            Body::Other(Target::Projectile(id)) => {
+                let p = self.common.creatures.projectiles.iter().find(|p| p.id == id)?;
+                Some(p.arrow.as_ref().map_or(p.fire_ticks, |a| a.fire_ticks))
             }
             Body::Other(_) => None,
         }
@@ -392,6 +407,25 @@ impl crate::game::ServerGame<'_> {
                     i.fire_ticks = ticks;
                     true
                 }),
+            Some(Target::Projectile(id)) => {
+                let Some(i) = self
+                    .common
+                    .creatures
+                    .projectiles
+                    .iter()
+                    .position(|p| p.id == id)
+                else {
+                    return false;
+                };
+                self.common.creatures.projectiles.update(i, |p| {
+                    if let Some(a) = p.arrow.as_mut() {
+                        a.fire_ticks = ticks;
+                    } else {
+                        p.fire_ticks = ticks;
+                    }
+                });
+                true
+            }
             _ => false,
         }
     }
@@ -461,7 +495,7 @@ impl crate::game::ServerGame<'_> {
     /// Whether the entity's model is hidden (`Entity.isInvisible`): the
     /// invisibility effect on a player or a mob, a mob's or an armor stand's
     /// flag.
-    pub(in crate::game) fn entity_is_invisible(&self, entity: EntityRef) -> Option<bool> {
+    pub fn entity_is_invisible(&self, entity: EntityRef) -> Option<bool> {
         match self.native_entity_target(entity)? {
             Target::Player => Some(self.common.potions.effects.get("invisibility").is_some()),
             Target::Guest(conn) => Some(
@@ -479,6 +513,13 @@ impl crate::game::ServerGame<'_> {
                     .armor_stands
                     .iter()
                     .find(|s| s.id == id)?
+                    .invisible,
+            ),
+            Target::Frame(id) => Some(
+                self.common
+                    .item_frames
+                    .iter()
+                    .find(|f| f.id == id)?
                     .invisible,
             ),
             _ => None,
@@ -534,6 +575,9 @@ impl crate::game::ServerGame<'_> {
                 .iter()
                 .find(|i| i.id == id)
                 .map(|i| i.no_gravity),
+            Body::Other(Target::General(id)) => {
+                Some(self.common.resident_entities.general.row(id)?.no_gravity)
+            }
             _ => None,
         }
     }
@@ -560,8 +604,8 @@ impl crate::game::ServerGame<'_> {
                 true
             })
     }
-    /// Sets the mob's or dropped item's no-gravity flag (`Entity.setNoGravity`). Returns false
-    /// for players and guests.
+    /// Sets the mob's, dropped item's or general row's no-gravity flag (`Entity.setNoGravity`).
+    /// Returns false for players and guests.
     pub(in crate::game) fn entity_set_no_gravity(
         &mut self,
         entity: EntityRef,
@@ -588,11 +632,22 @@ impl crate::game::ServerGame<'_> {
                     i.needs_sync = true;
                     true
                 }),
+            Some(Target::General(id)) => {
+                self.common
+                    .resident_entities
+                    .general
+                    .row_mut(id)
+                    .is_some_and(|row| {
+                        row.no_gravity = no_gravity;
+                        true
+                    })
+            }
             _ => false,
         }
     }
-    /// Sets the entity's shared invisibility flag (`Entity.setInvisible`). Returns false for players and guests.
-    pub(in crate::game) fn entity_set_invisible(
+    /// Sets the entity's shared invisibility flag (`Entity.setInvisible`) on a mob, an armor
+    /// stand or an item frame. Returns false for players, guests and other kinds.
+    pub fn entity_set_invisible(
         &mut self,
         entity: EntityRef,
         invisible: bool,
@@ -617,6 +672,16 @@ impl crate::game::ServerGame<'_> {
                     s.invisible = invisible;
                     true
                 }),
+            // `ItemFrame` saves the flag with its chunk.
+            Some(Target::Frame(id)) => {
+                let Some(frame) = self.common.item_frames.iter_mut().find(|f| f.id == id) else {
+                    return false;
+                };
+                frame.invisible = invisible;
+                let pos = frame.pos;
+                self.common.world.modified.insert((pos[0] >> 4, pos[2] >> 4));
+                true
+            }
             _ => false,
         }
     }
@@ -624,11 +689,16 @@ impl crate::game::ServerGame<'_> {
     /// `crouching`, `swimming`, `sleeping`, a warden's `roaring`... Kinds
     /// with no pose stand.
     pub(in crate::game) fn entity_pose(&self, entity: EntityRef) -> Option<&'static str> {
-        Some(match self.native_entity_body(entity)? {
-            Body::Player(p) => player_pose(p.pose),
-            Body::Mob(m) => POSES.get(usize::from(sync::pose_id(m))).copied()?,
-            Body::Other(_) => POSES[0],
-        })
+        Some(
+            match self.native_target_body(self.native_entity_read_target(entity)?)? {
+                Body::Player(p) => player_pose(p.pose),
+                Body::Mob(m) if &*m.kind.id == "minecraft:mannequin" => {
+                    player_pose(m.extra.avatar_pose)
+                }
+                Body::Mob(m) => POSES.get(usize::from(sync::pose_id(m))).copied()?,
+                Body::Other(_) => POSES[0],
+            },
+        )
     }
 }
 
@@ -636,8 +706,10 @@ impl crate::game::ServerGame<'_> {
 pub mod tests {
     use super::*;
     #[cfg(test)]
+    use std::ops::ControlFlow;
+    #[cfg(test)]
     use sunrise_gameplay_common::game::native_entity_state_common::{
-        eye_fluid, max_air, touched_fluids,
+        eye_fluid, max_air, visit_touched_fluids,
     };
     use sunrise_sim::motion::PlayerMotion;
     #[cfg(test)]
@@ -651,20 +723,40 @@ pub mod tests {
     /// out even with a height, and nothing for an entity in neither.
     #[test]
     fn fluid_reads_list_the_touched_fluids_highest_first() {
-        let (water, lava) = ("minecraft:water".to_owned(), "minecraft:lava".to_owned());
+        let (water, lava) = ("minecraft:water", "minecraft:lava");
+        let touched_fluids = |water, lava| {
+            let mut fluids = Vec::new();
+            let result = visit_touched_fluids(water, lava, &mut |id, depth| {
+                fluids.push((id.to_owned(), depth));
+                ControlFlow::Continue(())
+            });
+            assert_eq!(result, ControlFlow::Continue(()));
+            fluids
+        };
         assert_eq!(
             touched_fluids((0.5, true), (1.25, true)),
-            [(lava.clone(), 1.25), (water.clone(), 0.5)]
+            [(lava.to_owned(), 1.25), (water.to_owned(), 0.5)]
         );
         assert_eq!(
             touched_fluids((0.75, true), (0.75, true)),
-            [(water.clone(), 0.75), (lava.clone(), 0.75)]
+            [(water.to_owned(), 0.75), (lava.to_owned(), 0.75)]
         );
         assert_eq!(
             touched_fluids((0.4, true), (0.2, false)),
-            [(water.clone(), 0.4)]
+            [(water.to_owned(), 0.4)]
         );
         assert!(touched_fluids((0.0, false), (0.0, false)).is_empty());
+
+        // A break visits only the first contact. Total order treats +0.0 as higher than -0.0.
+        let mut first = Vec::new();
+        assert_eq!(
+            visit_touched_fluids((-0.0, true), (0.0, true), &mut |id, depth| {
+                first.push((id.to_owned(), depth.to_bits()));
+                ControlFlow::Break(())
+            }),
+            ControlFlow::Break(())
+        );
+        assert_eq!(first, [(lava.to_owned(), 0.0_f64.to_bits())]);
         assert_eq!(eye_fluid(true, true), Some(water));
         assert_eq!(eye_fluid(false, true), Some(lava));
         assert_eq!(eye_fluid(false, false), None);
@@ -895,6 +987,38 @@ pub mod tests {
             game.dropped[0].fire_ticks = 19;
             let item = game.entity(game.dropped[0].id).unwrap();
             assert_eq!(item.fire_ticks(game), Some(19));
+
+            let mut snowball = sunrise_sim::projectiles::Projectile::new(
+                sunrise_sim::projectiles::ProjectileKind::Snowball,
+                Vec3::ZERO,
+                None,
+            );
+            snowball.id = 45;
+            snowball.fire_ticks = 159;
+            game.creatures.projectiles.push(snowball);
+            let proj = game.entity(45).unwrap();
+            assert_eq!(proj.fire_ticks(game), Some(159));
+            assert_eq!(proj.is_on_fire(game), Some(true));
+            assert!(proj.set_remaining_fire_ticks(game, 40));
+            assert_eq!(proj.fire_ticks(game), Some(40));
+
+            let mut arrow = sunrise_sim::projectiles::Projectile::new(
+                sunrise_sim::projectiles::ProjectileKind::Arrow {
+                    base_damage: 2.0,
+                    critical: false,
+                    effect: None,
+                },
+                Vec3::ZERO,
+                None,
+            );
+            arrow.id = 46;
+            arrow.arrow.as_mut().unwrap().fire_ticks = 80;
+            game.creatures.projectiles.push(arrow);
+            let arrow_ref = game.entity(46).unwrap();
+            assert_eq!(arrow_ref.fire_ticks(game), Some(80));
+            assert_eq!(arrow_ref.is_on_fire(game), Some(true));
+            assert!(arrow_ref.clear_fire(game));
+            assert_eq!(arrow_ref.fire_ticks(game), Some(0));
 
             game.boats.push(super::super::boats_common::Boat::new(
                 44,

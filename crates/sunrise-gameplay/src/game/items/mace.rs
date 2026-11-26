@@ -5,7 +5,9 @@
 //! is here too: `hurtEnemy`, the post-attack enchantments and `postHurtEnemy`.
 use crate::game::ServerGame;
 use sunrise_core::geometry::{Aabb, Vec3};
-use sunrise_gameplay_common::game::mace_common::{KNOCKBACK_RADIUS, can_smash, stack_smash_damage};
+use sunrise_gameplay_common::game::mace_common::{
+    KNOCKBACK_RADIUS, can_smash, smash_damage, stack_smash_damage,
+};
 use sunrise_items::{
     enchant::{EffectContext, Enchantments},
     items::{ItemStack, Items},
@@ -177,7 +179,7 @@ impl ServerGame<'_> {
     /// `MaceItem.getAttackDamageBonus` against `victim`: 4 per block for the
     /// first three blocks fallen, 2 for the next five, 1 after that, plus
     /// `smash_damage_per_fallen_block` (Density) for every block.
-    pub fn smash_damage_bonus(&mut self, victim: &str) -> f32 {
+    pub fn smash_damage_bonus(&mut self, victim: &str, victim_id: Option<u32>) -> f32 {
         if !self.smash_attack() {
             return 0.0;
         }
@@ -204,16 +206,16 @@ impl ServerGame<'_> {
                 .player
                 .as_ref()
                 .map(|p| (p.fall_distance, p.fall_flying)),
-            items: Some(server_world_items!(self)),
             ..Default::default()
         };
-        stack_smash_damage(
-            &server_world_stations!(self).enchantments,
+        let per_block = self.evaluate_weapon_value(
             &held,
-            fall,
-            &ctx,
-            &mut self.common.world.random,
-        )
+            "minecraft:smash_damage_per_fallen_block",
+            victim_id,
+            ctx,
+            0.0,
+        );
+        smash_damage(fall, per_block)
     }
     /// `source.getEntity()` of a blow as `SulfurCube.knockback` reads it: its eye position
     /// (`getEyePosition`), view direction (`getLookAngle`, `calculateViewVector(xRot, yRot)`)
@@ -243,32 +245,21 @@ impl ServerGame<'_> {
             }
         }
     }
-    /// `DamageSource.getWeaponItem` for a hit on the player, when its
-    /// `armor_effectiveness` enchantments (Breach) can thin the armour: the
-    /// stack the mob that swung holds, and the registry its effects are read
-    /// from. A projectile's weapon (an arrow's `firedFromWeapon`) is not
-    /// passed: no vanilla bow carries the component.
+    /// `DamageSource.getWeaponItem` names the direct entity's weapon, including the
+    /// saved weapon of an arrow or trident, never the shooter's current hand.
     pub(in crate::game::server_side) fn player_armor_weapon(
         &self,
-        attacker: Option<u32>,
-        projectile: bool,
+        attack: &sunrise_sim::health::Attack,
+        source: sunrise_sim::health::HurtSource<'_>,
     ) -> Option<ArmorWeapon> {
-        if projectile {
-            return None;
-        }
-        let mob = self.common.mobs.iter().find(|m| Some(m.id) == attacker)?;
-        let stack = mob.extra.main_hand_stack()?;
-        let enchantments = world_stations!(self).enchantments.clone();
-        if !enchantments.has_component(stack, "minecraft:armor_effectiveness") {
-            return None;
-        }
-        Some(ArmorWeapon {
-            stack: stack.clone(),
-            enchantments,
-            attacker: mob.kind.id.clone(),
-            // `DamageSource.isDirect`: the mob swung itself.
-            is_direct: true,
-        })
+        let stack = attack.weapon_of(source.direct)?;
+        let enchantments = &server_world_stations!(self).enchantments;
+        enchantments
+            .has_component(stack, "minecraft:armor_effectiveness")
+            .then(|| ArmorWeapon {
+                stack: stack.clone(),
+                enchantments: enchantments.clone(),
+            })
     }
     /// `LivingEntity.hurtServer` of the mob at `index` by the player's hit:
     /// the weapon's `armor_effectiveness` enchantments (Breach) thin its armor.
@@ -280,9 +271,7 @@ impl ServerGame<'_> {
             source.attacker,
             &attack,
         );
-        let held = self.common.held().cloned();
         let aim = self.attacker_aim(source.attacker);
-        let kind = self.common.mobs[index].kind.id.clone();
         let (id, join, old_health) = (
             self.common.mobs[index].id,
             self.common.mobs[index].join,
@@ -290,6 +279,7 @@ impl ServerGame<'_> {
         );
         // The causing entity's aim, for what turns a blow by where it points
         // (`SulfurCube.knockback`).
+        let mob_id = self.common.mobs[index].id;
         self.common.mobs[index].creative_attacker = self.common.creative;
         self.common.mobs[index].attacker_aim = aim;
         self.common.mobs[index].dealt_absorbed = 0;
@@ -297,20 +287,13 @@ impl ServerGame<'_> {
             crate::game::server_side::entity_server::causer_decision!(self, attack.attacker);
         let mut credit = plan.lend(&mut self.server.last_hurt_by_player);
         let hurt = {
-            let mut breach = breach_modifier(
-                held.as_ref(),
-                &kind,
-                source.kind,
-                server_world_items!(self),
-                &server_world_stations!(self).enchantments,
-            );
             let (victim, lend) = crate::game::server_side::entity_server::victim_and_causer!(
                 self,
                 index,
                 attack.attacker,
                 decision
             );
-            victim.damage_with(
+            victim.damage(
                 crate::game::server_side::entity_server::damage_level_of!(
                     self,
                     &attack,
@@ -319,15 +302,25 @@ impl ServerGame<'_> {
                 ),
                 amount,
                 source,
-                Some(&mut breach),
             )
         };
         self.common.mobs[index].attacker_aim = None;
         self.common.mobs[index].creative_attacker = false;
-        let Some((index, hurt)) = self.complete_mob_hurt_with_weapon(index, hurt, held.as_ref())
-        else {
+        let Some((mut index, hurt)) = self.complete_mob_hurt(index, hurt) else {
             return (false, false);
         };
+        if hurt && self.common.mobs[index].has_protected_hurt() {
+            self.flush_mob_death_protection(mob_id);
+            let Some(i) = self
+                .common
+                .mob_index
+                .find(&self.common.mobs, id)
+                .filter(|&i| self.common.mobs[i].join == join && !self.common.mobs[i].removed)
+            else {
+                return (hurt, false);
+            };
+            index = i;
+        }
         // `Guardian.hurtServer`'s spikes answer the attacker inside the hurt,
         // before `super.hurtServer` returns: those hits land here, where
         // `Who::Player` is the player whose blow this is. Left in the outbox,
@@ -391,11 +384,14 @@ impl ServerGame<'_> {
     /// at `index`: the item's `hurtEnemy` (the "used" statistic of a weapon),
     /// the post-attack enchantments, then `postHurtEnemy` with the weapon's
     /// wear.
-    pub(in crate::game::server_side) fn weapon_hit(&mut self, index: usize) {
+    pub(in crate::game::server_side) fn weapon_hit(&mut self, index: usize, source: Damage) {
+        let victim = self.common.mobs[index].id;
+        let kind = self.common.mobs[index].kind.id.clone();
+        let damage_type = sunrise_sim::health::source_damage_type(source);
         let Some(stack) = self.common.held().cloned() else {
             // An empty hand still meets the victim's own post-attack
             // enchantments (Thorns).
-            self.post_attack(index);
+            self.post_player_melee(victim, &kind, damage_type, None);
             return;
         };
         let items = self.common.res.items();
@@ -410,7 +406,7 @@ impl ServerGame<'_> {
         if weapon.is_some() {
             self.award_stat("used", &stack.item, 1);
         }
-        self.post_attack(index);
+        self.post_player_melee(victim, &kind, damage_type, Some(&stack));
         // MaceItem.postHurtEnemy
         if smash && let Some(p) = self.common.player.as_mut() {
             p.fall_distance = 0.0;
@@ -449,12 +445,14 @@ impl ServerGame<'_> {
     /// the hit stays.
     pub(in crate::game::server_side) fn pvp_hit_after(
         &mut self,
+        victim: u32,
         victim_on_ground: bool,
         stops_sprint: bool,
+        strike: &super::lan_pvp::Strike,
     ) -> Option<Vec3> {
         let p = self.common.player.as_mut()?;
         let marked = std::mem::take(&mut p.health.sync_velocity);
-        self.weapon_hit_player(victim_on_ground);
+        self.weapon_hit_player(victim, victim_on_ground, strike);
         let p = self.common.player.as_mut()?;
         let sent = std::mem::replace(&mut p.health.sync_velocity, marked).then_some(p.velocity);
         self.pvp_exhaustion();
@@ -463,27 +461,33 @@ impl ServerGame<'_> {
         }
         sent
     }
-    /// `Player.itemAttackInteraction` after the player's hit hurt another
-    /// player: the weapon's side of it, as `weapon_hit` does for a mob. A
+    /// `Player.itemAttackInteraction` after the player's hit hurt the player
+    /// `victim`: the weapon's side of it, as `weapon_hit` does for a mob. A
     /// smash stops the fall and its Wind Burst (a `post_attack` explosion on
     /// the attacker) launches the attacker.
-    pub(in crate::game::server_side) fn weapon_hit_player(&mut self, victim_on_ground: bool) {
-        let Some(stack) = self.common.held().cloned() else {
+    fn weapon_hit_player(
+        &mut self,
+        victim: u32,
+        victim_on_ground: bool,
+        strike: &super::lan_pvp::Strike,
+    ) {
+        let Some(stack) = strike.weapon.as_ref() else {
+            self.post_player_melee(victim, "minecraft:player", &strike.damage_type, None);
             return;
         };
         let smash = self.smash_attack();
         if smash {
             self.mace_smash_self(victim_on_ground);
         }
-        if self.common.res.items().weapon_damage(&stack).is_some() {
+        if self.common.res.items().weapon_damage(stack).is_some() {
             self.award_stat("used", &stack.item, 1);
         }
-        self.post_attack_bursts(&stack, "minecraft:player");
+        self.post_player_melee(victim, "minecraft:player", &strike.damage_type, Some(stack));
         // MaceItem.postHurtEnemy
         if smash && let Some(p) = self.common.player.as_mut() {
             p.fall_distance = 0.0;
         }
-        self.weapon_wear(&stack);
+        self.weapon_wear(stack);
     }
     /// `Player.itemAttackInteraction` after the player's hit hurt the armor
     /// stand `id` (a living target) at `center`: as `weapon_hit` does for a
@@ -507,7 +511,14 @@ impl ServerGame<'_> {
         if self.common.res.items().weapon_damage(&stack).is_some() {
             self.award_stat("used", &stack.item, 1);
         }
-        self.post_attack_bursts(&stack, "minecraft:armor_stand");
+        let damage_type = self.stack_melee_damage_type(
+            Some(&stack),
+            self.common.player
+                .as_ref()
+                .map_or((0.0, false), |p| (p.fall_distance, p.fall_flying)),
+            true,
+        );
+        self.post_player_melee(id, "minecraft:armor_stand", &damage_type, Some(&stack));
         // MaceItem.postHurtEnemy
         if self.smash_attack()
             && let Some(p) = self.common.player.as_mut()
@@ -705,6 +716,7 @@ impl ServerGame<'_> {
                     causing: attack.attacker,
                     direct: attack.attacker,
                     position: None,
+                    direct_type: None,
                 };
                 self.knock_back_armor_stand(id, knock, source, &attack);
                 continue;
@@ -719,15 +731,8 @@ impl ServerGame<'_> {
             // hurtServer first; the knockback and post-attack effects follow
             // only when it landed.
             let join = self.common.mobs[i].join;
-            let (hurt, killed) = self.hurt_by_player(i, amount, source);
+            let (hurt, _) = self.hurt_by_player(i, amount, source);
             if hurt {
-                if killed
-                    && let Some(i) = self.common.mob_index.find(&self.common.mobs, id)
-                    && self.common.mobs[i].join == join
-                    && !self.common.mobs[i].removed
-                {
-                    self.native_kill_event(i);
-                }
                 let Some(i) = self
                     .common
                     .mob_index
@@ -736,8 +741,10 @@ impl ServerGame<'_> {
                 else {
                     continue;
                 };
+                let aim = self.attacker_aim(source.attacker);
                 let plan = self.prepare_knockback_credit(id as i32, None, &attack);
                 let mut credit = plan.lend(&mut self.server.last_hurt_by_player);
+                self.common.mobs[i].attacker_aim = aim;
                 let level = crate::game::server_side::entity_server::damage_level_of!(
                     self,
                     &attack,
@@ -745,7 +752,14 @@ impl ServerGame<'_> {
                     None
                 );
                 self.common.mobs[i].knockback(level, 0.4, xd, zd, &source, amount);
-                self.post_attack(i);
+                self.common.mobs[i].attacker_aim = None;
+                let held = self.common.held().cloned();
+                self.post_player_melee(
+                    id,
+                    &kind,
+                    sunrise_sim::health::source_damage_type(source),
+                    held.as_ref(),
+                );
             }
         }
         // `getEntitiesOfClass(LivingEntity.class)` takes the other players too.

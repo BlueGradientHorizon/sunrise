@@ -12,7 +12,7 @@ use sunrise_gameplay_common::game::creatures::projectile_targets::extents;
 use sunrise_gameplay_common::game::creatures::projectile_targets::is_pickable_projectile;
 use sunrise_gameplay_common::game::creatures::projectile_targets::knot_bounds;
 use sunrise_gameplay_common::game::deflect_common::redirectable;
-use sunrise_sim::arrows::ArrowTargets;
+use sunrise_sim::entities::arrows::ArrowTargets;
 use sunrise_sim::mobs::{MobWorld, Who};
 use sunrise_sim::projectiles::{
     Projectile, ProjectileKind, ProjectileWorld, TargetCandidate, TargetOrder,
@@ -74,12 +74,6 @@ impl ProjectileWorld for LiveProjWorld<'_, '_> {
     }
     fn can_stand_on(&self, p: [i32; 3], entity_y: f64) -> bool {
         self.base().can_stand_on(p, entity_y)
-    }
-    fn ignites(&self, p: [i32; 3]) -> bool {
-        self.base().ignites(p)
-    }
-    fn lava_height(&self, p: BlockPos) -> Option<f64> {
-        self.base().lava_height(p)
     }
     fn bubble_column(&self, p: [i32; 3]) -> Option<(bool, bool)> {
         self.base().bubble_column(p)
@@ -432,6 +426,7 @@ impl<'r> crate::game::ServerGame<'r> {
             causing,
             direct: info.direct_id as i32,
             position: Some([info.position.x, info.position.y, info.position.z]),
+            direct_type: None,
         };
         let vanilla = self.saved_refuses_damage(id, info.damage_type, creative);
         crate::game::server_side::entity_server::damage_level_of!(

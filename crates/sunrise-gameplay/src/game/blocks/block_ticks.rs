@@ -76,12 +76,12 @@ impl crate::game::ServerGame<'_> {
         {
             scratch
                 .inside
-                .extend(sunrise_sim::arrows::blocks_inside(p.previous, p.position));
+                .extend(sunrise_sim::entities::arrows::blocks_inside(p.previous, p.position));
         }
         for t in &self.common.tridents {
             scratch
                 .inside
-                .extend(sunrise_sim::arrows::blocks_inside(t.position, t.position));
+                .extend(sunrise_sim::entities::arrows::blocks_inside(t.position, t.position));
         }
         // BigDripleafBlock.entityInside also asks whether the player stands on
         // the ground and how high its feet are: the leaves its box's feet

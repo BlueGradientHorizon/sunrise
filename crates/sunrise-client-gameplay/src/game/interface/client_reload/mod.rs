@@ -2,11 +2,10 @@
 //! any assets, and apply them on the thread that owns the game. The initial
 //! load runs the same three steps: the loader thread registers and stages,
 //! and the game applies once it exists (`start_game`).
-use mod_api::__private::game::*;
-
 mod texture_atlases;
 use crate::game::ClientGame;
 use mod_api::{
+    __private::game::{ClientReloadListenersOrder, ReloadContextNew},
     __private::reload::{PreparedStep, ReloadStageError, prepare_listeners},
     ClientReloadContext, ClientReloadHost, ClientReloadListener, ClientReloadListenerContext,
     HookId,
@@ -14,7 +13,9 @@ use mod_api::{
 use sunrise_client::settings::Settings;
 use sunrise_gameplay_common::game::packs_common::reload_files;
 use sunrise_level::datapack::DataPack;
-pub(in crate::game) use texture_atlases::{collect_texture_atlases, stage_texture_atlases};
+pub(in crate::game) use texture_atlases::{
+    collect_emissive_sprites, collect_texture_atlases, stage_texture_atlases,
+};
 
 /// One client reload step: a mod's apply action or model publication.
 pub type PreparedClientReload = PreparedStep<()>;
@@ -25,6 +26,7 @@ pub type PreparedClientReload = PreparedStep<()>;
 /// queries return real values. Later reloads pass `&Game` directly.
 pub(in crate::game) struct StartupReloadContext<'a> {
     settings: Option<&'a Settings>,
+    captured: &'a sunrise_world::native_load_context::SettingsCapture,
 }
 
 impl ClientReloadListenerContext for StartupReloadContext<'_> {
@@ -54,8 +56,13 @@ impl ClientReloadListenerContext for StartupReloadContext<'_> {
     fn is_loaded(&self, id: &str) -> bool {
         mod_api::__private::loaded_mods().get(id).is_some()
     }
-    fn setting(&self, mod_id: &str, key: &str) -> Option<String> {
-        sunrise_gameplay_common::game::startup_setting(mod_id, key)
+    fn setting(
+        &self,
+        key: mod_api::SettingKey,
+    ) -> Result<mod_api::SettingValue, mod_api::SettingAccessError> {
+        let (owner, spec) = mod_api::__private::setting_entry(key)
+            .ok_or(mod_api::SettingAccessError::UnknownKey)?;
+        Ok(spec.read(self.captured.setting(owner, &spec.key)))
     }
     fn math_profile(&self) -> mod_api::MathProfile {
         sunrise_gameplay_common::game::startup_math_profile()
@@ -71,14 +78,70 @@ impl ClientReloadListenerContext for StartupReloadContext<'_> {
     }
 }
 
+struct CapturedReloadContext<'a, 'g> {
+    game: &'a ClientGame<'g>,
+    captured: &'a sunrise_world::native_load_context::SettingsCapture,
+}
+
+impl ClientReloadListenerContext for CapturedReloadContext<'_, '_> {
+    fn dist(&self) -> mod_api::Dist {
+        self.game.dist()
+    }
+    fn game_version(&self) -> &'static str {
+        self.game.game_version()
+    }
+    fn server_data_version(&self) -> i32 {
+        self.game.server_data_version()
+    }
+    fn sunrise_version(&self) -> &'static str {
+        self.game.sunrise_version()
+    }
+    fn game_tests_enabled(&self) -> bool {
+        self.game.game_tests_enabled()
+    }
+    fn on(&self, mod_id: &str) -> bool {
+        self.game.on(mod_id)
+    }
+    fn is_loaded(&self, id: &str) -> bool {
+        self.game.is_loaded(id)
+    }
+    fn setting(
+        &self,
+        key: mod_api::SettingKey,
+    ) -> Result<mod_api::SettingValue, mod_api::SettingAccessError> {
+        let (owner, spec) = mod_api::__private::setting_entry(key)
+            .ok_or(mod_api::SettingAccessError::UnknownKey)?;
+        Ok(spec.read(self.captured.setting(owner, &spec.key)))
+    }
+    fn math_profile(&self) -> mod_api::MathProfile {
+        self.game.math_profile()
+    }
+    fn text_string(&self, text: &mod_api::Text) -> String {
+        self.game.text_string(text)
+    }
+    fn published(&self) -> Option<&dyn ClientReloadHost> {
+        self.game.published()
+    }
+}
+
 impl ClientGame<'_> {
     /// Registers a later reload's client listeners through the game
     /// (`native_add_client_reload_listeners`), gated on the hook being
     /// listened to.
-    pub fn register_client_reload_listeners(&self) -> mod_api::ClientListenerRegistry {
-        let mut listeners = <mod_api::ClientListenerRegistry as mod_api::__private::game::ClientReloadListenersOrder>::new();
+    pub fn register_client_reload_listeners(
+        &self,
+        captured: &sunrise_world::native_load_context::SettingsCapture,
+    ) -> mod_api::ClientListenerRegistry {
+        let mut listeners = <mod_api::ClientListenerRegistry as ClientReloadListenersOrder>::new();
         if mod_api::__private::listened(HookId::AddClientReloadListeners) {
-            self.native_add_client_reload_listeners(&mut listeners);
+            let context = CapturedReloadContext {
+                game: self,
+                captured,
+            };
+            crate::game::native_hooks::add_client_reload_listeners::native_add_client_reload_listeners(
+                &context,
+                |listen| listeners.register_listener(listen),
+            );
         }
         listeners
     }
@@ -89,10 +152,11 @@ impl ClientGame<'_> {
 /// the loader thread and leaves `published()` as `None`.
 pub fn register_startup_client_reload_listeners(
     settings: Option<&Settings>,
+    captured: &sunrise_world::native_load_context::SettingsCapture,
 ) -> mod_api::ClientListenerRegistry {
-    let mut listeners = <mod_api::ClientListenerRegistry as mod_api::__private::game::ClientReloadListenersOrder>::new();
+    let mut listeners = <mod_api::ClientListenerRegistry as ClientReloadListenersOrder>::new();
     if mod_api::__private::listened(HookId::AddClientReloadListeners) {
-        let context = StartupReloadContext { settings };
+        let context = StartupReloadContext { settings, captured };
         mod_api::dispatch_add_client_reload_listeners(&context, |listen| {
             listeners.register_listener(listen)
         });
@@ -120,7 +184,11 @@ pub fn stage_client_reload<V, E: From<ReloadStageError>>(
             models = Some(build_models.take().expect("one model manager")()?);
             Ok(())
         },
-        |id, converter| ClientReloadContext::new(reload_files("assets", &[&pack], id, converter)),
+        |id, converter| {
+            <ClientReloadContext as ReloadContextNew>::new(reload_files(
+                "assets", &[&pack], id, converter,
+            ))
+        },
         ClientReloadListener::prepare,
     )?;
     Ok((models.expect("model manager is always registered"), steps))

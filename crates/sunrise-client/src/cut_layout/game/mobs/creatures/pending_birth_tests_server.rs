@@ -1,16 +1,18 @@
 use crate::game::creatures::pending_birth_tests::AT;
 use crate::game::creatures::pending_birth_tests::IGNORE;
-use crate::game::creatures::pending_birth_tests::NEXT_INT;
+use crate::game::creatures::pending_birth_tests::{NEXT_INT, SPLIT_DISPLACEMENT};
 pub(crate) use crate::game::creatures::pending_birth_tests::SEED;
 pub(crate) use crate::game::creatures::pending_birth_tests::YAWS;
 use crate::game::creatures::pending_birth_tests::animals_bred;
-use crate::game::creatures::pending_birth_tests::assert_vanilla_children;
+use crate::game::creatures::pending_birth_tests::{
+    assert_vanilla_children, breed_pair, fixture_resident_column,
+};
 pub(crate) use crate::game::creatures::pending_birth_tests::find;
 pub(crate) use crate::game::creatures::pending_birth_tests::near;
 use crate::game::creatures::pending_birth_tests::spawned;
 use crate::game::creatures::pending_birth_tests::spec;
 use crate::game::creatures::pending_birth_tests::with_baby;
-use crate::game::creatures::pending_birth_tests::with_split;
+use crate::game::creatures::pending_birth_tests::{with_split, with_splits};
 use mod_api::{
     __private::{HookPanicReport, take_hook_panics},
     BlockState, BlockUpdateFlags, Flow, HostBlockStates, UnspawnedMobError,
@@ -28,180 +30,91 @@ use {
     sunrise_gameplay::game::native_entity_refs::tests::with_game,
 };
 
+#[cfg(any())]
 #[test]
 #[ignore = "daily"]
-fn a_panicking_baby_listener_leaves_no_reserved_state_behind() {
-    use sunrise_gameplay::game::native_entity_refs::tests::bind_local_player;
-    use sunrise_sim::{
-        advancements::{Advancement, Criterion, Rewards, Tree},
-        motion::PlayerMotion,
-    };
+fn baby_slot_replacement_does_not_publish_on_engine_unwind() {
+    use sunrise_gameplay::game::server_side::pending_birth_fault::{self as escaping_fault, At};
+    use std::sync::atomic::{AtomicBool, Ordering};
 
-    if run_fresh_cases(
-        "game::server_side::creatures_server::pending_birth_tests::a_panicking_baby_listener_leaves_no_reserved_state_behind",
-        "SUNRISE_BABY_PANIC_CHILD",
-        &["breed"],
-    ) {
-        return;
-    }
-    let calls = Arc::new(AtomicUsize::new(0));
-    let record = calls.clone();
+    let replaced = Arc::new(AtomicBool::new(false));
+    let observed = replaced.clone();
     with_baby(
-        move |_, event| {
-            assert_eq!(event.player, Some(7));
-            record.fetch_add(1, Ordering::SeqCst);
-            panic!("a listener fails");
+        move |host, event| {
+            let pig = event
+                .child
+                .construct(
+                    host,
+                    spec(
+                        "minecraft:pig",
+                        [0.5, 64.0, 0.0],
+                        0.0,
+                        None,
+                        event.dimension,
+                    ),
+                )
+                .unwrap();
+            let original = event.child.replace(pig).unwrap().unwrap();
+            assert_eq!(original.kind().unwrap().to_string(), "minecraft:cow");
+            replaced.store(true, Ordering::Relaxed);
+            Flow::Continue
         },
         |game| {
-            game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
-            bind_local_player(game, 700, 7);
-            const ADVANCEMENT: &str = "test:breed";
-            const TRIGGER: &str = "minecraft:bred_animals";
-            let mut tree = Tree::default();
-            tree.list.push(Advancement {
-                id: ADVANCEMENT.into(),
-                parent: None,
-                display: None,
-                criteria: vec![Criterion {
-                    name: "bred".into(),
-                    trigger: TRIGGER.into(),
-                    conditions: serde_json::json!({}).into(),
-                }],
-                requirements: vec![vec!["bred".into()]],
-                rewards: Rewards::default(),
-            });
-            tree.by_id.insert(ADVANCEMENT.into(), 0);
-            tree.by_trigger.insert(TRIGGER.into(), vec![(0, 0)]);
-            game.adv.tree = Arc::new(tree);
-            game.adv.loaded = true;
-            let level_random = game.world.random.state();
             let (uuids, attachments) = (game.persist.uuids.len(), game.entity_attachments.len());
-            let (parent, partner, child) = breed_pair_credited(game, "minecraft:cow", true);
-            assert_eq!(child, None);
-            assert_eq!(
-                game.mobs.iter().map(|m| m.id).collect::<Vec<_>>(),
-                [parent, partner]
-            );
+            let parent = game.server.next_entity + 1;
+            escaping_fault::expect(At::BabyDispatched, parent, || {
+                breed_pair(game, "minecraft:cow");
+            });
+            assert!(observed.load(Ordering::Relaxed));
             assert_eq!(game.persist.uuids.len(), uuids, "the baby's UUID is gone");
             assert_eq!(game.entity_attachments.len(), attachments);
-            assert_eq!(game.world.random.state(), level_random, "no level yaw draw");
-            // Cow.getBreedOffspring takes one nextBoolean from Java Random(0); the
-            // second draw is still next, since Animal's finalization did not draw XP.
-            assert_eq!(find(game, parent).random.next_int(), -723_955_400);
-            for id in [parent, partner] {
-                let mob = find(game, id);
-                assert_eq!(
-                    mob.extra.age, 6000,
-                    "NeoForge Animal.spawnChildFromBreeding"
-                );
-                assert_eq!(mob.extra.in_love, 0);
-                assert!(!game.server.love_cause.contains_key(&id));
-            }
-            assert!(game.orbs.is_empty());
-            assert_eq!(animals_bred(game), 0);
-            assert!(!game.adv.progress.has(ADVANCEMENT, "bred"));
-            assert_eq!(calls.load(Ordering::SeqCst), 1);
-            assert_eq!(
-                take_hook_panics(),
-                [HookPanicReport {
-                    mod_id: "baby",
-                    hook: "baby_entity_spawn"
-                }]
-            );
-
-            let (_, _, child) = breed_pair_credited(game, "minecraft:cow", true);
-            let baby = find(game, child.expect("the next baby joined"));
-            assert!(baby.extra.age < 0);
-            assert_eq!(baby.yaw, 0.0);
-            assert!(game.persist.uuids.contains_key(&baby.id));
-            assert_eq!(game.orbs.len(), 1);
-            assert_eq!(animals_bred(game), 1);
-            assert!(game.adv.progress.has(ADVANCEMENT, "bred"));
-            assert_eq!(calls.load(Ordering::SeqCst), 1);
-            assert!(take_hook_panics().is_empty());
+            assert_eq!(game.mobs.len(), 2, "only the parents joined");
         },
     );
 }
 
 #[test]
 #[ignore = "daily"]
-fn a_panicking_listener_spawns_nothing_and_leaves_the_arena_usable() {
-    if run_fresh_cases(
-        "game::server_side::creatures_server::pending_birth_tests::a_panicking_listener_spawns_nothing_and_leaves_the_arena_usable",
-        "SUNRISE_SPLIT_PANIC_CHILD",
-        &["split"],
-    ) {
-        return;
-    }
-    const WRITE_AT: [i32; 3] = [4, 64, 4];
-    let calls = Arc::new(AtomicUsize::new(0));
-    let record = calls.clone();
+fn panicking_spawn_listeners_lose_cancellation_but_keep_direct_child_edits() {
     with_split(
-        move |host, event| {
-            let child = event
-                .edits
-                .child(event.edits.children().unwrap(), 0)
-                .unwrap();
-            event.edits.set_yaw(child, 1.0).unwrap();
-            let level = host.level(event.dimension).unwrap();
-            let key = host.block_key("minecraft:stone").unwrap();
-            let stone = BlockState::of(&host.block_states(), key, &[]).unwrap();
-            assert_eq!(
-                level.set_block(host, WRITE_AT, stone, BlockUpdateFlags::NONE),
-                Ok(true)
-            );
-            assert_eq!(level.block_state(host, WRITE_AT), Some(stone));
-            // A contained failure before the edit and write above must not pass this test.
-            record.fetch_add(1, Ordering::SeqCst);
-            panic!("a listener fails before commit");
+        |_, event| {
+            event.children.get_mut(0).unwrap().set_yaw(1.0).unwrap();
+            drop(event.children.remove(1).unwrap());
+            event.cancelled = true;
+            panic!("split listener failed");
         },
         |game| {
-            game.world
-                .chunks
-                .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-            let [x, y, z] = WRITE_AT;
-            let old_block = game
-                .pack
-                .assets
-                .registry
-                .default_state("minecraft:dirt")
-                .unwrap();
-            game.world.set(x, y, z, old_block).unwrap();
             let mut dying = cube(game, "minecraft:slime", 4, SEED);
-            let next_id = game.server.next_entity;
             game.split_cube_children(&mut dying);
-            assert!(game.mobs.is_empty(), "no child joined");
-            assert_eq!(
-                game.server.next_entity, next_id,
-                "no entity number was issued"
-            );
-            assert_eq!(
-                game.world.block(x, y, z),
-                old_block,
-                "tentative block write survived"
-            );
-            assert_eq!(dying.random.next_int(), NEXT_INT);
-            assert_eq!(calls.load(Ordering::SeqCst), 1);
-            assert_eq!(
-                take_hook_panics(),
-                [HookPanicReport {
-                    mod_id: "split",
-                    hook: "mob_split"
-                }]
-            );
-
-            // The same install still takes the arena path, but skips the retired listener.
-            let mut again = cube(game, "minecraft:slime", 4, SEED);
-            let first = game.server.next_entity + 1;
-            game.split_cube_children(&mut again);
-            assert_eq!(game.mobs.len(), YAWS.len());
-            for (i, (child, yaw)) in game.mobs.iter().zip(YAWS).enumerate() {
-                assert_eq!(child.id, first + i as u32);
-                assert_eq!(child.yaw, yaw);
-            }
-            assert_eq!(again.random.next_int(), NEXT_INT);
-            assert_eq!(calls.load(Ordering::SeqCst), 1);
-            assert!(take_hook_panics().is_empty());
+            assert_eq!(game.common.mobs.len(), 2, "the cancellation was not applied");
+            assert_eq!(game.common.mobs[0].yaw, 1.0);
+            assert_eq!(game.common.mobs[1].yaw, YAWS[2]);
+        },
+    );
+    with_baby(
+        |host, event| {
+            let pig = event
+                .child
+                .construct(
+                    host,
+                    spec(
+                        "minecraft:pig",
+                        [0.5, 64.0, 0.0],
+                        0.0,
+                        None,
+                        event.dimension,
+                    ),
+                )
+                .unwrap();
+            drop(event.child.replace(pig).unwrap());
+            event.cancelled = true;
+            panic!("breeding listener failed");
+        },
+        |game| {
+            let (_, _, child) = breed_pair(game, "minecraft:cow");
+            let child = find(game, child.expect("the cancellation was not applied"));
+            assert_eq!(child.kind.id, "minecraft:pig");
+            assert!(child.is_baby());
         },
     );
 }
@@ -211,62 +124,57 @@ fn a_panicking_listener_spawns_nothing_and_leaves_the_arena_usable() {
 /// from a hook's `ServerHost` in the fixture world).
 #[test]
 #[ignore = "daily"]
-fn a_parent_changed_during_dispatch_refuses_the_baby_and_nothing_is_rebuilt() {
-    if run_fresh_cases(
-        "game::server_side::creatures_server::pending_birth_tests::a_parent_changed_during_dispatch_refuses_the_baby_and_nothing_is_rebuilt",
-        "SUNRISE_BIRTH_STALE_CHILD",
-        &["stale"],
-    ) {
-        return;
-    }
-    with_game(|game| {
-        let kind = game.res.mob_types().get("minecraft:cow").unwrap().clone();
-        let base = game.server.next_entity;
-        game.server.next_entity += 3;
-        for (i, x) in [0.0, 1.0].into_iter().enumerate() {
-            game.mobs.push(Mob::new(
-                base + 1 + i as u32,
-                kind.clone(),
-                Vec3::new(x, 64.0, 0.0),
-                0.0,
-            ));
-        }
-        game.native_joins_skip();
-        let run = |game: &mut sunrise_gameplay::game::ServerGame<'_>, change: bool| {
-            let mut baby = Mob::new(base + 3, kind.clone(), Vec3::new(0.5, 64.0, 0.0), 0.0);
-            sunrise_sim::mobs::finalize::set_baby(&mut baby, true);
-            game.dispatch_pending_children(
-                mod_api::HookId::BabyEntitySpawn,
-                true,
-                vec![baby],
-                &[base + 1, base + 2],
-                move |game, _, _| {
-                    if change {
-                        let parent = game.mobs.iter_mut().find(|m| m.id == base + 1).unwrap();
-                        parent.extra.in_love = 600;
-                    }
-                },
-                |_, children| children.len(),
-            )
-        };
-        // Unchanged parents: the baby is accepted.
-        assert_eq!(run(game, false), Some(1));
-        // The id is still live but the parent is not what the baby was built from: refused,
-        // and the dispatch never rebuilds or draws again.
-        let draws = game
-            .mobs
-            .iter()
-            .map(|m| m.random.state())
-            .collect::<Vec<_>>();
-        assert_eq!(run(game, true), None);
-        assert_eq!(
-            game.mobs
-                .iter()
-                .map(|m| m.random.state())
-                .collect::<Vec<_>>(),
-            draws
-        );
-    });
+fn breeding_spawns_after_parent_host_edit_and_cancel_resets_both_parents() {
+    with_baby(
+        |host, event| {
+            let parent = host.entity(event.parent).expect("parent handle");
+            assert!(parent.teleport_to(host, [2.0, 64.0, 0.0], None));
+            let mut nbt = mod_api::Compound::new();
+            nbt.insert("InLove".into(), mod_api::Tag::Int(300));
+            assert!(parent.merge_nbt(host, nbt));
+            Flow::Continue
+        },
+        |game| {
+            fixture_resident_column(&mut game.common.world, (0, 0));
+            let (parent, partner, child) = breed_pair(game, "minecraft:cow");
+            let baby = find(game, child.expect("parent host edit must not abort birth"));
+            assert_eq!(baby.kind.id, "minecraft:cow");
+            assert_eq!(baby.extra.age, -24000);
+            assert_eq!(find(game, parent).position.x, 2.0);
+            // Post-event snap tracks the live parent after listener teleport and zeroes yaw/pitch.
+            assert_eq!(baby.position, Vec3::new(2.0, 64.0, 0.0));
+            assert_eq!(baby.yaw, 0.0);
+            assert_eq!(baby.head_pitch, 0.0);
+            for id in [parent, partner] {
+                let mob = find(game, id);
+                assert_eq!(mob.extra.age, 6000);
+                assert_eq!(mob.extra.in_love, 0);
+            }
+        },
+    );
+    with_baby(
+        |host, event| {
+            for id in [event.parent, event.partner] {
+                let entity = host.entity(id).expect("parent handle");
+                let mut nbt = mod_api::Compound::new();
+                nbt.insert("Age".into(), mod_api::Tag::Int(0));
+                nbt.insert("InLove".into(), mod_api::Tag::Int(300));
+                assert!(entity.merge_nbt(host, nbt));
+            }
+            Flow::Cancel
+        },
+        |game| {
+            fixture_resident_column(&mut game.common.world, (0, 0));
+            let (parent, partner, child) = breed_pair(game, "minecraft:cow");
+            assert_eq!(child, None);
+            assert!(game.common.mobs.iter().all(|m| m.extra.age >= 0), "no baby joined");
+            for id in [parent, partner] {
+                let mob = find(game, id);
+                assert_eq!(mob.extra.age, 6000);
+                assert_eq!(mob.extra.in_love, 0);
+            }
+        },
+    );
 }
 
 pub(crate) use sunrise_gameplay::game::server_side::creatures_server::pending_birth_matrix_tests::breed_pair_credited;
@@ -280,10 +188,11 @@ fn cancelled_split_spawns_nothing_but_keeps_the_construction_draws() {
             let mut dying = cube(game, "minecraft:slime", 4, SEED);
             let next_id = game.server.next_entity;
             game.split_cube_children(&mut dying);
-            assert!(game.mobs.is_empty(), "a cancelled split spawns no child");
+            assert!(game.common.mobs.is_empty(), "a cancelled split spawns no child");
             assert_eq!(
-                game.server.next_entity, next_id,
-                "and issues no entity number"
+                game.server.next_entity,
+                next_id + 3,
+                "all proposals were constructed"
             );
             // The count and the three yaw draws were spent before the callback.
             assert_eq!(dying.random.next_int(), NEXT_INT);
@@ -323,63 +232,112 @@ pub(crate) use sunrise_gameplay::game::server_side::creatures_server::pending_bi
 
 #[test]
 #[ignore = "daily"]
-fn edit_remove_append_commits_a_c_d_once_and_b_goes_stale() {
-    let stale = Arc::new(Mutex::new(None));
-    let record = stale.clone();
-    with_split(
-        move |host, event| {
-            let (edits, children) = (event.edits, event.edits.children().unwrap());
-            let a = edits.child(children, 0).unwrap();
-            let b = edits.child(children, 1).unwrap();
-            edits.set_yaw(a, 90.0).unwrap();
-            edits.remove(children, 1).unwrap();
-            *record.lock().unwrap() = Some(b.kind(&*host));
-            let d = edits
-                .construct(
-                    children,
-                    spec(
-                        "minecraft:slime",
-                        [3.0, 70.0, 4.0],
-                        12.0,
-                        Some(2),
-                        event.dimension,
-                    ),
-                )
-                .unwrap();
-            edits.append(children, d).unwrap();
-            assert_eq!(edits.len(children), Ok(3));
-            Flow::Continue
-        },
+fn edit_remove_push_commits_a_c_d_once() {
+    if sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases(
+        &format!(
+            "{}::edit_remove_push_commits_a_c_d_once",
+            module_path!().split_once("::").unwrap().1
+        ),
+        "SUNRISE_SPLIT_EDIT_COORDINATES",
+        &["coordinates"],
+    ) {
+        return;
+    }
+    let second_saw = Arc::new(Mutex::new(None));
+    let record = second_saw.clone();
+    with_splits(
+        vec![
+            Box::new(move |host, event| {
+                event.children.get_mut(0).unwrap().set_yaw(90.0).unwrap();
+                let removed = event.children.remove(1).unwrap();
+                assert_eq!(removed.kind().unwrap().to_string(), "minecraft:slime");
+                drop(removed);
+                let d = event
+                    .children
+                    .construct(
+                        host,
+                        spec(
+                            "minecraft:slime",
+                            [3.0, 70.0, 4.0],
+                            12.0,
+                            Some(2),
+                            event.dimension,
+                        ),
+                    )
+                    .unwrap();
+                event.children.push(d).unwrap();
+                // A detached child dropped without attaching never joins.
+                let _dropped = event
+                    .children
+                    .construct(
+                        host,
+                        spec(
+                            "minecraft:slime",
+                            [9.0, 70.0, 9.0],
+                            0.0,
+                            Some(2),
+                            event.dimension,
+                        ),
+                    )
+                    .unwrap();
+                assert_eq!(event.children.len(), 3);
+                Flow::Continue
+            }),
+            Box::new(move |_, event| {
+                *record.lock().unwrap() = Some((
+                    event.children.len(),
+                    event.children.get(2).unwrap().position(),
+                ));
+                Flow::Continue
+            }),
+        ],
         |game| {
             let mut dying = cube(game, "minecraft:slime", 4, SEED);
             let first = game.server.next_entity + 1;
             game.split_cube_children(&mut dying);
             let kids = spawned(game);
-            // [A, C, D]: A with yaw 90, C the vanilla third child, D appended.
+            // [A, C, D]: A with yaw 90, C the vanilla third child, D pushed.
             assert_eq!(kids.len(), 3);
             assert_eq!(kids[0].yaw, 90.0);
             assert_eq!(kids[0].id, first);
-            assert!(near(kids[1].position.x, AT[0] - 0.52));
-            assert!(near(kids[1].position.z, AT[2] + 0.52));
+            assert_eq!(
+                kids[1].position.x.to_bits(),
+                (AT[0] - SPLIT_DISPLACEMENT).to_bits()
+            );
+            assert_eq!(kids[1].position.y.to_bits(), (AT[1] + 0.5).to_bits());
+            assert_eq!(
+                kids[1].position.z.to_bits(),
+                (AT[2] + SPLIT_DISPLACEMENT).to_bits()
+            );
             assert_eq!(kids[1].yaw, YAWS[2]);
-            assert_eq!(kids[1].id, first + 1);
+            assert_eq!(kids[1].id, first + 2);
             assert_eq!(kids[2].position.x, 3.0);
             assert_eq!(kids[2].position.y, 70.0);
             assert_eq!(kids[2].yaw, 12.0);
-            assert_eq!(kids[2].id, first + 2);
+            assert_eq!(kids[2].id, first + 3);
             assert_eq!(kids[2].extra.size, 2);
         },
     );
     assert_eq!(
-        stale.lock().unwrap().clone(),
-        Some(Err(UnspawnedMobError::Expired)),
-        "the removed child's borrow is stale"
+        *second_saw.lock().unwrap(),
+        Some((3, Ok([3.0, 70.0, 4.0]))),
+        "later listeners see earlier listeners' edits"
     );
 }
 
 #[test]
 #[ignore = "daily"]
 fn no_listener_split_is_exactly_vanilla() {
+    if sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases(
+        &format!(
+            "{}::no_listener_split_is_exactly_vanilla",
+            module_path!().split_once("::").unwrap().1
+        ),
+        "SUNRISE_SPLIT_NO_LISTENER_COORDINATES",
+        &["coordinates"],
+    ) {
+        return;
+    }
     let mods: mod_api::Mods = Vec::new().into();
     mod_platform::testing::with_mods(mods, || {
         with_game(|game| {
@@ -395,13 +353,23 @@ fn no_listener_split_is_exactly_vanilla() {
 #[test]
 #[ignore = "daily"]
 fn size_four_slime_and_magma_split_three_children_and_draw_the_vanilla_yaws() {
+    if sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases(
+        &format!(
+            "{}::size_four_slime_and_magma_split_three_children_and_draw_the_vanilla_yaws",
+            module_path!().split_once("::").unwrap().1
+        ),
+        "SUNRISE_SPLIT_COORDINATES",
+        &["coordinates"],
+    ) {
+        return;
+    }
     let _ = IGNORE;
     for kind in ["minecraft:slime", "minecraft:magma_cube"] {
         let seen = Arc::new(Mutex::new(Vec::new()));
         let record = seen.clone();
         with_split(
             move |_, event| {
-                let len = event.edits.len(event.edits.children().unwrap()).unwrap();
+                let len = event.children.len();
                 record.lock().unwrap().push((
                     event.dimension.to_owned(),
                     event.kind.to_owned(),

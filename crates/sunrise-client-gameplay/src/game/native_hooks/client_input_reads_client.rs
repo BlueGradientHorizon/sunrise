@@ -12,7 +12,7 @@ impl crate::game::ClientGame<'_> {
             self.client.modifiers,
         ))
     }
-    /// Playing, with nothing over the world: keys and zoom apply.
+    /// Playing, with nothing over the world: in-game keys and camera effects apply.
     pub(in crate::game) fn playing(&self) -> bool {
         self.client.screen == Screen::Playing
             && self.client.title.0.is_none()

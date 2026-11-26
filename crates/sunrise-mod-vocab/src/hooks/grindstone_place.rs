@@ -14,7 +14,6 @@ pub trait Hooks {
     /// ignored, keeping vanilla's result. A panicking listener is caught and leaves
     /// vanilla's result. Server-side.
     #[hook(
-        target = "sunrise_gameplay::game::native_hooks::grindstone_place::ServerGame<'_>::native_grindstone_place",
         dispatch = "flat",
         side = "server",
         contract = "cancel",

@@ -26,7 +26,7 @@ impl ClientGame<'_> {
         let entity = match message {
             Message::Boxes { entity, .. }
             | Message::Patch { entity, .. }
-            | Message::Rotation { entity, .. }
+            | Message::Pose { entity, .. }
             | Message::Clear { entity } => entity,
         };
         let mut held = remote.colliders.remove(&entity);
@@ -37,7 +37,7 @@ impl ClientGame<'_> {
     }
 
     /// Where the collider entity `id` stands in the client's view.
-    pub(in crate::game) fn client_collider_origin(&self, id: u32) -> Option<Vec3> {
+    pub fn client_collider_origin(&self, id: u32) -> Option<Vec3> {
         let epoch = self.common.native_lifecycle.epoch()?;
         let at = self.native_client_tracked(EntityRef::new(epoch, id))?.1;
         Some(Vec3::new(at[0], at[1], at[2]))
@@ -93,7 +93,7 @@ impl ClientGame<'_> {
     }
 
     /// The colliders of the client's current level, where they stand now.
-    pub(in crate::game) fn client_placed_moving_colliders(
+    pub fn client_placed_moving_colliders(
         &mut self,
     ) -> sunrise_world::moving_colliders::Prepared {
         use sunrise_world::moving_colliders::{Placed, Prepared};

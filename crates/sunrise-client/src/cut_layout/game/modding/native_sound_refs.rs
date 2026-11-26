@@ -12,6 +12,8 @@ pub(crate) mod tests {
     use sunrise_gameplay_common::game::lan_common::LanSettings;
 
     use super::super::native_entity_refs::tests::with_game;
+    use sunrise_gameplay_common::game::test_fixtures::fixture_resident_column;
+    use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
 
     use mod_api::{SoundSource, WorldEpoch};
 
@@ -45,7 +47,7 @@ pub(crate) mod tests {
                 seed: 0,
                 max_players: 3,
                 integrated: true,
-                levels: game.server.level_shapes,
+                levels: game.server.level_shapes.clone(),
                 level_seeds: game.server.levels.0.runtime.seeds(),
             };
             let settings = LanSettings {
@@ -87,23 +89,30 @@ pub(crate) mod tests {
 
             // play_sound: one packet for one player, at their position.
             assert!(game.player_play_sound(pb, sound, SoundSource::Neutral, 0.5, 1.5));
-            assert!(!game.player_play_sound(pb, sound, SoundSource::Neutral, 1.0, f32::NAN));
-            assert!(!game.player_play_sound(
-                pb,
-                "minecraft:no.such.sound",
-                SoundSource::Neutral,
-                1.0,
-                1.0
-            ));
+            for key in ["minecraft:no.such.sound", "example:no.such.sound"] {
+                assert!(game.player_play_sound(pb, key, SoundSource::Neutral, -1.0, -2.0));
+            }
+            assert!(!game.player_play_sound(pb, "invalid key", SoundSource::Neutral, 1.0, 1.0));
             assert!(packets(&rx_a).is_empty());
             let got = packets(&rx_b);
-            assert_eq!(got.len(), 1);
+            assert_eq!(got.len(), 3);
             let Clientbound::Sound(p) = &got[0] else {
                 panic!("expected sound")
             };
             assert_eq!((p.x, p.y, p.z), (24, 512, 16));
             assert_eq!((p.volume, p.pitch), (0.5, 1.5));
             assert_eq!(p.source, SoundSource::Neutral.index() as i32);
+            assert!(p.sound.0 >= 0 && p.sound.1.is_none());
+            for (packet, key) in got[1..]
+                .iter()
+                .zip(["minecraft:no.such.sound", "example:no.such.sound"])
+            {
+                let Clientbound::Sound(p) = packet else {
+                    panic!("expected inline sound")
+                };
+                assert_eq!(p.sound, (-1, Some((key.to_owned(), None))));
+                assert_eq!((p.volume, p.pitch), (-1.0, -2.0));
+            }
 
             // A stale handle and an offline player fail.
             let stale = mod_api::__private::game::player_ref(
@@ -118,16 +127,29 @@ pub(crate) mod tests {
             assert!(game.player(99).is_none());
 
             // play_bound_sound: players in range get a SoundEntity packet.
+            fixture_resident_column(&mut game.world, (0, 0));
             let kind = game.res.mob_types().get("minecraft:cow").unwrap().clone();
             game.mobs
                 .push(Mob::new(40, kind, Vec3::new(2.0, 64.0, 2.0), 0.0));
             let cow = game.entity(40).unwrap();
             assert!(game.entity_play_bound_sound(cow, sound, SoundSource::Neutral, 1.0, 1.0));
-            assert!(!game.entity_play_bound_sound(cow, sound, SoundSource::Neutral, -1.0, 1.0));
+            for key in ["minecraft:no.such.sound", "example:no.such.sound"] {
+                assert!(game.entity_play_bound_sound(cow, key, SoundSource::Neutral, -1.0, -2.0));
+            }
             game.flush_native_sounds();
             for rx in [&rx_a, &rx_b] {
                 let got = packets(rx);
-                assert_eq!(got.len(), 1);
+                assert_eq!(got.len(), 3);
+                for (packet, key) in got[1..]
+                    .iter()
+                    .zip(["minecraft:no.such.sound", "example:no.such.sound"])
+                {
+                    let Clientbound::SoundEntity(p) = packet else {
+                        panic!("expected inline entity sound")
+                    };
+                    assert_eq!(p.sound, (-1, Some((key.to_owned(), None))));
+                    assert_eq!((p.volume, p.pitch), (-1.0, -2.0));
+                }
                 let Clientbound::SoundEntity(p) = &got[0] else {
                     panic!("expected sound entity")
                 };
@@ -165,7 +187,7 @@ pub(crate) mod tests {
                 seed: 0,
                 max_players: 3,
                 integrated: true,
-                levels: game.server.level_shapes,
+                levels: game.server.level_shapes.clone(),
                 level_seeds: game.server.levels.0.runtime.seeds(),
             };
             let settings = LanSettings {
@@ -201,6 +223,7 @@ pub(crate) mod tests {
                         pitch: 1.0,
                         except: None,
                         entity: None,
+                        inline_range: None,
                         seed: None,
                     },
                 ));
@@ -235,6 +258,41 @@ pub(crate) mod tests {
                 packets(&rx_edge).is_empty(),
                 "a player exactly at the range edge hears nothing"
             );
+
+            // Commit preserves direct holders even if the key is registered or has no
+            // registry ID. The fixed range, not the variable range, excludes the far player.
+            use sunrise_core::position::BlockPos;
+            use sunrise_items::items::ConsumeSound;
+            let ids = [sound, "minecraft:test.inline"];
+            game.storage_transaction(|game, _| {
+                for id in ids {
+                    assert!(
+                        game.queue_consume_sound(
+                            &ConsumeSound::Direct {
+                                id: id.into(),
+                                range: Some(0.75),
+                            },
+                            BlockPos::new(0, 64, 0),
+                            SoundSource::Neutral,
+                        )
+                        .is_some()
+                    );
+                }
+                game.flush_native_sounds();
+                assert!(packets(&rx_near).is_empty());
+                Ok::<_, ()>(())
+            })
+            .unwrap();
+            let got = packets(&rx_near);
+            assert_eq!(got.len(), ids.len());
+            for (packet, id) in got.iter().zip(ids) {
+                let Clientbound::Sound(packet) = packet else {
+                    panic!("the near player must receive the direct sound")
+                };
+                assert_eq!(packet.sound, (-1, Some((id.into(), Some(0.75)))));
+                assert_eq!((packet.x, packet.y, packet.z), (4, 516, 4));
+            }
+            assert!(packets(&rx_edge).is_empty());
         });
     }
 }

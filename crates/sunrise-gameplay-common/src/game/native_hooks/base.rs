@@ -1,5 +1,6 @@
 use super::*;
 use mod_api::ModBlockEntity;
+use crate::game::transactions::TransactionsGameExt as _;
 
 fn qualified(id: &str) -> String {
     match id.split_once(':') {
@@ -123,18 +124,6 @@ impl GameLevel<'_> {
         cancel: &mut bool,
     ) {
         self.fire_block_form(dimension, pos, from, to, cancel);
-    }
-
-    /// The Ender Dragon fight is about to place its first dragon egg at `pos`.
-    /// Set `cancel` to leave the block unchanged. Server-side.
-    #[inline(always)]
-    pub fn native_dragon_egg_form(
-        &self,
-        dimension: LevelDimension,
-        pos: BlockPos,
-        cancel: &mut bool,
-    ) {
-        self.fire_dragon_egg_form(dimension, pos, cancel);
     }
 
     /// An authoritative server is about to deliver `neighborChanged`.
@@ -459,12 +448,33 @@ impl GameLevel<'_> {
 
 /// The hook points. Each does nothing in Sunrise.
 pub trait GameHooks<'g>: crate::game::native_hooks::fire::FireHooks<'g> {
+    /// The server uses the critical-hit answer; the attacking client dispatches it for observation.
+    fn native_critical_hit(
+        &mut self,
+        target_kind: &str,
+        vanilla_critical: bool,
+        critical: &mut bool,
+        damage_multiplier: &mut f32,
+    ) {
+        crate::game::native_hooks::fire::FireHooks::fire_critical_hit(
+            self,
+            target_kind,
+            vanilla_critical,
+            critical,
+            damage_multiplier,
+        );
+    }
+
     /// Before an authoritative server level's tick pass. `dimension` is its ID.
     fn native_level_tick_pre(&mut self, level: LevelRef) {
+        let _listeners =
+            crate::game::native_server::LevelTickListeners::mark(!self.has_open_transaction());
         crate::game::native_hooks::fire::FireHooks::fire_level_tick_pre(self, level);
     }
     /// After a successful authoritative server level tick pass.
     fn native_level_tick_post(&mut self, level: LevelRef) {
+        let _listeners =
+            crate::game::native_server::LevelTickListeners::mark(!self.has_open_transaction());
         crate::game::native_hooks::fire::FireHooks::fire_level_tick_post(self, level);
     }
     /// `Player.interactOn`: both logical sides answer before entity interaction.
@@ -707,44 +717,36 @@ pub trait GameHooks<'g>: crate::game::native_hooks::fire::FireHooks<'g> {
             canceled,
         );
     }
-    /// Whether a mod listens to `native_entity_tick_pre` and `native_entity_tick_post`: a mod
-    /// that hooks them hooks this one too and sets `listened` (HEAD, `*listened = true`).
-    /// Without it the game tells no entity's tick, and keeps no list of them. Asked once for
-    /// each family each tick, on the server and on a client.
-    fn native_entity_tick_listened(&mut self, listened: &mut bool) {
-        crate::game::native_hooks::fire::FireHooks::fire_entity_tick_listened(self, listened);
-    }
-    /// The entities `entities` are about to tick in the level `dimension`, and `kinds` holds
-    /// the type of each, in the same order (NeoForge's `EntityTickEvent.Pre`, right before each
-    /// entity's tick in `tickNonPassenger`). Entity families may be observed on either side;
-    /// see the hook catalog for coverage. Some routes run one call per entity, while others
-    /// batch the family. Only IDs offered to this call may enter its cancellation output.
+    /// Dispatch before one entity ticks, allowing a listener to cancel that tick.
     fn native_entity_tick_pre(
         &mut self,
         dimension: &str,
-        entities: &[u32],
-        kinds: &[&str],
-        canceled: &mut Vec<u32>,
+        entity: u32,
+        kind: &str,
+        canceled: &mut bool,
     ) {
         crate::game::native_hooks::fire::FireHooks::fire_entity_tick_pre(
-            self, dimension, entities, kinds, canceled,
+            self, dimension, entity, kind, canceled,
         );
     }
-    /// The entities `entities` ticked in the level `dimension`, and `kinds` holds the type of
-    /// each, in the same order (NeoForge's `EntityTickEvent.Post`): those
-    /// `native_entity_tick_pre` was told and did not cancel, also one that died or was removed in
-    /// its tick. An entity told alone in its Pre is told alone here, right after its own tick; a
-    /// family once, after its last tick. On the server and on a client.
-    fn native_entity_tick_post(&mut self, dimension: &str, entities: &[u32], kinds: &[&str]) {
+    fn native_setting_changed(&self, mod_id: &str, key: &str, value: mod_api::SettingValue) {
+        crate::game::native_hooks::fire::FireHooks::fire_setting_changed(self, mod_id, key, value);
+    }
+
+    /// Dispatch after each entity that ticked and was admitted by its pre-hook.
+    fn native_entity_tick_post(&mut self, dimension: &str, entity: u32, kind: &str) {
         crate::game::native_hooks::fire::FireHooks::fire_entity_tick_post(
-            self, dimension, entities, kinds,
+            self, dimension, entity, kind,
         );
     }
 }
 impl<'g, T: crate::game::native_hooks::fire::FireHooks<'g>> GameHooks<'g> for T {}
 
 /// Register namespaced NBT component types before content loads.
-pub fn native_component_types(context: &mod_api::RegistrationContext, types: &mut Vec<String>) {
+pub fn native_component_types(
+    context: &mod_api::RegistrationContext,
+    types: &mut Vec<mod_api::Answered<String>>,
+) {
     crate::game::native_hooks::fire::fire_component_types(context, types);
 }
 
@@ -788,7 +790,7 @@ pub fn native_standalone_models(
 /// `BlockEntityView::set_client_update_fields` over it, and sends them alone when it is unset.
 pub fn native_block_entity_update_tag(
     pos: [i32; 3],
-    entity: &ModBlockEntity,
+    entity: mod_api::BlockEntityDataView<'_>,
     tag: &mut Option<Compound>,
 ) {
     crate::game::native_hooks::fire::fire_block_entity_update_tag(pos, entity, tag);
@@ -866,19 +868,22 @@ impl HitLevel<'_> {
     /// attacker's side), and the entity is pushed the other way. `source` is the push's
     /// `DamageSource`, named as `native_living_incoming_damage` names a hit's. `attacker` is the
     /// attacking entity's network id, falling back to the victim's last hurt-by mob, or 0 when
-    /// unknown; `attacker_main` and `attacker_off` are what it holds (a player's selected and
-    /// off-hand stacks, a mob's main hand), none when unknown. Change `strength`, `x` or `z`, or
+    /// unknown; `attacker_main`, `attacker_off` and `kill_credit_main` lazily borrow the
+    /// credited stacks as `ItemStackView` (a player's selected and off-hand stacks, a mob's main
+    /// hand; none when unknown, empty or unrepresentable, never skipping the event on component
+    /// projection failure). Change `strength`, `x` or `z`, or
     /// set `canceled`, and the push follows them: canceled, the entity's motion is left alone. A
     /// `strength` of 0 or less after the hook is no push, and a direction too short to tell
     /// draws a random one after it, as in vanilla. A value a mod leaves that is not a finite
     /// number is put back as it was. It fires for the players, mobs and armor stands the game
     /// knocks back: a hit's own push, a sprinting or Knockback hit, a sweep, a spear, a
-    /// shield's push on its holder, a goat's ram and a mob's melee push. It does not fire for a
-    /// sulfur cube with a block that a hit with a causing entity knocks back
-    /// (`SulfurCube.knockback` does not call `super` there), for the pushes vanilla doesn't make
-    /// with `LivingEntity.knockback` (the ender dragon's wings, Punch arrows, explosions, wind
-    /// charges, a mace smash's area, a hoglin's throw), nor for the ones Sunrise makes another
-    /// way (the ender dragon's). The level is the hit's: its blocks, random and own attachments.
+    /// shield's push on its holder, a goat's ram and a mob's melee push. The ender dragon can
+    /// also receive a default knockback when it is not sitting. The event does not fire when
+    /// `SulfurCube.knockback` launches a cube carrying a block and the source has a causing
+    /// entity, because it does not call the living implementation. Pushes that do not use
+    /// `LivingEntity.knockback` also do not fire it: the dragon's wing push, Punch arrows,
+    /// explosions, wind charges, a mace smash's area and a hoglin's throw. The level is the
+    /// hit's: its blocks, random and own attachments.
     pub(in crate::game) fn native_living_knockback(
         &mut self,
         call: mod_api::__private::LivingKnockbackCall<'_>,
@@ -926,19 +931,6 @@ impl GameLevel<'_> {
 /// Helpers for native mods, kept as stable as the hook points.
 // Native mods use these; nothing in Sunrise does.
 impl crate::game::CommonGame<'_> {
-    /// Read a loaded, light-emitting block. No implicit chunk loading.
-    pub fn lit_block_name(&self, pos: [i32; 3]) -> Option<mod_api::BlockKey> {
-        self.world
-            .chunks
-            .contains_key(&(pos[0].div_euclid(16), pos[2].div_euclid(16)))
-            .then(|| {
-                self.res
-                    .facts()
-                    .get(self.world.block(pos[0], pos[1], pos[2]))
-            })
-            .filter(|f| f.emission > 0)
-            .and_then(|f| mod_api::__private::block_key(&f.name))
-    }
     /// The most of the item `item` one slot holds (`Item.getDefaultMaxStackSize`),
     /// or `None` for an unknown item: for a mod's container that fills or
     /// merges stacks itself.
@@ -975,27 +967,6 @@ impl crate::game::CommonGame<'_> {
     /// and servers only, not the instance). Nothing is created.
     pub fn instance_dir(&self) -> PathBuf {
         crate::game::game_dir()
-    }
-    /// A mod's setting `key` (one file per key in `native_data_dir`). A mod's hook or part reads
-    /// only its own mod's: another mod's id gives None.
-    pub fn setting(&self, mod_id: &str, key: &str) -> Option<String> {
-        if crate::game::another_mods(mod_id) {
-            return None;
-        }
-        self.stored_setting(mod_id, key)
-    }
-    pub fn stored_setting(&self, mod_id: &str, key: &str) -> Option<String> {
-        mod_settings::read_raw(&self.native_data_dir(mod_id), mod_id, key)
-    }
-    /// Keeps a mod's setting `key`. A mod's hook or part keeps only its own mod's.
-    pub fn set_setting(&self, mod_id: &str, key: &str, value: &str) {
-        if crate::game::another_mods(mod_id) {
-            return;
-        }
-        self.store_setting(mod_id, key, value);
-    }
-    pub fn store_setting(&self, mod_id: &str, key: &str, value: &str) -> bool {
-        mod_settings::store(&self.native_data_dir(mod_id), mod_id, key, value)
     }
 }
 
@@ -1102,29 +1073,27 @@ pub trait BaseGameExt1<'__sg>: crate::game::SideGame<'__sg> {
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> BaseGameExt1<'__sg> for G {}
 
-pub fn startup_setting(mod_id: &str, key: &str) -> Option<String> {
-    if crate::game::another_mods(mod_id) {
-        return None;
+/// Read scope and world identity for block placement and survival queries.
+pub struct LevelView<'a> {
+    pub(in crate::game) level: &'a dyn super::super::mod_api_host::SidedLevel,
+    pub(in crate::game) world: *const sunrise_level::world::World,
+}
+
+impl<'a> LevelView<'a> {
+    pub(in crate::game) fn new(
+        level: &'a dyn super::super::mod_api_host::SidedLevel,
+        world: &sunrise_level::world::World,
+    ) -> Self {
+        Self { level, world }
     }
-    mod_settings::read_raw(&crate::game::mod_data_root().join(mod_id), mod_id, key)
 }
 
-/// A mod's hook or part is running, and `mod_id` is another mod's.
-pub fn another_mods(mod_id: &str) -> bool {
-    mod_api::content::crash::current_native_mod().is_some_and(|running| running != mod_id)
-}
-
-/// The level a placement or survival question is asked of: the game's level with the
-/// simulation's ticks shared beside it, which a signal read needs (comparator outputs, moving
-/// pistons). The listener's `&dyn LevelHost` is this, so `state_for_placement`, `can_survive`,
-/// `may_place_on` and `can_sustain_plant` can read redstone and shapes; asked from a preview
-/// (a client's guess at a click), it reads over the blocks the preview set. A read goes only
-/// through `Signals`, which asks the signal hooks and never `state_for_placement` or
-/// `can_survive`: a listener cannot re-enter itself through it.
-pub type LevelView<'a> = super::super::mod_api_host::LevelTicks<'a, &'a GameLevel<'a>, &'a Ticks>;
 impl GameLevel<'_> {
     /// This level as a placement or survival question sees it, with the simulation's `ticks`.
-    pub fn view<'a>(&'a self, ticks: &'a Ticks) -> LevelView<'a> {
+    pub fn view<'a>(
+        &'a self,
+        ticks: &'a Ticks,
+    ) -> super::super::mod_api_host::LevelTicks<'a, &'a GameLevel<'a>, &'a Ticks> {
         super::super::mod_api_host::LevelTicks::new(self, ticks)
     }
 }
@@ -1145,6 +1114,15 @@ impl LevelView<'_> {
         may: &mut Option<bool>,
         inert: &mut bool,
     ) {
+        let pos = BlockPos::new(ground_pos.x, ground_pos.y.saturating_add(1), ground_pos.z);
+        let Some(_active) = super::survival_query_guard::enter_part(
+            self.world,
+            pos,
+            state,
+            super::survival_query_guard::PartHook::MayPlaceOn,
+        ) else {
+            return;
+        };
         self.fire_may_place_on(dimension, state, ground, ground_pos, may, inert);
     }
 
@@ -1167,6 +1145,14 @@ impl LevelView<'_> {
         survives: &mut Option<bool>,
         inert: &mut bool,
     ) {
+        let Some(_active) = super::survival_query_guard::enter_part(
+            self.world,
+            pos,
+            state,
+            super::survival_query_guard::PartHook::CanSurvive,
+        ) else {
+            return;
+        };
         self.fire_can_survive(dimension, pos, state, survives, inert);
     }
 

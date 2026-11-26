@@ -3,7 +3,7 @@ use crate::game::toast_manager::SystemToastId;
 use crate::game::toast_manager::Toast;
 use crate::game::toast_manager::ToastManager;
 use crate::game::toast_manager::VisibleToast;
-use sunrise_client::{hud::HudBatch, toasts::SystemToast};
+use sunrise_client::{hud::HudBatch, toasts::{SystemToast, ToastClock}};
 
 impl ClientGame<'_> {
     pub(in crate::game::client_side) fn add_or_update_system_toast(
@@ -26,14 +26,13 @@ impl ClientGame<'_> {
         ) {
             return false;
         }
-        self.client
-            .toast_manager
-            .queued
-            .push_back(Toast::System(id, toast));
+        let clock = ToastClock::of(self.common.clock.still());
+        self.client.toast_manager.post(clock, Toast::System(id, toast));
         true
     }
     /// `ToastManager.extractRenderState`: F1 hides the draw, not the update.
     pub fn draw_every_toast(&mut self, batch: &mut HudBatch) {
+        let clock = ToastClock::of(self.common.clock.still());
         let replay = self.client.replay.playing();
         let hidden = self.client.chat_ui.player_hides_gui || replay;
         let diagnostic_hidden = replay || self.overlay_holds_view();
@@ -42,20 +41,17 @@ impl ClientGame<'_> {
         self.add_hook_panic_toasts();
         self.update_tutorial_toasts();
         let multiplier = self.client.settings.notification_display_time;
-        let (visibility_sound, challenge_sound) = self.client.toast_manager.update(multiplier);
+        let (visibility_sound, challenge_sound) = self.client.toast_manager.update(clock, multiplier);
         if let Some(show) = visibility_sound {
             let event = if show {
                 "minecraft:ui.toast.in"
             } else {
                 "minecraft:ui.toast.out"
             };
-            self.client.audio.0.play(event, None, 1.0, 1.0);
+            self.play_audio(event, None, 1.0, 1.0);
         }
         if challenge_sound {
-            self.client
-                .audio
-                .0
-                .play("minecraft:ui.toast.challenge_complete", None, 1.0, 1.0);
+            self.play_audio("minecraft:ui.toast.challenge_complete", None, 1.0, 1.0);
         }
         let atlas = &self.client.gui.atlas;
         for entry in &self.client.toast_manager.visible {
@@ -78,8 +74,8 @@ impl ClientGame<'_> {
                 _ => {}
             }
         }
-        self.draw_controller_notice(batch);
-        self.draw_music_toast(batch, hidden);
+        self.draw_controller_notice(batch, clock);
+        self.draw_music_toast(batch, hidden, clock);
     }
 }
 
@@ -93,14 +89,16 @@ impl ToastManager {
     /// `ToastManager.update`: finish/update the visible list before offering
     /// vacancies to the queue, in insertion order. Admission cannot sound a
     /// visibility change until the next update of the promoted instance.
-    pub fn update(&mut self, multiplier: f64) -> (Option<bool>, bool) {
+    pub fn update(&mut self, clock: ToastClock, multiplier: f64) -> (Option<bool>, bool) {
         let mut visibility_sound = None;
         self.visible.retain_mut(|entry| {
             let (sound, finished) = match &mut entry.toast {
-                Toast::Advancement(t) => t.update(multiplier),
-                Toast::Tutorial(t) => t.update(),
-                Toast::System(_, t) | Toast::Diagnostic { toast: t, .. } => t.update(multiplier),
-                Toast::Mod(t) => t.request.toast.update(multiplier),
+                Toast::Advancement(t) => t.update(clock, multiplier),
+                Toast::Tutorial(t) => t.update(clock),
+                Toast::System(_, t) | Toast::Diagnostic { toast: t, .. } => {
+                    t.update(clock, multiplier)
+                }
+                Toast::Mod(t) => t.request.toast.update(clock, multiplier),
             };
             visibility_sound = visibility_sound.or(sound);
             !finished
@@ -113,7 +111,8 @@ impl ToastManager {
             .iter()
             .fold(0u32, |used, entry| used | entry.slots);
         let mut challenge_sound = false;
-        if used.count_ones() < SLOT_COUNT as u32 {
+        // A held queue admits nothing: its toasts wait, as they do for a free slot.
+        if !self.held() && used.count_ones() < SLOT_COUNT as u32 {
             for _ in 0..self.queued.len() {
                 let Some(toast) = self.queued.pop_front() else {
                     break;

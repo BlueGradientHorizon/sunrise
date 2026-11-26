@@ -1,8 +1,31 @@
 use crate::game::ClientGame;
+use mod_api::{BlockShapeKind, LevelRef};
+use std::ops::ControlFlow;
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
 use sunrise_gameplay_common::game::native_state_shapes::Outline;
 use sunrise_world::registry::BlockStateId;
 
 impl ClientGame<'_> {
+    pub(in crate::game) fn level_visit_block_shape(
+        &self,
+        level: LevelRef,
+        state: BlockStateId,
+        pos: [i32; 3],
+        kind: BlockShapeKind,
+        visit: &mut dyn FnMut([f64; 6]) -> ControlFlow<()>,
+    ) -> Option<ControlFlow<()>> {
+        (self.native_client_level() == Some(level)).then(|| {
+            self.visit_state_shape(
+                &self.common.world,
+                &self.client.be_anims.shulkers,
+                state,
+                pos,
+                kind,
+                visit,
+            )
+        })
+    }
+
     pub(in crate::game) fn outline_edges_iter(
         &self,
         state: BlockStateId,

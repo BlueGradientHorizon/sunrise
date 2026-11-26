@@ -2,7 +2,8 @@
 //! It keeps keys, and a reload supersedes them.
 use crate::game::server_side::native_entity_refs::tests::with_client_game;
 use mod_api::{
-    BakedModelKey, ClientHost, Hooks, ModEntry, ModelBakingCompletedEvent, ModelError, ModelRef,
+    AtlasSpriteError, BakedModelKey, ClientHost, Hooks, ModEntry, ModelBakingCompletedEvent,
+    ModelError, ModelRef,
 };
 use mod_platform::testing::with_mods;
 use std::sync::{Arc, Mutex};
@@ -191,6 +192,48 @@ fn a_client_mod_reads_a_block_states_baked_models_once_per_load() {
             let stone = host.block_state_id("minecraft:stone").expect("stone");
             let keys = host.render_assets().block_state_models(stone).unwrap();
             assert!(keys.iter().next().is_none());
+        });
+    });
+}
+
+/// `atlas_sprite_pixels` answers a block sprite's frame at its own size: stone's 16 x 16 pixels,
+/// one frame of the animated water strip (not the whole strip), and `NoSuchSprite` for a layer no
+/// atlas holds.
+#[test]
+#[ignore = "daily"]
+fn a_client_mod_reads_atlas_sprite_pixels() {
+    let mods = vec![ModEntry::new(
+        "reader",
+        Box::new(Reader(Default::default())),
+    )]
+    .into();
+    with_mods(mods, || {
+        with_client_game(|game| {
+            game.publish_initial_client_models(vec![
+                sunrise_client_gameplay::game::client_side::client_reload::PreparedClientReload::Vanilla(()),
+            ])
+            .unwrap();
+            let host: &dyn ClientHost = game;
+            let assets = host.render_assets();
+            let sprites =
+                host.texture_sprites(&["minecraft:block/stone", "minecraft:block/water_still"]);
+            let [Some(stone), Some(water)] = sprites[..] else {
+                panic!("stone and water are in the blocks atlas: {sprites:?}");
+            };
+            let read = assets.atlas_sprite_pixels(stone).unwrap();
+            assert_eq!((read.width, read.height), (16, 16));
+            assert_eq!(read.rgba.len(), 16 * 16 * 4);
+            assert!(read.rgba.chunks(4).all(|p| p[3] == 255), "stone is opaque");
+            let read = assets.atlas_sprite_pixels(water).unwrap();
+            assert!(water.animated);
+            assert_eq!((read.width, read.height), (16, 16));
+            assert_eq!(read.rgba.len(), 16 * 16 * 4);
+            let mut past = stone;
+            past.array = u32::MAX;
+            assert_eq!(
+                assets.atlas_sprite_pixels(past),
+                Err(AtlasSpriteError::NoSuchSprite)
+            );
         });
     });
 }

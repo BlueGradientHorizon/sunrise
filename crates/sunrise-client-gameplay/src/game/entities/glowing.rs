@@ -63,10 +63,17 @@ impl crate::game::ClientGame<'_> {
         self.client
             .glowing_vertices
             .borrow_mut()
-            .extend(vertices.iter().map(|v| Vertex {
-                color,
-                normal: [0; 4],
-                ..*v
-            }));
+            .extend(
+                vertices
+                    .iter()
+                    .filter(|v| {
+                        v.layer & 0xffff != sunrise_client_render::gfx::ARMOR_GLINT_ONLY_OVERLAY
+                    })
+                    .map(|v| Vertex {
+                        color,
+                        normal: [0; 4],
+                        ..*v
+                    }),
+            );
     }
 }

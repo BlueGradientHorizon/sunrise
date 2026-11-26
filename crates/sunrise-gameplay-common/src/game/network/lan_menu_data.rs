@@ -29,11 +29,10 @@ pub struct GuestMenuEffects {
 
 pub struct FurnaceMenuEffects {
     pub uuid: u128,
-    pub entity_id: i32,
     pub pos: (i32, i32, i32),
     pub at: [f64; 3],
-    pub smelted: Vec<(Option<ItemStack>, u32)>,
-    pub extracted: Option<(ItemStack, u32)>,
+    pub award_recipes: bool,
+    pub smelted: Vec<(ItemStack, u32)>,
 }
 
 impl GuestMenuEffects {
@@ -66,10 +65,20 @@ pub struct MenuClickReply {
     pub reply: ClickReply,
 }
 
+impl MenuClickReply {
+    pub fn closes_menu(&self) -> bool {
+        matches!(
+            self.reply,
+            ClickReply::Close(_) | ClickReply::ClientClose(_)
+        )
+    }
+}
+
 pub enum ClickReply {
     Predicted(sunrise_protocol::packets::play::ContainerClick, Vec<usize>),
     Resend(i32),
     Close(i32),
+    ClientClose(i32),
     Inventory,
     Offhand,
 }
@@ -158,7 +167,6 @@ pub enum Effect {
     Orb([f64; 3], u32),
     Drops(u32, Vec<sunrise_items::items::ItemStack>),
     Reward(u128, Advancement),
-    Notice(u128, String, u32),
 }
 
 impl Journal {

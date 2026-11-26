@@ -35,10 +35,8 @@ impl crate::game::CommonGame<'_> {
             .map(|(i, m)| (i, m.bounds()))
             .collect()
     }
-    /// `LivingEntity.onKineticHit` for `entity`: the hit feels (the spear
-    /// moves back, `kinetic_hit_ticks`) and sounds, at most once every ten
-    /// ticks.
-    pub fn kinetic_hit_feedback(&mut self, entity: i32, _kinetic: &Kinetic, _at: [f64; 3]) {
+    /// Record `LivingEntity.onKineticHit` if the feedback cooldown has elapsed.
+    pub fn kinetic_hit_feedback(&mut self, entity: i32) -> bool {
         let now = self.world.game_time;
         if self
             .kinetic_feedback
@@ -46,7 +44,9 @@ impl crate::game::CommonGame<'_> {
             .is_none_or(|&t| now - t > HIT_FEEDBACK_TICKS)
         {
             self.kinetic_feedback.insert(entity, now);
+            return true;
         }
+        false
     }
 }
 

@@ -1428,6 +1428,23 @@ impl crate::game::ClientGame<'_> {
         if self.client.pad.0.menu.held[0] || self.client.pad.0.menu.armed.is_some() {
             return;
         }
+        // A settings screen whose page list scrolls: every page in list order, those out of view
+        // too, which have no tab on the screen.
+        if self.client.screen == Screen::Options {
+            let size = self.gui_size();
+            if let Some(rect) =
+                self.client.chat_ui.options.step_page(&self.client.settings, size, next)
+            {
+                self.play_audio_button_click();
+                if self.pad_focus_mode() {
+                    self.client.pad.0.menu.focus = Some(Target {
+                        rect,
+                        kind: Kind::Tab(true),
+                    });
+                }
+                return;
+            }
+        }
         let tabs: Vec<(Rect, bool)> = self
             .pad_targets()
             .into_iter()
@@ -2486,16 +2503,29 @@ impl crate::game::ClientGame<'_> {
         }
         let inventory = self.observed_overlay_now().is_none()
             && matches!(self.client.screen, Screen::Inventory | Screen::Creative);
-        let pause_removed: Vec<[f32; 4]> =
-            if self.observed_overlay_now().is_none() && self.client.screen == Screen::Paused {
-                self.pause_init_children()
+        // The built-in children a mod removed at `ScreenEvent.Init.Post`: last frame may still
+        // have drawn them, and a replacement at their bounds takes their presses.
+        let removed: Vec<[f32; 4]> = match self.client.title.0.as_ref() {
+            _ if self.observed_overlay_now().is_some() => Vec::new(),
+            _ if self.client.screen == Screen::Paused => self
+                .pause_init_children()
+                .into_iter()
+                .filter(|(action, _, _)| self.pause_child_removed(*action))
+                .map(|(_, rect, _)| rect)
+                .collect(),
+            Some(title)
+                if self.client.screen == Screen::Playing && title.has_removed_children() =>
+            {
+                let [w, h] = self.gui_frame_now().1.size.map(|axis| axis as f32);
+                title
+                    .init_children(&self.client.gui.atlas, w, h)
                     .into_iter()
-                    .filter(|(action, _, _)| self.pause_child_removed(*action))
+                    .filter(|(id, _, _)| title.child_removed(*id))
                     .map(|(_, rect, _)| rect)
                     .collect()
-            } else {
-                Vec::new()
-            };
+            }
+            _ => Vec::new(),
+        };
         let (cx, cy) = self.client.cursor;
         key_focus::keyboard_targets(key_focus::drawn_targets(), inventory)
             .into_iter()
@@ -2505,7 +2535,7 @@ impl crate::game::ClientGame<'_> {
                     && cy >= y
                     && cx < x + w
                     && cy < y + h
-                    && !pause_removed
+                    && !removed
                         .iter()
                         .any(|r| r.iter().zip(t.rect).all(|(a, b)| (a - b).abs() < 0.5))
             })

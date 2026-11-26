@@ -15,13 +15,13 @@ pub trait Hooks {
     /// failure; parent folders are created. HDR copies follow the final name
     /// with `-hdr.png`. Agent captures and world icons do not fire this hook.
     #[hook(
-        target = "sunrise_client_gameplay::game::native_hooks::screenshot::ClientGame<'_>::native_screenshot",
         dispatch = "flat",
         side = "client",
         contract = "cancel",
         out = "cancel",
         neoforge = "ScreenshotEvent",
-        cancellable = true
+        cancellable = true,
+        version = 2
     )]
     fn screenshot(
         image: &mut ScreenshotImage,

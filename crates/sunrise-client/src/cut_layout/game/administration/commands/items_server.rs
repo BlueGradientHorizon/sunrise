@@ -128,13 +128,12 @@ pub(crate) mod registered_slot_source_read_tests {
     #[test]
     #[ignore = "daily"]
     fn registered_first_three_reads_match_inline_and_keep_the_chest() {
+        let directory = tempfile::tempdir().unwrap();
         let mut resources = None;
         let mut game = sunrise_gameplay::game::game_tests::tests::server_game(&mut resources);
         game.build_registries();
         game.set_allow_commands(true);
-        let root = std::env::current_dir()
-            .unwrap()
-            .join("registered-slot-read-world");
+        let root = directory.path().join("registered-slot-read-world");
         assert!(!root.exists());
         let pack = root.join("datapacks/parity");
         std::fs::create_dir_all(pack.join("data/parity/slot_source")).unwrap();
@@ -235,7 +234,11 @@ pub(crate) mod registered_slot_source_preservation_tests {
     #[ignore = "daily"]
     fn a_command_the_player_types_binds_this_to_them() {
         let mut resources = None;
-        let (mut game, _) = scene(&mut resources, "slot-source-player-this-world");
+        let directory = tempfile::tempdir().unwrap();
+        let (mut game, _) = scene(
+            &mut resources,
+            directory.path().join("slot-source-player-this-world"),
+        );
         game.player = Some(
             sunrise_sim::motion::PlayerMotion::new(
                 game.motion,
@@ -255,7 +258,11 @@ pub(crate) mod registered_slot_source_preservation_tests {
     #[ignore = "daily"]
     fn admitted_absent_executor_sources_fail_without_player_fallback() {
         let mut resources = None;
-        let (mut game, _) = scene(&mut resources, "slot-source-unsupported-world");
+        let directory = tempfile::tempdir().unwrap();
+        let (mut game, _) = scene(
+            &mut resources,
+            directory.path().join("slot-source-unsupported-world"),
+        );
         let path = game
             .server
             .world_root
@@ -308,12 +315,11 @@ pub(crate) mod registered_slot_source_preservation_tests {
 
     pub(crate) fn scene<'a>(
         resources: &'a mut Option<std::sync::Arc<sunrise_gameplay_common::game::Resources>>,
-        name: &str,
+        root: std::path::PathBuf,
     ) -> (sunrise_gameplay::game::ServerGame<'a>, std::path::PathBuf) {
         let mut game = sunrise_gameplay::game::game_tests::tests::server_game(resources);
         game.build_registries();
         game.set_allow_commands(true);
-        let root = std::env::current_dir().unwrap().join(name);
         assert!(!root.exists());
         let mut high = std::path::PathBuf::new();
         for (pack, limit) in [("a-low", 1), ("parity", 3)] {

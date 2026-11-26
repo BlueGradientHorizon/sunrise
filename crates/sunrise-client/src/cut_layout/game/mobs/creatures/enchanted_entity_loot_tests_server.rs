@@ -90,6 +90,7 @@ fn a_kills_loot_uses_the_level_a_mod_answers() {
                 kind: DamageKind::PlayerAttack,
                 attacker: Some(Who::Player),
                 from: Some([0.0; 3]),
+                direct: None,
                 attacker_species: None,
             };
             let mut victim = zombie(game, by_player);
@@ -173,7 +174,7 @@ fn loot_kill_asks_with_a_non_living_source_and_with_none() {
             game.server.command_source = Some(
                 sunrise_gameplay::game::server_side::commands::execute::Source {
                     entity: None,
-                    ..source
+                    ..source.clone()
                 },
             );
             assert!(game.run_command(kill));
@@ -290,6 +291,7 @@ fn the_hosts_kill_hands_the_host_as_the_attacker() {
                 kind: DamageKind::PlayerAttack,
                 attacker: Some(Who::Player),
                 from: Some([0.0; 3]),
+                direct: None,
                 attacker_species: None,
             };
             let mut victim = zombie(game, by_player);

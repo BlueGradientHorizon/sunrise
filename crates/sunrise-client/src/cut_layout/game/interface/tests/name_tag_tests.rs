@@ -307,7 +307,12 @@ fn a_trades_title_draws_the_names_style() {
     let mut resources = None;
     let mut game = client_game(&mut resources);
     // This test draws the merchant screen; load full UI resources for glyph metrics.
-    game.client.gui = UiResources::load(&game.pack.source, &game.options.resources).unwrap();
+    game.client.gui = UiResources::load_with_limit(
+        &game.pack.source,
+        &game.options.resources,
+        sunrise_level::pack_image::MAX_ATLAS_SIZE,
+    )
+    .unwrap();
     // `MerchantScreen.extractLabels` draws the menu's title, the merchant's
     // `getDisplayName()`: a name with a colour keeps it, instead of coming out
     // in the screen's grey (-12566464).

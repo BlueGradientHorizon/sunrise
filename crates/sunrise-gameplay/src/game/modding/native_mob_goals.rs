@@ -210,6 +210,7 @@ impl crate::game::ServerGame<'_> {
                 Some(&self.common.pack.block_registries),
                 &self.common.damage_hooks,
             )
+            .with_variants(world_variants!(self))
             .with_mob_uuids(&self.common.persist.uuids)
             .with_reads(crate::game::server_side::entity_server::hit_reads_of!(self));
             let m = &mut mobs[index];

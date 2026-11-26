@@ -26,8 +26,15 @@ fn cat() -> Option<Mob> {
 
 /// A hub with no players and empty registries, for `mob_meta`.
 pub(super) fn meta_hub() -> sunrise_sim::lan::hub::Hub {
-    use sunrise_sim::lan::{Lan, NetConfig, chunks::ChunkEncoder, data, hub};
-    let sync = std::sync::Arc::new(data::SyncData::empty());
+    meta_hub_with(sunrise_sim::lan::data::SyncData::empty())
+}
+
+/// A hub with no players that syncs `sync`'s registries, for `mob_meta`.
+pub(super) fn meta_hub_with(
+    sync: sunrise_sim::lan::data::SyncData,
+) -> sunrise_sim::lan::hub::Hub {
+    use sunrise_sim::lan::{Lan, NetConfig, chunks::ChunkEncoder, hub};
+    let sync = std::sync::Arc::new(sync);
     let config = NetConfig {
         announce: false,
         listen: false,

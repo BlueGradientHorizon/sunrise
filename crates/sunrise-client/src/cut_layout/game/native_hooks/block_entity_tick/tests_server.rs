@@ -75,8 +75,7 @@ fn replacement_and_item_stack_journals_close_in_their_own_dimensions() {
                 .with_stack(host, |s| s.project())
                 .flatten()
                 .unwrap()
-                .shrink(1)
-                .unwrap();
+                .shrink(1);
             assert_eq!(item.set_stack(host, stack), Ok(true));
             assert_eq!(
                 level.set_block(host, pos, state, BlockUpdateFlags::KNOWN_SHAPE),

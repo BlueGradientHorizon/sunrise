@@ -63,6 +63,10 @@ impl ClientGame<'_> {
     pub(in crate::game) fn jumpable_vehicle(&self) -> Option<mod_api::EntityRef> {
         self.entity(self.jumpable_mount()?)
     }
+    /// The local player's jump bar charge.
+    pub(in crate::game) fn jump_riding_scale(&self) -> f32 {
+        self.common.mount.jump_scale
+    }
     /// `ClientWaypointManager.hasWaypoints`: what `contextual_bar` reads for the locator bar.
     pub(in crate::game) fn has_waypoints(&self) -> bool {
         self.client.waypoints.has_waypoints()

@@ -48,3 +48,14 @@ impl crate::game::CommonGame<'_> {
         }
     }
 }
+
+/// The sherds (item ids: back, left, right, front) in the saved tag of a decorated pot.
+pub fn pot_sherds(saved: Option<&Tag>) -> [Option<String>; 4] {
+    let sherds = saved.and_then(|t| t.get("sherds"));
+    ["back", "left", "right", "front"].map(|side| match sherds.and_then(|s| s.get(side)) {
+        // An item id, or the item stack the processed templates hold.
+        Some(Tag::String(id)) => Some(id.to_string_lossy()),
+        Some(stack) => sunrise_sim::save::item_from_nbt(stack).map(|s| s.item.to_string()),
+        None => None,
+    })
+}

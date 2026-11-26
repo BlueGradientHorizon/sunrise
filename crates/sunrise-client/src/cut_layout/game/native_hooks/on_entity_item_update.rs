@@ -63,7 +63,7 @@ pub(crate) mod on_entity_item_update_tests {
         }
     }
 
-    pub(crate) struct Mod(pub(crate) Vec<Update>, pub(crate) bool);
+    pub(crate) struct Mod(pub(crate) Vec<Update>);
 
     thread_local! { pub(in crate::game) static ORDER: std::cell::RefCell<Vec<(u32, &'static str)>> = const { std::cell::RefCell::new(Vec::new()) }; }
 
@@ -77,31 +77,22 @@ pub(crate) mod on_entity_item_update_tests {
 
     #[mod_api::__subscriptions]
     impl Hooks for Mod {
-        fn entity_tick_listened(
-            &self,
-            _: mod_api::HostSide<'_>,
-            event: &mut mod_api::EntityTickListenedEvent,
-        ) {
-            event.listened = true;
-        }
         fn entity_tick_pre(
             &self,
             _: mod_api::HostSide<'_>,
             event: &mut mod_api::EntityTickPreEvent<'_>,
-        ) {
-            told(event.entities, "pre");
+        ) -> mod_api::Flow {
+            told(std::slice::from_ref(&event.entity), "pre");
+            mod_api::Flow::Continue
         }
         fn entity_tick_post(
             &self,
             _: mod_api::HostSide<'_>,
             event: &mut mod_api::EntityTickPostEvent<'_>,
         ) {
-            told(event.entities, "post");
+            told(std::slice::from_ref(&event.entity), "post");
         }
         fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
-            if self.1 {
-                r.entity_tick_each("minecraft:item");
-            }
             for part in &self.0 {
                 let key = r.item_key(part.item);
                 r.item_part(key, part.clone());
@@ -113,7 +104,7 @@ pub(crate) mod on_entity_item_update_tests {
     pub(crate) fn floor(game: &mut sunrise_gameplay::game::ServerGame<'_>) {
         game.options.dedicated = Some(Vec::new());
         game.native_lifecycle
-            .begin_open(mod_api::Authority::IntegratedServer);
+            .begin_open(Some(mod_api::Authority::IntegratedServer));
         game.world = sunrise_level::world::World::new(game.res.facts().air, 1);
         game.world
             .chunks
@@ -152,20 +143,11 @@ pub(crate) use sunrise_gameplay::game::server_side::native_hooks_server::on_enti
     fn a_canceling_part_holds_its_own_item_and_nothing_else() {
         sunrise_gameplay_common::game::in_own_process(
             "game::native_hooks::on_entity_item_update::on_entity_item_update_tests::a_canceling_part_holds_its_own_item_and_nothing_else",
-            || a_canceling_part_holds_its_own_item_and_nothing_else_isolated(false),
+            a_canceling_part_holds_its_own_item_and_nothing_else_isolated,
         );
     }
 
-    #[test]
-    #[ignore = "daily"]
-    fn a_named_item_still_hears_post_when_its_part_halts_physics() {
-        sunrise_gameplay_common::game::in_own_process(
-            "game::native_hooks::on_entity_item_update::on_entity_item_update_tests::a_named_item_still_hears_post_when_its_part_halts_physics",
-            || a_canceling_part_holds_its_own_item_and_nothing_else_isolated(true),
-        );
-    }
-
-    pub(crate) fn a_canceling_part_holds_its_own_item_and_nothing_else_isolated(named: bool) {
+    pub(crate) fn a_canceling_part_holds_its_own_item_and_nothing_else_isolated() {
         let iron = Update {
             item: "minecraft:iron_ingot",
             cancels: true,
@@ -182,27 +164,24 @@ pub(crate) use sunrise_gameplay::game::server_side::native_hooks_server::on_enti
         };
         let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
             "item_update",
-            Box::new(Mod(
-                vec![
-                    iron.clone(),
-                    gold.clone(),
-                    Update {
-                        item: "minecraft:emerald",
-                        cancels: false,
-                        remove: true,
-                        mixed: false,
-                        heard: Default::default(),
-                    },
-                    Update {
-                        item: "minecraft:copper_ingot",
-                        cancels: true,
-                        remove: false,
-                        mixed: true,
-                        heard: Default::default(),
-                    },
-                ],
-                named,
-            )),
+            Box::new(Mod(vec![
+                iron.clone(),
+                gold.clone(),
+                Update {
+                    item: "minecraft:emerald",
+                    cancels: false,
+                    remove: true,
+                    mixed: false,
+                    heard: Default::default(),
+                },
+                Update {
+                    item: "minecraft:copper_ingot",
+                    cancels: true,
+                    remove: false,
+                    mixed: true,
+                    heard: Default::default(),
+                },
+            ])),
         )]
         .into();
         mod_platform::testing::with_mods(mods.clone(), || {
@@ -327,14 +306,17 @@ pub(crate) use sunrise_gameplay::game::server_side::native_hooks_server::on_enti
                         );
                         let result = scope.transaction(|scope, _| {
                             assert_eq!(
-                                scope.with_view(|mut view| view.set_stack(earlier.clone())),
+                                scope.with_view(|mut view| view.set_stack(Some(earlier.clone()))),
                                 Some(Ok(true))
                             );
                             scope
                                 .transaction(|scope, _| {
                                     scope
                                         .with_view(|mut view| {
-                                            assert_eq!(view.set_stack(later.clone()), Ok(true));
+                                            assert_eq!(
+                                                view.set_stack(Some(later.clone())),
+                                                Ok(true)
+                                            );
                                             assert!(view.set_pickup_delay(7));
                                             assert!(view.set_target(Some(8)));
                                             assert!(view.set_velocity([9.0; 3]));
@@ -352,7 +334,7 @@ pub(crate) use sunrise_gameplay::game::server_side::native_hooks_server::on_enti
                                         })
                                         .unwrap();
                                     assert_eq!(
-                                        peer.set_stack(scope.host(), peer_stack.clone()),
+                                        peer.set_stack(scope.host(), Some(peer_stack.clone())),
                                         Ok(true)
                                     );
                                     Ok::<_, ()>(())

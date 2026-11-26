@@ -20,6 +20,7 @@ pub mod tests {
         causing: 0,
         direct: 0,
         position: None,
+        direct_type: None,
     });
     pub fn dragon(phase: Phase) -> Dragon {
         let mut d = Dragon::new(Vec3::new(0.0, 70.0, 0.0), 0.0, 1);

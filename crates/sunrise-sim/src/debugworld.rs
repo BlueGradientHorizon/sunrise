@@ -81,7 +81,12 @@ impl ChunkGenerator for DebugTerrain {
     }
     /// `DebugLevelSource.buildTerrain` builds nothing; `applyBiomeDecoration`
     /// writes the barriers and the grid.
-    fn proto(&self, _: &mut (), cx: i32, cz: i32) -> sunrise_level::chunk_streamer::Proto {
+    fn proto(
+        &self,
+        _: &mut (),
+        cx: i32,
+        cz: i32,
+    ) -> std::result::Result<sunrise_level::chunk_streamer::Proto, String> {
         let mut chunk = Chunk::with_layout(cx, cz, self.shape.column());
         for s in &mut chunk.sections {
             std::sync::Arc::make_mut(s).biomes = sunrise_core::paletted::PalettedContainer::new(
@@ -101,7 +106,7 @@ impl ChunkGenerator for DebugTerrain {
         for s in &mut chunk.sections {
             std::sync::Arc::make_mut(s).compact();
         }
-        Box::new(chunk)
+        Ok(Box::new(chunk))
     }
     /// `spawnOriginalMobs` is empty.
     fn finish(&self, proto: sunrise_level::chunk_streamer::Proto) -> Chunk {

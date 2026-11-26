@@ -11,11 +11,9 @@ import sys
 import tempfile
 import uuid
 
-try:
-    from . import harness_args, test_command_exec_parity as driver
-except ImportError:
-    import harness_args
-    import test_command_exec_parity as driver
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+from tools import harness_args, test_command_exec_parity as driver
 
 MINECRAFT_VERSION = '26.3'
 TEST = 'game::server_side::fangs::current_tests::fangs_in_a_current_are_pushed_and_fangs_in_still_water_are_not'

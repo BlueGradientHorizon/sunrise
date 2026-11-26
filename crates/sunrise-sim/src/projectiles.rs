@@ -256,7 +256,7 @@ impl ProjectileKind {
         matches!(self, Self::SmallFireball | Self::LargeFireball { .. })
     }
     /// `ThrowableItemProjectile.getDefaultItem` for throwable kinds, else `None`.
-    pub fn default_thrown_item(&self) -> Option<&'static str> {
+    pub(crate) fn default_thrown_item(&self) -> Option<&'static str> {
         match self {
             Self::Snowball => Some("minecraft:snowball"),
             Self::Egg => Some("minecraft:egg"),
@@ -392,20 +392,16 @@ pub struct Projectile {
     /// Non-arrow Projectile.hasBeenShot, independent of entity age.
     pub has_been_shot: bool,
     shoot_event: Option<Vec3>,
-    /// A shulker bullet lava hurt this tick (`ShulkerBullet.hurtServer` from
-    /// `Entity.lavaHurt`): gone, its hurt and burn left for the game to play.
-    lava_hurt: bool,
-    /// A shulker bullet hurt this tick (`(position, is_lava)`), from base `onFire`,
-    /// `lavaHurt`, or swept fire/lava contact.
+    /// `ShulkerBullet.destroy` ran in its base tick or block effects (`hurtServer`
+    /// from fire or lava): it is discarded before its hit, which never lands.
+    pub destroyed: bool,
+    /// A shulker bullet hurt in its pre-move `Entity.baseTick` (`(position, is_lava)`),
+    /// from `onFire` or `lavaHurt`; left for the game to play and discard.
     bullet_hurt: Option<(Vec3, bool)>,
-    /// Lava's `lavaHurt` reached `Projectile.hurtServer` this tick, which marks
-    /// the projectile hurt unless it is invulnerable to lava: the game decides
-    /// (`Game::lava_mark_hurt`).
-    lava_marked: bool,
     /// The shooter's bow enchantments (Power, Punch, Flame, Piercing).
     pub bonus: crate::mobs::gear::ArrowBonus,
     /// Arrows' `AbstractArrow` state (ticked by `arrows::tick`).
-    pub arrow: Option<Box<crate::arrows::ArrowState>>,
+    pub arrow: Option<Box<crate::entities::arrows::ArrowState>>,
     /// `AbstractHurtingProjectile.accelerationPower`.
     pub acceleration: f64,
     /// `Entity.onGround` and retained support. Flight sets position directly;
@@ -454,9 +450,9 @@ pub struct Projectile {
     pub item: Option<crate::items::ItemStack>,
     /// `ThrowableItemProjectile.DATA_ITEM_STACK` for non-potion throwables (count 1).
     pub thrown_item: Option<Box<crate::items::ItemStack>>,
-    /// `ThrownEgg`'s item `CHICKEN_VARIANT` component, as the chicken variant
-    /// index its hatchlings get; None when no item was recorded.
-    pub egg_variant: Option<u8>,
+    /// `ThrownEgg`'s item `CHICKEN_VARIANT` component, as the canonical
+    /// `minecraft:chicken_variant` registry entry id (`None` when removed or not an egg).
+    pub egg_variant: Option<String>,
     /// The UUID its own random made (`Mth.createInsecureUUID`), for the server
     /// to keep unless a save gives one: an arrow's at construction, another
     /// kind's when it is shot (`shoot_own`), which is the same stream since
@@ -468,7 +464,7 @@ pub struct Projectile {
 }
 /// A new projectile's own random (`Entity.random`) and the UUID its first two
 /// draws make (`Mth.createInsecureUUID`).
-pub fn new_own_random() -> (sunrise_core::random::LegacyRandom, [i32; 4]) {
+pub(crate) fn new_own_random() -> (sunrise_core::random::LegacyRandom, [i32; 4]) {
     let mut random = crate::random_source::entity();
     let uuid = crate::save::insecure_uuid(&mut random);
     (random, uuid)
@@ -659,17 +655,6 @@ pub trait ProjectileWorld {
     fn can_stand_on(&self, _p: [i32; 3], _entity_y: f64) -> bool {
         false
     }
-    /// The block at `p` is a `BaseFireBlock` (fire, soul fire) whose
-    /// `entityInside` ignites an entity in it for 160 ticks
-    /// (`BaseFireBlock.fireIgnite`).
-    fn ignites(&self, _p: [i32; 3]) -> bool {
-        false
-    }
-    /// `FluidState.getHeight` of the lava at `p`, the box `collidedWithFluid`
-    /// sweeps against; None where there is no lava.
-    fn lava_height(&self, _p: BlockPos) -> Option<f64> {
-        None
-    }
     /// `BubbleColumnBlock.entityInside`'s view of the block at `p`: a bubble
     /// column's `drag`, and whether nothing is above it (its surface, where
     /// it throws harder); None for any other block.
@@ -752,7 +737,7 @@ impl crate::entity_rules::EntityRules for Projectile {
 }
 /// `AbstractHurtingProjectile.applyInertia` / `ThrowableProjectile.applyInertia`:
 /// four bubble particles at `position - movement * 0.25`, moving with `movement`.
-pub fn water_bubble_at(position: [f64; 3], movement: [f64; 3]) -> ([f64; 3], [f64; 3]) {
+pub(crate) fn water_bubble_at(position: [f64; 3], movement: [f64; 3]) -> ([f64; 3], [f64; 3]) {
     (
         [
             position[0] - movement[0] * 0.25,
@@ -762,34 +747,44 @@ pub fn water_bubble_at(position: [f64; 3], movement: [f64; 3]) -> ([f64; 3], [f6
         movement,
     )
 }
-/// The chicken variant a thrown egg stack carries: its explicit
+/// The chicken variant id a thrown egg stack carries: its explicit
 /// `minecraft:chicken/variant` component, else its item's default (egg
 /// temperate, blue egg cold, brown egg warm). An explicit removal
-/// (`!minecraft:chicken/variant`) leaves the hatchling its temperate default.
-pub fn egg_chicken_variant(stack: &crate::items::ItemStack) -> u8 {
-    let named = stack
+/// (`!minecraft:chicken/variant`) returns `None`, leaving the hatchling its
+/// default variant.
+pub fn egg_chicken_variant(stack: &crate::items::ItemStack) -> Option<String> {
+    if let Some(raw) = stack
         .extra
         .as_ref()
         .and_then(|d| d.other("minecraft:chicken/variant"))
         .and_then(|t| match t {
             sunrise_core::nbt::Tag::String(s) => s.to_string().ok(),
             _ => None,
-        });
+        })
+        .and_then(|raw| {
+            sunrise_core::identifier::Identifier::parse(&raw)
+                .ok()
+                .map(|id| id.as_str().to_owned())
+        })
+    {
+        return Some(raw);
+    }
     // A removed component resolves to absent, not to the item default.
-    let removed = stack
+    if stack
         .extra
         .as_ref()
-        .is_some_and(|d| d.other("!minecraft:chicken/variant").is_some());
-    let name = named.as_deref().unwrap_or(if removed {
-        "temperate"
-    } else {
+        .is_some_and(|d| d.other("!minecraft:chicken/variant").is_some())
+    {
+        return None;
+    }
+    Some(
         match &*stack.item {
-            "minecraft:blue_egg" => "cold",
-            "minecraft:brown_egg" => "warm",
-            _ => "temperate",
+            "minecraft:blue_egg" => "minecraft:cold",
+            "minecraft:brown_egg" => "minecraft:warm",
+            _ => "minecraft:temperate",
         }
-    });
-    crate::mobs::finalize::variant_index(crate::mobs::Species::Chicken, name)
+        .to_owned(),
+    )
 }
 impl Projectile {
     /// `Entity.getBoundingBox`: its type's square box standing on its position,
@@ -814,7 +809,7 @@ impl Projectile {
         crate::pose::SizeAnswer::sized_box(self.size_answer, self.kind.dimensions(), p, vanilla)
     }
     /// The collision target of the owner, independent of living damage credit.
-    pub fn collision_owner(&self) -> Option<Who> {
+    pub(crate) fn collision_owner(&self) -> Option<Who> {
         self.owner_vehicle.map(Who::Mob).or(self.owner)
     }
     pub fn new(kind: ProjectileKind, position: Vec3, owner: Option<Who>) -> Self {
@@ -865,9 +860,8 @@ impl Projectile {
             last_deflected_by: None,
             has_been_shot: false,
             shoot_event: None,
-            lava_hurt: false,
+            destroyed: false,
             bullet_hurt: None,
-            lava_marked: false,
             bonus: Default::default(),
             acceleration,
             ground: Default::default(),
@@ -887,7 +881,7 @@ impl Projectile {
             fall_distance: 0.0,
             synced_fire: false,
             item,
-            arrow: kind_is_arrow.then(|| Box::new(crate::arrows::ArrowState::new())),
+            arrow: kind_is_arrow.then(|| Box::new(crate::entities::arrows::ArrowState::new())),
             uuid: Some(uuid),
         }
     }
@@ -900,7 +894,7 @@ impl Projectile {
         &mut self.random.0
     }
     /// `AbstractHurtingProjectile`: the kinds with an acceleration power.
-    pub fn is_hurting(&self) -> bool {
+    pub(crate) fn is_hurting(&self) -> bool {
         matches!(
             self.kind,
             ProjectileKind::LargeFireball { .. }
@@ -971,7 +965,7 @@ impl Projectile {
     /// The shooter's bow enchantments; Piercing sets its pierce level. Flame's
     /// `projectile_spawned` ignite runs once the arrow is in the level
     /// (`Projectile.applyOnProjectileSpawned`).
-    pub fn set_bonus(&mut self, bonus: crate::mobs::gear::ArrowBonus) {
+    pub(crate) fn set_bonus(&mut self, bonus: crate::mobs::gear::ArrowBonus) {
         if let Some(a) = self.arrow.as_mut() {
             a.pierce = bonus.pierce.min(127) as u8;
         }
@@ -987,7 +981,8 @@ impl Projectile {
         }
     }
     /// `AbstractArrow.tick`: critical streaks and submerged bubble trails.
-    pub fn arrow_trail(
+    #[cfg(test)]
+    pub(crate) fn arrow_trail(
         &self,
         water: bool,
     ) -> Vec<(
@@ -1070,137 +1065,72 @@ impl Projectile {
             None => self.ignite_for_ticks((seconds * 20.0).floor() as i32),
         }
     }
-    /// `Entity.baseTick` counts down active fire after block effects. The two
-    /// item fireballs then renew their own flame in `AbstractHurtingProjectile.tick`.
-    fn fire_tick(&mut self, w: &impl ProjectileWorld, client_side: bool, from: Vec3) {
-        if !(self.is_thrown()
-            || self.kind == ProjectileKind::ExperienceBottle
-            || self.is_fireball()
-            || matches!(
+    /// `Entity.isOnFire` as the server counts it: no projectile is
+    /// `fireImmune`, and `WitherSkull.isOnFire` and `ShulkerBullet.isOnFire`
+    /// are always false.
+    pub fn burning(&self) -> bool {
+        self.fire_ticks > 0
+            && !matches!(
                 self.kind,
-                ProjectileKind::WindCharge | ProjectileKind::BreezeWindCharge
-            ))
-        {
-            return;
-        }
-        let previous_fire_ticks = self.fire_ticks;
-        if self.in_fire(w) {
-            // BaseFireBlock.fireIgnite: a non-player counts up to zero before
-            // it can catch fire again.
-            if self.fire_ticks < 0 {
-                self.fire_ticks += 1;
-            }
-            if self.fire_ticks >= 0 {
-                self.ignite_for_ticks(160);
-            }
-        }
-        // LavaFluid.entityInside: Entity.lavaIgnite (none of these is fireImmune),
-        // then lavaHurt. Its hurtServer harms no projectile: `Projectile.hurtServer`
-        // marks a thrown one hurt (`markHurt`), `AbstractHurtingProjectile`'s
-        // (fireballs, skulls, wind charges) does nothing. Llama spit takes no
-        // block effects.
-        if self.kind != ProjectileKind::LlamaSpit && self.in_lava(w, from) {
-            self.ignite_for_ticks(300);
-            self.lava_marked =
-                !client_side && (self.is_thrown() || self.kind == ProjectileKind::ExperienceBottle);
-        }
-        if w.in_water(self.bounds()) {
+                ProjectileKind::WitherSkull { .. } | ProjectileKind::ShulkerBullet { .. }
+            )
+    }
+    /// `Entity.baseTick`'s fire: a client clears it (its flame is the synced
+    /// flag), the server counts it down and syncs its flag.
+    fn base_fire_tick(&mut self, client_side: bool) {
+        if client_side {
             self.clear_fire();
-        }
-        let sync_fire = !client_side && self.kind != ProjectileKind::LlamaSpit;
-        let burning =
-            self.fire_ticks > 0 && !matches!(self.kind, ProjectileKind::WitherSkull { .. });
-        if sync_fire && !burning && self.fire_ticks <= previous_fire_ticks {
-            // Entity.applyEffectsFromBlocks resets fire immunity when the entity
-            // is not burning and no block ignited it. A skull always reports
-            // isOnFire=false, even when its saved remainingFireTicks is positive.
-            self.fire_ticks = 0;
+            return;
         }
         if self.fire_ticks > 0 {
             self.fire_ticks -= 1;
         }
-        if sync_fire {
-            // Entity.setSharedFlagOnFire runs before the fireball's own ignition.
-            self.synced_fire = self.fire_ticks > 0 || self.has_visual_fire;
-        }
+        self.synced_fire = self.fire_ticks > 0 || self.has_visual_fire;
+    }
+    /// `AbstractHurtingProjectile.tick`'s `igniteForSeconds(1)` after its base
+    /// tick, on both sides, for the two kinds whose `shouldBurn` is true.
+    fn renew_fireball_flame(&mut self) {
         if self.kind.is_item_fireball() {
             self.ignite_for_ticks(20);
         }
     }
-    /// `Entity.checkInsideBlocks` over its move from `from` (set by position,
-    /// so one segment): whether it touched any lava's fluid box.
-    fn in_lava(&self, w: &impl ProjectileWorld, from: Vec3) -> bool {
-        crate::entities::fluid_contacts(
-            from,
-            self.position,
-            None,
-            |at| self.bounds_at(at),
-            |p| w.lava_height(p),
-        ) > 0
+    /// LlamaSpit and ShulkerBullet run `Projectile.tick` before moving;
+    /// ThrowableProjectile and AbstractHurtingProjectile run it afterwards.
+    fn base_first(&self) -> bool {
+        matches!(
+            self.kind,
+            ProjectileKind::LlamaSpit | ProjectileKind::ShulkerBullet { .. }
+        )
     }
-    /// `Entity.checkInsideBlocks` over its move from `from`: whether any block
-    /// swept by the deflated box ignites the entity (`BaseFireBlock.entityInside`).
-    fn in_fire_sweep(&self, w: &impl ProjectileWorld, from: Vec3) -> bool {
-        if self.in_fire(w) {
-            return true;
+    /// The server's tail of `Entity.applyEffectsFromBlocks`, once the game has
+    /// swept this tick's move and flushed its contacts (`fire_before` and
+    /// `was_on_fire` read before the sweep): rain puts the fire out, then the
+    /// count resets when it is out and no block ignited it this tick. A kind
+    /// whose `Projectile.tick` follows its block effects then takes its base
+    /// tick's fire and a fireball its renewed flame. The extinguish sound's
+    /// pitch (`playEntityOnFireExtinguishedSound`) when the fire went out.
+    pub fn finish_block_effects(
+        &mut self,
+        fire_before: i32,
+        was_on_fire: bool,
+        in_rain: bool,
+    ) -> Option<f32> {
+        if in_rain {
+            self.clear_fire();
         }
-        let to = self.position;
-        let eps = f64::from(1.0e-5_f32);
-        let deflated = self.bounds().deflate(Vec3::new(eps, eps, eps));
-        let mut hit = false;
-        let mut used = 0;
-        let _ = sunrise_core::geometry::sweep_intersected_blocks(
-            from,
-            to,
-            deflated,
-            1_000_000,
-            |p, step| {
-                if step >= 16 {
-                    return false;
-                }
-                used = step;
-                if w.ignites([p.x, p.y, p.z]) {
-                    hit = true;
-                    return false;
-                }
-                true
-            },
-        );
-        if !hit && used + 1 >= 16 {
-            let _ = sunrise_core::geometry::sweep_intersected_blocks(
-                to,
-                to,
-                deflated,
-                1_000_000,
-                |p, step| {
-                    if step >= 1 {
-                        return false;
-                    }
-                    if w.ignites([p.x, p.y, p.z]) {
-                        hit = true;
-                        return false;
-                    }
-                    true
-                },
-            );
+        let pitch = (was_on_fire && !self.burning()).then(|| {
+            use sunrise_core::random::RandomSource as _;
+            let r = &mut self.random.0;
+            1.6 + (r.next_float() - r.next_float()) * 0.4
+        });
+        if !self.burning() && self.fire_ticks <= fire_before {
+            self.fire_ticks = 0;
         }
-        hit
-    }
-    /// `Entity.checkInsideBlocks`: the blocks under the box, deflated by 1e-7
-    /// so a box sitting exactly on a block boundary is not inside it.
-    fn in_fire(&self, w: &impl ProjectileWorld) -> bool {
-        let b = self.bounds().deflate(Vec3::new(1.0e-7, 1.0e-7, 1.0e-7));
-        let (lo, hi) = (b.min_position(), b.max_position());
-        for x in (lo.x).floor() as i32..=(hi.x).floor() as i32 {
-            for y in (lo.y).floor() as i32..=(hi.y).floor() as i32 {
-                for z in (lo.z).floor() as i32..=(hi.z).floor() as i32 {
-                    if w.ignites([x, y, z]) {
-                        return true;
-                    }
-                }
-            }
+        if !self.base_first() {
+            self.base_fire_tick(false);
+            self.renew_fireball_flame();
         }
-        false
+        pitch
     }
     /// Whether it is a `SpectralArrow` (its own entity type): a spectral
     /// arrow's pickup item, or the glowing effect a dispenser shoots with.
@@ -1397,13 +1327,13 @@ impl Projectile {
         p
     }
     /// `AbstractHurtingProjectile(EntityType, LivingEntity, Vec3, Level)`'s `setRot(owner.getYRot(), owner.getXRot())`.
-    pub fn facing_shooter(mut self, yaw: f32, pitch: f32) -> Self {
+    pub(crate) fn facing_shooter(mut self, yaw: f32, pitch: f32) -> Self {
         self.yaw = yaw;
         self.pitch = pitch;
         self
     }
     /// `ThrowableItemProjectile.getItem`: typed stack at count 1 for throwables, else `None`.
-    pub fn thrown_item_stack(&self) -> Option<crate::items::ItemStack> {
+    pub(crate) fn thrown_item_stack(&self) -> Option<crate::items::ItemStack> {
         let mut stack = match &self.kind {
             ProjectileKind::Potion(stack, _) => (**stack).clone(),
             _ => {
@@ -1433,7 +1363,7 @@ impl Projectile {
             }
             _ => {
                 if self.kind == ProjectileKind::Egg {
-                    self.egg_variant = Some(egg_chicken_variant(&stack));
+                    self.egg_variant = egg_chicken_variant(&stack);
                 }
                 self.thrown_item = Some(Box::new(stack));
             }
@@ -1536,8 +1466,8 @@ impl Projectile {
         let v = self.velocity;
         let x_rot = atan2_degrees(v.y, v.horizontal_distance());
         let y_rot = atan2_degrees(v.x, v.z);
-        self.pitch = crate::arrows::lerp_rotation(self.previous_pitch, x_rot);
-        self.yaw = crate::arrows::lerp_rotation(self.previous_yaw, y_rot);
+        self.pitch = crate::entities::arrows::lerp_rotation(self.previous_pitch, x_rot);
+        self.yaw = crate::entities::arrows::lerp_rotation(self.previous_yaw, y_rot);
     }
     /// `Entity.setOldPosAndRot`: where the renderer interpolates from.
     pub fn set_old_pos_and_rot(&mut self) {
@@ -1761,17 +1691,20 @@ impl Projectile {
             if self.fire_ticks > 0 {
                 if self.fire_ticks % 20 == 0 && !pre_in_lava {
                     self.bullet_hurt = Some((from, false));
+                    self.destroyed = true;
                 }
                 self.fire_ticks -= 1;
             }
             if pre_in_lava {
                 if self.bullet_hurt.is_none() {
                     self.bullet_hurt = Some((from, true));
-                    self.lava_hurt = true;
+                    self.destroyed = true;
                 }
                 self.fall_distance *= 0.5;
             }
             self.synced_fire = self.fire_ticks > 0 || self.has_visual_fire;
+        } else {
+            self.clear_fire();
         }
         self.first_tick = false;
 
@@ -1815,38 +1748,11 @@ impl Projectile {
         self.position = to;
 
         // Entity.applyEffectsFromBlocks runs after setPos and before impact, only while alive.
+        // Server block contacts (fire, lava, water, cauldrons, powder snow and mod parts) run
+        // in `Game::sweep_projectile_inside` before impact settlement.
         if self.bullet_hurt.is_none() {
             self.bubble_columns_along(w, from);
-            if !client_side {
-                let before_sweep = self.fire_ticks;
-                if self.in_fire_sweep(w, from) {
-                    if self.fire_ticks < 0 {
-                        self.fire_ticks += 1;
-                    }
-                    if self.fire_ticks >= 0 {
-                        self.ignite_for_ticks(160);
-                    }
-                    self.bullet_hurt = Some((self.position, false));
-                }
-                if self.bullet_hurt.is_none() && self.in_lava(w, from) {
-                    self.ignite_for_ticks(300);
-                    self.bullet_hurt = Some((self.position, true));
-                    self.lava_hurt = true;
-                }
-                if self.bullet_hurt.is_none() {
-                    if w.in_water(self.bounds()) {
-                        self.clear_fire();
-                    }
-                    // ShulkerBullet.isOnFire() is always false, so absent new ignition
-                    // applyEffectsFromBlocks resets remainingFireTicks to 0.
-                    if self.fire_ticks <= before_sweep {
-                        self.fire_ticks = 0;
-                    }
-                }
-            }
-            if self.bullet_hurt.is_none() {
-                self.stuck_tick(w, from);
-            }
+            self.stuck_tick(w, from);
         }
 
         // Impact is gated on survival after baseTick and swept block effects.
@@ -1903,7 +1809,7 @@ impl Projectile {
         )
     }
     /// AbstractHurtingProjectile.applyInertia, on both server and client.
-    pub fn apply_hurting_inertia(&mut self, water: bool) {
+    pub(crate) fn apply_hurting_inertia(&mut self, water: bool) {
         // WitherSkull.getInertia: 0.73 for dangerous skulls.
         // Vanilla returns float inertia and widens it before scaling double motion.
         let inertia = f64::from(match self.kind {
@@ -1943,7 +1849,10 @@ impl Projectile {
     pub fn applies_block_effects(&self) -> bool {
         self.is_throwable_projectile()
             || self.is_hurting()
-            || matches!(self.kind, ProjectileKind::ShulkerBullet { .. })
+            || matches!(
+                self.kind,
+                ProjectileKind::ShulkerBullet { .. } | ProjectileKind::ExperienceBottle
+            )
     }
     /// A `ThrowableProjectile`: the thrown kinds but llama spit, a plain
     /// `Projectile` with its own tick.
@@ -2066,13 +1975,9 @@ impl Projectile {
         client_side: bool,
         defer_spit_motion: bool,
     ) -> (bool, Hit) {
-        // LlamaSpit and ShulkerBullet call Projectile.tick before moving;
-        // ThrowableProjectile and AbstractHurtingProjectile call it afterwards.
-        let base_first = matches!(
-            self.kind,
-            ProjectileKind::LlamaSpit | ProjectileKind::ShulkerBullet { .. }
-        );
+        let base_first = self.base_first();
         if base_first {
+            self.base_fire_tick(client_side);
             self.tick_shoot_event();
         }
         self.bubble_surfaces.clear();
@@ -2085,15 +1990,15 @@ impl Projectile {
         }
         let from = self.position;
         let is_bullet = matches!(self.kind, ProjectileKind::ShulkerBullet { .. });
-        let mut result = self.tick_inner(w, impact, client_side, defer_spit_motion);
+        let result = self.tick_inner(w, impact, client_side, defer_spit_motion);
         if !is_bullet {
-            // The block sweep runs at the batch that ticks the projectile
-            // (Game::sweep_projectile_inside), where the level host for a part's
-            // contact is: this tick's world view is read-only.
-            self.fire_tick(w, client_side, from);
-            if self.lava_hurt {
-                // `isAlive()` fails: a bullet lava destroyed hits nothing.
-                result = (false, Hit::None);
+            // A server's block contacts (fire, lava, water, cauldrons, powder snow and
+            // parts) are the game's sweep, where the level is: this tick's world view
+            // is read-only. Its base tick follows there
+            // (`Projectile::finish_block_effects`); a client's comes here.
+            if client_side && !base_first {
+                self.base_fire_tick(true);
+                self.renew_fireball_flame();
             }
             self.stuck_tick(w, from);
         }
@@ -2182,25 +2087,10 @@ impl Projectile {
             self.shoot_event = Some(self.position);
         }
     }
-    /// Whether lava destroyed this shulker bullet in its last tick, once.
-    pub fn take_lava_hurt(&mut self) -> bool {
-        let lava = std::mem::take(&mut self.lava_hurt);
-        if lava {
-            self.bullet_hurt = None;
-        }
-        lava
-    }
-    /// Whether fire or lava destroyed this shulker bullet in its last tick: `(at, is_lava)`, once.
+    /// Whether fire or lava destroyed this shulker bullet in its pre-move `baseTick`:
+    /// `(at, is_lava)`, once.
     pub fn take_bullet_hurt(&mut self) -> Option<(Vec3, bool)> {
-        let hurt = self.bullet_hurt.take();
-        if hurt.is_some() {
-            self.lava_hurt = false;
-        }
-        hurt
-    }
-    /// Whether lava's hurt reached `Projectile.hurtServer` in its last tick, once.
-    pub fn take_lava_marked(&mut self) -> bool {
-        std::mem::take(&mut self.lava_marked)
+        self.bullet_hurt.take()
     }
     /// Drain the first-tick event for dispatch in the owner's game context.
     pub fn take_shoot_event(&mut self) -> Option<Vec3> {
@@ -2476,11 +2366,10 @@ mod tests {
 
     #[test]
     fn egg_variant_honors_explicit_removal() {
-        use crate::mobs::{Species, finalize::variant_index};
         let mut blue = crate::items::ItemStack::new("minecraft:blue_egg", 1);
         assert_eq!(
-            egg_chicken_variant(&blue),
-            variant_index(Species::Chicken, "cold")
+            egg_chicken_variant(&blue).as_deref(),
+            Some("minecraft:cold")
         );
         let mut data = sunrise_items::item_data::StackData::default();
         data.set_other(
@@ -2488,10 +2377,7 @@ mod tests {
             Some(sunrise_core::nbt::Tag::Compound(Default::default())),
         );
         blue.extra = Some(Box::new(data));
-        assert_eq!(
-            egg_chicken_variant(&blue),
-            variant_index(Species::Chicken, "temperate")
-        );
+        assert_eq!(egg_chicken_variant(&blue), None);
     }
 
     struct Empty(Vec<(Who, Aabb)>);
@@ -2737,130 +2623,58 @@ mod tests {
         assert_eq!(p.velocity.y.to_bits(), 0xbf9e_69ad_47ae_147b);
         assert_eq!(p.position.x.to_bits(), 0x3fef_ae14_8000_0000);
     }
-    /// One fire block in the cell (0, 99, 0), open air around it: a throwable
-    /// inside that cell is set alight, and one that has left it burns down.
-    struct Fire {
-        targets: Vec<(Who, Aabb)>,
-        water: bool,
+    /// A server's tick as the game runs it: the move, then the tail of the
+    /// block sweep (`Projectile::finish_block_effects`), with no block
+    /// touched and no rain.
+    fn server_tick(p: &mut Projectile, w: &impl ProjectileWorld) -> Option<f32> {
+        let (fire_before, was_on_fire) = (p.fire_ticks, p.burning());
+        p.tick(w);
+        p.finish_block_effects(fire_before, was_on_fire, false)
     }
-    impl ProjectileWorld for Fire {
-        fn clip(&self, _: Vec3, _: Vec3) -> Option<(Vec3, [i32; 3], [i32; 3])> {
-            None
-        }
-        fn in_water(&self, _: Aabb) -> bool {
-            self.water
-        }
-        fn targets(&self) -> &[(Who, Aabb)] {
-            &self.targets
-        }
-        fn ignites(&self, p: [i32; 3]) -> bool {
-            p == [0, 99, 0]
-        }
-    }
-    /// `ThrowableProjectile.tick` calls `applyEffectsFromBlocks`, so a snowball
-    /// thrown through a fire block burns for `BaseFireBlock.fireIgnite`'s 160
-    /// ticks and is drawn with the flame (`Entity.displayFireAnimation`). The
-    /// port had no fire at all on a thrown projectile: `fire_ticks` stayed 0
-    /// however long it sat in the flames (#7456).
+    /// A throwable a fire block lit for `BaseFireBlock.fireIgnite`'s 160 ticks
+    /// takes `Entity.baseTick`'s countdown after its block effects, the same
+    /// tick, and burns down out of the flames.
     #[test]
-    fn a_snowball_in_a_fire_block_burns_and_the_fire_counts_down() {
+    fn a_lit_snowball_counts_its_fire_down_after_its_block_effects() {
         let mut p = Projectile::new(ProjectileKind::Snowball, Vec3::new(0.5, 99.5, 0.5), None);
-        // Falling slowly: it stays inside (0, 99, 0) for this tick.
         p.velocity = Vec3::ZERO;
-        let w = Fire {
-            targets: vec![],
-            water: false,
-        };
-        assert!(!p.on_fire());
-        p.tick(&w);
-        // Ignited for 160, then `Entity.baseTick`'s countdown for this tick.
-        assert_eq!(p.fire_ticks, 159);
-        assert!(p.on_fire());
-        // Out of the flames, the rest of the 160 ticks burn down.
         let air = Empty(vec![]);
-        p.position = Vec3::new(0.5, 120.0, 0.5);
+        let (fire_before, was_on_fire) = (p.fire_ticks, p.burning());
         p.tick(&air);
+        // The sweep's fire block.
+        p.ignite_for_ticks(160);
+        assert_eq!(
+            p.finish_block_effects(fire_before, was_on_fire, false),
+            None
+        );
+        assert_eq!(p.fire_ticks, 159);
+        assert!(p.synced_fire);
+        assert_eq!(server_tick(&mut p, &air), None);
         assert_eq!(p.fire_ticks, 158);
-        for _ in 0..158 {
-            p.tick(&air);
+        for _ in 0..157 {
+            server_tick(&mut p, &air);
         }
+        assert_eq!(p.fire_ticks, 1);
+        // The last tick puts it out in baseTick, after the sound's check.
+        assert_eq!(server_tick(&mut p, &air), None);
         assert_eq!(p.fire_ticks, 0, "the fire runs out");
         assert!(!p.on_fire());
-        // Water puts it out at once: `Entity.baseTick`'s `isInWaterRainOrBubble`.
-        let mut wet = Projectile::new(ProjectileKind::Snowball, Vec3::new(0.5, 99.5, 0.5), None);
-        wet.velocity = Vec3::ZERO;
-        wet.tick(&w);
-        assert_eq!(wet.fire_ticks, 159);
-        wet.tick(&Fire {
-            targets: vec![],
-            water: true,
-        });
-        assert_eq!(wet.fire_ticks, 0, "water puts the snowball out");
     }
-    /// A lava source in the cell (0, 99, 0) under air: its fluid box is 8/9 of
-    /// a block tall.
-    struct Lava;
-    impl ProjectileWorld for Lava {
-        fn clip(&self, _: Vec3, _: Vec3) -> Option<(Vec3, [i32; 3], [i32; 3])> {
-            None
-        }
-        fn in_water(&self, _: Aabb) -> bool {
-            false
-        }
-        fn targets(&self) -> &[(Who, Aabb)] {
-            &[]
-        }
-        fn lava_height(&self, p: BlockPos) -> Option<f64> {
-            (p == BlockPos::new(0, 99, 0)).then_some(f64::from(8.0_f32 / 9.0))
-        }
-    }
-    /// `LavaFluid.entityInside` sets every entity it touches alight for 300
-    /// ticks (`Entity.lavaIgnite`), a snowball too, and its `lavaHurt` reaches
-    /// `Projectile.hurtServer` (`markHurt`); above the fluid's box it stays
-    /// out (#2689). A fireball's `AbstractHurtingProjectile.hurtServer` marks
-    /// nothing.
+    /// `Entity.applyEffectsFromBlocks`: rain clears the fire, which plays
+    /// `playEntityOnFireExtinguishedSound`, and the count resets to zero.
     #[test]
-    fn a_snowball_in_lava_burns_for_lava_ignites_three_hundred_ticks() {
-        let mut p = Projectile::new(ProjectileKind::Snowball, Vec3::new(0.5, 99.2, 0.5), None);
+    fn rain_puts_a_burning_snowball_out_with_the_extinguish_pitch() {
+        let mut p = Projectile::new(ProjectileKind::Snowball, Vec3::new(0.5, 99.5, 0.5), None);
         p.velocity = Vec3::ZERO;
-        p.tick(&Lava);
-        // Ignited for 300, then `Entity.baseTick`'s countdown.
-        assert_eq!(p.fire_ticks, 299);
-        assert!(p.take_lava_marked(), "lava's hurt marks it hurt");
-        p.tick(&Lava);
-        assert_eq!(p.fire_ticks, 299, "lava renews it every tick it is inside");
-        assert!(p.take_lava_marked(), "every tick it is inside");
-        let mut above = Projectile::new(ProjectileKind::Snowball, Vec3::new(0.5, 99.95, 0.5), None);
-        above.velocity = Vec3::ZERO;
-        above.tick(&Lava);
-        assert_eq!(above.fire_ticks, 0, "over the fluid's 8/9 box, not in it");
-        assert!(!above.take_lava_marked());
-        let mut ball = Projectile::new(
-            ProjectileKind::SmallFireball,
-            Vec3::new(0.5, 99.2, 0.5),
-            None,
-        );
-        (ball.velocity, ball.acceleration) = (Vec3::ZERO, 0.0);
-        ball.tick(&Lava);
-        assert!(ball.fire_ticks > 0, "lit");
-        assert!(!ball.take_lava_marked(), "but not marked hurt");
-    }
-    /// Lava's `lavaHurt` reaches `ShulkerBullet.hurtServer`, which destroys
-    /// the bullet on the server (#2689).
-    #[test]
-    fn lava_destroys_a_shulker_bullet() {
-        let kind = ProjectileKind::ShulkerBullet {
-            target: None,
-            dir: None,
-            steps: 0,
-            delta: [0.0; 3],
-            seed: 1,
-        };
-        let mut p = Projectile::new(kind, Vec3::new(0.5, 99.2, 0.5), None);
-        p.velocity = Vec3::ZERO;
-        assert_eq!(p.tick(&Lava), (false, Hit::None));
-        assert!(p.take_lava_hurt(), "the game plays its hurt and burn");
-        assert!(!p.take_lava_hurt(), "once");
+        p.fire_ticks = 100;
+        let (fire_before, was_on_fire) = (p.fire_ticks, p.burning());
+        p.tick(&Empty(vec![]));
+        let pitch = p
+            .finish_block_effects(fire_before, was_on_fire, true)
+            .expect("it was on fire");
+        assert!((1.2..=2.0).contains(&pitch), "{pitch}");
+        assert_eq!(p.fire_ticks, 0);
+        assert!(!p.synced_fire);
     }
     /// `AbstractHurtingProjectile.tick` renews the fire after the base
     /// countdown, without shortening a longer fire.
@@ -2872,21 +2686,21 @@ mod tests {
             None,
         );
         let air = Empty(vec![]);
-        p.tick(&air);
+        server_tick(&mut p, &air);
         assert_eq!(p.fire_ticks, 20);
         assert!(
             !p.synced_fire,
             "the first renewal comes after the shared fire bit"
         );
-        p.tick(&air);
+        server_tick(&mut p, &air);
         assert_eq!(p.fire_ticks, 20);
         assert!(p.synced_fire);
-        p.tick(&Fire {
-            targets: vec![],
-            water: false,
-        });
-        assert_eq!(p.fire_ticks, 159);
+        let (fire_before, was_on_fire) = (p.fire_ticks, p.burning());
         p.tick(&air);
+        p.ignite_for_ticks(160);
+        p.finish_block_effects(fire_before, was_on_fire, false);
+        assert_eq!(p.fire_ticks, 159);
+        server_tick(&mut p, &air);
         assert_eq!(p.fire_ticks, 158);
     }
 
@@ -2896,7 +2710,7 @@ mod tests {
         server.fire_ticks = 1;
         server.has_visual_fire = true;
         let air = Empty(vec![]);
-        server.tick(&air);
+        server_tick(&mut server, &air);
         assert_eq!(server.fire_ticks, 0);
         assert!(server.synced_fire);
 
@@ -2906,13 +2720,30 @@ mod tests {
         assert!(client.on_fire());
     }
 
+    /// `Entity.baseTick` on a client: `clearFire`. Its flame is the synced
+    /// flag the server sends, never a count of its own.
+    #[test]
+    fn a_clients_projectile_clears_its_own_fire_count() {
+        let air = Empty(vec![]);
+        for kind in [ProjectileKind::Snowball, ProjectileKind::LlamaSpit] {
+            let mut client = Projectile::new(kind, Vec3::new(0.5, 99.5, 0.5), None);
+            client.fire_ticks = 100;
+            client.tick_remote(&air);
+            assert_eq!(client.fire_ticks, 0, "{:?}", client.kind);
+            assert!(!client.on_fire(), "{:?}", client.kind);
+            client.synced_fire = true;
+            client.tick_remote(&air);
+            assert!(client.on_fire(), "{:?}", client.kind);
+        }
+    }
+
     #[test]
     fn restored_wind_charge_fire_counts_down_and_syncs_visual_fire() {
         for kind in [ProjectileKind::WindCharge, ProjectileKind::BreezeWindCharge] {
             let mut p = Projectile::new(kind, Vec3::ZERO, None);
             p.fire_ticks = 20;
             p.has_visual_fire = true;
-            p.tick(&Empty(vec![]));
+            server_tick(&mut p, &Empty(vec![]));
             assert_eq!(p.fire_ticks, 19, "{:?}", p.kind);
             assert!(p.synced_fire, "{:?}", p.kind);
         }
@@ -4840,9 +4671,18 @@ mod render_light_tests {
             egg.set_egg_item(&ItemStack::new(item, 1));
             egg.egg_variant
         };
-        assert_eq!(variant("minecraft:egg"), Some(0));
-        assert_eq!(variant("minecraft:brown_egg"), Some(1));
-        assert_eq!(variant("minecraft:blue_egg"), Some(2));
+        assert_eq!(
+            variant("minecraft:egg").as_deref(),
+            Some("minecraft:temperate")
+        );
+        assert_eq!(
+            variant("minecraft:brown_egg").as_deref(),
+            Some("minecraft:warm")
+        );
+        assert_eq!(
+            variant("minecraft:blue_egg").as_deref(),
+            Some("minecraft:cold")
+        );
         let mut snowball = Projectile::new(ProjectileKind::Snowball, Vec3::ZERO, None);
         snowball.set_egg_item(&ItemStack::new("minecraft:blue_egg", 1));
         assert_eq!(snowball.egg_variant, None);
@@ -4869,7 +4709,7 @@ mod arrow_color_tests {
                 effect: None,
             };
             let mut p = Projectile::new(kind, Vec3::new(0.5, 64.0, 0.5), None);
-            let mut arrow = crate::arrows::ArrowState::new();
+            let mut arrow = crate::entities::arrows::ArrowState::new();
             arrow.set_item(stack);
             p.arrow = Some(Box::new(arrow));
             p.arrow_effect_color()

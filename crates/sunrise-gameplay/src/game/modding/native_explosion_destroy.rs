@@ -25,15 +25,10 @@ impl ServerGame<'_> {
         fire: bool,
         interaction: ExplosionInteraction,
     ) -> Result<u32, ExplosionDestroyError> {
-        if positions.len() as u64 > ExplosionDestroyError::MAX_POSITIONS {
-            return Err(ExplosionDestroyError::TooMany(positions.len() as u64));
-        }
-        if !(center.iter().all(|v| v.is_finite()) && radius.is_finite() && radius >= 0.0) {
+        if !(center.iter().all(|v| v.is_finite()) && radius.is_finite()) {
             return Err(ExplosionDestroyError::InvalidBlast);
         }
-        if !self.level_in_place(level)
-            || (self.server.serving.is_none() && self.common.options.dedicated.is_none())
-        {
+        if !self.level_in_place(level) {
             return Err(ExplosionDestroyError::Unavailable);
         }
         let source = match source {
@@ -81,18 +76,18 @@ impl ServerGame<'_> {
             .copied()
             .filter(|p| seen.insert(*p))
             .collect();
-        if radius >= DETONATE_RADIUS {
-            // A listener only spares: what it takes out stays, what it adds is ignored.
-            let mut told = targets.clone();
-            // This block-only phase has no entity victims.
+        if radius >= DETONATE_RADIUS
+            && mod_api::__private::listened(mod_api::HookId::ExplosionDetonate)
+        {
+            // This block-only phase has no entity victims; listeners may remove, add or reorder
+            // block positions (`ExplosionEvent.Detonate`), and the resulting list is kept in
+            // order with multiplicity intact for `interactWithBlocks` and `createFire`.
             self.native_explosion_detonate(
                 self.common.dim.id(),
                 center,
-                &mut told,
+                &mut targets,
                 &mut Vec::new(),
             );
-            let kept: HashSet<[i32; 3]> = told.into_iter().collect();
-            targets.retain(|p| kept.contains(p));
         }
         // Unlike the reference's rays, a mod's list never loads terrain.
         let (min_y, max_y) = (self.common.world.bottom_y(), self.common.world.top_y());

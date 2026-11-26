@@ -4,6 +4,7 @@ use mod_api::{
     CreativeModeTabs, CreativeTabEditError, CreativeTabList, CreativeTabPermissions,
     CreativeTabReadError, CreativeTabVisibility,
 };
+use sunrise_hooks::items::engine::CreativeOrder;
 use sunrise_items::creative_catalog::{Catalog, Holders, Parameters};
 
 impl crate::game::ClientGame<'_> {
@@ -66,7 +67,7 @@ impl crate::game::ClientGame<'_> {
 
     /// The built-in sorter is only a reader. A cold sort previews stock order
     /// without publishing anything or giving mods a creative callback.
-    pub fn stock_sort_order(&self) -> Vec<ItemStack> {
+    pub fn stock_sort_order(&self) -> CreativeOrder {
         let preview;
         let lists = if let Some(published) = &self.common.creative_contents.published {
             &published.lists
@@ -83,7 +84,7 @@ impl crate::game::ClientGame<'_> {
             );
             &preview
         };
-        self.client.creative_screen.0.search_order_from(lists)
+        self.client.creative_screen.0.stock_order(lists)
     }
 }
 

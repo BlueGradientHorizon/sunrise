@@ -232,6 +232,10 @@ impl crate::game::ServerGame<'_> {
                     return None;
                 }
                 let p = game.player_boat_seat(i);
+                // AbstractBoat.positionRider's clampRotation sets the raw body yaw.
+                if let Some(player) = &mut game.common.player {
+                    player.body_yaw = game.common.boats[i].yaw;
+                }
                 return Some([p.x, p.y, p.z]);
             }
             // The minecart moves with the rider's input, and lets it out when
@@ -490,12 +494,13 @@ impl crate::game::ServerGame<'_> {
             // Unreachable: the vehicle was a boat or a mount, or it returned.
             (None, None) => std::borrow::Cow::Borrowed(""),
         };
-        let mut gate = sunrise_sim::move_gate::armed_with(
+        let mut gate = sunrise_sim::move_gate::armed_with_controlled(
             &self.common.loop_context,
             id,
             kind,
             MoverType::Player,
             wanted,
+            true,
         );
         let wanted = gate.delta();
         // A listener's decision that is not the request (#2414, ruling 5):
@@ -599,6 +604,7 @@ impl crate::game::ServerGame<'_> {
                         Some(&self.common.pack.block_registries),
                         &self.common.damage_hooks,
                     )
+                    .with_variants(self.world_variants())
                     .with_reads(crate::game::entity_server::hit_reads_of!(self))
                     .with_mob_hurt_handoff(&mut paused_hurt);
                     if let Some(pause) = resume.take() {

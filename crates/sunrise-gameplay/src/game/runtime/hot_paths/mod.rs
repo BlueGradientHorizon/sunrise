@@ -116,7 +116,7 @@ impl ServerGame<'_> {
         self.reset_entity_residency();
         self.common
             .native_lifecycle
-            .begin_open(mod_api::Authority::DedicatedServer);
+            .begin_open(Some(mod_api::Authority::DedicatedServer));
         if let Ok(mode) = std::env::var("SUNRISE_BLOCK_ENTITY_VIEW_BENCH") {
             return self.hot_block_entity_view(&mut recorder, &mode);
         }

@@ -9,6 +9,16 @@ pub struct ResidentReadBlockEntity<'a> {
     pub slot_count: usize,
 }
 
+impl<'a> ResidentReadBlockEntity<'a> {
+    /// Lend exactly the modeled slots in a stored row, even if it has left its level.
+    pub fn stored(entity: &'a EngineBlockEntity) -> Self {
+        Self {
+            entity,
+            slot_count: entity.items.len(),
+        }
+    }
+}
+
 impl ResidentBlockEntityReadOnly for ResidentReadBlockEntity<'_> {
     fn id(&self) -> &str {
         self.entity.id()

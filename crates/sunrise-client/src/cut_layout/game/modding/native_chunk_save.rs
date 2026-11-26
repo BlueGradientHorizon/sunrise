@@ -6,6 +6,7 @@ use sunrise_level::chunk::Chunk;
 mod tests {
     use super::*;
     use std::time::Duration;
+    use sunrise_client::chunk::Chunk;
     use sunrise_core::nbt::{DISK_WRITE_NESTING_GUARD, Tag};
     use sunrise_gameplay::game::native_entity_refs::tests::with_game;
     use sunrise_gameplay_common::world_biomes;

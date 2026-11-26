@@ -365,6 +365,15 @@ impl Poses {
     pub fn pose_of(&self, name: &str) -> Option<[f32; 9]> {
         self.pose_by_key(key(name)).copied()
     }
+    /// Overwrites the pose of the part keyed `key`; false when the model has no such part.
+    pub fn set_pose_by_key(&mut self, key: u64, pose: [f32; 9]) -> bool {
+        let Some(entry) = self.map.get_mut(&key) else {
+            return false;
+        };
+        entry.pose = pose;
+        self.changed();
+        true
+    }
     pub fn pose_by_key(&self, key: u64) -> Option<&[f32; 9]> {
         self.map.get(&key).map(|entry| &entry.pose)
     }
@@ -391,7 +400,10 @@ impl Poses {
     }
     /// `skips` by the part's name.
     pub fn skips_named(&self, name: &str) -> bool {
-        !self.skipped.is_empty() && self.skipped.contains(&key(name))
+        !self.skipped.is_empty() && self.skips_key(key(name))
+    }
+    pub fn skips_key(&self, key: u64) -> bool {
+        self.skipped.contains(&key)
     }
     pub fn has(&self, name: &str) -> bool {
         self.map.contains_key(&key(name))
@@ -424,11 +436,10 @@ impl Poses {
     }
     /// Base visibility for animation, without the draw-local overlay.
     pub fn is_hidden_named(&self, name: &str) -> bool {
-        self.base_hidden_count != 0
-            && self
-                .map
-                .get(&key(name))
-                .is_some_and(|entry| entry.base_hidden)
+        self.base_hidden_count != 0 && self.is_hidden_key(key(name))
+    }
+    pub fn is_hidden_key(&self, key: u64) -> bool {
+        self.base_hidden_count != 0 && self.map.get(&key).is_some_and(|entry| entry.base_hidden)
     }
     /// Refill pooled visibility storage before calling Pre, so edits never grow it.
     pub fn prepare_frame_visibility<L: FrameLayoutIndex>(&mut self, layout: &L) {
@@ -505,8 +516,7 @@ impl Poses {
         self.base_hidden_count != 0 || self.frame_visibility_active()
     }
     pub fn is_hidden_at(&self, index: usize, key: u64) -> bool {
-        (self.base_hidden_count != 0 && self.map.get(&key).is_some_and(|entry| entry.base_hidden))
-            || self.frame_visibility_active() && self.frame_hidden[index]
+        self.is_hidden_key(key) || self.frame_visibility_active() && self.frame_hidden[index]
     }
     fn frame_visibility_active(&self) -> bool {
         self.apply_frame_visibility && self.has_frame_edits
@@ -547,6 +557,25 @@ impl std::fmt::Debug for Observation<'_> {
     }
 }
 
+/// Render data queried by an animation while it poses a mob.
+pub trait AnimDataSource {
+    fn humanoid_setup(&self) -> Option<&dyn HumanoidSetup> {
+        None
+    }
+    fn piglin_loves(&self, _item: &str) -> bool {
+        false
+    }
+    fn has_tool(&self, _stack: &crate::items::ItemStack) -> bool {
+        false
+    }
+}
+
+impl std::fmt::Debug for dyn AnimDataSource + '_ {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("AnimDataSource")
+    }
+}
+
 /// The LivingEntityRenderState values setupAnim reads.
 #[derive(Clone, Copy, Debug)]
 pub struct State<'a> {
@@ -562,6 +591,9 @@ pub struct State<'a> {
     pub partial: f32,
     /// Optional frame-local observer; absent without subscribers.
     pub observer: Option<Observation<'a>>,
+    /// The resources the frame draws from, which answer its tag reads (a piglin's
+    /// `#piglin_loved`); absent for tools, probes and tests, which then read no tag.
+    pub data: Option<&'a dyn AnimDataSource>,
 }
 
 impl State<'static> {
@@ -574,6 +606,13 @@ impl State<'static> {
         State {
             observer: observer.map(|observer| Observation { source, observer }),
             ..self
+        }
+    }
+    /// [`Self::observed`] by `data`'s observer, with `data` answering the frame's tag reads.
+    pub fn drawn_from<'a>(self, source: &'a Mob, data: &'a dyn AnimDataSource) -> State<'a> {
+        State {
+            data: Some(data),
+            ..self.observed(source, data.humanoid_setup())
         }
     }
 }
@@ -626,6 +665,7 @@ pub fn state(m: &Mob, alpha: f32) -> State<'static> {
         baby: m.is_baby(),
         partial: alpha,
         observer: None,
+        data: None,
     }
 }
 fn head(p: &mut Poses, s: &State) {
@@ -1633,6 +1673,7 @@ mod flight_pose_tests {
             baby: false,
             partial: 0.0,
             observer: None,
+            data: None,
         };
         let mut poses = Poses {
             map: [
@@ -1688,6 +1729,7 @@ mod flight_pose_tests {
             baby: false,
             partial: 0.0,
             observer: None,
+            data: None,
         };
         let make = || Poses {
             map: [
@@ -1735,6 +1777,7 @@ mod flight_pose_tests {
             baby: false,
             partial: 0.0,
             observer: None,
+            data: None,
         };
         let make = || Poses {
             map: ["head", "right_arm", "left_arm", "right_leg", "left_leg"]
@@ -1840,6 +1883,7 @@ mod flight_pose_tests {
             baby: false,
             partial: 0.0,
             observer: None,
+            data: None,
         };
         let mut p = Poses {
             map: ["head", "right_arm", "left_arm"]
@@ -1892,6 +1936,7 @@ mod flight_pose_tests {
             baby: false,
             partial: 0.0,
             observer: None,
+            data: None,
         };
         let make = || Poses {
             map: ["head", "right_arm", "left_arm"]
@@ -1957,6 +2002,7 @@ mod flight_pose_tests {
             baby: false,
             partial: 0.0,
             observer: None,
+            data: None,
         };
         let make = || Poses {
             map: ["head", "right_arm", "left_arm", "right_leg", "left_leg"]
@@ -2003,6 +2049,7 @@ mod flight_pose_tests {
             baby: false,
             partial: 0.0,
             observer: None,
+            data: None,
         };
         for (anim, pose, expected) in [
             (Anim::Zombie, ArmPose::ThrowTrident, -PI),
@@ -2090,7 +2137,7 @@ mod flight_pose_tests {
                     mob.extra.using_item = i32::from(using);
                     mob.extra.crouching = crouching;
                     let state = state(&mob, 0.5);
-                    let observed = state.observed(&mob, Some(&observer));
+                    let observed = state.clone().observed(&mob, Some(&observer));
                     for _ in 0..2 {
                         let before = observer.0.get();
                         let mut poses = make();
@@ -2198,6 +2245,7 @@ mod flight_pose_tests {
                 baby: false,
                 partial: 0.0,
                 observer: None,
+                data: None,
             };
             setup(&m, &state, &mut p, &HashMap::new());
             for arm in ["right_arm", "left_arm"] {

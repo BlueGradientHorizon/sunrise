@@ -1,94 +1,110 @@
-//! Server-side column reads for native mods.
+//! Streaming column height and block-slice queries on server open levels.
 use crate::game::ServerGame;
-use sunrise_gameplay_common::game::block_edits_common::MAX_COLUMNS;
+use std::ops::ControlFlow;
+use sunrise_gameplay_common::game::{
+    block_edits_common::{column_span, fill_column_blocks},
+    native_level_refs_common::NativeLevelRefsCommonGameExt1 as _,
+};
 
 impl ServerGame<'_> {
-    /// For a server mod: each column's height by `heightmap` in the authoritative level `dimension`.
-    pub(in crate::game) fn surface_heights(
+    /// Visit each column's height by `heightmap` in an active or parked open level, `None`
+    /// where its chunk is not loaded. Loads nothing.
+    pub fn level_visit_surface_heights(
         &self,
-        dimension: &str,
+        level: mod_api::LevelRef,
         columns: &[(i32, i32)],
         heightmap: mod_api::Heightmap,
-    ) -> Result<Vec<Option<i32>>, String> {
-        if !self.native_level_open(dimension) {
-            return Err(format!("{dimension} is not the level being ticked"));
-        }
-        if columns.len() > MAX_COLUMNS {
-            return Err(format!(
-                "{} columns, more than {MAX_COLUMNS} a call",
-                columns.len()
-            ));
-        }
+        visit: &mut dyn FnMut((i32, i32), Option<i32>) -> ControlFlow<()>,
+    ) -> Result<ControlFlow<()>, mod_api::LevelReadError> {
+        let world = self.native_level_read_world_result(level)?;
         let started = std::time::Instant::now();
-        let out = self.common.loaded_column_heights(columns, heightmap);
+        let mut last: Option<((i32, i32), bool)> = None;
+        let mut flow = ControlFlow::Continue(());
+        let mut visited = 0usize;
+        for &(x, z) in columns {
+            let key = (x >> 4, z >> 4);
+            let loaded = match last {
+                Some((k, l)) if k == key => l,
+                _ => {
+                    let l = world.chunks.contains_key(&key);
+                    last = Some((key, l));
+                    l
+                }
+            };
+            let height = loaded.then(|| self.common.world_column_height(world, heightmap, x, z));
+            visited += 1;
+            if visit((x, z), height).is_break() {
+                flow = ControlFlow::Break(());
+                break;
+            }
+        }
         self.common
-            .native_read_logged(started, "height query", columns.len());
-        Ok(out)
+            .native_read_logged(started, "height query", visited);
+        Ok(flow)
     }
 
-    /// For a server mod: `below` blocks under and `above` blocks from each column's height.
-    pub fn read_columns(
+    /// Visit each column's height on `heightmap`, server-side biome JSON water colour and
+    /// complete block states from `below` under to `above - 1` over that height, bottom first
+    /// (air outside the chunk's vertical range; `None` where the column's chunk is not loaded).
+    /// Works on active and parked server levels with no column-count or total-block cap.
+    pub fn level_visit_columns(
         &self,
-        dimension: &str,
+        level: mod_api::LevelRef,
         columns: &[(i32, i32)],
         heightmap: mod_api::Heightmap,
         range: (u32, u32),
-    ) -> Result<mod_api::ColumnBlocks, String> {
+        visit: &mut dyn for<'a> FnMut(
+            (i32, i32),
+            Option<mod_api::ColumnSlice<'a>>,
+        ) -> ControlFlow<()>,
+    ) -> Result<ControlFlow<()>, mod_api::LevelReadError> {
+        let world = self.native_level_world_result(level)?;
         let (below, above) = range;
-        if !self.native_level_open(dimension) {
-            return Err(format!("{dimension} is not the level being ticked"));
-        }
+        let per = column_span(below, above, world.shape.height)
+            .ok_or(mod_api::LevelReadError::Unavailable)?;
+        let index = super::native_worldgen::prepare(self.common.pack.assets.registry)
+            .map_err(|_| mod_api::LevelReadError::Unavailable)?;
         let started = std::time::Instant::now();
-        let out = self.read_loaded_block_columns(columns, heightmap, below, above)?;
-        self.common
-            .native_read_logged(started, "column read", columns.len());
-        Ok(out)
-    }
-
-    pub fn terrain_surface(
-        &self,
-        dimension: &str,
-        columns: &[(i32, i32)],
-    ) -> Result<Vec<Option<mod_api::TerrainColumn>>, String> {
-        if !self.native_level_open(dimension) {
-            return Err(format!("{dimension} is not the level being ticked"));
-        }
-        if columns.len() > mod_api::MAX_TERRAIN_COLUMNS {
-            return Err(format!(
-                "{} columns, more than {} a call",
-                columns.len(),
-                mod_api::MAX_TERRAIN_COLUMNS
-            ));
-        }
-        let started = std::time::Instant::now();
-        let out = match self.common.end.locator() {
-            None => vec![None; columns.len()],
-            Some(generator) => {
-                let index = super::native_worldgen::prepare(self.common.pack.assets.registry)?;
-                generator
-                    .terrain_surfaces(columns)
-                    .into_iter()
-                    .map(|surface| {
-                        surface
-                            .map(|surface| {
-                                let state = index
-                                    .to_api(surface.state)
-                                    .map_err(|error| format!("terrain surface block: {error:?}"))?;
-                                Ok(mod_api::__private::built::TerrainColumn {
-                                    height: surface.height,
-                                    block: state.block(),
-                                    water: surface.water.map(|(height, _)| height),
-                                    biome: world_biomes!(self).name(surface.biome).to_owned(),
-                                }
-                                .into())
-                            })
-                            .transpose()
-                    })
-                    .collect::<Result<Vec<_>, String>>()?
+        let biomes = world_biomes!(self);
+        let mut raw = Vec::with_capacity(per);
+        let mut states = Vec::with_capacity(per);
+        let mut flow = ControlFlow::Continue(());
+        let mut visited = 0usize;
+        for &(x, z) in columns {
+            let slice = if let Some(chunk) = world.chunks.get(&(x >> 4, z >> 4)) {
+                let base = self.common.world_column_height(world, heightmap, x, z);
+                raw.clear();
+                fill_column_blocks(
+                    world.air,
+                    chunk,
+                    world.shape,
+                    x,
+                    z,
+                    base,
+                    below,
+                    above,
+                    &mut raw,
+                );
+                states.clear();
+                for &state in &raw {
+                    let api_state = index
+                        .to_api(state)
+                        .map_err(|_| mod_api::LevelReadError::Unavailable)?;
+                    states.push(api_state);
+                }
+                let water_color = biomes.get(chunk.biome(x, base - 1, z)).water;
+                Some(mod_api::ColumnSlice::new(base, &states, water_color))
+            } else {
+                None
+            };
+            visited += 1;
+            if visit((x, z), slice).is_break() {
+                flow = ControlFlow::Break(());
+                break;
             }
-        };
+        }
         self.common
-            .native_read_logged(started, "terrain surface query", columns.len());
-        Ok(out)
+            .native_read_logged(started, "column read", visited);
+        Ok(flow)
     }
 }

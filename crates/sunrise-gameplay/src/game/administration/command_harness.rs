@@ -264,7 +264,7 @@ impl ServerGame<'_> {
                     let earlier = self.common.adv.announced.len();
                     self.server.cmds.0.broadcast_announced = earlier;
                     self.harness_owner(|g| {
-                        let previous = g.server.command_source;
+                        let previous = g.server.command_source.clone();
                         if op["source"].as_str() == Some("console") {
                             // Actual server source; permission-only `as_console`
                             // otherwise keeps the connected owner's entity.

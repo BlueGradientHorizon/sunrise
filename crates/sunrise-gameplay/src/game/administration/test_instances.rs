@@ -33,7 +33,7 @@ pub(in crate::game) const EXPORT: i32 = 5;
 pub(in crate::game) const RUN: i32 = 6;
 
 #[allow(unused_imports)]
-pub use sunrise_gameplay::test_instances::{TestDef, parse_test_def};
+pub use sunrise_gameplay_common::test_instances::{TestDef, parse_test_def};
 
 #[cfg(any(test, feature = "test-support"))]
 pub trait TestDefSample {
@@ -54,6 +54,7 @@ impl TestDefSample for TestDef {
             function: None,
             callback: None,
             environment: "minecraft:default".into(),
+            inline_environment: None,
             dimension: "minecraft:overworld".into(),
             max_ticks,
             setup_ticks,
@@ -69,99 +70,40 @@ pub(in crate::game::server_side) fn red(key: &str, args: &[Text]) -> Text {
 }
 
 impl crate::game::ServerGame<'_> {
-    /// `registryAccess().get(testKey)`: the test instance from the game's
-    /// data (`data/<namespace>/test_instance/<path>.json`).
+    /// Resolve a test from the world's frozen test instance registry.
     pub fn test_def(&self, id: &str) -> Option<TestDef> {
-        if let Some(known) = self.server.test_defs.0.borrow().get(id) {
-            return known.clone();
+        let table = match &self.server.world_tables.0 {
+            Some(tables) => &tables.test_instances,
+            None => self.common.res.test_instances(),
+        };
+        if id.contains(':') {
+            table.get(id).cloned()
+        } else {
+            table.get(&format!("minecraft:{id}")).cloned()
         }
-        // A world's test instances are the ones it opened with.
-        if self.server.test_defs_snapshot {
-            return None;
-        }
-        let def = self.read_test_def(id);
-        self.server
-            .test_defs
-            .0
-            .borrow_mut()
-            .insert(id.to_owned(), def.clone());
-        def
     }
 
-    /// `Registries.TEST_INSTANCE` as a world loads it: the built-in pack's
-    /// `test_instance` files, then those of the packs the world starts with
-    /// enabled, later packs overriding earlier ones. The set stays as it is
-    /// until the next world opens; `/reload` and `/datapack` do not change it.
-    /// It replaces the previous world's definitions and selector ids.
-    pub fn snapshot_test_defs(&mut self) {
-        let stack = super::functions::pack_stack(
-            &self.server.world_root,
-            &self.common.options.resources,
-            &self.common.pack.data_source,
-            &self.common.pack.data_changes,
-            self.server.cmds.0.vanilla_disabled,
-            &self.common.level.enabled_features,
-            &sunrise_gameplay_common::game::pack_discovery::data_packs(&self.common.mods),
-        );
-        let mut functions = mod_api::GameTestFunctions::default();
-        self.native_register_game_tests(&mut functions);
-        let mut defs = std::collections::HashMap::new();
-        for pack in stack.builtin.iter().chain(stack.enabled_packs()) {
-            for file in pack.list_folder("test_instance") {
-                let Some(id) = file
-                    .strip_prefix("data/")
-                    .and_then(|r| r.split_once("/test_instance/"))
-                    .and_then(|(ns, path)| Some(format!("{ns}:{}", path.strip_suffix(".json")?)))
-                else {
-                    continue;
-                };
-                let Some(json) = pack
-                    .read(&file)
-                    .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok())
-                else {
-                    continue;
-                };
-                if let Some(mut def) = parse_test_def(&json) {
-                    def.callback = def.function.as_deref().and_then(|id| functions.resolve(id));
-                    defs.insert(id, Some(def));
-                }
-            }
-        }
-        for (id, definition) in functions.definitions() {
-            let mut def = parse_test_def(&serde_json::json!({
-                "type": "minecraft:function", "structure": definition.structure,
-                "function": definition.function, "environment": definition.environment,
-                "dimension": definition.dimension, "max_ticks": definition.max_ticks,
-                "setup_ticks": definition.setup_ticks, "max_attempts": definition.max_attempts,
-                "required_successes": definition.required_successes, "required": definition.required,
-            })).expect("validated registered test definition");
-            def.callback = def.function.as_deref().and_then(|id| functions.resolve(id));
-            defs.entry(id.to_owned()).or_insert(Some(def));
-        }
-        let mut ids: Vec<String> = defs.keys().cloned().collect();
-        ids.sort();
-        self.common
-            .ui
+    /// Publish the frozen test instance and environment IDs for command completion.
+    pub fn sync_test_registry_ids(&mut self) {
+        let Some(tables) = self.server.world_tables.0.as_ref() else {
+            return;
+        };
+        let mut instance_ids: Vec<String> = tables.test_instances.keys().cloned().collect();
+        instance_ids.sort();
+        self.common.ui
             .registries
             .by_registry
             .entry("minecraft:test_instance".into())
             .or_default()
-            .ids = ids;
-        *self.server.test_defs.0.borrow_mut() = defs;
-        self.server.test_defs_snapshot = true;
-    }
-    pub(in crate::game::server_side) fn read_test_def(&self, id: &str) -> Option<TestDef> {
-        let (ns, path) = id.split_once(':').unwrap_or(("minecraft", id));
-        let file = self
-            .common
-            .options
-            .resources
-            .join("data")
-            .join(ns)
-            .join("test_instance")
-            .join(format!("{path}.json"));
-        let json: serde_json::Value = serde_json::from_slice(&std::fs::read(file).ok()?).ok()?;
-        parse_test_def(&json)
+            .ids = instance_ids;
+        let mut env_ids: Vec<String> = tables.test_environments.keys().cloned().collect();
+        env_ids.sort();
+        self.common.ui
+            .registries
+            .by_registry
+            .entry("minecraft:test_environment".into())
+            .or_default()
+            .ids = env_ids;
     }
 
     pub(in crate::game) fn test_instance_at(&self, pos: Pos) -> Option<&TestInstanceBlock> {

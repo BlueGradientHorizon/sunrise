@@ -11,7 +11,7 @@ use sunrise_core::geometry::Vec3;
 use sunrise_gameplay::game::server_side::entity_server::damage_level_of;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::health::{Attack, NO_ATTACK};
-use sunrise_sim::mobs::{Mob, Who};
+use sunrise_sim::mobs::{Mob, MobEvent, Who};
 
 /// What a knockback heard: the attacker and the stacks it holds (by item id).
 type Held = (i32, Option<String>, Option<String>);
@@ -20,12 +20,13 @@ type Held = (i32, Option<String>, Option<String>);
 pub(crate) struct Heard {
     knocks: Vec<Held>,
     pub(in crate::game) credits: Vec<(i32, Option<String>)>,
-    /// The entry of `LivingEntity.knockback` each push came through, as the hook named it.
-    entries: Vec<mod_api::KnockbackEntry>,
+    /// Optional projection results `(attacker_main, attacker_off, kill_credit_main)` when
+    /// `record_projections` is enabled.
+    projections: Vec<(Option<bool>, Option<bool>, Option<bool>)>,
     incoming_causing: Vec<i32>,
     cancel: bool,
-    repeat_short: bool,
-    set_strength: Option<f64>,
+    record_projections: bool,
+    set_strength: Option<f32>,
     sources: Vec<(String, i32, i32)>,
     pub(in crate::game) reduce_sword_credit: bool,
 }
@@ -40,18 +41,27 @@ impl Hooks for Probe {
         event: &mut LivingKnockbackEvent<'_>,
     ) -> mod_api::Flow {
         let mut heard = self.0.lock().unwrap();
-        let id = |s: Option<&mod_api::ItemStack>| {
+        let id = |s: Option<&mod_api::ItemStackView<'_>>| {
             s.and_then(|s| mod_api::__private::item_key_id(s.item()).map(str::to_owned))
         };
         heard.knocks.push((
             event.attacker,
-            id(event.attacker_main),
-            id(event.attacker_off),
+            id(event.attacker_main.as_ref()),
+            id(event.attacker_off.as_ref()),
         ));
         heard
             .credits
-            .push((event.kill_credit, id(event.kill_credit_main)));
-        heard.entries.push(event.entry);
+            .push((event.kill_credit, id(event.kill_credit_main.as_ref())));
+        if heard.record_projections {
+            heard.projections.push((
+                event.attacker_main.as_ref().map(|s| s.project().is_some()),
+                event.attacker_off.as_ref().map(|s| s.project().is_some()),
+                event
+                    .kill_credit_main
+                    .as_ref()
+                    .map(|s| s.project().is_some()),
+            ));
+        }
         heard.sources.push((
             event.source.damage_type.to_owned(),
             event.source.causing,
@@ -60,13 +70,10 @@ impl Hooks for Probe {
         if let Some(strength) = heard.set_strength {
             event.strength = strength;
         } else if heard.reduce_sword_credit {
-            if id(event.kill_credit_main).as_deref() == Some("minecraft:iron_sword") {
+            if id(event.kill_credit_main.as_ref()).as_deref() == Some("minecraft:iron_sword") {
                 event.strength *= 0.5;
             }
         } else {
-            event.strength *= 2.0;
-        }
-        if heard.repeat_short && event.entry == mod_api::KnockbackEntry::Short {
             event.strength *= 2.0;
         }
         event.x = -event.x;
@@ -119,6 +126,7 @@ fn source(causing: i32) -> HurtSource<'static> {
         causing,
         direct: 0,
         position: None,
+        direct_type: None,
     }
 }
 
@@ -190,7 +198,8 @@ fn the_bridge_names_the_attacker_and_what_it_holds() {
             assert_eq!(
                 knock,
                 Knock {
-                    strength: 0.8,
+                    // The listener saw and doubled the float `(float) 0.4`, widened after.
+                    strength: f64::from(0.4_f32 * 2.0),
                     x: -1.0,
                     z: 0.0
                 }
@@ -466,7 +475,7 @@ fn a_guest_blow_on_a_guest_names_the_attacker_and_the_sword() {
                 &strike,
             );
             let seen = log.lock().unwrap().incoming_causing.clone();
-            assert!(hurt, "not hurt; damage heard from {seen:?}");
+            assert!(hurt.is_some(), "not hurt; damage heard from {seen:?}");
             assert_eq!(game.current_attack(), NO_ATTACK);
         });
     });
@@ -528,17 +537,14 @@ fn a_mobs_fireball_on_the_player_names_the_shooter_and_its_bow() {
     );
 }
 
-/// The hook fires once per call of the full entry and names the entry the push came through:
-/// `Short` for `knockback(power, x, z)` (which delegates to the full entry), `Full` for a direct
-/// call of the full entry. A listener that wants a mixin's double change on the short entry
-/// applies its change twice on `Short`.
+/// Both `knockback` and `knockback_full` fire one `living_knockback` event per push with the
+/// same strength and cancel semantics, matching vanilla's delegating overload and NeoForge's
+/// `CommonHooks.onLivingKnockBack`.
 #[test]
 #[ignore = "daily"]
 #[cfg(any())]
-fn the_hook_names_the_entry_a_push_came_through_once_per_full_entry_call() {
-    use mod_api::KnockbackEntry::{Full, Short};
+fn short_and_full_knockback_entries_fire_one_event_with_same_semantics() {
     let heard = heard(|game, log| {
-        log.lock().unwrap().repeat_short = true;
         let hit = Damage::of(DamageKind::Generic);
         zombie_at(game, 42, Vec3::ZERO);
         let mut mob = game.mobs.pop().unwrap();
@@ -547,24 +553,24 @@ fn the_hook_names_the_entry_a_push_came_through_once_per_full_entry_call() {
         with_detached_credit(game, 42, |level| {
             mob.knockback(level, 0.4, 1.0, 0.0, &hit, 0.0)
         });
-        assert_eq!(mob.velocity, Vec3::new(1.6, 0.0, 0.0));
+        assert_eq!(mob.velocity, Vec3::new(0.8, 0.0, 0.0));
+        assert_eq!(log.lock().unwrap().knocks.len(), 1, "mob, short entry");
+
         mob.velocity = Vec3::ZERO;
-        assert_eq!(log.lock().unwrap().entries, [Short], "mob, short entry");
         with_detached_credit(game, 42, |level| {
             mob.knockback_full(level, 0.4, 1.0, 0.0, &hit, 0.0, false)
         });
-        assert_eq!(
-            log.lock().unwrap().entries,
-            [Short, Full],
-            "mob, full entry"
-        );
         assert_eq!(mob.velocity, Vec3::new(0.8, 0.0, 0.0));
+        assert_eq!(log.lock().unwrap().knocks.len(), 2, "mob, full entry");
+
+        mob.velocity = Vec3::ZERO;
         with_detached_credit(game, 42, |level| {
             mob.knockback_full(level, 0.4, 1.0, 0.0, &hit, 0.0, true)
         });
+        assert_eq!(mob.velocity, Vec3::new(0.8, 0.0, 0.0));
         assert_eq!(
-            log.lock().unwrap().entries,
-            [Short, Full, Full],
+            log.lock().unwrap().knocks.len(),
+            3,
             "mob, full entry for an effect push"
         );
 
@@ -574,7 +580,7 @@ fn the_hook_names_the_entry_a_push_came_through_once_per_full_entry_call() {
         game.knock_back_player(0.4, 1.0, 0.0, source(0), attack, 0.0);
         assert_eq!(
             game.player.as_ref().unwrap().velocity,
-            Vec3::new(1.6, 0.0, 0.0)
+            Vec3::new(0.8, 0.0, 0.0)
         );
         game.player.as_mut().unwrap().velocity = Vec3::ZERO;
         game.knock_back_player_full(0.4, 1.0, 0.0, source(0), attack, 0.0, false);
@@ -582,19 +588,88 @@ fn the_hook_names_the_entry_a_push_came_through_once_per_full_entry_call() {
             game.player.as_ref().unwrap().velocity,
             Vec3::new(0.8, 0.0, 0.0)
         );
-        let entries = log.lock().unwrap().entries.clone();
         assert_eq!(
-            &entries[3..],
-            [Short, Full],
+            log.lock().unwrap().knocks.len(),
+            5,
             "player, short then full entry"
         );
-        // The short entry leaves nothing behind: a full call after it is `Full` again.
+
+        log.lock().unwrap().cancel = true;
+        mob.velocity = Vec3::ZERO;
         with_detached_credit(game, 42, |level| {
-            mob.knockback_full(level, 0.4, 1.0, 0.0, &hit, 0.0, false)
+            mob.knockback(level, 0.4, 1.0, 0.0, &hit, 0.0)
         });
-        assert_eq!(log.lock().unwrap().entries.last(), Some(&Full));
+        assert_eq!(mob.velocity, Vec3::ZERO, "canceled short entry");
+        game.player.as_mut().unwrap().velocity = Vec3::ZERO;
+        game.knock_back_player(0.4, 1.0, 0.0, source(0), attack, 0.0);
+        assert_eq!(
+            game.player.as_ref().unwrap().velocity,
+            Vec3::ZERO,
+            "canceled player short entry"
+        );
     });
-    assert_eq!(heard.entries.len(), 6, "one event per full-entry call");
+    assert_eq!(heard.knocks.len(), 7, "one event per knockback operation");
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_sweep_launches_a_loaded_sulfur_cube_with_off_center_aim_without_the_living_listener() {
+    let heard = heard(|game, log| {
+        log.lock().unwrap().cancel = true;
+        player_with_sword(game);
+        game.yaw = -30.0;
+        game.pitch = 10.0;
+        let kind = game
+            .res
+            .mob_types()
+            .get("minecraft:sulfur_cube")
+            .unwrap()
+            .clone();
+        let mut mob = Mob::new(42, kind, Vec3::new(0.0, 0.0, 2.0), 0.0);
+        mob.extra.set_body(Some("minecraft:tnt".into()));
+        game.mobs.push(mob);
+        let area =
+            sunrise_core::geometry::Aabb::new(Vec3::new(-1.0, -1.0, 1.0), Vec3::new(1.0, 2.0, 3.0));
+        game.sweep_damage(
+            area,
+            sunrise_gameplay::game::server_side::mace::Spared::Nothing,
+            1.0,
+        );
+        let mob = &game.mobs[0];
+        let expected = [
+            -0.347_157_826_914_143_65,
+            0.144_000_005_722_045_88,
+            0.534_698_680_463_567_3,
+        ];
+        assert_eq!([mob.velocity.x, mob.velocity.y, mob.velocity.z], expected);
+        assert!(mob.attacker_aim.is_none());
+        let sounds: Vec<_> = mob
+            .outbox
+            .iter()
+            .filter_map(|e| match e {
+                MobEvent::Sound(name, at, volume, pitch) => Some((*name, *at, *volume, *pitch)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            sounds,
+            [
+                (
+                    "entity.sulfur_cube.explosive.hit",
+                    [0.0, 0.0, 2.0],
+                    1.0,
+                    1.0
+                ),
+                (
+                    "entity.sulfur_cube.explosive.hit",
+                    [0.0, 0.0, 2.0],
+                    1.0,
+                    1.0
+                ),
+            ]
+        );
+    });
+    assert!(heard.knocks.is_empty(), "heard {:?}", heard.knocks);
 }
 
 #[cfg(any())]
@@ -619,6 +694,10 @@ fn callable_knockback_respects_the_hook_and_resistance_without_dealing_damage() 
         return;
     }
     let heard = heard(|game, log| {
+        // A mod reaches an entity only in an accessible section.
+        game.world
+            .chunks
+            .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
         zombie_at(game, 42, Vec3::ZERO);
         let living = game.living(game.entity(42).unwrap()).unwrap();
         game.mobs[0].attrs.knockback_resistance = 0.5;
@@ -644,7 +723,6 @@ fn callable_knockback_respects_the_hook_and_resistance_without_dealing_damage() 
         assert_eq!(game.mobs[0].velocity, after);
         assert_eq!(game.mobs[0].health, health);
     });
-    assert_eq!(heard.entries, [mod_api::KnockbackEntry::Short; 3]);
     assert_eq!(heard.knocks, vec![(0, None, None); 3]);
     assert_eq!(heard.credits, vec![(0, None); 3]);
     assert_eq!(
@@ -669,6 +747,10 @@ fn callable_knockback_reads_resistance_written_this_tick() {
     use sunrise_gameplay::game::server_side::living_attributes::AttributeWrite;
     use sunrise_items::equipment::CHEST;
     heard(|game, _| {
+        // A mod reaches an entity only in an accessible section.
+        game.world
+            .chunks
+            .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
         zombie_at(game, 42, Vec3::ZERO);
         game.mobs[0].ground.on_ground = true;
         game.mobs[0].set_equipment_stack(

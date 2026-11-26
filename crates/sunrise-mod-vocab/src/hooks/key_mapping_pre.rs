@@ -13,7 +13,6 @@ pub trait Hooks {
     /// change physical input. No NeoForge counterpart.
     /// Client-side.
     #[hook(
-        target = "sunrise_client_gameplay::game::native_hooks::key_mapping_pre::ClientGame<'_>::native_key_mapping_pre",
         dispatch = "flat",
         side = "client",
         contract = "cancel",

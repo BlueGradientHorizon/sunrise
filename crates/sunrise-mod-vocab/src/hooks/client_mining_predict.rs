@@ -6,7 +6,6 @@ pub trait Hooks {
     /// The snapshot is read-only. A veto skips the new mining operation and preserves any
     /// retained dig. Release and correction still perform ordinary cleanup.
     #[hook(
-        target = "sunrise_client_gameplay::game::native_hooks::client_mining_predict::ClientGame<'_>::native_client_mining_predict",
         receiver = "read",
         dispatch = "flat",
         side = "client",

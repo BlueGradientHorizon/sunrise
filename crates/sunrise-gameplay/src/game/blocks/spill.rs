@@ -7,7 +7,8 @@ use super::GameLevel;
 use mod_api::EntityRef;
 use sunrise_core::position::BlockPos;
 use sunrise_gameplay_common::game::spill_common::{
-    BlockDrops, BlockItemDrop, Pending, Spawn, UsedDrops, saved_entity, world_source,
+    BlockDrops, BlockItemDrop, Pending, Spawn, UsedDrops, live_full_metadata, saved_entity,
+    world_source,
 };
 use sunrise_items::items::{BlockLootRoll, ItemStack};
 use sunrise_level::containers::BlockEntity;
@@ -57,7 +58,9 @@ pub(in crate::game::server_side) fn block_drops_of(
     let at = [pos.x, pos.y, pos.z];
     let mut copied = Pending::default();
     if let Some(block_entity) = level.world.block_entities.get(&key) {
-        let saved = level.encode_live_block_entity(key, block_entity, &level.facts.get(state).name);
+        let name = &level.facts.get(state).name;
+        let current = level.encode_live_block_entity(key, block_entity, name);
+        let saved = live_full_metadata(level.world, key, block_entity, name, level.items, current);
         copied.record_from(level.world, at, saved);
     } else if let Some(tag) = saved_entity(level.world, at) {
         copied.record_saved(at, &tag);
@@ -96,6 +99,7 @@ impl crate::game::ServerGame<'_> {
                         &self.common.world,
                         pos,
                         &block.name,
+                        world_items!(self),
                         |key, entity, block| {
                             self.encode_live_block_entity(key, entity, block, world_items!(self))
                         },
@@ -112,14 +116,92 @@ impl crate::game::ServerGame<'_> {
                         level.roll_block_loot(at, state, entity, roll, source.as_deref())
                     });
                 }
-                server_world_items!(self).block_drops(
-                    self.common.pack.assets.registry,
-                    state,
-                    roll,
-                    &mut self.common.world.random,
-                    Some((&mut self.server.rand_sequences, self.common.level.seed)),
-                )
+                // ORIGIN is the block's centre; its location checks read the level, so
+                // the roll draws from copies of the randoms put back after it.
+                let mut random = self.common.world.random.clone();
+                let mut sequences = std::mem::take(&mut self.server.rand_sequences);
+                let drops = {
+                    let level = crate::game::advancements::View(&*self);
+                    let read = |predicate: &serde_json::Value, at: [f64; 3]| {
+                        sunrise_sim::advancements::location(predicate, at, &level)
+                    };
+                    let origin = pos.map(|c| f64::from(c) + 0.5);
+                    let roll = BlockLootRoll {
+                        location: Some(sunrise_sim::advancements::loot_location(origin, &read)),
+                        ..roll
+                    };
+                    server_world_items!(self).block_drops(
+                        self.common.pack.assets.registry,
+                        state,
+                        roll,
+                        &mut random,
+                        Some((&mut sequences, self.common.level.seed)),
+                    )
+                };
+                self.common.world.random = random;
+                self.server.rand_sequences = sequences;
+                drops
             })
+        })
+    }
+    /// `Block.dropFromBlockInteractLootTable` for interactions run directly on
+    /// `Game` (`PumpkinBlock`, `BeehiveBlock`, `ShearsDispenseItemBehavior`):
+    /// supplies `BLOCK_STATE`, `ORIGIN` (block centre), optional `BLOCK_ENTITY`,
+    /// optional `INTERACTING_ENTITY`, optional `TOOL`, and the level.
+    pub(in crate::game) fn interact_loot_at(
+        &mut self,
+        table: &str,
+        pos: [i32; 3],
+        state: BlockStateId,
+        interacting: Option<sunrise_world::loot::LootEntity>,
+        held: Option<&ItemStack>,
+    ) -> Vec<ItemStack> {
+        let centre = pos.map(|c| f64::from(c) + 0.5);
+        let source = self
+            .common
+            .pack
+            .assets
+            .registry
+            .state(state)
+            .and_then(|block| {
+                world_source(
+                    &self.common.world,
+                    pos,
+                    &block.name,
+                    world_items!(self),
+                    |key, entity, block| {
+                        self.encode_live_block_entity(key, entity, block, world_items!(self))
+                    },
+                )
+            });
+        let mut place = self.common.loot_place_at(centre, None);
+        if let Some(source) = source {
+            place.block_entity = Some(source.nbt.clone());
+            place.block_components = Some(source.components.clone());
+        }
+        let loot = self.server.server_loot.0.get();
+        let matcher = |predicate: &serde_json::Value, entity: &sunrise_world::loot::LootEntity| {
+            loot.as_ref()
+                .is_some_and(|data| data.entity_matches(predicate, Some(entity)))
+        };
+        let interacting_target = interacting.as_ref().map(|entity| {
+            (
+                entity,
+                &matcher as &dyn Fn(&serde_json::Value, &sunrise_world::loot::LootEntity) -> bool,
+            )
+        });
+        sunrise_world::loot::with_native_loot_place(place, || {
+            server_world_items!(self).interact_loot(
+                table,
+                self.common.pack.assets.registry,
+                state,
+                interacting_target,
+                held,
+                None,
+                &mut self.common.world.random,
+                &mut self.server.rand_sequences,
+                self.common.level.seed,
+            )
         })
     }
     /// The handle of `LootContextParams.THIS_ENTITY`, by its id.
@@ -173,6 +255,21 @@ impl crate::game::ServerGame<'_> {
         }
     }
 
+    /// Publish item entities and orbs already prepared by a block operation.
+    pub(in crate::game) fn publish_block_spawns(
+        &mut self,
+        spawns: Vec<Spawn>,
+        orbs: Vec<([f64; 3], u32, i32)>,
+    ) {
+        let _save_lease = sunrise_sim::join_seq::visibility::PassLease::enter();
+        for s in spawns {
+            self.add_item_entity_prepared(s.stack, s.pos, s.motion, s.delay, s.random);
+        }
+        for (at, value, merge_id) in orbs {
+            self.award_orb(at, value, merge_id);
+        }
+    }
+
     /// Add the item entities the block behaviour spawned and follow up on the
     /// block entities it removed.
     pub fn flush_spill(&mut self) {
@@ -197,12 +294,7 @@ impl crate::game::ServerGame<'_> {
                 drops,
             );
         });
-        for s in spill.spawns {
-            self.add_item_entity_prepared(s.stack, s.pos, s.motion, s.delay, s.random);
-        }
-        for (at, value, merge_id) in spill.orbs {
-            self.award_orb(at, value, merge_id);
-        }
+        self.publish_block_spawns(spill.spawns, spill.orbs);
         for (pos, entity) in spill.removed {
             let key = (pos[0], pos[1], pos[2]);
             if matches!(entity, BlockEntity::Jukebox(_)) {
@@ -221,6 +313,10 @@ use sunrise_gameplay_common::game::GameGameExt1 as _;
 use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_hooks::block_entity_save_additional::BlockEntitySaveAdditionalGameExt1 as _;
+
+#[cfg(test)]
+#[path = "loot_context_tests.rs"]
+mod loot_context_tests;
 
 #[cfg(test)]
 mod tests {

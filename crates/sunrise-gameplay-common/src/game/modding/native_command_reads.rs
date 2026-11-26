@@ -8,6 +8,7 @@ pub mod tests {
             name: name.into(),
             trigger: "minecraft:inventory_changed".into(),
             conditions: sunrise_world::lazy_json::LazyJson::new(&serde_json::json!({})),
+            player: None,
         };
         let mut icon = sunrise_sim::crafting::recipe_result(&serde_json::json!({
             "id": "minecraft:wooden_pickaxe",

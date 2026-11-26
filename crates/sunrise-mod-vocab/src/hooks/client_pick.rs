@@ -18,7 +18,6 @@ pub trait Hooks {
     /// not recheck block state or entity liveness. Server checks and item-specific
     /// rays (including buckets and brushes) are unchanged. No NeoForge 26.3 counterpart.
     #[hook(
-        target = "sunrise_client_gameplay::game::native_hooks::client_pick::ClientGame<'_>::native_client_pick",
         dispatch = "api_carrier",
         side = "client",
         version = 2,

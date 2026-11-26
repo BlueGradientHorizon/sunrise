@@ -132,8 +132,16 @@ impl ServerGame<'_> {
             dx * dx + dy * dy + dz * dz < 16.0
         };
         if hurts || extinguishes {
-            let source =
-                Damage::indirect_magic(by_player.then_some(Who::Player), [at.x, at.y, at.z]);
+            let potion = if &*stack.item == "minecraft:lingering_potion" {
+                "minecraft:lingering_potion"
+            } else {
+                "minecraft:splash_potion"
+            };
+            let source = Damage::indirect_magic(
+                potion,
+                by_player.then_some(Who::Player),
+                [at.x, at.y, at.z],
+            );
             let attacker = by_player.then_some(Who::Player);
             let attack = self.attack_of_who(attacker);
             for index in 0..self.common.mobs.len() {
@@ -148,8 +156,9 @@ impl ServerGame<'_> {
                     continue;
                 }
                 if hurts && sensitive {
+                    let mob_id = m.id;
                     let invulnerable = m.invulnerable_flag;
-                    let plan = self.prepare_knockback_credit(m.id as i32, attacker, &attack);
+                    let plan = self.prepare_knockback_credit(mob_id as i32, attacker, &attack);
                     let mut credit = plan.lend(&mut self.server.last_hurt_by_player);
                     let m = &mut self.common.mobs[index];
                     m.damage(

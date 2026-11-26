@@ -90,6 +90,7 @@ fn accepted_hit_moves_through_teleport_restore_but_not_respawn() {
         causing: 41,
         direct: 73,
         position: Some([-17.25, 64.5, 32.75]),
+        direct_type: None,
     };
     let mut weapon = ItemStack::new("minecraft:bow", 1);
     weapon.damage = 19;
@@ -267,7 +268,7 @@ impl mod_api::Hooks for Breather {
         struct Granted;
         impl mod_api::CriterionTest for Granted {
             fn test(
-                &self,
+                &mut self,
                 _: &dyn mod_api::CriterionContext,
             ) -> Result<bool, mod_api::CriterionTestError> {
                 Ok(true)
@@ -294,7 +295,7 @@ impl mod_api::Hooks for Breather {
             player.trigger_criterion(
                 host,
                 &mod_api::Identifier::parse("breathing:tick").unwrap(),
-                Arc::new(Granted),
+                &mut Granted,
             ),
             Ok(())
         );

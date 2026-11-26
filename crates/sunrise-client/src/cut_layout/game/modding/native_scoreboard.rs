@@ -16,14 +16,11 @@ pub(crate) mod tests {
     
 
     use mod_api::prelude::ScoreboardServerHost;
-
-    use mod_api::ObjectiveRenderType;
-
-    use mod_api::ObjectiveError;
-
-    use mod_api::ScoreHolder;
-
-    use mod_api::DisplaySlot;
+    use mod_api::{
+        DisplaySlot, ObjectiveError, ObjectiveReadError, ObjectiveRenderType, ScoreEntry,
+        ScoreHolder, TeamColor,
+    };
+    use std::ops::ControlFlow;
 
     use sunrise_game_data::scoreboard as sb;
 
@@ -31,6 +28,7 @@ pub(crate) mod tests {
     #[ignore = "daily"]
     fn objectives_are_written_synced_saved_and_stale_once_removed() {
         with_game(|game| {
+            game.server.world_root = game.server.save.0.root.clone();
             let saved_board = open_lan(game);
             game.server
                 .lan
@@ -41,6 +39,10 @@ pub(crate) mod tests {
                 .push(guest(123, 1));
             let player = game.player(123).unwrap();
             let text = mod_api::Text::literal;
+            assert_eq!(
+                ScoreboardServerHost::visit_objectives(game, &mut |_| panic!("empty board")),
+                Ok(ControlFlow::Continue(()))
+            );
 
             // Adding refuses what the board refuses, and nothing else.
             let kills = ScoreboardServerHost::add_objective(
@@ -85,8 +87,26 @@ pub(crate) mod tests {
                 );
             }
             assert_eq!(game.objective("kills"), Some(kills));
-            assert_eq!(kills.name(game).as_deref(), Some("kills"));
+            let mut first = Vec::new();
+            assert_eq!(
+                ScoreboardServerHost::visit_objectives(game, &mut |objective| {
+                    first.push(objective);
+                    ControlFlow::Break(())
+                }),
+                Ok(ControlFlow::Break(()))
+            );
+            assert_eq!(first, [kills]);
+            assert_eq!(kills.name(game), Some("kills"));
+            assert_eq!(kills.criteria(game), Some("dummy"));
             assert_eq!(kills.display_name(game), Ok(text("Kills")));
+            assert_eq!(
+                kills.visit_slots(game, &mut |_| panic!("no display slot")),
+                Ok(ControlFlow::Continue(()))
+            );
+            assert_eq!(
+                kills.visit_scores(game, &mut |_| panic!("no score")),
+                Ok(ControlFlow::Continue(()))
+            );
 
             // A player and that player's entity are one holder, keyed by the name.
             let as_player = ScoreHolder::Player(player);
@@ -99,7 +119,33 @@ pub(crate) mod tests {
                 Some(5)
             );
             assert_eq!(game.score.board.score("guest1", "kills").unwrap().value, 5);
-            assert_eq!(kills.scores(game).unwrap().len(), 1);
+            kills
+                .set_score(game, ScoreHolder::Name("#zero".into()), 0)
+                .unwrap();
+            assert_eq!(
+                kills.score(game, ScoreHolder::Name("#zero".into())),
+                Some(0)
+            );
+            let mut scores = Vec::new();
+            assert_eq!(
+                kills.visit_scores(game, &mut |row| {
+                    scores.push((row.holder.to_owned(), row.value));
+                    ControlFlow::Continue(())
+                }),
+                Ok(ControlFlow::Continue(()))
+            );
+            // The fastutil board walks bucket 26 (#zero) before bucket 14 (guest1).
+            assert_eq!(
+                scores,
+                [(String::from("#zero"), 0), (String::from("guest1"), 5)]
+            );
+            assert_eq!(
+                kills.visit_scores(game, &mut |row| {
+                    assert_eq!(row, ScoreEntry::new("#zero", 0));
+                    ControlFlow::Break(())
+                }),
+                Ok(ControlFlow::Break(()))
+            );
             // The command reads what the mod wrote, and the lock starts set.
             assert_eq!(kills.score_locked(game, as_entity.clone()), Some(true));
             assert!(kills.set_score_locked(game, as_entity, false));
@@ -133,12 +179,22 @@ pub(crate) mod tests {
             assert_eq!(kills.score(game, offline), None);
 
             // Shown in the sidebar, a guest's view has it with its score.
+            let red_sidebar = DisplaySlot::TeamSidebar(TeamColor::Red);
+            assert!(game.set_display_slot(red_sidebar, Some(kills)));
             assert!(game.set_display_slot(DisplaySlot::Sidebar, Some(kills)));
             assert_eq!(
                 game.display_slot_objective(DisplaySlot::Sidebar),
                 Some(kills)
             );
-            assert_eq!(kills.slots(game), Some(vec![DisplaySlot::Sidebar]));
+            let mut slots = Vec::new();
+            assert_eq!(
+                kills.visit_slots(game, &mut |slot| {
+                    slots.push(slot);
+                    ControlFlow::Continue(())
+                }),
+                Ok(ControlFlow::Continue(()))
+            );
+            assert_eq!(slots, [DisplaySlot::Sidebar, red_sidebar]);
             game.lan_sync_scoreboard();
             let view = sunrise_sim::lan::scoreboard::View::of(&game.score.board);
             assert_eq!(
@@ -187,6 +243,14 @@ pub(crate) mod tests {
             assert_eq!(kills_again.name(game), None);
             assert_eq!(kills_again.display_name(game), Err(ObjectiveError::Stale));
             assert_eq!(
+                kills_again.visit_scores(game, &mut |_| panic!("stale objective")),
+                Err(ObjectiveReadError::Stale)
+            );
+            assert_eq!(
+                kills_again.visit_slots(game, &mut |_| panic!("stale objective")),
+                Err(ObjectiveReadError::Stale)
+            );
+            assert_eq!(
                 kills_again.set_score(game, ScoreHolder::Name("a".into()), 1),
                 Err(ObjectiveError::Stale)
             );
@@ -211,7 +275,7 @@ pub(crate) mod tests {
             assert!(aborted.is_err());
             assert_eq!(game.score.board, before);
             assert!(game.objective("temp").is_none());
-            assert_eq!(renamed.name(game).as_deref(), Some("kills"));
+            assert_eq!(renamed.name(game), Some("kills"));
             let kept: Result<(), ()> = game.storage_transaction(|host, _| {
                 ScoreboardServerHost::add_objective(
                     host,

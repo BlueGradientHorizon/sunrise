@@ -47,7 +47,7 @@ use sunrise_gameplay_common::game::{
 use sunrise_level::level_loading::{STATUS_RADIUS, Stage};
 use sunrise_level::sim_settings::SimSettings;
 use sunrise_level::spans::startup;
-use sunrise_protocol::text::translatable;
+use sunrise_protocol::{connection::Pipe, text::translatable};
 use sunrise_sim::{
     chunk_io::Reports,
     lan::{Lan, MAX_PLAYERS, NetConfig, hub::HubConfig},
@@ -65,6 +65,7 @@ pub struct Serving {
     /// Open to LAN or closed from inside a player's command, while the hub
     /// is out of its place: applied after the tick.
     pub pending: Option<Publish>,
+    pub previous_simulation_distance: i32,
     /// Where the load focus is and how far the player's chunks are.
     pub load: LoadPhase,
 }
@@ -97,8 +98,13 @@ impl Serving {
             tasks,
             owner: 1,
             pending: None,
+            previous_simulation_distance: 0,
             load: LoadPhase::default(),
         }
+    }
+
+    pub(in crate::game) fn entity_distance(&self) -> f64 {
+        f64::from_bits(self.flags.entity_distance.load(Ordering::Relaxed))
     }
     /// Send reports only to this server's owner, not to LAN clients.
     pub(in crate::game) fn reports(&self) -> &Reports {
@@ -190,8 +196,7 @@ impl crate::game::ServerGame<'_> {
             launch.owner,
             launch.owner_profile.as_deref(),
         ));
-        let result = self.run_server_lifecycle(false, |game, startup_began| {
-            *startup_began = true;
+        let result = self.run_server_lifecycle(false, |game| {
             game.run_integrated_inner(launch, flags, tasks, ready, opening)
         });
         self.finish_server_capture();
@@ -205,17 +210,31 @@ impl crate::game::ServerGame<'_> {
         tasks: Receiver<OwnerRequest>,
         ready: &Sender<Ready>,
         opening: Opening,
-    ) -> Result<()> {
-        self.integrated_open(&launch, &flags, tasks, ready, opening)?;
+    ) -> Result<super::server_lifecycle::ServerRunOutcome> {
+        let (pipe, world_name) = self.integrated_open(&launch, &flags, tasks, opening)?;
+        // IntegratedServer.initServer ends with `ServerStartingEvent`, right before
+        // `MinecraftServer.runServer` fires `ServerStartedEvent`.
+        self.native_server_starting(false);
         // The server thread's `server_started` site, before the tick loop.
         self.native_lifecycle_world_ready();
+        // Hand the local connection pipe to the client only after `server_started`,
+        // so a failed or panicking startup never hands out a live pipe.
+        let _ = ready.send(Ok((
+            pipe,
+            world_name,
+            self.world_biomes_base
+                .as_ref()
+                .expect("world is open")
+                .clone(),
+        )));
         if let (Some(script), Some(output)) = (
             std::env::var_os("SUNRISE_COMMAND_SCRIPT"),
             std::env::var_os("SUNRISE_COMMAND_OUTPUT"),
         ) {
             // The script owns the clock: connection setup and terrain loading
             // cannot add wall-clock-dependent world ticks to oracle output.
-            return self.run_command_harness(script.as_ref(), output.as_ref());
+            self.run_command_harness(script.as_ref(), output.as_ref())?;
+            return Ok(super::server_lifecycle::ServerRunOutcome::Orderly);
         }
         let slow_ms = self
             .common
@@ -226,10 +245,15 @@ impl crate::game::ServerGame<'_> {
             .profile
             .server
             .get_or_insert_with(|| capture::ServerSide::new(slow_ms));
-        self.integrated_tick_loop(&flags)
+        self.integrated_tick_loop(&flags)?;
+        Ok(super::server_lifecycle::ServerRunOutcome::Orderly)
     }
 
     pub fn integrated_tick_loop(&mut self, flags: &Flags) -> Result<()> {
+        enum TickFailure {
+            Error(Box<dyn std::error::Error>),
+            Panic(Box<dyn std::any::Any + Send>),
+        }
         let mut next = Instant::now();
         let mut was_paused = false;
         let mut smoothed_tick_ms = 0.0f32;
@@ -246,7 +270,7 @@ impl crate::game::ServerGame<'_> {
             let paused = flags.paused.load(Ordering::Relaxed);
             let ticked =
                 std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| -> Result<()> {
-                    #[cfg(test)]
+                    #[cfg(any(test, feature = "test-support"))]
                     if flags.fail_tick.swap(false, Ordering::Relaxed) {
                         self.common.level.name = "saved after integrated tick panic".into();
                         self.common.experience.total = 37;
@@ -264,45 +288,18 @@ impl crate::game::ServerGame<'_> {
                         // Only the connections run.
                         self.tick_server_measured(true)?;
                     } else {
-                        self.follow_distances(flags);
-                        let cpu = sunrise_level::spans::thread_cpu();
-                        let started = Instant::now();
-                        self.tick_server_measured(false)?;
-                        // MinecraftServer.tickServer's tick times, for /tick query.
-                        self.common.clock.record(started.elapsed());
-                        // Parallel Tick's Auto decides here, between ticks, how the next one runs.
-                        let elapsed_ms = started.elapsed().as_secs_f32() * 1000.0;
-                        let on_cpu = sunrise_level::spans::thread_cpu().zip(cpu);
-                        sunrise_sim::parallel::after_tick(
-                            elapsed_ms,
-                            on_cpu.map(|(end, start)| (end - start).as_secs_f32() * 1000.0),
-                        );
-                        smoothed_tick_ms = smoothed_tick_ms * 0.8 + elapsed_ms * 0.2;
-                        flags
-                            .smoothed_tick_ms
-                            .store(smoothed_tick_ms.to_bits(), Ordering::Relaxed);
-                        if let (Some(terrain), Ok(mut terrains)) =
-                            (self.common.end.locator(), flags.terrain.lock())
-                        {
-                            terrains.insert(self.common.dim.id(), terrain);
-                        }
+                        self.tick_integrated_unpaused(flags, &mut smoothed_tick_ms)?;
                     }
                     Ok(())
                 }));
             match ticked {
                 Ok(Ok(())) => {}
                 Ok(Err(error)) => {
-                    failure = Some(error);
+                    failure = Some(TickFailure::Error(error));
                     break;
                 }
                 Err(payload) => {
-                    failure = Some(
-                        format!(
-                            "the server thread panicked: {}",
-                            super::dedicated::panic_message(payload.as_ref())
-                        )
-                        .into(),
-                    );
+                    failure = Some(TickFailure::Panic(payload));
                     break;
                 }
             }
@@ -310,7 +307,7 @@ impl crate::game::ServerGame<'_> {
             self.publish_load_view();
             self.wait_for_next_server_tick(&mut next, paused);
         }
-        if let Some(error) = failure {
+        if let Some(failure) = failure {
             let finished = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 self.finish_server_capture();
             }));
@@ -320,19 +317,37 @@ impl crate::game::ServerGame<'_> {
                     super::dedicated::panic_message(payload.as_ref())
                 );
             }
-            let stopped = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                self.stop_after_crash(&error.to_string())
-            }));
-            match stopped {
-                Ok(Ok(())) => {}
-                Ok(Err(e)) => log::error!("Sunrise: crash shutdown: {e}"),
-                Err(payload) => log::error!(
-                    "Sunrise: crash shutdown panicked: {}",
-                    super::dedicated::panic_message(payload.as_ref())
-                ),
-            }
-            return Err(error);
+            return match failure {
+                TickFailure::Error(error) => Err(error),
+                TickFailure::Panic(payload) => std::panic::resume_unwind(payload),
+            };
         }
+        Ok(())
+    }
+
+    pub fn tick_integrated_unpaused(&mut self, flags: &Flags, smoothed_tick_ms: &mut f32) -> Result<()> {
+        let cpu = sunrise_level::spans::thread_cpu();
+        let started = Instant::now();
+        self.tick_server_measured(false)?;
+        // MinecraftServer.tickServer's tick times, for /tick query.
+        self.common.clock.record(started.elapsed());
+        // Parallel Tick's Auto decides here, between ticks, how the next one runs.
+        let elapsed_ms = started.elapsed().as_secs_f32() * 1000.0;
+        let on_cpu = sunrise_level::spans::thread_cpu().zip(cpu);
+        sunrise_sim::parallel::after_tick(
+            elapsed_ms,
+            on_cpu.map(|(end, start)| (end - start).as_secs_f32() * 1000.0),
+        );
+        *smoothed_tick_ms = *smoothed_tick_ms * 0.8 + elapsed_ms * 0.2;
+        flags
+            .smoothed_tick_ms
+            .store(smoothed_tick_ms.to_bits(), Ordering::Relaxed);
+        if let (Some(terrain), Ok(mut terrains)) =
+            (self.common.end.locator(), flags.terrain.lock())
+        {
+            terrains.insert(self.common.dim.id(), terrain);
+        }
+        self.follow_distances(flags);
         Ok(())
     }
 
@@ -354,16 +369,15 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// The integrated server's world open: `run_integrated`'s segment
-    /// from `load_world` through `settle_spawn`, whole so its failures are
+    /// from `load_world` through `settle_player_spawn`, whole so its failures are
     /// one open failure (`WorldOpenFailed`, the engine's own error text).
     pub(in crate::game::server_side) fn integrated_open(
         &mut self,
         launch: &Launch,
         flags: &Arc<Flags>,
         tasks: Receiver<OwnerRequest>,
-        ready: &Sender<Ready>,
         opening: Opening,
-    ) -> Result<()> {
+    ) -> Result<(Pipe, String)> {
         // The mods' server configs, read before the server starts.
         if let Ok(dir) = std::env::current_dir() {
             self.native_configs_server_start(&dir.join("saves").join(&launch.folder), false);
@@ -398,7 +412,7 @@ impl crate::game::ServerGame<'_> {
             view_distance,
             simulation_distance: self.server.settings.simulation_distance.max(2),
             dimension: self.common.dim.id().to_owned(),
-            levels: self.server.level_shapes,
+            levels: self.server.level_shapes.clone(),
             level_seeds: self.server.levels.0.runtime.seeds(),
             seed: self.common.level.seed,
             max_players: MAX_PLAYERS,
@@ -423,7 +437,7 @@ impl crate::game::ServerGame<'_> {
                 )
                 .then(|| translatable("multiplayer.disconnect.not_whitelisted", &[]))
             })),
-            levels: self.server.level_shapes,
+            levels: self.server.level_shapes.clone(),
             owner_profile: launch.owner_profile.clone(),
             // `IntegratedServer.getSingleplayerProfile`: the window's own player logs in
             // through memory as the account's profile, whatever the hello says.
@@ -467,6 +481,7 @@ impl crate::game::ServerGame<'_> {
             tasks,
             owner,
             pending: None,
+            previous_simulation_distance: 0,
             load: LoadPhase::default(),
         });
         // MinecraftServer.prepareLevels: the saved tickets' chunks load; the
@@ -475,47 +490,20 @@ impl crate::game::ServerGame<'_> {
         view.start(Stage::LoadInitialChunks, 0);
         startup::time("server.prepare_levels", || self.prepare_levels())?;
         view.finish(Stage::LoadInitialChunks);
-        let _ = ready.send(Ok((pipe, self.common.level.name.clone())));
-        startup::time("server.settle_spawn", || self.settle_spawn())
+        startup::time("server.settle_spawn", || self.settle_player_spawn())?;
+        startup::time("server.initial_save", || self.save_world_after_players(false))?;
+        Ok((pipe, self.common.level.name.clone()))
     }
 
     /// `MinecraftServer.stopServer`: the players are saved and sent away,
     /// then the world is saved.
-    pub(in crate::game::server_side) fn stop_integrated(
-        &mut self,
-        crashed: bool,
-        run_error: Option<&str>,
-    ) -> Result<()> {
+    pub(in crate::game::server_side) fn stop_integrated(&mut self, crashed: bool) -> Result<()> {
         // Abort background terrain generation/decoration on shutdown, matching vanilla behavior.
         self.server.streaming.abort_generation();
         self.server.levels.0.abort_parked_generation();
-        // A failed open keeps its opening phase until the final save attempts finish.
-        if run_error.is_none() || !self.common.native_lifecycle.is_opening() {
-            self.common.native_lifecycle.begin_close();
-        }
-        self.native_configs_server_stop();
-        self.native_players_leaving();
-        // IntegratedServer.stopServer: teardownPublishedState.
-        self.stop_serving();
-        // PlayerList.removeAll: the owner and every guest leave the game.
-        if !crashed {
-            self.award_leave_game_to_all();
-            self.save_leaving_guests();
-        }
-        if let Some(host) = self.server.lan.as_mut() {
-            let conns: Vec<u32> = host.hub.guests.iter().map(|g| g.conn).collect();
-            for conn in conns {
-                host.hub.kick(
-                    conn,
-                    translatable("multiplayer.disconnect.server_shutdown", &[]),
-                );
-            }
-            let has_remote_guests = host.hub.guests.iter().any(|g| g.conn != 0);
-            if has_remote_guests {
-                std::thread::sleep(Duration::from_millis(50));
-            }
-        }
-        self.finish_server_save(crashed, run_error)
+        // The close request: lifecycle observation stops.
+        self.common.native_lifecycle.begin_close();
+        self.finish_server_save(false, crashed)
     }
 }
 
@@ -683,7 +671,7 @@ impl crate::game::ServerGame<'_> {
         self.server.lan.is_some() && (!self.serving() || self.published_port().is_some())
     }
     /// `IntegratedServer.getPort` while published.
-    pub(in crate::game) fn published_port(&self) -> Option<u16> {
+    pub fn published_port(&self) -> Option<u16> {
         let s = self.server.serving.as_ref()?;
         Some(s.flags.published.load(Ordering::Relaxed)).filter(|&p| p != 0)
     }
@@ -726,25 +714,23 @@ impl crate::game::ServerGame<'_> {
     /// IntegratedServer.tickServer: the server follows the window's render
     /// and simulation distances when they change.
     pub(in crate::game::server_side) fn follow_distances(&mut self, flags: &Flags) {
-        // IntegratedServer.getScaledTrackingDistance reads the option each time.
-        self.server.settings.entity_distance =
-            f64::from_bits(flags.entity_distance.load(Ordering::Relaxed));
-        let Some(host) = self.server.lan.as_mut() else {
+        let Some(old_view) = self.server_view_distance() else {
             return;
         };
         let view = flags.render_distance.load(Ordering::Relaxed).max(2);
-        let old = host.hub.config.view_distance;
-        if view != old {
-            log::info!("Changing view distance to {view}, from {old}");
-            host.hub.set_view_distance(view);
-            self.server.settings.render_distance = view;
+        if view != old_view {
+            log::info!("Changing view distance to {view}, from {old_view}");
+            self.set_view_distance(view);
         }
+        let Some(serving) = self.server.serving.as_mut() else {
+            return;
+        };
         let simulation = flags.simulation_distance.load(Ordering::Relaxed).max(2);
-        let old = host.hub.config.simulation_distance;
-        if simulation != old {
-            log::info!("Changing simulation distance to {simulation}, from {old}");
-            host.hub.set_simulation_distance(simulation);
-            self.server.settings.simulation_distance = simulation;
+        let old_simulation = serving.previous_simulation_distance;
+        if simulation != old_simulation {
+            log::info!("Changing simulation distance to {simulation}, from {old_simulation}");
+            serving.previous_simulation_distance = simulation;
+            self.set_simulation_distance(simulation);
         }
     }
 
@@ -770,8 +756,9 @@ impl crate::game::ServerGame<'_> {
                 host.settings = settings;
                 host.hub.config.force_game_mode = settings.force_game_mode;
                 // IntegratedServer.setGuestCommandAccess, then updatePermissions.
-                host.hub.config.guest_commands = settings.guest_commands && allow_commands;
-                host.hub.resend_commands();
+                host.hub.allow_commands = allow_commands;
+                host.hub.config.guest_commands = settings.guest_commands;
+                self.resend_commands_filtered();
             }
             Publish::Close => {
                 host.hub.lan.stop_listening();
@@ -840,18 +827,47 @@ impl crate::game::ServerGame<'_> {
         };
         let published = self.published_port().is_some();
         if let Some(host) = self.server.lan.as_mut() {
+            host.hub.allow_commands = allow;
             let level = if allow { 4 } else { 0 };
             host.hub.ops.insert(owner, level);
             if published {
-                host.hub.config.guest_commands = allow && host.settings.guest_commands;
+                host.hub.config.guest_commands = host.settings.guest_commands;
             }
-            host.hub.resend_commands();
+            self.resend_commands_filtered();
         }
     }
 }
 
 /// The server thread: a game of its own over the shared resources.
-#[allow(clippy::too_many_arguments)]
+#[expect(clippy::too_many_arguments)]
+pub fn serve_with_ticket_activation(
+    res: &Arc<Resources>,
+    pack: PackResources,
+    options: Options,
+    settings: SimSettings,
+    launch: Launch,
+    flags: Arc<Flags>,
+    tasks: Receiver<OwnerRequest>,
+    ready: &Sender<Ready>,
+    profile_resolver: ProfileResolverFactory,
+    ticket_activation: &'static mod_api::__private::game::TicketActivation,
+) -> Result<()> {
+    serve_inner(
+        res,
+        pack,
+        options,
+        settings,
+        launch,
+        flags,
+        tasks,
+        ready,
+        profile_resolver,
+        Some(ticket_activation),
+    )
+}
+
+#[cfg(any(test, feature = "test-support"))]
+#[expect(clippy::too_many_arguments)]
 pub fn serve(
     res: &Arc<Resources>,
     pack: PackResources,
@@ -862,6 +878,33 @@ pub fn serve(
     tasks: Receiver<OwnerRequest>,
     ready: &Sender<Ready>,
     profile_resolver: ProfileResolverFactory,
+) -> Result<()> {
+    serve_inner(
+        res,
+        pack,
+        options,
+        settings,
+        launch,
+        flags,
+        tasks,
+        ready,
+        profile_resolver,
+        None,
+    )
+}
+
+#[expect(clippy::too_many_arguments)]
+fn serve_inner(
+    res: &Arc<Resources>,
+    pack: PackResources,
+    options: Options,
+    settings: SimSettings,
+    launch: Launch,
+    flags: Arc<Flags>,
+    tasks: Receiver<OwnerRequest>,
+    ready: &Sender<Ready>,
+    profile_resolver: ProfileResolverFactory,
+    ticket_activation: Option<&'static mod_api::__private::game::TicketActivation>,
 ) -> Result<()> {
     // The world prepares, and the registries the server sends are read, on
     // helper threads while this one builds the server's own Game: none of
@@ -883,13 +926,12 @@ pub fn serve(
             res.clone(),
             pack.clone(),
             options.clone(),
-            settings.clone(),
             flags.upgrade.clone(),
         )
     });
     let opening = Opening {
         world,
-        sync: preload_sync_data(&res.core.item_data, res.shared_items()),
+        sync: preload_sync_data(&res.core.item_data, res.shared_items(), res.biomes()),
     };
     let mut server = match startup::time("server.game_new", || {
         server_game(res, pack, options, settings, profile_resolver)
@@ -903,6 +945,7 @@ pub fn serve(
             return Err(e);
         }
     };
+    server.server.ticket_activation = ticket_activation;
     server.run_integrated(launch, flags, tasks, ready, opening)
 }
 
@@ -1053,6 +1096,7 @@ pub mod tests {
             tasks: receiver,
             owner: 0,
             pending: None,
+            previous_simulation_distance: 0,
             load: LoadPhase::default(),
         });
         move || {

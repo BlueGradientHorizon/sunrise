@@ -3,6 +3,7 @@
 use crate::game::ClientGame;
 use mod_api::{LevelWriteError, PlayerRef};
 use sunrise_core::geometry::Vec3;
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
 use sunrise_world::entity_move::MoverType;
 
 impl ClientGame<'_> {
@@ -48,6 +49,21 @@ impl ClientGame<'_> {
         self.common.riding.is_none()
             && self.common.sleeping.is_none()
             && self.client.screen != super::Screen::Dead
+    }
+
+    pub(in crate::game) fn player_set_body_yaw(
+        &mut self,
+        player: PlayerRef,
+        yaw: f32,
+    ) -> Result<bool, LevelWriteError> {
+        if self.native_local_status(player).is_none() || self.native_client_level().is_none() {
+            return Ok(false);
+        }
+        let Some(model) = self.client.player_model.as_mut() else {
+            return Ok(false);
+        };
+        model.body_yaw = yaw;
+        Ok(true)
     }
 
     pub(in crate::game) fn player_reset_fall_distance(

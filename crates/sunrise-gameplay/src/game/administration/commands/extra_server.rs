@@ -174,7 +174,7 @@ impl crate::game::ServerGame<'_> {
                 key: NameOrId::Name(name.clone()),
                 kind: "name",
                 argument: Text::literal(name),
-                source: self.server.command_source,
+                source: self.server.command_source.clone(),
             });
             return Ok(1);
         }
@@ -189,7 +189,7 @@ impl crate::game::ServerGame<'_> {
                 key: NameOrId::Id(id),
                 kind: "id",
                 argument: Text::literal(sunrise_protocol::crypto::uuid_string(id)),
-                source: self.server.command_source,
+                source: self.server.command_source.clone(),
             });
             return Ok(1);
         }
@@ -313,10 +313,10 @@ impl crate::game::ServerGame<'_> {
     }
     /// `VersionCommand`.
     pub(in crate::game::server_side) fn cmd_version(&mut self) -> R<i32> {
-        if !self.server.command_source.is_some_and(|s| s.silent) {
-            self.server_system_message(Text::translate("commands.version.header", &[]));
+        if !self.server.command_source.as_ref().is_some_and(|s| s.silent) {
+            self.command_system_message(Text::translate("commands.version.header", &[]));
             for line in self.common.version_lines() {
-                self.server_system_message(line);
+                self.command_system_message(line);
             }
         }
         Ok(1)
@@ -414,7 +414,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// CommandSourceStack.getPlayerOrException.
     pub(in crate::game::server_side) fn source_player(&self) -> R<Target> {
-        match self.server.command_source.map(|s| s.entity) {
+        match self.server.command_source.as_ref().map(|s| s.entity) {
             None | Some(Some(Target::Player)) => Ok(Target::Player),
             _ => Err(err("permissions.requires.player", &[])),
         }

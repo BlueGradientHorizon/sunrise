@@ -4,9 +4,9 @@ pub trait Hooks {
     /// entity is readable. Writes are allowed; the engine still replaces the cell
     /// with air afterwards, including a replacement written by the part.
     #[hook(
-        target = "sunrise_gameplay::game::native_hooks::on_block_exploded::ServerGame<'_>::native_on_block_exploded",
         dispatch = "flat",
         side = "server",
+        version = 2,
         contract = "listen",
         scope = "block",
         key = "state",

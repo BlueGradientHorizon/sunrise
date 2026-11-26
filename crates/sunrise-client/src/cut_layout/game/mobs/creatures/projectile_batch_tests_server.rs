@@ -75,7 +75,6 @@ pub(crate) fn run_continuing_wind_charge_keeps_tick_order_and_skips_relaunch_in_
         "wind-continuation-observer",
         Box::new(WindContinuationObserver {
             spawn_on_shoot: case == "mixed-batch",
-            watch_breeze_each: case != "reversed",
             observed: observed.clone(),
         }),
     )]
@@ -162,7 +161,7 @@ pub(crate) fn run_continuing_wind_charge_keeps_tick_order_and_skips_relaunch_in_
             if case != "reversed" {
                 assert!(
                     observed.alone_ticks.lock().unwrap().contains(&85),
-                    "w6 must run through the batched entity_tick_each pass"
+                    "w6 must fire entity_tick_post on its own tick"
                 );
             }
             if case == "ctrl4" {

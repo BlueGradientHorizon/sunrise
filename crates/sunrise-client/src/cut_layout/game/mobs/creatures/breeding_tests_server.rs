@@ -45,7 +45,7 @@ fn breeding_announces_the_orb_before_the_lower_id_child() {
             self.joins
                 .lock()
                 .unwrap()
-                .push((event.entity, event.kind.into()));
+                .push((event.subject.id(), event.kind.into()));
             Flow::Continue
         }
     }
@@ -85,6 +85,7 @@ fn breeding_announces_the_orb_before_the_lower_id_child() {
                 None,
                 None,
                 sunrise_sim::mobs::BreedExperience::Deferred,
+                true,
             );
             assert_eq!(child, Some(base + 3));
             assert_eq!(
@@ -163,6 +164,7 @@ fn breeding_announces_the_orb_before_the_lower_id_child() {
                 None,
                 None,
                 sunrise_sim::mobs::BreedExperience::Deferred,
+                true,
             );
             assert_eq!(fox_child, Some(fox_base + 3));
             let fox_child = game.mobs.iter().find(|mob| mob.id == fox_base + 3).unwrap();
@@ -189,6 +191,7 @@ fn breeding_announces_the_orb_before_the_lower_id_child() {
                 Some(choice),
                 None,
                 sunrise_sim::mobs::BreedExperience::Deferred,
+                true,
             );
             assert_eq!(child, None);
             // The baby is built before the hook now (its draws and entity number are spent), so a

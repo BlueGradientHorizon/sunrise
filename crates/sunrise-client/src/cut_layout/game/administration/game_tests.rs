@@ -14,6 +14,7 @@ pub(crate) mod tests {
     use sunrise_gameplay::game_tests::{Retry, TestError};
 
     pub use sunrise_gameplay::game::game_tests::tests::server_game;
+    pub use sunrise_gameplay_common::game::server_side::tnt::tests::on_big_stack;
 
     /// Puts the process-wide block namespaces back as it found them.
     pub(crate) struct Published(Option<Vec<String>>);
@@ -89,8 +90,9 @@ pub(crate) mod tests {
         )
         .unwrap();
         game.reset_entity_residency();
+        game.install_root_block_transformers();
         game.native_lifecycle
-            .begin_open(mod_api::Authority::IntegratedServer);
+            .begin_open(Some(mod_api::Authority::IntegratedServer));
         // Match the server fixture this replaces: commands can force this
         // resident column without starting terrain generation.
         game.world.chunks.insert(
@@ -420,7 +422,7 @@ mod registered_game_test_tests {
             let mods = vec![mod_api::ModEntry::new("example", hooks)];
             mod_platform::testing::with_mods(mods.into(), || {
                 game.native_register_game_tests(&mut functions);
-                game.snapshot_test_defs();
+                game.reload_datapacks(false, &[]).unwrap();
                 let registered = game.test_def("example:passing").unwrap();
                 assert!(registered.callback.is_some());
                 assert_eq!(registered.max_ticks, 100);

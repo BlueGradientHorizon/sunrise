@@ -19,12 +19,9 @@ import subprocess
 import sys
 import tempfile
 
-try:
-    from . import command_exec_corpus as corpus_module, lab, test_rust_parity as base
-except ImportError:
-    import command_exec_corpus as corpus_module
-    import lab
-    import test_rust_parity as base
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+from tools import command_exec_corpus as corpus_module, lab, test_rust_parity as base
 
 TEST = 'game::client_side::potions::cloud_water_tests::a_cloud_in_water_resets_its_fall_distance_and_a_dry_one_keeps_it'
 GROUP_NAME = 'area effect cloud water fall distance'

@@ -52,12 +52,6 @@ pub fn local_sound_ok(sound: &SoundPlay, after: u32) -> bool {
         && after <= 1200
 }
 
-/// `params` with each value that isn't finite as 0, so a mod's mistake can't
-/// put a NaN in every pixel of a pack's picture.
-pub fn finite_params(params: [[f32; 4]; 8]) -> [[f32; 4]; 8] {
-    params.map(|v| v.map(|x| if x.is_finite() { x } else { 0.0 }))
-}
-
 /// `v` within `lo..=hi`; `lo` when it is not a number.
 pub fn finite(v: f32, lo: f32, hi: f32) -> f32 {
     if v.is_finite() { v.clamp(lo, hi) } else { lo }

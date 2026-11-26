@@ -21,7 +21,8 @@
 //! or a parked guest's record. On abort, the journal follows that storage through guest turns.
 //! An item a write drops from a player waits for
 //! the root commit too. Item entities keep their stack, pickup delay, target and velocity on
-//! first write; one emptied stays, empty, until the root commit removes it. General entity views
+//! first write. Extraction removes a drained item at root commit if it is still empty.
+//! `ItemEntity.setItem` leaves an empty item for the tick to discard. General entity views
 //! keep velocity, rotation and fall distance on first write. A guest's menu storage (ender chest,
 //! crafting grid, a mod's chest menu) is kept whole on its first write through a menu slot; a
 //! crafting grid changed by the transaction has its result made again at the root commit.
@@ -34,11 +35,11 @@
 use super::{BlockEntity, BlockStateId, Dim, lan_menu_data::MountClickWindow, maps::MapData};
 use crate::game::{GameGameExt1 as _, resident_state::ResidentStateGameExt1 as _};
 use mod_api::{
-    __private::TransactionFrame, LevelRef, TransactionContext, TransactionLifecycle,
-    TransactionScopeError,
+    __private::TransactionFrame, LevelRef, PlayerRef, RecipeBookTypeKey, TransactionContext,
+    TransactionLifecycle, TransactionScopeError,
 };
 use std::collections::{BTreeMap, HashMap};
-use sunrise_core::{geometry::Vec3, random::LegacyRandom};
+use sunrise_core::{geometry::Vec3, position::BlockPos, random::LegacyRandom};
 use sunrise_gameplay_common::hoppers::HopperState;
 use sunrise_items::equipment::Equipment;
 use sunrise_items::items::ItemStack;
@@ -52,6 +53,7 @@ use sunrise_sim::{
     living_attributes::ModifierChanges,
     menu::QuickCraftDrag,
     mobs::{StoredEffect, finalize::EffectModifierUndo, gear::Gear},
+    recipe_book::BookFlags,
 };
 use sunrise_world::level::flags;
 
@@ -234,6 +236,7 @@ impl OpenTransactions {
             level.block_entities.entry(pos).or_insert_with(|| Kept {
                 entity: Some(BlockEntity::Mod(Box::new(loan.entity.clone()))),
                 client_update_fields: loan.entity.snapshot_client_update_fields(),
+                taken: None,
                 generation: Some(loan.identity.generation),
                 attachments: loan.attachments.cloned(),
                 hopper,
@@ -320,7 +323,7 @@ pub struct KeptBlock {
     pub strict: bool,
 }
 
-pub(in crate::game) type RemovedRow = (Box<BlockEntity>, u64);
+pub type RemovedRow = (Box<BlockEntity>, u64);
 
 pub fn take_replay_row(world: &mut World, pos: Pos) -> Option<RemovedRow> {
     let generation = world.block_entities.generation(&pos);
@@ -331,18 +334,81 @@ pub fn take_replay_row(world: &mut World, pos: Pos) -> Option<RemovedRow> {
         .map(|(row, generation)| (Box::new(row), generation))
 }
 
+struct PlacementData {
+    name: Option<sunrise_core::nbt::Tag>,
+    extras: sunrise_level::world::BlockEntityExtras,
+}
+
+#[derive(Default)]
+pub struct ReplayEntity {
+    pub row: Option<RemovedRow>,
+    data: Option<Box<PlacementData>>,
+}
+
+impl ReplayEntity {
+    pub fn take(world: &mut World, pos: Pos) -> Self {
+        let name = world.block_names.get(&pos).cloned();
+        let extras = world.block_entity_extras(pos);
+        let data = (name.is_some() || extras.source.is_some() || extras.pending_loot.is_some())
+            .then(|| Box::new(PlacementData { name, extras }));
+        Self {
+            row: take_replay_row(world, pos),
+            data,
+        }
+    }
+
+    pub fn install(self, world: &mut World, pos: Pos, placement: bool) {
+        if world.block_entities.get(&pos).is_some() {
+            return;
+        }
+        if placement {
+            if let Some(data) = self.data {
+                world.set_block_entity_extras(pos, data.extras);
+                if let Some(name) = data.name {
+                    world.block_names.insert(pos, name);
+                } else {
+                    world.block_names.remove(&pos);
+                }
+            } else {
+                world.forget_block_entity_source(pos);
+                world.block_names.remove(&pos);
+            }
+        }
+        if let Some((entity, generation)) = self.row {
+            let entities = &mut world.block_entities;
+            entities.insert(pos, *entity);
+            entities.restore_generation(pos, generation);
+            entities.reattach_retired(pos, generation);
+        }
+    }
+}
+
+pub enum BlockEntityCreation {
+    Live,
+    /// A later write owns the factory result for this same resident lifetime.
+    Deferred,
+    /// A factory was evaluated while staging; no generation records an explicit absence.
+    Staged {
+        generation: Option<u64>,
+        entity: ReplayEntity,
+    },
+}
+
 pub struct BlockStep {
     pub pos: Pos,
     pub to: BlockStateId,
     pub replay: BlockReplay,
     // Some means staging took the resident row out (even if it was already absent).
-    pub removed: Option<Option<RemovedRow>>,
+    pub removed: Option<ReplayEntity>,
+    pub placement: bool,
+    pub creation: BlockEntityCreation,
 }
 
 pub struct StrictBlockStep {
     pub to: BlockStateId,
     // Before the first replacement on this cell; swapped for the new row at commit.
-    pub row: Option<Option<RemovedRow>>,
+    pub row: Option<ReplayEntity>,
+    /// A strict replacement ends the old block's connection-group lifetime.
     pub clear_connection_group: bool,
 }
 
@@ -407,6 +473,7 @@ pub struct Level {
     pub slots: HashMap<(Pos, usize), KeptSlot>,
     /// Each block's original state and the combined update flags of its writes.
     pub blocks: HashMap<Pos, KeptBlock>,
+    pub capture_placement: bool,
     /// Each cell's original connection group before this transaction first changed it, used for
     /// silent rollback on abort and pre-replay restoration on root commit.
     pub connection_groups: HashMap<Pos, Option<u64>>,
@@ -427,6 +494,9 @@ pub struct Level {
     /// Saved player extra NBT (`level.player_extra` / `guest.saved`), shared by player and
     /// persistent-data writes, including dead players.
     pub player_extra: HashMap<JournaledPlayer, Option<sunrise_core::nbt::Tag>>,
+    /// A custom book's original flags, in first-write order.
+    pub player_books:
+        indexmap::IndexMap<(JournaledPlayer, RecipeBookTypeKey), (PlayerRef, Option<BookFlags>)>,
     /// Synced player health and its unpublished update events before set_health, by player body.
     pub player_health: HashMap<PlayerBodyKey, KeptPlayerHealth>,
     /// Mob health and synchronization dirtiness before set_health, keyed by level.
@@ -475,6 +545,8 @@ pub struct Level {
     /// admission gate (`passes_settled`) refuses a save while a map may hold tentative
     /// values, which only the root commit makes saveable.
     pub save_gate: Option<sunrise_sim::join_seq::visibility::PassLease>,
+    /// Strict edits and saved pots keep their level's save gate until settlement.
+    pub level_save_gate: Option<sunrise_sim::join_seq::visibility::PassLease>,
     /// Each chunk's unsaved mark and save queue entry before this transaction first reached an
     /// attachment map in it: an abort puts them back, so a chunk only a tentative write marked
     /// is clean again.
@@ -543,6 +615,7 @@ pub struct Kept {
     pub entity: Option<BlockEntity>,
     /// The pre-write batch, stored apart from the entity clone's fresh identity.
     pub client_update_fields: Option<sunrise_core::nbt::Compound>,
+    pub taken: Option<sunrise_level::block_entities::TakenLeaseSnapshot>,
     pub generation: Option<u64>,
     /// None where it had no map: an abort removes one a write made.
     pub attachments: Option<Attachments>,
@@ -563,6 +636,7 @@ impl Kept {
         let entity = world.block_entities.get(&pos);
         Self {
             entity: entity.cloned(),
+            taken: world.block_entities.taken_lease_snapshot(&pos),
             client_update_fields: match entity {
                 Some(BlockEntity::Mod(entity)) => entity.snapshot_client_update_fields(),
                 _ => None,
@@ -585,6 +659,7 @@ impl Kept {
         let entity = world.block_entities.get(&pos);
         Self {
             entity: entity.cloned(),
+            taken: world.block_entities.taken_lease_snapshot(&pos),
             client_update_fields: match entity {
                 Some(BlockEntity::Mod(entity)) => entity.snapshot_client_update_fields(),
                 _ => None,
@@ -626,6 +701,11 @@ impl Kept {
                 world.block_entities.insert(pos, entity);
                 world.block_entities.restore_generation(pos, generation);
                 world.block_entities.reattach_retired(pos, generation);
+            }
+            (None, None) if replaced && let Some(taken) = self.taken => {
+                let entities = &mut world.block_entities;
+                entities.restore_taken_lease(pos, taken);
+                entities.reattach_retired(pos, self.generation.unwrap());
             }
             _ => {}
         }
@@ -723,15 +803,28 @@ pub struct KeptMenus {
 }
 
 /// What a write tells the world, at the root commit.
+#[derive(Clone, Copy)]
+pub struct RemovedBlockEntityEffects {
+    pub pos: Pos,
+    pub state: BlockStateId,
+    pub sculk: bool,
+    pub jukebox: bool,
+    pub beacon: bool,
+    pub gateway: bool,
+    pub had_shapes: bool,
+}
+
 pub enum After {
+    BlockEntityRemoved(RemovedBlockEntityEffects),
     /// Reserved raw bytes publish only when their connection incarnation is still live.
     Payload(super::payload_transport::Deferred),
-    /// A mod's validated vanilla packet, bound to its physical protocol incarnation.
+    /// A validated packet carries its protocol incarnation and submitting mod for publication errors.
     Packet(
         sunrise_sim::raw_payloads::queued_writer::PreparedPacket,
-        mod_api::ServerboundPlayPacket,
+        Option<&'static str>,
     ),
     Composter(super::composter_data::Effects),
+    DispenseEvent(i32, Pos, i32),
     /// A mod's world pickup or placement of fluid, its block already set: what is left of it
     /// (`Game::commit_fluid_write`).
     FluidWrite(Box<super::world_fluid_data::WrittenFluid>),
@@ -774,6 +867,8 @@ pub enum After {
         equips: bool,
     },
     MenuClick(Box<super::lan_menu_data::MenuClickReply>),
+    /// The server owns and decodes the staged open payload.
+    MenuOpen(u32, i32, Box<dyn std::any::Any + Send>),
     MenuPlacesNotice(u32, u128, i32),
     FurnaceMenu(Box<super::lan_menu_data::FurnaceMenuEffects>),
     StoreCartItems(Pos),
@@ -784,7 +879,7 @@ pub enum After {
 
     /// `ServerLevel.destroyBlockProgress`: breaker id, position, stage. Sent once, at the root commit.
     BreakProgress(i32, [i32; 3], i32),
-    /// Replay a block write (coalesced by position unless a strict edit shares the cell).
+    /// Replay a block write, coalesced unless the cell has placement capture or a strict edit.
     Block(BlockStep),
     /// Publish the storage and watched writes of a strict bulk edit, not ordinary updates.
     BulkBlocks(
@@ -798,7 +893,16 @@ pub enum After {
     ConnectionGroup(Pos, Option<u64>),
     /// A validated level write host effect; never published on abort.
     LevelWrite(Box<super::journal_level_effects::PendingWrite>),
-    BlockGameEvent(&'static str, [i32; 3], sunrise_sim::mobs::Who, BlockStateId),
+    PlacementEffect(Box<sunrise_world::level::ticks::PlacementEffect>),
+    WitherPattern(sunrise_sim::block_pattern::PatternMatch, Vec<[i32; 3]>),
+    UpdatePlacedBlockEntity(Pos, u64),
+    BlockGameEvent(&'static str, [i32; 3], Option<sunrise_sim::mobs::Who>, BlockStateId),
+    DestroyBlockGameEvent {
+        pos: [i32; 3],
+        state: BlockStateId,
+        breaker: Option<mod_api::EntityRef>,
+    },
+    BlockDropSpawns(Vec<super::spill_common::Spawn>, Vec<([f64; 3], u32, i32)>),
     /// Save, remesh and resend a changed biome column.
     Biome((i32, i32)),
     /// Deferred interaction effects, replayed in the same root-commit order.
@@ -832,6 +936,7 @@ pub enum After {
         eye: [f64; 3],
     },
     PlayerEquip(u128, String, Option<ItemStack>),
+    RecipeBookSettings(JournaledPlayer, PlayerRef, RecipeBookTypeKey, Option<BookFlags>),
     /// An item split off an item entity, dropped where it is (`Block.popResource`'s delay).
     Spawn([f64; 3], ItemStack),
     /// The item entity with this id was emptied: removed, unless it holds items again.
@@ -856,16 +961,23 @@ impl After {
             Self::Block(_)
                 | Self::BulkBlocks(..)
                 | Self::ConnectionGroup(..)
+                | Self::BlockEntityRemoved(_)
+                | Self::DispenseEvent(..)
                 | Self::Changed(_)
                 | Self::ChangedWithoutHook(_)
                 | Self::ChangedHolder { .. }
                 | Self::Capabilities(_)
                 | Self::LevelWrite(_)
+                | Self::PlacementEffect(_)
+                | Self::WitherPattern(..)
+                | Self::UpdatePlacedBlockEntity(..)
                 | Self::FluidWrite(_)
                 | Self::FluidEffects(_)
                 | Self::DispenserDrop { .. }
                 | Self::DispenserFeedback { .. }
                 | Self::BlockGameEvent(..)
+                | Self::DestroyBlockGameEvent { .. }
+                | Self::BlockDropSpawns(..)
                 | Self::Biome(_)
                 | Self::Drop(..)
                 | Self::Spawn(..)
@@ -900,6 +1012,12 @@ pub enum DeferredEffect {
         mod_api::PlayerRef,
         Box<sunrise_gameplay_common::stats::StatValues>,
     ),
+    ChangeAdvancement {
+        player: mod_api::PlayerRef,
+        id: String,
+        criterion: Option<String>,
+        grant: bool,
+    },
 }
 
 impl Level {
@@ -922,6 +1040,8 @@ impl Level {
     }
 
     pub fn keep_bulk_block(&mut self, pos: Pos, state: u32) {
+        self.level_save_gate
+            .get_or_insert_with(sunrise_sim::join_seq::visibility::PassLease::enter);
         self.blocks
             .entry(pos)
             .and_modify(|kept| kept.strict = true)
@@ -937,6 +1057,7 @@ impl Level {
     }
 
     pub fn merge_level_writes(&mut self, child: &mut Self) {
+        self.level_save_gate = self.level_save_gate.take().or(child.level_save_gate.take());
         for (pos, biome) in std::mem::take(&mut child.biomes) {
             self.biomes.entry(pos).or_insert(biome);
         }
@@ -1113,29 +1234,31 @@ pub trait TransactionsGameExt<'g>: crate::game::SideGame<'g> {
 
     /// Opens a transaction and gives back its frame identity.
     fn open_storage_transaction(&mut self) -> TransactionFrame {
-        let frame = self.transactions.next_frame();
-        if !self.world.block_entities.defers_retirement() {
-            self.world.block_entities.defer_retirement();
-        }
-        let lifetimes = self.entity_journal_open();
-        let common = self.common_mut();
-        let parent_attachment_query_scope = common.transactions.attachment_query_scopes.enter();
-        common.transactions.push(Level {
-            frame: Some(frame),
-            parent_attachment_query_scope,
-            dimension: Some(common.dim),
-            packets: sunrise_sim::lan::conn::transaction_packets::Scope::nested(),
-            lifetimes,
-            ..Level::default()
-        });
-        for slot in &common.transactions.retained_original_attachments {
-            slot.lock()
-                .unwrap_or_else(|e| e.into_inner())
-                .open_frame(frame);
-        }
-        #[cfg(any(test, feature = "test-support"))]
-        self.trace_storage_attempt("open".into());
-        frame
+        mod_api::__private::game::CallbackOwner::call_host(|| {
+            let frame = self.transactions.next_frame();
+            if !self.world.block_entities.defers_retirement() {
+                self.world.block_entities.defer_retirement();
+            }
+            let lifetimes = self.entity_journal_open();
+            let common = self.common_mut();
+            let parent_attachment_query_scope = common.transactions.attachment_query_scopes.enter();
+            common.transactions.push(Level {
+                frame: Some(frame),
+                parent_attachment_query_scope,
+                dimension: Some(common.dim),
+                packets: sunrise_sim::lan::conn::transaction_packets::Scope::nested(),
+                lifetimes,
+                ..Level::default()
+            });
+            for slot in &common.transactions.retained_original_attachments {
+                slot.lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .open_frame(frame);
+            }
+            #[cfg(any(test, feature = "test-support"))]
+            self.trace_storage_attempt("open".into());
+            frame
+        })
     }
     /// Closes `frame`, first aborting every transaction opened inside it and left open, so a
     /// scope closing its own is never stranded behind an abandoned child.
@@ -1144,17 +1267,19 @@ pub trait TransactionsGameExt<'g>: crate::game::SideGame<'g> {
         frame: TransactionFrame,
         commit: bool,
     ) -> Option<StorageSettlement> {
-        let at = self
-            .transactions
-            .iter()
-            .rposition(|level| level.frame == Some(frame))?;
-        if self.transactions.len() > at + 1 {
-            log::warn!("Sunrise: aborted a transaction left open inside the one being closed");
-        }
-        while self.transactions.len() > at + 1 {
-            let _ = self.close_storage_transaction(false);
-        }
-        self.close_storage_transaction(commit)
+        mod_api::__private::game::CallbackOwner::close_host_transaction(commit, |commit| {
+            let at = self
+                .transactions
+                .iter()
+                .rposition(|level| level.frame == Some(frame))?;
+            if self.transactions.len() > at + 1 {
+                log::warn!("Sunrise: aborted a transaction left open inside the one being closed");
+            }
+            while self.transactions.len() > at + 1 {
+                let _ = self.close_storage_transaction(false);
+            }
+            self.close_storage_transaction(commit)
+        })
     }
     /// An engine batch opens a frame only when it has a callback to journal.
     fn storage_scope_guard(&mut self, open: bool) -> StorageScope<'_, 'g, Self> {
@@ -1350,7 +1475,7 @@ pub trait TransactionsGameExt<'g>: crate::game::SideGame<'g> {
                 super::spill_common::saved_entity(&common.world, [pos.0, pos.1, pos.2])
             });
             level
-                .save_gate
+                .level_save_gate
                 .get_or_insert_with(sunrise_sim::join_seq::visibility::PassLease::enter);
         }
     }
@@ -1368,6 +1493,27 @@ pub trait TransactionsGameExt<'g>: crate::game::SideGame<'g> {
             entities.reattach_retired(pos, generation);
         }
     }
+
+    /// Records an explicit `BlockEntityRef::remove` inside an open transaction: captures the
+    /// original row in `block_entities`, marks `removed_block_entities` with a `None` sentinel
+    /// without overwriting any earlier `Some(row)` queued for `preRemoveSideEffects` replay,
+    /// and queues the deferred `setRemoved` effects to run at root commit.
+    /// Returns `true` if a transaction is open in the current dimension (effects deferred),
+    /// or `false` if outside a transaction (caller runs effects immediately).
+    fn journal_explicit_remove_block_entity(
+        &mut self,
+        pos: Pos,
+        effects: RemovedBlockEntityEffects,
+    ) -> bool {
+        self.journal_block_entity(pos);
+        let common = self.common_mut();
+        let Some(level) = entities::open_in(&mut common.transactions, common.dim) else {
+            return false;
+        };
+        level.removed_block_entities.entry(pos).or_insert(None);
+        level.after.push(After::BlockEntityRemoved(effects));
+        true
+    }
     /// Hides the block entity from tentative reads. The first-write journal can undo all edits;
     /// the removed row itself still contains the edits that matter to removal at commit.
     fn journal_remove_block_entity(&mut self, pos: Pos) {
@@ -1377,12 +1523,12 @@ pub trait TransactionsGameExt<'g>: crate::game::SideGame<'g> {
             common.world.block_entities.remove(&pos);
             return;
         };
-        let removed = take_replay_row(&mut common.world, pos);
         if let Some(After::Block(step)) = level.after.last_mut()
             && step.pos == pos
         {
-            step.removed = Some(removed);
+            step.removed = Some(ReplayEntity::take(&mut common.world, pos));
         } else {
+            let removed = take_replay_row(&mut common.world, pos);
             let first = level.removed_block_entities.entry(pos).or_default();
             if first.is_none() {
                 *first = removed;
@@ -1524,6 +1670,7 @@ pub trait TransactionsGameExt<'g>: crate::game::SideGame<'g> {
         flags: i32,
         level_host: bool,
     ) -> bool {
+        let placement = self.captures_placement();
         let common = self.common_mut();
         let Some(level) = entities::open_in(&mut common.transactions, common.dim) else {
             return self.level_set_with_flags(pos, state, flags).is_ok();
@@ -1569,6 +1716,8 @@ pub trait TransactionsGameExt<'g>: crate::game::SideGame<'g> {
             to: state,
             replay: step,
             removed: None,
+            placement,
+            creation: BlockEntityCreation::Live,
         }));
         true
     }
@@ -1576,8 +1725,21 @@ pub trait TransactionsGameExt<'g>: crate::game::SideGame<'g> {
     /// contents until the real write. Fluid pickup/pour instead rolls its own
     /// drops against the old entity before journalling the removal.
     fn journal_block_replacement(&mut self, pos: Pos) {
+        let placement = self.captures_placement()
+            || self
+                .world
+                .block_entities
+                .generation(&pos)
+                .is_some_and(|generation| self.is_placement_entity(pos, generation));
         self.journal_remove_block_entity(pos);
+        if placement {
+            self.side_tx_invalidate_placement_hopper(pos);
+        }
         let common = self.common_mut();
+        if placement {
+            common.world.block_names.remove(&pos);
+            common.world.forget_block_entity_source(pos);
+        }
         let Some(level) = entities::open_in(&mut common.transactions, common.dim) else {
             return;
         };
@@ -1591,6 +1753,87 @@ pub trait TransactionsGameExt<'g>: crate::game::SideGame<'g> {
         {
             replay.replay_removal = true;
         }
+    }
+
+    fn journal_stage_placement_entity(&mut self, pos: Pos, entity: Option<BlockEntity>) {
+        if let Some(entity) = entity {
+            self.journal_block_entity(pos);
+            self.world.block_names.remove(&pos);
+            self.world.forget_block_entity_source(pos);
+            self.world.block_entities.insert(pos, entity);
+        }
+        let common = self.common_mut();
+        let generation = common.world.block_entities.generation(&pos);
+        let level = entities::open_in(&mut common.transactions, common.dim).unwrap();
+        let Some(After::Block(step)) = level.after.last_mut() else {
+            unreachable!("factory staging follows the captured block write");
+        };
+        debug_assert_eq!(step.pos, pos);
+        step.creation = BlockEntityCreation::Staged {
+            generation,
+            entity: ReplayEntity::default(),
+        };
+    }
+
+    fn begin_placement_capture(&mut self) {
+        let common = self.common_mut();
+        entities::open_in(&mut common.transactions, common.dim)
+            .unwrap()
+            .capture_placement = true;
+    }
+
+    fn captures_placement(&self) -> bool {
+        self.transactions
+            .iter()
+            .any(|frame| frame.dimension == Some(self.dim) && frame.capture_placement)
+    }
+
+    /// Snapshot each cell in first-write order, with its state as the listener will see it.
+    fn placement_footprint(&mut self) -> Vec<(BlockPos, BlockStateId)> {
+        let common = self.common_mut();
+        let level = entities::open_in(&mut common.transactions, common.dim).unwrap();
+        level.capture_placement = false;
+        let mut seen = sunrise_level::fast_hash::FxHashSet::default();
+        let mut writes = Vec::new();
+        let mut keep = |(x, y, z)| {
+            if seen.insert((x, y, z)) {
+                writes.push((BlockPos::new(x, y, z), common.world.block(x, y, z)));
+            }
+        };
+        for after in &level.after {
+            match after {
+                After::Block(step) => keep(step.pos),
+                After::BulkBlocks(_, _, _, steps) => steps.keys().copied().for_each(&mut keep),
+                _ => {}
+            }
+        }
+        writes
+    }
+
+    fn is_placement_entity(&self, pos: Pos, generation: u64) -> bool {
+        self.transactions.iter().any(|frame| {
+            frame.dimension == Some(self.dim) && frame.blocks.contains_key(&pos)
+                && frame.after.iter().rev().any(|after| {
+                    matches!(after, After::Block(step) if step.pos == pos && matches!(step.creation,
+                        BlockEntityCreation::Staged { generation: Some(created), .. } if created == generation))
+                })
+        })
+    }
+
+    /// Block-entity edits to an unpublished placement must not send a block update yet.
+    fn defer_placed_block_entity_update(&mut self, pos: Pos) -> bool {
+        if let Some(generation) = self.world.block_entities.generation(&pos)
+            && self.is_placement_entity(pos, generation)
+        {
+            self.after_commit(After::UpdatePlacedBlockEntity(pos, generation));
+            return true;
+        }
+        false
+    }
+
+    fn journal_set_level_random(&mut self, random: LegacyRandom) {
+        self.journal_level_random();
+        *self.world.random = random;
     }
     fn journal_level_random(&mut self) {
         self.journal_active_level_random(LegacyRandom::clone);

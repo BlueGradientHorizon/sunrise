@@ -51,7 +51,10 @@ pub(crate) fn attach_offscreen_window(
     game.options.offscreen = true;
     game.client.settings.gui_scale = 1;
     game.client.window.0 = Some(window.clone());
-    game.client.renderer.0 = Some(game.new_renderer(window).unwrap());
+    {
+        let renderer = game.new_renderer(window).unwrap();
+        game.set_renderer(renderer);
+    }
     game.client.title.0 = None;
     game.player = Some(
         sunrise_sim::motion::PlayerMotion::new(game.motion, sunrise_core::geometry::Vec3::ZERO)
@@ -833,8 +836,9 @@ fn mounted_button_sprites_keep_their_pixels_and_accessibility() {
     }
     use mod_api::client::widgets::ButtonSprites;
     use sunrise_client::{
+        font::Patch,
         gfx::entity_pixel_test::render_hud,
-        hud::{GuiSprite, Rect, dynamic_textures::ImagePatch},
+        hud::{GuiSprite, Rect},
         widgets::{self, Cursor, Kind, ScreenInfo, What},
     };
 
@@ -887,8 +891,9 @@ fn mounted_button_sprites_keep_their_pixels_and_accessibility() {
             with_client_game(|game| {
                 let (_event_loop, _win_id) = attach_offscreen_window(game);
                 let atlas = &mut game.client.gui.atlas;
-                let [ox, oy] = atlas.dynamic_texture_pool.as_ref().unwrap().origin(0, 0);
+                let slot = atlas.sprites["sunrise/skin0"];
                 let (aw, ah) = (atlas.width as f32, atlas.height as f32);
+                let [ox, oy] = [(slot.u0 * aw).round() as u32, (slot.v0 * ah).round() as u32];
                 let mut palette = Vec::new();
                 for state in 0..3 {
                     for i in 0..COUNT {
@@ -911,10 +916,12 @@ fn mounted_button_sprites_keep_their_pixels_and_accessibility() {
                         );
                     }
                 }
-                let patch = ImagePatch {
-                    origin: [ox, oy],
-                    size: [COUNT as u32, 3],
-                    rgba: palette.into(),
+                let patch = Patch {
+                    x: ox,
+                    y: oy,
+                    width: COUNT as u32,
+                    height: 3,
+                    rgba: palette,
                 };
                 let pixel = |pixels: &[u8], [x, y, _, _]: [f32; 4]| {
                     let at = (((y as u32 + 1) * SIZE[0] + x as u32 + 1) * 4) as usize;
@@ -943,7 +950,7 @@ fn mounted_button_sprites_keep_their_pixels_and_accessibility() {
                              serial| {
                     game.client.cursor = at;
                     let mut batch = HudBatch::scratch(SIZE);
-                    batch.image_patches.push(patch.clone());
+                    batch.patches.push(patch.clone());
                     widgets::begin_screen(|| ScreenInfo::new("fixture", "Mounted sprite buttons"));
                     game.draw_mounted_screen_widgets(&mut batch);
                     widgets::end_frame(serial);
@@ -2665,6 +2672,317 @@ fn text_field_editing_ime_and_double_click_word_selection() {
             assert!(!game.text_field_focused());
             game.ime_preedit("go", Some((0, 2)));
             assert_eq!(take_log(&preedit_posts), vec!["mod:go"]);
+        });
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn title_init_post_lists_and_removes_the_title_screens_own_widgets() {
+    if run_fresh_cases(
+        "game::client_side::native_hooks_client::base::screen_widgets_tests::title_init_post_lists_and_removes_the_title_screens_own_widgets",
+        "SUNRISE_WIDGETS_TITLE_CHILDREN",
+        &["window"],
+    ) {
+        return;
+    }
+    type Children = Vec<(Option<ApiText>, [f32; 4])>;
+    struct RemoveOptionsAndNotice {
+        remove: Arc<AtomicBool>,
+        seen: Arc<Mutex<Children>>,
+        pressed: Arc<AtomicBool>,
+    }
+    #[mod_api::__subscriptions]
+    impl Hooks for RemoveOptionsAndNotice {
+        fn screen_init_post(&self, _: &dyn ClientHost, event: &mut ScreenInitPostEvent<'_>) {
+            if event.screen.id != "title" {
+                return;
+            }
+            let widgets = &mut *event.widgets;
+            *self.seen.lock().unwrap() = widgets
+                .children()
+                .iter()
+                .map(|child| (child.label.clone(), child.rect))
+                .collect();
+            if self.remove.load(Ordering::SeqCst) {
+                let options = ApiText::translate("menu.options", vec![]);
+                let ids: Vec<_> = widgets
+                    .children()
+                    .iter()
+                    .filter(|child| {
+                        child.label.as_ref() == Some(&options)
+                            || child.label
+                                == Some(ApiText::translate("sunrise.title.not_affiliated", vec![]))
+                    })
+                    .map(|child| child.id)
+                    .collect();
+                assert_eq!(ids.len(), 2);
+                let rect = widgets
+                    .children()
+                    .iter()
+                    .find(|c| c.id == ids[0])
+                    .unwrap()
+                    .rect;
+                for id in ids {
+                    assert!(widgets.remove(id));
+                }
+                // A replacement where Options... was.
+                let pressed = self.pressed.clone();
+                widgets.add_button(Button::new(
+                    rect,
+                    ApiText::literal("Replacement"),
+                    move |_, _| pressed.store(true, Ordering::SeqCst),
+                ));
+            }
+        }
+    }
+
+    let remove = Arc::new(AtomicBool::new(true));
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    let pressed = Arc::new(AtomicBool::new(false));
+    let mods = vec![ModEntry::new(
+        "title_children",
+        Box::new(RemoveOptionsAndNotice {
+            remove: remove.clone(),
+            seen: seen.clone(),
+            pressed: pressed.clone(),
+        }),
+    )];
+    with_mods(mods.into(), || {
+        with_client_game(|game| {
+            let (_event_loop, win_id) = attach_offscreen_window(game);
+            let saves = std::env::temp_dir().join("sunrise-title-children-test-no-saves");
+            game.client.title.0 = Some(game.new_title(saves));
+            game.observe_screen();
+            let children = seen.lock().unwrap().clone();
+            let key = |label: &Option<ApiText>| label.clone().unwrap();
+            let vanilla: Vec<_> = [
+                "menu.singleplayer",
+                "menu.multiplayer",
+                "menu.online",
+                "gui.friends.open",
+                "options.language",
+                "options.accessibility",
+                "menu.options",
+                "menu.quit",
+                "sunrise.title.not_affiliated",
+            ]
+            .map(|key| ApiText::translate(key, vec![]))
+            .into();
+            // The shell adds the Mods button after Realms.
+            let listed: Vec<_> = children
+                .iter()
+                .map(|(label, _)| key(label))
+                .filter(|label| vanilla.contains(label))
+                .collect();
+            assert_eq!(listed, vanilla);
+            assert_eq!(
+                children[..3]
+                    .iter()
+                    .map(|(l, _)| key(l))
+                    .collect::<Vec<_>>(),
+                vanilla[..3]
+            );
+            assert_eq!(
+                children[children.len() - 6..]
+                    .iter()
+                    .map(|(l, _)| key(l))
+                    .collect::<Vec<_>>(),
+                vanilla[3..]
+            );
+            // TitleScreen.init's bounds on a 640x480 screen at GUI scale 1.
+            let rect = |key: &str| {
+                let key = ApiText::translate(key, vec![]);
+                children
+                    .iter()
+                    .find(|(label, _)| label.as_ref() == Some(&key))
+                    .unwrap()
+                    .1
+            };
+            let top = rect("menu.singleplayer")[1];
+            assert_eq!(rect("menu.singleplayer"), [220.0, top, 200.0, 20.0]);
+            assert_eq!(rect("menu.options")[2..], [98.0, 20.0]);
+            assert_eq!(rect("menu.quit")[0], 322.0);
+            assert_eq!(rect("menu.quit")[1], rect("menu.options")[1]);
+            let notice = rect("sunrise.title.not_affiliated");
+            assert_eq!(
+                (notice[0] + notice[2], notice[1], notice[3]),
+                (638.0, 470.0, 10.0)
+            );
+
+            let press = |game: &mut sunrise_client_gameplay::game::ClientGame<'_>, key: &str| {
+                let [x, y, w, h] = rect(key);
+                let title = game.client.title.0.as_mut().unwrap();
+                title.click(x + w / 2.0, y + h / 2.0, (640.0, 480.0)).0
+            };
+            use sunrise_client::title::Action;
+            assert_eq!(press(game, "menu.options"), Action::None);
+            assert_eq!(press(game, "menu.quit"), Action::Quit);
+            let drawn = |game: &sunrise_client_gameplay::game::ClientGame<'_>, serial| {
+                let mut batch = sunrise_client::hud::HudBatch::new(
+                    [640, 480],
+                    game.client.settings.gui_scale_inputs(),
+                );
+                assert_eq!((batch.width, batch.height), (640.0, 480.0));
+                let title = game.client.title.0.as_ref().unwrap();
+                title.draw(
+                    &game.client.gui.atlas,
+                    &mut batch,
+                    (0.0, 0.0),
+                    false,
+                    &mut |_, _| {},
+                );
+                sunrise_client::widgets::end_frame(serial);
+                sunrise_client::widgets::last_labelled()
+                    .into_iter()
+                    .map(|widget| widget.label)
+                    .collect::<Vec<_>>()
+            };
+            let label = |key: &str| sunrise_client::lang::get(key);
+            let shown = drawn(game, 1);
+            assert!(shown.contains(&label("menu.quit")));
+            assert!(!shown.contains(&label("menu.options")));
+            assert!(!shown.contains(&label("sunrise.title.not_affiliated")));
+            assert_eq!(press(game, "sunrise.title.not_affiliated"), Action::None);
+
+            // The next init starts from the full set again.
+            remove.store(false, Ordering::SeqCst);
+            game.test_commit_screen_transition();
+            assert_eq!(*seen.lock().unwrap(), children);
+            let shown = drawn(game, 2);
+            assert!(shown.contains(&label("menu.options")));
+            assert!(shown.contains(&label("sunrise.title.not_affiliated")));
+            assert_eq!(press(game, "sunrise.title.not_affiliated"), Action::Credits);
+            assert_eq!(press(game, "menu.options"), Action::Options);
+
+            // The next click uses the rebuilt widgets before the next frame draws them.
+            remove.store(true, Ordering::SeqCst);
+            game.test_commit_screen_transition();
+            let [x, y, w, h] = rect("menu.options");
+            move_mouse(game, win_id, f64::from(x + w / 2.0), f64::from(y + h / 2.0));
+            send_mouse_button(game, win_id, MouseButton::Left, true);
+            send_mouse_button(game, win_id, MouseButton::Left, false);
+            assert!(
+                pressed.load(Ordering::SeqCst),
+                "the replacement took the click"
+            );
+        });
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn config_opens_the_mods_own_screen_and_closing_it_returns_to_the_mods_screen() {
+    use sunrise_client::options_ui::{Event, Page};
+    if run_fresh_cases(
+        "game::client_side::native_hooks_client::base::screen_widgets_tests::config_opens_the_mods_own_screen_and_closing_it_returns_to_the_mods_screen",
+        "SUNRISE_CONFIG_SCREEN_CHILD",
+        &["window"],
+    ) {
+        return;
+    }
+    struct ConfigScreen {
+        open: Arc<AtomicBool>,
+        asked: Arc<AtomicUsize>,
+    }
+    #[mod_api::__subscriptions]
+    impl Hooks for ConfigScreen {
+        fn register(
+            &self,
+            registrar: &mut dyn mod_api::Registrar,
+            _: &mod_api::RegistrationContext,
+        ) {
+            let (open, asked) = (self.open.clone(), self.asked.clone());
+            registrar
+                .register_config_screen(Arc::new(move |_: &dyn ClientHost| {
+                    asked.fetch_add(1, Ordering::SeqCst);
+                    open.load(Ordering::SeqCst)
+                }))
+                .unwrap();
+            let refused = registrar.register_config_screen(Arc::new(|_: &dyn ClientHost| true));
+            assert_eq!(
+                refused,
+                Err("mod configured registers a second config screen".into())
+            );
+        }
+    }
+    struct NoScreen;
+    #[mod_api::__subscriptions]
+    impl Hooks for NoScreen {}
+
+    let open = Arc::new(AtomicBool::new(true));
+    let asked = Arc::new(AtomicUsize::new(0));
+    let mods = vec![
+        ModEntry::new(
+            "configured",
+            Box::new(ConfigScreen {
+                open: open.clone(),
+                asked: asked.clone(),
+            }),
+        ),
+        ModEntry::new("plain", Box::new(NoScreen)),
+    ];
+    with_mods(mods.into(), || {
+        with_client_game(|game| {
+            let (_event_loop, _) = attach_offscreen_window(game);
+            assert!(mod_api::__private::has_config_screen("configured"));
+            assert!(!mod_api::__private::has_config_screen("plain"));
+            game.client.settings.mods.installed = ["configured", "plain"]
+                .map(|id| sunrise_client::mod_list::Installed {
+                    id: id.into(),
+                    title: id.into(),
+                    description: String::new(),
+                    problem: None,
+                    dev: false,
+                    native: Some(sunrise_client::mod_list::NativePage {
+                        own_screen: mod_api::__private::has_config_screen(id),
+                        ..Default::default()
+                    }),
+                })
+                .into();
+            let config = |game: &mut sunrise_client_gameplay::game::ClientGame<'_>| {
+                game.handle_option_events(vec![Event::ModConfigScreen(0)])
+                    .unwrap();
+            };
+            let on_mods = |game: &sunrise_client_gameplay::game::ClientGame<'_>| {
+                assert_eq!(game.client.screen, Screen::Options);
+                assert_eq!(game.client.chat_ui.options.page(), Page::Mods);
+            };
+
+            // In a world: over the pause menu's Options > Mods.
+            game.open_options(false);
+            game.client.chat_ui.options.show(Page::Mods);
+            config(game);
+            assert_eq!(asked.load(Ordering::SeqCst), 1);
+            assert_eq!(game.client.screen, Screen::Mod);
+            assert_eq!(game.mod_screen(), Some("configured"));
+            game.close_mod_screen();
+            on_mods(game);
+            assert_eq!(game.mod_screen(), None);
+
+            // Declined: the Mods screen stays.
+            open.store(false, Ordering::SeqCst);
+            config(game);
+            assert_eq!(asked.load(Ordering::SeqCst), 2);
+            on_mods(game);
+
+            // On the title: closing returns to the Mods screen, not the title.
+            open.store(true, Ordering::SeqCst);
+            let saves = std::env::temp_dir().join("sunrise-config-screen-test-no-saves");
+            game.client.title.0 = Some(game.new_title(saves));
+            game.open_options(true);
+            game.client.chat_ui.options.show(Page::Mods);
+            config(game);
+            assert_eq!(game.mod_screen(), Some("configured"));
+            game.close_mod_screen();
+            on_mods(game);
+            assert!(game.client.title.0.is_some());
+
+            // A mod screen opened another way still closes to the title.
+            assert!(game.mod_screen_open("configured"));
+            game.close_mod_screen();
+            assert_eq!(game.client.screen, Screen::Playing);
+            assert_eq!(game.mod_screen(), None);
         });
     });
 }

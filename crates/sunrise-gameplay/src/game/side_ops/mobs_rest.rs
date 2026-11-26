@@ -29,6 +29,9 @@ impl SideOps for crate::game::server_side::ServerState {
             .guest(conn)
             .map(|g| g.entity_id as u32)
     }
+    fn side_boat_client_controlled(game: &Self::Game<'_>, id: u32) -> bool {
+        game.common.riding == Some(id) || game.ridden_by_guest(id)
+    }
     fn side_remote_general_rotation(&self, id: u32) -> Option<[f32; 2]> {
         None
     }
@@ -111,8 +114,27 @@ impl SideOps for crate::game::server_side::ServerState {
         game: &mut Self::Game<'_>,
         item: &mut ItemEntity,
         client: bool,
+        sources: sunrise_gameplay_common::game::entity_common::InsideSources<'_>,
     ) -> bool {
-        game.server_item_post_move_contacts(item, client)
+        game.server_item_post_move_contacts(item, client, sources)
+    }
+    fn side_hurt_lent_item_entity(
+        game: &mut Self::Game<'_>,
+        item: &mut ItemEntity,
+        amount: f32,
+        damage_type: &str,
+    ) {
+        game.hurt_lent_item_entity(item, amount, damage_type, None, None, None);
+    }
+    fn side_queue_boat_contact_hurts(
+        game: &mut Self::Game<'_>,
+        id: u32,
+        hurts: Vec<(&'static str, f32)>,
+    ) {
+        game.queue_vehicle_contact_hurts(Target::Boat(id), hurts);
+    }
+    fn side_apply_boat_contact_hurts(game: &mut Self::Game<'_>, id: u32) -> bool {
+        game.apply_vehicle_contact_hurts(Target::Boat(id))
     }
     fn side_boat_collision_root(game: &Self::Game<'_>, id: u32, target: Target) -> Option<u32> {
         game.server_boat_collision_root(id, target)

@@ -41,11 +41,12 @@ impl crate::game::ClientGame<'_> {
             return None;
         }
         let camera = self.client.native_camera_frame.as_ref()?;
-        sunrise_client::camera::project_point(
+        sunrise_client_render::camera::project_point_rolled(
             &camera.projection,
             camera.position,
             camera.yaw,
             camera.pitch,
+            camera.roll,
             at,
         )
     }

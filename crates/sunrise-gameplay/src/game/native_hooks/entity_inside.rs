@@ -8,6 +8,7 @@ pub mod sweep_tests {
     /// own world and assets, through the production `BLOCK_CONTACT_HOOKS` fire.
     /// Returns the player's velocity x before and after, and whether it died.
     pub fn sweep_game_player(game: &mut crate::game::ServerGame<'_>) -> (f64, f64, bool) {
+        game.options.dedicated = Some(Vec::new());
         let stone = game
             .pack
             .assets
@@ -39,49 +40,90 @@ pub mod sweep_tests {
                 to: sunrise_core::geometry::Vec3::new(2.5, 100.0, 0.5),
                 original: None,
             });
-        sweep_game_player_runs(game, |w| w.apply_effects_from_blocks().map(|_| ()))
+        sweep_game_player_live(
+            game,
+            sunrise_core::geometry::Vec3::new(0.5, 100.0, 0.5),
+            false,
+        )
     }
-    /// The same world and player setup, with the caller's passes run in the level
-    /// scope: what a server turn walks, or the client's own tick.
-    pub fn sweep_game_player_runs(
+
+    /// Runs the server-turn player inside-block sweep: collect (optionally after
+    /// `server_stuck_in_blocks`), flush live against `&mut ServerGame`, and finish freezing.
+    pub fn sweep_game_player_live(
         game: &mut crate::game::ServerGame<'_>,
-        runs: impl FnOnce(&mut sunrise_sim::motion::MotionWorld) -> sunrise_game_data::Result<()>,
+        from: sunrise_core::geometry::Vec3,
+        with_stuck_pass: bool,
     ) -> (f64, f64, bool) {
         use sunrise_sim::motion::MotionWorld;
         let before = game.player.as_ref().unwrap().velocity.x;
-        let sunrise_gameplay_common::game::CommonGame {
-            world,
-            pack,
-            motion,
-            health_resources,
-            damage_hooks,
-            loop_context,
-            collision,
-            player,
-            ..
-        } = &mut game.common;
-        let entities: [sunrise_core::geometry::Aabb; 0] = [];
-        sunrise_sim::block_contact::in_level(
-            sunrise_sim::parallel::TickThread::mint(),
-            Some("minecraft:overworld"),
-            || {
-                let mut w = MotionWorld {
-                    side: sunrise_sim::motion::dry_side(),
-                    tag_items: None,
-                    block_registries: Some(&pack.block_registries),
-                    loop_context,
-                    damage_hooks,
-                    entities: &entities,
-                    player: player.as_mut().unwrap(),
-                    scene: world,
-                    assets: &pack.assets,
-                    collision_binding: collision,
-                    resources: motion,
-                    health: health_resources,
-                };
-                runs(&mut w).unwrap();
-            },
-        );
+        let effects = {
+            let sunrise_gameplay_common::game::CommonGame {
+                world,
+                pack,
+                motion,
+                health_resources,
+                damage_hooks,
+                loop_context,
+                collision,
+                player,
+                ..
+            } = &mut game.common;
+            let entities: [sunrise_core::geometry::Aabb; 0] = [];
+            sunrise_sim::block_contact::in_level(
+                sunrise_sim::parallel::TickThread::mint(),
+                Some("minecraft:overworld"),
+                || {
+                    let mut w = MotionWorld {
+                        side: sunrise_sim::motion::dry_side(),
+                        tag_items: None,
+                        block_registries: Some(&pack.block_registries),
+                        loop_context,
+                        damage_hooks,
+                        entities: &entities,
+                        player: player.as_mut().unwrap(),
+                        scene: world,
+                        assets: &pack.assets,
+                        collision_binding: collision,
+                        resources: motion,
+                        health: health_resources,
+                    };
+                    if with_stuck_pass {
+                        w.server_stuck_in_blocks(from).unwrap();
+                    }
+                    w.collect_server_block_damage(from).unwrap()
+                },
+            )
+        };
+        game.flush_player_inside(effects);
+        {
+            let sunrise_gameplay_common::game::CommonGame {
+                world,
+                pack,
+                motion,
+                health_resources,
+                damage_hooks,
+                loop_context,
+                collision,
+                player,
+                ..
+            } = &mut game.common;
+            let entities: [sunrise_core::geometry::Aabb; 0] = [];
+            let mut w = MotionWorld {
+                side: sunrise_sim::motion::dry_side(),
+                tag_items: None,
+                block_registries: Some(&pack.block_registries),
+                loop_context,
+                damage_hooks,
+                entities: &entities,
+                player: player.as_mut().unwrap(),
+                scene: world,
+                assets: &pack.assets,
+                collision_binding: collision,
+                resources: motion,
+                health: health_resources,
+            };
+            let _ = w.finish_server_block_damage_freezing();
+        }
         let player = game.player.as_ref().unwrap();
         (before, player.velocity.x, player.health.dead_or_dying())
     }

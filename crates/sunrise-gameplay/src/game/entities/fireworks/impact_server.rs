@@ -1,5 +1,10 @@
 use super::*;
 
+#[cfg(any(test, feature = "test-support"))]
+thread_local! {
+    pub static ROCKET_IMPACT_PREPARES: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
 impl crate::game::ServerGame<'_> {
     /// Let listeners inspect and remove the live rocket, preserving its identity
     /// across the detached tick. Refuse a stale hit after writes.
@@ -9,6 +14,11 @@ impl crate::game::ServerGame<'_> {
         r: Rocket,
         hit: ProjectileHit,
     ) -> Option<(Rocket, bool)> {
+        if matches!(hit, ProjectileHit::None) || !self.native_hears_impacts() {
+            return Some((r, false));
+        }
+        #[cfg(any(test, feature = "test-support"))]
+        ROCKET_IMPACT_PREPARES.with(|count| count.set(count.get() + 1));
         let (id, join, position, velocity) = (r.id, r.join, r.position, r.velocity);
         let owner = self.rocket_owner(&r);
         let target = self.native_impact_target(hit);

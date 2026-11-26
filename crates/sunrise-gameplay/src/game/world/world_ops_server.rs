@@ -47,51 +47,13 @@ impl crate::game::ServerGame<'_> {
         flags: i32,
         create_entity: bool,
     ) -> bool {
-        let [x, y, z] = pos;
-        let at = BlockPos::new(x, y, z);
-        let previous = self.common.world.block(x, y, z);
-        let b = self.common.res.behaviours();
-        if flags & level_flags::UPDATE_SKIP_BLOCK_ENTITY_SIDEEFFECTS != 0
-            || b.block(previous) == b.block(state)
-            || b.keeps_block_entity(previous, state)
-            || !(self.common.res.facts().get(previous).block_entity
-                || self.common.world.block_entities.stateful_entity(previous.0)
-                || self.common.world.block_entities.get(&(x, y, z)).is_some())
-        {
-            return self.with_level(|b, level, ticks| {
-                let changed = b.set_block(level, ticks, at, state, flags);
-                if create_entity {
-                    level.finish_native_block(pos, previous, state, changed);
-                }
-                changed
-            });
-        }
-        self.ensure_stateful_entity_table();
-        let Some((write, removal, spawns, orbs)) =
-            self.with_level_access(false, |b, level, ticks| {
-                let write = b.begin_block_write(level, ticks, at, state, flags)?;
-                let spawn_start = level.spill.spawns.len();
-                let orb_start = level.spill.orbs.len();
-                let removal = write
-                    .effectful_removal()
-                    .map(|old| level.pre_remove_entity(at, old, true));
-                let spawns = level.spill.spawns.split_off(spawn_start);
-                let orbs = level.spill.orbs.split_off(orb_start);
-                Some((write, removal, spawns, orbs))
-            })
-        else {
-            return false;
-        };
-        self.publish_removal_spawns(spawns, orbs);
-        self.with_level(|b, level, ticks| {
-            let removal_updates =
-                removal.map(|removal| level.finish_remove_entity(at, previous, removal));
-            let changed = b.finish_block_write(level, ticks, write, removal_updates);
-            if create_entity {
-                level.finish_native_block(pos, previous, state, changed);
-            }
-            changed
-        })
+        self.server_set_block_live_with_entity(
+            pos,
+            state,
+            flags,
+            create_entity,
+            sunrise_gameplay_common::game::transactions::BlockEntityCreation::Live,
+        )
     }
 
     pub(in crate::game) fn server_update_chunk_tickets(&mut self) {
@@ -149,6 +111,7 @@ impl crate::game::ServerGame<'_> {
         let Some(points) = self.xp_change(points) else {
             return;
         };
+        self.common.player_score = self.common.player_score.wrapping_add(points);
         let old_level = self.common.experience.level;
         self.common.experience.add_points(points);
         while self.common.experience.progress < 0.0 {
@@ -219,7 +182,16 @@ impl crate::game::ServerGame<'_> {
         let key = (pos[0], pos[1], pos[2]);
         match self.common.world.block_entities.get(&key) {
             Some(entity) => {
-                Some(self.encode_live_block_entity(key, entity, block, self.common.res.items()))
+                let items = self.common.res.items();
+                let current = self.encode_live_block_entity(key, entity, block, items);
+                Some(sunrise_gameplay_common::game::spill_common::live_full_metadata(
+                    &self.common.world,
+                    key,
+                    entity,
+                    block,
+                    items,
+                    current,
+                ))
             }
             None => {
                 sunrise_gameplay_common::game::spill_common::saved_entity(&self.common.world, pos)
@@ -500,16 +472,24 @@ impl crate::game::ServerGame<'_> {
             "save_game_with called on Client role"
         );
         self.common.admit_level_save()?;
+        let owner_saved = self.save_placed_players();
+        self.write_world(wait, owner_saved)
+    }
+
+    pub(in crate::game) fn save_world_after_players(&mut self, owner_saved: bool) -> Result<()> {
+        self.common.admit_level_save()?;
+        self.write_world(true, owner_saved)
+    }
+
+    fn write_world(&mut self, wait: bool, owner_saved: bool) -> Result<()> {
         // `DedicatedServer.saveAllChunks` tells the management protocol's clients when a save starts and when
         // it ends without failing, for every save: the command, the autosave, the pause.
         let dedicated = self.common.is_dedicated_server();
         if dedicated {
             dedicated::events::record_server("saving", serde_json::json!({}));
         }
-        self.save_level(wait)?;
-        self.save_parked_levels(wait)?;
-        self.save_game_metadata()?;
-        let _ = self.finish_player_autosaves(wait);
+        self.save_all_levels(wait)?;
+        self.save_world_metadata(owner_saved)?;
         self.native_world_saved(wait);
         if dedicated {
             dedicated::events::record_server("saved", serde_json::json!({}));

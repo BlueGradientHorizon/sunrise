@@ -350,6 +350,17 @@ impl crate::game::ClientGame<'_> {
                     t.silent = *silent;
                 }
             }
+            // Entity.DATA_CUSTOM_NAME and DATA_CUSTOM_NAME_VISIBLE of a general row.
+            if let Some(row) = r.general.rows.get_mut(&id) {
+                match (index, value) {
+                    (2, Value::OptText(name)) => {
+                        row.custom_name = name.as_ref().map(sunrise_client::entity_nbt::name_text);
+                    }
+                    (3, Value::Bool(visible)) => row.custom_name_visible = *visible,
+                    (5, Value::Bool(no_gravity)) => row.no_gravity = *no_gravity,
+                    _ => {}
+                }
+            }
         }
         // Entity.DATA_SHARED_FLAGS_ID, DATA_CUSTOM_NAME and
         // DATA_CUSTOM_NAME_VISIBLE: server NPCs and holograms rely on
@@ -492,6 +503,8 @@ impl crate::game::ClientGame<'_> {
             .is_some_and(|r| r.entity_id == id)
         {
             match (index, value) {
+                // Player.DATA_SCORE_ID: DeathScreen reads this, not the XP packet.
+                (18, Value::Int(score)) => self.player_score = *score,
                 (14, Value::OptPos(bed)) => {
                     if bed.is_some() && self.common.sleeping.is_none() {
                         self.common.sleep_timer = 0;
@@ -776,6 +789,9 @@ impl crate::game::ClientGame<'_> {
         }
         if let Some(t) = r.entities.get(&id) {
             return Some(t.kind.clone());
+        }
+        if let Some(row) = r.general.rows.get(&id) {
+            return Some(row.kind().to_owned());
         }
         self.common
             .mobs

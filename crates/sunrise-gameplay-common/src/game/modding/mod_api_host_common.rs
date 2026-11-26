@@ -7,7 +7,7 @@ pub fn weather_for_level(
     is_end: bool,
     levels: (f32, f32),
 ) -> (f32, f32) {
-    if shape.sky_light && !shape.has_ceiling && !is_end {
+    if shape.can_have_weather(is_end) {
         levels
     } else {
         (0.0, 0.0)
@@ -22,6 +22,13 @@ pub trait GameAttachmentHost<'g>: crate::game::SideGame<'g> {
         sync: bool,
     ) -> Result<(), mod_api::AttachmentError> {
         mod_api::__private::validate_attachment_use(namespace, name, sync)
+    }
+
+    fn validate_attachment_key(
+        &self,
+        write: &mod_api::AttachmentStoreKey<'_>,
+    ) -> Result<(), mod_api::AttachmentError> {
+        mod_api::__private::validate_attachment_key(write)
     }
 
     fn attachments(

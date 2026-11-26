@@ -7,7 +7,6 @@ pub trait Hooks {
     /// clicks are reported: one sent during configuration (no player yet) is not. The
     /// player is not swapped in. Server-side.
     #[hook(
-        target = "sunrise_gameplay::game::native_hooks::custom_click_action::ServerGame<'_>::native_custom_click_action",
         dispatch = "flat",
         side = "server",
         contract = "cancel",

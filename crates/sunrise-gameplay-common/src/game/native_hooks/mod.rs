@@ -10,18 +10,17 @@
 pub mod fire;
 use self::bonemeal::GameHooks as _;
 #[allow(unused_imports)]
+pub use block_entity_read::ResidentReadBlockEntity;
+#[allow(unused_imports)]
 pub use build_creative_mode_tab_contents::CreativeCache;
 #[allow(unused_imports)]
-pub use fire::{
-    ConnectsToCall, ItemAfterVerticalCollisionCall, PreRemoveSideEffectsCall, UpdateShapeCall,
-};
+pub use fire::{ConnectsToCall, ItemAfterVerticalCollisionCall, UpdateShapeCall};
 pub use mod_api::{BlockEntityDataSource, BlockEntityRef, ClockAdjustment};
 
 pub use super::{
     GameLevel, LevelDimension, Screen,
     execution_role::{self, ExecutionRole},
     mod_api_host,
-    native_configs::ConfigFile,
 };
 pub use crate::game::native_data_maps_common::DataMapType;
 pub use mod_api::__private::game::{
@@ -33,16 +32,16 @@ pub use mod_api::__private::game::{
 pub use mod_api::GameMode;
 pub use mod_api::GameTests;
 #[allow(unused_imports)]
-pub use mod_api::game::{PhantomSpawnResult, Shake, SleepProblem};
+pub use mod_api::game::{PhantomSpawnResult, SleepProblem};
 pub use mod_api::{
     self, Answered, BlockTintSources, CauldronFluidContents, CauldronInteractions,
-    ClientMiningPrediction, ClientReloadListeners, ColorResolvers, EnchantmentDamageEffects,
-    EnchantmentInfo, EntityLayers, EntityRef, EntityRenderers, GameRuleActor, GuiLayerRegistrar,
+    ClientMiningPrediction, ClientReloadListeners, ColorResolvers, EnchantmentEffects,
+    EnchantmentInfo, EntityLayers, EntityRef, EntityRenderers, ExperienceOrbRef, GuiLayerRegistrar,
     HandDrawContext, HandRender, InsideEffects, InteractionAttempt, InteractionKey, ItemEntityRef,
     LifecycleContext, LivingRef, LoadConditions, NoteBlockChange, ParticleProviders,
     PathComputationType, Placement, PlayerRef, PoiTypeExtensions, RecipeBookCategory,
     ScreenOpening, ScreenWidgets, ScreenshotImage, ServerReloadListeners, ServerTickPhase,
-    SpecialModelRenderers, TicketController, ToolUse, VillagerProfessions, WorldPhase,
+    SpecialModelRenderers, ToolUse, VillagerProfessions,
 };
 pub use mod_api::{
     ActiveEffect, AttachmentStore, BlockClick, BlockUpdateFlags, BonemealSource, ChunkRef,
@@ -51,7 +50,7 @@ pub use mod_api::{
 };
 pub use mod_api::{
     BlockKey, DebugEntry, DebugRenderer, EffectKey, FrameModel, FrameModelEdit, MapDecorationType,
-    SkullModel, TextureAtlasRegistration,
+    NameTagLine, SkullModel, TextureAtlasRegistration,
 };
 #[allow(unused_imports)]
 pub use mod_api::{
@@ -267,6 +266,7 @@ pub mod block_entity_type_add_blocks;
 pub mod block_entity_view_distance;
 pub mod block_grow_feature;
 pub mod block_landing;
+pub mod block_on_place;
 pub mod block_particle_effects;
 #[cfg(any())]
 #[cfg(any(test, feature = "test-support"))]
@@ -289,6 +289,7 @@ pub mod camera_type;
 pub mod can_be_connected_to;
 pub mod can_be_hydrated;
 pub mod can_continue_sleeping;
+pub mod can_continue_using;
 pub mod can_drop_from_explosion;
 pub mod can_entity_destroy;
 pub mod can_equip;
@@ -327,7 +328,6 @@ pub mod client_stopping;
 pub mod client_text;
 pub mod client_tick_post;
 pub mod client_tick_pre;
-pub mod client_visual_text;
 pub mod clone_item_stack;
 pub mod component_hover;
 pub mod compute_fov_modifier;
@@ -349,6 +349,7 @@ pub mod customize_chat_overlay;
 pub mod damage_item;
 pub mod data_maps_updated;
 pub mod default_components_bound;
+pub mod destroy_progress;
 pub mod dispense_method;
 pub mod effect_particle_modification;
 pub mod empty_contents;
@@ -386,6 +387,7 @@ pub mod fire_behaviour;
 pub mod fire_odds;
 pub mod fishing_medium;
 pub mod flip_frame;
+pub mod fluid_passage;
 pub mod fluid_place_block;
 pub mod fluid_rules;
 pub mod fluid_tick;
@@ -400,7 +402,6 @@ pub mod general_entity_tick;
 pub mod get_arm_pose;
 pub mod grindstone_place;
 pub mod grindstone_take;
-pub mod gui_render_post;
 pub mod gui_ticks;
 pub mod held_item_tint;
 pub mod highlight_tip;
@@ -417,6 +418,8 @@ pub mod is_pathfindable;
 pub mod is_piglin_currency;
 pub mod is_possible_to_respawn_in;
 pub mod is_primary_item_for;
+pub mod is_shearable;
+pub mod is_valid_book_shelf;
 pub mod item_after_vertical_collision;
 pub mod item_attack;
 pub mod item_container;
@@ -446,6 +449,7 @@ pub mod living_damage_pre;
 pub mod living_death;
 pub mod living_death_message;
 pub mod living_death_post;
+pub mod living_death_protection;
 pub mod living_destroy_block;
 pub mod living_drops;
 pub mod living_experience_drop;
@@ -458,6 +462,7 @@ pub mod map_decoration_types;
 pub mod math;
 pub mod menu_extra_data;
 pub mod menu_links;
+pub mod menu_pick_all;
 pub mod menu_slot_changed;
 pub mod menu_slot_rules;
 pub mod menu_slot_take;
@@ -466,7 +471,6 @@ pub mod minecart_pass;
 pub mod mob_effect_events;
 pub mod mob_spawn_checks;
 pub mod mob_split;
-pub mod mod_configs;
 pub mod mod_mismatch;
 pub mod mod_settings;
 pub mod model_baking_completed;
@@ -487,6 +491,8 @@ pub mod on_destroyed_by_player;
 pub mod on_destroyed_by_push_reaction;
 pub mod on_dropped_by_player;
 pub mod on_item_use_first;
+pub mod on_sheared;
+pub mod on_stop_using;
 pub mod panel_recipes;
 pub mod permissions_changed;
 pub mod piston_carries_block_entity;
@@ -533,7 +539,6 @@ pub mod register_color_resolvers;
 pub mod register_debug_entries;
 pub mod register_debug_renderers;
 pub mod register_dimension_transition_screen;
-pub mod register_enchantment_damage_effects;
 pub mod register_entity_renderers;
 pub mod register_entity_spectator_shaders;
 pub mod register_fluid_models;
@@ -566,7 +571,6 @@ pub mod render_item_in_frame;
 pub mod render_level_stage;
 pub mod render_living_post;
 pub mod render_living_pre;
-pub mod render_name_tag;
 pub mod render_player_post;
 pub mod render_player_pre;
 pub mod render_tooltip_gather_components;
@@ -602,11 +606,14 @@ pub mod should_display_fluid_overlay;
 pub mod should_hide_adjacent_fluid_face;
 pub mod should_redstone_wire_connect_to;
 pub mod sound_and_shader_helpers;
+pub mod sound_type;
+pub mod spawner_active;
 pub mod spread_players_teleport;
 pub mod state_at_viewpoint;
 pub mod stateful_block_entity;
 pub mod submit_custom_geometry;
 pub mod supports_enchantment;
+pub mod survival_query_guard;
 pub mod sweep_attack;
 pub mod tags_updated;
 pub mod teleport_command;
@@ -617,7 +624,6 @@ pub mod tool_modified_state;
 pub mod translate;
 pub mod use_item_hand;
 pub mod use_item_on_block;
-pub mod validate_tickets;
 pub mod vanilla_game_event;
 pub mod viewed_level_sound;
 pub mod wind_burst;
@@ -631,16 +637,12 @@ pub use bounce_restitution::install_block_contact_hooks;
 #[allow(unused_imports)]
 pub use living_change_target::NativeHookHost;
 pub use mod_api::ModBlockEntity;
-#[allow(unused_imports)]
-pub use sound_and_shader_helpers::{finite_params, local_sound_ok};
-#[allow(unused_imports)]
-pub use sound_and_shader_helpers::{level_sound_playable, mod_sound_ok, sound_id};
+pub use sound_and_shader_helpers::sound_id;
+pub use survival_query_guard::enter_query as enter_survival_query;
 
 // Free-function associated native hooks re-exported at native_hooks::*
 #[allow(unused_imports)]
 pub use add_section_geometry::native_add_section_geometry;
-#[allow(unused_imports)]
-pub use base::{another_mods, startup_setting};
 #[allow(unused_imports)]
 pub use base::{
     native_block_entity_update_tag, native_blocks, native_component_types, native_items,
@@ -683,8 +685,6 @@ pub use register_debug_renderers::native_register_debug_renderers;
 #[allow(unused_imports)]
 pub use register_dimension_transition_screen::native_register_dimension_transition_screen;
 #[allow(unused_imports)]
-pub use register_enchantment_damage_effects::native_register_enchantment_damage_effects;
-#[allow(unused_imports)]
 pub use register_entity_renderers::native_register_entity_renderers;
 #[allow(unused_imports)]
 pub use register_entity_spectator_shaders::native_register_entity_spectator_shaders;
@@ -723,7 +723,7 @@ pub use register_texture_atlases::native_register_texture_atlases;
 #[allow(unused_imports)]
 pub use register_villager_professions::native_register_villager_professions;
 #[allow(unused_imports)]
-pub use system_helpers::{mod_data_root, native_config_dir};
+pub use system_helpers::mod_data_root;
 
 include!("shared.rs");
 

@@ -88,10 +88,11 @@ pub fn preload_world_data(
 pub(in crate::game) fn preload_launch_world(
     folder: &str,
     resources: &std::path::Path,
+    builtin_source: &sunrise_assets::resource_source::ResourceSource,
     data_source: &sunrise_assets::resource_source::ResourceSource,
     registry: &'static sunrise_world::registry::BlockRegistry,
-    biomes: Arc<sunrise_level::biome::Biomes>,
     additional: &[Arc<sunrise_level::datapack::DataPack>],
+    base_conditions: sunrise_world::conditions::LoadConditions,
 ) {
     let mut preload = PRELOAD.lock().unwrap_or_else(|e| e.into_inner());
     if !matches!(*preload, Preload::Idle) {
@@ -102,6 +103,7 @@ pub(in crate::game) fn preload_launch_world(
     };
     let world_root = dir.join("saves").join(folder);
     let resources = resources.to_owned();
+    let builtin_source = builtin_source.clone();
     let data_source = data_source.clone();
     let additional = additional.to_vec();
     let spawned = std::thread::Builder::new()
@@ -117,13 +119,27 @@ pub(in crate::game) fn preload_launch_world(
             let enabled_features = level
                 .as_ref()
                 .map_or(&[][..], |l| l.enabled_features.as_ref());
-            let (overrides, _) = worldgen_overrides_of(
-                &world_root,
-                &resources,
-                &biomes,
+            let packs = data_repository(&world_root, &resources, &additional);
+            let enabled = sunrise_level::datapack::enabled_ids(&world_root, &packs, enabled_features);
+            let stack = crate::game::function_pack_stack::PackStack::new(
+                &builtin_source,
+                &data_source,
+                false,
+                packs,
+                enabled,
                 enabled_features,
-                &additional,
             );
+            let enabled: Vec<_> = stack.enabled_packs().collect();
+            let conditions = crate::game::load_conditions::worldgen_load_conditions(
+                &base_conditions,
+                &resources,
+                &enabled,
+            );
+            let Ok((overrides, _)) =
+                preload_overrides(&stack.data_packs(Vec::new()), &conditions)
+            else {
+                return;
+            };
             if let Ok(data) = sunrise_sim::vanillagen::shared_data_from(
                 &resources.join("worldgen"),
                 &overrides,
@@ -148,49 +164,17 @@ pub(in crate::game) fn preload_launch_world(
     }
 }
 
+fn preload_overrides(
+    packs: &sunrise_level::datapack::DataPacks,
+    conditions: &sunrise_world::conditions::LoadConditions,
+) -> Result<(sunrise_world::worldgen::overrides::WorldgenOverrides, Vec<String>), String> {
+    let result = sunrise_level::datapack::worldgen_overrides(packs, conditions);
+    conditions.check_errors()?;
+    Ok(result)
+}
+
 /// A world opens: what `preload_world_data` read is the world's from now on.
 pub fn world_data_used() {
     *PRELOAD.lock().unwrap_or_else(|e| e.into_inner()) = Preload::Used;
 }
 
-/// The Create screen's chosen packs' worldgen entries over the game's own
-/// (`applyNewPackConfig` reloads the world with the new pack config): the
-/// packs the temp folder and the resources root hold, the selection the
-/// Create screen made.
-pub fn creation_worldgen_overrides(
-    pack_dir: Option<&std::path::Path>,
-    resources: &std::path::Path,
-    data_packs: &[String],
-    biomes: &sunrise_level::biome::Biomes,
-    additional: &[Arc<sunrise_level::datapack::DataPack>],
-) -> sunrise_world::worldgen::overrides::WorldgenOverrides {
-    let empty = std::path::PathBuf::new();
-    let packs = data_repository(pack_dir.unwrap_or(&empty), resources, additional);
-    let enabled: Vec<_> = data_packs
-        .iter()
-        .filter_map(|id| packs.iter().find(|p| &p.id == id))
-        .collect();
-    let (overrides, _) =
-        sunrise_level::datapack::worldgen_overrides(&enabled, |b| biomes.contains(b));
-    overrides
-}
-/// The worldgen entries of the world's enabled data packs, and what the
-/// generator leaves out of them.
-pub fn worldgen_overrides_of(
-    world_root: &std::path::Path,
-    resources: &std::path::Path,
-    biomes: &sunrise_level::biome::Biomes,
-    enabled_features: &[String],
-    additional: &[Arc<sunrise_level::datapack::DataPack>],
-) -> (
-    sunrise_world::worldgen::overrides::WorldgenOverrides,
-    Vec<String>,
-) {
-    let packs = data_repository(world_root, resources, additional);
-    let enabled = sunrise_level::datapack::enabled_ids(world_root, &packs, enabled_features);
-    let enabled: Vec<_> = enabled
-        .iter()
-        .filter_map(|id| packs.iter().find(|p| &p.id == id))
-        .collect();
-    sunrise_level::datapack::worldgen_overrides(&enabled, |b| biomes.contains(b))
-}

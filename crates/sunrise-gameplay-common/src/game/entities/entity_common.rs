@@ -14,6 +14,17 @@ use sunrise_sim::{
     entities::{ArmorStand, ItemEntity, Painting},
 };
 
+/// Optional resolver for entities currently lent out of their tables during an
+/// inside-block sweep, returning their command target and live position.
+pub type InsideSources<'a> =
+    Option<&'a dyn Fn(u32) -> Option<(crate::game::commands_common::Target, [f64; 3])>>;
+
+/// Whether an item entity can take fire damage (`!fireResistant` in vanilla's
+/// `ItemEntity.fireImmune`).
+pub fn item_can_burn<'r>(game: &impl crate::game::SideGame<'r>, item: &ItemEntity) -> bool {
+    game.stack_can_be_hurt_by(&item.stack, "minecraft:in_fire") != Some(false)
+}
+
 pub struct PlacementWorld<'a, 'r, S: crate::game::SideGame<'r>>(
     pub &'a S,
     pub std::marker::PhantomData<fn(&'r ()) -> &'r ()>,
@@ -110,7 +121,7 @@ impl crate::game::CommonGame<'_> {
         &self,
         hit: &Hit,
         stack: &ItemStack,
-    ) -> Option<([i32; 3], ArmorStand)> {
+    ) -> Option<([i32; 3], ArmorStand, [i32; 4])> {
         if hit.face == [0, -1, 0] {
             return None;
         }
@@ -130,7 +141,7 @@ impl crate::game::CommonGame<'_> {
         );
         let yaw =
             (((self.yaw - 180.0 + 180.0).rem_euclid(360.0) - 180.0 + 22.5) / 45.0).floor() * 45.0;
-        let mut stand = ArmorStand::new(0, foot, yaw);
+        let (mut stand, uuid) = ArmorStand::new_with_uuid(0, foot, yaw);
         if let Some(name) = stack.custom_name() {
             stand.custom_name = Some(sunrise_game_data::text::Text::literal(name));
         }
@@ -154,7 +165,7 @@ impl crate::game::CommonGame<'_> {
         {
             return None;
         }
-        Some((pos, stand))
+        Some((pos, stand, uuid))
     }
 
     /// `HangingEntity.survives`: no block collision, solid/diode wall behind, no overlapping hanging.
@@ -404,6 +415,7 @@ pub trait EntityCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
         escape_speed: Option<f32>,
         entity_boxes: &[Aabb],
         client: bool,
+        sources: InsideSources<'_>,
         splash: &mut impl FnMut(sunrise_sim::entities::ItemSplash),
     ) -> (bool, bool) {
         let no_physics = escape_speed.is_some();
@@ -411,7 +423,20 @@ pub trait EntityCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
         let heights =
             item.push_by_fluid(&self.world, &self.res.motion().fluids, &self.loop_context);
         item.water_entry(heights.0 > 0.0, item.ticks == 0, before, splash);
-        item.lava_fall(heights.1 > 0.0);
+        let in_lava = item.ticks > 0 && heights.1 > 0.0;
+        item.lava_fall(in_lava);
+        if client || item.fire_ticks > 0 && !item_can_burn(self, item) {
+            item.fire_ticks = item.fire_ticks.min(0);
+        } else if item.fire_ticks > 0 {
+            if item.fire_ticks % 20 == 0 && !in_lava {
+                self.side_hurt_lent_item_entity(item, 1.0, "minecraft:on_fire");
+            }
+            item.fire_ticks -= 1;
+            if item.health <= 0 {
+                item.previous = item.position;
+                return (false, true);
+            }
+        }
         let mut step = item.tick_move_before_block_effects(
             &self.world,
             self.res.facts(),
@@ -475,7 +500,7 @@ pub trait EntityCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
                 self.body_motion(&game_side!(self, self.side_game_side_fields())),
                 step,
             );
-            if !self.side_item_post_move_contacts(item, client) {
+            if !self.side_item_post_move_contacts(item, client, sources) {
                 return (false, true);
             }
         }
@@ -511,3 +536,5 @@ use crate::game::tables::GameItems as _;
 use crate::game::GameGameExt1 as _;
 
 use crate::game::native_hooks::item_after_vertical_collision::GameHooks as _;
+
+use crate::game::native_components::NativeComponentsGameExt1 as _;

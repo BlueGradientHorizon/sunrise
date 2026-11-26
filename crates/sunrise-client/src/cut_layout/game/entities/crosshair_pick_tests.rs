@@ -796,7 +796,7 @@ pub(crate) fn run_middle_click_sends_pick_item_from_entity_for_tnt_and_falling_b
                     game.refresh_client_pick(1.0);
                     assert_eq!(game.crosshair_entity_id(), Some(id));
                     assert!(
-                        game.entity_pick_result(id).is_none(),
+                        game.pick_result_of(id).is_none(),
                         "{kind} has no server getPickResult"
                     );
                     game.test_remote_pick_click();

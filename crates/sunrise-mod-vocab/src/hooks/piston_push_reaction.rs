@@ -11,7 +11,6 @@ pub trait Hooks {
     /// a live owned payload; raw-only or currently borrowed native payloads remain refused.
     /// Diverges from vanilla: push only never discards a block entity.
     #[hook(
-        target = "sunrise_gameplay_common::game::native_hooks::piston_push_reaction::native_piston_push_reaction",
         receiver = "associated",
         dispatch = "flat",
         side = "both",

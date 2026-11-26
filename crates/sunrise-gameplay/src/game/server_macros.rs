@@ -53,6 +53,24 @@ macro_rules! server_game_side {
     }};
 }
 
+macro_rules! world_paintings {
+    ($s:ident) => {
+        match $s.server.world_tables.0.as_ref() {
+            Some(tables) => &tables.painting_variants,
+            None => &$s.common.painting_variants,
+        }
+    };
+}
+
+macro_rules! world_variants {
+    ($s:ident) => {
+        match $s.server.world_tables.0.as_ref() {
+            Some(tables) => &*tables.variants,
+            None => $s.common.res.variants(),
+        }
+    };
+}
+
 macro_rules! world_items {
     ($s:ident) => {
         server_world_items!($s)

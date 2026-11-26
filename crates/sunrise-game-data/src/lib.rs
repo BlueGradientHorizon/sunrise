@@ -24,7 +24,6 @@ pub mod pattern;
 pub mod potions;
 pub mod registries;
 pub mod scoreboard;
-pub mod shader_versions;
 pub mod snbt;
 pub mod sound_source;
 pub mod suggestion;

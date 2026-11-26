@@ -13,12 +13,10 @@ import subprocess
 import sys
 import tempfile
 
-try:
-    from . import lab
-    from .command_exec_corpus import cmd, setup
-except ImportError:
-    import lab
-    from command_exec_corpus import cmd, setup
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+from tools import lab
+from tools.command_exec_corpus import cmd, setup
 
 INITIAL_COOLDOWN = 20
 MERGED_COOLDOWN = 50

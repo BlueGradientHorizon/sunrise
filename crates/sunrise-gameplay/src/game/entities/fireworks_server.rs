@@ -20,13 +20,10 @@ use {
 pub(in crate::game) mod impact;
 
 impl crate::game::ServerGame<'_> {
-    pub(in crate::game::server_side) fn advance_rocket(
-        &mut self,
-        r: &mut Rocket,
-    ) -> ([f32; 2], ProjectileHit) {
+    pub(in crate::game::server_side) fn advance_rocket(&mut self, r: &mut Rocket) -> ProjectileHit {
+        // Entity.commonTick's setOldPosAndRot: where updateRotation eases from.
         r.previous = r.position;
-        // Entity.baseTick's setOldRot: where updateRotation eases from.
-        let old_rotation = r.rotation;
+        r.previous_rotation = r.rotation;
         // Projectile.tick: the first tick posts the shot, with its owner.
         if !r.has_been_shot {
             let at = [r.position.x, r.position.y, r.position.z];
@@ -104,7 +101,7 @@ impl crate::game::ServerGame<'_> {
             }
         }
         self.entity_powder_snow_particles(r.previous, r.position, r.bounds(), r.velocity, false);
-        (old_rotation, hit)
+        hit
     }
     pub fn new_rocket(
         &mut self,
@@ -124,6 +121,7 @@ impl crate::game::ServerGame<'_> {
             size_answer: None,
             attachment_lifetime: Default::default(),
             rotation: [0.0, 0.0],
+            previous_rotation: [0.0, 0.0],
             join: Default::default(),
             id,
             position: at,
@@ -497,6 +495,11 @@ impl crate::game::ServerGame<'_> {
     ) {
         let mut attack = self.attack_of_who(attacker);
         attack.projectile = Some(rocket_id as i32);
+        attack.enchantment_direct = Some(sunrise_sim::health::EnchantmentActor {
+            id: rocket_id as i32,
+            kind: "minecraft:firework_rocket".into(),
+            motion: None,
+        });
         attack.projectile_kind = sunrise_sim::health::DirectEntity::Projectile;
         attack.projectile_type = Some("minecraft:firework_rocket");
         for &(id, amount) in hits {
@@ -552,7 +555,13 @@ impl crate::game::ServerGame<'_> {
         self.server.combat.0.projectile_direct =
             Some(Text::translate("entity.minecraft.firework_rocket", &[]));
         let at = [from.x, from.y, from.z];
-        self.hurt_player_from(amount, Some(at), "minecraft:fireworks", Some(None), false);
+        self.hurt_player_from(
+            amount,
+            Some(at),
+            "minecraft:fireworks",
+            sunrise_gameplay_common::game::creatures::KnownCause::None,
+            false,
+        );
     }
     /// `Entity.move` after a free rocket's move (`from`, the move it asked
     /// for, the one it made): a move of a block or more casts for a reset
@@ -747,26 +756,21 @@ impl crate::game::ServerGame<'_> {
     }
     /// One tick of `r`, a clone of the resident rocket at `index`. Returns whether the
     /// rocket stays in the list; one that explodes or was removed has left it.
-    pub(in crate::game::server_side) fn tick_rocket(
-        &mut self,
-        index: usize,
-        mut r: Rocket,
-        hears_impacts: bool,
-    ) -> bool {
+    pub(in crate::game::server_side) fn tick_rocket(&mut self, index: usize, mut r: Rocket) -> bool {
         let (id, join) = (r.id, r.join);
-        let (mut old_rotation, hit) =
-            self.with_entity_held_out(id, |game| game.advance_rocket(&mut r));
+        let hit = self.with_entity_held_out(id, |game| game.advance_rocket(&mut r));
         let deflected = matches!(hit, ProjectileHit::Entity { who: Who::Mob(id), .. }
             if self.mobs.iter().any(|m| m.id == id && m.alive() && m.species() == Species::Breeze));
-        let canceled = if !deflected && hears_impacts && !matches!(hit, ProjectileHit::None) {
-            let Some((rocket, canceled)) = self.rocket_impact(index, r, hit) else {
-                return false;
+        let canceled =
+            if !deflected && !matches!(hit, ProjectileHit::None) && self.native_hears_impacts() {
+                let Some((rocket, canceled)) = self.rocket_impact(index, r, hit) else {
+                    return false;
+                };
+                r = rocket;
+                canceled
+            } else {
+                false
             };
-            r = rocket;
-            canceled
-        } else {
-            false
-        };
         let explodes_on_hit = !canceled
             && !deflected
             && match hit {
@@ -793,7 +797,7 @@ impl crate::game::ServerGame<'_> {
                 if r.last_deflected_by != Some(id) {
                     let rot = 170.0 + r.random.next_float() * 20.0;
                     r.rotation[0] += rot;
-                    old_rotation[0] += rot;
+                    r.previous_rotation[0] += rot;
                     r.velocity = r.velocity.scale(-0.5);
                     r.last_deflected_by = Some(id);
                     let sound = super::level_sounds_common::LevelSound::new(
@@ -837,7 +841,7 @@ impl crate::game::ServerGame<'_> {
             }
         }
         // FireworkRocketEntity.tick runs updateRotation, launch sound, life++ even after impact.
-        r.update_rotation(old_rotation);
+        r.update_rotation();
         let at = [r.position.x, r.position.y, r.position.z];
         if r.life == 0 && !r.silent {
             self.server_play_sound("minecraft:entity.firework_rocket.launch", at, 3.0, 1.0);
@@ -859,7 +863,6 @@ impl crate::game::ServerGame<'_> {
     }
     pub fn tick_rockets(&mut self) {
         let ticking = self.entity_ticking_area();
-        let hears_impacts = !self.common.rockets.is_empty() && self.native_hears_impacts();
         let mut i = 0;
         while i < self.common.rockets.len() {
             // ServerLevel.tick: only entities in entity-ticking chunks tick.
@@ -874,7 +877,7 @@ impl crate::game::ServerGame<'_> {
             // list tail twice per entity, which is O(n^2) for a crowd of rockets.
             let id = self.common.rockets[i].id;
             let rocket = self.common.rockets[i].clone();
-            let kept = self.tick_rocket(i, rocket, hears_impacts);
+            let kept = self.tick_rocket(i, rocket);
             // A hook may have added or removed rockets: resume right after this one
             // where it stands, or at `i` when it is gone.
             i = if !kept {

@@ -32,7 +32,6 @@ Where a frame goes decides what "presented" means when the hook runs:
   been submitted to its offscreen target.
 "#]
     #[hook(
-        target = "sunrise_client_gameplay::game::native_hooks::flip_frame::ClientGame<'_>::native_flip_frame",
         dispatch = "flat",
         side = "client",
         contract = "listen",

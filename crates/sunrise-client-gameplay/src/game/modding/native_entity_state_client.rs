@@ -1,13 +1,86 @@
 //! Client-side entity state reads and client fire-immunity writes.
 use super::commands_common::Target;
-use mod_api::EntityRef;
+use mod_api::{EntityRef, EntityTypeKey, MobCategory};
+use sunrise_gameplay_common::game::game_mode_common::GameModeCommonGameExt1 as _;
+use sunrise_gameplay_common::game::entity_sizes_common::synced_pose;
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+use sunrise_gameplay_common::game::native_entity_state_common::{
+    Body, NativeEntityStateCommonGameExt1 as _,
+};
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;
+use sunrise_sim::pose::Pose;
+
+/// `Pose`'s serialized names by id (`Pose.STANDING` is 0).
+const POSES: [&str; 18] = [
+    "standing",
+    "fall_flying",
+    "sleeping",
+    "swimming",
+    "spin_attack",
+    "crouching",
+    "long_jumping",
+    "dying",
+    "croaking",
+    "using_tongue",
+    "sitting",
+    "roaring",
+    "sniffing",
+    "emerging",
+    "digging",
+    "sliding",
+    "shooting",
+    "inhaling",
+];
+
+/// A player's pose as `Pose` names it.
+fn player_pose(pose: Pose) -> &'static str {
+    match pose {
+        Pose::Standing => "standing",
+        Pose::Crouching => "crouching",
+        Pose::Swimming => "swimming",
+        Pose::FallFlying => "fall_flying",
+        Pose::SpinAttack => "spin_attack",
+        Pose::Sleeping => "sleeping",
+    }
+}
 
 impl crate::game::ClientGame<'_> {
+    pub(in crate::game) fn entity_type_category(&self, key: EntityTypeKey) -> Option<MobCategory> {
+        let name = mod_api::__private::entity_type_key_id(key)?;
+        Some(match &*name {
+            "minecraft:ender_dragon" => MobCategory::Monster,
+            name => self.common.res.mob_types().get(name)
+                .map_or(MobCategory::Misc, |kind| mob_category(&kind.category)),
+        })
+    }
+
+    pub(in crate::game) fn entity_spectator(&self, entity: EntityRef) -> Option<bool> {
+        Some(match self.native_entity_read_target(entity)? {
+            Target::Player => self.own_player_is_spectator(),
+            Target::Mob(id) => {
+                let mob = self.common.mobs.iter().find(|mob| mob.id == id)?;
+                &*mob.kind.id == "minecraft:player" && mob.extra.spectator
+            }
+            _ => false,
+        })
+    }
+
+    pub(in crate::game) fn entity_is_sitting(&self, entity: EntityRef) -> Option<bool> {
+        match self.native_target_body(self.native_entity_read_target(entity)?)? {
+            Body::Mob(mob) => mob.sitting(),
+            Body::Player(_) | Body::Other(_) => None,
+        }
+    }
+    pub(in crate::game) fn entity_custom_name_visible(&self, entity: EntityRef) -> Option<bool> {
+        self.native_client_general(entity)
+            .map(|row| row.custom_name_visible)
+    }
+
     /// `Entity.tickCount` of a client's own copy: the local player's, or that of an entity the
     /// server added to the level the client shows, whatever its kind, counted by the client's
     /// entity pass (`Entity.commonTick`) since the client added it.
     pub(in crate::game) fn client_entity_tick_count(&self, entity: EntityRef) -> Option<i32> {
-        let (remote, id) = self.native_client_entity_context(entity)?;
+        let (remote, id) = self.native_client_entity_context(entity).ok()?;
         // The local player from its admission (Login, Respawn), before the server's first
         // teleport gives it a body.
         if id == remote.entity_id {
@@ -124,5 +197,78 @@ impl crate::game::ClientGame<'_> {
             .remote
             .as_mut()
             .is_some_and(|remote| remote.set_tracked_fire_immunity(entity.id() as i32, immune))
+    }
+
+    /// The entity's pose (`Entity.getPose`) on a client: the local player's predicted pose, or
+    /// the synched `DATA_POSE` the server last sent for a kept entity.
+    pub(in crate::game) fn entity_pose(&self, entity: EntityRef) -> Option<&'static str> {
+        Some(
+            match self.native_target_body(self.native_entity_read_target(entity)?)? {
+                Body::Player(p) => player_pose(p.pose),
+                Body::Mob(m) => POSES[synced_pose(m) as usize],
+                Body::Other(_) => POSES[0],
+            },
+        )
+    }
+
+    pub(in crate::game) fn entity_is_crouching(&self, entity: EntityRef) -> Option<bool> {
+        if self.native_entity_read_target(entity)? == Target::Player {
+            return Some(self.common.player.as_ref()?.local_crouching);
+        }
+        Some(self.entity_pose(entity)? == "crouching")
+    }
+
+    pub(in crate::game) fn entity_is_sprinting(&self, entity: EntityRef) -> Option<bool> {
+        Some(match self.native_target_body(self.native_entity_read_target(entity)?)? {
+            Body::Player(player) => player.sprinting,
+            Body::Mob(mob) => mob.extra.sprinting,
+            Body::Other(_) => false,
+        })
+    }
+
+    pub(in crate::game) fn entity_is_in_lava(&self, entity: EntityRef) -> Option<bool> {
+        match self.native_target_body(self.native_entity_read_target(entity)?)? {
+            Body::Player(player) => Some(player.is_in_lava()),
+            Body::Mob(mob) => Some(mob.fluids.in_lava),
+            Body::Other(_) => None,
+        }
+    }
+
+    pub(in crate::game) fn entity_invulnerable_time(&self, entity: EntityRef) -> Option<i32> {
+        match self.native_entity_read_target(entity)? {
+            Target::Player => Some(self.common.player.as_ref()?.health.invulnerable_time),
+            Target::Mob(id) => Some(self.common.mobs.iter().find(|m| m.id == id)?.invulnerable_time),
+            _ => None,
+        }
+    }
+
+    pub(in crate::game) fn entity_damage_cooldown_time(&self, entity: EntityRef) -> Option<i32> {
+        match self.native_entity_read_target(entity)? {
+            Target::Player => Some(self.common.player.as_ref()?.health.hurt.cooldown),
+            Target::Mob(id) => Some(self.common.mobs.iter().find(|m| m.id == id)?.invulnerable),
+            _ => None,
+        }
+    }
+
+    /// `LivingEntity.yBodyRot` on a client: the local player's presentation model yaw.
+    pub(in crate::game) fn entity_body_yaw(&self, entity: EntityRef) -> Option<f32> {
+        self.native_client_level()?;
+        if self.local_player()?.entity() == entity {
+            return Some(self.client.player_model.as_ref()?.body_yaw);
+        }
+        None
+    }
+}
+
+fn mob_category(name: &str) -> MobCategory {
+    match name {
+        "monster" => MobCategory::Monster,
+        "creature" => MobCategory::Creature,
+        "ambient" => MobCategory::Ambient,
+        "axolotls" => MobCategory::Axolotls,
+        "underground_water_creature" => MobCategory::UndergroundWaterCreature,
+        "water_creature" => MobCategory::WaterCreature,
+        "water_ambient" => MobCategory::WaterAmbient,
+        _ => MobCategory::Misc,
     }
 }

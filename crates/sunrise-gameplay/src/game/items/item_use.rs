@@ -6,7 +6,8 @@
 //! and each tick and the release of a use (`native_living_entity_use_item_tick`,
 //! `native_on_use_tick`, `native_living_entity_use_item_stop`, `native_release_using`).
 use super::held_items::OFFHAND_SLOT;
-use sunrise_gameplay_common::game::item_use_common::{held, start_of, ticks_left};
+use sunrise_gameplay_common::game::item_use_common::{hand_of, held, start_of, ticks_left};
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;
 use {
     sunrise_items::items::ItemInfo, sunrise_items::items::ItemStack,
     sunrise_sim::first_person_sim::Hand, sunrise_sim::mobs::spear_use,
@@ -32,7 +33,7 @@ pub fn interact_vibrations(stack: &ItemStack, default: Option<bool>) -> bool {
 impl crate::game::ServerGame<'_> {
     /// `LivingEntity.updateUsingItem` for a `mod_use` item used `ticks` so far:
     /// `completeUsingItem` once its duration ran out.
-    pub(in crate::game::server_side) fn tick_mod_use(
+    pub fn tick_mod_use(
         &mut self,
         slot: usize,
         ticks: u32,
@@ -56,10 +57,12 @@ impl crate::game::ServerGame<'_> {
     /// drunk, a spyglass lowered, anything else given back) with its use
     /// cooldown, then `LivingEntityUseItemEvent.Finish`.
     pub fn complete_using_item(&mut self, slot: usize, stack: &ItemStack, info: &ItemInfo) {
+        let hand = hand_of(Some((slot, 0))).unwrap_or(self.hand);
         // a potion is drunk (no last tick of its own: a mod's tick ran it out).
         if self.finish_drinking(slot, stack) {
             self.use_item_finished(stack);
             self.use_vibration(stack, "minecraft:item_interact_finish");
+            self.stopped_using(stack, Some(self.own_entity_id()), hand, 0);
             return;
         }
         self.common.using = None;
@@ -73,6 +76,7 @@ impl crate::game::ServerGame<'_> {
         self.use_item_finished(stack);
         // `LivingEntity.completeUsingItem` ends with `stopUsingItem`.
         self.use_vibration(stack, "minecraft:item_interact_finish");
+        self.stopped_using(stack, Some(self.own_entity_id()), hand, 0);
     }
     /// `LivingEntityUseItemEvent.Finish` after `finishUsingItem` of `stack`
     /// (no ticks left): the hand holds what a mod made the result.
@@ -80,7 +84,13 @@ impl crate::game::ServerGame<'_> {
         let mut result = self.common.held().cloned();
         let before = result.clone();
         let hand = self.common.hand;
-        self.native_living_entity_use_item_finish(stack, None, hand, 0, &mut result);
+        self.native_living_entity_use_item_finish(
+            stack,
+            Some(self.own_entity_id()),
+            hand,
+            0,
+            &mut result,
+        );
         if result != before {
             *self.common.held_mut() = result.filter(|s| s.count > 0);
         }
@@ -111,23 +121,7 @@ impl crate::game::ServerGame<'_> {
                 Some(item) if item.item != stack.item => (item, true),
                 _ => (stack, game.use_hand_changed(slot)),
             };
-            let player = (!mod_api::__private::mods().is_empty()).then(|| {
-                let name = game.acting_player_name().to_owned();
-                (game.native_acting_id(), name)
-            });
-            if let Some((uuid, name)) = &player
-                && !hand_changed
-                && &*stack.item == "minecraft:bow"
-                && let Some(arrow) = game
-                    .projectile_slot("minecraft:bow")
-                    .and_then(|slot| game.stack_in(slot).map(|s| s.item.clone()))
-            {
-                game.native_player_ready_arrow(*uuid, name, &arrow);
-            }
             game.release_used_item(&stack, ticks, hand_changed);
-            if let Some((uuid, name)) = &player {
-                game.native_player_stop_using_item(*uuid, name);
-            }
             true
         })
     }
@@ -273,6 +267,7 @@ impl crate::game::ServerGame<'_> {
             self.native_release_using(&stack, entity, remaining, &mut false);
         }
         self.mob_use_vibration(id, &stack, "minecraft:item_interact_finish");
+        self.stopped_using(&stack, entity, hand, remaining);
         true
     }
 }

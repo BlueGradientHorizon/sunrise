@@ -34,7 +34,8 @@ pub(crate) mod off_level_tests {
                     0.0,
                 );
                 m.extra.set_body(Some("minecraft:tnt".into()));
-                m.extra.armor_attributes = game.motion.attributes.create(&m.kind.id).map(Box::new);
+                m.extra.generic_attributes =
+                    game.motion.attributes.create(&m.kind.id).map(Box::new);
                 sulfur_cube::adopt_body(&mut m);
                 m.extra.mount = mount;
                 game.mobs.push(m);

@@ -5,6 +5,7 @@
 //! handle or a player who isn't online here.
 use crate::game::ServerGame;
 use mod_api::{BlockFace, GameMode, PlayerRef};
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
 use sunrise_gameplay_common::game::native_server::PlayerRead;
 use sunrise_gameplay_common::game::native_world_read_common::block_face_direction;
 use sunrise_items::items::ItemStack;
@@ -21,11 +22,13 @@ impl ServerGame<'_> {
             .or_else(|| self.online_player_record(player).map(PlayerRead::Guest))?;
         Some(match read {
             PlayerRead::Guest(g) => g.permission,
-            PlayerRead::Acting { .. } if self.server.lan_acting.is_some() => {
-                self.common.ui.registries.permission
-            }
-            PlayerRead::Acting { .. } if self.common.allow_commands() => 4,
-            PlayerRead::Acting { .. } => 0,
+            // The command being executed keeps its source snapshot in `ui.registries`.
+            // A live handle instead sees the same permission as the outgoing tree.
+            PlayerRead::Acting { .. } => match self.server.lan_acting {
+                Some(conn) => self.command_guest(conn)?.permission,
+                None if self.common.allow_commands() => 4,
+                None => 0,
+            },
         })
     }
     /// `Player.hasInfiniteMaterials`: the `instabuild` ability, which

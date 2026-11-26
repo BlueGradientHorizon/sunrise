@@ -5,7 +5,6 @@ pub trait Hooks {
     /// `width` and `height` are physical pixels; `gui_width` and `gui_height` are scaled GUI pixels.
     /// Fires only when physical or scaled dimensions change.
     #[hook(
-        target = "sunrise_client_gameplay::game::native_hooks::window_resize::ClientGame<'_>::native_window_resize",
         dispatch = "flat",
         side = "client",
         contract = "listen",

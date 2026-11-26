@@ -13,7 +13,6 @@ pub trait Hooks {
     /// sneaking factor, which vanilla reads through `isDiscrete`.
     /// Server-side.
     #[hook(
-        target = "sunrise_gameplay::game::native_hooks::living_visibility::ServerGame<'_>::native_living_visibility",
         receiver = "read",
         dispatch = "flat",
         side = "server",

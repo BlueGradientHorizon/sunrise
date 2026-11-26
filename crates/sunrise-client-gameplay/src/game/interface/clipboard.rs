@@ -5,32 +5,19 @@ use sunrise_client::clipboard::{self, EditShortcut};
 use winit::event::KeyEvent;
 
 impl crate::game::ClientGame<'_> {
-    /// Runs `f` with `user_input` saying whether it handles input, then restores it, so a
-    /// frame drawn while a key is handled reads false.
-    pub(in crate::game::client_side) fn with_user_input<R>(
-        &mut self,
-        input: bool,
-        f: impl FnOnce(&mut Self) -> R,
-    ) -> R {
-        let was = self.client.user_input.replace(input);
-        let result = f(self);
-        self.client.user_input.set(was);
-        result
-    }
     /// The clipboard's text (`KeyboardHandler.getClipboard`), empty when it holds none,
-    /// while the game handles a key, mouse or typed-text event: a mod's key or screen hook
-    /// pasting into its own field. None at any other moment (a tick, a frame, a packet),
-    /// so no mod reads the clipboard without the player doing something, and None on a
-    /// server.
+    /// from any client callback. None without a native window (a server or headless host).
     pub(in crate::game) fn clipboard_text(&self) -> Option<String> {
-        (self.common.native_window() && self.client.user_input.get())
+        self.common
+            .native_window()
             .then(|| self.client.clipboard.0.text())
     }
-    /// Puts `text` on the clipboard (`KeyboardHandler.setClipboard`) on the same terms as
-    /// `clipboard_text` reads it. False, with nothing copied, at any other moment or
-    /// on a server; empty text copies nothing, as vanilla's.
+    /// Puts `text` on the clipboard (`KeyboardHandler.setClipboard`) from any client
+    /// callback, as `clipboard_text` reads it. False, with nothing copied, without a native
+    /// window (a server or headless host); empty text is ignored and leaves the
+    /// clipboard unchanged, as vanilla's.
     pub(in crate::game) fn set_clipboard_text(&self, text: &str) -> bool {
-        if !self.common.native_window() || !self.client.user_input.get() {
+        if !self.common.native_window() {
             return false;
         }
         self.client.clipboard.0.set_text(text);

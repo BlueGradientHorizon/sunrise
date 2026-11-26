@@ -4,7 +4,6 @@ pub trait Hooks {
     /// The local player right-clicks empty space with an empty `hand`.
     /// Client-side only; the server does not receive this event.
     #[hook(
-        target = "sunrise_client_gameplay::game::native_hooks::right_click_empty::ClientGame<'_>::native_right_click_empty",
         dispatch = "flat",
         side = "client",
         contract = "listen",

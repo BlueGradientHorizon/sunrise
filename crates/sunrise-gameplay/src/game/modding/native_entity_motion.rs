@@ -6,12 +6,14 @@
 //! entities the server shows the window, and nothing moves one.
 use super::commands::Target;
 use super::entity::{Entity as _, EntityHandle, with_entity, with_entity_mut};
-use mod_api::{ClipBlock, ClipFluid, ClipHit, EntityRef, LevelWriteError};
+use mod_api::{ClipBlock, ClipFluid, ClipHit, CollisionContext, EntityRef, LevelWriteError};
+use std::ops::ControlFlow;
 use sunrise_core::geometry::Vec3;
 use sunrise_core::position::BlockPos;
 use sunrise_gameplay_common::game::native_entity_motion_values::{
     corners, on_block_position, turned_view_vector,
 };
+use sunrise_gameplay_common::game::native_entity_refs_common::ClipRay;
 use sunrise_level::collisions::SceneCollisions;
 use sunrise_sim::motion::player_context;
 
@@ -93,7 +95,14 @@ impl crate::game::ServerGame<'_> {
         entity: EntityRef,
     ) -> Option<EntityRef> {
         let steered = self.native_steered(t);
-        let first = *self.entity_passengers(entity).ok_or(()).ok()?.first()?;
+        let mut first = None;
+        let _ = self
+            .entity_visit_passengers(entity, &mut |rider| {
+                first = Some(rider);
+                ControlFlow::Break(())
+            })
+            .ok()?;
+        let first = first?;
         let player = matches!(
             self.native_entity_target(first)?,
             Target::Player | Target::Guest(_)
@@ -167,6 +176,20 @@ impl crate::game::ServerGame<'_> {
         with_entity_mut!(self, h, e => e.reset_fall_distance());
         true
     }
+    /// `Entity.horizontalCollision` of a general row's last move.
+    pub(in crate::game) fn entity_horizontal_collision(&self, entity: EntityRef) -> Option<bool> {
+        let Target::General(id) = self.native_entity_target(entity)? else {
+            return None;
+        };
+        Some(self.resident_entities.general.row(id)?.horizontal_collision)
+    }
+    /// `Entity.verticalCollision` of a general row's last move.
+    pub(in crate::game) fn entity_vertical_collision(&self, entity: EntityRef) -> Option<bool> {
+        let Target::General(id) = self.native_entity_target(entity)? else {
+            return None;
+        };
+        Some(self.resident_entities.general.row(id)?.vertical_collision)
+    }
     /// `Entity.setOnGround` on its live server body, with no movement or fall processing.
     pub(in crate::game) fn entity_set_on_ground(
         &mut self,
@@ -184,6 +207,17 @@ impl crate::game::ServerGame<'_> {
                 self.set_server_player_ground(target, entity.id(), on_ground)
             }
             Target::Hook(id) => self.set_fishing_hook_ground(id, on_ground),
+            // A general row keeps the flag itself, with no support block to refresh.
+            Target::General(id) => {
+                Ok(self
+                    .resident_entities
+                    .general
+                    .row_mut(id)
+                    .is_some_and(|row| {
+                        row.on_ground = on_ground;
+                        true
+                    }))
+            }
             _ => {
                 let Some(handle) = self.common.native_walk_entity(entity.id()) else {
                     return Ok(false);
@@ -383,21 +417,53 @@ impl crate::game::ServerGame<'_> {
             Vec3::new(x, y, z),
         ))
     }
-    /// What the entity looks at within `distance` blocks of its eyes: `Entity.pick`'s block
-    /// ray along the view vector, outlines and no fluids.
-    pub(in crate::game) fn entity_pick(&self, entity: EntityRef, distance: f64) -> Option<ClipHit> {
-        if !(distance.is_finite() && distance >= 0.0) {
+
+    fn entity_pick_view_vector(&self, entity: EntityRef) -> Option<[f64; 3]> {
+        let target = self.native_entity_read_target(entity)?;
+        let [mut yaw, pitch] = self.target_rotation(target);
+        // LivingEntity.getViewYRot(1.0F) is head yaw, not body yaw.
+        match target {
+            Target::Mob(id) => {
+                yaw = self.mobs.iter().find(|m| m.id == id)?.head_yaw;
+            }
+            Target::Player | Target::Guest(_) => {
+                if let Some(guest) = self.native_target_guest(target) {
+                    yaw = guest.head_yaw;
+                }
+            }
+            _ => {}
+        }
+        Some(turned_view_vector(yaw, pitch, 0.0))
+    }
+    /// What the entity looks at within `distance` blocks of its eyes (`Entity.pick`):
+    /// block outlines with `ClipFluid::Any` when `include_fluids` is true else `None`.
+    pub(in crate::game) fn entity_pick(
+        &self,
+        entity: EntityRef,
+        distance: f64,
+        include_fluids: bool,
+    ) -> Option<ClipHit> {
+        if !distance.is_finite() {
             return None;
         }
         let from = self.entity_eye_position(entity)?;
-        let to = ray_end(from, self.entity_view_vector(entity)?, distance);
-        self.level_clip(
+        let to = ray_end(from, self.entity_pick_view_vector(entity)?, distance);
+        let fluids = if include_fluids {
+            ClipFluid::Any
+        } else {
+            ClipFluid::None
+        };
+        match self.level_clip_ray(
             self.entity_level(entity)?,
             from,
             to,
             ClipBlock::Outline,
-            ClipFluid::None,
-        )
+            fluids,
+            CollisionContext::Empty,
+        ) {
+            Ok(ClipRay::Reached(hit)) => Some(hit),
+            Ok(ClipRay::Unloaded(_)) | Err(_) => None,
+        }
     }
     /// The square of the distance from the entity's feet to `pos`
     /// (`Entity.distanceToSqr`). API 379.
@@ -493,6 +559,10 @@ pub(in crate::game) mod tests {
             super::ray_end([1.0, 2.0, 3.0], [0.6, 0.0, 0.8], 0.0),
             [1.0, 2.0, 3.0]
         );
+        assert_eq!(
+            super::ray_end([1.0, 2.0, 3.0], [0.0, 0.0, 1.0], -2.5),
+            [1.0, 2.0, 0.5]
+        );
     }
 
     #[test]
@@ -584,19 +654,23 @@ pub(in crate::game) mod tests {
             let eyes = game.entity_eye_position(entity).unwrap();
             let wall = [0, eyes[1].floor() as i32, 2];
             game.world.set(wall[0], wall[1], wall[2], stone).unwrap();
-            let hit = game.entity_pick(entity, 3.0).unwrap();
+            let hit = game.entity_pick(entity, 3.0, false).unwrap();
             assert!(!hit.miss);
             assert_eq!(hit.block, wall);
             assert_eq!(hit.face, BlockFace::North);
             assert_near(hit.location, [0.5, eyes[1], 2.0]);
             // Too short a ray misses, as does one over an empty column.
-            assert!(game.entity_pick(entity, 1.0).unwrap().miss);
+            assert!(game.entity_pick(entity, 1.0, false).unwrap().miss);
             game.mobs[0].position = Vec3::new(5.5, 65.0, 0.5);
-            assert!(game.entity_pick(entity, 3.0).unwrap().miss);
+            assert!(game.entity_pick(entity, 3.0, false).unwrap().miss);
+            // A ray into a column that is not loaded has no answer, neither a miss nor a hit.
+            game.mobs[0].position = Vec3::new(5.5, 65.0, 14.5);
+            assert!(game.entity_pick(entity, 3.0, false).is_none());
+            game.mobs[0].position = Vec3::new(5.5, 65.0, 0.5);
             // Looking straight down from the stand hits the top of its support.
             game.mobs[0].position = Vec3::new(1.5, 65.0, 0.5);
             game.mobs[0].head_pitch = 90.0;
-            let down = game.entity_pick(entity, 3.0).unwrap();
+            let down = game.entity_pick(entity, 3.0, false).unwrap();
             assert_eq!((down.block, down.face), ([1, 64, 0], BlockFace::Up));
             assert_near(down.location, [1.5, 65.0, 0.5]);
             // Looking down 45 degrees tilts the up vector forward.
@@ -609,13 +683,139 @@ pub(in crate::game) mod tests {
                     std::f64::consts::FRAC_1_SQRT_2,
                 ],
             );
-            // A ray without a length, or with none, or from a stale handle: nothing.
-            assert!(game.entity_pick(entity, -1.0).is_none());
-            assert!(game.entity_pick(entity, f64::NAN).is_none());
+            // Non-finite distances and stale handles return None.
+            assert!(game.entity_pick(entity, f64::NAN, false).is_none());
+            assert!(game.entity_pick(entity, f64::INFINITY, true).is_none());
             let stale = EntityRef::new(mod_api::WorldEpoch::new(entity.epoch().get() + 1), 40);
-            assert!(game.entity_pick(stale, 3.0).is_none());
+            assert!(game.entity_pick(stale, 3.0, false).is_none());
+            assert!(game.entity_pick(stale, 3.0, true).is_none());
             assert!(game.entity_on_block(stale).is_none());
             assert!(game.entity_up_vector(stale).is_none());
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn entity_pick_clips_fluids_and_signed_distances() {
+        use crate::game::native_entity_refs::tests::with_game;
+        use mod_api::BlockFace;
+        use std::sync::Arc;
+        use sunrise_gameplay_common::game::commands_common::OtherEntity;
+        use sunrise_level::chunk::Chunk;
+        use sunrise_sim::mobs::Mob;
+        with_game(|game| {
+            // Fluid clips read the tag tables once the world has built them (`native_tag_items`).
+            let root = tempfile::tempdir().unwrap();
+            game.server.session_lock.0 =
+                Some(sunrise_sim::save::SessionLock::acquire(root.path()).unwrap());
+            game.world
+                .chunks
+                .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+            let stone = game.block_state_id("minecraft:stone").unwrap();
+            let flowing = game.block_state_id("minecraft:water[level=1]").unwrap();
+            let shallow = game.block_state_id("minecraft:water[level=5]").unwrap();
+            let kind = game
+                .res
+                .mob_types()
+                .get("minecraft:zombie")
+                .unwrap()
+                .clone();
+            let mut mob = Mob::new(41, kind.clone(), Vec3::new(4.5, 65.0, 4.5), 90.0);
+            mob.head_yaw = 0.0;
+            mob.head_pitch = 0.0;
+            game.mobs.push(mob);
+            let entity = game.entity(41).unwrap();
+            let eye_y = game.entity_eye_position(entity).unwrap()[1];
+            let y = eye_y.floor() as i32;
+            // Decoy along body yaw (west) must not intercept a head-yaw (south) pick.
+            game.world.set(2, y, 4, stone).unwrap();
+            // Zombie eyes sit at +0.74 inside cell y: above shallow water (3/9) and below level=1 (7/9).
+            game.world.set(4, y, 5, shallow).unwrap();
+            game.world.set(4, y, 6, flowing).unwrap();
+            game.world.set(4, y, 7, stone).unwrap();
+            game.world.set(4, y, 2, stone).unwrap();
+
+            let block_only = entity.pick(game, 5.0, false).unwrap();
+            assert!(!block_only.miss);
+            assert_eq!(
+                (block_only.block, block_only.face),
+                ([4, y, 7], BlockFace::North)
+            );
+
+            let with_fluids = entity.pick(game, 5.0, true).unwrap();
+            assert!(!with_fluids.miss);
+            assert_eq!(
+                (with_fluids.block, with_fluids.face),
+                ([4, y, 6], BlockFace::North)
+            );
+
+            // Signed negative distance casts backward along -head view vector.
+            let backward = entity.pick(game, -3.0, false).unwrap();
+            assert!(!backward.miss);
+            assert_eq!(
+                (backward.block, backward.face),
+                ([4, y, 2], BlockFace::South)
+            );
+
+            // GoalCx::r_entity_pick follows head_yaw rather than body yaw too.
+            let mut goal_mob = Mob::new(42, kind, Vec3::new(4.5, 65.0, 4.5), 90.0);
+            goal_mob.head_yaw = 0.0;
+            goal_mob.head_pitch = 0.0;
+            let goal_entity = EntityRef::new(entity.epoch(), 42);
+            let goal_block = super::super::native_goal_ticks::test_goal_pick(
+                game,
+                &mut goal_mob,
+                goal_entity,
+                5.0,
+                false,
+            )
+            .unwrap();
+            assert_eq!(
+                (goal_block.block, goal_block.face),
+                ([4, y, 7], BlockFace::North)
+            );
+            let goal_fluid = super::super::native_goal_ticks::test_goal_pick(
+                game,
+                &mut goal_mob,
+                goal_entity,
+                5.0,
+                true,
+            )
+            .unwrap();
+            assert_eq!(
+                (goal_fluid.block, goal_fluid.face),
+                ([4, y, 6], BlockFace::North)
+            );
+
+            // Non-living entities keep entity yaw (west -> decoy stone at x=2).
+            game.server.others.0.push(OtherEntity {
+                size_answer: None,
+                attachment_lifetime: Default::default(),
+                knot_check: None,
+                eye: None,
+                join: Default::default(),
+                display: None,
+                interaction: None,
+                id: 43,
+                kind: "minecraft:marker".into(),
+                position: Vec3::new(4.5, eye_y, 4.5),
+                yaw: 90.0,
+                pitch: 0.0,
+            });
+            let marker = game.entity(43).unwrap();
+            let marker_hit = marker.pick(game, 5.0, false).unwrap();
+            assert!(!marker_hit.miss);
+            assert_eq!(
+                (marker_hit.block, marker_hit.face),
+                ([2, y, 4], BlockFace::East)
+            );
+
+            assert!(entity.pick(game, f64::NAN, true).is_none());
+            assert!(entity.pick(game, f64::NEG_INFINITY, false).is_none());
+            let stale = EntityRef::new(mod_api::WorldEpoch::new(entity.epoch().get() + 1), 41);
+            assert!(stale.pick(game, 5.0, false).is_none());
+            assert!(stale.pick(game, 5.0, true).is_none());
+            game.server.session_lock.0 = None;
         });
     }
 
@@ -745,10 +945,10 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn set_on_ground_follows_the_server_players_parked_and_acting_bodies() {
-        use super::super::Dim;
         use crate::game::native_entity_refs::tests::run_fresh_cases;
         use crate::game::native_guest_turn_tests::with_guests;
         use std::sync::Arc;
+        use sunrise_gameplay_common::game::Dim;
         use sunrise_level::chunk::Chunk;
 
         if run_fresh_cases(

@@ -27,6 +27,20 @@ macro_rules! world_items {
         }
     };
 }
+
+#[doc(hidden)]
+#[macro_export]
+macro_rules! world_variants {
+    ($s:expr) => {
+        match $crate::game::Side::world_tables({
+            use $crate::game::SideGame as _;
+            ($s).side_state()
+        }) {
+            Some(t) => &*t.variants,
+            None => ($s).res.variants(),
+        }
+    };
+}
 #[doc(hidden)]
 #[macro_export]
 macro_rules! world_recipes {
@@ -37,6 +51,22 @@ macro_rules! world_recipes {
         }) {
             Some(t) => &t.recipes,
             None => $s.res.recipes(),
+        }
+    };
+}
+
+/// The painting variants the world places with (`Painting.create`): its own
+/// registry and `#minecraft:placeable`, else the prepared root's.
+#[doc(hidden)]
+#[macro_export]
+macro_rules! world_paintings {
+    ($s:expr) => {
+        match $crate::game::Side::world_tables({
+            use $crate::game::SideGame as _;
+            ($s).side_state()
+        }) {
+            Some(t) => &t.painting_variants,
+            None => &($s).painting_variants,
         }
     };
 }
@@ -107,6 +137,7 @@ macro_rules! game_side {
                 ))
             }),
             facts: $s.res.facts(),
+            tables: $crate::game::native_block_tables::BlockTables::new(&$s.res, &$s.pack),
             biomes: $crate::world_biomes!($s),
             behaviours: $s.res.behaviours(),
             features: $crate::game::side_ops::tables::SideOps::side_level_features(
@@ -172,6 +203,7 @@ macro_rules! game_side {
             dim: $s.dim,
             level,
             facts: $s.res.facts(),
+            tables: $crate::game::native_block_tables::BlockTables::new(&$s.res, &$s.pack),
             biomes: $crate::world_biomes!($s),
             behaviours: $s.res.behaviours(),
             features: $features,
@@ -206,6 +238,23 @@ pub fn pack_files(world_tables: &Option<WorldTables>) -> sunrise_world::loot::Pa
 
 #[path = "game/modding/api_values.rs"]
 pub mod api_values;
+#[path = "game/administration/test_registry_tables.rs"]
+pub mod test_registry_tables;
+#[path = "game/modding/native_structure_processors.rs"]
+pub mod native_structure_processors;
+#[path = "game/modding/native_rule_tests.rs"]
+pub mod native_rule_tests;
+#[path = "game/modding/native_placement_modifiers.rs"]
+pub mod native_placement_modifiers;
+#[path = "game/modding/native_chunk_snapshot.rs"]
+pub mod native_chunk_snapshot;
+#[path = "game/modding/native_entity_previous_common.rs"]
+pub mod native_entity_previous_common;
+#[path = "game/modding/native_datapack_values_common.rs"]
+pub mod native_datapack_values;
+#[cfg(test)]
+#[path = "game/modding/native_living_travel_moved_tests.rs"]
+mod native_living_travel_moved_tests;
 #[path = "game/world/autosave.rs"]
 pub mod autosave;
 #[path = "game/blocks/banners.rs"]
@@ -260,8 +309,6 @@ pub mod command_registries;
 pub mod commands_common;
 #[path = "game/world/condition_reload_state.rs"]
 pub mod condition_reload_state;
-#[path = "game/modding/consume_effect_dispatch.rs"]
-pub mod consume_effect_dispatch;
 #[path = "game/mobs/copper_golems.rs"]
 pub mod copper_golems;
 #[path = "game/blocks/machines/crafter_common.rs"]
@@ -367,8 +414,6 @@ pub mod launch_api;
 pub mod launch_options;
 #[path = "game/blocks/level_access.rs"]
 pub mod level_access;
-#[path = "game/modding/level_control_hooks.rs"]
-pub mod level_control_hooks;
 #[path = "game/world/light_emission.rs"]
 pub mod light_emission;
 #[path = "game/modding/load_conditions.rs"]
@@ -427,8 +472,6 @@ pub mod native_collision_shape;
 pub mod native_components;
 #[path = "game/modding/native_configs.rs"]
 pub mod native_configs;
-#[path = "game/modding/native_content_items.rs"]
-pub mod native_content_items;
 #[path = "game/modding/native_custom_stats.rs"]
 pub mod native_custom_stats;
 #[path = "game/modding/native_data_bound.rs"]
@@ -645,8 +688,7 @@ pub use held_items::interact_location;
 pub use hit::Hit;
 pub use launch_options::Options;
 pub use mod_api::game::DataMapType;
-pub use native_configs::ConfigFile;
-pub use native_hooks::{PhantomSpawnResult, Shake, SleepProblem};
+pub use native_hooks::{PhantomSpawnResult, SleepProblem};
 #[allow(unused_imports)]
 pub use std::{
     cell::RefCell,
@@ -826,6 +868,13 @@ impl Mining {
         (self.progress > 0.0).then(|| ((self.progress * 10.0) as u8).min(9))
     }
 }
+/// What a transform does beyond the swap: its `transform_type` and the `drop_strategy` its loot table's stacks pop with (both empty for a tool ability outside the table).
+#[derive(Clone, Debug, Default)]
+pub struct TransformKind {
+    pub transform_type: String,
+    pub drop_strategy: String,
+}
+
 #[derive(Clone, Copy)]
 pub struct TransformContext<'a> {
     pub world: &'a World,
@@ -942,6 +991,7 @@ pub struct GameLevel<'w> {
     /// (`Entity.isIgnoringBlockTriggers`).
     pub trigger_extras: Vec<Aabb>,
     pub biomes: &'w Biomes,
+    pub biome_keys: Option<&'w mod_api::__private::BiomeKeys>,
     /// `BiomeManager`'s zoom over this level's seed, for `biome_name`.
     pub biome_zoom: sunrise_core::biome::BiomeZoom,
     pub seed: i64,
@@ -952,6 +1002,8 @@ pub struct GameLevel<'w> {
     /// Container loot tables (`unpackLootTable`).
     pub loot: Option<std::sync::Arc<sunrise_world::loot::LootData>>,
     pub loot_storage: std::sync::Arc<sunrise_world::loot::copy::StorageData>,
+    /// The level's world clocks, for `time_check` in loot conditions.
+    pub loot_clocks: std::collections::BTreeMap<String, i64>,
     pub registry: &'static sunrise_world::registry::BlockRegistry,
     pub block_registries: &'w sunrise_command::args::Registries,
     pub rules: sunrise_world::level::GameRules,
@@ -991,12 +1043,16 @@ pub struct GameLevel<'w> {
     pub debug: bool,
     pub native_sounds: &'w mut Vec<creatures::NativeSound>,
     pub loop_context: &'w sunrise_world::native_load_context::LoopContext,
+    /// This side's level data, for the read-only level a block's sound type is asked in.
+    pub side: native_surface::GameSide<'w>,
     pub native_particles: &'w mut Vec<sunrise_sim::lan::server_effects::ServerQueuedParticle>,
     pub sound_seeds: Option<&'w sunrise_sim::lan::hub::Hub>,
     pub drop_entity: Option<mod_api::EntityRef>,
     /// `LootContextParams.INTERACTING_ENTITY` of a block-interaction drop: the
     /// player whose click `use_without_item` runs for.
     pub interacting: Option<sunrise_world::loot::LootEntity>,
+    /// `LootContextParams.TOOL` of a block-interaction drop, when an item triggered the interaction (`None` for bare-hand `use_without_item`).
+    pub interacting_tool: Option<ItemStack>,
     /// What a location predicate of such a drop reads beyond the level's own
     /// fields (`blocks::location_world`).
     pub location: location_world::LocationRefs<'w>,
@@ -1241,14 +1297,15 @@ pub struct WorldCore {
     pub collision: Arc<BlockCollisionRegistry<'static>>,
     pub motion: MotionResources,
     suffocation: sunrise_world::suffocation::SuffocationRegistry<'static>,
-    spawn_registries: sunrise_sim::mobs::finalize::SpawnRegistries,
+    pub variants: Arc<sunrise_sim::mobs::variants::VariantTables>,
     threads: usize,
 }
 
 pub struct WorldRest {
     items: Arc<Items>,
     recipes: Recipes,
-    transformers: sunrise_sim::block_transform::Transformers,
+    /// The open world's `block_transformer` registry, published by `Resources::set_transformers`.
+    transformers: std::sync::RwLock<Arc<sunrise_sim::block_transform::Transformers>>,
     mob_types: HashMap<String, Arc<MobType>>,
     /// The registry keys of the player, the armor stand and the dragon, resolved with these
     /// resources as each mob type's own key is ([`MobType::type_key`]).
@@ -1261,6 +1318,8 @@ pub struct WorldRest {
     end_environment: Environment,
     pub behaviours: Arc<Behaviours>,
     stations: sunrise_sim::stations::StationData,
+    pub test_environments: Arc<HashMap<String, crate::test_environments::Environment>>,
+    pub test_instances: Arc<HashMap<String, crate::test_instances::TestDef>>,
 }
 
 /// The content tables a world's data packs change, loaded when the world
@@ -1277,7 +1336,15 @@ pub struct WorldTables {
     pub items: Arc<Items>,
     /// Registry definitions stay frozen at world open, even when tags reload.
     pub packed_registries: Arc<sunrise_sim::lan::data::PackRegistryDefinitions>,
+    pub painting_variants: crate::painting_variants::PaintingVariants,
+    /// `block_transformer`, bound to the block registry.
+    pub transformers: Arc<sunrise_sim::block_transform::Transformers>,
+    /// Frozen `minecraft:timeline` entries and their bound tags, read by `Environment` and `/time`.
+    pub timelines: sunrise_level::environment::TimelineTable,
+    /// Data-driven mob variant and sound-variant registries, frozen at world open.
+    pub variants: Arc<sunrise_sim::mobs::variants::VariantTables>,
     pub providers: Providers,
+    pub biomes: Arc<condition_reload_state::WorldBiomeRegistry>,
     pub loot: Arc<sunrise_world::loot::LootData>,
     pub loot_modifier_manager: Arc<mod_api::GlobalLootModifierManager>,
     pub recipes: Recipes,
@@ -1288,11 +1355,15 @@ pub struct WorldTables {
     /// Pack tags used by advancement predicates and built-in data maps
     /// (`TagLoader.loadTagsForExistingRegistries`). Damage tags live in the catalog.
     pub pack_tags: HashMap<&'static str, HashMap<String, HashSet<String>>>,
+    /// The gameplay attributes of the dimension types, biomes and timelines (with the packs' timeline tags) that the raid code reads.
+    pub gameplay: Arc<sunrise_sim::patrol::GameplayAttributes>,
+    /// `Registries.TEST_ENVIRONMENT` and `Registries.TEST_INSTANCE`, frozen at world open.
+    pub test_environments: Arc<HashMap<String, crate::test_environments::Environment>>,
+    pub test_instances: Arc<HashMap<String, crate::test_instances::TestDef>>,
 }
 
 pub struct PreparedParts {
     block_states: Arc<api_values::block_state::Index>,
-    tags: HashMap<String, HashSet<mod_api::BlockKey>>,
     parts: Option<mod_api::Parts>,
     cauldrons: Arc<cauldron_interactions::Table>,
 }
@@ -1584,7 +1655,8 @@ pub struct CommonGame<'a> {
     /// This thread's authority over the game's tick-owned state (`parallel::TickThread`): a
     /// `Game` never leaves the thread that built it.
     pub tick: sunrise_sim::parallel::TickThread,
-    setting_overrides: std::cell::RefCell<std::collections::BTreeMap<(String, String), String>>,
+    /// Authoritative store for this game side's native mod settings registered with `SettingsRegistrar::register_setting`.
+    pub native_settings: native_hooks::mod_settings::SharedSettings,
     /// The native damage hooks every level of this game lends to its hits.
     pub damage_hooks: sunrise_sim::health::DamageHooks,
     pub dropped: sunrise_sim::join_seq::JoinList<ItemEntity>,
@@ -1618,6 +1690,8 @@ pub struct CommonGame<'a> {
     /// This game's world is autosaving this tick (`MinecraftServer.isSaving`).
     pub autosaving: bool,
     pub experience: Experience,
+    /// `Player.DATA_SCORE_ID`, independent of `totalExperience`.
+    pub player_score: i32,
     pub orbs: sunrise_sim::join_seq::JoinList<ExperienceOrb>,
     /// The arm swing (`LivingEntity.SwingState`) and how many swings started.
     pub swing: sunrise_sim::first_person_sim::SwingState,
@@ -1628,7 +1702,7 @@ pub struct CommonGame<'a> {
     pub flash: u32,
     /// The head of the bed while sleeping; the visual timer also survives waking.
     pub sleeping: Option<[i32; 3]>,
-    pub sleep_timer: u32,
+    pub sleep_timer: i32,
     pub dim: Dim,
     pub server_items: Option<Arc<Items>>,
     /// The world is superflat (`ServerLevel.isFlat`, for every dimension).
@@ -1687,6 +1761,8 @@ pub struct CommonGame<'a> {
     /// The native lifecycle bookkeeping.
     pub native_lifecycle: native_lifecycle_common::NativeLifecycle,
     pub resident_entities: resident_state::ResidentEntities,
+    /// The game's `config/` folder beside `options.txt` (or `server.properties` on a dedicated server), lent by `Host::config_dir`.
+    pub config_root: std::sync::Arc<std::path::Path>,
     /// Native mods' config files this game loaded (game/modding/native_configs.rs).
     pub native_configs: native_configs::NativeConfigs,
     /// Private custom-book connection and placement state.
@@ -1723,6 +1799,8 @@ pub struct CommonGame<'a> {
 /// and its server thread name the same dimensions.
 pub static EXTRA_DIMS: std::sync::RwLock<Vec<mod_api::DimensionKey>> =
     std::sync::RwLock::new(Vec::new());
+static EXTRA_LEVELS: std::sync::RwLock<Vec<(mod_api::DimensionKey, LevelDimension)>> =
+    std::sync::RwLock::new(Vec::new());
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Dim {
@@ -1752,6 +1830,10 @@ impl Dim {
             .write()
             .unwrap()
             .retain(|key| mod_api::__private::dimension_id(*key) != Some(id));
+        EXTRA_LEVELS
+            .write()
+            .unwrap()
+            .retain(|(key, _)| mod_api::__private::dimension_id(*key) != Some(id));
     }
 
     /// The level `level`'s world spawn is in (MinecraftServer.findRespawnDimension), the
@@ -1770,10 +1852,17 @@ impl Dim {
             Self::Overworld => LevelDimension::Overworld,
             Self::Nether => LevelDimension::Nether,
             Self::End => LevelDimension::End,
-            Self::Extra(_) => LevelDimension::of_level(
-                sunrise_core::LevelKey::parse(self.id())
-                    .unwrap_or(sunrise_core::LevelKey::OVERWORLD),
-            ),
+            Self::Extra(key) => EXTRA_LEVELS
+                .read()
+                .unwrap()
+                .iter()
+                .find_map(|(candidate, level)| (*candidate == key).then_some(*level))
+                .unwrap_or_else(|| {
+                    LevelDimension::of_level(
+                        sunrise_core::LevelKey::parse(self.id())
+                            .unwrap_or(sunrise_core::LevelKey::OVERWORLD),
+                    )
+                }),
         }
     }
     pub fn id(self) -> &'static str {
@@ -1834,16 +1923,30 @@ impl Dim {
     }
     /// The dimensions past vanilla's three of the world being opened.
     pub fn set_extra<'a>(ids: impl Iterator<Item = &'a str>) {
-        *EXTRA_DIMS.write().unwrap() = ids.map(mod_api::__private::dimension_key).collect();
+        let extra: Vec<_> = ids
+            .map(|id| {
+                (
+                    mod_api::__private::dimension_key(id),
+                    LevelDimension::of_level(
+                        sunrise_core::LevelKey::parse(id)
+                            .unwrap_or(sunrise_core::LevelKey::OVERWORLD),
+                    ),
+                )
+            })
+            .collect();
+        *EXTRA_DIMS.write().unwrap() = extra.iter().map(|(key, _)| *key).collect();
+        *EXTRA_LEVELS.write().unwrap() = extra;
     }
     /// Adds the dimension `id` a remote server sent, which no local world told of, so that
     /// [`Self::from_id`] finds it.
     pub fn add_extra(id: &str) {
         if !Self::exists(id) {
-            EXTRA_DIMS
-                .write()
-                .unwrap()
-                .push(mod_api::__private::dimension_key(id));
+            let key = mod_api::__private::dimension_key(id);
+            let level = LevelDimension::of_level(
+                sunrise_core::LevelKey::parse(id).unwrap_or(sunrise_core::LevelKey::OVERWORLD),
+            );
+            EXTRA_DIMS.write().unwrap().push(key);
+            EXTRA_LEVELS.write().unwrap().push((key, level));
         }
     }
     /// The dimension as mods' level handles name it.
@@ -2014,11 +2117,6 @@ pub mod view_vector_tests {
         }
     }
 }
-/// `Level.canHaveWeather`: sky light, no ceiling, and not the End (the one
-/// level the rule names by id).
-pub fn level_can_have_weather(sky_light: bool, has_ceiling: bool, is_end: bool) -> bool {
-    sky_light && !has_ceiling && !is_end
-}
 /// `Camera.setRotation` (`rotationYXZ(π - yaw, -pitch, 0)`) for the player's
 /// view, turned round in third-person front view (`Camera.setup`).
 pub fn camera_rotation(
@@ -2026,18 +2124,23 @@ pub fn camera_rotation(
     yaw: f32,
     pitch: f32,
 ) -> glam::Quat {
-    let (view_yaw, view_pitch) =
+    camera_rotation_rolled(camera_type, yaw, pitch, 0.0)
+}
+
+pub fn camera_rotation_rolled(
+    camera_type: sunrise_level::camera_math::CameraType,
+    yaw: f32,
+    pitch: f32,
+    roll: f32,
+) -> glam::Quat {
+    let (view_yaw, view_pitch, view_roll) =
         if camera_type == sunrise_level::camera_math::CameraType::ThirdPersonFront {
-            (yaw + 180.0, -pitch)
+            (yaw + 180.0, -pitch, -roll)
         } else {
-            (yaw, pitch)
+            (yaw, pitch, roll)
         };
-    glam::Quat::from_euler(
-        glam::EulerRot::YXZ,
-        std::f32::consts::PI - view_yaw.to_radians(),
-        -view_pitch.to_radians(),
-        0.0,
-    )
+    let q = sunrise_level::camera_math::rotation_with_roll(view_yaw, view_pitch, view_roll);
+    glam::Quat::from_xyzw(q.x, q.y, q.z, q.w)
 }
 /// The world directions of a camera-facing quad's x and y: `PoseStack.rotate` by the camera's
 /// orientation, as `FishingHookRenderer`, `DragonFireballRenderer` and
@@ -2191,6 +2294,7 @@ impl crate::game::CommonGame<'_> {
                 day_time: self.world.day_time,
                 raining: weather && rain > 0.2,
                 thundering: weather && thunder > 0.9,
+                clocks: self.loot_clock_ticks(),
             }),
         }
     }
@@ -2904,11 +3008,13 @@ pub trait GameGameExt1<'__sg>: crate::game::SideGame<'__sg> {
             return false;
         };
         let sword = self.held().is_some_and(|s| {
-            self.res
+            let sword = self
+                .res
                 .items()
                 .item_tags
                 .get("minecraft:swords")
-                .is_some_and(|tag| tag.contains(&*s.item))
+                .is_some_and(|tag| tag.contains(&*s.item));
+            self.stack_can_perform(s, item_abilities::ability::SWORD_SWEEP, sword)
         });
         let vanilla = p.is_sweep_attack(scale, crit, sword);
         let (mut sweeping, mut canceled) = (vanilla, false);
@@ -2989,7 +3095,7 @@ pub trait GameGameExt1<'__sg>: crate::game::SideGame<'__sg> {
         stack: &ItemStack,
         hit: &Hit,
         sneaking: bool,
-    ) -> Option<(BlockStateId, String, Option<String>, u32, String, String)> {
+    ) -> Option<(BlockStateId, String, Option<String>, u32, String, TransformKind)> {
         let blocking = self
             .offhand
             .as_ref()
@@ -3013,7 +3119,7 @@ pub trait GameGameExt1<'__sg>: crate::game::SideGame<'__sg> {
         stack: &ItemStack,
         hit: &Hit,
         context: TransformContext<'_>,
-    ) -> Option<(BlockStateId, String, Option<String>, u32, String, String)> {
+    ) -> Option<(BlockStateId, String, Option<String>, u32, String, TransformKind)> {
         use sunrise_sim::block_transform::Around;
         let TransformContext {
             world,
@@ -3066,9 +3172,15 @@ pub trait GameGameExt1<'__sg>: crate::game::SideGame<'__sg> {
             registry,
             pos,
         };
-        let vanilla = self
-            .res
-            .transformers()
+        let fallback;
+        let transformers = match <Self::State as Side>::world_tables(self.side_state()) {
+            Some(tables) => &*tables.transformers,
+            None => {
+                fallback = self.res.transformers();
+                &*fallback
+            }
+        };
+        let vanilla = transformers
             .apply(self.items(), registry, &id, face_name, &around)
             .and_then(|(_, t, state)| Some((registry.resolve(&state).ok()?, t)));
         let result = |new, t: &sunrise_sim::block_transform::Transform| {
@@ -3078,7 +3190,10 @@ pub trait GameGameExt1<'__sg>: crate::game::SideGame<'__sg> {
                 t.loot.clone(),
                 t.damage,
                 t.particle.clone(),
-                t.transform_type.clone(),
+                TransformKind {
+                    transform_type: t.transform_type.clone(),
+                    drop_strategy: t.drop_strategy.clone(),
+                },
             )
         };
         let mapped = self.axe_mapped(&id, block);
@@ -3161,8 +3276,7 @@ pub trait GameGameExt1<'__sg>: crate::game::SideGame<'__sg> {
         let state = self.with_level(|b, level, ticks| b.fire_state_for(level, ticks, pos));
         self.level_set(target, state)
     }
-    /// `Player.giveExperiencePoints`: `add_experience_levels` runs once for each
-    /// level gained or lost, and the mods hear of the level change once.
+    /// `Player.giveExperiencePoints` changes the score before the XP bar and reports level changes once.
     fn give_experience_points(&mut self, points: i32) {
         self.side_give_experience_points(points);
     }
@@ -3267,7 +3381,7 @@ impl<const NO_SLOT: bool> ConstructInit<NO_SLOT> {
             level: wp.level,
             loop_context: Self::build_loop_context(res, loop_side),
             tick: wp.tick,
-            setting_overrides: Default::default(),
+            native_settings: mod_sources.settings.clone(),
             damage_hooks: native_hooks::DAMAGE_HOOKS,
             dropped: Default::default(),
             mobs: Default::default(),
@@ -3283,6 +3397,7 @@ impl<const NO_SLOT: bool> ConstructInit<NO_SLOT> {
             cooldowns: Default::default(),
             autosaving: false,
             experience: Experience::default(),
+            player_score: 0,
             orbs: Default::default(),
             swing: Default::default(),
             swings_started: 0,
@@ -3332,6 +3447,7 @@ impl<const NO_SLOT: bool> ConstructInit<NO_SLOT> {
             recipe_tables: Default::default(),
             native_lifecycle: Default::default(),
             resident_entities: Default::default(),
+            config_root: mod_api::__private::RegistrationData::resolved_config_dir(),
             native_configs: Default::default(),
             native_net: Default::default(),
             sky_darken_memo: Default::default(),
@@ -3440,16 +3556,17 @@ pub fn preflight_resources(
 
 /// The most `Player.sleepCounter` reaches: 100 asleep, then up to here over the
 /// waking fade.
-pub const MAX_SLEEP_TIMER: u32 = 109;
+pub const MAX_SLEEP_TIMER: i32 = 109;
 
 // Player.tick: cap the sleeping fade at 100, then fade out over 10 waking ticks.
-pub fn tick_sleep_timer(timer: u32, sleeping: bool) -> u32 {
+pub fn tick_sleep_timer(timer: i32, sleeping: bool) -> i32 {
     if sleeping {
-        (timer + 1).min(100)
-    } else if (1..MAX_SLEEP_TIMER).contains(&timer) {
-        timer + 1
+        timer.wrapping_add(1).min(100)
+    } else if timer > 0 {
+        let next = timer.wrapping_add(1);
+        if next >= 110 { 0 } else { next }
     } else {
-        0
+        timer
     }
 }
 
@@ -3617,8 +3734,7 @@ pub use {
     copper_golems::golem_preserved_equipment,
     native_datafix::upgrade_nbt,
     native_hooks::{
-        another_mods, authoritative_world_for_mods, mod_data_root, native_config_dir,
-        startup_math_profile, startup_setting, world_for_mods,
+        authoritative_world_for_mods, mod_data_root, startup_math_profile, world_for_mods,
     },
     option_paths::{game_dir, options_path},
     remote::{inventory_screen_slot, inventory_screen_slot_with_type, remote_station_kind},
@@ -3876,15 +3992,8 @@ pub mod name_component;
 #[path = "game/interface/option_paths.rs"]
 pub mod option_paths;
 
-impl crate::game::CommonGame<'_> {
-    /// Whether `target` counts as removed in the level in place: a mod removed it, or an open
-    /// transaction did and its root commit has not run the removal yet.
-    pub fn target_removed(&self, target: &commands_common::Target) -> bool {
-        self.persist.removals.contains(target)
-            || self.persist.destroying_vehicles.contains(target)
-            || self.removal_pending(target)
-    }
-}
+use self::item_abilities::ItemAbilitiesGameExt1 as _;
+use self::transactions::entities::EntityRemovalGameExt as _;
 
 pub trait GameGameExt3<'__sg>: crate::game::SideGame<'__sg> {
     fn resident_source_target_visible(
@@ -3941,7 +4050,6 @@ pub trait SideGame<'g>:
     std::ops::DerefMut<Target = CommonGame<'g>>
     + sunrise_sim::crafting::CraftingRemainder
     + sunrise_sim::menu::SlotRules
-    + crate::game::item_snapshot::ItemBoundary
     + Sized
 {
     type State: Side<Nominal<'g> = Self>

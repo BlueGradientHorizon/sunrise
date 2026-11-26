@@ -20,6 +20,24 @@ pub(crate) mod tests {
     use super::*;
 
     use crate::game::native_entity_refs::tests::with_game;
+    use sunrise_gameplay_common::game::test_fixtures::fixture_resident_column;
+
+    fn detect_test_mob_equipment(game: &mut sunrise_gameplay::game::ServerGame<'_>) {
+        let items = match (&game.common.server_items, game.server.world_tables.0.as_ref()) {
+            (Some(items), _) => &**items,
+            (None, Some(tables)) => &tables.items,
+            (None, None) => game.common.res.items(),
+        };
+        assert_eq!(
+            sunrise_sim::mobs::finalize::detect_equipment_updates(
+                &mut game.common.mobs[0],
+                &game.common.motion.attributes,
+                items,
+                || false,
+            ),
+            None
+        );
+    }
 
     use sunrise_core::geometry::Vec3;
 
@@ -346,25 +364,26 @@ pub(crate) mod tests {
     #[ignore = "daily"]
     fn a_held_sword_raises_the_attack_damage_until_it_is_put_away() {
         with_game(|game| {
+            fixture_resident_column(&mut game.world, (0, 0));
             spawn(game);
             let damage = "minecraft:attack_damage";
             game.mobs[0].set_equipment_stack(MAINHAND, stack("minecraft:diamond_sword"));
-            game.tick_equipment_attributes();
+            detect_test_mob_equipment(game);
             // +6 from the sword's `base_attack_damage` modifier; the base stays.
             assert_eq!(read(game, 12, damage), (Some(9.0), Some(3.0)));
             // The same item again changes nothing (no duplicate modifier).
-            game.tick_equipment_attributes();
+            detect_test_mob_equipment(game);
             assert_eq!(read(game, 12, damage), (Some(9.0), Some(3.0)));
             // Another sword takes the first one's modifier off before its own.
             game.mobs[0].set_equipment_stack(MAINHAND, stack("minecraft:netherite_sword"));
-            game.tick_equipment_attributes();
+            detect_test_mob_equipment(game);
             assert_eq!(read(game, 12, damage), (Some(10.0), Some(3.0)));
             game.mobs[0].set_equipment_stack(MAINHAND, None);
-            game.tick_equipment_attributes();
+            detect_test_mob_equipment(game);
             assert_eq!(read(game, 12, damage), (Some(3.0), Some(3.0)));
             // A sword on the head is in no slot its modifiers name.
             game.mobs[0].set_equipment_stack(HEAD, stack("minecraft:diamond_sword"));
-            game.tick_equipment_attributes();
+            detect_test_mob_equipment(game);
             assert_eq!(read(game, 12, damage), (Some(3.0), Some(3.0)));
         });
     }
@@ -372,6 +391,7 @@ pub(crate) mod tests {
     #[ignore = "daily"]
     fn a_stand_and_the_dragon_wear_armor_modifiers() {
         with_game(|game| {
+            fixture_resident_column(&mut game.world, (0, 0));
             spawn(game);
             let armor = "minecraft:armor";
             game.armor_stands[0]
@@ -382,11 +402,11 @@ pub(crate) mod tests {
                 .unwrap()
                 .equipment
                 .set(CHEST, stack("minecraft:diamond_chestplate"));
-            game.tick_equipment_attributes();
+            game.refresh_stand_and_dragon_equipment_attributes();
             assert_eq!(read(game, 13, armor), (Some(3.0), Some(0.0)));
             assert_eq!(read(game, 14, armor), (Some(8.0), Some(0.0)));
             game.armor_stands[0].equipment.set(HEAD, None);
-            game.tick_equipment_attributes();
+            game.refresh_stand_and_dragon_equipment_attributes();
             assert_eq!(read(game, 13, armor), (Some(0.0), Some(0.0)));
             assert_eq!(read(game, 14, armor), (Some(8.0), Some(0.0)));
         });
@@ -441,6 +461,7 @@ pub(crate) mod tests {
     fn a_stacks_own_modifiers_replace_its_items() {
         use sunrise_core::nbt::Tag;
         with_game(|game| {
+            fixture_resident_column(&mut game.world, (0, 0));
             spawn(game);
             let damage = "minecraft:attack_damage";
             let mut own = ItemStack::new("minecraft:diamond_sword", 1);
@@ -455,11 +476,11 @@ pub(crate) mod tests {
                 ])])),
             );
             game.mobs[0].set_equipment_stack(MAINHAND, Some(own));
-            game.tick_equipment_attributes();
+            detect_test_mob_equipment(game);
             // +1 from its own list, not the sword's +6.
             assert_eq!(read(game, 12, damage), (Some(4.0), Some(3.0)));
             game.mobs[0].set_equipment_stack(MAINHAND, stack("minecraft:diamond_sword"));
-            game.tick_equipment_attributes();
+            detect_test_mob_equipment(game);
             assert_eq!(read(game, 12, damage), (Some(9.0), Some(3.0)));
         });
     }
@@ -608,7 +629,7 @@ pub(crate) mod tests {
             assert_eq!(read(game, 12, gravity), (Some(0.2), Some(0.1)));
             // The write is where `/attribute` reads it and the sync sends it.
             let key = game.motion.attributes.id(gravity).unwrap();
-            let map = game.generic_attributes(Target::Mob(12), gravity).unwrap();
+            let map = game.generic_attributes(Target::Mob(12)).unwrap();
             assert_eq!(map.value(key).unwrap(), 0.2);
             let mut synced = Vec::new();
             let zombie_mob = game.mobs[0].clone();
@@ -734,11 +755,12 @@ pub(crate) mod tests {
         let mods = vec![mod_api::ModEntry::new("plated", Box::new(Plated))].into();
         mod_platform::testing::with_mods(mods, || {
             with_game(|game| {
+                fixture_resident_column(&mut game.world, (0, 0));
                 spawn(game);
                 let chestplate = stack("minecraft:netherite_chestplate");
                 game.mobs[0].set_equipment_stack(CHEST, chestplate);
                 game.refresh_gear_knockback_resistance();
-                game.tick_equipment_attributes();
+                detect_test_mob_equipment(game);
                 // Netherite's own 0.1, and the mod's 0.4.
                 let resistance = game.mobs[0].knockback_resistance();
                 assert!((resistance - 0.5).abs() < 1e-6, "{resistance}");

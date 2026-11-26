@@ -2,6 +2,10 @@
 impl SideOps for crate::game::server_side::ServerState {
     type Game<'g> = crate::game::ServerGame<'g>;
 
+    fn side_sync_test_registry_ids(game: &mut Self::Game<'_>) {
+        game.sync_test_registry_ids();
+    }
+
     fn side_game_tag_items<'a>(&'a self, res: &'a Resources) -> Option<&'a Items> {
         self.session_lock.0.is_some().then(|| res.items())
     }

@@ -19,25 +19,21 @@ pub(crate) mod tests {
     #[test]
     fn client_epochs_never_emit_server_lifecycle_events() {
         let mut lifecycle = NativeLifecycle::default();
-        lifecycle.begin_open(Authority::RemoteClient);
+        lifecycle.begin_open(None);
         let epoch = lifecycle.epoch().unwrap();
+        assert!(lifecycle.is_opening());
         assert!(lifecycle.world_open_ready().is_none());
+        assert!(!lifecycle.is_opening());
         assert_eq!(lifecycle.epoch(), Some(epoch));
         assert!(lifecycle.server_tick_start(true).is_none());
         assert!(lifecycle.server_tick_end(false).is_none());
-        assert!(!lifecycle.permits_read(&lifecycle.attempt.unwrap().context()));
         lifecycle.begin_close();
-        assert!(lifecycle.world_close_final().is_none());
+        assert!(lifecycle.retire());
         assert!(lifecycle.epoch().is_none());
 
-        lifecycle.begin_open(Authority::RemoteClient);
+        lifecycle.begin_open(None);
         assert_ne!(lifecycle.epoch(), Some(epoch));
-        assert!(lifecycle.world_open_failed().is_none());
-        assert!(lifecycle.epoch().is_none());
-
-        lifecycle.begin_open(Authority::RemoteClient);
-        lifecycle.world_open_ready();
-        assert!(lifecycle.world_close_failed().is_none());
+        assert!(lifecycle.retire());
         assert!(lifecycle.epoch().is_none());
     }
 
@@ -104,8 +100,8 @@ pub(crate) mod tests {
         assert!(lifecycle.server_tick_end(true).is_none());
         assert!(lifecycle.tasks.pop_due().is_none());
         lifecycle.begin_close();
-        lifecycle.world_close_final();
-        lifecycle.begin_open(Authority::IntegratedServer);
+        assert!(lifecycle.retire());
+        lifecycle.begin_open(Some(Authority::IntegratedServer));
         lifecycle.world_open_ready();
         lifecycle.server_tick_start(true);
         assert!(lifecycle.tasks.pop_due().is_none());
@@ -331,7 +327,7 @@ pub(crate) mod tests {
                 let index = mod_api::__private::mod_index(FAILING).unwrap();
                 assert!(mod_api::__private::mod_index_on(index));
                 game.native_lifecycle
-                    .begin_open(Authority::IntegratedServer);
+                    .begin_open(Some(Authority::IntegratedServer));
                 game.native_lifecycle.world_open_ready().unwrap();
                 {
                     let host: &mut dyn ServerHost = game;
@@ -458,6 +454,16 @@ pub(crate) mod tests {
             .into_iter()
             .map(|id| ModEntry::new(id, Box::new(TaskOwner)))
             .collect();
+        // The log keeps only its recent lines, and each panic's backtrace fills them, so each
+        // panic's attributed line is read before the next panic.
+        let assert_logged = |owner: &str, message: &str| {
+            assert!(
+                sunrise_level::logging::recent_lines()
+                    .iter()
+                    .any(|line| line.contains(owner) && line.contains(message)),
+                "{owner}'s panic is logged with its message"
+            );
+        };
         mod_platform::testing::with_mods(mods.into(), || {
             with_game(|game| {
                 game.native_lifecycle.world_open_ready().unwrap();
@@ -473,6 +479,7 @@ pub(crate) mod tests {
                     assert_eq!(current_native_mod(), Some(HEALTHY));
                     assert!(!game.cancel_task(cancelled));
                 }
+                assert_logged(CANCELLED, "cancelled capture panicked");
                 let closed = {
                     let _owner = enter(CLOSED, "schedule fixture");
                     let capture = PanickingCapture("closing capture panicked");
@@ -507,19 +514,10 @@ pub(crate) mod tests {
                         hook: "schedule_task_drop",
                     }),
                 );
-                let logs = sunrise_level::logging::recent_lines();
-                for (owner, message) in [
-                    (CANCELLED, "cancelled capture panicked"),
-                    (CLOSED, "closing capture panicked"),
-                ] {
-                    assert!(
-                        logs.iter()
-                            .any(|line| line.contains(owner) && line.contains(message))
-                    );
-                }
+                assert_logged(CLOSED, "closing capture panicked");
 
                 game.native_lifecycle
-                    .begin_open(Authority::IntegratedServer);
+                    .begin_open(Some(Authority::IntegratedServer));
                 game.native_lifecycle.world_open_ready().unwrap();
                 let ran = Rc::new(RefCell::new(Vec::new()));
                 for owner in [CANCELLED, CLOSED, HEALTHY] {
@@ -543,82 +541,76 @@ pub(crate) mod tests {
     /// A lifecycle mid-open on the server thread.
     fn opening() -> NativeLifecycle {
         let mut lifecycle = NativeLifecycle::default();
-        lifecycle.begin_open(Authority::IntegratedServer);
+        lifecycle.begin_open(Some(Authority::IntegratedServer));
         lifecycle
     }
 
     #[test]
-    fn block_reads_require_the_current_hook_scope() {
-        let mut life = NativeLifecycle::default();
-        life.begin_open(Authority::IntegratedServer);
-        let ready = life.world_open_ready().unwrap();
-        assert!(!life.permits_read(&ready));
-        let (tick, _) = life.server_tick_start(true).unwrap();
-        life.read_scope = true;
-        assert!(life.permits_read(&tick));
-        assert!(!life.permits_read(&ready));
-        life.read_scope = false;
-        assert!(!life.permits_read(&tick));
-        life.server_tick_end(false).unwrap();
-        life.begin_close();
-        life.world_close_final().unwrap();
-        life.begin_open(Authority::IntegratedServer);
-        life.world_open_ready().unwrap();
-        life.read_scope = true;
-        assert!(!life.permits_read(&tick));
-    }
+    fn server_lifecycle_keeps_the_authority_and_epoch_from_ready_through_close() {
+        for authority in [Authority::IntegratedServer, Authority::DedicatedServer] {
+            let mut lifecycle = NativeLifecycle::default();
+            lifecycle.begin_open(Some(authority));
+            let epoch = lifecycle.epoch().unwrap();
 
-    #[test]
-    fn world_ready_fires_once_per_epoch() {
-        let mut lifecycle = opening();
-        let context = lifecycle.world_open_ready().expect("the first ready fires");
-        assert_eq!(context.authority, Authority::IntegratedServer);
-        assert!(context.epoch.get() >= 1, "the epoch is globally allocated");
-        assert!(lifecycle.world_open_ready().is_none(), "at most once");
+            let ready = lifecycle.world_open_ready().expect("the first ready fires");
+            assert_eq!(ready.authority, authority);
+            assert_eq!(ready.epoch, epoch);
+            assert_eq!(ready.tick.get(), 0);
+            assert!(lifecycle.world_open_ready().is_none(), "at most once");
+
+            let (start, _) = lifecycle.server_tick_start(true).unwrap();
+            let (end, _) = lifecycle.server_tick_end(false).unwrap();
+            assert_eq!(start.authority, authority);
+            assert_eq!(start.epoch, epoch);
+            assert_eq!(start.tick.get(), 1);
+            assert_eq!(end, start);
+
+            lifecycle.begin_close();
+            assert!(lifecycle.retire());
+            assert!(lifecycle.epoch().is_none());
+        }
     }
 
     #[test]
     fn a_failed_open_invalidates_and_a_retry_is_fresh() {
         let mut lifecycle = opening();
-        let context = lifecycle.world_open_failed().expect("the failure fires");
-        let failed_epoch = context.epoch;
+        let failed_epoch = lifecycle.epoch().expect("open allocated an epoch");
+        assert!(lifecycle.is_opening());
+        assert!(lifecycle.retire());
+        assert!(!lifecycle.is_opening());
         assert!(lifecycle.world_open_ready().is_none(), "the epoch is gone");
         assert!(lifecycle.server_tick_start(true).is_none());
-        lifecycle.begin_open(Authority::IntegratedServer);
+        lifecycle.begin_open(Some(Authority::IntegratedServer));
         let context = lifecycle.world_open_ready().expect("the retry opens fresh");
         assert!(context.epoch.get() > failed_epoch.get(), "a fresh epoch");
     }
 
     #[test]
-    fn close_final_fires_once_and_retires_the_epoch() {
+    fn retire_clears_opening_ready_and_closing_and_is_idempotent() {
         let mut lifecycle = opening();
-        lifecycle.world_open_ready();
-        lifecycle.begin_close();
-        let context = lifecycle.world_close_final().expect("the close fires");
-        assert!(context.epoch.get() >= 1);
-        assert!(
-            lifecycle.world_close_final().is_none(),
-            "a repeated close request is a no-op"
-        );
-        assert!(lifecycle.server_tick_start(true).is_none());
+        assert!(lifecycle.is_opening());
+        assert!(lifecycle.retire());
+        assert!(!lifecycle.retire(), "a second retire is a no-op");
+        assert!(!lifecycle.is_opening());
+        assert!(lifecycle.epoch().is_none());
         assert!(lifecycle.world_open_ready().is_none());
-    }
+        assert!(lifecycle.server_tick_start(true).is_none());
 
-    #[test]
-    fn a_close_during_opening_still_closes_once() {
-        let mut lifecycle = opening();
-        lifecycle.begin_close();
-        assert!(lifecycle.world_close_final().is_some());
-    }
+        lifecycle.begin_open(Some(Authority::IntegratedServer));
+        assert!(lifecycle.is_opening());
+        lifecycle.world_open_ready().unwrap();
+        assert!(!lifecycle.is_opening());
+        assert!(lifecycle.retire());
+        assert!(!lifecycle.retire());
+        assert!(lifecycle.epoch().is_none());
 
-    #[test]
-    fn close_failure_retires_only_ready_epochs() {
-        let mut lifecycle = opening();
-        assert!(lifecycle.world_close_failed().is_none());
-        lifecycle.world_open_ready();
+        lifecycle.begin_open(Some(Authority::IntegratedServer));
+        lifecycle.world_open_ready().unwrap();
         lifecycle.begin_close();
-        assert!(lifecycle.world_close_failed().is_some());
-        assert!(lifecycle.world_close_failed().is_none());
-        assert!(lifecycle.world_close_final().is_none());
+        assert!(!lifecycle.is_opening());
+        assert!(lifecycle.retire());
+        assert!(!lifecycle.retire());
+        assert!(lifecycle.epoch().is_none());
+        assert!(lifecycle.server_tick_start(true).is_none());
     }
 }

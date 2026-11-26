@@ -1,3 +1,5 @@
+#![cfg(test)]
+
 #[cfg(test)]
 pub(crate) use super::server_side::native_entity_refs;
 

@@ -15,7 +15,6 @@ pub trait Hooks {
     /// and its guests), with a read-only `Host`. The contract beyond the method's name and
     /// parameters is Sunrise's reading, not checked against NeoForge's.
     #[hook(
-        target = "sunrise_gameplay::game::native_hooks::is_not_replaceable_by_pick_action::ServerGame<'_>::native_is_not_replaceable_by_pick_action",
         receiver = "read",
         dispatch = "flat",
         side = "server",

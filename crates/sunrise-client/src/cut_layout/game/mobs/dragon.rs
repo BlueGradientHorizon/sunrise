@@ -44,7 +44,7 @@ pub(crate) mod tests {
                 self.joins
                     .lock()
                     .unwrap()
-                    .push((event.entity, event.loaded_from_disk));
+                    .push((event.subject.id(), event.loaded_from_disk));
                 if self.cancel.load(Ordering::Relaxed) {
                     Flow::Cancel
                 } else {
@@ -367,7 +367,7 @@ pub(crate) mod tests {
                 )),
             );
             game.dragon.replace(d);
-            game.tick_equipment_attributes();
+            game.refresh_stand_and_dragon_equipment_attributes();
             let resistance = f64::from(0.1_f32);
             assert_eq!(game.dragon_knockback_resistance(), resistance);
             let from = Vec3::new(3.0, 70.0, 4.0);
@@ -392,6 +392,28 @@ pub(crate) mod tests {
             );
         });
     }
+    #[test]
+    #[ignore = "daily"]
+    fn a_stationary_no_ai_dragon_runs_its_living_body_turn() {
+        use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+        sunrise_gameplay::game::native_entity_refs::tests::with_game(|game| {
+            game.create_new_dragon();
+            let dragon = game.common.dragon.as_mut().unwrap();
+            assert_ne!(dragon.yaw, 0.0);
+            assert_eq!((dragon.body_yaw, dragon.head_yaw), (0.0, 0.0));
+            dragon.yaw = 35.0;
+            dragon.no_ai = true;
+            dragon.head_yaw = 90.0;
+            let id = dragon.id;
+            let entity = game.entity(id).unwrap();
+            assert_eq!(entity.set_body_yaw(game, 0.0), Ok(true));
+            game.tick_dragon();
+            // A 75-degree limit turns the body 15 degrees toward the head.
+            assert_eq!(entity.body_yaw(game), Some(15.0));
+            assert_eq!(game.common.dragon.as_ref().unwrap().yaw, 35.0);
+        });
+    }
+
     #[test]
     #[ignore = "daily"]
     fn the_tracked_dragon_lists_its_data_defaults() {

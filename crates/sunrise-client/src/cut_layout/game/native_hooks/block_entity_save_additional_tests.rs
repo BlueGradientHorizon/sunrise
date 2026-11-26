@@ -213,14 +213,6 @@ pub(crate) mod tests {
     impl mod_api::BlockPart for SaveItemsPart {}
     #[mod_api::sunrise_part]
     impl BlockEntityPart for SaveItemsPart {
-        fn block_entity_ticks(
-            &self,
-            _: &dyn mod_api::Host,
-            event: &mut mod_api::BlockEntityTicksEvent<'_>,
-        ) {
-            event.ticks = true;
-        }
-
         fn block_entity_save_additional(
             &self,
             _: &dyn LevelHost,
@@ -285,7 +277,7 @@ pub(crate) mod tests {
     impl Hooks for BreakObserver {
         fn player_destroyed_block(
             &self,
-            _: &mut dyn mod_api::ServerHost,
+            _: mod_api::HostSide<'_>,
             event: &mut mod_api::PlayerDestroyedBlockEvent,
         ) {
             let stored = event

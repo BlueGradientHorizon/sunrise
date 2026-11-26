@@ -104,10 +104,10 @@ impl Flight {
     pub(in crate::game::client_side) fn note_mesh_uploads(
         &mut self,
         count: usize,
-        vertex_bytes: u64,
+        bytes: u64,
     ) {
         self.mesh_uploads[0] += count as u64;
-        self.mesh_uploads[1] += vertex_bytes;
+        self.mesh_uploads[1] += bytes;
     }
 }
 
@@ -470,18 +470,11 @@ impl crate::game::ClientGame<'_> {
         // editor or a screen consumes the key, there is no world, or a
         // command handler returns an error: a lost release keeps Shift down.
         let released = released_modifier(line);
-        // The socket's own key, mouse and typing commands are input, as the window's events are.
-        let input = matches!(
-            line.split_whitespace().next(),
-            Some("key" | "mouse" | "type")
-        );
-        let result = self.with_user_input(input, |game| {
-            game.control_command_inner(line, reply, event_loop)
-        });
+        let result = self.control_command_inner(line, reply, event_loop);
         self.settle_title_mode();
         // After handling, as the window's: the mods' mappings and `input_key` hear the key.
         if let Some((key, action)) = socket_key(line) {
-            self.with_user_input(true, |game| game.socket_key_input(key, action));
+            self.socket_key_input(key, action);
         }
         if let Some(key) = released {
             self.press_modifier_key(key, false);
@@ -976,16 +969,12 @@ impl crate::game::ClientGame<'_> {
                 let input = sunrise_client::keybinds::mouse_name(button);
                 match action {
                     "down" => {
-                        self.extras_mouse(button, true);
                         self.mapped_mouse_event_from(button, &input, true, Source::Agent)?;
                     }
                     "up" => {
-                        self.extras_mouse(button, false);
                         self.mapped_mouse_event_from(button, &input, false, Source::Agent)?;
                     }
                     "click" => {
-                        self.extras_mouse(button, true);
-                        self.extras_mouse(button, false);
                         self.mapped_mouse_event_from(button, &input, true, Source::Agent)?;
                         self.mapped_mouse_event_from(button, &input, false, Source::Agent)?;
                     }
@@ -1298,7 +1287,7 @@ impl crate::game::ClientGame<'_> {
                 }
                 self.open_options(self.client.title.0.is_some());
                 self.client.chat_ui.options.show(page);
-                if page == Page::ShaderPacks {
+                if sunrise_client::options_ui::OptionsUi::lists_shader_packs(page) {
                     self.client.settings.shader_packs =
                         sunrise_client::shader_pack_list::scan(&Self::shader_packs_dir());
                     self.open_shader_options();

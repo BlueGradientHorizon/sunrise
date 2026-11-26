@@ -1,4 +1,5 @@
 use super::*;
+use sunrise_gameplay_common::game::GameGameExt3 as _;
 
 impl crate::game::ServerGame<'_> {
     /// `Player.aiStep` touching arrows in the guest's box grown by (1, 0.5, 1):
@@ -6,7 +7,7 @@ impl crate::game::ServerGame<'_> {
     /// host's player. The guest's own client plays the pickup sound
     /// (`handleTakeItemEntity`).
     pub fn guest_arrows(&mut self, gi: usize) {
-        use sunrise_sim::arrows::Touch;
+        use sunrise_sim::entities::arrows::Touch;
         let Some(host) = self.server.lan.as_ref() else {
             return;
         };
@@ -95,10 +96,14 @@ impl crate::game::ServerGame<'_> {
         } else {
             None
         };
-        let delayed = play.xp_delay > 0;
         if let Some(cooldown) = cooldown {
             self.native_player_exp_cooldown_change(player, &name, cooldown);
         }
+        let delayed = self
+            .server
+            .lan
+            .as_ref()
+            .is_none_or(|host| host.play.get(&conn).is_some_and(|play| play.xp_delay > 0));
         if unable || delayed {
             return;
         }
@@ -143,58 +148,74 @@ impl crate::game::ServerGame<'_> {
             .next_int_bound(touching.len() as i32)
             .unwrap_or(0) as usize;
         let index = touching[pick];
-        let mut orb = self.common.orbs[index].clone();
-        let mut canceled = false;
+        let join = self.common.orbs[index].join;
+        let orb_id = self.common.orbs[index].id;
+        // Swapping the guest in costs: only when a mod hears the pickup.
         let listened = (self.server.serving.is_some() || self.common.options.dedicated.is_some())
             && mod_api::__private::listened(mod_api::HookId::PickupXp);
-        if listened {
+        if listened && let Some(epoch) = self.common.native_lifecycle.epoch() {
+            let orb = mod_api::ExperienceOrbRef::new(mod_api::EntityRef::new(epoch, orb_id));
+            let mut canceled = false;
             let dimension = self.common.dim.id();
             let called = self.as_guest(conn, |game| {
                 let player = game.native_acting_id();
-                game.native_pickup_xp(
-                    player,
-                    dimension,
-                    orb.id,
-                    &mut orb.value,
-                    &mut orb.count,
-                    &mut canceled,
-                );
+                game.native_pickup_xp(player, dimension, orb, &mut canceled);
             });
             if called.is_none() || canceled {
                 return;
             }
-            orb.count = orb.count.max(1);
-            self.common.orbs[index].value = orb.value;
-            self.common.orbs[index].count = orb.count;
         }
-        if orb.count <= 1 {
-            self.remove_orb(index);
-        } else {
-            self.common.orbs[index].count -= 1;
+        // A callback may have committed a discard: the row stays until removals flush.
+        let live = |game: &Self| {
+            !game.server.held_out.contains(&orb_id)
+                && game.resident_source_target_visible(
+                    game.common.dim.key(),
+                    crate::game::commands::Target::Orb(orb_id),
+                )
+        };
+        if !live(self) {
+            return;
         }
+        let Some(index) = self.common.orbs.locate(join) else {
+            return;
+        };
+        let (orb_value, orb_pos) = {
+            let orb = &self.common.orbs[index];
+            (orb.value, orb.position)
+        };
+        // ExperienceOrb.playerTouch: delay, take, repair/award positive value,
+        // then decrement count and discard at zero.
         if let Some(host) = self.server.lan.as_mut() {
             host.play.entry(conn).or_default().xp_delay = 2;
         }
         self.native_player_exp_cooldown_change(player, &name, 2);
         if let Some(host) = self.server.lan.as_ref() {
-            host.hub.take_item(orb.id as i32, id, 1, at);
+            host.hub.take_item(orb_id as i32, id, 1, at);
         }
         let mut random = sunrise_level::random_source::create();
         let pitch = (random.next_float() - random.next_float()) * 0.35 + 0.9;
-        let p = orb.position;
         self.server_play_sound(
             "minecraft:entity.experience_orb.pickup",
-            [p.x, p.y, p.z],
+            [orb_pos.x, orb_pos.y, orb_pos.z],
             0.1,
             pitch,
         );
-        let value = orb.value.max(0) as u32;
         self.as_guest(conn, |game| {
-            let rest = game.mending(value);
+            let rest = game.mending(orb_value);
             if rest > 0 {
-                game.give_experience_points(rest.min(i32::MAX as u32) as i32);
+                game.give_experience_points(rest);
             }
         });
+        if !live(self) {
+            return;
+        }
+        if let Some(index) = self.common.orbs.locate(join) {
+            if self.common.orbs[index].count <= 1 {
+                self.remove_orb(index);
+            } else {
+                self.common.orbs[index].count -= 1;
+            }
+        }
     }
     /// Dropped items touching a guest go into their inventory
     /// (`ItemEntity.playerTouch`, then `ServerPlayer.onItemPickup`).
@@ -238,7 +259,13 @@ impl crate::game::ServerGame<'_> {
             .dropped
             .iter()
             .filter(|d| {
-                (listens || (d.pickup_delay == 0 && d.target.is_none_or(|t| t == uuid)))
+                (listens
+                    || Self::pickup_decision(
+                        d.pickup_delay,
+                        d.target,
+                        uuid,
+                        mod_api::TriState::Default,
+                    ))
                     && (d.position.x - position[0]).abs() < 1.5
                     && (d.position.z - position[2]).abs() < 1.5
                     && d.position.y > position[1] - 0.6
@@ -248,91 +275,7 @@ impl crate::game::ServerGame<'_> {
             .collect();
         let mut taken = Vec::new();
         for item_id in near.into_iter().rev() {
-            let Some(mut i) = self.common.dropped.iter().position(|d| d.id == item_id) else {
-                continue;
-            };
-            let answer = if listens {
-                let answer = self
-                    .as_guest(conn, |g| g.native_pickup_answer(item_id))
-                    .unwrap_or_default();
-                // Only a dispatched callback can invalidate the original index.
-                let Some(at) = self.common.dropped.iter().position(|d| d.id == item_id) else {
-                    continue;
-                };
-                i = at;
-                answer
-            } else {
-                mod_api::TriState::Default
-            };
-            let d = &mut self.common.dropped[i];
-            if !Self::pickup_decision(&mut d.pickup_delay, d.target, uuid, answer) {
-                continue;
-            }
-            let stack = self.common.dropped[i].stack.clone();
-            let before = stack.count;
-            let kind = stack.item.clone();
-            let thrower = self.common.dropped[i].thrower;
-            let Some(rest) = self.as_guest(conn, |g| g.native_pickup_insert(&stack)) else {
-                continue;
-            };
-            // Where the entity is and what it holds once the pickup is told: `None` when a mod
-            // removed it.
-            let after = match rest {
-                Some(rest) if rest.count >= before => continue,
-                // ItemEntityPickupEvent.Post, on a whole or partial pickup: the remainder is the
-                // entity's while mods hear it, and the count after comes from the entity.
-                rest if mod_api::__private::listened(mod_api::HookId::ItemPickedUpPost) => {
-                    match &rest {
-                        Some(rest) => self.common.dropped[i].stack = rest.clone(),
-                        None => self.common.dropped[i].stack.count = 0,
-                    }
-                    let told = self.as_guest(conn, |g| g.native_pickup_post(item_id, &stack, rest));
-                    let at = self.common.dropped.iter().position(|d| d.id == item_id);
-                    if let (Some(at), Some(remaining)) = (at, told) {
-                        match remaining {
-                            Some(remaining) => self.common.dropped[at].stack = remaining,
-                            None => self.common.dropped[at].stack.count = 0,
-                        }
-                    }
-                    at
-                }
-                Some(rest) => {
-                    self.common.dropped[i].stack = rest;
-                    Some(i)
-                }
-                None => {
-                    self.common.dropped[i].stack.count = 0;
-                    Some(i)
-                }
-            };
-            let left = after.map_or(0, |at| self.common.dropped[at].stack.count);
-            let count = before.saturating_sub(left);
-            if count == 0 {
-                continue;
-            }
-            let picked = match after {
-                Some(at) if left > 0 => self.common.dropped[at].stack.clone(),
-                // ItemEntity.playerTouch: an emptied stack is discarded with the count taken.
-                Some(at) => {
-                    let mut picked = self.remove_dropped(at).stack;
-                    picked.count = count;
-                    picked
-                }
-                None => {
-                    let mut picked = stack;
-                    picked.count = count;
-                    picked
-                }
-            };
-            self.as_guest(conn, |g| {
-                g.award_stat("picked_up", &kind, count as i32);
-                if let Some(thrower) = thrower {
-                    g.trigger_thrown_picked_up_by_player(&picked, thrower);
-                }
-            });
-            if after.is_some() {
-                taken.push((item_id, count));
-            }
+            self.native_guest_pickup(conn, item_id, uuid, &mut taken);
         }
         // Entity.take: the clients play the pickup sound themselves
         // (handleTakeItemEntity).

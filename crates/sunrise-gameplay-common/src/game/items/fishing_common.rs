@@ -31,6 +31,11 @@ pub struct Hook {
     pub yaw: f32,
     /// `Entity.xRot` updated on `Projectile.updateRotation`.
     pub pitch: f32,
+    /// `Entity.yRotO` and `xRotO`: the yaw and pitch when its tick began (`setOldPosAndRot`),
+    /// which `Projectile.updateRotation` eases from; `ProjectileDeflection.REVERSE` turns the
+    /// old yaw with the yaw.
+    pub previous_yaw: f32,
+    pub previous_pitch: f32,
     pub last_deflected_by: Option<u32>,
     pub needs_sync: bool,
     pub tick_count: i32,
@@ -214,6 +219,8 @@ impl Hook {
             left_owner: false,
             yaw: 0.0,
             pitch: 0.0,
+            previous_yaw: 0.0,
+            previous_pitch: 0.0,
             last_deflected_by: None,
             needs_sync: false,
             tick_count: 0,

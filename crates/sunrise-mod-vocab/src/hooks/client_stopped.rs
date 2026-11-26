@@ -5,7 +5,6 @@ pub trait Hooks {
     /// on the render thread for an orderly client exit, not for a dedicated server.
     /// NeoForge's `ClientStoppedEvent`.
     #[hook(
-        target = "sunrise_client_gameplay::game::native_hooks::client_stopped::ClientGame<'_>::native_client_stopped",
         dispatch = "flat",
         side = "client",
         contract = "listen",

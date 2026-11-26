@@ -3,6 +3,7 @@
 //! off and riding.
 use crate::game::ServerGame;
 use sunrise_core::random::RandomSource;
+use sunrise_gameplay_common::game::item_abilities::ability;
 use sunrise_sim::mobs::{equine, llama};
 
 impl ServerGame<'_> {
@@ -25,7 +26,11 @@ impl ServerGame<'_> {
             loved = true;
         }
         if m.health < m.attrs.max_health {
-            m.heal(&self.common.loop_context, heal);
+            m.heal(
+                &self.common.loop_context,
+                &|| crate::game::entity_server::hit_reads_of!(self),
+                heal,
+            );
             used = true;
         }
         let mut happy = false;
@@ -114,7 +119,9 @@ impl ServerGame<'_> {
         let m = &self.common.mobs[index];
         let carpet = |i: &str| i.ends_with("_carpet") && i.starts_with("minecraft:");
         if !item.is_empty() {
-            if item == "minecraft:shears" && m.extra.body_id().is_some_and(carpet) {
+            if self.held_shears(ability::SHEARS_REMOVE_ARMOR)
+                && m.extra.body_id().is_some_and(carpet)
+            {
                 // Equippable.canBeSheared: the carpet comes off.
                 let at = m.center();
                 let carpet = self.common.mobs[index].take_body_equipment().unwrap();

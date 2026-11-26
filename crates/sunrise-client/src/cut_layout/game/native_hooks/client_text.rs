@@ -4,10 +4,38 @@ mod tests {
     
     use sunrise_gameplay_common::game::api_values::TryIntoEngine;
 
+    /// `Language.isDefaultRightToLeft` (#5354): false for English, true once a pack's language
+    /// marked `bidirectional` is applied, on a game with no logged-in world.
+    #[test]
+    #[ignore = "daily"]
+    fn the_active_languages_direction_reads_outside_a_world() {
+        use mod_api::prelude::ClientTextClientHost;
+        use sunrise_client::lang::{self, Language};
+        crate::game::native_entity_refs::tests::with_client_game(|game| {
+            assert!(game.client.remote.is_none());
+            let english = lang::isolate_publication(Language::of("en_us", []));
+            assert!(!ClientTextClientHost::language_right_to_left(&*game));
+            drop(english);
+            let pack = tempfile::tempdir().unwrap();
+            let lang_dir = pack.path().join("assets/minecraft/lang");
+            std::fs::create_dir_all(&lang_dir).unwrap();
+            std::fs::write(lang_dir.join("ar_sa.json"), "{}").unwrap();
+            std::fs::write(
+                pack.path().join("pack.mcmeta"),
+                r#"{"language":{"ar_sa":{"name":"Arabic","region":"Saudi Arabia","bidirectional":true}}}"#,
+            )
+            .unwrap();
+            let root = pack.path().to_path_buf();
+            let arabic = lang::isolate_publication(Language::load(&[&root], "ar_sa"));
+            assert!(ClientTextClientHost::language_right_to_left(&*game));
+            drop(arabic);
+        });
+    }
+
     #[test]
     #[ignore = "daily"]
     fn plain_text_reads_resolve_current_language_arguments_keys_and_siblings() {
-        sunrise_gameplay::game::native_entity_refs::tests::with_game(|game| {
+        crate::game::native_entity_refs::tests::with_client_game(|game| {
             let key = mod_api::Text::new(mod_api::text::TextContent::Keybind(
                 "key.keyboard.space".into(),
             ));

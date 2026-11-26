@@ -15,7 +15,8 @@ use sunrise_world::{
         Behaviours,
         data::BlockSet,
         fluid_interactions::{
-            BlockMatch as Resolved, FluidInteraction as Rule, FluidInteractions, Neighbour as Walk,
+            BlockMatch as Resolved, Entry, FluidInteraction as Rule, FluidInteractions,
+            Neighbour as Walk,
         },
     },
 };
@@ -90,21 +91,42 @@ pub(in crate::game) fn declared(
 impl crate::game::CommonGame<'_> {
     /// [`Self::install_fluid_interactions`] against `items`' tags.
     pub fn install_fluid_interactions_from(&self, items: &Items) -> Result<(), String> {
+        use mod_api::__private::RegisteredFluidInteraction;
         let behaviours = self.res.behaviours();
-        let mut declarations = Vec::new();
-        for interaction in mod_api::__private::declared_fluid_interactions() {
-            declarations.push(declared(interaction)?);
+        let table = |declaration: &FluidInteraction| {
+            self.resolve_fluid_interaction(behaviours, items, declaration)
+                .map(|(kind, rule)| (kind, Entry::Table(rule)))
+        };
+        let mut entries = Vec::new();
+        // A native handler is named by its index among the registrations, which live for the
+        // session: `native_fluid_interaction` finds it again there.
+        for (index, registration) in mod_api::__private::declared_fluid_interactions()
+            .iter()
+            .enumerate()
+        {
+            entries.push(match registration {
+                RegisteredFluidInteraction::Declared(interaction) => {
+                    table(&declared(interaction)?)?
+                }
+                RegisteredFluidInteraction::Handler { source, .. } => {
+                    let name = mod_api::__private::fluid_id(*source)
+                        .ok_or_else(|| "a fluid key with no name".to_owned())?;
+                    let kind = FluidKind::from_name(name)
+                        .ok_or_else(|| format!("fluid interaction: unknown fluid {name}"))?;
+                    let index = u32::try_from(index)
+                        .map_err(|_| "fluid interaction: too many registrations".to_owned())?;
+                    (kind, Entry::Handler(index))
+                }
+            });
         }
-        declarations.extend(sunrise_sim::mod_content::fluid_interactions());
+        for declaration in sunrise_sim::mod_content::fluid_interactions() {
+            entries.push(table(&declaration)?);
+        }
         let builtin = behaviours.vanilla_fluid_interactions(
             &fluid_tag(items, "minecraft:lava"),
             &fluid_tag(items, "minecraft:water"),
         );
-        let declared = declarations
-            .iter()
-            .map(|declaration| self.resolve_fluid_interaction(behaviours, items, declaration))
-            .collect::<Result<Vec<_>, _>>()?;
-        behaviours.set_fluid_interactions(FluidInteractions::new(builtin, declared));
+        behaviours.set_fluid_interactions(FluidInteractions::new(builtin, entries));
         Ok(())
     }
 
@@ -161,7 +183,7 @@ impl crate::game::CommonGame<'_> {
         ))
     }
 
-    /// The open world's fluid interaction table, read for one neighbour and the block below.
+    /// The open world's fluid interaction table rules, read for one neighbour and the block below.
     pub fn fluid_interaction_result(
         &self,
         source: mod_api::FluidState,
@@ -175,5 +197,21 @@ impl crate::game::CommonGame<'_> {
         self.res
             .behaviours()
             .fluid_interaction_result(source, neighbour, below)
+    }
+}
+
+/// The native fluid interaction a mod registered as `handler`, with its owner, when its owner is
+/// still enabled.
+pub fn native_fluid_interaction(
+    handler: u32,
+) -> Option<(
+    &'static mod_api::__private::game::CallbackOwner,
+    &'static dyn mod_api::FluidInteractionHandler,
+)> {
+    match mod_api::__private::declared_fluid_interactions().get(usize::try_from(handler).ok()?)? {
+        mod_api::__private::RegisteredFluidInteraction::Handler { owner, handler, .. } => {
+            Some((owner, handler.as_ref()))
+        }
+        mod_api::__private::RegisteredFluidInteraction::Declared(_) => None,
     }
 }

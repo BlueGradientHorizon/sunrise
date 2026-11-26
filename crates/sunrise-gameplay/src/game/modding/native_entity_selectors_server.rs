@@ -15,24 +15,37 @@ impl ServerGame<'_> {
         let Some(token) = &s.token else {
             return selected;
         };
-        let Some(selector) = mod_api::__private::entity_selector_type(token) else {
+        let Some((owner, selector)) = mod_api::__private::entity_selector_type(token) else {
             return Vec::new();
         };
+        if !owner.is_enabled() {
+            return Vec::new();
+        }
         let Ok(source) = self.native_command_origin(self.common.ui.registries.permission) else {
             return Vec::new();
         };
-        selected
-            .into_iter()
-            .filter(|(target, _)| {
-                let Some(entity) = self.native_command_entity_target(*target) else {
-                    return false;
-                };
-                let host: &mut dyn mod_api::ServerHost = self;
-                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    selector.matches(host, &source, entity)
-                }))
-                .unwrap_or(false)
-            })
-            .collect()
+        let mut kept = Vec::new();
+        for (target, distance) in selected {
+            if !owner.is_enabled() {
+                break;
+            }
+            let Some(entity) = self.native_command_entity_target(target) else {
+                continue;
+            };
+            let host: &mut dyn mod_api::ServerHost = self;
+            match owner.call("entity_selector", "entity_selector.matches", || {
+                selector.matches(host, &source, entity)
+            }) {
+                Ok(true) => kept.push((target, distance)),
+                Ok(false) => {}
+                Err(why) => {
+                    log::warn!("entity selector @{token} failed: {why}");
+                    if !owner.is_enabled() {
+                        break;
+                    }
+                }
+            }
+        }
+        kept
     }
 }

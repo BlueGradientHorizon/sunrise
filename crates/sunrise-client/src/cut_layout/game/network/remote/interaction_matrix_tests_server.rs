@@ -15,6 +15,8 @@ pub(crate) fn matrix(mods: mod_api::Mods) {
             )
             .unwrap();
         game.world.set(0, 63, 0, stone).unwrap();
+        // A FULL read of this hand-made column (the advancement's block read) finds it ready.
+        std::sync::Arc::make_mut(game.world.chunks.get_mut(&(0, 0)).unwrap()).lit = true;
         game.set_test_forced_hit(Some(hit()));
         for hand in [Hand::Main, Hand::Off] {
             for case in cases(hand) {

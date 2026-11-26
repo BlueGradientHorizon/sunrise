@@ -11,12 +11,35 @@ use sunrise_gameplay_common::game::native_living_body::NativeLivingBodyGameExt6 
 mod tests {
     use super::super::native_entity_refs::tests::with_game;
     use super::*;
-    use mod_api::{Hooks, RaidStateChangeEvent, ServerHost, WorldEpoch};
-    use mod_api::{RaidRef, RaidStatus};
+    use core::ops::ControlFlow;
+    use mod_api::{
+        Hooks, LevelReadError, RaidReadError, RaidRef, RaidStateChangeEvent, RaidStatus,
+        ServerHost, WorldEpoch,
+    };
     use std::sync::{Arc, Mutex};
     use sunrise_core::geometry::Vec3;
     use sunrise_gameplay_common::game::execution_role::ExecutionRole;
     use sunrise_sim::mobs::{Mob, raider};
+
+    fn collect_visit<T, E>(
+        enumerate: impl FnOnce(&mut dyn FnMut(T) -> ControlFlow<()>) -> Result<ControlFlow<()>, E>,
+    ) -> Result<Vec<T>, E> {
+        let mut entries = Vec::new();
+        let result = enumerate(&mut |entry| {
+            entries.push(entry);
+            ControlFlow::Continue(())
+        });
+        match result {
+            Ok(flow) => {
+                assert_eq!(flow, ControlFlow::Continue(()));
+                Ok(entries)
+            }
+            Err(error) => {
+                assert!(entries.is_empty());
+                Err(error)
+            }
+        }
+    }
 
     type RaidObservation = (RaidRef, String, Option<RaidStatus>, bool);
     struct RaidObserver(Arc<Mutex<Vec<RaidObservation>>>);
@@ -154,15 +177,21 @@ mod tests {
     #[ignore = "daily"]
     fn raid_handles_read_a_raid_and_stop_it() {
         with_game(|game| {
+            game.server.world_root = game.server.save.0.root.clone();
             game.options.dedicated = Some(Vec::new());
             let level = game.level(game.dim.id()).unwrap();
-            assert!(
-                game.level_raids(level).is_none() || game.level_raids(level).unwrap().is_empty()
+            game.read_raids();
+            assert_eq!(
+                collect_visit(|visit| level.visit_raids(game, visit)),
+                Ok(vec![])
             );
             assert!(game.raid_command_create([10, 70, 10], 3));
             let raid = game.level_raid_at(level, [12, 70, 9]).unwrap();
             assert_eq!(game.level_raid(level, raid.id()), Some(raid));
-            assert_eq!(game.level_raids(level), Some(vec![raid]));
+            assert_eq!(
+                collect_visit(|visit| level.visit_raids(game, visit)),
+                Ok(vec![raid])
+            );
             assert_eq!(raid.level(), level);
             assert_eq!(game.level_raid_at(level, [1000, 70, 10]), None);
             assert_eq!(game.raid_center(raid), Some([10, 70, 10]));
@@ -178,7 +207,10 @@ mod tests {
             assert_eq!(game.raid_status(raid), Some(RaidStatus::Ongoing));
             assert_eq!(game.raid_total_health(raid), Some(0.0));
             assert_eq!(game.raid_bar_progress(raid), Some(0.0));
-            assert_eq!(game.raid_heroes(raid), Some(Vec::new()));
+            assert_eq!(
+                collect_visit(|visit| raid.visit_heroes(game, visit)),
+                Ok(Vec::new())
+            );
 
             raider_mob(game, 41, raid.id(), 1, 12.5);
             raider_mob(game, 42, raid.id(), 2, 7.5);
@@ -186,9 +218,27 @@ mod tests {
             assert_eq!(game.raid_living_health(raid), Some(20.0));
             let first = game.entity(41).unwrap();
             let second = game.entity(42).unwrap();
-            assert_eq!(game.raid_raiders(raid), Some(vec![first, second]));
-            assert_eq!(game.raid_wave_raiders(raid, 2), Some(vec![second]));
-            assert_eq!(game.raid_wave_raiders(raid, 3), Some(Vec::new()));
+            assert_eq!(
+                collect_visit(|visit| raid.visit_raiders(game, visit)),
+                Ok(vec![first, second])
+            );
+            let mut stopped_after_first = Vec::new();
+            assert_eq!(
+                raid.visit_raiders(game, &mut |entity| {
+                    stopped_after_first.push(entity);
+                    ControlFlow::Break(())
+                }),
+                Ok(ControlFlow::Break(()))
+            );
+            assert_eq!(stopped_after_first, [first]);
+            assert_eq!(
+                collect_visit(|visit| raid.visit_wave_raiders(game, 2, visit)),
+                Ok(vec![second])
+            );
+            assert_eq!(
+                collect_visit(|visit| raid.visit_wave_raiders(game, 3, visit)),
+                Ok(Vec::new())
+            );
             let mob = game.mob(first).unwrap();
             assert_eq!(game.mob_raid(mob), Some(raid));
             let other = game.mob(game.entity(43).unwrap()).unwrap();
@@ -215,6 +265,7 @@ mod tests {
     #[ignore = "daily"]
     fn parked_raid_handles_read_and_write_their_own_level() {
         with_game(|game| {
+            game.server.world_root = game.server.save.0.root.clone();
             game.options.dedicated = Some(Vec::new());
             let level = game.level(game.dim.id()).unwrap();
             assert!(game.raid_command_create([10, 70, 10], 3));
@@ -248,7 +299,10 @@ mod tests {
 
             assert_eq!(level.raid(game, raid.id()), Some(raid));
             assert_eq!(level.raid_at(game, [10, 70, 10]), Some(raid));
-            assert_eq!(level.raids(game), Some(vec![raid]));
+            assert_eq!(
+                collect_visit(|visit| level.visit_raids(game, visit)),
+                Ok(vec![raid])
+            );
             assert_eq!(raid.center(game), Some([10, 70, 10]));
             assert_eq!(raid.omen_level(game), Some(3));
             assert_eq!(raid.groups_spawned(game), Some(0));
@@ -260,10 +314,22 @@ mod tests {
             assert_eq!(raid.total_health(game), total);
             assert_eq!(raid.living_health(game), Some(12.0));
             assert_eq!(raid.bar_progress(game), progress);
-            assert_eq!(raid.raiders(game), Some(vec![member]));
-            assert_eq!(raid.wave_raiders(game, 2), Some(vec![member]));
-            assert_eq!(raid.wave_raiders(game, 1), Some(vec![]));
-            assert_eq!(raid.heroes(game), Some(vec![]));
+            assert_eq!(
+                collect_visit(|visit| raid.visit_raiders(game, visit)),
+                Ok(vec![member])
+            );
+            assert_eq!(
+                collect_visit(|visit| raid.visit_wave_raiders(game, 2, visit)),
+                Ok(vec![member])
+            );
+            assert_eq!(
+                collect_visit(|visit| raid.visit_wave_raiders(game, 1, visit)),
+                Ok(vec![])
+            );
+            assert_eq!(
+                collect_visit(|visit| raid.visit_heroes(game, visit)),
+                Ok(vec![])
+            );
             game.native_level_raids_mut(level).unwrap().dirty = false;
             assert!(raid.set_omen_level(game, i32::MAX));
             assert!(game.native_level_raids_mut(level).unwrap().dirty);
@@ -297,14 +363,20 @@ mod tests {
             );
             assert_eq!(raid.omen_level(game), Some(i32::MAX));
             assert_eq!(raid.status(game), Some(RaidStatus::Stopped));
-            assert_eq!(raid.raiders(game), Some(vec![member]));
+            assert_eq!(
+                collect_visit(|visit| raid.visit_raiders(game, visit)),
+                Ok(vec![member])
+            );
             assert!(
                 game.enter_command_level(sunrise_gameplay_common::game::Dim::Nether)
                     .is_some()
             );
             game.server.levels.0.clear();
             assert_eq!(raid.center(game), None);
-            assert_eq!(raid.raiders(game), None);
+            assert_eq!(
+                collect_visit(|visit| raid.visit_raiders(game, visit)),
+                Err(RaidReadError::Stale)
+            );
             assert!(!raid.set_omen_level(game, 1));
             assert!(!raid.stop(game));
         });
@@ -314,6 +386,7 @@ mod tests {
     #[ignore = "daily"]
     fn stale_closed_and_client_raid_handles_read_nothing() {
         with_game(|game| {
+            game.server.world_root = game.server.save.0.root.clone();
             game.options.dedicated = Some(Vec::new());
             let level = game.level(game.dim.id()).unwrap();
             assert!(game.raid_command_create([10, 70, 10], 1));
@@ -324,17 +397,32 @@ mod tests {
             assert!(!game.raid_is_active(stale));
             assert!(!game.raid_stop(stale));
             assert!(!game.raid_set_omen_level(stale, 2));
-            assert_eq!(game.level_raids(later), None);
+            assert_eq!(
+                collect_visit(|visit| later.visit_raids(game, visit)),
+                Err(LevelReadError::Stale)
+            );
             assert_eq!(game.level_raid_at(later, [10, 70, 10]), None);
             let parked = LevelRef::new(level.epoch(), mod_api::DimensionKey::NETHER);
             assert_eq!(game.raid_status(RaidRef::new(parked, raid.id())), None);
-            assert_eq!(game.level_raid(level, raid.id() + 7), None);
+            let missing = RaidRef::new(level, raid.id() + 7);
+            assert_eq!(game.level_raid(level, missing.id()), None);
+            assert_eq!(
+                collect_visit(|visit| missing.visit_heroes(game, visit)),
+                Err(RaidReadError::Stale)
+            );
             assert_eq!(game.raid_status(raid), Some(RaidStatus::Ongoing));
 
             game.options.execution_role = ExecutionRole::Client;
             assert_eq!(game.raid_center(raid), None);
             assert_eq!(game.level_raid_at(level, [10, 70, 10]), None);
-            assert_eq!(game.level_raids(level), None);
+            assert_eq!(
+                collect_visit(|visit| level.visit_raids(game, visit)),
+                Err(LevelReadError::Unavailable)
+            );
+            assert_eq!(
+                collect_visit(|visit| raid.visit_raiders(game, visit)),
+                Err(RaidReadError::Unavailable)
+            );
             assert!(!game.raid_stop(raid));
         });
     }

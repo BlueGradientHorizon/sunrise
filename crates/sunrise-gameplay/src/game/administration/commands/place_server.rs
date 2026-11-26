@@ -12,6 +12,7 @@ impl crate::game::ServerGame<'_> {
         let dimension = self
             .server
             .command_source
+            .as_ref()
             .map_or(self.common.dim, |s| s.dimension);
         for cx in min[0]..=max[0] {
             for cz in min[1]..=max[1] {

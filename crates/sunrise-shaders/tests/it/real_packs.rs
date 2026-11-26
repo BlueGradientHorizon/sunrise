@@ -77,9 +77,9 @@ fn real_packs_read() {
                         };
                         let p = preprocess(&pack, &path, &macros);
                         stages += 1;
-                        lines += p.lines.len();
+                        lines += p.lines().len();
                         diagnostics.extend(p.diagnostics.iter().map(|d| {
-                            let file = &p.files[d.origin.file as usize];
+                            let file = &p.files()[d.origin.file as usize];
                             format!("{file}:{}: {}", d.origin.line, d.message)
                         }));
                     }
@@ -225,10 +225,11 @@ fn real_packs_read() {
                     index: "uint(@)".into(),
                 }),
                 interface_limits: RADV,
+                mod_programs: Vec::new(),
             };
                 let mut macros = macros.clone();
                 if std::env::var_os("SUBGROUPS").is_some() {
-                    macros.define("MC_GL_KHR_shader_subgroup_arithmetic", "");
+                    macros.define_subgroups();
                 }
                 for note in &feature_notes {
                     println!("    {note}");

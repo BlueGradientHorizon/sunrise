@@ -65,7 +65,6 @@ pub(crate) mod item_part_tests {
                 game.carried = Some(ItemStack::new("minecraft:stick", 1));
                 set_part_script(PartScript {
                     cancel_carried: true,
-                    handled: true,
                     set_carried: Some(None),
                     set_clicked: Some(Some(("minecraft:diamond", 2))),
                     ..PartScript::default()
@@ -139,7 +138,6 @@ pub(crate) mod item_part_tests {
                 game.carried = Some(ItemStack::new("minecraft:stick", 1));
                 set_part_script(PartScript {
                     cancel_carried: true,
-                    handled: true,
                     set_carried: Some(None),
                     set_clicked: Some(Some(("minecraft:diamond", 1))),
                     ..PartScript::default()
@@ -171,7 +169,6 @@ pub(crate) mod item_part_tests {
                 game.carried = Some(ItemStack::new("minecraft:stick", 1));
                 set_part_script(PartScript {
                     cancel_carried: true,
-                    handled: true,
                     set_clicked: Some(None),
                     ..PartScript::default()
                 });
@@ -215,7 +212,6 @@ pub(crate) mod item_part_tests {
                 game.carried = Some(ItemStack::new("minecraft:stick", 1));
                 set_part_script(PartScript {
                     cancel_carried: true,
-                    handled: true,
                     set_carried: Some(None),
                     set_clicked: Some(Some(("minecraft:diamond", 4))),
                     ..PartScript::default()
@@ -260,7 +256,6 @@ pub(crate) mod item_part_tests {
                 game.carried = Some(ItemStack::new("minecraft:stick", 1));
                 set_part_script(PartScript {
                     cancel_carried: true,
-                    handled: true,
                     set_carried: Some(None),
                     set_clicked: Some(Some(("minecraft:emerald", 2))),
                     ..PartScript::default()
@@ -291,7 +286,6 @@ pub(crate) mod item_part_tests {
                 game.carried = Some(ItemStack::new("minecraft:stick", 1));
                 set_part_script(PartScript {
                     cancel_carried: true,
-                    handled: true,
                     ..PartScript::default()
                 });
                 assert!(game.click_open_inventory(Some(Creative::DISPLAY), 0, Input::Pickup));

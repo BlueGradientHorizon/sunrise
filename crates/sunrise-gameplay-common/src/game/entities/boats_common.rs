@@ -178,8 +178,7 @@ impl crate::game::CommonGame<'_> {
                 return Some(());
             }
             // The water's shape, through the shared fluid shape cache.
-            sunrise_sim::entities::water_clip(&self.loop_context, &self.world, fluids, from, to, p)
-                .then_some(())
+            sunrise_sim::entities::water_clip(&self.world, fluids, from, to, p).then_some(())
         });
         if matches!(hit, Ok(Some(()))) {
             0.0
@@ -513,12 +512,13 @@ pub trait BoatsCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
             border: Some((self.border.geometry(), [b.position.x, b.position.z])),
         };
         let movement = b.take_movement();
-        let mut gate = sunrise_sim::move_gate::armed_with(
+        let mut gate = sunrise_sim::move_gate::armed_with_controlled(
             &self.loop_context,
             b.id,
             || std::borrow::Cow::Owned(b.entity_type()),
             sunrise_world::entity_move::MoverType::SelfMovement,
             movement,
+            controlled,
         );
         let movement = gate.delta();
         if let Ok(moved) = sunrise_sim::move_gate::entities_resolve(
@@ -625,11 +625,13 @@ pub trait BoatsCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
             &boat.ground,
             &mut velocity,
         );
+        let (writes, hurts) = split_boat_contact_hurts(writes);
         boat.apply_step_writes(velocity, writes);
+        self.side_queue_boat_contact_hurts(boat.id, hurts);
     }
 
     /// The second `applyEffectsFromBlocks` of `AbstractBoat.tick` uses the movement left by the first.
-    fn boat_second_step(&mut self, i: usize) {
+    fn boat_second_step(&mut self, i: usize) -> bool {
         let b = &self.boats[i];
         if b.ground.on_ground {
             let mut velocity = b.velocity;
@@ -640,9 +642,15 @@ pub trait BoatsCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
                 b.ground,
             );
             let writes = self.body_step_on((id, &kind), footprint, &ground, &mut velocity);
+            let (writes, hurts) = split_boat_contact_hurts(writes);
             self.boats
                 .update(i, |b| b.apply_step_writes(velocity, writes));
+            self.side_queue_boat_contact_hurts(id, hurts);
+            // The stored row is current here, so the hurt applies at once; a
+            // breaking hit stops the rest of the tick.
+            return self.side_apply_boat_contact_hurts(id);
         }
+        false
     }
 
     /// The boat `BoatItem.use` would place for `stack` (id = 0; server caller assigns its entity id).
@@ -1427,3 +1435,26 @@ pub trait BoatStatusGameExt<'g>: crate::game::SideGame<'g> {
     }
 }
 impl<'g, G: crate::game::SideGame<'g>> BoatStatusGameExt<'g> for G {}
+
+fn split_boat_contact_hurts(
+    writes: Vec<mod_api::EntityWrite>,
+) -> (Vec<mod_api::EntityWrite>, Vec<(&'static str, f32)>) {
+    let mut rest = Vec::with_capacity(writes.len());
+    let mut hurts = Vec::new();
+    for write in writes {
+        match write {
+            mod_api::EntityWrite::Hurt {
+                damage_type,
+                amount,
+            } => {
+                if let Some(name) =
+                    mod_api::__private::parts_installation::damage_type_name(damage_type)
+                {
+                    hurts.push((name, amount));
+                }
+            }
+            other => rest.push(other),
+        }
+    }
+    (rest, hurts)
+}

@@ -831,13 +831,32 @@ impl crate::game::ClientGame<'_> {
         let Some(r) = self.client.remote.as_ref() else {
             return;
         };
-        let record_cb = |pkt: sunrise_protocol::packets::play::Clientbound| {
-            let encoded = pkt.encode();
+        use sunrise_protocol::packets::play::Clientbound;
+        let record_cb = |packet: Clientbound| {
+            let encoded = match packet.try_encode() {
+                Ok(encoded) => encoded,
+                Err(error) => {
+                    if let Clientbound::LevelChunkWithLight(chunk) = &packet {
+                        log::warn!(
+                            "Studio Recorder: could not encode snapshot chunk ({}, {}): {error}",
+                            chunk.x,
+                            chunk.z
+                        );
+                    } else {
+                        log::warn!(
+                            "Studio Recorder: could not encode snapshot {}: {error}",
+                            packet.name()
+                        );
+                    }
+                    return false;
+                }
+            };
             let mut reader = sunrise_protocol::buf::Reader::new(&encoded);
-            if let Ok(id) = reader.varint() {
-                let payload = reader.rest();
-                recorder.record_packet_at(0, id, payload);
-            }
+            let Ok(id) = reader.varint() else {
+                return false;
+            };
+            recorder.record_packet_at(0, id, reader.rest());
+            true
         };
 
         // 1. C::Login packet baseline
@@ -933,10 +952,7 @@ impl crate::game::ClientGame<'_> {
         let mut count = 0;
         for chunk in self.common.world.chunks.values() {
             let level_chunk = encoder.encode(chunk, &self.common.world.block_entities);
-            record_cb(
-                sunrise_protocol::packets::play::Clientbound::LevelChunkWithLight(level_chunk),
-            );
-            count += 1;
+            count += usize::from(record_cb(Clientbound::LevelChunkWithLight(level_chunk)));
         }
         log::info!(
             "Studio Recorder: Dumped initial world snapshot ({count} chunks) at timestamp 0ms"

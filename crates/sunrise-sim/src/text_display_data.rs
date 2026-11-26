@@ -1,4 +1,6 @@
 //! Portable `Display` / `TextDisplay` synced data encoding and transformation decoding (26.3).
+pub mod resident;
+
 use crate::save::{float, number};
 use sunrise_core::nbt::Tag;
 use sunrise_protocol::entity_data::{Value, serializer};

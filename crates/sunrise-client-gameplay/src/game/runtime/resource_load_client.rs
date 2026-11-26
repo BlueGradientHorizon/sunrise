@@ -1,5 +1,6 @@
 use super::*;
 use std::path::Path;
+use std::sync::atomic::{AtomicU32, Ordering};
 use sunrise_assets::{item_model::ItemModels, resource_source::ResourceRoot};
 use sunrise_world::{
     block_render::FaceVisibility, item_defaults::ItemData, registry::BlockRegistry,
@@ -81,12 +82,18 @@ impl CorePresentation for ClientCorePresentation {
         resources: &ResourceRoot,
         assets: &Assets,
         early: &mut Self::Early,
+        emissive_sprites: &[mod_api::Answered<mod_api::EmissiveSpriteRegistration>],
     ) -> std::result::Result<Self::Visual, String> {
         startup::time("core.block_models_sprites", || {
             if let Some(parsed) = early.models.take() {
-                RenderAssets::load_with_models(resources, assets, parsed)
+                RenderAssets::load_with_models_and_emissive(
+                    resources,
+                    assets,
+                    parsed,
+                    emissive_sprites,
+                )
             } else {
-                RenderAssets::load(resources, assets)
+                RenderAssets::load_with_emissive(resources, assets, emissive_sprites)
             }
         })
         .map_err(|e| e.to_string())
@@ -201,6 +208,44 @@ pub fn load_resources_for_mods(
     clear_pack_selection: &mut dyn FnMut() -> Result<()>,
     mod_sources: &mods::ModsState,
 ) -> Result<Loaded> {
+    let default_limit = Arc::new(AtomicU32::new(sunrise_client::hud::MAX_ATLAS_SIZE));
+    load_resources_for_mods_with_limit(
+        roots,
+        additional_data,
+        launch_world,
+        vanilla_root,
+        settings,
+        started,
+        menu,
+        role,
+        progress,
+        &default_limit,
+        &mut |ui, root, _| publish(ui, root),
+        clear_pack_selection,
+        mod_sources,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn load_resources_for_mods_with_limit(
+    roots: packs::PackRoots,
+    additional_data: Vec<Arc<sunrise_level::datapack::DataPack>>,
+    launch_world: Option<&str>,
+    vanilla_root: &std::path::Path,
+    settings: &Settings,
+    started: Instant,
+    menu: bool,
+    role: impl Into<mods::LoadRole>,
+    progress: &Progress,
+    max_atlas_size: &Arc<AtomicU32>,
+    publish: &mut dyn FnMut(
+        UiPublishArg,
+        &std::path::Path,
+        &sunrise_assets::resource_source::ResourceSource,
+    ),
+    clear_pack_selection: &mut dyn FnMut() -> Result<()>,
+    mod_sources: &mods::ModsState,
+) -> Result<Loaded> {
     let load_role: mods::LoadRole = role.into();
     let role = load_role.execution;
     let packs::PackRoots {
@@ -224,10 +269,13 @@ pub fn load_resources_for_mods(
     let root = base.prepared().to_path_buf();
     let is_client = role.is_client();
 
-    let texture_atlases = if is_client {
-        client_reload::collect_texture_atlases()
+    let (texture_atlases, emissive_sprites) = if is_client {
+        (
+            client_reload::collect_texture_atlases(),
+            client_reload::collect_emissive_sprites(),
+        )
     } else {
-        Vec::new()
+        (Vec::new(), Vec::new())
     };
     let stage = |root| {
         if is_client {
@@ -251,7 +299,8 @@ pub fn load_resources_for_mods(
     // loads; the synchronous launch instead carries it in `Loaded`.
     let load_ui = |source: &sunrise_assets::resource_source::ResourceSource| {
         let _step = startup::step("ui.load");
-        UiResources::load(source, vanilla_root).map(|ui| {
+        let limit = max_atlas_size.load(Ordering::Relaxed);
+        UiResources::load_with_limit(source, vanilla_root, limit).map(|ui| {
             ui.with_splashes(
                 source,
                 vanilla_root,
@@ -264,13 +313,15 @@ pub fn load_resources_for_mods(
     // either clears the client selection, not required mod resources (NeoForge's
     // `Minecraft.rollbackResourcePacks`).
     let parallel = threads > 1;
-    let mut offer = |ui: UiResources, root: &std::path::Path| {
+    let mut offer = |ui: UiResources,
+                     root: &std::path::Path,
+                     source: &sunrise_assets::resource_source::ResourceSource| {
         if menu {
             log::info!(
                 "Sunrise: UI bundle ready after {} ms",
                 started.elapsed().as_millis()
             );
-            publish(ui, root);
+            publish(ui, root, source);
             None
         } else {
             Some(ui)
@@ -281,9 +332,13 @@ pub fn load_resources_for_mods(
         mod_sources,
         &inventory,
     )?;
+    // The generation's settings, captured once before its reload listeners register: they and
+    // the item data read this capture, never the files again.
+    let captured = mods::item_data_load::capture_load_settings(&root, role, load_role.owning)?;
     let ((core, client), resolved, client_load) = loop {
-        let listeners = is_client
-            .then(|| client_reload::register_startup_client_reload_listeners(Some(settings)));
+        let listeners = is_client.then(|| {
+            client_reload::register_startup_client_reload_listeners(Some(settings), &captured)
+        });
         let (client_ui, core) = std::thread::scope(|scope| {
             let core = |_unit: &()| {
                 // A failed pack starts core again from the game's own
@@ -297,7 +352,9 @@ pub fn load_resources_for_mods(
                                 &resolved,
                                 &additional_data,
                                 &conditions,
+                                &emissive_sprites,
                                 load_role,
+                                captured.clone(),
                                 parallel,
                                 progress,
                                 early,
@@ -308,7 +365,9 @@ pub fn load_resources_for_mods(
                                 &resolved,
                                 &additional_data,
                                 &conditions,
+                                &emissive_sprites,
                                 load_role,
+                                captured.clone(),
                                 parallel,
                                 progress,
                                 early,
@@ -331,7 +390,7 @@ pub fn load_resources_for_mods(
             let core = mod_api::testing::inherit_mods(core);
             let core = Step::spawn(scope, parallel, "core", move || core(&()));
             let ui = if is_client {
-                load_ui(resolved.source()).map(|ui| offer(ui, &root))
+                load_ui(resolved.source()).map(|ui| offer(ui, &root, resolved.source()))
             } else {
                 Ok(None)
             };
@@ -391,6 +450,8 @@ pub fn load_resources_for_mods(
         &root,
         &resolved,
         &additional_data,
+        &conditions,
+        role,
         launch_world,
         started,
     )?;

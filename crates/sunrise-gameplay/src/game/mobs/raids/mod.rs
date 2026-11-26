@@ -13,7 +13,7 @@ use sunrise_core::{
 use sunrise_gameplay::village_siege::{SiegeLevel, VillageSiege};
 use sunrise_gameplay_common::game::creatures::Finalized;
 use sunrise_level::{
-    effects::{EffectInstance, OmenTick},
+    effects::{EffectInstance, OmenTick, TickingEffect},
     random_source,
 };
 use sunrise_sim::mobs::villager as mobs_villager;
@@ -45,7 +45,6 @@ pub struct Raiding {
     pub(in crate::game) unseeded: Option<Vec<(i32, usize)>>,
     /// The last raider hurt each raid's bar has seen (`Raider.hurtServer`).
     pub(in crate::game) bar_hurts: HashMap<i32, u64>,
-    pub attributes: Option<std::sync::Arc<GameplayAttributes>>,
     /// Beds near each raid's centre, rescanned now and then (`HOME` points
     /// of interest for `RaiderMoveThroughVillageGoal`).
     pub(in crate::game) homes: HashMap<i32, (i64, std::sync::Arc<Vec<[i32; 3]>>)>,
@@ -147,59 +146,77 @@ pub(in crate::game) struct PatrolCx<'a, 'g, 'h> {
     pub(in crate::game) can_spawn: &'h dyn Fn(&crate::game::ServerGame<'_>, [i32; 3]) -> bool,
 }
 impl SpawnLevel for PatrolCx<'_, '_, '_> {
+    #[inline]
     fn within_world_border(&self, x: i32, z: i32) -> bool {
         self.level.within_world_border(x, z)
     }
+    #[inline]
     fn state(&self, x: i32, y: i32, z: i32) -> sunrise_world::registry::BlockStateId {
         self.level.state(x, y, z)
     }
+    #[inline]
     fn facts(&self) -> &sunrise_items::blocks::BlockFacts {
         self.level.facts()
     }
+    #[inline]
     fn mob_data(&self) -> &sunrise_sim::mobs::data::MobData {
         self.level.mob_data()
     }
+    #[inline]
     fn block_tag(&self, tag: &str, block: &str) -> bool {
         self.level.block_tag(tag, block)
     }
+    #[inline]
     fn biome_tag(&self, tag: &str, x: i32, y: i32, z: i32) -> bool {
         self.level.biome_tag(tag, x, y, z)
     }
+    #[inline]
     fn sky_light(&self, x: i32, y: i32, z: i32) -> i32 {
         self.level.sky_light(x, y, z)
     }
+    #[inline]
     fn block_light(&self, x: i32, y: i32, z: i32) -> i32 {
         self.level.block_light(x, y, z)
     }
+    #[inline]
     fn sky_darken(&self) -> i32 {
         SpawnLevel::sky_darken(&self.level)
     }
+    #[inline]
     fn thundering(&self) -> bool {
         self.level.thundering()
     }
+    #[inline]
     fn sea_level(&self) -> i32 {
         self.level.sea_level()
     }
+    #[inline]
     fn world_surface(&self, x: i32, z: i32) -> i32 {
         self.level.world_surface(x, z)
     }
+    #[inline]
     fn peaceful(&self) -> bool {
         self.level.peaceful()
     }
+    #[inline]
     fn dimension_type(&self) -> &sunrise_world::dimension_type::DimensionFacts {
         self.level.dimension_type()
     }
+    #[inline]
     fn surface_slime_chance(&self, x: i32, y: i32, z: i32) -> f32 {
         self.level.surface_slime_chance(x, y, z)
     }
+    #[inline]
     fn world_seed(&self) -> i64 {
         self.level.world_seed()
     }
+    #[inline]
     fn player_near(&self, x: f64, y: f64, z: f64, distance: f64) -> bool {
         self.level.player_near(x, y, z, distance)
     }
 }
 impl PatrolLevel for PatrolCx<'_, '_, '_> {
+    #[inline]
     fn spawn_patrols(&self) -> bool {
         self.level
             .game
@@ -207,34 +224,41 @@ impl PatrolLevel for PatrolCx<'_, '_, '_> {
             .rules
             .bool_at(sunrise_game_data::gamerules::vanilla::SPAWN_PATROLS)
     }
+    #[inline]
     fn bright_outside(&self) -> bool {
         !self.level.game.dimension_type().has_fixed_time
             && WeatherGameExt::sky_darken(self.level.game) < 4
     }
     /// `PatrolSpawner.tick` picks from `level.players()`: the local player
     /// and every guest in the level.
+    #[inline]
     fn patrol_players(&self) -> Vec<([i32; 3], bool)> {
         self.level
-            .players
+            .players()
             .iter()
             .map(|p| (block_of(p.position), p.spectator))
             .collect()
     }
+    #[inline]
     fn sections_to_village(&self, pos: [i32; 3]) -> i32 {
         sections_to_village(&self.centers, section(pos))
     }
+    #[inline]
     fn has_chunk(&self, cx: i32, cz: i32) -> bool {
         self.level.game.world.chunks.contains_key(&(cx, cz))
     }
+    #[inline]
     fn can_pillager_patrol_spawn(&self, pos: [i32; 3]) -> bool {
         (self.can_spawn)(self.level.game, pos)
     }
+    #[inline]
     fn effective_difficulty(&self, pos: [i32; 3]) -> f32 {
         self.level
             .game
             .local_difficulty([f64::from(pos[0]), f64::from(pos[1]), f64::from(pos[2])])
             .effective
     }
+    #[inline]
     fn motion_blocking_no_leaves(&self, x: i32, z: i32) -> i32 {
         self.level
             .heightmap(Heightmap::MotionBlockingNoLeaves, x, z)
@@ -394,15 +418,16 @@ impl crate::game::ServerGame<'_> {
             }
         }
     }
+    /// The world's attributes (`WorldTables::gameplay`); a game with no world has none.
     pub(in crate::game::server_side) fn gameplay_attributes(
-        &mut self,
+        &self,
     ) -> std::sync::Arc<GameplayAttributes> {
-        if self.server.raiding.0.attributes.is_none() {
-            self.server.raiding.0.attributes = Some(std::sync::Arc::new(GameplayAttributes::load(
-                &self.common.options.resources,
-            )));
-        }
-        self.server.raiding.0.attributes.clone().unwrap_or_default()
+        self.server
+            .world_tables
+            .0
+            .as_ref()
+            .map(|tables| tables.gameplay.clone())
+            .unwrap_or_default()
     }
     /// A boolean gameplay attribute at a position (dimension, biome, then
     /// the timelines at the overworld clock).
@@ -437,7 +462,7 @@ impl crate::game::ServerGame<'_> {
     /// `BadOmenMobEffect` and `RaidOmenMobEffect.applyEffectTick` for the
     /// player's effect tick: Bad Omen inside a village becomes Raid Omen,
     /// whose last tick starts or extends a raid where it began.
-    pub(in crate::game) fn omen_tick(&mut self, e: &EffectInstance) -> OmenTick {
+    pub(in crate::game) fn omen_tick(&mut self, e: TickingEffect) -> OmenTick {
         if self.common.spectator() || self.common.player.is_none() {
             return OmenTick::Continue;
         }
@@ -547,10 +572,19 @@ impl crate::game::ServerGame<'_> {
             .unwrap_or(0)
     }
     pub(in crate::game::server_side) fn raid_glow(&mut self, id: i32) {
-        for m in &mut self.common.mobs {
-            if raider::state(m).is_some_and(|s| s.raid_id == Some(id)) {
-                m.add_effect("glowing", 1000, 1);
-            }
+        let targets: Vec<u32> = self
+            .common
+            .mobs
+            .iter()
+            .filter(|m| raider::state(m).is_some_and(|s| s.raid_id == Some(id)))
+            .map(|m| m.id)
+            .collect();
+        for mob_id in targets {
+            self.add_mob_effect(
+                mob_id,
+                sunrise_level::effects::EffectInstance::new("glowing", 1000, 1),
+                None,
+            );
         }
     }
     /// The `/raid check` summary line.
@@ -758,7 +792,7 @@ impl crate::game::ServerGame<'_> {
                 let mut effect =
                     EffectInstance::new("hero_of_the_village", raid::HERO_DURATION, amplifier);
                 effect.visible = false;
-                g.apply_player_effect(effect);
+                g.add_player_effect(effect);
                 g.award_custom_stat("raid_win", 1);
                 g.trigger_player("minecraft:hero_of_the_village");
             }),
@@ -941,12 +975,12 @@ impl crate::game::ServerGame<'_> {
         } else {
             sunrise_sim::mobs::spawn_rules::Reason::Event
         };
-        if self.finalize_with(&mut mob, spawn_reason, None) == Finalized::Cancelled {
+        if !self.finalize_with(&mut mob, spawn_reason, None) {
             return None;
         }
         let id = mob.id;
         self.common.mobs.push(mob);
-        self.native_mobs_joined(self.common.mobs.len() - 1, false);
+        self.admit_new_mobs(self.common.mobs.len() - 1);
         Some(id)
     }
 
@@ -1344,14 +1378,7 @@ impl crate::game::ServerGame<'_> {
         let mut effect =
             sunrise_level::effects::EffectInstance::new("bad_omen", 120_000, i32::from(amplifier));
         effect.visible = false;
-        let new = self.common.potions.effects.get("bad_omen").is_none();
-        self.apply_player_effect(effect);
-        // MobEffect.onEffectAdded: Bad Omen's sound when it is new, at the
-        // player's feet.
-        if new && let Some(p) = self.common.player.as_ref() {
-            let at = [p.position.x, p.position.y, p.position.z];
-            self.server_play_sound("minecraft:event.mob_effect.bad_omen", at, 1.0, 1.0);
-        }
+        self.add_player_effect(effect);
     }
     /// The Raid Omen sound when the effect is first added
     /// (`MobEffect.onEffectAdded`: at the player's feet).
@@ -1548,6 +1575,21 @@ impl crate::game::ServerGame<'_> {
     pub fn is_village(centers: &HashSet<(i32, i32, i32)>, pos: [i32; 3]) -> bool {
         sunrise_gameplay::village_siege::is_village(centers, pos)
     }
+    pub fn level_is_village(
+        &self,
+        level: mod_api::LevelRef,
+        pos: [i32; 3],
+    ) -> Result<bool, mod_api::LevelReadError> {
+        let world = self.native_level_world_result(level)?;
+        let [x, y, z] = pos;
+        if level.dimension() != self.common.dim.key()
+            || !world.loaded(x, z)
+            || !world.shape.contains_y(y)
+        {
+            return Err(mod_api::LevelReadError::Unavailable);
+        }
+        Ok(Self::is_village(&self.village_centers(), pos))
+    }
 }
 
 impl SiegeLevel for ServerGame<'_> {
@@ -1712,3 +1754,5 @@ use sunrise_gameplay_common::game::GameGameExt1 as _;
 use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
 
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;

@@ -4,8 +4,7 @@ mod biome_tint_tests {
 
     use crate::game::server_side::native_entity_refs::tests::with_client_game;
     use mod_api::{
-        Authority, BiomeColorsEvent, ClientHost, ColorResolver, Hooks, ModEntry,
-        prelude::BlockStatesHost,
+        BiomeColorsEvent, ClientHost, ColorResolver, Hooks, ModEntry, prelude::BlockStatesHost,
     };
     use std::sync::Arc;
     use sunrise_level::chunk::Chunk;
@@ -35,7 +34,7 @@ mod biome_tint_tests {
             with_client_game(|game| {
                 // The replay fixture opens a client level without connecting to a server.
                 game.init_remote_for_replay().unwrap();
-                game.native_lifecycle.begin_open(Authority::RemoteClient);
+                game.native_lifecycle.begin_open(None);
 
                 let plains_id = game.res.biomes().id("minecraft:plains");
                 let mut chunk = Chunk::empty(0, 0);

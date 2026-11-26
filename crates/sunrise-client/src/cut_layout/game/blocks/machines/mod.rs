@@ -1124,6 +1124,7 @@ pub(crate) mod machines_chest_cat_tests;
 pub(crate) mod can_take_tests {
     use super::*;
     use sunrise_gameplay::game::game_tests::tests::server_game;
+    use sunrise_gameplay::game::machines::{TakeAsk, TakeAttempt};
     use sunrise_level::containers::ChiseledBookshelf;
 
     /// `ChiseledBookShelfBlockEntity.canTakeItem`: a hopper takes a book only
@@ -1168,9 +1169,17 @@ pub(crate) mod can_take_tests {
         let shelf_view = game.containers().view(shelf_pos, false).expect("shelf");
         let full_hopper = game.containers().view(hopper_pos, false).expect("hopper");
         assert!(
-            !game
-                .containers()
-                .can_take_into(&shelf_view, 0, &book, Direction::Down, &full_hopper),
+            !game.containers().can_take_into(
+                &shelf_view,
+                0,
+                &book,
+                Direction::Down,
+                &full_hopper,
+                TakeAsk {
+                    game: &game,
+                    attempt: &mut TakeAttempt::default(),
+                },
+            ),
             "a full hopper takes no book"
         );
         game.world
@@ -1178,8 +1187,17 @@ pub(crate) mod can_take_tests {
             .insert(hopper_pos, BlockEntity::Chest(vec![None; 5]));
         let empty_hopper = game.containers().view(hopper_pos, false).expect("hopper");
         assert!(
-            game.containers()
-                .can_take_into(&shelf_view, 0, &book, Direction::Down, &empty_hopper),
+            game.containers().can_take_into(
+                &shelf_view,
+                0,
+                &book,
+                Direction::Down,
+                &empty_hopper,
+                TakeAsk {
+                    game: &game,
+                    attempt: &mut TakeAttempt::default(),
+                },
+            ),
             "an empty hopper takes the book"
         );
     }

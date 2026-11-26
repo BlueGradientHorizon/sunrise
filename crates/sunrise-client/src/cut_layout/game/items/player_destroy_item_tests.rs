@@ -205,7 +205,7 @@ fn mining_reports_after_the_drop_hook(
     tool.damage = 249;
     game.common.inventory[game.common.selected] = Some(tool);
     observer.0.lock().unwrap().mining_order.clear();
-    assert!(game.player_break_block(pos).unwrap());
+    assert!(game.player_break_block(pos, None).unwrap());
     assert!(game.held().is_none());
     assert_ne!(game.world.block(pos[0], pos[1], pos[2]), stone);
     assert!(

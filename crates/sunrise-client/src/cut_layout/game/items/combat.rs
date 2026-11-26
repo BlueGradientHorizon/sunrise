@@ -81,6 +81,7 @@ pub(crate) mod guest_hit_tests {
                         kind: DamageKind::Sting,
                         attacker: Some(Who::Mob(5)),
                         from: Some(from),
+                        direct: None,
                         attacker_species: Some(Species::Bee),
                     },
                 },

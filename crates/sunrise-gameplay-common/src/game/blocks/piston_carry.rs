@@ -173,7 +173,11 @@ impl GameLevel<'_> {
 impl crate::game::CommonGame<'_> {
     /// `PistonMovingBlockEntity.saveAdditional` for a chunk save, with the
     /// block entity the piston carries under [`CARRIED_KEY`].
-    pub fn saved_moving_piston(&self, pos: BlockPos, piston: &MovingPiston) -> Tag {
+    pub fn saved_moving_piston(
+        &self,
+        pos: BlockPos,
+        piston: &MovingPiston,
+    ) -> Result<Tag, sunrise_mod_runtime::attachments::AttachmentEncodeError> {
         let mut tag = self.moving_piston_to_nbt(pos, piston);
         if let Some(Carried {
             entity,
@@ -194,7 +198,11 @@ impl crate::game::CommonGame<'_> {
                     "sunrise:position_data".into(),
                     Tag::Compound(position_data.clone()),
                 );
-                match attachments.as_ref().map(Attachments::to_nbt) {
+                match attachments
+                    .as_ref()
+                    .map(Attachments::try_to_nbt)
+                    .transpose()?
+                {
                     Some(data) if !data.is_empty() => {
                         fields.insert(ATTACHMENTS_KEY.into(), Tag::Compound(data));
                     }
@@ -205,7 +213,7 @@ impl crate::game::CommonGame<'_> {
             }
             map.insert(CARRIED_KEY.into(), carried);
         }
-        tag
+        Ok(tag)
     }
     /// `PistonMovingBlockEntity.loadAdditional`: the moving piston at `pos`
     /// as a new ticker, holding again the block entity its saved tag in

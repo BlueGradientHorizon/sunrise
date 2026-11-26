@@ -135,6 +135,15 @@ impl MemorySchedule {
     }
 }
 
+/// What an iteration of the game loop did, waiting for its wall time: the interval from its
+/// start to the next iteration's, which only that iteration knows. It books the frame with it,
+/// so a slow frame is recorded with its own work, never with the frame after it.
+pub(in crate::game) struct UnbookedFrame {
+    pub(in crate::game) cpu_ms: f32,
+    pub(in crate::game) gpu_ms: Option<f32>,
+    pub(in crate::game) spans: Vec<Span>,
+}
+
 /// The game's capture state: the health history, the running capture and who is waiting on it.
 pub(in crate::game) struct Profile {
     pub(in crate::game) link: ServerLink,
@@ -162,6 +171,8 @@ pub(in crate::game) struct Profile {
     pub(in crate::game) env_tried: bool,
     /// What the running capture asks the renderer to time.
     pub(in crate::game) gpu: GpuSwitch,
+    /// What the last iteration did, when it has a renderer to time it.
+    pub(in crate::game) unbooked: Option<UnbookedFrame>,
     /// This client's capture on the server it is connected to.
     pub(in crate::game) server_link: Link,
     /// `profile` waits for the server's answer to its start, or for its file after a stop.
@@ -195,6 +206,7 @@ impl Profile {
             hardware_warmed: false,
             env_tried: false,
             gpu: GpuSwitch::Off,
+            unbooked: None,
             server_link: Link::default(),
             server_reply: None,
             server_joined: false,
@@ -716,11 +728,7 @@ impl ClientGame<'_> {
         gpu_readout(self.client.profile.gpu, self.client.renderer.0.as_deref())
     }
 
-    pub(in crate::game::client_side) fn client_syntax_failure(
-        &mut self,
-        e: &CommandError,
-        command: &str,
-    ) {
+    fn profiler_syntax_failure(&mut self, e: &CommandError, command: &str) {
         self.client_system_message(
             sunrise_gameplay_common::game::commands_common::formatted_command_failure(
                 e.message.clone(),
@@ -757,7 +765,7 @@ impl ClientGame<'_> {
                     _ => None,
                 },
             ),
-            Err(e) => return self.client_syntax_failure(&e, &line),
+            Err(e) => return self.profiler_syntax_failure(&e, &line),
         };
         if let Some(job) = match literals.get(1).map(String::as_str) {
             Some("open") => Some(Job::Open),
@@ -1057,7 +1065,8 @@ impl ClientGame<'_> {
             + self.common.resident_entities.general.rows.len()
     }
 
-    /// One rendered frame: `wall_ms` long, `cpu_ms` of it the CPU's own work.
+    /// One iteration of the game loop, rendered or not: `wall_ms` long, `cpu_ms` of it the
+    /// CPU's own work, ending at `t`.
     pub(in crate::game::client_side) fn record_perf_frame(
         &mut self,
         wall_ms: f32,

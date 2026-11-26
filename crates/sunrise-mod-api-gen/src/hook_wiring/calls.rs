@@ -13,7 +13,22 @@ impl<'ast> Callee<'ast> {
     pub(super) fn from_expr(expr: &'ast Expr) -> Option<Self> {
         match expr {
             Expr::MethodCall(call) => Some(Self::Method(&call.method)),
-            Expr::Call(call) => Some(Self::Function(function_path(&call.func)?)),
+            Expr::Call(call) => {
+                let Expr::Path(path) = ungroup(&call.func) else {
+                    return None;
+                };
+                if let Some(qualified) = &path.qself
+                    && (qualified.as_token.is_none()
+                        || qualified.position + 1 != path.path.segments.len()
+                        || !matches!(&*qualified.ty, syn::Type::Path(ty) if ty.path.is_ident("Self"))
+                        || !call.args.first().is_some_and(|arg| {
+                            matches!(ungroup(arg), Expr::Path(expr) if expr.path.is_ident("self"))
+                        }))
+                {
+                    return None;
+                }
+                Some(Self::Function(&path.path))
+            }
             _ => None,
         }
     }
@@ -350,25 +365,6 @@ impl<'ast, F: FnMut(&syn::Path, usize, &[&UseTree]) -> bool> Visit<'ast> for Cal
                 }
                 Expr::MethodCall(call) => {
                     self.record(expr);
-                    // LevelControl::hear invokes the dispatch with the current control marked.
-                    if call.method == "hear"
-                        && let Some(receiver) = function_path(&call.receiver)
-                        && receiver.segments.len() == 5
-                        && receiver.segments.first().is_some_and(|root| {
-                            root.ident == "crate" || root.ident == "sunrise_gameplay_common"
-                        })
-                        && receiver
-                            .segments
-                            .iter()
-                            .skip(1)
-                            .take(3)
-                            .map(|segment| &segment.ident)
-                            .zip(["game", "level_control_hooks", "LevelControl"])
-                            .all(|(ident, segment)| ident == segment)
-                        && let Some(closure) = call.args.first().and_then(|arg| self.closure(arg))
-                    {
-                        self.invoke(closure);
-                    }
                     // The effect dispatcher filters its parts by cadence. Creating that iterator
                     // does not ask the parts; advancing it runs the predicate.
                     if call.method == "next" {
@@ -469,6 +465,18 @@ impl<'b, 'i, 's> Routes<'b, 'i, 's> {
     pub(super) fn module(&mut self, package: &str, module: &str) -> Result<usize, String> {
         let path: Vec<_> = module.split("::").map(str::to_owned).collect();
         self.index.module(package, &path)
+    }
+
+    pub(super) fn bridge_module(
+        &mut self,
+        package: &str,
+        name: &str,
+    ) -> Result<(String, usize), String> {
+        let root = self.index.module(package, &[])?;
+        match self.index.resolve_path(root, &[name.to_owned()])? {
+            Found::Module(scope) => Ok((self.index.modules[scope].krate.clone(), scope)),
+            _ => Err(format!("{package}::{name} does not resolve to a module")),
+        }
     }
 
     pub(super) fn functions(&self, scope: usize, name: &str) -> Vec<Block> {

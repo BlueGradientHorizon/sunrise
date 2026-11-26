@@ -1,6 +1,7 @@
 //! Common enchanting-table bookshelf power queries (`EnchantmentMenu.slotsChanged`).
 use super::tables::BlockProviderQuery;
 use crate::game::native_hooks::enchant_power_bonus::GameHooks as _;
+use crate::game::native_hooks::is_valid_book_shelf::GameHooks as _;
 use mod_api::LevelRef;
 use sunrise_core::position::BlockPos;
 use sunrise_sim::stations::bookshelf_offsets;
@@ -11,19 +12,34 @@ pub trait BookshelvesCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     fn count_bookshelves(&self, pos: [i32; 3]) -> i32 {
         let table = BlockPos::new(pos[0], pos[1], pos[2]);
         let level = self.native_current_level();
+        let hooked =
+            level.filter(|_| mod_api::__private::listened(mod_api::HookId::IsValidBookShelf));
         let power: f32 = bookshelf_offsets()
-            .into_iter()
-            .filter(|o| {
-                self.enchant_transmits(self.world.block(
-                    pos[0] + o[0] / 2,
-                    pos[1] + o[1],
-                    pos[2] + o[2] / 2,
-                ))
-            })
             .filter_map(|o| {
-                let at = BlockPos::new(pos[0] + o[0], pos[1] + o[1], pos[2] + o[2]);
+                let at = BlockPos::new(
+                    pos[0].wrapping_add(o[0]),
+                    pos[1].wrapping_add(o[1]),
+                    pos[2].wrapping_add(o[2]),
+                );
+                let transmits = self.enchant_transmits(self.world.block(
+                    pos[0].wrapping_add(o[0] / 2),
+                    at.y,
+                    pos[2].wrapping_add(o[2] / 2),
+                ));
+                let Some(hook_level) = hooked else {
+                    return transmits
+                        .then(|| {
+                            let state = self.world.block(at.x, at.y, at.z);
+                            self.enchant_power_for_table(level, state, at, table)
+                        })
+                        .flatten();
+                };
                 let state = self.world.block(at.x, at.y, at.z);
-                self.enchant_power_for_table(level, state, at, table)
+                let power = self.enchant_power_for_table(hooked, state, at, table);
+                let mut valid = transmits && power.is_some_and(|power| power != 0.0);
+                let offset = BlockPos::new(o[0], o[1], o[2]);
+                self.native_is_valid_book_shelf(hook_level, table, offset, &mut valid);
+                valid.then_some(power).flatten()
             })
             .sum();
         (power as i32).max(0)

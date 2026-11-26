@@ -98,13 +98,8 @@ impl mod_api::ResidentItemEntity for ResidentDroppedItem<'_, '_> {
         let project = |metadata| project_stack(stack, metadata).ok();
         call(mod_api::ItemStackView::resident(metadata, &project));
     }
-    fn pickup_delay(&self) -> Option<i32> {
-        let delay = self.game.dropped[self.index].pickup_delay;
-        if delay == i64::from(u32::MAX) {
-            Some(i32::from(i16::MAX))
-        } else {
-            i32::try_from(delay).ok()
-        }
+    fn pickup_delay(&self) -> i32 {
+        self.game.dropped[self.index].pickup_delay
     }
     fn age(&self) -> i32 {
         self.game.dropped[self.index].age
@@ -117,13 +112,14 @@ impl mod_api::ResidentItemEntity for ResidentDroppedItem<'_, '_> {
     fn owner(&self) -> Option<mod_api::EntityRef> {
         self.game.item_entity_owner(self.subject)
     }
-    fn set_stack(&mut self, stack: mod_api::ItemStack) -> Result<bool, mod_api::StackWriteError> {
+    fn set_stack(
+        &mut self,
+        stack: Option<mod_api::ItemStack>,
+    ) -> Result<bool, mod_api::StackWriteError> {
         use sunrise_gameplay_common::game::api_values::TryIntoEngine;
         let stack = stack.try_into_engine(self.game.res.items())?;
-        if stack.count == 0 || &*stack.item == "minecraft:air" {
-            return Ok(false);
-        }
-        Ok(self.game.journal_set_item_entity_at(self.index, stack))
+        self.game.journal_set_item_entity_at(self.index, stack);
+        Ok(true)
     }
     fn set_pickup_delay(&mut self, ticks: i32) -> bool {
         self.game.journal_set_item_pickup_delay(self.index, ticks);
@@ -182,15 +178,14 @@ impl crate::game::ServerGame<'_> {
         canceled
     }
     pub(crate) fn item_update_round(&mut self) -> native_ticks::TickRound {
-        // EntityTickEvent.Pre for the items about to tick, and the Post after them.
         let mut round = self.native_tick_round();
         let merging = self.common.is_logical_server();
         // One read says whether any item part listens; with none, no stack is looked at.
         let update_hook =
             merging && mod_api::__private::has_part_hook(mod_api::HookId::OnEntityItemUpdate);
-        // Items a mod named (`entity_tick_each`) hear their Pre, and then their part, alone in
-        // their own turn (`tick_dropped_items`).
-        if (round.listening() || update_hook) && !round.alone_kind(native_ticks::ITEM) {
+        // When entity tick hooks are subscribed, each item hears its Pre and then its part in its
+        // own turn (`tick_dropped_items`). Without tick hooks, run `on_entity_item_update` here.
+        if !round.told_listening() && update_hook {
             let ticking = self.entity_ticking_area();
             let mut i = 0;
             while let Some(item) = self.common.dropped.get(i) {
@@ -199,28 +194,13 @@ impl crate::game::ServerGame<'_> {
                     item.position.x.floor() as i32,
                     item.position.z.floor() as i32,
                 );
-                if !(merging && self.joined_during_entity_pass(id)) && ticking(x, z) {
-                    if round.listening() {
-                        round.add(id, native_ticks::TickKind::Fixed(native_ticks::ITEM));
-                    } else if update_hook && self.item_update_halts(i) {
-                        round.halt(id);
-                    }
+                if !(merging && self.joined_during_entity_pass(id))
+                    && ticking(x, z)
+                    && self.item_update_halts(i)
+                {
+                    round.halt(id);
                 }
                 i += 1;
-            }
-            self.native_tick_pre_batch(&mut round);
-            // Each item the Pre let through, in order, hears its part.
-            let (mut n, mut from) = (0, 0);
-            while update_hook && let Some(id) = round.let_through(n) {
-                if let Some(i) =
-                    native_ticks::place(&self.common.dropped, from, |item| item.id == id)
-                {
-                    if self.item_update_halts(i) {
-                        round.halt(id);
-                    }
-                    from = i + 1;
-                }
-                n += 1;
             }
         }
         round

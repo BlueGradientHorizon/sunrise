@@ -349,7 +349,7 @@ impl ViewedWorlds {
             .map(|(_, w)| &w.world)
     }
     /// The slot of the level named `level`, if the client views it.
-    pub(in crate::game::client_side) fn slot_of(&self, level: &str) -> Option<i32> {
+    pub fn slot_of(&self, level: &str) -> Option<i32> {
         self.worlds
             .iter()
             .find(|(_, (_, w))| w.level == level)

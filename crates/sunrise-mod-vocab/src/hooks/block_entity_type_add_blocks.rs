@@ -28,7 +28,6 @@ classes fail startup, duplicate additions are idempotent, and a resource reload 
 change the frozen validity sets or wire IDs. No listener means no added memberships.
 "#]
     #[hook(
-        target = "sunrise_gameplay_common::game::native_hooks::block_entity_type_add_blocks::native_block_entity_type_add_blocks",
         receiver = "associated",
         dispatch = "flat",
         side = "both",

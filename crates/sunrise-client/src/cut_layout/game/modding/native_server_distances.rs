@@ -1,34 +1,104 @@
 #![cfg(test)]
 #[cfg(test)]
 mod tests {
-    use super::super::native_guest_turn_tests::with_guests;
+    use core::ops::ControlFlow;
+    use mod_api::ServerHost;
+    use sunrise_gameplay::game::{
+        ServerGame,
+        native_guest_turn_tests::{with_guests, with_guests_for_role},
+        server_side::integrated::Serving,
+    };
+    use sunrise_gameplay_common::game::{
+        execution_role::ExecutionRole, test_fixtures::fixture_root,
+    };
 
-    /// The tick times are the clock's 100; the distances are the hub's, set live on a dedicated
-    /// server only, within 2 to 32.
     #[test]
     #[ignore = "daily"]
     fn a_mod_reads_and_sets_the_servers_distances() {
-        with_guests(|game| {
-            game.clock = sunrise_sim::clock::FixedStep::default();
-            for took in [40_000_000, 51_000_000, 62_000_000] {
-                game.clock.record(std::time::Duration::from_nanos(took));
-            }
-            let host: &dyn mod_api::ServerHost = game;
-            let times = host.tick_times();
-            assert_eq!(times.len(), 100);
-            assert_eq!(times[..4], [40_000_000, 51_000_000, 62_000_000, 0]);
-            assert_eq!(game.server_view_distance(), Some(2));
-            assert_eq!(game.server_simulation_distance(), Some(2));
-            assert!(!game.server_set_view_distance(6), "an integrated server");
-            game.options.dedicated = Some(Vec::new());
-            assert!(game.server_set_view_distance(6));
-            assert!(game.server_set_simulation_distance(5));
-            assert!(!game.server_set_view_distance(1));
-            assert!(!game.server_set_simulation_distance(33));
-            assert_eq!(game.server_view_distance(), Some(6));
-            assert_eq!(game.server_simulation_distance(), Some(5));
-            assert_eq!(game.server.settings.simulation_distance, 5);
-        });
+        sunrise_gameplay_common::game::in_own_process(
+            "game::server_side::native_server_distances::tests::a_mod_reads_and_sets_the_servers_distances",
+            || {
+                let advertised = |game: &ServerGame<'_>| {
+                    let config = &game.server.lan.as_ref().unwrap().hub.config;
+                    (config.view_distance, config.simulation_distance)
+                };
+                let ticket_settings = |game: &ServerGame<'_>| {
+                    (
+                        game.server.settings.render_distance,
+                        game.server.settings.simulation_distance,
+                    )
+                };
+                for role in [
+                    ExecutionRole::IntegratedServer,
+                    ExecutionRole::DedicatedServer,
+                ] {
+                    with_guests_for_role(fixture_root(), role, |game| {
+                        if role == ExecutionRole::IntegratedServer {
+                            game.server.serving = Some(Serving::fixture(0));
+                            assert_eq!(game.published_port(), None);
+                        }
+                        game.clock = sunrise_sim::clock::FixedStep::default();
+                        for took in [40_000_000, 51_000_000, 62_000_000] {
+                            game.clock.record(std::time::Duration::from_nanos(took));
+                        }
+                        let host: &mut dyn ServerHost = game;
+                        let mut times = Vec::new();
+                        assert_eq!(
+                            host.visit_tick_times(&mut |took| {
+                                times.push(took);
+                                ControlFlow::Continue(())
+                            }),
+                            Ok(ControlFlow::Continue(()))
+                        );
+                        assert_eq!(times.len(), 100);
+                        assert_eq!(times[..4], [40_000_000, 51_000_000, 62_000_000, 0]);
+                        times.clear();
+                        assert_eq!(
+                            host.visit_tick_times(&mut |took| {
+                                times.push(took);
+                                ControlFlow::Break(())
+                            }),
+                            Ok(ControlFlow::Break(()))
+                        );
+                        assert_eq!(times, [40_000_000]);
+                        assert_eq!(host.server_view_distance(), Some(2));
+                        assert_eq!(host.server_simulation_distance(), Some(2));
+                        assert!(host.server_set_view_distance(6), "{role:?}");
+                        assert!(host.server_set_simulation_distance(5), "{role:?}");
+                        for outside in [1, 33] {
+                            assert!(!host.server_set_view_distance(outside));
+                            assert!(!host.server_set_simulation_distance(outside));
+                        }
+                        assert_eq!(host.server_view_distance(), Some(6));
+                        assert_eq!(host.server_simulation_distance(), Some(5));
+                        assert_eq!(advertised(game), (6, 5));
+                        assert_eq!(ticket_settings(game), (6, 5));
+                        let hub = &game.server.lan.as_ref().unwrap().hub;
+                        assert_eq!(hub.guest(12).unwrap().view_distance, 6);
+                        assert_eq!(hub.guest(13).unwrap().view_distance, 6);
+
+                        let player_list = game.server.lan.take();
+                        let host: &mut dyn ServerHost = game;
+                        assert_eq!(host.server_view_distance(), None);
+                        assert_eq!(host.server_simulation_distance(), None);
+                        assert!(!host.server_set_view_distance(7));
+                        assert!(!host.server_set_simulation_distance(8));
+                        assert_eq!(ticket_settings(game), (6, 5));
+
+                        // Even a Game with a hub cannot act as the server from the client role.
+                        game.server.lan = player_list;
+                        game.options.execution_role = ExecutionRole::Client;
+                        let host: &mut dyn ServerHost = game;
+                        assert_eq!(host.server_view_distance(), None);
+                        assert_eq!(host.server_simulation_distance(), None);
+                        assert!(!host.server_set_view_distance(7));
+                        assert!(!host.server_set_simulation_distance(8));
+                        assert_eq!(advertised(game), (6, 5));
+                        assert_eq!(ticket_settings(game), (6, 5));
+                    });
+                }
+            },
+        );
     }
 
     /// A single-player world's server is published while it is open to LAN, and no longer once

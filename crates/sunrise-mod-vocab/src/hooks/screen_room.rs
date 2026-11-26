@@ -21,7 +21,6 @@ pub trait Hooks {
     /// counts as 0. Beyond NeoForge: a mod there reads the container screen's `leftPos` but has no
     /// event to move it, so it draws in the space that's left.
     #[hook(
-        target = "sunrise_client_gameplay::game::native_hooks::screen_room::ClientGame<'_>::native_screen_room",
         receiver = "read",
         dispatch = "flat",
         side = "client",

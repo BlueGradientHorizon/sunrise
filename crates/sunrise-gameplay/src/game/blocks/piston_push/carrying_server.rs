@@ -5,12 +5,21 @@ use super::{
     move_gate::MoveWho,
 };
 use sunrise_core::geometry::{Axis, Vec3};
-use sunrise_gameplay_common::game::piston_push::{
-    StepHeights,
-    carrying::{Rider, support_of},
+use sunrise_gameplay_common::game::{
+    collision_source::{CollisionSourceGameExt1 as _, Mover},
+    piston_push::{
+        Body, PistonPushGameExt1 as _, StepHeights,
+        carrying::{Rider, SUPPORT_PROBE, support_of, upright_tilt_clearance},
+    },
 };
-use sunrise_world::entity_move::MoverType;
-use sunrise_world::moving_colliders::{self, Prepared};
+use sunrise_level::collisions::{EntityCollisions, SceneCollisions};
+use sunrise_world::{
+    collision_context::CollisionContext,
+    entity_move::MoverType,
+    entity_obstruction::EntityIdentity,
+    moving_colliders::{self, Prepared, Shove},
+    world_movement::{CollisionCheckRequest, no_world_collision},
+};
 
 /// What a server carry pass works on, kept from tick to tick so a pass allocates nothing once
 /// these have grown to the level's size.
@@ -20,6 +29,8 @@ struct Scratch {
     stacked: Vec<(u32, u32)>,
     order: Vec<(u32, u32)>,
     ids: Vec<u32>,
+    /// Candidate face heights for clearing a tilted support under an upright body.
+    heights: Vec<f64>,
 }
 
 thread_local! {
@@ -30,7 +41,7 @@ impl crate::game::ServerGame<'_> {
     /// Server arm of [`Game::side_carry_pass`]: carries and shoves server-simulated
     /// entities (`MoveWho::Entity(_)`, excluding players and guests).
     pub(in crate::game) fn server_carry_pass(&mut self, start: &Prepared) {
-        if !self.server_any_collider_moved(start) {
+        if start.is_empty() || !self.server_any_collider_moved(start) {
             return;
         }
         let mut scratch = SCRATCH.with(|cell| std::mem::take(&mut *cell.borrow_mut()));
@@ -85,7 +96,8 @@ impl crate::game::ServerGame<'_> {
             wave = wave.max(scratch.order[at].0);
             let now = self.placed_moving_colliders();
             {
-                let _scope = moving_colliders::Scope::enter_level(self.collider_level(), now);
+                let _scope =
+                    moving_colliders::Scope::enter_level(self.collider_level(), now.clone());
                 while at < scratch.order.len() && scratch.order[at].0 <= wave {
                     let collider = scratch.order[at].1;
                     let first = scratch.riders.partition_point(|r| r.support < collider);
@@ -96,8 +108,10 @@ impl crate::game::ServerGame<'_> {
                     self.server_carry_riders_of(
                         collider,
                         start,
+                        &now,
                         steps,
-                        &scratch.riders[first..first + count],
+                        first..first + count,
+                        scratch,
                         &mut stand_grid,
                     );
                     at += 1;
@@ -170,41 +184,89 @@ impl crate::game::ServerGame<'_> {
         &mut self,
         collider: u32,
         start: &Prepared,
+        now: &Prepared,
         steps: &StepHeights,
-        riders: &[Rider],
+        riders: std::ops::Range<usize>,
+        scratch: &mut Scratch,
         stand_grid: &mut Option<sunrise_sim::entities::ObstacleGrid>,
     ) {
         let Some(before) = start.placed().find(|p| p.id == collider) else {
             return;
         };
-        let Some(after) = self.collider_now_frame(collider) else {
+        let Some(after) = now.placed().find(|p| p.id == collider) else {
             return;
         };
-        for rider in riders {
+        let turned = !before.collider.frame.same_turn(&after.collider.frame);
+        for rider in &scratch.riders[riders] {
             let Some(body) = self.push_body(rider.target, None, steps) else {
                 continue;
             };
             let centre = body.bounds.center();
             let contact = Vec3::new(centre.x, body.bounds.min(Axis::Y), centre.z);
-            let carried = after
+            let rigid = after
+                .collider
+                .frame
                 .to_world(before.collider.frame.to_local(contact))
                 .subtract(contact);
-            if carried.length_squared() < 1.0e-18 {
-                continue;
+            let carried = if turned {
+                upright_tilt_clearance(&after.collider, body.bounds, rigid, &mut scratch.heights)
+            } else {
+                rigid
+            };
+            if carried.length_squared() >= 1.0e-18 {
+                let _shove = Shove::enter(rider.id, collider);
+                self.move_pushed_body(
+                    MoverType::Carried,
+                    rider.target,
+                    body,
+                    carried,
+                    false,
+                    stand_grid,
+                );
             }
-            self.move_pushed_body(
-                MoverType::Carried,
-                rider.target,
-                body,
-                carried,
-                false,
-                stand_grid,
-            );
-            // Keep the entity grounded on its carrier for the next tick's support check.
+            let grounded = self
+                .push_body(rider.target, None, steps)
+                .is_some_and(|after_body| {
+                    self.carried_body_grounded(rider.target, rider.id, after_body)
+                });
             if let MoveWho::Entity(handle) = rider.target {
-                with_entity_mut!(self, handle, entity => entity.set_piston_on_ground(true));
+                with_entity_mut!(self, handle, entity => entity.set_piston_on_ground(grounded));
             }
         }
+    }
+
+    /// Collision inspection of the post-carry body and a downward support probe. A body that is
+    /// already intersecting a block/entity/collider or has nothing under it is not grounded.
+    fn carried_body_grounded(&mut self, target: MoveWho, id: u32, body: Body) -> bool {
+        let entities = if target == MoveWho::Player {
+            self.entity_collisions(Mover::Player)
+        } else {
+            self.pushed_entity_colliders(target)
+        };
+        let mut collisions = EntityCollisions::with_border(
+            SceneCollisions {
+                world: &self.common.world,
+                binding: self.common.collision,
+                subject: None,
+            },
+            self.common.border.geometry(),
+            [body.position.x, body.position.z],
+        );
+        collisions.entities = &entities;
+        let mut clear = |bounds| {
+            no_world_collision(
+                &mut collisions,
+                CollisionCheckRequest {
+                    entity: EntityIdentity(u64::from(id)),
+                    context: CollisionContext::position(body.bounds.min(Axis::Y)),
+                    bounds,
+                    candidate_budget: 1_000_000,
+                },
+            )
+        };
+        clear(body.bounds).is_ok_and(|clear| clear)
+            && clear(body.bounds.move_by(Vec3::new(0.0, -SUPPORT_PROBE, 0.0)))
+                .is_ok_and(|clear| !clear)
     }
 }
 

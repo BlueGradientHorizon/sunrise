@@ -3,7 +3,6 @@
 //! listeners leave behind.
 use crate::game::ServerGame;
 use mod_api::EntityRef;
-use std::collections::HashSet;
 use sunrise_gameplay_common::game::entity::EntityHandle;
 
 impl ServerGame<'_> {
@@ -14,9 +13,7 @@ impl ServerGame<'_> {
     /// cushions and end crystals the walk misses. The list they leave in
     /// `combat.blast_hit_list` is what the blast's walks then use: what a
     /// listener leaves in it is eligible for the normal hurt/push checks.
-    /// Order controls only the ordinary-storage walk, not the separate crystal,
-    /// dragon, player and decoration passes. Without a listener nothing is listed, and the walks
-    /// enumerate the storages as before.
+    /// Listener order and repeated entries are preserved across entity kinds.
     pub fn explosion_detonate(
         &mut self,
         center: [f64; 3],
@@ -30,11 +27,9 @@ impl ServerGame<'_> {
         let reach = f64::from(radius) * 2.0 + 1.0;
         let min = center.map(|c| (c - reach).floor());
         let max = center.map(|c| (c + reach).floor());
-        let source = self.server.combat.0.explosion_direct.or(self
-            .server
-            .combat
-            .0
-            .explosion_source);
+        let source = self.server.combat.0.explosion_direct
+            .map(|(id, _)| id)
+            .or(self.server.combat.0.explosion_source);
         let mut entities = self
             .level(self.common.dim.id())
             .and_then(|level| self.level_entities_in(level, min, max))
@@ -43,13 +38,8 @@ impl ServerGame<'_> {
         self.append_blast_specials(&mut entities, source, min, max);
         let dimension = self.common.dim.id();
         self.native_explosion_detonate(dimension, center, blocks, &mut entities);
-        // The walks follow the list: one a listener added is walked as any
-        // other, so a handle that names nothing real is refused here, and a
-        // repeated id is taken once (`getEntities` lists an entity once).
         entities.retain(|entity| self.native_entity_target(*entity).is_some());
-        let mut seen = HashSet::new();
-        entities.retain(|entity| seen.insert(entity.id()));
-        self.server.combat.0.blast_hit_ids = seen;
+        self.server.combat.0.blast_hit_ids = entities.iter().map(|entity| entity.id()).collect();
         self.server.combat.0.blast_hit_list =
             Some(entities.iter().map(|entity| entity.id()).collect());
     }

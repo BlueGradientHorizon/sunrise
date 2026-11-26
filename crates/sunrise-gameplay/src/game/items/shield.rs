@@ -45,6 +45,16 @@ impl ServerGame<'_> {
         }
         true
     }
+
+    /// `LivingEntity.getItemBlockingWith`: the blocking component of the active
+    /// item after its use delay, shared by damage and the player's body turn.
+    pub(in crate::game) fn player_blocking_component(
+        &self,
+    ) -> Option<std::borrow::Cow<'_, sunrise_items::items::BlocksAttacks>> {
+        let (slot, ticks) = self.common.using?;
+        let component = self.blocks_attacks(self.common.stack_in(slot)?)?;
+        block_delay_passed(&component, ticks).then_some(component)
+    }
     /// `LivingEntity.getItemBlockingWith` and the inputs of `applyItemBlocking`
     /// for an attack from `from` (`DamageSource.getSourcePosition`).
     pub fn player_blocking(
@@ -53,11 +63,7 @@ impl ServerGame<'_> {
         damage_type: &str,
         pierce: bool,
     ) -> Option<Blocking> {
-        let (slot, ticks) = self.common.using?;
-        let component = self.blocks_attacks(self.common.stack_in(slot)?)?;
-        if !block_delay_passed(&component, ticks) {
-            return None;
-        }
+        let component = self.player_blocking_component()?;
         let tags = &self.stations().enchantments.damage_tags;
         let matches = |spec: &str| match spec.strip_prefix('#') {
             Some(tag) => tags.get(tag).is_some_and(|t| t.contains(damage_type)),

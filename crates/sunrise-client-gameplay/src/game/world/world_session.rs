@@ -209,7 +209,7 @@ impl crate::game::ClientGame<'_> {
             .finish(&sunrise_level::logging::game_home(), settings);
     }
 
-    pub(in crate::game::client_side) fn save_for_exit(&mut self) -> Result<()> {
+    pub fn save_for_exit(&mut self) -> Result<()> {
         // Native application termination can bypass CloseRequested. Finish any
         // save screen synchronously here, before the process can go away.
         while self.client.pending_save.0.is_some() {
@@ -222,7 +222,7 @@ impl crate::game::ClientGame<'_> {
         self.repro_on_exit();
         self.finish_perf();
         self.connection_left(sunrise_hooks::connection::Left::Quit);
-        if self.client.title.0.is_some() || self.client.saved_for_exit {
+        if self.client.saved_for_exit {
             return Ok(());
         }
         // exitWorldAndClose disconnects the client from its world.
@@ -260,6 +260,10 @@ impl crate::game::ClientGame<'_> {
         // title screen is nonsense.
         self.repro_world_closed();
         self.clear_waypoints();
+        sunrise_level::environment::Environment::set_level_attributes(
+            Vec::new(),
+            Default::default(),
+        );
         self.client.post_effects.clear();
         self.clear_spectated_entity_post_effect();
         // Mod screens' living scenes go with the world their entities were copied from.

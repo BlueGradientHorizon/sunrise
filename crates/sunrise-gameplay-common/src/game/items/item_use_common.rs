@@ -124,7 +124,7 @@ impl UseStart {
     }
 }
 
-pub type ItemConsumable = Consumable<String, ConsumeEffect>;
+pub use sunrise_items::items::ItemConsumable;
 
 /// `EntityEvent.USE_ITEM_COMPLETE`: the server finished the player's use.
 pub const USE_ITEM_COMPLETE_EVENT: i8 = 9;

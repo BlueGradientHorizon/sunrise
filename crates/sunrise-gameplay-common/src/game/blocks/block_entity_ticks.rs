@@ -11,7 +11,7 @@ pub mod own_block_entity_tests {
 
     use sunrise_level::containers::{BlockEntity, ModBlockEntity};
 
-    pub const A: &str = "own_a:machine";
+    pub const A: &str = "minecraft:p3_machine";
     pub const B: &str = "own_b:machine";
     pub const DETECTOR: &str = "minecraft:daylight_detector";
     #[cfg(test)]
@@ -28,7 +28,10 @@ pub mod own_block_entity_tests {
     #[mod_api::__subscriptions]
     impl Hooks for Machines {
         fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
-            let kind = r.block_entity_type("machine").blocks(&[self.block]).build();
+            let kind = r
+                .block_entity_type(self.block)
+                .blocks(&[self.block])
+                .build();
             r.block_entity_part(&kind, Ticks(self.block)).unwrap();
             if let Some(other) = self.also_on {
                 let keys = (kind, r.block_key(other));
@@ -60,11 +63,6 @@ pub mod own_block_entity_tests {
     #[cfg(test)]
     #[mod_api::sunrise_part]
     impl BlockEntityPart for Ticks {
-        fn block_entity_ticks(&self, _: &dyn Host, event: &mut BlockEntityTicksEvent<'_>) {
-            if event.block == self.0 {
-                event.ticks = true;
-            }
-        }
         fn block_entity_tick(&self, event: &mut BlockEntityTickEvent<'_>) {
             event.subject.with_view(|mut entity| {
                 let mut data = entity.data_slots().to_vec();

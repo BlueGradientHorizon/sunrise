@@ -3,6 +3,7 @@ use crate::game::ClientGame;
 use std::collections::HashMap;
 use sunrise_client_render::block_entity_reach::Reach;
 use sunrise_core::{geometry::Vec3, random::RandomSource};
+use sunrise_gameplay_common::game::native_hooks::spawner_active::GameHooks as _;
 use sunrise_level::containers::BlockEntity;
 use sunrise_level::particle_options::{ParticleOptions, ParticleType};
 use sunrise_sim::mobs::{
@@ -98,6 +99,12 @@ impl ClientGame<'_> {
                     && (range < 0.0 || d < range * range)
             })
         };
+        let near = self.spawner_active(
+            || mod_api::Spawner::Block {
+                pos: mod_api::BlockPos::new(key.0, key.1, key.2),
+            },
+            near,
+        );
         let display = self.update_spawner_display(key);
         let pos = [key.0, key.1, key.2];
         let random = self.client.particles.0.level_random();

@@ -13,6 +13,7 @@ use std::sync::{
     atomic::{AtomicUsize, Ordering},
 };
 use sunrise_core::geometry::Vec3;
+use sunrise_gameplay_common::game::execution_role::ExecutionRole;
 use sunrise_sim::{lan::PlayerSender, mobs::Mob};
 
 pub use sunrise_gameplay::game::native_guest_turn_tests::{
@@ -23,7 +24,6 @@ pub use sunrise_gameplay::game::native_guest_turn_tests::{
 #[test]
 #[ignore = "daily"]
 fn player_dimensions_validate_identity_on_both_server_roles() {
-    use sunrise_gameplay_common::game::execution_role::ExecutionRole;
     let previous_extra = sunrise_gameplay_common::game::EXTRA_DIMS
         .read()
         .unwrap()
@@ -709,18 +709,14 @@ fn velocity_writes_send_only_the_owning_player_the_replacement_motion() {
 fn another_guests_services_work_during_a_turn() {
     use mod_api::{CriterionContext, CriterionTest, CriterionTestError, TriggerCriterionError};
     use sunrise_command::args::Selector;
+    use sunrise_gameplay_common::game::commands_common::Target;
     use sunrise_items::items::ItemStack;
     use sunrise_sim::advancements as adv;
-    use {
-        sunrise_gameplay::game::server_side::native_inventories::NativeInventoryKind::Ender,
-        sunrise_gameplay::game::server_side::native_inventories::NativeInventoryKind::Player,
-        sunrise_gameplay_common::game::commands_common::Target,
-    };
 
     struct Accept;
     impl CriterionTest for Accept {
-        fn test(&self, criterion: &dyn CriterionContext) -> Result<bool, CriterionTestError> {
-            assert_eq!(criterion.conditions_json(), "null");
+        fn test(&mut self, criterion: &dyn CriterionContext) -> Result<bool, CriterionTestError> {
+            assert!(criterion.conditions().is_null());
             Ok(true)
         }
     }
@@ -739,6 +735,7 @@ fn another_guests_services_work_during_a_turn() {
                 name: "seen".into(),
                 trigger: "turns:probe".into(),
                 conditions: serde_json::Value::Null.into(),
+                player: None,
             }],
             requirements: vec![vec!["seen".into()]],
             rewards: Default::default(),
@@ -756,15 +753,11 @@ fn another_guests_services_work_during_a_turn() {
                 guest.advancements_loaded = true;
             });
         let stone = ItemStack::new("minecraft:stone", 4);
-        game.server
-            .lan
-            .as_mut()
-            .unwrap()
-            .hub
-            .update_guest(13, |guest| guest.inventory[0] = Some(stone.clone()))
-            .unwrap();
+        let stone_stack = sunrise_gameplay_common::game::api_values::test_snapshot(&stone);
         let a = NativeServerGameExt1::player(game, 12).unwrap();
         let b = NativeServerGameExt1::player(game, 13).unwrap();
+        b.set_inventory_slot(game, 0, Some(stone_stack.clone()))
+            .unwrap();
         game.as_guest(12, |game| {
             assert_eq!(game.native_entity_target(a.entity()), Some(Target::Player));
             assert_eq!(
@@ -774,30 +767,22 @@ fn another_guests_services_work_during_a_turn() {
                 }),
                 [Target::Player]
             );
-            assert!(game.native_inventory(12, Player).is_err());
+            let read_slot =
+                |view: mod_api::InventoryView<'_>| view.get(0).and_then(|s| s.project());
             assert_eq!(
-                game.native_inventory(13, Player).unwrap().slots[0],
-                Some(stone.clone())
+                b.with_inventory(game, read_slot),
+                Some(Some(stone_stack.clone()))
             );
-            game.native_move_stack((13, Player, 0), &stone, (13, Ender))
-                .unwrap();
-            assert_eq!(game.native_inventory(13, Player).unwrap().slots[0], None);
+            b.set_ender_chest_slot(game, 0, Some(stone_stack)).unwrap();
+            b.set_inventory_slot(game, 0, None).unwrap();
+            assert_eq!(b.with_inventory(game, read_slot), Some(None));
+            assert!(b.with_ender_chest(game, read_slot).flatten().is_some());
             assert_eq!(
-                game.native_inventory(13, Ender).unwrap().slots[0],
-                Some(stone.clone())
+                a.trigger_criterion(game, &vanilla_trigger, &mut Accept),
+                Err(TriggerCriterionError::BuiltinTrigger)
             );
-            assert_eq!(
-                a.trigger_criterion(game, &vanilla_trigger, Arc::new(Accept)),
-                Err(TriggerCriterionError::InvalidTrigger)
-            );
-            assert_eq!(
-                b.trigger_criterion(game, &trigger, Arc::new(Accept)),
-                Ok(())
-            );
-            assert_eq!(
-                a.trigger_criterion(game, &trigger, Arc::new(Accept)),
-                Ok(())
-            );
+            assert_eq!(b.trigger_criterion(game, &trigger, &mut Accept), Ok(()));
+            assert_eq!(a.trigger_criterion(game, &trigger, &mut Accept), Ok(()));
             assert!(game.native_run_command("give guest13 minecraft:diamond 2"));
             assert!(game.native_run_command("give @a[name=guest13] minecraft:diamond 1"));
             assert!(game.native_run_command(
@@ -809,10 +794,9 @@ fn another_guests_services_work_during_a_turn() {
                 Some(ItemStack::new("minecraft:apple", 1))
             );
             game.as_guest(13, |game| {
-                assert!(game.native_inventory(12, Player).is_err());
-                assert!(game.native_inventory(13, Player).is_err());
+                assert_eq!(a.with_inventory(game, read_slot), None);
                 assert_eq!(
-                    a.trigger_criterion(game, &trigger, Arc::new(Accept)),
+                    a.trigger_criterion(game, &trigger, &mut Accept),
                     Err(TriggerCriterionError::PlayerUnavailable)
                 );
                 assert!(!game.native_run_command("give guest12 minecraft:dirt 1"));
@@ -924,6 +908,71 @@ fn nested_guest_turns_restore_each_equipment_store() {
                 .equipment[SADDLE],
             stack("minecraft:saddle")
         );
+    });
+}
+
+/// `with_own_record` exposes a guest's own ender chest during both their active
+/// turn and a nested turn where their inventory is loaned to the inner record.
+#[test]
+#[ignore = "daily"]
+fn with_own_record_swaps_ender_items_across_nested_turns() {
+    use sunrise_items::items::ItemStack;
+
+    with_guests(|game| {
+        let host_item = Some(ItemStack::new("minecraft:dirt", 1));
+        let outer_item = Some(ItemStack::new("minecraft:diamond", 2));
+        let inner_item = Some(ItemStack::new("minecraft:emerald", 3));
+        let added_item = Some(ItemStack::new("minecraft:gold_ingot", 4));
+
+        game.server.ender_items[0] = host_item.clone();
+        for (conn, item) in [(12, outer_item.clone()), (13, inner_item.clone())] {
+            game.server
+                .lan
+                .as_mut()
+                .unwrap()
+                .hub
+                .update_guest(conn, |guest| guest.ender_items[0] = item)
+                .unwrap();
+        }
+
+        game.as_guest(12, |game| {
+            let gi12 = game.guest_index(12).unwrap();
+            let active = game.with_own_record(gi12, |host, _, _| {
+                Some(host.hub.guests[gi12].ender_items[0].clone())
+            });
+            assert_eq!(active, Some(outer_item.clone()));
+
+            game.as_guest(13, |game| {
+                let gi12 = game.guest_index(12).unwrap();
+                let gi13 = game.guest_index(13).unwrap();
+                let suspended = game.with_own_record(gi12, |host, _, _| {
+                    let seen = host.hub.guests[gi12].ender_items[0].clone();
+                    host.hub
+                        .guests
+                        .update(gi12, |g| g.ender_items[1] = added_item.clone());
+                    Some(seen)
+                });
+                assert_eq!(suspended, Some(outer_item.clone()));
+
+                let inner = game.with_own_record(gi13, |host, _, _| {
+                    Some(host.hub.guests[gi13].ender_items[0].clone())
+                });
+                assert_eq!(inner, Some(inner_item.clone()));
+            })
+            .unwrap();
+
+            assert_eq!(game.server.ender_items[0], outer_item);
+            assert_eq!(game.server.ender_items[1], added_item);
+        })
+        .unwrap();
+
+        assert_eq!(game.server.ender_items[0], host_item);
+        assert_eq!(game.server.ender_items[1], None);
+        let host = game.server.lan.as_ref().unwrap();
+        assert_eq!(host.hub.guest(12).unwrap().ender_items[0], outer_item);
+        assert_eq!(host.hub.guest(12).unwrap().ender_items[1], added_item);
+        assert_eq!(host.hub.guest(13).unwrap().ender_items[0], inner_item);
+        assert_eq!(host.hub.guest(13).unwrap().ender_items[1], None);
     });
 }
 
@@ -1597,6 +1646,7 @@ fn guest_damage_unwind_restores_and_next_same_connection_hit_lands() {
                     sunrise_gameplay::game::server_side::lan_pvp::Victim::Guest(13),
                     &sunrise_gameplay::game::server_side::lan_pvp::Strike::test_blow(12),
                 )
+                .is_some()
             };
             assert!(hit(game));
             assert_eq!(health(game), before - 1.0);
@@ -1672,6 +1722,7 @@ fn guest_message_capture_is_restored_after_a_real_native_panic() {
                     sunrise_gameplay::game::server_side::lan_pvp::Victim::Guest(12),
                     &sunrise_gameplay::game::server_side::lan_pvp::Strike::test_blow(13),
                 )
+                .is_some()
             };
             assert_eq!(game.as_guest_messaged(13, hit), Some(true));
             assert_eq!(
@@ -1842,17 +1893,25 @@ fn run_command_checks_the_line_at_the_level_given() {
 #[ignore = "daily"]
 fn run_command_runs_as_the_entity_from_where_it_is() {
     use mod_api::PermissionLevel::Gamemasters;
-    use sunrise_gameplay::game::server_side::native_inventories::NativeInventoryKind::Player;
     use sunrise_items::items::ItemStack;
 
     with_command_guests("run_command_runs_as_the_entity_from_where_it_is", |game| {
         game.build_registries();
         let a = NativeServerGameExt1::player(game, 12).unwrap().entity();
         let b = NativeServerGameExt1::player(game, 13).unwrap().entity();
-        let holds = |game: &sunrise_gameplay::game::ServerGame<'_>, uuid: u128, item: &str| {
+        let holds = |game: &sunrise_gameplay::game::ServerGame<'_>, conn: u32, item: &str| {
             let stack = ItemStack::new(item, 1);
-            let slots = game.native_inventory(uuid, Player).unwrap().slots;
-            slots.iter().flatten().any(|s| *s == stack)
+            game.server
+                .lan
+                .as_ref()
+                .unwrap()
+                .hub
+                .guest(conn)
+                .unwrap()
+                .inventory
+                .iter()
+                .flatten()
+                .any(|s| *s == stack)
         };
         let stand = summon_stand(game);
         let guest = |game: &sunrise_gameplay::game::ServerGame<'_>, conn: u32| {
@@ -1952,7 +2011,6 @@ fn run_command_answers_false_for_a_bad_line_or_a_stale_handle() {
 fn run_command_refuses_a_player_whose_level_is_parked() {
     use mod_api::PermissionLevel::Owners;
     use sunrise_game_data::gamerules::vanilla::SEND_COMMAND_FEEDBACK;
-    use sunrise_gameplay::game::server_side::native_inventories::NativeInventoryKind::Player;
     use sunrise_items::items::ItemStack;
 
     let name = "run_command_refuses_a_player_whose_level_is_parked";
@@ -1970,8 +2028,17 @@ fn run_command_refuses_a_player_whose_level_is_parked() {
         };
         let has_stick = |game: &sunrise_gameplay::game::ServerGame<'_>| {
             let stick = ItemStack::new("minecraft:stick", 1);
-            let slots = game.native_inventory(13, Player).unwrap().slots;
-            slots.iter().flatten().any(|s| *s == stick)
+            game.server
+                .lan
+                .as_ref()
+                .unwrap()
+                .hub
+                .guest(13)
+                .unwrap()
+                .inventory
+                .iter()
+                .flatten()
+                .any(|s| *s == stick)
         };
         assert!(game.ui.rules.bool_at(SEND_COMMAND_FEEDBACK));
 

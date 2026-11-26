@@ -66,7 +66,7 @@ pub(in crate::game) fn send_types(
             })
             .collect(),
     );
-    game.set_registries(Arc::new(registries));
+    game.set_registries(Arc::new(registries)).unwrap();
 }
 
 /// The `Login` packet a server sends, into `entered`.
@@ -173,7 +173,11 @@ pub(in crate::game) fn reload(
         &[],
         server,
         &game.mods,
-        game.register_client_reload_listeners(),
+        game.register_client_reload_listeners(
+            &game
+                .capture_candidate_settings(&game.options.resources)
+                .unwrap(),
+        ),
         &[],
         &game.pack.assets,
         &game.res,

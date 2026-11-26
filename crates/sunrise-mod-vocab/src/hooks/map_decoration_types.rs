@@ -26,7 +26,6 @@ server's map data names that a client did not register is not drawn. Map data a 
 sends to a client (`ClientboundMapItemData`) numbers vanilla's types only, so a mod type reaches a
 client through the item's component, not through that packet."#]
     #[hook(
-        target = "sunrise_gameplay_common::game::native_hooks::map_decoration_types::native_map_decoration_types",
         receiver = "associated",
         dispatch = "flat",
         side = "both",

@@ -1,12 +1,14 @@
 //! Owning-thread, load-bound numeric bridge. Workers receive prepared values instead.
 use super::{TryIntoApi, TryIntoEngine};
-use mod_api::{BlockState, BlockStateError};
+use mod_api::{BlockState, BlockStateError, LogicalSide};
 use std::{cell::RefCell, sync::Arc};
+use sunrise_level::block_entities::{ModTickerStates, Ticking};
 use sunrise_world::registry::{BlockRegistry, BlockStateId};
 
 /// A fully checked index, inert until explicitly installed by the owning game thread.
 pub struct Index {
     forward: Vec<BlockState>,
+    mod_tickers: [Arc<ModTickerStates>; 2],
     reverse: std::collections::HashMap<mod_api::BlockKey, Vec<Option<BlockStateId>>>,
     /// Each state's block key, shared with the phase views that tell who listens.
     #[cfg(test)]
@@ -63,12 +65,37 @@ pub fn bind(registry: &BlockRegistry) -> Result<(), String> {
     Ok(())
 }
 
+/// Bind the numeric bridge restricting block-entity ticker selectors to `role`'s logical side.
+pub fn bind_for_role(
+    registry: &BlockRegistry,
+    role: crate::game::execution_role::ExecutionRole,
+) -> Result<(), String> {
+    clear();
+    install(prepare_for_role(registry, role)?);
+    Ok(())
+}
+
 pub(in crate::game) fn install(prepared: Arc<Index>) {
     INDEX.with_borrow_mut(|index| *index = Some(prepared));
 }
 
 /// Prepare without activating thread-local state. A refused reload keeps its old live tables.
 pub(crate) fn prepare(registry: &BlockRegistry) -> Result<Arc<Index>, String> {
+    prepare_with_role(registry, None)
+}
+
+/// Prepare without activating thread-local state, evaluating only `role`'s ticker selectors.
+pub fn prepare_for_role(
+    registry: &BlockRegistry,
+    role: crate::game::execution_role::ExecutionRole,
+) -> Result<Arc<Index>, String> {
+    prepare_with_role(registry, Some(role))
+}
+
+fn prepare_with_role(
+    registry: &BlockRegistry,
+    role: Option<crate::game::execution_role::ExecutionRole>,
+) -> Result<Arc<Index>, String> {
     let forward = (0..registry.len())
         .map(|id| {
             registry
@@ -91,13 +118,101 @@ pub(crate) fn prepare(registry: &BlockRegistry) -> Result<Arc<Index>, String> {
     }
     #[cfg(test)]
     let blocks = forward.iter().map(|state| state.block()).collect();
+    let mod_tickers = prepare_mod_tickers(registry, &forward, role);
     Ok(Arc::new(Index {
         forward,
+        mod_tickers,
         reverse,
         #[cfg(test)]
         blocks,
     }))
 }
+pub fn mod_ticker_states(side: LogicalSide) -> Arc<ModTickerStates> {
+    current().map_or_else(
+        |_| Arc::default(),
+        |index| {
+            index.mod_tickers[match side {
+                LogicalSide::Server => 0,
+                LogicalSide::Client => 1,
+            }]
+            .clone()
+        },
+    )
+}
+
+/// Bake `EntityBlock.getTicker` for the registered type and every state of its accepted blocks.
+fn prepare_mod_tickers(
+    registry: &BlockRegistry,
+    values: &[BlockState],
+    role: Option<crate::game::execution_role::ExecutionRole>,
+) -> [Arc<ModTickerStates>; 2] {
+    use sunrise_game_data::block_entity_types;
+    use sunrise_level::fast_hash::FxHashMap;
+    let mut tables = [ModTickerStates::default(), ModTickerStates::default()];
+    let eval_server = role.is_none_or(|r| r.is_logical_server());
+    let eval_client = role.is_none_or(|r| r.is_client());
+    let Some(types) = block_entity_types::current() else {
+        return tables.map(Arc::new);
+    };
+    let mut by_block = FxHashMap::<_, Vec<_>>::default();
+    for (block, kind) in types.memberships() {
+        if let Some(binding) = types.registered(kind)
+            && ((eval_server && binding.server_ticker.is_some())
+                || (eval_client && binding.client_ticker.is_some()))
+        {
+            by_block.entry(block).or_default().push(binding);
+        }
+    }
+    if by_block.is_empty() {
+        return tables.map(Arc::new);
+    }
+    let metadata = mod_api::__private::block_definitions().expect("prepared block metadata");
+    let selectors: FxHashMap<_, _> = mod_api::__private::block_entity_ticker_selectors()
+        .iter()
+        .map(|selector| (selector.kind, selector))
+        .collect();
+    for (id, &state) in values.iter().enumerate() {
+        let numeric = id as u32;
+        let block = &registry
+            .state(BlockStateId(numeric))
+            .expect("registry index")
+            .name;
+        let Some(bindings) = by_block.get(block.as_str()) else {
+            continue;
+        };
+        for binding in bindings {
+            for (table, (kind, side, enabled)) in tables.iter_mut().zip([
+                (binding.server_ticker, LogicalSide::Server, eval_server),
+                (binding.client_ticker, LogicalSide::Client, eval_client),
+            ]) {
+                if !enabled {
+                    continue;
+                }
+                let Some(kind) = kind else {
+                    continue;
+                };
+                let selected = selectors.get(&kind).is_none_or(|selector| {
+                    selector
+                        .owner
+                        .call("block entity ticker", "ticker_when", || {
+                            (selector.select)(metadata, state, side)
+                        })
+                        .unwrap_or(false)
+                });
+                table.insert(
+                    (numeric, binding.numeric_id),
+                    if selected {
+                        Ticking::Yes
+                    } else {
+                        Ticking::Idle
+                    },
+                );
+            }
+        }
+    }
+    tables.map(Arc::new)
+}
+
 #[cfg(test)]
 #[allow(clippy::items_after_test_module)] // TODO(#2273): move the module to the end of the file.
 mod tests {

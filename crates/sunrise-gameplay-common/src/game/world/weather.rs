@@ -2,6 +2,7 @@
 //! levels, where it rains or snows (`Level.isRainingAt`, the motion-blocking height), the weather's
 //! effects each tick and `Level.getSkyDarken` with `isDarkOutside`.
 use super::*;
+use crate::game::end_common::EndGameExt as _;
 use crate::game::side_ops::world::SideOps as _;
 
 /// `ClientLevel.getPrecipitationAt`: a loaded column's biome and the level's sea level
@@ -84,11 +85,7 @@ pub trait WeatherGameExt<'__sg>: crate::game::SideGame<'__sg> {
     }
 
     fn can_have_weather(&self) -> bool {
-        level_can_have_weather(
-            self.world.shape.sky_light,
-            self.world.shape.has_ceiling,
-            self.dim == Dim::End,
-        )
+        self.world.shape.can_have_weather(self.dim == Dim::End)
     }
 
     /// The rain and thunder levels (`Level.getRainLevel`, `getThunderLevel`):
@@ -121,11 +118,7 @@ pub trait WeatherGameExt<'__sg>: crate::game::SideGame<'__sg> {
                 Dim::End => self.res.end_environment(),
             },
         };
-        let (rain, thunder) = if level_can_have_weather(
-            world.shape.sky_light,
-            world.shape.has_ceiling,
-            dimension == Dim::End,
-        ) {
+        let (rain, thunder) = if world.shape.can_have_weather(dimension == Dim::End) {
             self.world.weather.levels(1.0)
         } else {
             (0.0, 0.0)
@@ -139,11 +132,16 @@ pub trait WeatherGameExt<'__sg>: crate::game::SideGame<'__sg> {
             return 11;
         }
         if self.dim == Dim::End {
-            return sunrise_level::environment::sky_darken(
-                self.res.end_environment(),
-                self.world.day_time,
+            let clock = |name: &str| {
+                self.side_state()
+                    .side_remote_named_clock_time(name)
+                    .unwrap_or_else(|| self.command_clock_time(name))
+            };
+            return sunrise_level::environment::sky_darken_with_clock(
+                self.dim_environment(),
                 0.0,
                 0.0,
+                &clock,
             );
         }
         let (rain, thunder) = self.weather_levels(1.0);

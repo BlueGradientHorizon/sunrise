@@ -14,9 +14,8 @@ pub trait Hooks {
     /// single player's integrated server included.
     ///
     /// `ClientPacketReceived`: a client applied the block, item and fluid
-    /// tags its server sent, and `block_in_tag`, `fluid_in_tag` and the
-    /// `tags()` service read them from now on. Fires once at login, for
-    /// configuration's tags, and once for each update in play, on the game
+    /// tags its server sent, and the `tags()` service reads them from now on.
+    /// Fires once at login, for configuration's tags, and once for each update in play, on the game
     /// thread. `integrated_server` is true in single player, where both
     /// causes fire: `cause.should_update_static_data()` is then false here,
     /// so that data the two threads share is updated once, on the server.
@@ -24,7 +23,6 @@ pub trait Hooks {
     /// Receives a [`ReloadContext`] for published data queries; world handles and
     /// transactions are not present on this context.
     #[hook(
-        target = "sunrise_gameplay_common::game::native_hooks::tags_updated::native_tags_updated",
         receiver = "associated",
         context = "reload",
         dispatch = "flat",

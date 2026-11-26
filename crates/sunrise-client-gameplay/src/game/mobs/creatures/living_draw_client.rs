@@ -1,4 +1,5 @@
 use super::*;
+use crate::game::{mob_blocks::MobView, stock_layer_mask::StockLayerMask};
 use sunrise_client::mobs::render::FrameDraw;
 use sunrise_gameplay_common::game::creatures::living_draw::LivingFrame;
 
@@ -134,6 +135,14 @@ impl crate::game::ClientGame<'_> {
         // model and vanilla layers; the mods' layers and post hooks still follow.
         let modded =
             self.mod_living_renderer_geometry(mob, alpha as f32, camera, packed, true, out);
+        // AvatarRenderer.shouldRenderLayers: a spectator draws no layers.
+        let layers = sunrise_client::mobs::render::layers_shown(mob);
+        let resolved = self.entity_layers(mob);
+        let hidden = if modded {
+            StockLayerMask::EMPTY
+        } else {
+            resolved.hidden
+        };
         if mob.species() == Species::SulfurCube && !mob.is_invisible() && !modded {
             self.sulfur_cube_body_geometry(
                 mob,
@@ -145,7 +154,7 @@ impl crate::game::ClientGame<'_> {
         }
         // Other players on a server: PlayerRenderer's HumanoidArmorLayer.
         let armor = if is_player {
-            self.worn_armor_layers(mob)
+            self.worn_armor_layers(mob, hidden)
         } else {
             Vec::new()
         };
@@ -165,9 +174,11 @@ impl crate::game::ClientGame<'_> {
                 mob.species(),
                 Species::Blaze | Species::MagmaCube | Species::GlowSquid | Species::SulfurCube
             );
-        // AvatarRenderer.shouldRenderLayers: a spectator draws no layers.
-        let layers = sunrise_client::mobs::render::layers_shown(mob);
-        let added = if layers { self.mod_layers(mob) } else { None };
+        let added = if layers { resolved.layers } else { None };
+        let data = super::super::humanoid_setup_anim::HiddenLayersData {
+            game: self,
+            hidden_layers: hidden,
+        };
         let mut skinned = None;
         frame_draw.capture_model = !modded
             && (added.is_some() || (listened && self.mob_render_post_listened(who.is_some())));
@@ -182,7 +193,7 @@ impl crate::game::ClientGame<'_> {
                 camera,
                 &lookup,
                 packed,
-                self,
+                &data,
                 &mut frame_draw,
                 out,
                 &mut skin,
@@ -196,7 +207,7 @@ impl crate::game::ClientGame<'_> {
                     camera,
                     &lookup,
                     packed,
-                    self,
+                    &data,
                     &armor,
                     &mut frame_draw,
                     out,
@@ -208,7 +219,7 @@ impl crate::game::ClientGame<'_> {
                     camera,
                     &lookup,
                     packed,
-                    self,
+                    &data,
                     &armor,
                     &mut frame_draw,
                     out,
@@ -220,7 +231,7 @@ impl crate::game::ClientGame<'_> {
                     camera,
                     &lookup,
                     packed,
-                    self,
+                    &data,
                     &armor,
                     &mut frame_draw,
                     out,
@@ -245,30 +256,70 @@ impl crate::game::ClientGame<'_> {
             // the others have no `isInvisible` check.
             let chest = mob.extra.slot_id(sunrise_items::equipment::CHEST);
             // `CapeLayer` and `Deadmau5EarsLayer`: `!state.isInvisible`, whoever sees the body.
-            if !invisible {
+            if !invisible && !hidden.contains(mod_api::StockLayer::Cape) {
                 self.player_cape_geometry(mob, chest, camera, alpha as f32, packed, out);
             }
             if !invisible
-                && let Some((_, name)) = self
-                    .remote_player_names()
-                    .into_iter()
-                    .find(|(id, _)| *id == mob.id)
+                && !hidden.contains(mod_api::StockLayer::Deadmau5Ears)
+                && let Some(who) = who
             {
-                self.player_ears_geometry(mob, &name, camera, alpha as f32, packed, out);
+                self.player_ears_geometry(mob, who.name, camera, alpha as f32, packed, out);
             }
-            self.player_elytra_geometry(mob, chest, camera, alpha as f32, packed, out);
-            self.shoulder_parrots_geometry(mob, camera, alpha as f32, packed, out);
-            self.spin_attack_geometry(mob, camera, alpha as f32, packed, out);
-            self.stuck_in_body_geometry(mob, mob.id as i32, camera, alpha as f32, packed, out);
+            if !hidden.contains(mod_api::StockLayer::Wings) {
+                self.player_elytra_geometry(mob, chest, camera, alpha as f32, packed, out);
+            }
+            if !hidden.contains(mod_api::StockLayer::ParrotOnShoulder) {
+                self.shoulder_parrots_geometry(mob, camera, alpha as f32, packed, out);
+            }
+            if !hidden.contains(mod_api::StockLayer::SpinAttackEffect) {
+                self.spin_attack_geometry(mob, camera, alpha as f32, packed, out);
+            }
+            let view = MobView {
+                camera,
+                alpha,
+                light: packed,
+            };
+            self.stuck_in_body_geometry(mob, mob.id as i32, view, hidden, out);
         }
         // CustomHeadLayer (a pumpkin, skull or head item) included.
         if layers {
             if !modded {
                 // Held items join the GPU path's draws, their silhouette too.
                 let skin = (skinning && silhouette_on_gpu).then_some(&mut skinned);
-                self.mob_block_geometry(mob, camera, alpha, packed, skin, out);
+                let view = MobView {
+                    camera,
+                    alpha,
+                    light: packed,
+                };
+                self.mob_block_geometry(mob, view, hidden, skin, out);
             }
-            self.mod_layer_geometry(mob, who, model, added, alpha as f32, camera, packed, out);
+            let stock_ctx = super::super::native_entity_layers::StockLayerContext {
+                is_player,
+                local_player: false,
+                invisible,
+                in_world: true,
+                player_name: who.map(|w| w.name),
+                alpha,
+                camera,
+                light: packed,
+                supported: if modded {
+                    StockLayerMask::EMPTY
+                } else {
+                    resolved.supported
+                },
+                hidden,
+            };
+            self.mod_layer_geometry(
+                mob,
+                who,
+                model,
+                added,
+                &stock_ctx,
+                alpha as f32,
+                camera,
+                packed,
+                out,
+            );
         }
         self.mod_render_post(mob, who, model, alpha as f32, camera, packed, out);
         if let Some(rgb) = outline {

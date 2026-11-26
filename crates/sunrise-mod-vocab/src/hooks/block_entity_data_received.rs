@@ -13,7 +13,6 @@ pub trait Hooks {
     /// `handleUpdateTag` perform loading; they are not counterparts of this notice,
     /// which runs after the merge.
     #[hook(
-        target = "sunrise_client_gameplay::game::native_hooks::block_entity_data_received::native_block_entity_data_received",
         receiver = "associated",
         dispatch = "flat",
         side = "client",

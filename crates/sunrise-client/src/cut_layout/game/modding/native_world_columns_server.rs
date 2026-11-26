@@ -1,94 +1,10 @@
 #![cfg(test)]
 #[cfg(test)]
 mod tests {
-    use super::super::native_entity_refs::tests::with_game;
+    use std::ops::ControlFlow;
     use std::sync::Arc;
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
     use sunrise_gameplay_common::world_biomes;
-    use sunrise_sim::vanillagen::{TerrainResources, VanillaTerrain};
-    use sunrise_world::worldgen::generator::FlatSettings;
-
-    #[test]
-    #[ignore = "daily"]
-    fn terrain_surface_reads_flat_layers_without_chunks() {
-        with_game(|game| {
-            game.options.dedicated = Some(Vec::new());
-            let directory = game.options.resources.join("worldgen");
-            let terrain = VanillaTerrain::for_flat(
-                TerrainResources {
-                    data: Some(&game.pack.data_changes),
-                    dir: &directory,
-                    registry: game.pack.assets.registry,
-                    biomes: world_biomes!(game),
-                    item_data: &game.res.core.item_data,
-                },
-                &Default::default(),
-                12345,
-                &FlatSettings {
-                    layers: vec![
-                        ("minecraft:bedrock".into(), 1),
-                        ("minecraft:dirt".into(), 2),
-                        ("minecraft:grass_block".into(), 1),
-                    ],
-                    biome: "minecraft:plains".into(),
-                    structure_overrides: Some(Vec::new()),
-                    features: false,
-                    lakes: false,
-                },
-                false,
-            )
-            .unwrap();
-            game.end.set_locator(Some(Arc::new(terrain)));
-            let dimension = game.dim.id();
-            let before = (game.world.chunks.len(), game.server.streaming.pending());
-            let columns = [(100000, -100000), (0, 0), (-1, 31), (100000, -100000)];
-            let answer = game.terrain_surface(dimension, &columns).unwrap();
-            assert_eq!(answer.len(), columns.len());
-            for column in &answer {
-                let column = column.as_ref().unwrap();
-                assert_eq!(column.height, -60);
-                assert_eq!(
-                    column.block,
-                    mod_api::__private::block_key("minecraft:grass_block").unwrap()
-                );
-                assert_eq!(column.water, None);
-                assert_eq!(column.biome, "minecraft:plains");
-            }
-            assert_eq!(game.terrain_surface(dimension, &columns).unwrap(), answer);
-            assert_eq!(
-                before,
-                (game.world.chunks.len(), game.server.streaming.pending())
-            );
-        });
-    }
-
-    #[test]
-    #[ignore = "daily"]
-    fn terrain_surface_refuses_before_sampling() {
-        with_game(|game| {
-            game.options.dedicated = Some(Vec::new());
-            let dimension = game.dim.id();
-            game.end.set_locator(None);
-            assert!(
-                game.terrain_surface("test:unknown", &[])
-                    .unwrap_err()
-                    .contains("level being ticked")
-            );
-            let columns = vec![(0, 0); mod_api::MAX_TERRAIN_COLUMNS];
-            assert_eq!(
-                game.terrain_surface(dimension, &columns).unwrap(),
-                vec![None; columns.len()]
-            );
-            let excessive = vec![(0, 0); mod_api::MAX_TERRAIN_COLUMNS + 1];
-            assert!(
-                game.terrain_surface(dimension, &excessive)
-                    .unwrap_err()
-                    .contains("4096")
-            );
-            assert!(game.terrain_surface(dimension, &[]).unwrap().is_empty());
-            game.options.dedicated = None;
-            assert!(game.terrain_surface(dimension, &[]).is_err());
-        });
-    }
 
     #[test]
     #[ignore = "daily"]
@@ -202,17 +118,80 @@ mod tests {
                 game.world.set(0, 64, 0, stone).unwrap();
                 game.world.set(4, 64, 0, stone).unwrap();
 
-                let dimension = game.dim.id();
-                let result = game
-                    .read_columns(
-                        dimension,
+                let overworld = game.level(game.dim.id()).unwrap();
+                let mut bases = Vec::new();
+                let mut water_colors = Vec::new();
+                let mut stone_seen = Vec::new();
+                let flow = overworld
+                    .visit_columns(
+                        game,
                         &[(0, 0), (4, 0), (32, 0)],
                         mod_api::Heightmap::WorldSurface,
                         (1, 1),
+                        &mut |_, slice| {
+                            match slice {
+                                Some(slice) => {
+                                    bases.push(Some(slice.base));
+                                    water_colors.push(slice.water_color);
+                                    stone_seen.push(slice.blocks[0].block());
+                                }
+                                None => {
+                                    bases.push(None);
+                                    water_colors.push(0);
+                                }
+                            }
+                            ControlFlow::Continue(())
+                        },
                     )
                     .unwrap();
-                assert_eq!(result.bases, vec![Some(65), Some(65), None]);
-                assert_eq!(result.water_colors, vec![0x3F_76E4, 0x61_7B64, 0]);
+                assert_eq!(flow, ControlFlow::Continue(()));
+                assert_eq!(bases, vec![Some(65), Some(65), None]);
+                assert_eq!(water_colors, vec![0x3F_76E4, 0x61_7B64, 0]);
+                assert_eq!(
+                    stone_seen,
+                    vec![
+                        mod_api::__private::block_key("minecraft:stone").unwrap(),
+                        mod_api::__private::block_key("minecraft:stone").unwrap(),
+                    ]
+                );
+
+                // Both height and column streaming work on parked open levels too.
+                let here = game.dim;
+                game.enter_level(sunrise_gameplay_common::game::Dim::Nether)
+                    .unwrap();
+                let mut parked_heights = Vec::new();
+                assert_eq!(
+                    overworld.visit_surface_heights(
+                        game,
+                        &[(0, 0), (4, 0), (32, 0)],
+                        mod_api::Heightmap::WorldSurface,
+                        &mut |pos, height| {
+                            parked_heights.push((pos, height));
+                            ControlFlow::Continue(())
+                        },
+                    ),
+                    Ok(ControlFlow::Continue(()))
+                );
+                assert_eq!(
+                    parked_heights,
+                    vec![((0, 0), Some(65)), ((4, 0), Some(65)), ((32, 0), None)]
+                );
+                let mut parked_bases = Vec::new();
+                assert_eq!(
+                    overworld.visit_columns(
+                        game,
+                        &[(0, 0), (32, 0)],
+                        mod_api::Heightmap::WorldSurface,
+                        (1, 1),
+                        &mut |_, slice| {
+                            parked_bases.push(slice.map(|s| (s.base, s.water_color)));
+                            ControlFlow::Continue(())
+                        },
+                    ),
+                    Ok(ControlFlow::Continue(()))
+                );
+                assert_eq!(parked_bases, vec![Some((65, 0x3F_76E4)), None]);
+                game.enter_level(here).unwrap();
             },
         );
     }

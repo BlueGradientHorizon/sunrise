@@ -127,6 +127,12 @@ pub struct EntityMemory {
     /// Entities of types Sunrise does not simulate, kept per chunk and
     /// written back unchanged.
     pub unknown: HashMap<(i32, i32), Vec<Tag>>,
+    /// Entity sections loaded before their terrain for a save. They stay owned
+    /// until unload, even when empty, so the next save can clear a departed row.
+    pub hidden_entity_sections: HashSet<(i32, i32)>,
+    /// The columns whose old entity record the last `prepare_entity_save` could not read.
+    /// Their records stay untouched and the save as a whole is incomplete.
+    pub unreadable_entity_sections: usize,
     /// The compound of orbs, arrows, falling blocks, tridents, crystals and the
     /// dragon as they were loaded, found again by type and position (one that
     /// has moved since loading is saved afresh); their UUIDs are in `uuids`.
@@ -140,6 +146,10 @@ pub struct EntityMemory {
     pub joins_canceled: u32,
     /// The latest insertion considered for `native_entity_join_level`.
     pub joined_seq: sunrise_sim::join_seq::JoinSeq,
+    /// Joins admitted synchronously (`admit_fresh_join`) whose `JoinSeq` is
+    /// still ahead of `joined_seq`: kept independently of `live` so a later
+    /// flush never re-announces an entity that already joined and left.
+    pub admitted_joins: Vec<(sunrise_sim::join_seq::JoinSeq, u32)>,
     /// The entities mods were told of and that have not left since: id (in
     /// increasing order), type, and whether the last leave sweep saw it.
     /// Only filled while a mod is loaded.
@@ -148,6 +158,8 @@ pub struct EntityMemory {
     /// lookup from the call on, taken out of their lists at the next sweep of
     /// departed entities. Mobs go at once and never wait here.
     pub removals: Vec<Target>,
+    /// First attachment persistence error raised while building the current entity record.
+    pub attachment_encode_error: Option<sunrise_mod_runtime::attachments::AttachmentEncodeError>,
 }
 
 impl EntityMemory {
@@ -185,77 +197,6 @@ impl EntityMemory {
     pub fn uuid_of(&self, id: u32) -> Option<[i32; 4]> {
         self.uuids.get(&id).copied()
     }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct ItemDisplayTransformation {
-    translation: [f32; 3],
-    left_rotation: [f32; 4],
-    scale: [f32; 3],
-    right_rotation: [f32; 4],
-}
-
-impl From<mod_api::Transformation> for ItemDisplayTransformation {
-    fn from(value: mod_api::Transformation) -> Self {
-        Self {
-            translation: value.translation,
-            left_rotation: value.left_rotation,
-            scale: value.scale,
-            right_rotation: value.right_rotation,
-        }
-    }
-}
-
-impl ItemDisplayTransformation {
-    pub fn from_tag(tag: Option<&Tag>) -> Option<Self> {
-        let (translation, left_rotation, scale, right_rotation) = tag
-            .and_then(sunrise_sim::text_display_data::transformation)
-            .unwrap_or((
-                [0.0; 3],
-                [0.0, 0.0, 0.0, 1.0],
-                [1.0; 3],
-                [0.0, 0.0, 0.0, 1.0],
-            ));
-        Some(Self {
-            translation,
-            left_rotation,
-            scale,
-            right_rotation,
-        })
-    }
-
-    pub fn to_tag(self) -> Tag {
-        transformation_tag(
-            self.translation,
-            self.left_rotation,
-            self.scale,
-            self.right_rotation,
-        )
-    }
-}
-
-/// The transformation-only portion of Display.addAdditionalSaveData and the native writer.
-fn transformation_tag(
-    translation: [f32; 3],
-    left_rotation: [f32; 4],
-    scale: [f32; 3],
-    right_rotation: [f32; 4],
-) -> Tag {
-    let mut t = sunrise_core::nbt::Compound::new();
-    t.insert(
-        "translation".into(),
-        sunrise_sim::save::floats(&translation),
-    );
-    t.insert(
-        "left_rotation".into(),
-        sunrise_sim::save::floats(&left_rotation),
-    );
-    t.insert("scale".into(), sunrise_sim::save::floats(&scale));
-    t.insert(
-        "right_rotation".into(),
-        sunrise_sim::save::floats(&right_rotation),
-    );
-    Tag::Compound(t)
 }
 
 impl EntityMemory {

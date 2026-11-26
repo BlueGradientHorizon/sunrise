@@ -16,7 +16,7 @@ mod grindstone_part_tests;
 mod models;
 pub use models::{AnvilResult, EnchantmentRow};
 use serde_json::Value;
-use std::{collections::HashSet, fs, path::Path, sync::Arc};
+use std::{collections::HashSet, path::Path, sync::Arc};
 
 /// `PlayerHeadItem.getName`: a player head whose profile has a name is titled
 /// after it.
@@ -99,25 +99,25 @@ impl StationData {
         let sources =
             crate::crafting::ResolvedSources::load_collecting(root, items, overlay, context)?;
         let recipes = crate::crafting::Recipes::from_resolved(root, items, overlay, &sources)?;
-        Ok(Self::from_sources(
+        Self::from_sources(
             root,
             items,
             overlay,
-            defaults,
+            crate::banner::Banners::load(root, defaults),
             (&sources, &recipes),
-        ))
+        )
     }
     /// The tables of one load whose recipes are `sources`.
     pub fn from_sources(
         root: &Path,
         items: &Items,
         overlay: &PackOverlay,
-        defaults: &sunrise_world::item_defaults::ItemDefaults,
+        banners: crate::banner::Banners,
         (sources, recipes): (&crate::crafting::ResolvedSources, &crate::crafting::Recipes),
-    ) -> Self {
-        Self {
+    ) -> crate::Result<Self> {
+        Ok(Self {
             enchantments: std::sync::Arc::clone(&items.enchantments),
-            recipes: StationRecipes::from_sources(root, items, sources),
+            recipes: StationRecipes::from_sources(items, sources),
             brewing: {
                 let mut brewing = crate::brewing::Brewing::from_recipes(
                     sources.brewing_recipes().cloned().collect(),
@@ -127,30 +127,52 @@ impl StationData {
                 brewing.inputs.extend(added("brewing_input").cloned());
                 brewing
             },
-            trades: crate::merchant::Trades::load(root, overlay),
+            trades: crate::merchant::Trades::load(root, overlay)?,
             professions: Arc::new(crate::mobs::villager::ResolvedProfessions::vanilla()),
-            banners: crate::banner::Banners::load(root, defaults),
+            banners,
             recipe_index: crate::recipe_book::RecipeIndex::from_recipes(recipes),
-        }
+        })
     }
 }
 
 // ---------------------------------------------------------------- enchanting
 
 /// `EnchantingTableBlock.BOOKSHELF_OFFSETS`: the 5x5 ring two blocks out, two high, in
-/// `BlockPos.betweenClosed` order (x fastest, then y, then z), which a float power sum can see.
-pub fn bookshelf_offsets() -> Vec<[i32; 3]> {
-    let mut v = Vec::new();
-    for z in -2i32..=2 {
-        for y in 0..=1 {
-            for x in -2i32..=2 {
+/// `BlockPos.betweenClosed` order (x fastest, then y, then z). The power sum and the
+/// table's particles walk it in this order, so a float sum and the particles' random draws
+/// see what vanilla's do.
+pub const BOOKSHELF_OFFSETS: [[i32; 3]; 32] = {
+    let mut v = [[0; 3]; 32];
+    let mut i = 0;
+    let mut z: i32 = -2;
+    while z <= 2 {
+        let mut y = 0;
+        while y <= 1 {
+            let mut x: i32 = -2;
+            while x <= 2 {
                 if x.abs() == 2 || z.abs() == 2 {
-                    v.push([x, y, z]);
+                    v[i] = [x, y, z];
+                    i += 1;
                 }
+                x += 1;
             }
+            y += 1;
         }
+        z += 1;
     }
     v
+};
+
+/// The positions an enchanting table scans: [`BOOKSHELF_OFFSETS`], then the offsets mods
+/// added with `add_enchanting_table_offsets`, in load order, one of vanilla's dropped.
+pub fn bookshelf_offsets() -> impl Iterator<Item = [i32; 3]> {
+    let declared = mod_api::__private::enchanting_table_offset_declarations();
+    BOOKSHELF_OFFSETS.into_iter().chain(
+        declared
+            .iter()
+            .copied()
+            .filter(|offset| !BOOKSHELF_OFFSETS.contains(offset)),
+    )
 }
 /// The three offers of `EnchantmentMenu.slotsChanged`.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -411,7 +433,7 @@ pub fn item_name_part(context: &LoopContext, stack: &ItemStack) -> Option<crate:
 #[inline(never)]
 pub fn native_item_name(
     context: &LoopContext,
-    stack: &mod_api::ItemStack,
+    stack: mod_api::ItemStackView<'_>,
     name: &mut Option<mod_api::Text>,
 ) {
     mod_api::dispatch_item_name(
@@ -705,7 +727,7 @@ pub fn can_grindstone_repair(context: &LoopContext, items: &Items, stack: &ItemS
 #[inline(never)]
 pub fn native_can_grindstone_repair(
     context: &LoopContext,
-    stack: &mod_api::ItemStack,
+    stack: mod_api::ItemStackView<'_>,
     can_repair: &mut bool,
 ) {
     mod_api::dispatch_can_grindstone_repair(
@@ -964,8 +986,6 @@ pub struct StationRecipes {
     pub smithing: Vec<Smithing>,
     /// Descending recipe priority, then vanilla's registration order.
     pub stonecutting: Vec<Stonecutting>,
-    /// `trim_material` registry: id -> (asset name, description).
-    pub trim_materials: Vec<(String, String)>,
     /// What mods added to the smithing slots' property sets (template, base,
     /// addition).
     smithing_additions: [HashSet<String>; 3],
@@ -989,14 +1009,10 @@ impl StationRecipes {
         let sources =
             crate::crafting::ResolvedSources::load_collecting(root, items, overlay, context)?;
         crate::crafting::Recipes::from_resolved(root, items, overlay, &sources)?;
-        Ok(Self::from_sources(root, items, &sources))
+        Ok(Self::from_sources(items, &sources))
     }
     /// The station tables of `sources`, the recipes one load resolved.
-    pub fn from_sources(
-        root: &Path,
-        items: &Items,
-        sources: &crate::crafting::ResolvedSources,
-    ) -> Self {
+    pub fn from_sources(items: &Items, sources: &crate::crafting::ResolvedSources) -> Self {
         let mut smithing = Vec::new();
         let mut stonecutting = Vec::new();
         for recipe in sources.station_recipes() {
@@ -1006,31 +1022,6 @@ impl StationRecipes {
                     stonecutting.push(recipe.clone())
                 }
                 ParsedStationRecipe::Stonecutting(_) => {}
-            }
-        }
-        let mut trim_materials = Vec::new();
-        let mut tm: Vec<_> = fs::read_dir(root.join("data/minecraft/trim_material"))
-            .into_iter()
-            .flatten()
-            .flatten()
-            .map(|e| e.path())
-            .collect();
-        tm.sort();
-        for p in tm {
-            if let Ok(bytes) = fs::read(&p)
-                && let Ok(v) = serde_json::from_slice::<Value>(&bytes)
-            {
-                let id = format!(
-                    "minecraft:{}",
-                    p.file_stem().and_then(|s| s.to_str()).unwrap_or("")
-                );
-                trim_materials.push((
-                    id,
-                    v["description"]["translate"]
-                        .as_str()
-                        .unwrap_or("")
-                        .to_owned(),
-                ));
             }
         }
         let added = |key| {
@@ -1043,7 +1034,6 @@ impl StationRecipes {
         Self {
             smithing,
             stonecutting,
-            trim_materials,
             item_limits: items
                 .items
                 .iter()
@@ -1281,6 +1271,7 @@ pub fn apply_trim(
 mod tests {
     use super::*;
     use crate::enchant::tests::{sample, sample_items};
+    use std::fs;
     use sunrise_core::nbt::Tag;
 
     /// The loop a menu under test runs in: no mods, so every part keeps vanilla's answer.
@@ -1440,6 +1431,43 @@ mod tests {
             out.data().and_then(|d| d.trim.as_ref()).map(|t| &t.0),
             Some(crate::item_data::trim::Holder::Direct(_))
         ));
+    }
+
+    /// Smithing with a pack's pattern (`test:zigzag`, template stone) and material
+    /// (`test:jade`, provided by an emerald block): the iron chestplate's trim names both.
+    #[test]
+    fn smithing_trim_names_a_packs_pattern_and_material() {
+        let e = sample();
+        let recipes = StationRecipes {
+            smithing: vec![Smithing::Trim {
+                id: "test:zigzag".into(),
+                template: Ingredient::of(vec!["minecraft:stone".into()]),
+                base: Ingredient::of(vec!["minecraft:iron_chestplate".into()]),
+                addition: Ingredient::of(vec!["minecraft:emerald_block".into()]),
+                pattern: crate::crafting::RecipeTrimPattern::Reference("test:zigzag".into()),
+            }],
+            ..Default::default()
+        };
+        let template = ItemStack::new("minecraft:stone", 1);
+        let base = ItemStack::new("minecraft:iron_chestplate", 1);
+        let mut emerald = ItemStack::new("minecraft:emerald_block", 1);
+        emerald.data_mut().set_other(
+            "minecraft:provides_trim_material",
+            Some(Tag::String("test:jade".into())),
+        );
+        let out = recipes
+            .smithing_result(
+                crate::test_resources::server_loop_context(),
+                &e,
+                Some(&template),
+                Some(&base),
+                Some(&emerald),
+            )
+            .expect("the emerald block provides a trim material");
+        assert_eq!(
+            crate::item_data::trim::named(out.data().and_then(|d| d.trim.as_ref()).unwrap()),
+            Some(("test:jade", "test:zigzag"))
+        );
     }
 
     /// Enchanting: `ItemStack.isEnchantable` and `selectEnchantment` read the
@@ -1630,8 +1658,7 @@ mod tests {
 
     #[test]
     fn bookshelf_ring_has_32_positions() {
-        let o = bookshelf_offsets();
-        assert_eq!(o.len(), 32);
+        let o = BOOKSHELF_OFFSETS;
         assert!(o.contains(&[-2, 0, -2]) && o.contains(&[2, 1, 0]) && !o.contains(&[1, 0, 1]));
         // BlockPos.betweenClosed(-2, 0, -2, 2, 1, 2): x fastest, then y, then z.
         let start = [[-2, 0, -2], [-1, 0, -2], [0, 0, -2], [1, 0, -2], [2, 0, -2]];
@@ -1639,6 +1666,13 @@ mod tests {
         assert_eq!(o[5], [-2, 1, -2]);
         assert_eq!(o[10..12], [[-2, 0, -1], [2, 0, -1]]);
         assert_eq!(o[31], [2, 1, 2]);
+    }
+
+    /// With no mod installed the scan list is vanilla's 32.
+    #[test]
+    fn no_declared_offsets_leave_the_scan_list_vanillas() {
+        assert!(mod_api::__private::enchanting_table_offset_declarations().is_empty());
+        assert!(bookshelf_offsets().eq(BOOKSHELF_OFFSETS));
     }
 
     /// `EnchantmentLevelSetEvent`: each row is asked once, in order, with the

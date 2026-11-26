@@ -1,5 +1,4 @@
 //! The `player_bed_leave` hook: declarations the mod API generator reads (see `hooks/mod.rs`).
-// catalog-order: 0279
 
 pub trait Hooks {
     /// `PlayerWakeUpEvent`: a server player is getting out of the bed at
@@ -30,7 +29,6 @@ disconnect wake, if added, uses `(true, false)`. Direct metadata clearing is not
 stop-sleeping, and client metadata resets do not emit this server hook.
 "#]
     #[hook(
-        target = "sunrise_gameplay::game::native_hooks::player_bed_leave::ServerGame<'_>::native_player_bed_leave",
         dispatch = "flat",
         side = "server",
         contract = "listen",

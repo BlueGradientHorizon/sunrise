@@ -820,6 +820,8 @@ fn run_witness() {
         |game| {
             game.options.dedicated = Some(Vec::new());
             game.build_registries();
+            let levels = game.server.level_shapes.clone();
+            let level_seeds = game.server.levels.0.runtime.seeds();
             game.lan_host(
                 LanSettings {
                     port: 0,
@@ -844,8 +846,8 @@ fn run_witness() {
                     seed: 0,
                     max_players: 16,
                     integrated: false,
-                    levels: game.server.level_shapes,
-                    level_seeds: game.server.levels.0.runtime.seeds(),
+                    levels,
+                    level_seeds,
                 },
             )
             .unwrap();

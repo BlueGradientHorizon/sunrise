@@ -282,7 +282,7 @@ impl crate::game::ClientGame<'_> {
         if !toggled && answer.is_none() {
             return Ok(false);
         }
-        self.client.audio.0.play_button_click();
+        self.play_audio_button_click();
         if let Some(accepted) = answer {
             self.answer_code_of_conduct(accepted)?;
         }

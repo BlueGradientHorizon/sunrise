@@ -15,6 +15,7 @@ impl crate::game::ServerGame<'_> {
         let dimension = self
             .server
             .command_source
+            .as_ref()
             .map_or(self.common.dim, |s| s.dimension);
         if dimension != self.common.dim
             || !self

@@ -8,6 +8,7 @@
 //! outline bounds, collision shapes and suffocation predicates.
 use super::{Hit, InteractTarget, Keys};
 use sunrise_core::geometry::{Aabb, Vec3};
+use sunrise_gameplay_common::game::transactions::entities::EntityRemovalGameExt as _;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::cushion::blocks_in;
 use sunrise_sim::entities::{Cushion, dye_index};
@@ -333,10 +334,7 @@ impl crate::game::ServerGame<'_> {
         killed: bool,
     ) -> bool {
         let id = self.common.cushions[index].id;
-        if self
-            .common
-            .target_removed(&super::commands::Target::Cushion(id))
-        {
+        if self.target_removed(&super::commands::Target::Cushion(id)) {
             return false;
         }
         let Some(c) = self.take_removed_cushion(id) else {

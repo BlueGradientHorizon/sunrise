@@ -1,6 +1,8 @@
 //! The issue #3977 merge contract through a real `Game`: `3 x 2` and `5 x 1` become
 //! `11 x 1`, which saves unchanged and pays 11 once on pickup.
-use mod_api::{ExperienceOrbCanMergeEvent, ExperienceOrbMergeEvent, Flow, Hooks, ServerHost};
+use mod_api::{
+    ExperienceOrbCanMergeEvent, ExperienceOrbMergeEvent, ExperienceOrbRef, Flow, Hooks, ServerHost,
+};
 use sunrise_core::geometry::Vec3;
 use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use sunrise_sim::entities::ExperienceOrb;
@@ -43,6 +45,13 @@ fn open(game: &mut sunrise_gameplay::game::ServerGame<'_>) {
     game.server.lan.as_mut().unwrap().hub.guests.push(g);
 }
 
+fn orb_handle(host: &dyn ServerHost, id: u32) -> ExperienceOrbRef {
+    let entity = host.entity(id).expect("live orb entity");
+    host.experience_orb(entity)
+        .expect("server orb lookup")
+        .expect("experience orb handle")
+}
+
 /// Forced merge of different values, then the exact total written back.
 struct Normalize;
 #[mod_api::__subscriptions]
@@ -66,7 +75,9 @@ impl Hooks for Normalize {
             event.from_count,
         ) == (3, 2, 5, 1)
         {
-            assert!(host.set_experience_orb(event.dimension, event.into, Some(11), Some(1), None));
+            let into = orb_handle(&*host, event.into);
+            assert_eq!(into.set_value(host, 11), Ok(()));
+            assert_eq!(into.set_count(host, 1), Ok(()));
         }
         Flow::Continue
     }
@@ -88,7 +99,10 @@ impl Hooks for Cancel {
         host: &mut dyn ServerHost,
         event: &mut ExperienceOrbMergeEvent<'_>,
     ) -> Flow {
-        assert!(host.set_experience_orb(event.dimension, event.into, Some(11), Some(1), Some(99)));
+        let into = orb_handle(&*host, event.into);
+        assert_eq!(into.set_value(host, 11), Ok(()));
+        assert_eq!(into.set_count(host, 1), Ok(()));
+        assert_eq!(into.set_age(host, 99), Ok(()));
         Flow::Cancel
     }
 }
@@ -137,8 +151,11 @@ impl Hooks for Stale {
         host: &mut dyn ServerHost,
         event: &mut ExperienceOrbMergeEvent<'_>,
     ) -> Flow {
-        assert!(host.set_experience_orb(event.dimension, event.into, Some(11), Some(1), None));
-        assert!(host.set_experience_orb(event.dimension, event.from, Some(6), None, None));
+        let into = orb_handle(&*host, event.into);
+        assert_eq!(into.set_value(host, 11), Ok(()));
+        assert_eq!(into.set_count(host, 1), Ok(()));
+        let from = orb_handle(&*host, event.from);
+        assert_eq!(from.set_value(host, 6), Ok(()));
         Flow::Continue
     }
 }

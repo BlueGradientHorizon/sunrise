@@ -14,7 +14,6 @@ use sunrise_client_gameplay::game::client_side::resource_tables_client::{
     ClientPackResources, ClientResources, UiResources,
 };
 use sunrise_client_gameplay::game::client_side::{packs, shader_packs};
-use sunrise_client_gameplay::game::resource_tables;
 use sunrise_game_data::Result;
 #[cfg(feature = "client")]
 use sunrise_gameplay_common::game::api_values::TryIntoApi;
@@ -75,8 +74,6 @@ struct CachedEntry {
     client_pack: Option<ClientPackResources>,
     #[cfg(feature = "client")]
     gui: Option<Mutex<UiResources>>,
-    #[cfg(feature = "client")]
-    gui_with_pool: OnceLock<std::result::Result<Mutex<UiResources>, String>>,
     iterated: IteratedRegistries,
     mod_namespaces: Vec<String>,
 }
@@ -133,7 +130,6 @@ fn load_inputs_are_vanilla(root: &Path, load_role: mods::LoadRole) -> bool {
         || !mod_api::__private::entity_attribute_declarations().is_empty()
         || !mod_api::__private::entity_attribute_modifications().is_empty()
         || !mod_api::__private::spawn_placement_declarations().is_empty()
-        || mod_api::__private::entity_tick_each().is_some_and(|e| e.any())
         || !mod_api::__private::entity_part_state_declarations().is_empty()
         || !sunrise_world::fluid::mod_fluids().is_empty()
         || sunrise_gameplay_common::game::general::general_type_catalog().len() != 0
@@ -231,15 +227,7 @@ fn build_cached_entry(
                     )
                 })
             };
-            #[cfg(feature = "client")]
-            let loaded = if key.role.is_client() {
-                resource_tables::with_dynamic_texture_pool_override(false, load)
-            } else {
-                load()
-            };
-            #[cfg(not(feature = "client"))]
-            let loaded = load();
-            let loaded = loaded.map_err(|e| e.to_string())?;
+            let loaded = load().map_err(|e| e.to_string())?;
             #[cfg(feature = "client")]
             let gui = if key.role.is_client() {
                 let mut gui = loaded.gui.ok_or("cached build produced no GUI bundle")?;
@@ -271,8 +259,6 @@ fn build_cached_entry(
                 client_res: loaded.client_res,
                 #[cfg(feature = "client")]
                 gui,
-                #[cfg(feature = "client")]
-                gui_with_pool: OnceLock::new(),
                 iterated,
                 mod_namespaces,
             }))
@@ -363,7 +349,6 @@ fn replay_iterated_registries(iterated: &IteratedRegistries) -> std::result::Res
 fn hydrate_hit(
     cached: &CachedEntry,
     key: &CacheKey,
-    #[cfg(feature = "client")] dynamic_texture_pool: bool,
     settings: &Settings,
     skip_lang: bool,
     progress: &Progress,
@@ -428,7 +413,6 @@ fn hydrate_hit(
         ));
     }
     api_values::resolve_item_registry(cached.resources.items())?;
-    sunrise_sim::mobs::trial_spawner::load_registry(&cached.root);
 
     let mut pack = cached.pack.clone();
     if !std::ptr::eq(registry, cached.pack.assets.registry) {
@@ -462,34 +446,13 @@ fn hydrate_hit(
     }
     #[cfg(feature = "client")]
     let (gui, client_res) = if key.role.is_client() {
-        let gui = if dynamic_texture_pool {
-            let built = cached.gui_with_pool.get_or_init(|| {
-                let source =
-                    sunrise_assets::resource_source::ResourceSource::directory(cached.root.clone());
-                resource_tables::with_dynamic_texture_pool_override(true, || {
-                    let mut ui = UiResources::load(&source, &cached.vanilla_root)
-                        .map_err(|e| e.to_string())?
-                        .with_splashes(&source, &cached.vanilla_root, key.skip_modded_splashes);
-                    ui.atlas.pack_pixels_sync();
-                    Ok(Mutex::new(ui))
-                })
-            });
-            match built {
-                Ok(ui) => ui
-                    .lock()
-                    .unwrap_or_else(|e| e.into_inner())
-                    .clone_for_tests(),
-                Err(error) => return Err(error.clone()),
-            }
-        } else {
-            cached
-                .gui
-                .as_ref()
-                .ok_or("missing cached GUI bundle")?
-                .lock()
-                .unwrap_or_else(|e| e.into_inner())
-                .clone_for_tests()
-        };
+        let gui = cached
+            .gui
+            .as_ref()
+            .ok_or("missing cached GUI bundle")?
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone_for_tests();
         let client_res = cached
             .client_res
             .as_ref()
@@ -593,10 +556,6 @@ pub(crate) fn load(
             publish,
         );
     };
-    #[cfg(feature = "client")]
-    let dynamic_texture_pool = load_role.execution.is_client()
-        && sunrise_client_gameplay::game::client_side::resource_tables_client::dynamic_texture_pool(
-        );
     let key = CacheKey {
         stamps: root_stamps(&canon_root),
         root: canon_root,
@@ -632,15 +591,7 @@ pub(crate) fn load(
         Ok(cached) => cached,
         Err(error) => return Err(error.clone().into()),
     };
-    match hydrate_hit(
-        cached,
-        &key,
-        #[cfg(feature = "client")]
-        dynamic_texture_pool,
-        settings,
-        skip_lang,
-        progress,
-    )? {
+    match hydrate_hit(cached, &key, settings, skip_lang, progress)? {
         Some(loaded) => Ok(loaded),
         None => load_resources_uncached(
             roots,

@@ -5,8 +5,27 @@ impl SideOps for crate::game::server_side::ServerState {
     fn side_visit_parked_dimensions(&self, visit: impl FnMut(Dim)) {
         self.levels.0.parked.keys().copied().for_each(visit);
     }
+    fn side_open_server_data_resource<'a>(
+        &'a self,
+        logical_server: bool,
+        content: &'a ResourceSource,
+        vanilla: Option<&'a ResourceSource>,
+        id: &mod_api::Identifier,
+    ) -> std::io::Result<Option<Box<dyn std::io::Read + 'a>>> {
+        let selected = logical_server
+            .then(|| self.fns.0.enabled_packs_highest_first())
+            .into_iter()
+            .flatten();
+        sunrise_level::datapack::open_resource(
+            selected,
+            std::iter::once(content).chain(vanilla),
+            id,
+        )
+    }
     fn side_append_function_pack_sources<'a>(&'a self, to: &mut Vec<&'a ResourceSource>) {
-        to.extend(self.fns.0.pack_sources().rev());
+        to.extend(
+            self.fns.0.enabled_packs().map(sunrise_level::datapack::DataPack::source),
+        );
     }
     fn side_function_registry(
         &self,
@@ -25,8 +44,17 @@ impl SideOps for crate::game::server_side::ServerState {
             .slot_source_tag(tag)
             .is_ok_and(|members| members.iter().any(|member| member == id))
     }
+    fn side_allow_custom_components(&self) -> bool {
+        true
+    }
     fn side_vanilla_data_disabled(&self) -> bool {
         self.cmds.0.vanilla_disabled
+    }
+    fn side_native_player_body<'a>(
+        game: &'a Self::Game<'_>,
+        target: Target,
+    ) -> Option<&'a PlayerMotion> {
+        game.native_player_body(target)
     }
     fn side_native_client_tracked<'g>(
         game: &'g Self::Game<'_>,
@@ -49,6 +77,20 @@ impl SideOps for crate::game::server_side::ServerState {
     fn side_client_entity_tick_count(game: &Self::Game<'_>, entity: EntityRef) -> Option<i32> {
         None
     }
+    fn side_client_entity_custom_name(
+        game: &Self::Game<'_>,
+        entity: EntityRef,
+    ) -> Option<Option<sunrise_game_data::text::Text>> {
+        None
+    }
+
+    fn side_native_client_entity_body_target(
+        game: &Self::Game<'_>,
+        entity: EntityRef,
+    ) -> Result<Target, EntityReadError> {
+        Err(EntityReadError::Unavailable)
+    }
+
     fn side_native_client_general_type_slot(
         game: &Self::Game<'_>,
         entity: EntityRef,
@@ -93,6 +135,14 @@ impl SideOps for crate::game::server_side::ServerState {
         game.server_registry_sync()
     }
 
+    fn side_after_entity_constructing_fault(_game: &mut Self::Game<'_>, id: u32) {
+        #[cfg(any(test, feature = "test-support"))]
+        {
+            use crate::game::pending_births::escaping_fault::{At, reach};
+            reach(At::Constructed, id);
+        }
+    }
+
     fn side_bind_constructed_entity_attachments(game: &mut Self::Game<'_>, id: u32) {
         {
             game.server_bind_constructed_entity_attachments(id);
@@ -112,6 +162,9 @@ impl SideOps for crate::game::server_side::ServerState {
         {
             game.server_crafting_remainder_hook(stack, remainder);
         }
+    }
+    fn side_server_target_position(game: &Self::Game<'_>, target: Target) -> Option<[f64; 3]> {
+        game.target_position(target)
     }
     fn side_entity_bounding_box(game: &Self::Game<'_>, entity: EntityRef) -> Option<[[f64; 3]; 2]> {
         game.server_entity_bounding_box(entity)
@@ -171,6 +224,12 @@ impl SideOps for crate::game::server_side::ServerState {
     ) -> Option<bool> {
         game.server_level_is_raining_at(level, pos)
     }
+    fn side_client_view_world_result<'a>(
+        game: &'a Self::Game<'_>,
+        level: LevelRef,
+    ) -> Result<&'a World, LevelReadError> {
+        Err(LevelReadError::Unavailable)
+    }
     fn side_level_view_world<'__side_g>(
         game: &'__side_g Self::Game<'_>,
         level: LevelRef,
@@ -191,10 +250,8 @@ impl SideOps for crate::game::server_side::ServerState {
     ) -> Option<&'__side_g HashMap<(i32, i32, i32), i32>> {
         game.server_lid_openers()
     }
-    fn side_lifecycle_open_started(game: &mut Self::Game<'_>) {
-        {
-            game.server_lifecycle_open_started();
-        }
+    fn side_lifecycle_open_at(game: &mut Self::Game<'_>, epoch: WorldEpoch) {
+        game.server_lifecycle_open_at(epoch);
     }
     fn side_lifecycle_world_closed(game: &mut Self::Game<'_>) {
         {
@@ -250,6 +307,9 @@ impl SideOps for crate::game::server_side::ServerState {
         slot: usize,
     ) -> Option<Option<ItemStack>> {
         game.server_menu_slot(menu, slot)
+    }
+    fn side_menu_state_id(game: &Self::Game<'_>, menu: MenuRef) -> Option<i32> {
+        game.menu_state_id(menu)
     }
     fn side_menu_slot_count(game: &Self::Game<'_>, menu: MenuRef) -> Option<usize> {
         game.server_menu_slot_count(menu)
@@ -337,21 +397,39 @@ impl SideOps for crate::game::server_side::ServerState {
     ) -> Option<Compound> {
         game.server_signal_block_entity_data(entity)
     }
+    fn side_read_level_capability_site(
+        game: &Self::Game<'_>,
+        world: &World,
+        level: LevelRef,
+        at: BlockSide,
+        entity_removed: bool,
+    ) -> Option<BlockCapabilitySite> {
+        let mobs = game.signal_level_mobs(level)?;
+        let [x, y, z] = at.pos;
+        game.level_containers(world, mobs)
+            .capability_site(at, world.block(x, y, z), entity_removed)
+    }
     fn side_signal_capability_site(
         game: &Self::Game<'_>,
         at: BlockSide,
     ) -> Option<BlockCapabilitySite> {
         game.server_signal_capability_site(at)
     }
-    fn side_signal_container_size(game: &Self::Game<'_>, at: BlockSide) -> Option<usize> {
-        game.server_signal_container_size(at)
-    }
-    fn side_signal_container_stack(
+    fn side_signal_container_size(
         game: &Self::Game<'_>,
+        world: &World,
+        at: BlockSide,
+    ) -> Option<usize> {
+        game.server_signal_container_size(world, at)
+    }
+    fn side_signal_lend_container_stack(
+        game: &Self::Game<'_>,
+        world: &World,
         at: BlockSide,
         slot: usize,
-    ) -> Option<mod_api::ItemStack> {
-        game.server_signal_container_stack(at, slot)
+        read: &mut dyn for<'a> FnMut(mod_api::ItemStackView<'a>),
+    ) {
+        game.server_signal_lend_container_stack(world, at, slot, read)
     }
     fn side_tick_uses_server_sections(game: &Self::Game<'_>) -> bool {
         game.server_tick_uses_server_sections()
@@ -377,6 +455,7 @@ use mod_api::CollisionFlags;
 use mod_api::Compound;
 use mod_api::DatapackRegistrySet;
 use mod_api::DimensionKey;
+use mod_api::EntityReadError;
 use mod_api::EntityRef;
 use mod_api::EntityResidency;
 use mod_api::EntityTypeKey;
@@ -406,5 +485,6 @@ use sunrise_items::items::Items;
 use sunrise_level::world::World;
 use sunrise_sim::lan::PlayerSender;
 use sunrise_sim::mobs::finalize::EquipmentRead;
+use sunrise_sim::motion::PlayerMotion;
 use sunrise_world::native_load_context::LoopContext;
 use sunrise_world::registry::BlockStateId;

@@ -327,17 +327,23 @@ impl crate::game::ClientGame<'_> {
             let _finished = Finished::new(server_flags.clone());
             // MinecraftServer.spin's Thread.setPriority(8).
             sunrise_threads::favour_current();
-            let result = serve(
-                &res,
-                pack,
-                options,
-                settings,
-                launch,
-                server_flags.clone(),
-                server_tasks,
-                &ready_tx,
-                profile_resolver,
-            );
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                serve(
+                    &res,
+                    pack,
+                    options,
+                    settings,
+                    launch,
+                    server_flags.clone(),
+                    server_tasks,
+                    &ready_tx,
+                    profile_resolver,
+                )
+            }))
+            .unwrap_or_else(|payload| {
+                sunrise_level::crash::report_server_panic(&*payload);
+                Err("the integrated server panicked".into())
+            });
             if let Err(e) = result {
                 log::error!("Sunrise: integrated server: {e}");
                 *server_flags.failure.lock().unwrap() = Some(e.to_string());
@@ -393,7 +399,7 @@ impl crate::game::ClientGame<'_> {
         let Some(starting) = &self.client.integrated_starting else {
             return Ok(());
         };
-        let (pipe, world_name) = match starting.ready.try_recv() {
+        let (pipe, world_name, biomes) = match starting.ready.try_recv() {
             Ok(Ok(ready)) => ready,
             Err(std::sync::mpsc::TryRecvError::Empty) => return Ok(()),
             // FileFixerProgressScreen's Cancel: the upgrade stopped, back to the title.
@@ -423,6 +429,9 @@ impl crate::game::ClientGame<'_> {
         };
         handle.world_name = world_name;
         self.server_packs_world_pack(&folder);
+        // Use the logical server's admitted table, including its saved-name IDs.
+        self.world_biomes_base = Some(biomes.clone());
+        self.world_biomes = Some(biomes);
         self.connect_local(pipe, &player)?;
         if let Some(r) = self.client.remote.as_mut() {
             // `new LevelLoadTracker(newWorld ? 500L : 0L)`.

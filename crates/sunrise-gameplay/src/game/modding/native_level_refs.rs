@@ -3,32 +3,27 @@
 //! reach any loaded level; both-side reads also reach the client's current level.
 //! A handle of an earlier open or an unloaded block reads `None` (or `false`).
 use crate::game::ServerGame;
+use core::ops::ControlFlow;
 use mod_api::world::mod_chunk_tickets::ModTicket;
 use mod_api::{
-    BlockHit, BlockTransformPreview, ChunkRef, ChunkStatus, ClipBlock, ClipFluid, GlobalPos, Hand,
-    Identifier, LevelRef, MapState, PlayerRef, RespawnData, TicketController,
+    BlockHit, BlockShapeKind, BlockTransformPreview, ChunkRef, ChunkStatus, ClipBlock, ClipFluid,
+    ClipOutcome, CollisionContext, GlobalPos, Hand, Identifier, LevelReadError, LevelRef, MapState,
+    PlayerRef, RespawnData, TicketController, TicketOwner,
 };
-use sunrise_core::{
-    geometry::Direction,
-    position::{BlockPos, ChunkPos},
-};
+use sunrise_core::{geometry::Direction, position::BlockPos};
 use sunrise_gameplay_common::game::native_level_refs_common::{block_pos, horizontal_in_bounds};
 use sunrise_gameplay_common::game::native_level_signals::ReadLevel;
+use sunrise_gameplay_common::game::native_state_shapes::NativeStateShapesGameExt1 as _;
+use sunrise_gameplay_common::game::side_ops::world::SideOps as _;
 use sunrise_items::items::ItemStack;
 use sunrise_level::chunk_streamer::ChunkStreamer;
 use sunrise_level::world::World;
+use sunrise_world::registry::BlockStateId;
 
 /// Whether chunk `pos` lies inside the world (`/forceload`'s 30 million block bound).
 fn chunk_in_world(pos: [i32; 2]) -> bool {
     const LIMIT: i32 = 30_000_000 >> 4;
     pos.iter().all(|c| (-LIMIT..LIMIT).contains(c))
-}
-
-/// Whether the mod running owns `controller`: a mod uses only the controllers it registered.
-fn calling_mod_owns(controller: TicketController) -> bool {
-    controller
-        .owner()
-        .is_some_and(|owner| mod_api::content::crash::current_native_mod() == Some(owner))
 }
 
 /// A mod's registry id or `#tag`, namespaced as a command argument is.
@@ -40,25 +35,6 @@ fn normalized_selector(id: &str) -> String {
     }
 }
 
-/// Bound the synchronous generator work before constructing its spiral or height vector.
-pub fn biome_search_within_budget(parameters: mod_api::BiomeSearch, height: i32) -> bool {
-    if parameters.radius < 0
-        || parameters.horizontal_step <= 0
-        || parameters.vertical_step <= 0
-        || height <= 0
-    {
-        return false;
-    }
-    let rings = parameters.radius as u64 / parameters.horizontal_step as u64;
-    let width = 2 * rings + 1;
-    // Clamping the origin into the build interval cannot increase this height count.
-    let heights = (height as u64 - 1) / parameters.vertical_step as u64 + 1;
-    width
-        .checked_mul(width)
-        .and_then(|columns| columns.checked_mul(heights))
-        .is_some_and(|samples| samples <= mod_api::BiomeSearch::MAX_SAMPLES)
-}
-
 impl<'g> ServerGame<'g> {
     pub(in crate::game) fn level_add_water_ticket(
         &mut self,
@@ -66,12 +42,9 @@ impl<'g> ServerGame<'g> {
         min: [i32; 3],
         max: [i32; 3],
     ) -> Option<mod_api::WaterTicket> {
-        let owner = mod_api::content::crash::current_native_mod()?;
-        let owner_index = mod_api::__private::mod_index(owner)?;
-        if !mod_api::__private::mod_index_on(owner_index) {
-            return None;
-        }
         self.native_level_world(level)?;
+        let owner = mod_api::content::crash::current_native_mod()
+            .and_then(|id| mod_api::__private::mod_index(id).map(|index| (id, index)));
         let world = if level.dimension() == self.common.dim.key() {
             &mut self.common.world
         } else {
@@ -82,22 +55,16 @@ impl<'g> ServerGame<'g> {
         };
         world
             .water_tickets
-            .add(owner, min, max, || {
-                mod_api::__private::mod_index_on(owner_index)
+            .add(min, max, || match owner {
+                None => Ok(None),
+                Some((id, index)) => mod_api::__private::mod_index_on(index)
+                    .then_some(Some(id))
+                    .ok_or(()),
             })
-            .map(|id| mod_api::WaterTicket::new(level, id))
+            .map(|id| mod_api::__private::game::water_ticket(level, id))
     }
 
     pub(in crate::game) fn water_ticket_remove(&mut self, ticket: mod_api::WaterTicket) -> bool {
-        let Some(owner) = mod_api::content::crash::current_native_mod() else {
-            return false;
-        };
-        let Some(owner_index) = mod_api::__private::mod_index(owner) else {
-            return false;
-        };
-        if !mod_api::__private::mod_index_on(owner_index) {
-            return false;
-        }
         let level = ticket.level();
         if self.native_level_world(level).is_none() {
             return false;
@@ -114,7 +81,68 @@ impl<'g> ServerGame<'g> {
         } else {
             return false;
         };
-        world.water_tickets.remove(owner, ticket.id())
+        world
+            .water_tickets
+            .remove(mod_api::__private::game::water_ticket_id(ticket))
+    }
+
+    /// `FarmlandWaterManager.removeTickets`: invalidate watered-area tickets whose master chunk
+    /// is `chunk` when that chunk unloads on the server.
+    pub(in crate::game) fn unload_water_tickets_chunk(&mut self, level: LevelRef, chunk: [i32; 2]) {
+        if self.native_level_world(level).is_none() {
+            return;
+        }
+        let world = if level.dimension() == self.common.dim.key() {
+            &mut self.common.world
+        } else if let Some(world) = self
+            .server
+            .levels
+            .0
+            .parked_world_mut_of(level.dimension_id())
+        {
+            world
+        } else {
+            return;
+        };
+        world.water_tickets.unload_chunk(chunk);
+    }
+
+    /// Run an operation in the named open server level. Operations that already use
+    /// the level's own journal may cross levels even while another transaction is open.
+    pub(in crate::game) fn with_server_level_mut<R, E>(
+        &mut self,
+        level: LevelRef,
+        unavailable: E,
+        stale: E,
+        in_transaction: Option<E>,
+        f: impl FnOnce(&mut Self) -> Result<R, E>,
+    ) -> Result<R, E> {
+        if !self.common.is_logical_server() {
+            return Err(unavailable);
+        }
+        if !self.server_level_handle_current(level) {
+            return Err(stale);
+        }
+        if level.dimension() == self.common.dim.key() {
+            return f(self);
+        }
+        let dim = self
+            .server
+            .levels
+            .0
+            .parked_dims()
+            .into_iter()
+            .find(|dim| dim.key() == level.dimension())
+            .ok_or(stale)?;
+        if let Some(in_transaction) = in_transaction
+            && !self.common.transactions.is_empty()
+        {
+            return Err(in_transaction);
+        }
+        let back = self.enter_command_level(dim).ok_or(unavailable)?;
+        let result = f(self);
+        self.enter_command_level(back);
+        result
     }
 
     pub(in crate::game) fn level_has_water_ticket(&self, level: LevelRef, pos: [i32; 3]) -> bool {
@@ -130,7 +158,11 @@ impl<'g> ServerGame<'g> {
         parameters: mod_api::BiomeSearch,
     ) -> Option<mod_api::BiomeSearchResult> {
         let world = self.native_level_world(level)?;
-        if !biome_search_within_budget(parameters, world.shape.max_y() - world.shape.min_y) {
+        if parameters.radius < 0
+            || parameters.horizontal_step <= 0
+            || parameters.vertical_step <= 0
+            || world.shape.max_y() <= world.shape.min_y
+        {
             return None;
         }
         let terrain = if level.dimension() == self.common.dim.key() {
@@ -165,10 +197,8 @@ impl<'g> ServerGame<'g> {
         parameters: mod_api::StructureSearch,
     ) -> Option<mod_api::StructureSearchResult> {
         self.native_level_world(level)?;
-        // Inside the world the placement cells' chunks stay far from overflowing.
-        if !(0..=mod_api::StructureSearch::MAX_RADIUS).contains(&parameters.radius)
-            || !horizontal_in_bounds(parameters.origin)
-        {
+        // Vanilla `Level.isInWorldBoundsHorizontal` (-30_000_000..30_000_000).
+        if parameters.radius < 0 || !horizontal_in_bounds(parameters.origin) {
             return None;
         }
         let terrain = if level.dimension() == self.common.dim.key() {
@@ -182,6 +212,57 @@ impl<'g> ServerGame<'g> {
             .map(|(structure, position)| mod_api::StructureSearchResult::new(structure, position))
     }
 
+    /// `StructureManager.getStructureWithPieceAt`, through the active or parked level's
+    /// generator starts.
+    pub(in crate::game) fn level_structures_with_piece_at(
+        &self,
+        level: LevelRef,
+        pos: [i32; 3],
+        structure: &str,
+    ) -> Option<Vec<String>> {
+        self.native_structures_at(level, pos, structure, true)
+    }
+
+    /// `StructureManager.getStructureAt`, the start's bounding box instead of a piece's.
+    pub(in crate::game) fn level_structures_at(
+        &self,
+        level: LevelRef,
+        pos: [i32; 3],
+        structure: &str,
+    ) -> Option<Vec<String>> {
+        self.native_structures_at(level, pos, structure, false)
+    }
+
+    /// The structures `structure` names whose start reaches `pos` from the loaded chunk's
+    /// references: inside a piece where `piece`, inside the start's box otherwise.
+    fn native_structures_at(
+        &self,
+        level: LevelRef,
+        pos: [i32; 3],
+        structure: &str,
+        piece: bool,
+    ) -> Option<Vec<String>> {
+        let world = self.native_level_world(level)?;
+        world.chunks.get(&(pos[0] >> 4, pos[2] >> 4))?;
+        let names = self.structure_names(&normalized_selector(structure));
+        let active = level.dimension() == self.common.dim.key();
+        let locator = || {
+            if active {
+                self.common.end.locator()
+            } else {
+                self.server.levels.0.parked_locator_of(level.dimension_id())
+            }
+        };
+        let wanted = |id: &str| names.iter().any(|name| name == id);
+        Some(
+            sunrise_gameplay_common::structures::structures_reaching_in(world, &locator, pos, &wanted)
+                .into_iter()
+                .filter(|(_, in_piece)| !piece || *in_piece)
+                .map(|(name, _)| name)
+                .collect(),
+        )
+    }
+
     /// The authoritative server's `LevelReader.getBiome`, including parked levels.
     pub(in crate::game) fn level_biome_at(&self, level: LevelRef, pos: [i32; 3]) -> Option<String> {
         if !self.common.is_logical_server() {
@@ -193,15 +274,28 @@ impl<'g> ServerGame<'g> {
     /// The border of a resident server level, through the handle's lifetime check.
     pub(in crate::game) fn level_world_border(&self, level: LevelRef) -> Option<[f64; 4]> {
         self.native_level_world(level)?;
-        Some(self.common.border.bounds())
+        if level.dimension() == self.common.dim.key() {
+            Some(self.common.border.bounds())
+        } else {
+            Some(
+                self.server
+                    .levels
+                    .0
+                    .parked_of(level.dimension_id())?
+                    .border
+                    .bounds(),
+            )
+        }
     }
     /// Whether this chunk is loaded; false on a client or for a stale handle.
     pub fn chunk_loaded(&self, chunk: ChunkRef) -> bool {
-        self.chunk(chunk.level(), chunk.pos()).is_some()
+        self.is_logical_server() && self.chunk(chunk.level(), chunk.pos()).is_some()
     }
     /// The status of a loaded chunk. Proto chunks are not exposed here.
     pub(in crate::game) fn chunk_status(&self, chunk: ChunkRef) -> Option<ChunkStatus> {
-        self.chunk(chunk.level(), chunk.pos())
+        self.is_logical_server()
+            .then(|| self.chunk(chunk.level(), chunk.pos()))
+            .flatten()
             .map(|_| ChunkStatus::Full)
     }
     /// A handle for chunk `pos` of an open level, loaded or not, so a mod can
@@ -220,7 +314,7 @@ impl<'g> ServerGame<'g> {
         level: LevelRef,
         pos: [i32; 2],
     ) -> Result<(), mod_api::ChunkLoadError> {
-        if self.native_level_streaming(level).is_none() {
+        if self.native_level_streaming(level).is_err() {
             return Err(mod_api::ChunkLoadError::Unloaded);
         }
         let parked = (level.dimension() != self.common.dim.key()).then_some(level);
@@ -231,7 +325,8 @@ impl<'g> ServerGame<'g> {
     pub fn chunk_forced(&self, chunk: ChunkRef) -> Option<bool> {
         let [x, z] = chunk.pos();
         Some(
-            self.native_level_streaming(chunk.level())?
+            self.native_level_streaming(chunk.level())
+                .ok()?
                 .commanded()
                 .contains(&(x, z)),
         )
@@ -247,7 +342,7 @@ impl<'g> ServerGame<'g> {
     /// False for a stale handle, on a client, outside the world, or when
     /// adding after generation has stopped.
     pub fn chunk_set_forced(&mut self, chunk: ChunkRef, forced: bool) -> bool {
-        if self.native_level_streaming(chunk.level()).is_none() || !chunk_in_world(chunk.pos()) {
+        if self.native_level_streaming(chunk.level()).is_err() || !chunk_in_world(chunk.pos()) {
             return false;
         }
         let [x, z] = chunk.pos();
@@ -278,32 +373,32 @@ impl<'g> ServerGame<'g> {
     /// without a validator keeps all of its tickets. Nothing is built while no
     /// mod listens.
     pub fn validate_mod_chunk_tickets(&mut self, dim: super::Dim) {
+        let Some(level) = self.level(dim.id()) else {
+            return;
+        };
         let Some(streaming) = self.mod_ticket_streaming_mut(dim) else {
             return;
         };
-        let mut loaded = streaming.take_loaded_tickets();
-        if !loaded.is_empty() && mod_api::__private::listened(mod_api::HookId::ValidateTickets) {
-            let mut controllers: Vec<u32> = loaded.iter().map(|t| t.controller).collect();
-            controllers.sort_unstable();
-            controllers.dedup();
-            for slot in controllers {
-                let Some(controller) = TicketController::from_slot(slot) else {
-                    continue;
-                };
-                let Some(owner) = controller.owner().filter(|_| controller.validates()) else {
-                    continue;
-                };
-                let (own, rest): (Vec<_>, Vec<_>) =
-                    loaded.into_iter().partition(|t| t.controller == slot);
-                let mut validation =
-                    mod_api::world::mod_chunk_tickets::ControllerTickets::new(owner, own);
-                self.native_validate_tickets(dim.id(), controller, &mut validation);
-                loaded = rest;
-                loaded.extend(validation.into_loaded());
-            }
+        let loaded = streaming.take_loaded_tickets();
+        if loaded.is_empty() {
+            return;
         }
+        #[cfg(not(any(test, feature = "test-support")))]
+        let ready = self
+            .server
+            .ticket_activation
+            .expect("startup prepared ticket activation")
+            .validate(self, level, loaded);
+        #[cfg(any(test, feature = "test-support"))]
+        let ready = {
+            let fixture_activation = mod_api::__private::game::TicketActivation::for_test_scope();
+            match fixture_activation.as_ref().or(self.server.ticket_activation) {
+                Some(activation) => activation.validate(self, level, loaded),
+                None => loaded,
+            }
+        };
         if let Some(streaming) = self.mod_ticket_streaming_mut(dim) {
-            for ticket in loaded {
+            for ticket in ready {
                 streaming.set_mod_forced(ticket, true);
             }
         }
@@ -333,15 +428,15 @@ impl<'g> ServerGame<'g> {
         forced: bool,
         natural_spawning: bool,
     ) -> bool {
-        if !calling_mod_owns(controller) {
+        let Some(slot) = mod_api::__private::game::ticket_controller_slot(controller) else {
             return false;
-        }
-        if self.native_level_streaming(chunk.level()).is_none() || !chunk_in_world(chunk.pos()) {
+        };
+        if self.native_level_streaming(chunk.level()).is_err() || !chunk_in_world(chunk.pos()) {
             return false;
         }
         let [x, z] = chunk.pos();
         let ticket = ModTicket {
-            controller: controller.slot(),
+            controller: slot,
             owner,
             chunk: (x, z),
             natural_spawning,
@@ -356,36 +451,32 @@ impl<'g> ServerGame<'g> {
         };
         streaming.set_mod_forced(ticket, forced)
     }
-    /// The chunk tickets `controller` holds in the level, as (owner, chunk
-    /// position, natural_spawning), in order. None for a stale handle, on a
-    /// client, outside a mod's hook and for another mod's controller.
-    pub fn level_mod_forced_chunks(
+    /// Visit the tickets of the registry-issued controller, regardless of callback owner.
+    pub(in crate::game) fn level_visit_mod_forced_chunks(
         &self,
         level: LevelRef,
         controller: TicketController,
-    ) -> Option<Vec<(mod_api::TicketOwner, [i32; 2], bool)>> {
-        if !calling_mod_owns(controller) {
-            return None;
-        }
-        let tickets = self.native_level_streaming(level)?.mod_tickets();
-        Some(
-            tickets
-                .of_controller(controller.slot())
-                .map(|t| (t.owner, [t.chunk.0, t.chunk.1], t.natural_spawning))
-                .collect(),
-        )
-    }
-    /// The level's force-loaded chunks (`/forceload query`), sorted as
-    /// the command lists them. None for a stale handle or on a client.
-    pub fn level_forced_chunks(&self, level: LevelRef) -> Option<Vec<[i32; 2]>> {
-        let mut forced: Vec<(i32, i32)> = self
+        visit: &mut dyn FnMut(TicketOwner, [i32; 2], bool) -> ControlFlow<()>,
+    ) -> Result<ControlFlow<()>, LevelReadError> {
+        let slot = mod_api::__private::game::ticket_controller_slot(controller)
+            .ok_or(LevelReadError::Unavailable)?;
+        Ok(self
             .native_level_streaming(level)?
-            .commanded()
-            .iter()
-            .copied()
-            .collect();
-        forced.sort_unstable_by_key(|&(x, z)| ChunkPos::new(x, z).pack());
-        Some(forced.into_iter().map(|(x, z)| [x, z]).collect())
+            .mod_tickets()
+            .of_controller(slot)
+            .try_for_each(|t| visit(t.owner, [t.chunk.0, t.chunk.1], t.natural_spawning)))
+    }
+    /// Visit commanded tickets in `ForceLoadCommand.listForceLoad` order.
+    pub(in crate::game) fn level_visit_forced_chunks(
+        &self,
+        level: LevelRef,
+        visit: &mut dyn FnMut([i32; 2]) -> ControlFlow<()>,
+    ) -> Result<ControlFlow<()>, LevelReadError> {
+        Ok(self
+            .native_level_streaming(level)?
+            .commanded_in_order()
+            .map(|(x, z)| [x, z])
+            .try_for_each(visit))
     }
 
     /// The block state ID at `pos` (`Level.getBlockState`), without formatting a string.
@@ -395,8 +486,55 @@ impl<'g> ServerGame<'g> {
         self.native_level_world(level)
     }
 
+    /// Visit the supplied state's block-local shape against the named resident level.
+    pub(in crate::game) fn level_visit_block_shape(
+        &self,
+        level: LevelRef,
+        state: BlockStateId,
+        pos: [i32; 3],
+        kind: BlockShapeKind,
+        visit: &mut dyn FnMut([f64; 6]) -> ControlFlow<()>,
+    ) -> Option<ControlFlow<()>> {
+        if !self.level_handle_current(level) {
+            return None;
+        }
+        let (world, shulkers) = if self.common.dim.key() == level.dimension() {
+            (&self.common.world, &self.server.be_anims.shulkers)
+        } else {
+            self.server.side_parked_block_shapes(level.dimension())?
+        };
+        Some(self.visit_state_shape(world, shulkers, state, pos, kind, visit))
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn collect_level_block_shape(
+        &self,
+        level: LevelRef,
+        state: BlockStateId,
+        pos: [i32; 3],
+        kind: BlockShapeKind,
+    ) -> Option<Vec<[f64; 6]>> {
+        let mut boxes = Vec::new();
+        self.level_visit_block_shape(level, state, pos, kind, &mut |bounds| {
+            boxes.push(bounds);
+            ControlFlow::Continue(())
+        })?;
+        Some(boxes)
+    }
+
+    /// Whether `level` names the level now open under its id: the world open it was made in, and
+    /// for a runtime level the open it was given. A handle of an earlier open or a level closed by
+    /// server shutdown reads as stale.
     pub(in crate::game) fn server_level_handle_current(&self, level: LevelRef) -> bool {
-        self.level_handle_current(level)
+        self.common.native_lifecycle.epoch() == Some(level.epoch())
+            && level.generation() == self.server.levels.0.runtime.generation_of(level.dimension_id())
+            && !(self.common.is_logical_server()
+                && self.server.levels.0.active_closed
+                && level.dimension() == self.common.dim.key())
+    }
+
+    pub(in crate::game) fn level_handle_current(&self, level: LevelRef) -> bool {
+        self.server_level_handle_current(level)
     }
 
     pub(in crate::game) fn server_level_datapack_set(
@@ -490,7 +628,7 @@ impl<'g> ServerGame<'g> {
         if !self.level_in_place(level) {
             return None;
         }
-        let view = ReadLevel::new(self, level);
+        let view = ReadLevel::new(self, level, &self.common.world);
         Some(f(&self
             .common
             .res
@@ -617,8 +755,21 @@ impl<'g> ServerGame<'g> {
         from: [f64; 3],
         to: [f64; 3],
     ) -> Option<bool> {
-        let hit = self.level_clip(level, from, to, ClipBlock::Collider, ClipFluid::None)?;
-        Some(hit.miss)
+        match self
+            .level_clip(
+                level,
+                from,
+                to,
+                ClipBlock::Collider,
+                ClipFluid::None,
+                CollisionContext::Empty,
+            )
+            .ok()?
+        {
+            ClipOutcome::Miss => Some(true),
+            ClipOutcome::Hit(_) => Some(false),
+            _ => None,
+        }
     }
     /// Whether `level` is a current handle on the server: what the world's own data (its
     /// respawn data and maps, shared by its levels) needs.
@@ -663,21 +814,30 @@ impl<'g> ServerGame<'g> {
         self.set_world_spawn(super::Dim::from_id(level.dimension_id()), pos, [yaw, pitch]);
         true
     }
-    /// Map `id`'s saved data as it stands (`with_map`). None on a client, for a stale handle
-    /// and for a map nothing made.
-    pub(in crate::game) fn level_map_data(&self, level: LevelRef, id: i32) -> Option<MapState> {
-        if !self.native_world_data_allowed(level) {
-            return None;
+    /// Visit map `id`'s world-shared saved data (`ServerLevel.getMapData`).
+    pub(in crate::game) fn level_visit_map_data(
+        &self,
+        level: LevelRef,
+        id: i32,
+        visit: &mut dyn FnMut(MapState<'_>),
+    ) -> Result<Option<()>, LevelReadError> {
+        if !self.common.is_logical_server() {
+            return Err(LevelReadError::Unavailable);
         }
-        self.with_map(id, |map| MapState {
-            center: map.center,
-            scale: map.scale,
-            dimension: map.dimension.clone(),
-            locked: map.locked,
-            tracking: map.tracking,
-            unlimited: map.unlimited,
-            colors: map.colors.clone(),
-        })
+        if !self.level_handle_current(level) {
+            return Err(LevelReadError::Stale);
+        }
+        Ok(self.with_map(id, |map| {
+            visit(MapState {
+                center: map.center,
+                scale: map.scale,
+                dimension: &map.dimension,
+                locked: map.locked,
+                tracking: map.tracking,
+                unlimited: map.unlimited,
+                colors: &map.colors,
+            });
+        }))
     }
     /// Repaint map `id` (`MapData::paint`). False for another length, a stale handle, a
     /// client, a map nothing made and a map whose pixels are all as given.

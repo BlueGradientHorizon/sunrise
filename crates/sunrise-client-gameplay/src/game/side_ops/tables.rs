@@ -3,6 +3,19 @@
 impl SideOps for crate::game::client_side::ClientState {
     type Game<'g> = crate::game::ClientGame<'g>;
 
+    fn side_remote_synced_timelines(&self) -> Option<sunrise_level::environment::TimelineTable> {
+        self.remote.as_ref().map(|remote| remote.synced_timelines())
+    }
+    fn side_remote_world_clock_ids(&self) -> Option<Vec<String>> {
+        let remote = self.remote.as_ref()?;
+        Some(
+            remote.registries.registries.get("minecraft:world_clock")
+                .map_or_else(Vec::new, |entries| {
+                    entries.iter().map(|(name, _)| name.clone()).collect()
+                }),
+        )
+    }
+
     fn side_game_tag_items<'a>(&'a self, res: &'a Resources) -> Option<&'a Items> {
         self.remote.as_ref()?.tags.as_ref()
     }

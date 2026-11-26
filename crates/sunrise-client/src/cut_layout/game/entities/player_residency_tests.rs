@@ -22,7 +22,7 @@ fn actual_guest_membership_and_lifetime_survive_nested_body_loans_and_reset() {
             default: || 0,
             codec: None,
             copy_on_death: false,
-            sync: false,
+            sync_codec: None,
         };
         let index = Arc::new(Mutex::new(AttachmentIndex::default()));
         let dimension = game.dim.key();
@@ -377,7 +377,7 @@ fn production_login_and_local_body_constructor_admit_profile_and_real_loan() {
             seed: 0,
             max_players: 2,
             integrated: true,
-            levels: game.server.level_shapes,
+            levels: game.server.level_shapes.clone(),
             level_seeds: game.server.levels.0.runtime.seeds(),
         };
         game.lan_host(settings, net, config).unwrap();
@@ -415,14 +415,15 @@ fn production_login_and_local_body_constructor_admit_profile_and_real_loan() {
 #[test]
 #[ignore = "daily"]
 fn actual_dragon_admits_exactly_eight_checked_parts_with_independent_uuids() {
-    const VALUE: mod_api::AttachmentType<i32> = mod_api::AttachmentType {
-        namespace: "source_test",
-        name: "part_lifetime",
-        default: || 0,
-        codec: None,
-        copy_on_death: false,
-        sync: false,
-    };
+    const VALUE: sunrise_mod_runtime::attachments::AttachmentType<i32> =
+        sunrise_mod_runtime::attachments::AttachmentType {
+            namespace: "source_test",
+            name: "part_lifetime",
+            default: || 0,
+            codec: None,
+            copy_on_death: false,
+            sync_codec: None,
+        };
     sunrise_gameplay::game::native_entity_refs::tests::with_game(|game| {
         game.options.dedicated = Some(Vec::new());
         game.native_level_opened(game.dim);
@@ -543,14 +544,15 @@ fn actual_dragon_admits_exactly_eight_checked_parts_with_independent_uuids() {
 #[test]
 #[ignore = "daily"]
 fn dragon_part_registrations_retire_on_replacement_command_and_chunk_unload() {
-    const VALUE: mod_api::AttachmentType<i32> = mod_api::AttachmentType {
-        namespace: "source_test",
-        name: "part_retirement",
-        default: || 0,
-        codec: None,
-        copy_on_death: false,
-        sync: false,
-    };
+    const VALUE: sunrise_mod_runtime::attachments::AttachmentType<i32> =
+        sunrise_mod_runtime::attachments::AttachmentType {
+            namespace: "source_test",
+            name: "part_retirement",
+            default: || 0,
+            codec: None,
+            copy_on_death: false,
+            sync_codec: None,
+        };
     let install_dragon = |game: &mut sunrise_gameplay::game::ServerGame<'_>, id: u32| {
         let mut dragon = sunrise_gameplay_common::game::dragon_common::Dragon::new(
             Vec3::new(1.0, 80.0, 1.0),
@@ -620,14 +622,15 @@ fn dragon_part_registrations_retire_on_replacement_command_and_chunk_unload() {
 #[test]
 #[ignore = "daily"]
 fn parked_mob_attachment_values_survive_other_level_cleanup() {
-    const VALUE: mod_api::AttachmentType<i32> = mod_api::AttachmentType {
-        namespace: "source_test",
-        name: "parked_cleanup",
-        default: || 0,
-        codec: None,
-        copy_on_death: false,
-        sync: false,
-    };
+    const VALUE: sunrise_mod_runtime::attachments::AttachmentType<i32> =
+        sunrise_mod_runtime::attachments::AttachmentType {
+            namespace: "source_test",
+            name: "parked_cleanup",
+            default: || 0,
+            codec: None,
+            copy_on_death: false,
+            sync_codec: None,
+        };
     sunrise_gameplay::game::native_entity_refs::tests::with_game(|game| {
         game.options.dedicated = Some(Vec::new());
         game.native_level_opened(game.dim);

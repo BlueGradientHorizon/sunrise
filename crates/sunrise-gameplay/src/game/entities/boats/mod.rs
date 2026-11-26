@@ -109,7 +109,7 @@ impl crate::game::ServerGame<'_> {
                     self.boat_server_passes(id, &driven, &ticking, &round);
                     break 'boat;
                 }
-                let kind = if round.listening() {
+                let kind = if round.told_listening() {
                     self.common.boats[i].entity_type()
                 } else {
                     String::new()
@@ -133,8 +133,14 @@ impl crate::game::ServerGame<'_> {
                         let from = b.position;
                         let b = game.tick_boat(b, false);
                         let to = b.position;
-                        game.store_boat_back(i, b).then_some((from, to))
+                        let stored = game.store_boat_back(i, b);
+                        stored.then_some((from, to))
                     });
+                    // A contact hurt lands on the stored row, not the clone:
+                    // applying it before the store would lose its wear.
+                    if self.apply_vehicle_contact_hurts(super::commands::Target::Boat(id)) {
+                        break 'boat;
+                    }
                     if let Some((from, to)) = section_step {
                         self.entity_section_step(id, [from.x, from.y, from.z], [to.x, to.y, to.z]);
                     }
@@ -192,12 +198,25 @@ impl crate::game::ServerGame<'_> {
                 boat.velocity = b.velocity;
                 boat.fire_ticks = b.fire_ticks;
             });
+            if self.apply_vehicle_contact_hurts(super::commands::Target::Boat(id)) {
+                return;
+            }
+            // A hook may have removed an earlier boat and shifted this one.
+            let Some(i) = self.common.boats.iter().position(|b| b.id == id) else {
+                return;
+            };
             self.refresh_boat_status(i);
         }
         if self.common.boats[i].out_of_control >= 60.0 {
             self.eject_boat_riders(i);
         }
-        self.boat_bubble_tick(i);
+        // A breaking second `step_on` removes the boat: no later pass may index it.
+        if !self.boat_bubble_tick(i) {
+            return;
+        }
+        let Some(i) = self.common.boats.iter().position(|b| b.id == id) else {
+            return;
+        };
         self.boat_contacts(i);
     }
     /// `AbstractBoat.onAboveBubbleColumn`: on the server (this window
@@ -263,7 +282,7 @@ impl crate::game::ServerGame<'_> {
     /// `applyEffectsFromBlocks` that reach bubble columns (the lava is
     /// `boat_lava_tick`'s), then `tickBubbleColumn`; and the wobble when this
     /// window is its own client.
-    pub(in crate::game::server_side) fn boat_bubble_tick(&mut self, i: usize) {
+    pub(in crate::game::server_side) fn boat_bubble_tick(&mut self, i: usize) -> bool {
         let id = self.common.boats[i].id;
         // An ejection nobody took (its player left the boat first) is void.
         if !self.guest_rides(id) {
@@ -272,8 +291,8 @@ impl crate::game::ServerGame<'_> {
         let touches = self.common.boat_bubble_columns(i);
         // AbstractBoat.tick calls applyEffectsFromBlocks twice.
         for pass in 0..2 {
-            if pass == 1 {
-                self.boat_second_step(i);
+            if pass == 1 && self.boat_second_step(i) {
+                return false;
             }
             for &column in &touches {
                 if column.surface {
@@ -287,6 +306,7 @@ impl crate::game::ServerGame<'_> {
         if self.common.options.execution_role.is_client() {
             self.common.boats.update(i, Boat::tick_bubble_wobble);
         }
+        true
     }
     /// `PowderSnowBlock.entityInside` for a boat: the powder snow cells its box, and the box it
     /// had before its move, reach into (`Entity.checkInsideBlocks` along the move).
@@ -450,6 +470,7 @@ impl crate::game::ServerGame<'_> {
             causing: 0,
             direct: 0,
             position: None,
+            direct_type: None,
         };
         !self.native_nonliving_invulnerable(id, &kind, source, invulnerable)
             && self.hurt_boat(i, damage, false)
@@ -765,6 +786,7 @@ impl crate::game::ServerGame<'_> {
             causing: attacker,
             direct: attacker,
             position: None,
+            direct_type: None,
         };
         let vanilla =
             self.saved_refuses_damage(id as u32, "minecraft:player_attack", self.common.creative);
@@ -801,7 +823,8 @@ impl crate::game::ServerGame<'_> {
         if damage > 0.0
             && let Some(destroyed) = hurt
         {
-            let (knockback, _) = self.extra_knockback(&kind, scale);
+            let (knockback, _) =
+                self.extra_knockback(&kind, id as u32, scale, Some("minecraft:player_attack"));
             if knockback > 0.0 {
                 // Player.causeExtraKnockback uses Entity.push for a boat,
                 // not LivingEntity.knockback (no resistance or velocity halving).

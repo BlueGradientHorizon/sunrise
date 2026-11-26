@@ -208,20 +208,6 @@ pub(crate) mod tests {
         struct Probe(Arc<Mutex<Vec<Vec<u32>>>>);
         #[mod_api::__subscriptions]
         impl Hooks for Probe {
-            fn register(
-                &self,
-                registrar: &mut dyn mod_api::Registrar,
-                _: &mod_api::RegistrationContext,
-            ) {
-                registrar.entity_tick_each("minecraft:block_display");
-            }
-            fn entity_tick_listened(
-                &self,
-                _: HostSide<'_>,
-                event: &mut mod_api::EntityTickListenedEvent,
-            ) {
-                event.listened = true;
-            }
             fn player_tick_post(&self, host: HostSide<'_>, event: &mut PlayerTickPostEvent) {
                 let HostSide::Client(host) = host else { return };
                 if event.player.entity().id() != 18 {

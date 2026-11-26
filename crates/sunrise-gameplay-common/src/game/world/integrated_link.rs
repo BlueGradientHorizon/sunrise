@@ -120,7 +120,7 @@ impl Drop for Finished {
 
 /// What the server thread hands the window once the world is open: its end
 /// of the connection and the world's name, or why it failed.
-pub type Ready = std::result::Result<(Pipe, String), String>;
+pub type Ready = std::result::Result<(Pipe, String, Arc<sunrise_level::biome::Biomes>), String>;
 
 /// The world to open and the player who owns it.
 pub struct Launch {
@@ -169,6 +169,18 @@ pub enum ComponentHarness {
         Arc<Mutex<Vec<(usize, serde_json::Value)>>>,
     ),
 }
+
+pub struct CreationPackRead<'a> {
+    pub resources: &'a Arc<Resources>,
+    pub pack: &'a PackResources,
+    pub options: &'a Options,
+    pub settings: SimSettings,
+    pub pack_dir: Option<&'a std::path::Path>,
+    pub selected: &'a [String],
+    pub profile_resolver: ProfileResolverFactory,
+}
+
+pub type ReadCreationPacks = fn(CreationPackRead<'_>) -> Result<()>;
 
 pub type ProfileResolverFactory = fn() -> Box<dyn sunrise_level::profile_lookup::ProfileResolver>;
 pub type Serve = fn(

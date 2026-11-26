@@ -21,6 +21,16 @@ use sunrise_world::{
 
 pub trait WorldSideGameExt<'__sg>: crate::game::SideGame<'__sg> {
     #[inline(always)]
+    fn side_remote_named_clock_time(&self, name: &str) -> Option<i64> {
+        <Self::State as SideOps>::side_remote_named_clock_time(self.side_state(), name)
+    }
+
+    #[inline(always)]
+    fn side_parked_block_ticks(&self, dimension: &str) -> Option<&Ticks> {
+        <Self::State as SideOps>::side_parked_block_ticks(self, dimension)
+    }
+
+    #[inline(always)]
     fn side_server_resident_entity(&self, id: u32) -> EntityLookup<Target> {
         <Self::State as SideOps>::side_server_resident_entity(self, id)
     }
@@ -122,6 +132,21 @@ impl<'__sg, T: crate::game::SideGame<'__sg>> WorldSideGameExt<'__sg> for T {}
 pub trait SideOps: Sized {
     type Game<'g>;
 
+    fn side_remote_named_clock_time(&self, _name: &str) -> Option<i64> {
+        None
+    }
+    fn side_parked_block_ticks<'a>(
+        _game: &'a Self::Game<'_>,
+        _dimension: &str,
+    ) -> Option<&'a Ticks> {
+        None
+    }
+    fn side_parked_border(&self, _dim: Dim) -> Option<&sunrise_level::worldborder::WorldBorder> {
+        None
+    }
+    fn side_constructing_dimension_facts(&self, _level: mod_api::LevelRef) -> Option<Option<&DimensionFacts>> {
+        None
+    }
     fn side_parked_world(&self, dimension: &str) -> Option<&World>;
     fn side_parked_chunk_state(&self, dimension: &str) -> Option<&ChunkState>;
     fn side_parked_block_shapes(
@@ -134,6 +159,9 @@ pub trait SideOps: Sized {
         join: JoinSeq,
     ) -> Option<(Dim, &Mob)>;
     fn side_parked_target_visible(&self, dim: Dim, target: &Target) -> Option<bool>;
+    fn side_resident_target_id(_game: &Self::Game<'_>, target: Target) -> Option<u32> {
+        crate::game::commands_common::target_id(target)
+    }
     fn side_server_resident_entity(game: &Self::Game<'_>, id: u32) -> EntityLookup<Target>;
     fn side_remote_sea_level(&self) -> Option<i32>;
     fn side_remote_environment(&self) -> Option<&Environment>;

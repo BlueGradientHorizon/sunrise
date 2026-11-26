@@ -2,16 +2,19 @@
 //! container slots and the composter's state-backed input/output, by the rules hoppers follow.
 //! Side-local slots are numbered from zero. It acts where the world is simulated, never on
 //! a client's copy, and only on the level in place.
-use super::{Insertion, MoveIn};
-use mod_api::{BlockSide, ItemResource, LevelReadError, LevelRef, TransactionContext};
+use super::{Insertion, MoveIn, TakeAsk, TakeAttempt};
+use mod_api::{
+    BlockSide, ItemResource, ItemStackView, LevelReadError, LevelRef, StorageSlot, TransactionContext,
+};
 use sunrise_gameplay_common::game::{
-    machine_containers::{Kind, PlacementAttempt, View},
+    machine_containers::{Containers, Kind, PlacementAttempt, View},
     spill_common::{put_saved_entity, saved_entity},
     transactions::After,
 };
 use sunrise_gameplay_common::hoppers::Pos;
 use sunrise_items::items::ItemStack;
-use sunrise_sim::save;
+use sunrise_level::world::World;
+use sunrise_sim::{mobs::Mob, save};
 
 impl crate::game::ServerGame<'_> {
     /// Vanilla containers and `WorldlyContainerHolder`s keep their direct automation path.
@@ -101,11 +104,11 @@ impl crate::game::ServerGame<'_> {
     /// Up to `count` out of slot `slot` of `view`, without `setChanged`.
     fn take_up_to(&mut self, view: &View, slot: usize, count: u32) -> Option<ItemStack> {
         if matches!(view.kind, Kind::Composter(_)) {
-            let (x, y, z) = view.parts[0].0;
+            let (x, y, z) = view.first.0;
             return self.composter_capability_extract([x, y, z], count);
         }
         if view.kind == Kind::Pot {
-            let pos = view.parts[0].0;
+            let pos = view.first.0;
             let at = [pos.0, pos.1, pos.2];
             let mut tag = saved_entity(&self.common.world, at)?;
             let mut item = tag.get("item").and_then(save::item_from_nbt)?;
@@ -164,7 +167,7 @@ impl crate::game::ServerGame<'_> {
         if matches!(view.kind, Kind::Composter(_)) {
             return false;
         }
-        for &(pos, _) in &view.parts {
+        for (pos, _) in view.parts() {
             self.journal_block_entity(pos);
             self.common.world.set_container_stack_limit(pos, limit);
         }
@@ -177,17 +180,71 @@ impl crate::game::ServerGame<'_> {
         self.level_in_place(at.level).then_some(())?;
         self.containers().capability_size(at)
     }
-    /// The stack in slot `slot` of those `at`'s side reaches (`container_size`).
-    pub(in crate::game) fn container_stack(&self, at: BlockSide, slot: usize) -> Option<ItemStack> {
+
+    /// Lend the resident stack in a side-local slot of the level in place.
+    pub(in crate::game) fn lend_container_stack(
+        &self,
+        at: BlockSide,
+        slot: usize,
+        read: &mut dyn for<'a> FnMut(ItemStackView<'a>),
+    ) {
+        if self.level_in_place(at.level) {
+            self.containers().lend_capability_stack(at, slot, read);
+        }
+    }
+
+    /// The block entity slot that slot `slot` of those `at`'s side reaches (`container_size`) is:
+    /// each slot of a double chest reports the half that owns it, and a composter has none.
+    pub(in crate::game) fn container_slot_backing(
+        &self,
+        at: BlockSide,
+        slot: usize,
+    ) -> Option<StorageSlot> {
         self.level_in_place(at.level).then_some(())?;
-        self.containers().capability_stack(at, slot)
+        self.containers().capability_slot_backing(at, slot)
+    }
+    pub(in crate::game) fn level_containers<'a>(
+        &'a self,
+        world: &'a World,
+        mobs: &'a [Mob],
+    ) -> Containers<'a> {
+        Containers {
+            world,
+            behaviours: self.res.behaviours(),
+            items: self.items(),
+            registry: self.pack.assets.registry,
+            brewing: None,
+            mobs,
+        }
+    }
+
+    /// The item capability read used by a level-bound Part, including parked levels.
+    pub(in crate::game) fn level_container_size(
+        &self,
+        world: &World,
+        mobs: &[Mob],
+        at: BlockSide,
+    ) -> Option<usize> {
+        self.level_containers(world, mobs).capability_size(at)
+    }
+    /// Lend a resident stack from a level-bound Part's addressed world, including parked levels.
+    pub(in crate::game) fn level_lend_container_stack(
+        &self,
+        world: &World,
+        mobs: &[Mob],
+        at: BlockSide,
+        slot: usize,
+        read: &mut dyn for<'a> FnMut(ItemStackView<'a>),
+    ) {
+        self.level_containers(world, mobs)
+            .lend_capability_stack(at, slot, read);
     }
     /// Keeps what a capability write to slot `slot` of `view` changes: that slot alone where a
     /// write there changes nothing else, else each block entity of the view whole.
     pub(in crate::game::server_side) fn journal_view_slot(&mut self, view: &View, slot: usize) {
         match view.kind {
             Kind::Composter(_) => return,
-            Kind::Pot => return self.journal_saved_pot(view.parts[0].0),
+            Kind::Pot => return self.journal_saved_pot(view.first.0),
             _ => {}
         }
         let slot_only = match view.kind {
@@ -205,7 +262,7 @@ impl crate::game::ServerGame<'_> {
         if slot_only && let Some((pos, slot)) = view.locate(slot) {
             return self.journal_block_entity_slot(pos, slot);
         }
-        for &(part, _) in &view.parts {
+        for (part, _) in view.parts() {
             self.journal_block_entity(part);
         }
     }
@@ -214,7 +271,7 @@ impl crate::game::ServerGame<'_> {
         if matches!(view.kind, Kind::Composter(_)) {
             return;
         }
-        for &(pos, _) in &view.parts {
+        for (pos, _) in view.parts() {
             self.after_commit(After::Changed(pos));
         }
     }
@@ -405,6 +462,7 @@ impl crate::game::ServerGame<'_> {
             return 0;
         };
         let (mut left, mut told) = (amount, false);
+        let mut attempt = TakeAttempt::default();
         for slot in view.capability_slots(at.side) {
             if left == 0 {
                 break;
@@ -414,9 +472,13 @@ impl crate::game::ServerGame<'_> {
                 continue;
             };
             if !held.same_item_same_components(resource)
-                || at
-                    .side
-                    .is_some_and(|face| !c.can_take(&view, slot, &held, face))
+                || at.side.is_some_and(|face| {
+                    let ask = TakeAsk {
+                        game: self,
+                        attempt: &mut attempt,
+                    };
+                    !c.can_take(&view, slot, &held, face, ask)
+                })
             {
                 continue;
             }
@@ -470,9 +532,13 @@ impl crate::game::ServerGame<'_> {
         let c = self.containers();
         let stack = c.insertion_item(&view, slot)?;
         if max == 0
-            || at
-                .side
-                .is_some_and(|face| !c.can_take(&view, slot, &stack, face))
+            || at.side.is_some_and(|face| {
+                let ask = TakeAsk {
+                    game: self,
+                    attempt: &mut TakeAttempt::default(),
+                };
+                !c.can_take(&view, slot, &stack, face, ask)
+            })
         {
             return None;
         }
@@ -484,6 +550,7 @@ impl crate::game::ServerGame<'_> {
     }
 }
 
+use sunrise_gameplay_common::game::tables::GameItems as _;
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
 
 use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;
@@ -498,7 +565,8 @@ mod tests {
 
     fn view(kind: Kind, slots: usize) -> View {
         View {
-            parts: vec![((0, 0, 0), slots)],
+            first: ((0, 0, 0), slots),
+            second: None,
             kind,
             container: (kind == Kind::Mod).then(|| {
                 Arc::new(ModContainer {
@@ -525,4 +593,148 @@ mod tests {
         );
         assert_eq!(view(Kind::Furnace, 3).slots_to_add(None), [0, 1, 2]);
     }
+
+    fn level() -> LevelRef {
+        LevelRef::new(
+            mod_api::WorldEpoch::new(1),
+            mod_api::DimensionKey::OVERWORLD,
+        )
+    }
+
+    /// The own slots `view`'s `face` reports, by slot, at position `(0, 0, 0)` unless it says.
+    fn reported(view: &View, face: Option<Direction>) -> Vec<Option<(Pos, usize)>> {
+        let at = BlockSide {
+            level: level(),
+            pos: [0, 0, 0],
+            side: face,
+        };
+        let count = view.capability_slots(face).count();
+        (0..=count)
+            .map(|slot| {
+                view.slot_backing(at, slot).map(|backing| {
+                    assert_eq!(backing.level, level());
+                    (
+                        (backing.pos[0], backing.pos[1], backing.pos[2]),
+                        backing.slot,
+                    )
+                })
+            })
+            .collect()
+    }
+
+    fn own(slots: &[usize]) -> Vec<Option<(Pos, usize)>> {
+        slots
+            .iter()
+            .map(|&slot| Some(((0, 0, 0), slot)))
+            .chain([None])
+            .collect()
+    }
+
+    #[test]
+    fn a_furnaces_faces_report_the_slots_getslotsforface_picks() {
+        let furnace = view(Kind::Furnace, 3);
+        assert_eq!(reported(&furnace, Some(Direction::Up)), own(&[0]));
+        for face in [
+            Direction::North,
+            Direction::East,
+            Direction::South,
+            Direction::West,
+        ] {
+            assert_eq!(reported(&furnace, Some(face)), own(&[1]));
+        }
+        let down = reported(&furnace, Some(Direction::Down));
+        assert_eq!(down, own(&[2, 1]));
+        assert_eq!(down[1], reported(&furnace, Some(Direction::North))[0]);
+    }
+
+    #[test]
+    fn a_brewing_stands_faces_report_the_slots_getslotsforface_picks() {
+        let stand = view(Kind::Brewing, 5);
+        assert_eq!(reported(&stand, Some(Direction::Up)), own(&[3]));
+        assert_eq!(reported(&stand, Some(Direction::East)), own(&[0, 1, 2, 4]));
+        assert_eq!(reported(&stand, Some(Direction::Down)), own(&[0, 1, 2, 3]));
+    }
+
+    #[test]
+    fn a_composter_has_no_backing_on_any_face() {
+        for fill in [0, 7, 8] {
+            let composter = view(Kind::Composter(fill), 1);
+            for face in [
+                None,
+                Some(Direction::Up),
+                Some(Direction::Down),
+                Some(Direction::North),
+            ] {
+                assert_eq!(
+                    composter.slot_backing(
+                        BlockSide {
+                            level: level(),
+                            pos: [0, 0, 0],
+                            side: face
+                        },
+                        0
+                    ),
+                    None
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_mod_container_reports_its_owning_block_and_declared_face_slots() {
+        let mut mod_view = view(Kind::Mod, 4);
+        mod_view.first = ((5, 6, 7), 4);
+        let mut container = ModContainer {
+            slots: 4,
+            ..Default::default()
+        };
+        container.faces[Direction::Up as usize] = vec![3, 1];
+        mod_view.container = Some(Arc::new(container));
+        let at = BlockSide {
+            level: level(),
+            pos: [5, 6, 7],
+            side: Some(Direction::Up),
+        };
+        let slot = |slot| {
+            Some(StorageSlot {
+                level: level(),
+                pos: [5, 6, 7],
+                slot,
+            })
+        };
+        assert_eq!(mod_view.slot_backing(at, 0), slot(3));
+        assert_eq!(mod_view.slot_backing(at, 1), slot(1));
+        assert_eq!(mod_view.slot_backing(at, 2), None);
+    }
+
+    #[test]
+    fn a_double_chest_reports_each_slot_with_the_half_that_owns_it() {
+        let double = View {
+            first: ((0, 64, 0), 27),
+            second: Some(((1, 64, 0), 27)),
+            kind: Kind::Generic,
+            container: None,
+        };
+        let at = BlockSide {
+            level: level(),
+            pos: [0, 64, 0],
+            side: None,
+        };
+        for slot in 0..54 {
+            let half = [[0, 64, 0], [1, 64, 0]][slot / 27];
+            assert_eq!(
+                double.slot_backing(at, slot),
+                Some(StorageSlot {
+                    level: level(),
+                    pos: half,
+                    slot: slot % 27
+                })
+            );
+        }
+        assert_eq!(double.slot_backing(at, 54), None);
+    }
 }
+
+#[cfg(test)]
+#[path = "storage_slot_backing_tests.rs"]
+mod storage_slot_backing_tests;

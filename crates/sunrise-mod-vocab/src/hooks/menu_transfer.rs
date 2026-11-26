@@ -42,7 +42,6 @@ known layout (one for a stonecutting recipe, three for smithing, the placement's
 256 for a recipe it can't inspect, such as a mod's own type), each once, in ascending order; pushes outside a dry
 run are dropped."##]
     #[hook(
-        target = "sunrise_gameplay::game::native_hooks::menu_transfer::ServerGame<'_>::native_menu_transfer",
         dispatch = "api_carrier",
         side = "server",
         contract = "replace",

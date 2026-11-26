@@ -2,8 +2,9 @@ use super::{Dim, commands::execute, respawn_anchor::RespawnConfig};
 use mod_api::__private::game::*;
 use mod_api::LevelRef;
 use mod_api::{
-    ActionOutcome, ActionRefused, FakeEffect, GameMode, GlobalPos, Identifier, PlayerAction,
-    PlayerActionSetup, PlayerRef, PlayerRespawnConfig, ScopedActionResult, Sidebar, TextFormError,
+    ActionOutcome, ActionRefused, EntityRef, ExperienceOrbRef, ExperienceOrbWriteError, FakeEffect,
+    GameMode, GlobalPos, Identifier, LevelReadError, PlayerAction, PlayerActionSetup,
+    PlayerDataRefusal, PlayerRef, PlayerRespawnConfig, ScopedActionResult, Sidebar, TextFormError,
     VirtualHost,
 };
 use serde_json::json;
@@ -13,11 +14,11 @@ use std::{collections::HashMap, path::PathBuf, sync::Arc};
 use sunrise_command::{Arg, ArgType, Context};
 use sunrise_core::position::BlockPos;
 use sunrise_game_data::text::Text;
-use sunrise_gameplay_common::game::GameGameExt1 as _;
+use sunrise_gameplay_common::game::{GameGameExt1 as _, GameGameExt3 as _};
 use sunrise_gameplay_common::game::api_values::TryIntoApi;
-use sunrise_gameplay_common::game::level_control_hooks::LevelControl;
 use sunrise_gameplay_common::game::native_server::Acting;
 use sunrise_gameplay_common::game::native_server::BaseTree;
+use sunrise_gameplay_common::game::native_server::LevelTickListeners;
 use sunrise_gameplay_common::game::native_server::PlayerRead;
 use sunrise_gameplay_common::game::native_server::ScopedPlayerState;
 use sunrise_gameplay_common::game::native_server::argument_kinds::command_arguments;
@@ -31,6 +32,7 @@ use sunrise_gameplay_common::game::native_server::ordered_box;
 use sunrise_gameplay_common::game::native_server::register_command_nodes;
 use sunrise_gameplay_common::game::native_server::system_chat;
 use sunrise_items::items::ItemStack;
+use sunrise_level::world::World;
 use sunrise_protocol::packets::play::{self, Clientbound as C};
 use sunrise_sim::{
     lan::{
@@ -45,6 +47,25 @@ pub(in crate::game) mod registered_commands;
 /// Helpers for server mods, kept as stable as the hook points.
 // Native mods use these; nothing in Sunrise does.
 #[allow(dead_code)]
+/// The resident record a server write will borrow, without borrowing `Game` itself.
+pub(in crate::game) enum PlayerTurn {
+    Acting,
+    Parked(u32),
+}
+
+impl PlayerTurn {
+    pub(in crate::game) fn run<'a, R>(
+        self,
+        game: &mut crate::game::ServerGame<'a>,
+        f: impl FnOnce(&mut crate::game::ServerGame<'a>) -> R,
+    ) -> Option<R> {
+        match self {
+            Self::Acting => Some(f(game)),
+            Self::Parked(conn) => game.as_guest(conn, f),
+        }
+    }
+}
+
 impl crate::game::ServerGame<'_> {
     /// Whether the acting player is in the level in place: a guest's own level is their hub
     /// record's, also when a hook of another level borrows them into its turn. A raw throw,
@@ -101,7 +122,7 @@ impl crate::game::ServerGame<'_> {
             }
         };
         if !self.server.lan_guest_swaps.is_empty()
-            || !self.common.transactions.is_empty()
+            || !(self.common.transactions.is_empty() || self.in_level_tick_boundary_alone())
             || self.server.fake_action.0.acting()
         {
             return Err(ActionRefused::Busy);
@@ -118,6 +139,12 @@ impl crate::game::ServerGame<'_> {
             return Err(ActionRefused::InvalidTarget);
         }
         Ok((gi, conn))
+    }
+
+    /// Whether the only open transaction is the one a server level tick's dispatch opens around
+    /// each listener (#5750): a machine's fake player acts from its level tick.
+    pub(in crate::game) fn in_level_tick_boundary_alone(&self) -> bool {
+        LevelTickListeners::marked() && self.transactions.len() == 1
     }
     /// Whether `effect` must not start because the player acting is a fake one: true stops it,
     /// and, inside `perform_action`, records it for the action's answer. The one check every
@@ -238,14 +265,48 @@ impl crate::game::ServerGame<'_> {
         player: PlayerRef,
         f: impl FnOnce(&mut Self),
     ) -> bool {
-        match self.player_handle_read(player) {
-            None => false,
-            Some(PlayerRead::Acting { .. }) => self.native_as_acting(f),
-            Some(PlayerRead::Guest(g)) if !g.dead => {
-                let conn = g.conn;
-                self.as_guest(conn, f).is_some()
+        self.player_handle_turn(player, true)
+            .and_then(|turn| turn.run(self, f))
+            .is_some()
+    }
+
+    /// Resolve a server setter's receiver. Dead players still have a writable record.
+    pub(in crate::game) fn native_resident_player_turn(
+        &self,
+        player: PlayerRef,
+    ) -> Result<PlayerTurn, PlayerDataRefusal> {
+        if !self.common.is_logical_server() {
+            return Err(PlayerDataRefusal::Client);
+        }
+        self.player_handle_turn(player, false)
+            .ok_or(PlayerDataRefusal::Stale)
+    }
+
+    pub(in crate::game) fn native_as_resident_player(
+        &mut self,
+        player: PlayerRef,
+        f: impl FnOnce(&mut Self),
+    ) -> bool {
+        self.native_resident_player_turn(player)
+            .ok()
+            .and_then(|turn| turn.run(self, f))
+            .is_some()
+    }
+
+    fn player_handle_turn(&self, player: PlayerRef, require_living: bool) -> Option<PlayerTurn> {
+        match self.player_handle_read(player)? {
+            PlayerRead::Acting { body, .. } => {
+                if require_living {
+                    self.native_live_acting_body()?;
+                } else {
+                    body?;
+                }
+                Some(PlayerTurn::Acting)
             }
-            Some(PlayerRead::Guest(_)) => false,
+            PlayerRead::Guest(guest) if !require_living || !guest.dead => {
+                Some(PlayerTurn::Parked(guest.conn))
+            }
+            PlayerRead::Guest(_) => None,
         }
     }
     /// Resolve the source once at the command boundary, retaining its output origin.
@@ -259,6 +320,7 @@ impl crate::game::ServerGame<'_> {
         let source = self
             .server
             .command_source
+            .clone()
             .unwrap_or_else(|| self.player_source());
         let origin = if let Some(id) = self.server.exec.0.functions.last() {
             CommandSource::Function {
@@ -299,6 +361,7 @@ impl crate::game::ServerGame<'_> {
         let source = self
             .server
             .command_source
+            .clone()
             .unwrap_or_else(|| self.player_source());
         self.with_source(
             super::commands::execute::Source {
@@ -317,46 +380,73 @@ impl crate::game::ServerGame<'_> {
         let source = self
             .server
             .command_source
+            .clone()
             .unwrap_or_else(|| self.player_source());
         self.with_source(source, |game| game.send_success(line, broadcast_to_admins));
     }
     /// Asks the mods what root commands each player's tree keeps
     /// (`native_player_commands_sent`) and stores the answer in the hub,
-    /// which sends the trees without what the mods took out: for `only`, or
-    /// for every placed player.
-    pub(in crate::game) fn native_filter_commands(&mut self, only: Option<u32>) {
+    /// Commands.sendCommands: build this recipient's tree once, let the installed
+    /// listeners select exclusions, then encode and send that same tree.
+    pub fn send_player_command_tree(&mut self, conn: u32) {
         let Some(host) = self.server.lan.as_ref() else {
             return;
         };
-        let players: Vec<(u32, u128, String)> = host
-            .hub
-            .guests
-            .iter()
-            .filter(|g| only.map_or(g.placed, |conn| g.conn == conn))
-            .map(|g| (g.conn, g.uuid, g.name.clone()))
-            .collect();
-        for (conn, uuid, name) in players {
-            let Some(host) = self.server.lan.as_ref() else {
-                return;
+        let Some(i) = host.hub.guests.connection_index(conn) else {
+            return;
+        };
+        let guest = &host.hub.guests[i];
+        if !guest.participates_online() {
+            return;
+        }
+        let graph = host.hub.command_graph(guest.permission);
+        let mut hidden = Vec::new();
+        if mod_api::__private::listened(mod_api::HookId::PlayerCommandsSent)
+            && let Some(epoch) = self.common.native_lifecycle.epoch()
+        {
+            let player = mod_api::__private::game::player_ref(
+                mod_api::EntityRef::new(epoch, guest.entity_id as u32),
+                guest.uuid,
+            );
+            let mut dispatch = |game: &Self| {
+                let roots = graph.roots();
+                let send = Arc::new(());
+                let name_at = |index: usize| roots.clone().nth(index).expect("indexed usable root");
+                let mut answers = |answer: mod_api::Answered<mod_api::CommandTreeSelection>| {
+                    if let Some(indexes) =
+                        mod_api::__private::selected_command_roots(&send, answer.answer)
+                    {
+                        hidden.extend(indexes);
+                    } else {
+                        log::warn!(
+                            "mod {}: player_commands_sent returned an exclusion from a different command tree",
+                            answer.mod_id
+                        );
+                    }
+                };
+                game.native_player_commands_sent(mod_api::__private::PlayerCommandsSentCall {
+                    player,
+                    tree: mod_api::__private::command_tree_filter(roots.len(), &name_at, &send),
+                    answers: &mut answers,
+                });
             };
-            let names = host.hub.command_names(conn);
-            let mut kept = names.clone();
-            let placed = host.hub.guest(conn).is_some_and(|g| g.placed);
-            if !placed {
-                // A joining player has no world yet: nothing can be told them.
-                self.native_player_commands_sent(uuid, &name, &mut kept);
-            } else if self.server.lan_acting == Some(conn) {
-                self.native_player_commands_sent(uuid, &name, &mut kept);
+            if !guest.placed && self.server.lan_acting != Some(conn) {
+                // The joining body exists but is not in the online player list yet.
+                if let Err(error) = self.as_guest_at(i, conn, |game| dispatch(game)) {
+                    log::error!(
+                        "player_commands_sent: cannot lend the joining player for connection {conn}: {error:?}"
+                    );
+                }
             } else {
-                self.as_guest(conn, |g| {
-                    g.native_player_commands_sent(uuid, &name, &mut kept);
-                });
+                dispatch(self);
             }
-            if let Some(host) = self.server.lan.as_mut() {
-                let _ = host.hub.update_guest(conn, |g| {
-                    g.hidden_commands = names.into_iter().filter(|n| !kept.contains(n)).collect();
-                });
-            }
+        }
+        // A joining turn may have moved hub rows while settling callbacks.
+        if let Some(host) = self.server.lan.as_ref()
+            && let Some(i) = host.hub.guests.connection_index(conn)
+        {
+            let packet = host.hub.encode_command_graph(graph, &hidden);
+            host.hub.send_commands(i, packet);
         }
     }
     /// Resolve a UUID-based item place in the acting state or a parked guest's own record.
@@ -396,22 +486,6 @@ impl crate::game::ServerGame<'_> {
     /// whose mods never call it. API @API:refresh_commands@.
     pub(in crate::game) fn native_refresh_commands(&mut self) {
         self.server.native_commands.0.refresh = true;
-    }
-    pub(in crate::game) fn native_send_all(&mut self, uuid: u128, packets: Vec<C>) -> bool {
-        if self.server.lan_acting_uuid == Some(uuid) && !self.server.lan_acting_fake {
-            self.server.guest_packets.extend(packets);
-            return true;
-        }
-        let Some(host) = &self.server.lan else {
-            return false;
-        };
-        let Some(g) = host.hub.online_players().find(|g| g.uuid == uuid) else {
-            return false;
-        };
-        for packet in &packets {
-            host.hub.send_to(g.conn, packet);
-        }
-        true
     }
     /// The real players on this server, in join order, including an integrated
     /// server's own player even when the world is not open to LAN. Empty on a client.
@@ -536,7 +610,7 @@ impl crate::game::ServerGame<'_> {
         self.player_handle_read(player)
     }
     pub(in crate::game) fn server_player_client_brand(&self, player: PlayerRef) -> Option<&str> {
-        if let Some(guest) = self.online_player_record(player) {
+        if let Some(guest) = self.player_connection_record(player) {
             return Some(&guest.brand);
         }
         (self.native_acting_player() == Some(player)).then_some("")
@@ -645,6 +719,35 @@ impl crate::game::ServerGame<'_> {
         setup: PlayerActionSetup,
     ) -> Result<ScopedActionResult, ActionRefused> {
         let (gi, conn) = self.fake_action_actor(player, action)?;
+        self.beside_listener_journal(|game| game.perform_scoped(gi, conn, action, setup))
+    }
+
+    /// Runs a fake player's action outside the level tick listener's own transaction.
+    pub(in crate::game) fn beside_listener_journal<T>(
+        &mut self,
+        act: impl FnOnce(&mut Self) -> T,
+    ) -> T {
+        if self.common.transactions.is_empty() {
+            return act(self);
+        }
+        let frames = std::mem::take(&mut *self.common.transactions);
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _outside = LevelTickListeners::mark(false);
+            act(self)
+        }));
+        // Anything the action left open nests in the listener's transaction.
+        let inner = std::mem::replace(&mut *self.common.transactions, frames);
+        self.common.transactions.extend(inner);
+        result.unwrap_or_else(|panic| std::panic::resume_unwind(panic))
+    }
+
+    fn perform_scoped(
+        &mut self,
+        gi: usize,
+        conn: u32,
+        action: PlayerAction,
+        setup: PlayerActionSetup,
+    ) -> Result<ScopedActionResult, ActionRefused> {
         if !setup.eye.iter().all(|v| v.is_finite())
             || !setup.yaw.is_finite()
             || !setup.pitch.is_finite()
@@ -784,9 +887,6 @@ impl crate::game::ServerGame<'_> {
         player: PlayerRef,
         abilities: mod_api::PlayerAbilities,
     ) -> bool {
-        if !abilities.fly_speed.is_finite() || !abilities.walk_speed.is_finite() {
-            return false;
-        }
         let stored = PlayerAbilities {
             invulnerable: abilities.invulnerable,
             flying: abilities.flying,
@@ -822,33 +922,20 @@ impl crate::game::ServerGame<'_> {
         if slot >= 9 {
             return false;
         }
-        // The connection to tell: a parked guest's, or the acting guest's, whose state is in
-        // place for their turn (the put-back at the end of `guest_turn` stores the slot back but sends nothing). The host
-        // has none.
-        let conn = match self.player_handle_read(player) {
-            Some(PlayerRead::Guest(guest)) => Some(guest.conn),
-            Some(PlayerRead::Acting { .. }) => self.server.lan_acting_uuid.and_then(|uuid| {
-                self.server
-                    .lan
-                    .as_ref()?
-                    .hub
-                    .guests
-                    .iter()
-                    .find(|guest| guest.uuid == uuid)
-                    .map(|guest| guest.conn)
-            }),
-            None => None,
-        };
-        let changed = self.player_selected_slot(player) != Some(slot);
-        if !self.native_as_player_handle(player, |game| {
-            if changed
+        // The guest turn stores the selected slot back but sends nothing. Tell the same
+        // connection after the turn, whether the player was parked or already acting.
+        let mut conn = None;
+        if !self.native_as_resident_player(player, |game| {
+            conn = game.server.lan_acting;
+            if game.common.selected != slot
                 && game
+                    .common
                     .using
                     .is_some_and(|(held, _)| held != crate::game::shield::OFFHAND_SLOT)
             {
                 game.stop_active_item_use();
             }
-            game.selected = slot;
+            game.common.selected = slot;
         }) {
             return false;
         }
@@ -941,42 +1028,6 @@ impl crate::game::ServerGame<'_> {
             }
         }
     }
-    /// The one path `native_run_command` and `native_run_command_with_output` run a line
-    /// by: the console's source from the world spawn in its level, the native command filter on,
-    /// and the running command's own chat capture, so a call inside another capture leaves
-    /// the outer one as it was. With `capture`, the source is not silent and the feedback
-    /// comes back as the second value.
-    pub(in crate::game) fn run_console_command(
-        &mut self,
-        line: &str,
-        capture: bool,
-    ) -> (bool, Vec<sunrise_game_data::text::Text>) {
-        if self.server.lan.is_none() {
-            return (false, Vec::new());
-        }
-        let base = self.server_source();
-        let server = execute::Source {
-            silent: base.silent && !capture,
-            ..base
-        };
-        let outer = self.server.command_source.replace(server);
-        let filter = std::mem::replace(&mut self.server.native_command_filter, true);
-        let outer_exec = std::mem::take(&mut self.server.exec.0);
-        let outer_results = self.server.cmds.0.results.take();
-        let outer_capture = capture.then(|| self.server.chat_capture.replace(Vec::new()));
-        let ok = self.as_console(|g| g.run_command(line));
-        let lines = match outer_capture {
-            Some(outer_capture) => {
-                std::mem::replace(&mut self.server.chat_capture, outer_capture).unwrap_or_default()
-            }
-            None => Vec::new(),
-        };
-        self.server.exec.0 = outer_exec;
-        self.server.cmds.0.results = outer_results;
-        self.server.native_command_filter = filter;
-        self.server.command_source = outer;
-        (ok, lines)
-    }
     /// The shared command-node executor, also reached by functions and `execute`.
     pub fn run_native_command(&mut self, context: Context) -> super::commands::R<i32> {
         use super::commands::err;
@@ -1034,7 +1085,7 @@ impl crate::game::ServerGame<'_> {
         action: PlayerAction,
     ) -> Result<ActionOutcome, ActionRefused> {
         let (gi, conn) = self.fake_action_actor(player, action)?;
-        self.perform_fake_action(gi, conn, action)
+        self.beside_listener_journal(|game| game.perform_fake_action(gi, conn, action))
     }
 
     pub fn player_set_game_mode(&mut self, player: PlayerRef, mode: GameMode) -> bool {
@@ -1084,15 +1135,20 @@ impl crate::game::ServerGame<'_> {
         ))
     }
 
-    pub(in crate::game) fn online_player_record(&self, player: PlayerRef) -> Option<&Guest> {
+    fn player_connection_record(&self, player: PlayerRef) -> Option<&Guest> {
         (self.common.native_lifecycle.epoch()? == player.entity().epoch()).then_some(())?;
         let guests = &self.server.lan.as_ref()?.hub.guests;
         let guest = guests.get(guests.identity_index(player.uuid(), player.entity().id())?)?;
-        (guest.joined() && guest.participates_online()).then_some(guest)
+        (guest.participates_online() && (guest.joined() || self.server.lan_acting == Some(guest.conn)))
+            .then_some(guest)
+    }
+
+    pub(in crate::game) fn online_player_record(&self, player: PlayerRef) -> Option<&Guest> {
+        self.player_connection_record(player).filter(|guest| guest.joined())
     }
 
     pub(in crate::game) fn player_address(&self, player: PlayerRef) -> Option<&str> {
-        if let Some(guest) = self.online_player_record(player) {
+        if let Some(guest) = self.player_connection_record(player) {
             return Some(guest.ip_address());
         }
         (self.native_acting_player() == Some(player)).then_some("")
@@ -1110,7 +1166,7 @@ impl crate::game::ServerGame<'_> {
         player: PlayerRef,
     ) -> Option<Arc<[String]>> {
         static EMPTY: LazyLock<Arc<[String]>> = LazyLock::new(Arc::default);
-        if let Some(guest) = self.online_player_record(player) {
+        if let Some(guest) = self.player_connection_record(player) {
             return Some(guest.sender.announced.list());
         }
         (self.native_acting_player() == Some(player)).then(|| Arc::clone(&EMPTY))
@@ -1140,7 +1196,18 @@ impl crate::game::ServerGame<'_> {
     }
 
     pub(in crate::game) fn native_send(&mut self, uuid: u128, packet: C) -> bool {
-        self.native_send_all(uuid, vec![packet])
+        if self.server.lan_acting_uuid == Some(uuid) && !self.server.lan_acting_fake {
+            self.server.guest_packets.push(packet);
+            return true;
+        }
+        let Some(host) = &self.server.lan else {
+            return false;
+        };
+        let Some(g) = host.hub.online_players().find(|g| g.uuid == uuid) else {
+            return false;
+        };
+        host.hub.send_to(g.conn, &packet);
+        true
     }
 
     pub(in crate::game) fn player_set_sidebar(
@@ -1179,19 +1246,6 @@ impl crate::game::ServerGame<'_> {
         self.native_send(uuid, packet)
     }
 
-    pub fn set_tick_rate(&mut self, rate: f32) -> bool {
-        !LevelControl::TickRate.is_heard() && self.apply_tick_rate(rate)
-    }
-
-    pub(in crate::game) fn apply_tick_rate(&mut self, rate: f32) -> bool {
-        if !self.common.is_logical_server() || !(1.0..=10_000.0).contains(&rate) {
-            return false;
-        }
-        self.common.clock.set_rate(rate);
-        self.on_tick_rate_changed();
-        true
-    }
-
     pub(in crate::game) fn player_set_sleep_ignored(
         &mut self,
         player: PlayerRef,
@@ -1227,7 +1281,7 @@ impl crate::game::ServerGame<'_> {
         Some(self.server.lan.as_ref()?.sleep_ignored.contains(&uuid))
     }
 
-    pub(in crate::game) fn player_sleep_timer(&self, player: PlayerRef) -> Option<u32> {
+    pub(in crate::game) fn player_sleep_timer(&self, player: PlayerRef) -> Option<i32> {
         Some(match self.player_handle_read(player)? {
             PlayerRead::Acting { .. } => self.common.sleep_timer,
             PlayerRead::Guest(guest) => guest.sleep_timer,
@@ -1237,18 +1291,29 @@ impl crate::game::ServerGame<'_> {
     pub(in crate::game) fn player_set_sleep_timer(
         &mut self,
         player: PlayerRef,
-        ticks: u32,
+        ticks: i32,
     ) -> bool {
-        if ticks > super::MAX_SLEEP_TIMER || self.player_handle_read(player).is_none() {
+        if !self.common.is_logical_server() {
             return false;
         }
-        let Some(target) = self.native_entity_target(player.entity()) else {
-            return false;
-        };
-        self.native_player_sleep_write(target, |game| {
-            game.sleep_timer = ticks;
-            true
-        })
+        match self.player_handle_read(player) {
+            Some(PlayerRead::Acting { .. }) => {
+                self.common.sleep_timer = ticks;
+                true
+            }
+            Some(PlayerRead::Guest(guest)) => {
+                let conn = guest.conn;
+                self.server
+                    .lan
+                    .as_mut()
+                    .and_then(|host| {
+                        host.hub
+                            .update_guest(conn, |guest| guest.sleep_timer = ticks)
+                    })
+                    .is_some()
+            }
+            None => false,
+        }
     }
 
     pub(in crate::game) fn player_text_filtering(&self, player: PlayerRef) -> Option<bool> {
@@ -1433,64 +1498,196 @@ impl crate::game::ServerGame<'_> {
         true
     }
 
-    pub fn native_run_command(&mut self, line: &str) -> bool {
-        self.run_console_command(line, false).0
+    /// Resolves `entity` to a live experience orb in the active or any parked server level.
+    pub(in crate::game) fn native_orb_ref(
+        &self,
+        entity: EntityRef,
+    ) -> Result<&sunrise_sim::entities::ExperienceOrb, LevelReadError> {
+        if !self.common.is_logical_server() {
+            return Err(LevelReadError::Unavailable);
+        }
+        if self.common.native_lifecycle.epoch() != Some(entity.epoch())
+            || self.server.held_out.contains(&entity.id())
+        {
+            return Err(LevelReadError::Stale);
+        }
+        let id = entity.id();
+        let target = super::commands::Target::Orb(id);
+        if let Some(orb) = self.common.orbs.iter().find(|o| o.id == id) {
+            return if self.resident_source_target_visible(self.common.dim.key(), target) {
+                Ok(orb)
+            } else {
+                Err(LevelReadError::Stale)
+            };
+        }
+        for (dim, parked) in &self.server.levels.0.parked {
+            if let Some(orb) = parked.orbs.iter().find(|o| o.id == id) {
+                return if self.resident_source_target_visible(dim.key(), target) {
+                    Ok(orb)
+                } else {
+                    Err(LevelReadError::Stale)
+                };
+            }
+        }
+        Err(LevelReadError::Stale)
     }
 
-    pub fn experience_orbs(
+    /// Resolves `entity` to a mutable live experience orb in the active or any parked server level.
+    fn native_orb_mut(
+        &mut self,
+        entity: EntityRef,
+    ) -> Result<&mut sunrise_sim::entities::ExperienceOrb, ExperienceOrbWriteError> {
+        if !self.common.is_logical_server() {
+            return Err(ExperienceOrbWriteError::Unavailable);
+        }
+        if self.common.native_lifecycle.epoch() != Some(entity.epoch())
+            || self.server.held_out.contains(&entity.id())
+        {
+            return Err(ExperienceOrbWriteError::Stale);
+        }
+        let id = entity.id();
+        let target = super::commands::Target::Orb(id);
+        if self.common.orbs.iter().any(|o| o.id == id) {
+            if !self.resident_source_target_visible(self.common.dim.key(), target) {
+                return Err(ExperienceOrbWriteError::Stale);
+            }
+            return self
+                .common
+                .orbs
+                .iter_mut()
+                .find(|o| o.id == id)
+                .ok_or(ExperienceOrbWriteError::Stale);
+        }
+        let Some(dim) = self
+            .server
+            .levels
+            .0
+            .parked
+            .iter()
+            .find_map(|(&dim, parked)| parked.orbs.iter().any(|o| o.id == id).then_some(dim))
+        else {
+            return Err(ExperienceOrbWriteError::Stale);
+        };
+        if !self.resident_source_target_visible(dim.key(), target) {
+            return Err(ExperienceOrbWriteError::Stale);
+        }
+        self.server
+            .levels
+            .0
+            .parked
+            .get_mut(&dim)
+            .and_then(|parked| parked.orbs.iter_mut().find(|o| o.id == id))
+            .ok_or(ExperienceOrbWriteError::Stale)
+    }
+
+    /// Narrows `entity` to an [`ExperienceOrbRef`] across active and parked server levels.
+    pub fn experience_orb(
         &self,
-        dimension: &str,
+        entity: EntityRef,
+    ) -> Result<Option<ExperienceOrbRef>, LevelReadError> {
+        match self.native_orb_ref(entity) {
+            Ok(_) => Ok(Some(ExperienceOrbRef::new(entity))),
+            Err(LevelReadError::Stale) => Ok(None),
+            Err(err) => Err(err),
+        }
+    }
+
+    /// Visits experience orbs in `level` (active or parked) whose bounding box meets `min`..`max`
+    /// in level order without allocating a list.
+    pub(in crate::game) fn level_visit_experience_orbs(
+        &self,
+        level: LevelRef,
         min: [f64; 3],
         max: [f64; 3],
-    ) -> Vec<mod_api::ExperienceOrb> {
-        let Some((min, max)) = ordered_box(min, max) else {
-            return Vec::new();
+        visit: &mut dyn FnMut(ExperienceOrbRef) -> core::ops::ControlFlow<()>,
+    ) -> Result<core::ops::ControlFlow<()>, LevelReadError> {
+        self.native_level_world_result(level)?;
+        let (min, max) = ordered_box(min, max).ok_or(LevelReadError::Unavailable)?;
+        let epoch = level.epoch();
+        let dimension = level.dimension();
+        let orbs = if dimension == self.common.dim.key() {
+            &self.common.orbs
+        } else {
+            &self
+                .server
+                .levels
+                .0
+                .parked_of(level.dimension_id())
+                .ok_or(LevelReadError::Stale)?
+                .orbs
         };
-        if (self.server.serving.is_none() && self.common.options.dedicated.is_none())
-            || dimension != self.common.dim.id()
-        {
-            return Vec::new();
+        for o in orbs.iter() {
+            if o.count == 0
+                || self.server.held_out.contains(&o.id)
+                || !self
+                    .resident_source_target_visible(dimension, super::commands::Target::Orb(o.id))
+                || !orb_meets([o.position.x, o.position.y, o.position.z], min, max)
+            {
+                continue;
+            }
+            if visit(ExperienceOrbRef::new(EntityRef::new(epoch, o.id))).is_break() {
+                return Ok(core::ops::ControlFlow::Break(()));
+            }
         }
-        self.common
-            .orbs
-            .iter()
-            .filter(|o| o.count > 0)
-            .map(|o| mod_api::ExperienceOrb {
-                id: o.id,
-                position: [o.position.x, o.position.y, o.position.z],
-                value: o.value,
-                count: o.count,
-            })
-            .filter(|o| orb_meets(o.position, min, max))
-            .collect()
+        Ok(core::ops::ControlFlow::Continue(()))
     }
 
-    pub fn set_experience_orb(
+    /// Reads `ExperienceOrb.getValue()` (`DATA_VALUE`, full `i32`).
+    pub(in crate::game) fn experience_orb_value(
+        &self,
+        orb: ExperienceOrbRef,
+    ) -> Result<i32, LevelReadError> {
+        self.native_orb_ref(orb.entity()).map(|o| o.value)
+    }
+
+    /// Reads `ExperienceOrb.count`.
+    pub(in crate::game) fn experience_orb_count(
+        &self,
+        orb: ExperienceOrbRef,
+    ) -> Result<u32, LevelReadError> {
+        self.native_orb_ref(orb.entity()).map(|o| o.count)
+    }
+
+    /// Reads `ExperienceOrb.age` (full signed `i32`).
+    pub(in crate::game) fn experience_orb_age(
+        &self,
+        orb: ExperienceOrbRef,
+    ) -> Result<i32, LevelReadError> {
+        self.native_orb_ref(orb.entity()).map(|o| o.age)
+    }
+
+    /// Writes `ExperienceOrb.DATA_VALUE` (full `i32`; save truncates to `(short)`).
+    pub(in crate::game) fn experience_orb_set_value(
         &mut self,
-        dimension: &str,
-        id: u32,
-        value: Option<i32>,
-        count: Option<u32>,
-        age: Option<u32>,
-    ) -> bool {
-        if (self.server.serving.is_none() && self.common.options.dedicated.is_none())
-            || dimension != self.common.dim.id()
-            || count == Some(0)
-            || count.is_some_and(|c| c > sunrise_sim::orb_limits::MAX_COUNT)
-            || value.is_some_and(|v| !sunrise_sim::orb_limits::value_fits(v))
-        {
-            return false;
+        orb: ExperienceOrbRef,
+        value: i32,
+    ) -> Result<(), ExperienceOrbWriteError> {
+        self.native_orb_mut(orb.entity())?.value = value;
+        Ok(())
+    }
+
+    /// Writes `ExperienceOrb.count`, rejecting `0` and values above `i32::MAX` (`ExtraCodecs.POSITIVE_INT`).
+    pub(in crate::game) fn experience_orb_set_count(
+        &mut self,
+        orb: ExperienceOrbRef,
+        count: u32,
+    ) -> Result<(), ExperienceOrbWriteError> {
+        let orb = self.native_orb_mut(orb.entity())?;
+        if count == 0 || count > sunrise_sim::orb_limits::MAX_COUNT {
+            return Err(ExperienceOrbWriteError::InvalidCount);
         }
-        let Ok(age) = age.map(i32::try_from).transpose() else {
-            return false;
-        };
-        let Some(orb) = self.common.orbs.iter_mut().find(|o| o.id == id) else {
-            return false;
-        };
-        orb.value = value.unwrap_or(orb.value);
-        orb.count = count.unwrap_or(orb.count);
-        orb.age = age.unwrap_or(orb.age);
-        true
+        orb.count = count;
+        Ok(())
+    }
+
+    /// Writes `ExperienceOrb.age` (full signed `i32`; save truncates to `(short)`).
+    pub(in crate::game) fn experience_orb_set_age(
+        &mut self,
+        orb: ExperienceOrbRef,
+        age: i32,
+    ) -> Result<(), ExperienceOrbWriteError> {
+        self.native_orb_mut(orb.entity())?.age = age;
+        Ok(())
     }
 
     pub(in crate::game) fn native_player_holder(&self, uuid: u128) -> Option<&Guest> {
@@ -1519,14 +1716,32 @@ impl crate::game::ServerGame<'_> {
         true
     }
 
-    pub(in crate::game) fn resend_commands_filtered(&mut self) {
+    pub fn resend_commands_filtered(&mut self) {
         let Some(host) = self.server.lan.as_mut() else {
             return;
         };
         host.hub.refresh_permissions();
-        self.native_filter_commands(None);
-        if let Some(host) = self.server.lan.as_mut() {
-            host.hub.resend_commands();
+        self.send_placed_command_trees(true);
+    }
+
+    /// `Commands.sendCommands` sends only display data; `PlayerList.sendPlayerPermissionLevel`
+    /// also sends the permission event before that data.
+    pub(in crate::game) fn send_placed_command_trees(&mut self, send_permission: bool) {
+        let Some(count) = self.server.lan.as_ref().map(|host| host.hub.guests.len()) else {
+            return;
+        };
+        for i in 0..count {
+            let Some(host) = self.server.lan.as_ref() else {
+                return;
+            };
+            let guest = &host.hub.guests[i];
+            if guest.placed && guest.participates_online() {
+                let conn = guest.conn;
+                if send_permission {
+                    host.hub.send_permission_level(i);
+                }
+                self.send_player_command_tree(conn);
+            }
         }
     }
 
@@ -1537,9 +1752,24 @@ impl crate::game::ServerGame<'_> {
         use super::commands::Target;
         match target {
             Target::Player => self.native_acting_player(),
-            Target::Guest(conn) => self
-                .command_guest(conn)
-                .and_then(|guest| self.player(guest.uuid)),
+            Target::Guest(conn) if self.server.lan_acting == Some(conn) => {
+                self.native_acting_player()
+            }
+            // The selected guest's own identity, a fake player's too (`execute on origin` of
+            // its projectile). `player_handle_read` keeps the checks: a real guest must be
+            // online, not displaced (or the one being cloned) and still that entity; a fake
+            // must be placed and not displaced.
+            Target::Guest(conn) => {
+                let guest = self.command_guest(conn)?;
+                let player = mod_api::__private::game::player_ref(
+                    mod_api::EntityRef::new(
+                        self.common.native_lifecycle.epoch()?,
+                        u32::try_from(guest.entity_id).ok()?,
+                    ),
+                    guest.uuid,
+                );
+                self.player_handle_read(player).map(|_| player)
+            }
             _ => None,
         }
     }
@@ -1556,6 +1786,49 @@ impl crate::game::ServerGame<'_> {
             .flatten()
     }
 
+    /// Resolve argument kinds shared by server and client native commands.
+    fn resolve_client_safe_argument(
+        &self,
+        ty: Option<&ArgType>,
+        value: Arg,
+        coords_position: impl FnOnce(&sunrise_command::args::Coordinates) -> [f64; 3],
+        rotation: [f32; 2],
+    ) -> Result<mod_api::CommandArgumentValue, sunrise_command::CommandError> {
+        use super::commands::err;
+        use mod_api::CommandArgumentValue as Value;
+        Ok(match value {
+            Arg::Str(text) if matches!(ty, Some(ArgType::Nbt)) => nbt_value(&text)?,
+            Arg::Str(value) => Value::String(value),
+            Arg::Int(value) => Value::Integer(value),
+            Arg::Long(value) => Value::Long(value),
+            Arg::Double(value) => Value::Number(value),
+            Arg::Bool(value) => Value::Boolean(value),
+            Arg::Coords(coordinates) => {
+                positional_value(ty, &coordinates, coords_position(&coordinates), rotation)
+            }
+            Arg::Item(input) => Value::Item(
+                self.command_item_stack(&input, 1)?
+                    .try_into_api()
+                    .expect("command item validation resolves registered items"),
+            ),
+            // `ResourceOrTagKeyArgument.Result`: `#` names a tag, else a resource.
+            Arg::Resource(id) if matches!(ty, Some(ArgType::ResOrTagKey(_))) => {
+                let (tag, name) = id
+                    .strip_prefix('#')
+                    .map_or((false, &*id), |name| (true, name));
+                Value::ResourceOrTag {
+                    tag,
+                    id: mod_api::Identifier::parse(name).map_err(|_| err("command.failed", &[]))?,
+                }
+            }
+            Arg::Resource(id) => {
+                Value::Id(mod_api::Identifier::parse(&id).map_err(|_| err("command.failed", &[]))?)
+            }
+            Arg::Custom { kind, value } => custom_value(&kind, value),
+            _ => unreachable!("the native tree contains only registered native argument kinds"),
+        })
+    }
+
     pub(in crate::game) fn resolve_native_command(
         &mut self,
         context: Context,
@@ -1566,12 +1839,9 @@ impl crate::game::ServerGame<'_> {
         for argument in context.args {
             let ty = parsed_type(&self.common.ui.dispatcher.0, &context.nodes, argument.range);
             let value = match argument.value {
-                Arg::Str(text) if matches!(ty, Some(ArgType::Nbt)) => nbt_value(&text)?,
-                Arg::Str(value) => Value::String(value),
-                Arg::Int(value) => Value::Integer(value),
-                Arg::Long(value) => Value::Long(value),
-                Arg::Double(value) => Value::Number(value),
-                Arg::Bool(value) => Value::Boolean(value),
+                value if matches!(ty, Some(ArgType::GameProfile)) => {
+                    Value::GameProfiles(self.mod_game_profiles(&value)?)
+                }
                 Arg::Entity(selector) => {
                     let (single, players) = context
                         .nodes
@@ -1632,25 +1902,15 @@ impl crate::game::ServerGame<'_> {
                         Value::Entities(selected)
                     }
                 }
-                Arg::Coords(coordinates) => positional_value(
-                    ty.as_ref(),
-                    &coordinates,
-                    self.resolve_coords(&coordinates),
-                    self.source_rotation(),
-                ),
-                Arg::Item(input) => Value::Item(
-                    self.command_item_stack(&input, 1)?
-                        .try_into_api()
-                        .expect("command item validation resolves registered items"),
-                ),
                 Arg::Resource(id) if matches!(ty, Some(ArgType::Dimension)) => {
                     dimension_value(&id, |dimension| self.level(dimension))?
                 }
-                Arg::Resource(id) => Value::Id(
-                    mod_api::Identifier::parse(&id).map_err(|_| err("command.failed", &[]))?,
-                ),
-                Arg::Custom { kind, value } => custom_value(&kind, value),
-                _ => unreachable!("the native tree contains only registered native argument kinds"),
+                other => self.resolve_client_safe_argument(
+                    ty,
+                    other,
+                    |coordinates| self.resolve_coords(coordinates),
+                    self.source_rotation(),
+                )?,
             };
             arguments.push(CommandArgument::new(argument.name, value));
         }
@@ -1675,7 +1935,11 @@ impl crate::game::ServerGame<'_> {
         stack: &ItemStack,
         remainder: &mut Option<ItemStack>,
     ) {
-        self.native_crafting_remainder(stack, remainder);
+        sunrise_gameplay_common::game::api_values::with_stack_view(Some(stack), |view| {
+            if let Some(view) = view {
+                self.native_crafting_remainder(view, remainder);
+            }
+        });
     }
 
     pub(in crate::game) fn server_world_table_items(
@@ -1701,19 +1965,36 @@ impl crate::game::ServerGame<'_> {
             .capability_site(at, self.common.world.block(x, y, z), false)
     }
 
-    pub(in crate::game) fn server_signal_container_size(
+    pub(in crate::game) fn signal_level_mobs(
         &self,
-        at: mod_api::BlockSide,
-    ) -> Option<usize> {
-        self.container_size(at)
+        level: LevelRef,
+    ) -> Option<&[sunrise_sim::mobs::Mob]> {
+        let dimension = level.dimension();
+        if dimension == self.common.dim.key() {
+            Some(&self.common.mobs)
+        } else {
+            self.server.levels.0.parked_mobs(Dim::from_id(level.dimension_id()))
+        }
     }
 
-    pub(in crate::game) fn server_signal_container_stack(
+    pub(in crate::game) fn server_signal_container_size(
         &self,
+        world: &World,
+        at: mod_api::BlockSide,
+    ) -> Option<usize> {
+        self.level_container_size(world, self.signal_level_mobs(at.level)?, at)
+    }
+
+    pub(in crate::game) fn server_signal_lend_container_stack(
+        &self,
+        world: &World,
         at: mod_api::BlockSide,
         slot: usize,
-    ) -> Option<mod_api::ItemStack> {
-        self.container_stack(at, slot)?.try_into_api().ok()
+        read: &mut dyn for<'a> FnMut(mod_api::ItemStackView<'a>),
+    ) {
+        if let Some(mobs) = self.signal_level_mobs(at.level) {
+            self.level_lend_container_stack(world, mobs, at, slot, read);
+        }
     }
 
     pub(in crate::game) fn server_level_block_face_sturdy(
@@ -1752,15 +2033,17 @@ impl crate::game::ServerGame<'_> {
 
 impl crate::game::ServerGame<'_> {
     pub(in crate::game) fn cloning_guest(&self, uuid: u128) -> Option<&Guest> {
-        let &(_, conn, _) = self
+        let pending = self
             .common
             .player_state
             .cloning_players
             .iter()
             .rev()
-            .find(|&&(player, _, _)| player == uuid)?;
-        self.command_guest(conn).filter(|_| {
-            !sunrise_gameplay_common::game::Side::lan_guest_swaps(&self.server).contains(&conn)
+            .find(|player| player.uuid == uuid)
+            .filter(|player| player.entity.is_some())?;
+        self.command_guest(pending.conn).filter(|_| {
+            !sunrise_gameplay_common::game::Side::lan_guest_swaps(&self.server)
+                .contains(&pending.conn)
         })
     }
 
@@ -2001,6 +2284,10 @@ pub(in crate::game) mod fake_action_tests {
         with_game(|game| {
             let (player, conn, _) = fake(game, None, 0);
             game.as_guest(conn, |g| g.server.attack_ticks = 2).unwrap();
+            assert_eq!(
+                game.player_current_item_attack_strength_delay(player),
+                Some(5.0)
+            );
             for partial in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
                 assert_eq!(game.player_attack_strength_scale(player, partial), None);
                 game.as_guest(conn, |g| {
@@ -2148,3 +2435,7 @@ pub(in crate::game) mod fake_action_tests {
         });
     }
 }
+
+#[cfg(test)]
+#[path = "native_server/profile_tests.rs"]
+mod profile_tests;

@@ -9,7 +9,7 @@ use sunrise_game_data::nbt_path::NbtPath;
 /// `CommandSourceStack` fields Sunrise models: the executing entity (None for
 /// the server), position, rotation, anchor, whether feedback is suppressed
 /// and the chain of `store` callbacks.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub struct Source {
     pub entity: Option<Target>,
     pub pos: [f64; 3],
@@ -27,6 +27,8 @@ pub struct Source {
     pub origin_dimension: Dim,
     /// Whether a player submitted this source, unchanged by executor modifiers.
     pub origin_player: bool,
+    /// Output sink for the native console source. Redirects and delayed listeners keep this origin.
+    pub native_output: Option<super::super::native_console::ConsoleOutput>,
     /// The dimension `execute in` named, if any: a server teleports its
     /// players there (`TeleportCommand` into the source's level).
     pub level: Option<super::super::Dim>,
@@ -98,6 +100,7 @@ impl crate::game::ServerGame<'_> {
             dimension: self.common.dim,
             origin_dimension: self.common.dim,
             origin_player: self.common.player.is_some(),
+            native_output: None,
             level: None,
             block: None,
             cart: None,
@@ -118,6 +121,7 @@ impl crate::game::ServerGame<'_> {
             dimension: level,
             origin_dimension: level,
             origin_player: false,
+            native_output: None,
             level: None,
             block: None,
             cart: None,
@@ -229,7 +233,7 @@ impl crate::game::ServerGame<'_> {
                 .into_iter()
                 .map(|t| Source {
                     entity: Some(t),
-                    ..s
+                    ..s.clone()
                 })
                 .collect(),
             "at" => targets(self)?
@@ -242,7 +246,7 @@ impl crate::game::ServerGame<'_> {
                         rot: self.target_rotation(t),
                         dimension: level,
                         level: (level != self.common.dim).then_some(level),
-                        ..s
+                        ..s.clone()
                     })
                 })
                 .collect(),
@@ -253,7 +257,7 @@ impl crate::game::ServerGame<'_> {
                     // resets it to the feet).
                     Some(Source {
                         pos: self.target_position(t)?,
-                        ..s
+                        ..s.clone()
                     })
                 })
                 .collect(),
@@ -285,7 +289,7 @@ impl crate::game::ServerGame<'_> {
                 .into_iter()
                 .map(|t| Source {
                     rot: self.target_rotation(t),
-                    ..s
+                    ..s.clone()
                 })
                 .collect(),
             "rotated" => {
@@ -306,7 +310,7 @@ impl crate::game::ServerGame<'_> {
                         } else {
                             p[1]
                         };
-                        Some(self.facing(s, [p[0], y, p[2]]))
+                        Some(self.facing(s.clone(), [p[0], y, p[2]]))
                     })
                     .collect()
             }

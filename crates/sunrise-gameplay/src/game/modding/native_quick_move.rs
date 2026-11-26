@@ -63,7 +63,7 @@ enum Source {
     Linked {
         pos: Pos,
         slot: usize,
-        generation: Option<u64>,
+        generation: u64,
     },
     CraftingResult(ModCrafting),
 }
@@ -137,11 +137,11 @@ impl crate::game::ServerGame<'_> {
             .and_then(|t| t.links)
             .is_some_and(|link| link.slots().contains(&slot))
         {
-            let (pos, slot) = menu.slots.held_block_slot(&self.common.world, g, slot)?;
+            let (pos, slot) = menu.linked_slots(&self.common.world)?.backing(slot)??;
             Source::Linked {
                 pos,
                 slot,
-                generation: self.common.world.block_entities.generation(&pos),
+                generation: self.common.world.block_entities.generation(&pos)?,
             }
         } else {
             match at {
@@ -216,10 +216,27 @@ impl crate::game::ServerGame<'_> {
             held: clicked,
         } = quick_move;
         let live = |game: &Self| {
-            admitted.holds(game)
-                && game.native_block_entity_write_key(subject) == Some(pos)
-                && !matches!(&source, Source::Linked { pos, generation, .. }
-                    if game.world.block_entities.generation(pos) != *generation)
+            let Some(open) = admitted.menu(game) else {
+                return false;
+            };
+            if game.native_block_entity_write_key(subject) != Some(pos) {
+                return false;
+            }
+            match source {
+                Source::Linked {
+                    pos: link_pos,
+                    slot: link_slot,
+                    generation,
+                } => {
+                    game.world.block_entities.generation(&link_pos) == Some(generation)
+                        && open
+                            .linked_slots(&game.world)
+                            .and_then(|links| links.backing(slot))
+                            .flatten()
+                            == Some((link_pos, link_slot))
+                }
+                _ => true,
+            }
         };
         if !live(self) {
             return QuickMoveOutcome::Rejected;
@@ -439,7 +456,7 @@ enum QuickMoveOutcome {
 /// menu, the block entity behind it (a replaced one has another generation though its values may
 /// be equal) and the inputs a listener's command could change (the guest's mode and life, a drag).
 /// The validity hook and the slot rules are not asked again.
-pub(in crate::game) struct Admitted {
+pub struct Admitted {
     conn: u32,
     window: i32,
     pos: Pos,
@@ -449,7 +466,7 @@ pub(in crate::game) struct Admitted {
 }
 
 impl Admitted {
-    pub(in crate::game) fn of(
+    pub fn of(
         game: &crate::game::ServerGame<'_>,
         conn: u32,
         pos: Pos,
@@ -470,29 +487,29 @@ impl Admitted {
 
     /// Whether the same window, guest mode and original backing generation are still admitted.
     /// Callers separately check the level-bound holder before settling the clicked slot.
-    pub(in crate::game) fn holds(&self, game: &crate::game::ServerGame<'_>) -> bool {
-        let Some(guest) = game
-            .server
-            .lan
-            .as_ref()
-            .and_then(|host| host.hub.guest(self.conn))
-        else {
-            return false;
-        };
-        guest.menu_generation == self.menu_generation
-            && guest.menu.as_ref().is_some_and(|m| {
-                m.window == self.window
-                    && m.slots == Slots::Block(self.pos)
-                    && m.size == self.size
-                    && m.drag.is_none()
-            })
+    pub fn holds(&self, game: &crate::game::ServerGame<'_>) -> bool {
+        self.menu(game).is_some()
+    }
+
+    fn menu<'a>(
+        &self,
+        game: &'a crate::game::ServerGame<'_>,
+    ) -> Option<&'a sunrise_sim::lan::menu::Menu> {
+        let guest = game.server.lan.as_ref()?.hub.guest(self.conn)?;
+        let open = guest.menu.as_ref()?;
+        (guest.menu_generation == self.menu_generation
+            && open.window == self.window
+            && open.slots == Slots::Block(self.pos)
+            && open.size == self.size
+            && open.drag.is_none()
             && !guest.spectator()
             && !guest.dead
             && game
                 .world
                 .block_entities
                 .generation(&self.pos)
-                .is_none_or(|now| Some(now) == self.generation)
+                .is_none_or(|now| Some(now) == self.generation))
+        .then_some(open)
     }
 }
 

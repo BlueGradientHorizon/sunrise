@@ -1,3 +1,4 @@
+use crate::game::TransformKind;
 use sunrise_world::registry::BlockStateId;
 
 /// The use a tool ability makes outside the transform table: `new`, the ability's sound
@@ -5,7 +6,14 @@ use sunrise_world::registry::BlockStateId;
 pub(in crate::game) fn tool_ability_result(
     new: BlockStateId,
     ability: mod_api::ToolAbility,
-) -> (BlockStateId, String, Option<String>, u32, String, String) {
+) -> (
+    BlockStateId,
+    String,
+    Option<String>,
+    u32,
+    String,
+    TransformKind,
+) {
     use mod_api::ToolAbility::*;
     let (sound, particle) = match ability {
         AxeStrip => ("minecraft:item.axe.strip", "none"),
@@ -22,6 +30,6 @@ pub(in crate::game) fn tool_ability_result(
         None,
         1,
         particle.to_owned(),
-        String::new(),
+        TransformKind::default(),
     )
 }

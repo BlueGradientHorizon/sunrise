@@ -11,6 +11,8 @@
 use super::commands::Target;
 use crate::game::ServerGame;
 use mod_api::{ActiveEffect, EffectKey, LivingRef};
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;
 use sunrise_items::items::ItemStack;
 use sunrise_level::effects::EffectInstance;
 
@@ -23,19 +25,16 @@ impl ServerGame<'_> {
         index: usize,
     ) -> Option<bool> {
         let target = self.native_living_target(living)?;
-        let effect = stack
-            .consumable(self.items().get(&stack.item))?
-            .effects
-            .get(index)?
-            .clone();
+        let consumable = self.consumable(stack)?;
+        let effect = consumable.effects.get(index)?;
         match target {
             t @ (Target::Player | Target::Guest(_)) => self
                 .for_player(t, |g| {
-                    g.apply_consume_effect(stack, &effect, None, living.entity())
+                    g.apply_consume_effect(stack, effect, None, living.entity())
                 })
                 .flatten(),
             Target::Mob(_) => {
-                self.apply_consume_effect(stack, &effect, Some(living), living.entity())
+                self.apply_consume_effect(stack, effect, Some(living), living.entity())
             }
             _ => None,
         }
@@ -69,31 +68,7 @@ impl ServerGame<'_> {
             Some(t @ (Target::Player | Target::Guest(_))) => self
                 .for_player(t, |g| g.add_player_effect(instance))
                 .unwrap_or(false),
-            Some(Target::Mob(id)) => {
-                let Some(m) = self.common.mobs.iter().find(|m| m.id == id && !m.removed) else {
-                    return false;
-                };
-                let kind = m.kind.id.clone();
-                let name =
-                    mod_api::__private::effect_key_id(effect.id).expect("resolved effect name");
-                let new = !m
-                    .extra
-                    .effects
-                    .iter()
-                    .any(|e| e.registry_index == Some(def.index));
-                // `LivingEntity.addEffect` refuses what the mob cannot be
-                // affected by, the `mob_effect_applicable` hook asked first.
-                if !self.can_be_affected_resolved(Some(id as i32), &kind, name, Some(effect.id)) {
-                    return false;
-                }
-                let Some(changed) = self.mutate_mob_effects(id, Some(name), |mob| {
-                    mob.add_effect_instance(name, instance)
-                }) else {
-                    return false;
-                };
-                self.mod_effect_added_resolved(effect.id, Some(id as i32), amplifier, new);
-                changed
-            }
+            Some(Target::Mob(id)) => self.add_mob_effect(id, instance, None),
             _ => false,
         }
     }
@@ -106,6 +81,45 @@ impl ServerGame<'_> {
     /// leaving the same way its expiry takes them. False (and nothing
     /// changes) when the entity has the effect not, before effect resolution, or for
     /// an armor stand, the dragon, a stale handle or a client.
+    pub(in crate::game) fn remove_mob_effect_by_index(
+        &mut self,
+        id: u32,
+        effect_index: usize,
+    ) -> bool {
+        let Some(def) = sunrise_game_data::potions::effect_by_index(effect_index) else {
+            return false;
+        };
+        let Some(amplifier) = self
+            .common
+            .mobs
+            .iter()
+            .find(|m| m.id == id && !m.removed)
+            .and_then(|m| {
+                m.extra
+                    .effects
+                    .iter()
+                    .find(|e| e.registry_index == Some(def.index))
+                    .map(|e| e.amplifier)
+            })
+        else {
+            return false;
+        };
+        // `MobEffectEvent.Remove`: refusing the removal keeps it.
+        if let Some(living) = self.effect_living_ref(Some(id as i32))
+            && let Some(key) = mod_api::__private::effect_key_by_index(def.index)
+        {
+            let mut cancel = false;
+            self.native_mob_effect_remove(living, key, amplifier, &mut cancel);
+            if cancel {
+                return false;
+            }
+        }
+        self.mutate_mob_effects(id, Some(def.id), |mob| {
+            mob.retain_effects(|e| e.registry_index != Some(def.index))
+        })
+        .unwrap_or(false)
+    }
+
     pub fn living_remove_effect(&mut self, living: LivingRef, effect: EffectKey) -> bool {
         let Some(def) = mod_api::__private::effect_index(effect)
             .and_then(sunrise_game_data::potions::effect_by_index)
@@ -116,33 +130,7 @@ impl ServerGame<'_> {
             Some(t @ (Target::Player | Target::Guest(_))) => self
                 .for_player(t, |g| g.remove_player_effects(Some(def.index)))
                 .unwrap_or(false),
-            Some(Target::Mob(id)) => {
-                let Some(amplifier) = self
-                    .common
-                    .mobs
-                    .iter()
-                    .find(|m| m.id == id && !m.removed)
-                    .and_then(|m| {
-                        m.extra
-                            .effects
-                            .iter()
-                            .find(|e| e.registry_index == Some(def.index))
-                            .map(|e| e.amplifier)
-                    })
-                else {
-                    return false;
-                };
-                // `MobEffectEvent.Remove`: refusing the removal keeps it.
-                let mut cancel = false;
-                self.native_mob_effect_remove(living, effect, amplifier, &mut cancel);
-                if cancel {
-                    return false;
-                }
-                self.mutate_mob_effects(id, Some(def.id), |mob| {
-                    mob.retain_effects(|e| e.registry_index != Some(def.index))
-                })
-                .unwrap_or(false)
-            }
+            Some(Target::Mob(id)) => self.remove_mob_effect_by_index(id, def.index),
             _ => false,
         }
     }

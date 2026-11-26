@@ -68,7 +68,7 @@ impl crate::game::ServerGame<'_> {
         // fell unprimed blows rails up like any blast.
         self.server.combat.0.rail_proof_blast = c.fuse >= 0;
         self.server.combat.0.explosion_in_water = self.bounds_in_water(c.bounds());
-        self.server.combat.0.explosion_direct = Some(c.id);
+        self.server.combat.0.explosion_direct = Some((c.id, "minecraft:tnt_minecart"));
         let _ = self.with_hive_emptying_blast(|g| {
             g.server_explode_from(
                 at,

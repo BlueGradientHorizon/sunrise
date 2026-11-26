@@ -44,7 +44,12 @@ impl crate::game::ServerGame<'_> {
         let sweep = self.sweep_before_hit("minecraft:ender_dragon", false);
         let hurt = self.hit_special(id, amount, true, DamageKind::PlayerAttack, None);
         if let (Some(area), Hurt::Landed { .. }) = (area, hurt) {
-            let (knockback, _) = self.extra_knockback("minecraft:ender_dragon", scale);
+            let (knockback, _) = self.extra_knockback(
+                "minecraft:ender_dragon",
+                self.dragon.as_ref().map_or(0, |dragon| dragon.id),
+                scale,
+                None,
+            );
             self.attack_effects(area, sweep, None, false, super::mace::Spared::Nothing, None);
             self.remember_player_target(None);
             self.post_attack_dragon_burst();
@@ -78,6 +83,7 @@ impl crate::game::ServerGame<'_> {
             causing: attacker,
             direct: attacker,
             position: None,
+            direct_type: None,
         };
         let vanilla =
             self.saved_refuses_damage(id as u32, "minecraft:player_attack", self.common.creative);
@@ -93,7 +99,8 @@ impl crate::game::ServerGame<'_> {
         ) && self.hurt_cart_result(i, damage, self.common.creative, burning, CartHit::player())
             && damage > 0.0
         {
-            let (knockback, _) = self.extra_knockback(kind, scale);
+            let (knockback, _) =
+                self.extra_knockback(kind, id as u32, scale, Some("minecraft:player_attack"));
             self.special_attack_slowdown(knockback);
             self.remember_player_target(None);
             self.special_attack_exhaustion();

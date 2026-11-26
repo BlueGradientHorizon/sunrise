@@ -128,9 +128,9 @@ impl ServerGame<'_> {
             ambient: true,
             ..EffectInstance::new(id, duration, amp)
         };
-        self.apply_player_effect(ambient(primary, amplifier));
+        self.add_player_effect(ambient(primary, amplifier));
         if let Some(s) = secondary.filter(|&s| b.levels >= 4 && s != primary) {
-            self.apply_player_effect(ambient(s, 0));
+            self.add_player_effect(ambient(s, 0));
         }
     }
 }

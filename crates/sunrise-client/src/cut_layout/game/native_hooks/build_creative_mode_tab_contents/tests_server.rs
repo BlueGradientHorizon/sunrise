@@ -50,7 +50,7 @@ pub(crate) fn install_dedicated_holders(
         seed: 0,
         max_players: 2,
         integrated: false,
-        levels: game.server.level_shapes,
+        levels: game.server.level_shapes.clone(),
         level_seeds: game.server.levels.0.runtime.seeds(),
     };
     game.server.lan = Some(LanHost::for_test(Hub::new(

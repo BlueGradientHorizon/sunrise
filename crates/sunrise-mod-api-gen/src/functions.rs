@@ -5,8 +5,8 @@
 //! source and a parse of every crate below it), so a mixin build reads only the files of the
 //! modules its targets are in. Before a function is copied, its text is checked against the
 //! index's hash: a source that is not the build's is refused by name, never walked.
-use crate::patch::{Found, Source, TargetPath, plain, replaceable_with_binding, target_path};
-use crate::source::SourceLayout;
+use crate::patch::{Found, Source, TargetPath, replaceable_with_binding, target_path};
+use crate::source::{SourceLayout, plain_path};
 use mod_surface::build_data::FunctionDigests;
 use quote::{ToTokens, quote};
 use serde::{Deserialize, Serialize};
@@ -52,10 +52,15 @@ pub struct CrateModules {
 pub struct ModuleFile {
     /// Relative to the source root, `/`-separated.
     pub path: String,
+    /// Conditions on this contribution to the module. A pinned lower build selects its files
+    /// before their declarations are re-exported into the patch crate.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub cfg: Vec<String>,
     /// The SHA-256 of the file's bytes, hex.
     pub sha256: String,
-    /// The enclosing gates on a literal include, outermost first. An empty list means an
-    /// unconditional include; a missing field is a regular module file (or an older index).
+    /// The enclosing gates on a literal include, outermost first: the same conditions as `cfg`.
+    /// An empty list means an unconditional include; a missing field is a regular module file
+    /// (or an older index).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub include_cfg: Option<Vec<String>>,
 }
@@ -111,13 +116,13 @@ impl Code {
 /// its last segment (`m::<GameLevel as LevelAccess>::block_state`), as the copy finds it.
 pub fn key(target: &str) -> String {
     match target_path(target) {
-        None => plain(target),
+        None => plain_path(target),
         Some(TargetPath {
             qualified: Some((module, ty, tr)),
             name,
             ..
-        }) => format!("{}::<{ty} as {tr}>::{name}", plain(module)),
-        Some(TargetPath { front, name, .. }) => format!("{}::{name}", plain(front)),
+        }) => format!("{}::<{ty} as {tr}>::{name}", plain_path(module)),
+        Some(TargetPath { front, name, .. }) => format!("{}::{name}", plain_path(front)),
     }
 }
 
@@ -177,6 +182,14 @@ impl FunctionIndex {
             return Err((refused.code.name(), refused.why.clone()));
         }
         let Some(function) = self.functions.get(&key) else {
+            if let Some(named) = self.named_by_type(&key, layout) {
+                return Err((
+                    "E_MIXIN_TARGET_MISSING",
+                    format!(
+                        "`{key}` names the module of the file its `impl` is in; a method below the game crate is named by the module that declares its type: `{named}`"
+                    ),
+                ));
+            }
             return Err(if layout.owns(&key) {
                 (
                     "E_MIXIN_TARGET_MISSING",
@@ -206,6 +219,34 @@ impl FunctionIndex {
             )));
         }
         Ok(())
+    }
+
+    /// The listed method a crate below the game crate names by its type's module that `key`
+    /// names by the module of the file its `impl` is in, as targets were written before.
+    fn named_by_type(&self, key: &str, layout: SourceLayout) -> Option<&str> {
+        self.functions.iter().find_map(|(listed, function)| {
+            if layout.owns(listed) {
+                return None;
+            }
+            let by_file = match target_path(listed)? {
+                TargetPath {
+                    qualified: Some((module, ty, tr)),
+                    name,
+                    ..
+                } => (plain_path(module) != function.module)
+                    .then(|| format!("{}::<{ty} as {tr}>::{name}", function.module))?,
+                TargetPath { front, name, .. } => {
+                    let front = plain_path(front);
+                    let (module, owner) = front.rsplit_once("::")?;
+                    // A free function is in its file's module already.
+                    if front == function.module || module == function.module {
+                        return None;
+                    }
+                    format!("{}::{owner}::{name}", function.module)
+                }
+            };
+            (by_file == key).then_some(listed.as_str())
+        })
     }
 
     /// The index as its reader may trust it, or why not: every crate and library is a Rust
@@ -280,8 +321,14 @@ impl FunctionIndex {
             text: &text,
             lines: &lines,
         };
+        let krate = function.module.split("::").next().unwrap_or_default();
+        let types = if krate == "sunrise_client" {
+            None
+        } else {
+            Some(source.owner_types(krate).map_err(stale)?)
+        };
         let mut candidates = BTreeMap::new();
-        collect(&function.module, &items, &file, &mut candidates);
+        collect(&function.module, &items, &file, types, &mut candidates);
         let [start, end] = function.span;
         candidates
             .remove(&key)
@@ -410,15 +457,18 @@ fn index_of_with_context(
         .filter_map(|path| path.split("::").next())
         .filter(|krate| layout.domain(krate).is_none())
         .collect();
+    // A method below the game crate is named by its type's module.
+    let mut owners = BTreeMap::new();
     for krate in lower {
         if !source.load(krate)? {
             return Err(format!(
                 "{krate}: it has #[sunrise_mod_api_macros::replaceable] functions, but its sources can't be read"
             ));
         }
+        owners.insert(krate, crate::replace::crate_owner_types(root, krate)?);
     }
     let mut index = FunctionIndex::default();
-    for (module, paths) in &source.files {
+    for (module, files) in &source.files {
         let krate = module.split("::").next().unwrap_or_default();
         let facts = index
             .crates
@@ -432,7 +482,7 @@ fn index_of_with_context(
                 modules: BTreeMap::new(),
             });
         let mut listed = Vec::new();
-        for file in paths {
+        for file in files {
             let path = &file.path;
             // A `#[path]` or include can lead through `..`: use the archive's file spelling.
             let inside = path.strip_prefix(root).ok().and_then(|inside| {
@@ -456,8 +506,9 @@ fn index_of_with_context(
             let bytes = std::fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
             listed.push(ModuleFile {
                 path: relative,
+                cfg: file.cfg.clone(),
                 sha256: sha256(&bytes),
-                include_cfg: file.include_cfg.clone(),
+                include_cfg: file.included.then(|| file.cfg.clone()),
             });
         }
         facts.modules.insert(module.clone(), listed);
@@ -513,7 +564,8 @@ fn index_of_with_context(
             text: &text,
             lines: &lines,
         };
-        collect(&module, &items, &file, &mut candidates);
+        let krate = module.split("::").next().unwrap_or_default();
+        collect(&module, &items, &file, owners.get(krate), &mut candidates);
     }
     let mut aliases = Vec::new();
     for (key, mut found) in candidates {
@@ -576,7 +628,7 @@ fn nominal_alias(key: &str, module: &str, owner: &syn::ItemImpl) -> Option<(Stri
     let name = package.game_type();
     let bare = name;
     let qualified = format!("crate::game::{name}");
-    let actual = plain(&quote::ToTokens::to_token_stream(&owner.self_ty).to_string());
+    let actual = plain_path(&quote::ToTokens::to_token_stream(&owner.self_ty).to_string());
     let alternate = if actual == bare {
         qualified.as_str()
     } else if actual == qualified {
@@ -647,11 +699,13 @@ impl File<'_> {
 }
 
 /// The functions of `items`, module `module`, by the key a target naming each has: free
-/// functions and methods of every `impl`, inline modules included (test modules left out).
+/// functions and methods of every `impl`, inline modules included (test modules left out). Below
+/// the game crate (`types`, its crate's), a method is keyed by its type's module.
 fn collect(
     module: &str,
     items: &[Item],
     file: &File<'_>,
+    types: Option<&crate::replace::OwnerTypes>,
     out: &mut BTreeMap<String, Vec<Candidate>>,
 ) {
     for item in items {
@@ -694,7 +748,11 @@ fn collect(
                         .cloned()
                         .collect(),
                 };
-                let owner = plain(&block.self_ty.to_token_stream().to_string());
+                let owner = plain_path(&block.self_ty.to_token_stream().to_string());
+                let named_in = types.map_or_else(
+                    || module.to_owned(),
+                    |types| crate::replace::owner_module(types, module, &block.self_ty),
+                );
                 let scope = match &block.trait_ {
                     Some((_, path, _)) => {
                         let last = path
@@ -702,9 +760,9 @@ fn collect(
                             .last()
                             .map(|s| s.ident.to_string())
                             .unwrap_or_default();
-                        format!("{module}::<{owner} as {last}>")
+                        format!("{named_in}::<{owner} as {last}>")
                     }
-                    None => format!("{module}::{owner}"),
+                    None => format!("{named_in}::{owner}"),
                 };
                 for member in &block.items {
                     if let ImplItem::Fn(method) = member {
@@ -723,7 +781,13 @@ fn collect(
             }
             Item::Mod(inline) if !mod_source::modules::test_only(&inline.attrs) => {
                 if let Some((_, inner)) = &inline.content {
-                    collect(&format!("{module}::{}", inline.ident), inner, file, out);
+                    collect(
+                        &format!("{module}::{}", inline.ident),
+                        inner,
+                        file,
+                        types,
+                        out,
+                    );
                 }
             }
             _ => {}

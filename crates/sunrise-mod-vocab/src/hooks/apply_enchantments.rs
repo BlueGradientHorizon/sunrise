@@ -16,7 +16,6 @@ pub trait Hooks {
     /// contract beyond the method's name and parameters is Sunrise's reading, not checked
     /// against NeoForge's.
     #[hook(
-        target = "sunrise_gameplay::game::native_hooks::apply_enchantments::ServerGame<'_>::native_apply_enchantments",
         receiver = "read",
         dispatch = "flat",
         side = "server",
@@ -25,7 +24,7 @@ pub trait Hooks {
         key = "stack",
         host = "read",
         neoforge = "IItemExtension.applyEnchantments",
-        version = 2
+        version = 3
     )]
     fn apply_enchantments(
         stack: &ItemStack,

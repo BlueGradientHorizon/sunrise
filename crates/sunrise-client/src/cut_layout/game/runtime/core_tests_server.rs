@@ -105,10 +105,12 @@ fn reload_resolves_parts_against_reloaded_tags() {
         ) {
         }
     }
-    struct ReloadMod;
+    let reload_tag = std::sync::Arc::new(std::sync::OnceLock::new());
+    struct ReloadMod(std::sync::Arc<std::sync::OnceLock<mod_api::TagKey>>);
     #[mod_api::__subscriptions]
     impl Hooks for ReloadMod {
         fn register(&self, registrar: &mut dyn Registrar, _: &mod_api::RegistrationContext) {
+            let _ = self.0.set(registrar.tag_key("test:reload"));
             registrar.block_part_tag("test:reload", TagPart);
         }
         fn data_pack_files(&self, _: &mut dyn ServerHost, event: &mut DataPackFilesEvent<'_>) {
@@ -118,7 +120,11 @@ fn reload_resolves_parts_against_reloaded_tags() {
             ));
         }
     }
-    let mods: mod_api::Mods = vec![mod_api::ModEntry::new("reload", Box::new(ReloadMod))].into();
+    let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
+        "reload",
+        Box::new(ReloadMod(reload_tag.clone())),
+    )]
+    .into();
     sunrise_gameplay_common::game::api_values::install_parts(&mods).unwrap();
     mod_platform::__private::install(mods);
     super::native_entity_refs::tests::with_game(|game| {
@@ -126,11 +132,21 @@ fn reload_resolves_parts_against_reloaded_tags() {
         let name = stone_key.id(game).expect("stone is registered").to_owned();
         let dir = std::env::temp_dir().join(format!("sunrise-key-tags-{}", std::process::id()));
         game.server.session_lock.0 = Some(sunrise_sim::save::SessionLock::acquire(&dir).unwrap());
-        assert_eq!(game.block_in_tag(stone_key, "test:reload"), Some(false));
-        assert_eq!(
-            game.block_in_tag(stone_key, "base_stone_overworld"),
-            Some(true)
-        );
+        let reload_tag = (*reload_tag.get().unwrap()).typed();
+        let base_stone_tag = mod_api::Tags::key(
+            &*game,
+            &mod_api::Identifier::parse("base_stone_overworld").unwrap(),
+        )
+        .unwrap()
+        .typed();
+        let logs_tag = mod_api::Tags::key(
+            &*game,
+            &mod_api::Identifier::parse("minecraft:logs").unwrap(),
+        )
+        .unwrap()
+        .typed();
+        assert_eq!(stone_key.is_in_tag(&*game, reload_tag), Some(false));
+        assert_eq!(stone_key.is_in_tag(&*game, base_stone_tag), Some(true));
         game.load_server_loot();
         let stack = sunrise_gameplay::game::server_side::functions::pack_stack(
             &game.server.world_root,
@@ -143,7 +159,12 @@ fn reload_resolves_parts_against_reloaded_tags() {
         );
         let root = game.options.resources.clone();
         let previous = std::sync::Arc::new(mod_api::DatapackRegistrySet::from_candidate(
-            mod_api::DatapackCandidate::build(&[], &[]).unwrap(),
+            mod_api::DatapackCandidate::build(
+                &[],
+                &[],
+                &mut mod_api::__private::NoVanillaValueDecoder,
+            )
+            .unwrap(),
         ));
         sunrise_sim::datapack_net::serve(Some(previous.clone()));
         let prepared = game.prepare_world_reload(&stack, &root).unwrap();
@@ -161,12 +182,9 @@ fn reload_resolves_parts_against_reloaded_tags() {
             stone_key,
             mod_platform::__private::part_tests::block_key("minecraft:stone")
         );
-        assert_eq!(game.block_in_tag(stone_key, "test:reload"), Some(true));
-        assert_eq!(game.block_in_tag(stone_key, "minecraft:logs"), Some(false));
-        assert_eq!(
-            game.block_in_tag(stone_key, "base_stone_overworld"),
-            Some(true)
-        );
+        assert_eq!(stone_key.is_in_tag(&*game, reload_tag), Some(true));
+        assert_eq!(stone_key.is_in_tag(&*game, logs_tag), Some(false));
+        assert_eq!(stone_key.is_in_tag(&*game, base_stone_tag), Some(true));
         let stone = game.block_state_default(stone_key).unwrap();
         assert!(
             sunrise_gameplay_common::game::api_values::block_state::block_listens(

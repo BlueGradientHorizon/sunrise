@@ -86,6 +86,9 @@ impl SideOps for crate::game::server_side::ServerState {
             game.server_tx_journal_player(uuid);
         }
     }
+    fn side_tx_invalidate_placement_hopper(game: &mut Self::Game<'_>, pos: (i32, i32, i32)) {
+        game.server.hoppers.remove(&pos);
+    }
     fn side_tx_journal_block_entity(game: &mut Self::Game<'_>, pos: (i32, i32, i32)) {
         {
             game.server_tx_journal_block_entity(pos);

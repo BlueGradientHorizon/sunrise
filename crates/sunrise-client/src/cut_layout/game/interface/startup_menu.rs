@@ -1,5 +1,6 @@
 #![cfg(test)]
 use std::path::PathBuf;
+use std::sync::atomic::AtomicU32;
 use std::sync::mpsc::Receiver;
 use std::thread::JoinHandle;
 use std::time::Duration;
@@ -60,6 +61,7 @@ pub(crate) mod tests {
             session_verifier: crate::game::session_verifier(),
             window: None,
             renderer: None,
+            max_atlas_size: Arc::new(AtomicU32::new(sunrise_client::hud::MAX_ATLAS_SIZE)),
             boot: sunrise_client::hud::HudAtlas::boot(),
             gui: None,
             settings: Settings::default(),
@@ -83,6 +85,122 @@ pub(crate) mod tests {
             error: None,
         }
     }
+    #[test]
+    #[ignore = "daily"]
+    fn startup_menu_creation_carries_installed_mod_rules() {
+        use mod_api::{Hooks, Registrar, RegistrationContext};
+        use sunrise_client::title::Action;
+        use sunrise_game_data::gamerules::Value;
+        struct Mod;
+        #[mod_api::__subscriptions]
+        impl Hooks for Mod {
+            fn register(&self, registrar: &mut dyn Registrar, _: &RegistrationContext) {
+                registrar.game_rule_category("machines").unwrap();
+                registrar
+                    .game_rule_int("cap", "example:machines", 8, 0, 64)
+                    .unwrap();
+            }
+        }
+        // `set_root` replaces the process's language: keep it in a child process.
+        if super::super::native_entity_refs::tests::run_fresh_cases(
+            "game::client_side::startup_menu::tests::startup_menu_creation_carries_installed_mod_rules",
+            "SUNRISE_STARTUP_MOD_RULES_CASE",
+            &["rules"],
+        ) {
+            return;
+        }
+        let mods: mod_api::Mods = vec![mod_api::ModEntry::new("example", Box::new(Mod))].into();
+        mod_platform::testing::with_mods(mods, || {
+            super::super::native_entity_refs::tests::with_client_game(|_| {
+                let scratch = tempfile::tempdir().unwrap();
+                let mut menu = StartupMenu::default();
+                menu.set_root(
+                    scratch.path().to_path_buf(),
+                    &Settings::default(),
+                    Arc::from([]),
+                    "",
+                );
+                let title = menu.title.as_mut().unwrap();
+                title.enter_singleplayer();
+                let Action::Create { mut options, .. } = title.create_action() else {
+                    panic!("creation")
+                };
+                // The page lists `available_rules`: the mod's integer rule is one of them.
+                assert!(options.rules.rule("example:cap").is_some());
+                assert_eq!(options.rules.get("example:cap"), Some(Value::Int(8)));
+                assert!(options.rules.set("example:cap", Value::Int(12)));
+                assert_eq!(options.rules.get("example:cap"), Some(Value::Int(12)));
+            })
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn queued_creation_is_reconciled_at_handoff() {
+        use mod_api::{Hooks, Registrar, RegistrationContext};
+        use sunrise_client::title::Action;
+        use sunrise_game_data::gamerules::Value;
+        struct Mod;
+        #[mod_api::__subscriptions]
+        impl Hooks for Mod {
+            fn register(&self, registrar: &mut dyn Registrar, _: &RegistrationContext) {
+                registrar.game_rule_category("machines").unwrap();
+                registrar
+                    .game_rule_bool("enabled", "example:machines", true)
+                    .unwrap();
+            }
+        }
+        let mods: mod_api::Mods = vec![mod_api::ModEntry::new("example", Box::new(Mod))].into();
+        mod_platform::testing::with_mods(mods, || {
+            super::super::native_entity_refs::tests::with_client_game(|game| {
+                let saves = std::env::temp_dir()
+                    .join(format!("sunrise-startup-rules-{}", std::process::id()));
+                let _ = std::fs::remove_dir_all(&saves);
+                let mut title = game.new_title(saves);
+                title.enter_singleplayer();
+                let Action::Create { mut options, .. } = title.create_action() else {
+                    panic!("creation")
+                };
+                options.rules.set("keep_inventory", Value::Bool(true));
+                let mut menu = StartupMenu::default();
+                menu.title = Some(title);
+                menu.pending = Some(PendingWorldEntry::Local {
+                    folder: "test".into(),
+                    name: None,
+                    seed: Some(1),
+                    creative: true,
+                    create: Some(Box::new(options)),
+                });
+                menu.handoff(game);
+                let Some(PendingWorldEntry::Local {
+                    create: Some(options),
+                    ..
+                }) = &game.client.pending_entry.0
+                else {
+                    panic!("pending")
+                };
+                assert_eq!(
+                    options.rules.get("example:enabled"),
+                    Some(Value::Bool(true))
+                );
+                assert_eq!(options.rules.get("keep_inventory"), Some(Value::Bool(true)));
+                let request = sunrise_gameplay::game::server_side::world_loading::WorldRequest::new(
+                    "test",
+                    None,
+                    None,
+                    true,
+                    Some(options.as_ref()),
+                    options.rules.registry().clone(),
+                )
+                .unwrap();
+                assert!(Arc::ptr_eq(
+                    &request.rule_registry,
+                    options.rules.registry()
+                ));
+            })
+        });
+    }
+
     #[test]
     #[ignore = "daily"]
     fn live_gui_scale_uses_the_current_owner() {
@@ -461,7 +579,11 @@ pub(crate) mod tests {
         let worker_root = root.clone();
         let worker = std::thread::spawn(move || {
             sender
-                .send(LoaderMsg::Ui(gui(&worker_root), worker_root))
+                .send(LoaderMsg::Ui(
+                    gui(&worker_root),
+                    worker_root,
+                    sunrise_assets::resource_source::ResourceSource::default(),
+                ))
                 .unwrap();
             published.send(()).unwrap();
             wait.recv().unwrap();
@@ -486,7 +608,11 @@ pub(crate) mod tests {
             options: Default::default(),
         };
         title.type_text("My world");
-        loading.set_ui(gui(&root), root);
+        loading.set_ui(
+            gui(&root),
+            root,
+            sunrise_assets::resource_source::ResourceSource::default(),
+        );
         let action = loading.menu.title.as_ref().unwrap().create_action();
         loading.menu.queue_entry(action, "Player".into());
         assert!(
@@ -545,9 +671,9 @@ pub(crate) mod tests {
             DeclarationRefusal::new(
                 "porter",
                 DeclarationKind::Item,
-                mod_api::DeclarationError::UnownedNamespace {
+                mod_api::DeclarationError::Rejected {
                     id: "foreign:wrench".into(),
-                    namespace: "foreign".into(),
+                    reason: "declared twice".into(),
                 },
             ),
         ]);

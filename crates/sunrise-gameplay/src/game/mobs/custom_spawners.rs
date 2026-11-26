@@ -1,59 +1,94 @@
 //! A level's custom spawners (`ServerLevel.customSpawners`) and their tick
-//! (`ServerLevel.tickCustomSpawners`): vanilla's, minus what a mod's
-//! `modify_custom_spawners` took out, plus the mod spawners it added.
+//! (`ServerLevel.tickCustomSpawners`): vanilla's built-ins (for the Overworld; empty for other
+//! dimensions, matching `MinecraftServer#createLevels`), minus what a mod's
+//! `modify_custom_spawners` took out, plus the owned `CustomSpawner` objects it added.
 use crate::game::ServerGame;
-use mod_api::{CustomSpawners, SpawnerEntry, SpawnerKind};
+use mod_api::{__private::CustomSpawners, SpawnerKind};
+use sunrise_gameplay_common::game::Dim;
+use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
 
 impl ServerGame<'_> {
-    /// The level's list, built (and `modify_custom_spawners` fired) on first use.
-    fn level_spawners(&mut self) -> &CustomSpawners {
-        let dim = self.common.dim;
-        if !self.common.creatures.custom_spawners.contains_key(&dim) {
-            let mut list = CustomSpawners::vanilla();
-            if mod_api::__private::listened(mod_api::HookId::ModifyCustomSpawners) {
-                self.native_modify_custom_spawners(dim.id(), &mut list);
-            }
-            self.common.creatures.custom_spawners.insert(dim, list);
+    /// Build `dim`'s custom spawner list once per open logical-server level, firing
+    /// `modify_custom_spawners` when the level opens (or lazily if ticked without
+    /// `native_level_opened`). Does nothing on a logical client.
+    pub fn init_custom_spawners(&mut self, dim: Dim) {
+        if !self.common.is_logical_server() {
+            return;
         }
-        &self.common.creatures.custom_spawners[&dim]
+        if self.common.creatures.custom_spawners.contains_key(&dim) {
+            return;
+        }
+        let mut list = if dim == Dim::Overworld {
+            CustomSpawners::vanilla()
+        } else {
+            CustomSpawners::empty()
+        };
+        if mod_api::__private::listened(mod_api::HookId::ModifyCustomSpawners) {
+            let level = self.level_ref(self.lend_epoch(), dim.key());
+            let mut editor = mod_api::CustomSpawnersEditor::new(&list);
+            self.native_modify_custom_spawners(level, &mut editor);
+            editor.commit(&mut list);
+        }
+        self.common.creatures.custom_spawners.insert(dim, list);
     }
 
-    /// Whether vanilla's `kind` is still in this level's list.
-    pub(in crate::game) fn has_custom_spawner(&mut self, kind: SpawnerKind) -> bool {
-        self.level_spawners().contains(&SpawnerEntry::Builtin(kind))
-    }
-
-    /// `ServerLevel.tickCustomSpawners`: every spawner in the list, in order. A vanilla
-    /// spawner keeps the place the game ticks it today (the phantom spawner runs with
-    /// the stats, after the mobs: `spawn_phantoms`); a mod's spawner is the
-    /// `custom_spawner_tick` hook for its key.
+    /// `ServerLevel.tickCustomSpawners`: every spawner in the list, in order, including
+    /// `Phantom` before any mod-appended spawners. Skips logical clients, debug worlds
+    /// (`ServerChunkCache.tickChunks`), and ticks where `spawn_mobs` is disabled. Passes
+    /// the chunk source's stored `spawn_enemies` setting to Phantom and each registered
+    /// `CustomSpawner`, which runs directly under its registering mod in a transaction.
     pub fn tick_custom_spawners(&mut self) {
-        self.level_spawners();
-        let dim = self.common.dim;
-        let spawn_enemies = self
-            .common
-            .ui
-            .rules
-            .bool_at(sunrise_game_data::gamerules::vanilla::SPAWN_MONSTERS)
-            && self.common.ui.difficulty != 0;
-        let mut at = 0;
-        while let Some(entry) = self.common.creatures.custom_spawners[&dim]
-            .entries()
-            .get(at)
-            .cloned()
+        if !self.common.is_logical_server()
+            || self.server.world_debug
+            || !self
+                .common
+                .ui
+                .rules
+                .bool_at(sunrise_game_data::gamerules::vanilla::SPAWN_MOBS)
         {
-            at += 1;
-            match entry {
-                SpawnerEntry::Builtin(SpawnerKind::WanderingTrader) => self.tick_wandering_trader(),
-                SpawnerEntry::Builtin(SpawnerKind::Patrol) => self.tick_patrol_spawner(),
-                SpawnerEntry::Builtin(SpawnerKind::Cat) => self.tick_cat_spawner(),
-                SpawnerEntry::Builtin(SpawnerKind::VillageSiege) => self.tick_village_siege(),
-                SpawnerEntry::Mod(key) => {
-                    self.native_custom_spawner_tick(dim.id(), key, spawn_enemies)
+            return;
+        }
+        let dim = self.common.dim;
+        self.init_custom_spawners(dim);
+        let spawn_enemies = self.server.chunk_spawn_enemies;
+        let level = self.level_ref(self.lend_epoch(), dim.key());
+        let mut at = 0;
+        loop {
+            let step = self
+                .common
+                .creatures
+                .custom_spawners
+                .get_mut(&dim)
+                .and_then(|list| list.take_at(at));
+            let Some(step) = step else {
+                break;
+            };
+            match step {
+                mod_api::__private::CustomSpawnerStep::Builtin(SpawnerKind::WanderingTrader) => {
+                    self.tick_wandering_trader();
                 }
-                // `Phantom` ticks in `spawn_phantoms`.
+                mod_api::__private::CustomSpawnerStep::Builtin(SpawnerKind::Patrol) => {
+                    self.tick_patrol_spawner();
+                }
+                mod_api::__private::CustomSpawnerStep::Builtin(SpawnerKind::Cat) => {
+                    self.tick_cat_spawner();
+                }
+                mod_api::__private::CustomSpawnerStep::Builtin(SpawnerKind::VillageSiege) => {
+                    self.tick_village_siege();
+                }
+                mod_api::__private::CustomSpawnerStep::Builtin(SpawnerKind::Phantom) => {
+                    self.tick_phantom_spawner(spawn_enemies);
+                }
+                mod_api::__private::CustomSpawnerStep::Mod(mut spawner) => {
+                    let _ = self
+                        .storage_transaction(|game, _| spawner.tick(game, level, spawn_enemies));
+                    if let Some(list) = self.common.creatures.custom_spawners.get_mut(&dim) {
+                        list.put_back(at, spawner);
+                    }
+                }
                 _ => {}
             }
+            at += 1;
         }
     }
 }

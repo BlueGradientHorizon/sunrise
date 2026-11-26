@@ -8,6 +8,7 @@ use crate::game::server_side::minecarts_server::CartHit;
 use sunrise_core::nbt::Tag;
 use sunrise_core::random::RandomSource;
 use sunrise_game_data::text::Text;
+use sunrise_gameplay_common::game::creatures::KnownCause;
 use sunrise_protocol::packets::play::{self, Clientbound as C};
 use sunrise_sim::{
     mobs::{Damage, Who},
@@ -21,6 +22,9 @@ impl crate::game::ServerGame<'_> {
     pub fn change_recipes(&mut self, give: bool, recipes: &[String]) -> i32 {
         let (recipes, custom_count) = self.change_mod_crafting_recipes(give, recipes);
         if give {
+            if custom_count != 0 {
+                self.invalidate_mod_book_placement_knowledge();
+            }
             return custom_count + self.award_recipes(&recipes) as i32;
         }
         let index = &server_world_stations!(self).recipe_index;
@@ -315,7 +319,7 @@ impl crate::game::ServerGame<'_> {
             };
             // LookAt.perform: Entity.lookAt from the source's anchor (the
             // feet, unless `anchored eyes`).
-            let anchored_eyes = self.server.command_source.is_some_and(|s| s.eyes);
+            let anchored_eyes = self.server.command_source.as_ref().is_some_and(|s| s.eyes);
             let eye = if anchored_eyes {
                 self.server_target_eye_height(t)
             } else {
@@ -571,6 +575,7 @@ impl crate::game::ServerGame<'_> {
             vec![
                 self.server
                     .command_source
+                    .as_ref()
                     .and_then(|s| s.entity)
                     .unwrap_or(Target::Player),
             ]
@@ -642,6 +647,7 @@ impl crate::game::ServerGame<'_> {
             Vec::new()
         };
         if hurt {
+            self.flush_mob_death_protection(id);
             if damage.attacker == Some(Who::Player) {
                 self.remember_mob_player_credit(id);
                 if let Some(host) = self.server.lan.as_mut() {
@@ -723,6 +729,7 @@ impl crate::game::ServerGame<'_> {
             causing: entity_id(causing),
             direct: entity_id(direct),
             position,
+            direct_type: None,
         };
         if crate::game::server_side::entity_server::damage_level_of!(
             self,
@@ -760,27 +767,14 @@ impl crate::game::ServerGame<'_> {
             _ => false,
         }
     }
-    /// The attribute map of a living entity whose attributes Sunrise does
-    /// not model, created from its type's defaults on first use.
+    /// Mob attributes share the saved map used by effects, including modifiers restored from disk.
     pub fn generic_attributes(
         &mut self,
         t: Target,
-        attribute: &str,
     ) -> Option<&mut sunrise_world::attributes::entity::EntityAttributes> {
-        if let Target::Mob(id) = t
-            && (matches!(attribute, "minecraft:armor" | "minecraft:armor_toughness")
-                || self.sulfur_archetype_attribute(t, attribute))
-        {
+        if let Target::Mob(id) = t {
             let mob = self.common.mobs.iter_mut().find(|m| m.id == id)?;
-            if mob.extra.armor_attributes.is_none() {
-                mob.extra.armor_attributes = self
-                    .common
-                    .motion
-                    .attributes
-                    .create(&mob.kind.id)
-                    .map(Box::new);
-            }
-            return mob.extra.armor_attributes.as_deref_mut();
+            return sunrise_sim::mobs::finalize::attribute_map(mob, &self.common.motion.attributes);
         }
         if !self.server.cmds.0.attributes.contains_key(&t) {
             let ty = self.target_type(t);
@@ -809,15 +803,15 @@ impl crate::game::ServerGame<'_> {
                     Some(t @ (Target::Player | Target::Guest(_))) => Some(self.target_name(t)),
                     _ => None,
                 };
-                let attacker = match cause.or(by) {
-                    Some(Target::Mob(i)) => Some(Some(i)),
-                    _ => Some(None),
+                let attacker = match cause {
+                    Some(Target::Mob(i)) => KnownCause::Entity(i),
+                    _ => KnownCause::Attack,
                 };
                 // `DamageSource.isCreativePlayer`: a creative player's hit
                 // passes the victim's invulnerability (#916).
-                let creative_source = self.creative_source_of(cause.or(by));
+                let creative_source = self.creative_source_of(cause);
                 // resolvePlayerResponsibleForDamage: remember the causing player's UUID.
-                let by_player = match cause.or(by) {
+                let by_player = match cause {
                     Some(Target::Player) => self.server.lan_acting,
                     Some(Target::Guest(conn)) => Some(conn),
                     _ => None,
@@ -841,7 +835,7 @@ impl crate::game::ServerGame<'_> {
                 .unwrap_or(false)
             }
             Target::Mob(id) => {
-                let attacker = cause.or(by).and_then(|t| match t {
+                let attacker = cause.and_then(|t| match t {
                     Target::Player | Target::Guest(_) => Some(Who::Player),
                     Target::Mob(i) | Target::Dragon(i) | Target::Stand(i) => Some(Who::Mob(i)),
                     _ => None,
@@ -859,11 +853,12 @@ impl crate::game::ServerGame<'_> {
                     kind: Self::damage_kind(&self.common.health_resources.damage, ty),
                     attacker,
                     from,
+                    direct: None,
                     attacker_species,
                 };
                 // DamageSource.getEntity is the causing player, even when
                 // another client issued the command or supplied the direct entity.
-                let guest = match cause.or(by) {
+                let guest = match cause {
                     Some(Target::Guest(conn)) if self.server.lan_acting != Some(conn) => Some(conn),
                     _ => None,
                 };
@@ -882,9 +877,9 @@ impl crate::game::ServerGame<'_> {
                     self.command_damage_mob(id, amount, damage)
                 }
             }
-            Target::Item(id) => self.hurt_item_entity(id, amount, ty, by, cause.or(by), from),
+            Target::Item(id) => self.hurt_item_entity(id, amount, ty, by, cause, from),
             Target::Boat(_) | Target::Cart(_) => {
-                self.command_damage_vehicle(target, amount, ty, by, cause.or(by), from)
+                self.command_damage_vehicle(target, amount, ty, by, cause, from)
             }
             Target::Dragon(id) => self.command_damage_dragon(
                 id,
@@ -893,7 +888,7 @@ impl crate::game::ServerGame<'_> {
                 Self::damage_kind(&self.common.health_resources.damage, ty),
                 (
                     by,
-                    cause.or(by),
+                    cause,
                     from.map(|[x, y, z]| sunrise_core::geometry::Vec3::new(x, y, z)),
                 ),
             ),
@@ -902,10 +897,10 @@ impl crate::game::ServerGame<'_> {
                 ty,
                 Self::damage_kind(&self.common.health_resources.damage, ty),
                 by,
-                cause.or(by),
+                cause,
                 from,
             ),
-            Target::Stand(id) => self.command_damage_stand(id, ty, cause.or(by)),
+            Target::Stand(id) => self.command_damage_stand(id, ty, cause),
             _ => false,
         }
     }
@@ -962,7 +957,7 @@ impl crate::game::ServerGame<'_> {
                     self.server.lan.is_none(),
                     "/playsound None branch is fixture-only"
                 );
-                self.server_play_sound_on(source, sound, at, volume, pitch);
+                self.server_play_sound_on_seeded(source, sound, at, volume, pitch, seed);
             }
         }
     }

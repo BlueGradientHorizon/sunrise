@@ -3,7 +3,6 @@ use sunrise_world::collision_exclusions::Refused;
 
 pub fn refused(why: Refused) -> CollisionExclusionsError {
     match why {
-        Refused::TooMany => CollisionExclusionsError::TooMany,
         Refused::NotFinite => CollisionExclusionsError::NotFinite,
         Refused::Inverted => CollisionExclusionsError::Inverted,
     }

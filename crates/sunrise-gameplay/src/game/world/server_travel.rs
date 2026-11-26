@@ -11,6 +11,7 @@ use super::nether_portal::Plan;
 use super::respawn_anchor::RespawnConfig;
 use super::respawn_position::Respawn;
 use super::{Dim, Mob, lan::LanHost, minecarts};
+use std::ops::ControlFlow;
 use sunrise_core::{geometry::Vec3, position::BlockPos};
 use sunrise_gameplay_common::game::end_state::GatewayJob;
 use sunrise_gameplay_common::game::entity_memory::OffLevel;
@@ -442,17 +443,29 @@ impl crate::game::ServerGame<'_> {
             if self.has_pending_travel(conn) {
                 continue;
             }
-            // `Entity.portalProcess` and `portalCooldown` are the player's own.
-            let Some(host) = self.server.lan.as_mut() else {
-                return;
-            };
-            let mut portal = host.play.entry(conn).or_default().portal;
-            std::mem::swap(&mut self.common.portal_player, &mut portal);
             self.handle_server_portal(conn);
-            std::mem::swap(&mut self.common.portal_player, &mut portal);
-            if let Some(host) = self.server.lan.as_mut() {
-                host.play.entry(conn).or_default().portal = portal;
-            }
+        }
+    }
+
+    /// `Entity.portalProcess` and `portalCooldown` of the player on `conn`: its own, kept in
+    /// its record, where its turns (`as_guest`) and the mods called during its trip read them.
+    #[doc(hidden)]
+    pub fn guest_portal(
+        &mut self,
+        conn: u32,
+    ) -> Option<&mut sunrise_sim::nether_portal::PortalState> {
+        Some(&mut self.server.lan.as_mut()?.play.entry(conn).or_default().portal)
+    }
+
+    /// The player's `portalCooldown`, 0 for one without a record.
+    pub fn guest_portal_cooldown(&mut self, conn: u32) -> i32 {
+        self.guest_portal(conn).map_or(0, |portal| portal.cooldown)
+    }
+
+    /// `Entity.setPortalCooldown`: `Player.getDimensionChangingDelay`.
+    fn set_guest_portal_cooldown(&mut self, conn: u32) {
+        if let Some(portal) = self.guest_portal(conn) {
+            portal.cooldown = PLAYER_DELAY;
         }
     }
 
@@ -618,7 +631,11 @@ impl crate::game::ServerGame<'_> {
         // A callback can reparent a participant into a later subtree.
         // Keep the whole transition's visited set, not only its active path.
         visited.push(id);
-        let riders = self.entity_passengers(entity).unwrap_or_default();
+        let mut riders = Vec::new();
+        let _ = self.entity_visit_passengers(entity, &mut |rider| {
+            riders.push(rider);
+            ControlFlow::Continue(())
+        });
         let mut cancel = false;
         self.native_entity_travel_to_dimension(
             mod_api::EntityRef::new(epoch, id),
@@ -676,7 +693,7 @@ impl crate::game::ServerGame<'_> {
             .is_some()
     }
 
-    /// `Entity.handlePortal` for one player, whose portal state is in place.
+    /// `Entity.handlePortal` for one player, on its own portal state.
     pub fn handle_server_portal(&mut self, conn: u32) {
         let Some(host) = self.server.lan.as_ref() else {
             return;
@@ -691,17 +708,15 @@ impl crate::game::ServerGame<'_> {
             g.vehicle.is_some(),
             g.seen_credits,
         );
-        // Entity.checkInsideBlocks: the Nether portal blocks the box is in.
-        // `LivingEntity.canUsePortal` (#943): not a passenger — its vehicle
+        // `LivingEntity.canUsePortal` (#943): alive, not a passenger — its vehicle
         // goes through and carries it (`carry_riders_through_portals`) — and
-        // not asleep.
-        if g.motion
+        // not asleep. `handlePortal` and `setAsInsidePortal` both ask it this tick.
+        let usable = g
+            .motion
             .as_deref()
-            .is_some_and(|p| self.common.can_use_portal_of(p, riding, sleeping))
-            && let Some(pos) = self.nether_portal_inside(at)
-        {
-            self.common.portal_player.set_inside(pos, PLAYER_DELAY);
-        }
+            .is_some_and(|p| self.common.can_use_portal_of(p, riding, sleeping));
+        // Entity.checkInsideBlocks: the Nether portal blocks the box is in.
+        let inside = usable.then(|| self.nether_portal_inside(at)).flatten();
         let (end_portal, gateway) = self.inside_end_portals(at, WIDTH, HEIGHT);
         if end_portal && !riding {
             // EndPortalBlock.entityInside: the first exit from the End shows the credits.
@@ -724,20 +739,22 @@ impl crate::game::ServerGame<'_> {
                 );
                 return;
             }
-            if self.common.portal_player.cooldown == 0 {
+            if self.guest_portal_cooldown(conn) == 0 {
                 if self.common.dim == Dim::End {
                     // Entity.handlePortal sets the cooldown before resolving its destination.
-                    self.common.portal_player.cooldown = PLAYER_DELAY;
+                    self.set_guest_portal_cooldown(conn);
                     self.queue_spawn_trip(conn, SpawnAction::EndExit);
                 } else {
                     if !self.server_player_travel_allowed(conn, Dim::End, TravelCause::EndPortal) {
                         return;
                     }
+                    // Entity.handlePortal: setPortalCooldown before the teleport.
+                    self.set_guest_portal_cooldown(conn);
                     self.start_server_trip(conn, Dim::End, None);
                 }
             }
             // Entity.setAsInsidePortal while cooling down restarts the cooldown.
-            self.common.portal_player.cooldown = PLAYER_DELAY;
+            self.set_guest_portal_cooldown(conn);
             return;
         }
         // EndGatewayBlock.entityInside: a gateway that is not cooling down
@@ -747,13 +764,9 @@ impl crate::game::ServerGame<'_> {
             && let Some(g) = gateway
             && self.gateway_available(g)
         {
-            if self.common.portal_player.cooldown == 0 {
-                let Some(player) = self
-                    .server
-                    .lan
-                    .as_ref()
-                    .and_then(|host| host.hub.guest(conn))
-                else {
+            let ready = self.guest_portal_cooldown(conn) == 0;
+            if ready {
+                let Some(player) = self.server.lan.as_ref().and_then(|host| host.hub.guest(conn)) else {
                     return;
                 };
                 let (id, name) = (player.uuid, player.name.clone());
@@ -762,20 +775,16 @@ impl crate::game::ServerGame<'_> {
                 if cancel {
                     return;
                 }
-                if !self.server_player_travel_allowed(
-                    conn,
-                    self.common.dim,
-                    TravelCause::EndGateway,
-                ) {
+                if !self.server_player_travel_allowed(conn, self.common.dim, TravelCause::EndGateway) {
                     return;
                 }
             }
             if self.gateway_enter(g) {
-                if self.common.portal_player.cooldown == 0 {
+                // setPortalCooldown: before the trip, or again while cooling down.
+                self.set_guest_portal_cooldown(conn);
+                if ready {
                     self.start_gateway_trip(conn, g);
                 }
-                // setPortalCooldown: after the trip, or again while cooling down.
-                self.common.portal_player.cooldown = 10;
                 return;
             }
         }
@@ -786,9 +795,8 @@ impl crate::game::ServerGame<'_> {
         };
         let transition = self.common.ui.rules.int_at(rule).max(0);
         let Some(entry) = self
-            .common
-            .portal_player
-            .handle(!sleeping, transition, PLAYER_DELAY)
+            .guest_portal(conn)
+            .and_then(|portal| portal.tick_inside(inside, usable, transition, PLAYER_DELAY))
         else {
             return;
         };
@@ -799,7 +807,9 @@ impl crate::game::ServerGame<'_> {
         if !self.server_player_travel_allowed(conn, plan.dim, TravelCause::NetherPortal) {
             // The processor already reached its threshold. Forget this attempt
             // so a canceled trip must complete a fresh portal wait before retrying.
-            self.common.portal_player.process = None;
+            if let Some(portal) = self.guest_portal(conn) {
+                portal.process = None;
+            }
             return;
         }
         self.start_server_trip(conn, plan.dim, Some(plan));
@@ -885,11 +895,15 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// The player moves to `target`'s level at the approximate exit while its chunks load.
-    pub fn start_server_trip(&mut self, conn: u32, target: Dim, plan: Option<Plan>) {
+    pub fn start_server_trip(
+        &mut self,
+        conn: u32,
+        target: Dim,
+        plan: Option<Plan>,
+    ) {
         // A player changing level carries no mob a mod seated on it: it gets off here.
         if target != self.common.dim
-            && let Some(carrier) = self
-                .server
+            && let Some(carrier) = self.server
                 .lan
                 .as_ref()
                 .and_then(|host| host.hub.guest(conn))
@@ -945,15 +959,19 @@ impl crate::game::ServerGame<'_> {
             .or_else(|| self.end_destination(entering, target))
             .unwrap_or(Vec3::new(from.x * scale, from.y, from.z * scale));
         self.server.end_portal_travel = false;
-        let retired_window = if source != target {
-            self.guest_close_menus_for_travel(conn)
+        let (retired_window, mut menu_hold) = if source != target {
+            let (window, hold) = self.guest_close_menus_for_travel(conn);
+            (window, Some(hold))
         } else {
-            None
+            (None, None)
         };
-        if !self.enter_travel_destination(conn, target, retired_window) {
+        if !self.enter_travel_destination(conn, target, retired_window, &mut menu_hold) {
             return;
         }
         let Some(i) = self.guest_index(conn) else {
+            if let Some(hold) = menu_hold {
+                self.resume_menu_opens(hold);
+            }
             if let Err(e) = self.enter_level(source) {
                 log::error!("could not reopen {}: {e}", source.id());
             }
@@ -968,11 +986,24 @@ impl crate::game::ServerGame<'_> {
         // Through a portal: the client waits on its loading screen until
         // the exit is found (`arrive_server_trips`). The cooldown is the one
         // Entity.handlePortal set before the teleport.
+        let Some(host) = self.server.lan.as_mut() else {
+            if let Some(hold) = menu_hold {
+                self.resume_menu_opens(hold);
+            }
+            return;
+        };
+        let change = host
+            .hub
+            .begin_level_change(i, at, yaw, None, PLAYER_DELAY, &ctx);
+        self.send_player_command_tree(conn);
+        let ctx = server_ctx!(self);
         if let Some(host) = self.server.lan.as_mut() {
-            host.hub
-                .change_level(i, at, yaw, None, true, PLAYER_DELAY, &ctx);
+            host.hub.finish_level_change(i, change, true, &ctx);
         }
         self.bind_player_attachments(conn, false);
+        if let Some(hold) = menu_hold {
+            self.resume_menu_opens(hold);
+        }
         self.as_guest(conn, |g| {
             g.trigger_dimension(source, target, [from.x, from.y, from.z]);
             // ServerPlayer.teleport: stopUsingItem after the dimension change triggers.
@@ -1012,11 +1043,15 @@ impl crate::game::ServerGame<'_> {
         conn: u32,
         dim: Dim,
         retired_window: Option<i32>,
+        menu_hold: &mut Option<super::lan_menus::MenuOpenHold>,
     ) -> bool {
         let Err(e) = self.enter_level(dim) else {
             return true;
         };
         log::error!("could not open {}: {e}", dim.id());
+        if let Some(hold) = menu_hold.take() {
+            self.resume_menu_opens(hold);
+        }
         if let Some(container) = retired_window
             && let Some(host) = self.server.lan.as_mut()
             && super::native_menus::open_menu_of(host, conn).is_none()
@@ -1571,47 +1606,58 @@ impl crate::game::ServerGame<'_> {
             }
             self.eject_player_riders(Some(id));
         }
-        let retired_window = if t.dim != source {
-            let window = self.guest_close_menus_for_travel(t.conn);
+        let (retired_window, mut menu_hold) = if t.dim != source {
+            let (window, hold) = self.guest_close_menus_for_travel(t.conn);
             if let Some(host) = self.server.lan.as_mut() {
                 drop_hook(host, t.conn);
             }
-            window
+            (window, Some(hold))
         } else {
-            None
+            (None, None)
         };
-        let index = if self.enter_travel_destination(t.conn, t.dim, retired_window) {
+        let index = if self.enter_travel_destination(t.conn, t.dim, retired_window, &mut menu_hold)
+        {
             self.guest_index(t.conn)
         } else {
             None
         };
         let Some(i) = index else {
+            if let Some(hold) = menu_hold {
+                self.resume_menu_opens(hold);
+            }
             if let Err(e) = self.enter_level(back) {
                 log::error!("could not reopen {}: {e}", back.id());
             }
             return;
         };
+        let ctx = server_ctx!(self);
         let Some(host) = self.server.lan.as_mut() else {
+            if let Some(hold) = menu_hold {
+                self.resume_menu_opens(hold);
+            }
             return;
         };
-        let (yaw, pitch, origin, passenger_body) = host.hub.guests.update(i, |g| {
-            let [yaw, pitch] = t.rotation.unwrap_or([g.yaw, g.pitch]);
-            let origin = g.position;
-            // A new body there: no fall distance or motion carried over, but
-            // the player's attributes (ServerPlayer.teleport keeps the entity).
-            let passenger_body = if t.vehicle.is_some() {
-                g.motion.take()
-            } else {
-                g.new_body(true);
-                None
-            };
-            (yaw, pitch, origin, passenger_body)
-        });
+        let guest = &host.hub.guests[i];
+        let [yaw, pitch] = t.rotation.unwrap_or([guest.yaw, guest.pitch]);
+        let origin = guest.position;
         let cooldown = host.play.get(&t.conn).map_or(0, |p| p.portal.cooldown);
+        let change = host
+            .hub
+            .begin_level_change(i, t.at, yaw, Some(pitch), cooldown, &ctx);
+        self.send_player_command_tree(t.conn);
         let ctx = server_ctx!(self);
         if let Some(host) = self.server.lan.as_mut() {
-            host.hub
-                .change_level(i, t.at, yaw, Some(pitch), false, cooldown, &ctx);
+            let passenger_body = host.hub.guests.update(i, |g| {
+                // A new body there: no fall distance or motion carried over, but
+                // the player's attributes (ServerPlayer.teleport keeps the entity).
+                if t.vehicle.is_some() {
+                    g.motion.take()
+                } else {
+                    g.new_body(true);
+                    None
+                }
+            });
+            host.hub.finish_level_change(i, change, false, &ctx);
             host.hub.guests.update(i, |g| {
                 g.vehicle = t.vehicle;
                 if let Some(mut body) = passenger_body {
@@ -1621,6 +1667,9 @@ impl crate::game::ServerGame<'_> {
             });
         }
         self.bind_player_attachments(t.conn, false);
+        if let Some(hold) = menu_hold {
+            self.resume_menu_opens(hold);
+        }
         match kind {
             LevelTeleportKind::EndExit { .. } => {
                 self.as_guest(t.conn, |g| {
@@ -1640,7 +1689,7 @@ impl crate::game::ServerGame<'_> {
                 // `ServerPlayer.teleport` has already placed the player in `t.dim`;
                 // fire `player_changed_dimension` now (just like `EndExit` above) so
                 // consecutive direct cross-dimension teleports in one tick never lose
-                // the first transition when `self.server_trips.retain` replaces the trip.
+                // the first transition when `self.server.server_trips.retain` replaces the trip.
                 self.tell_mods_changed_dimension(t.conn, Some(source), t.dim);
                 self.server.server_trips.retain(|trip| !trip.is(t.conn));
                 self.server.server_trips.push(Trip {

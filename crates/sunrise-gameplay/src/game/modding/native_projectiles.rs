@@ -8,9 +8,10 @@ use crate::game::native_hooks::mob_kind;
 use std::ops::Range;
 use sunrise_core::{geometry::Vec3, position::BlockPos};
 use sunrise_gameplay_common::game::creatures::TargetQuery;
+use sunrise_gameplay_common::game::transactions::entities::EntityRemovalGameExt as _;
 use sunrise_level::fast_hash::{FxHashMap, FxHashSet};
 use sunrise_sim::{
-    arrows::{ArrowEvent, ArrowSound},
+    entities::arrows::{ArrowEvent, ArrowSound},
     join_seq::{JoinList, JoinSeq},
     mobs::Who,
     projectiles::{Hit, Projectile},
@@ -170,12 +171,8 @@ impl crate::game::ServerGame<'_> {
     /// (`native_hears_projectile_impacts`). Without one, the tick keeps no copy
     /// of its projectiles: it costs nothing.
     pub(in crate::game) fn native_hears_impacts(&self) -> bool {
-        if self.server.serving.is_none() && self.common.options.dedicated.is_none() {
-            return false;
-        }
-        let mut hears = false;
-        self.native_hears_projectile_impacts(&mut hears);
-        hears
+        (self.server.serving.is_some() || self.common.options.dedicated.is_some())
+            && mod_api::__private::enabled_listened(mod_api::HookId::ProjectileImpact)
     }
 
     /// The entity id of the one who shot `p`: a mob's, a player's, else 0.
@@ -320,7 +317,7 @@ impl crate::game::ServerGame<'_> {
     /// waits for the root transaction and the level's ordinary removal sweep.
     pub(in crate::game) fn projectile_removal_pending(&self, id: u32) -> bool {
         let target = Target::Projectile(id);
-        self.common.removal_pending(&target) || self.common.persist.removals.contains(&target)
+        self.removal_pending(&target) || self.common.persist.removals.contains(&target)
     }
 
     pub(in crate::game::server_side) fn native_projectile_impact_canceled(
@@ -328,6 +325,9 @@ impl crate::game::ServerGame<'_> {
         p: &Projectile,
         hit: Hit,
     ) -> bool {
+        if !self.native_hears_impacts() {
+            return false;
+        }
         let (entity, entity_kind, block, face, at) = match hit {
             Hit::Block { pos, at, face } => (None, String::new(), pos, face, at),
             Hit::Entity { who, at } => {
@@ -563,7 +563,7 @@ impl crate::game::ServerGame<'_> {
             let from = p.position;
             {
                 let rain = self.arrow_rain();
-                sunrise_sim::arrows::apply_block_contact(
+                sunrise_sim::entities::arrows::apply_block_contact(
                     &mut p,
                     &self.arrow_scene(&rain),
                     BlockPos::new(pos[0], pos[1], pos[2]),
@@ -601,7 +601,7 @@ impl crate::game::ServerGame<'_> {
         let mut p = self.common.creatures.projectiles[i].clone();
         let keep = {
             let rain = self.arrow_rain();
-            sunrise_sim::arrows::finish_block_contact(&mut p, &self.arrow_scene(&rain))
+            sunrise_sim::entities::arrows::finish_block_contact(&mut p, &self.arrow_scene(&rain))
         };
         let events = p
             .arrow
@@ -626,7 +626,7 @@ impl crate::game::ServerGame<'_> {
     /// `p`, as it was before its tick, flown that tick through what it hit
     /// (`Projectile::tick_through`, `arrows::tick_through`): the projectile after
     /// it, whether it stays, and the arrow events it made.
-    fn native_projectile_through(
+    pub(super) fn native_projectile_through(
         &self,
         mut p: Projectile,
     ) -> (Projectile, bool, Vec<(Vec3, ArrowEvent)>) {
@@ -647,8 +647,8 @@ impl crate::game::ServerGame<'_> {
         let rain = self.arrow_rain();
         let scene = self.arrow_scene(&rain);
         let (keep, _) = if p.arrow.is_some() {
-            let mut scratch = sunrise_sim::arrows::ArrowHitScratch::new();
-            sunrise_sim::arrows::tick_through_live(&mut p, &scene, &live, &mut scratch)
+            let mut scratch = sunrise_sim::entities::arrows::ArrowHitScratch::new();
+            sunrise_sim::entities::arrows::tick_through_live(&mut p, &scene, &live, &mut scratch)
         } else {
             p.tick_through(&live)
         };

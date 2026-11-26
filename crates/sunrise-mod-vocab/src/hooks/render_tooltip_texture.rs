@@ -11,7 +11,6 @@ pub trait Hooks {
     /// as ARGB. `stack` is the item the tooltip describes, `None` for a text tooltip. Asked each
     /// frame a tooltip shows, only while a mod listens. Client-side.
     #[hook(
-        target = "sunrise_client_gameplay::game::native_hooks::render_tooltip_texture::ClientGame<'_>::native_render_tooltip_texture",
         receiver = "read",
         dispatch = "flat",
         side = "client",

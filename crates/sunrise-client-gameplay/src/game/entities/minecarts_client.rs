@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use sunrise_client::{
     mesher::Vertex,
     mobs::Part,
-    sound_engine::{CartSound, PlayResult, SoundInstance, Sounds},
+    sound_engine::{CartSound, PlayResult, SoundInstance},
 };
 use sunrise_core::geometry::Vec3;
 use sunrise_gameplay_common::game::minecarts::CartKind;
@@ -202,7 +202,7 @@ impl ClientGame<'_> {
         ) else {
             return vanilla;
         };
-        let read = ReadLevel::new(self, level);
+        let read = ReadLevel::new(self, level, &self.common.world);
         let side = mod_api::LevelSide::Client(&read);
         let cart = cart.map(|id| mod_api::EntityRef::new(epoch, id));
         dispatch_cart_rail_direction(side, self.common.dim.level(), api_state, pos, cart, text)
@@ -664,35 +664,16 @@ impl ClientGame<'_> {
         light: u8,
         out: &mut Vec<Vertex>,
     ) {
-        let lid = |_: [i32; 3]| 0.0;
-        let scene = sunrise_client::block_entity_render::Scene {
-            camera: glam::DVec3::ZERO,
-            sign_outline: sunrise_client::block_entity_render::SignOutline::None,
-            orientation: glam::Quat::IDENTITY,
-            anim: &|_| sunrise_client::block_entity_render::BlockAnim::default(),
-            texts: None,
-            partial: 0.0,
-            game_time: self.common.world.game_time,
-            max_y: self.common.world.shape.max_y() - 1,
-            world: &self.common.world,
-            sprites: &self.client.gui.atlas.sprites,
-            emissive: &self.client.gui.atlas.emissive,
-            translucent_sprites: &self.client.gui.atlas.translucent,
-            atlas_revision: self.client.gui.atlas.revision,
-            nether: self.nether_lighting(),
-            lid: &lid,
-            sign: &|_| None,
-            banner: &|_| Vec::new(),
-            skull: &|_| None,
-            glyph: &|c| self.client.gui.atlas.glyph_cell(c),
-            glyphs: self.client.gui.atlas.font.epoch(),
-            font: Some(&self.client.gui.atlas.font),
-            inline_images: None,
-            dynamic_visible: None,
-        };
-        self.client_res()
-            .block_entity_render()
-            .render_state(&scene, state.0, m, light, out);
+        with_default_scene(
+            &self.client.gui,
+            &self.common.world,
+            self.nether_lighting(),
+            |scene| {
+                self.client_res()
+                    .block_entity_render()
+                    .render_state(scene, state.0, m, light, out);
+            },
+        );
     }
     /// `ClientPacketListener.postAddEntitySoundInstance` for the carts that
     /// joined the level since the last tick, and `LocalPlayer.startRiding`'s
@@ -719,7 +700,7 @@ impl ClientGame<'_> {
         for cart in &carts {
             if !self.client.cart_sounds.contains(&cart.id) {
                 let instance = SoundInstance::minecart(cart, random_source::create());
-                let (_, res) = self.client.audio.0.play_instance(instance, false);
+                let (_, res) = self.play_audio_instance(instance, false);
                 if res != PlayResult::NotStarted {
                     self.client.cart_sounds.insert(cart.id);
                 }
@@ -736,7 +717,7 @@ impl ClientGame<'_> {
             for underwater in [true, false] {
                 let instance =
                     SoundInstance::riding_minecart(cart, underwater, random_source::create());
-                let (_, res) = self.client.audio.0.play_instance(instance, false);
+                let (_, res) = self.play_audio_instance(instance, false);
                 if res == PlayResult::NotStarted {
                     started = false;
                 }
@@ -775,6 +756,51 @@ impl ClientGame<'_> {
         let models = models.into_iter().map(|(_, model)| model);
         self.baked_model_vertices(models, m, light, diffuse, tint, out);
     }
+}
+
+/// Calls `render` with the scene of a block drawn with no block entity data: `world` at its own
+/// game time, no sign, banner or skull data and every chest lid shut. Shared by
+/// [`ClientGame::special_block_model`] and `StandaloneGeometry`, which sizes the special part in
+/// an empty world before any level is loaded.
+pub(in crate::game) fn with_default_scene(
+    gui: &crate::game::UiResources,
+    world: &sunrise_level::world::World,
+    nether: bool,
+    render: impl FnOnce(&sunrise_client::block_entity_render::Scene<'_>),
+) {
+    let lid = |_: [i32; 3]| 0.0;
+    let scene = sunrise_client::block_entity_render::Scene {
+        camera: glam::DVec3::ZERO,
+        sign_outline: sunrise_client::block_entity_render::SignOutline::None,
+        orientation: glam::Quat::IDENTITY,
+        anim: &|_| sunrise_client::block_entity_render::BlockAnim::default(),
+        texts: None,
+        partial: 0.0,
+        game_time: world.game_time,
+        max_y: world.shape.max_y() - 1,
+        world,
+        sprites: &gui.atlas.sprites,
+        emissive: &gui.atlas.emissive,
+        translucent_sprites: &gui.atlas.translucent,
+        atlas_revision: gui.atlas.revision,
+        nether,
+        lid: &lid,
+        sign: &|_| None,
+        banner: &|_| Vec::new(),
+        skull: &|_| None,
+        glyph: &|c| gui.atlas.glyph_cell(c),
+        glyphs: gui.atlas.font.epoch(),
+        font: Some(&gui.atlas.font),
+        inline_images: None,
+        dynamic_visible: None,
+    };
+    render(&scene);
+}
+
+/// Packed vertex light as the level's `sky << 4 | block` byte that
+/// [`ClientGame::special_block_model`] takes: the inverse of `block_entity_render::vertex_light`.
+pub fn special_light(light: u32) -> u8 {
+    ((((light & 0xFF) / 16) << 4) | (((light >> 8) & 0xFF) / 16)) as u8
 }
 
 impl PreparedModelFace {

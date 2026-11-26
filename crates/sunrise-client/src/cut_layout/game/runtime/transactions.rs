@@ -632,7 +632,7 @@ pub(crate) mod tests {
             .chunks
             .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
         game.native_lifecycle
-            .begin_open(Authority::IntegratedServer);
+            .begin_open(Some(Authority::IntegratedServer));
         sunrise_gameplay::game::native_entity_refs::tests::resolve_parts(&game).unwrap();
         // Pins the opaque backend: a real game always hands one out, so a None
         // from Host::backend is a bug, never a fallback.
@@ -952,17 +952,14 @@ pub(crate) mod tests {
         ];
         // An aborted write leaves a chested donkey's item list as long as it was.
         let id = game
-            .summon(
-                "minecraft:overworld",
-                "minecraft:donkey",
-                [8.5, 70.0, 8.5],
-                {
-                    let mut chested = sunrise_core::nbt::Compound::new();
-                    chested.insert("ChestedHorse".into(), sunrise_core::nbt::Tag::Byte(1));
-                    chested
-                },
-            )
-            .unwrap();
+            .level_summon(level, "minecraft:donkey", [8.5, 70.0, 8.5], {
+                let mut chested = sunrise_core::nbt::Compound::new();
+                chested.insert("ChestedHorse".into(), sunrise_core::nbt::Tag::Byte(1));
+                chested
+            })
+            .unwrap()
+            .unwrap()
+            .id();
         let len = |game: &sunrise_gameplay::game::ServerGame<'_>| {
             game.mobs
                 .iter()
@@ -1012,8 +1009,10 @@ pub(crate) mod tests {
 
         for (kind, nbt) in vehicles {
             let id = game
-                .summon("minecraft:overworld", kind, [8.5, 70.0, 8.5], nbt)
-                .unwrap_or_else(|| panic!("{kind} not summoned"));
+                .level_summon(level, kind, [8.5, 70.0, 8.5], nbt)
+                .unwrap()
+                .unwrap_or_else(|| panic!("{kind} not summoned"))
+                .id();
             let place = |slot| mod_api::ItemPlace::EntitySlot { entity: id, slot };
             let host: &mut dyn ServerHost = &mut game;
             let went = host.transaction(|host, tx| place(0).insert(host, tx, &stick, 5));
@@ -1228,136 +1227,149 @@ pub(crate) mod mod_capability_tests {
     #[test]
     #[ignore = "daily"]
     fn entity_and_player_attachments_stay_on_commit_and_go_back_on_abort() {
-        use mod_api::{AttachmentType, Holder};
-        use sunrise_core::geometry::Vec3;
+        use mod_api::{AttachmentDescriptor, AttachmentKey, Holder, Hooks, ModEntry, Registrar};
+        use std::sync::Mutex;
         use sunrise_sim::entities::ArmorStand;
-        const ENERGY: AttachmentType<i32> = AttachmentType {
-            namespace: "robot",
-            name: "energy",
-            default: || 0,
-            codec: None,
-            copy_on_death: false,
-            sync: false,
-        };
-        with_game(|game| {
-            game.options.dedicated = Some(Vec::new());
-            game.world
-                .chunks
-                .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-            game.armor_stands.push(ArmorStand::new(13, Vec3::ZERO, 0.0));
-            game.armor_stands.push(ArmorStand::new(14, Vec3::ZERO, 0.0));
-            let guest = 0x5eed_u128;
-            let config = sunrise_sim::lan::hub::HubConfig {
-                default_game_mode: 0,
-                guest_commands: false,
-                force_game_mode: false,
-                hardcore: false,
-                view_distance: 10,
-                simulation_distance: 10,
-                dimension: "minecraft:overworld".into(),
-                allow_flight: false,
-                seed: 0,
-                max_players: 20,
-                integrated: false,
-                levels: Default::default(),
-                level_seeds: Default::default(),
-            };
-            game.lan_host(
-                sunrise_gameplay::game::lan::LanSettings {
-                    port: 0,
+        use sunrise_core::geometry::Vec3;
+        struct EnergyMod(Arc<Mutex<Option<AttachmentKey<i32>>>>);
+        #[mod_api::__subscriptions]
+        impl Hooks for EnergyMod {
+            fn register(&self, r: &mut dyn Registrar, _: &mod_api::RegistrationContext) {
+                let key = r
+                    .register_attachment_type(AttachmentDescriptor::new("robot:energy", || 0i32))
+                    .unwrap();
+                *self.0.lock().unwrap() = Some(key);
+            }
+        }
+        let energy_slot = Arc::new(Mutex::new(None));
+        let mods: mod_api::Mods = vec![ModEntry::new(
+            "robot",
+            Box::new(EnergyMod(energy_slot.clone())),
+        )]
+        .into();
+        mod_platform::testing::with_mods(mods, || {
+            with_game(|game| {
+                let energy_key = energy_slot
+                    .lock()
+                    .unwrap()
+                    .clone()
+                    .expect("EnergyMod registered");
+                game.options.dedicated = Some(Vec::new());
+                game.world
+                    .chunks
+                    .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+                game.common.armor_stands.push(ArmorStand::new(13, Vec3::ZERO, 0.0));
+                game.common.armor_stands.push(ArmorStand::new(14, Vec3::ZERO, 0.0));
+                let guest = 0x5eed_u128;
+                let config = sunrise_sim::lan::hub::HubConfig {
+                    default_game_mode: 0,
                     guest_commands: false,
                     force_game_mode: false,
-                },
-                sunrise_sim::lan::NetConfig {
-                    announce: false,
-                    ..sunrise_sim::lan::NetConfig::lan(0, "test".into(), 2)
-                },
-                config,
-            )
-            .unwrap();
-            let level = game.level(game.dim.id()).unwrap();
-            let player_ref = game.fake_player(level, guest, "test").unwrap();
-            let conn = game
-                .server
-                .lan
-                .as_ref()
-                .unwrap()
-                .hub
-                .guests
-                .iter()
-                .find(|g| g.entity_id as u32 == player_ref.entity().id())
-                .unwrap()
-                .conn;
-            let (stand, fresh, player) = (
-                Holder::Entity(13),
-                Holder::Entity(14),
-                Holder::Player(guest),
-            );
-            let energy =
-                |host: &mut dyn ServerHost, holder| ENERGY.get_existing(host, holder).unwrap();
-
-            let host: &mut dyn ServerHost = game;
-            let done = host.transaction(|host, _| {
-                ENERGY.set(host, stand, 100)?;
-                ENERGY.set(host, player, 40)
-            });
-            assert_eq!(done, Ok(()));
-            assert_eq!(
-                (energy(host, stand), energy(host, player)),
-                (Some(100), Some(40))
-            );
-
-            // Aborted, with a committed child inside: both maps as they were, and the entity
-            // that had no value has none.
-            let aborted: Result<(), _> = host.transaction(|host, _| {
-                ENERGY.set(host, stand, 250)?;
-                ENERGY.set(host, player, 90)?;
-                ENERGY.set(host, fresh, 7)?;
-                host.transaction(|host, _| ENERGY.set(host, stand, 300))
-                    .unwrap();
-                assert_eq!(energy(host, stand), Some(300));
-                Err(mod_api::AttachmentError::MissingHolder)
-            });
-            assert!(aborted.is_err());
-            assert_eq!(
-                (energy(host, stand), energy(host, player)),
-                (Some(100), Some(40))
-            );
-            assert_eq!(energy(host, fresh), None);
-
-            // Written while the guest's state is swapped in for their turn, aborted after it
-            // is swapped back out: the guest's own map is put back.
-            game.open_storage_transaction();
-            game.server.lan_acting_uuid = Some(guest);
-            std::mem::swap(
-                &mut game.common.player_state.attachments,
-                game.server
+                    hardcore: false,
+                    view_distance: 10,
+                    simulation_distance: 10,
+                    dimension: "minecraft:overworld".into(),
+                    allow_flight: false,
+                    seed: 0,
+                    max_players: 20,
+                    integrated: false,
+                    levels: Default::default(),
+                    level_seeds: Default::default(),
+                };
+                game.lan_host(
+                    sunrise_gameplay::game::lan::LanSettings {
+                        port: 0,
+                        guest_commands: false,
+                        force_game_mode: false,
+                    },
+                    sunrise_sim::lan::NetConfig {
+                        announce: false,
+                        ..sunrise_sim::lan::NetConfig::lan(0, "test".into(), 2)
+                    },
+                    config,
+                )
+                .unwrap();
+                let level = game.level(game.dim.id()).unwrap();
+                let player_ref = game.fake_player(level, guest, "test").unwrap();
+                let conn = game.server
                     .lan
-                    .as_mut()
+                    .as_ref()
                     .unwrap()
                     .hub
                     .guests
-                    .attachments_mut(conn)
-                    .unwrap(),
-            );
-            let host: &mut dyn ServerHost = game;
-            ENERGY.set(host, player, 70).unwrap();
-            std::mem::swap(
-                &mut game.common.player_state.attachments,
-                game.server
-                    .lan
-                    .as_mut()
+                    .iter()
+                    .find(|g| g.entity_id as u32 == player_ref.entity().id())
                     .unwrap()
-                    .hub
-                    .guests
-                    .attachments_mut(conn)
-                    .unwrap(),
-            );
-            game.server.lan_acting_uuid = None;
-            game.close_storage_transaction(false);
-            let host: &mut dyn ServerHost = game;
-            assert_eq!(energy(host, player), Some(40));
-            assert!(game.transactions.is_empty());
+                    .conn;
+                let (stand, fresh, player) = (
+                    Holder::Entity(13),
+                    Holder::Entity(14),
+                    Holder::Player(guest),
+                );
+                let energy = |host: &mut dyn ServerHost, holder| {
+                    energy_key
+                        .get_existing(host, holder, |value| value.cloned())
+                        .unwrap()
+                };
+
+                let host: &mut dyn ServerHost = game;
+                let done = host.transaction(|host, _| {
+                    energy_key.set(host, stand, 100)?;
+                    energy_key.set(host, player, 40)
+                });
+                assert_eq!(done, Ok(()));
+                assert_eq!(
+                    (energy(host, stand), energy(host, player)),
+                    (Some(100), Some(40))
+                );
+
+                let aborted: Result<(), _> = host.transaction(|host, _| {
+                    energy_key.set(host, stand, 250)?;
+                    energy_key.set(host, player, 90)?;
+                    energy_key.set(host, fresh, 7)?;
+                    host.transaction(|host, _| energy_key.set(host, stand, 300))
+                        .unwrap();
+                    assert_eq!(energy(host, stand), Some(300));
+                    Err(mod_api::AttachmentError::MissingHolder)
+                });
+                assert!(aborted.is_err());
+                assert_eq!(
+                    (energy(host, stand), energy(host, player)),
+                    (Some(100), Some(40))
+                );
+                assert_eq!(energy(host, fresh), None);
+
+                game.storage_scope(|game, _| {
+                    game.server.lan_acting_uuid = Some(guest);
+                    std::mem::swap(
+                        &mut game.common.player_state.attachments,
+                        game.server.lan
+                            .as_mut()
+                            .unwrap()
+                            .hub
+                            .guests
+                            .attachments_mut(conn)
+                            .unwrap(),
+                    );
+                    let host: &mut dyn ServerHost = game;
+                    energy_key.set(host, player, 70).unwrap();
+                    std::mem::swap(
+                        &mut game.common.player_state.attachments,
+                        game.server.lan
+                            .as_mut()
+                            .unwrap()
+                            .hub
+                            .guests
+                            .attachments_mut(conn)
+                            .unwrap(),
+                    );
+                    game.server.lan_acting_uuid = None;
+                    ((), false)
+                });
+                let host: &mut dyn ServerHost = game;
+                assert_eq!(energy(host, player), Some(40));
+                assert!(game.transactions.is_empty());
+            });
         });
     }
 

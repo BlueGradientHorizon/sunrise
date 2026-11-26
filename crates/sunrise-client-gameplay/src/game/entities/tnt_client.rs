@@ -1,6 +1,7 @@
 use crate::game::ClientGame;
 use sunrise_client::mesher::Vertex;
 use sunrise_core::position::BlockPos;
+use sunrise_gameplay_common::game::entity::Entity as _;
 use sunrise_gameplay_common::game::tnt_common::PrimedTnt;
 
 impl ClientGame<'_> {
@@ -50,6 +51,12 @@ impl ClientGame<'_> {
                     t.previous.y + (t.position.y - t.previous.y) * alpha,
                     t.previous.z + (t.position.z - t.previous.z) * alpha,
                 );
+                let vanilla = t.vanilla_dimensions().expect("primed TNT dimensions");
+                let [width, height, eye_height] = t
+                    .size_answer
+                    .filter(|s| s.vanilla == vanilla)
+                    .and_then(|s| s.size)
+                    .unwrap_or(vanilla);
                 let entity: mod_api::EntityRenderState =
                     mod_api::__private::built::EntityRenderState {
                         id: t.id,
@@ -57,6 +64,10 @@ impl ClientGame<'_> {
                         age: t.ticks as f32 + partial,
                         yaw: t.rotation[0],
                         pitch: t.rotation[1],
+                        position: at.to_array(),
+                        size: [width, height],
+                        eye_height,
+                        distance_to_camera_sq: (at - camera).length_squared(),
                         living: None,
                         tnt_fuse: Some(fuse),
                         orb_value: None,

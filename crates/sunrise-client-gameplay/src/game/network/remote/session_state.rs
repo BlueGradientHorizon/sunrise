@@ -17,7 +17,6 @@ use sunrise_protocol::item::Stack;
 use sunrise_protocol::{
     packets::play,
     registry::{Builtin, DimensionType, Dynamic},
-    rsa::RsaPublicKey,
     secure_chat,
     text::Language,
 };
@@ -40,8 +39,8 @@ pub(in crate::game) struct NoTerrain;
 impl ChunkGenerator for NoTerrain {
     type Worker = ();
     fn worker(&self) {}
-    fn proto(&self, _: &mut (), _: i32, _: i32) -> Proto {
-        Box::new(())
+    fn proto(&self, _: &mut (), _: i32, _: i32) -> std::result::Result<Proto, String> {
+        Ok(Box::new(()))
     }
     fn finish(&self, _: Proto) -> Chunk {
         Chunk::empty(0, 0)
@@ -105,34 +104,29 @@ pub enum ServicesKeys {
 }
 
 /// One `PlayerInfo` property, shared by the list entry and the entities that kept it.
-pub struct PlayerTextures {
-    pub(in crate::game) property: AccountProperty,
-    pub(in crate::game) unpacked: std::sync::OnceLock<sunrise_client_render::skins::Textures>,
-}
+pub struct PlayerTextures(pub(in crate::game) sunrise_client_render::skins::PackedTextures);
 
 impl PlayerTextures {
     /// `SkinManager.createLookup(profile, requireSecure)`: a secure lookup shows
     /// only textures whose signature the keys verified, so it waits for keys that
     /// are still pending; the local player's shows its textures unverified.
+    /// `SkinManager.getOrLoad` unpacks and verifies on a thread of its own, never
+    /// the game thread: `None` until that answers, and the player shows the
+    /// default skin.
     pub fn unpack(
         &self,
+        downloads: &mut sunrise_client_render::skins::Downloader,
         services_keys: &ServicesKeys,
-        valid_uris: &[impl AsRef<str>],
         require_secure: bool,
-    ) -> Option<&sunrise_client_render::skins::Textures> {
-        use sunrise_client_render::skins;
-        let signature = self.property.signature.as_deref();
-        let property_keys: &[RsaPublicKey] = match services_keys {
+    ) -> Option<Arc<sunrise_client_render::skins::Textures>> {
+        match services_keys {
             // Never cache an invalid result for a signature the pending keys could verify.
-            ServicesKeys::Pending if signature.is_some() && require_secure => return None,
-            ServicesKeys::Pending => &[],
-            ServicesKeys::Ready(keys) => &keys.profile_property_keys,
-        };
-        Some(self.unpacked.get_or_init(|| {
-            let value = &self.property.value;
-            let signature = skins::property_signature(value, signature, property_keys);
-            skins::unpack(value, signature, valid_uris)
-        }))
+            ServicesKeys::Pending if self.0.signature.is_some() && require_secure => None,
+            // `PlayerInfo.createSkinLookup`: requireSecure is false for the local player, whose
+            // signed property shows unverified. An unsigned one reads the same whatever the keys.
+            ServicesKeys::Pending => downloads.unpacked(&self.0, &[]),
+            ServicesKeys::Ready(keys) => downloads.unpacked(&self.0, &keys.profile_property_keys),
+        }
     }
 }
 
@@ -173,6 +167,12 @@ pub enum RemoteDimensionEntry {
     DeathRespawn,
 }
 
+pub struct ConstructingClientLevel {
+    pub handle: mod_api::LevelRef,
+    pub world: sunrise_level::world::World,
+    pub facts: Option<Arc<sunrise_world::dimension_type::DimensionFacts>>,
+}
+
 pub struct Remote {
     pub(in crate::game) professions: Arc<sunrise_sim::mobs::villager::ResolvedProfessions>,
     pub session: Session,
@@ -202,6 +202,8 @@ pub struct Remote {
     pub builtin: Arc<Builtin>,
     pub(in crate::game) lang: Arc<Language>,
     pub registries: Arc<Dynamic>,
+    /// Data-driven mob variant tables decoded from `registries` in server sync order.
+    pub variants: Arc<sunrise_sim::mobs::variants::VariantTables>,
     /// The block, item and fluid tags of `registries` by name, as native mods read them
     /// (`install_remote_tags`).
     pub tags: Option<sunrise_items::items::Items>,
@@ -307,6 +309,13 @@ pub struct Remote {
     /// The dimension of the client level the mods heard made
     /// (`native_client_level_load`), to be told dropped once.
     pub(in crate::game) heard_level: Option<String>,
+    pub datapacks: sunrise_sim::datapack_net::Receiver,
+    /// Decoded vanilla codec values for [`Self::datapacks`], swapped on join and reload.
+    pub datapack_vanilla_values: Option<
+        Arc<sunrise_gameplay_common::game::native_datapack_values::DatapackVanillaValues>,
+    >,
+    /// The constructor's level is visible by name during Load, before Minecraft.setLevel.
+    pub constructing_level: Option<ConstructingClientLevel>,
     /// `ClientPacketListener.levelLoadTracker`: the loading screen after a login
     /// or respawn, until the player's section is shown.
     pub level_load: sunrise_client_render::level_loading::LevelLoadTracker,
@@ -416,10 +425,9 @@ pub struct Remote {
     /// that base changes, not at each keystroke.
     pub chat_tree: sunrise_command::Dispatcher,
     pub(in crate::game) selector_metadata_supported: bool,
-    /// Whether a `ClientboundCommandsPacket` has supplied the server's tree.
-    /// The local fallback is for UI completion only; vanilla signs command
-    /// arguments against an empty tree until the server sends one.
-    pub(in crate::game) chat_tree_received: bool,
+    /// The server's original tree, used for signing and verifying remote commands.
+    /// Vanilla uses an empty tree until it receives `ClientboundCommandsPacket`.
+    pub(in crate::game) server_chat_tree: Option<sunrise_command::Dispatcher>,
     /// The chat session, the last-seen window and the signature cache.
     pub secure_chat: crate::game::client_side::remote_chat::SecureChat,
     /// `ClientSuggestionProvider.customCompletionSuggestions`: the extra chat

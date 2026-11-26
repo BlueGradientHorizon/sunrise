@@ -12,7 +12,6 @@ pub trait Hooks {
     /// meshing workers read the table. The level and position are dropped: the meshing workers run no mod code.
     /// With no part answering, nothing is asked and meshes are unchanged. Diverges from upstream: new hook.
     #[hook(
-        target = "sunrise_client_gameplay::game::native_hooks::should_display_fluid_overlay::ClientGame<'_>::native_should_display_fluid_overlay",
         receiver = "read",
         dispatch = "flat",
         side = "client",

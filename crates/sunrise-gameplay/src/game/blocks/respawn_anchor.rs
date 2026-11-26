@@ -393,7 +393,12 @@ impl crate::game::ServerGame<'_> {
     /// `BlockState.getCollisionShape(level, pos)`: the shape under the empty
     /// collision context.
     pub(in crate::game::server_side) fn block_collision_shape(&self, p: [i32; 3]) -> VoxelShape {
-        self.common.block_collision_shape_in(&self.common.world, p)
+        sunrise_gameplay_common::game::native_state_shapes::collision_shape(
+            self.common.collision,
+            &self.common.world,
+            self.common.world.block(p[0], p[1], p[2]),
+            p,
+        )
     }
     /// `DismountHelper.canDismountTo(level, entity, box)`: no block collides
     /// with the box and it is inside the world border.

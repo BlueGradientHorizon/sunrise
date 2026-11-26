@@ -48,6 +48,211 @@ pub(crate) mod interaction_key_tests;
 #[path = "mapping_press_tests_server.rs"]
 pub(crate) mod mapping_press_tests;
 
+/// `SolidBucketItem.getPlaceSound` changes only the event: both sides use
+/// the contextual sound type's levels, even with a no-op level-sound listener.
+#[test]
+#[ignore = "daily"]
+fn powder_snow_placement_uses_the_bucket_event_and_contextual_levels() {
+    use mod_api::{
+        BlockPart, BlockSoundCause, Flow, Hooks, HostSide, Registrar, SoundSource, SoundTypeEvent,
+    };
+    use sunrise_gameplay_common::game::server_side::native_sound_refs::tests::{guest, packets};
+    use sunrise_protocol::packets::play::Clientbound;
+
+    struct PowderSound;
+    #[mod_api::sunrise_part]
+    impl BlockPart for PowderSound {
+        fn sound_type(&self, _: mod_api::LevelSide<'_>, event: &mut SoundTypeEvent<'_>) {
+            if event.cause == BlockSoundCause::Place {
+                event.sound.volume = 3.0;
+                event.sound.pitch = -1.25;
+            }
+        }
+    }
+    #[mod_api::__subscriptions]
+    impl Hooks for PowderSound {
+        fn register(&self, r: &mut dyn Registrar, _: &mod_api::RegistrationContext) {
+            let powder = r.block_key("minecraft:powder_snow");
+            r.block_part(powder, PowderSound);
+        }
+    }
+    struct Observe(Arc<AtomicUsize>);
+    #[mod_api::__subscriptions]
+    impl Hooks for Observe {
+        fn play_level_sound_at_position(
+            &self,
+            _: HostSide<'_>,
+            e: &mut mod_api::PlayLevelSoundAtPositionEvent,
+        ) -> Flow {
+            if e.sound.to_string() == EMPTY_POWDER_SNOW {
+                assert_eq!((e.original_volume, e.original_pitch), (2.0, -1.0));
+                self.0.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            }
+            Flow::Continue
+        }
+    }
+    const EMPTY_POWDER_SNOW: &str = "minecraft:item.bucket.empty_powder_snow";
+    if !crate::game::native_block_sounds::tests::install_sound_fixture_in_child(
+        "game::server_side::remote_server::interaction_event_tests::powder_snow_placement_uses_the_bucket_event_and_contextual_levels",
+    ) {
+        return;
+    }
+    for listened in [false, true] {
+        let observed = Arc::new(AtomicUsize::new(0));
+        let mut mods = vec![mod_api::ModEntry::new(
+            "powder_sound",
+            Box::new(PowderSound),
+        )];
+        if listened {
+            mods.push(mod_api::ModEntry::new(
+                "observe_sound",
+                Box::new(Observe(observed.clone())),
+            ));
+        }
+        mod_platform::testing::with_mods(mods.into(), || {
+            with_interaction_server_game(|game| {
+                let registry = game.pack.assets.registry;
+                let stone = registry.default_state("minecraft:stone").unwrap();
+                let powder = registry.default_state("minecraft:powder_snow").unwrap();
+                game.world.set(0, 64, 0, stone).unwrap();
+                game.set_test_forced_hit(Some(hit()));
+                let selected = game.selected;
+                game.inventory[selected] = Some(ItemStack::new("minecraft:powder_snow_bucket", 1));
+                game.start_audio_capture();
+                assert!(use_block(game));
+                assert_eq!(game.world.block(0, 65, 0), powder);
+                let [sound] = game.server.pending_sounds.as_slice() else {
+                    panic!("expected one placement sound, client=false")
+                };
+                assert_eq!(sound.event, EMPTY_POWDER_SNOW);
+                assert_eq!(sound.source, SoundSource::Blocks.index());
+                assert_eq!((sound.volume, sound.pitch), (2.0, -1.0));
+                assert_eq!(sound.except_entity, Some(12));
+
+                let (other, rx) = guest(13, 13, [0.5, 65.0, 0.5]);
+                game.server.lan.as_mut().unwrap().hub.guests.push(other);
+                game.lan_broadcast_effects();
+                let id = game
+                    .server
+                    .lan
+                    .as_ref()
+                    .unwrap()
+                    .hub
+                    .sync_data()
+                    .id("minecraft:sound_event", EMPTY_POWDER_SNOW)
+                    .unwrap();
+                let sounds: Vec<_> = packets(&rx)
+                    .into_iter()
+                    .filter_map(|packet| {
+                        if let Clientbound::Sound(sound) = packet {
+                            Some(sound)
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
+                let [sound] = sounds.as_slice() else {
+                    panic!("expected one sound packet")
+                };
+                assert_eq!(sound.sound, (id, None), "use the registered bucket event");
+                assert_eq!(sound.source, SoundSource::Blocks as i32);
+                assert_eq!((sound.volume, sound.pitch), (2.0, -1.0));
+            });
+            with_interaction_client_game(|game| {
+                let registry = game.pack.assets.registry;
+                let stone = registry.default_state("minecraft:stone").unwrap();
+                let powder = registry.default_state("minecraft:powder_snow").unwrap();
+                game.world.set(0, 64, 0, stone).unwrap();
+                game.set_test_forced_hit(Some(hit()));
+                let selected = game.selected;
+                game.inventory[selected] = Some(ItemStack::new("minecraft:powder_snow_bucket", 1));
+                game.client.audio.0.capture = Some(Vec::new());
+                assert!(use_block(game));
+                assert_eq!(game.world.block(0, 65, 0), powder);
+                let captured = game.client.audio.0.capture.as_ref().unwrap();
+                let [sound] = captured.as_slice() else {
+                    panic!("expected one placement sound, client=true")
+                };
+                assert_eq!(sound.event, EMPTY_POWDER_SNOW);
+                assert_eq!(sound.source, SoundSource::Blocks.index());
+                assert_eq!((sound.volume, sound.pitch), (2.0, -1.0));
+                assert_eq!(sound.except_entity, None);
+            });
+        });
+        assert_eq!(
+            observed.load(std::sync::atomic::Ordering::Relaxed),
+            if listened { 2 } else { 0 }
+        );
+    }
+}
+
+/// One right click on a block whose Part acts in `use_item_on` and answers `Success`, with
+/// something in the off hand. The client runs the Part too, so `Minecraft.startUseItem` stops
+/// at the main hand: one request goes out and the off hand gets no turn. The server runs the
+/// Part once for that request. The lever stays put on both sides: the Part replaced its toggle.
+#[test]
+#[ignore = "daily"]
+fn a_successful_block_part_runs_once_per_click_on_both_sides() {
+    fn run<'g, S: InteractionSide<'g>>(
+        observer: &Observer,
+        game: &mut S,
+        click: impl FnOnce(&mut S),
+    ) {
+        let client = S::IS_CLIENT;
+        let side = S::LOGICAL_SIDE;
+        let lever = game
+            .pack
+            .assets
+            .registry
+            .default_state("minecraft:lever")
+            .unwrap();
+        game.world.set(0, 64, 0, lever).unwrap();
+        game.set_test_forced_hit(Some(hit()));
+        game.offhand = Some(ItemStack::new("minecraft:stick", 1));
+        *observer.0.lock().unwrap() = Controls {
+            hands: Some(Vec::new()),
+            block_part_answer: Some(Answer::Success),
+            ..Controls::default()
+        };
+        let before = game.swings_started;
+        click(game);
+        let state = observer.0.lock().unwrap();
+        assert_eq!(
+            state.steps,
+            [Step::Phase(UsePhase::Block, side), Step::BlockPart]
+        );
+        assert_eq!(state.click_hands, [Hand::Main]);
+        assert!(
+            state
+                .hands
+                .as_ref()
+                .unwrap()
+                .iter()
+                .all(|hand| *hand == Hand::Main)
+        );
+        assert_eq!(state.use_item_on_packets, usize::from(client));
+        assert_eq!(state.use_item_packets, 0);
+        assert_eq!(game.swings_started - before, 1);
+        assert_eq!(game.world.block(0, 64, 0), lever);
+    }
+
+    let observer = Observer::default();
+    let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
+        "one_click",
+        Box::new(observer.clone()),
+    )]
+    .into();
+    sunrise_gameplay_common::game::api_values::install_parts(&mods).unwrap();
+    mod_platform::testing::with_mods(mods, || {
+        with_interaction_server_game(|game| run(&observer, game, |g| assert!(use_block(g))));
+        with_interaction_client_game(|game| {
+            run(&observer, game, |g| {
+                g.remote_use(mod_api::InteractionAttempt::Press);
+            });
+        });
+    });
+}
+
 /// `SolidBucketItem.useOn`: a powder snow bucket placed on a block leaves an empty bucket in the
 /// hand that placed it, on the server and in the client's own prediction, so the client's next
 /// click in the same tick uses the bucket (`use_item`) as vanilla's does.
@@ -453,7 +658,7 @@ fn an_item_used_from_the_off_hand_reaches_the_use_hooks_on_the_server() {
                         .all(|h| *h == Hand::Off || guest.is_none())
                 );
                 assert_eq!(state.hands.as_ref().unwrap().last(), Some(&Hand::Off));
-                assert_eq!(state.steps.last(), Some(&Step::UseOnPart));
+                assert_eq!(state.steps.last(), Some(&Step::UseOnPart(side)));
             }
         });
     });
@@ -505,9 +710,7 @@ fn before_block_cancellation_pass_continues_but_fail_and_consuming_results_stop(
             let mut expected = vec![Step::Phase(UsePhase::ItemBeforeBlock, side)];
             if reaches_block {
                 expected.push(Step::Phase(UsePhase::Block, side));
-                if !client {
-                    expected.push(Step::BlockPart);
-                }
+                expected.push(Step::BlockPart);
             }
             assert_eq!(observer.0.lock().unwrap().steps, expected);
         }
@@ -522,14 +725,12 @@ fn before_block_cancellation_pass_continues_but_fail_and_consuming_results_stop(
         };
         assert!(use_block(game));
         assert_eq!(game.world.block(0, 64, 0), stone);
-        let mut expected = vec![
+        let expected = vec![
             Step::Phase(UsePhase::ItemBeforeBlock, side),
             Step::Phase(UsePhase::Block, side),
+            Step::BlockPart,
+            Step::Phase(UsePhase::ItemAfterBlock, side),
         ];
-        if !client {
-            expected.push(Step::BlockPart);
-        }
-        expected.push(Step::Phase(UsePhase::ItemAfterBlock, side));
         assert_eq!(observer.0.lock().unwrap().steps, expected);
     }
 
@@ -771,6 +972,76 @@ fn item_use_overlap_matrix_on_the_server() {
 #[test]
 #[ignore = "daily"]
 fn on_item_use_first_runs_before_the_block_and_ends_the_click() {
+    fn run<'g, S: InteractionSide<'g>>(observer: &Observer, game: &mut S) {
+        let client = S::IS_CLIENT;
+        let side = S::LOGICAL_SIDE;
+        let registry = game.pack.assets.registry;
+        let stone = registry.default_state("minecraft:stone").unwrap();
+        let lever = game
+            .with_props(
+                registry.default_state("minecraft:lever").unwrap(),
+                &[("face", "floor")],
+            )
+            .unwrap();
+        game.world.set(0, 63, 0, stone).unwrap();
+        game.world.set(0, 64, 0, lever).unwrap();
+        game.set_test_forced_hit(Some(hit()));
+
+        // Every non-PASS Part answer stops before the block, including TRY.
+        for (answer, used, swings) in [
+            (Answer::Success, true, 1),
+            (Answer::SuccessServer, true, u32::from(!client)),
+            (Answer::Consume, true, 0),
+            (Answer::Fail, true, 0),
+            (Answer::TryWithEmptyHand, false, 0),
+        ] {
+            *observer.0.lock().unwrap() = Controls {
+                record_first: true,
+                first_part_answer: Some(answer),
+                ..Controls::default()
+            };
+            let before = game.swings_started;
+            assert_eq!(use_block(game), used);
+            assert_eq!(game.swings_started - before, swings);
+            assert_eq!(game.world.block(0, 64, 0), lever);
+            let first = Step::Phase(UsePhase::ItemBeforeBlock, side);
+            let seen = observer.0.lock().unwrap();
+            assert_eq!(seen.steps, [first, Step::FirstPart]);
+            assert_eq!(seen.use_item_on_packets, usize::from(client));
+        }
+
+        // The broadcast event goes first: its cancel stops the Part.
+        *observer.0.lock().unwrap() = Controls {
+            record_first: true,
+            first_answer: Some(Answer::Success),
+            first_part_answer: Some(Answer::Success),
+            ..Controls::default()
+        };
+        assert!(use_block(game));
+        assert_eq!(game.world.block(0, 64, 0), lever);
+        assert_eq!(
+            observer.0.lock().unwrap().steps,
+            [Step::Phase(UsePhase::ItemBeforeBlock, side)]
+        );
+
+        // A pass goes on: the block's phase and the lever flip.
+        *observer.0.lock().unwrap() = Controls {
+            record_first: true,
+            first_part_answer: Some(Answer::Pass),
+            ..Controls::default()
+        };
+        assert!(use_block(game));
+        assert_ne!(game.world.block(0, 64, 0), lever);
+        assert_eq!(
+            observer.0.lock().unwrap().steps[..3],
+            [
+                Step::Phase(UsePhase::ItemBeforeBlock, side),
+                Step::FirstPart,
+                Step::Phase(UsePhase::Block, side),
+            ]
+        );
+    }
+
     let observer = Observer::default();
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
         "first_observer",
@@ -779,72 +1050,8 @@ fn on_item_use_first_runs_before_the_block_and_ends_the_click() {
     .into();
     sunrise_gameplay_common::game::api_values::install_parts(&mods).unwrap();
     mod_platform::testing::with_mods(mods, || {
-        with_interaction_server_game(|game| {
-            let registry = game.pack.assets.registry;
-            let stone = registry.default_state("minecraft:stone").unwrap();
-            let lever = game
-                .with_props(
-                    registry.default_state("minecraft:lever").unwrap(),
-                    &[("face", "floor")],
-                )
-                .unwrap();
-            game.world.set(0, 63, 0, stone).unwrap();
-            game.world.set(0, 64, 0, lever).unwrap();
-            game.set_test_forced_hit(Some(hit()));
-            let server = LogicalSide::Server;
-
-            // Every non-PASS Part answer stops before the block, including TRY.
-            for (answer, used, swings) in [
-                (Answer::Success, true, 1),
-                (Answer::SuccessServer, true, 1),
-                (Answer::Consume, true, 0),
-                (Answer::Fail, true, 0),
-                (Answer::TryWithEmptyHand, false, 0),
-            ] {
-                *observer.0.lock().unwrap() = Controls {
-                    record_first: true,
-                    first_part_answer: Some(answer),
-                    ..Controls::default()
-                };
-                let before = game.swings_started;
-                assert_eq!(use_block(game), used);
-                assert_eq!(game.swings_started - before, swings);
-                assert_eq!(game.world.block(0, 64, 0), lever);
-                let first = Step::Phase(UsePhase::ItemBeforeBlock, server);
-                assert_eq!(observer.0.lock().unwrap().steps, [first, Step::FirstPart]);
-            }
-
-            // The broadcast event goes first: its cancel stops the Part.
-            *observer.0.lock().unwrap() = Controls {
-                record_first: true,
-                first_answer: Some(Answer::Success),
-                first_part_answer: Some(Answer::Success),
-                ..Controls::default()
-            };
-            assert!(use_block(game));
-            assert_eq!(game.world.block(0, 64, 0), lever);
-            assert_eq!(
-                observer.0.lock().unwrap().steps,
-                [Step::Phase(UsePhase::ItemBeforeBlock, server)]
-            );
-
-            // A pass goes on: the block's phase and the lever flip.
-            *observer.0.lock().unwrap() = Controls {
-                record_first: true,
-                first_part_answer: Some(Answer::Pass),
-                ..Controls::default()
-            };
-            assert!(use_block(game));
-            assert_ne!(game.world.block(0, 64, 0), lever);
-            assert_eq!(
-                observer.0.lock().unwrap().steps[..3],
-                [
-                    Step::Phase(UsePhase::ItemBeforeBlock, server),
-                    Step::FirstPart,
-                    Step::Phase(UsePhase::Block, server),
-                ]
-            );
-        });
+        with_interaction_server_game(|game| run(&observer, game));
+        with_interaction_client_game(|game| run(&observer, game));
     });
 }
 
@@ -868,10 +1075,7 @@ fn phase_events_replace_the_behaviour_before_its_part_on_both_sides() {
         *observer.0.lock().unwrap() = Controls::default();
         assert!(use_block(game));
         assert_ne!(game.world.block(0, 64, 0), lever);
-        let mut expected = vec![Step::Phase(UsePhase::Block, side)];
-        if !client {
-            expected.push(Step::BlockPart);
-        }
+        let expected = vec![Step::Phase(UsePhase::Block, side), Step::BlockPart];
         assert_eq!(observer.0.lock().unwrap().steps, expected);
 
         for answer in [Answer::Success, Answer::SuccessServer, Answer::Consume] {
@@ -931,13 +1135,13 @@ fn phase_events_replace_the_behaviour_before_its_part_on_both_sides() {
         game.world.set(0, 64, 0, stone).unwrap();
         *observer.0.lock().unwrap() = Controls::default();
         let _ = use_block(game);
-        let mut expected = vec![Step::Phase(UsePhase::Block, side)];
+        let mut expected = vec![
+            Step::Phase(UsePhase::Block, side),
+            Step::BlockPart,
+            Step::Phase(UsePhase::ItemAfterBlock, side),
+        ];
         if !client {
-            expected.push(Step::BlockPart);
-        }
-        expected.push(Step::Phase(UsePhase::ItemAfterBlock, side));
-        if !client {
-            expected.push(Step::UseOnPart);
+            expected.push(Step::UseOnPart(LogicalSide::Server));
         }
         assert_eq!(observer.0.lock().unwrap().steps, expected);
 
@@ -958,11 +1162,11 @@ fn phase_events_replace_the_behaviour_before_its_part_on_both_sides() {
                 use_block(game),
                 answer.consumes_action() || answer == Answer::Fail
             );
-            let mut expected = vec![Step::Phase(UsePhase::Block, side)];
-            if !client {
-                expected.push(Step::BlockPart);
-            }
-            expected.push(Step::Phase(UsePhase::ItemAfterBlock, side));
+            let expected = vec![
+                Step::Phase(UsePhase::Block, side),
+                Step::BlockPart,
+                Step::Phase(UsePhase::ItemAfterBlock, side),
+            ];
             assert_eq!(observer.0.lock().unwrap().steps, expected);
             assert_eq!(
                 game.swings_started - swings,
@@ -1031,10 +1235,7 @@ fn phase_events_replace_the_behaviour_before_its_part_on_both_sides() {
         *observer.0.lock().unwrap() = Controls::default();
         assert!(use_block(game));
         assert_ne!(game.world.block(0, 64, 0), campfire);
-        let mut expected = vec![Step::Phase(UsePhase::Block, side)];
-        if !client {
-            expected.push(Step::BlockPart);
-        }
+        let expected = vec![Step::Phase(UsePhase::Block, side), Step::BlockPart];
         assert_eq!(observer.0.lock().unwrap().steps, expected);
 
         game.offhand = Some(ItemStack::new("minecraft:stick", 1));
@@ -1135,7 +1336,6 @@ fn resource_gated_unknown_held_item_forced_use_predicts_pass_without_a_swing() {
 #[ignore = "daily"]
 fn right_click_block_explicit_allow_overrides_sneak_skip_on_both_sides() {
     fn run<'g, S: InteractionSide<'g>>(observer: &Observer, game: &mut S) {
-        let client = S::IS_CLIENT;
         let side = S::LOGICAL_SIDE;
         let registry = game.pack.assets.registry;
         let stone = registry.default_state("minecraft:stone").unwrap();
@@ -1168,14 +1368,11 @@ fn right_click_block_explicit_allow_overrides_sneak_skip_on_both_sides() {
                 };
                 assert_eq!(use_block(game), used);
                 assert_eq!(game.world.block(0, 64, 0) != lever, used);
-                let mut expected = if used {
-                    vec![Step::Phase(UsePhase::Block, side)]
+                let expected = if used {
+                    vec![Step::Phase(UsePhase::Block, side), Step::BlockPart]
                 } else {
                     vec![]
                 };
-                if used && !client {
-                    expected.push(Step::BlockPart);
-                }
                 assert_eq!(observer.0.lock().unwrap().steps, expected);
             }
         }
@@ -1291,7 +1488,7 @@ pub(crate) fn setup_interaction_guest(
             seed: 0,
             max_players: 2,
             integrated: true,
-            levels: game.server.level_shapes,
+            levels: game.server.level_shapes.clone(),
             level_seeds: game.server.levels.0.runtime.seeds(),
         },
     )

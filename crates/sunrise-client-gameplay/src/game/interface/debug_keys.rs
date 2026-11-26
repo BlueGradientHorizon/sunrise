@@ -500,14 +500,55 @@ impl crate::game::ClientGame<'_> {
                 )
             });
         d.priority(format!(
-            "{} fps{generated} T: {}{present} @{refresh}Hz",
+            "{} fps{generated} T: {}{present} @{refresh}Hz{}",
             self.client.fps.round() as i32,
             if limit == 260 {
                 "inf".into()
             } else {
                 limit.to_string()
             },
+            self.debug_fps_suffix(),
         ));
+    }
+
+    /// The mods' texts for the frame rate line, each after a space, in mod load order (the order
+    /// `set_debug_fps_text` keeps them in); a disabled mod's is left out. Written straight into
+    /// the line, with nothing collected first.
+    fn debug_fps_suffix(&self) -> impl std::fmt::Display + '_ {
+        struct Suffix<'a>(std::cell::Ref<'a, Vec<(&'static str, String)>>);
+        impl std::fmt::Display for Suffix<'_> {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                for (id, text) in self.0.iter() {
+                    if mod_api::__private::mod_index(id)
+                        .is_some_and(mod_api::__private::mod_index_on)
+                    {
+                        write!(f, " {text}")?;
+                    }
+                }
+                Ok(())
+            }
+        }
+        Suffix(self.client.debug_fps_texts.borrow())
+    }
+
+    /// `DebugEntryFps.display` with a mod's own text after vanilla's, as Dynamic FPS adds its
+    /// state there: `text` replaces what the calling mod set before, and `None` or an empty text
+    /// takes it away. Line breaks become spaces, as the line is one line. The texts are kept in
+    /// mod load order, so the line is drawn without sorting. False, setting nothing, when no
+    /// mod is calling.
+    pub(in crate::game) fn set_debug_fps_text(&self, text: Option<&str>) -> bool {
+        let Some(id) = mod_api::content::crash::current_native_mod() else {
+            return false;
+        };
+        let mut texts = self.client.debug_fps_texts.borrow_mut();
+        texts.retain(|(owner, _)| *owner != id);
+        if let Some(text) = text.filter(|text| !text.is_empty()) {
+            let index = mod_api::__private::mod_index(id);
+            let at =
+                texts.partition_point(|(owner, _)| mod_api::__private::mod_index(owner) <= index);
+            texts.insert(at, (id, text.replace(['\n', '\r'], " ")));
+        }
+        true
     }
     /// `DebugEntrySimplePerformanceImpactors`.
     pub(in crate::game::client_side) fn debug_performance_lines(
@@ -522,7 +563,7 @@ impl crate::game::ClientGame<'_> {
             } else {
                 ""
             },
-            match s.clouds.as_str() {
+            match self.effective_clouds() {
                 "false" => "",
                 "fast" => "fast-clouds ",
                 _ => "fancy-clouds ",
@@ -912,12 +953,24 @@ impl crate::game::ClientGame<'_> {
                 let dir = sunrise_level::logging::player_dir()
                     .join("screenshots")
                     .join("debug");
-                match self
+                let atlas = self
                     .client
                     .gui
                     .atlas
-                    .dump_contents(&dir, "minecraft_textures_atlas_gui")
+                    .dump_contents(&dir, "minecraft_textures_atlas_gui");
+                // Each client mod's dynamic texture is a GPU texture of its own
+                // (`DynamicTexture.dumpContents`), read back beside the atlas.
+                if let Some(renderer) = &self.client.renderer.0
+                    && let Err(e) = renderer.hud.dynamic().dump_contents(
+                        &renderer.device,
+                        &renderer.queue,
+                        self.client.dynamic_textures.live(),
+                        &dir,
+                    )
                 {
+                    log::error!("Failed to dump mod dynamic textures: {e}");
+                }
+                match atlas {
                     Ok(_) => {
                         log::info!("Dumped dynamic textures to {}", dir.display());
                         let link = Text::styled(
@@ -1567,6 +1620,59 @@ use sunrise_gameplay_common::game::pick_ray::PickRayGameExt1 as _;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A mod's text follows F3's frame rate line, several in mod load order; `None` takes it
+    /// away, and a call outside a mod sets nothing.
+    #[test]
+    #[ignore = "daily"]
+    fn mods_add_their_text_to_the_frame_rate_line() {
+        use mod_api::{Hooks, ModEntry};
+        use sunrise_level::crash::{ModCall, enter_native_mod};
+        struct Quiet;
+        #[mod_api::__subscriptions]
+        impl Hooks for Quiet {}
+        let as_mod = |id: &'static str, f: &mut dyn FnMut()| {
+            let _call = enter_native_mod(ModCall {
+                id,
+                hook: "client_tick_post",
+                part: None,
+            });
+            f()
+        };
+        let mods = vec![
+            ModEntry::new("first", Box::new(Quiet)),
+            ModEntry::new("second", Box::new(Quiet)),
+        ];
+        mod_platform::testing::with_mods(mods.into(), || {
+            crate::game::native_entity_refs::tests::with_client_game(|game| {
+                let line = |game: &crate::game::ClientGame<'_>| {
+                    let mut d = debug_overlay::Displayer::default();
+                    game.debug_fps_line(&mut d);
+                    let (left, _) = d.columns(&[]);
+                    left.into_iter().next().unwrap()
+                };
+                let vanilla = line(game);
+                assert!(!game.set_debug_fps_text(Some("outside")));
+                assert_eq!(line(game), vanilla);
+                as_mod("second", &mut || {
+                    assert!(game.set_debug_fps_text(Some("§c(2 fps)\nidle")));
+                });
+                as_mod("first", &mut || {
+                    assert!(game.set_debug_fps_text(Some("one")));
+                });
+                assert_eq!(line(game), format!("{vanilla} one §c(2 fps) idle"));
+                as_mod("first", &mut || {
+                    assert!(game.set_debug_fps_text(None));
+                });
+                assert_eq!(line(game), format!("{vanilla} §c(2 fps) idle"));
+                // An empty text takes the mod's text away too, as `None` does.
+                as_mod("second", &mut || {
+                    assert!(game.set_debug_fps_text(Some("")));
+                });
+                assert_eq!(line(game), vanilla);
+            });
+        });
+    }
 
     fn block(x: i32) -> QueryReply {
         QueryReply::Block {

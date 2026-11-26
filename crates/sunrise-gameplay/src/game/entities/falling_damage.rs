@@ -50,8 +50,9 @@ impl crate::game::ServerGame<'_> {
                     if self.common.mobs[index].removed {
                         continue;
                     }
+                    let mob_id = self.common.mobs[index].id;
                     let plan = self.prepare_knockback_credit(
-                        self.common.mobs[index].id as i32,
+                        mob_id as i32,
                         None,
                         self.server.combat.0.attack(),
                     );

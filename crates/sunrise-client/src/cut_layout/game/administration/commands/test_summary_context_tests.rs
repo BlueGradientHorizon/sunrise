@@ -5,7 +5,7 @@ use sunrise_core::geometry::Vec3;
 use sunrise_game_data::text::Text;
 use sunrise_gameplay::game::commands::execute::Source;
 use sunrise_gameplay::game::game_tests::Out;
-use sunrise_gameplay::game::game_tests::{Grid, Info, RunnerOptions, summary_line};
+use sunrise_gameplay::game::game_tests::{Grid, Info, RunnerOptions, SummaryKind, summary_line};
 use sunrise_gameplay_common::game::Dim;
 use sunrise_gameplay_common::game::commands_common::Target;
 use sunrise_protocol::packets::{configuration::ClientInformation, play::Clientbound};
@@ -128,6 +128,7 @@ fn added_issuer_actor_missing_guest_and_restoration_controls() {
         .as_ref()
         .unwrap()
         .summary_source
+        .clone()
         .unwrap();
     assert_eq!(context.source.entity, Some(Target::Mob(actor)));
     assert_eq!(context.recipient, Some(Target::Guest(2)));
@@ -164,6 +165,7 @@ fn added_issuer_actor_missing_guest_and_restoration_controls() {
             .as_ref()
             .unwrap()
             .summary_source
+            .as_ref()
             .unwrap()
             .source
             .entity,
@@ -183,12 +185,16 @@ fn added_issuer_actor_missing_guest_and_restoration_controls() {
         silent: true,
         ..game.player_source()
     };
-    game.server.command_source = Some(outer);
+    game.server.command_source = Some(outer.clone());
     game.server.chat_capture = Some(Vec::new());
     let before = (game.server.exec.0.commands, game.server.exec.0.callback);
     let marker = Text::literal("issuer-only-context-control");
     let component = component_nbt(&marker.component());
-    game.test_source_output(context, marker.clone(), false);
+    game.test_source_output(
+        &context,
+        SummaryKind::Success { broadcast: false },
+        marker.clone(),
+    );
     for g in &game.server.lan.as_ref().unwrap().hub.guests {
         g.sender.flush();
     }
@@ -202,7 +208,7 @@ fn added_issuer_actor_missing_guest_and_restoration_controls() {
         Vec3::new(1.5, 200.0, 1.5)
     );
     assert_eq!(
-        format!("{:?}", game.server.command_source.unwrap()),
+        format!("{:?}", game.server.command_source.as_ref().unwrap()),
         format!("{outer:?}")
     );
     assert_eq!(
@@ -217,7 +223,7 @@ fn added_issuer_actor_missing_guest_and_restoration_controls() {
         .hub
         .guests
         .retain(|g| g.conn != 2);
-    game.test_source_output(context, marker, true);
+    game.test_source_output(&context, SummaryKind::Success { broadcast: true }, marker);
     game.server
         .game_tests
         .0
@@ -232,7 +238,7 @@ fn added_issuer_actor_missing_guest_and_restoration_controls() {
     assert_eq!(game.dim, Dim::Nether);
     assert_eq!(game.server.lan_acting, None);
     assert_eq!(
-        format!("{:?}", game.server.command_source.unwrap()),
+        format!("{:?}", game.server.command_source.as_ref().unwrap()),
         format!("{outer:?}")
     );
     assert_eq!(
@@ -273,7 +279,7 @@ fn added_issuer_actor_missing_guest_and_restoration_controls() {
             .is_none()
     );
     assert!(matches!(
-        summary_line(None, Text::literal("GUI path"), true),
+        summary_line(None, SummaryKind::Success { broadcast: true }, Text::literal("GUI path")),
         Out::Console { .. }
     ));
 }

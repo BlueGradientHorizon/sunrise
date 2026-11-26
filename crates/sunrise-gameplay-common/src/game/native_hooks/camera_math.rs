@@ -1,6 +1,3 @@
-use super::{SHAKE_MAX_DEGREES, SHAKE_MAX_OFFSET};
-use mod_api::game::Shake;
-
 /// The pose a native mod asks for the first-person hand, each out-of-range
 /// or non-finite component replaced by its identity.
 pub fn hand_pose_matrix(values: [f32; 7]) -> glam::Mat4 {
@@ -20,34 +17,4 @@ pub fn hand_pose_matrix(values: [f32; 7]) -> glam::Mat4 {
         * glam::Mat4::from_rotation_y(valid(yaw, -3600.0, 3600.0, 0.0).to_radians())
         * glam::Mat4::from_rotation_z(valid(roll, -3600.0, 3600.0, 0.0).to_radians())
         * glam::Mat4::from_scale(glam::Vec3::splat(valid(scale, 0.01, 100.0, 1.0)))
-}
-
-/// `shake` scaled by `scale` (Distortion Effects) and bounded on each axis;
-/// a value that isn't finite counts as none.
-pub fn bounded_shake(shake: Shake, scale: f32) -> Shake {
-    let scale = if scale.is_finite() {
-        scale.clamp(0.0, 1.0)
-    } else {
-        1.0
-    };
-    let turn = |v: f32| {
-        if v.is_finite() {
-            (v * scale).clamp(-SHAKE_MAX_DEGREES, SHAKE_MAX_DEGREES)
-        } else {
-            0.0
-        }
-    };
-    let shift = |v: f32| {
-        if v.is_finite() {
-            (v * scale).clamp(-SHAKE_MAX_OFFSET, SHAKE_MAX_OFFSET)
-        } else {
-            0.0
-        }
-    };
-    Shake {
-        pitch: turn(shake.pitch),
-        yaw: turn(shake.yaw),
-        roll: turn(shake.roll),
-        offset: shake.offset.map(shift),
-    }
 }

@@ -204,7 +204,12 @@ mod machine_recipe_placement_tests {
                     .count,
                 2
             );
-            game.lan_crafting_closed(2, Some(0));
+            game.lan_guest_packet(
+                2,
+                Serverbound::ContainerClose(sunrise_protocol::packets::play::ContainerClose {
+                    container: 0,
+                }),
+            );
             assert!(game.run_command("setblock 10 200 8 crafting_table"));
             let window = open(game, [10, 200, 8]);
             place(game, window, planks);
@@ -534,6 +539,8 @@ mod recipe_check_tests {
                 links: Vec::new(),
                 asks_still_valid: false,
                 opening_item: None,
+                opener_block: None,
+                removed: false,
                 slot_changed_seen: None,
             });
             game.server.lan.as_mut().unwrap().hub.guests.push(guest);

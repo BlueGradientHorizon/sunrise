@@ -102,19 +102,19 @@ pub(crate) mod tests {
         let check_host = |game: &dyn mod_api::Tags, keep: usize| {
             let probe = key("tag_reload:probe");
             assert_eq!(
-                game.items(probe),
+                mod_api::Tags::items(game, probe.typed()),
                 resolved(&members[0].1[..keep], mod_api::__private::item_key)
             );
             assert_eq!(
-                game.blocks(probe),
+                mod_api::Tags::blocks(game, probe.typed()),
                 resolved(&members[1].1[..keep], mod_api::__private::block_key)
             );
             assert_eq!(
-                game.fluids(probe),
+                mod_api::Tags::fluids(game, probe.typed()),
                 resolved(&members[2].1[..keep], mod_api::__private::fluid_key)
             );
             assert_eq!(
-                game.items(key("tag_reload:old")),
+                mod_api::Tags::items(game, key("tag_reload:old").typed()),
                 if keep == 0 {
                     TagMembers::Missing
                 } else {

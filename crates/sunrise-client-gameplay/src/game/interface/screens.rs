@@ -634,7 +634,7 @@ impl crate::game::ClientGame<'_> {
             });
         if let Some(id) = hit {
             self.client.pause_focus = Some(id);
-            self.client.audio.0.play_button_click();
+            self.play_audio_button_click();
             self.execute_pause_action(id)?;
             return Ok(true);
         }
@@ -761,7 +761,7 @@ impl crate::game::ClientGame<'_> {
             }
             KeyCode::Enter | KeyCode::NumpadEnter | KeyCode::Space => {
                 if let Some(hit) = self.client.pause_focus.filter(|id| active_ids.contains(id)) {
-                    self.client.audio.0.play_button_click();
+                    self.play_audio_button_click();
                     self.execute_pause_action(hit)?;
                     Ok(true)
                 } else {
@@ -843,10 +843,7 @@ impl crate::game::ClientGame<'_> {
         }
         let score = Text::translate(
             "deathScreen.score.value",
-            &[Text::colored(
-                self.common.experience.total.to_string(),
-                text::YELLOW,
-            )],
+            &[Text::colored(self.player_score.to_string(), text::YELLOW)],
         );
         let sw = atlas.font.width_text(&score);
         batch.text_styled(
@@ -972,7 +969,7 @@ impl crate::game::ClientGame<'_> {
         // handleExitToTitleScreen: outside hardcore, Title Screen asks first.
         if hit == Some(1) && !self.common.level.hardcore {
             self.client.chat_ui.death_confirm = Some(std::time::Instant::now());
-            self.client.audio.0.play_button_click();
+            self.play_audio_button_click();
             return Ok(true);
         }
         self.death_action(hit)?;
@@ -993,7 +990,7 @@ impl crate::game::ClientGame<'_> {
             }
             return match key {
                 KeyCode::Escape => {
-                    self.client.audio.0.play_button_click();
+                    self.play_audio_button_click();
                     self.death_confirm_answer(false)?;
                     Ok(true)
                 }
@@ -1022,7 +1019,7 @@ impl crate::game::ClientGame<'_> {
                 }
                 KeyCode::Enter | KeyCode::NumpadEnter | KeyCode::Space => {
                     let yes = self.client.death_focus != Some(1);
-                    self.client.audio.0.play_button_click();
+                    self.play_audio_button_click();
                     self.death_confirm_answer(yes)?;
                     Ok(true)
                 }
@@ -1057,7 +1054,7 @@ impl crate::game::ClientGame<'_> {
                 let Some(hit) = self.client.death_focus else {
                     return Ok(false);
                 };
-                self.client.audio.0.play_button_click();
+                self.play_audio_button_click();
                 if hit == 1 && !self.common.level.hardcore {
                     self.client.chat_ui.death_confirm = Some(std::time::Instant::now());
                     self.client.death_focus = Some(0);
@@ -1074,7 +1071,7 @@ impl crate::game::ClientGame<'_> {
     pub(in crate::game::client_side) fn death_confirm_answer(&mut self, yes: bool) -> Result<()> {
         self.client.chat_ui.death_confirm = None;
         if yes {
-            self.client.audio.0.play_button_click();
+            self.play_audio_button_click();
             self.close_world()
         } else {
             self.death_action(Some(0))
@@ -1088,7 +1085,7 @@ impl crate::game::ClientGame<'_> {
             _ => {}
         }
         if hit.is_some() {
-            self.client.audio.0.play_button_click();
+            self.play_audio_button_click();
         }
         Ok(())
     }

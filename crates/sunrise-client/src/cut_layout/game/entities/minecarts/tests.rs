@@ -671,3 +671,15 @@ fn an_old_behaviour_cart_writes_is_on_rails_each_tick() {
         assert!(!off.on_rails);
     });
 }
+
+/// A special model drawn under a mod's packed vertex light gets back the level's light byte
+/// the block entity renderer packs it from.
+#[test]
+fn special_light_inverts_the_block_entity_renderers_vertex_light() {
+    use sunrise_client_gameplay::game::client_side::special_light;
+
+    for packed in 0..=u8::MAX {
+        let light = sunrise_client::block_entity_render::vertex_light(packed);
+        assert_eq!(special_light(light), packed);
+    }
+}

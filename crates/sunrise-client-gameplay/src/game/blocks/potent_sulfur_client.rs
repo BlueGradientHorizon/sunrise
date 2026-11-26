@@ -59,12 +59,9 @@ impl ClientGame<'_> {
                         // guests play their own.
                         let seed = self.client.particles.0.level_random().next_long();
                         if self.client.remote.is_some() {
-                            self.client
-                                .audio
-                                .0
-                                .play_seeded(sound, Some(at), 1.0, 1.0, seed);
+                            self.play_audio_seeded(sound, Some(at), 1.0, 1.0, seed);
                         } else {
-                            self.client.audio.0.play_unshared(sound, Some(at), 1.0, 1.0);
+                            self.play_audio_unshared(sound, Some(at), 1.0, 1.0);
                         }
                     }
                 }

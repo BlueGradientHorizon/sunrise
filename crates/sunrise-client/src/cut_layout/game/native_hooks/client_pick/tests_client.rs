@@ -33,8 +33,7 @@ fn frame_pick_is_shared_ordered_and_refuses_stale_or_invalid_output() {
                 .set_read_timeout(Some(std::time::Duration::from_secs(5)))
                 .unwrap();
             finish_login(game, &mut server);
-            game.native_lifecycle
-                .begin_open(mod_api::Authority::RemoteClient);
+            game.native_lifecycle.begin_open(None);
             game.client.title.0 = None;
             game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 1.0, 0.5)).unwrap());
             game.yaw = -90.0;
@@ -139,8 +138,7 @@ fn frame_pick_is_shared_ordered_and_refuses_stale_or_invalid_output() {
             assert_eq!(game.crosshair_target(), Some(entity_hit));
             assert!(game.entity_targeted());
             assert_eq!(game.mob_hit().map(|(i, _, _)| game.mobs[i].id), Some(31));
-            game.native_lifecycle
-                .begin_open(mod_api::Authority::RemoteClient);
+            game.native_lifecycle.begin_open(None);
             game.refresh_client_pick(1.0);
             assert!(
                 game.crosshair_target().is_none(),
@@ -185,8 +183,7 @@ fn frame_pick_without_listeners_keeps_the_vanilla_result() {
         with_client_game(|game| {
             let mut server = sunrise_protocol::connection::Connection::local(logged_client(game));
             finish_login(game, &mut server);
-            game.native_lifecycle
-                .begin_open(mod_api::Authority::RemoteClient);
+            game.native_lifecycle.begin_open(None);
             game.client.title.0 = None;
             game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 1.0, 0.5)).unwrap());
             game.yaw = -90.0;
@@ -331,8 +328,7 @@ pub(crate) fn with_pick_game(
             .set_read_timeout(Some(std::time::Duration::from_secs(5)))
             .unwrap();
         finish_login(game, &mut server);
-        game.native_lifecycle
-            .begin_open(mod_api::Authority::RemoteClient);
+        game.native_lifecycle.begin_open(None);
         game.client.title.0 = None;
         game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 1.0, 0.5)).unwrap());
         game.previous_position = Vec3::new(0.5, 1.0, 0.5);

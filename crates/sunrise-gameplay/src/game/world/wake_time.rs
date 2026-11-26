@@ -3,7 +3,7 @@
 //! clock time markers both read.
 use super::Dim;
 use mod_api::{ClockAdjustment, Identifier, LevelRef};
-use sunrise_gameplay::world_clock::{OVERWORLD_CLOCK, TimeMarker};
+use sunrise_gameplay::world_clock::TimeMarker;
 
 /// Vanilla's wake-up time marker, where sleeping through the night moves the clock
 /// (`ClockTimeMarkers.WAKE_UP_FROM_SLEEP`).
@@ -26,11 +26,8 @@ impl crate::game::ServerGame<'_> {
     /// The time marker `id` of `clock`. The timelines' markers belong to the Overworld's clock:
     /// no other clock defines one today, as `/time set <marker>` reads them.
     fn clock_marker(&self, clock: &str, id: &Identifier) -> Option<TimeMarker> {
-        if clock != OVERWORLD_CLOCK {
-            return None;
-        }
         let id = format!("{}:{}", id.namespace(), id.path());
-        self.common.ui.markers.get(&id).copied()
+        self.common.ui.markers.get(&(clock.to_owned(), id)).copied()
     }
 
     /// The host read `level_clock_marker_time`: when the level's own clock next reaches `marker`
@@ -49,9 +46,8 @@ impl crate::game::ServerGame<'_> {
         self.clock_marker(&clock, marker)?.resolve(now)
     }
 
-    /// The level's clock, its time now and where sleeping moves it, after the mods; None when a
-    /// mod canceled the move, or when no time fits (the clock is at the end of its range).
-    pub fn sleep_finished_move(&mut self) -> Option<(String, i64, i64)> {
+    /// The level's clock and wake target after the mod hook, if the move is allowed and representable.
+    pub fn sleep_finished_move(&mut self) -> Option<(String, i64)> {
         let clock = self.common.level_clock_name(self.common.dim);
         let current = self.common.command_clock_time(&clock);
         let morning = vanilla_morning(current);
@@ -76,7 +72,7 @@ impl crate::game::ServerGame<'_> {
                 morning
             }
         };
-        target.map(|target| (clock, current, target))
+        target.map(|target| (clock, target))
     }
 }
 
@@ -104,13 +100,16 @@ fn wake_time(
 
 #[cfg(test)]
 mod tests {
-    use sunrise_gameplay_common::game::server_side::wake_time::tests::NOW;
-
-    use sunrise_gameplay_common::game::server_side::wake_time::tests::marker;
 
     use super::{Refused, WAKE_UP_FROM_SLEEP, vanilla_morning, wake_time};
     use mod_api::{ClockAdjustment, Identifier};
     use sunrise_gameplay::world_clock::TimeMarker;
+
+    const NOW: i64 = 13_000;
+
+    fn marker(id: &str) -> ClockAdjustment {
+        ClockAdjustment::Marker(Identifier::parse(id).unwrap())
+    }
 
     #[cfg(test)]
     /// The Overworld clock's markers as vanilla ships the two used here.

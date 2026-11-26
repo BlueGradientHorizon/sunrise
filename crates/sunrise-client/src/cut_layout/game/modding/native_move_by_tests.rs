@@ -3,6 +3,7 @@
 use super::native_entity_refs::tests::{collect_game_entities_in, with_game};
 use mod_api::MoveCause;
 use sunrise_core::geometry::Vec3;
+use sunrise_gameplay_common::game::test_fixtures::fixture_resident_column;
 use sunrise_sim::entities::{ArmorStand, ItemFrame, Painting};
 
 const STAND: u32 = 910;
@@ -56,7 +57,8 @@ fn with_scene(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
 #[ignore = "daily"]
 fn an_area_query_lists_the_frames_and_paintings_in_the_box() {
     with_scene(|game| {
-        let level = game.native_list_levels()[0];
+        fixture_resident_column(&mut game.world, (0, 0));
+        let level = game.level("minecraft:overworld").unwrap();
         let frame = game.entity(FRAME).unwrap();
         let painting = game.entity(PAINTING).unwrap();
         let around = |game: &sunrise_gameplay::game::ServerGame<'_>, min, max| {

@@ -302,10 +302,7 @@ impl ClientGame<'_> {
                 {
                     m.focused = Some(i);
                 }
-                self.client
-                    .audio
-                    .0
-                    .play("minecraft:ui.button.click", None, 0.25, 1.0);
+                self.play_audio("minecraft:ui.button.click", None, 0.25, 1.0);
                 self.try_move_items(index);
                 return true;
             }
@@ -368,10 +365,7 @@ impl ClientGame<'_> {
         else {
             return false;
         };
-        self.client
-            .audio
-            .0
-            .play("minecraft:ui.button.click", None, 0.25, 1.0);
+        self.play_audio("minecraft:ui.button.click", None, 0.25, 1.0);
         self.try_move_items(index);
         true
     }

@@ -17,10 +17,9 @@ it to `None` leaves nothing. Grid consumption (including repeated quick moves),
 the crafter, furnace fuel, and brewing fuel/ingredients use the same stack-aware resolver. Book and banner
 recipe copies remain recipe-owned. `Host::item_crafting_remainder` reads data only.
 The resolver checks the prepared item subscription table before converting or
-cloning stack components. Invalid returned stacks are refused at `ItemBoundary`,
+lending the input stack. Read its components with `get`, or use `project` to keep an owned copy. Invalid returned stacks are refused at `ItemBoundary`,
 retaining the initial data remainder; native panics retain normal Part attribution."#]
     #[hook(
-        target = "sunrise_gameplay::game::native_hooks::crafting_remainder::ServerGame<'_>::native_crafting_remainder",
         receiver = "read",
         dispatch = "flat",
         side = "server",
@@ -29,7 +28,7 @@ retaining the initial data remainder; native panics retain normal Part attributi
         scope = "item",
         key = "stack",
         neoforge = "IItemExtension.getCraftingRemainder(ItemStack)",
-        version = 2
+        version = 3
     )]
-    fn crafting_remainder(stack: &ItemStack, remainder: &mut Option<ItemStack>);
+    fn crafting_remainder(stack: mod_api::ItemStackView<'_>, remainder: &mut Option<ItemStack>);
 }

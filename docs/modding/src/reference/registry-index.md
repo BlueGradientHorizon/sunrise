@@ -12,7 +12,7 @@ Its source files and fields are specified in the registry's
 [`docs/registry-v2.md`](https://github.com/sunrise-org/sunrise-mods/blob/main/docs/registry-v2.md).
 
 The old index lists content and native mods (`.smod`), modpacks (`.spack`), resource packs, data packs,
-shaders-folder packs and Sunrise shader packs (`.sshader`). Reviewed versions are pinned by SHA-256;
+and shaders-folder packs. Reviewed versions are pinned by SHA-256;
 the format also supports unreviewed Nightly source listings. The formats are defined by
 `sunrise_mod_package::index` and `sunrise_mod_package::modpack`.
 
@@ -53,7 +53,7 @@ takes precedence; this file fills fields the entry leaves out.
 | `nightly_build` | Optional current game Nightly: `{ commit, date }`, separate from each project's `nightly` source. `date` is `YYYY-MM-DD` (UTC). |
 | `unjudged` | Optional top-level list of builds skipped during [fit checks](#fit-on-stable-and-nightly): `{ build, reason }`, where `build` is a stable tag or `nightly`. |
 | `collections` | Optional top-level list of [collections](#collections). Each is a page and a list of already listed mod ids, with no file or version of its own. |
-| `kind` | `mod` (content), `native-mod`, `modpack`, `resourcepack`, `shader` (Sunrise `.sshader`), `shaderpack` (a `shaders/`-folder zip), `datapack` (a data-pack zip). Other kinds (worlds, themes) may come without a new schema: a reader keeps a kind it doesn't know and doesn't offer it. |
+| `kind` | `mod` (content), `native-mod`, `modpack`, `resourcepack`, `shaderpack` (a `shaders/`-folder zip), `datapack` (a data-pack zip). Other kinds (worlds, themes) may come without a new schema: a reader keeps a kind it doesn't know and doesn't offer it. The retired kind `shader` (Sunrise's `.sshader` format) is the exception: a reader leaves such a project out with a note in `left_out`, and the registry refuses a submission of it like any kind it doesn't take. |
 | `summary`, `description` | Required summary of at most 160 characters for lists. Markdown for the project's page: required for a project with versions (50–10,000 characters after trimming), optional for a Nightly-only project. |
 | `owners` | GitHub logins allowed to publish updates. |
 | `license`, `source` | An SPDX expression and an `https://` address of the source code: required for a project with versions. A Nightly-only project can omit both; in that case the publisher uses the Nightly repository's URL as `source`. |
@@ -74,7 +74,7 @@ takes precedence; this file fills fields the entry leaves out.
 | `verdicts` | Optional version-level [fit decisions](#fit-on-stable-and-nightly), keyed by stable release tag or `nightly`. Only content and native mods with `sunrise` get these decisions. |
 | `dependencies` | A mod or native mod's [manifest dependencies](../concepts/dependencies.md): `{ id, version, optional, side }`, sorted by `id`. `version` is a SemVer range rendered as text. `optional` is omitted unless true; `side` is omitted unless limited to `client` or `server`. The publisher omits this field when a mod has no dependencies. An explicit `[]` asserts that the manifest has none. Never add this field to `mods/<id>.toml`. |
 | `requires` | A modpack's exact pins: `{ id, version, sha256 }`, each a version in this index with that hash. These are not mod dependencies. |
-| `file` | A plain name with the kind's extension (`.smod`, `.spack`, `.zip`, `.sshader`), an `https://` URL (the registry's release `https://github.com/sunrise-org/sunrise-mods/releases/download/<id>-<version>/<name>`, or an asset of the project's own repository, `https://github.com/<owner>/<repo>/releases/download/<tag>/<name>`: the launcher accepts exactly these shapes), the size (at most 64 MiB), the lowercase hex SHA-256, and the `.minisig` text when the project has a key. |
+| `file` | A plain name with the kind's extension (`.smod`, `.spack`, `.zip`), an `https://` URL (the registry's release `https://github.com/sunrise-org/sunrise-mods/releases/download/<id>-<version>/<name>`, or an asset of the project's own repository, `https://github.com/<owner>/<repo>/releases/download/<tag>/<name>`: the launcher accepts exactly these shapes), the size (at most 64 MiB), the lowercase hex SHA-256, and the `.minisig` text when the project has a key. |
 | `revoked` | Files taken down: one file by `sha256`, or every version of `id` without it. The launcher refuses to install them and turns installed copies off with the reason. A takedown of every version also stops listing the project's Nightly source; one by `sha256` leaves it. |
 
 Readers ignore fields they don't know, so an optional field can be added to schema 1. Renaming or removing a field, or
@@ -211,8 +211,7 @@ per-version native fit decisions, and an expected plan or refusal details.
 3. What the file says matches the entry: a mod's `sunrise-mod.toml` (id, version, API, side, capabilities, and
    dependencies when listed) and its content's fence ([making a content mod](../how-to/content-mods.md#content-mods-api-02)); for code, the same manifest's `[native]`
    (game, the exact Sunrise and horizon-mixins revisions) and checked root Cargo project; a modpack's manifest (id, version, format, game,
-   mods); a resource pack's `pack.mcmeta`; a shader pack's `sunrise_shader_api::check` and manifest (id, version,
-   shader API).
+   mods); a resource pack's `pack.mcmeta`; a shader pack's `shaders/` folder.
 4. A kind this build can't install is refused with "this Sunrise can't install a … yet".
 
 An absent `dependencies` field makes no claim about the package's dependencies: an older schema 1 index may omit
@@ -221,28 +220,9 @@ it. The hash still pins the file; the game loader checks the manifest. When the 
 
 ## Collections
 
-A collection is a named selection of existing `mod` and `native-mod` projects. It has no file or version of its own.
-Unlike a `.spack`, it pins nothing: each selected mod is installed, updated and removed on its own. A collection and
-project may display the same name, but they cannot share an id, and the registry's reserved ids aren't available.
-
-The generated `collections` list takes each page from `collections/<id>.toml`: `id`, `name`, `summary`, optional
-Markdown `description`, GitHub `owners`, `icon` as the published HTTPS address, and ordered `members`. Each member
-has `id` and may set `default = false` to start unticked. The registry uses the same title, summary and PNG icon
-rules as a project. It requires at least two distinct listed mods and at least one selected by default; the upper
-bound is `sunrise_mod_package::index::MAX_COLLECTION_MEMBERS`. A collection cannot name another collection as a
-member. Checkout member rows reject unknown keys, so a typo in `default` does not change the selection silently.
-An older index without `collections` has no collections. Index readers ignore unknown fields and skip malformed
-collection rows with a reason, without discarding the other collections or projects.
-
-An installer submits all selected members to [install planning](#planning-installs-and-removals) together. Required
-dependencies are selected even if not on the collection's list; a member needed by another selected mod stays
-selected and identifies the mod that requires it. An unfit member is shown with its reason. A collection does not
-record where a mod was installed from.
-
-Registry CI refuses unlisted members, including the removal of a project that remains a member. Review reports
-which collections list a project with a new takedown. An edit to membership alone is routine when the pull request's
-author owns the collection and every added or removed project. Review matches the author's GitHub login against
-the base checkout's `owners`, as it does for project updates.
+A collection is one publisher's set of listed mods under one name and icon. How to make one:
+[Group your mods into a collection](../how-to/collections.md). Its files are described in the registry's
+[reference](https://github.com/sunrise-org/sunrise-mods/blob/main/docs/registry-v2.md).
 
 ## `.spack`
 
@@ -297,7 +277,7 @@ row while the project entry stays).
 
 ```toml
 id = "coords_hud"
-kind = "mod"                  # mod, native-mod, modpack, resourcepack, shader, shaderpack, datapack
+kind = "mod"                  # mod, native-mod, modpack, resourcepack, shaderpack, datapack
 name = "Coordinates HUD"
 summary = "Shows where you are."                          # at most 160 characters
 description = "Markdown for the project's page, 50 to 10,000 characters."
@@ -347,7 +327,7 @@ A `[[versions]]` row with `sunrise` must set `file` to the author's release asse
 `https://github.com/you/example/releases/download/v0.1.0/example-0.1.0.smod`. Use the project's own
 GitHub repository (`source`, or `repo` if `source` is omitted), one plain tag segment, and the exact
 `<id>-<version>.<extension>` asset name: the row's `version`, a full SemVer, and the extension of
-the project's kind (`.smod`, `.spack`, `.zip`, `.sshader`). The row's version must agree with the package's
+the project's kind (`.smod`, `.spack`, `.zip`). The row's version must agree with the package's
 own where the format carries one. A bare filename is refused
 on a stable row. The URL is immutable after publication, just like the source pin and digest.
 The registry checks the bytes from `files/<sha256>`; the generated index still points to the package
@@ -383,7 +363,7 @@ The descriptor `<id>-<version>+<release>.binaries.json` names `id`, `version`, `
 and its URL is beside the descriptor in a release of the project's GitHub repository. `source` names that
 repository; if `source` is omitted, `repo` supplies it. The archive contains exactly the library and
 `identity.json`, both regular root files. `identity.json` has `target`, `file` (the library
-name), `sha256` (the library digest) and `identity` (`<build> <id> <version> <rust> unwind`). The same
+name), `sha256` (the library digest) and `identity` (the library's build identity, whose first four fields are `<build> <id> <version> <rust>` and whose last is `unwind`; see the native build's `records`). The same
 project key signs the source, every archive, and the descriptor. The descriptor binds each archive's
 bytes to the declared project, mod version and SDK host. Validation checks every host the SDK ships,
 without running or rebuilding any library. A binary for a package with a known `breaks` verdict is
@@ -439,42 +419,3 @@ the comparison. A different pin in the mod's own lockfile does not trigger a war
 To check a GitHub-attested release package on its own, use
 [`cargo sunrise-mod check <file.smod>`](sdk/05-commands.md#check-a-released-package).
 The command validates package metadata and contents without running the mod's code.
-
-## Native dependency tools
-
-Run these commands in your native mod’s project folder.
-
-| Command | Behaviour |
-| --- | --- |
-| `cargo sunrise-mod internals sync` | Checks a trusted native mod's library against an isolated copy of its pinned game source with the Rust version named by its signed SDK. Replaces top-level `internals` with compiler-discovered paths, kinds and hashes, including uses inside globs and macros. Removes unused declarations, preserves retained entries and prints additions/removals. Skips discovery when the mod neither depends on `sunrise-internals` nor declares `internals`. Never runs automatically on build. |
-| `cargo sunrise-mod internals add <path>…` | Adds each declared internal and its tool-written hash to top-level `internals` in your mod's `sunrise-mod.toml`. Reads `internals.json` from the pinned SDK, or discovers a catalog with the mod's `[[native.module]]` tables applied. Unknown paths, shape-only entries and paths available only under a `cfg` are refused before the manifest is changed. Existing declarations are refreshed, not duplicated. |
-| `cargo sunrise-mod pin [<build>]` | Moves the mod's pin to the current Nightly's build (or the build given: a release tag such as `nightly-<date>`, `26.3-0.1.0` or `dev-<date>-<short sha>`, or a sha); the next command fetches its SDK into `.sunrise/sdk/`. `pin` fetches the destination SDK's `sdk.json` (into `.sunrise/cache/<build>/`) before changing `[native] sunrise`. It leaves any explicit `[native] mixins` revision and `Cargo.toml` alone. For a native mod's every declared internal, prints `missing`, `changed` (old signature → new signature), or `unchanged`, then refreshes the available hashes. Missing or gated declarations keep their old hash and must be removed or replaced before building. Build names: [build names](sdk/03-in-a-project.md#build-names). |
-
-The native-mod commands run in the mod's project folder and preserve the manifest's comments and
-layout. `sync` performs a metadata-only `cargo check` on the current host, using default features;
-Rust build scripts and procedural macros run with your rights, but the game does not run. It keeps
-a separate source and check cache under `discovery/` in the tool's per-user cache (`SUNRISE_MOD_CACHE` can
-set its root), never in the normal game or prebuilt target directories. The pin's source must be cached or
-downloadable; an unavailable source is `E_INTERNAL_SOURCE_UNAVAILABLE`, not a fallback to another
-pin. Compiler or catalog errors leave the manifest untouched. Discovery may prepare source and
-metadata-check game dependencies; it does not compile or link a game executable. This separate
-check cache is not a native mod build route. `[[native.state]]` is refused with
-`E_MIXIN_STATE_LAYOUT`; use attachments for per-object mod data.
-
-Without support modules, `internals add` reads `internals.json` from the pinned SDK's build data
-(`build-data.tar.xz`). The tool verifies the SDK release, `sdk-<build id>`, against its signed `SHA256SUMS`,
-using `SUNRISE_SDK_BASE` when set. No game or mod code is run.
-With `[[native.module]]` tables, `internals add` uses the Rust named by the signed SDK to stage the pinned source
-with the mod's modules applied and save the catalog under `target/sunrise-mod/catalog-snapshots/`. Only use
-source discovery on mods you trust. It does not run the game.
-`pin` compares the SDKs' build data for the old and new pins. Each build's data is kept
-in `.sunrise/cache/<build id>/build-data/`, so `pin` can show old signatures after that release expires.
-If a needed catalog is neither cached nor downloadable, the command fails without changing the pin
-or declarations. A mod with no declared internals needs no catalogs to update. Quote paths containing
-Rust lifetimes or other shell metacharacters, for example:
-
-```sh
-cargo sunrise-mod internals add 'sunrise_gameplay::game::ServerGame' "sunrise_gameplay::game::server_side::maps_server::ServerGame<'_>::dimension_id"
-cargo sunrise-mod internals sync
-cargo sunrise-mod pin
-```

@@ -71,6 +71,11 @@ impl Target {
     pub fn is_player(self) -> bool {
         matches!(self, Target::Player | Target::Guest(_))
     }
+
+    /// A target with a `LivingEntity` body.
+    pub fn is_living(self) -> bool {
+        self.is_player() || matches!(self, Self::Mob(_) | Self::Stand(_) | Self::Dragon(_))
+    }
 }
 
 /// The entity id a summoned stack's root is known by.
@@ -134,7 +139,7 @@ pub struct OtherEntity {
     pub position: Vec3,
     pub yaw: f32,
     pub pitch: f32,
-    pub item_transformation: Option<super::entity_memory::ItemDisplayTransformation>,
+    pub display: Option<std::sync::Arc<sunrise_sim::text_display_data::resident::DisplayState>>,
     /// A `minecraft:interaction` saved settings; None for every other kind.
     pub interaction: Option<super::interactions_common::InteractionState>,
     /// Only explicitly loaded leash knots own this BlockAttachedEntity check counter.
@@ -579,7 +584,19 @@ impl Component {
             _ => None,
         }
     }
-    pub fn items(self, stack: &ItemStack) -> Vec<Option<ItemStack>> {
+    /// The component's slots as a command sees them: a bundle's are its effective contents
+    /// (its own list, or its item's default), the same list the menus and the tooltip read.
+    pub fn items(
+        self,
+        catalog: &sunrise_items::items::Items,
+        stack: &ItemStack,
+    ) -> Vec<Option<ItemStack>> {
+        if self == Self::Bundle {
+            return sunrise_items::bundle::contents_of(catalog, stack).map_or_else(
+                Vec::new,
+                |inside| inside.iter().cloned().map(Some).collect(),
+            );
+        }
         let Some(data) = stack.data() else {
             return Vec::new();
         };
@@ -597,13 +614,18 @@ impl Component {
                 }
                 out
             }
-            Self::Bundle => data.bundle_contents.iter().cloned().map(Some).collect(),
+            Self::Bundle => unreachable!("a bundle's slots are read above"),
             Self::Charged => data.charged.iter().cloned().map(Some).collect(),
         }
     }
     /// ComponentSlotCollection writes a single normalized component back to
     /// its live parent; all unrelated parent components remain modeled.
-    pub fn store(self, stack: &mut ItemStack, mut slots: Vec<Option<ItemStack>>) {
+    pub fn store(
+        self,
+        catalog: &sunrise_items::items::Items,
+        stack: &mut ItemStack,
+        mut slots: Vec<Option<ItemStack>>,
+    ) {
         for slot in &mut slots {
             if slot
                 .as_ref()
@@ -634,6 +656,16 @@ impl Component {
                 }
             }
         }
+        if self == Self::Bundle {
+            // The same prototype-aware write as the menus: clearing the last slot leaves an
+            // effective empty component.
+            sunrise_items::bundle::set_contents(
+                catalog,
+                stack,
+                slots.into_iter().flatten().collect(),
+            );
+            return;
+        }
         let data = stack.data_mut();
         match self {
             Self::Container => {
@@ -643,7 +675,7 @@ impl Component {
                     .filter_map(|(i, s)| s.map(|s| (i as u8, s)))
                     .collect()
             }
-            Self::Bundle => data.bundle_contents = slots.into_iter().flatten().collect(),
+            Self::Bundle => unreachable!("a bundle is written above"),
             Self::Charged => data.charged = slots.into_iter().flatten().collect(),
         }
         stack.tidy();
@@ -1103,6 +1135,21 @@ pub trait CommandsCommonGameExt2<'__sg>: crate::game::SideGame<'__sg> {
                 Text::translate("entity.minecraft.falling_block_type", &[block])
             }
             Target::Bolt(id) => self.bolt_plain_name(id),
+            // A general row keeps its name on the row, not in a saved compound.
+            Target::General(id) => {
+                match self
+                    .resident_entities
+                    .general
+                    .row(id)
+                    .and_then(|row| row.custom_name.as_ref())
+                {
+                    Some(name) => sunrise_game_data::scoreboard::remove_click_events(name),
+                    None => Text::translate(
+                        &format!("entity.{}", self.target_type(t).replace(':', ".")),
+                        &[],
+                    ),
+                }
+            }
             other => {
                 if let Some(name) = crate::game::commands_common::target_id(other)
                     .and_then(|id| self.custom_name_of(id))

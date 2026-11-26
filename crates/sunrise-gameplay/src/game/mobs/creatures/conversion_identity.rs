@@ -35,7 +35,15 @@ impl crate::game::ServerGame<'_> {
             .common
             .entity_attachments
             .get(&from)
-            .map(|map| map.to_nbt())
+            .and_then(|map| match map.try_to_nbt() {
+                Ok(saved) => Some(saved),
+                Err(error) => {
+                    log::error!(
+                        "Sunrise: conversion attachment copy skipped for entity {from}: {error}"
+                    );
+                    None
+                }
+            })
         else {
             return;
         };

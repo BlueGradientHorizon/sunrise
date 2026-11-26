@@ -29,7 +29,7 @@ use sunrise_level::{
 };
 use sunrise_sim::{
     menu::place::Stacked,
-    recipe_book::{Book, BookType, ClientBook, Collection, Entry, GhostTarget, Tab},
+    recipe_book::{Book, BookType, ClientBook, Collection, Entry, GhostSlot, GhostTarget, Tab},
 };
 
 pub(in crate::game) const WIDTH: f32 = 147.0;
@@ -90,7 +90,6 @@ pub struct RecipeUi {
     /// Ticks, for the ghost and button cycling (`RecipeBookComponent.time`).
     pub(in crate::game) time: f32,
     pub(in crate::game) ghost: Vec<Ghost>,
-    pub(in crate::game) last_placed: Option<String>,
     pub(in crate::game) overlay: Option<Overlay>,
     /// A press landed in the search box, so a drag selects text in it.
     pub(in crate::game) search_drag: bool,
@@ -229,7 +228,6 @@ impl RecipeUi {
     /// A new screen starts without a ghost recipe, overlay or search focus.
     pub fn reset_screen(&mut self) {
         self.ghost.clear();
-        self.last_placed = None;
         self.overlay = None;
         self.tab = None;
         self.page = 0;
@@ -248,6 +246,23 @@ pub(in crate::game) fn inside(p: (f32, f32), x: f32, y: f32, w: f32, h: f32) -> 
 }
 pub(in crate::game) fn sprite(name: &str) -> String {
     format!("recipe_book/{name}")
+}
+
+fn map_ghost_slots(book_type: BookType, slots: Vec<GhostSlot>) -> Vec<Ghost> {
+    slots
+        .into_iter()
+        .map(|g| Ghost {
+            slot: match (g.target, book_type) {
+                (GhostTarget::Result, BookType::Crafting) => 200,
+                (GhostTarget::Result, _) => 302,
+                (GhostTarget::Grid(i), _) => 100 + i,
+                (GhostTarget::Input, _) => 300,
+                (GhostTarget::Fuel, _) => 301,
+            },
+            result: g.target == GhostTarget::Result,
+            items: g.items,
+        })
+        .collect()
 }
 
 #[cfg(feature = "client")]
@@ -489,6 +504,7 @@ impl crate::game::ClientGame<'_> {
         out
     }
     /// Every entry of the book, in its order (`native_recipes`).
+    #[cfg(test)]
     pub(in crate::game::client_side) fn recipe_book_entries(&mut self) -> Vec<Entry> {
         self.ensure_book();
         self.client
@@ -523,25 +539,21 @@ impl crate::game::ClientGame<'_> {
         ui.server_entries.clear();
         ui.last_clicked = None;
     }
-    /// Puts a server's entries over `book` (`Book::use_server_entries`). The
-    /// names come from the connection's registries; a tag's items are the ones
-    /// the client knows for it (the server's tags are not read).
-    pub(in crate::game) fn server_entries_over<'a>(
+    /// Resolves server recipe-display names from the connection's registries; a
+    /// tag's items are the ones the client knows for it (the server's tags are
+    /// not read).
+    fn with_packet_names<R>(
         &self,
-        book: &mut Book,
-        entries: impl IntoIterator<Item = &'a sunrise_protocol::packets::recipes::RecipeBookEntry>,
-    ) {
-        let Some(r) = self.client.remote.as_ref() else {
-            return;
-        };
+        f: impl FnOnce(&sunrise_sim::recipe_book::PacketNames<'_>) -> R,
+    ) -> Option<R> {
+        let r = self.client.remote.as_ref()?;
         let items = self.items();
-        let name_of = |registry: &str, id: i32| {
-            r.builtin
-                .get(registry)
-                .and_then(|ids| ids.name(id))
-                .or_else(|| r.registries.name(registry, id))
-                .map(str::to_owned)
+        use sunrise_protocol::{item::Names, registry::SyncedNames};
+        let names = SyncedNames {
+            builtin: &r.builtin,
+            dynamic: &r.registries,
         };
+        let name_of = |registry: &str, id: i32| names.name(registry, id);
         let item = |id: i32| name_of("minecraft:item", id);
         let category = |id: i32| {
             name_of("minecraft:recipe_book_category", id).or_else(|| {
@@ -549,14 +561,20 @@ impl crate::game::ClientGame<'_> {
             })
         };
         let tag = |name: &str| items.item_tag_order.get(name).cloned().unwrap_or_default();
-        book.use_server_entries(
-            entries,
-            &sunrise_sim::recipe_book::PacketNames {
-                item: &item,
-                category: &category,
-                tag: &tag,
-            },
-        );
+        Some(f(&sunrise_sim::recipe_book::PacketNames {
+            item: &item,
+            category: &category,
+            component: &|id| name_of("minecraft:data_component_type", id),
+            tag: &tag,
+        }))
+    }
+    /// Puts a server's entries over `book` (`Book::use_server_entries`).
+    pub(in crate::game) fn server_entries_over<'a>(
+        &self,
+        book: &mut Book,
+        entries: impl IntoIterator<Item = &'a sunrise_protocol::packets::recipes::RecipeBookEntry>,
+    ) {
+        self.with_packet_names(|names| book.use_server_entries(entries, names));
     }
     pub(in crate::game) fn ensure_book(&mut self) {
         if self.client.recipe_ui.0.book.is_none() {
@@ -879,7 +897,6 @@ impl crate::game::ClientGame<'_> {
         if let Some(slot) = self.slot_at(&batch, cursor.0, cursor.1)
             && self.is_book_slot(book_type, slot)
         {
-            self.client.recipe_ui.0.last_placed = None;
             self.client.recipe_ui.0.ghost.clear();
         }
         let (bx, by) = self.book_button_pos(book_type, ox, &batch);
@@ -893,10 +910,7 @@ impl crate::game::ClientGame<'_> {
             if !open {
                 self.client.recipe_ui.0.overlay = None;
             }
-            self.client
-                .audio
-                .0
-                .play("minecraft:ui.button.click", None, 0.25, 1.0);
+            self.play_audio("minecraft:ui.button.click", None, 0.25, 1.0);
             return true;
         }
         if !self.book_open(book_type) {
@@ -934,19 +948,13 @@ impl crate::game::ClientGame<'_> {
                 && inside(cursor, xo + 93.0, yo + 137.0, 12.0, 17.0)
             {
                 self.client.recipe_ui.0.page += 1;
-                self.client
-                    .audio
-                    .0
-                    .play("minecraft:ui.button.click", None, 0.25, 1.0);
+                self.play_audio("minecraft:ui.button.click", None, 0.25, 1.0);
                 return true;
             }
             if self.client.recipe_ui.0.page > 0 && inside(cursor, xo + 38.0, yo + 137.0, 12.0, 17.0)
             {
                 self.client.recipe_ui.0.page -= 1;
-                self.client
-                    .audio
-                    .0
-                    .play("minecraft:ui.button.click", None, 0.25, 1.0);
+                self.play_audio("minecraft:ui.button.click", None, 0.25, 1.0);
                 return true;
             }
         }
@@ -1000,10 +1008,7 @@ impl crate::game::ClientGame<'_> {
             self.common.level.recipe_book.filtering[book_type.index()] = filtering;
             self.send_book_settings(book_type);
             self.client.recipe_ui.0.page = 0;
-            self.client
-                .audio
-                .0
-                .play("minecraft:ui.button.click", None, 0.25, 1.0);
+            self.play_audio("minecraft:ui.button.click", None, 0.25, 1.0);
             return true;
         }
         // Tabs.
@@ -1023,10 +1028,7 @@ impl crate::game::ClientGame<'_> {
                     self.client.recipe_ui.0.tab = Some(tab);
                     self.client.recipe_ui.0.page = 0;
                 }
-                self.client
-                    .audio
-                    .0
-                    .play("minecraft:ui.button.click", None, 0.25, 1.0);
+                self.play_audio("minecraft:ui.button.click", None, 0.25, 1.0);
                 return true;
             }
         }
@@ -1076,10 +1078,7 @@ impl crate::game::ClientGame<'_> {
         else {
             return false;
         };
-        self.client
-            .audio
-            .0
-            .play("minecraft:ui.button.click", None, 0.25, 1.0);
+        self.play_audio("minecraft:ui.button.click", None, 0.25, 1.0);
         let shift = self.shift_down();
         self.try_place(entry, shift)
     }
@@ -1149,10 +1148,7 @@ impl crate::game::ClientGame<'_> {
             return;
         };
         self.client.recipe_ui.0.page = to;
-        self.client
-            .audio
-            .0
-            .play("minecraft:ui.button.click", None, 0.25, 1.0);
+        self.play_audio("minecraft:ui.button.click", None, 0.25, 1.0);
     }
     /// The crafting book's entry of the recipe button under the pointer, in its overlay if open.
     pub(in crate::game::client_side) fn recipe_under_pointer(&self) -> Option<usize> {
@@ -1262,14 +1258,6 @@ impl crate::game::ClientGame<'_> {
     }
     /// Places one set of the crafting book's entry, as a click on its button places it.
     pub(in crate::game::client_side) fn recipe_place_once(&mut self, entry_index: usize) {
-        self.client.recipe_ui.0.last_placed = self
-            .client
-            .recipe_ui
-            .0
-            .book
-            .as_ref()
-            .and_then(|b| b.entries.get(entry_index))
-            .map(|e| e.id.clone());
         self.client.recipe_ui.0.ghost.clear();
         self.client.recipe_ui.0.overlay = None;
         self.place_book_recipe(BookType::Crafting, entry_index, false);
@@ -1433,18 +1421,17 @@ impl crate::game::ClientGame<'_> {
         let Some(book_type) = self.active_book() else {
             return false;
         };
-        let Some(id) = self
+        if self
             .client
             .recipe_ui
             .0
             .book
             .as_ref()
             .and_then(|b| b.entries.get(entry_index))
-            .map(|e| e.id.clone())
-        else {
+            .is_none()
+        {
             return false;
-        };
-        self.client.recipe_ui.0.last_placed = Some(id);
+        }
         self.client.recipe_ui.0.ghost.clear();
         self.place_book_recipe(book_type, entry_index, use_max);
         true
@@ -1847,8 +1834,9 @@ impl crate::game::ClientGame<'_> {
         }
         self.build_screen();
     }
-    /// ClientboundPlaceGhostRecipePacket: the recipe last placed, faded into
-    /// the open menu's grid.
+    /// ClientboundPlaceGhostRecipePacket (`ClientPacketListener.handlePlaceRecipe`
+    /// -> `RecipeBookComponent.showGhostRecipe`): fill directly from the server's
+    /// display for the open menu.
     pub(in crate::game::client_side) fn remote_ghost_recipe(
         &mut self,
         p: sunrise_protocol::packets::recipes::PlaceGhostRecipe,
@@ -1860,16 +1848,38 @@ impl crate::game::ClientGame<'_> {
         if p.container != open {
             return;
         }
-        let entry = self.client.recipe_ui.0.last_placed.as_ref().and_then(|id| {
-            let book = self.client.recipe_ui.0.book.as_ref()?;
-            book.entry(id).cloned()
-        });
-        if let Some(entry) = entry {
-            self.client.recipe_ui.0.ghost.clear();
-            self.fill_ghost(book_type, &entry);
+        let grid = self.common.craft_size;
+        let fuel_empty = self.slot_mut(301).is_none();
+        if let Some(slots) = self.with_packet_names(|names| {
+            sunrise_sim::recipe_book::ghost_from_display(
+                &p.display,
+                names,
+                book_type,
+                grid,
+                fuel_empty,
+                self.items(),
+                |stack| self.decode_remote_stack(stack),
+            )
+        }) {
+            self.client.recipe_ui.0.ghost = map_ghost_slots(book_type, slots);
         }
         // The server is missing an item the client counted: nothing was placed.
         self.direct_craft_refused();
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn ghost_slots(&self) -> Vec<(usize, String, bool)> {
+        self.client
+            .recipe_ui
+            .0
+            .ghost
+            .iter()
+            .filter_map(|g| {
+                g.items
+                    .first()
+                    .map(|stack| (g.slot, stack.item.to_string(), g.result))
+            })
+            .collect()
     }
 
     // ---- ghost recipe ----
@@ -1881,22 +1891,8 @@ impl crate::game::ClientGame<'_> {
         let Some(book) = self.client.recipe_ui.0.book.as_ref() else {
             return;
         };
-        let ghost = book
-            .ghost(entry, book_type, grid, fuel_empty, self.items())
-            .into_iter()
-            .map(|g| Ghost {
-                slot: match (g.target, book_type) {
-                    (GhostTarget::Result, BookType::Crafting) => 200,
-                    (GhostTarget::Result, _) => 302,
-                    (GhostTarget::Grid(i), _) => 100 + i,
-                    (GhostTarget::Input, _) => 300,
-                    (GhostTarget::Fuel, _) => 301,
-                },
-                result: g.target == GhostTarget::Result,
-                items: g.items,
-            })
-            .collect();
-        self.client.recipe_ui.0.ghost = ghost;
+        let slots = book.ghost(entry, book_type, grid, fuel_empty, self.items());
+        self.client.recipe_ui.0.ghost = map_ghost_slots(book_type, slots);
     }
 
     // ---- drawing ----
@@ -2314,7 +2310,7 @@ impl crate::game::ClientGame<'_> {
                 }
                 Call::Item { call, stack, x, y } => match call {
                     ItemCall::Item | ItemCall::Fake => {
-                        self.draw_item_model(batch, stack, *x as f32, *y as f32)
+                        self.draw_item_model(batch, stack, *x as f32, *y as f32, 0)
                     }
                     ItemCall::Decorations => {
                         self.draw_item_decorations(batch, stack, *x as f32, *y as f32, None)

@@ -37,8 +37,12 @@ pub mod tests {
     #[cfg(any(test, feature = "test-support"))]
     #[mod_api::sunrise_part]
     impl mod_api::EntityPart for KeptGoal {
-        fn register_goals(&self, goals: &mut mod_api::GoalRegistrar<'_>) {
-            goals.add_goal(7, Kept);
+        fn register_goals(
+            &self,
+            _host: &mut dyn mod_api::ServerHost,
+            event: &mut mod_api::RegisterGoalsEvent<'_, '_>,
+        ) {
+            event.goals.add_goal(7, Kept);
         }
     }
     #[cfg(any(test, feature = "test-support"))]

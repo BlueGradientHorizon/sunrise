@@ -4,9 +4,10 @@ pub(crate) mod tests {
     use mod_api::client::first_person::Hand;
 
     use mod_api::{
-        EntityRef, Flow, Hooks, HostSide, Identifier, ItemPart, LivingEntityUseItemFinishEvent,
-        LivingEntityUseItemStartEvent, LivingEntityUseItemStopEvent, LivingEntityUseItemTickEvent,
-        LivingRef, OnUseTickEvent, Registrar, ReleaseUsingEvent, WorldEpoch,
+        CanContinueUsingEvent, EntityRef, Flow, Hooks, Host, HostSide, Identifier, ItemPart,
+        LivingEntityUseItemFinishEvent, LivingEntityUseItemStartEvent,
+        LivingEntityUseItemStopEvent, LivingEntityUseItemTickEvent, LivingRef, OnStopUsingEvent,
+        OnUseTickEvent, Registrar, ReleaseUsingEvent, WorldEpoch,
     };
 
     use std::sync::{Arc, Mutex};
@@ -14,6 +15,8 @@ pub(crate) mod tests {
     /// What a mod heard of item uses, and what it does back.
     #[derive(Default)]
     pub(in crate::game) struct Uses {
+        /// Each use hook heard, with the `entity` it was given.
+        pub(in crate::game) heard: Vec<(&'static str, Option<i32>)>,
         pub(in crate::game) stops: Vec<(Option<i32>, Hand, i32)>,
         pub(in crate::game) releases: Vec<(Option<i32>, i32)>,
         /// Refuses every Start.
@@ -39,8 +42,9 @@ pub(crate) mod tests {
     pub(in crate::game) struct UsePart(pub(in crate::game) Shared);
     #[mod_api::sunrise_part]
     impl ItemPart for UsePart {
-        fn on_use_tick(&self, host: HostSide, _: &mut OnUseTickEvent<'_>) {
+        fn on_use_tick(&self, host: HostSide, event: &mut OnUseTickEvent<'_>) {
             self.0.lock().unwrap().effects += 1;
+            self.heard("on_use_tick", event.entity);
             let (release, remaining) = {
                 let mut uses = self.0.lock().unwrap();
                 (uses.release_on_use_tick, uses.remaining_on_use_tick.take())
@@ -55,8 +59,20 @@ pub(crate) mod tests {
             }
         }
         fn release_using(&self, _: HostSide, event: &mut ReleaseUsingEvent<'_>) {
+            self.heard("release_using", event.entity);
             let mut uses = self.0.lock().unwrap();
             uses.releases.push((event.entity, event.time_left));
+        }
+        fn can_continue_using(&self, _: &dyn Host, event: &mut CanContinueUsingEvent<'_>) {
+            self.heard("can_continue_using", event.entity);
+        }
+        fn on_stop_using(&self, _: HostSide, event: &mut OnStopUsingEvent<'_>) {
+            self.heard("on_stop_using", event.entity);
+        }
+    }
+    impl UsePart {
+        pub(in crate::game) fn heard(&self, hook: &'static str, entity: Option<i32>) {
+            self.0.lock().unwrap().heard.push((hook, entity));
         }
     }
     pub(in crate::game) struct UseMod(pub(in crate::game) Shared);
@@ -79,6 +95,7 @@ pub(crate) mod tests {
             _: HostSide,
             event: &mut LivingEntityUseItemStartEvent<'_>,
         ) -> Flow {
+            UsePart(self.0.clone()).heard("start", event.entity);
             if let Some(duration) = self.0.lock().unwrap().start_duration {
                 event.duration = duration;
             }
@@ -93,6 +110,7 @@ pub(crate) mod tests {
             host: HostSide,
             event: &mut LivingEntityUseItemTickEvent<'_>,
         ) -> Flow {
+            UsePart(self.0.clone()).heard("tick", event.entity);
             {
                 let mut uses = self.0.lock().unwrap();
                 uses.tick_remaining.push(event.duration);
@@ -114,6 +132,7 @@ pub(crate) mod tests {
             _: HostSide,
             event: &mut LivingEntityUseItemFinishEvent<'_>,
         ) {
+            UsePart(self.0.clone()).heard("finish", event.entity);
             let mut uses = self.0.lock().unwrap();
             uses.finishes += 1;
             if uses.clear_finish_result {
@@ -125,6 +144,7 @@ pub(crate) mod tests {
             host: HostSide,
             event: &mut LivingEntityUseItemStopEvent<'_>,
         ) -> Flow {
+            UsePart(self.0.clone()).heard("stop", event.entity);
             let who = {
                 let mut uses = self.0.lock().unwrap();
                 uses.stops.push((event.entity, event.hand, event.duration));

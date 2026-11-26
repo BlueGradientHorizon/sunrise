@@ -9,7 +9,7 @@ pub(crate) mod tests {
     use sunrise_core::geometry::Vec3;
     use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1;
     use sunrise_items::items::ItemStack;
-    use sunrise_sim::arrows::Pickup;
+    use sunrise_sim::entities::arrows::Pickup;
 
     /// A stack can reach its final durability point after use began. The release
     /// guard is independent of admission, and short charges still do nothing.

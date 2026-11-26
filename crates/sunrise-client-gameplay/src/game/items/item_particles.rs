@@ -33,7 +33,7 @@ impl ClientGame<'_> {
         let options = self.item_particle(stack);
         let mut spawned = Vec::new();
         sunrise_level::particle_options::item_use_particles(
-            &mut self.common.world.random,
+            &mut self.common.player.as_mut().expect("spawning player").random,
             self.common.pitch,
             self.common.yaw,
             [p.x, p.y, p.z],
@@ -123,10 +123,7 @@ impl ClientGame<'_> {
             _ => return,
         };
         let pitch = 0.8 + self.common.world.random.next_float() * 0.4;
-        self.client
-            .audio
-            .0
-            .play_unshared(&sound, Some(at), 0.8, pitch);
+        self.play_audio_unshared(&sound, Some(at), 0.8, pitch);
     }
     /// The slime ball, snowball and cobweb models behind `item_slime`,
     /// `item_snowball` and `item_cobweb`, resolved on first use.

@@ -152,10 +152,7 @@ impl crate::game::ServerGame<'_> {
             None => shot.update_rotation(),
         }
         shot.item = Some(carried);
-        let id = self.spawn_owned_projectile(owner.map(|(_, target)| target), shot, stack)?;
-        // The join as any fresh spawn's: told now, so a mod's veto refuses
-        // the call, or at the root commit inside a transaction.
-        self.native_joins_flush(false, id).then_some(id)
+        self.spawn_owned_projectile(owner.map(|(_, target)| target), shot, stack)
     }
     /// A new row of the general type `kind` at `pos`: a fresh UUID, the type's
     /// declared payload version and no payload bytes, through the insertion
@@ -172,12 +169,23 @@ impl crate::game::ServerGame<'_> {
     ) -> Option<u32> {
         let catalog = general_type_catalog();
         let slot = catalog.slot(kind)?;
+        // `EntityType.canSpawn`: refuse types whose required Minecraft feature flags are not
+        // enabled in this world.
+        let features = mod_api::FeatureFlags::new(self.level.enabled_features.as_arc().clone());
+        if !catalog.is_enabled(slot, &features) {
+            return None;
+        }
         let record = GeneralEntityRecord {
             position: pos,
             velocity,
             rotation: rotation.unwrap_or([0.0; 2]),
             uuid: sunrise_sim::save::insecure_uuid(&mut sunrise_level::random_source::entity()),
             owner,
+            custom_name: None,
+            custom_name_visible: false,
+            no_gravity: false,
+            on_ground: false,
+            fall_distance: 0.0,
             envelope: GeneralTypeEnvelope {
                 type_key: kind.to_owned(),
                 payload_version: catalog.payload_version(slot),

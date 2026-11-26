@@ -4,8 +4,9 @@
 //! is tamed. Reads return `None`, writes false, for a stale handle or on a
 //! client; the exception is the reads marked side `both` (`living`, `with_equipment`,
 //! `with_hand_item`, `health`, `max_health`, `attribute_value`, `attribute_base`,
-//! `attributes` and `attribute_modifiers`), which on a client answer for the
-//! local player from the client's own copy; and `effect`/`effects`.
+//! `visit_attributes` and `visit_attribute_modifiers`), which on a client answer for the
+//! local player from the client's own copy; and `effect`/`visit_effects`. Visitor reads
+//! refuse with a typed error rather than returning `None`.
 use super::commands::{Target, items::Owner};
 use super::living_attributes::AttributeWrite;
 use crate::game::ServerGame;
@@ -15,6 +16,9 @@ use mod_api::{
     LivingRef, ModifierLifetime,
 };
 use sunrise_gameplay_common::game::native_equipment_read::hand_slot;
+pub(in crate::game::server_side) use sunrise_gameplay_common::game::native_living_body::{
+    mob_attribute_modifiers, visit_attribute_modifiers,
+};
 use sunrise_items::items::{EntityTypeTags, ItemStack};
 use sunrise_sim::health::{Attack, DamageLevel, HitEffects, Hurting, Knock, NO_ATTACK};
 use sunrise_sim::mobs::Who;
@@ -95,14 +99,8 @@ pub(in crate::game::server_side) fn equipment_stack(stack: Option<ItemStack>) ->
 impl ServerGame<'_> {
     /// What a living handle names now: a player, a mob, an armor stand or the dragon.
     pub(in crate::game) fn native_living_target(&self, living: LivingRef) -> Option<Target> {
-        match self.native_entity_target(living.entity())? {
-            t @ (Target::Player
-            | Target::Guest(_)
-            | Target::Mob(_)
-            | Target::Stand(_)
-            | Target::Dragon(_)) => Some(t),
-            _ => None,
-        }
+        self.native_entity_target(living.entity())
+            .filter(|t| t.is_living())
     }
     /// A direct, non-damaging call to the short `LivingEntity.knockback` entry.
     pub(in crate::game) fn living_knockback(
@@ -122,6 +120,7 @@ impl ServerGame<'_> {
             causing: 0,
             direct: 0,
             position: None,
+            direct_type: None,
         };
         let knock = Knock { strength, x, z };
         let id = living.id();
@@ -161,12 +160,10 @@ impl ServerGame<'_> {
                     &mut credit,
                     None
                 );
-                level.through_short_knockback(|level| {
-                    self.common.dragon.as_mut().is_some_and(|d| {
-                        crate::game::server_side::dragon::knockback(
-                            d, level, knock, SOURCE, resistance,
-                        )
-                    })
+                self.common.dragon.as_mut().is_some_and(|d| {
+                    crate::game::server_side::dragon::knockback(
+                        d, level, knock, SOURCE, resistance,
+                    )
                 })
             }
             _ => false,
@@ -224,15 +221,13 @@ impl ServerGame<'_> {
             self.common.native_lifecycle.epoch(),
             None,
         ));
-        let velocity = level.through_short_knockback(|level| {
-            sunrise_gameplay_common::game::creatures::knockback::player_knockback_velocity(
-                player,
-                &mut random,
-                level,
-                knock,
-                source,
-            )
-        });
+        let velocity = sunrise_gameplay_common::game::creatures::knockback::player_knockback_velocity(
+            player,
+            &mut random,
+            &mut level,
+            knock,
+            source,
+        );
         // The retries drew from the victim's own random, landed or not.
         self.write_player_random(target, random);
         let velocity = velocity?;
@@ -286,7 +281,7 @@ impl ServerGame<'_> {
             None
         );
         let pushed = Hurting::ArmorStand(id as i32, source);
-        if level.through_short_knockback(|level| level.knockback_canceled(pushed, &mut knock)) {
+        if level.knockback_canceled(pushed, &mut knock) {
             return false;
         }
         let stand = &mut self.common.armor_stands[index];
@@ -669,7 +664,11 @@ impl ServerGame<'_> {
                 else {
                     return false;
                 };
-                m.heal(&self.common.loop_context, amount);
+                m.heal(
+                    &self.common.loop_context,
+                    &|| crate::game::entity_server::hit_reads_of!(self),
+                    amount,
+                );
                 m.needs_sync = true;
                 true
             }
@@ -857,6 +856,32 @@ impl ServerGame<'_> {
             target => self.native_living_body(target)?,
         };
         super::native_living_body::body_equipment(body, slot)
+    }
+
+    /// Read the drop chance for one equipment slot of a mob in the active level.
+    pub(in crate::game) fn living_equipment_drop_chance(
+        &self,
+        living: LivingRef,
+        slot: EquipmentSlot,
+    ) -> Option<f32> {
+        if !self.common.is_logical_server() {
+            return None;
+        }
+        let Target::Mob(id) = self.native_living_target(living)? else {
+            return None;
+        };
+        let mob = self.common.mobs.iter().find(|m| m.id == id)?;
+        let slot = match slot {
+            EquipmentSlot::MainHand => "mainhand",
+            EquipmentSlot::OffHand => "offhand",
+            EquipmentSlot::Feet => "feet",
+            EquipmentSlot::Legs => "legs",
+            EquipmentSlot::Chest => "chest",
+            EquipmentSlot::Head => "head",
+            EquipmentSlot::Body => "body",
+            EquipmentSlot::Saddle => "saddle",
+        };
+        Some(sunrise_sim::mobs::drops::drop_chance(mob, slot))
     }
 
     /// Damage an equipped stack without an equip/unequip notification.
@@ -1233,6 +1258,27 @@ impl ServerGame<'_> {
         let owner = self.native_tamable(living)?.extra.owner?;
         Some(sunrise_sim::lan::playerdata::ints_uuid(owner))
     }
+    /// The living entity as a player, with its UUID: the player in place (a guest's while it
+    /// acts) or a guest. Resolved through [`Self::player`], so it names the same player
+    /// `host.player(uuid)` does, and only when that player is this entity. None for any other
+    /// living entity, a fake player acting, a stale handle or on a client.
+    pub(in crate::game) fn living_player(&self, living: LivingRef) -> Option<mod_api::PlayerRef> {
+        if !self.common.is_logical_server() {
+            return None;
+        }
+        let uuid = match self.native_living_target(living)? {
+            Target::Player => self.server.lan_acting_uuid.or_else(|| {
+                self.common
+                    .level
+                    .player_uuid
+                    .map(sunrise_sim::lan::playerdata::ints_uuid)
+            })?,
+            Target::Guest(conn) => self.command_guest(conn)?.uuid,
+            _ => return None,
+        };
+        self.player(uuid)
+            .filter(|player| player.entity() == living.entity())
+    }
     /// The mob a handle names, when it is a `TamableAnimal` or an `AbstractHorse`.
     pub(in crate::game::server_side) fn native_tamable(&self, living: LivingRef) -> Option<&Mob> {
         let Target::Mob(id) = self.native_living_target(living)? else {
@@ -1436,5 +1482,7 @@ use sunrise_gameplay_common::game::native_living_body::NativeLivingBodyGameExt3 
 use sunrise_gameplay_common::game::native_living_body::NativeLivingBodyGameExt4 as _;
 
 use sunrise_gameplay_common::game::native_living_body::NativeLivingBodyGameExt6 as _;
+
+use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;
 
 use sunrise_gameplay_common::game::resident_state::ResidentStateGameExt1 as _;

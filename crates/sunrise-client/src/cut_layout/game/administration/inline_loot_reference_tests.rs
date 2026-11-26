@@ -269,7 +269,7 @@ fn pack_functions_admit_inline_references_on_first_open() {
     )
     .unwrap();
     game.server.world_tables.0 = None;
-    game.open_world_datapacks(&[]).unwrap();
+    game.open_world_datapacks(&[], None).unwrap();
     assert!(game.run_command("function parity:il_good"));
     assert!(game.run_command("execute store result score d il run clear @s minecraft:diamond"));
     assert_eq!(score(&game, "d"), 1);

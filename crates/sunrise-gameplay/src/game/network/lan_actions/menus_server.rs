@@ -47,8 +47,10 @@ impl crate::game::ServerGame<'_> {
     pub(in crate::game::server_side) fn guest_close_menus_for_travel(
         &mut self,
         conn: u32,
-    ) -> Option<i32> {
-        self.guest_remove_menus(conn, MenuRemoval::ChangedDimension)
+    ) -> (Option<i32>, super::super::lan_menus::MenuOpenHold) {
+        let hold = self.hold_menu_opens(conn);
+        let retired = self.guest_remove_menus(conn, MenuRemoval::ChangedDimension, false);
+        (retired, hold)
     }
     /// `ContainerOpenersCounter.incrementOpeners` / `ContainerOpenersCounter.decrementOpeners`:
     /// the first opener and the last closer each trigger a sound and game event.
@@ -108,7 +110,9 @@ impl crate::game::ServerGame<'_> {
         }
     }
     pub fn guest_disconnected(&mut self, conn: u32) {
-        self.guest_remove_menus(conn, MenuRemoval::Disconnected);
+        let hold = self.hold_menu_opens(conn);
+        self.guest_remove_menus(conn, MenuRemoval::Disconnected, false);
+        self.resume_menu_opens(hold);
     }
     /// Whether the mods let the guest open the menu `kind` (`native_container_opened`),
     /// heard with the guest's state swapped in. Asked before the menu that
@@ -120,7 +124,7 @@ impl crate::game::ServerGame<'_> {
         pos: Option<[i32; 3]>,
     ) -> Option<bool> {
         let guest = self.server.lan.as_ref()?.hub.guest(conn)?;
-        if !guest.participates_in_player_simulation() {
+        if !guest.participates_in_player_simulation() || guest.disconnect_pending {
             return None;
         }
         let (uuid, name) = (guest.uuid, guest.name.clone());
@@ -181,30 +185,39 @@ impl crate::game::ServerGame<'_> {
     /// `ServerPlayer.tick`'s `stillValid`: a guest's block container closes
     /// once its block is removed or out of reach. Death removes every kind
     /// of open menu through the same cleanup and synchronous close boundary.
-    pub(in crate::game) fn lan_containers_tick(&mut self) {
+    pub(in crate::game) fn lan_container_tick_one(&mut self, conn: u32) {
+        let Some(dead) = self.server.lan.as_ref().and_then(|host| {
+            let g = host.hub.guest(conn).filter(|g| host.hub.here(g))?;
+            let close = (g.dead && super::super::native_menus::open_menu_of(host, conn).is_some())
+                || !self.container_menu_valid(g);
+            close.then_some(g.dead)
+        }) else {
+            return;
+        };
+        self.guest_close_menus(
+            conn,
+            if dead {
+                MenuRemoval::Killed
+            } else {
+                MenuRemoval::Live
+            },
+        );
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn lan_containers_tick(&mut self) {
         let Some(host) = self.server.lan.as_ref() else {
             return;
         };
-        let far: Vec<_> = host
+        let conns: Vec<u32> = host
             .hub
             .guests
             .iter()
             .filter(|g| host.hub.here(g) && !self.player_tick_canceled(g.conn))
-            .filter(|g| {
-                (g.dead && super::super::native_menus::open_menu_of(host, g.conn).is_some())
-                    || !self.container_menu_valid(g)
-            })
-            .map(|g| (g.conn, g.dead))
+            .map(|g| g.conn)
             .collect();
-        for (conn, dead) in far {
-            self.guest_close_menus(
-                conn,
-                if dead {
-                    MenuRemoval::Killed
-                } else {
-                    MenuRemoval::Live
-                },
-            );
+        for conn in conns {
+            self.lan_container_tick_one(conn);
         }
     }
 }

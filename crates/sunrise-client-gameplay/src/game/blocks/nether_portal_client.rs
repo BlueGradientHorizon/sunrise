@@ -47,10 +47,7 @@ impl crate::game::ClientGame<'_> {
         }
         if self.client.screen_fx.portal == 0.0 {
             let pitch = self.common.world.random.next_float() * 0.4 + 0.8;
-            self.client
-                .audio
-                .0
-                .play("minecraft:block.portal.trigger", None, 0.25, pitch);
+            self.play_audio("minecraft:block.portal.trigger", None, 0.25, pitch);
         }
         true
     }

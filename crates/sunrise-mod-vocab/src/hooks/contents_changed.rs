@@ -16,7 +16,9 @@ pub trait Hooks {
     /// that block. Another block notifies normally. Double containers notify each backing
     /// component, not the other half merely refreshed for comparators.
     /// Vehicle/menu placeholder coordinates are excluded. The source level, pos and state
-    /// always name the changed backing block. `observer` is `None` for its own Parts, or `Some`
+    /// always name the changed backing block: `level` and `pos` are the `StorageSlot::level` and
+    /// `StorageSlot::pos` of any slot of the container that changed, so a double chest notifies
+    /// the owning half's `pos`. `observer` is `None` for its own Parts, or `Some`
     /// for Parts of a block entity watching that source through `watch_contents`. Source Parts
     /// run first, then a snapshot of observers in registration order; a stale observer is skipped.
     /// A self-watch never duplicates the source callback. Registration changes affect the next
@@ -24,7 +26,6 @@ pub trait Hooks {
     /// and schematic storage; there is no matching NeoForge bus event.
     /// Each Part runs in the existing storage journal. A panic discards that Part's tentative writes (including successful nested transactions), not the backing change that raised the notice or another Part's writes.
     #[hook(
-        target = "sunrise_gameplay::game::native_hooks::contents_changed::ServerGame<'_>::native_contents_changed",
         dispatch = "flat",
         side = "server",
         version = 5,
@@ -32,7 +33,8 @@ pub trait Hooks {
         scope = "block",
         key = "state",
         neoforge = "none (Container.setChanged has no bus event)",
-        cancellable = false
+        cancellable = false,
+        listener_transaction = "always"
     )]
     fn contents_changed(
         level: LevelRef,

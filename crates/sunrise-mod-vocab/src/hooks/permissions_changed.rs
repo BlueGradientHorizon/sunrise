@@ -10,7 +10,6 @@ pub trait Hooks {
     /// the list (`operators/clear`) is not a call to either, as in vanilla. Dedicated
     /// servers only; a single-player world has no operator list. Server-side.
     #[hook(
-        target = "sunrise_gameplay::game::native_hooks::permissions_changed::ServerGame<'_>::native_permissions_changed",
         dispatch = "flat",
         side = "server",
         contract = "cancel",

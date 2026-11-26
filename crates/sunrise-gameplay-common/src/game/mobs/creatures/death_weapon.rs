@@ -19,19 +19,15 @@ impl crate::game::CommonGame<'_> {
             _ => DamageKind::Thrown,
         }
     }
-    /// The actual direct projectile's family and saved weapon, also for explicit damage sources.
-    pub fn set_projectile_attack(attack: &mut Attack, shot: &Projectile) {
+    pub fn set_projectile_source(attack: &mut Attack, shot: &Projectile) {
         attack.projectile = Some(shot.id as i32);
+        attack.enchantment_direct = Some(sunrise_sim::health::EnchantmentActor {
+            id: shot.id as i32,
+            kind: shot.entity_type().into(),
+            motion: None,
+        });
         attack.projectile_kind = Self::projectile_direct_entity(&shot.kind);
         attack.projectile_type = Some(shot.entity_type());
-        let weapon = shot.arrow.as_ref().and_then(|arrow| {
-            if matches!(shot.kind, ProjectileKind::Trident) {
-                Some(&arrow.pickup_item)
-            } else {
-                arrow.fired_from_weapon.as_ref()
-            }
-        });
-        Self::set_projectile_weapon(attack, weapon);
     }
     /// Classify a projectile's vanilla `DamageSource.getDirectEntity()` family.
     pub fn projectile_direct_entity(kind: &ProjectileKind) -> sunrise_sim::health::DirectEntity {
@@ -45,13 +41,5 @@ impl crate::game::CommonGame<'_> {
             _ => sunrise_sim::health::DirectEntity::Projectile,
         }
     }
-    /// Only listeners need a saved weapon copy; physical family classification never does.
-    pub fn set_projectile_weapon(attack: &mut Attack, weapon: Option<&ItemStack>) {
-        if mod_api::__private::listened(mod_api::HookId::LivingIncomingDamage)
-            || mod_api::__private::listened(mod_api::HookId::LivingDeath)
-            || mod_api::__private::listened(mod_api::HookId::LootDrops)
-        {
-            attack.projectile_weapon = weapon.cloned();
-        }
-    }
+
 }

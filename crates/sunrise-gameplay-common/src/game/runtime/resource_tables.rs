@@ -24,8 +24,23 @@ impl Resources {
     pub fn recipes(&self) -> &Recipes {
         &self.rest().recipes
     }
-    pub fn transformers(&self) -> &sunrise_sim::block_transform::Transformers {
-        &self.rest().transformers
+    pub fn transformers(&self) -> Arc<sunrise_sim::block_transform::Transformers> {
+        self.rest()
+            .transformers
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
+    }
+    /// Publish the open world's `block_transformer` registry, replacing the last world's.
+    pub fn set_transformers(
+        &self,
+        transformers: Arc<sunrise_sim::block_transform::Transformers>,
+    ) {
+        *self
+            .rest()
+            .transformers
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = transformers;
     }
     pub fn biomes(&self) -> &Arc<Biomes> {
         &self.core.biomes
@@ -55,6 +70,12 @@ impl Resources {
     pub fn providers(&self) -> &Providers {
         &self.rest().providers
     }
+    pub fn test_environments(&self) -> &HashMap<String, crate::test_environments::Environment> {
+        &self.rest().test_environments
+    }
+    pub fn test_instances(&self) -> &HashMap<String, crate::test_instances::TestDef> {
+        &self.rest().test_instances
+    }
     pub fn nether_environment(&self) -> &Environment {
         &self.rest().nether_environment
     }
@@ -75,10 +96,9 @@ impl Resources {
     pub fn motion(&self) -> &MotionResources {
         &self.core.motion
     }
-    /// The variant registries finalizeSpawn selects from
-    /// (`data/minecraft/<registry>`), shared with world generation.
-    pub fn spawn_registries(&self) -> &sunrise_sim::mobs::finalize::SpawnRegistries {
-        &self.core.spawn_registries
+    /// The prepared vanilla variant tables for families on `REGISTRY_KINDS`.
+    pub fn variants(&self) -> &sunrise_sim::mobs::variants::VariantTables {
+        &self.core.variants
     }
     pub fn threads(&self) -> usize {
         self.core.threads

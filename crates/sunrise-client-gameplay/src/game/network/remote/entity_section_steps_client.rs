@@ -21,10 +21,14 @@ pub(in crate::game) fn tick_items(
     let mut items = game.dropped.lift();
     let mut i = 0;
     while i < items.len() {
-        let (_, discarded) =
-            game.tick_item_with_block_contacts(&mut items[i], None, &[], true, &mut |splash| {
-                entered.push(splash)
-            });
+        let (_, discarded) = game.tick_item_with_block_contacts(
+            &mut items[i],
+            None,
+            &[],
+            true,
+            None,
+            &mut |splash| entered.push(splash),
+        );
         let from = items[i].previous;
         let to = items[i].position;
         if !discarded {
@@ -97,10 +101,7 @@ impl ClientGame<'_> {
         rotation: (f32, f32),
     ) {
         self.remote_move_vehicle(position, rotation);
-        let boat = self
-            .common
-            .riding
-            .filter(|&id| self.controls_boat(id) && self.common.boats.iter().any(|b| b.id == id));
+        let boat = self.common.riding.filter(|&id| self.controls_boat(id));
         if let Some(id) = self.driven_mount().map(|m| m.id).or(boat) {
             self.entity_section_moved_id(id);
         }

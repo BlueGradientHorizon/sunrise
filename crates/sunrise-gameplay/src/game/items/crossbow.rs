@@ -10,10 +10,7 @@ use sunrise_gameplay_common::game::crossbow_common::{ARROW, CROSSBOW, FIREWORK_R
 #[allow(unused_imports)]
 #[cfg(test)]
 use sunrise_gameplay_common::game::held_items::OFFHAND_SLOT;
-use sunrise_items::{
-    enchant::EffectContext,
-    items::{ItemStack, Items},
-};
+use sunrise_items::items::{ItemStack, Items};
 use sunrise_sim::{
     mobs::Who,
     projectiles::{Projectile, ProjectileKind},
@@ -131,7 +128,7 @@ impl crate::game::ServerGame<'_> {
             }
         }
         if let Some(a) = arrow.arrow.as_mut() {
-            a.set_item(&sunrise_sim::arrows::drawn_ammo(ammo, false));
+            a.set_item(&sunrise_sim::entities::arrows::drawn_ammo(ammo, false));
         }
     }
     /// `CrossbowItem.onUseTick`'s `getProjectile` for a mob that finished
@@ -165,7 +162,7 @@ impl crate::game::ServerGame<'_> {
         let loaded = projectile.is_some();
         crossbow.data_mut().charged = projectile
             .iter()
-            .map(|ammo| sunrise_sim::arrows::drawn_ammo(ammo, false))
+            .map(|ammo| sunrise_sim::entities::arrows::drawn_ammo(ammo, false))
             .collect();
         crossbow.tidy();
         shooter.extra.set_main_hand_stack(Some(crossbow));
@@ -211,11 +208,6 @@ impl crate::game::ServerGame<'_> {
         let charged = stack.data().is_some_and(|d| !d.charged.is_empty());
         if now >= 1.0 && !charged {
             // tryLoadProjectiles / ProjectileWeaponItem.draw.
-            let shots = if stack.enchantment_level("minecraft:multishot") > 0 {
-                3
-            } else {
-                1
-            };
             let Some(ammo) = self.get_projectile(stack) else {
                 return;
             };
@@ -225,7 +217,16 @@ impl crate::game::ServerGame<'_> {
             {
                 return;
             }
-            let creative = self.common.creative;
+            let (drawn, debit) = self.draw_weapon_ammo(
+                stack,
+                &ammo.stack,
+                self.own_entity_id() as u32,
+                "minecraft:player",
+                self.common.creative,
+            );
+            if drawn.is_empty() {
+                return;
+            }
             let Some(bow) = self
                 .common
                 .stack_in_mut(slot)
@@ -236,18 +237,18 @@ impl crate::game::ServerGame<'_> {
             };
             // A pack can make the weapon its own ammo. Debit it without
             // charging it, so the destruction notice sees the original stack.
-            if !creative && ammo.slot == Some(slot) {
-                self.consume_player_slot(slot, 1);
+            if debit > 0 && ammo.slot == Some(slot) {
+                self.consume_player_slot(slot, debit);
                 return;
             }
             // Store the projectile before debiting the ammo slot: its destruction
             // listener can now move the loaded bow without losing the projectile.
             // useAmmo: the extra multishot arrows and creative's are intangible.
-            bow.data_mut().charged = (0..shots)
-                .map(|i| sunrise_sim::arrows::drawn_ammo(&ammo.stack, creative || i > 0))
-                .collect();
-            if !creative && let Some(i) = ammo.slot {
-                self.consume_player_slot(i, 1);
+            bow.data_mut().charged = drawn;
+            if debit > 0
+                && let Some(i) = ammo.slot
+            {
+                self.consume_player_slot(i, debit);
             }
             let pitch = 1.0 / (self.common.world.random.next_float() * 0.5 + 1.0) + 0.2;
             if let Some(at) = at {
@@ -260,50 +261,61 @@ impl crate::game::ServerGame<'_> {
         let Some(eye) = self.common.eye_position() else {
             return;
         };
-        let Some(bow) = self.common.held_mut().as_mut() else {
+        let slot = self.common.held_slot();
+        let Some(loaded) = self.common.stack_in(slot).cloned() else {
+            return;
+        };
+        // NeoForge runs this for players before removing the charged projectiles.
+        let mut charge = 1;
+        let mut canceled = false;
+        self.native_arrow_loose(&loaded, true, &mut charge, &mut canceled);
+        if canceled || charge < 0 {
+            return;
+        }
+        let Some(bow) = self
+            .common
+            .stack_in_mut(slot)
+            .as_mut()
+            .filter(|bow| **bow == loaded)
+        else {
             return;
         };
         let charged = std::mem::take(&mut bow.data_mut().charged);
         bow.tidy();
         let weapon = bow.clone();
-        // AbstractArrow's constructor: `getPiercingCount` of the weapon.
-        let pierce = self
-            .common
-            .res
-            .stations()
-            .enchantments
-            .modify_value(
-                Some(&weapon),
-                "minecraft:projectile_piercing",
-                &EffectContext::default(),
-                &mut self.common.world.random,
-                0.0,
-            )
-            .clamp(0.0, 127.0) as u8;
         let count = charged.len();
+        if count == 0 {
+            return;
+        }
         // getShootingPower: a rocket among them slows every shot.
         let power = if charged.iter().any(|s| &*s.item == FIREWORK_ROCKET) {
             1.6
         } else {
             3.15
         };
-        // ProjectileWeaponItem.shoot: angles fanned 10 degrees apart.
-        let spread = if count > 1 { 10.0 } else { 0.0 };
+        let spread = self.entity_enchantment_value(
+            &weapon,
+            self.own_entity_id() as u32,
+            "minecraft:player",
+            "minecraft:projectile_spread",
+            0.0,
+        );
+        let spread = if spread < 0.0 { 0.0 } else { spread };
+        let step = if count == 1 {
+            0.0
+        } else {
+            2.0 * spread / (count - 1) as f32
+        };
+        let offset = ((count - 1) % 2) as f32 * step / 2.0;
         let view = glam::DVec3::from_array(view_vector(self.common.yaw, self.common.pitch));
         let up = glam::DVec3::from_array(view_vector(self.common.yaw, self.common.pitch - 90.0));
+        let mut direction = 1.0;
         for (index, ammo) in charged.iter().enumerate() {
-            let angle = if count > 1 {
-                -spread + 2.0 * spread * index as f64 / (count - 1) as f64
-            } else {
-                0.0
-            };
-            let angle = if count == 3 {
-                [0.0, -spread, spread][index]
-            } else {
-                angle
-            };
+            let angle = offset + direction * index.div_ceil(2) as f32 * step;
+            direction = -direction;
             let dir =
-                glam::DQuat::from_axis_angle(up.normalize_or_zero(), angle.to_radians()) * view;
+                glam::DQuat::from_axis_angle(up.normalize_or_zero(), f64::from(angle.to_radians()))
+                    * view;
             // createProjectile: a rocket shot at an angle from 0.15 under the
             // eyes, spread by its own random; three durability.
             let rocket = &*ammo.item == FIREWORK_ROCKET;
@@ -331,6 +343,7 @@ impl crate::game::ServerGame<'_> {
                     Vec3::new(eye[0], eye[1] - 0.1, eye[2]),
                     Some(Who::Player),
                 );
+                let pierce = self.projectile_pierce(&weapon, ammo);
                 if let Some(a) = arrow.arrow.as_mut() {
                     a.set_item(ammo);
                     a.set_owner(Some(Who::Player));
@@ -342,12 +355,6 @@ impl crate::game::ServerGame<'_> {
                 // for the weapon the arrow was fired from.
                 arrow.shoot_own(dir.to_array(), power, 1.0);
                 self.spawn_projectile(arrow, ammo);
-                let (player, name, projectile) = (
-                    sunrise_sim::lan::playerdata::ints_uuid(self.acting_player_uuid()),
-                    self.acting_player_name().to_owned(),
-                    self.server.next_entity,
-                );
-                self.native_entity_shoot_bow(player, &name, projectile, power as f32);
             }
             // Ordinary arrows post from ArrowState on their first tick.
             let pitch = if index == 0 {
@@ -382,6 +389,8 @@ use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
 use sunrise_gameplay_common::game::item_use_stacks::ItemUseStacksGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_hooks::living_get_projectile::GameHooks as _;
+
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;
 
 #[cfg(test)]
 pub(in crate::game) mod tests {

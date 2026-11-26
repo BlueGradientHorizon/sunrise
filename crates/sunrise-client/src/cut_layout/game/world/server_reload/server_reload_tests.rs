@@ -1,3 +1,6 @@
+#[path = "refused_entry_tests.rs"]
+mod refused_entry_tests;
+
 use mod_api::__private::reload::ReloadStageError;
 use mod_api::FileToIdConverter;
 use mod_api::{
@@ -222,7 +225,8 @@ fn reload_command_prepares_world_before_applying_listeners_and_preserves_tables_
                 game.load_world(request(&root)).unwrap();
                 let class =
                     mod_api::__private::tag_key(&Identifier::parse("sunrise:class/fence").unwrap())
-                        .unwrap();
+                        .unwrap()
+                        .typed();
                 let fence = mod_api::__private::block_key("minecraft:oak_fence").unwrap();
                 assert!(matches!(mod_api::Tags::blocks(game, class),
                     mod_api::TagMembers::Members(blocks) if blocks.contains(&fence)));
@@ -230,7 +234,7 @@ fn reload_command_prepares_world_before_applying_listeners_and_preserves_tables_
                     game.items()
                         .block_in_tag("sunrise:class/fence", "minecraft:oak_fence")
                 );
-                assert_eq!(game.block_in_tag(fence, "sunrise:class/fence"), Some(true));
+                assert_eq!(mod_api::Tags::block_in_tag(game, fence, class), Some(true));
                 state.store(0, Ordering::SeqCst);
                 assert!(game.run_command("reload"));
                 assert_eq!(state.load(Ordering::SeqCst), 1);
@@ -241,8 +245,6 @@ fn reload_command_prepares_world_before_applying_listeners_and_preserves_tables_
                 );
                 assert!(matches!(mod_api::Tags::blocks(game, class),
                     mod_api::TagMembers::Members(blocks) if blocks.contains(&fence)));
-                let old_bound =
-                    sunrise_gameplay_common::game::native_world_read_common::installed_block_tag_snapshot();
                 let old_order = game.items().block_tag_order.clone();
                 let old_sets = game.items().block_tags.clone();
                 let old = game
@@ -270,9 +272,9 @@ fn reload_command_prepares_world_before_applying_listeners_and_preserves_tables_
                     game.items().block_tags["reload_order:derived"]
                         .contains("minecraft:diamond_block")
                 );
-                assert_eq!(
-                    sunrise_gameplay_common::game::native_world_read_common::installed_block_tag_snapshot(),
-                    old_bound
+                assert!(
+                    game.items()
+                        .block_in_tag("sunrise:class/fence", "minecraft:oak_fence")
                 );
                 assert_eq!(game.items().block_tag_order, old_order);
                 assert_eq!(game.items().block_tags, old_sets);
@@ -292,8 +294,8 @@ fn reload_command_runs_listeners_on_both_sides_of_function_library() {
         || {
             use mod_api::{
                 Command, CommandArgumentError, CommandArgumentKind, CommandArgumentType,
-                CommandSender, CommandSuggestion, RegisterCommandsEvent, Registrar,
-                RegistrationContext, ServerHost, VanillaServerListeners,
+                RegisterCommandsEvent, Registrar, RegistrationContext, ServerHost, Suggestion,
+                SuggestionRequest, VanillaServerListeners,
             };
 
             struct Listener {
@@ -323,7 +325,7 @@ fn reload_command_runs_listeners_on_both_sides_of_function_library() {
                     self.0.lock().unwrap().push(format!("parse {input}"));
                     Ok(input.into())
                 }
-                fn suggest(&self, _: Option<&CommandSender>, _: &str) -> Vec<CommandSuggestion> {
+                fn suggest(&self, _: &SuggestionRequest) -> Vec<Suggestion> {
                     Vec::new()
                 }
             }
@@ -472,7 +474,8 @@ fn dedicated_world_open_publishes_crafting_item_tags() {
             let tag = mod_api::__private::tag_key(
                 &mod_api::Identifier::parse("test:crafting_inputs").unwrap(),
             )
-            .unwrap();
+            .unwrap()
+            .typed();
             let stick = mod_api::__private::item_key("minecraft:stick").unwrap();
             let dirt = mod_api::__private::item_key("minecraft:dirt").unwrap();
             let reader = LoopReader(&game.loop_context);
@@ -1203,7 +1206,8 @@ fn server_completion_reads_published_data_without_world_access_on_first_open() {
     .into();
     mod_platform::testing::with_mods(mods, || {
         with_game(|game| {
-            let root = std::env::current_dir().unwrap().join("published-world");
+            let scratch = tempfile::tempdir().unwrap();
+            let root = scratch.path().join("published-world");
             game.load_world(request(&root)).unwrap();
             game.native_tags_updated(TagsUpdateCause::ServerDataLoad { reload: true });
             assert_eq!(

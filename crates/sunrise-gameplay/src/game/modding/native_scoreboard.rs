@@ -1,4 +1,4 @@
-//! Scoreboard objective handles for native server mods, and the client's view of the board.
+//! Scoreboard objective handles for native server mods.
 //!
 //! Every write is made on the same `Scoreboard` the `/scoreboard` command writes, with the same
 //! methods: the per-tick sync to clients (`lan/scoreboard.rs`) and the save (`save_scoreboard`)
@@ -6,10 +6,11 @@
 //! the board gave the objective when it was added, so a removed objective stays stale when its
 //! name is added again.
 use crate::game::ServerGame;
+use core::ops::ControlFlow;
 use mod_api::__private::game::*;
 use mod_api::{
-    DisplaySlot, NumberFormat, ObjectiveError, ObjectiveRef, ObjectiveRenderType, ScoreEntry,
-    ScoreHolder, TextFormError,
+    DisplaySlot, NumberFormat, ObjectiveError, ObjectiveReadError, ObjectiveRef,
+    ObjectiveRenderType, ScoreEntry, ScoreHolder, ServerReadError, TextFormError, WorldEpoch,
 };
 use sunrise_game_data::{
     scoreboard::{self as sb, Comp, comp_text, literal},
@@ -23,7 +24,7 @@ fn engine_render_type(render: ObjectiveRenderType) -> sb::RenderType {
     }
 }
 
-fn api_render_type(render: sb::RenderType) -> ObjectiveRenderType {
+pub(in crate::game) fn api_render_type(render: sb::RenderType) -> ObjectiveRenderType {
     match render {
         sb::RenderType::Integer => ObjectiveRenderType::Integer,
         sb::RenderType::Hearts => ObjectiveRenderType::Hearts,
@@ -62,7 +63,9 @@ fn engine_number_format(format: &NumberFormat) -> Result<sb::NumberFormat, TextF
     })
 }
 
-fn api_number_format(format: &sb::NumberFormat) -> Result<NumberFormat, TextFormError> {
+pub(in crate::game) fn api_number_format(
+    format: &sb::NumberFormat,
+) -> Result<NumberFormat, TextFormError> {
     Ok(match format {
         sb::NumberFormat::Blank => NumberFormat::Blank,
         sb::NumberFormat::Fixed(comp) => NumberFormat::Fixed(api_text(&comp_text(comp))?),
@@ -73,6 +76,18 @@ fn api_number_format(format: &sb::NumberFormat) -> Result<NumberFormat, TextForm
             }
             NumberFormat::Styled(std::mem::take(&mut api_text(&comp_text(&json))?.style))
         }
+    })
+}
+
+pub(in crate::game) fn objective_slots<'a>(
+    board: &'a sb::Scoreboard,
+    name: &'a str,
+) -> impl Iterator<Item = DisplaySlot> + 'a {
+    DisplaySlot::all().filter(move |slot| {
+        board
+            .display
+            .get(slot.name())
+            .is_some_and(|objective| objective.as_str() == name)
     })
 }
 
@@ -87,6 +102,27 @@ impl ServerGame<'_> {
             .score
             .board
             .objective_by_identity(objective.fields().id)
+    }
+
+    fn objective_visit_state(
+        &self,
+        objective: ObjectiveRef,
+    ) -> Result<&sb::Objective, ObjectiveReadError> {
+        if !self.common.is_logical_server() {
+            return Err(ObjectiveReadError::Unavailable);
+        }
+        self.objective_state(objective)
+            .ok_or(ObjectiveReadError::Stale)
+    }
+
+    pub(in crate::game) fn scoreboard_visit_epoch(&self) -> Result<WorldEpoch, ServerReadError> {
+        if !self.common.is_logical_server() {
+            return Err(ServerReadError::Unavailable);
+        }
+        self.common
+            .native_lifecycle
+            .epoch()
+            .ok_or(ServerReadError::Unavailable)
     }
 
     fn objective_handle(&self, objective: &sb::Objective) -> Option<ObjectiveRef> {
@@ -169,17 +205,19 @@ impl ServerGame<'_> {
     }
 
     /// `Scoreboard.getObjectives`.
-    pub(in crate::game) fn objectives(&self) -> Vec<ObjectiveRef> {
-        if !self.common.is_logical_server() {
-            return Vec::new();
-        }
-        self.common
+    pub(in crate::game) fn visit_objectives(
+        &self,
+        visit: &mut dyn FnMut(ObjectiveRef) -> ControlFlow<()>,
+    ) -> Result<ControlFlow<()>, ServerReadError> {
+        let epoch = self.scoreboard_visit_epoch()?;
+        Ok(self
+            .common
             .score
             .board
             .objectives
             .iter()
-            .filter_map(|o| self.objective_handle(o))
-            .collect()
+            .map(|o| objective_ref(epoch, o.identity.0))
+            .try_for_each(visit))
     }
 
     /// `Scoreboard.addObjective`.
@@ -226,7 +264,7 @@ impl ServerGame<'_> {
         if !self.common.is_logical_server() {
             return None;
         }
-        self.objective_handle(self.common.score.board.display_objective(&slot.name())?)
+        self.objective_handle(self.common.score.board.display_objective(slot.name())?)
     }
 
     /// `Scoreboard.setDisplayObjective`.
@@ -252,18 +290,18 @@ impl ServerGame<'_> {
         self.common
             .score
             .board
-            .set_display_objective(&slot.name(), name.as_deref());
+            .set_display_objective(slot.name(), name.as_deref());
         true
     }
 
     /// `Objective.getName`.
-    pub(in crate::game) fn objective_name(&self, objective: ObjectiveRef) -> Option<String> {
-        self.objective_state(objective).map(|o| o.name.clone())
+    pub(in crate::game) fn objective_name(&self, objective: ObjectiveRef) -> Option<&str> {
+        self.objective_state(objective).map(|o| o.name.as_str())
     }
 
     /// `Objective.getCriteria`.
-    pub(in crate::game) fn objective_criteria(&self, objective: ObjectiveRef) -> Option<String> {
-        self.objective_state(objective).map(|o| o.criteria.clone())
+    pub(in crate::game) fn objective_criteria(&self, objective: ObjectiveRef) -> Option<&str> {
+        self.objective_state(objective).map(|o| o.criteria.as_str())
     }
 
     /// `Objective.getDisplayName`.
@@ -310,16 +348,13 @@ impl ServerGame<'_> {
     }
 
     /// The display slots that show the objective, in id order.
-    pub(in crate::game) fn objective_slots(
+    pub(in crate::game) fn objective_visit_slots(
         &self,
         objective: ObjectiveRef,
-    ) -> Option<Vec<DisplaySlot>> {
-        let name = &self.objective_state(objective)?.name;
-        Some(
-            DisplaySlot::all()
-                .filter(|slot| self.common.score.board.display.get(&slot.name()) == Some(name))
-                .collect(),
-        )
+        visit: &mut dyn FnMut(DisplaySlot) -> ControlFlow<()>,
+    ) -> Result<ControlFlow<()>, ObjectiveReadError> {
+        let name = &self.objective_visit_state(objective)?.name;
+        Ok(objective_slots(&self.common.score.board, name).try_for_each(visit))
     }
 
     /// `Scoreboard.getPlayerScoreInfo`'s value.
@@ -334,20 +369,19 @@ impl ServerGame<'_> {
     }
 
     /// `Scoreboard.listPlayerScores`.
-    pub(in crate::game) fn objective_scores(
+    pub(in crate::game) fn objective_visit_scores(
         &self,
         objective: ObjectiveRef,
-    ) -> Option<Vec<ScoreEntry>> {
-        let name = &self.objective_state(objective)?.name;
-        Some(
-            self.common
-                .score
-                .board
-                .list_scores(name)
-                .into_iter()
-                .map(|entry| ScoreEntry::new(ScoreHolder::Name(entry.owner), entry.value))
-                .collect(),
-        )
+        visit: &mut dyn for<'a> FnMut(ScoreEntry<'a>) -> ControlFlow<()>,
+    ) -> Result<ControlFlow<()>, ObjectiveReadError> {
+        let name = &self.objective_visit_state(objective)?.name;
+        Ok(self
+            .common
+            .score
+            .board
+            .score_rows(name)
+            .map(|(holder, score)| ScoreEntry::new(holder, score.value))
+            .try_for_each(visit))
     }
 
     /// `ScoreAccess.locked`.
@@ -518,12 +552,16 @@ pub mod tests {
     /// The API's slot and color names are the board's, in the board's order.
     #[test]
     fn slot_and_color_names_are_the_boards() {
-        let slots: Vec<_> = DisplaySlot::all().map(DisplaySlot::name).collect();
-        assert_eq!(slots, sb::display_slots());
+        let board_slots = sb::display_slots();
+        assert!(
+            DisplaySlot::all()
+                .map(DisplaySlot::name)
+                .eq(board_slots.iter().map(String::as_str))
+        );
         let colors: Vec<_> = TeamColor::ALL.iter().map(|c| c.name()).collect();
         assert_eq!(colors, sb::team_colors().collect::<Vec<_>>());
         for slot in DisplaySlot::all() {
-            assert_eq!(DisplaySlot::from_name(&slot.name()), Some(slot));
+            assert_eq!(DisplaySlot::from_name(slot.name()), Some(slot));
         }
         assert_eq!(DisplaySlot::from_name("sidebar.team.pink"), None);
     }
@@ -590,7 +628,7 @@ pub mod tests {
             seed: 0,
             max_players: 10,
             integrated: true,
-            levels: game.server.level_shapes,
+            levels: game.server.level_shapes.clone(),
             level_seeds: game.server.levels.0.runtime.seeds(),
         };
         let mut net = NetConfig::lan(0, "test".into(), 10);

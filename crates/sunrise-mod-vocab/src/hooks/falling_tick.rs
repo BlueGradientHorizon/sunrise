@@ -13,7 +13,6 @@ pub trait Hooks {
     /// state a part listens to is recorded; with no such part, one table lookup per falling
     /// block per tick. Diverges from upstream: new hook.
     #[hook(
-        target = "sunrise_gameplay::game::native_hooks::falling_tick::ServerGame<'_>::native_falling_tick",
         dispatch = "flat",
         side = "server",
         contract = "listen",

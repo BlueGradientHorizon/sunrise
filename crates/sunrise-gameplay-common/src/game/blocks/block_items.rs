@@ -294,7 +294,7 @@ pub trait BlockItemsGameExt1<'__sg>: crate::game::SideGame<'__sg> {
             Some(BlockEntity::Mod(_))
         );
         if !mod_entity
-            && (include_data || banner || pot || statue)
+            && (banner || pot || statue)
             && let Some(saved) = self.saved_block_entity(key, false)
         {
             let mut picked = block_entity_item::pick(&saved);

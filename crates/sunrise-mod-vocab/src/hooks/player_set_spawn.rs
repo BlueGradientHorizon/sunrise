@@ -11,7 +11,6 @@ pub trait Hooks {
     /// current point, including a point already set on the replacement by a clone
     /// listener. `player_entity_id` is the server's entity id for the player. Server-side.
     #[hook(
-        target = "sunrise_gameplay::game::native_hooks::player_set_spawn::ServerGame<'_>::native_player_set_spawn",
         dispatch = "api_carrier",
         side = "server",
         contract = "cancel",

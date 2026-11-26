@@ -12,7 +12,11 @@ use sunrise_world::loot::PackOverlay;
 mod offer;
 pub use offer::{ItemCost, MerchantOffer};
 use serde_json::Value;
-use std::{collections::HashMap, path::Path, sync::Arc};
+use std::{
+    collections::{BTreeMap, HashMap},
+    path::Path,
+    sync::Arc,
+};
 
 /// `VillagerData.NEXT_LEVEL_XP_THRESHOLDS`.
 pub const LEVEL_XP: [i32; 5] = [0, 10, 70, 150, 250];
@@ -439,22 +443,25 @@ pub fn trade_update_pitch(
 /// The trade registries.
 pub struct Trades {
     pub professions: std::sync::Arc<crate::mobs::villager::ResolvedProfessions>,
-    pub trades: HashMap<String, Value>,
+    pub trades: BTreeMap<String, Value>,
     /// villager_trade tags, ordered.
     pub tags: HashMap<String, Vec<String>>,
-    pub sets: HashMap<String, Value>,
+    pub sets: BTreeMap<String, Value>,
     /// potion tags, ordered (`set_random_potion` options).
     pub potion_tags: HashMap<String, Vec<String>>,
 }
-/// The `.json` files under `dir` as `minecraft:<path>` ids, through `json_folder` (from the
+/// The `.json` files under `dir` as `<ns>:<path>` ids, through `json_folder` (from the
 /// prepared data file when there is one); a file that doesn't parse is left out.
-fn walk(dir: &Path, out: &mut HashMap<String, Value>) {
+fn walk(dir: &Path, ns: &str, out: &mut BTreeMap<String, Value>) {
     let Ok(folder) = sunrise_world::json_folder::read(dir) else {
         return;
     };
     for file in &folder.files {
+        if !sunrise_world::json_folder::valid_resource_path(ns, &file.name) {
+            continue;
+        }
         if let Ok(value) = serde_json::from_slice(file.bytes().unwrap_or_default()) {
-            out.insert(format!("minecraft:{}", file.name), value);
+            out.insert(format!("{ns}:{}", file.name), value);
         }
     }
 }
@@ -462,18 +469,19 @@ impl Trades {
     /// Load from a resource root; `overlay` (the world's data packs'
     /// content files) merges over it, the way a pack stack layers
     /// (`SimpleJsonResourceReloadListener`, `TagLoader`).
-    pub fn load(root: &Path, overlay: &sunrise_world::loot::PackOverlay) -> Self {
-        let data = root.join("data/minecraft");
-        let (mut trades, mut raw_tags, mut sets) = (HashMap::new(), HashMap::new(), HashMap::new());
-        walk(&data.join("villager_trade"), &mut trades);
-        walk(&data.join("tags/villager_trade"), &mut raw_tags);
-        walk(&data.join("trade_set"), &mut sets);
-        let mut raw_potions = HashMap::new();
-        walk(&data.join("tags/potion"), &mut raw_potions);
+    pub fn load(root: &Path, overlay: &sunrise_world::loot::PackOverlay) -> std::io::Result<Self> {
+        let data = root.join("data");
+        let (mut trades, mut sets) = (BTreeMap::new(), BTreeMap::new());
+        for ns in sunrise_world::json_folder::namespaces(&data) {
+            let ns_dir = data.join(&ns);
+            walk(&ns_dir.join("villager_trade"), &ns, &mut trades);
+            walk(&ns_dir.join("trade_set"), &ns, &mut sets);
+        }
         // The packs' trade files: a trade or set's top pack file replaces
         // the game's own (`SimpleJsonResourceReloadListener` sees one
-        // resource per id), a tag's entries join in pack order with a
-        // `replace` file dropping the lower sources' (`TagLoader.load`).
+        // resource per id), then `neoforge:conditions` runs on each winning
+        // entry (`RegistryDataLoader` / `ConditionalOps`). Tags bind through
+        // the one tag loader below and ignore conditions (`TagLoader.load`).
         for (id, files) in overlay.kind("villager_trade") {
             if let Ok(v) = serde_json::from_slice(PackOverlay::top(files)) {
                 trades.insert(id.to_owned(), v);
@@ -484,79 +492,24 @@ impl Trades {
                 sets.insert(id.to_owned(), v);
             }
         }
-        let values = |v: Value| -> Vec<String> {
-            v["values"]
-                .as_array()
-                .into_iter()
-                .flatten()
-                .filter_map(|e| e.as_str().map(str::to_owned))
-                .collect()
-        };
-        let mut raw_potions: HashMap<String, Vec<String>> = raw_potions
-            .into_iter()
-            .map(|(k, v)| (k, values(v)))
-            .collect();
-        let mut raw: HashMap<String, Vec<String>> = raw_tags
-            .into_iter()
-            .map(|(k, v)| {
-                (
-                    k,
-                    v["values"]
-                        .as_array()
-                        .into_iter()
-                        .flatten()
-                        .filter_map(|e| e.as_str().map(str::to_owned))
-                        .collect(),
-                )
-            })
-            .collect();
-        for (registry, raw) in [("villager_trade", &mut raw), ("potion", &mut raw_potions)] {
-            for (id, files) in overlay.tag_kind(registry) {
-                let slot = raw.entry(id).or_default();
-                for bytes in files {
-                    let Ok(v) = serde_json::from_slice::<Value>(bytes) else {
-                        continue;
-                    };
-                    if v["replace"].as_bool() == Some(true) {
-                        slot.clear();
-                    }
-                    if let Some(vs) = v["values"].as_array() {
-                        slot.extend(vs.iter().filter_map(|e| e.as_str().map(str::to_owned)));
-                    }
-                }
-            }
-        }
-        fn expand(
-            name: &str,
-            raw: &HashMap<String, Vec<String>>,
-            out: &mut Vec<String>,
-            depth: u32,
-        ) {
-            for v in raw.get(name).into_iter().flatten() {
-                match v.strip_prefix('#') {
-                    Some(t) if depth < 16 => expand(t, raw, out, depth + 1),
-                    Some(_) => {}
-                    None if !out.contains(v) => out.push(v.clone()),
-                    None => {}
-                }
-            }
-        }
-        let expand_all = |raw: &HashMap<String, Vec<String>>| {
-            raw.keys()
-                .map(|k| {
-                    let mut v = Vec::new();
-                    expand(k, raw, &mut v, 0);
-                    (k.clone(), v)
-                })
-                .collect()
-        };
-        Self {
+        trades.retain(|id, v| overlay.conditions.allows_id(v, "villager_trade", id));
+        sets.retain(|id, v| overlay.conditions.allows_id(v, "trade_set", id));
+        // Their tags bind through the one tag loader (`TagLoader.load` and `build`).
+        let registries = sunrise_world::tag_layers::builtin_ids(root)?;
+        let potions = registries.get("potion");
+        let tags = sunrise_world::tag_layers::load(root, "villager_trade", overlay, |id| {
+            trades.contains_key(id)
+        })?;
+        let potion_tags = sunrise_world::tag_layers::load(root, "potion", overlay, |id| {
+            potions.is_some_and(|ids| ids.contains(id))
+        })?;
+        Ok(Self {
             trades,
-            tags: expand_all(&raw),
+            tags,
             professions: std::sync::Arc::new(crate::mobs::villager::ResolvedProfessions::vanilla()),
             sets,
-            potion_tags: expand_all(&raw_potions),
-        }
+            potion_tags,
+        })
     }
     /// The random sequence of a trade set (`TradeSet.randomSequence`).
     pub fn sequence(&self, set_id: &str) -> Option<String> {
@@ -1303,7 +1256,7 @@ mod tests {
     fn offers_follow_the_trade_data() {
         let items = items();
         let e = crate::enchant::tests::sample();
-        let mut trades = HashMap::new();
+        let mut trades = BTreeMap::new();
         trades.insert("minecraft:t/boots".into(), json!({"gives":{"id":"minecraft:iron_boots"},"max_uses":12,"reputation_discount":0.2,"wants":{"count":4,"id":"minecraft:emerald"}}));
         trades.insert("minecraft:t/helmet".into(), json!({"gives":{"id":"minecraft:iron_helmet"},"max_uses":12,"reputation_discount":0.2,"wants":{"count":5,"id":"minecraft:emerald"}}));
         trades.insert("minecraft:t/desert".into(), json!({"gives":{"id":"minecraft:sand"},"wants":{"id":"minecraft:emerald"},"merchant_predicate":{"entity":"this","predicate":{"minecraft:predicates":{"minecraft:villager/variant":"minecraft:desert"}},"type":"minecraft:entity_properties"}}));
@@ -1316,7 +1269,7 @@ mod tests {
                 "minecraft:t/desert".into(),
             ],
         );
-        let mut sets = HashMap::new();
+        let mut sets = BTreeMap::new();
         sets.insert(
             "minecraft:t/level_1".into(),
             json!({"amount": 5, "trades": "#minecraft:t/level_1"}),
@@ -1374,10 +1327,10 @@ mod tests {
         let items = items();
         let e = crate::enchant::tests::sample();
         let t = Trades {
-            trades: HashMap::new(),
+            trades: BTreeMap::new(),
             tags: HashMap::new(),
             professions: std::sync::Arc::new(crate::mobs::villager::ResolvedProfessions::vanilla()),
-            sets: HashMap::new(),
+            sets: BTreeMap::new(),
             potion_tags: HashMap::new(),
         };
         let ctx = TradeContext {
@@ -1415,9 +1368,9 @@ mod enchant_select_tests {
         let items = crate::enchant::tests::sample_items();
         let e = crate::enchant::tests::sample();
         let trades = Trades {
-            trades: HashMap::new(),
+            trades: BTreeMap::new(),
             tags: HashMap::new(),
-            sets: HashMap::new(),
+            sets: BTreeMap::new(),
             professions: std::sync::Arc::new(crate::mobs::villager::ResolvedProfessions::vanilla()),
             potion_tags: HashMap::new(),
         };
@@ -1445,5 +1398,150 @@ mod enchant_select_tests {
             .unwrap();
         assert!(stack.enchantments().is_empty());
         assert_eq!(random.next_long(), expected.next_long());
+    }
+
+    /// Potion and villager trade tags bind through `TagLoader`: a pack's file removes and adds
+    /// entries, and a tag with a missing required member is dropped.
+    #[test]
+    fn pack_potion_and_trade_tags_bind_like_tag_loader() {
+        let root = tempfile::tempdir().unwrap();
+        let write = |path: &str, text: &str| {
+            let path = root.path().join("data/minecraft").join(path);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, text).unwrap();
+        };
+        std::fs::write(
+            root.path().join("registries.json"),
+            r#"{"minecraft:potion":{"entries":{"minecraft:swiftness":{},"minecraft:strength":{},"minecraft:luck":{}}}}"#,
+        )
+        .unwrap();
+        write("villager_trade/offer.json", "{}");
+        write(
+            "tags/potion/pool.json",
+            r#"{"values":["minecraft:swiftness","minecraft:strength"]}"#,
+        );
+        write(
+            "tags/villager_trade/offers.json",
+            r#"{"values":["minecraft:offer"]}"#,
+        );
+        let files = [
+            (
+                "tags/minecraft:potion/pool".to_owned(),
+                vec![br#"{"values":["minecraft:luck"],"remove":["minecraft:swiftness"]}"#.to_vec()],
+            ),
+            (
+                "tags/minecraft:villager_trade/offers".to_owned(),
+                vec![br#"{"values":[{"id":"minecraft:absent","required":true}]}"#.to_vec()],
+            ),
+            (
+                "tags/minecraft:villager_trade/extra".to_owned(),
+                vec![br##"{"values":[{"id":"minecraft:absent","required":false},"#minecraft:offers"]}"##.to_vec()],
+            ),
+        ];
+        let trades = Trades::load(root.path(), &PackOverlay::new(&files)).unwrap();
+        assert_eq!(
+            trades.potion_tags["minecraft:pool"],
+            ["minecraft:strength", "minecraft:luck"]
+        );
+        assert!(!trades.tags.contains_key("minecraft:offers"));
+        assert!(!trades.tags.contains_key("minecraft:extra"));
+    }
+
+    #[test]
+    fn trades_load_evaluates_conditions_on_trades_and_sets_but_not_tags() {
+        let root =
+            std::env::temp_dir().join(format!("sunrise-merchant-cond-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let trade_dir = root.join("data/boiler/villager_trade");
+        let set_dir = root.join("data/boiler/trade_set");
+        let tag_dir = root.join("data/minecraft/tags/villager_trade");
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join("registries.json"), "{}").unwrap();
+        std::fs::create_dir_all(&trade_dir).unwrap();
+        std::fs::create_dir_all(&set_dir).unwrap();
+        std::fs::create_dir_all(&tag_dir).unwrap();
+        // Trade guarded by mod_loaded("chemlib")
+        std::fs::write(
+            trade_dir.join("chem.json"),
+            json!({
+                "neoforge:conditions": [{"type": "neoforge:mod_loaded", "modid": "chemlib"}],
+                "wants": {"id": "minecraft:emerald", "count": 1},
+                "gives": {"id": "minecraft:stick", "count": 1}
+            })
+            .to_string(),
+        )
+        .unwrap();
+        // Unconditional baseline trade overridden by a failing higher pack: must not uncover.
+        std::fs::write(
+            trade_dir.join("override.json"),
+            json!({
+                "wants": {"id": "minecraft:emerald", "count": 1},
+                "gives": {"id": "minecraft:dirt", "count": 1}
+            })
+            .to_string(),
+        )
+        .unwrap();
+        // Trade set guarded by mod_loaded("chemlib")
+        std::fs::write(
+            set_dir.join("chem_set.json"),
+            json!({
+                "neoforge:conditions": [{"type": "neoforge:mod_loaded", "modid": "chemlib"}],
+                "trades": "#minecraft:chem_pool"
+            })
+            .to_string(),
+        )
+        .unwrap();
+        // Tag carrying a false condition: tags ignore conditions (TagLoader).
+        std::fs::write(
+            tag_dir.join("chem_pool.json"),
+            json!({
+                "neoforge:conditions": [{"type": "neoforge:false"}],
+                "values": ["boiler:chem"]
+            })
+            .to_string(),
+        )
+        .unwrap();
+
+        let pack_files = vec![(
+            "villager_trade/boiler:override".to_owned(),
+            vec![
+                json!({
+                    "neoforge:conditions": [{"type": "neoforge:mod_loaded", "modid": "absent"}],
+                    "wants": {"id": "minecraft:emerald", "count": 2},
+                    "gives": {"id": "minecraft:stone", "count": 1}
+                })
+                .to_string()
+                .into_bytes(),
+            ],
+        )];
+        let on = sunrise_world::conditions::LoadConditions::new(["chemlib"]);
+        let overlay_on = sunrise_world::loot::PackOverlay {
+            conditions: &on,
+            files: &pack_files,
+            ..sunrise_world::loot::PackOverlay::default()
+        };
+        let loaded_on = Trades::load(&root, &overlay_on).unwrap();
+        assert!(loaded_on.trades.contains_key("boiler:chem"));
+        assert!(!loaded_on.trades.contains_key("boiler:override"));
+        assert!(loaded_on.sets.contains_key("boiler:chem_set"));
+        assert_eq!(
+            loaded_on.tags.get("minecraft:chem_pool").map(Vec::as_slice),
+            Some(&["boiler:chem".to_owned()][..])
+        );
+
+        let off = sunrise_world::conditions::LoadConditions::vanilla();
+        let overlay_off = sunrise_world::loot::PackOverlay {
+            conditions: &off,
+            files: &pack_files,
+            ..sunrise_world::loot::PackOverlay::default()
+        };
+        let loaded_off = Trades::load(&root, &overlay_off).unwrap();
+        assert!(!loaded_off.trades.contains_key("boiler:chem"));
+        assert!(!loaded_off.trades.contains_key("boiler:override"));
+        assert!(!loaded_off.sets.contains_key("boiler:chem_set"));
+        // The tag's required member is gone with its conditioned trade, so the
+        // tag loader drops the tag (`TagLoader.build`).
+        assert!(!loaded_off.tags.contains_key("minecraft:chem_pool"));
+        let _ = std::fs::remove_dir_all(&root);
     }
 }

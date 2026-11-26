@@ -23,6 +23,13 @@ impl ClientGame<'_> {
         else {
             return None;
         };
+        self.skull_skin(skull)
+    }
+
+    pub(in crate::game) fn skull_skin(
+        &self,
+        skull: &sunrise_level::containers::Skull,
+    ) -> Option<String> {
         let skin = skull.skin.as_ref()?;
         // PlayerSkin.Patch: a `texture` override replaces the profile's skin.
         if let Some(texture) = &skin.texture

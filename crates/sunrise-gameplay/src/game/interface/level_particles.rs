@@ -13,22 +13,25 @@ impl ServerGame<'_> {
     /// (an end portal opening, the dragon's death roar): here, and sent to
     /// every guest whatever their dimension, each at their own position
     /// (`Hub::global_level_event`).
-    pub(in crate::game::server_side) fn global_level_event(
+    pub(in crate::game) fn global_level_event(
         &mut self,
         id: i32,
         pos: [i32; 3],
         data: i32,
     ) {
+        let global = self
+            .common
+            .ui
+            .rules
+            .bool_at(sunrise_game_data::gamerules::vanilla::GLOBAL_SOUND_EVENTS);
+        if global && self.server_level_event_canceled(id, pos, data, true) {
+            return;
+        }
         // ServerLevel.globalLevelEvent: without global_sound_events it is a
         // plain level event (`levelEvent(null, ...)`), sent to the players
         // near `pos`; the vanilla client has no plain sound for 1023, 1028
         // and 1038 (they are only in `LevelEventHandler.globalLevelEvent`).
-        if !self
-            .common
-            .ui
-            .rules
-            .bool_at(sunrise_game_data::gamerules::vanilla::GLOBAL_SOUND_EVENTS)
-        {
+        if !global {
             self.server_level_event_at(id, pos, data);
             return;
         }
@@ -46,12 +49,15 @@ impl ServerGame<'_> {
         pos: [i32; 3],
         data: i32,
     ) {
-        if !self
+        let global = self
             .common
             .ui
             .rules
-            .bool_at(sunrise_game_data::gamerules::vanilla::GLOBAL_SOUND_EVENTS)
-        {
+            .bool_at(sunrise_game_data::gamerules::vanilla::GLOBAL_SOUND_EVENTS);
+        if global && self.server_level_event_canceled(id, pos, data, true) {
+            return;
+        }
+        if !global {
             self.deliver_level_event(id, pos, data);
             return;
         }
@@ -69,6 +75,10 @@ impl ServerGame<'_> {
         self.level_event_from(None, id, pos, data);
     }
 
+    pub(in crate::game) fn level_event_at(&mut self, id: i32, pos: [i32; 3], data: i32) {
+        self.server_level_event_at(id, pos, data);
+    }
+
     /// Deliver one committed level event immediately without draining unrelated `level_events` or
     /// `lan_events`, sending its packet directly when a LAN host is active so packet order matches
     /// commit order across effect kinds.
@@ -78,6 +88,9 @@ impl ServerGame<'_> {
         pos: [i32; 3],
         data: i32,
     ) {
+        if self.server_level_event_canceled(id, pos, data, false) {
+            return;
+        }
         let saved_level_events = std::mem::take(&mut self.common.level_events);
         let saved_lan_events = std::mem::take(&mut self.server.lan_events);
         self.common.level_events.push(LevelEvent::LevelEvent {
@@ -86,7 +99,9 @@ impl ServerGame<'_> {
             data,
             source: None,
         });
+        let asked = crate::game::native_hooks::server_level_event::LevelEventsAsked::mark();
         let _ = self.server_process_level_events();
+        drop(asked);
         let recorded = std::mem::replace(&mut self.server.lan_events, saved_lan_events);
         let extra_level_events =
             std::mem::replace(&mut self.common.level_events, saved_level_events);

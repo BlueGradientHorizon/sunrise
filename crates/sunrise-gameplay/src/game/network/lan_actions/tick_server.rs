@@ -1,5 +1,16 @@
 use super::*;
 
+fn guest_by_hint(
+    guests: &sunrise_sim::lan::guest_list::GuestList,
+    hint: usize,
+    conn: u32,
+) -> Option<&sunrise_sim::lan::guest::Guest> {
+    guests
+        .get(hint)
+        .filter(|g| g.conn == conn)
+        .or_else(|| guests.get(guests.connection_index(conn)?))
+}
+
 impl crate::game::ServerGame<'_> {
     pub(in crate::game) fn advance_guest_entity_clock(&mut self, conn: u32) {
         let Some(host) = self.server.lan.as_mut() else {
@@ -40,15 +51,6 @@ impl crate::game::ServerGame<'_> {
     /// `handlePlayerPositionChange` jumps from the pre-move position and yaw.
     /// A later attack packet reads the resulting velocity even before travel.
     pub fn guest_jump(&mut self, conn: u32, from: [f64; 3], yaw: f32) {
-        let identity = if !mod_api::__private::listened(mod_api::HookId::PlayerJump) {
-            None
-        } else {
-            self.server
-                .lan
-                .as_ref()
-                .and_then(|host| host.hub.guest(conn))
-                .map(|g| (g.uuid, g.name.clone()))
-        };
         self.as_guest(conn, |game| {
             let Some(player) = game.common.player.as_mut() else {
                 return;
@@ -76,9 +78,6 @@ impl crate::game::ServerGame<'_> {
             let _ = w.jump_from_ground();
             (w.player.position, w.player.yaw, w.player.ground.on_ground) =
                 (position, yaw_after, ground);
-            if let Some((uuid, name)) = identity {
-                game.native_player_jump(uuid, &name);
-            }
         });
     }
     /// Only listeners pay for a guest swap; reuse the loop's resolved index.
@@ -277,7 +276,7 @@ impl crate::game::ServerGame<'_> {
                 let outer = std::mem::replace(&mut g.server.stab_players, players);
                 // Player.tick's attackStrengthTicker, part of the body.
                 if body {
-                    g.server.attack_ticks = g.server.attack_ticks.saturating_add(1);
+                    g.server.attack_ticks = g.server.attack_ticks.wrapping_add(1);
                 }
                 g.tick_using_server();
                 g.server.stab_players = outer;
@@ -325,19 +324,19 @@ impl crate::game::ServerGame<'_> {
         // LivingEntity.tick's detectEquipmentUpdates, part of the body: after the
         // item use above and before aiStep's travel and updatePlayerPose, so a new
         // scale modifier rebuilds the box this tick.
-        if body
-            && let Some(host) = self.server.lan.as_mut()
-            && {
-                let g = &host.hub.guests[gi];
-                let held = g.inventory.get(g.selected).and_then(Option::as_ref);
-                let play = host.play.entry(conn).or_default();
-                equipment_changed(&mut play.equipped, &g.armor, held, g.offhand.as_ref())
-            }
-        {
-            let _ = self.as_guest_at(gi, conn, |g| g.put_equipment_modifiers());
+        if body {
+            self.detect_guest_equipment_updates(gi, conn);
         }
         self.guest_server_tick(conn, body);
         let Some(host) = self.server.lan.as_mut() else {
+            return;
+        };
+        let Some(gi) = host
+            .hub
+            .guests
+            .connection_index(conn)
+            .filter(|&i| host.hub.here(&host.hub.guests[i]))
+        else {
             return;
         };
         let sleeping = host.hub.guests[gi].sleeping;
@@ -380,6 +379,87 @@ impl crate::game::ServerGame<'_> {
             self.guest_player_tick(gi, conn, mod_api::HookId::PlayerTickPost, |game, player| {
                 game.native_player_tick_post(mod_api::__private::PlayerTickPostCall { player })
             });
+        }
+    }
+
+    /// `LivingEntity.detectEquipmentUpdates` / `collectEquipmentChanges` for a
+    /// server guest inside its body tick, after `tick_using` and before
+    /// `guest_server_tick`: compares all eight `EquipmentSlot`s by borrow
+    /// against `play.last_equipment`, posts `living_equipment_change` per
+    /// changed slot before updating attributes (matching NeoForge), updates
+    /// `last_equipment` once per changed slot, and refreshes equipment
+    /// attribute modifiers when any slot changed.
+    fn detect_guest_equipment_updates(&mut self, gi: usize, conn: u32) {
+        use crate::game::native_mobs::{
+            equipment_stack_matches, guest_equipment_changed, guest_equipment_slot,
+            store_equipment_history,
+        };
+
+        let Some((entity_id, changed)) = self.server.lan.as_ref().and_then(|host| {
+            let g = guest_by_hint(&host.hub.guests, gi, conn).filter(|g| host.hub.here(g))?;
+            let last = host
+                .play
+                .get(&conn)
+                .and_then(|play| play.last_equipment.as_deref());
+            Some((g.entity_id as u32, guest_equipment_changed(g, last)))
+        }) else {
+            return;
+        };
+        if !changed {
+            return;
+        }
+        let mut any_changed = false;
+        for slot in sunrise_core::equipment_slot::EquipmentSlot::ALL {
+            let living = self
+                .living_equipment_notify_epoch()
+                .map(|epoch| mod_api::LivingRef::new(mod_api::EntityRef::new(epoch, entity_id)));
+            let index = slot as usize;
+            let (from, to) = {
+                let Some(host) = self.server.lan.as_mut() else {
+                    return;
+                };
+                let Some(g) =
+                    guest_by_hint(&host.hub.guests, gi, conn).filter(|g| host.hub.here(g))
+                else {
+                    break;
+                };
+                let play = host.play.entry(conn).or_default();
+                let current = guest_equipment_slot(g, slot);
+                let prev = play
+                    .last_equipment
+                    .as_deref()
+                    .and_then(|last| last[index].as_ref());
+                if equipment_stack_matches(current, prev) {
+                    continue;
+                }
+                any_changed = true;
+                let to = current.cloned();
+                if living.is_none() {
+                    store_equipment_history(&mut play.last_equipment, index, to);
+                    continue;
+                }
+                let from = play
+                    .last_equipment
+                    .as_deref_mut()
+                    .and_then(|last| last[index].take());
+                (from, to)
+            };
+            if let Some(living) = living {
+                self.dispatch_living_equipment_change(living, slot, from.as_ref(), to.as_ref());
+                if let Some(host) = self.server.lan.as_mut()
+                    && let Some(play) = host.play.get_mut(&conn)
+                {
+                    store_equipment_history(&mut play.last_equipment, index, to);
+                }
+            }
+        }
+        if any_changed
+            && let Some(gi) = self.server.lan.as_ref().and_then(|host| {
+                let gi = host.hub.guests.connection_index(conn)?;
+                host.hub.here(&host.hub.guests[gi]).then_some(gi)
+            })
+        {
+            let _ = self.as_guest_at(gi, conn, |g| g.put_equipment_modifiers());
         }
     }
     /// Tick each connection once, in hub order. Resolve its level at dispatch
@@ -515,116 +595,135 @@ impl crate::game::ServerGame<'_> {
                 self.advance_guest_entity_clock(conn);
             }
         }
-        // For a root player the common tick is part of the cancellable
-        // round, even for a spectator touching an unloaded chunk.
-        let round = self.native_players_tick_pre();
+        self.apply_guest_camera_requests();
+        self.common.creatures.canceled_players.clear();
+        let mut round = self.native_tick_round();
+        // For a root player the common tick is part of the cancellable round,
+        // even for a spectator touching an unloaded chunk. Each guest's Pre,
+        // ServerPlayer.tick work, and Post bracket that guest individually.
         for &(conn, passenger) in &turns {
-            if !passenger && !self.player_tick_canceled(conn) && !self.on_server_trip(conn) {
+            let Some(entity_id) = self.server.lan.as_ref().and_then(|host| {
+                let g = host.hub.guest(conn).filter(|g| host.hub.here(g))?;
+                Some(g.entity_id as u32)
+            }) else {
+                continue;
+            };
+            if round.pre()
+                && !self.native_tick_pre_one(
+                    &mut round,
+                    entity_id,
+                    sunrise_gameplay_common::game::native_ticks::PLAYER,
+                )
+            {
+                self.common.creatures.canceled_players.push(conn);
+                continue;
+            }
+            if self
+                .server
+                .lan
+                .as_ref()
+                .is_none_or(|host| host.hub.guest(conn).is_none_or(|g| !host.hub.here(g)))
+            {
+                continue;
+            }
+            if !passenger && !self.on_server_trip(conn) {
                 self.advance_guest_entity_clock(conn);
             }
-        }
-        self.tick_guest_cameras();
-        self.lan_merchant_tick();
-        self.lan_stations_tick();
-        self.lan_tables_tick();
-        self.lan_mod_crafting_tick();
-        self.lan_menu_links_tick();
-        self.lan_containers_tick();
-        self.tick_lan_mount_menus();
-        self.native_players_equipment();
-        self.announce_guest_advancements();
-        let mut told = None;
-        for &(conn, _) in &turns {
-            self.native_player_tick_post_alone(&round, &mut told);
-            let canceled = self.player_tick_canceled(conn);
-            let Some(host) = self.server.lan.as_mut() else {
-                break;
-            };
-            let Some(gi) = host
-                .hub
-                .guests
-                .connection_index(conn)
-                .filter(|&i| host.hub.here(&host.hub.guests[i]))
-            else {
-                continue;
-            };
-            if !canceled && round.alone_kind(sunrise_gameplay_common::game::native_ticks::PLAYER) {
-                told = Some(host.hub.guests[gi].entity_id as u32);
-            }
+            self.tick_guest_camera_one(conn);
+            self.lan_merchant_tick_one(conn);
+            self.lan_station_tick_one(conn);
+            self.lan_table_tick_one(conn);
+            self.lan_mod_crafting_tick_one(conn);
+            self.lan_menu_links_tick_one(conn);
+            self.lan_container_tick_one(conn);
+            self.tick_lan_mount_menu_one(conn);
+            self.announce_guest_advancements();
             // A player waiting for a teleport destination cannot dig there yet.
-            if canceled || self.on_server_trip(conn) {
-                continue;
-            }
-            let host = self.server.lan.as_mut().unwrap();
-            if let Some((pos, _)) = host.play.get(&conn).and_then(|play| play.digging)
-                && self
-                    .common
-                    .res
-                    .facts()
-                    .is_air(self.common.world.block(pos[0], pos[1], pos[2]))
-                && let Some(play) = host.play.get_mut(&conn)
+            if !self.on_server_trip(conn)
+                && let Some(host) = self.server.lan.as_mut()
+                && let Some(gi) = host
+                    .hub
+                    .guests
+                    .connection_index(conn)
+                    .filter(|&i| host.hub.here(&host.hub.guests[i]))
             {
-                play.digging = None;
-                play.mining = None;
-            }
-            let play = host.play.entry(conn).or_default();
-            let digging = play.digging;
-            if digging.is_some() || play.mining.is_some() || play.destroy_delay > 0 {
-                let _ = self.as_guest_at(gi, conn, |g| {
-                    if let Some((pos, face)) = digging {
-                        g.server.forced_hit = Some(Hit {
-                            pos,
-                            face,
-                            point: [
-                                f64::from(pos[0]) + 0.5,
-                                f64::from(pos[1]) + 0.5,
-                                f64::from(pos[2]) + 0.5,
-                            ],
-                            inside: false,
-                        });
-                    }
-                    let _ = g.tick_mining();
-                    g.server.forced_hit = None;
-                });
-                // Instant STARTs complete without a STOP; do not break a later
-                // block planted in the same position again.
-                if digging.is_some()
-                    && let Some(host) = self.server.lan.as_mut()
+                if let Some((pos, _)) = host.play.get(&conn).and_then(|play| play.digging)
+                    && self
+                        .common
+                        .res
+                        .facts()
+                        .is_air(self.common.world.block(pos[0], pos[1], pos[2]))
                     && let Some(play) = host.play.get_mut(&conn)
-                    && (host.hub.guest(conn).is_some_and(|g| g.creative()) || play.mining.is_none())
                 {
                     play.digging = None;
+                    play.mining = None;
+                }
+                let play = host.play.entry(conn).or_default();
+                let digging = play.digging;
+                if digging.is_some() || play.mining.is_some() || play.destroy_delay > 0 {
+                    let _ = self.as_guest_at(gi, conn, |g| {
+                        if let Some((pos, face)) = digging {
+                            g.server.forced_hit = Some(Hit {
+                                pos,
+                                face,
+                                point: [
+                                    f64::from(pos[0]) + 0.5,
+                                    f64::from(pos[1]) + 0.5,
+                                    f64::from(pos[2]) + 0.5,
+                                ],
+                                inside: false,
+                            });
+                        }
+                        let _ = g.tick_mining();
+                        g.server.forced_hit = None;
+                    });
+                    // Instant STARTs complete without a STOP; do not break a later
+                    // block planted in the same position again.
+                    if digging.is_some()
+                        && let Some(host) = self.server.lan.as_mut()
+                        && let Some(play) = host.play.get_mut(&conn)
+                        && (host.hub.guest(conn).is_some_and(|g| g.creative())
+                            || play.mining.is_none())
+                    {
+                        play.digging = None;
+                    }
+                }
+                self.guest_delayed_destroy(conn);
+                self.guest_dig_feedback(conn);
+                let _ = self.as_guest(conn, |g| {
+                    if let Some(player) = g.common.player.as_mut() {
+                        player.health.advance_damage_cooldown();
+                    }
+                    // ServerPlayer.tick: the TICK and LEVITATION triggers,
+                    // player attributes, then PlayerAdvancements.flushDirty.
+                    g.tick_level_advancements();
+                    g.update_player_attributes();
+                });
+                if let Some(host) = self.server.lan.as_mut() {
+                    host.hub.flush_progress(conn);
+                    if !host.hub.native_advancement_grants.is_empty() {
+                        self.run_native_advancement_grants();
+                    }
+                }
+                if let Some(host) = self.server.lan.as_mut()
+                    && let Some(gi) = host.hub.guests.connection_index(conn)
+                    && host.hub.here(&host.hub.guests[gi])
+                    && host.hub.guests[gi].post_effects_dirty
+                {
+                    host.hub.send_post_effects(gi);
                 }
             }
-            self.guest_delayed_destroy(conn);
-            self.guest_dig_feedback(conn);
-            let _ = self.as_guest(conn, |g| {
-                if let Some(player) = g.player.as_mut() {
-                    player.health.advance_damage_cooldown();
-                }
-                // ServerPlayer.tick: the TICK and LEVITATION triggers,
-                // player attributes, then PlayerAdvancements.flushDirty.
-                g.tick_level_advancements();
-                g.update_player_attributes();
-            });
-            if let Some(host) = self.server.lan.as_mut() {
-                host.hub.flush_progress(conn);
-                if !host.hub.native_advancement_grants.is_empty() {
-                    self.run_native_advancement_grants();
-                }
-            }
-            if let Some(host) = self.server.lan.as_mut()
-                && let Some(gi) = host.hub.guests.connection_index(conn)
-                && host.hub.here(&host.hub.guests[gi])
-                && host.hub.guests[gi].post_effects_dirty
-            {
-                host.hub.send_post_effects(gi);
+            if round.post() {
+                self.native_tick_post_one(
+                    &round,
+                    entity_id,
+                    sunrise_gameplay_common::game::native_ticks::PLAYER,
+                );
             }
         }
-        self.native_player_tick_post_alone(&round, &mut told);
-        self.native_tick_post_batch(round);
-        // Entity.rideTick positions the rider after its tick (and after Post
-        // even for batched listeners). Canceling the tick does not stop this.
+        self.announce_guest_advancements();
+        // Entity.rideTick positions the rider after its tick (and after Post).
+        // Canceling the tick does not stop this.
         for (conn, passenger) in turns {
             if passenger && !self.on_server_trip(conn) {
                 self.guest_vehicle_tick(conn);

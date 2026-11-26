@@ -21,7 +21,6 @@ use sunrise_client::{
 };
 use sunrise_client_input::radial;
 use sunrise_game_data::Result;
-use winit::event::MouseButton;
 use winit::keyboard::KeyCode;
 
 pub(in crate::game) const HELP: &[&str] = &[
@@ -695,14 +694,6 @@ impl crate::game::ClientGame<'_> {
             Route::Mouse(button) => {
                 let playing =
                     self.client.title.0.is_none() && self.client.screen == Screen::Playing;
-                // What the window path tells mods and the click counters. Pick block isn't one
-                // they count.
-                if playing
-                    && matches!(button, MouseButton::Left | MouseButton::Right)
-                    && (down || !self.mouse_mapping_held_elsewhere(button, Source::Pad))
-                {
-                    self.extras_mouse(button, down);
-                }
                 if !down || playing {
                     self.mouse_mapping(button, down, Source::Pad)?;
                 }
@@ -885,17 +876,23 @@ impl crate::game::ClientGame<'_> {
                 label("sunrise.controller.notice.controller_disconnected.hint"),
             ),
         };
-        self.client.controller_notice.raise(notice);
+        let clock = sunrise_client::toasts::ToastClock::of(self.common.clock.still());
+        self.client.controller_notice.raise(notice, clock);
     }
 
     /// Connection notices sit below the boss bars and last as long as a toast.
-    pub(in crate::game::client_side) fn draw_controller_notice(&mut self, batch: &mut HudBatch) {
+    pub(in crate::game::client_side) fn draw_controller_notice(
+        &mut self,
+        batch: &mut HudBatch,
+        clock: sunrise_client::toasts::ToastClock,
+    ) {
         let shown_for =
             Duration::from_secs_f64(5.0 * self.client.settings.notification_display_time);
         self.client.controller_notice.draw(
             batch,
             &self.client.gui.atlas,
             self.client.chat_ui.room.below_top(18.0),
+            clock,
             shown_for,
         );
     }

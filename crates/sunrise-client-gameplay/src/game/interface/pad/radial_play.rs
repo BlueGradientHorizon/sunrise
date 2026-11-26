@@ -366,10 +366,7 @@ impl crate::game::ClientGame<'_> {
         }
         let shoots = matches!(action, RadialAction::Screenshot | RadialAction::ToggleGui);
         let action = action.action();
-        self.client
-            .audio
-            .0
-            .play("minecraft:ui.button.click", None, UI_CLICK_VOLUME, 1.0);
+        self.play_audio("minecraft:ui.button.click", None, UI_CLICK_VOLUME, 1.0);
         // The release runs whatever the press did, so no key stays held.
         let pressed = self.pad_action(action, true);
         let released = self.pad_action(action, false);

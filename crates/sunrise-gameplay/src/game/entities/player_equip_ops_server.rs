@@ -8,7 +8,6 @@ impl ServerGame<'_> {
         if self.common.spectator() {
             return;
         }
-        self.native_on_equip(slot, new);
         let Some(at) = self
             .common
             .player

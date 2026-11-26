@@ -105,8 +105,8 @@ pub(crate) mod tests {
     fn block_parts_pick_and_use_on_the_server_and_for_a_guest() {
         use mod_api::InteractionResult as Answer;
         use mod_api::{
-            self, BlockPart, CloneItemStackEvent, Hooks, Host, ItemPart, ItemStack, Registrar,
-            ServerHost, UseItemOnEvent, UseOnEvent, UseWithoutItemEvent,
+            self, BlockPart, CloneItemStackEvent, Hooks, Host, HostSide, ItemPart, ItemStack,
+            Registrar, UseItemOnEvent, UseOnEvent, UseWithoutItemEvent,
         };
         use std::sync::{
             Arc, Mutex,
@@ -166,9 +166,12 @@ pub(crate) mod tests {
         impl BlockPart for User {
             fn use_item_on(
                 &self,
-                host: &mut dyn ServerHost,
+                host: HostSide<'_>,
                 event: &mut UseItemOnEvent<'_>,
             ) -> Option<Answer> {
+                let HostSide::Server(host) = host else {
+                    return None;
+                };
                 let replacement = self.replace_with.lock().unwrap().take();
                 if let Some(state) = replacement {
                     let level = host.level("minecraft:overworld").unwrap();
@@ -190,9 +193,12 @@ pub(crate) mod tests {
             }
             fn use_without_item(
                 &self,
-                host: &mut dyn ServerHost,
+                host: HostSide<'_>,
                 event: &mut UseWithoutItemEvent<'_>,
             ) -> Option<Answer> {
+                let HostSide::Server(host) = host else {
+                    return None;
+                };
                 assert_eq!(event.click.hand, mod_api::client::first_person::Hand::Main);
                 if let Some(level) = self.empty_food.lock().unwrap().take() {
                     let player = host.player(event.click.player).unwrap();
@@ -307,7 +313,7 @@ pub(crate) mod tests {
                     seed: 0,
                     max_players: 2,
                     integrated: true,
-                    levels: game.server.level_shapes,
+                    levels: game.server.level_shapes.clone(),
                     level_seeds: game.server.levels.0.runtime.seeds(),
                 };
                 game.lan_host(settings, net, config).unwrap();

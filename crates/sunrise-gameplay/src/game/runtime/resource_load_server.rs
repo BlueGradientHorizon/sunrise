@@ -50,12 +50,16 @@ pub(in crate::game) fn load_resources_for_role(
     let inventory = sunrise_mod_package::enabled::EnabledMods::read(prepared)?;
     let conditions =
         sunrise_gameplay_common::game::load_conditions::conditions_for_mods(mods, &inventory)?;
+    let captured =
+        mods::item_data_load::capture_load_settings(prepared, role.execution, role.owning)?;
     let (core, ()) = startup::time("core", || {
         load_core::<ServerCorePresentation>(
             &root,
             &additional_data,
             &conditions,
+            &[],
             role,
+            captured,
             threads > 1,
             progress,
             None,
@@ -81,7 +85,16 @@ pub(in crate::game) fn load_resources_for_role(
             ..
         },
         pack_step,
-    ) = prepare_core(core, prepared, &root, &additional_data, None, started)?;
+    ) = prepare_core(
+        core,
+        prepared,
+        &root,
+        &additional_data,
+        &conditions,
+        role.execution,
+        None,
+        started,
+    )?;
     pack.additional_data = additional_data.into();
     drop(pack_step);
     log::info!("load pack tables: {:.2}s", started.elapsed().as_secs_f32());

@@ -1,6 +1,7 @@
 //! Sniffers on the client side: digging particles, block hit sound, and searching sound.
 use crate::game::ClientGame;
-use sunrise_core::{geometry::Vec3, position::BlockPos};
+use sunrise_core::geometry::Vec3;
+use sunrise_gameplay_common::game::native_block_sounds::NativeBlockSoundsGameExt1 as _;
 #[allow(unused_imports)]
 use sunrise_sim::mobs::{Mob, Species, sniffer};
 
@@ -39,12 +40,7 @@ impl ClientGame<'_> {
             let id = m.id;
             let at = [m.position.x, m.position.y, m.position.z];
             if sniffer::state(m) == sniffer::SEARCHING && m.age.is_multiple_of(20) {
-                self.client.audio.0.play_unshared(
-                    "minecraft:entity.sniffer.searching",
-                    Some(at),
-                    1.0,
-                    1.0,
-                );
+                self.play_audio("minecraft:entity.sniffer.searching", Some(at), 1.0, 1.0);
                 continue;
             }
             if !sniffer::digging(m) {
@@ -79,16 +75,10 @@ impl ClientGame<'_> {
                     }
                     if age.is_multiple_of(10) {
                         let sniffer = Some((id, self.common.mobs[i].kind.id.as_str()));
-                        let hit = sunrise_sim::block_sounds::sound_type(
-                            &self.common.loop_context,
-                            self.common.res.facts(),
-                            BlockPos::new(ground[0], ground[1], ground[2]),
-                            below,
-                            sniffer,
-                            mod_api::BlockSoundCause::Dig,
-                        )
-                        .hit;
-                        self.client.audio.0.play_unshared(&hit, Some(at), 0.5, 0.5);
+                        let hit = self
+                            .selected_block_sound(ground, below, sniffer, mod_api::BlockSoundCause::Dig)
+                            .event;
+                        self.play_audio(hit.as_str(), Some(at), 0.5, 0.5);
                     }
                 }
             }

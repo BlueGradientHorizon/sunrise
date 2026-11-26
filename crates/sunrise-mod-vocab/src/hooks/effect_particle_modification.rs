@@ -13,14 +13,14 @@ result, as `areAllEffectsAmbient`: only effects visible after the mods count. As
 entity's effects change, not every tick, and the answers are sent until the next change; with no listener nothing is
 kept and vanilla's list goes out. The window's own player draws its swirls from its own effects."#]
     #[hook(
-        target = "sunrise_gameplay::game::native_hooks::effect_particle_modification::ServerGame<'_>::native_effect_particle_modification",
         receiver = "read",
         dispatch = "flat",
         side = "server",
         contract = "listen",
         host = "read",
         neoforge = "EffectParticleModificationEvent",
-        cancellable = false
+        cancellable = false,
+        version = 2
     )]
     fn effect_particle_modification(
         entity: LivingRef,

@@ -33,6 +33,7 @@ pub(crate) mod test_support;
 /// Client-side event constructor monomorphised into `Endpoint<E>` and `MainQueue<E>`.
 pub trait ClientEvent: Sized + Send + 'static {
     fn raw_payload(incoming: Incoming) -> Self;
+    fn into_raw_payload(self) -> Option<Incoming>;
     fn disconnected(reason: String) -> Self;
 }
 
@@ -41,6 +42,9 @@ pub enum NoClientEvent {}
 impl ClientEvent for NoClientEvent {
     fn raw_payload(_incoming: Incoming) -> Self {
         unreachable!("NoClientEvent cannot construct a client event")
+    }
+    fn into_raw_payload(self) -> Option<Incoming> {
+        match self {}
     }
     fn disconnected(_reason: String) -> Self {
         unreachable!("NoClientEvent cannot construct a client event")

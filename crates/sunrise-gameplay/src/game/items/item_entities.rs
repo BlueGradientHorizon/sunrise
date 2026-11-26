@@ -3,11 +3,40 @@
 use super::*;
 use sunrise_gameplay_common::game::collision_source::Mover;
 use sunrise_gameplay_common::game::creatures;
+use sunrise_sim::{entities::ItemCells, join_seq::JoinList};
+
+/// The lifted list's removal mask, pending departures and merge grid, indexed by its current
+/// row order. `cells` is refilled lazily (reusing map and bucket capacities) only when a merge
+/// pass actually queries it, so `give_items_back` compacts `items` before any callback runs
+/// without rebuilding `ItemCells` per expiry.
+pub(in crate::game::server_side) struct ItemPass {
+    removed: Vec<bool>,
+    cells: ItemCells,
+    cells_dirty: bool,
+    any_removed: bool,
+    pending_left: Vec<u32>,
+}
+
+impl ItemPass {
+    fn mark_removed(&mut self, index: usize, id: u32, at: Vec3, record_leave: bool) {
+        if self.removed[index] {
+            return;
+        }
+        self.removed[index] = true;
+        self.any_removed = true;
+        if !self.cells_dirty {
+            self.cells.remove(index, at);
+        }
+        if record_leave {
+            self.pending_left.push(id);
+        }
+    }
+}
 
 /// The items `give_items_back` takes again, where the item the loop was at now is (none once it
 /// is gone), and the index the loop goes on from.
 pub(in crate::game) struct GivenBack {
-    pub(in crate::game) items: sunrise_sim::join_seq::JoinList<ItemEntity>,
+    pub(in crate::game) items: JoinList<ItemEntity>,
     pub(in crate::game) at: Option<usize>,
     pub(in crate::game) next: usize,
 }
@@ -18,7 +47,6 @@ impl crate::game::ServerGame<'_> {
         self.tick_dropped_items(&mut round);
         sunrise_threads::work::clear_work();
         self.drain_entity_inside();
-        self.native_tick_post_batch(round);
     }
     /// An item that joined during this tick's entity pass: it first ticks on
     /// the next one.
@@ -26,11 +54,18 @@ impl crate::game::ServerGame<'_> {
         id > self.server.ticked_entities_through || self.server.contact_drops.contains(&id)
     }
     pub fn tick_dropped_items(&mut self, round: &mut native_ticks::TickRound) {
+        // Item update hooks can discard a drop before the pass starts.
+        self.native_item_removals_flush(|_| {});
         let mut items = self.common.dropped.lift();
         // ServerLevel.tick: only entities in entity-ticking chunks tick.
         let ticking = self.entity_ticking_area();
-        let mut removed = vec![false; items.len()];
-        let mut cells = sunrise_sim::entities::ItemCells::new(&items);
+        let mut pass = ItemPass {
+            removed: vec![false; items.len()],
+            cells: ItemCells::default(),
+            cells_dirty: true,
+            any_removed: false,
+            pending_left: Vec::new(),
+        };
         // A LAN or server guest only shows the host's items.
         let merging = self.common.is_logical_server();
         // `Entity.checkBelowWorld`: below `Level.getMinY() - 64`.
@@ -39,33 +74,32 @@ impl crate::game::ServerGame<'_> {
             sunrise_sim::entities::ObstacleGrid::new(self.entity_collisions(Mover::Passive));
         let mut nearby = Vec::new();
         let mut bubble_tops = Vec::new();
+        let mut destroyed = Vec::new();
         let mut moves = ahead::Moves::work_out(self, &items, &obstacles, round, |item| {
-            !self.joined_during_entity_pass(item.id)
+            item.stack.count > 0
+                && &*item.stack.item != "minecraft:air"
+                && !self.joined_during_entity_pass(item.id)
                 && ticking(
                     item.position.x.floor() as i32,
                     item.position.z.floor() as i32,
                 )
         });
-        // `ItemUtils.onContainerDestroyed`: what a destroyed item held, and
-        // where it lay, for adding to the level once its own tick is done.
-        let mut destroyed: Vec<(ItemStack, Vec3)> = Vec::new();
         let item_type = sunrise_threads::work::entity_id(native_ticks::ITEM);
-        // Items a mod named (`entity_tick_each`) hear their Pre right before their own tick and
-        // their Post right after it, each alone, with the list given back for the call; their
-        // part (`on_entity_item_update`) follows their Pre.
-        let alone = round.alone_kind(native_ticks::ITEM);
+        // When entity tick hooks are subscribed, each item hears its Pre right before its own
+        // tick (followed by `on_entity_item_update`) and its Post right after it, with the list
+        // given back for the call.
+        let told = round.told_listening();
+        let tell_pre = round.pre();
+        let tell_post = round.post();
         let update_hook =
             merging && mod_api::__private::has_part_hook(mod_api::HookId::OnEntityItemUpdate);
-        // Whether an item left the pass (`removed`) since the list was last given back.
-        let mut gone = false;
+        let leave_hook = merging && mod_api::__private::listened(mod_api::HookId::EntityLeaveLevel);
         let mut next = 0;
-        while next < items.len() {
+        'items: while next < items.len() {
             let mut i = next;
             next += 1;
             sunrise_threads::work::set_entity(item_type);
-            if removed[i] {
-                // Merged into an earlier item before its own tick: it never ticked.
-                round.not_ticked(items[i].id);
+            if pass.removed[i] {
                 continue;
             }
             // `addFreshEntity` during the entity pass: the item ticks from the
@@ -79,19 +113,43 @@ impl crate::game::ServerGame<'_> {
             ) {
                 continue;
             }
-            if alone {
-                let id = items[i].id;
-                let given =
-                    self.give_items_back(items, &mut removed, &mut cells, &mut gone, i, |game| {
-                        if game.native_tick_pre_one(round, id, native_ticks::ITEM)
-                            && update_hook
-                            && let Some(k) =
-                                native_ticks::place(&game.dropped, i, |item| item.id == id)
-                            && game.item_update_halts(k)
-                        {
-                            round.halt(id);
+            if tell_pre || (told && update_hook) {
+                let (id, join) = (items[i].id, items[i].join);
+                let given = self.give_items_back(items, &mut pass, i, round, |game, round| {
+                    if game
+                        .common
+                        .dropped
+                        .locate(join)
+                        .is_some_and(|k| game.common.dropped[k].id == id)
+                        && (!tell_pre || game.native_tick_pre_one(round, id, native_ticks::ITEM))
+                    {
+                        if tell_pre {
+                            game.native_item_removals_flush(|_| {});
                         }
-                    });
+                        if update_hook
+                            && let Some(k) = game
+                                .common
+                                .dropped
+                                .locate(join)
+                                .filter(|&k| game.common.dropped[k].id == id)
+                        {
+                            if game.item_update_halts(k) {
+                                round.halt(id);
+                            }
+                            if tell_post {
+                                game.native_item_removals_flush(|_| {});
+                                if !game
+                                    .common
+                                    .dropped
+                                    .locate(join)
+                                    .is_some_and(|k| game.common.dropped[k].id == id)
+                                {
+                                    game.native_tick_post_one(round, id, native_ticks::ITEM);
+                                }
+                            }
+                        }
+                    }
+                });
                 (items, next) = (given.items, given.next);
                 let Some(at) = given.at else {
                     continue;
@@ -101,43 +159,71 @@ impl crate::game::ServerGame<'_> {
             if round.canceled(items[i].id) {
                 continue;
             }
+            let mut expiry_discarded = false;
             let mut env_destroyed = None;
             'tick: {
                 if round.halted(items[i].id) {
                     break 'tick;
                 }
+                // `ItemEntity.tick`: after `onEntityItemUpdate`, an empty stack discards itself.
+                if items[i].stack.count == 0 || &*items[i].stack.item == "minecraft:air" {
+                    let (id, at) = (items[i].id, items[i].position);
+                    pass.mark_removed(i, id, at, merging && !self.common.persist.live.is_empty());
+                    break 'tick;
+                }
                 self.tick_saved_invulnerable_time(items[i].id);
+                let (no_physics, alive, discarded, entered) = items
+                    .with_one_and_rest(i, |item, before, after| {
+                        let sources = |id| {
+                            before
+                                .iter()
+                                .chain(after)
+                                .zip(pass.removed[..i].iter().chain(&pass.removed[i + 1..]))
+                                .find(|(p, removed)| p.id == id && !**removed && p.health > 0)
+                                .map(|(p, _)| {
+                                    (
+                                        sunrise_gameplay_common::game::commands_common::Target::Item(
+                                            id,
+                                        ),
+                                        p.position.components(),
+                                    )
+                                })
+                        };
+                        let revision = self.common.world.revision;
+                        let mut at_turn = |item: &mut ItemEntity| {
+                            // `getEntityCollisions(entity, bounds.expandTowards(movement))`: the boxes around
+                            // where the item can reach this tick.
+                            obstacles.near(ahead::reach(item), &mut nearby);
+                            // ItemEntity.tick's noPhysics (servers only): out of a block, a solid entity
+                            // or the border, placed or closed on it, towards the closest open side (#1252).
+                            let no_physics = merging
+                                && item.inside_block(
+                                    &self.common.world,
+                                    self.common.collision,
+                                    &nearby,
+                                    Some(self.common.border.geometry()),
+                                );
+                            // `moveTowardsClosestSpace` draws the speed from the item's own random.
+                            let escape_speed =
+                                no_physics.then(|| item.random.next_float() * 0.2 + 0.1);
+                            let mut entered = Vec::new();
+                            let (alive, discarded) = self.tick_item_with_block_contacts(
+                                item,
+                                escape_speed,
+                                &nearby,
+                                false,
+                                Some(&sources),
+                                &mut |splash| entered.push(splash),
+                            );
+                            (no_physics, alive, discarded, entered)
+                        };
+                        match moves.take(i, item, revision, &mut at_turn) {
+                            Some(moved) => moved,
+                            None => at_turn(item),
+                        }
+                    })
+                    .expect("the item tick has a current row");
                 let item = &mut items[i];
-                let mut at_turn = |item: &mut ItemEntity| {
-                    // `getEntityCollisions(entity, bounds.expandTowards(movement))`: the boxes around
-                    // where the item can reach this tick.
-                    obstacles.near(ahead::reach(item), &mut nearby);
-                    // ItemEntity.tick's noPhysics (servers only): out of a block, a solid entity
-                    // or the border, placed or closed on it, towards the closest open side (#1252).
-                    let no_physics = merging
-                        && item.inside_block(
-                            &self.common.world,
-                            self.common.collision,
-                            &nearby,
-                            Some(self.common.border.geometry()),
-                        );
-                    // `moveTowardsClosestSpace` draws the speed from the item's own random.
-                    let escape_speed = no_physics.then(|| item.random.next_float() * 0.2 + 0.1);
-                    let mut entered = Vec::new();
-                    let (alive, discarded) = self.tick_item_with_block_contacts(
-                        item,
-                        escape_speed,
-                        &nearby,
-                        false,
-                        &mut |splash| entered.push(splash),
-                    );
-                    (no_physics, alive, discarded, entered)
-                };
-                let (no_physics, alive, discarded, entered) =
-                    match moves.take(i, item, &mut at_turn) {
-                        Some(moved) => moved,
-                        None => at_turn(item),
-                    };
                 // Entity.doWaterSplashEffect: the server plays the sound (broadcast
                 // to clients). Its addParticle is empty.
                 for splash in entered {
@@ -158,12 +244,27 @@ impl crate::game::ServerGame<'_> {
                             &item.stack.item,
                         )
                     {
-                        cells.moved(i, item.previous, item.position);
-                        env_destroyed = Some((item.id, item.position, "minecraft:generic"));
+                        let damage_type = self
+                            .server
+                            .item_destroyed_damage
+                            .take_if(|(destroyed_id, _)| *destroyed_id == item.id)
+                            .map(|(_, ty)| ty)
+                            .unwrap_or_else(|| "minecraft:generic".to_owned());
+                        if !pass.cells_dirty {
+                            pass.cells.moved(i, item.previous, item.position);
+                        }
+                        env_destroyed = Some((item.id, item.position, damage_type));
                     } else {
-                        removed[i] = true;
-                        gone = true;
-                        cells.remove(i, item.previous);
+                        self.server
+                            .item_destroyed_damage
+                            .take_if(|(destroyed_id, _)| *destroyed_id == item.id);
+                        let (id, at) = (item.id, item.previous);
+                        pass.mark_removed(
+                            i,
+                            id,
+                            at,
+                            merging && !self.common.persist.live.is_empty(),
+                        );
                     }
                     break 'tick;
                 }
@@ -182,7 +283,9 @@ impl crate::game::ServerGame<'_> {
                         false,
                     );
                 }
-                cells.moved(i, item.previous, item.position);
+                if !pass.cells_dirty {
+                    pass.cells.moved(i, item.previous, item.position);
+                }
                 // Entity.handleOnAboveBubbleColumn: the server sends the particles of
                 // the surface of a bubble column the item is at the top of.
                 if merging {
@@ -203,45 +306,92 @@ impl crate::game::ServerGame<'_> {
                     2
                 };
                 if merging
-                    && (alive || item.age == 6000 && item.position.y >= void)
+                    && (alive || item.age <= ItemEntity::LIFETIME && item.position.y >= void)
                     && item.ticks.is_multiple_of(rate)
                 {
+                    if pass.cells_dirty {
+                        pass.cells.rebuild_live(&items, &pass.removed);
+                        pass.cells_dirty = false;
+                    }
                     let max_stack = |stack: &ItemStack| self.stack_max_size(stack).max(1);
+                    let record_leave = merging && !self.common.persist.live.is_empty();
                     // A merge may take this item or a neighbour out of the pass.
-                    gone |= sunrise_sim::entities::merge_with_neighbours(
+                    sunrise_sim::entities::merge_with_neighbours_recording(
                         &mut items,
-                        &mut removed,
-                        &mut cells,
+                        &mut pass.removed,
+                        &mut pass.cells,
                         i,
                         true,
                         &max_stack,
+                        &mut |emptied_id| {
+                            pass.any_removed = true;
+                            if record_leave {
+                                pass.pending_left.push(emptied_id);
+                            }
+                        },
                     );
                 }
-                let item = &mut items[i];
-                let mut alive = alive || (item.age < 6000 && item.position.y >= void);
-                if merging && !removed[i] && item.age >= 6000 && item.position.y >= void {
+                let mut alive =
+                    alive || (items[i].age < items[i].lifespan && items[i].position.y >= void);
+                if merging
+                    && !pass.removed[i]
+                    && items[i].age >= items[i].lifespan
+                    && items[i].position.y >= void
+                {
+                    // NeoForge `ItemEntity.tick` evaluates the left-hand `this.lifespan`
+                    // before calling `EventHooks.onItemExpire(this)`.
+                    let lifespan = items[i].lifespan;
                     let mut extra_life = 0;
-                    self.native_item_expire(item.id, &item.stack, &mut extra_life);
-                    if extra_life > 0 {
-                        item.age = 6000 - extra_life.min(32766);
-                        alive = true;
-                    } else if self.server.serving.is_some()
-                        || self.common.options.dedicated.is_some()
-                    {
-                        self.native_item_despawn(
-                            item.id,
-                            &item.stack.item,
-                            item.stack.count as i32,
-                            [item.position.x, item.position.y, item.position.z],
-                        );
+                    if mod_api::__private::listened(mod_api::HookId::ItemExpire) {
+                        let (id, join) = (items[i].id, items[i].join);
+                        let given =
+                            self.give_items_back(items, &mut pass, i, round, |game, round| {
+                                if let Some(epoch) = game.common.native_lifecycle.epoch()
+                                    && game
+                                        .common
+                                        .dropped
+                                        .locate(join)
+                                        .is_some_and(|k| game.common.dropped[k].id == id)
+                                {
+                                    let item = mod_api::ItemEntityRef::new(
+                                        mod_api::EntityRef::new(epoch, id),
+                                    );
+                                    game.native_item_expire(item, &mut extra_life);
+                                }
+                                if tell_post {
+                                    game.native_item_removals_flush(|_| {});
+                                    if !game
+                                        .common
+                                        .dropped
+                                        .locate(join)
+                                        .is_some_and(|k| game.common.dropped[k].id == id)
+                                    {
+                                        game.native_tick_post_one(round, id, native_ticks::ITEM);
+                                    }
+                                }
+                            });
+                        (items, next) = (given.items, given.next);
+                        let Some(at) = given.at else {
+                            continue 'items;
+                        };
+                        i = at;
                     }
+                    let item = &mut items[i];
+                    // NeoForge `ItemEntity.tick`: Java int addition, then clamp to
+                    // `0..=Short.MAX_VALUE - 1`, without rewinding `age`.
+                    item.lifespan = lifespan
+                        .wrapping_add(extra_life)
+                        .clamp(0, ItemEntity::MAX_LIFESPAN);
+                    alive =
+                        item.age < item.lifespan && item.position.y >= void && item.stack.count > 0;
+                    expiry_discarded = !alive;
                 }
-                if !alive || removed[i] {
-                    removed[i] = true;
-                    gone = true;
-                    cells.remove(i, item.position);
+                if !alive || pass.removed[i] {
+                    let (id, at) = (items[i].id, items[i].position);
+                    pass.mark_removed(i, id, at, merging && !self.common.persist.live.is_empty());
                     break 'tick;
                 }
+                let item = &mut items[i];
                 let from = item.previous;
                 let to = item.position;
                 if round.sections() {
@@ -251,9 +401,13 @@ impl crate::game::ServerGame<'_> {
                         [to.x, to.y, to.z],
                     );
                     if !live {
-                        removed[i] = true;
-                        gone = true;
-                        cells.remove(i, to);
+                        let id = item.id;
+                        pass.mark_removed(
+                            i,
+                            id,
+                            to,
+                            merging && !self.common.persist.live.is_empty(),
+                        );
                         break 'tick;
                     }
                 } else {
@@ -263,128 +417,66 @@ impl crate::game::ServerGame<'_> {
                         [to.x, to.y, to.z],
                     );
                 }
-                let item_id = item.id;
-                let saved = native_components::ITEM_ENVIRONMENT_DAMAGE
-                    .map(|damage| self.saved_refuses_damage(item_id, damage, false));
-                let tags = server_world_items!(self);
-                let registry = self.common.pack.assets.registry;
-                let block_registries = &self.common.pack.block_registries;
-                let hooks = &self.common.damage_hooks;
-                let environment = item.environment_tick_with_hook_deferring_spill(
-                    &mut self.common.world,
-                    self.common.res.facts(),
-                    registry,
-                    &native_components::item_damage_resolver(
-                        &self.common.pack.item_models,
-                        &self.common.health_resources.damage,
-                    ),
-                    |world, damage| {
-                        let vanilla = match damage {
-                            "minecraft:on_fire" => saved[0],
-                            "minecraft:lava" => saved[1],
-                            "minecraft:in_fire" => saved[2],
-                            "minecraft:cactus" => saved[3],
-                            _ => false,
-                        };
-                        let source = sunrise_sim::health::HurtSource {
-                            damage_type: damage,
-                            causing: 0,
-                            direct: 0,
-                            position: None,
-                        };
-                        sunrise_sim::health::DamageLevel::of(
-                            world,
-                            registry,
-                            Some(tags),
-                            Some(block_registries),
-                            hooks,
-                        )
-                        .no_push()
-                        .invulnerability_check(
-                            sunrise_sim::health::Hurting::Entity(
-                                item_id as i32,
-                                "minecraft:item",
-                                source,
-                            ),
-                            vanilla,
-                        )
-                    },
-                );
-                if environment.should_play_lava_hurt_sound(item.ticks) {
-                    // `Entity.lavaHurt` pitches the burn from `this.random`, the item's own.
-                    let pitch = 2.0 + item.random.next_float() * 0.4;
-                    self.server_play_sound(
-                        "minecraft:entity.generic.burn",
-                        [item.position.x, item.position.y, item.position.z],
-                        0.4,
-                        pitch,
-                    );
-                }
-                if !environment.alive {
-                    if merging
-                        && mod_api::__private::item_listens(
-                            mod_api::HookId::ItemDestroyed,
-                            &item.stack.item,
-                        )
-                    {
-                        env_destroyed = Some((
-                            item.id,
-                            item.position,
-                            environment.destroyed_by.unwrap_or("minecraft:generic"),
-                        ));
-                    } else {
-                        let spilled = item.spill_destroyed_contents();
-                        removed[i] = true;
-                        gone = true;
-                        cells.remove(i, item.position);
-                        for stack in spilled {
-                            destroyed.push((stack, item.position));
-                        }
-                    }
-                }
             }
             if let Some((id, at, damage_type)) = env_destroyed {
                 let mut drops = Vec::new();
-                let given =
-                    self.give_items_back(items, &mut removed, &mut cells, &mut gone, i, |game| {
-                        drops = if let Some(k) =
-                            native_ticks::place(&game.dropped, i, |item| item.id == id)
-                        {
-                            game.destroy_item_entity_drops(k, damage_type)
-                        } else {
-                            Vec::new()
-                        };
-                        if alone && !game.dropped.iter().any(|item| item.id == id) {
-                            game.native_tick_post_one(round, id, native_ticks::ITEM);
-                        }
-                    });
+                let given = self.give_items_back(items, &mut pass, i, round, |game, round| {
+                    drops = if let Some(k) =
+                        native_ticks::place(&game.common.dropped, i, |item| item.id == id)
+                    {
+                        game.destroy_item_entity_drops(k, &damage_type)
+                    } else {
+                        Vec::new()
+                    };
+                    if tell_post && !game.common.dropped.iter().any(|item| item.id == id) {
+                        game.native_tick_post_one(round, id, native_ticks::ITEM);
+                    }
+                });
                 (items, next) = (given.items, given.next);
                 for stack in drops {
                     destroyed.push((stack, at));
                 }
                 if let Some(at_idx) = given.at {
                     i = at_idx;
-                    removed[i] = true;
-                    gone = true;
-                    cells.remove(i, items[i].position);
+                    let (id, at) = (items[i].id, items[i].position);
+                    pass.mark_removed(i, id, at, merging && !self.common.persist.live.is_empty());
                 } else {
                     continue;
                 }
             }
-            if alone {
+            // `Entity.discard` calls `ServerLevel.EntityCallbacks.onTrackingEnd` within
+            // this turn. Restore surviving drops for the leave hook even without a Post.
+            if tell_post
+                || (expiry_discarded && leave_hook && !self.common.persist.live.is_empty())
+            {
                 let id = items[i].id;
-                let given =
-                    self.give_items_back(items, &mut removed, &mut cells, &mut gone, i, |game| {
+                let given = self.give_items_back(items, &mut pass, i, round, |game, round| {
+                    if tell_post {
                         game.native_tick_post_one(round, id, native_ticks::ITEM);
-                    });
+                    }
+                });
                 (items, next) = (given.items, given.next);
             }
         }
         for pos in bubble_tops {
             self.bubble_column_particles(pos);
         }
-        let mut removed = removed.into_iter();
-        items.retain(|_| !removed.next().unwrap_or(false));
+        if pass.any_removed {
+            let mut k = 0;
+            items.retain(|_| {
+                let keep = !pass.removed[k];
+                k += 1;
+                keep
+            });
+        }
+        if !pass.pending_left.is_empty() {
+            self.common.put_back_dropped(items);
+            for id in pass.pending_left {
+                self.native_entity_left(id);
+            }
+            self.native_item_removals_flush(|_| {});
+            items = self.common.dropped.lift();
+        }
         let Some(p) = self.common.player.as_ref() else {
             self.common.put_back_dropped(items);
             self.spawn_destroyed_contents(destroyed);
@@ -416,31 +508,46 @@ impl crate::game::ServerGame<'_> {
     }
     /// Gives the lifted items back to the level for a hook that reads them live (a named item's
     /// own Pre or Post, at item `i`), then takes them again. The items gone this pass so far
-    /// (`gone` says whether there are any) leave the list first, so the hook sees the level as it
-    /// stands. When none left, none joined during the pass and the hook wrote no item (the
-    /// list's write stamp didn't move), the list comes back as it went and `removed` and `cells`
-    /// stay as they are; otherwise they are rebuilt for the list taken back. The loop goes on
-    /// right after item `i`, or, when it is gone, after where it stood in the list's join order.
+    /// leave the list first, so the hook sees the level as it stands. When none left, none
+    /// joined during the pass and the hook wrote no item (the list's write stamp didn't move),
+    /// the list comes back as it went and `pass.removed` stays as it is; otherwise it is reset
+    /// and `pass.cells` marked dirty for the list taken back. The loop goes on right after
+    /// item `i`, or, when it is gone, after where it stood in the list's join order.
     pub(in crate::game::server_side) fn give_items_back(
         &mut self,
-        mut items: sunrise_sim::join_seq::JoinList<ItemEntity>,
-        removed: &mut Vec<bool>,
-        cells: &mut sunrise_sim::entities::ItemCells,
-        gone: &mut bool,
+        mut items: JoinList<ItemEntity>,
+        pass: &mut ItemPass,
         i: usize,
-        call: impl FnOnce(&mut Self),
+        round: &mut native_ticks::TickRound,
+        call: impl FnOnce(&mut Self, &mut native_ticks::TickRound),
     ) -> GivenBack {
         let (id, join) = (items[i].id, items[i].join);
-        let same_rows = !*gone && self.common.dropped.is_empty();
-        if *gone {
-            let mut left = removed.iter();
-            items.retain(|_| !left.next().copied().unwrap_or(false));
-            *gone = false;
+        let same_rows = self.common.dropped.is_empty();
+        let compacted = pass.any_removed;
+        if compacted {
+            let mut k = 0;
+            items.retain(|_| {
+                let keep = !pass.removed[k];
+                k += 1;
+                keep
+            });
+            pass.any_removed = false;
+            pass.cells_dirty = true;
         }
+        let mut left = std::mem::take(&mut pass.pending_left);
         self.common.put_back_dropped(items);
         let restored = self.common.dropped.stamp();
-        call(self);
-        let unchanged = same_rows && self.common.dropped.stamp() == restored;
+        if !left.is_empty() {
+            for &left_id in &left {
+                self.native_entity_left(left_id);
+            }
+            self.native_item_removals_flush(|_| {});
+            left.clear();
+        }
+        pass.pending_left = left;
+        call(self, round);
+        self.native_item_removals_flush(|_| {});
+        let unchanged = same_rows && !compacted && self.common.dropped.stamp() == restored;
         let items = self.common.dropped.lift();
         if unchanged {
             return GivenBack {
@@ -449,16 +556,13 @@ impl crate::game::ServerGame<'_> {
                 next: i + 1,
             };
         }
-        removed.clear();
-        removed.resize(items.len(), false);
-        *cells = sunrise_sim::entities::ItemCells::new(&items);
-        let at = items.iter().position(|item| item.id == id);
+        pass.removed.clear();
+        pass.removed.resize(items.len(), false);
+        pass.cells_dirty = true;
+        let at = items.locate(join).filter(|&k| items[k].id == id);
         let next = match at {
             Some(at) => at + 1,
-            None => items
-                .iter()
-                .position(|item| item.join > join)
-                .unwrap_or(items.len()),
+            None => items.partition_point(|item| item.join <= join),
         };
         GivenBack { items, at, next }
     }
@@ -472,7 +576,7 @@ impl crate::game::ServerGame<'_> {
     /// `ExperienceOrb.award`: orbs of the largest sizes; each draws the id
     /// `tryMergeToExisting` compares from the level random, then moves with
     /// its own random.
-    pub(in crate::game) fn spawn_orbs(&mut self, at: [f64; 3], value: u32) {
+    pub fn spawn_orbs(&mut self, at: [f64; 3], value: u32) {
         self.spawn_orbs_toward(at, [0.0; 3], value);
     }
     /// `ExperienceOrb.awardWithDirection`: `award` whose fresh orbs start
@@ -779,7 +883,7 @@ impl crate::game::ServerGame<'_> {
         let mut orbs = self.common.orbs.lift();
         #[cfg(any(test, feature = "test-support"))]
         crate::game::server_side::entity_server::taken_pass_tests::after_take(self);
-        let mut gained = 0;
+        let mut gained = 0i32;
         let mut taken = Vec::new();
         if let Some((min, max)) = bounds {
             orbs.retain_mut(|o| {
@@ -793,7 +897,7 @@ impl crate::game::ServerGame<'_> {
                     // ExperienceOrb.playerTouch: one orb every 2 ticks; a
                     // merged orb gives its value once per count.
                     self.server.xp_delay = 2;
-                    gained += o.points();
+                    gained = gained.saturating_add(o.value);
                     taken.push(o.clone());
                     o.count -= 1;
                     return o.count > 0;
@@ -804,7 +908,8 @@ impl crate::game::ServerGame<'_> {
         self.common
             .orbs
             .restore(orbs, sunrise_sim::join_seq::RestoreOrder::SurvivorsFirst);
-        if gained > 0 {
+        // ExperienceOrb.playerTouch repairs with the signed value, whatever it is.
+        if !taken.is_empty() {
             gained = self.mending(gained);
         }
         for o in taken {
@@ -816,7 +921,7 @@ impl crate::game::ServerGame<'_> {
             self.server_play_sound("minecraft:entity.experience_orb.pickup", at, 0.1, pitch);
         }
         if gained > 0 {
-            self.give_experience_points(gained as i32);
+            self.give_experience_points(gained);
         }
     }
 
@@ -927,7 +1032,7 @@ impl crate::game::ServerGame<'_> {
         stack: ItemStack,
         position: [f64; 3],
         velocity: [f64; 3],
-        pickup_delay: u32,
+        pickup_delay: i32,
     ) {
         self.add_item_entity(stack, position, Some(velocity), pickup_delay);
     }
@@ -938,7 +1043,7 @@ impl crate::game::ServerGame<'_> {
         &mut self,
         stack: ItemStack,
         position: [f64; 3],
-        pickup_delay: u32,
+        pickup_delay: i32,
     ) -> [f64; 3] {
         self.add_item_entity(stack, position, None, pickup_delay)
     }
@@ -959,7 +1064,7 @@ impl crate::game::ServerGame<'_> {
         stack: ItemStack,
         position: [f64; 3],
         velocity: Option<[f64; 3]>,
-        pickup_delay: u32,
+        pickup_delay: i32,
     ) -> [f64; 3] {
         self.add_item_entity_prepared(stack, position, velocity, pickup_delay, None)
     }
@@ -1113,22 +1218,25 @@ impl crate::game::ServerGame<'_> {
     /// `FurnaceResultSlot.checkTakeAchievements`: the player took from the output of the
     /// furnace at `pos`, which pops the experience of what it made at them
     /// (`awardUsedRecipesAndPopExperience`) and forgets it.
+    #[must_use = "the used recipes are awarded to the extracting player"]
     pub(in crate::game::server_side) fn award_furnace_recipes(
         &mut self,
         pos: (i32, i32, i32),
         at: [f64; 3],
-    ) {
-        let used = match self.common.world.block_entities.get_mut(&pos) {
+    ) -> Vec<String> {
+        let (used, recipes) = match self.common.world.block_entities.get_mut(&pos) {
             Some(BlockEntity::Furnace(f)) => {
-                let recipes = match self.server.world_tables.0.as_ref() {
+                let recipes_table = match self.server.world_tables.0.as_ref() {
                     Some(tables) => &tables.recipes,
                     None => self.common.res.recipes(),
                 };
-                let used = f.recipe_experience(recipes);
+                let used = f.recipe_experience(recipes_table);
+                let mut recipes: Vec<String> = f.recipes_used.keys().cloned().collect();
+                recipes.sort();
                 f.recipes_used.clear();
-                used
+                (used, recipes)
             }
-            _ => return,
+            _ => return Vec::new(),
         };
         for (count, experience) in used {
             let xp = sunrise_level::containers::create_experience(
@@ -1138,6 +1246,7 @@ impl crate::game::ServerGame<'_> {
             );
             self.spawn_orbs(at, xp);
         }
+        recipes
     }
 }
 

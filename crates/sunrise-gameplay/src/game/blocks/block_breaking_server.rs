@@ -1,4 +1,5 @@
 use super::*;
+use sunrise_gameplay_common::game::item_abilities::ItemAbilitiesGameExt1 as _;
 
 impl crate::game::ServerGame<'_> {
     pub fn break_block(&mut self, pos: [i32; 3]) -> Result<()> {
@@ -33,7 +34,7 @@ impl crate::game::ServerGame<'_> {
         let Some(removed) = contents.remove_one(items) else {
             return;
         };
-        contents.store(&mut bundle);
+        contents.store(items, &mut bundle);
         let item = Arc::clone(&bundle.item);
         *self.common.stack_in_mut(slot) = Some(bundle);
         let Some(position) = self.common.player.as_ref().map(|p| p.position) else {
@@ -63,7 +64,7 @@ impl crate::game::ServerGame<'_> {
         let stack = self.common.inventory[self.common.selected].clone()?;
         let per_block = self.items().mining_damage(&stack)?;
         let max = self.items().mining_damage_capacity(&stack);
-        let wears = if &*stack.item == "minecraft:shears" {
+        let wears = if self.stack_shears(&stack, super::item_abilities::ability::SHEARS_DIG) {
             !self.items().block_in_tag("minecraft:fire", name)
         } else {
             hardness != 0.0
@@ -84,11 +85,12 @@ impl crate::game::ServerGame<'_> {
     /// `ServerPlayerGameMode.destroyBlock`: whether the block was removed.
     /// A break inside another (a mod breaking more blocks from its
     /// `native_destroy_block`) keeps the outer break's own events.
-    pub fn player_break_block(&mut self, pos: [i32; 3]) -> Result<bool> {
-        let outer = self.server.lan_break_pos.replace(pos);
-        let broken = self.with_player_actor(|game| game.break_block_as_player(pos));
-        self.server.lan_break_pos = outer;
-        broken
+    pub fn player_break_block(
+        &mut self,
+        pos: [i32; 3],
+        collect: Option<&mut Vec<ItemStack>>,
+    ) -> Result<bool> {
+        self.with_player_actor(|game| game.break_block_as_player(pos, collect))
     }
 }
 

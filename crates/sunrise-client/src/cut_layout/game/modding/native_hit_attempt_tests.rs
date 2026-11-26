@@ -110,12 +110,24 @@ fn hit_attempts_reach_the_listener_once_including_refusals() {
                 heard.lock().unwrap().clear();
             };
             fresh_player(game, GameMode::Survival);
-            assert!(game.hurt_player_from(2.0, None, "minecraft:generic", Some(None), false));
+            assert!(game.hurt_player_from(
+                2.0,
+                None,
+                "minecraft:generic",
+                sunrise_gameplay_common::game::creatures::KnownCause::None,
+                false
+            ));
             check(
                 &[false],
                 "accepted player, including equipment continuations",
             );
-            assert!(!game.hurt_player_from(1.0, None, "minecraft:generic", Some(None), false));
+            assert!(!game.hurt_player_from(
+                1.0,
+                None,
+                "minecraft:generic",
+                sunrise_gameplay_common::game::creatures::KnownCause::None,
+                false
+            ));
             check(&[false], "player cooldown refusal");
 
             for (mode, immune) in [
@@ -198,13 +210,25 @@ fn hit_attempts_reach_the_listener_once_including_refusals() {
                 .health
                 .permanently_invulnerable = true;
             *override_answer.lock().unwrap() = Some(false);
-            assert!(game.hurt_player_from(2.0, None, "minecraft:generic", Some(None), false));
+            assert!(game.hurt_player_from(
+                2.0,
+                None,
+                "minecraft:generic",
+                sunrise_gameplay_common::game::creatures::KnownCause::None,
+                false
+            ));
             assert_eq!(game.player.as_ref().unwrap().health.health(), 18.0);
             check(
                 &[true],
                 "listener answer survives nested predicates and equipment continuations",
             );
-            assert!(game.hurt_player_from(4.0, None, "minecraft:generic", Some(None), false));
+            assert!(game.hurt_player_from(
+                4.0,
+                None,
+                "minecraft:generic",
+                sunrise_gameplay_common::game::creatures::KnownCause::None,
+                false
+            ));
             assert_eq!(game.player.as_ref().unwrap().health.health(), 16.0);
             check(
                 &[true],
@@ -213,7 +237,13 @@ fn hit_attempts_reach_the_listener_once_including_refusals() {
             *override_answer.lock().unwrap() = None;
 
             fresh_player(game, GameMode::Creative);
-            assert!(!game.hurt_player_from(2.0, None, "minecraft:generic", Some(None), false));
+            assert!(!game.hurt_player_from(
+                2.0,
+                None,
+                "minecraft:generic",
+                sunrise_gameplay_common::game::creatures::KnownCause::None,
+                false
+            ));
             check(
                 &[false],
                 "creative wrapper: ability refusal follows the base observation",
@@ -228,7 +258,7 @@ fn hit_attempts_reach_the_listener_once_including_refusals() {
                 2.0,
                 None,
                 "minecraft:player_attack",
-                Some(None),
+                sunrise_gameplay_common::game::creatures::KnownCause::None,
                 false
             ));
             check(&[false], "PvP refusal after the first predicate");

@@ -12,10 +12,17 @@ import unittest
 from unittest.mock import patch
 from pathlib import Path
 
-from tools import prebuilt_game
-from tests.test_ci_concurrency import yaml
+import tools
+from tools import lab, prebuilt_game
+from tests.os_support import needs_runner_shell, needs_symlinks
 
 COMMIT = "c" * 40
+
+
+def linux_package():
+    """The tool's names for a Linux package: `PLATFORM` and `EXECUTABLE` are fixed when it is imported, so a test of
+    a package it writes with Linux's file names patches them, not `sys.platform`."""
+    return patch.multiple(prebuilt_game, PLATFORM="linux", EXECUTABLE="sunrise-client")
 
 
 def write_build_data(root: Path, identity: dict | None = None, commit: str = COMMIT) -> None:
@@ -23,9 +30,9 @@ def write_build_data(root: Path, identity: dict | None = None, commit: str = COM
     slices `check` accepts (each required member, as an empty file) unless `identity` gives its own."""
     for name in prebuilt_game.BUILD_DATA:
         (root / name).write_text(json.dumps({"schema": 1, "build": {"commit": commit}}))
-    so, exe = prebuilt_game.dylib_suffix(), ".exe" if sys.platform == "win32" else ""
+    so = prebuilt_game.dylib_suffix()
     lib = prebuilt_game.dylib_prefix()
-    members = {"runtime": [f"bin/sunrise-client{exe}",
+    members = {"runtime": [f"{prebuilt_game.RUNTIME}/{prebuilt_game.EXECUTABLE}",
                            f"deps/{lib}sunrise_mod_host{so}",
                            *[f"deps/{lib}{crate}{so}" for crate in ("mod_api", "mod_vocab")]],
                "api": [prebuilt_game.NATIVE_MODS_TEMPLATE, "deps/libmod_api-1.rmeta"]}
@@ -39,6 +46,33 @@ def write_build_data(root: Path, identity: dict | None = None, commit: str = COM
 
 
 class StageToolTests(unittest.TestCase):
+    def test_lower_crate_cfgs_use_target_library_artifacts_not_host_or_game_features(self):
+        staged = Path("staged")
+        target = Path("target") / "build-target"
+        metadata = {"packages": [
+            {"id": "lower", "name": "sunrise-lower", "manifest_path": str(staged / "crates/sunrise-lower/Cargo.toml")},
+            {"id": "game", "name": prebuilt_game.GAME, "manifest_path": str(staged / "crates/sunrise-client/Cargo.toml")},
+        ]}
+
+        def artifact(package_id, path, feature, debug_assertions):
+            return {"reason": "compiler-artifact", "package_id": package_id, "target": {"kind": ["lib"]},
+                    "filenames": [str(path / "lib.rlib")], "features": [feature],
+                    "profile": {"debug_assertions": debug_assertions}}
+
+        messages = [
+            artifact("game", target, "game-only", False),
+            artifact("lower", target, "lower-only", False),
+            artifact("lower", Path("target/host"), "host-only", True),
+            {"reason": "build-script-executed", "package_id": "lower",
+             "out_dir": str(target / "out"), "cfgs": ['backend="target"']},
+            {"reason": "build-script-executed", "package_id": "lower",
+             "out_dir": "target/host/out", "cfgs": ['backend="host"']},
+        ]
+        self.assertEqual(
+            prebuilt_game.lower_crate_cfgs(metadata, messages, staged, target, {"unix", "debug_assertions"}),
+            {"sunrise_lower": ['backend="target"', 'feature="lower-only"', "unix"]},
+        )
+
     def test_stage_sync_only_rewrites_different_files(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -106,22 +140,23 @@ class StageToolTests(unittest.TestCase):
 
     def test_sdk_build_rejects_a_second_writer_and_releases_the_lock_after_failure(self):
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            # `build` resolves its output: Windows' temp folder is a short 8.3 name until it is.
+            root = Path(directory).resolve()
 
             def build_then_fail(out, server, target_dir):
-                self.assertEqual(target_dir, root.resolve() / "prebuilt")
+                self.assertEqual(target_dir, root / "prebuilt")
                 with self.assertRaises(SystemExit):
                     prebuilt_game.build(root / "other-sdk", server=False)
                 raise RuntimeError("build failed")
 
-            with patch.object(prebuilt_game, "os", ScopedOs({"CARGO_TARGET_DIR": directory})), \
+            with scoped_os({"CARGO_TARGET_DIR": directory}), \
                  patch.object(prebuilt_game, "_build_locked", side_effect=build_then_fail) as build_locked:
                 with self.assertRaisesRegex(RuntimeError, "build failed"):
                     prebuilt_game.build(root / "sdk", server=True)
                 build_locked.assert_called_once()
                 build_locked.side_effect = None
                 prebuilt_game.build(root / "other-sdk", server=False)
-                build_locked.assert_called_with(root / "other-sdk", False, root.resolve() / "prebuilt")
+                build_locked.assert_called_with(root / "other-sdk", False, root / "prebuilt")
 
     def test_prebuilt_tool_stages_fresh_tracked_copy_without_cargo(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -247,6 +282,7 @@ class RegistryPatchTests(unittest.TestCase):
             self.assertFalse((sdk / "game.rs").exists())
             self.assertNotIn("workspace", (sdk / "Cargo.toml").read_text())
 
+    @needs_symlinks
     def test_source_symlink_is_refused_without_copying_its_target(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -262,30 +298,38 @@ class RegistryPatchTests(unittest.TestCase):
                 prebuilt_game.carry_patches(source, sdk)
             self.assertFalse((sdk / "patches").exists())
 
-    def test_output_inventory_rejects_extra_files_and_symlinks(self):
+    def inventoried_sdk(self, directory):
+        """An SDK folder whose one patch file is in its identity's inventory: the folder, that file and a path beside it."""
+        sdk = Path(directory)
+        patch = sdk / "patches/allocator-sys"
+        patch.mkdir(parents=True)
+        declared = patch / "Cargo.toml"
+        declared.write_text("manifest")
+        (sdk / "deps").mkdir()
+        for crate in ("sunrise_official", "sunrise_mod_host"):
+            (sdk / "deps" / f"lib{crate}.so").write_bytes(b"")
+        write_build_data(sdk, {"patch_files": {
+            "patches/allocator-sys/Cargo.toml": prebuilt_game.sha256(declared)}})
+        return sdk, declared, patch / "extra.rs"
+
+    def test_output_inventory_rejects_extra_files_and_changed_ones(self):
         with tempfile.TemporaryDirectory() as directory:
-            sdk = Path(directory)
-            patch = sdk / "patches/allocator-sys"
-            patch.mkdir(parents=True)
-            declared = patch / "Cargo.toml"
-            declared.write_text("manifest")
-            (sdk / "deps").mkdir()
-            for crate in ("sunrise_official", "sunrise_mod_host"):
-                (sdk / "deps" / f"lib{crate}.so").write_bytes(b"")
-            write_build_data(sdk, {"patch_files": {
-                "patches/allocator-sys/Cargo.toml": prebuilt_game.sha256(declared)}})
+            sdk, declared, extra = self.inventoried_sdk(directory)
             prebuilt_game.check(sdk)
-            extra = patch / "extra.rs"
             extra.write_text("not inventoried")
             with self.assertRaisesRegex(SystemExit, "aren't compiler outputs"):
                 prebuilt_game.check(sdk)
             extra.unlink()
-            extra.symlink_to(declared)
-            with self.assertRaisesRegex(SystemExit, "symlinks"):
-                prebuilt_game.check(sdk)
-            extra.unlink()
             declared.write_text("modified")
             with self.assertRaisesRegex(SystemExit, "inventory mismatch"):
+                prebuilt_game.check(sdk)
+
+    @needs_symlinks
+    def test_output_inventory_rejects_symlinks(self):
+        with tempfile.TemporaryDirectory() as directory:
+            sdk, declared, extra = self.inventoried_sdk(directory)
+            extra.symlink_to(declared)
+            with self.assertRaisesRegex(SystemExit, "symlinks"):
                 prebuilt_game.check(sdk)
 
 
@@ -302,7 +346,7 @@ class SdkAssetTests(unittest.TestCase):
             (out / name).write_bytes(name.encode())
         slices = {"runtime": [prebuilt_game.IDENTITY, *self.RUNTIME],
                   "api": [*self.API, *prebuilt_game.API_BUILD_DATA, prebuilt_game.NATIVE_MODS_TEMPLATE]}
-        with patch.object(sys, "platform", "linux"):
+        with linux_package():
             write_build_data(out, {"package_format": 6, "side": "server", "target": "x86_64-unknown-linux-gnu",
                                    "slices": slices})
         for path in out.rglob("*"):
@@ -317,7 +361,7 @@ class SdkAssetTests(unittest.TestCase):
         built.mkdir(exist_ok=True)
         (built / prebuilt_game.TOOL_PROGRAM).write_bytes(b"tool")
         with patch.object(prebuilt_game, "head", return_value=COMMIT), patch.object(prebuilt_game, "run", side_effect=run), \
-                patch.object(prebuilt_game, "tool", return_value=built):
+                patch.object(prebuilt_game, "tool", return_value=built), linux_package():
             prebuilt_game.pack(out, dist, stage_tool=Path("sunrise-stage"), **options)
 
     def test_pack_writes_three_archives_that_split_the_package_and_the_same_every_run(self):
@@ -329,8 +373,7 @@ class SdkAssetTests(unittest.TestCase):
                 root = Path(directory)
                 dist = root / "dist"
                 out = self.out(root, mtime)
-                with patch.object(sys, "platform", "linux"):
-                    self.pack(out, dist)
+                self.pack(out, dist)
                 names = sorted(path.name for path in dist.iterdir())
                 self.assertEqual(names, ["api-x86_64-unknown-linux-gnu-server.tar.xz", "build-data.tar.xz",
                                          "engine-x86_64-unknown-linux-gnu-server.tar.xz",
@@ -391,8 +434,7 @@ class SdkAssetTests(unittest.TestCase):
                             ({"runtime": [prebuilt_game.IDENTITY, *self.RUNTIME[:2]]}, "lack required members"),
                             ({"api": api[1:]}, "lack required members"),
                             ({"api": api[:-1]}, "lack required members")):
-            with tempfile.TemporaryDirectory() as directory, self.subTest(change), \
-                    patch.object(sys, "platform", "linux"):
+            with tempfile.TemporaryDirectory() as directory, self.subTest(change), linux_package():
                 out = self.out(Path(directory), 1000)
                 identity = json.loads((out / prebuilt_game.IDENTITY).read_text())
                 identity["slices"].update(change)
@@ -400,7 +442,7 @@ class SdkAssetTests(unittest.TestCase):
                 with self.assertRaisesRegex(SystemExit, why):
                     prebuilt_game.check(out)
         # The API executable carries the holder marker in its own bytes, or the launcher plays it the wrong way.
-        with tempfile.TemporaryDirectory() as directory, patch.object(sys, "platform", "linux"):
+        with tempfile.TemporaryDirectory() as directory, linux_package():
             out = self.out(Path(directory), 1000)
             prebuilt_game.check(out)
             (out / prebuilt_game.RUNTIME / prebuilt_game.EXECUTABLE).write_bytes(b"an executable")
@@ -450,7 +492,7 @@ class SdkAssetTests(unittest.TestCase):
             ("win32", "x86_64-pc-windows-gnu", ["link-arg=-Wl,--stack,8388608"]),
         ):
             with self.subTest(host=host), tempfile.TemporaryDirectory() as directory, \
-                    patch.object(sys, "platform", platform), patch.object(prebuilt_game, "run") as rustc:
+                    patch.object(prebuilt_game, "PLATFORM", platform), patch.object(prebuilt_game, "run") as rustc:
                 out = Path(directory)
                 toolchain = out / "toolchain"
                 toolchain.mkdir()
@@ -471,6 +513,7 @@ class SdkAssetTests(unittest.TestCase):
                 self.assertIn(f"bin/{standard.name}", files)
                 self.assertEqual((out / "bin" / standard.name).read_bytes(), b"std")
                 self.assertIn('feature="official"', command)
+                self.assertNotIn("--target", command)
                 self.assertIn(f"sunrise_official={official}", command)
                 self.assertEqual([arg for arg in command if arg.startswith("link-arg=")], expected_link_args)
                 metadata = {"packages": [{"id": "official", "name": "sunrise-official"}], "resolve": {"nodes": []}}
@@ -479,8 +522,7 @@ class SdkAssetTests(unittest.TestCase):
 
     def test_a_server_leg_packs_the_tool_only_when_asked(self):
         for with_tool in (False, True):
-            with self.subTest(with_tool=with_tool), tempfile.TemporaryDirectory() as directory, \
-                    patch.object(sys, "platform", "linux"):
+            with self.subTest(with_tool=with_tool), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
                 out = self.out(root / "server", 1000)
                 identity = json.loads((out / prebuilt_game.IDENTITY).read_text())
@@ -491,7 +533,7 @@ class SdkAssetTests(unittest.TestCase):
                 self.assertEqual("tool-x86_64-unknown-linux-gnu.tar.xz" in names, with_tool)
 
     def test_gather_takes_every_legs_archives_once_and_one_build_data_that_all_copies_match(self):
-        with tempfile.TemporaryDirectory() as directory, patch.object(sys, "platform", "linux"):
+        with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             legs = root / "legs"
             for side in ("server", "client"):
@@ -524,7 +566,13 @@ class SdkAssetTests(unittest.TestCase):
                 shutil.rmtree(folder, ignore_errors=True)
                 folder.mkdir()
                 with tarfile.open(leg / archive, "r:xz") as tar:
-                    tar.extractall(folder, filter="data")
+                    for member in tar.getmembers():
+                        target = folder / member.name
+                        if member.isdir():
+                            target.mkdir(exist_ok=True)
+                        else:
+                            target.write_bytes(tar.extractfile(member).read())
+                            target.chmod(member.mode)
                 (folder / name).write_text(text)
                 prebuilt_game.tar_xz(folder, prebuilt_game.tree(folder), leg / archive)
 
@@ -544,11 +592,12 @@ class SdkAssetTests(unittest.TestCase):
             with self.subTest(launcher_min=launcher_min, unknown_kinds=unknown_kinds):
                 self.assertEqual(prebuilt_game.lists_programs(launcher_min, unknown_kinds), listed)
         for floor, unknown_kinds in (("1.0.0", ""), ("1.2.0", "1.2.0")):
+            release_file = type(sys)("tools.release_file")
             with self.subTest(floor=floor), tempfile.TemporaryDirectory() as directory, \
-                    patch.dict(sys.modules, {"release_file": type(sys)("release_file")}), \
+                    patch.object(tools, "release_file", release_file, create=True), \
                     patch.object(prebuilt_game, "programs") as programs:
-                sys.modules["release_file"].LAUNCHER_MIN = floor
-                sys.modules["release_file"].UNKNOWN_KINDS_LAUNCHER = unknown_kinds
+                release_file.LAUNCHER_MIN = floor
+                release_file.UNKNOWN_KINDS_LAUNCHER = unknown_kinds
                 root = Path(directory)
                 folder = root / "programs-x86_64-unknown-linux-gnu-server"
                 (folder / "exporters").mkdir(parents=True)
@@ -568,7 +617,7 @@ class SdkAssetTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             out = self.out(root, 1000)
-            with patch.object(prebuilt_game, "head", return_value="d" * 40), \
+            with patch.object(prebuilt_game, "head", return_value="d" * 40), linux_package(), \
                     self.assertRaisesRegex(SystemExit, "not this source's package"):
                 prebuilt_game.pack(out, root / "dist")
             self.assertFalse((root / "dist").exists())
@@ -590,7 +639,7 @@ class ToolBuildTests(unittest.TestCase):
     def built_with(self, environment: dict, binary: bytes = b"tool") -> dict:
         calls = []
         with tempfile.TemporaryDirectory() as directory, \
-                patch.object(prebuilt_game, "os", ScopedOs({"CARGO_TARGET_DIR": directory, **environment})), \
+                scoped_os({"CARGO_TARGET_DIR": directory, **environment}), \
                 patch.object(prebuilt_game, "rustc_host", return_value="x86_64-unknown-linux-gnu"), \
                 patch.object(prebuilt_game, "head", return_value=COMMIT), \
                 patch.object(prebuilt_game, "run", side_effect=lambda *args, **kwargs: calls.append(kwargs)):
@@ -651,7 +700,7 @@ class AllocatorSelectionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             target = root / "target" / "prebuilt"
-            with patch.object(prebuilt_game, "os", ScopedOs({"CARGO_TARGET_DIR": str(target.parent)})), \
+            with scoped_os({"CARGO_TARGET_DIR": str(target.parent)}), \
                     patch.object(prebuilt_game, "_build_locked") as build_locked:
                 for out in (root, target, target / "stage"):
                     with self.subTest(out=out), self.assertRaisesRegex(SystemExit, "E_SDK_OUT_OVERLAPS_TARGET"):
@@ -674,7 +723,7 @@ class AllocatorSelectionTests(unittest.TestCase):
                 target.symlink_to(work, target_is_directory=True)
             except OSError:
                 self.skipTest("directory symlinks unavailable")
-            with patch.object(prebuilt_game, "os", ScopedOs({"CARGO_TARGET_DIR": str(target.parent)})), \
+            with scoped_os({"CARGO_TARGET_DIR": str(target.parent)}), \
                     patch.object(prebuilt_game, "_build_locked") as build_locked:
                 with self.assertRaisesRegex(SystemExit, "E_SDK_OUT_OVERLAPS_TARGET"):
                     prebuilt_game.build(output, server=False)
@@ -705,14 +754,47 @@ class AllocatorSelectionTests(unittest.TestCase):
              patch.object(prebuilt_game, "head", return_value="fixture-commit"), \
              patch.object(prebuilt_game, "rustc_host", return_value="fixture-host"), \
              patch.object(prebuilt_game, "run", side_effect=capture), \
-             patch.object(prebuilt_game, "os", ScopedOs({
+             scoped_os({
                  "CARGO_ENCODED_RUSTFLAGS": "-Cprefer-dynamic=no",
                  # An inherited unit count must not reach the SDK game.
                  "CARGO_PROFILE_RELEASE_CODEGEN_UNITS": "16",
-                 "CARGO_TARGET_DIR": target})):
+                 "CARGO_TARGET_DIR": target}):
             # Its own target folder: the build takes that folder's lock, never the checkout's.
             with self.assertRaises(Captured):
                 prebuilt_game.build(Path(target) / "unused-sdk", False)
+
+
+class ProgramsTests(unittest.TestCase):
+    identity = {"target": "x86_64-unknown-linux-gnu", "side": "client"}
+
+    def programs(self, inputs: dict) -> list[list[str]]:
+        """The commands `programs` runs for `inputs`, up to the xtask layout step, which is left unrun."""
+        commands = []
+
+        def record(command, **kwargs):
+            commands.append(command)
+            if "xtask" in command:
+                raise StopIteration
+
+        with tempfile.TemporaryDirectory() as directory:
+            listed = Path(directory) / "inputs.json"
+            listed.write_text(json.dumps(inputs))
+            with patch.object(prebuilt_game, "INPUTS", listed), \
+                 patch.object(prebuilt_game, "rustc_host", return_value=self.identity["target"]), \
+                 patch.object(prebuilt_game, "run", side_effect=record), \
+                 self.assertRaises(StopIteration):
+                prebuilt_game.programs(self.identity, Path(directory) / "folder")
+        return commands
+
+    def test_each_listed_program_is_built_with_cargo_locked_and_release(self):
+        commands = self.programs({"routes": {"package": {"program": ["sunrise-prepare"]}},
+                                  "how": {"sunrise-prepare": "cargo build PROFILE -p sunrise-prepare"}})
+        self.assertEqual(commands[0], ["cargo", "build", "--locked", "--release", "-p", "sunrise-prepare"])
+
+    def test_a_program_that_cargo_build_does_not_make_is_refused_not_run_as_cargo(self):
+        with self.assertRaisesRegex(SystemExit, "how.*sunrise-prepare.*cargo build"):
+            self.programs({"routes": {"package": {"program": ["sunrise-prepare"]}},
+                           "how": {"sunrise-prepare": "make PROFILE -p sunrise-prepare"}})
 
 
 class ScopedOs:
@@ -723,6 +805,14 @@ class ScopedOs:
 
     def __getattr__(self, name):
         return getattr(os, name)
+
+
+@contextlib.contextmanager
+def scoped_os(environ: dict[str, str]):
+    """prebuilt_game and lab (which resolves CARGO_TARGET_DIR for it) both read `environ`, not the process's."""
+    scoped = ScopedOs(environ)
+    with patch.object(prebuilt_game, "os", scoped), patch.object(lab, "os", scoped):
+        yield
 
 
 class PrebuiltContentsTests(unittest.TestCase):
@@ -1024,38 +1114,45 @@ class PrebuiltContentsTests(unittest.TestCase):
         self.assertEqual(output.getvalue(), "")
 
 
-if __name__ == "__main__":
-    unittest.main()
+def scripts_beside_a_pin(directory: str, *names: str) -> tuple[list[Path], Path]:
+    """Copies of the `tools/ci` scripts `names` and an empty `launcher-pin` beside them in a folder of `directory`: the
+    scripts read the pin beside themselves, so a test sets the pin without touching the tracked one."""
+    folder = Path(directory) / "ci"
+    folder.mkdir()
+    for name in names:
+        shutil.copy2(prebuilt_game.ROOT / "tools/ci" / name, folder / name)
+    return [folder / name for name in names], folder / "launcher-pin"
 
 
 class LauncherPinTests(unittest.TestCase):
+    @needs_runner_shell
     def test_only_a_full_lowercase_sha_is_accepted_by_the_script_and_the_smoke(self):
+        with tempfile.TemporaryDirectory() as directory:
+            (script,), pin = scripts_beside_a_pin(directory, "launcher_pin.sh")
+            with patch.object(prebuilt_game, "LAUNCHER_PIN", pin):
+                for value, accepted in (("a" * 40, True), ("A" * 40, False), ("a" * 39, False), ("main", False), ("a" * 41, False)):
+                    pin.write_text(value + "\n")
+                    shell = subprocess.run([str(script)], capture_output=True, text=True)
+                    self.assertEqual(shell.returncode == 0, accepted, value)
+                    if accepted:
+                        self.assertEqual(prebuilt_game.launcher_pin(), value)
+                    else:
+                        with self.assertRaises(SystemExit):
+                            prebuilt_game.launcher_pin()
+        # The tracked pin is read, never written: the script and the tool agree on it.
+        tracked = prebuilt_game.LAUNCHER_PIN.read_text().strip()
         script = prebuilt_game.ROOT / "tools/ci/launcher_pin.sh"
-        pin = prebuilt_game.ROOT / "tools/ci/launcher-pin"
-        original = pin.read_text()
-        try:
-            for value, accepted in (("a" * 40, True), ("A" * 40, False), ("a" * 39, False), ("main", False), ("a" * 41, False)):
-                pin.write_text(value + "\n")
-                shell = subprocess.run([str(script)], capture_output=True, text=True)
-                self.assertEqual(shell.returncode == 0, accepted, value)
-                if accepted:
-                    self.assertEqual(prebuilt_game.launcher_pin(), value)
-                else:
-                    with self.assertRaises(SystemExit):
-                        prebuilt_game.launcher_pin()
-        finally:
-            pin.write_text(original)
-        self.assertEqual(subprocess.run([str(script)], capture_output=True, text=True).stdout.strip(), original.strip())
+        self.assertEqual(subprocess.run([str(script)], capture_output=True, text=True).stdout.strip(), tracked)
+        self.assertEqual(prebuilt_game.launcher_pin(), tracked)
 
 
 class LauncherCheckoutTests(unittest.TestCase):
+    @needs_runner_shell
     def test_checks_out_the_pinned_commit_detached_and_refuses_an_unfetchable_pin(self):
-        script = prebuilt_game.ROOT / "tools/ci/launcher_checkout.sh"
-        pin_file = prebuilt_game.ROOT / "tools/ci/launcher-pin"
-        original = pin_file.read_text()
         git = ["git", "-c", "user.name=t", "-c", "user.email=t@example.com"]
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
+            (script, _), pin_file = scripts_beside_a_pin(directory, "launcher_checkout.sh", "launcher_pin.sh")
             source = root / "source"
             subprocess.run(git + ["init", "-q", str(source)], check=True)
             commits = []
@@ -1066,18 +1163,47 @@ class LauncherCheckoutTests(unittest.TestCase):
                 commits.append(subprocess.run(["git", "-C", str(source), "rev-parse", "HEAD"], check=True,
                                               capture_output=True, text=True).stdout.strip())
             env = {**os.environ, "LAUNCHER_URL": source.as_uri(), "GIT_CONFIG_GLOBAL": os.devnull}
-            try:
-                pin_file.write_text(commits[0] + "\n")
-                done = subprocess.run([str(script), str(root / "out")], env=env, capture_output=True, text=True)
-                self.assertEqual(done.returncode, 0, done.stderr)
-                self.assertEqual((root / "out/file").read_text(), "one")
-                state = subprocess.run(["git", "-C", str(root / "out"), "symbolic-ref", "-q", "HEAD"], capture_output=True)
-                self.assertNotEqual(state.returncode, 0)  # detached
-                pin_file.write_text("f" * 40 + "\n")
-                done = subprocess.run([str(script), str(root / "out2")], env=env, capture_output=True, text=True)
-                self.assertNotEqual(done.returncode, 0)
-            finally:
-                pin_file.write_text(original)
+            pin_file.write_text(commits[0] + "\n")
+            done = subprocess.run([str(script), str(root / "out")], env=env, capture_output=True, text=True)
+            self.assertEqual(done.returncode, 0, done.stderr)
+            self.assertEqual((root / "out/file").read_text(), "one")
+            state = subprocess.run(["git", "-C", str(root / "out"), "symbolic-ref", "-q", "HEAD"], capture_output=True)
+            self.assertNotEqual(state.returncode, 0)  # detached
+            pin_file.write_text("f" * 40 + "\n")
+            done = subprocess.run([str(script), str(root / "out2")], env=env, capture_output=True, text=True)
+            self.assertNotEqual(done.returncode, 0)
+
+
+class SmokeBuildTests(unittest.TestCase):
+    def test_both_smoke_dylibs_use_platform_link_args(self):
+        for platform, expected in (
+            ("linux", ["-Wl,--disable-new-dtags", "-Wl,-rpath,$ORIGIN"]),
+            ("darwin", ["-Wl,-rpath,@loader_path"]),
+            ("win32", []),
+        ):
+            with self.subTest(platform=platform), tempfile.TemporaryDirectory() as directory, \
+                 patch.object(prebuilt_game, "PLATFORM", platform):
+                out = Path(directory) / "sdk"
+                out.mkdir()
+                write_build_data(out, {"facade_crates": [], "rustc": "release: fixture\n"})
+                (out / "deps/libsunrise_mod_package.rmeta").touch()
+                linked = {}
+
+                def run(command, **kwargs):
+                    if command == ["git", "rev-parse", "HEAD"]:
+                        return COMMIT
+                    self.assertEqual(command[0], "rustc")
+                    self.assertEqual(command[command.index("--crate-type") + 1], "dylib")
+                    name = command[command.index("--crate-name") + 1]
+                    linked[name] = [arg.removeprefix("link-arg=") for arg in command if arg.startswith("link-arg=")]
+                    Path(command[command.index("-o") + 1]).touch()
+                    return ""
+
+                with patch.object(prebuilt_game, "run", side_effect=run), \
+                     patch.object(prebuilt_game, "runtime_libraries", return_value=[]), \
+                     contextlib.redirect_stdout(io.StringIO()):
+                    prebuilt_game.smoke(out)
+                self.assertEqual(linked, {"smoke": expected, "smoke_user": expected})
 
 
 class SmokeStartTests(unittest.TestCase):
@@ -1123,3 +1249,7 @@ class SmokeStartTests(unittest.TestCase):
                 environment = run.call_args.kwargs["env"]
                 for key in ("SUNRISE_HOME", "SUNRISE_LAUNCHER_HOME", "XDG_DATA_HOME", "XDG_CONFIG_HOME"):
                     self.assertTrue(Path(environment[key]).is_relative_to(root))
+
+
+if __name__ == "__main__":
+    unittest.main()

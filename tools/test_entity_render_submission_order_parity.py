@@ -8,11 +8,12 @@ submissions. This compares order, not frustum culling, fire, pixels or GPU draw 
 import json
 import os
 
-try:
-    from . import lab, oracle_harness
-except ImportError:
-    import lab
-    import oracle_harness
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+from tools import lab, oracle_harness
 
 
 def snapshots(path):

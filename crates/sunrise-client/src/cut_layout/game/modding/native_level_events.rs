@@ -265,7 +265,7 @@ mod tests {
                 seed: 0,
                 max_players: 2,
                 integrated: true,
-                levels: game.server.level_shapes,
+                levels: game.server.level_shapes.clone(),
                 level_seeds: game.server.levels.0.runtime.seeds(),
             };
             let settings = LanSettings {

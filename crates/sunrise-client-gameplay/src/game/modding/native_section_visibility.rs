@@ -3,7 +3,7 @@
 
 use crate::game::ClientGame;
 use mod_api::{Answered, SectionVisibility, SectionVisibilityRefusal};
-use sunrise_client::mesher::{SectionPlanBuilder, capture_input};
+use sunrise_client::mesher::SectionPlanBuilder;
 
 impl ClientGame<'_> {
     /// Ask mods about the admitted requests and submit their combined answers to the workers.
@@ -35,7 +35,7 @@ impl ClientGame<'_> {
         let poisoned = mod_api::__private::poisoned_listeners(mod_api::HookId::SectionVisibility);
         let mut refusals = std::mem::take(&mut self.client.streaming.section_visibility.refusals);
         for request in requests {
-            let input = capture_input(&request.region, request.key.1, |raw| {
+            let input = request.capture_input(|raw| {
                 index
                     .to_api(sunrise_world::registry::BlockStateId(raw))
                     .unwrap_or(air)

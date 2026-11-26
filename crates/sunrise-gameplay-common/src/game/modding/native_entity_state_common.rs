@@ -1,7 +1,12 @@
 use crate::game::commands_common::Target;
-use mod_api::EntityRef;
+use crate::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5 as _;
+use mod_api::{EntityReadError, EntityRef};
+use std::ops::ControlFlow;
 use sunrise_sim::mobs::{Mob, Species};
 use sunrise_sim::motion::PlayerMotion;
+
+const WATER_ID: &str = "minecraft:water";
+const LAVA_ID: &str = "minecraft:lava";
 
 /// `Entity.getMaxAirSupply`: a dolphin's 4800, an axolotl's 6000, else 300.
 pub fn max_air(species: Option<Species>) -> i32 {
@@ -37,12 +42,54 @@ pub trait NativeEntityStateCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
         })
     }
 
+    /// The armor stand an entity handle names, on either side.
+    fn native_armor_stand<'__loan>(
+        &'__loan self,
+        entity: EntityRef,
+    ) -> Option<&'__loan sunrise_sim::entities::ArmorStand>
+    where
+        '__sg: '__loan,
+    {
+        let Target::Stand(id) = self.native_entity_read_target(entity)? else {
+            return None;
+        };
+        self.armor_stands.iter().find(|s| s.id == id)
+    }
+
+    /// `ArmorStand.getHeadPose` ... `getRightLegPose`, in `POSE_KEYS` order.
+    fn entity_armor_stand_pose(&self, entity: EntityRef) -> Option<mod_api::ArmorStandPose> {
+        let [head, body, left_arm, right_arm, left_leg, right_leg] =
+            self.native_armor_stand(entity)?.pose;
+        Some(mod_api::ArmorStandPose {
+            head,
+            body,
+            left_arm,
+            right_arm,
+            left_leg,
+            right_leg,
+        })
+    }
+
+    /// `ArmorStand.DATA_CLIENT_FLAGS`.
+    fn entity_armor_stand_flags(&self, entity: EntityRef) -> Option<mod_api::ArmorStandFlags> {
+        let stand = self.native_armor_stand(entity)?;
+        Some(mod_api::ArmorStandFlags {
+            small: stand.small,
+            show_arms: stand.show_arms,
+            show_base_plate: !stand.no_base_plate,
+            marker: stand.marker,
+        })
+    }
+
     /// Whether the entity touched water at its last fluid update
     /// (`Entity.isInWater`): players and mobs.
     fn entity_is_in_water(&self, entity: EntityRef) -> Option<bool> {
         match self.native_target_body(self.native_entity_read_target(entity)?)? {
             Body::Player(p) => Some(p.fluids.was_touching_water),
             Body::Mob(m) => Some(m.fluids.in_water),
+            Body::Other(Target::General(id)) => {
+                Some(self.resident_entities.general.row(id)?.fluids.in_water)
+            }
             Body::Other(_) => None,
         }
     }
@@ -55,31 +102,44 @@ pub trait NativeEntityStateCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
         }
     }
 
-    /// The fluids the entity touched at its last fluid update, each with how deep its box is in
-    /// it (`IEntityExtension.getFluidTypeHeight`), highest first; empty in no fluid. Players and
-    /// mobs: water and lava, the fluids Sunrise's entity update tracks. On a client these
-    /// are the predicted local player's state or the displayed entity's last fluid update.
-    fn entity_fluid_heights(&self, entity: EntityRef) -> Option<Vec<(String, f64)>> {
+    /// Visit the cached fluid contacts of the player or mob, highest first.
+    fn entity_visit_fluid_heights(
+        &self,
+        entity: EntityRef,
+        visit: &mut dyn FnMut(&str, f64) -> ControlFlow<()>,
+    ) -> Result<ControlFlow<()>, EntityReadError> {
         use sunrise_sim::motion::{LAVA, WATER};
-        Some(
-            match self.native_target_body(self.native_entity_read_target(entity)?)? {
-                Body::Player(p) => touched_fluids(
-                    (p.fluid_height(WATER), p.fluids.was_touching_water),
-                    (p.fluid_height(LAVA), p.is_in_lava()),
-                ),
-                Body::Mob(m) => touched_fluids(
-                    (m.fluids.water, m.fluids.in_water),
-                    (m.fluids.lava, m.fluids.in_lava),
-                ),
-                Body::Other(_) => return None,
-            },
-        )
+        let body = self.native_target_body(self.native_entity_visit_target(entity)?);
+        let (water, lava) = match body {
+            Some(Body::Player(p)) => (
+                (p.fluid_height(WATER), p.fluids.was_touching_water),
+                (p.fluid_height(LAVA), p.is_in_lava()),
+            ),
+            Some(Body::Mob(m)) => (
+                (m.fluids.water, m.fluids.in_water),
+                (m.fluids.lava, m.fluids.in_lava),
+            ),
+            Some(Body::Other(Target::General(id))) => {
+                let fluids = self
+                    .resident_entities
+                    .general
+                    .row(id)
+                    .ok_or(EntityReadError::Unavailable)?
+                    .fluids;
+                (
+                    (fluids.water, fluids.in_water),
+                    (fluids.lava, fluids.in_lava),
+                )
+            }
+            _ => return Err(EntityReadError::Unavailable),
+        };
+        Ok(visit_touched_fluids(water, lava, visit))
     }
 
     /// The fluid at the entity's eyes from its last fluid update
     /// (`IEntityExtension.getFirstEyeInFluidType`): water or lava, none in air. Players and mobs.
     /// On a client this reads its own cached fluid update, without sampling the world again.
-    fn entity_eye_fluid(&self, entity: EntityRef) -> Option<Option<String>> {
+    fn entity_eye_fluid(&self, entity: EntityRef) -> Option<Option<&'static str>> {
         use sunrise_sim::motion::{LAVA, WATER};
         Some(
             match self.native_target_body(self.native_entity_read_target(entity)?)? {
@@ -96,6 +156,9 @@ pub trait NativeEntityStateCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
             Body::Player(p) if !self.is_logical_server() => Some(p.is_under_water()),
             Body::Player(p) => Some(p.fluids.was_eye_in_water && p.fluids.was_touching_water),
             Body::Mob(m) => Some(m.was_eye_in_water && m.fluids.in_water),
+            Body::Other(Target::General(id)) => {
+                Some(self.resident_entities.general.row(id)?.under_water)
+            }
             Body::Other(_) => None,
         }
     }
@@ -118,6 +181,20 @@ pub trait NativeEntityStateCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
                     item.fire_ticks,
                     self.stack_can_be_hurt_by(&item.stack, "minecraft:in_fire") == Some(false),
                 )
+            }
+            Some(Body::Other(Target::Projectile(id))) => {
+                let p = self.creatures.projectiles.iter().find(|p| p.id == id)?;
+                match p.arrow.as_ref() {
+                    Some(a) => (a.fire_ticks, false),
+                    None => (
+                        p.fire_ticks,
+                        matches!(
+                            p.kind,
+                            sunrise_sim::projectiles::ProjectileKind::WitherSkull { .. }
+                                | sunrise_sim::projectiles::ProjectileKind::ShulkerBullet { .. }
+                        ),
+                    ),
+                }
             }
             _ => (0, self.side_client_tracked_player_fire_immunity(entity)?),
         };
@@ -182,33 +259,37 @@ pub trait NativeEntityStateCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
             Target::Item(id) => self.dropped.iter().find(|i| i.id == id)?.ticks as i32,
             Target::Orb(id) => self.orbs.iter().find(|o| o.id == id)?.ticks as i32,
             Target::Cart(id) => self.carts.iter().find(|c| c.id == id)?.tick_count,
+            Target::General(id) => self.resident_entities.general.row(id)?.tick_count,
             _ => return None,
         })
     }
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> NativeEntityStateCommonGameExt1<'__sg> for G {}
 
-/// `(fluid, height)` for each fluid `(height, touched)` the entity touched, highest first;
+/// Visit each fluid `(height, touched)` the entity touched, highest first;
 /// water before lava at the same height (`getMaxHeightFluidType`'s order).
-pub fn touched_fluids(water: (f64, bool), lava: (f64, bool)) -> Vec<(String, f64)> {
-    let mut heights: Vec<(String, f64)> = [("minecraft:water", water), ("minecraft:lava", lava)]
+pub fn visit_touched_fluids(
+    water: (f64, bool),
+    lava: (f64, bool),
+    visit: &mut dyn FnMut(&str, f64) -> ControlFlow<()>,
+) -> ControlFlow<()> {
+    let mut fluids = [(WATER_ID, water), (LAVA_ID, lava)];
+    if lava.0.total_cmp(&water.0).is_gt() {
+        fluids.swap(0, 1);
+    }
+    fluids
         .into_iter()
         .filter(|(_, (_, touched))| *touched)
-        .map(|(fluid, (height, _))| (fluid.to_owned(), height))
-        .collect();
-    // A stable sort keeps water first in a tie.
-    heights.sort_by(|a, b| b.1.total_cmp(&a.1));
-    heights
+        .try_for_each(|(name, (height, _))| visit(name, height))
 }
 
 /// The first fluid at the eyes: water, then lava, as the trackers are kept.
-pub fn eye_fluid(water: bool, lava: bool) -> Option<String> {
-    let fluid = if water {
-        Some("minecraft:water")
+pub fn eye_fluid(water: bool, lava: bool) -> Option<&'static str> {
+    if water {
+        Some(WATER_ID)
     } else {
-        lava.then_some("minecraft:lava")
-    };
-    fluid.map(str::to_owned)
+        lava.then_some(LAVA_ID)
+    }
 }
 
 use crate::game::side_ops::modapi_modding::ModapiModdingSideGameExt as _;

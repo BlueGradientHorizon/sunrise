@@ -122,6 +122,56 @@ impl crate::game::ServerGame<'_> {
         let index = self.common.resident_entities.knots.locate(location.join)?;
         Some(self.common.resident_entities.knots[index].fence)
     }
+
+    /// `BlockAttachedEntity.kill`: retire a natural knot before notifying its holders.
+    /// Unlike vanilla's object references, this level's leash links name the fence.
+    pub(in crate::game) fn kill_natural_knot(&mut self, id: u32) -> bool {
+        let Some(fence) = self.natural_knot(id) else {
+            return false;
+        };
+        let holder = Some(Holder::Knot(fence));
+        let mobs: Vec<_> = self
+            .common
+            .mobs
+            .iter()
+            .filter(|mob| !mob.removed && mob.extra.leash == holder)
+            .map(|mob| mob.id)
+            .collect();
+        let boats: Vec<_> = self
+            .common
+            .boats
+            .iter()
+            .filter(|boat| boat.leash == holder)
+            .map(|boat| boat.id)
+            .collect();
+        self.server.knot_ids.remove(&fence);
+        self.common
+            .resident_entities
+            .knots
+            .retain(|knot| knot.id != id);
+        for id in mobs {
+            if self
+                .common
+                .mobs
+                .iter()
+                .any(|mob| mob.id == id && mob.extra.leash == holder)
+            {
+                self.detach_leash(Target::Mob(id), true);
+            }
+        }
+        for id in boats {
+            if self
+                .common
+                .boats
+                .iter()
+                .any(|boat| boat.id == id && boat.leash == holder)
+            {
+                self.detach_leash(Target::Boat(id), true);
+            }
+        }
+        self.native_entity_left(id);
+        true
+    }
     /// Actual natural knot owners, without allocating or inferring membership from leashes.
     pub(in crate::game::server_side) fn natural_knot_id_iter(
         &self,

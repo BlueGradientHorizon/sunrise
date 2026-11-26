@@ -347,12 +347,14 @@ pub(crate) mod tests {
                 1002
             );
             assert_eq!(first_instance.priority().unwrap(), 1000);
+            let candidate = mod_api::__private::tag_key(
+                &mod_api::Identifier::parse("reload_test:candidate").unwrap(),
+            )
+            .unwrap()
+            .typed::<mod_api::BlockKey>();
             let live_stone = mod_platform::__private::part_tests::block_key("minecraft:stone");
             assert_eq!(
-                sunrise_gameplay_common::game::native_world_read_common::block_in_tag(
-                    live_stone,
-                    "reload_test:candidate"
-                ),
+                sunrise_gameplay_common::game::native_tags::block_in_tag(Some(game.items()), live_stone, candidate),
                 Some(true)
             );
             sunrise_gameplay_common::game::api_values::install_parts(&[ModEntry::new(
@@ -367,10 +369,7 @@ pub(crate) mod tests {
             sunrise_gameplay_common::game::api_values::resolve_block_definitions(&registry)
                 .unwrap();
             let stone = mod_platform::__private::part_tests::block_key("minecraft:stone");
-            let old_tag = sunrise_gameplay_common::game::native_world_read_common::block_in_tag(
-                stone,
-                "reload_test:candidate",
-            );
+            let old_tag = sunrise_gameplay_common::game::native_tags::block_in_tag(Some(game.items()), stone, candidate);
             let old_context = game.loop_context.clone();
             let old_root = game.options.resources.clone();
             let old_data = game.pack.data_source.clone();
@@ -408,10 +407,7 @@ pub(crate) mod tests {
             assert_eq!(game.damage_tag_generation, old_generation);
             assert_eq!(game.server.fns.0.enabled, old_enabled);
             assert_eq!(
-                sunrise_gameplay_common::game::native_world_read_common::block_in_tag(
-                    stone,
-                    "reload_test:candidate"
-                ),
+                sunrise_gameplay_common::game::native_tags::block_in_tag(Some(game.items()), stone, candidate),
                 old_tag
             );
             game.save_datapack_settings();
@@ -1507,7 +1503,7 @@ mod required_tag_tests {
                     }
                 }
             }
-            let previous = game.server.command_source;
+            let previous = game.server.command_source.clone();
             let server = game.server_source();
             assert!(server.entity.is_none());
             game.server.command_source = Some(server);
@@ -1515,7 +1511,7 @@ mod required_tag_tests {
             assert!(!game.check_predicate("h121:reference").unwrap());
             assert!(game.check_predicate("h121:inverted").unwrap());
             assert!(game.check_predicate("h121:absent").is_err());
-            game.server.command_source = previous;
+            game.server.command_source = previous.clone();
             // Defensive evaluator controls only. Java rejects these graphs at
             // world load (a reload refuses a dangling or cyclic reference, so they cannot come from a
             // pack): they are put in the loaded store directly. This does not establish

@@ -10,6 +10,7 @@ use sunrise_game_data::{
     text::Text,
 };
 use sunrise_gameplay_common::game::chat_common::PLAYER_NAME;
+use sunrise_gameplay_common::game::creatures::KnownCause;
 use sunrise_level::chunk::Chunk;
 use sunrise_protocol::packets::configuration::ClientInformation;
 use sunrise_sim::{
@@ -130,13 +131,13 @@ fn kill(game: &mut sunrise_gameplay::game::ServerGame<'_>, attacker: Attacker, t
         let known = match attacker {
             Attacker::Player(id, name) => {
                 g.note_player_attacker(ty, id, Text::literal(name), None);
-                None
+                KnownCause::None
             }
-            Attacker::Mob(id) => Some(id),
-            Attacker::None => None,
+            Attacker::Mob(id) => KnownCause::Entity(id),
+            Attacker::None => KnownCause::None,
         };
         assert!(
-            g.hurt_player_from(100.0, Some([22.5, 100.0, 9.5]), ty, Some(known), false),
+            g.hurt_player_from(100.0, Some([22.5, 100.0, 9.5]), ty, known, false),
             "the guest is hurt"
         );
         assert_eq!(g.player.as_ref().unwrap().health.health(), 0.0);
@@ -434,6 +435,7 @@ fn a_displaced_archer_receives_resistance_credit() {
         kind: game.projectile_damage_kind(&arrow),
         attacker: arrow.owner,
         from: Some(arrow.position.components()),
+        direct: None,
         attacker_species: None,
     };
     let stat = "minecraft:damage_dealt_resisted";
@@ -638,6 +640,7 @@ fn a_victim_advancement_matches_the_displaced_killers_facts() {
                     }
                 }
             }] }).into(),
+            player: None,
         }],
         requirements: vec![vec!["killed".into()]],
         rewards: Rewards::default(),

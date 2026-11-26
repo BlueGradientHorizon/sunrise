@@ -14,7 +14,8 @@ use sunrise_sim::projectiles::{Projectile, ProjectileKind};
 
 impl crate::game::ServerGame<'_> {
     /// `Entity.noPhysics`: a player's is whether it spectates (`Player.tick`
-    /// sets it from `isSpectator`); a mob's is the flag a mod wrote, false
+    /// sets it from `isSpectator`); a general row's is the flag a mod wrote, false until
+    /// then (nothing rewrites it); a mob's is the flag a mod wrote, false
     /// until then (a vex sets it only for the length of its own tick); an
     /// arrow's or a trident's is its `AbstractArrow.noPhysics`, set once a
     /// loyal trident turns back. The ender dragon, an area-effect cloud, an
@@ -28,6 +29,7 @@ impl crate::game::ServerGame<'_> {
             Target::Player => Some(self.common.player.as_ref()?.spectator),
             Target::Guest(conn) => Some(self.command_guest(conn)?.motion.as_deref()?.spectator),
             Target::Mob(id) => Some(self.common.mobs.iter().find(|m| m.id == id)?.no_physics),
+            Target::General(id) => Some(self.resident_entities.general.row(id)?.no_physics),
             Target::Dragon(id) | Target::Cloud(id) | Target::Spawner(id) | Target::Bolt(id) => {
                 Some(self.stored_no_physics(id))
             }
@@ -101,6 +103,15 @@ impl crate::game::ServerGame<'_> {
                 }
                 mob.no_physics = no_physics;
                 true
+            }
+            Some(Target::General(id)) => {
+                self.resident_entities
+                    .general
+                    .row_mut(id)
+                    .is_some_and(|row| {
+                        row.no_physics = no_physics;
+                        true
+                    })
             }
             Some(
                 Target::Dragon(id) | Target::Cloud(id) | Target::Spawner(id) | Target::Bolt(id),
@@ -375,7 +386,7 @@ mod tests {
                 position: Vec3::new(0.5, 64.0, 0.5),
                 yaw: 0.0,
                 pitch: 0.0,
-                item_transformation: None,
+                display: None,
                 interaction: None,
                 knot_check: None,
                 eye: None,

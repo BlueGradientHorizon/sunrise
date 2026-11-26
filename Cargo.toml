@@ -1,5 +1,5 @@
 [workspace]
-exclude = ["crates/sunrise-telemetry-server", "crates/sunrise-mod-registry", "third_party/wgpu-hal", "third_party/naga", "third_party/libmimalloc-sys", "third_party/winit", "tools/fixtures/paper-trace-mod"]
+exclude = ["crates/sunrise-telemetry-server", "crates/sunrise-mod-registry", "third_party/wgpu-hal", "third_party/naga", "third_party/libmimalloc-sys", "third_party/winit", "tools/fixtures/paper-trace-mod", "tools/fixtures/mod-pipeline-bench"]
 members = [
     "crates/sunrise-mod-vocab",
     "crates/sunrise-game-discovery",
@@ -73,15 +73,18 @@ members = [
     "crates/sunrise-native-build",
     "crates/sunrise-mod-api-gen/dispatch-tests",
     "crates/cargo-sunrise-mod",
+    "crates/sunrise-jar-fetch",
     "crates/sunrise-port-pack",
     "crates/sunrise-proxy",
+    "crates/sunrise-glsl",
     "crates/sunrise-shaders",
     "crates/sunrise-connected",
     "crates/sunrise-optifine",
     "crates/sunrise-polytone",
-    "crates/sunrise-shader-api",
+    "crates/sunrise-mod-pipeline",
     "crates/sunrise-release-sign",
     "crates/sunrise-mod-deps",
+    "crates/sunrise-dependency-rule",
     "xtask",
 ]
 resolver = "2"
@@ -152,8 +155,16 @@ opt-level = 3
 # `cargo test -p sunrise-client --lib` compiled its lib test there in one rustc of 15.2 GiB, whatever the job count,
 # which a 16 GiB parity runner killed (signal 9, mount_control, 2026-11-16). At opt-level 0, the test profile's own
 # level and verify's, it takes 12.0 GiB and 124 s instead of 378 s; its dependencies stay at the runner's level.
+# Its line tables went too: verify's build of this lib test (the whole game plus every in-crate test module in one
+# rustc) filled the 16 GiB runner and was killed by signal 9 at -j4 and again at -j1 (rollup 179 at 26a4df3591, run
+# 45333586536: memory.peak 16 GiB, oom_kill 2). A test's panic keeps its file and line without debuginfo; only
+# backtraces lose their lines.
 [profile.test.package.sunrise-client]
 opt-level = 0
+debug = 0
+# 256 smaller codegen units instead of the non-incremental 16: this lib test's rustc at Rollup 218 peaked at 16.4 GiB
+# with 16 and 14.1 GiB with 256 (8 jobs), and compiled in 2m54 instead of 4m04 (sunrise#5839).
+codegen-units = 256
 # The same for sunrise-client-lib's lib test, which a dozen harnesses run: 6.3 GiB and 253 s at opt-level 0 against
 # 8.7 GiB and 349 s at 3 (damage_catalog's build of it beside sunrise-client's was killed, main, run 43884739298).
 [profile.test.package.sunrise-client-lib]

@@ -5,7 +5,7 @@ pub(crate) mod tests {
 
     use sunrise_gameplay_common::game::GameGameExt1;
     use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
-    use sunrise_sim::carrier_store::Store;
+    use sunrise_sim::save::carrier::Store;
 
     use sunrise_gameplay::game::server_side::carrier_transfers::TransferError;
 
@@ -274,7 +274,7 @@ pub(crate) mod tests {
                 )
                 .unwrap_or_else(|e| panic!("cycle {i}: {e}"));
             }
-            let sunrise_sim::carrier_store::Opened::Live(store) = Store::open(&root).unwrap()
+            let sunrise_sim::save::carrier::Opened::Live(store) = Store::open(&root).unwrap()
             else {
                 panic!("must open");
             };
@@ -320,7 +320,7 @@ pub(crate) mod tests {
             assert!(error.to_string().contains("CarrierCapacityReopenNeeded"));
             assert_eq!(game.world.block(4, 64, 4), chest);
             assert!(!game.world.carrier_fences.locks_cell(&[4, 64, 4]));
-            let sunrise_sim::carrier_store::Opened::Live(store) =
+            let sunrise_sim::save::carrier::Opened::Live(store) =
                 Store::open_with_capacity(&root, 0).unwrap()
             else {
                 panic!("must open")
@@ -385,15 +385,15 @@ pub(crate) mod tests {
                 game.carrier_disassemble(7, 1, [4, 64, 4], [1.0, 0.0, 0.0, 0.0]),
                 Err(TransferError::SavedBlockEntity([4, 64, 4]))
             ));
-            let images = [sunrise_sim::carrier_store::OperationCell {
+            let images = [sunrise_sim::save::carrier::OperationCell {
                 world: [4, 64, 4],
                 local: [0, 0, 0],
-                before: sunrise_sim::carrier_store::CellImage {
+                before: sunrise_sim::save::carrier::CellImage {
                     name: "minecraft:chest".to_string(),
                     properties: Vec::new(),
                     entity: None,
                 },
-                after: sunrise_sim::carrier_store::CellImage {
+                after: sunrise_sim::save::carrier::CellImage {
                     name: "minecraft:air".to_string(),
                     properties: Vec::new(),
                     entity: None,
@@ -445,15 +445,15 @@ pub(crate) mod tests {
                 &Default::default(),
             );
             spill_common::put_saved_entity(&mut game.world, [4, 64, 4], tag.clone());
-            let images = [sunrise_sim::carrier_store::OperationCell {
+            let images = [sunrise_sim::save::carrier::OperationCell {
                 world: [4, 64, 4],
                 local: [0, 0, 0],
-                before: sunrise_sim::carrier_store::CellImage {
+                before: sunrise_sim::save::carrier::CellImage {
                     name: "minecraft:chest".to_string(),
                     properties: Vec::new(),
                     entity: None,
                 },
-                after: sunrise_sim::carrier_store::CellImage {
+                after: sunrise_sim::save::carrier::CellImage {
                     name: "minecraft:air".to_string(),
                     properties: Vec::new(),
                     entity: None,
@@ -505,8 +505,8 @@ pub(crate) mod tests {
             game.carrier_recover_all_levels().unwrap();
 
             // Clean: no tombstone, no carrier file, no operation.
-            let store = match sunrise_sim::carrier_store::Store::open(&root).unwrap() {
-                sunrise_sim::carrier_store::Opened::Live(store) => store,
+            let store = match sunrise_sim::save::carrier::Store::open(&root).unwrap() {
+                sunrise_sim::save::carrier::Opened::Live(store) => store,
                 _ => panic!("the store must open"),
             };
             assert!(store.journal().in_progress.is_none());
@@ -716,13 +716,13 @@ pub(crate) mod tests {
             );
 
             // Recovery, as the next open runs it.
-            let mut store = match sunrise_sim::carrier_store::Store::open(&root).unwrap() {
-                sunrise_sim::carrier_store::Opened::Live(store) => store,
+            let mut store = match sunrise_sim::save::carrier::Store::open(&root).unwrap() {
+                sunrise_sim::save::carrier::Opened::Live(store) => store,
                 _ => panic!("the store must reopen"),
             };
             let region = root.join("dimensions/minecraft/overworld/region");
-            let states = sunrise_sim::carrier_store::RegistryStates::new(registry);
-            let report = sunrise_sim::carrier_store::recover(
+            let states = sunrise_sim::save::carrier::RegistryStates::new(registry);
+            let report = sunrise_sim::save::carrier::recover(
                 &mut store,
                 &region,
                 &states,
@@ -804,13 +804,13 @@ pub(crate) mod tests {
 
             // Recovery, as the next open runs it: the operation replays,
             // the journal commits and the chest is air in the world.
-            let mut store = match sunrise_sim::carrier_store::Store::open(&root).unwrap() {
-                sunrise_sim::carrier_store::Opened::Live(store) => store,
+            let mut store = match sunrise_sim::save::carrier::Store::open(&root).unwrap() {
+                sunrise_sim::save::carrier::Opened::Live(store) => store,
                 _ => panic!("the store must reopen"),
             };
             let region = root.join("dimensions/minecraft/overworld/region");
-            let states = sunrise_sim::carrier_store::RegistryStates::new(registry);
-            let report = sunrise_sim::carrier_store::recover(
+            let states = sunrise_sim::save::carrier::RegistryStates::new(registry);
+            let report = sunrise_sim::save::carrier::recover(
                 &mut store,
                 &region,
                 &states,
@@ -891,12 +891,12 @@ pub(crate) mod tests {
 
             // Recovery, as the next open runs it: the operation replays
             // or verifies, commits, and the chest has exactly one owner.
-            let mut store = match sunrise_sim::carrier_store::Store::open(&root).unwrap() {
-                sunrise_sim::carrier_store::Opened::Live(store) => store,
+            let mut store = match sunrise_sim::save::carrier::Store::open(&root).unwrap() {
+                sunrise_sim::save::carrier::Opened::Live(store) => store,
                 _ => panic!("the store must reopen"),
             };
-            let states = sunrise_sim::carrier_store::RegistryStates::new(registry);
-            let report = sunrise_sim::carrier_store::recover(
+            let states = sunrise_sim::save::carrier::RegistryStates::new(registry);
+            let report = sunrise_sim::save::carrier::recover(
                 &mut store,
                 &region,
                 &states,
@@ -1041,15 +1041,15 @@ pub(crate) mod tests {
                 .iter()
                 .map(|(k, v)| (k.to_string(), v.to_string()))
                 .collect();
-            let images = [sunrise_sim::carrier_store::OperationCell {
+            let images = [sunrise_sim::save::carrier::OperationCell {
                 world: [4, 64, 4],
                 local: [0, 0, 0],
-                before: sunrise_sim::carrier_store::CellImage {
+                before: sunrise_sim::save::carrier::CellImage {
                     name: "minecraft:chest".to_string(),
                     properties,
                     entity: None,
                 },
-                after: sunrise_sim::carrier_store::CellImage {
+                after: sunrise_sim::save::carrier::CellImage {
                     name: "minecraft:air".to_string(),
                     properties: Vec::new(),
                     entity: None,
@@ -1177,10 +1177,10 @@ pub(crate) mod tests {
             // opened world would.
             game.world.carrier_data_existed_at_open = true;
             // A prepared operation whose journal names minecraft:nope.
-            let mut store = sunrise_sim::carrier_store::Store::first_use(&root, true).unwrap();
+            let mut store = sunrise_sim::save::carrier::Store::first_use(&root, true).unwrap();
             store
                 .begin(
-                    sunrise_sim::carrier_store::OpKind::Assemble,
+                    sunrise_sim::save::carrier::OpKind::Assemble,
                     12,
                     1,
                     "minecraft:nope",
@@ -1338,8 +1338,8 @@ pub(crate) mod tests {
 
             // save-all with its flush, and no pending operation.
             assert!(game.save_game_with(true).is_ok());
-            let store = match sunrise_sim::carrier_store::Store::open(&root).unwrap() {
-                sunrise_sim::carrier_store::Opened::Live(store) => store,
+            let store = match sunrise_sim::save::carrier::Store::open(&root).unwrap() {
+                sunrise_sim::save::carrier::Opened::Live(store) => store,
                 _ => panic!("the store must open"),
             };
             assert!(
@@ -1372,8 +1372,8 @@ pub(crate) mod tests {
                     .unwrap();
             assert_eq!(original, restored, "the chunk bytes copy identically");
             // And the copy's store opens with the carrier listed.
-            match sunrise_sim::carrier_store::Store::open(&copy).unwrap() {
-                sunrise_sim::carrier_store::Opened::Live(store) => {
+            match sunrise_sim::save::carrier::Store::open(&copy).unwrap() {
+                sunrise_sim::save::carrier::Opened::Live(store) => {
                     assert!(store.journal().lists(14, 1));
                 }
                 _ => panic!("the copy's store must open"),

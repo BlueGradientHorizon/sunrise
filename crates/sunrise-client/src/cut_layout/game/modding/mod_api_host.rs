@@ -216,7 +216,9 @@ mod attachment_membership_tests {
             game.enter_level(sunrise_gameplay_common::game::Dim::Overworld)
                 .unwrap();
             let holder = mod_api::Holder::Entity(999);
-            game.entity_initialization.active = Some(holder);
+            game.entity_initialization.active = Some(
+                sunrise_gameplay_common::game::entity_initialization_common::Construction::Holder(holder),
+            );
             assert!(
                 game.attachment_slot(holder, AttachmentAccess::Existing)
                     .is_ok()

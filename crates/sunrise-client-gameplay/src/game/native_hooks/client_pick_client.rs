@@ -599,7 +599,7 @@ impl crate::game::ClientGame<'_> {
         if let Some(target) = self.native_client_entity_target(subject) {
             return self.client_target_kind_key(target);
         }
-        if let Some((remote, id)) = self.native_client_entity_context(subject)
+        if let Ok((remote, id)) = self.native_client_entity_context(subject)
             && let Some(row) = remote.general.rows.get(&id)
         {
             return mod_api::__private::resolved_entity_type_key(row.kind());
@@ -619,7 +619,7 @@ impl crate::game::ClientGame<'_> {
                     position,
                     self.client_target_rotation(target),
                 )
-            } else if let Some((remote, id)) = self.native_client_entity_context(subject)
+            } else if let Ok((remote, id)) = self.native_client_entity_context(subject)
                 && let Some(row) = remote.general.rows.get(&id)
             {
                 (
@@ -693,7 +693,7 @@ impl crate::game::ClientGame<'_> {
                 other => self.client_target_kind_name(other).map(str::to_owned),
             };
         }
-        if let Some((remote, id)) = self.native_client_entity_context(entity)
+        if let Ok((remote, id)) = self.native_client_entity_context(entity)
             && let Some(row) = remote.general.rows.get(&id)
         {
             return Some(row.kind().to_owned());

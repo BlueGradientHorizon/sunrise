@@ -5,9 +5,12 @@ use super::*;
 #[derive(Clone)]
 pub struct Options {
     pub resources: PathBuf,
+    pub read_creation_packs: Option<crate::game::integrated_link::ReadCreationPacks>,
     pub(in crate::game) distance: i32,
     pub distance_override: Option<i32>,
-    pub seed: i64,
+    /// `--seed`: the seed of a world `--world` creates; without it the world gets a random
+    /// one, as a new world with an empty seed field does (`WorldOptions.randomSeed`).
+    pub seed: Option<i64>,
     pub developer_single_player: bool,
     pub creative: bool,
     pub test_terrain: bool,
@@ -144,6 +147,7 @@ impl Options {
             .ok_or("missing executable directory")?
             .join("resources");
         let mut o = Self {
+            read_creation_packs: None,
             resources: if sibling.join("sunrise-resources.json").exists() {
                 sibling
             } else {
@@ -151,7 +155,7 @@ impl Options {
             },
             distance: 12,
             distance_override: None,
-            seed: 0,
+            seed: None,
             developer_single_player: false,
             creative: false,
             test_terrain: false,
@@ -256,7 +260,7 @@ impl Options {
                                 }
                             }
                             "--seed" => {
-                                o.seed = value.parse().unwrap_or_else(|_| {
+                                o.seed = Some(value.parse().unwrap_or_else(|_| {
                                     // Text seeds hash like String.hashCode.
                                     value
                                         .encode_utf16()
@@ -264,7 +268,7 @@ impl Options {
                                             h.wrapping_mul(31).wrapping_add(i32::from(c))
                                         })
                                         .into()
-                                })
+                                }))
                             }
                             "--frames" => o.frames = Some(value.parse()?),
                             "--world-frames" => {

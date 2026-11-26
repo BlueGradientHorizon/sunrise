@@ -8,6 +8,7 @@ pub use std::sync::Arc;
 pub use sunrise_core::nbt::{Compound, JavaString, Tag};
 pub use sunrise_core::random::{LegacyRandom, RandomSource as EngineRandom};
 pub use sunrise_items::items::{ItemStack as EngineStack, Items};
+use sunrise_level::fast_hash::FxHashMap;
 #[cfg(test)]
 pub use sunrise_sim::parallel::ListenSnapshot;
 pub use sunrise_sim::parallel::TickThread;
@@ -147,8 +148,6 @@ pub fn listen_snapshot(tick: &TickThread) -> Option<ListenSnapshot> {
         index.blocks(),
     ))
 }
-#[path = "api_values/inside_write.rs"]
-pub mod inside_write;
 #[path = "api_values/landing_write.rs"]
 pub mod landing_write;
 #[path = "api_values/recipe_inputs.rs"]
@@ -182,6 +181,21 @@ pub fn resolve_enchantment_registry(items: &sunrise_items::items::Items) -> Resu
 pub fn resolve_block_definitions(
     registry: &sunrise_world::registry::BlockRegistry,
 ) -> Result<(), String> {
+    resolve_block_definitions_with_role(registry, None)
+}
+
+/// [`resolve_block_definitions`], restricting block-entity ticker selectors to `role`'s logical side.
+pub fn resolve_block_definitions_for_role(
+    registry: &sunrise_world::registry::BlockRegistry,
+    role: crate::game::execution_role::ExecutionRole,
+) -> Result<(), String> {
+    resolve_block_definitions_with_role(registry, Some(role))
+}
+
+fn resolve_block_definitions_with_role(
+    registry: &sunrise_world::registry::BlockRegistry,
+    role: Option<crate::game::execution_role::ExecutionRole>,
+) -> Result<(), String> {
     // Without installed parts the completed keys land in one process-wide table that keeps the
     // first registry resolved; in a test process that is whichever test got there first, so a
     // test that installed no parts gets its own empty installation, as tests do their mods.
@@ -194,10 +208,10 @@ pub fn resolve_block_definitions(
     let _tick = TickThread::mint();
     block_state::clear();
     if mod_api::__private::block_definitions().is_some() {
-        return bind_worker_blocks(registry);
+        return bind_worker_blocks_with_role(registry, role);
     }
     resolve_block_keys_from_registry(registry)?;
-    bind_worker_blocks(registry)
+    bind_worker_blocks_with_role(registry, role)
 }
 
 #[cfg(any(test, feature = "test-support"))]
@@ -283,7 +297,24 @@ pub fn group_block_states(
 }
 
 pub fn bind_worker_blocks(registry: &sunrise_world::registry::BlockRegistry) -> Result<(), String> {
-    block_state::bind(registry)?;
+    bind_worker_blocks_with_role(registry, None)
+}
+
+pub fn bind_worker_blocks_for_role(
+    registry: &sunrise_world::registry::BlockRegistry,
+    role: crate::game::execution_role::ExecutionRole,
+) -> Result<(), String> {
+    bind_worker_blocks_with_role(registry, Some(role))
+}
+
+fn bind_worker_blocks_with_role(
+    registry: &sunrise_world::registry::BlockRegistry,
+    role: Option<crate::game::execution_role::ExecutionRole>,
+) -> Result<(), String> {
+    match role {
+        Some(role) => block_state::bind_for_role(registry, role)?,
+        None => block_state::bind(registry)?,
+    }
     let index = block_state::current().map_err(|error| format!("worker index: {error:?}"))?;
     let retained =
         super::native_worldgen::retain(registry, index).inspect_err(|_| block_state::clear())?;
@@ -350,8 +381,6 @@ pub fn block_definition_import_preserves_defaults_and_is_immutable_after_load() 
     );
 }
 
-#[allow(unused_imports)]
-pub use crate::game::item_snapshot::ItemBoundary;
 #[allow(unused_imports)]
 #[cfg(test)]
 pub use crate::game::item_snapshot::ItemSnapshot;
@@ -828,6 +857,50 @@ pub fn stack_read_metadata(stack: &EngineStack) -> Result<StackReadMetadata, Sta
 #[cfg(any(test, feature = "test-support"))]
 thread_local! {
     pub static STACK_PROJECTIONS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+    static STACK_OVERRIDE_PROJECTIONS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// Lend the stack to a whole dispatch. Readers share the first encoding of each requested
+/// override (including a miss). The full patch is encoded only for an explicit owned read.
+pub fn with_stack_view<R>(
+    stack: Option<&EngineStack>,
+    read: impl FnOnce(Option<mod_api::ItemStackView<'_>>) -> R,
+) -> R {
+    let Some((stack, metadata)) =
+        stack.and_then(|stack| Some((stack, stack_read_metadata(stack).ok()?)))
+    else {
+        return read(None);
+    };
+    let owned = std::cell::OnceCell::new();
+    let project = |metadata| {
+        owned
+            .get_or_init(|| project_stack(stack, metadata).ok())
+            .clone()
+    };
+    let overrides = std::cell::RefCell::new(FxHashMap::<String, Option<Tag>>::default());
+    let read_override = |id: &str| {
+        let mut overrides = overrides.borrow_mut();
+        if let Some(value) = overrides.get(id) {
+            return value.clone();
+        }
+        #[cfg(any(test, feature = "test-support"))]
+        STACK_OVERRIDE_PROJECTIONS.set(STACK_OVERRIDE_PROJECTIONS.get() + 1);
+        let bare = id.strip_prefix('!').unwrap_or(id);
+        let value =
+            match sunrise_items::item_data::encode_extra_components_matching(stack, |name| {
+                name == bare
+            }) {
+                Some(Tag::Compound(mut patch)) => patch.remove(&JavaString::from(id)),
+                _ => None,
+            };
+        overrides.insert(id.to_owned(), value.clone());
+        value
+    };
+    read(Some(mod_api::ItemStackView::resident_with_components(
+        metadata,
+        &project,
+        &read_override,
+    )))
 }
 
 /// Encode and normalize the patch using the scalars already read from this same stack.
@@ -837,7 +910,7 @@ pub fn project_stack(
 ) -> Result<ApiStack, StackReadError> {
     #[cfg(any(test, feature = "test-support"))]
     STACK_PROJECTIONS.set(STACK_PROJECTIONS.get() + 1);
-    let patch = sunrise_items::item_data::encode_extra_components(stack);
+    let patch = sunrise_items::item_data::live_component_patch(stack, false);
     projected_stack(metadata, patch)
 }
 
@@ -1175,19 +1248,23 @@ impl TryIntoApi for sunrise_sim::crafting::RecipeSnapshot {
 pub fn install_stack_hooks() {
     sunrise_sim::native_stack_hooks::install(sunrise_sim::native_stack_hooks::StackHooks {
         enchantments: |stack, target, value| {
-            if !mod_api::__private::listened(mod_api::HookId::GetEnchantmentLevel) {
-                return;
-            }
-            if let Ok(stack) = stack.try_into_api() {
-                mod_api::item::enchantments::native_get_enchantment_level(&stack, target, value);
+            if mod_api::__private::listened(mod_api::HookId::GetEnchantmentLevel) {
+                with_stack_view(Some(stack), |view| {
+                    if let Some(view) = view {
+                        mod_api::item::enchantments::native_get_enchantment_level(
+                            view, target, value,
+                        );
+                    }
+                });
             }
         },
         attributes: |stack, value| {
-            if !mod_api::__private::listened(mod_api::HookId::ItemAttributeModifier) {
-                return;
-            }
-            if let Ok(stack) = stack.try_into_api() {
-                mod_api::item::item_attributes::native_item_attribute_modifier(&stack, value);
+            if mod_api::__private::listened(mod_api::HookId::ItemAttributeModifier) {
+                with_stack_view(Some(stack), |view| {
+                    if let Some(view) = view {
+                        mod_api::item::item_attributes::native_item_attribute_modifier(view, value);
+                    }
+                });
             }
         },
     });
@@ -1421,7 +1498,7 @@ pub mod attribute_boundary_tests {
 #[cfg(test)]
 pub mod enchantment_boundary_tests {
     use super::EngineStack as ItemStack;
-    use mod_api::{GetEnchantmentLevelEvent, Hooks, Identifier, ModEntry};
+    use mod_api::{Component, GetEnchantmentLevelEvent, Hooks, Identifier, ModEntry, Tag};
     use mod_platform::testing::with_mods;
     use std::borrow::Cow;
     use std::sync::Arc;
@@ -1429,6 +1506,23 @@ pub mod enchantment_boundary_tests {
     fn id(text: &str) -> Identifier {
         Identifier::parse(text).unwrap()
     }
+    struct Note;
+    impl Component for Note {
+        type Value = i32;
+        fn id(&self) -> &str {
+            "test:note"
+        }
+        fn decode(&self, value: &Tag) -> Option<i32> {
+            match value {
+                Tag::Int(value) => Some(*value),
+                _ => None,
+            }
+        }
+        fn encode(&self, value: i32) -> Tag {
+            Tag::Int(value)
+        }
+    }
+
     /// An iron sword fights as if it had Looting II and no Sharpness.
     struct Keen;
     #[mod_api::__subscriptions]
@@ -1437,6 +1531,10 @@ pub mod enchantment_boundary_tests {
             if mod_api::__private::item_key_id(event.stack.item()) != Some("minecraft:iron_sword") {
                 return;
             }
+            let encoded = super::STACK_OVERRIDE_PROJECTIONS.get();
+            assert_eq!(event.stack.get(&Note), Some(17));
+            assert_eq!(event.stack.get(&Note), Some(17));
+            assert_eq!(super::STACK_OVERRIDE_PROJECTIONS.get(), encoded + 1);
             let looting = id("minecraft:looting");
             if event.target.is_none_or(|target| *target == looting) {
                 event.enchantments.upgrade(looting, 2);
@@ -1454,6 +1552,7 @@ pub mod enchantment_boundary_tests {
         let _ = sunrise_items::native_enchantment_hooks::install(get_enchantment_level);
         let mut iron = ItemStack::new("minecraft:iron_sword", 1);
         iron.enchant("minecraft:sharpness", 3);
+        iron.data_mut().set_other("test:note", Some(Tag::Int(17)));
         let mut diamond = ItemStack::new("minecraft:diamond_sword", 1);
         diamond.enchant("minecraft:sharpness", 3);
         with_mods(Vec::new().into(), || {
@@ -1461,6 +1560,7 @@ pub mod enchantment_boundary_tests {
             assert_eq!(iron.enchantment_level("minecraft:sharpness"), 3);
         });
         with_mods(vec![ModEntry::new("keen", Box::new(Keen))].into(), || {
+            let projected = super::STACK_PROJECTIONS.get();
             assert_eq!(
                 &*iron.all_enchantments(),
                 [(Arc::from("minecraft:looting"), 2)]
@@ -1471,6 +1571,7 @@ pub mod enchantment_boundary_tests {
             assert_eq!(iron.enchantments(), [(Arc::from("minecraft:sharpness"), 3)]);
             assert!(matches!(diamond.all_enchantments(), Cow::Borrowed(_)));
             assert_eq!(diamond.enchantment_level("minecraft:sharpness"), 3);
+            assert_eq!(super::STACK_PROJECTIONS.get(), projected);
         });
     }
 }
@@ -1612,48 +1713,6 @@ impl TryIntoApi for sunrise_level::containers::ModBlockEntity {
                 self.revision().changes(),
             ),
         ))
-    }
-}
-
-impl super::GameLevel<'_> {
-    pub(in crate::game) fn api_pre_remove_side_effects(
-        &mut self,
-        pos: sunrise_core::position::BlockPos,
-        state: sunrise_world::registry::BlockStateId,
-        entity: &sunrise_level::containers::ModBlockEntity,
-    ) -> crate::game::spill_common::RemovalOutputs {
-        let mut outputs = crate::game::spill_common::RemovalOutputs::default();
-        if !mod_api::__private::has_part_hook(mod_api::HookId::PreRemoveSideEffects) {
-            return outputs;
-        }
-        let Ok(api) = entity.try_into_api() else {
-            return outputs;
-        };
-        self.native_pre_remove_side_effects(super::native_hooks::PreRemoveSideEffectsCall {
-            pos,
-            state,
-            entity: &api,
-            keep_contents: &mut outputs.keep_contents,
-            drops: &mut outputs.drops,
-            spawns: &mut outputs.spawns,
-            experience: &mut outputs.experience,
-        });
-        if outputs.drops.len() > 1024
-            || outputs.spawns.len() > 1024
-            || outputs.experience.len() > 1024
-            || outputs
-                .spawns
-                .iter()
-                .any(|(_, at)| at.iter().any(|v| !v.is_finite()))
-            || outputs
-                .experience
-                .iter()
-                .any(|(_, at)| at.iter().any(|v| !v.is_finite()))
-        {
-            log::warn!("pre_remove_side_effects outputs refused: limit or nonfinite position");
-            return Default::default();
-        }
-        outputs
     }
 }
 
@@ -2345,7 +2404,7 @@ pub mod declaration_snapshot_tests {
 #[path = "api_values/text_boundary.rs"]
 pub mod text_boundary;
 #[cfg(test)]
-pub mod gui_draw_boundary_tests {
+pub mod text_boundary_tests {
     use super::{TryIntoApi, TryIntoEngine};
 
     #[test]
@@ -2414,6 +2473,16 @@ pub fn placement_refusal_into_api(
         sunrise_world::level::DirectionalRefusal::ReplacingClickedCycle => {
             mod_api::PlacementStateError::ReplacingClickedCycle
         }
+    }
+}
+
+pub fn api_game_rule_value(
+    value: sunrise_game_data::gamerules::Value,
+) -> mod_api::GameRuleValue {
+    use sunrise_game_data::gamerules::Value;
+    match value {
+        Value::Bool(value) => mod_api::GameRuleValue::Bool(value),
+        Value::Int(value) => mod_api::GameRuleValue::Int(value),
     }
 }
 
@@ -2564,10 +2633,7 @@ impl TryIntoApi for sunrise_game_data::gamerules::Value {
     type Api = mod_api::GameRuleValue;
     type Error = StackReadError;
     fn try_into_api(&self) -> Result<Self::Api, Self::Error> {
-        Ok(match *self {
-            Self::Bool(value) => mod_api::GameRuleValue::Bool(value),
-            Self::Int(value) => mod_api::GameRuleValue::Int(value),
-        })
+        Ok(api_game_rule_value(*self))
     }
 }
 
@@ -2632,8 +2698,6 @@ pub fn game_rule_registry() -> sunrise_game_data::gamerules::RuleRegistry {
 
 #[path = "api_values/game_rule_values.rs"]
 pub mod game_rule_values;
-#[path = "api_values/item_properties.rs"]
-pub mod item_properties;
 #[path = "api_values/loot_values.rs"]
 pub mod loot_values;
 #[path = "api_values/package_snapshot.rs"]

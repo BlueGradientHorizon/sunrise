@@ -25,8 +25,20 @@ pub(crate) mod general_handle_tests {
             previous: Vec3::new(0.5, 64.0, 0.5),
             velocity: Vec3::ZERO,
             rotation: [0.0, 0.0],
+            previous_rotation: [0.0, 0.0],
             owner: None,
             fall_distance: fall,
+            custom_name: None,
+            custom_name_visible: false,
+            no_gravity: false,
+            on_ground: false,
+            tick_count: 0,
+            no_physics: false,
+            horizontal_collision: false,
+            vertical_collision: false,
+            vertical_collision_below: false,
+            fluids: Default::default(),
+            under_water: false,
             payload_version: 1,
             payload_bytes: Vec::new(),
             mount: None,
@@ -47,6 +59,10 @@ pub(crate) mod general_handle_tests {
     #[ignore = "daily"]
     fn removed_general_row_refuses_its_handle_and_the_next_row_takes_a_new_id() {
         with_game(|game| {
+            game.world.chunks.insert(
+                (0, 0),
+                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+            );
             let uuid = [21, 22, 23, 24];
             game.resident_entities.general.rows.push(row(42, uuid, 7.0));
             let handle = game.entity(42).expect("the row became a handle");
@@ -92,6 +108,10 @@ pub(crate) mod general_handle_tests {
     #[ignore = "daily"]
     fn general_handle_of_an_earlier_epoch_refuses_by_the_epoch_check() {
         with_game(|game| {
+            game.world.chunks.insert(
+                (0, 0),
+                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+            );
             game.resident_entities
                 .general
                 .rows
@@ -326,11 +346,12 @@ pub(crate) mod tests {
         .unwrap();
         game.reset_entity_residency();
         game.native_lifecycle
-            .begin_open(Authority::IntegratedServer);
+            .begin_open(Some(Authority::IntegratedServer));
 
         // A game that opened its world resolves its parts; the harness stops
         // short of the open, so do it here for the by-state part table.
         resolve_parts(&game).unwrap();
+        game.install_root_block_transformers();
         // The title's save folder is under the working directory: give each test its own, so a
         // test that saves leaves the checkout clean and parallel tests don't share files.
         game.server.save.0 = std::sync::Arc::new(sunrise_sim::save::SaveDir::new(
@@ -421,7 +442,7 @@ pub(crate) mod tests {
         .unwrap();
 
         game.native_lifecycle
-            .begin_open(Authority::IntegratedServer);
+            .begin_open(Some(Authority::IntegratedServer));
 
         // A game that opened its world resolves its parts; the harness stops
         // short of the open, so do it here for the by-state part table.
@@ -450,6 +471,10 @@ pub(crate) mod tests {
             let original = game.dim;
             game.enter_command_level(sunrise_gameplay_common::game::Dim::Nether)
                 .unwrap();
+            game.world.chunks.insert(
+                (0, 0),
+                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+            );
             let id = *game
                 .persist
                 .uuids
@@ -549,11 +574,12 @@ pub(crate) mod tests {
                 // A full block's collision box, none for air, nothing for an unloaded position.
                 for host in [&view as &dyn LevelHost, &*level] {
                     assert_eq!(
-                        host.collision_shape([9, 64, 5]),
+                        host.collision_shape([9, 64, 5])
+                            .map(|shape| shape.boxes().collect::<Vec<_>>()),
                         Some(vec![[0.0, 0.0, 0.0, 1.0, 1.0, 1.0]])
                     );
-                    assert_eq!(host.collision_shape([9, 70, 5]), Some(Vec::new()));
-                    assert_eq!(host.collision_shape([160, 64, 5]), None);
+                    assert!(host.collision_shape([9, 70, 5]).unwrap().is_empty());
+                    assert!(host.collision_shape([160, 64, 5]).is_none());
                 }
             });
         });
@@ -1467,7 +1493,7 @@ pub(crate) mod tests {
                 .chunks
                 .insert((-2, 3), Arc::new(Chunk::empty(-2, 3)));
             game.native_lifecycle
-                .begin_open(Authority::IntegratedServer);
+                .begin_open(Some(Authority::IntegratedServer));
             assert!(game.chunk(level, [-2, 3]).is_none());
             assert!(!chunk.loaded(game));
             assert_eq!(chunk.status(game), None);
@@ -1512,7 +1538,7 @@ pub(crate) mod tests {
                 Ok(false)
             );
             assert!(
-                game.level_destroy_block(level, [0, 128, 0], false, None, false)
+                game.level_destroy_block(level, [0, 128, 0], false, None, None, false)
                     .is_none()
             );
         });
@@ -1616,6 +1642,8 @@ pub(crate) mod tests {
                 mob.extra.set_body_stack(Some(stack.clone()));
                 let index = game.mobs.len();
                 game.mobs.push(mob);
+                game.common.inventory[game.common.selected] =
+                    Some(ItemStack::new("minecraft:shears", 1));
                 let used = if item.ends_with("carpet") {
                     game.interact_llama(index, "minecraft:shears")
                 } else {
@@ -1665,7 +1693,7 @@ pub(crate) mod tests {
                 seed: 0,
                 max_players: 2,
                 integrated: true,
-                levels: game.server.level_shapes,
+                levels: game.server.level_shapes.clone(),
                 level_seeds: game.server.levels.0.runtime.seeds(),
             };
             game.lan_host(settings, net, config).unwrap();
@@ -2267,7 +2295,7 @@ pub(crate) mod tests {
                 default: || 0i32,
                 codec: None,
                 copy_on_death: false,
-                sync: false,
+                sync_codec: None,
             };
             let holder = sunrise_mod_runtime::attachments::Holder::Player(2345);
             game.options.dedicated = Some(Vec::new());
@@ -3042,10 +3070,146 @@ pub(crate) mod tests {
         });
     }
 
+    /// The hit of a ray that found one; any other outcome fails the test.
+    fn hit_of(outcome: Result<mod_api::ClipOutcome, mod_api::ClipError>) -> mod_api::ClipHit {
+        match outcome {
+            Ok(mod_api::ClipOutcome::Hit(hit)) => hit,
+            other => panic!("expected a hit, got {other:?}"),
+        }
+    }
+
+    /// `CollisionContext.empty()` against `CollisionContext.of(entity)`: scaffolding is solid to
+    /// a ray with no entity and to one an entity above it asks for, and open to one an entity
+    /// below it asks for (`ScaffoldingBlock.getCollisionShape` with `isAbove`).
     #[test]
     #[ignore = "daily"]
-    fn level_clip_reads_parked_world_and_refuses_unloaded() {
-        use mod_api::{BlockFace as Face, ClipBlock as Block, ClipFluid as Fluid};
+    fn level_clip_answers_shapes_for_the_entity_in_its_context() {
+        use mod_api::{
+            ClipBlock as Block, ClipFluid as Fluid, ClipOutcome, CollisionContext as Context,
+        };
+        use std::sync::Arc;
+        use sunrise_core::geometry::Vec3;
+        use sunrise_level::chunk::Chunk;
+        use sunrise_sim::mobs::Mob;
+        with_game(|game| {
+            game.world
+                .chunks
+                .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+            let level = game.level(game.dim.id()).unwrap();
+            let scaffolding = game
+                .pack
+                .assets
+                .registry
+                .default_state("minecraft:scaffolding")
+                .unwrap();
+            game.world.set(1, 64, 0, scaffolding).unwrap();
+            let zombie = game
+                .res
+                .mob_types()
+                .get("minecraft:zombie")
+                .unwrap()
+                .clone();
+            game.mobs
+                .push(Mob::new(12, zombie.clone(), Vec3::new(1.5, 60.0, 0.5), 0.0));
+            game.mobs
+                .push(Mob::new(13, zombie, Vec3::new(1.5, 70.0, 0.5), 0.0));
+            let (below, above) = (game.entity(12).unwrap(), game.entity(13).unwrap());
+            let (from, to) = ([1.5, 66.0, 0.5], [1.5, 64.5, 0.5]);
+            let clip = |game: &sunrise_gameplay::game::ServerGame<'_>, context| {
+                level.clip(game, from, to, Block::Collider, Fluid::None, context)
+            };
+            let empty = hit_of(clip(game, Context::Empty));
+            assert_eq!(empty.block, [1, 64, 0]);
+            assert_eq!(empty.location, [1.5, 65.0, 0.5]);
+            let from_above = hit_of(clip(game, Context::Entity(above)));
+            assert_eq!(from_above.location, empty.location);
+            assert_eq!(clip(game, Context::Entity(below)), Ok(ClipOutcome::Miss));
+            let gone = mod_api::EntityRef::new(
+                mod_api::WorldEpoch::new(level.epoch().get() + 1),
+                above.id(),
+            );
+            assert_eq!(
+                clip(game, Context::Entity(gone)),
+                Err(mod_api::ClipError::StaleLevel)
+            );
+        });
+    }
+
+    /// `ClipContext.Block.VISUAL` (`BlockState.getVisualShape`): a ray passes glass, iron
+    /// bars and powder snow, which a collider ray stops on (powder snow has no empty-context
+    /// collision either), and stops on soul sand, mud, a snow layer and a fence at their
+    /// visual top, not their collision top.
+    #[test]
+    #[ignore = "daily"]
+    fn level_clip_visual_passes_see_through_blocks_and_stops_on_visual_shapes() {
+        use mod_api::{
+            BlockFace as Face, ClipBlock as Block, ClipFluid as Fluid, ClipOutcome,
+            CollisionContext as Context,
+        };
+        use std::sync::Arc;
+        use sunrise_level::chunk::Chunk;
+        with_game(|game| {
+            let level = game.level(game.dim.id()).unwrap();
+            let place = |game: &mut sunrise_gameplay::game::ServerGame<'_>, block: &str| {
+                game.world
+                    .chunks
+                    .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+                let state = game.pack.assets.registry.default_state(block).unwrap();
+                game.world.set(1, 64, 0, state).unwrap();
+            };
+            let (from, to) = ([0.5, 64.5, 0.5], [2.5, 64.5, 0.5]);
+            for (block, collider) in [
+                ("minecraft:glass", Some([1.0, 64.5, 0.5])),
+                ("minecraft:iron_bars", Some([1.4375, 64.5, 0.5])),
+                ("minecraft:powder_snow", None),
+            ] {
+                place(game, block);
+                assert_eq!(
+                    level.clip(game, from, to, Block::Visual, Fluid::None, Context::Empty),
+                    Ok(ClipOutcome::Miss),
+                    "{block}"
+                );
+                let hit = level.clip(game, from, to, Block::Collider, Fluid::None, Context::Empty);
+                let location = match hit {
+                    Ok(ClipOutcome::Hit(hit)) => Some(hit.location),
+                    Ok(ClipOutcome::Miss) => None,
+                    other => panic!("{block}: {other:?}"),
+                };
+                assert_eq!(location, collider, "{block}");
+            }
+            let (from, to) = ([1.5, 66.0, 0.5], [1.5, 63.5, 0.5]);
+            for (block, visual, collider) in [
+                ("minecraft:soul_sand", 65.0, Some(64.875)),
+                ("minecraft:mud", 65.0, Some(64.875)),
+                ("minecraft:snow", 64.125, None),
+                ("minecraft:oak_fence", 65.0, Some(65.5)),
+            ] {
+                place(game, block);
+                let hit =
+                    hit_of(level.clip(game, from, to, Block::Visual, Fluid::None, Context::Empty));
+                assert!(!hit.miss, "{block}");
+                assert_eq!(hit.block, [1, 64, 0], "{block}");
+                assert_eq!(hit.face, Face::Up, "{block}");
+                assert_eq!(hit.location, [1.5, visual, 0.5], "{block}");
+                assert!(!hit.inside && !hit.world_border, "{block}");
+                let hit = level.clip(game, from, to, Block::Collider, Fluid::None, Context::Empty);
+                let top = match hit {
+                    Ok(ClipOutcome::Hit(hit)) => Some(hit.location[1]),
+                    Ok(ClipOutcome::Miss) => None,
+                    other => panic!("{block}: {other:?}"),
+                };
+                assert_eq!(top, collider, "{block}");
+            }
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn level_clip_reads_parked_world_and_stops_at_unloaded_columns() {
+        use mod_api::{
+            BlockFace as Face, ClipBlock as Block, ClipError, ClipFluid as Fluid, ClipOutcome,
+            CollisionContext as Context,
+        };
         use std::sync::Arc;
         use sunrise_level::chunk::Chunk;
         with_game(|game| {
@@ -3063,63 +3227,156 @@ pub(crate) mod tests {
             let from = [0.5, 64.5, 0.5];
             let to = [2.5, 64.5, 0.5];
             for mode in [Block::Collider, Block::Outline] {
-                let hit = level.clip(game, from, to, mode, Fluid::None).unwrap();
+                let hit = hit_of(level.clip(game, from, to, mode, Fluid::None, Context::Empty));
                 assert!(!hit.miss);
                 assert_eq!(hit.block, [1, 64, 0]);
                 assert_eq!(hit.face, Face::West);
                 assert_eq!(hit.location, [1.0, 64.5, 0.5]);
                 assert!(!hit.inside && !hit.world_border);
             }
-            assert!(
-                level
-                    .clip(
-                        game,
-                        [15.5, 64.5, 0.5],
-                        [17.5, 64.5, 0.5],
-                        Block::Collider,
-                        Fluid::None
-                    )
-                    .is_none()
+            let chunks_before_gap = game.world.chunks.len();
+            // Crossing into a missing column stops at its first cell: neither a miss nor air,
+            // and nothing is loaded.
+            assert_eq!(
+                level.clip(
+                    game,
+                    [15.5, 64.5, 0.5],
+                    [17.5, 64.5, 0.5],
+                    Block::Collider,
+                    Fluid::None,
+                    Context::Empty,
+                ),
+                Ok(ClipOutcome::Unloaded { at: [16, 64, 0] })
             );
-            let miss = level
-                .clip(
+            // A ray that starts inside a missing column stops at its first cell too.
+            assert_eq!(
+                level.clip(
+                    game,
+                    [17.5, 64.5, 0.5],
+                    [15.5, 64.5, 0.5],
+                    Block::Outline,
+                    Fluid::None,
+                    Context::Empty,
+                ),
+                Ok(ClipOutcome::Unloaded { at: [17, 64, 0] })
+            );
+            assert_eq!(
+                level.line_of_sight(game, [15.5, 64.5, 0.5], [17.5, 64.5, 0.5]),
+                None,
+                "an unloaded column answers neither way"
+            );
+            // Cells out of build height are air whatever the column below holds, so a ray there
+            // is a miss, even across a missing column.
+            for (from, to, mode) in [
+                ([0.5, 325.5, 0.5], [2.5, 325.5, 0.5], Block::Collider),
+                ([15.5, 325.5, 0.5], [17.5, 325.5, 0.5], Block::Collider),
+                ([0.5, -70.5, 0.5], [0.5, -66.5, 0.5], Block::Outline),
+                ([15.5, -70.5, 0.5], [17.5, -70.5, 0.5], Block::Outline),
+            ] {
+                assert_eq!(
+                    level.clip(game, from, to, mode, Fluid::None, Context::Empty),
+                    Ok(ClipOutcome::Miss),
+                    "{from:?} to {to:?}"
+                );
+            }
+            assert!(!game.world.chunks.contains_key(&(1, 0)));
+            assert_eq!(game.world.chunks.len(), chunks_before_gap);
+            // A straight ray through 300 loaded columns has no length cap: it hits a block more
+            // than 4096 cells away, and misses the row above it.
+            for cx in 1..=300 {
+                game.world
+                    .chunks
+                    .insert((cx, 0), Arc::new(Chunk::empty(cx, 0)));
+            }
+            game.world.set(4805, 64, 0, stone).unwrap();
+            let chunks_with_far = game.world.chunks.len();
+            for mode in [Block::Collider, Block::Outline] {
+                let far_hit = hit_of(level.clip(
+                    game,
+                    [15.5, 64.5, 0.5],
+                    [4810.5, 64.5, 0.5],
+                    mode,
+                    Fluid::None,
+                    Context::Empty,
+                ));
+                assert!(!far_hit.miss);
+                assert_eq!(far_hit.block, [4805, 64, 0]);
+                assert_eq!(far_hit.face, Face::West);
+                assert_eq!(far_hit.location, [4805.0, 64.5, 0.5]);
+                assert!(!far_hit.inside && !far_hit.world_border);
+            }
+            // Independent opposite hit face and a miss beyond 4096.
+            let east_hit = hit_of(level.clip(
+                game,
+                [4810.5, 64.5, 0.5],
+                [4800.5, 64.5, 0.5],
+                Block::Collider,
+                Fluid::None,
+                Context::Empty,
+            ));
+            assert_eq!(east_hit.block, [4805, 64, 0]);
+            assert_eq!(east_hit.face, Face::East);
+            assert_eq!(east_hit.location, [4806.0, 64.5, 0.5]);
+            assert_eq!(
+                level.clip(
+                    game,
+                    [15.5, 65.5, 0.5],
+                    [4810.5, 65.5, 0.5],
+                    Block::Collider,
+                    Fluid::None,
+                    Context::Empty,
+                ),
+                Ok(ClipOutcome::Miss)
+            );
+            // `line_of_sight` delegates to the same segment clip with no 128-block entity cap.
+            assert_eq!(
+                level.line_of_sight(game, [15.5, 64.5, 0.5], [4810.5, 64.5, 0.5]),
+                Some(false)
+            );
+            assert_eq!(
+                level.line_of_sight(game, [15.5, 65.5, 0.5], [4810.5, 65.5, 0.5]),
+                Some(true)
+            );
+            assert_eq!(game.world.chunks.len(), chunks_with_far);
+            assert_eq!(
+                level.clip(
                     game,
                     [0.5, 67.5, 0.5],
                     [2.5, 67.5, 0.5],
                     Block::Collider,
                     Fluid::None,
-                )
-                .unwrap();
-            assert!(miss.miss);
-            let inside = level
-                .clip(
-                    game,
-                    [1.5, 64.5, 0.5],
-                    [2.5, 64.5, 0.5],
-                    Block::Collider,
-                    Fluid::None,
-                )
-                .unwrap();
-            assert!(inside.inside && !inside.miss);
-            assert!(
-                level
-                    .clip(
-                        game,
-                        [f64::NAN, 64.0, 0.0],
-                        to,
-                        Block::Collider,
-                        Fluid::None
-                    )
-                    .is_none()
+                    Context::Empty,
+                ),
+                Ok(ClipOutcome::Miss)
             );
+            let inside = hit_of(level.clip(
+                game,
+                [1.5, 64.5, 0.5],
+                [2.5, 64.5, 0.5],
+                Block::Collider,
+                Fluid::None,
+                Context::Empty,
+            ));
+            assert!(inside.inside && !inside.miss);
+            for bad in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+                for (from, to) in [
+                    ([bad, 64.0, 0.0], to),
+                    (from, [0.0, bad, 0.0]),
+                    ([0.0, 64.0, bad], [bad, bad, bad]),
+                ] {
+                    assert_eq!(
+                        level.clip(game, from, to, Block::Collider, Fluid::None, Context::Empty),
+                        Err(ClipError::NonFiniteRay)
+                    );
+                }
+            }
             let stale = mod_api::LevelRef::new(
                 mod_api::WorldEpoch::new(level.epoch().get() + 1),
                 level.dimension(),
             );
-            assert!(
-                stale
-                    .clip(game, from, to, Block::Collider, Fluid::None)
-                    .is_none()
+            assert_eq!(
+                stale.clip(game, from, to, Block::Collider, Fluid::None, Context::Empty),
+                Err(ClipError::StaleLevel)
             );
             use sunrise_world::world_ray::RayWorld;
             let mut ordinary = sunrise_gameplay_common::game::collider_rays::ColliderRays {
@@ -3130,6 +3387,7 @@ pub(crate) mod tests {
                 },
                 context: sunrise_world::collision_context::CollisionContext::empty(false),
                 clip_data: None,
+                report_unloaded: false,
             };
             assert!(
                 ordinary
@@ -3139,6 +3397,40 @@ pub(crate) mod tests {
                     )
                     .unwrap()
                     .is_empty()
+            );
+            // Dynamic collision shapes (bamboo) work on the collider branch; outline reports
+            // an actual unsupported error instead of fabricating a miss.
+            let bamboo = game
+                .pack
+                .assets
+                .registry
+                .default_state("minecraft:bamboo")
+                .unwrap();
+            game.world.set(1, 64, 2, bamboo).unwrap();
+            let bx = 1.3833333402872086;
+            let bz = 2.3166666701436043;
+            let bamboo_hit = hit_of(level.clip(
+                game,
+                [bx, 66.0, bz],
+                [bx, 62.0, bz],
+                Block::Collider,
+                Fluid::None,
+                Context::Empty,
+            ));
+            assert!(!bamboo_hit.miss);
+            assert_eq!(bamboo_hit.block, [1, 64, 2]);
+            assert_eq!(bamboo_hit.face, Face::Up);
+            assert_eq!(bamboo_hit.location, [bx, 65.0, bz]);
+            assert_eq!(
+                level.clip(
+                    game,
+                    [bx, 66.0, bz],
+                    [bx, 62.0, bz],
+                    Block::Outline,
+                    Fluid::None,
+                    Context::Empty,
+                ),
+                Err(ClipError::StaleLevel)
             );
             let plant = game
                 .pack
@@ -3160,9 +3452,14 @@ pub(crate) mod tests {
             let b = facts.outline[0];
             let y = 64.0 + offset[1] + (b[1] + b[4]) / 2.0;
             let z = 4.0 + offset[2] + (b[2] + b[5]) / 2.0;
-            let plant_hit = level
-                .clip(game, [3.0, y, z], [5.0, y, z], Block::Outline, Fluid::None)
-                .unwrap();
+            let plant_hit = hit_of(level.clip(
+                game,
+                [3.0, y, z],
+                [5.0, y, z],
+                Block::Outline,
+                Fluid::None,
+                Context::Empty,
+            ));
             assert_eq!(plant_hit.block, [4, 64, 4]);
             assert!((plant_hit.location[0] - (4.0 + offset[0] + b[0])).abs() < 1e-9);
             let cauldron = game
@@ -3172,15 +3469,14 @@ pub(crate) mod tests {
                 .default_state("minecraft:cauldron")
                 .unwrap();
             game.world.set(0, 64, 2, cauldron).unwrap();
-            let bowl = level
-                .clip(
-                    game,
-                    [0.5, 65.27, 0.5],
-                    [0.5, 64.85, 3.5],
-                    Block::Outline,
-                    Fluid::None,
-                )
-                .unwrap();
+            let bowl = hit_of(level.clip(
+                game,
+                [0.5, 65.27, 0.5],
+                [0.5, 64.85, 3.5],
+                Block::Outline,
+                Fluid::None,
+                Context::Empty,
+            ));
             assert!(!bowl.miss);
             assert_eq!(bowl.block, [0, 64, 2]);
             assert_eq!(bowl.face, Face::Up);
@@ -3189,11 +3485,21 @@ pub(crate) mod tests {
                     .is_some()
             );
             assert_eq!(
-                level
-                    .clip(game, from, to, Block::Collider, Fluid::None)
-                    .unwrap()
+                hit_of(level.clip(game, from, to, Block::Collider, Fluid::None, Context::Empty))
                     .block,
                 [1, 64, 0]
+            );
+            assert_eq!(
+                hit_of(level.clip(
+                    game,
+                    [15.5, 64.5, 0.5],
+                    [4810.5, 64.5, 0.5],
+                    Block::Collider,
+                    Fluid::None,
+                    Context::Empty,
+                ))
+                .block,
+                [4805, 64, 0]
             );
         });
     }
@@ -3204,6 +3510,10 @@ pub(crate) mod tests {
         use sunrise_core::geometry::Vec3;
         use sunrise_sim::{entities::ArmorStand, mobs::Mob};
         with_game(|game| {
+            game.world.chunks.insert(
+                (0, 0),
+                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+            );
             let zombie = game
                 .res
                 .mob_types()
@@ -3272,8 +3582,16 @@ pub(crate) mod tests {
         game.world
             .chunks
             .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+        {
+            let host: &dyn mod_api::ServerHost = &game;
+            assert_eq!(
+                host.levels()
+                    .visit_levels(&mut |_| panic!("level before world open")),
+                Ok(ControlFlow::Continue(()))
+            );
+        }
         game.native_lifecycle
-            .begin_open(Authority::IntegratedServer);
+            .begin_open(Some(Authority::IntegratedServer));
 
         let level = game.level("minecraft:overworld").unwrap();
         assert!(
@@ -3290,26 +3608,45 @@ pub(crate) mod tests {
             .default_state("minecraft:stone")
             .unwrap();
         game.world.set(0, 64, 0, stone).unwrap();
+        let nether = game.level("minecraft:the_nether").unwrap();
+        let host: &dyn mod_api::ServerHost = &game;
+        let levels = host.levels();
+        let mut visited = Vec::new();
+        assert_eq!(
+            levels.visit_levels(&mut |level| {
+                visited.push(level);
+                ControlFlow::Continue(())
+            }),
+            Ok(ControlFlow::Continue(()))
+        );
+        // The parked Overworld precedes the active Nether.
+        assert_eq!(visited, [level, nether]);
+        visited.clear();
+        assert_eq!(
+            levels.visit_levels(&mut |level| {
+                visited.push(level);
+                ControlFlow::Break(())
+            }),
+            Ok(ControlFlow::Break(()))
+        );
+        assert_eq!(visited, [level]);
         assert!(
             game.enter_command_level(sunrise_gameplay_common::game::Dim::Overworld)
                 .is_some()
         );
-        let nether = game.level("minecraft:the_nether").unwrap();
-        let host: &dyn mod_api::ServerHost = &game;
-        assert_eq!(host.levels().list_levels(), vec![level, nether]);
         let cube = vec![[0.0, 0.0, 0.0, 1.0, 1.0, 1.0]];
         assert_eq!(
-            game.level_block_shape(nether, stone, [0, 64, 0], BlockShapeKind::Outline),
+            game.collect_level_block_shape(nether, stone, [0, 64, 0], BlockShapeKind::Outline),
             Some(cube.clone())
         );
         assert_eq!(
-            game.level_block_shape(nether, stone, [0, 64, 0], BlockShapeKind::Collision),
+            game.collect_level_block_shape(nether, stone, [0, 64, 0], BlockShapeKind::Collision),
             Some(cube)
         );
         let shape = |game: &mut sunrise_gameplay::game::ServerGame<'_>, name: &str, kind| {
             let state = game.pack.assets.registry.default_state(name).unwrap();
             game.world.set(0, 64, 0, state).unwrap();
-            game.level_block_shape(level, state, [0, 64, 0], kind)
+            game.collect_level_block_shape(level, state, [0, 64, 0], kind)
                 .unwrap()
         };
         game.common.inventory[game.common.selected] = Some(sunrise_items::items::ItemStack {
@@ -3375,6 +3712,168 @@ pub(crate) mod tests {
             0x0102_0304_ffff_ffff_0000_0000_7fff_ffff
         );
     }
+
+    /// `LevelRef::drop_resources` (#5526) drops what `destroy_block` drops, without breaking
+    /// the block: a stone gives its cobblestone and stays, a chest gives itself and keeps its
+    /// contents, nothing drops under `doTileDrops` false, and air drops nothing. In a transaction the spawns wait for commit.
+    #[test]
+    #[ignore = "daily"]
+    fn drop_resources_drops_without_breaking() {
+        use crate::game::load_resources;
+        use crate::settings::Settings;
+        use mod_api::{Authority, BlockUpdateFlags, HostTransaction};
+        use std::{sync::Arc, time::Instant};
+        use sunrise_gameplay_common::game::{Options, Progress};
+        use sunrise_items::items::ItemStack;
+        use sunrise_level::{chunk::Chunk, containers::BlockEntity};
+
+        let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
+        let settings = Settings::default();
+        let loaded = load_resources(
+            sunrise_assets::resource_source::ResourceRoot::directory(root.clone()),
+            Vec::new(),
+            None,
+            &root,
+            &settings,
+            Instant::now(),
+            false,
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer,
+            &Progress::new(),
+            &mut |_, _| unreachable!(),
+        )
+        .unwrap();
+        let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
+        options.resources = root.clone();
+        options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+        options.dedicated = Some(Vec::new());
+        let mut game = sunrise_gameplay::game::ServerGame::new(
+            &loaded.resources,
+            loaded.pack,
+            options,
+            settings.sim_settings(),
+            None,
+            crate::game::profile_resolver,
+        )
+        .unwrap();
+        game.world
+            .chunks
+            .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+        game.native_lifecycle
+            .begin_open(Some(Authority::IntegratedServer));
+
+        let level = game.level("minecraft:overworld").unwrap();
+        let stone = game
+            .pack
+            .assets
+            .registry
+            .default_state("minecraft:stone")
+            .unwrap();
+        let chest = game
+            .pack
+            .assets
+            .registry
+            .default_state("minecraft:chest")
+            .unwrap();
+        let air = game
+            .pack
+            .assets
+            .registry
+            .default_state("minecraft:air")
+            .unwrap();
+        let flags = BlockUpdateFlags::NEIGHBORS;
+        let count = |game: &sunrise_gameplay::game::ServerGame<'_>, item: &str| {
+            game.dropped
+                .iter()
+                .filter(|dropped| dropped.stack.item.as_ref() == item)
+                .map(|dropped| dropped.stack.count)
+                .sum::<u32>()
+        };
+        assert_eq!(
+            game.level_set_block(level, [0, 64, 0], stone, flags),
+            Ok(true)
+        );
+        let collected = game
+            .level_drop_resources(level, [0, 64, 0], None, None, true)
+            .unwrap();
+        assert!(
+            collected
+                .iter()
+                .any(|stack| stack.item.as_ref() == "minecraft:cobblestone")
+        );
+        assert!(game.dropped.is_empty(), "collected, not spawned");
+        assert_eq!(game.world.block(0, 64, 0), stone, "the block stays");
+        assert_eq!(
+            game.level_drop_resources(level, [0, 64, 0], None, None, false),
+            Some(Vec::new())
+        );
+        assert_eq!(count(&game, "minecraft:cobblestone"), 1);
+        assert_eq!(game.world.block(0, 64, 0), stone);
+        game.dropped.clear();
+
+        assert_eq!(
+            game.level_set_block(level, [0, 64, 0], chest, flags),
+            Ok(true)
+        );
+        let Some(BlockEntity::Chest(items)) = game.world.block_entities.get_mut(&(0, 64, 0)) else {
+            panic!("chest block entity missing")
+        };
+        items[0] = Some(ItemStack {
+            item: "minecraft:diamond".into(),
+            count: 3,
+            damage: 0,
+            extra: None,
+        });
+        assert!(
+            game.level_drop_resources(level, [0, 64, 0], None, None, false)
+                .is_some()
+        );
+        // The chest's own loot only: its contents spill when the block is removed
+        // (`Containers.dropContents`), which this doesn't do.
+        assert_eq!(count(&game, "minecraft:chest"), 1);
+        assert_eq!(count(&game, "minecraft:diamond"), 0);
+        assert_eq!(game.world.block(0, 64, 0), chest);
+        let Some(BlockEntity::Chest(items)) = game.world.block_entities.get(&(0, 64, 0)) else {
+            panic!("chest block entity missing")
+        };
+        assert_eq!(items[0].as_ref().map(|stack| stack.count), Some(3));
+        game.dropped.clear();
+
+        // Inside a transaction: rolled now, spawned at commit.
+        let host: &mut dyn mod_api::ServerHost = &mut game;
+        host.transaction(|host, _| {
+            assert!(
+                level
+                    .drop_resources(host, [0, 64, 0], None, None, false)
+                    .unwrap()
+                    .is_some()
+            );
+            Ok::<_, ()>(())
+        })
+        .unwrap();
+        assert_eq!(count(&game, "minecraft:chest"), 1);
+        assert_eq!(game.world.block(0, 64, 0), chest);
+        game.dropped.clear();
+
+        assert!(game.ui.rules.set(
+            "block_drops",
+            sunrise_game_data::gamerules::Value::Bool(false)
+        ));
+        assert_eq!(
+            game.level_drop_resources(level, [0, 64, 0], None, None, true),
+            Some(Vec::new())
+        );
+        assert!(game.dropped.is_empty());
+
+        assert_eq!(
+            game.level_set_block(level, [0, 64, 0], air, flags),
+            Ok(true)
+        );
+        assert_eq!(
+            game.level_drop_resources(level, [0, 64, 0], None, None, true),
+            None
+        );
+    }
     #[test]
     #[ignore = "daily"]
     fn level_block_writes_validate_and_change_world() {
@@ -3419,7 +3918,7 @@ pub(crate) mod tests {
             .chunks
             .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
         game.native_lifecycle
-            .begin_open(Authority::IntegratedServer);
+            .begin_open(Some(Authority::IntegratedServer));
 
         let level = game.level("minecraft:overworld").unwrap();
         let stone = game
@@ -3608,7 +4107,7 @@ pub(crate) mod tests {
             Err(mod_api::LevelWriteError::Stale)
         );
         assert!(
-            game.level_destroy_block(stale, [0, 64, 0], true, None, false)
+            game.level_destroy_block(stale, [0, 64, 0], true, None, None, false)
                 .is_none()
         );
         let fill_chest = |game: &mut sunrise_gameplay::game::ServerGame<'_>| {
@@ -3663,7 +4162,7 @@ pub(crate) mod tests {
             Ok(true)
         );
         assert!(
-            game.level_destroy_block(level, [0, 64, 0], false, None, false)
+            game.level_destroy_block(level, [0, 64, 0], false, None, None, false)
                 .is_some()
         );
         assert!(game.dropped.is_empty());
@@ -3673,7 +4172,7 @@ pub(crate) mod tests {
             Ok(true)
         );
         assert!(
-            game.level_destroy_block(level, [0, 64, 0], true, None, false)
+            game.level_destroy_block(level, [0, 64, 0], true, None, None, false)
                 .is_some()
         );
         assert!(
@@ -3682,10 +4181,85 @@ pub(crate) mod tests {
                 .any(|item| item.stack.item.as_ref() == "minecraft:cobblestone")
         );
         assert!(
-            game.level_destroy_block(level, [0, 64, 0], true, None, false)
+            game.level_destroy_block(level, [0, 64, 0], true, None, None, false)
                 .is_none()
         );
         game.dropped.clear();
+        assert_eq!(
+            game.level_set_block(level, [0, 64, 0], chest, flags),
+            Ok(true)
+        );
+        fill_chest(&mut game);
+        let host: &mut dyn mod_api::ServerHost = &mut game;
+        let rolled_back: Result<(), mod_api::TransactionError<()>> = host.transaction(|host, _| {
+            assert!(
+                level
+                    .destroy_block(host, [0, 64, 0], true, None, None, false)
+                    .unwrap()
+                    .is_some()
+            );
+            assert_eq!(
+                level.block_state(host, [0, 64, 0]),
+                Some(air.try_into_api().unwrap())
+            );
+            Err(())
+        });
+        assert_eq!(rolled_back, Err(mod_api::TransactionError::Aborted(())));
+        assert_eq!(game.world.block(0, 64, 0), chest);
+        assert!(game.dropped.is_empty());
+        let Some(sunrise_level::containers::BlockEntity::Chest(restored)) =
+            game.world.block_entities.get(&(0, 64, 0))
+        else {
+            panic!("transaction did not restore the chest");
+        };
+        assert_eq!(restored[0].as_ref().unwrap().count, 3);
+        let host: &mut dyn mod_api::ServerHost = &mut game;
+        host.transaction(|host, _| {
+            assert!(
+                level
+                    .destroy_block(host, [0, 64, 0], true, None, None, false)
+                    .unwrap()
+                    .is_some()
+            );
+            Ok::<_, ()>(())
+        })
+        .unwrap();
+        assert_eq!(game.world.block(0, 64, 0), air);
+        assert_eq!(
+            game.dropped
+                .iter()
+                .filter(|item| item.stack.item.as_ref() == "minecraft:chest")
+                .map(|item| item.stack.count)
+                .sum::<u32>(),
+            1
+        );
+        assert_eq!(
+            game.dropped
+                .iter()
+                .filter(|item| item.stack.item.as_ref() == "minecraft:diamond")
+                .map(|item| item.stack.count)
+                .sum::<u32>(),
+            3
+        );
+        game.dropped.clear();
+        assert_eq!(
+            game.level_set_block(level, [0, 64, 0], stone, flags),
+            Ok(true)
+        );
+        let host: &mut dyn mod_api::ServerHost = &mut game;
+        let collected = host
+            .transaction(|host, _| {
+                Ok::<_, ()>(
+                    level
+                        .destroy_block(host, [0, 64, 0], true, None, None, true)
+                        .unwrap()
+                        .unwrap(),
+                )
+            })
+            .unwrap();
+        assert_eq!(collected.len(), 1);
+        assert!(game.dropped.is_empty());
+        assert_eq!(game.world.block(0, 64, 0), air);
         let copper = game
             .pack
             .assets
@@ -3745,7 +4319,7 @@ pub(crate) mod tests {
             Err(mod_api::LevelWriteError::Unavailable)
         );
         assert!(
-            game.level_destroy_block(level, [0, 64, 0], true, None, false)
+            game.level_destroy_block(level, [0, 64, 0], true, None, None, false)
                 .is_none()
         );
     }
@@ -4011,8 +4585,10 @@ pub(crate) mod tests {
             }
             let level = game.level("minecraft:overworld").unwrap();
             let [item, block, pig, text] = ADMISSIONS.map(|(_, kind, at)| {
-                game.summon("minecraft:overworld", kind, at, Compound::new())
+                game.level_summon(level, kind, at, Compound::new())
                     .unwrap()
+                    .unwrap()
+                    .id()
             });
             assert_eq!(ids(game, level, LO, HI), [block, pig, text, item]);
             for (id, (_, _, at)) in [item, block, pig, text].into_iter().zip(ADMISSIONS) {

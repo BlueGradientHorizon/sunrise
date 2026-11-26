@@ -6,9 +6,9 @@ use sunrise_core::{geometry::Vec3, nbt::Tag};
 use sunrise_gameplay_common::game::{
     commands_common::Target,
     general::{
-        GeneralEntityRecord, GeneralRecordCheck, GeneralRow, GeneralTypeEnvelope,
-        check_general_record, check_record_fields, format, general_type_catalog, limits, nbt_size,
-        quarantined_kind, read_general_record,
+        GeneralEntityRecord, GeneralRecordCheck, GeneralRow, GeneralTypeCatalog,
+        GeneralTypeEnvelope, check_general_record, check_record_fields, format,
+        general_type_catalog, limits, nbt_size, quarantined_kind, read_general_record,
     },
 };
 use sunrise_sim::join_seq::JoinSeq;
@@ -52,6 +52,11 @@ impl crate::game::ServerGame<'_> {
             rotation: row.rotation,
             uuid: row.uuid,
             owner: row.owner,
+            custom_name: row.custom_name.clone(),
+            custom_name_visible: row.custom_name_visible,
+            no_gravity: row.no_gravity,
+            on_ground: row.on_ground,
+            fall_distance: row.fall_distance,
             envelope: GeneralTypeEnvelope {
                 type_key: general_type_catalog().key(row.type_slot).to_owned(),
                 payload_version: row.payload_version,
@@ -63,7 +68,7 @@ impl crate::game::ServerGame<'_> {
 
     /// A general row and its passengers. A dimension transfer includes live
     /// objects even when their `EntityType` does not serialize to disk.
-    pub(in crate::game::server_side) fn general_tree_nbt(
+    pub fn general_tree_nbt(
         &mut self,
         id: u32,
         transferring: bool,
@@ -80,7 +85,7 @@ impl crate::game::ServerGame<'_> {
         transferring: bool,
     ) -> Option<Tag> {
         let mut tag = self.general_row_record(id, transferring)?.to_tag();
-        crate::game::persist::write_attachments(&mut tag, id, &self.common.entity_attachments);
+        self.write_entity_attachments(&mut tag, id);
         Some(tag)
     }
 
@@ -289,6 +294,57 @@ impl crate::game::ServerGame<'_> {
         Ok(true)
     }
 
+    /// `EntityType.loadEntityRecursive`: an entity that cannot be created never
+    /// brings its passengers into the candidate tree. Prune before UUID checks
+    /// or decoding general payloads, including under vanilla vehicle records.
+    pub(in crate::game) fn retain_feature_eligible_entity_tree(&self, tag: &mut Tag) -> bool {
+        let catalog = general_type_catalog();
+        if catalog.is_empty() {
+            return true;
+        }
+        let features = mod_api::FeatureFlags::new(self.level.enabled_features.as_arc().clone());
+        fn retain(
+            game: &crate::game::ServerGame<'_>,
+            tag: &mut Tag,
+            catalog: &GeneralTypeCatalog,
+            features: &mod_api::FeatureFlags,
+        ) -> bool {
+            let Some(kind) = sunrise_sim::entity_nbt::kind(tag) else {
+                return true;
+            };
+            let slot = catalog.slot(&kind);
+            // An unavailable mod's raw record is opaque and stays intact for quarantine.
+            if slot.is_none()
+                && quarantined_kind(&kind)
+                && !game.res.mob_types().contains_key(&kind)
+            {
+                return true;
+            }
+            if let Some(slot) = slot
+                && !catalog.is_enabled(slot, features)
+            {
+                let missing: Vec<_> = catalog
+                    .required_features(slot)
+                    .iter()
+                    .filter(|&&flag| !features.contains_flag(flag))
+                    .map(|flag| flag.id())
+                    .collect();
+                log::warn!(
+                    "Skipping entity with id {kind}: missing feature flags {}",
+                    missing.join(", ")
+                );
+                return false;
+            }
+            if let Tag::Compound(compound) = tag
+                && let Some(Tag::List(riders)) = compound.get_mut(&format::PASSENGERS.into())
+            {
+                riders.retain_mut(|rider| retain(game, rider, catalog, features));
+            }
+            true
+        }
+        retain(self, tag, catalog, &features)
+    }
+
     /// Load one saved general entity tree whose root kind the frozen
     /// registry holds: tag → record → every check, then the whole tree
     /// publishes through the same join boundary a fresh spawn takes. A
@@ -454,8 +510,20 @@ impl crate::game::ServerGame<'_> {
             position,
             velocity: Vec3::new(record.velocity[0], record.velocity[1], record.velocity[2]),
             rotation: record.rotation,
+            previous_rotation: record.rotation,
             owner: record.owner,
-            fall_distance: 0.0,
+            fall_distance: record.fall_distance,
+            custom_name: record.custom_name,
+            custom_name_visible: record.custom_name_visible,
+            no_gravity: record.no_gravity,
+            on_ground: record.on_ground,
+            tick_count: 0,
+            no_physics: false,
+            horizontal_collision: false,
+            vertical_collision: false,
+            vertical_collision_below: false,
+            fluids: Default::default(),
+            under_water: false,
             payload_version: record.envelope.payload_version,
             payload_bytes: record.envelope.payload_bytes,
             mount,
@@ -491,6 +559,8 @@ fn general_tree_uuid_admission_refused(
 }
 
 impl ServerEntity for GeneralRow {
+    const SERIALIZES_ATTACHMENTS: bool = true;
+
     fn save_nbt(
         game: &mut crate::game::ServerGame<'_>,
         index: usize,

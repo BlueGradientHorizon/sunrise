@@ -1,6 +1,7 @@
 //! ContentsSlotSource's live component collections; mutable until written back.
 use super::{ItemStack, Slot, SlotCandidate};
 use sunrise_gameplay_common::game::commands_common::Component;
+use sunrise_items::items::Items;
 
 pub(in crate::game) struct Provider<'a> {
     items: &'a [Option<ItemStack>],
@@ -29,7 +30,7 @@ impl crate::game::ServerGame<'_> {
     ) -> Vec<Slot> {
         let size = self
             .slot_get(&parent)
-            .map_or(0, |s| component.items(&s).len());
+            .map_or(0, |s| component.items(self.res.items(), &s).len());
         (0..size)
             .map(|i| Slot::ContentItem(Box::new(parent.clone()), component, i))
             .collect()
@@ -103,7 +104,7 @@ impl crate::game::ServerGame<'_> {
         let Some(mut stack) = self.slot_get(parent) else {
             return 0;
         };
-        let mut slots = component.items(&stack);
+        let mut slots = component.items(self.res.items(), &stack);
         let mut changed = 0;
         for i in 0..slots.len() {
             if !self.select_contents_item(candidate, selected, slots[i].as_ref(), true) {
@@ -119,7 +120,7 @@ impl crate::game::ServerGame<'_> {
                 changed += 1;
             }
         }
-        component.store(&mut stack, slots);
+        component.store(self.res.items(), &mut stack, slots);
         if self.slot_set(parent, Some(stack)) {
             changed
         } else {
@@ -143,7 +144,7 @@ impl crate::game::ServerGame<'_> {
         let mut stack = original
             .clone()
             .unwrap_or_else(|| ItemStack::new("minecraft:air", 0));
-        let mut slots = component.items(&stack);
+        let mut slots = component.items(self.res.items(), &stack);
         let mut changed = 0;
         for i in 0..slots.len() {
             if !has_next(items, *position, mode) {
@@ -177,7 +178,7 @@ impl crate::game::ServerGame<'_> {
         if original.is_none() {
             return changed;
         }
-        component.store(&mut stack, slots);
+        component.store(self.res.items(), &mut stack, slots);
         if self.slot_set(parent, Some(stack)) {
             changed
         } else {
@@ -247,19 +248,20 @@ mod tests {
         let mut slots = vec![None; 6];
         slots[0] = Some(ItemStack::new("minecraft:diamond", 1));
         slots[5] = Some(ItemStack::new("minecraft:dirt", 7));
-        Component::Container.store(&mut parent, slots.clone());
+        Component::Container.store(&Items::empty(), &mut parent, slots.clone());
         assert_eq!((&*parent.item, parent.count), ("minecraft:stone", 1));
         assert_eq!(
             parent.data().unwrap().other("minecraft:custom_data"),
             Some(&Tag::compound([("audit", Tag::Int(7))]))
         );
-        assert_eq!(Component::Container.items(&parent), slots);
+        assert_eq!(Component::Container.items(&Items::empty(), &parent), slots);
     }
 
     #[test]
     fn bundle_writeback_merges_identical_entries_but_keeps_distinct_components() {
         let mut parent = ItemStack::new("minecraft:bundle", 1);
         Component::Bundle.store(
+            &Items::empty(),
             &mut parent,
             vec![Some(ItemStack::new("minecraft:gold_ingot", 1)); 64],
         );
@@ -273,7 +275,11 @@ mod tests {
             "minecraft:custom_data",
             Some(Tag::compound([("audit", Tag::Int(7))])),
         );
-        Component::Bundle.store(&mut parent, vec![Some(plain.clone()), Some(marked.clone())]);
+        Component::Bundle.store(
+            &Items::empty(),
+            &mut parent,
+            vec![Some(plain.clone()), Some(marked.clone())],
+        );
         assert_eq!(parent.data().unwrap().bundle_contents, vec![plain, marked]);
     }
 }

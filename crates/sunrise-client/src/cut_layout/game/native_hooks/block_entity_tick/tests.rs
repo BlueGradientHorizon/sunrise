@@ -23,10 +23,9 @@ use sunrise_gameplay_common::game::native_hooks::block_entity_on_load::BlockEnti
 use sunrise_items::items::ItemStack;
 use sunrise_level::block_entities::Pos;
 use sunrise_level::containers::BlockEntity;
-use sunrise_level::containers::ModBlockEntity as EngineBlockEntity;
 use sunrise_level::{
     chunk::Chunk,
-    containers::{ModBlockEntityFields, ModContainer},
+    containers::{ModBlockEntity, ModBlockEntityFields, ModContainer},
 };
 use sunrise_sim::motion::PlayerMotion;
 use sunrise_world::registry::BlockStateId;
@@ -47,7 +46,7 @@ pub(crate) const CONTAINER_MACHINE: &str = "view_tick:container_machine";
 pub(crate) const UNSUBSCRIBED_MACHINE: &str = "view_tick:unsubscribed_machine";
 
 pub(crate) fn row(kind: &str, value: i32) -> BlockEntity {
-    BlockEntity::Mod(Box::new(EngineBlockEntity::new(
+    BlockEntity::Mod(Box::new(ModBlockEntity::new(
         kind.into(),
         ModBlockEntityFields {
             data: vec![value],
@@ -230,8 +229,7 @@ fn a_scope_transaction_aborts_subject_and_dropped_item_edits_together() {
                 .with_stack(host, |stack| stack.project())
                 .flatten()
                 .unwrap()
-                .shrink(1)
-                .unwrap();
+                .shrink(1);
             assert!(item.set_stack(host, rest).unwrap());
             assert_eq!(
                 item.with_stack(host, |stack| stack.count()),
@@ -358,7 +356,7 @@ fn aborted_block_entity_edits_preserve_a_queued_client_update() {
                 scope
                     .with_view(|mut view| view.set_client_update_fields(waiting.clone()))
                     .unwrap();
-                scope.host().block_entity_sync(AT);
+                assert_eq!(subject.sync(scope.host()), Ok(()));
 
                 let result: Result<(), mod_api::TransactionError<()>> =
                     scope.transaction(|scope, _| {
@@ -403,7 +401,7 @@ fn aborted_block_entity_edits_preserve_a_queued_client_update() {
                 );
 
                 // A later sync of the restored entity must not replay either batch.
-                game.block_entity_sync(AT);
+                assert_eq!(subject.sync(game), Ok(()));
                 let (common, server) =
                     sunrise_gameplay_common::game::SideGame::common_and_state_mut(game);
                 server
@@ -863,8 +861,8 @@ fn strict_bulk_replacement_aborts_the_block_handle_and_inventory_together() {
             tick.with_view(|mut view| assert_eq!(view.set_item_slot(0, None), Ok(true)))
                 .unwrap();
             let host = tick.host();
-            assert_eq!(host.edit_blocks("minecraft:overworld", &edit), Ok(1));
             let level = host.level("minecraft:overworld").unwrap();
+            assert_eq!(level.edit_blocks(host, &edit), Ok(1));
             assert_ne!(host.block_entity(level, AT), Some(subject));
             assert!(host.block_entity(level, AT).is_some());
             Err(())
@@ -913,12 +911,12 @@ fn strict_bulk_commit_publishes_whole_chunks_without_drops() {
             }],
         };
         game.world.block_log = Some(Vec::new());
+        let level = game.level("minecraft:overworld").unwrap();
         game.storage_scope(|game, _| {
-            assert_eq!(game.edit_blocks("minecraft:overworld", &edit), Ok(1));
+            assert_eq!(level.edit_blocks(game, &edit), Ok(1));
             assert!(game.world.bulk_log.is_empty());
             ((), true)
         });
-        let level = game.level("minecraft:overworld").unwrap();
         assert_eq!(game.world.block(POS.0, POS.1, POS.2), chest);
         let resident = game.block_entity(level, AT).unwrap();
         assert_ne!(resident, subject);
@@ -983,7 +981,7 @@ fn ordinary_replacement_between_strict_edits_uses_its_own_resident_row() {
 
         let last_chest = game.storage_scope(|game, _| {
             if strict_first {
-                assert_eq!(game.edit_blocks("minecraft:overworld", &edit), Ok(1));
+                assert_eq!(level.edit_blocks(game, &edit), Ok(1));
                 game.world.block_entities.get_mut(&POS).unwrap().slots_mut()[0] =
                     Some(chest_stack.clone());
             }
@@ -991,7 +989,7 @@ fn ordinary_replacement_between_strict_edits_uses_its_own_resident_row() {
                 game.level_set_block(level, AT, glass, BlockUpdateFlags::KNOWN_SHAPE),
                 Ok(true)
             );
-            assert_eq!(game.edit_blocks("minecraft:overworld", &edit), Ok(1));
+            assert_eq!(level.edit_blocks(game, &edit), Ok(1));
             let last_chest = game.block_entity(level, AT).unwrap();
             assert_ne!(last_chest, subject);
             (last_chest, true)
@@ -1033,14 +1031,6 @@ pub(crate) struct Effects {
 }
 #[mod_api::sunrise_part]
 impl BlockEntityPart for Effects {
-    fn block_entity_ticks(
-        &self,
-        _: &dyn mod_api::Host,
-        event: &mut mod_api::BlockEntityTicksEvent<'_>,
-    ) {
-        event.ticks = true;
-    }
-
     fn block_entity_tick(&self, event: &mut BlockEntityTickEvent<'_>) {
         self.ticks.fetch_add(1, Ordering::Relaxed);
         if *self.retake.lock().unwrap() == Retake::Requested {

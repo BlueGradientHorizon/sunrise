@@ -24,6 +24,8 @@ use sunrise_core::{
     random::{LegacyRandom, RandomSource},
 };
 use sunrise_gameplay_common::game::api_values::TryIntoApi;
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+use sunrise_gameplay_common::game::native_hooks::is_valid_book_shelf::GameHooks as _;
 use sunrise_gameplay_common::game::weather_height::motion_blocking_height;
 use sunrise_items::blocks::{BlockFacts, Fluid};
 use sunrise_level::assets::Properties;
@@ -185,9 +187,7 @@ impl crate::game::ClientGame<'_> {
         title: bool,
         sky: &sunrise_level::environment::Sky,
     ) -> Option<[f32; 2]> {
-        if title
-            || !sunrise_client::clouds::visible(&self.client.settings.clouds, sky.cloud_color[3])
-        {
+        if title || !sunrise_client::clouds::visible(self.effective_clouds(), sky.cloud_color[3]) {
             return None;
         }
         let white = self.client.gui.atlas.sprites.get("sunrise/white")?;
@@ -548,10 +548,10 @@ impl crate::game::ClientGame<'_> {
             let cull_fov = self
                 .fov_degrees(partial, eye)
                 .max((self.client.settings.fov as i32) as f32);
-            let (near_yaw, near_pitch) = self
+            let (near_yaw, near_pitch, _) = self
                 .client
                 .posed_rotation
-                .unwrap_or((self.common.yaw, self.common.pitch));
+                .unwrap_or((self.common.yaw, self.common.pitch, 0.0));
             let (near_min, near_max) = sunrise_client::camera::near_plane_bounds(
                 cull_fov,
                 size[0] as f32,
@@ -840,6 +840,20 @@ impl crate::game::ClientGame<'_> {
         // `ClientLevel.animateTick`, then the rain and the campfires. The sampling stops in each
         // pick whose block has a part, for the game to call it there (`mod_animate_tick`); the
         // context borrows the game, so it is made again for the rest of the tick.
+        let mut rain_sounds = Vec::new();
+        // A mod's `tick_weather_effects` may take this tick's weather effects over.
+        let weather_canceled = mod_api::__private::listened(mod_api::HookId::TickWeatherEffects)
+            && {
+                let mut canceled = false;
+                self.native_tick_weather_effects(
+                    self.common.dim.id(),
+                    self.common.world.game_time,
+                    cam_pos,
+                    rain,
+                    &mut canceled,
+                );
+                canceled
+            };
         loop {
             let client_pack = &self.client.client_pack;
             let marker_options = |state| {
@@ -860,6 +874,7 @@ impl crate::game::ClientGame<'_> {
                     .as_ref()
                     .and_then(|r| r.level_environment.as_deref()),
                 &self.common.res,
+                self.common.dim.id(),
                 &self.dimension_type().id,
             );
             let ui = &self.common.ui;
@@ -963,12 +978,29 @@ impl crate::game::ClientGame<'_> {
                     match step {
                         AnimateStep::BlockPart(state, pos) => self.mod_animate_tick(state, pos),
                         AnimateStep::Ambient(options, at) => self.emit_model_ambient(&options, at),
+                        AnimateStep::BookShelf {
+                            table,
+                            offset,
+                            mut valid,
+                        } => {
+                            if let Some(level) = self.native_client_level() {
+                                let [x, y, z] = table;
+                                let [ox, oy, oz] = offset;
+                                self.native_is_valid_book_shelf(
+                                    level,
+                                    BlockPos::new(x, y, z),
+                                    BlockPos::new(ox, oy, oz),
+                                    &mut valid,
+                                );
+                            }
+                            sampling.answer_book_shelf(valid);
+                        }
                     }
                     continue;
                 }
                 laps.lap("tp_animate");
                 // The Sunrise Weather option off means no rain visuals or sounds at all.
-                if rain > 0.0 && self.client.settings.sunrise.weather {
+                if !weather_canceled && rain > 0.0 && self.client.settings.sunrise.weather {
                     let weather_block = cam_pos.map(|v| v.floor() as i32);
                     // ClientLevel.tickWeatherEffects: rain splashes around the camera, and the rain sound.
                     let mut random =
@@ -1068,16 +1100,16 @@ impl crate::game::ClientGame<'_> {
                             let p = at.map(|c| f64::from(c) + 0.5);
                             // playLocalSound: guests make their own rain, so a host
                             // must not capture it for them.
-                            self.client
-                                .audio
-                                .0
-                                .play_unshared(name, Some(p), volume, pitch);
+                            rain_sounds.push((name, p, volume, pitch));
                         }
                     }
                 }
             }
             laps.lap("tp_rain_campfire");
             break;
+        }
+        for (name, p, volume, pitch) in rain_sounds {
+            self.play_audio_unshared(name, Some(p), volume, pitch);
         }
     }
 
@@ -1113,11 +1145,17 @@ impl crate::game::ClientGame<'_> {
             _ => unreachable!(),
         };
         if let Some(options) = options {
-            self.client.particles.0.add_admitted_with_world(
-                Some(&self.common.world),
+            let level = sunrise_client::particles::ParticleLevel::new(
+                &self.common.world,
+                self.common.res.facts(),
+                self.common.collision,
+            );
+            self.client.particles.0.add_admitted_with_level(
+                Some(&level),
                 &options,
                 at,
                 [0.0; 3],
+                override_limiter,
             );
         }
     }
@@ -1191,12 +1229,9 @@ impl crate::game::ClientGame<'_> {
             std::mem::take(&mut self.client.particles.0.sounds)
         {
             if delayed {
-                self.client
-                    .audio
-                    .0
-                    .play_distance_delayed(name, at, volume, pitch, camera);
+                self.play_audio_distance_delayed(name, at, volume, pitch, camera);
             } else {
-                self.client.audio.0.play(name, Some(at), volume, pitch);
+                self.play_audio(name, Some(at), volume, pitch);
             }
         }
     }

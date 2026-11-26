@@ -554,7 +554,7 @@ pub(in crate::game) mod tests {
             fn gather_effect_screen_tooltips(
                 &self,
                 _: &dyn ClientHost,
-                event: &mut GatherEffectScreenTooltipsEvent<'_>,
+                event: &mut GatherEffectScreenTooltipsEvent<'_, '_>,
             ) {
                 self.calls.fetch_add(1, Ordering::Relaxed);
                 assert_eq!(
@@ -563,11 +563,7 @@ pub(in crate::game) mod tests {
                 );
                 assert_eq!((event.effect.duration, event.effect.amplifier), (450, 1));
                 assert_eq!(event.screen.id, self.screen);
-                let initial: Vec<_> = event
-                    .tooltip
-                    .iter()
-                    .map(|(text, color)| (text.clone(), *color))
-                    .collect();
+                let initial: Vec<_> = event.tooltip.iter().collect();
                 if self.case.default_tooltip {
                     assert_eq!(
                         initial,
@@ -584,7 +580,8 @@ pub(in crate::game) mod tests {
                 } else {
                     event
                         .tooltip
-                        .push((mod_api::Text::literal("Fast feet"), 0xff55ffff));
+                        .push((mod_api::Text::literal("Fast feet"), 0xff55ffff))
+                        .unwrap();
                 }
             }
         }

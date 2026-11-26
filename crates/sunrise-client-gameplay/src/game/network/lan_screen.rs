@@ -1174,17 +1174,17 @@ impl crate::game::ClientGame<'_> {
                     match btn {
                         Button::DefaultMode => {
                             o.default_mode = (o.default_mode + step).rem_euclid(4);
-                            self.client.audio.0.play_button_click();
+                            self.play_audio_button_click();
                             return true;
                         }
                         Button::PersonalMode => {
                             o.personal_mode = (o.personal_mode + step).rem_euclid(4);
-                            self.client.audio.0.play_button_click();
+                            self.play_audio_button_click();
                             return true;
                         }
                         Button::Difficulty => {
                             o.difficulty = ((o.difficulty as i32 + step).rem_euclid(4)) as u8;
-                            self.client.audio.0.play_button_click();
+                            self.play_audio_button_click();
                             return true;
                         }
                         Button::Cheats => {
@@ -1193,23 +1193,23 @@ impl crate::game::ClientGame<'_> {
                                 o.default_mode = o.initial.default_mode;
                                 o.personal_mode = o.default_mode;
                             }
-                            self.client.audio.0.play_button_click();
+                            self.play_audio_button_click();
                             return true;
                         }
                         Button::Lan => {
                             o.lan = !o.lan;
                             o.port.focused = false;
-                            self.client.audio.0.play_button_click();
+                            self.play_audio_button_click();
                             return true;
                         }
                         Button::CommandAccess => {
                             o.guest_commands = !o.guest_commands;
-                            self.client.audio.0.play_button_click();
+                            self.play_audio_button_click();
                             return true;
                         }
                         Button::Force => {
                             o.force = !o.force;
-                            self.client.audio.0.play_button_click();
+                            self.play_audio_button_click();
                             return true;
                         }
                         _ => {}
@@ -1264,13 +1264,16 @@ impl crate::game::ClientGame<'_> {
             View::Options => {}
             View::GameRules => {
                 let atlas = &self.client.gui.atlas;
-                let (exit, handled) = o.rules.as_mut().map_or((None, false), |rules| {
-                    if rules.clicks_button(atlas, self.client.cursor, (w, h)) {
-                        self.client.audio.0.play_button_click();
-                    }
-                    rules.click(atlas, self.client.cursor, (w, h))
-                });
+                let (clicked, exit, handled) =
+                    o.rules.as_mut().map_or((false, None, false), |rules| {
+                        let clicked = rules.clicks_button(atlas, self.client.cursor, (w, h));
+                        let (exit, handled) = rules.click(atlas, self.client.cursor, (w, h));
+                        (clicked, exit, handled)
+                    });
                 self.client.world_options.0 = Some(o);
+                if clicked {
+                    self.play_audio_button_click();
+                }
                 if let Some(exit) = exit {
                     self.close_game_rules(exit);
                 }
@@ -1282,7 +1285,7 @@ impl crate::game::ClientGame<'_> {
                     ui::hovered(self.client.cursor, bx, by, POPUP_BUTTON, 20.0)
                 });
                 if hit.is_some() {
-                    self.client.audio.0.play_button_click();
+                    self.play_audio_button_click();
                 }
                 match hit {
                     // Yes: apply, then back to the pause menu; No: back to the options.
@@ -1309,7 +1312,7 @@ impl crate::game::ClientGame<'_> {
                 let (dx, dy) = Restrictions::done(w, h);
                 let done = ui::hovered(self.client.cursor, dx, dy, 200.0, 20.0);
                 if action || done {
-                    self.client.audio.0.play_button_click();
+                    self.play_audio_button_click();
                     o.view = View::Options;
                 }
                 self.client.world_options.0 = Some(o);
@@ -1335,7 +1338,7 @@ impl crate::game::ClientGame<'_> {
         let hit = o.hit(self.client.cursor, (w, h));
         if let Some(b) = hit {
             o.focused_button = Some(b);
-            self.client.audio.0.play_button_click();
+            self.play_audio_button_click();
         }
         match hit {
             Some(Button::DefaultMode) => o.default_mode = (o.default_mode + 1) % 4,
@@ -1447,8 +1450,8 @@ impl crate::game::ClientGame<'_> {
                 winit::keyboard::KeyCode::Enter
                 | winit::keyboard::KeyCode::NumpadEnter
                 | winit::keyboard::KeyCode::Space => {
-                    self.client.audio.0.play_button_click();
                     let yes = o.popup_focus == Some(0);
+                    self.play_audio_button_click();
                     let mut o = self.client.world_options.0.take().unwrap();
                     if yes {
                         self.apply_and_close_world_options(o);
@@ -1495,9 +1498,9 @@ impl crate::game::ClientGame<'_> {
                 winit::keyboard::KeyCode::Enter
                 | winit::keyboard::KeyCode::NumpadEnter
                 | winit::keyboard::KeyCode::Space => {
-                    self.client.audio.0.play_button_click();
                     let action = r.action.is_some() && o.popup_focus == Some(0);
                     o.view = View::Options;
+                    self.play_audio_button_click();
                     if action {
                         self.open_options_at(false, sunrise_client::options_ui::Page::Chat);
                         self.client.options_to_world_options = true;
@@ -1634,7 +1637,7 @@ impl crate::game::ClientGame<'_> {
             | winit::keyboard::KeyCode::NumpadEnter
             | winit::keyboard::KeyCode::Space => {
                 if let Some(btn) = o.focused_button {
-                    self.client.audio.0.play_button_click();
+                    self.play_audio_button_click();
                     let mut o = self.client.world_options.0.take().unwrap();
                     match btn {
                         Button::DefaultMode => o.default_mode = (o.default_mode + 1) % 4,

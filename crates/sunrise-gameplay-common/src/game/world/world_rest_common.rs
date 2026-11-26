@@ -14,7 +14,7 @@ pub trait RestPresentation {
         &self,
         root: &Path,
         defaults: &ItemDefaults,
-        catalog: &Attributes,
+        catalog: &Arc<Attributes>,
     ) -> Result<MobTypes>;
     fn mob_tables(
         &self,
@@ -45,7 +45,7 @@ impl RestPresentation for ServerRestPresentation {
     type ClientTables = ();
     type Output = ();
 
-    fn mob_types(&self, root: &Path, _: &ItemDefaults, catalog: &Attributes) -> Result<MobTypes> {
+    fn mob_types(&self, root: &Path, _: &ItemDefaults, catalog: &Arc<Attributes>) -> Result<MobTypes> {
         MobTypes::load_for_server(root, catalog)
     }
     fn mob_tables(&self, _: &ResourceRoot, _: &HashMap<String, Arc<MobType>>) -> Result<()> {
@@ -88,7 +88,9 @@ pub fn load_world_rest<P: RestPresentation + Sync>(
         "sunrise-content".into(),
         resource_root.data_changes().clone(),
     );
-    let store = sunrise_level::datapack::DataStore::load(&[&content]);
+    let store = sunrise_level::datapack::DataStore::load(
+        &sunrise_level::datapack::DataPacks::new(&[&content]),
+    );
     let files = store.files.into_iter().collect::<Vec<_>>();
     let overlay = &sunrise_world::loot::PackOverlay {
         conditions,
@@ -103,11 +105,19 @@ pub fn load_world_rest<P: RestPresentation + Sync>(
             Items::load(root, registry, facts, overlay, resources.item_defaults())
         })?;
         items.bind_component_damage_catalog(&resources.motion().health.damage);
+        crate::game::world_entry::bind_world_registry_tags(
+            &mut items, root, overlay, overlay, biomes,
+        )?;
         api_values::resolve_item_registry(&items)?;
         log::info!("load items: {:.2}s", started.elapsed().as_secs_f32());
         progress.set(7);
         // The recipe tables, the stations and the recipe book read one folder:
         // hold its files so it is read once.
+        let conditions = overlay.conditions.with_tags(items.bound_tags());
+        let overlay = &sunrise_world::loot::PackOverlay {
+            conditions: &conditions,
+            ..*overlay
+        };
         let _recipe_files = sunrise_world::json_folder::read(&root.join("data/minecraft/recipe"));
         let sources = startup::time("rest.recipe_sources", || {
             crate::game::lan_common::sync::initial_sources(
@@ -125,10 +135,10 @@ pub fn load_world_rest<P: RestPresentation + Sync>(
                 root,
                 &items,
                 overlay,
-                resources.item_defaults(),
+                sunrise_sim::banner::Banners::load(root, resources.item_defaults()),
                 (&sources, &recipes),
             )
-        });
+        })?;
         Ok((items, recipes, stations))
     };
     let load_behaviours = || {
@@ -165,14 +175,10 @@ pub fn load_world_rest<P: RestPresentation + Sync>(
             catalog,
             mod_api::__private::entity_attribute_modifications(),
         );
-        // The types mods name to `entity_tick_each` hear their ticks one entity at a time
-        // (game/modding/native_ticks.rs): marked once here, so a tick reads a flag.
-        let each = mod_api::__private::entity_tick_each();
         let mob_types: HashMap<_, _> = types
             .types
             .into_iter()
             .map(|(k, mut v)| {
-                v.flags.tick_alone = each.is_some_and(|each| each.names(&v.id));
                 // The entity-type registry is complete before the rest loads
                 // (`register_iterated_registries`): the type keeps its key from it.
                 v.type_key = mod_api::__private::resolved_entity_type_key(&v.id);
@@ -192,13 +198,11 @@ pub fn load_world_rest<P: RestPresentation + Sync>(
             })?;
         }
         let client_mobs = presentation.mob_tables(resource_root, &mob_types)?;
-        sunrise_sim::mobs::trial_spawner::load_registry(root);
         Ok((mob_types, mob_data, client_mobs))
     };
     let load_transformers = || -> Result<_> {
         let _step = startup::step("rest.transformers_models");
-        let transformers = sunrise_sim::block_transform::Transformers::load(root, registry)?;
-        Ok((transformers, presentation.play_models(root)))
+        Ok(presentation.play_models(root))
     };
     // The errors cross threads as text.
     fn text<T, E: std::fmt::Display>(
@@ -282,9 +286,18 @@ pub fn load_world_rest<P: RestPresentation + Sync>(
     // World staging checks conditions after the selected packs have supplied their winners.
     let (items, recipes, stations) = items?;
     let (mob_types, mob_data, client_mobs) = mobs?;
-    let (transformers, models) = transformers?;
+    let models = transformers?;
     let nether_environment = nether_environment?;
     let end_environment = end_environment?;
+    let prepared_tests =
+        sunrise_sim::lan::data::PackRegistryDefinitions::load_prepared_game_tests(
+            root,
+            item_defaults,
+        );
+    let (test_environments, test_instances) = crate::game::test_registry_tables::build_game_test_tables(
+        &prepared_tests,
+        &mod_api::GameTestFunctions::default(),
+    );
     log::info!(
         "Sunrise: resources loaded in {:.1}s; {} block states, {} items, {} biomes; {} worker threads",
         started.elapsed().as_secs_f32(),
@@ -298,7 +311,7 @@ pub fn load_world_rest<P: RestPresentation + Sync>(
         stations,
         items: Arc::new(items),
         recipes,
-        transformers,
+        transformers: Default::default(),
         providers,
         nether_environment,
         end_environment,
@@ -307,6 +320,8 @@ pub fn load_world_rest<P: RestPresentation + Sync>(
         living_type_keys: sunrise_sim::health::LivingTypeKeys::resolve(),
         mob_data,
         spawner_types,
+        test_environments,
+        test_instances,
     };
     Ok((
         world_rest,

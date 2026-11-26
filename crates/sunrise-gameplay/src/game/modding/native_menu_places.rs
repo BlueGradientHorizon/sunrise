@@ -32,6 +32,7 @@ fn held_identity(stack: &ItemStack) -> ItemStack {
     if let Some(data) = stack.extra.as_deref_mut() {
         data.container.clear();
         data.bundle_contents.clear();
+        data.set_other("minecraft:bundle_contents", None);
     }
     stack.tidy();
     stack
@@ -60,21 +61,30 @@ impl ServerGame<'_> {
         }
     }
 
-    /// `player_back_mod_menu_slots`: backs `window`'s first container slots with `places`. An
+    /// `menu_back_slots`: backs `menu`'s first container slots with `places`. An
     /// empty list takes the backing away; a slot no longer backed is emptied, so the copy it
     /// showed never becomes the menu's own storage. In the player's own turn (an item's use
     /// that opened the menu), the record holds the outer player's inventory, so mirroring
     /// and resending wait until after the turn.
-    pub fn player_back_mod_menu_slots(
+    pub fn menu_back_slots(
         &mut self,
-        player: mod_api::PlayerRef,
-        window: i32,
+        menu: MenuRef,
         places: Vec<MenuSlotPlace>,
     ) -> Result<(), MenuSlotBackRefusal> {
+        let player = menu.fields().player;
+        let window = menu.fields().window;
         let uuid = player.uuid();
         let guest = self
-            .online_player_record(player)
+            .native_menu_guest(menu)
             .ok_or(MenuSlotBackRefusal::NoPlayerOrWindow)?;
+        let Some(open) = guest.menu.as_ref() else {
+            return Err(MenuSlotBackRefusal::UnsupportedMenu);
+        };
+        // Only a blockless mod menu's slots are the game's to show (`Slots::Native`); a block's
+        // or an entity's menu reads its own storage, which a backing would not replace.
+        if open.slots != Slots::Native || open.owned_slots().is_some() {
+            return Err(MenuSlotBackRefusal::UnsupportedMenu);
+        }
         // The stacks the held places are bound to, as they are now.
         let mut held = [None, None];
         for place in &places {
@@ -84,26 +94,9 @@ impl ServerGame<'_> {
             }
         }
         let selected = self.held_by(guest, Hand::Main).0;
-        let conn = self
-            .native_conn(uuid)
-            .ok_or(MenuSlotBackRefusal::NoPlayerOrWindow)?;
+        let conn = guest.conn;
+        let size = open.size;
         let acting = self.server.lan_acting == Some(conn);
-        let (size, slots, owned) = self
-            .server
-            .lan
-            .as_ref()
-            .and_then(|lan| lan.hub.guest(conn)?.menu.as_ref())
-            .filter(|open| open.window == window)
-            .map(|open| (open.size, open.slots, open.owned_slots().is_some()))
-            .ok_or(MenuSlotBackRefusal::NoPlayerOrWindow)?;
-        // Only a blockless mod menu's slots are the game's to show (`Slots::Native`); a block's
-        // or an entity's menu reads its own storage, which a backing would not replace.
-        if slots != Slots::Native || owned {
-            return Err(MenuSlotBackRefusal::UnsupportedMenu);
-        }
-        let menu = self
-            .menu(uuid, window)
-            .ok_or(MenuSlotBackRefusal::NoPlayerOrWindow)?;
         if places.len() > size {
             return Err(MenuSlotBackRefusal::TooManyPlaces);
         }
@@ -177,7 +170,7 @@ impl ServerGame<'_> {
             return Ok(());
         }
         if count > 0 {
-            self.refresh_menu_places(conn, uuid, menu);
+            self.refresh_menu_places(conn, menu);
         }
         if before > count
             && let Some(lan) = self.server.lan.as_mut()
@@ -225,7 +218,7 @@ impl ServerGame<'_> {
 
     /// Whether the stacks `conn`'s held places were bound to are still where they were: the same
     /// inventory slot (the same hotbar slot selected) holding the same stack, its contents aside.
-    fn held_places_bound(&self, conn: u32, player: mod_api::PlayerRef) -> bool {
+    pub(super) fn held_places_bound(&self, conn: u32, player: mod_api::PlayerRef) -> bool {
         let Some(backed) = self
             .server
             .lan
@@ -256,7 +249,7 @@ impl ServerGame<'_> {
     /// container sync sends; closes the menu, as a gone block entity's, once a place stops
     /// resolving or a held place's stack is no longer the bound one. False when it closed or was
     /// not open.
-    fn refresh_menu_places(&mut self, conn: u32, uuid: u128, menu: MenuRef) -> bool {
+    fn refresh_menu_places(&mut self, conn: u32, menu: MenuRef) -> bool {
         let Some((window, count, _)) = self.menu_places_of(conn) else {
             return false;
         };
@@ -290,7 +283,7 @@ impl ServerGame<'_> {
         }
         if !open {
             self.forget_menu_places(conn);
-            self.close_menu(uuid);
+            self.request_menu_close(conn, window, menu.fields().generation);
         }
         open
     }
@@ -365,9 +358,9 @@ impl ServerGame<'_> {
             return;
         };
         backed.noticed = false;
-        match self.menu(uuid, window) {
+        match self.native_menu_ref(uuid, window) {
             Some(menu) => {
-                self.refresh_menu_places(conn, uuid, menu);
+                self.refresh_menu_places(conn, menu);
             }
             None => self.forget_menu_places(conn),
         }
@@ -388,6 +381,76 @@ impl ServerGame<'_> {
         }
     }
 
+    /// The inventory slot of a held backpack takes no click.
+    pub(super) fn backed_menu_slot_enabled(&self, guest: &Guest, slot: usize) -> bool {
+        let Some(open) = &guest.menu else {
+            return true;
+        };
+        let locked = self
+            .server
+            .lan
+            .as_ref()
+            .and_then(|host| host.menus.get(&guest.conn)?.slot_places.as_ref())
+            .filter(|backed| backed.window == open.window && open.slots == Slots::Native)
+            .and_then(|backed| backed.locked);
+        !locked.is_some_and(|locked| {
+            i32::try_from(slot)
+                .ok()
+                .and_then(|slot| native_menu_inventory_slot(open.size, slot))
+                == Some(locked)
+        })
+    }
+
+    /// What the menu's own slot rules (`menu_slot_rules`, the locked held-backpack slot) say of a
+    /// backed slot: whether it may take `amount` of `resource`, whether it may give its stack up,
+    /// and how many it holds. Click admission and the slot probes both ask this, so a probe
+    /// answers what a click would do.
+    pub(super) fn place_menu_rules(
+        &self,
+        conn: u32,
+        size: usize,
+        locked: Option<usize>,
+        slot: usize,
+        resource: &ItemResource,
+        amount: u32,
+    ) -> (bool, bool, u32) {
+        if locked.is_some() && native_menu_inventory_slot(size, slot as i32) == locked {
+            return (false, false, 0);
+        }
+        let Some(guest) = self.server.lan.as_ref().and_then(|lan| lan.hub.guest(conn)) else {
+            return (false, false, 0);
+        };
+        let Some(open) = guest.menu.as_ref() else {
+            return (false, false, 0);
+        };
+        if !self.listens(&open.registry_id) {
+            return (true, true, u32::MAX);
+        }
+        let Some(stack) = resource
+            .to_stack(amount)
+            .and_then(|stack| stack.try_into_engine(self.items()).ok())
+        else {
+            return (true, true, u32::MAX);
+        };
+        apply_menu_slot_rules(
+            Some(self),
+            &open.registry_id,
+            native_menu_inventory_slot(size, slot as i32).unwrap_or(slot),
+            &stack,
+            SlotContext::blockless(
+                guest,
+                open.pos.map(|(x, y, z)| [x, y, z]),
+                if slot < size {
+                    MenuContainer::Main
+                } else {
+                    MenuContainer::Player
+                },
+            ),
+            (true, true, u32::MAX),
+            item_max_stack(self.items(), &stack),
+        )
+    }
+
     /// A click on a backed menu (`AbstractContainerMenu.clicked`'s `PICKUP` and `QUICK_MOVE`),
     /// done through the places' handlers in one transaction. `None` lets ordinary display-menu
     /// routing run, for a menu no mod backed or a click this backing does not handle. Before any
@@ -404,64 +467,33 @@ impl ServerGame<'_> {
         use sunrise_gameplay_common::game::lan_menu_data::ClickReply;
         let conn = self.native_conn(uuid)?;
         let (backed_window, count, locked) = self.menu_places_of(conn)?;
-        let (size, total) = self.server.lan.as_ref().and_then(|lan| {
-            let open = lan.hub.guest(conn)?.menu.as_ref()?;
-            Some((open.size, open.slot_count()))
-        })?;
         if backed_window != window {
             return None;
         }
-        let menu = self.menu(uuid, window)?;
+        let menu = self.native_menu_ref(uuid, window)?;
         if !self.held_places_bound(conn, menu.fields().player) {
             self.reply_menu_click(conn, ClickReply::Close(window));
             return Some(true);
         }
         let at = usize::try_from(slot).ok()?;
+        let guest = self.native_menu_guest(menu)?;
+        let open = guest.menu.as_ref()?;
+        let (size, total) = (open.size, open.slot_count());
         let pickup = mode == 0 && matches!(button, 0 | 1);
         if !(pickup || mode == 1) || (count..size).contains(&at) || at >= total {
             return None;
         }
         let inventory = native_menu_inventory_slot(size, slot);
         // The held backpack's own slot takes no click, so it can't go into itself.
-        let applied = if inventory.is_none() || inventory != locked {
+        let applied = if at < count
+            && (ItemPlace::MenuSlot { menu, slot: at }).amount(self) > 0
+            && menu.probe_slot_gives(self, at) != Ok(Some(true))
+        {
+            true
+        } else if inventory.is_none() || inventory != locked {
             let accepts =
                 |game: &crate::game::ServerGame<'_>, slot, resource: &ItemResource, amount| {
-                    if locked.is_some() && native_menu_inventory_slot(size, slot as i32) == locked {
-                        return (false, false, 0);
-                    }
-                    let Some(guest) = game.server.lan.as_ref().and_then(|lan| lan.hub.guest(conn))
-                    else {
-                        return (false, false, 0);
-                    };
-                    let Some(open) = guest.menu.as_ref() else {
-                        return (false, false, 0);
-                    };
-                    if !game.listens(&open.registry_id) {
-                        return (true, true, u32::MAX);
-                    }
-                    let Some(stack) = resource
-                        .to_stack(amount)
-                        .and_then(|stack| stack.try_into_engine(game.items()).ok())
-                    else {
-                        return (true, true, u32::MAX);
-                    };
-                    apply_menu_slot_rules(
-                        Some(game),
-                        &open.registry_id,
-                        native_menu_inventory_slot(size, slot as i32).unwrap_or(slot),
-                        &stack,
-                        SlotContext::blockless(
-                            guest,
-                            open.pos.map(|(x, y, z)| [x, y, z]),
-                            if slot < size {
-                                MenuContainer::Main
-                            } else {
-                                MenuContainer::Player
-                            },
-                        ),
-                        (true, true, u32::MAX),
-                        item_max_stack(game.items(), &stack),
-                    )
+                    game.place_menu_rules(conn, size, locked, slot, resource, amount)
                 };
             if pickup {
                 click_pickup(self, menu, at, button == 1, accepts)
@@ -490,8 +522,8 @@ impl ServerGame<'_> {
         menu: MenuRef,
         window: i32,
     ) {
-        if self.menu(uuid, window) == Some(menu)
-            && (self.menu_places_of(conn).is_none() || self.refresh_menu_places(conn, uuid, menu))
+        if self.native_menu_ref(uuid, window) == Some(menu)
+            && (self.menu_places_of(conn).is_none() || self.refresh_menu_places(conn, menu))
         {
             self.reply_menu_click(
                 conn,

@@ -113,6 +113,7 @@ impl crate::game::ClientGame<'_> {
                 &ItemStack::new(ICONS[index], 1),
                 (x + 5) as f32,
                 (y + 5) as f32,
+                0,
             );
         }
         self.draw_screen_phase(batch, sunrise_client::screen_draw::RenderPhase::Foreground);

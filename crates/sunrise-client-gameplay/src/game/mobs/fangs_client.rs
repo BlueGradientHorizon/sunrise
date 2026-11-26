@@ -114,7 +114,7 @@ impl ClientGame<'_> {
                 })
             });
         if let Some((pos, pitch)) = sound {
-            self.client.audio.0.play_unshared(
+            self.play_audio_unshared(
                 "minecraft:entity.evoker_fangs.attack",
                 Some(pos),
                 1.0,

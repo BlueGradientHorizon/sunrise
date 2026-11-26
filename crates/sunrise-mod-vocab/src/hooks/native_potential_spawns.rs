@@ -6,7 +6,6 @@ pub trait Hooks {
     /// remove entries, or cancel to make the list empty. Mods can read the world,
     /// but cannot write it during the spawn pass.
     #[hook(
-        target = "sunrise_gameplay::game::native_hooks::native_potential_spawns::ServerGame<'_>::native_potential_spawns",
         receiver = "read",
         dispatch = "flat",
         side = "server",

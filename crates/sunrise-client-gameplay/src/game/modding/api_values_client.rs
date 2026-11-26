@@ -1,8 +1,8 @@
 use sunrise_gameplay_common::game::api_values::TryIntoApi;
+#[cfg(feature = "client")]
+use sunrise_gameplay_common::game::native_hooks::ResidentReadBlockEntity;
 #[path = "api_values/aggregates_client.rs"]
 pub mod aggregates;
-#[path = "api_values/gui_draw.rs"]
-pub(in crate::game) mod gui_draw;
 
 #[cfg(feature = "client")]
 impl crate::game::ClientGame<'_> {
@@ -17,9 +17,14 @@ impl crate::game::ClientGame<'_> {
         if !mod_api::__private::has_part_hook(mod_api::HookId::BlockEntitySubmit) {
             return;
         }
-        if let Ok(api) = entity.try_into_api() {
-            self.native_block_entity_submit(pos, block, state, &api, draw);
-        }
+        let data = ResidentReadBlockEntity::stored(entity);
+        self.native_block_entity_submit(
+            pos,
+            block,
+            state,
+            mod_api::BlockEntityDataView::new(&data),
+            draw,
+        );
     }
 }
 

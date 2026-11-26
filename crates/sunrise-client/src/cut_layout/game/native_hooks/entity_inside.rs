@@ -9,6 +9,13 @@ pub(crate) mod entity_inside_tests {
     #[test]
     #[ignore = "daily"]
     fn landing_writes_apply_at_the_batch_end() {
+        if crate::game::native_entity_refs::tests::run_fresh_cases(
+            "game::native_hooks::entity_inside::entity_inside_tests::landing_writes_apply_at_the_batch_end",
+            "SUNRISE_INSIDE_LANDING_CHILD",
+            &["landing"],
+        ) {
+            return;
+        }
         use sunrise_sim::block_contact::{landed, take_pending};
         use sunrise_world::level::LandingWrite;
         use {
@@ -101,6 +108,15 @@ pub(crate) mod entity_inside_tests {
 
 #[cfg(test)]
 pub(crate) mod sweep_tests {
+    fn fresh(name: &str) -> bool {
+        let module = module_path!().split_once("::").unwrap().1;
+        sunrise_gameplay_common::game::test_fixtures::run_fresh_cases(
+            &format!("{module}::{name}"),
+            "SUNRISE_INSIDE_SWEEP_CHILD",
+            &["sweep"],
+        )
+    }
+
 
     use sunrise_gameplay_common::game::native_hooks::BLOCK_CONTACT_HOOKS;
 
@@ -116,7 +132,7 @@ pub(crate) mod sweep_tests {
 
     use sunrise_gameplay::game::native_hooks::entity_inside::sweep_tests::sweep_game_player;
 
-    use sunrise_gameplay::game::native_hooks::entity_inside::sweep_tests::sweep_game_player_runs;
+    use sunrise_gameplay::game::native_hooks::entity_inside::sweep_tests::sweep_game_player_live;
 
     
 
@@ -127,6 +143,9 @@ pub(crate) mod sweep_tests {
     #[test]
     #[ignore = "daily"]
     fn a_part_pushes_the_player_and_its_effect_lands() {
+        if fresh("a_part_pushes_the_player_and_its_effect_lands") {
+            return;
+        }
         let part = InsidePart::default();
         let mods = install_inside_mod("inside-push", &part);
         mod_platform::testing::with_mods(mods, || {
@@ -144,19 +163,11 @@ pub(crate) mod sweep_tests {
                     "both pushes reached the player: {after}"
                 );
                 let effect = game
-                    .player
-                    .as_ref()
-                    .unwrap()
-                    .events
-                    .iter()
-                    .find_map(|event| match event {
-                        sunrise_sim::motion::MotionEvent::InsideEffect { id, duration, .. } => {
-                            Some((*id, *duration))
-                        }
-                        _ => None,
-                    })
-                    .expect("the wither effect crossed to the server");
-                assert_eq!(effect, ("minecraft:wither", 40));
+                    .potions
+                    .effects
+                    .get("wither")
+                    .expect("the wither effect applied synchronously to the player");
+                assert_eq!(effect.duration, 40);
                 assert!(sunrise_sim::block_contact::take_pending().is_empty());
             });
         });
@@ -167,39 +178,40 @@ pub(crate) mod sweep_tests {
     #[test]
     #[ignore = "daily"]
     fn a_killing_write_stops_the_flush() {
-        sunrise_gameplay_common::game::in_own_process(
-            "game::native_hooks::entity_inside::sweep_tests::a_killing_write_stops_the_flush",
-            || {
-                let part = InsidePart {
-                    hurt_after: Some((0, 1000.0)),
-                    ..InsidePart::default()
-                };
-                let mods = install_inside_mod("inside-kill", &part);
-                mod_platform::testing::with_mods(mods, || {
-                    sunrise_gameplay::game::native_entity_refs::tests::with_game(|game| {
-                        let _ = sunrise_sim::block_contact::HOOKS.set(BLOCK_CONTACT_HOOKS);
-                        let (before, after, dead) = sweep_game_player(game);
-                        assert_eq!(
-                            part.contacts.lock().unwrap().len(),
-                            2,
-                            "the walk itself reaches both contacts"
-                        );
-                        assert!(dead, "the killing write applied");
-                        assert_eq!(
-                            after.to_bits(),
-                            before.to_bits(),
-                            "the writes after the death never apply"
-                        );
-                    });
-                });
-            },
-        );
+        if fresh("a_killing_write_stops_the_flush") {
+            return;
+        }
+        let part = InsidePart {
+            hurt_after: Some((0, 1000.0)),
+            ..InsidePart::default()
+        };
+        let mods = install_inside_mod("inside-kill", &part);
+        mod_platform::testing::with_mods(mods, || {
+            sunrise_gameplay::game::native_entity_refs::tests::with_game(|game| {
+                let _ = sunrise_sim::block_contact::HOOKS.set(BLOCK_CONTACT_HOOKS);
+                let (before, after, dead) = sweep_game_player(game);
+                assert_eq!(
+                    part.contacts.lock().unwrap().len(),
+                    2,
+                    "the walk itself reaches both contacts"
+                );
+                assert!(dead, "the killing write applied");
+                assert_eq!(
+                    after.to_bits(),
+                    before.to_bits(),
+                    "the writes after the death never apply"
+                );
+            });
+        });
     }
     /// A part that panics on its first contact is disabled for this hook. The walk
     /// and the player's tick go on without applying the failed callback's writes.
     #[test]
     #[ignore = "daily"]
     fn a_panicking_part_leaves_the_players_tick_restored() {
+        if fresh("a_panicking_part_leaves_the_players_tick_restored") {
+            return;
+        }
         let part = InsidePart {
             panic_after: Some(0),
             ..InsidePart::default()
@@ -213,11 +225,19 @@ pub(crate) mod sweep_tests {
                 assert_eq!(
                     part.contacts.lock().unwrap().len(),
                     1,
-                    "the first panic disables the callback before the next contact"
+                    "contact #1 panicked and disabled this mod's entity_inside callback for the session"
                 );
+                assert_eq!(
+                    mod_api::__private::take_hook_panics(),
+                    [mod_api::__private::HookPanicReport {
+                        mod_id: "inside-panic",
+                        hook: "entity_inside",
+                    }]
+                );
+                assert_eq!(after, before, "the panicking part never pushed");
                 assert!(
-                    (after - before).abs() < 1e-9,
-                    "the panicking callback's staged writes never applied"
+                    game.player.as_ref().unwrap().fire_ticks <= 0,
+                    "the failed part's staged lava ignition never applied"
                 );
                 assert!(
                     game.player
@@ -240,6 +260,9 @@ pub(crate) mod sweep_tests {
     #[test]
     #[ignore = "daily"]
     fn without_a_part_the_walk_costs_no_mod_work() {
+        if fresh("without_a_part_the_walk_costs_no_mod_work") {
+            return;
+        }
         // The production binding, as every sweep test sets it: nothing is installed
         // on this thread, so its gate answers false for every state and the fire's
         // DamageLevel is never built. (A dummy binding here would race the
@@ -272,6 +295,9 @@ pub(crate) mod sweep_tests {
     #[test]
     #[ignore = "daily"]
     fn an_added_effect_keeps_its_collector_position() {
+        if fresh("an_added_effect_keeps_its_collector_position") {
+            return;
+        }
         let part = InsidePart::default();
         let mods = install_inside_mod("inside-order", &part);
         mod_platform::testing::with_mods(mods, || {
@@ -279,29 +305,13 @@ pub(crate) mod sweep_tests {
                 let _ = sunrise_sim::block_contact::HOOKS.set(BLOCK_CONTACT_HOOKS);
                 let (_, _, dead) = sweep_game_player(game);
                 assert!(!dead);
-                let effects: Vec<_> = game
-                    .player
-                    .as_ref()
-                    .unwrap()
-                    .events
-                    .iter()
-                    .filter_map(|event| match event {
-                        sunrise_sim::motion::MotionEvent::InsideEffect { id, duration, .. } => {
-                            Some((*id, *duration))
-                        }
-                        _ => None,
-                    })
-                    .collect();
                 assert_eq!(
-                    effects,
-                    vec![
-                        ("minecraft:wither", 40),
-                        ("minecraft:speed", 20),
-                        ("minecraft:wither", 40),
-                        ("minecraft:speed", 20),
-                    ],
-                    "each contact's writes flush in InsideEffect order: the FREEZE slot before the EXTINGUISH slot"
+                    *part.applied_order.lock().unwrap(),
+                    vec![("minecraft:wither", 40), ("minecraft:speed", 20),],
+                    "each contact's callbacks flush in InsideEffect order: the FREEZE slot before the EXTINGUISH slot (second identical add_effect returns false)"
                 );
+                assert_eq!(game.potions.effects.get("wither").unwrap().duration, 40);
+                assert_eq!(game.potions.effects.get("speed").unwrap().duration, 20);
             });
         });
     }
@@ -312,10 +322,14 @@ pub(crate) mod sweep_tests {
     #[test]
     #[ignore = "daily"]
     fn a_servers_player_is_told_once_a_tick() {
+        if fresh("a_servers_player_is_told_once_a_tick") {
+            return;
+        }
         let part = InsidePart::default();
         let mods = install_inside_mod("inside-once", &part);
         mod_platform::testing::with_mods(mods, || {
             sunrise_gameplay::game::native_entity_refs::tests::with_game(|game| {
+                game.options.dedicated = Some(Vec::new());
                 let _ = sunrise_sim::block_contact::HOOKS.set(BLOCK_CONTACT_HOOKS);
                 let stone = game
                     .pack
@@ -346,14 +360,11 @@ pub(crate) mod sweep_tests {
                         original: None,
                     },
                 );
-                // The server turn's own order (lan_actions/tick.rs): the stuck
-                // pass before the landing is checked, then the damage pass over
-                // the same moves.
-                sweep_game_player_runs(game, |w| {
-                    w.server_stuck_in_blocks(sunrise_core::geometry::Vec3::new(0.5, 100.0, 0.5))?;
-                    w.server_block_damage(sunrise_core::geometry::Vec3::new(0.5, 100.0, 0.5))
-                        .map(|_| ())
-                });
+                sweep_game_player_live(
+                    game,
+                    sunrise_core::geometry::Vec3::new(0.5, 100.0, 0.5),
+                    true,
+                );
                 assert_eq!(
                     *part.contacts.lock().unwrap(),
                     vec![[1, 100, 0], [2, 100, 0]],
@@ -367,7 +378,11 @@ pub(crate) mod sweep_tests {
     #[test]
     #[ignore = "daily"]
     fn the_server_passes_without_a_part_keep_vanilla_behavior() {
+        if fresh("the_server_passes_without_a_part_keep_vanilla_behavior") {
+            return;
+        }
         sunrise_gameplay::game::native_entity_refs::tests::with_game(|game| {
+            game.options.dedicated = Some(Vec::new());
             let stone = game
                 .pack
                 .assets
@@ -401,11 +416,11 @@ pub(crate) mod sweep_tests {
                 });
             let _ = sunrise_sim::block_contact::HOOKS.set(BLOCK_CONTACT_HOOKS);
             let velocity = game.player.as_ref().unwrap().velocity.x;
-            sweep_game_player_runs(game, |w| {
-                w.server_stuck_in_blocks(sunrise_core::geometry::Vec3::new(0.5, 100.0, 0.5))?;
-                w.server_block_damage(sunrise_core::geometry::Vec3::new(0.5, 100.0, 0.5))
-                    .map(|_| ())
-            });
+            sweep_game_player_live(
+                game,
+                sunrise_core::geometry::Vec3::new(0.5, 100.0, 0.5),
+                true,
+            );
             assert_eq!(
                 game.player.as_ref().unwrap().velocity.x,
                 velocity,
@@ -429,6 +444,9 @@ pub(crate) mod sweep_tests {
     #[test]
     #[ignore = "daily"]
     fn a_part_pushes_an_item_once_a_block() {
+        if fresh("a_part_pushes_an_item_once_a_block") {
+            return;
+        }
         let part = InsidePart::default();
         let mods = install_inside_mod("inside-item", &part);
         mod_platform::testing::with_mods(mods, || {
@@ -440,7 +458,7 @@ pub(crate) mod sweep_tests {
                     sunrise_sim::parallel::TickThread::mint(),
                     Some("minecraft:overworld"),
                     || {
-                        game.sweep_item_inside(&mut item);
+                        game.sweep_item_inside(&mut item, None);
                     },
                 );
                 assert_eq!(
@@ -462,6 +480,9 @@ pub(crate) mod sweep_tests {
     #[test]
     #[ignore = "daily"]
     fn a_panicking_part_leaves_the_item_batch_restored() {
+        if fresh("a_panicking_part_leaves_the_item_batch_restored") {
+            return;
+        }
         let part = InsidePart {
             panic_after: Some(0),
             ..InsidePart::default()
@@ -479,20 +500,27 @@ pub(crate) mod sweep_tests {
                     sunrise_sim::parallel::TickThread::mint(),
                     Some("minecraft:overworld"),
                     || {
-                        game.sweep_item_inside(&mut items[0]);
+                        game.sweep_item_inside(&mut items[0], None);
                     },
                 );
                 game.put_back_dropped(items);
                 assert_eq!(
                     part.contacts.lock().unwrap().len(),
                     1,
-                    "the first panic disables the callback before the next contact"
+                    "contact #1 panicked and disabled this mod's entity_inside callback for the session"
+                );
+                assert_eq!(
+                    mod_api::__private::take_hook_panics(),
+                    [mod_api::__private::HookPanicReport {
+                        mod_id: "inside-item-panic",
+                        hook: "entity_inside",
+                    }]
                 );
                 assert_eq!(game.dropped.len(), rows, "the lifted row returned");
                 let item = game.dropped.first().unwrap();
-                assert!(
-                    (item.velocity.x - before).abs() < 1e-9,
-                    "the panicking callback's staged writes never applied"
+                assert_eq!(
+                    item.velocity.x, before,
+                    "the failed part's staged writes never applied"
                 );
                 // The level went back: its blocks read as they were.
                 assert!(
@@ -508,6 +536,9 @@ pub(crate) mod sweep_tests {
     #[test]
     #[ignore = "daily"]
     fn an_item_without_a_part_is_left_alone() {
+        if fresh("an_item_without_a_part_is_left_alone") {
+            return;
+        }
         sunrise_gameplay::game::native_entity_refs::tests::with_game(|game| {
             let _ = sunrise_sim::block_contact::HOOKS.set(BLOCK_CONTACT_HOOKS);
             let mut item = item_at_blocks(game);
@@ -516,7 +547,7 @@ pub(crate) mod sweep_tests {
                 sunrise_sim::parallel::TickThread::mint(),
                 Some("minecraft:overworld"),
                 || {
-                    game.sweep_item_inside(&mut item);
+                    game.sweep_item_inside(&mut item, None);
                 },
             );
             assert_eq!(
@@ -532,6 +563,9 @@ pub(crate) mod sweep_tests {
     #[test]
     #[ignore = "daily"]
     fn a_part_pushes_a_projectile_and_removal_stops_the_flush() {
+        if fresh("a_part_pushes_a_projectile_and_removal_stops_the_flush") {
+            return;
+        }
         let part = InsidePart::default();
         let mods = install_inside_mod("inside-shot", &part);
         mod_platform::testing::with_mods(mods, || {
@@ -562,7 +596,7 @@ pub(crate) mod sweep_tests {
                     sunrise_sim::parallel::TickThread::mint(),
                     Some("minecraft:overworld"),
                     || {
-                        game.sweep_projectile_inside(&mut shot);
+                        game.sweep_projectile_inside(&mut shot, None);
                     },
                 );
                 assert_eq!(
@@ -597,7 +631,7 @@ pub(crate) mod sweep_tests {
                     sunrise_sim::parallel::TickThread::mint(),
                     Some("minecraft:overworld"),
                     || {
-                        game.sweep_projectile_inside(&mut arrow);
+                        game.sweep_projectile_inside(&mut arrow, None);
                     },
                 );
                 assert!(
@@ -627,7 +661,7 @@ pub(crate) mod sweep_tests {
             );
             game.world.set(1, 100, 0, stone).unwrap();
             let mut shot = sunrise_sim::projectiles::Projectile::new(
-                sunrise_sim::projectiles::ProjectileKind::Snowball,
+                sunrise_sim::projectiles::ProjectileKind::LlamaSpit,
                 sunrise_core::geometry::Vec3::new(1.5, 100.0, 0.5),
                 None,
             );
@@ -637,7 +671,7 @@ pub(crate) mod sweep_tests {
                 sunrise_sim::parallel::TickThread::mint(),
                 Some("minecraft:overworld"),
                 || {
-                    game.sweep_projectile_inside(&mut shot);
+                    game.sweep_projectile_inside(&mut shot, None);
                 },
             );
             assert_eq!(
@@ -654,6 +688,9 @@ pub(crate) mod sweep_tests {
     #[test]
     #[ignore = "daily"]
     fn an_arrow_is_told_once_a_block_stuck_and_flying() {
+        if fresh("an_arrow_is_told_once_a_block_stuck_and_flying") {
+            return;
+        }
         let part = InsidePart::default();
         let mods = install_inside_mod("inside-arrow", &part);
         mod_platform::testing::with_mods(mods, || {
@@ -679,7 +716,7 @@ pub(crate) mod sweep_tests {
                     sunrise_sim::parallel::TickThread::mint(),
                     Some("minecraft:overworld"),
                     || {
-                        game.sweep_projectile_inside(&mut flying);
+                        game.sweep_projectile_inside(&mut flying, None);
                     },
                 );
                 assert_eq!(
@@ -699,7 +736,7 @@ pub(crate) mod sweep_tests {
                     sunrise_sim::parallel::TickThread::mint(),
                     Some("minecraft:overworld"),
                     || {
-                        game.sweep_projectile_inside(&mut stuck);
+                        game.sweep_projectile_inside(&mut stuck, None);
                     },
                 );
                 assert_eq!(
@@ -717,6 +754,9 @@ pub(crate) mod sweep_tests {
     #[test]
     #[ignore = "daily"]
     fn a_panicking_part_leaves_the_arrow_list_whole() {
+        if fresh("a_panicking_part_leaves_the_arrow_list_whole") {
+            return;
+        }
         let part = InsidePart {
             panic_after: Some(0),
             ..InsidePart::default()
@@ -749,7 +789,7 @@ pub(crate) mod sweep_tests {
                     sunrise_sim::parallel::TickThread::mint(),
                     Some("minecraft:overworld"),
                     || {
-                        projectiles.update(0, |p| game.sweep_projectile_inside(p));
+                        projectiles.update(0, |p| game.sweep_projectile_inside(p, None));
                     },
                 );
                 game.creatures.projectiles.restore(
@@ -759,7 +799,14 @@ pub(crate) mod sweep_tests {
                 assert_eq!(
                     part.contacts.lock().unwrap().len(),
                     1,
-                    "the first panic disables the callback before the next contact"
+                    "contact #1 panicked and disabled this mod's entity_inside callback for the session"
+                );
+                assert_eq!(
+                    mod_api::__private::take_hook_panics(),
+                    [mod_api::__private::HookPanicReport {
+                        mod_id: "inside-arrow-panic",
+                        hook: "entity_inside",
+                    }]
                 );
                 assert_eq!(
                     game.creatures.projectiles.len(),

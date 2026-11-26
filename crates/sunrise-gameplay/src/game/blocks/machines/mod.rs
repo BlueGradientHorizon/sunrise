@@ -6,9 +6,12 @@ pub(in crate::game) mod loot_access;
 use crate::game::ServerGame;
 use sunrise_core::nbt::Tag;
 use sunrise_gameplay_common::game::machine_containers::{
-    Containers, Kind, PlacementAttempt, PlacementQuery, View, bone_meal_stack,
+    Containers, EntitySnapshot, Kind, PartSnapshot, PlacementAttempt, PlacementQuery,
+    TakeThroughFace, View, bone_meal_stack,
 };
 use sunrise_gameplay_common::game::spill_common as spill;
+#[cfg(test)]
+mod can_take_item_through_face_tests;
 pub mod cauldron_contents;
 pub(in crate::game) mod crafter;
 pub(in crate::game) mod native_energy;
@@ -88,6 +91,94 @@ pub(in crate::game) enum MoveIn {
     Moved,
 }
 
+/// The API snapshots for one take transfer (a hopper's pull, one extract): the source
+/// entity, read again when a write changes its revision, and its block state, converted
+/// again only when the state changes. Each asked slot's own stack is converted per ask.
+#[derive(Default)]
+pub struct TakeAttempt {
+    entity: Option<EntitySnapshot>,
+    /// The engine state last converted, and its API form (None when it can't be represented).
+    state: Option<(BlockStateId, Option<mod_api::BlockState>)>,
+}
+
+/// A take query that may ask a mod container's part: the game hosting the query, and the
+/// snapshots of the transfer it belongs to.
+pub struct TakeAsk<'q, 'g> {
+    pub game: &'q ServerGame<'g>,
+    pub attempt: &'q mut TakeAttempt,
+}
+
+impl TakeAttempt {
+    /// A mod container's `can_take_item_through_face` answer for `slot` of `entity` at
+    /// `pos`, when its type listens: `None` keeps the declared output slots, and an entity,
+    /// state or stack the API cannot represent refuses the take.
+    fn ask(
+        &mut self,
+        game: &ServerGame<'_>,
+        pos: Pos,
+        entity: &sunrise_level::containers::ModBlockEntity,
+        slot: usize,
+        stack: &ItemStack,
+        face: Direction,
+    ) -> Option<bool> {
+        use sunrise_gameplay_common::game::api_values::TryIntoApi;
+
+        let snapshot = match EntitySnapshot::current(
+            &mut self.entity,
+            mod_api::HookId::CanTakeItemThroughFace,
+            pos,
+            entity,
+        ) {
+            PartSnapshot::Unsubscribed => return None,
+            PartSnapshot::Unrepresentable => return Some(false),
+            PartSnapshot::Ready(snapshot) => snapshot,
+        };
+        let (x, y, z) = pos;
+        let unreadable = |what: &dyn std::fmt::Debug| {
+            log::debug!("Sunrise: can_take_item_through_face could not read {what:?} at {pos:?}");
+        };
+        let block = game.common.world.block(x, y, z);
+        let state = match self.state {
+            Some((seen, state)) if seen == block => state,
+            _ => {
+                let state = block.try_into_api().inspect_err(|e| unreadable(e)).ok();
+                self.state = Some((block, state));
+                state
+            }
+        };
+        let Some(state) = state else {
+            return Some(false);
+        };
+        let Ok(offered) = stack.try_into_api().inspect_err(|e| unreadable(e)) else {
+            return Some(false);
+        };
+        let mut allowed = None;
+        game.native_can_take_item_through_face(
+            snapshot,
+            mod_api::BlockPos::new(x, y, z),
+            state,
+            slot,
+            &offered,
+            face,
+            &mut allowed,
+        );
+        allowed
+    }
+}
+
+impl TakeThroughFace for TakeAsk<'_, '_> {
+    fn ask_take(
+        self,
+        pos: Pos,
+        entity: &sunrise_level::containers::ModBlockEntity,
+        slot: usize,
+        stack: &ItemStack,
+        face: Direction,
+    ) -> Option<bool> {
+        self.attempt.ask(self.game, pos, entity, slot, stack, face)
+    }
+}
+
 #[cfg(test)]
 pub(in crate::game::server_side) trait ViewTestSlots {
     fn slots_to_add(&self, face: Option<Direction>) -> Vec<usize>;
@@ -140,12 +231,6 @@ impl ServerGame<'_> {
     pub fn slot_mut_at(&mut self, view: &View, slot: usize) -> Option<&mut Option<ItemStack>> {
         let (pos, i) = view.locate(slot)?;
         let entity = self.common.world.block_entities.get_mut(&pos)?;
-        // A mod's slots grow to its container's count when first used.
-        if let BlockEntity::Mod(m) = entity
-            && m.items.len() <= i
-        {
-            m.items.resize(view.len(), None);
-        }
         entity.slot_mut(i)
     }
     /// `BlockEntity.setChanged` for every block entity of a container.
@@ -154,7 +239,7 @@ impl ServerGame<'_> {
         if let Kind::Composter(_) = view.kind {
             return;
         }
-        for &(pos, _) in &view.parts {
+        for (pos, _) in view.parts() {
             self.container_changed(pos);
             // `ShelfBlockEntity.setChanged()` (the no-argument override posts
             // `BLOCK_ACTIVATE`): a container writing a shelf's slot is heard.
@@ -239,7 +324,7 @@ impl ServerGame<'_> {
             // JukeboxBlockEntity.setTheItem through a hopper's or a dropper's
             // transfer: the disc it lands on starts playing.
             if view.kind == Kind::Jukebox {
-                let (x, y, z) = view.parts[0].0;
+                let (x, y, z) = view.first.0;
                 self.jukebox_inserted([x, y, z]);
             }
         }
@@ -262,7 +347,7 @@ impl ServerGame<'_> {
         // Capability operations use the same saved slot as hoppers, but may first
         // access a pot that still has loot. Discovery never reaches this write path.
         if view.kind == Kind::Pot && matches!(insertion, Insertion::Capability) {
-            let pos = view.parts[0].0;
+            let pos = view.first.0;
             let at = [pos.0, pos.1, pos.2];
             if spill::saved_entity(&self.common.world, at)
                 .is_some_and(|tag| tag.get("LootTable").is_some())
@@ -312,7 +397,7 @@ impl ServerGame<'_> {
         let mut success = false;
         let mut filled_empty = false;
         let mut pot = if view.kind == Kind::Pot {
-            let pos = view.parts[0].0;
+            let pos = view.first.0;
             let Some(tag) = spill::saved_entity(&self.common.world, [pos.0, pos.1, pos.2])
                 .or_else(|| self.common.pot_data([pos.0, pos.1, pos.2]))
             else {
@@ -362,7 +447,7 @@ impl ServerGame<'_> {
             Some(_) => {}
         }
         if success && let Some((mut tag, item)) = pot {
-            let pos = view.parts[0].0;
+            let pos = view.first.0;
             Self::set_pot_slot(self.common.res.items(), &mut tag, item);
             spill::put_saved_entity(&mut self.common.world, [pos.0, pos.1, pos.2], tag);
             if !matches!(insertion, Insertion::Capability) {
@@ -382,7 +467,7 @@ impl ServerGame<'_> {
             furnace.set_input(&self.common.loop_context, recipes, input);
         }
         if success && was_empty && view.kind == Kind::Hopper {
-            let dest = view.parts[0].0;
+            let dest = view.first.0;
             let from_ticked =
                 from_hopper.and_then(|p| self.server.hoppers.get(&p).map(|h| h.ticked));
             let state = self.server.hoppers.entry(dest).or_default();
@@ -409,7 +494,7 @@ impl ServerGame<'_> {
         face: Option<Direction>,
     ) -> Option<ItemStack> {
         if let Kind::Composter(_) = view.kind {
-            let (x, y, z) = view.parts[0].0;
+            let (x, y, z) = view.first.0;
             return self.composter_container_insert([x, y, z], stack, face == Some(Direction::Up));
         }
         let mut attempt = PlacementAttempt::default();
@@ -435,7 +520,7 @@ impl ServerGame<'_> {
         slot: usize,
     ) -> Option<ItemStack> {
         if view.kind == Kind::Pot {
-            return self.pot_take_one(view.parts[0].0);
+            return self.pot_take_one(view.first.0);
         }
         self.containers().get(view, slot)?;
         let target = self.slot_mut_at(view, slot)?;
@@ -514,7 +599,7 @@ impl ServerGame<'_> {
         one: ItemStack,
     ) {
         if view.kind == Kind::Pot {
-            self.pot_put_back(view.parts[0].0, one);
+            self.pot_put_back(view.first.0, one);
             return;
         }
         if let Some(target) = self.slot_mut_at(view, slot) {
@@ -1030,7 +1115,7 @@ impl ServerGame<'_> {
     /// Where a container is in the world for the mods: its block, or the block a chest
     /// boat or minecart is in (its view sits under a placeholder key).
     pub(in crate::game::server_side) fn container_world_pos(&self, view: &View) -> [i32; 3] {
-        let (x, y, z) = view.parts[0].0;
+        let (x, y, z) = view.first.0;
         if x == i32::MAX - 15 && y == super::minecarts::CART_KEY_Y {
             let id = z as u32;
             let at = self
@@ -1151,7 +1236,7 @@ impl ServerGame<'_> {
     /// (`getSourceContainerOrHandler`). `None` when there is no container. A capability part
     /// above takes the container's place.
     pub fn suck_from_container(&mut self, above: Pos, at: [f64; 3], hopper: &View) -> Option<bool> {
-        let (x, y, z) = hopper.parts[0].0;
+        let (x, y, z) = hopper.first.0;
         if let Some(part) = self.item_part_at(above, Direction::Down) {
             let above = [above.0, above.1, above.2];
             self.native_hopper_inventory_search([x, y, z], Some(above), None);
@@ -1217,6 +1302,7 @@ impl ServerGame<'_> {
         hopper: &View,
     ) -> bool {
         let mut prepared = None;
+        let mut attempt = TakeAttempt::default();
         for slot in source.slots_for_face_iter(Some(Direction::Down)) {
             self.unpack_next_inventory_part(source, slot, &mut prepared);
             {
@@ -1224,7 +1310,11 @@ impl ServerGame<'_> {
                 let Some(stack) = c.insertion_item(source, slot).map(Cow::into_owned) else {
                     continue;
                 };
-                if !c.can_take_into(source, slot, &stack, Direction::Down, hopper) {
+                let ask = TakeAsk {
+                    game: self,
+                    attempt: &mut attempt,
+                };
+                if !c.can_take_into(source, slot, &stack, Direction::Down, hopper, ask) {
                     continue;
                 }
             }
@@ -1240,7 +1330,7 @@ impl ServerGame<'_> {
                     // JukeboxBlockEntity.removeItem -> setTheItem(EMPTY): a
                     // disc a hopper takes out stops the song.
                     if source.kind == Kind::Jukebox {
-                        let (x, y, z) = source.parts[0].0;
+                        let (x, y, z) = source.first.0;
                         self.jukebox_taken([x, y, z]);
                     }
                     return true;
@@ -1414,7 +1504,8 @@ impl ServerGame<'_> {
             .get(&key)
             .map_or(0, |e| e.slots().len());
         let view = View {
-            parts: vec![(key, size)],
+            first: (key, size),
+            second: None,
             kind: Kind::Generic,
             container: None,
         };
@@ -1579,6 +1670,10 @@ impl ServerGame<'_> {
         if !dropper && &*name != "minecraft:dispenser" {
             return Ok(());
         }
+        if !dropper && self.dispenser_source(key).is_none() {
+            log::warn!("ignoring dispense from {key:?}: no matching dispenser holder");
+            return Ok(());
+        }
         let Some(view) = self.containers().view(key, false) else {
             return Ok(());
         };
@@ -1715,6 +1810,8 @@ pub(in crate::game) mod item_column_tests {
             ground: sunrise_world::ground_support::GroundState::from_ground_flag(true),
             vertical_collision: false,
             age: 0,
+            stack_revision: 0,
+            lifespan: ItemEntity::LIFETIME,
             pickup_delay: 0,
             bob_offset: 0.0,
             ticks: 0,
@@ -1870,7 +1967,8 @@ pub(in crate::game) mod mod_container_tests {
         faces[Direction::Down as usize] = vec![2];
         faces[Direction::North as usize] = vec![1];
         let view = View {
-            parts: vec![((0, 0, 0), 3)],
+            first: ((0, 0, 0), 3),
+            second: None,
             kind: Kind::Mod,
             container: Some(Arc::new(ModContainer {
                 slots: 3,
@@ -1919,7 +2017,8 @@ pub(in crate::game) mod mod_container_tests {
         };
         let limit = |kind| {
             let view = View {
-                parts: vec![((0, 0, 0), 6)],
+                first: ((0, 0, 0), 6),
+                second: None,
                 kind,
                 container: None,
             };
@@ -2003,7 +2102,8 @@ pub(in crate::game) mod capacity_tests {
         };
         for (x, &(block, kind, len, _, offered)) in (0..).zip(&cases) {
             let view = View {
-                parts: vec![((x, 64, 0), len)],
+                first: ((x, 64, 0), len),
+                second: None,
                 kind,
                 container: None,
             };

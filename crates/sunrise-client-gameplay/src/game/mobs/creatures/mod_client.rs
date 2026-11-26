@@ -88,10 +88,10 @@ impl crate::game::ClientGame<'_> {
     pub(in crate::game) fn client_arrow_event(
         &mut self,
         at: Vec3,
-        event: sunrise_sim::arrows::ArrowEvent,
+        event: sunrise_sim::entities::arrows::ArrowEvent,
     ) {
         use sunrise_level::particle_options::{ParticleOptions, ParticleType};
-        use sunrise_sim::arrows::{ArrowEvent, ArrowParticle};
+        use sunrise_sim::entities::arrows::{ArrowEvent, ArrowParticle};
         let kind = |k| match k {
             ArrowParticle::Bubble => ParticleType::Bubble,
             ArrowParticle::Crit => ParticleType::Crit,
@@ -125,7 +125,7 @@ impl crate::game::ClientGame<'_> {
     pub(in crate::game) fn client_arrow_scene<'s>(
         &'s self,
         rain: &'s dyn Fn(BlockPos) -> bool,
-    ) -> sunrise_sim::arrows::ArrowScene<'s, 's> {
+    ) -> sunrise_sim::entities::arrows::ArrowScene<'s, 's> {
         self.common.arrow_scene_with(rain, None, &())
     }
     pub(in crate::game) fn client_shulker_lid_push(
@@ -460,7 +460,7 @@ impl crate::game::ClientGame<'_> {
                         self.client
                             .particles
                             .0
-                            .send_particles(&options, at, spread, speed, count);
+                            .send_particles(&options, at, spread, speed, count, None);
                     }
                 }
                 MobEvent::Particles { kind, at, count } => {
@@ -755,7 +755,7 @@ impl crate::game::ClientGame<'_> {
                 }
                 continue;
             }
-            if self.thrown_item_geometry(a, alpha, at, c, packed, out) {
+            if self.thrown_item_geometry(a, alpha, at, camera, c, packed, out) {
                 continue;
             }
             // `Entity.displayFireAnimation`: a thrown item that flew through a

@@ -1,8 +1,14 @@
-//! The client host builds hashed container clicks with its connection registries.
+//! The client host encodes typed play packets and hashed container clicks.
 use crate::game::ClientGame;
-use mod_api::{ContainerClickRequest, PacketBuildError, ServerboundPlayPacket};
+use mod_api::{ContainerClickRequest, PacketBuildError, PlayPacketRequest, ServerboundPlayPacket};
 
 impl ClientGame<'_> {
+    pub(in crate::game) fn build_play_packet(
+        request: &PlayPacketRequest,
+    ) -> Result<ServerboundPlayPacket, PacketBuildError> {
+        sunrise_sim::mod_packet_builders::encode_play_packet(request)
+    }
+
     pub(in crate::game) fn container_click(
         &self,
         request: &ContainerClickRequest,

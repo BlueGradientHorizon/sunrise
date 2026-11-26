@@ -17,7 +17,7 @@ impl crate::game::ServerGame<'_> {
     /// What a mod's `living_visibility` makes of `visibility` for the entity
     /// `target` gives from the lifecycle's epoch, as mob `looking` sees it:
     /// `visibility` unchanged when no mod listens.
-    pub(in crate::game) fn scaled_visibility(
+    pub fn scaled_visibility(
         &self,
         target: impl FnOnce(mod_api::WorldEpoch) -> EntityRef,
         looking: u32,

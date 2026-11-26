@@ -5,18 +5,27 @@ use sunrise_level::fast_hash::FxHashMap;
 impl crate::game::CommonGame<'_> {
     /// Store one cell's dynamic-light emission in its chunk when the answer changed.
     pub fn store_light_emission(&mut self, key: (i32, i32), cell: u32, emission: Option<u8>) {
-        let Some(chunk) = self.world.chunks.get_mut(&key) else {
-            return;
-        };
-        if chunk.dynamic_emission.get(&cell).copied() == emission {
-            return;
-        }
-        let answers = &mut Arc::make_mut(chunk).dynamic_emission;
-        match emission {
-            Some(emission) => answers.insert(cell, emission),
-            None => answers.remove(&cell),
-        };
+        store_light_emission(&mut self.world, key, cell, emission);
     }
+}
+
+pub fn store_light_emission(
+    world: &mut sunrise_level::world::World,
+    key: (i32, i32),
+    cell: u32,
+    emission: Option<u8>,
+) {
+    let Some(chunk) = world.chunks.get_mut(&key) else {
+        return;
+    };
+    if chunk.dynamic_emission.get(&cell).copied() == emission {
+        return;
+    }
+    let answers = &mut Arc::make_mut(chunk).dynamic_emission;
+    match emission {
+        Some(emission) => answers.insert(cell, emission),
+        None => answers.remove(&cell),
+    };
 }
 
 pub trait LightEmissionGameExt1<'__sg>: crate::game::SideGame<'__sg> {

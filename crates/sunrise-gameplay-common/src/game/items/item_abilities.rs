@@ -13,6 +13,58 @@ pub mod ability {
     pub const SHEARS_HARVEST: &str = "shears_harvest";
     /// Carving a pumpkin.
     pub const SHEARS_CARVE: &str = "shears_carve";
+    /// Brushing a suspicious block or an armadillo.
+    pub const BRUSH_BRUSH: &str = "brush_brush";
+    /// Lighting TNT, a campfire, a candle or a candle cake.
+    pub const FIRESTARTER_LIGHT: &str = "firestarter_light";
+    /// Casting a fishing rod.
+    pub const FISHING_ROD_CAST: &str = "fishing_rod_cast";
+    /// Mining as shears do (cobwebs, leaves, wool): a dug block's loot and the tool's wear.
+    pub const SHEARS_DIG: &str = "shears_dig";
+    /// Disarming a tripwire.
+    pub const SHEARS_DISARM: &str = "shears_disarm";
+    /// Shearing a mob's armour or carpet off.
+    pub const SHEARS_REMOVE_ARMOR: &str = "shears_remove_armor";
+    /// Trimming a growing plant's tip so it stops growing.
+    pub const SHEARS_TRIM: &str = "shears_trim";
+    /// Putting out a lit campfire.
+    pub const SHOVEL_DOUSE: &str = "shovel_douse";
+    /// Looking through a spyglass.
+    pub const SPYGLASS_SCOPE: &str = "spyglass_scope";
+    /// A charged, grounded melee hit sweeping its neighbours.
+    pub const SWORD_SWEEP: &str = "sword_sweep";
+    /// Throwing a trident.
+    pub const TRIDENT_THROW: &str = "trident_throw";
+
+    /// Every ability the game asks, as `ItemAbility.getActions` lists them.
+    /// [`ALL`] as owned names, as every host answers `item_abilities`.
+    pub fn names() -> Vec<String> {
+        ALL.map(String::from).to_vec()
+    }
+
+    pub const ALL: [&str; 14] = [
+        BRUSH_BRUSH,
+        FIRESTARTER_LIGHT,
+        FISHING_ROD_CAST,
+        SHEARS_CARVE,
+        SHEARS_DIG,
+        SHEARS_DISARM,
+        SHEARS_HARVEST,
+        SHEARS_REMOVE_ARMOR,
+        SHEARS_TRIM,
+        SHIELD_BLOCK,
+        SHOVEL_DOUSE,
+        SPYGLASS_SCOPE,
+        SWORD_SWEEP,
+        TRIDENT_THROW,
+    ];
+}
+
+impl CommonGame<'_> {
+    /// `host.item_abilities()`: [`ability::ALL`] as owned names.
+    pub fn item_abilities(&self) -> Vec<String> {
+        ability::names()
+    }
 }
 
 pub trait ItemAbilitiesGameExt1<'__sg>: crate::game::SideGame<'__sg> {

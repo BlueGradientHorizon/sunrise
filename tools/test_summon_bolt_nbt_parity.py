@@ -16,12 +16,9 @@ import subprocess
 import sys
 import tempfile
 
-try:
-    from . import lab, seed_agent, test_rust_parity as base
-except ImportError:
-    import lab
-    import seed_agent
-    import test_rust_parity as base
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+from tools import lab, seed_agent, test_rust_parity as base
 
 GROUP = 'summon lightning_bolt NBT'
 ORACLE = lab.ROOT / 'mods/sunrise/src/test/java/dev/sunriselab/parity/VanillaCommandExecOracle.java'

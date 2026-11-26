@@ -72,7 +72,7 @@ impl crate::game::ClientGame<'_> {
         // `Level.getChunk`'s tickets keep their columns until they expire.
         self.client.streaming.hold_unknown_tickets();
         self.client.streaming.upload_backlog = self.client.pending_uploads.0.len();
-        let plan = sunrise_level::spans::time("streaming_plan", || {
+        let mut plan = sunrise_level::spans::time("streaming_plan", || {
             let mut step = self
                 .client
                 .streaming
@@ -93,7 +93,7 @@ impl crate::game::ClientGame<'_> {
         let (commit, protos) = self
             .client
             .streaming
-            .prepare_commit(&mut self.common.world, plan);
+            .prepare_commit(&mut self.common.world, &mut plan);
         self.client.streaming.submit_protos(protos);
         let (mut uploads, unloaded) = sunrise_level::spans::time("streaming", || {
             self.client
@@ -187,11 +187,6 @@ impl crate::game::ClientGame<'_> {
             let g = &self.client.settings.sunrise;
             let budgeted = g.chunk_updates > 0 || g.upload_budget_kib > 0;
             let mut raw_flight = self.client.flight.0.as_mut().filter(|flight| flight.raw);
-            let vertex_bytes = |mesh: &sunrise_client::mesher::SectionMesh| {
-                ((mesh.solid.len() + mesh.translucent.len())
-                    * std::mem::size_of::<sunrise_client::mesher::TerrainVertex>())
-                    as u64
-            };
             // The meshes, once copied, are freed by a worker (`MeshStreamer::free`).
             if !budgeted
                 && self.client.pending_uploads.0.is_empty()
@@ -204,9 +199,10 @@ impl crate::game::ClientGame<'_> {
                             .streaming
                             .can_publish_mesh(&self.common.world, upload)
                         {
+                            let bytes = renderer.mesh_upload_bytes(&upload.mesh);
                             renderer.upload(upload.key, &upload.mesh);
                             if let Some(flight) = raw_flight.as_deref_mut() {
-                                flight.note_mesh_uploads(1, vertex_bytes(&upload.mesh));
+                                flight.note_mesh_uploads(1, bytes);
                             }
                         }
                     }
@@ -276,7 +272,7 @@ impl crate::game::ClientGame<'_> {
                     if auto.is_some_and(|time| count > 0 && started.elapsed() >= time) {
                         break;
                     }
-                    let size = vertex_bytes(mesh);
+                    let size = renderer.mesh_upload_bytes(mesh);
                     if (limit > 0 && count >= limit)
                         || (budget > 0 && bytes > 0 && bytes + size > budget)
                     {

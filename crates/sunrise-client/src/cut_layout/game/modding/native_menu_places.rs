@@ -11,7 +11,6 @@ use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;
 mod tests {
     use super::super::native_entity_refs::tests::with_game as with_base_game;
     use super::*;
-    use mod_api::__private::game::Fields;
     use mod_api::{Hand, MenuContainer, MenuSlotBackRefusal};
     use mod_api::{HostTransaction, MenuReplace, MenuSlotBacking};
     use sunrise_items::items::ItemStack;
@@ -51,22 +50,23 @@ mod tests {
         game.server.lan.as_mut().unwrap().hub.guests.push(player);
     }
 
-    /// A 27-slot mod chest menu opened for guest 1: its window.
-    fn open_pack(game: &mut sunrise_gameplay::game::ServerGame<'_>) -> i32 {
+    /// A 27-slot mod chest menu opened for guest 1: its handle.
+    fn open_pack(game: &mut sunrise_gameplay::game::ServerGame<'_>) -> MenuRef {
+        let player = game.player(123).unwrap();
         let host: &mut dyn ServerHost = game;
-        host.open_menu(
-            123,
-            3,
-            mod_api::Text::literal("pack"),
-            Vec::new(),
-            MenuReplace::CloseFirst,
-        )
-        .unwrap()
-        .unwrap()
+        player
+            .open_chest_menu(
+                host,
+                3,
+                mod_api::Text::literal("pack"),
+                Vec::new(),
+                MenuReplace::CloseFirst,
+            )
+            .unwrap()
     }
 
-    /// [`backpack_guest`] with the menu open: its window.
-    fn backpack_menu(game: &mut sunrise_gameplay::game::ServerGame<'_>) -> i32 {
+    /// [`backpack_guest`] with the menu open: its handle.
+    fn backpack_menu(game: &mut sunrise_gameplay::game::ServerGame<'_>) -> MenuRef {
         backpack_guest(game);
         open_pack(game)
     }
@@ -85,14 +85,14 @@ mod tests {
     #[ignore = "daily"]
     fn a_shift_click_into_a_held_backpack_writes_through_its_handler() {
         with_game(|game| {
-            let window = backpack_menu(game);
+            let stale = backpack_menu(game);
+            let menu = open_pack(game);
+            let window = menu.container_id(game).unwrap();
             let host: &mut dyn ServerHost = game;
-            let menu = host.menu(123, window).unwrap();
             // Unbacked, the menu is the mod's own, as before.
             assert_eq!(menu.slot_backing(host, 0), Some(MenuSlotBacking::Native(0)));
             assert_eq!(game.place_menu_click(123, window, 27, 0, 1), None);
 
-            let player = menu.fields().player;
             let places: Vec<_> = (0..27)
                 .map(|slot| MenuSlotPlace::HeldItem {
                     hand: Hand::Main,
@@ -100,13 +100,10 @@ mod tests {
                 })
                 .collect();
             assert_eq!(
-                game.player_back_mod_menu_slots(player, window + 1, places.clone()),
+                stale.back_slots(game, places.clone()),
                 Err(MenuSlotBackRefusal::NoPlayerOrWindow)
             );
-            assert_eq!(
-                game.player_back_mod_menu_slots(player, window, places),
-                Ok(())
-            );
+            assert_eq!(menu.back_slots(game, places), Ok(()));
             let host: &mut dyn ServerHost = game;
             assert_eq!(
                 menu.slot_backing(host, 0),
@@ -125,6 +122,19 @@ mod tests {
                 None
             );
             assert_eq!(ItemPlace::MenuSlot { menu, slot: 0 }.amount(host), 64);
+            let stone = ItemPlace::MenuSlot { menu, slot: 0 }
+                .resource(host)
+                .unwrap();
+            assert_eq!(menu.slot_gives(host, 0), None);
+            assert_eq!(menu.probe_slot_gives(host, 0), Ok(Some(true)));
+            assert_eq!(held_slot(0).amount(host), 64, "the pickup probe rolls back");
+            assert_eq!(menu.slot_holds(host, 54, stone.as_stack()), Some(0));
+            assert_eq!(menu.slot_gives(host, 54), Some(false));
+            assert_eq!(
+                menu.probe_slot_holds(host, 54, stone.as_stack()),
+                Ok(Some(0))
+            );
+            assert_eq!(menu.probe_slot_gives(host, 54), Ok(Some(false)));
 
             // The box's own hotbar slot (menu slot 54) takes no click.
             assert_eq!(game.place_menu_click(123, window, 54, 0, 0), Some(true));
@@ -142,7 +152,7 @@ mod tests {
             assert_eq!(taken, Ok(1));
             game.run_native_menu_events();
             let host: &mut dyn ServerHost = game;
-            assert_eq!(host.menu(123, window), None);
+            assert_eq!(menu.container_id(host), None);
         });
     }
 
@@ -185,32 +195,21 @@ mod tests {
     #[ignore = "daily"]
     fn un_backing_or_shortening_empties_the_mirrored_slots_and_keeps_the_items_once() {
         with_game(|game| {
-            let window = backpack_menu(game);
-            let host: &mut dyn ServerHost = game;
-            let menu = host.menu(123, window).unwrap();
-            let player = menu.fields().player;
+            let menu = backpack_menu(game);
+            let window = menu.container_id(game).unwrap();
             let places = held_places(Hand::Main, 0..27);
-            assert_eq!(
-                game.player_back_mod_menu_slots(player, window, places),
-                Ok(())
-            );
+            assert_eq!(menu.back_slots(game, places), Ok(()));
             assert_eq!(game.place_menu_click(123, window, 27, 0, 1), Some(true));
             assert_eq!(stone(game, menu), 64);
             // Shortened to slot 1 of the box: menu slot 0 shows that empty slot, the rest nothing.
             let places = held_places(Hand::Main, 1..2);
-            assert_eq!(
-                game.player_back_mod_menu_slots(player, window, places),
-                Ok(())
-            );
+            assert_eq!(menu.back_slots(game, places), Ok(()));
             let host: &mut dyn ServerHost = game;
             assert_eq!(ItemPlace::MenuSlot { menu, slot: 0 }.amount(host), 0);
             assert_eq!(held_slot(0).amount(host), 64);
             assert_eq!(stone(game, menu), 64);
             // Un-backed: the menu's own slots hold no copy to take out.
-            assert_eq!(
-                game.player_back_mod_menu_slots(player, window, Vec::new()),
-                Ok(())
-            );
+            assert_eq!(menu.back_slots(game, Vec::new()), Ok(()));
             let host: &mut dyn ServerHost = game;
             assert_eq!(menu.slot_backing(host, 0), Some(MenuSlotBacking::Native(0)));
             assert_eq!(
@@ -225,12 +224,9 @@ mod tests {
     #[ignore = "daily"]
     fn a_backing_names_why_it_refuses() {
         with_game(|game| {
-            let window = backpack_menu(game);
-            let host: &mut dyn ServerHost = game;
-            let menu = host.menu(123, window).unwrap();
-            let player = menu.fields().player;
+            let menu = backpack_menu(game);
             let back = |game: &mut sunrise_gameplay::game::ServerGame<'_>, places| {
-                game.player_back_mod_menu_slots(player, window, places)
+                menu.back_slots(game, places)
             };
             assert_eq!(
                 back(game, held_places(Hand::Main, 0..28)),
@@ -245,7 +241,6 @@ mod tests {
             );
             assert_eq!(back(game, held_places(Hand::Main, 0..1)), Ok(()));
             let host: &mut dyn ServerHost = game;
-            let menu = host.menu(123, window).unwrap();
             assert!(matches!(
                 menu.slot_backing(host, 0),
                 Some(MenuSlotBacking::Place(_))
@@ -269,10 +264,12 @@ mod tests {
                 game.as_guest(1, |game| back(game, held_places(Hand::Main, 0..1))),
                 Some(Ok(()))
             );
-            // A window the player does not have open names no handle, in its own turn too.
+            // A closed/stale menu handle is refused, in its own turn too.
+            let stale_menu = menu;
+            let _fresh = open_pack(game);
             let refused = Err(MenuSlotBackRefusal::NoPlayerOrWindow);
             let stale = |game: &mut sunrise_gameplay::game::ServerGame<'_>| {
-                game.player_back_mod_menu_slots(player, window + 1, held_places(Hand::Main, 0..1))
+                stale_menu.back_slots(game, held_places(Hand::Main, 0..1))
             };
             assert_eq!(stale(game), refused);
             assert_eq!(game.as_guest(1, stale), Some(refused));
@@ -283,15 +280,9 @@ mod tests {
     #[ignore = "daily"]
     fn a_write_into_the_box_is_mirrored_at_its_notice() {
         with_game(|game| {
-            let window = backpack_menu(game);
-            let host: &mut dyn ServerHost = game;
-            let menu = host.menu(123, window).unwrap();
-            let player = menu.fields().player;
+            let menu = backpack_menu(game);
             let places = held_places(Hand::Main, 0..27);
-            assert_eq!(
-                game.player_back_mod_menu_slots(player, window, places),
-                Ok(())
-            );
+            assert_eq!(menu.back_slots(game, places), Ok(()));
             let host: &mut dyn ServerHost = game;
             let custom_data = mod_api::ComponentId::new("minecraft:custom_data").unwrap();
             let data = mod_api::Tag::Compound(
@@ -345,7 +336,7 @@ mod tests {
     fn a_menu_backed_in_the_players_own_turn_shows_the_held_box_after_it() {
         with_game(|game| {
             backpack_guest(game);
-            let (window, backed) = game
+            let (menu, backed) = game
                 .as_guest(1, |game| {
                     let host: &mut dyn ServerHost = game;
                     let carried = ItemPlace::PlayerSlot {
@@ -355,16 +346,13 @@ mod tests {
                     let stone = carried.resource(host).unwrap();
                     let put = host.transaction(|host, tx| held_slot(4).insert(host, tx, &stone, 5));
                     assert_eq!(put, Ok(5));
-                    let window = open_pack(game);
-                    let player = game.player(123).unwrap();
+                    let menu = open_pack(game);
                     let places = held_places(Hand::Main, 0..27);
-                    (
-                        window,
-                        game.player_back_mod_menu_slots(player, window, places),
-                    )
+                    (menu, menu.back_slots(game, places))
                 })
                 .unwrap();
             assert_eq!(backed, Ok(()));
+            let window = menu.container_id(game).unwrap();
             let shown = |game: &sunrise_gameplay::game::ServerGame<'_>| {
                 let guest = game.server.lan.as_ref().unwrap().hub.guest(1).unwrap();
                 guest.native_menu[4].as_ref().map(|s| s.count)
@@ -373,7 +361,7 @@ mod tests {
             game.run_native_menu_events();
             assert_eq!(shown(game), Some(5));
             let host: &mut dyn ServerHost = game;
-            assert!(host.menu(123, window).is_some());
+            assert_eq!(menu.container_id(host), Some(window));
 
             // The box bound is the one the player held in that turn: another box selected, the
             // next click closes the menu and moves nothing.
@@ -383,7 +371,7 @@ mod tests {
             });
             assert_eq!(game.place_menu_click(123, window, 27, 0, 1), Some(true));
             let host: &mut dyn ServerHost = game;
-            assert_eq!(host.menu(123, window), None);
+            assert_eq!(menu.container_id(host), None);
             let carried = ItemPlace::PlayerSlot {
                 player: 123,
                 slot: 9,
@@ -399,20 +387,19 @@ mod tests {
             backpack_guest(game);
             let (old, new) = game
                 .as_guest(1, |game| {
-                    let player = game.player(123).unwrap();
                     let old = open_pack(game);
-                    game.player_back_mod_menu_slots(player, old, held_places(Hand::Main, 0..1))
-                        .unwrap();
+                    let old_window = old.container_id(game).unwrap();
+                    old.back_slots(game, held_places(Hand::Main, 0..1)).unwrap();
                     let new = open_pack(game);
+                    let new_window = new.container_id(game).unwrap();
                     for places in [
                         held_places(Hand::Main, 0..2),
                         Vec::new(),
                         held_places(Hand::Main, 1..2),
                     ] {
-                        game.player_back_mod_menu_slots(player, new, places)
-                            .unwrap();
+                        new.back_slots(game, places).unwrap();
                     }
-                    (old, new)
+                    (old_window, new_window)
                 })
                 .unwrap();
             // Deliver the old window's change as the event drain does, then write again.
@@ -449,22 +436,17 @@ mod tests {
     /// moves nothing.
     fn replaced_closes(hand: Hand, replace: impl FnOnce(&mut sunrise_sim::lan::guest::Guest)) {
         with_game(|game| {
-            let window = backpack_menu(game);
+            let menu = backpack_menu(game);
+            let window = menu.container_id(game).unwrap();
             if hand == Hand::Off {
                 edit_guest(game, |g| g.offhand = g.inventory[0].take());
             }
-            let host: &mut dyn ServerHost = game;
-            let menu = host.menu(123, window).unwrap();
-            let player = menu.fields().player;
             let places = held_places(hand, 0..27);
-            assert_eq!(
-                game.player_back_mod_menu_slots(player, window, places),
-                Ok(())
-            );
+            assert_eq!(menu.back_slots(game, places), Ok(()));
             edit_guest(game, replace);
             assert_eq!(game.place_menu_click(123, window, 27, 0, 1), Some(true));
             let host: &mut dyn ServerHost = game;
-            assert_eq!(host.menu(123, window), None);
+            assert_eq!(menu.container_id(host), None);
             let carried = ItemPlace::PlayerSlot {
                 player: 123,
                 slot: 9,
@@ -495,6 +477,243 @@ mod tests {
         replaced_closes(Hand::Main, |g| {
             g.inventory[1] = Some(ItemStack::new("minecraft:shulker_box", 1));
             g.selected = 1;
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn backed_slot_rules_ask_the_live_handler_not_the_display_copy() {
+        use mod_api::{
+            ItemResource, Overanswered, ResourceHandler, TransactionContext, TransactionError,
+        };
+        struct Handler;
+        impl ResourceHandler<ItemResource> for Handler {
+            fn size(&self, _: &mut dyn ServerHost) -> usize {
+                2
+            }
+            fn resource(&self, _: &mut dyn ServerHost, _: usize) -> Option<ItemResource> {
+                Some(ItemResource::of(
+                    &mod_api::ItemStack::new(
+                        mod_api::__private::item_key("minecraft:stone").unwrap(),
+                        1,
+                    )
+                    .unwrap(),
+                ))
+            }
+            fn amount(&self, _: &mut dyn ServerHost, _: usize) -> u32 {
+                1
+            }
+            fn capacity(
+                &self,
+                _: &mut dyn ServerHost,
+                slot: usize,
+                _: Option<&ItemResource>,
+            ) -> u32 {
+                if slot == 0 { 7 } else { u32::MAX }
+            }
+            fn is_valid(&self, _: &mut dyn ServerHost, _: usize, stack: &ItemResource) -> bool {
+                mod_api::__private::item_key_id(stack.as_stack().item()) == Some("minecraft:stone")
+            }
+            fn insert_at(
+                &self,
+                _: &mut dyn ServerHost,
+                _: &TransactionContext,
+                _: usize,
+                _: &ItemResource,
+                _: u32,
+            ) -> Result<u32, TransactionError<Overanswered>> {
+                Ok(0)
+            }
+            fn extract_at(
+                &self,
+                _: &mut dyn ServerHost,
+                _: &TransactionContext,
+                _: usize,
+                _: &ItemResource,
+                _: u32,
+            ) -> Result<u32, TransactionError<Overanswered>> {
+                Ok(0)
+            }
+        }
+        struct ReadOnly;
+        #[mod_api::__subscriptions]
+        impl mod_api::Hooks for ReadOnly {
+            fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
+                r.item_capability_before_game(
+                    &mod_api::ITEM_ITEMS,
+                    "minecraft:shulker_box",
+                    |_, _| Some(Box::new(Handler)),
+                );
+            }
+        }
+        let mods: mod_api::Mods =
+            vec![mod_api::ModEntry::new("readonly_pack", Box::new(ReadOnly))].into();
+        sunrise_gameplay_common::game::api_values::install_parts(&mods).unwrap();
+        mod_platform::testing::with_mods(mods, || {
+            with_base_game(|game| {
+                let menu = backpack_menu(game);
+                assert_eq!(menu.back_slots(game, held_places(Hand::Main, 0..2)), Ok(()));
+                let stone = menu.slot(game, 0).unwrap().unwrap();
+                let dirt = mod_api::ItemStack::new(
+                    mod_api::__private::item_key("minecraft:dirt").unwrap(),
+                    1,
+                )
+                .unwrap();
+                let read: &dyn mod_api::Host = game;
+                assert!(matches!(
+                    menu.slot_backing(read, 0),
+                    Some(MenuSlotBacking::Place(_))
+                ));
+                assert_eq!(menu.slot_holds(read, 0, &stone), None);
+                assert_eq!(menu.slot_gives(read, 0), None);
+                assert_eq!(menu.probe_slot_holds(game, 0, &stone), Ok(Some(7)));
+                assert_eq!(menu.probe_slot_holds(game, 0, &dirt), Ok(Some(0)));
+                assert_eq!(
+                    menu.probe_slot_holds(game, 1, &stone),
+                    Ok(Some(i32::MAX as u32)),
+                    "ResourceHandlerSlot.getMaxStackSize clamps capacity to i32::MAX"
+                );
+                assert_eq!(menu.probe_slot_gives(game, 0), Ok(Some(false)));
+                // Hotbar zero backs the open menu, so its own inventory slot takes no move.
+                let holding_slot = game
+                    .native_menu_guest(menu)
+                    .unwrap()
+                    .menu
+                    .as_ref()
+                    .unwrap()
+                    .size
+                    + 27;
+                assert_eq!(menu.slot_holds(game, holding_slot, &stone), Some(0));
+                assert_eq!(menu.slot_gives(game, holding_slot), Some(false));
+                assert_eq!(
+                    menu.probe_slot_holds(game, holding_slot, &stone),
+                    Ok(Some(0))
+                );
+                assert_eq!(menu.probe_slot_gives(game, holding_slot), Ok(Some(false)));
+            })
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn backed_clicks_enforce_handler_pickup_probe_before_taking_or_quick_moving() {
+        use mod_api::{
+            ItemResource, Overanswered, ResourceHandler, TransactionContext, TransactionError,
+        };
+        use std::sync::{
+            Arc,
+            atomic::{AtomicU32, Ordering},
+        };
+        struct BulkOnlyHandler(Arc<AtomicU32>);
+        impl ResourceHandler<ItemResource> for BulkOnlyHandler {
+            fn size(&self, _: &mut dyn ServerHost) -> usize {
+                1
+            }
+            fn resource(&self, _: &mut dyn ServerHost, _: usize) -> Option<ItemResource> {
+                (self.0.load(Ordering::Relaxed) > 0).then(|| {
+                    ItemResource::of(
+                        &mod_api::ItemStack::new(
+                            mod_api::__private::item_key("minecraft:stone").unwrap(),
+                            1,
+                        )
+                        .unwrap(),
+                    )
+                })
+            }
+            fn amount(&self, _: &mut dyn ServerHost, _: usize) -> u32 {
+                self.0.load(Ordering::Relaxed)
+            }
+            fn capacity(&self, _: &mut dyn ServerHost, _: usize, _: Option<&ItemResource>) -> u32 {
+                64
+            }
+            fn is_valid(&self, _: &mut dyn ServerHost, _: usize, _: &ItemResource) -> bool {
+                true
+            }
+            fn insert_at(
+                &self,
+                _: &mut dyn ServerHost,
+                _: &TransactionContext,
+                _: usize,
+                _: &ItemResource,
+                amount: u32,
+            ) -> Result<u32, TransactionError<Overanswered>> {
+                Ok(amount)
+            }
+            fn extract_at(
+                &self,
+                _: &mut dyn ServerHost,
+                _: &TransactionContext,
+                _: usize,
+                _: &ItemResource,
+                amount: u32,
+            ) -> Result<u32, TransactionError<Overanswered>> {
+                // Refuse extracting 1 so ResourceHandlerSlot.mayPickup is false,
+                // while still allowing larger explicit extracts.
+                if amount <= 1 {
+                    return Ok(0);
+                }
+                let held = self.0.load(Ordering::Relaxed);
+                let taken = held.min(amount);
+                self.0.store(held - taken, Ordering::Relaxed);
+                Ok(taken)
+            }
+        }
+        struct BulkPack(Arc<AtomicU32>);
+        #[mod_api::__subscriptions]
+        impl mod_api::Hooks for BulkPack {
+            fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
+                let count = Arc::clone(&self.0);
+                r.item_capability_before_game(
+                    &mod_api::ITEM_ITEMS,
+                    "minecraft:shulker_box",
+                    move |_, _| Some(Box::new(BulkOnlyHandler(Arc::clone(&count)))),
+                );
+            }
+        }
+        let stored = Arc::new(AtomicU32::new(4));
+        let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
+            "bulk_pack",
+            Box::new(BulkPack(Arc::clone(&stored))),
+        )]
+        .into();
+        sunrise_gameplay_common::game::api_values::install_parts(&mods).unwrap();
+        mod_platform::testing::with_mods(mods, || {
+            with_base_game(|game| {
+                let menu = backpack_menu(game);
+                let window = menu.container_id(game).unwrap();
+                assert_eq!(menu.back_slots(game, held_places(Hand::Main, 0..1)), Ok(()));
+                assert_eq!(menu.probe_slot_gives(game, 0), Ok(Some(false)));
+
+                // Empty-cursor pickup click refuses when mayPickup is false.
+                assert_eq!(game.place_menu_click(123, window, 0, 0, 0), Some(true));
+                assert_eq!(stored.load(Ordering::Relaxed), 4);
+                assert_eq!(menu.cursor().with_stack(game, |_| ()), None);
+
+                // Quick-move click refuses when mayPickup is false.
+                assert_eq!(game.place_menu_click(123, window, 0, 0, 1), Some(true));
+                assert_eq!(stored.load(Ordering::Relaxed), 4);
+
+                // Non-empty cursor swap click refuses when mayPickup is false.
+                edit_guest(game, |guest| {
+                    guest.carried = Some(ItemStack::new("minecraft:dirt", 1));
+                });
+                assert_eq!(game.place_menu_click(123, window, 0, 0, 0), Some(true));
+                assert_eq!(stored.load(Ordering::Relaxed), 4);
+                let carried_id = menu
+                    .cursor()
+                    .resource(game)
+                    .and_then(|r| mod_api::__private::item_key_id(r.as_stack().item()));
+                assert_eq!(carried_id, Some("minecraft:dirt"));
+
+                // Explicit ItemPlace::MenuSlot transfer still reaches the handler directly.
+                let slot = ItemPlace::MenuSlot { menu, slot: 0 };
+                let stone = slot.resource(game).unwrap();
+                let host: &mut dyn ServerHost = game;
+                let moved =
+                    host.transaction(|host, tx| Ok::<_, ()>(slot.extract(host, tx, &stone, 4)));
+                assert_eq!(moved, Ok(Ok(4)));
+                assert_eq!(stored.load(Ordering::Relaxed), 0);
+            })
         });
     }
 
@@ -612,7 +831,7 @@ mod tests {
         game.server.lan.as_mut().unwrap().hub.guests.push(player);
         let key = super::super::native_guest_turn_tests::register_test_menu(game, SATCHEL_MENU);
         let player = game.player(123).unwrap();
-        let window = game
+        let menu = game
             .player_open_mod_menu(player, {
                 let mut request = mod_api::ModMenuOpen::new(key, mod_api::Text::literal("satchel"));
                 request.pos = Some(pos);
@@ -620,13 +839,9 @@ mod tests {
             })
             .unwrap()
             .unwrap();
+        let window = menu.container_id(game).unwrap();
         // The handle and the backing stay usable.
-        let host: &mut dyn ServerHost = game;
-        let menu = host.menu(123, window).expect("the menu's handle");
-        assert_eq!(
-            game.player_back_mod_menu_slots(player, window, held_places(Hand::Main, 0..9)),
-            Ok(())
-        );
+        assert_eq!(menu.back_slots(game, held_places(Hand::Main, 0..9)), Ok(()));
         // Inventory slot 9 is menu slot 9: the stone passes over display-only slot 0.
         assert_eq!(game.place_menu_click(123, window, 9, 0, 1), Some(true));
         let host: &mut dyn ServerHost = game;
@@ -653,6 +868,12 @@ mod tests {
             host.transaction(|host, tx| hidden.extract(host, tx, &stone, 5)),
             Ok(0)
         );
+        // The probes answer what a click would: the handler permits both, the menu's rules veto.
+        let stone_stack =
+            mod_api::ItemStack::new(mod_api::__private::item_key("minecraft:stone").unwrap(), 1)
+                .unwrap();
+        assert_eq!(menu.probe_slot_holds(game, 0, &stone_stack), Ok(Some(0)));
+        assert_eq!(menu.probe_slot_gives(game, 0), Ok(Some(false)));
         let contents = |game: &mut sunrise_gameplay::game::ServerGame<'_>| {
             (0..45)
                 .map(|slot| {

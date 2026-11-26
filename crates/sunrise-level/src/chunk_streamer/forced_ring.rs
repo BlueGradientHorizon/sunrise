@@ -90,6 +90,7 @@ mod tests {
             cover: None,
             forced_cover: None,
             band: None,
+            async_requests: None,
         };
         let forced: HashSet<(i32, i32)> = [(256, 256)].into();
         let r = ranges(&forced);
@@ -175,6 +176,7 @@ mod tests {
                 cover: None,
                 forced_cover: None,
                 band: None,
+                async_requests: None,
             };
             // (255, 254) lies nearer the origin than (258, 256), the
             // forced chunk's neighbour two chunks east.

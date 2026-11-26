@@ -96,6 +96,7 @@ impl crate::game::ServerGame<'_> {
                     dimension: self.common.dim,
                     origin_dimension: self.common.dim,
                     origin_player: false,
+                    native_output: None,
                     level: None,
                     block: None,
                     cart: None,

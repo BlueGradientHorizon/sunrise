@@ -166,10 +166,6 @@ pub(crate) struct Observe(pub(crate) Arc<Observation>);
 
 #[mod_api::__subscriptions]
 impl Hooks for Observe {
-    fn register(&self, registrar: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
-        registrar.entity_tick_each("minecraft:pig");
-    }
-
     fn entity_mount(
         &self,
         host: &mut dyn ServerHost,
@@ -197,15 +193,15 @@ impl Hooks for Observe {
         }
     }
 
-    fn entity_tick_listened(&self, _: HostSide<'_>, event: &mut mod_api::EntityTickListenedEvent) {
-        event.listened = true;
-    }
-
-    fn entity_tick_pre(&self, host: HostSide<'_>, event: &mut mod_api::EntityTickPreEvent<'_>) {
-        if event.entities.contains(&72) && self.0.veto_rider_tick.load(Ordering::Relaxed) {
-            event.canceled.push(72);
+    fn entity_tick_pre(
+        &self,
+        host: HostSide<'_>,
+        event: &mut mod_api::EntityTickPreEvent<'_>,
+    ) -> mod_api::Flow {
+        if event.entity == 72 && self.0.veto_rider_tick.load(Ordering::Relaxed) {
+            return mod_api::Flow::Cancel;
         }
-        if event.entities.contains(&74)
+        if event.entity == 74
             && let HostSide::Server(host) = host
         {
             let riding = host
@@ -218,6 +214,7 @@ impl Hooks for Observe {
                 .unwrap()
                 .push(format!("later:riding={riding}"));
         }
+        mod_api::Flow::Continue
     }
 }
 

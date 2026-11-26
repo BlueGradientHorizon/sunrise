@@ -126,6 +126,7 @@ impl crate::game::ServerGame<'_> {
             dimension: self.common.dim,
             origin_dimension: self.common.dim,
             origin_player: self.common.player.is_some(),
+            native_output: None,
             level: None,
             block: None,
             cart: None,
@@ -507,9 +508,10 @@ impl crate::game::ServerGame<'_> {
             .player_uuid
             .map(sunrise_sim::lan::playerdata::ints_uuid);
         if me == Some(who) && self.common.player.is_some() {
-            return self.common.eye_position().is_some_and(|eye| {
+            let within = self.common.eye_position().is_some_and(|eye| {
                 sunrise_sim::lan::guest::within_block_range(eye, self.common.reach() + 4.0, at)
             });
+            return self.host_within_interaction_range(at, within);
         }
         self.server.lan.as_ref().is_some_and(|host| {
             host.hub

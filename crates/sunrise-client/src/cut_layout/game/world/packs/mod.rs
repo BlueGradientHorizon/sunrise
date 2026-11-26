@@ -230,6 +230,31 @@ pub(crate) mod tests {
         );
     }
 
+    /// `ScreensClientHost::reload_overlay_visible` (#5555): false with no reload, true
+    /// while a reload stages and while its overlay fades out, false once it has faded.
+    #[test]
+    #[ignore = "daily"]
+    fn a_mod_reads_whether_the_reload_overlay_is_up() {
+        sunrise_client_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+            let visible = |game: &sunrise_client_gameplay::game::ClientGame<'_>| {
+                <sunrise_client_gameplay::game::ClientGame<'_> as mod_api::prelude::ScreensClientHost>::reload_overlay_visible(game)
+            };
+            assert!(!visible(game));
+            game.client.pack_reload.0 = Some(
+                PackReload::spawn_holding(ReloadKind::Selection, Duration::ZERO, |_| {
+                    Err("staged".into())
+                })
+                .unwrap(),
+            );
+            game.client.reload_overlay = Some(sunrise_client_gameplay::game::client_side::packs::ReloadOverlay::default());
+            assert!(visible(game), "staging");
+            game.client.pack_reload.0 = None;
+            assert!(visible(game), "fading out after the reload");
+            game.client.reload_overlay = None;
+            assert!(!visible(game), "faded out");
+        });
+    }
+
     /// `LoadingOverlay.isReadyToFadeOut`: a reload that stages at once still
     /// keeps its overlay up - the 1000 ms `fadeInStart` gate - so a small pack
     /// does not flash the Mojang logo for a frame or two.
@@ -273,3 +298,7 @@ pub(crate) mod tests {
 #[cfg(test)]
 #[path = "clouds_reload_tests.rs"]
 pub(crate) mod clouds_reload_tests;
+
+#[cfg(all(test, feature = "client"))]
+#[path = "core_shaders_reload_tests.rs"]
+mod core_shaders_reload_tests;

@@ -97,7 +97,7 @@ fn open_hub(game: &mut sunrise_gameplay::game::ServerGame<'_>, role: ExecutionRo
         seed: 0,
         max_players: 4,
         integrated: role == ExecutionRole::IntegratedServer,
-        levels: game.server.level_shapes,
+        levels: game.server.level_shapes.clone(),
         level_seeds: game.server.levels.0.runtime.seeds(),
     };
     game.lan_host(settings, net, config).unwrap();

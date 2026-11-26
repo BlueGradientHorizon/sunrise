@@ -4,7 +4,7 @@
 //! sound engine ticks them with what `start_mob_sounds` and
 //! `start_riding_sound` read off the mobs.
 use crate::game::ClientGame;
-use sunrise_client::sound_engine::{MobSound, RiddenSound, SoundInstance, Sounds};
+use sunrise_client::sound_engine::{MobSound, RiddenSound, SoundInstance};
 use sunrise_level::random_source;
 use sunrise_sim::mobs::{Species, bee, guardian, sniffer};
 
@@ -50,7 +50,7 @@ impl ClientGame<'_> {
             } else {
                 SoundInstance::riding_happy_ghast(&sound, random_source::create())
             };
-            self.client.audio.0.play_instance(instance, false);
+            self.play_audio_instance(instance, false);
         }
         self.client.riding_sound = started.map(|g| g.id);
         ridden.map(|r| r.1)
@@ -106,7 +106,7 @@ impl ClientGame<'_> {
             if self.client.bee_sounds.get(&sound.id) != Some(&sound.angry) {
                 self.client.bee_sounds.insert(sound.id, sound.angry);
                 let instance = SoundInstance::bee(sound, sound.angry, random_source::create());
-                self.client.audio.0.play_instance(instance, false);
+                self.play_audio_instance(instance, false);
             }
         }
         mobs
@@ -134,7 +134,7 @@ impl ClientGame<'_> {
             sniffer_digging: false,
         };
         let instance = SoundInstance::guardian_attack(&sound, random_source::create());
-        self.client.audio.0.play_instance(instance, false);
+        self.play_audio_instance(instance, false);
     }
 
     /// `ClientPacketListener.handleEntityEvent` 63: a sniffer's digging
@@ -152,6 +152,6 @@ impl ClientGame<'_> {
             return;
         }
         let instance = SoundInstance::sniffer(id, random_source::create());
-        self.client.audio.0.play_instance(instance, false);
+        self.play_audio_instance(instance, false);
     }
 }

@@ -240,7 +240,7 @@ impl ClientGame<'_> {
         ) else {
             return false;
         };
-        self.client.audio.0.play_button_click();
+        self.play_audio_button_click();
         match action {
             Action::Share => {
                 if let Err(e) = self.friends_start() {

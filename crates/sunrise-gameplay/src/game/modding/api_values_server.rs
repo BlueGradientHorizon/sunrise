@@ -126,11 +126,13 @@ impl crate::game::ServerGame<'_> {
         if !mod_api::__private::has_part_hook(mod_api::HookId::BlockEntityUpdateTag) {
             return;
         }
-        if let Ok(api) = entity.try_into_api() {
-            sunrise_gameplay_common::game::native_hooks::native_block_entity_update_tag(
-                pos, &api, tag,
-            );
-        }
+        let data =
+            sunrise_gameplay_common::game::native_hooks::ResidentReadBlockEntity::stored(entity);
+        sunrise_gameplay_common::game::native_hooks::native_block_entity_update_tag(
+            pos,
+            mod_api::BlockEntityDataView::new(&data),
+            tag,
+        );
     }
 }
 

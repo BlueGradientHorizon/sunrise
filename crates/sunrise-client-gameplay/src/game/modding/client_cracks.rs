@@ -26,10 +26,17 @@ impl crate::game::ClientGame<'_> {
     }
 
     pub fn reset_client_world(&mut self, seed: i64) {
+        self.install_client_world(sunrise_gameplay_common::game::world_for_mods(
+            self.common.res.facts().air,
+            seed,
+        ));
+    }
+
+    pub(in crate::game) fn install_client_world(&mut self, world: sunrise_level::world::World) {
         self.client.destroying.clear();
-        self.set_client_mining(None);
-        self.common.world =
-            sunrise_gameplay_common::game::world_for_mods(self.common.res.facts().air, seed);
+        self.client.mining_crack = None;
+        self.common.mining = None;
+        self.common.world = world;
     }
 
     /// Preserve the stage's stored display answer across prediction updates.

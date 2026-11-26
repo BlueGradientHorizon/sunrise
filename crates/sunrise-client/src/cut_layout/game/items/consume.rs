@@ -76,7 +76,7 @@ pub(crate) mod teleport_hook_tests {
                 // The source stack is explicit, even if the hand has since changed.
                 game.common.inventory[game.common.selected] =
                     Some(ItemStack::new("minecraft:stone", 1));
-                let mut expected_random = game.world.random.clone();
+                let mut expected_random = game.player.as_ref().unwrap().random.clone();
                 for _ in 0..3 {
                     expected_random.next_double();
                 }
@@ -89,14 +89,14 @@ pub(crate) mod teleport_hook_tests {
                 ));
                 assert_eq!(*heard.lock().unwrap(), [snapshot.clone(), snapshot]);
                 assert_eq!(
-                    game.world.random.next_long(),
+                    game.player.as_mut().unwrap().random.next_long(),
                     expected_random.next_long(),
                     "veto ends the effect after the first candidate's three draws"
                 );
                 assert_eq!(game.player.as_ref().unwrap().position, at);
 
                 moved.store(true, Ordering::SeqCst);
-                expected_random = game.world.random.clone();
+                expected_random = game.player.as_ref().unwrap().random.clone();
                 for _ in 0..3 {
                     expected_random.next_double();
                 }
@@ -112,7 +112,10 @@ pub(crate) mod teleport_hook_tests {
                     Vec3::new(3.0, 70.0, 3.0),
                     "a listener's direct move invalidates the consumption target"
                 );
-                assert_eq!(game.world.random.next_long(), expected_random.next_long());
+                assert_eq!(
+                    game.player.as_mut().unwrap().random.next_long(),
+                    expected_random.next_long()
+                );
             })
         });
     }
@@ -208,15 +211,12 @@ pub(crate) mod fox_consumption_hook_tests {
                             );
                             assert!(next.teleport_to(host, [12.5, 64.0, 8.5], None));
                             assert!(host.entity(202).unwrap().discard(host));
-                            let spawned = host
-                                .summon(
-                                    "minecraft:overworld",
-                                    "minecraft:cow",
-                                    [2.5, 64.0, 2.5],
-                                    Default::default(),
-                                )
+                            let level = host.level("minecraft:overworld").unwrap();
+                            let spawned = level
+                                .summon(host, "minecraft:cow", [2.5, 64.0, 2.5], Default::default())
+                                .unwrap()
                                 .unwrap();
-                            self.spawned.lock().unwrap().push(spawned);
+                            self.spawned.lock().unwrap().push(spawned.id());
                             *event.target = [4.5, 70.0, 4.5];
                             Flow::Continue
                         }

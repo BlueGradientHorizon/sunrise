@@ -37,22 +37,6 @@ impl crate::game::ServerGame<'_> {
         };
         BrewingRemainder(answer)
     }
-
-    pub(in crate::game::server_side) fn brewing_ingredient_remainder(
-        &self,
-        pos: (i32, i32, i32),
-        cancelled: bool,
-    ) -> Option<ItemStack> {
-        if cancelled {
-            return None;
-        }
-        match self.common.world.block_entities.get(&pos) {
-            Some(BlockEntity::Brewing(b)) => {
-                b.items[3].as_ref().and_then(|s| self.crafting_remainder(s))
-            }
-            _ => None,
-        }
-    }
 }
 
 use sunrise_gameplay_common::game::native_block_states::NativeBlockStatesGameExt1 as _;

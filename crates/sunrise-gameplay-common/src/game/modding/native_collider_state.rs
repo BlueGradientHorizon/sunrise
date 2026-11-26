@@ -11,19 +11,13 @@ use sunrise_level::fast_hash::FxHashMap;
 use sunrise_mod_runtime::attachments::Attachments;
 use sunrise_sim::colliders::ColliderState;
 
-/// A server entity's collider, with the form the save writes.
-pub struct ColliderEntry {
-    pub state: ColliderState,
-    pub saved: Compound,
-}
-
 /// The per-entity maps the game keeps by entity id: attachments, and colliders. It reads as
 /// the attachments map, which is what most of the game wants; the colliders are beside it so
 /// that what saves, loads and forgets an entity's attachments handles its collider too.
 #[derive(Default)]
 pub struct EntityMaps {
     pub(in crate::game) attachments: FxHashMap<u32, Attachments>,
-    pub(in crate::game) colliders: FxHashMap<u32, ColliderEntry>,
+    pub(in crate::game) colliders: FxHashMap<u32, ColliderState>,
     /// The ids of the colliders each level holds, so a level's tick places only its own.
     pub(in crate::game) by_level: HashMap<Dim, HashSet<u32>>,
 }
@@ -42,16 +36,16 @@ impl std::ops::DerefMut for EntityMaps {
 }
 
 impl EntityMaps {
-    pub fn collider(&self, id: u32) -> Option<&ColliderEntry> {
+    pub fn collider(&self, id: u32) -> Option<&ColliderState> {
         self.colliders.get(&id)
     }
 
-    pub fn collider_mut(&mut self, id: u32) -> Option<&mut ColliderEntry> {
+    pub fn collider_mut(&mut self, id: u32) -> Option<&mut ColliderState> {
         self.colliders.get_mut(&id)
     }
 
     /// Gives the entity `id`, which stands in `level`, this collider.
-    pub fn insert_collider(&mut self, id: u32, level: Dim, entry: ColliderEntry) {
+    pub fn insert_collider(&mut self, id: u32, level: Dim, entry: ColliderState) {
         if self.colliders.insert(id, entry).is_some() {
             self.unindex(id);
         }
@@ -91,7 +85,7 @@ impl EntityMaps {
     pub fn write_collider(&self, root: &mut Compound, id: u32) {
         match self.colliders.get(&id) {
             Some(entry) => {
-                root.insert(SAVE_KEY.into(), Tag::Compound(entry.saved.clone()));
+                root.insert(SAVE_KEY.into(), Tag::Compound(entry.to_nbt()));
             }
             None => {
                 root.remove(&SAVE_KEY.into());

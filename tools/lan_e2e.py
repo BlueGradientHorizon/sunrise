@@ -382,12 +382,12 @@ import zlib
 import zipfile
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-from agent_control_e2e import Cli, Failed, game_env  # noqa: E402
-import lab  # noqa: E402
-from integration_env import game_environment, require_server_reports  # noqa: E402
-
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+from tools.agent_control_e2e import Cli, Failed, game_env
+from tools import lab
+from tools.integration_env import game_environment, require_server_reports  # noqa: E402
+
 GUEST_NAME = 'Guest'
 CHECKS = ['tab', 'self', 'armour', 'nametags', 'walls', 'placement', 'chest', 'menu-transfer', 'crafting', 'spawned', 'sign', 'damage', 'mobs', 'hazards', 'pvp', 'deaths',
           'flow-push', 'bubble-column', 'arrows', 'projectile-vehicles', 'flame-arrows', 'kills', 'looting', 'leave', 'hurt', 'looks', 'leads', 'entity-tags', 'respawn', 'containers', 'names', 'feedback', 'titles', 'chat', 'styles',
@@ -3021,7 +3021,7 @@ def wheel_fast(game, slot, steps):
 
 
 def set_mouse_tweaks(game, on):
-    """The Extras page's switch, as a player flips it."""
+    """The switch on Sunrise Settings' Gameplay page, as a player flips it."""
     game('options', page='extras')
     switch = next(w for w in game.raw('ui')['widgets'] if w.get('label', '').startswith('Mouse Tweaks controls'))
     if switch['label'].endswith('On') != on:

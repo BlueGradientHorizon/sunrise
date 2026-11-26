@@ -3,13 +3,13 @@
 //! made from, then of an arrow's weapon, run on it
 //! (`EnchantmentHelper.onProjectileSpawned`). One path for every spawn site:
 //! bows, crossbows, thrown items, dispensers, mobs and the mod host.
-use super::enchant_effects::look_impulse;
+use super::enchant_effects::{EntityEffectUse, look_impulse};
 use serde_json::Value;
 use sunrise_items::{
     enchant::{EffectContext, level_value},
     items::ItemStack,
 };
-use sunrise_sim::projectiles::Projectile;
+use sunrise_sim::{mobs::Who, projectiles::Projectile};
 use sunrise_world::worldgen::value_provider::FloatProvider;
 
 use super::projectile_spawned_validation::{requirements_supported, valid_ranges};
@@ -82,10 +82,14 @@ impl crate::game::ServerGame<'_> {
     /// to the level, then runs `applyOnProjectileSpawned` with `stack`, the
     /// item it was made from (the held or dispensed stack, an arrow's ammo).
     /// The projectile's id.
-    pub fn spawn_projectile(&mut self, projectile: Projectile, stack: &ItemStack) -> u32 {
-        let id = self.add_projectile(projectile);
+    pub fn spawn_projectile(
+        &mut self,
+        projectile: Projectile,
+        stack: &ItemStack,
+    ) -> Option<u32> {
+        let id = self.add_fresh_projectile(projectile)?;
         self.apply_on_projectile_spawned(id, stack);
-        id
+        Some(id)
     }
 
     /// `Projectile.spawnProjectile` for a mob's shot: an arrow is made from its
@@ -94,8 +98,8 @@ impl crate::game::ServerGame<'_> {
     /// shared arrow-state continuation for ordinary arrows and tridents.
     pub fn spawn_mob_projectile(&mut self, projectile: Projectile) {
         let ammo = projectile.arrow.as_ref().map(|a| a.pickup_item.clone());
-        let id = self.add_projectile(projectile);
-        if let Some(ammo) = ammo {
+        let id = self.add_fresh_projectile(projectile);
+        if let (Some(id), Some(ammo)) = (id, ammo) {
             self.apply_on_projectile_spawned(id, &ammo);
         }
     }
@@ -127,21 +131,31 @@ impl crate::game::ServerGame<'_> {
         &self,
         stack: &ItemStack,
     ) -> bool {
+        let table = &world_stations!(self).enchantments;
         stack.all_enchantments().iter().all(|(enchantment, _)| {
-            world_stations!(self)
-                .enchantments
-                .get(enchantment)
-                .is_none_or(|def| {
-                    def.effects[COMPONENT]
-                        .as_array()
-                        .into_iter()
-                        .flatten()
-                        .all(|conditional| {
-                            requirements_supported(&conditional["requirements"])
-                                && valid_ranges(&conditional["effect"])
-                                && applied(&conditional["effect"])
-                        })
-                })
+            table.get(enchantment).is_none_or(|def| {
+                def.effects[COMPONENT]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .enumerate()
+                    .all(|(index, conditional)| {
+                        requirements_supported(&conditional["requirements"])
+                            && table
+                                .entity_effect(enchantment, COMPONENT, index)
+                                .map_or_else(
+                                    || {
+                                        valid_ranges(&conditional["effect"])
+                                            && applied(&conditional["effect"])
+                                    },
+                                    |effect| {
+                                        effect.all_builtins_match(|effect| {
+                                            valid_ranges(effect) && applied(effect)
+                                        })
+                                    },
+                                )
+                    })
+            })
         })
     }
 
@@ -156,47 +170,66 @@ impl crate::game::ServerGame<'_> {
         id: u32,
         stack: &ItemStack,
     ) {
+        let table = server_world_stations!(self).enchantments.clone();
         for (enchantment, level) in stack.all_enchantments().iter() {
-            // Copied out only when the enchantment has the component: an
-            // effect may change what the next requirement reads.
-            let Some(effects) = server_world_stations!(self)
-                .enchantments
+            let level = *level;
+            let Some(entries) = table
                 .get(enchantment)
                 .and_then(|def| def.effects[COMPONENT].as_array())
-                .filter(|effects| !effects.is_empty())
-                .cloned()
             else {
                 continue;
             };
-            for conditional in &effects {
+            for (index, conditional) in entries.iter().enumerate() {
+                let bound = table.entity_effect(enchantment, COMPONENT, index);
+                let valid = bound.map_or_else(
+                    || valid_ranges(&conditional["effect"]),
+                    |node| node.all_builtins_match(valid_ranges),
+                );
                 // The live context cannot answer arbitrary entity predicates. Do not
                 // run an unsupported predicate as if it matched, or evaluate invalid ranges.
-                if !requirements_supported(&conditional["requirements"])
-                    || !valid_ranges(&conditional["effect"])
-                {
+                if !requirements_supported(&conditional["requirements"]) || !valid {
                     eprintln!(
                         "projectile_spawned refused enchantment {enchantment}: unsupported requirement context or invalid level-value range"
                     );
                     continue;
                 }
-                let Some(kind) = self.spawned_projectile(id).map(Projectile::entity_type) else {
+                let Some(projectile) = self.spawned_projectile(id) else {
                     return;
+                };
+                let kind = projectile.entity_type();
+                let position = projectile.position.components();
+                let holder = match projectile.owner {
+                    Some(Who::Mob(id)) => Some(id),
+                    Some(Who::Player) => self
+                        .player_entity_id_by_connection(projectile.guest)
+                        .map(|id| id as u32),
+                    None => None,
                 };
                 let ctx = EffectContext {
                     this: Some(kind),
                     items: Some(server_world_items!(self)),
                     ..Default::default()
                 };
-                let matches = conditional.get("requirements").is_none_or(|r| {
-                    server_world_stations!(self).enchantments.condition(
-                        r,
-                        *level,
-                        &ctx,
-                        &mut self.common.world.random,
-                    )
-                });
-                if matches {
-                    self.apply_spawned_effect(id, &conditional["effect"], *level);
+                if conditional
+                    .get("requirements")
+                    .is_none_or(|r| table.condition(r, level, &ctx, &mut self.common.world.random))
+                {
+                    if let Some(bound) = bound {
+                        let invocation = EntityEffectUse {
+                            stack,
+                            holder,
+                            slot: None,
+                            affected: id,
+                            level,
+                            position: Some(position),
+                            attack: None,
+                        };
+                        self.apply_bound_entity_effect(bound, &invocation, &mut |game, effect| {
+                            game.apply_spawned_effect(id, effect, level)
+                        });
+                    } else {
+                        self.apply_spawned_effect(id, &conditional["effect"], level);
+                    }
                 }
             }
         }

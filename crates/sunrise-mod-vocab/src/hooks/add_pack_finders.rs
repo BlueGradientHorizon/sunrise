@@ -47,7 +47,6 @@ A hidden pack still loads when selected, so pair it with `always_active` for one
 that is always on. `/datapack list` and `/datapack enable|disable` still name
 hidden data packs for operators."##]
     #[hook(
-        target = "sunrise_gameplay_common::game::native_hooks::add_pack_finders::native_add_pack_finders",
         receiver = "associated",
         context = "pack_discovery",
         dispatch = "flat",

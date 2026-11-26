@@ -46,7 +46,7 @@ fn a_piercing_bow_shoots_arrows_that_pierce_their_level() {
 #[test]
 #[ignore = "daily"]
 fn a_multishot_bow_fires_three_arrows_ten_degrees_apart() {
-    use sunrise_sim::arrows::Pickup;
+    use sunrise_sim::entities::arrows::Pickup;
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
     let mut resources = None;
     let mut game = game_with_player(&mut resources, &root);

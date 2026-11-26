@@ -195,13 +195,14 @@ pub(crate) fn run_fixture(family: Family, output: Output, dim: Dim) {
     let _ = sunrise_sim::block_contact::HOOKS
         .set(sunrise_gameplay_common::game::native_hooks::BLOCK_CONTACT_HOOKS);
     if family == Family::Knockback {
-        assert!(sunrise_level::brewing::register_mod_effects([(
-            "borrowed-panic:hit".into(),
-            0,
-            sunrise_level::brewing::Category::Neutral,
-            None,
-            FAILING_MOD.into(),
-        )]));
+        assert!(sunrise_level::brewing::register_mod_effects([
+            sunrise_level::brewing::ModEffect::new(
+                "borrowed-panic:hit",
+                0,
+                sunrise_level::brewing::Category::Neutral,
+                FAILING_MOD,
+            ),
+        ]));
     }
     let scratch = tempfile::tempdir().unwrap();
     let goal_payload = family.is_goal().then(|| Box::new(PanicToken(0xdecaf)));
@@ -210,6 +211,7 @@ pub(crate) fn run_fixture(family: Family, output: Output, dim: Dim) {
         .map(|token| token as *const PanicToken as usize);
     let probe = Arc::new(Probe {
         family,
+        retained: Mutex::default(),
         calls: AtomicUsize::new(0),
         posts: Mutex::default(),
         first_proposal: Mutex::default(),

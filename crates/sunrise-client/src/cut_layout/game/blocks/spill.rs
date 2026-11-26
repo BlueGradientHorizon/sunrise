@@ -6,6 +6,10 @@ use sunrise_level::containers::BlockEntity;
 #[cfg(test)]
 pub(crate) mod tests {
 
+    const MANY_REMOVAL_EFFECTS: u32 = 1025;
+    static REMOVAL_PANICKED: std::sync::atomic::AtomicBool =
+        std::sync::atomic::AtomicBool::new(false);
+
     struct RemovalMod(u8);
     struct RemovalPart(u8, mod_api::ItemKey);
     #[mod_api::sunrise_part]
@@ -17,25 +21,93 @@ pub(crate) mod tests {
             _: &mut dyn mod_api::LevelRandomHost,
             event: &mut mod_api::PreRemoveSideEffectsEvent<'_>,
         ) {
+            let stack = || mod_api::ItemStack::of(self.1);
+            let at = [1.25, 65.75, -2.5];
+            let effects = &mut *event.effects;
             match self.0 {
-                1 => event.keep_contents = true,
-                2 => {
-                    let key = self.1;
-                    event.spawns.push((
-                        mod_api::ItemStack::new(key, 1).unwrap(),
-                        [1.25, 65.75, -2.5],
-                    ));
-                }
-                3 => event.experience.push((10, [1.25, 65.75, -2.5])),
+                1 => effects.set_keep_contents(true),
+                2 => effects.spawn_item(stack(), at).unwrap(),
+                3 => effects.award_experience(10, at).unwrap(),
                 4 => {
-                    event.drops.push(None);
-                    let key = self.1;
-                    event
-                        .drops
-                        .push(Some(mod_api::ItemStack::new(key, 1).unwrap()));
+                    effects.drop_slot(None).unwrap();
+                    effects.drop_slot(Some(stack())).unwrap();
+                }
+                5 => {
+                    use mod_api::{BlockRemovalEffectError, StackWriteError};
+                    assert_eq!(event.entity.data_slots(), [5]);
+                    for index in 0..MANY_REMOVAL_EFFECTS {
+                        // Supply them in reverse phase order. Publication uses base slots,
+                        // extra scatter slots, positioned items, then XP.
+                        let pos = [at[0] + f64::from(index), at[1], at[2]];
+                        effects.award_experience(1, pos).unwrap();
+                        effects.spawn_item(stack(), pos).unwrap();
+                        let count = 1 + index % 2;
+                        effects
+                            .drop_slot(Some(mod_api::ItemStack::new(self.1, count).unwrap()))
+                            .unwrap();
+                        if index == 1 {
+                            let air = mod_api::ItemStack::of(
+                                mod_api::__private::item_key("minecraft:air").unwrap(),
+                            );
+                            assert_eq!(
+                                effects.drop_slot(Some(air.clone())),
+                                Err(BlockRemovalEffectError::Stack(
+                                    StackWriteError::EmptyEngineStack
+                                ))
+                            );
+                            assert_eq!(
+                                effects.spawn_item(air, pos),
+                                Err(BlockRemovalEffectError::Stack(
+                                    StackWriteError::EmptyEngineStack
+                                ))
+                            );
+                            let invalid = mod_api::ItemStack::new(self.1, u32::MAX).unwrap();
+                            assert!(matches!(
+                                effects.drop_slot(Some(invalid.clone())),
+                                Err(BlockRemovalEffectError::Stack(
+                                    StackWriteError::CountExceeded { .. }
+                                ))
+                            ));
+                            assert!(matches!(
+                                effects.spawn_item(invalid, pos),
+                                Err(BlockRemovalEffectError::Stack(
+                                    StackWriteError::CountExceeded { .. }
+                                ))
+                            ));
+                            assert_eq!(
+                                effects.spawn_item(stack(), [f64::NAN, 0.0, 0.0]),
+                                Err(BlockRemovalEffectError::NonFinitePosition)
+                            );
+                            assert_eq!(
+                                effects.award_experience(1, [0.0, f64::INFINITY, 0.0]),
+                                Err(BlockRemovalEffectError::NonFinitePosition)
+                            );
+                        }
+                    }
                 }
                 _ => {}
             }
+        }
+    }
+    struct PanickingRemovalPart(mod_api::ItemKey);
+    #[mod_api::sunrise_part]
+    impl mod_api::BlockPart for PanickingRemovalPart {}
+    #[mod_api::sunrise_part]
+    impl mod_api::BlockEntityPart for PanickingRemovalPart {
+        fn pre_remove_side_effects(
+            &self,
+            _: &mut dyn mod_api::LevelRandomHost,
+            event: &mut mod_api::PreRemoveSideEffectsEvent<'_>,
+        ) {
+            event.effects.set_keep_contents(true);
+            event.effects.drop_slot(None).unwrap();
+            event
+                .effects
+                .spawn_item(mod_api::ItemStack::of(self.0), [0.0; 3])
+                .unwrap();
+            event.effects.award_experience(1, [0.0; 3]).unwrap();
+            REMOVAL_PANICKED.store(true, std::sync::atomic::Ordering::Relaxed);
+            panic!("refuse this Part's removal effects");
         }
     }
     #[mod_api::__subscriptions]
@@ -45,6 +117,10 @@ pub(crate) mod tests {
             let diamond = r.item_key("minecraft:diamond");
             r.block_entity_part(&kind, RemovalPart(self.0, diamond))
                 .unwrap();
+            if self.0 == 5 {
+                r.block_entity_part(&kind, PanickingRemovalPart(diamond))
+                    .unwrap();
+            }
         }
     }
     /// Listens to `block_drops`: takes any break of dirt, adds 2 points to the rest.
@@ -101,10 +177,20 @@ pub(crate) mod tests {
                     .registry
                     .default_state("minecraft:stone")
                     .unwrap();
-                let mut entity =
-                    ModBlockEntity::new("removal:machine".into(), ModBlockEntityFields::default());
-                if mode == 1 {
-                    entity.items = vec![Some(ItemStack::new("minecraft:diamond", 1))];
+                let mut entity = ModBlockEntity::new(
+                    "removal:machine".into(),
+                    ModBlockEntityFields {
+                        data: vec![i32::from(mode)],
+                        ..Default::default()
+                    },
+                );
+                if matches!(mode, 1 | 5) {
+                    let item = if mode == 5 {
+                        "minecraft:gold_ingot"
+                    } else {
+                        "minecraft:diamond"
+                    };
+                    entity.items = vec![Some(ItemStack::new(item, 1))];
                     game.world.block_entities.set_mod_containers(
                         [(
                             state.0,
@@ -225,6 +311,43 @@ pub(crate) mod tests {
     }
     #[test]
     #[ignore = "daily"]
+    fn removal_effects_are_uncapped_and_refusals_are_local() {
+        if sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases(
+            "game::server_side::spill::tests::removal_effects_are_uncapped_and_refusals_are_local",
+            "SUNRISE_REMOVAL_EFFECTS_CHILD",
+            &["removal"],
+        ) {
+            return;
+        }
+        removal_outputs(5, |level, reference| {
+            assert!(REMOVAL_PANICKED.load(std::sync::atomic::Ordering::Relaxed));
+            let n = MANY_REMOVAL_EFFECTS as usize;
+            let spawns = &level.spill.spawns;
+            assert_eq!(spawns.len(), 1 + 2 * n);
+            assert_eq!(&*spawns[0].stack.item, "minecraft:gold_ingot");
+            let counts = std::iter::once(1).chain((0..MANY_REMOVAL_EFFECTS).map(|i| 1 + i % 2));
+            for (spawn, count) in spawns[..1 + n].iter().zip(counts) {
+                assert_eq!(spawn.stack.count, count);
+                assert_eq!(spawn.delay, 0);
+                let scattered = removal::drop_item_stack(reference, BlockPos::new(1, 64, 2), count);
+                assert_eq!(spawn.pos, scattered[0].pos);
+            }
+            for (index, spawn) in (0..MANY_REMOVAL_EFFECTS).zip(&spawns[1 + n..]) {
+                assert_eq!(&*spawn.stack.item, "minecraft:diamond");
+                assert_eq!(spawn.delay, 10);
+                assert_eq!(spawn.pos, [1.25 + f64::from(index), 65.75, -2.5]);
+            }
+            assert_eq!(level.spill.orbs.len(), n);
+            for (index, (at, value, merge)) in (0..MANY_REMOVAL_EFFECTS).zip(&level.spill.orbs) {
+                assert_eq!(*at, [1.25 + f64::from(index), 65.75, -2.5]);
+                assert_eq!(*value, 1);
+                assert_eq!(*merge, reference.next_int_bound(40).unwrap());
+            }
+            assert_eq!(level.world.random.next_int(), reference.next_int());
+        });
+    }
+    #[test]
+    #[ignore = "daily"]
     fn removal_empty_slot_draws_three_doubles_without_spawning() {
         removal_outputs(4, |level, reference| {
             // Containers.dropItemStack draws x, y, z before its isEmpty loop.
@@ -244,6 +367,17 @@ pub(crate) mod tests {
             assert_eq!(level.spill.spawns.len(), 1);
             assert_eq!(level.spill.spawns[0].pos, at);
             assert_eq!(level.spill.spawns[0].stack.count, 1);
+            assert_eq!(level.world.random.next_int(), reference.next_int());
+
+            // Engine-owned contents can contain air; Containers treats it as an empty slot.
+            level.drop_item_stack(
+                BlockPos::new(1, 64, 2),
+                Some(ItemStack::new("minecraft:air", 1)),
+            );
+            for _ in 0..3 {
+                reference.next_double();
+            }
+            assert_eq!(level.spill.spawns.len(), 1);
             assert_eq!(level.world.random.next_int(), reference.next_int());
         });
     }
@@ -573,7 +707,7 @@ pub(crate) mod tests {
     #[ignore = "daily"]
     fn a_block_entity_part_gives_back_what_it_held_when_removed() {
         use mod_api::Holder;
-        use mod_platform::__private::part_tests::{HOARD, HOARD_ASKED, game_thread};
+        use mod_platform::__private::part_tests::{HOARD_ASKED, game_thread, hoard_key};
         use std::sync::Arc;
         use std::sync::atomic::Ordering;
         use sunrise_level::chunk::Chunk;
@@ -608,7 +742,7 @@ pub(crate) mod tests {
                 game.world.block_entities.insert(key, entity);
                 let holder = Holder::BlockEntity([pos.x, pos.y, pos.z]);
                 let host: &mut dyn mod_api::Host = game;
-                HOARD.set(host, holder, hoard).unwrap();
+                hoard_key().set(host, holder, hoard).unwrap();
                 let (spawns, random) = game.with_level(|_, level, _| {
                     let mut scatter = level.world.random.clone();
                     level.remove_entity(pos, stone, side_effects);
@@ -648,7 +782,7 @@ pub(crate) mod tests {
     #[ignore = "daily"]
     fn a_block_entity_removing_itself_in_its_tick_runs_resident_removal() {
         use mod_api::Holder;
-        use mod_platform::__private::part_tests::{HOARD, HOARD_ASKED};
+        use mod_platform::__private::part_tests::{HOARD_ASKED, hoard_key};
         use std::sync::Arc;
         use std::sync::atomic::Ordering;
         use sunrise_level::chunk::Chunk;
@@ -695,7 +829,7 @@ pub(crate) mod tests {
             );
             let holder = Holder::BlockEntity([pos.x, pos.y, pos.z]);
             let host: &mut dyn mod_api::Host = game;
-            HOARD.set(host, holder, 5).unwrap();
+            hoard_key().set(host, holder, 5).unwrap();
             let asked = HOARD_ASKED.load(Ordering::Relaxed);
             let dropped = game.dropped.len();
             assert!(game.tick_mod_block_entity(key));

@@ -8,7 +8,6 @@ pub trait Hooks {
     /// (`EmiExclusionArea`, JEI's `IGuiContainerHandler.getGuiExtraAreas`).
     /// Client-side.
     #[hook(
-        target = "sunrise_client_gameplay::game::native_hooks::screen_exclusion_areas::ClientGame<'_>::native_screen_exclusion_areas",
         receiver = "read",
         dispatch = "flat",
         side = "client",

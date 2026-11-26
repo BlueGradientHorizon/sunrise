@@ -2,7 +2,7 @@
 use super::*;
 use crate::game::{
     native_data_maps_common, native_hooks::supports_enchantment::GameHooks as _,
-    native_world_read_common, side_ops::tables::SideOps as _,
+    side_ops::tables::SideOps as _,
 };
 use std::sync::LazyLock;
 use sunrise_core::nbt::Tag;
@@ -262,23 +262,37 @@ pub trait WorldTablesExt<'__sg>: crate::game::SideGame<'__sg> {
         loaded_data_maps(self.side_world_tables())?.entries(registry, map)
     }
 
-    fn biome_key(&self, id: &str) -> Option<mod_api::BiomeKey> {
+    fn loaded_biome_keys(&self) -> Option<&mod_api::__private::BiomeKeys> {
         loaded_data_maps(self.side_world_tables())
-            .ok()?
-            .biome_keys
-            .key(id)
+            .ok()
+            .map(|maps| &*maps.biome_keys)
     }
 
-    fn biome_key_id<'s>(
-        &'s self,
-        key: mod_api::BiomeKey,
-    ) -> std::result::Result<&'s str, mod_api::BiomeKeyError>
-    where
-        '__sg: 's,
-    {
+    fn biome(
+        &self,
+        id: &str,
+    ) -> std::result::Result<mod_api::BiomeView<'_>, mod_api::BiomeKeyError> {
         let maps = loaded_data_maps(self.side_world_tables())
             .map_err(|_| mod_api::BiomeKeyError::Unavailable)?;
-        maps.biome_keys.id(key)
+        maps.biome_keys.view(id)
+    }
+
+    fn biome_view(
+        &self,
+        key: &mod_api::BiomeKey,
+    ) -> std::result::Result<mod_api::BiomeView<'_>, mod_api::BiomeKeyError> {
+        let maps = loaded_data_maps(self.side_world_tables())
+            .map_err(|_| mod_api::BiomeKeyError::Unavailable)?;
+        maps.biome_keys.view_key(key)
+    }
+
+    fn biome_view_id(
+        &self,
+        view: mod_api::BiomeView<'_>,
+    ) -> std::result::Result<&str, mod_api::BiomeKeyError> {
+        let maps = loaded_data_maps(self.side_world_tables())
+            .map_err(|_| mod_api::BiomeKeyError::Unavailable)?;
+        maps.biome_keys.id(view)
     }
 
     fn mod_recipe_property_contains(&self, set: &str, item: mod_api::ItemKey) -> bool {
@@ -292,7 +306,10 @@ pub trait WorldTablesExt<'__sg>: crate::game::SideGame<'__sg> {
             if let Some(server) = &self.recipe_tables.server_properties.sets
                 && let Some(item_ids) = self.side_state().side_remote_item_registry()
             {
-                for (key, ids) in server.iter().filter(|(k, _)| !k.starts_with("minecraft:")) {
+                for (key, ids) in server
+                    .iter()
+                    .filter(|(k, _)| sunrise_sim::lan::recipes::vanilla_property_set(k).is_none())
+                {
                     let items = ids
                         .iter()
                         .filter_map(|id| item_ids?.name(*id))
@@ -345,10 +362,6 @@ pub trait WorldTablesExt<'__sg>: crate::game::SideGame<'__sg> {
         self.side_tags_ready().then(|| self.items())
     }
 
-    fn block_tag_sets(&self, items: &Items) -> HashMap<String, HashSet<mod_api::BlockKey>> {
-        native_world_read_common::prepare_block_tags(&items.block_tags)
-    }
-
     fn resolve_level_infiniburn(
         &self,
         facts: &sunrise_world::dimension_type::DimensionFacts,
@@ -357,6 +370,14 @@ pub trait WorldTablesExt<'__sg>: crate::game::SideGame<'__sg> {
             .infiniburn
             .strip_prefix('#')
             .unwrap_or(&facts.infiniburn);
+        self.resolve_block_tag(name)
+    }
+
+    fn resolve_golem_heads(&self) -> Arc<BlockSet> {
+        self.resolve_block_tag("sunrise:golem_heads")
+    }
+
+    fn resolve_block_tag(&self, name: &str) -> Arc<BlockSet> {
         let mut set = BlockSet::default();
         if let Some(members) = self.items().block_tags.get(name) {
             for member in members {
@@ -388,7 +409,6 @@ pub trait WorldTablesExt<'__sg>: crate::game::SideGame<'__sg> {
         }
         let registry = self.pack.assets.registry;
         let block_tags = &items.block_tags;
-        let tags = self.block_tag_sets(items);
         let parts = mod_api::__private::prepare_parts(
             block_tags,
             &items.item_tags,
@@ -416,7 +436,6 @@ pub trait WorldTablesExt<'__sg>: crate::game::SideGame<'__sg> {
         Ok(PreparedParts {
             cauldrons,
             block_states,
-            tags,
             parts,
         })
     }
@@ -451,7 +470,6 @@ pub trait WorldTablesExt<'__sg>: crate::game::SideGame<'__sg> {
             );
         }
         api_values::install_block_states(&self.tick, prepared.block_states);
-        native_world_read_common::install_block_tags(prepared.tags);
         api_values::install_resolved_parts(&self.tick, prepared.parts);
         self.mark_collision_shape_states();
         self.side_resolve_block_paths();

@@ -15,7 +15,6 @@ pub trait Hooks {
 
 - **`console_line(host, event)`** observes operator log lines on dedicated and integrated servers. The server thread delivers them in order at the next tick's start. The queue keeps the oldest 4096 lines and drops newer ones until the next drain; the first event of that batch reports the count in `dropped`, with zero on every other event. It keeps 8192 bytes of message and 128 of thread name per line at character boundaries. Nothing is captured or queued while idle, and a listener's own log calls are not captured. Neither Paper nor NeoForge has a matching event; a Java mod or plugin can attach a Log4j appender."#]
     #[hook(
-        target = "sunrise_gameplay::game::native_hooks::console_line::ServerGame<'_>::native_console_line",
         dispatch = "flat",
         side = "server",
         contract = "listen",

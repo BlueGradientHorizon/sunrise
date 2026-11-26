@@ -12,8 +12,8 @@ use sunrise_game_data::{
     scoreboard::bracketed,
     text::{self, Text},
 };
-use sunrise_gameplay_common::game::function_pack_stack::PackStack;
-use sunrise_level::datapack::{self, DataPack, DataStore, Function};
+pub use sunrise_gameplay_common::game::function_pack_stack::PackStack;
+use sunrise_level::datapack::{self, DataPack, DataPacks, DataStore, Function};
 use sunrise_sim::save;
 
 /// A `TimerQueue` event.
@@ -28,6 +28,7 @@ pub struct Scheduled {
 pub struct FnState {
     pub store: DataStore,
     pub packs: Vec<Arc<DataPack>>,
+    pub data: Arc<DataPacks>,
     /// Enabled pack ids, in load order (later overrides earlier).
     pub enabled: Vec<String>,
     pub loaded: bool,
@@ -62,8 +63,8 @@ pub(in crate::game) struct PreparedFunctionCall {
     call: std::sync::Arc<FunctionCall>,
 }
 impl PreparedFunctionCall {
-    fn matches(&self, ctx: &Context, source: Source) -> bool {
-        let s = self.source;
+    fn matches(&self, ctx: &Context, source: &Source) -> bool {
+        let s = &self.source;
         self.invocation == ctx as *const Context as usize
             && s.entity == source.entity
             && s.pos.map(f64::to_bits) == source.pos.map(f64::to_bits)
@@ -87,19 +88,40 @@ pub fn pack_stack(
     enabled_features: &[String],
     additional: &[Arc<DataPack>],
 ) -> PackStack {
-    let builtin = (!vanilla_disabled)
-        .then(|| DataPack::from_source("vanilla".into(), builtin_source.clone()));
     let packs = sunrise_gameplay_common::game::pack_discovery::data_repository(
         world_root, resources, additional,
     );
     let enabled = datapack::enabled_ids(world_root, &packs, enabled_features);
-    PackStack {
-        content: DataPack::from_source("sunrise-content".into(), content_source.clone()),
-        builtin,
-        packs: packs.into_iter().map(Arc::new).collect(),
+    PackStack::new(
+        builtin_source,
+        content_source,
+        vanilla_disabled,
+        packs,
         enabled,
-        features: enabled_features.to_vec(),
-    }
+        enabled_features,
+    )
+}
+
+/// Build the Create World stack from the temporary datapacks folder and the resources root.
+pub(in crate::game) fn creation_stack(
+    pack_dir: Option<&std::path::Path>,
+    resources: &std::path::Path,
+    builtin_source: &sunrise_assets::resource_source::ResourceSource,
+    content_source: &sunrise_assets::resource_source::ResourceSource,
+    selected: &[String],
+    additional: &[Arc<DataPack>],
+) -> PackStack {
+    let packs = sunrise_gameplay_common::game::pack_discovery::data_repository_in(
+        pack_dir.unwrap_or(std::path::Path::new("")),
+        resources,
+        additional,
+    );
+    let enabled = selected
+        .iter()
+        .filter(|id| packs.iter().any(|pack| &pack.id == *id))
+        .cloned()
+        .collect();
+    PackStack::new(builtin_source, content_source, false, packs, enabled, &[])
 }
 
 pub(in crate::game) struct OverlayFiles {
@@ -108,38 +130,9 @@ pub(in crate::game) struct OverlayFiles {
     pub(in crate::game) priority_layers: Vec<sunrise_world::loot::RecipePriorityLayer>,
 }
 
-/// The files the content tables load from: the world's enabled packs
-/// with what native mods contribute for this load
-/// (`native_data_pack_files`) below them. `PackOverlay::top` is a path's last
-/// file, so a pack's file still overrides a mod's for the same path, and a
-/// later contribution overrides an earlier one, as packs do. `Game` builds
-/// its tables through here on a world's first open and on `/reload`, so the
-/// mods are asked once per load.
-pub(in crate::game) fn overlay_files(
-    stack: &PackStack,
-    contributed: Vec<(String, Vec<u8>)>,
-) -> OverlayFiles {
-    // Passive content replaces prepared data, native contributions sit over
-    // it, and the world's selected packs retain the highest priority.
-    let mut store = DataStore::load(&[&stack.content]);
-    for (path, bytes) in contributed {
-        if !sunrise_sim::lan::data::is_pack_registry_file(&path)
-            && let Err(e) = serde_json::from_slice::<Box<serde_json::value::RawValue>>(&bytes)
-        {
-            log::warn!("Sunrise: a native mod's data pack file {path} is not JSON, skipped: {e}");
-            continue;
-        }
-        store.file_errors.remove(&path);
-        store.files.entry(path).or_default().push(bytes);
-    }
-    let packs = stack.enabled_packs().collect::<Vec<_>>();
-    let world = DataStore::load(&packs);
-    for (path, versions) in world.files {
-        store.file_errors.remove(&path);
-        store.files.entry(path).or_default().extend(versions);
-    }
-    store.file_errors.extend(world.file_errors);
-    store.priority_layers.extend(world.priority_layers);
+/// Collect the content files in pack order so the last layer supplies each winning file.
+pub(in crate::game) fn overlay_files(data: &DataPacks) -> OverlayFiles {
+    let store = DataStore::load(data);
     OverlayFiles {
         files: store.files.into_iter().collect(),
         read_errors: store.file_errors,
@@ -148,21 +141,33 @@ pub(in crate::game) fn overlay_files(
 }
 
 impl FnState {
+    pub(in crate::game) fn enabled_packs(&self) -> impl DoubleEndedIterator<Item = &DataPack> {
+        self.enabled.iter().filter_map(|id| {
+            self.packs
+                .iter()
+                .find(|pack| &pack.id == id)
+                .map(Arc::as_ref)
+        })
+    }
+
     /// The enabled world packs in resource priority order, highest first: a
     /// later selected pack overrides an earlier one (`PackRepository` order).
-    pub(in crate::game) fn pack_sources(
-        &self,
-    ) -> impl DoubleEndedIterator<Item = &sunrise_assets::resource_source::ResourceSource> {
-        self.enabled
-            .iter()
-            .rev()
-            .filter_map(|id| self.packs.iter().find(|pack| &pack.id == id))
-            .map(|pack| pack.source())
+    pub(in crate::game) fn enabled_packs_highest_first(&self) -> impl Iterator<Item = &DataPack> {
+        self.enabled.iter().rev().filter_map(|id| {
+            self.packs
+                .iter()
+                .find(|pack| &pack.id == id)
+                .map(Arc::as_ref)
+        })
     }
 
     /// The highest enabled world pack providing this data resource.
-    pub fn data_resource(&self, name: &str) -> Option<sunrise_assets::resource_source::Resource> {
-        self.pack_sources()
+    pub fn data_resource(
+        &self,
+        name: &str,
+    ) -> Option<sunrise_assets::resource_source::Resource> {
+        self.enabled_packs_highest_first()
+            .map(DataPack::source)
             .find(|source| source.contains(name))
             .map(|source| {
                 sunrise_assets::resource_source::Resource::file(source.clone(), name.to_owned())
@@ -203,11 +208,12 @@ impl crate::game::ServerGame<'_> {
     pub fn open_world_datapacks(
         &mut self,
         enabled_features: &[String],
-    ) -> Result<PackStack, ReloadStageError> {
+        prepared: Option<&mut super::world_loading::PreparedWorld>,
+    ) -> Result<(PackStack, Option<super::world_loading::PreparedTerrain>), ReloadStageError> {
         // Function admission parses commands immediately, including block arguments.
         // Populate static registries on first open; admission synchronizes pack IDs.
         self.build_registries();
-        self.reload_datapacks(false, enabled_features)
+        self.load_datapacks(false, enabled_features, prepared)
     }
 
     pub fn reload_datapacks(
@@ -215,6 +221,16 @@ impl crate::game::ServerGame<'_> {
         run_load: bool,
         enabled_features: &[String],
     ) -> Result<PackStack, ReloadStageError> {
+        self.load_datapacks(run_load, enabled_features, None)
+            .map(|(stack, _)| stack)
+    }
+
+    fn load_datapacks(
+        &mut self,
+        run_load: bool,
+        enabled_features: &[String],
+        opening: Option<&mut super::world_loading::PreparedWorld>,
+    ) -> Result<(PackStack, Option<super::world_loading::PreparedTerrain>), ReloadStageError> {
         let opening_world = !run_load;
         sunrise_sim::mod_content::check_jars(
             &self.common.options.resources,
@@ -222,8 +238,7 @@ impl crate::game::ServerGame<'_> {
         )
         .map_err(|error| {
             ReloadStageError::OriginalJars(
-                sunrise_gameplay_common::game::api_values::TryIntoApi::try_into_api(&error)
-                    .unwrap(),
+                sunrise_gameplay_common::game::api_values::TryIntoApi::try_into_api(&error).unwrap(),
             )
         })?;
         let next_root = self
@@ -232,23 +247,26 @@ impl crate::game::ServerGame<'_> {
             .map_err(|error| ReloadStageError::DataSource(error.to_string()))?;
         let resources = next_root
             .as_ref()
-            .map_or(self.common.options.resources.as_path(), |root| {
-                root.prepared()
-            })
+            .map_or(self.common.options.resources.as_path(), |root| root.prepared())
             .to_path_buf();
         let data = next_root
             .as_ref()
             .map_or(&self.common.pack.data_source, |root| root.data());
         let changes = next_root
             .as_ref()
-            .map_or(&self.common.pack.data_changes, |root| root.data_changes());
-        let additional =
-            sunrise_gameplay_common::game::pack_discovery::data_packs(&self.common.mods);
+            .map_or(&self.common.pack.data_changes, |root| root.data_changes())
+            .clone();
+        if opening_world {
+            // `DataPackConfig` keeps `vanilla` in Disabled across opens.
+            self.server.cmds.0.vanilla_disabled =
+                datapack::vanilla_disabled(&self.server.world_root);
+        }
+        let additional = sunrise_gameplay_common::game::pack_discovery::data_packs(&self.common.mods);
         let stack = pack_stack(
             &self.server.world_root,
             &resources,
             data,
-            changes,
+            &changes,
             self.server.cmds.0.vanilla_disabled,
             enabled_features,
             &additional,
@@ -258,7 +276,7 @@ impl crate::game::ServerGame<'_> {
             .common
             .prepare_loop_context(&resources)
             .map_err(|error| ReloadStageError::DataSource(error.to_string()))?;
-        let world = if run_load && self.common.is_logical_server() {
+        let world = if run_load {
             Some(
                 self.prepare_world_reload(&stack, &resources)
                     .map_err(|error| ReloadStageError::DataSource(error.to_string()))?,
@@ -266,21 +284,42 @@ impl crate::game::ServerGame<'_> {
         } else {
             None
         };
+        let mut terrain = None;
         let initial = if opening_world {
             // This load warns again about saved attribute bases clamped to their bounds (#3728).
             sunrise_sim::living_attributes::LOAD_CLAMPS.begin_load();
             let tables = self
                 .stage_world_tables(&stack, false, &resources)
                 .map_err(|error| ReloadStageError::DataSource(error.to_string()))?;
+            let biomes = tables.tables.as_ref().map(|tables| &tables.biomes);
+            if let Some(opening) = opening {
+                let mut options = self.common.options.clone();
+                options.resources.clone_from(&resources);
+                let mut pack = self.common.pack.clone();
+                pack.data_changes = changes;
+                pack.additional_data = additional.clone().into();
+                terrain = Some(
+                    opening
+                        .prepare_terrain(
+                            &self.common.res,
+                            &pack,
+                            &options,
+                            &self.server.settings,
+                            biomes.expect("opening stages the biome registry"),
+                        )
+                        .map_err(|error| ReloadStageError::DataSource(error.to_string()))?,
+                );
+            }
             let wire = super::lan::sync::prepare_world_sync_data(
                 &resources,
                 &self.common.res.core.item_data,
-                &super::pack_files(&tables.tables),
+                &sunrise_gameplay_common::game::pack_files(&tables.tables),
                 &tables.health.damage,
-                tables.tables.as_ref().map_or_else(
-                    || self.common.res.shared_items(),
-                    |tables| tables.items.clone(),
-                ),
+                biomes.map(|biomes| (biomes.table.clone(), biomes.differs_from_preload())),
+                tables
+                    .tables
+                    .as_ref()
+                    .map_or_else(|| self.common.res.shared_items(), |tables| tables.items.clone()),
                 tables
                     .tables
                     .as_ref()
@@ -319,11 +358,16 @@ impl crate::game::ServerGame<'_> {
         if let Some(world) = world {
             self.install_world_tables(world);
         } else if let Some((initial, wire)) = initial {
+            if let Some(terrain) = &terrain {
+                self.server.level_shapes = terrain.shapes.clone();
+                self.common.end.set_locator(terrain.locator.clone());
+                self.share_spawn_conditions();
+            }
             self.open_world_tables(initial)
                 .map_err(|error| ReloadStageError::DataSource(error.to_string()))?;
             super::lan::sync::install_world_sync_data(wire);
         }
-        self.apply_server_reload(prepared, &stack, enabled_features);
+        self.apply_server_reload(prepared, enabled_features);
         self.run_native_advancement_grants();
         // The schedule is the world's live `TimerQueue` `SavedData`, not pack
         // content: firing an event (`TimerQueue.tick`) and `/schedule clear`
@@ -334,17 +378,13 @@ impl crate::game::ServerGame<'_> {
             self.server.fns.0.schedule_loaded = true;
             self.load_schedule();
         }
-        Ok(stack)
+        Ok((stack, terrain))
     }
     /// `CommandFunction.parseCommand`: compile ordinary lines without running them.
     /// Macro lines are parsed
     /// only after substitution, but ordinary lines in a macro file still
     /// have to compile (`CommandFunction.fromLines`).
-    pub(in crate::game::server_side) fn admit_store(
-        &mut self,
-        mut store: DataStore,
-        stack: &PackStack,
-    ) {
+    pub(in crate::game::server_side) fn admit_store(&mut self, mut store: DataStore) {
         // The installed candidate already selected and checked the same winners
         // gameplay uses, including the native contributions.
         if let Some(tables) = &self.server.world_tables.0 {
@@ -356,6 +396,7 @@ impl crate::game::ServerGame<'_> {
             };
             store.predicates = copy(tables.loot.predicates());
             store.item_modifiers = copy(tables.loot.item_modifiers());
+            store.slot_sources = copy(tables.loot.slot_sources());
         }
         self.sync_enchantment_registries();
         // A function's `loot ... loot <id>` names the reloaded packs' tables.
@@ -412,130 +453,110 @@ impl crate::game::ServerGame<'_> {
             log::warn!("Sunrise: failed to load function {id}: {e}");
         }
         self.server.fns.0.store = store;
-        self.sync_function_registries(stack);
+        self.sync_function_registries();
     }
     pub fn save_datapack_settings(&self) {
-        let disabled: Vec<&String> = self
-            .server
-            .fns
-            .0
+        let disabled: Vec<&str> = self
+            .server.fns.0
             .packs
             .iter()
             .filter(|p| !self.server.fns.0.enabled.contains(&p.id))
-            .map(|p| &p.id)
+            .map(|p| p.id.as_str())
+            .chain(self.server.cmds.0.vanilla_disabled.then_some("vanilla"))
             .collect();
         let json = serde_json::json!({"enabled": self.server.fns.0.enabled, "disabled": disabled});
         let _ = std::fs::write(self.datapack_settings_path(), json.to_string());
     }
-    pub fn sync_function_registries(&mut self, stack: &PackStack) {
+    pub fn sync_function_registries(&mut self) {
         self.sync_schedule_registry();
         self.sync_enchantment_registries();
         let reg = &mut self.common.ui.registries;
         reg.functions = self.server.fns.0.store.functions.keys().cloned().collect();
-        reg.function_tags = self
-            .server
-            .fns
-            .0
-            .store
-            .function_tags
-            .keys()
-            .cloned()
-            .collect();
+        reg.function_tags = self.server.fns.0.store.function_tags.keys().cloned().collect();
         reg.predicates = self.server.fns.0.store.predicates.keys().cloned().collect();
-        reg.item_modifiers = self
-            .server
-            .fns
-            .0
-            .store
-            .item_modifiers
-            .keys()
-            .cloned()
-            .collect();
+        reg.item_modifiers = self.server.fns.0.store.item_modifiers.keys().cloned().collect();
         let sources = reg
             .by_registry
             .entry("minecraft:slot_source".into())
             .or_default();
-        sources.ids = self
-            .server
-            .fns
-            .0
-            .store
-            .slot_sources
-            .keys()
-            .cloned()
-            .collect();
+        sources.ids = self.server.fns.0.store.slot_sources.keys().cloned().collect();
         sources.tags = self
-            .server
-            .fns
-            .0
+            .server.fns.0
             .store
             .slot_source_tags
             .keys()
             .filter(|id| self.server.fns.0.store.slot_source_tag(id).is_ok())
             .cloned()
             .collect();
-        reg.schedules = self
-            .server
-            .fns
-            .0
-            .schedule
-            .iter()
-            .map(|s| s.id.clone())
-            .collect();
+        reg.schedules = self.server.fns.0.schedule.iter().map(|s| s.id.clone()).collect();
 
-        reg.datapacks_enabled = std::iter::once("vanilla".to_owned())
+        reg.datapacks_enabled = (!self.server.cmds.0.vanilla_disabled)
+            .then(|| "vanilla".to_owned())
+            .into_iter()
             .chain(self.server.fns.0.enabled.iter().cloned())
             .collect();
         reg.datapacks_disabled = self
-            .server
-            .fns
-            .0
+            .server.fns.0
             .packs
             .iter()
             .filter(|p| !self.server.fns.0.enabled.contains(&p.id))
             .map(|p| p.id.clone())
+            .chain(self.server.cmds.0.vanilla_disabled.then(|| "vanilla".to_owned()))
             .collect();
         // A pack's worldgen ids join the completion registries
         // (`command-registries.json` lists only the game's own), and so do
         // its worldgen tag ids for the `#tag` completions. The packs are the
         // ones the world's worldgen is built from.
-        let enabled: Vec<_> = stack.enabled_packs().collect();
-        let (overrides, _) = sunrise_level::datapack::worldgen_overrides(&enabled, |_| true);
-        for (bundle, registry) in [
-            ("biomes", "minecraft:worldgen/biome"),
-            ("structures", "minecraft:worldgen/structure"),
-            ("structure_sets", "minecraft:worldgen/structure_set"),
-            ("template_pools", "minecraft:worldgen/template_pool"),
-            ("processor_lists", "minecraft:worldgen/processor_list"),
-        ] {
-            let entry = reg.by_registry.entry(registry.to_owned()).or_default();
-            for (id, _) in overrides.entries(bundle) {
-                if !entry.ids.contains(&id.to_owned()) {
-                    entry.ids.push(id.to_owned());
+        // World load checks condition errors before these completions read the accepted IDs.
+        if let Some(tables) = &self.server.world_tables.0 {
+            let (overrides, _) =
+                sunrise_level::datapack::worldgen_overrides(&self.server.fns.0.data, &tables.conditions);
+            for (bundle, registry) in [
+                ("biomes", "minecraft:worldgen/biome"),
+                ("structures", "minecraft:worldgen/structure"),
+                ("structure_sets", "minecraft:worldgen/structure_set"),
+                ("template_pools", "minecraft:worldgen/template_pool"),
+                ("processor_lists", "minecraft:worldgen/processor_list"),
+            ] {
+                let entry = reg.by_registry.entry(registry.to_owned()).or_default();
+                for (id, _) in overrides.entries(bundle) {
+                    if !entry.ids.contains(&id.to_owned()) {
+                        entry.ids.push(id.to_owned());
+                    }
+                }
+                entry.ids.sort();
+            }
+            let entry = reg
+                .by_registry
+                .entry("minecraft:worldgen/biome".to_owned())
+                .or_default();
+            for (id, _, _) in overrides.tags("biome_tags") {
+                if !entry.tags.contains(&id.to_owned()) {
+                    entry.tags.push(id.to_owned());
                 }
             }
+            if let Some(biomes) = &self.common.world_biomes {
+                entry.ids = biomes.registry_order().into_iter().map(str::to_owned).collect();
+            }
             entry.ids.sort();
-        }
-        let entry = reg
-            .by_registry
-            .entry("minecraft:worldgen/biome".to_owned())
-            .or_default();
-        for (id, _, _) in overrides.tags("biome_tags") {
-            if !entry.tags.contains(&id.to_owned()) {
-                entry.tags.push(id.to_owned());
+            entry.tags = tables
+                .pack_tags
+                .get("worldgen/biome")
+                .into_iter()
+                .flat_map(|tags| tags.keys().cloned())
+                .collect();
+            entry.tags.sort();
+            let entry = reg
+                .by_registry
+                .entry("minecraft:worldgen/structure".to_owned())
+                .or_default();
+            for (id, _, _) in overrides.tags("structure_tags") {
+                if !entry.tags.contains(&id.to_owned()) {
+                    entry.tags.push(id.to_owned());
+                }
             }
+            entry.tags.sort();
         }
-        entry.tags.sort();
-        let entry = reg
-            .by_registry
-            .entry("minecraft:worldgen/structure".to_owned())
-            .or_default();
-        for (id, _, _) in overrides.tags("structure_tags") {
-            if !entry.tags.contains(&id.to_owned()) {
-                entry.tags.push(id.to_owned());
-            }
-        }
-        entry.tags.sort();
     }
 
     fn sync_schedule_registry(&mut self) {
@@ -622,19 +643,18 @@ impl crate::game::ServerGame<'_> {
     /// reload, then the `#minecraft:tick` ones, before the levels tick (and
     /// before the game time moves on).
     pub(in crate::game::server_side) fn tick_functions(&mut self) {
-        if !self.common.is_logical_server() {
-            return;
-        }
+        // Load the lazy scoreboard and command storage before a load tag writes to them.
+        self.load_scoreboard();
         self.server.exec.0 = ExecState::default();
         let source = self.server_source();
         if self.server.fns.0.load_pending {
             self.server.fns.0.load_pending = false;
             for f in self.server.fns.0.store.tag_functions("minecraft:load") {
-                self.run_function_by_id(&f, None, source);
+                self.run_function_by_id(&f, None, source.clone());
             }
         }
         for f in self.server.fns.0.store.tag_functions("minecraft:tick") {
-            self.run_function_by_id(&f, None, source);
+            self.run_function_by_id(&f, None, source.clone());
         }
     }
     /// `ServerLevel.tickTime`'s `getScheduledEvents().tick`: the scheduled
@@ -663,10 +683,10 @@ impl crate::game::ServerGame<'_> {
             match event.id.strip_prefix('#') {
                 Some(tag) => {
                     for f in self.server.fns.0.store.tag_functions(tag) {
-                        self.run_function_by_id(&f, None, source);
+                        self.run_function_by_id(&f, None, source.clone());
                     }
                 }
-                None => self.run_function_by_id(&event.id, None, source),
+                None => self.run_function_by_id(&event.id, None, source.clone()),
             }
         }
     }
@@ -755,7 +775,7 @@ impl crate::game::ServerGame<'_> {
             ..source
         };
         for line in lines {
-            let _ = self.execute_line(&line, inner);
+            let _ = self.execute_line(&line, inner.clone());
             if self.server.exec.0.returned.is_some() {
                 break;
             }
@@ -857,10 +877,11 @@ impl crate::game::ServerGame<'_> {
         let source = self
             .server
             .command_source
+            .clone()
             .unwrap_or_else(|| self.player_source());
         let mut out = Vec::new();
         for f in functions {
-            out.push(match self.run_function(&f, args, source)? {
+            out.push(match self.run_function(&f, args, source.clone())? {
                 Outcome::NoReturn => None,
                 Outcome::Value(v) => Some(v),
                 Outcome::Fail => Some(0),
@@ -877,6 +898,7 @@ impl crate::game::ServerGame<'_> {
         let source = self
             .server
             .command_source
+            .clone()
             .unwrap_or_else(|| self.player_source());
         let call = if self
             .server
@@ -884,7 +906,7 @@ impl crate::game::ServerGame<'_> {
             .0
             .prepared_function
             .as_ref()
-            .is_some_and(|p| p.matches(ctx, source))
+            .is_some_and(|p| p.matches(ctx, &source))
         {
             std::sync::Arc::unwrap_or_clone(
                 self.server.exec.0.prepared_function.take().unwrap().call,
@@ -968,12 +990,13 @@ impl crate::game::ServerGame<'_> {
         let source = self
             .server
             .command_source
+            .clone()
             .unwrap_or_else(|| self.player_source());
         let mut sum: i32 = 0;
         let mut any = false;
         let mut failed = false;
         for f in functions {
-            match self.run_function(&f, args.as_ref(), source)? {
+            match self.run_function(&f, args.as_ref(), source.clone())? {
                 Outcome::NoReturn => {}
                 Outcome::Value(v) => {
                     any = true;
@@ -1037,19 +1060,21 @@ impl crate::game::ServerGame<'_> {
         }
         // No start or slot is published until the existing validation succeeds.
         let call = self
-            .with_source(sources[0], |g| g.prepare_function_call(ctx))
+            .with_source(sources[0].clone(), |g| g.prepare_function_call(ctx))
             .ok()??;
         let call = std::sync::Arc::new(call);
         let tasks: Vec<_> = sources
             .iter()
-            .map(|&source| PreparedFunctionCall {
+            .map(|source| PreparedFunctionCall {
                 invocation: ctx as *const Context as usize,
-                source,
+                source: source.clone(),
                 call: call.clone(),
             })
             .collect();
         for task in &tasks {
-            self.with_source(task.source, |g| g.start_function_call(&task.call.functions));
+            self.with_source(task.source.clone(), |g| {
+                g.start_function_call(&task.call.functions)
+            });
         }
         Some(tasks)
     }
@@ -1170,11 +1195,11 @@ impl crate::game::ServerGame<'_> {
             .packs
             .iter()
             .find(|p| p.id == id)
-            .map_or_else(|| "Default data pack".to_owned(), |p| p.description());
+            .map_or_else(|| Text::literal("Default data pack"), |p| p.description());
         let style = text::Style {
-            hover: Some(std::sync::Arc::new(Text::literal(format!(
-                "{id}\n{description}"
-            )))),
+            hover: Some(std::sync::Arc::new(
+                Text::literal(format!("{id}\n")).append(description),
+            )),
             ..style
         };
         let source = if id == "vanilla" {
@@ -1301,14 +1326,60 @@ impl crate::game::ServerGame<'_> {
             })
             .unwrap_or_default()
     }
+
+    /// Rescan the repository, retaining the selection of packs still present.
+    fn reload_pack_repository(&mut self) {
+        let additional = sunrise_gameplay_common::game::pack_discovery::data_packs(&self.common.mods);
+        let packs = sunrise_gameplay_common::game::pack_discovery::data_repository(
+            &self.server.world_root,
+            &self.common.options.resources,
+            &additional,
+        );
+        self.server.fns.0.packs = packs.into_iter().map(Arc::new).collect();
+        self.server.fns.0.enabled =
+            datapack::selected_ids(self.server.fns.0.packs.iter().map(Arc::as_ref), &self.server.fns.0.enabled);
+    }
+    /// Check the pack's availability, selection and feature flags for this operation.
+    fn get_pack(&self, name: &str, enabling: bool, selected: &[String]) -> R<()> {
+        if name != "vanilla" && !self.server.fns.0.packs.iter().any(|p| p.id == name) {
+            return Err(err("commands.datapack.unknown", &[&name]));
+        }
+        let on = selected.iter().any(|p| p == name);
+        if enabling && on {
+            return Err(err("commands.datapack.enable.failed", &[&name]));
+        }
+        if !enabling && !on {
+            return Err(err("commands.datapack.disable.failed", &[&name]));
+        }
+        if !enabling
+            && self
+                .server.fns.0
+                .packs
+                .iter()
+                .any(|pack| pack.id == name && pack.is_feature() && !pack.features().is_empty())
+        {
+            // An enabled feature flag stays on for the world's lifetime.
+            return Err(err("commands.datapack.disable.failed.feature", &[&name]));
+        }
+        let missing = self.missing_pack_features(name);
+        if !missing.is_empty() {
+            return Err(err(
+                "commands.datapack.enable.failed.no_flags",
+                &[&name, &missing.join(", ")],
+            ));
+        }
+        Ok(())
+    }
     pub(in crate::game::server_side) fn cmd_datapack(&mut self, id: &str, ctx: &Context) -> R<i32> {
         let name = match ctx.get("name") {
             Some(Arg::Str(n)) => Some(n.clone()),
             _ => None,
         };
+        if id == "datapack.list" {
+            self.reload_pack_repository();
+        }
         let selected = self.selected_packs();
-        let previous_enabled = self.server.fns.0.enabled.clone();
-        let previous_vanilla_disabled = self.server.cmds.0.vanilla_disabled;
+        let mut enabled = self.server.fns.0.enabled.clone();
         // `DataPackCommand.listAvailablePacks`: a feature pack the world's
         // features do not cover is not available.
         let mut available: Vec<String> = std::iter::once("vanilla".to_owned())
@@ -1317,8 +1388,6 @@ impl crate::game::ServerGame<'_> {
             .filter(|p| self.missing_pack_features(p).is_empty())
             .collect();
         available.sort_by(|a, b| datapack::compare_ids(a, b));
-        let known =
-            |g: &Self, n: &str| n == "vanilla" || g.server.fns.0.packs.iter().any(|p| p.id == n);
         match id {
             "datapack.create" => self.create_pack(ctx),
             "datapack.list" => {
@@ -1364,40 +1433,30 @@ impl crate::game::ServerGame<'_> {
             }
             "datapack.enable" => {
                 let name = name.unwrap_or_default();
-                if !known(self, &name) {
-                    return Err(err("commands.datapack.unknown", &[&name]));
-                }
-                if selected.contains(&name) {
-                    return Err(err("commands.datapack.enable.failed", &[&name]));
-                }
-                let missing = self.missing_pack_features(&name);
-                if !missing.is_empty() {
-                    // `DataPackCommand`: the pack's requested features must
-                    // be a subset of the world's enabled ones.
-                    return Err(err(
-                        "commands.datapack.enable.failed.no_flags",
-                        &[&name, &missing.join(", ")],
-                    ));
-                }
-                if name == "vanilla" {
-                    self.server.cmds.0.vanilla_disabled = false;
-                } else {
+                self.get_pack(&name, true, &selected)?;
+                let vanilla_disabled = name != "vanilla" && self.server.cmds.0.vanilla_disabled;
+                {
                     let existing = match ctx.get("existing") {
                         Some(Arg::Str(e)) => Some(e.clone()),
                         _ => None,
                     };
+                    if let Some(e) = &existing {
+                        self.get_pack(e, false, &selected)?;
+                    }
                     let position = if ctx.has("first") {
                         0
                     } else if let Some(e) = &existing {
-                        let Some(i) = self.server.fns.0.enabled.iter().position(|p| p == e) else {
-                            return Err(err("commands.datapack.unknown", &[e]));
-                        };
-                        if ctx.has("before") { i } else { i + 1 }
+                        // The selected index includes vanilla when enabled.
+                        let i = selected
+                            .iter()
+                            .position(|p| p == e)
+                            .expect("get_pack checked that existing is selected");
+                        let i = if ctx.has("before") { i } else { i + 1 };
+                        // `before` vanilla is the bottom of `enabled`.
+                        i.saturating_sub(selected.len() - enabled.len())
                     } else if !ctx.has("last")
                         && self
-                            .server
-                            .fns
-                            .0
+                            .server.fns.0
                             .packs
                             .iter()
                             .find(|pack| pack.id == name)
@@ -1408,29 +1467,24 @@ impl crate::game::ServerGame<'_> {
                     {
                         0
                     } else {
-                        self.server.fns.0.enabled.len()
+                        enabled.len()
                     };
-                    self.server.fns.0.enabled.insert(position, name.clone());
+                    if name != "vanilla" {
+                        enabled.insert(position, name.clone());
+                    }
                 }
                 self.feedback(Text::translate(
                     "commands.datapack.modify.enable",
                     &[self.pack_link(&name, true)],
                 ));
-                self.apply_pack_change(previous_enabled, previous_vanilla_disabled)?;
+                self.apply_pack_change(&enabled, vanilla_disabled)?;
                 Ok(self.selected_packs().len() as i32)
             }
             _ => {
                 let name = name.unwrap_or_default();
-                if !known(self, &name) {
-                    return Err(err("commands.datapack.unknown", &[&name]));
-                }
-                if !selected.contains(&name) {
-                    return Err(err("commands.datapack.disable.failed", &[&name]));
-                }
+                self.get_pack(&name, false, &selected)?;
                 if self
-                    .server
-                    .fns
-                    .0
+                    .server.fns.0
                     .packs
                     .iter()
                     .find(|pack| pack.id == name)
@@ -1439,35 +1493,13 @@ impl crate::game::ServerGame<'_> {
                 {
                     return Err(err("sunrise.datapack.required", &[&name]));
                 }
-                if self
-                    .server
-                    .fns
-                    .0
-                    .packs
-                    .iter()
-                    .any(|pack| pack.id == name && pack.is_feature() && !pack.features().is_empty())
-                {
-                    // `DataPackCommand`'s ERROR_CANNOT_DISABLE_FEATURE: the
-                    // flag stays on for the world's life.
-                    return Err(err("commands.datapack.disable.failed.feature", &[&name]));
-                }
-                let missing = self.missing_pack_features(&name);
-                if !missing.is_empty() {
-                    return Err(err(
-                        "commands.datapack.enable.failed.no_flags",
-                        &[&name, &missing.join(", ")],
-                    ));
-                }
-                if name == "vanilla" {
-                    self.server.cmds.0.vanilla_disabled = true;
-                } else {
-                    self.server.fns.0.enabled.retain(|p| p != &name);
-                }
+                let vanilla_disabled = name == "vanilla" || self.server.cmds.0.vanilla_disabled;
+                enabled.retain(|p| p != &name);
                 self.feedback(Text::translate(
                     "commands.datapack.modify.disable",
                     &[self.pack_link(&name, true)],
                 ));
-                self.apply_pack_change(previous_enabled, previous_vanilla_disabled)?;
+                self.apply_pack_change(&enabled, vanilla_disabled)?;
                 Ok(self.selected_packs().len() as i32)
             }
         }
@@ -1475,71 +1507,42 @@ impl crate::game::ServerGame<'_> {
     /// `ReloadCommand.reloadPacks`: no message of its own. It reloads the
     /// server's data as `/reload` does (`reload_datapacks`), the content
     /// tables with the functions.
-    fn apply_pack_change(
-        &mut self,
-        previous_enabled: Vec<String>,
-        previous_vanilla_disabled: bool,
-    ) -> R<()> {
+    fn apply_pack_change(&mut self, enabled: &[String], vanilla_disabled: bool) -> R<()> {
         // One resolve for the store and the tables, as `/reload`'s is: the
         // timers already in memory stay, and none come back from disk
         // (`ServerFunctionManager` keeps its queue over a pack change).
-        let additional =
-            sunrise_gameplay_common::game::pack_discovery::data_packs(&self.common.mods);
+        let additional = sunrise_gameplay_common::game::pack_discovery::data_packs(&self.common.mods);
         let mut stack = pack_stack(
             &self.server.world_root,
             &self.common.options.resources,
             &self.common.pack.data_source,
             &self.common.pack.data_changes,
-            self.server.cmds.0.vanilla_disabled,
+            vanilla_disabled,
             &self.common.level.enabled_features,
             &additional,
         );
-        stack.enabled = datapack::selected_ids(
-            stack.packs.iter().map(Arc::as_ref),
-            &self.server.fns.0.enabled,
-        );
-        let prepared = match self.prepare_pack_condition_reload(&stack) {
-            Ok(prepared) => prepared,
-            Err(error) => {
-                self.server.fns.0.enabled = previous_enabled;
-                self.server.cmds.0.vanilla_disabled = previous_vanilla_disabled;
-                return Err(Self::reload_failure(error));
-            }
-        };
+        stack.enabled = datapack::selected_ids(stack.packs.iter().map(Arc::as_ref), enabled);
+        let prepared = self
+            .prepare_pack_condition_reload(&stack)
+            .map_err(Self::reload_failure)?;
         let root = self.common.options.resources.clone();
-        let context = match self.common.prepare_loop_context(&root) {
-            Ok(context) => context,
-            Err(error) => {
-                self.server.fns.0.enabled = previous_enabled;
-                self.server.cmds.0.vanilla_disabled = previous_vanilla_disabled;
-                return Err(Self::reload_failure(ReloadStageError::DataSource(
-                    error.to_string(),
-                )));
-            }
-        };
-        let world = match self.prepare_world_reload(&stack, &root) {
-            Ok(world) => world,
-            Err(error) => {
-                self.server.fns.0.enabled = previous_enabled;
-                self.server.cmds.0.vanilla_disabled = previous_vanilla_disabled;
-                return Err(Self::reload_failure(ReloadStageError::DataSource(
-                    error.to_string(),
-                )));
-            }
-        };
+        let context = self.common.prepare_loop_context(&root).map_err(|error| {
+            Self::reload_failure(ReloadStageError::DataSource(error.to_string()))
+        })?;
+        let world = self.prepare_world_reload(&stack, &root).map_err(|error| {
+            Self::reload_failure(ReloadStageError::DataSource(error.to_string()))
+        })?;
         prepared.bind_loot(&world);
+        // `MinecraftServer.reloadResources`: publish the selection only after preparation succeeds.
         self.install_loop_context(context);
         self.server.fns.0.packs = stack.packs.clone();
         self.server.fns.0.enabled = stack.enabled.clone();
+        self.server.cmds.0.vanilla_disabled = vanilla_disabled;
         self.common.pack.additional_data = additional.into();
         self.save_datapack_settings();
         self.server.fns.0.load_pending = true;
         self.install_world_tables(world);
-        self.apply_server_reload(
-            prepared,
-            &stack,
-            &self.common.level.enabled_features.clone(),
-        );
+        self.apply_server_reload(prepared, &self.common.level.enabled_features.clone());
         self.run_native_advancement_grants();
         Ok(())
     }
@@ -1565,32 +1568,25 @@ impl crate::game::ServerGame<'_> {
             let (tag, _) = sunrise_core::nbt::parse_snbt(id)
                 .map_err(|e| err("argument.nbt.invalid", &[&e]))?;
             let value = sunrise_game_data::scoreboard::tag_to_json(&tag);
-            sunrise_world::loot::validate_loot_condition(&value)
+            sunrise_world::loot::validate_typed_loot_condition(&value)
                 .map_err(|e| err("argument.nbt.invalid", &[&e]))?;
             value
         } else {
-            self.server
-                .fns
-                .0
-                .store
-                .predicates
-                .get(id)
-                .cloned()
-                .ok_or_else(|| {
-                    let id = if id.contains(':') {
-                        id.to_string()
-                    } else {
-                        format!("minecraft:{id}")
-                    };
-                    err(
-                        "argument.resource_or_id.no_such_element",
-                        &[&id, &"minecraft:predicate"],
-                    )
-                })?
+            self.server.fns.0.store.predicates.get(id).cloned().ok_or_else(|| {
+                let id = if id.contains(':') {
+                    id.to_string()
+                } else {
+                    format!("minecraft:{id}")
+                };
+                err(
+                    "argument.resource_or_id.no_such_element",
+                    &[&id, &"minecraft:predicate"],
+                )
+            })?
         };
         let source = self
-            .server
-            .command_source
+            .server.command_source
+            .clone()
             .unwrap_or_else(|| self.player_source());
         let view = source.entity.map(|t| self.entity_view_scored(t, &json));
         Ok(self.command_conditions_hold(&json, view.as_ref(), source.pos))
@@ -1600,6 +1596,193 @@ impl crate::game::ServerGame<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[ignore = "daily"]
+    fn tick_functions_write_to_the_overworld_before_its_idle_environment_tick() {
+        sunrise_gameplay_common::game::in_own_process(
+            "game::server_side::functions::tests::tick_functions_write_to_the_overworld_before_its_idle_environment_tick",
+            || {
+                crate::game::native_entity_refs::tests::with_game(|game| {
+                    use sunrise_gameplay_common::game::Dim;
+                    game.server.world_root = game.options.game_dir.clone().unwrap();
+                    game.build_registries();
+                    game.enter_level(Dim::Nether).unwrap();
+                    game.server.streaming.forced.insert((0, 0));
+                    assert_eq!(game.levels_to_tick(), [Dim::Nether]);
+                    assert_eq!(
+                        game.server.levels.0
+                            .parked_world(Dim::Overworld)
+                            .unwrap()
+                            .weather
+                            .rain_level
+                            .1,
+                        0.0
+                    );
+                    let id = "test:change_environment";
+                    game.server.fns.0.loaded = true;
+                    game.server.fns.0.store.functions.insert(
+                        id.into(),
+                        Function {
+                            id: id.into(),
+                            lines: [
+                                "execute in minecraft:overworld run worldborder set 20 5t",
+                                "execute in minecraft:overworld run weather rain 40t",
+                            ]
+                            .into_iter()
+                            .map(|line| datapack::FunctionLine::Command(line.into()))
+                            .collect(),
+                            parameters: Vec::new(),
+                        },
+                    );
+                    game.server.fns.0
+                        .store
+                        .function_tags
+                        .insert("minecraft:tick".into(), vec![(id.into(), true, false)]);
+
+                    game.tick_server(false).unwrap();
+
+                    assert_eq!(game.levels_to_tick(), [Dim::Nether]);
+                    assert_eq!(game.dim, Dim::Nether);
+                    let border = game.server.levels.0.parked_border(Dim::Overworld).unwrap();
+                    assert_eq!((border.target_size(), border.remaining_ticks()), (20.0, 4));
+                    let world = game.server.levels.0.parked_world(Dim::Overworld).unwrap();
+                    assert!(world.chunks.is_empty());
+                    assert_eq!(world.weather.rain_level, (0.0, 0.01));
+                    assert_eq!(game.world.weather.rain_time, 39);
+                });
+            },
+        );
+    }
+
+    fn datapack_world(label: &str, names: &[&str]) -> std::path::PathBuf {
+        let root = std::env::current_dir()
+            .unwrap()
+            .join("target")
+            .join(format!("{label}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        for name in names {
+            add_datapack(&root, name);
+        }
+        std::fs::create_dir_all(root.join("datapacks")).unwrap();
+        root
+    }
+    fn add_datapack(root: &std::path::Path, name: &str) {
+        let pack = root.join("datapacks").join(name);
+        std::fs::create_dir_all(pack.join("data")).unwrap();
+        std::fs::write(
+            pack.join("pack.mcmeta"),
+            r#"{"pack":{"description":"Fixture"}}"#,
+        )
+        .unwrap();
+    }
+    fn open_datapack_world(game: &mut crate::game::ServerGame<'_>, root: &std::path::Path) {
+        let mut request = crate::game::world_loading::WorldRequest::new(
+            "test",
+            Some("test"),
+            Some(1),
+            true,
+            None,
+            std::sync::Arc::new(sunrise_game_data::gamerules::RuleRegistry::vanilla()),
+        )
+        .unwrap();
+        request.save_root = root.to_path_buf();
+        game.load_world(request).unwrap();
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn datapack_list_scans_the_folder_again_so_a_copied_pack_enables() {
+        use crate::game::native_entity_refs::tests::with_game;
+        let root = datapack_world("datapack-rescan", &["a"]);
+        with_game(|game| {
+            open_datapack_world(game, &root);
+            add_datapack(&root, "b");
+            // `getPack` reads the repository as it stands: not yet scanned.
+            assert!(!game.run_command("datapack enable \"file/b\""));
+            assert!(game.run_command("datapack list available"));
+            assert!(game.server.fns.0.packs.iter().any(|pack| pack.id == "file/b"));
+            assert!(game.run_command("datapack enable \"file/b\""));
+            assert_eq!(game.server.fns.0.enabled.last().map(String::as_str), Some("file/b"));
+        });
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn datapack_disable_vanilla_survives_a_reopen() {
+        use crate::game::native_entity_refs::tests::with_game;
+        let root = datapack_world("datapack-vanilla-off", &["a"]);
+        with_game(|game| {
+            open_datapack_world(game, &root);
+            assert!(game.run_command("datapack disable vanilla"));
+            assert!(game.server.cmds.0.vanilla_disabled);
+        });
+        with_game(|game| {
+            assert!(!game.server.cmds.0.vanilla_disabled);
+            open_datapack_world(game, &root);
+            assert!(game.server.cmds.0.vanilla_disabled);
+            assert!(!game.selected_packs().contains(&"vanilla".to_owned()));
+        });
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn datapack_enable_next_to_vanilla_and_the_existing_pack_is_checked_for_vanilla() {
+        use crate::game::native_entity_refs::tests::with_game;
+        let root = datapack_world("datapack-vanilla-neighbour", &["a", "b"]);
+        std::fs::write(
+            root.join("datapacks.json"),
+            r#"{"enabled":["file/a"],"disabled":["file/b"]}"#,
+        )
+        .unwrap();
+        with_game(|game| {
+            open_datapack_world(game, &root);
+            assert!(game.run_command("datapack enable \"file/b\" after \"vanilla\""));
+            assert_eq!(game.server.fns.0.enabled, ["file/b", "file/a"]);
+            assert!(game.run_command("datapack disable \"file/b\""));
+            assert!(game.run_command("datapack enable \"file/b\" before \"vanilla\""));
+            assert_eq!(game.server.fns.0.enabled, ["file/b", "file/a"]);
+            // `getPack(existing, false)` runs whatever the name is.
+            assert!(game.run_command("datapack disable vanilla"));
+            assert!(!game.run_command("datapack enable vanilla after \"nosuchpack\""));
+            assert!(game.server.cmds.0.vanilla_disabled);
+            assert!(!game.run_command("datapack enable vanilla after \"vanilla\""));
+            assert!(game.run_command("datapack enable vanilla after \"file/a\""));
+            assert!(!game.server.cmds.0.vanilla_disabled);
+        });
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn datapack_enable_next_to_a_flagged_feature_pack_is_refused() {
+        use crate::game::native_entity_refs::tests::with_game;
+        let root = datapack_world("datapack-feature-neighbour", &["a", "b"]);
+        std::fs::write(
+            root.join("datapacks.json"),
+            r#"{"enabled":["file/a"],"disabled":["file/b"]}"#,
+        )
+        .unwrap();
+        with_game(|game| {
+            open_datapack_world(game, &root);
+            game.level.enabled_features = vec![
+                "minecraft:vanilla".into(),
+                "minecraft:trade_rebalance".into(),
+            ]
+            .into();
+            game.reload_datapacks(true, &game.level.enabled_features.clone())
+                .unwrap();
+            assert!(game.server.fns.0.enabled.contains(&"trade_rebalance".to_owned()));
+            assert!(!game.run_command("datapack enable \"file/b\" after \"trade_rebalance\""));
+            assert!(!game.run_command("datapack enable \"file/b\" before \"trade_rebalance\""));
+            assert!(!game.server.fns.0.enabled.contains(&"file/b".to_owned()));
+            assert!(game.run_command("datapack enable \"file/b\" after \"file/a\""));
+            assert!(game.server.fns.0.enabled.contains(&"file/b".to_owned()));
+        });
+        let _ = std::fs::remove_dir_all(root);
+    }
     #[cfg(test)]
     use sunrise_gameplay_common::game::tables::GameItems as _;
 
@@ -1673,7 +1856,8 @@ mod tests {
                 (0, 0),
                 std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
             );
-            game.server.world_root = std::env::current_dir().unwrap().join("h155-causal-world");
+            let scratch = tempfile::tempdir().unwrap();
+            game.server.world_root = scratch.path().join("h155-causal-world");
             let pack = game.server.world_root.join("datapacks/h155_causal");
             let dir = pack.join("data/h155c/function");
             std::fs::create_dir_all(&dir).unwrap();
@@ -1982,7 +2166,8 @@ mod tests {
                 (0, 0),
                 std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
             );
-            game.server.world_root = std::env::current_dir().unwrap().join("h155-world");
+            let scratch = tempfile::tempdir().unwrap();
+            game.server.world_root = scratch.path().join("h155-world");
             let pack = game.server.world_root.join("datapacks/h155_unit");
             let dir = pack.join("data/h155/function");
             std::fs::create_dir_all(&dir).unwrap();
@@ -2166,7 +2351,7 @@ mod tests {
             };
             game.server.exec.0.functions.push("test:outer".into());
             let source = game.server_source();
-            game.run_function(&inner, None, source).unwrap();
+            game.run_function(&inner, None, source.clone()).unwrap();
             assert_eq!(game.server.exec.0.functions, ["test:outer"]);
             game.server.exec.0.functions.clear();
             game.run_function(&inner, None, source).unwrap();
@@ -2337,7 +2522,7 @@ mod tests {
             );
             let OverlayFiles {
                 files, read_errors, ..
-            } = overlay_files(&stack, Vec::new());
+            } = overlay_files(&stack.data_packs(Vec::new()));
             assert!(read_errors.is_empty());
             let (_, versions) = files.iter().find(|(id, _)| id == "recipe/x:r").unwrap();
             let last = versions.last().unwrap();
@@ -2401,21 +2586,18 @@ mod tests {
             &[],
             &[],
         );
-        let OverlayFiles { files, .. } = overlay_files(
-            &stack,
-            vec![
-                ("tags/pkg:item/both".to_owned(), tag("pkg:from_mod")),
-                ("tags/pkg:item/mod_only".to_owned(), tag("pkg:only_mod")),
-                (
-                    "recipe/pkg:shared".into(),
-                    br#"{"result":"native"}"#.to_vec(),
-                ),
-                (
-                    "recipe/pkg:native_only".into(),
-                    br#"{"result":"native"}"#.to_vec(),
-                ),
-            ],
-        );
+        let OverlayFiles { files, .. } = overlay_files(&stack.data_packs(vec![
+            ("tags/pkg:item/both".to_owned(), tag("pkg:from_mod")),
+            ("tags/pkg:item/mod_only".to_owned(), tag("pkg:only_mod")),
+            (
+                "recipe/pkg:shared".into(),
+                br#"{"result":"native"}"#.to_vec(),
+            ),
+            (
+                "recipe/pkg:native_only".into(),
+                br#"{"result":"native"}"#.to_vec(),
+            ),
+        ]));
         let recipe_result = |id: &str| {
             let (_, versions) = files.iter().find(|(key, _)| key == id).unwrap();
             serde_json::from_slice::<serde_json::Value>(versions.last().unwrap()).unwrap()["result"]
@@ -2440,10 +2622,10 @@ mod tests {
             ["pkg:only_mod"]
         );
         // The next load asks again: the new contribution, not the first's.
-        let OverlayFiles { files, .. } = overlay_files(
-            &stack,
-            vec![("tags/pkg:item/mod_only".to_owned(), tag("pkg:second_load"))],
-        );
+        let OverlayFiles { files, .. } = overlay_files(&stack.data_packs(vec![(
+            "tags/pkg:item/mod_only".to_owned(),
+            tag("pkg:second_load"),
+        )]));
         let overlay = sunrise_world::loot::PackOverlay::new(&files);
         let tags = sunrise_items::items::load_tags(&dir, "item", &overlay).unwrap();
         assert_eq!(
@@ -2451,17 +2633,24 @@ mod tests {
             ["pkg:second_load"]
         );
         // A file that isn't JSON is skipped alone, not the whole load.
-        let OverlayFiles { files, .. } = overlay_files(
-            &stack,
-            vec![
-                ("tags/pkg:item/mod_only".to_owned(), b"{not json".to_vec()),
-                ("tags/pkg:item/good".to_owned(), tag("pkg:good")),
-            ],
-        );
+        let OverlayFiles { files, .. } = overlay_files(&stack.data_packs(vec![
+            ("tags/pkg:item/mod_only".to_owned(), b"{not json".to_vec()),
+            ("tags/pkg:item/good".to_owned(), tag("pkg:good")),
+        ]));
         let overlay = sunrise_world::loot::PackOverlay::new(&files);
         let tags = sunrise_items::items::load_tags(&dir, "item", &overlay).unwrap();
         assert!(!tags.contains_key("pkg:mod_only"));
         assert!(tags["pkg:good"].contains("pkg:good"));
+        // The resource path keeps any folders within the kind.
+        let data = stack.data_packs(vec![
+            ("data_maps/pkg:item/p".to_owned(), b"{\"a\":1}".to_vec()),
+            ("worldgen/biome/pkg:p".to_owned(), b"{\"b\":2}".to_vec()),
+        ]);
+        let read = |path: &str| {
+            data.read(&sunrise_core::identifier::Identifier::from_parts("pkg", path).unwrap())
+        };
+        assert_eq!(read("data_maps/item/p.json").unwrap(), b"{\"a\":1}");
+        assert_eq!(read("worldgen/biome/p.json").unwrap(), b"{\"b\":2}");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

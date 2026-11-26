@@ -37,14 +37,25 @@ pub trait MoveGateGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// included — so a cancelled move spends none of them.
     fn entity_move(&mut self, who: MoveWho, cause: MoverType, delta: Vec3) -> MoveGate {
         let entity = self.move_who_id(who);
+        let client_controlled = match who {
+            MoveWho::Player | MoveWho::Guest(_) => true,
+            MoveWho::Entity(EntityHandle::Mob(i)) => {
+                sunrise_sim::mobs::equine::controlled(&self.mobs[i])
+            }
+            MoveWho::Entity(EntityHandle::Boat(i)) => {
+                self.side_boat_client_controlled(self.boats[i].id)
+            }
+            MoveWho::Entity(_) => false,
+        };
         // The type name is built only if a listener asks for it (#2414: a
         // move nobody listens to costs one branch and no string).
-        sunrise_sim::move_gate::armed_with(
+        sunrise_sim::move_gate::armed_with_controlled(
             &self.loop_context,
             entity,
             || self.move_who_kind(who),
             cause,
             delta,
+            client_controlled,
         )
     }
 

@@ -158,7 +158,7 @@ mod tests {
                 let mut contents = Contents::of(game.items(), &bundle).unwrap();
                 let mut helmet = ItemStack::new("minecraft:iron_helmet", 1);
                 assert_eq!(contents.try_insert(game.items(), &mut helmet, true), 1);
-                contents.store(&mut bundle);
+                contents.store(game.items(), &mut bundle);
                 let held = |game: &sunrise_gameplay::game::ServerGame<'_>| {
                     let guest = &game.server.lan.as_ref().unwrap().hub.guests[0];
                     let name = |s: &Option<ItemStack>| s.as_ref().map(|s| s.item.to_string());

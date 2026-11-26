@@ -1,8 +1,9 @@
 use std::sync::Arc;
 use sunrise_core::{geometry::Aabb, position::BlockPos};
 use sunrise_core::{geometry::Vec3, random::RandomSource};
+use sunrise_gameplay_common::game::transactions::BlockEntityCreation;
 use sunrise_gameplay_common::game_master_blocks::is_game_master_block;
-use sunrise_world::level::{Behaviours, BucketContent, LevelEvent, PlayerEffect, Ticks};
+use sunrise_world::level::{Behaviours, BucketContent, LevelAccess as _, LevelEvent, PlayerEffect, Ticks};
 use {crate::game::*, sunrise_gameplay_common::game::*};
 use {
     sunrise_game_data::Result, sunrise_items::items::ItemStack,
@@ -16,6 +17,17 @@ pub(in crate::game) fn reset_world_progress(
 ) {
     *adv = Default::default();
     *stats = Default::default();
+}
+
+struct ActiveBreakGuard<'g, 'a> {
+    game: &'g mut crate::game::ServerGame<'a>,
+    depth: usize,
+}
+
+impl Drop for ActiveBreakGuard<'_, '_> {
+    fn drop(&mut self) {
+        self.game.server.active_player_breaks.truncate(self.depth);
+    }
 }
 
 impl crate::game::ServerGame<'_> {
@@ -39,7 +51,7 @@ impl crate::game::ServerGame<'_> {
         stack: ItemStack,
         position: [f64; 3],
         velocity: Option<[f64; 3]>,
-        pickup_delay: u32,
+        pickup_delay: i32,
         random: Option<spill_common::ItemRandom>,
     ) -> [f64; 3] {
         let velocity = self.push_item_entity(stack, position, velocity, pickup_delay, random);
@@ -81,44 +93,95 @@ impl crate::game::ServerGame<'_> {
             self.server.guest_cooldowns.push((group, 0));
         }
     }
-    pub fn break_block_as_player(&mut self, pos: [i32; 3]) -> Result<bool> {
-        // DebugStickItem.canDestroyBlock: a left click selects a property and
-        // never destroys the block.
-        if !self.debug_stick_can_destroy(pos)? {
-            return Ok(false);
+    pub(in crate::game) fn invalidate_active_player_breaks(&mut self, pos: [i32; 3]) {
+        let dim = self.common.dim;
+        for active in &mut self.server.active_player_breaks {
+            if active.dim == dim && active.pos == pos {
+                active.removed_by_nested = true;
+            }
         }
-        // ServerPlayerGameMode.destroyBlock.
-        if self.block_action_restricted(pos) {
-            return Ok(false);
-        }
-        if !self
-            .common
-            .res
-            .items()
-            .can_destroy_block(self.common.held(), self.common.creative)
+    }
+
+    fn break_block_precanceled(&mut self, pos: [i32; 3], state: BlockStateId) -> Result<bool> {
+        Ok(!self.debug_stick_can_destroy(pos)?
+            || !self.common.res.items().can_destroy_block(self.common.held(), self.common.creative)
+            || self.block_action_restricted(pos)
+            || (!self.common.can_use_game_master_blocks()
+                && is_game_master_block(&self.common.res.facts().get(state).name)))
+    }
+
+    pub(in crate::game) fn break_block_allowed(
+        &mut self,
+        pos: [i32; 3],
+    ) -> Result<Option<(BlockStateId, Option<u32>)>> {
+        self.with_hand(Hand::Main, |game| {
+            let state = game.common.world.block(pos[0], pos[1], pos[2]);
+            let mut canceled = game.break_block_precanceled(pos, state)?;
+            let mut exp_to_drop = None;
+            if game.native_authoritative()
+                && (!canceled || mod_api::__private::listened(mod_api::HookId::BreakBlock))
+            {
+                game.native_break_block(pos, state, &mut canceled, &mut exp_to_drop);
+            }
+            if canceled
+                || (!game.common.can_use_game_master_blocks()
+                    && is_game_master_block(&game.common.res.facts().get(state).name))
+                || game.block_action_restricted(pos)
+            {
+                return Ok(None);
+            }
+            Ok(Some((state, exp_to_drop)))
+        })
+    }
+
+    pub fn break_block_as_player(
+        &mut self,
+        pos: [i32; 3],
+        collect: Option<&mut Vec<ItemStack>>,
+    ) -> Result<bool> {
+        let [x, y, z] = pos;
+        if !self.common.world.is_loaded_at(x, y, z)
+            && !(self.native_authoritative() && self.load_full_chunk(None, (x >> 4, z >> 4)).is_ok())
         {
             return Ok(false);
         }
-        // ServerPlayerGameMode.destroyBlock (and MultiPlayerGameMode.destroyBlock
-        // on the client): a GameMasterBlock stays when the player cannot use
-        // game master blocks (Player.canUseGameMasterBlocks).
-        let state = self.common.world.block(pos[0], pos[1], pos[2]);
-        if !self.common.can_use_game_master_blocks()
-            && is_game_master_block(&self.common.res.facts().get(state).name)
-        {
-            return Ok(false);
-        }
-        // Native mods, once the game allowed the break: a canceled one keeps
-        // the block, and a guest's acknowledgement puts it back in its world.
-        let mut canceled = false;
+        let state = self.common.world.block(x, y, z);
+        let mut canceled = self.break_block_precanceled(pos, state)?;
         let mut exp_to_drop = None;
-        self.native_break_block(pos, state, &mut canceled, &mut exp_to_drop);
-        if canceled {
+        let dim = self.common.dim;
+        let outstanding = self.server.active_player_breaks.iter().any(|active| {
+            active.dim == dim && active.pos == pos
+        });
+        let removed_by_nested = if self.native_authoritative()
+            && !outstanding
+            && (!canceled || mod_api::__private::listened(mod_api::HookId::BreakBlock))
+        {
+            let depth = self.server.active_player_breaks.len();
+            self.server.active_player_breaks.push(crate::game::server_side::ActivePlayerBreak {
+                dim,
+                pos,
+                removed_by_nested: false,
+            });
+            let guard = ActiveBreakGuard { game: self, depth };
+            guard.game.native_break_block(pos, state, &mut canceled, &mut exp_to_drop);
+            guard.game.server.active_player_breaks[depth].removed_by_nested
+        } else {
+            false
+        };
+        if canceled
+            || removed_by_nested
+            || self.common.res.behaviours().is_air(self.common.world.block(x, y, z))
+        {
+            return Ok(false);
+        }
+        if (!self.common.can_use_game_master_blocks()
+            && is_game_master_block(&self.common.res.facts().get(state).name))
+            || self.block_action_restricted(pos)
+        {
             return Ok(false);
         }
         let broken = state;
         let facts = self.common.res.facts().get(state).clone();
-        let held = self.common.held().cloned();
         let key = (pos[0], pos[1], pos[2]);
         self.unpack_loot(container_loot_level::LootTarget::Block(key), None);
         let live = (!self.common.creative)
@@ -171,16 +234,14 @@ impl crate::game::ServerGame<'_> {
             .is_some_and(|(h, (honey, _))| !h.bees.is_empty() || honey.is_some_and(|l| l > 0));
         let creative = self.common.creative;
         // The block's parts first, then playerWillDestroy and Level.removeBlock.
-        let (removed, state, harvest) =
-            self.player_destroy_block_removal(pos, state, &facts, held.as_ref(), filled_hive);
+        let crate::game::server_side::player_destroy::PlayerRemoval {
+            removed,
+            state,
+            harvest,
+            tool: held,
+            broken_tool,
+        } = self.player_destroy_block_removal(pos, state, &facts, filled_hive);
         if !creative {
-            // The stack as the removal left it: a listener may have swapped it.
-            let held = self.common.held().cloned();
-            let broken_tool = if removed {
-                self.mine_block_with_held(&facts.name, facts.hardness)
-            } else {
-                None
-            };
             if removed && harvest {
                 // Block.playerDestroy: the mined statistic, the exhaustion and the drops.
                 self.award_stat("mined", &facts.name, 1);
@@ -217,7 +278,7 @@ impl crate::game::ServerGame<'_> {
                     (stacks, exp_to_drop),
                 );
                 let canceled = dropped.canceled;
-                if let Some(kept) = self.server.break_collect.as_mut() {
+                if let Some(kept) = collect {
                     kept.extend(dropped.items.into_iter().map(|item| item.stack));
                     if dropped.experience > 0 {
                         self.spawn_orbs(pos.map(|v| f64::from(v) + 0.5), dropped.experience);
@@ -389,44 +450,40 @@ impl crate::game::ServerGame<'_> {
     }
     pub fn finish_open_world(
         &mut self,
-        prepared: world_loading::PreparedWorld,
+        mut prepared: world_loading::PreparedWorld,
     ) -> Result<function_pack_stack::PackStack> {
-        let world_loading::PreparedWorld {
-            save_root,
-            shapes,
-            level,
-            world,
-            biomes,
-            streaming,
-            save,
-            session_lock,
-            rand_sequences,
-            locator,
-            loot,
-            owner_migration,
-        } = prepared;
-        self.server.server_loot.0 = loot;
-        let dim = Dim::from_id(&level.dimension);
-        self.server.level_shapes = shapes;
-        self.server.world_root = save_root.clone();
-        // The root moves before the prepared level is installed. Until then a
-        // final save must not run: the lock below only marks tag tables.
+        self.server.server_loot.0 = Default::default();
+        self.server.world_root.clone_from(&prepared.save_root);
         self.server.world_adopted = false;
-        self.server.owner_migration = owner_migration;
-        // Saves and chunk readers share the same placeholder IDs.
-        self.common.world_biomes = Some(biomes);
-        self.common.world_biomes_base = self.common.world_biomes.clone();
+        self.server.owner_migration = prepared.owner_migration;
         sunrise_level::crash::set_detail(
             "World",
-            format!("{} ({})", level.name, save_root.display()),
+            format!("{} ({})", prepared.level.name, prepared.save_root.display()),
         );
-        self.common.end.set_locator(locator);
-        self.share_spawn_conditions();
         self.common.score = Default::default();
         reset_world_progress(&mut self.common.adv, &mut self.common.stats);
-        let stack = self
-            .open_world_datapacks(&level.enabled_features)
+        let features = prepared.level.enabled_features.clone();
+        let (stack, terrain) = self
+            .open_world_datapacks(&features, Some(&mut prepared))
             .map_err(|error| error.diagnostic())?;
+        let world_loading::PreparedTerrain {
+            shapes,
+            configured_levels,
+            world,
+            streaming,
+            save,
+            locator,
+        } = terrain.expect("opening a world prepares its terrain");
+        let world_loading::PreparedWorld {
+            save_root,
+            level,
+            session_lock,
+            rand_sequences,
+            ..
+        } = prepared;
+        let dim = Dim::from_id(&level.dimension);
+        self.common.end.set_locator(locator);
+        self.server.level_shapes = shapes;
         let root = self.common.options.resources.clone();
         self.common.damage_tag_generation = self.common.damage_tag_generation.wrapping_add(1);
         // A code-mod switch can have rebuilt the root since `Game::new`.
@@ -493,10 +550,11 @@ impl crate::game::ServerGame<'_> {
         self.common.yaw = yaw;
         self.common.pitch = pitch;
         self.common.selected = level.selected_slot.clamp(0, 8) as usize;
+        self.bind_chunk_disk_worker(&save, dim);
         self.server.streaming = streaming;
+        self.server.chunk_spawn_enemies = true;
         self.common.world = world;
         self.common.inventory = inventory;
-        self.bind_chunk_disk_worker(&save, dim);
         self.server.save.0 = self.with_profession_save_snapshot(save);
         // MinecraftServer.prepareLevels restores the saved tickets after the
         // built-in levels have been published.
@@ -554,6 +612,7 @@ impl crate::game::ServerGame<'_> {
             progress: self.common.level.xp_progress,
             total: self.common.level.xp_total,
         };
+        self.common.player_score = self.common.level.player_score;
         self.restore_effects();
         self.common.mining = None;
         self.common.container = None;
@@ -572,7 +631,8 @@ impl crate::game::ServerGame<'_> {
         let facts = self.common.dimension_type_of(dim);
         self.server.streaming.sky_light = facts.height.has_skylight;
         self.load_world_state()?;
-        self.open_builtin_levels()?;
+        self.load_scoreboard();
+        self.open_configured_levels(&configured_levels)?;
         Ok(stack)
     }
     /// `Block.fallOn` for item `id`, which fell `distance` onto the block at `on`
@@ -886,8 +946,58 @@ impl crate::game::ServerGame<'_> {
         }
         followed
     }
+    pub(in crate::game) fn spawn_falling_block_entity(
+        &mut self,
+        state: BlockStateId,
+        position: Vec3,
+        velocity: Vec3,
+        drop_item: bool,
+        damage: sunrise_sim::falling_block::Damage,
+    ) -> Option<u32> {
+        if self.entity_ids_exhausted() {
+            return None;
+        }
+        let id = self.take_entity_id();
+        let slot = entity::EntityHandle::Falling(self.common.falling.len());
+        self.common.falling.push(FallingBlock {
+            size_answer: None,
+            attachment_lifetime: Default::default(),
+            rotation: [0.0, 0.0],
+            join: Default::default(),
+            id,
+            state,
+            blocks_building: true,
+            start_pos: BlockPos::containing(position),
+            position,
+            previous: position,
+            velocity,
+            age: 0,
+            no_gravity: false,
+            ground: Default::default(),
+            fire_ticks: 0,
+            sync_velocity: false,
+            drop_item,
+            fall_distance: 0.0,
+            stuck: Vec3::ZERO,
+            damage,
+            saved: None,
+            portal: Default::default(),
+        });
+        self.announce_fresh_join(slot, id).then_some(id)
+    }
+
     pub fn server_process_level_events(&mut self) -> Result<()> {
-        let events = std::mem::take(&mut self.common.level_events);
+        let mut events = std::mem::take(&mut self.common.level_events);
+        if mod_api::__private::listened(mod_api::HookId::ServerLevelEvent)
+            && !crate::game::native_hooks::server_level_event::LevelEventsAsked::marked()
+        {
+            events.retain(|event| match *event {
+                LevelEvent::LevelEvent { id, pos, data, .. } => {
+                    !self.server_level_event_canceled(id, [pos.x, pos.y, pos.z], data, false)
+                }
+                _ => true,
+            });
+        }
         self.lan_record_events(&events);
         dispense_fixture::record_events(&events);
         for event in events {
@@ -922,7 +1032,7 @@ impl crate::game::ServerGame<'_> {
                         f64::from(pos.y) + 0.5,
                         f64::from(pos.z) + 0.5,
                     ];
-                    let name = if sound.contains(':') {
+                    let name = if matches!(source, Some(sunrise_world::level::LevelSoundSource::BlockPlacement { .. })) || sound.contains(':') {
                         sound.to_string()
                     } else {
                         format!("minecraft:{sound}")
@@ -936,6 +1046,9 @@ impl crate::game::ServerGame<'_> {
                                 volume,
                                 pitch,
                             ),
+                        Some(sunrise_world::level::LevelSoundSource::BlockPlacement { except }) => {
+                            self.server_play_placement_sound(&name, c, volume, pitch, except);
+                        }
                         None => self.server_play_sound(&name, c, volume, pitch),
                     }
                 }
@@ -960,31 +1073,7 @@ impl crate::game::ServerGame<'_> {
                         f64::from(pos.y),
                         f64::from(pos.z) + 0.5,
                     );
-                    self.server.next_entity += 1;
-                    self.common.falling.push(FallingBlock {
-                        size_answer: None,
-                        attachment_lifetime: Default::default(),
-                        rotation: [0.0, 0.0],
-                        join: Default::default(),
-                        id: self.server.next_entity,
-                        state,
-                        blocks_building: true,
-                        start_pos: pos,
-                        position: p,
-                        previous: p,
-                        velocity: Vec3::ZERO,
-                        age: 0,
-                        no_gravity: false,
-                        portal: Default::default(),
-                        drop_item: true,
-                        fall_distance: 0.0,
-                        ground: Default::default(),
-                        fire_ticks: 0,
-                        sync_velocity: false,
-                        stuck: Vec3::ZERO,
-                        damage,
-                        saved: None,
-                    });
+                    let _ = self.spawn_falling_block_entity(state, p, Vec3::ZERO, true, damage);
                 }
                 LevelEvent::Player { pos, effect, .. } => match effect {
                     PlayerEffect::OpenMenu => self.open_block_effect_menu([pos.x, pos.y, pos.z]),
@@ -1203,7 +1292,17 @@ impl crate::game::ServerGame<'_> {
                 dragon: (self.dimension_type().has_ender_dragon_fight
                     && self.server.fight.arena_watched())
                 .then_some((0, 0)),
-                viewed: self.viewed_tickets(),
+                viewed: {
+                    let mut viewed = self.viewed_tickets();
+                    if self.server.streaming.has_async_requests() {
+                        viewed.extend(self.server.streaming.async_requests().map(|center| {
+                            sunrise_sim::ticket_levels::ViewedTicket { center, radius: 0, ticking: false }
+                        }));
+                        viewed.sort_unstable();
+                        viewed.dedup();
+                    }
+                    viewed
+                },
                 view_distance: self.server.settings.render_distance.clamp(2, 32),
                 simulation_distance: self.server.settings.simulation_distance.max(2),
             }
@@ -1239,17 +1338,7 @@ impl crate::game::ServerGame<'_> {
         }
     }
     /// Copy the live player and world state into the `Level` that gets saved.
-    pub fn sync_level(&mut self) {
-        self.common.level.player_impulse_grace = self
-            .common
-            .player
-            .as_ref()
-            .map(|p| p.impulse.reset_grace_time);
-        self.common.level.player_fall_particles = self
-            .common
-            .player
-            .as_ref()
-            .map(|p| p.spawn_extra_particles_on_fall);
+    pub(in crate::game) fn sync_world_level_data(&mut self) {
         // Level.write saves the game rules (game_rules.dat) with the rest.
         self.common.level.game_rules = self.common.ui.rules.by_name();
         // PrimaryLevelData.setDifficulty: /difficulty and the options button change it.
@@ -1261,6 +1350,20 @@ impl crate::game::ServerGame<'_> {
         // level.dat holds the Overworld clock's total, whichever level is in place.
         self.common.level.day_time = self.common.command_clock_time("minecraft:overworld");
         self.common.level.end_clock = Some(self.common.world.end_clock);
+    }
+
+    pub fn sync_level(&mut self) {
+        self.sync_world_level_data();
+        self.common.level.player_impulse_grace = self
+            .common
+            .player
+            .as_ref()
+            .map(|p| p.impulse.reset_grace_time);
+        self.common.level.player_fall_particles = self
+            .common
+            .player
+            .as_ref()
+            .map(|p| p.spawn_extra_particles_on_fall);
         // A server has no player of its own; the entry of `guest_turn` puts one in
         // `self.player` only while a command reads it.
         if self.common.player.is_none() && self.common.options.dedicated.is_some() {
@@ -1290,6 +1393,7 @@ impl crate::game::ServerGame<'_> {
         level.xp_level = self.common.experience.level;
         level.xp_progress = self.common.experience.progress;
         level.xp_total = self.common.experience.total;
+        level.player_score = self.common.player_score;
         level.root_vehicle = vehicle
             .as_ref()
             .map(|v| v.2)
@@ -1461,7 +1565,8 @@ impl crate::game::ServerGame<'_> {
             });
         }
         let state = self.common.world.block(hit.pos[0], hit.pos[1], hit.pos[2]);
-        if self.common.res.facts().get(state).hardness < 0.0 {
+        let progress = self.destroy_progress(hit.pos);
+        if progress == 0.0 && self.common.res.facts().get(state).hardness < 0.0 {
             // The server still counts its destroy ticks on an unbreakable block.
             let m = self.common.mining.as_mut().ok_or("mining")?;
             m.per_tick = 0.0;
@@ -1470,7 +1575,6 @@ impl crate::game::ServerGame<'_> {
             self.destroy_progress_event(pos, hit.face, ticks);
             return Ok(());
         }
-        let progress = self.destroy_progress(hit.pos);
         self.swing_arm();
         let m = self.common.mining.as_mut().ok_or("mining")?;
         m.per_tick = progress;
@@ -1530,21 +1634,15 @@ impl crate::game::ServerGame<'_> {
         // ServerLevel.tick: once enough of the players have slept 100 ticks,
         // skip to morning if `advance_time` is on, wake everyone, and
         // resetWeatherCycle if `advance_weather` is on and it is raining.
-        if self.enough_slept() {
+        if self.sleep_skips_night() {
             if self
                 .common
                 .ui
                 .rules
                 .bool_at(sunrise_game_data::gamerules::vanilla::ADVANCE_TIME)
             {
-                // SleepFinishedTimeEvent on the level's own clock (game/world/wake_time.rs): None
-                // when a mod canceled, so `native_time_skip` is not asked, or no time fits.
-                if let Some((clock, t, target)) = self.sleep_finished_move() {
-                    let mut cancel = false;
-                    self.native_time_skip(self.common.dim.id(), t, target, "sleep", &mut cancel);
-                    if !cancel {
-                        self.common.set_command_clock_time(&clock, target);
-                    }
+                if let Some((clock, target)) = self.sleep_finished_move() {
+                    self.common.set_command_clock_time(&clock, target);
                 }
             }
             // Level.isRaining: the rain level is above 0.2.
@@ -1762,20 +1860,26 @@ impl crate::game::ServerGame<'_> {
                 .reset("custom", "minecraft:time_since_rest");
         }
     }
-    /// `BlockTransformer.transformBlock` for a held axe, hoe or shovel.
     pub fn use_block_transformer(&mut self, stack: &ItemStack, hit: &Hit) -> Result<bool> {
         let pos = hit.pos;
         let face = hit.face;
-        let Some((new, sound, loot, damage, particle, transform_type)) =
+        let Some((new, sound, loot, damage, particle, kind)) =
             self.block_transform(stack, hit, self.server_acting_sneak())
         else {
             return Ok(false);
         };
         // BlockTransformer.transformBlock: ITEM_USED_ON_BLOCK before the swap.
         self.trigger_block("minecraft:item_used_on_block", pos, stack);
-        // A loot table drops on the clicked face, before the block changes.
-        if loot.as_deref() == Some("minecraft:till/rooted_dirt") {
-            self.pop_resource_from_face(pos, face, ItemStack::new("minecraft:hanging_roots", 1));
+        if let Some(table) = loot {
+            let state = self.common.world.block(pos[0], pos[1], pos[2]);
+            let actor = self.interacting_loot_entity();
+            for drop in self.interact_loot_at(&table, pos, state, Some(actor), Some(stack)) {
+                if kind.drop_strategy == "clicked_face" {
+                    self.pop_resource_from_face(pos, face, drop);
+                } else {
+                    self.pop_resource(pos, drop);
+                }
+            }
         }
         let old = self.common.world.block(pos[0], pos[1], pos[2]);
         self.level_set(pos, new)?;
@@ -1799,7 +1903,7 @@ impl crate::game::ServerGame<'_> {
         self.award_stat("used", &stack.item, 1);
         self.damage_held(damage);
         self.post_block_game_event("minecraft:block_change", pos, self.sculk_actor(), Some(new));
-        if transform_type == "copper_chest" {
+        if kind.transform_type == "copper_chest" {
             self.transform_copper_chest_neighbour(pos, old, &particle);
         }
         Ok(true)
@@ -1891,17 +1995,11 @@ impl crate::game::ServerGame<'_> {
                 return Ok(UseResult::Fail);
             }
             let target = self.bucket_target(content, &hit);
-            let mut canceled = false;
-            self.native_fill_bucket(stack, target, &mut canceled);
             // `mayUseItemAt(blockPos2)`: a block that refuses the fluid passes
             // it to the block beside, so a mod hears that block too (powder
             // snow places like a block and never goes there).
             let beside_too = content != BucketContent::Powder && hit.beside() != target;
-            if !canceled && beside_too {
-                self.native_fill_bucket(stack, hit.beside(), &mut canceled);
-            }
-            if canceled
-                || self.bucket_empty_cancelled(stack, target)
+            if self.bucket_empty_cancelled(stack, target)
                 || beside_too && self.bucket_empty_cancelled(stack, hit.beside())
             {
                 return Ok(UseResult::Fail);
@@ -1993,15 +2091,8 @@ impl crate::game::ServerGame<'_> {
             if !self.may_build() && !self.can_place_on_in_adventure(hit.pos) {
                 return Ok(UseResult::Fail);
             }
-            let name = self.common.res.facts().get(clicked).name.clone();
-            if self.can_light(clicked, &name) {
-                let registry = self.common.pack.assets.registry;
-                let mut state = registry
-                    .state(clicked)
-                    .cloned()
-                    .ok_or("missing lit block state")?;
-                state.properties.insert("lit".into(), "true".into());
-                self.level_set(hit.pos, registry.resolve(&state)?)?;
+            if let Some(lit) = self.fire_starter_lit(&hit, stack, true)? {
+                self.level_set(hit.pos, lit)?;
                 let sound = if item == "fire_charge" {
                     "minecraft:item.firecharge.use"
                 } else {
@@ -2127,6 +2218,75 @@ impl crate::game::ServerGame<'_> {
             self.server_play_sound(sound, at, 1.0, 1.0);
         }
     }
+    pub(in crate::game) fn server_set_block_live_with_entity(
+        &mut self,
+        pos: [i32; 3],
+        state: BlockStateId,
+        flags: i32,
+        create_entity: bool,
+        creation: BlockEntityCreation,
+    ) -> bool {
+        use BlockEntityCreation::{Deferred, Live, Staged};
+        let live_factory = matches!(creation, Live);
+        let [x, y, z] = pos;
+        let at = BlockPos::new(x, y, z);
+        let previous = self.common.world.block(x, y, z);
+        let b = self.common.res.behaviours();
+        let server_removal = flags & level_flags::UPDATE_SKIP_BLOCK_ENTITY_SIDEEFFECTS == 0
+            && b.block(previous) != b.block(state)
+            && !b.keeps_block_entity(previous, state)
+            && (self.common.res.facts().get(previous).block_entity
+                || self.common.world.block_entities.stateful_entity(previous.0)
+                || self.common.world.block_entities.get(&(x, y, z)).is_some());
+        if !server_removal && live_factory {
+            return self.with_level(|b, level, ticks| {
+                let changed = b.set_block(level, ticks, at, state, flags);
+                if create_entity {
+                    level.finish_native_block(pos, previous, state, changed);
+                }
+                changed
+            });
+        }
+        self.ensure_stateful_entity_table();
+        let Some((write, removal, spawns, orbs)) =
+            self.with_level_access(false, |b, level, ticks| {
+                let write = b.begin_block_write(level, ticks, at, state, flags)?;
+                let spawn_start = level.spill.spawns.len();
+                let orb_start = level.spill.orbs.len();
+                let removal = if server_removal {
+                    write
+                        .effectful_removal()
+                        .map(|old| level.pre_remove_entity(at, old, true))
+                } else {
+                    None
+                };
+                let spawns = level.spill.spawns.split_off(spawn_start);
+                let orbs = level.spill.orbs.split_off(orb_start);
+                Some((write, removal, spawns, orbs))
+            })
+        else {
+            return false;
+        };
+        self.publish_removal_spawns(spawns, orbs);
+        self.with_level(|b, level, ticks| {
+            let removal_updates =
+                removal.map(|removal| level.finish_remove_entity(at, previous, removal));
+            let changed =
+                b.finish_block_write(level, ticks, write, removal_updates, |level, at, state| {
+                    match creation {
+                        Live => level.ensure_block_entity(at, state),
+                        Deferred => {}
+                        Staged { entity, .. } => {
+                            entity.install(level.world, (at.x, at.y, at.z), true)
+                        }
+                    }
+                });
+            if create_entity && live_factory {
+                level.finish_native_block(pos, previous, state, changed);
+            }
+            changed
+        })
+    }
     pub(in crate::game) fn with_level_access<R>(
         &mut self,
         placement_preview: bool,
@@ -2201,7 +2361,7 @@ impl crate::game::ServerGame<'_> {
                 .map(|p| p.position)
                 .chain(self.common.tridents.iter().map(|t| t.position))
                 .map(|at| {
-                    let b = sunrise_sim::arrows::arrow_bounds(at);
+                    let b = sunrise_sim::entities::arrows::arrow_bounds(at);
                     (b.min_position().components(), b.max_position().components())
                 })
                 .collect();
@@ -2293,7 +2453,13 @@ impl crate::game::ServerGame<'_> {
         let dimension = self.common.dim.level();
         let rules = self.common.level_rules();
         let liquid_transaction_open = self.has_level_transaction();
-        let environment = self.common.res.environment_of(&self.dimension_type().id);
+        let environment = Self::level_environment(
+            None,
+            &self.common.res,
+            self.common.dim.id(),
+            &self.dimension_type().id,
+        );
+        let loot_clocks = self.common.loot_clock_ticks();
         let other_entities = entity::entity_lists_of!(self.common, without_carts);
         let mut level = GameLevel {
             cake_probe: false,
@@ -2338,6 +2504,9 @@ impl crate::game::ServerGame<'_> {
             building_player_boxes,
             player_collision,
             biomes: world_biomes!(self.common),
+            biome_keys: (self.server.serving.is_some() || self.common.options.dedicated.is_some())
+                .then(|| self.server.world_tables.0.as_ref().map(|t| &*t.data_maps.biome_keys))
+                .flatten(),
             biome_zoom: self.server.streaming.biome_zoom,
             seed: self.common.level.seed,
             behaviours: self.common.res.behaviours(),
@@ -2345,6 +2514,7 @@ impl crate::game::ServerGame<'_> {
             recipes: server_world_recipes!(self),
             loot: self.server.server_loot.0.get(),
             loot_storage: self.common.score.storage.snapshot(),
+            loot_clocks,
             registry: self.common.pack.assets.registry,
             block_registries: &self.common.pack.block_registries,
             rules,
@@ -2366,11 +2536,13 @@ impl crate::game::ServerGame<'_> {
             debug: self.server.world_debug,
             native_sounds: &mut self.server.pending_native_sounds,
             loop_context: &self.common.loop_context,
+            side: server_game_side!(self),
             native_particles: &mut self.server.pending_particles,
             sound_seeds: self.server.lan.as_ref().map(|host| &host.hub),
             drop_tool: None,
             drop_entity: None,
             interacting: None,
+            interacting_tool: None,
             location: location_world::LocationRefs {
                 dimension: self.common.dim.id(),
                 end: &self.common.end,
@@ -2405,7 +2577,7 @@ use sunrise_gameplay_common::game::native_data_bound::NativeDataBoundGameExt1 as
 
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
 
-use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;
+use sunrise_gameplay_common::game::native_hooks::{ModGameExt1 as _, SharedGameExt1 as _};
 
 use sunrise_gameplay_common::game::native_hooks::block_entity_save_additional::BlockEntitySaveAdditionalGameExt1 as _;
 
@@ -2413,66 +2585,5 @@ use sunrise_gameplay_common::game::pick_ray::PickRayGameExt1 as _;
 
 use sunrise_gameplay_common::game::powder_snow::FilledResultGameExt as _;
 
-#[cfg(test)]
-mod landing_claim_tests {
-    use crate::game::native_entity_refs::tests::with_game_at;
-    use mod_api::{Flow, Hooks, ModEntry, ServerHost};
-    use std::{path::PathBuf, sync::Arc};
-    use sunrise_gameplay_common::game::GameGameExt1 as _;
-    use sunrise_level::chunk::Chunk;
-
-    mod claims {
-        use super::*;
-        #[derive(Default)]
-        struct Claims;
-        #[mod_api::sunrise_mod]
-        impl Hooks for Claims {
-            fn entity_change_block_pre(
-                &self,
-                host: &mut dyn ServerHost,
-                event: &mut mod_api::EntityChangeBlockPreEvent<'_>,
-            ) -> Flow {
-                assert_eq!(event.player, Some(7));
-                assert_eq!(event.entity, None);
-                assert_eq!(event.kind, "minecraft:player");
-                assert_eq!(Some(event.from), host.block_state_id("minecraft:farmland"));
-                assert_eq!(Some(event.to), host.block_state_id("minecraft:dirt"));
-                Flow::Cancel
-            }
-        }
-    }
-    #[test]
-    #[ignore = "daily"]
-    fn cancelled_landing_restores_farmland_before_its_crop_is_notified() {
-        let root = PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
-        mod_platform::testing::with_mods(
-            vec![ModEntry::new("claims", claims::hooks())].into(),
-            || {
-                with_game_at(root, |game| {
-                    game.world
-                        .chunks
-                        .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-                    let state = |name| game.pack.assets.registry.default_state(name).unwrap();
-                    let (farmland, dirt, wheat) = (
-                        state("minecraft:farmland"),
-                        state("minecraft:dirt"),
-                        state("minecraft:wheat"),
-                    );
-                    game.world.set(1, 64, 1, dirt).unwrap();
-                    game.world.set(1, 65, 1, wheat).unwrap();
-                    game.landing_block_updates(
-                        Some(7),
-                        &sunrise_sim::landing::FallEvent::Write {
-                            position: sunrise_core::position::BlockPos::new(1, 64, 1),
-                            from: farmland,
-                            state: dirt,
-                            flags: 3,
-                        },
-                    );
-                    assert_eq!(game.world.block(1, 64, 1), farmland);
-                    assert_eq!(game.world.block(1, 65, 1), wheat);
-                })
-            },
-        );
-    }
-}
+use sunrise_gameplay_common::game::end_common::EndGameExt as _;
+use sunrise_gameplay_common::game::tool_modification::ToolModificationGameExt1 as _;

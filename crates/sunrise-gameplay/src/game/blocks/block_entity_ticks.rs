@@ -311,8 +311,7 @@ impl ServerGame<'_> {
         this.tick_container_reach();
         this.ensure_stateful_entity_table();
         if !this.world.block_entities.has_states() {
-            let states = this.ticking_states();
-            this.world.block_entities.set_states(states);
+            this.bind_server_ticking_states();
             let containers = this.native_containers();
             this.world.block_entities.set_mod_containers(containers);
             let fluids = this.native_fluid_tables();
@@ -373,7 +372,7 @@ impl ServerGame<'_> {
             let Some((kind, mod_type)) = TickedKind::with_type(entity) else {
                 continue;
             };
-            if matches!(entity, BlockEntity::Mod(m) if mod_api::__private::content_owner_disabled(m.id()))
+            if matches!(entity, BlockEntity::Mod(m) if mod_api::__private::block_entity_owner_disabled(m.id()))
             {
                 continue;
             }

@@ -1,5 +1,5 @@
 use super::*;
-use crate::datapack::{self, DataPack, DataStore};
+use crate::datapack::{self, DataPack, DataPacks, DataStore};
 use std::io::Write as _;
 use sunrise_mod_package::manifest::MissingJar;
 
@@ -204,7 +204,7 @@ fn jar_data_layers_merge_tags_and_replace_recipes_below_world_datapacks() {
     let world = datapack::discover(&f.0.join("world"));
     let mut packs = vec![&builtin];
     packs.extend(world.iter());
-    let store = DataStore::load(&packs);
+    let store = DataStore::load(&DataPacks::new(&packs));
     assert!(store.errors.is_empty(), "{:?}", store.errors);
     assert_eq!(
         store.function_tags["minecraft:ordered"]
@@ -420,6 +420,22 @@ fn a_biome_modifier_declared_in_code_applies_to_the_root_biomes() {
     let file_mod = zinc_mod(&scratch.join("file-zinc"), &[("declared", &declared[0][2])]);
     let file_out = scratch.join("file-out");
     build_fixture(&base, &base.join("jars"), &[file_mod], &file_out).unwrap();
+    let duplicate = [[
+        "code_owner".into(),
+        declared[0][1].clone(),
+        declared[0][2].clone(),
+    ]];
+    let error = biome_modifiers_over_packs(&file_out, &packs, &duplicate)
+        .unwrap_err()
+        .to_string();
+    assert!(
+        error.contains("duplicate biome modifier zinc:declared"),
+        "{error}"
+    );
+    assert!(
+        error.contains("mod zinc") && error.contains("mod code_owner"),
+        "{error}"
+    );
     let original: BTreeMap<String, String> =
         serde_json::from_slice(&fs::read(out.join("worldgen/biomes.json")).unwrap()).unwrap();
     let expected: BTreeMap<String, String> =
@@ -452,7 +468,11 @@ fn a_biome_modifier_declared_in_code_applies_to_the_root_biomes() {
         },
     };
     let ordered = [
-        ["zinc".to_owned(), "remove.json".to_owned(), removal.json()],
+        [
+            "zinc".to_owned(),
+            "data/zinc/neoforge/biome_modifier/remove.json".to_owned(),
+            removal.json(),
+        ],
         declared[0].clone(),
     ];
     let removed = biome_modifiers_over_packs(&out, &packs, &ordered)
@@ -621,6 +641,109 @@ fn modify_biome_with_an_invalid_value_is_skipped_with_a_warning() {
     fs::remove_dir_all(scratch).unwrap();
 }
 
+/// `sunrise:modify_biome` writes ambient particles, ambient sounds and music as the vanilla
+/// attribute values (the shapes of `warped_forest.json`), each replacing the biome's value.
+#[test]
+fn modify_biome_sets_ambient_particles_sounds_and_music() {
+    let base = biome_base("biome-modifiers-modify-effects");
+    let scratch = base.parent().unwrap().to_owned();
+    fs::write(
+        base.join("registries.json"),
+        r#"{"minecraft:item":{"entries":{"minecraft:test":{"protocol_id":0}}},"minecraft:block":{"entries":{"minecraft:test":{"protocol_id":0}}},"minecraft:sound_event":{"entries":{"minecraft:ambient.warped_forest.loop":{"protocol_id":0},"minecraft:ambient.warped_forest.additions":{"protocol_id":1},"minecraft:ambient.warped_forest.mood":{"protocol_id":2}}}}"#,
+    )
+    .unwrap();
+    let m = zinc_mod(
+        &scratch.join("zinc"),
+        &[(
+            "dunes",
+            r#"{"type":"sunrise:modify_biome","biomes":"minecraft:plains","attributes":{
+                "minecraft:visual/ambient_particles":{"argument":[{"particle":{"type":"minecraft:ash"},"probability":0.25}]},
+                "minecraft:audio/ambient_sounds":{"loop":"minecraft:ambient.warped_forest.loop",
+                    "additions":{"sound":"minecraft:ambient.warped_forest.additions","tick_chance":1.5},
+                    "mood":{"sound":"minecraft:ambient.warped_forest.mood","tick_delay":6000,"block_search_extent":8,"offset":2.0}},
+                "minecraft:audio/background_music":{"default":{"sound":{"sound_id":"zinc:music.dunes"},"min_delay":25000,"max_delay":24000}},
+                "minecraft:audio/music_volume":0.5}}"#,
+        )],
+    );
+    let out = scratch.join("out");
+    let warnings = build_fixture(&base, &base.join("jars"), &[m], &out).unwrap();
+    assert!(
+        warnings.iter().all(|w| !w.contains("skipped")),
+        "{warnings:?}"
+    );
+    let after: BTreeMap<String, String> =
+        serde_json::from_slice(&fs::read(out.join("worldgen/biomes.json")).unwrap()).unwrap();
+    let plains: serde_json::Value = serde_json::from_str(&after["minecraft:plains"]).unwrap();
+    let attributes = &plains["attributes"];
+    assert_eq!(
+        attributes["minecraft:visual/ambient_particles"],
+        serde_json::json!([{"particle": {"type": "minecraft:ash"}, "probability": 0.25}])
+    );
+    assert_eq!(
+        attributes["minecraft:audio/ambient_sounds"],
+        serde_json::json!({
+            "loop": "minecraft:ambient.warped_forest.loop",
+            "additions": {"sound": "minecraft:ambient.warped_forest.additions", "tick_chance": 1.5},
+            "mood": {"sound": "minecraft:ambient.warped_forest.mood", "tick_delay": 6000,
+                "block_search_extent": 8, "offset": 2.0},
+        })
+    );
+    assert_eq!(
+        attributes["minecraft:audio/background_music"],
+        serde_json::json!({"default": {"sound": {"sound_id": "zinc:music.dunes"}, "min_delay": 25000, "max_delay": 24000}})
+    );
+    assert_eq!(attributes["minecraft:audio/music_volume"], 0.5);
+
+    // Typed ModifyBiome declared in code emits inline sound events that load and play identically.
+    let typed = mod_api::BiomeModifier {
+        biomes: vec!["minecraft:desert".into()],
+        operation: mod_api::BiomeModifierOperation::ModifyBiome {
+            temperature: None,
+            downfall: None,
+            has_precipitation: None,
+            temperature_modifier: None,
+            sky_color: None,
+            fog_color: None,
+            water_color: None,
+            water_fog_color: None,
+            foliage_color: None,
+            dry_foliage_color: None,
+            grass_color: None,
+            ambient_particles: None,
+            ambient_loop: None,
+            ambient_additions: None,
+            ambient_mood: None,
+            background_music: Some(mod_api::BiomeMusic {
+                sound: "zinc:music.oasis".into(),
+                min_delay: 100,
+                max_delay: 200,
+            }),
+            music_volume: Some(0.25),
+        },
+    };
+    let declared = [[
+        "zinc".to_owned(),
+        "data/zinc/neoforge/biome_modifier/oasis.json".to_owned(),
+        typed.json(),
+    ]];
+    let packs = sunrise_world::worldgen::overrides::WorldgenOverrides::default();
+    let overridden = biome_modifiers_over_packs(&out, &packs, &declared)
+        .unwrap()
+        .expect("typed modifier produces biome overrides");
+    let desert_text = overridden
+        .entries("biomes")
+        .find_map(|(id, text)| (id == "minecraft:desert").then_some(text))
+        .expect("desert override present");
+    let desert: serde_json::Value = serde_json::from_str(desert_text).unwrap();
+    assert_eq!(
+        desert["attributes"]["minecraft:audio/background_music"],
+        serde_json::json!({"default": {"sound": {"sound_id": "zinc:music.oasis"}, "min_delay": 100, "max_delay": 200}})
+    );
+    assert_eq!(desert["attributes"]["minecraft:audio/music_volume"], 0.25);
+
+    fs::remove_dir_all(scratch).unwrap();
+}
+
 /// A `null` colour removes an optional override (inferred from NeoForge's "remove color overrides"
 /// change); removing one the biome lacks changes nothing, and a required colour cannot be removed.
 #[test]
@@ -761,4 +884,77 @@ fn modify_biome_with_an_invalid_effect_is_skipped_with_a_warning() {
         fs::read(base.join("worldgen/biomes.json")).unwrap()
     );
     fs::remove_dir_all(scratch).unwrap();
+}
+
+#[test]
+fn biome_modifier_cross_alias_precedence_resolves_before_parsing_and_rejects_code_collision() {
+    let base = biome_base("biome-modifiers-cross-alias");
+    let scratch = base.parent().unwrap().to_owned();
+    let valid = mod_api::BiomeModifier {
+        biomes: vec!["minecraft:plains".to_owned()],
+        operation: mod_api::BiomeModifierOperation::AddFeatures {
+            features: vec!["zinc:ore_zinc".to_owned()],
+            step: "underground_ores".to_owned(),
+        },
+    }
+    .json();
+    let fixture = Fixture(scratch.clone());
+    // The lower Forge alias is intentionally malformed. The later NeoForge alias must
+    // replace it by registry key before the loader tries to parse either file.
+    let lower = fixture.jar(
+        "lower",
+        'a',
+        &[(
+            "data/shared/forge/biome_modifier/add.json",
+            "{not valid json",
+        )],
+    );
+    let mut late = folder_mod(
+        &scratch.join("late"),
+        &[
+            ("sunrise-mod.toml", &manifest("late", r#""zinc", "shared""#)),
+            (
+                "data/zinc/worldgen/feature/ore_zinc.json",
+                r#"{"type":"minecraft:ore","config":{}}"#,
+            ),
+            (
+                "data/zinc/worldgen/placed_feature/ore_zinc.json",
+                r#"{"feature":"zinc:ore_zinc","placement":[]}"#,
+            ),
+            ("data/shared/neoforge/biome_modifier/add.json", &valid),
+        ],
+    );
+    late.jars.push(lower);
+    let out = scratch.join("out");
+    build_fixture(&base, &scratch.join("jars"), &[late], &out).unwrap();
+    let features = biome_features(&out);
+    assert_eq!(
+        features["minecraft:plains"],
+        serde_json::json!([
+            [],
+            ["minecraft:lake"],
+            [],
+            [],
+            [],
+            [],
+            ["minecraft:ore_coal", "zinc:ore_zinc"]
+        ])
+    );
+    let packs = sunrise_world::worldgen::overrides::WorldgenOverrides::default();
+    let code_collision = [[
+        "code_owner".to_owned(),
+        "data/shared/forge/biome_modifier/add.json".to_owned(),
+        valid,
+    ]];
+    let error = biome_modifiers_over_packs(&out, &packs, &code_collision)
+        .unwrap_err()
+        .to_string();
+    assert!(
+        error.contains("duplicate biome modifier shared:add"),
+        "{error}"
+    );
+    assert!(
+        error.contains("mod late") && error.contains("mod code_owner"),
+        "{error}"
+    );
 }

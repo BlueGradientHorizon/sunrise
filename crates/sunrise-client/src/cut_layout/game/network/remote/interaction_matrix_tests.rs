@@ -217,6 +217,7 @@ pub(crate) fn advancement_tree(game: &mut sunrise_gameplay_common::game::CommonG
                 name: "seen".into(),
                 trigger,
                 conditions: serde_json::json!({}).into(),
+                player: None,
             }],
             requirements: vec![vec!["seen".into()]],
             rewards: Default::default(),

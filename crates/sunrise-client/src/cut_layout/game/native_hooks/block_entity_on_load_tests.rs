@@ -3,8 +3,8 @@
 #[cfg(test)]
 mod tests {
     use mod_api::{
-        Block, BlockEntityOnLoadEvent, BlockEntityPart, BlockEntitySideScope,
-        BlockEntityTicksEvent, BlocksEvent, Hooks, Host, ModEntry, Registrar, RegistrationContext,
+        Block, BlockEntityOnLoadEvent, BlockEntityPart, BlockEntitySideScope, BlocksEvent, Hooks,
+        ModEntry, Registrar, RegistrationContext,
     };
     use std::sync::{Arc, Mutex};
     use sunrise_client_gameplay::game::client_side::remote_client::session_state::RemoteDimensionEntry;
@@ -28,10 +28,6 @@ mod tests {
     impl mod_api::BlockPart for Loaded {}
     #[mod_api::sunrise_part]
     impl BlockEntityPart for Loaded {
-        fn block_entity_ticks(&self, _: &dyn Host, event: &mut BlockEntityTicksEvent<'_>) {
-            event.ticks = true;
-        }
-
         fn block_entity_tick(&self, event: &mut mod_api::BlockEntityTickEvent<'_>) {
             event.subject.with_view(|entity| {
                 self.0.lock().unwrap().push((entity.position()[0], -1));

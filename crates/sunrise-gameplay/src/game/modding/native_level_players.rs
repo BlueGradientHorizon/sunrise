@@ -3,7 +3,7 @@
 //! names its player once, excluding anyone who cannot resolve.
 use crate::game::ServerGame;
 pub use core::ops::ControlFlow;
-use mod_api::{ChunkRef, EntityRef, LevelReadError, LevelRef, PlayerRef};
+use mod_api::{ChunkRef, EntityReadError, EntityRef, LevelReadError, LevelRef, PlayerRef};
 
 impl ServerGame<'_> {
     /// `ServerLevel.players`: the online players of an open server level, each once.
@@ -21,38 +21,44 @@ impl ServerGame<'_> {
 
     /// `ChunkMap.TrackedEntity.seenBy`: the players of the level in place whose tracker holds
     /// the entity, other than the entity itself.
-    pub fn entity_trackers(&self, entity: EntityRef) -> Option<Vec<PlayerRef>> {
-        let target = self.native_entity_target(entity)?;
+    pub fn entity_visit_trackers(
+        &self,
+        entity: EntityRef,
+        visit: &mut dyn FnMut(PlayerRef) -> ControlFlow<()>,
+    ) -> Result<ControlFlow<()>, EntityReadError> {
+        let target = self.native_server_entity_target(entity)?;
         if self.target_level(target).key() != self.common.dim.key() {
-            return None;
+            return Err(EntityReadError::Unavailable);
         }
         let id = entity.id() as i32;
-        Some(
-            self.server
-                .lan
-                .iter()
-                .flat_map(|h| h.hub.guests.iter().map(move |g| (&h.hub, g)))
-                .filter(|(hub, g)| hub.here(g) && g.entity_id != id && g.tracker.is_tracking(id))
-                .filter_map(|(_, g)| self.player(g.uuid))
-                .collect(),
-        )
+        Ok(self
+            .server
+            .lan
+            .iter()
+            .flat_map(|h| h.hub.guests.iter().map(move |g| (&h.hub, g)))
+            .filter(|(hub, g)| hub.here(g) && g.entity_id != id && g.tracker.is_tracking(id))
+            .filter_map(|(_, g)| self.player(g.uuid))
+            .try_for_each(visit))
     }
 
     /// `ChunkMap.getPlayers(pos, false)`: the players the chunk was sent to and is
     /// inside the view of.
-    pub(in crate::game) fn chunk_watchers(&self, chunk: ChunkRef) -> Option<Vec<PlayerRef>> {
-        self.native_level_world(chunk.level())?;
+    pub(in crate::game) fn chunk_visit_watchers(
+        &self,
+        chunk: ChunkRef,
+        visit: &mut dyn FnMut(PlayerRef) -> ControlFlow<()>,
+    ) -> Result<ControlFlow<()>, LevelReadError> {
+        self.native_level_world_result(chunk.level())?;
         let dimension = chunk.level().dimension_id();
         let [x, z] = chunk.pos();
-        Some(
-            self.server
-                .lan
-                .iter()
-                .flat_map(|h| h.hub.guests.iter())
-                .filter(|g| g.tracks_chunk(dimension, (x, z)))
-                .filter_map(|g| self.player(g.uuid))
-                .collect(),
-        )
+        Ok(self
+            .server
+            .lan
+            .iter()
+            .flat_map(|h| h.hub.guests.iter())
+            .filter(|g| g.tracks_chunk(dimension, (x, z)))
+            .filter_map(|g| self.player(g.uuid))
+            .try_for_each(visit))
     }
 }
 

@@ -11,7 +11,6 @@ pub trait Hooks {
     /// the spread's other entities, its random draws and its feedback are
     /// unchanged.
     #[hook(
-        target = "sunrise_gameplay::game::native_hooks::spread_players_teleport::ServerGame<'_>::native_spread_players_teleport",
         dispatch = "flat",
         side = "server",
         contract = "cancel",

@@ -20,7 +20,6 @@ impl crate::game::ServerGame<'_> {
 impl crate::game::ServerGame<'_> {
     pub(in crate::game) fn apply_farmland_trample(
         &mut self,
-        player: bool,
         trample: FarmlandTrample,
         still: impl Fn(&Self) -> bool,
         journalled: bool,
@@ -31,16 +30,6 @@ impl crate::game::ServerGame<'_> {
             base,
             ..
         } = trample;
-        if !still(self) {
-            return false;
-        }
-        // The player's write asks `entity_change_block_pre` first; a mob's never did.
-        if player {
-            let acting = self.native_acting_id();
-            if self.landing_change_cancelled(Some(acting), pos, state, base) {
-                return false;
-            }
-        }
         if !still(self) {
             return false;
         }

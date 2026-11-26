@@ -10,6 +10,8 @@ use sunrise_core::{
 };
 use sunrise_game_data::Result;
 use sunrise_gameplay_common::game::armor_stands_common::{TYPE_ID, swap_with_equipment_slot};
+use sunrise_gameplay_common::game::native_ticks::NativeTicksGameExt1 as _;
+use sunrise_gameplay_common::game::transactions::entities::EntityRemovalGameExt as _;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::{
     entities::ArmorStand,
@@ -148,7 +150,7 @@ impl crate::game::ServerGame<'_> {
         if &*stack.item != "minecraft:armor_stand" {
             return false;
         }
-        let Some((pos, mut stand)) = self.common.armor_stand_spawn(hit, stack) else {
+        let Some((pos, mut stand, uuid)) = self.common.armor_stand_spawn(hit, stack) else {
             return false;
         };
         stand.id = self.server.next_entity + 1;
@@ -173,9 +175,13 @@ impl crate::game::ServerGame<'_> {
         );
         if let Some(mut loaded) = sunrise_sim::entity_nbt::armor_stand_from_nbt(&raw, stand.id) {
             loaded.first_tick = stand.first_tick;
+            loaded.random = stand.random;
             loaded.yaw = stand.yaw;
+            loaded.body_yaw = stand.body_yaw;
             loaded.previous_yaw = stand.previous_yaw;
+            loaded.previous_body_yaw = stand.previous_body_yaw;
             loaded.pitch = 0.0;
+            loaded.previous_pitch = 0.0;
             loaded.previous = loaded.position;
             stand = loaded;
         }
@@ -188,7 +194,6 @@ impl crate::game::ServerGame<'_> {
         // ArmorStandItem.useOn turns the stand to face the player.
         self.common.world.random.next_float();
         self.server.next_entity += 1;
-        let (_, uuid) = sunrise_sim::mobs::living_random();
         self.common.persist.uuids.insert(stand.id, uuid);
         self.server_play_sound(
             "minecraft:entity.armor_stand.place",
@@ -425,7 +430,8 @@ impl crate::game::ServerGame<'_> {
         let sweep = self.sweep_before_hit("minecraft:armor_stand", crit);
         let hurt = self.hit_armor_stand(i, |g, area, id| {
             let knockback = if admitted {
-                g.extra_knockback("minecraft:armor_stand", scale).0
+                g.extra_knockback("minecraft:armor_stand", id, scale, None)
+                    .0
             } else {
                 0.0
             };
@@ -496,6 +502,7 @@ impl crate::game::ServerGame<'_> {
             causing: attacker,
             direct: attacker,
             position: None,
+            direct_type: None,
         };
         if super::entity_server::damage_level_of!(
             self,
@@ -607,7 +614,14 @@ impl crate::game::ServerGame<'_> {
         // `isPassengerOfSameVehicle` leaves those riders out.
         let mut obstacles: Option<sunrise_sim::entities::ObstacleGrid> = None;
         let mut nearby = Vec::new();
+        let mut round = self.native_tick_round();
+        // The stand whose turn just ended: it hears its Post before the next one's Pre.
+        let mut told = None;
         for join in joins {
+            if let Some(id) = told.take() {
+                self.settle_armor_stand_turn(&mut drowned, &mut dead);
+                self.native_tick_post_one(&round, id, TYPE_ID);
+            }
             let Some(i) = self.common.armor_stands.locate(join) else {
                 continue;
             };
@@ -615,8 +629,32 @@ impl crate::game::ServerGame<'_> {
             if !ticking(at.x.floor() as i32, at.z.floor() as i32) {
                 self.common.armor_stands[i].previous = at;
                 self.common.armor_stands[i].previous_yaw = self.common.armor_stands[i].yaw;
+                self.common.armor_stands[i].previous_body_yaw =
+                    self.common.armor_stands[i].previous_yaw;
                 continue;
             }
+            let id = self.common.armor_stands[i].id;
+            // ServerLevel.tick skips an entity that `isRemoved`, here one whose removal is queued.
+            let target = super::commands::Target::Stand(id);
+            if self.target_removed(&target) || !self.native_tick_pre_one(&mut round, id, TYPE_ID) {
+                continue;
+            }
+            // The Pre's listener may have removed stands, this one included.
+            if self.target_removed(&target) {
+                continue;
+            }
+            let Some(i) = self.common.armor_stands.locate(join) else {
+                continue;
+            };
+            told = Some(id);
+            self.common.armor_stands[i].enchantment_tick =
+                self.common.armor_stands[i].enchantment_tick.wrapping_add(1);
+            if !self.common.armor_stands[i].equipment.is_empty() {
+                self.tick_equipment_enchantments(super::commands::Target::Stand(id), id);
+            }
+            let Some(i) = self.common.armor_stands.locate(join) else {
+                continue;
+            };
             let target_dead = self.common.armor_stands[i]
                 .last_hurt_mob
                 .is_some_and(|(id, _)| !self.last_hurt_target_alive(id));
@@ -650,6 +688,8 @@ impl crate::game::ServerGame<'_> {
             let a = &mut self.common.armor_stands[i];
             a.previous = a.position;
             a.previous_yaw = a.yaw;
+            a.previous_pitch = a.pitch;
+            a.previous_head_yaw = a.head_yaw;
             // aiStep's freezing step (removeFrost) makes the speed instance.
             a.speed_instance = true;
             // LivingEntity.aiStep -> EntityEquipment.tick, before movement.
@@ -870,6 +910,7 @@ impl crate::game::ServerGame<'_> {
                         causing: 0,
                         direct: 0,
                         position: None,
+                        direct_type: None,
                     };
                     sunrise_sim::health::DamageLevel::of(
                         world,
@@ -895,6 +936,10 @@ impl crate::game::ServerGame<'_> {
             {
                 map.remove(&"TicksFrozen".into());
             }
+            // ArmorStand.tickHeadTurn copies the view angle to its body after aiStep.
+            let stand = &mut self.common.armor_stands[i];
+            stand.previous_body_yaw = stand.previous_yaw;
+            stand.body_yaw = stand.yaw;
             let (id, from, to) = section_step;
             self.entity_section_step(id, [from.x, from.y, from.z], [to.x, to.y, to.z]);
             // The end of LivingEntity.tick.
@@ -903,7 +948,19 @@ impl crate::game::ServerGame<'_> {
                 a.impulse_grace -= 1;
             }
         }
-        for (id, bubbles) in drowned {
+        if let Some(id) = told {
+            self.settle_armor_stand_turn(&mut drowned, &mut dead);
+            self.native_tick_post_one(&round, id, TYPE_ID);
+        }
+        Ok(())
+    }
+
+    fn settle_armor_stand_turn(
+        &mut self,
+        drowned: &mut Vec<(u32, i32)>,
+        dead: &mut Vec<(u32, Option<&'static str>)>,
+    ) {
+        for (id, bubbles) in drowned.drain(..) {
             let Some((at, v)) = self
                 .common
                 .armor_stands
@@ -926,7 +983,7 @@ impl crate::game::ServerGame<'_> {
                 );
             }
         }
-        for (id, damage_type) in dead.into_iter().rev() {
+        for (id, damage_type) in dead.drain(..) {
             match damage_type {
                 Some(damage_type) => {
                     if let Some(i) = self.common.armor_stands.iter().position(|a| a.id == id) {
@@ -946,7 +1003,6 @@ impl crate::game::ServerGame<'_> {
                 }
             }
         }
-        Ok(())
     }
     /// `Entity.move(mover, delta)` for a stand with physics (not a marker or
     /// `NoGravity`). Mob lids act on the shulker's turn; block-entity lids act
@@ -1246,6 +1302,7 @@ impl crate::game::ServerGame<'_> {
             causing: causing_id as i32,
             direct: direct as i32,
             position,
+            direct_type: None,
         };
         if super::entity_server::damage_level_of!(
             self,
@@ -1336,7 +1393,6 @@ impl crate::game::ServerGame<'_> {
         damage_type: &str,
         causing: Option<super::commands::Target>,
     ) -> bool {
-        use super::commands::Target;
         let mut checks = Vec::new();
         let equipment = &self.common.armor_stands[i].equipment;
         for (stack, slot) in equipment.iter().zip(ArmorStand::SLOTS) {
@@ -1361,31 +1417,12 @@ impl crate::game::ServerGame<'_> {
         if checks.is_empty() {
             return false;
         }
-        let attacker = match causing {
-            Some(Target::Player | Target::Guest(_)) => Some("minecraft:player".to_owned()),
-            Some(Target::Mob(m_id)) => self
-                .common
-                .mobs
-                .iter()
-                .find(|m| m.id == m_id)
-                .map(|m| m.kind.id.clone()),
-            Some(Target::Stand(_)) => Some("minecraft:armor_stand".to_owned()),
-            _ => None,
-        };
-        let canonical = if damage_type.contains(':') {
-            damage_type.to_owned()
-        } else {
-            format!("minecraft:{damage_type}")
-        };
-        let ctx = sunrise_items::enchant::EffectContext {
-            items: Some(self.common.res.items()),
-            damage_type: Some(&canonical),
-            is_direct: attacker.is_some(),
-            this: Some("minecraft:armor_stand"),
-            attacker: attacker.as_deref(),
-            direct_attacker: attacker.as_deref(),
-            ..Default::default()
-        };
+        let attack = self.current_attack();
+        let causing = causing
+            .and_then(|target| self.network_entity_id(target))
+            .unwrap_or(0);
+        let source = attack.player_source(damage_type, causing);
+        let ctx = attack.enchantment_context(source, "minecraft:armor_stand");
         let ench = &self.common.res.stations().enchantments;
         let rng = &mut self.common.world.random;
         for (req, level) in checks {

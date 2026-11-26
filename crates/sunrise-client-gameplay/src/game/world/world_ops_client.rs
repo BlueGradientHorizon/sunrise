@@ -91,7 +91,7 @@ impl crate::game::ClientGame<'_> {
                 .map(|p| p.position)
                 .chain(self.common.tridents.iter().map(|t| t.position))
                 .map(|at| {
-                    let b = sunrise_sim::arrows::arrow_bounds(at);
+                    let b = sunrise_sim::entities::arrows::arrow_bounds(at);
                     (b.min_position().components(), b.max_position().components())
                 })
                 .collect();
@@ -147,6 +147,8 @@ impl crate::game::ClientGame<'_> {
         let liquid_transaction_open = self.has_level_transaction();
         let environment = self.common.res.environment_of(&self.dimension_type().id);
         let loot_storage = self.common.score.storage.snapshot();
+        let loot_clocks = self.common.loot_clock_ticks();
+        let side = client_game_side!(self, self.client_game_side_meta());
 
         let mut scratch_gateways = Default::default();
         let mut scratch_hoppers = HashMap::new();
@@ -217,6 +219,7 @@ impl crate::game::ClientGame<'_> {
             building_player_boxes: None,
             player_collision,
             biomes: world_biomes!(self.common),
+            biome_keys: None,
             biome_zoom: self.client.streaming.biome_zoom,
             seed: self.common.level.seed,
             behaviours: self.common.res.behaviours(),
@@ -224,6 +227,7 @@ impl crate::game::ClientGame<'_> {
             recipes,
             loot: None,
             loot_storage,
+            loot_clocks,
             registry: self.common.pack.assets.registry,
             block_registries: &self.common.pack.block_registries,
             rules,
@@ -245,11 +249,13 @@ impl crate::game::ClientGame<'_> {
             debug: false,
             native_sounds: &mut scratch_native_sounds,
             loop_context: &self.common.loop_context,
+            side,
             native_particles: &mut scratch_native_particles,
             sound_seeds: None,
             drop_tool: None,
             drop_entity: None,
             interacting: None,
+            interacting_tool: None,
             location: location_world::LocationRefs {
                 dimension: self.common.dim.id(),
                 end: &self.common.end,
@@ -678,6 +684,11 @@ impl crate::game::ClientGame<'_> {
                 continue;
             }
             if let Some(resolved) = native_entity_renderers::experience_orb_renderer() {
+                let [width, height, eye_height] = o
+                    .size_answer
+                    .filter(|s| s.vanilla == sunrise_sim::entities::ExperienceOrb::DIMENSIONS)
+                    .and_then(|s| s.size)
+                    .unwrap_or(sunrise_sim::entities::ExperienceOrb::DIMENSIONS);
                 let entity: mod_api::EntityRenderState =
                     mod_api::__private::built::EntityRenderState {
                         id: o.id,
@@ -685,6 +696,11 @@ impl crate::game::ClientGame<'_> {
                         age: o.age as f32 + partial,
                         yaw: o.rotation[0],
                         pitch: o.rotation[1],
+                        position: at,
+                        size: [width, height],
+                        eye_height,
+                        distance_to_camera_sq: (glam::DVec3::from_array(at) - camera)
+                            .length_squared(),
                         living: None,
                         tnt_fuse: None,
                         orb_value: Some(o.value),

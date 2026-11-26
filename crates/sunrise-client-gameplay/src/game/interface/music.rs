@@ -1,10 +1,10 @@
 //! `Minecraft.getSituationalMusic` and `getMusicVolume` for the music manager,
 //! the local player's ambient sound handlers and the sound engine tick.
-use crate::game::ClientGame;
+use crate::game::{ClientGame, native_hooks::play_sound::HookedSounds};
 use sunrise_client::{
     music::{BackgroundMusic, Music, MusicFrequency, Situation},
     options_ui::MusicGroup,
-    sound_engine::{SoundInstance, Sounds, TickContext},
+    sound_engine::{SoundInstance, TickContext},
 };
 use sunrise_items::blocks::Fluid;
 use sunrise_level::random_source;
@@ -17,9 +17,9 @@ impl ClientGame<'_> {
         self.native_music(&mut music, &mut volume);
         let mut layers = Vec::new();
         self.native_music_layers(&mut layers);
-        self.client
-            .music_layers
-            .tick(&layers, &mut self.client.audio.0);
+        let mut music_layers = std::mem::take(&mut self.client.music_layers);
+        music_layers.tick(&layers, &mut HookedSounds(self));
+        self.client.music_layers = music_layers;
         // Options.musicFrequency's listener: MusicManager.setMinutesBetweenSongs.
         let frequency = MusicFrequency::parse(&self.client.settings.file.name("musicFrequency"));
         if frequency != self.client.music.frequency {
@@ -44,9 +44,9 @@ impl ClientGame<'_> {
                 .remote
                 .as_ref()
                 .is_some_and(|r| r.reconfiguring.is_some());
-        self.client
-            .music
-            .tick(music.as_ref(), volume, loading, &mut self.client.audio.0);
+        let mut manager = std::mem::take(&mut self.client.music);
+        manager.tick(music.as_ref(), volume, loading, &mut HookedSounds(self));
+        self.client.music = manager;
         // Options.musicToast's listener: ToastManager.setMusicToastDisplayState.
         let state = self.client.settings.file.int("musicToast").clamp(0, 2) as u8;
         if state != self.client.music_toast_state {
@@ -69,9 +69,9 @@ impl ClientGame<'_> {
     }
     /// A Music page row: play this track of `event` now.
     pub(in crate::game::client_side) fn play_music_track(&mut self, event: &str, track: &str) {
-        self.client
-            .music
-            .play_track(event, track, &mut self.client.audio.0);
+        let mut manager = std::mem::take(&mut self.client.music);
+        manager.play_track(event, track, &mut HookedSounds(self));
+        self.client.music = manager;
     }
     /// `Options.getFinalSoundSourceVolume(SoundSource.MUSIC)`.
     fn final_music_volume(&self) -> f32 {
@@ -141,18 +141,19 @@ impl ClientGame<'_> {
         &mut self,
         batch: &mut sunrise_client::hud::HudBatch,
         hidden: bool,
+        clock: sunrise_client::toasts::ToastClock,
     ) {
         let song = self.now_playing_song();
         let Some(toast) = self.client.now_playing.as_mut() else {
             return;
         };
-        toast.update(song.is_some(), &mut self.client.music_notes);
+        toast.update(clock, song.is_some(), &mut self.client.music_notes);
         let Some(song) = song else {
             return;
         };
         if self.client.screen == super::Screen::Paused {
             if self.client.pause_menu && self.final_music_volume() > 0.0 {
-                self.client.music_notes.tick();
+                self.client.music_notes.tick(clock);
                 sunrise_client::toasts::draw_now_playing(
                     &self.client.gui.atlas,
                     batch,
@@ -176,13 +177,15 @@ impl ClientGame<'_> {
             self.sound_entity_state(id)
         });
 
-        if self.common.pause != self.client.sound_paused {
-            if self.common.pause {
-                self.client.audio.0.pause();
-            } else {
-                self.client.audio.0.resume();
+        let paused = (self.common.pause, self.client.mod_sounds_paused);
+        if paused != self.client.sound_paused {
+            self.client.audio.0.resume();
+            match sound_pause(paused.0, paused.1) {
+                SoundPause::All => self.client.audio.0.pause_all(),
+                SoundPause::Game => self.client.audio.0.pause(),
+                SoundPause::Playing => {}
             }
-            self.client.sound_paused = self.common.pause;
+            self.client.sound_paused = paused;
         }
         let (vehicle, carts) = self.start_cart_sounds();
         let mobs = self.start_mob_sounds();
@@ -203,7 +206,7 @@ impl ClientGame<'_> {
         // elytra's flying sound.
         if player_fall_flying && !self.client.was_fall_flying {
             let instance = SoundInstance::elytra(player_position, random_source::create());
-            self.client.audio.0.play_instance(instance, false);
+            self.play_audio_instance(instance, false);
         }
         self.client.was_fall_flying = player_fall_flying;
         let ctx = TickContext {
@@ -226,7 +229,9 @@ impl ClientGame<'_> {
         // Client mods' sounds asked for since the last update start with it, then their stops
         // and fades apply.
         self.apply_mod_sounds();
+        self.dispatch_live_play_sounds();
         self.client.audio.0.tick(self.common.pause, &ctx);
+        self.dispatch_play_sounds();
     }
     /// `Minecraft.setLevel` -> `updateLevelInEngines`: `SoundManager.stop()`.
     /// The music manager keeps its stopped track and, on its next tick, waits
@@ -368,6 +373,7 @@ impl ClientGame<'_> {
             bubble_column,
         };
         self.client.ambience.tick(&ctx, &mut self.client.audio.0);
+        self.dispatch_play_sounds();
     }
 }
 
@@ -447,5 +453,38 @@ mod bound_lookup_tests {
         assert_eq!(a.state().position, [1.0; 3]);
         assert_eq!(replacement.state().position, [4.0; 3]);
         assert!(!replacement.state().removed);
+    }
+}
+
+/// Which sounds a tick holds paused.
+#[derive(Debug, PartialEq)]
+enum SoundPause {
+    /// None.
+    Playing,
+    /// The game's pause (`SoundManager.pause`): all but the music and the interface.
+    Game,
+    /// A mod's `set_sounds_paused`: every sound, whatever the game's pause.
+    All,
+}
+
+/// A mod's pause holds every sound and outlasts the game's; the game's holds its own set.
+fn sound_pause(game: bool, mods: bool) -> SoundPause {
+    match (game, mods) {
+        (_, true) => SoundPause::All,
+        (true, false) => SoundPause::Game,
+        (false, false) => SoundPause::Playing,
+    }
+}
+
+#[cfg(test)]
+mod sound_pause_tests {
+    use super::*;
+
+    #[test]
+    fn a_mods_pause_holds_every_sound_over_the_games() {
+        assert_eq!(sound_pause(false, false), SoundPause::Playing);
+        assert_eq!(sound_pause(true, false), SoundPause::Game);
+        assert_eq!(sound_pause(false, true), SoundPause::All);
+        assert_eq!(sound_pause(true, true), SoundPause::All);
     }
 }

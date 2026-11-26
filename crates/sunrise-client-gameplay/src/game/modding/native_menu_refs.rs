@@ -70,11 +70,10 @@ impl ClientGame<'_> {
             return None;
         }
         let name = self.native_client_menu_name(menu)?;
-        let renderer = self.client.renderer.0.as_ref()?;
-        let batch = super::HudBatch::new(
-            [renderer.config.width, renderer.config.height],
-            self.client.settings.gui_scale_inputs(),
-        );
+        // The framebuffer `Renderer::render` leaves behind while it has the renderer out, so a
+        // frame callback reads the boxes too.
+        let framebuffer = self.renderer_framebuffer()?;
+        let batch = super::HudBatch::new(framebuffer, self.client.settings.gui_scale_inputs());
         self.inventory_menu_slot_boxes(menu.fields().window, name, &batch)
     }
 
@@ -191,6 +190,12 @@ impl ClientGame<'_> {
             })
             .count();
         (count != 0).then_some(count)
+    }
+
+    pub(in crate::game) fn client_menu_state_id(&self, menu: MenuRef) -> Option<i32> {
+        let remote = self.client.remote.as_ref()?;
+        self.native_client_menu_name(menu)?;
+        Some(remote.state_id)
     }
 
     pub(in crate::game) fn client_menu_carried(&self, menu: MenuRef) -> Option<Option<ItemStack>> {
@@ -396,10 +401,61 @@ pub mod tests {
         assert!(game.native_screen_shown());
     }
 
+    /// A frame callback reads the open inventory's slot boxes while `Renderer::render` has the
+    /// renderer out, from the framebuffer it left behind (#5864).
+    #[test]
+    #[ignore = "daily"]
+    fn slot_boxes_are_read_during_a_frame() {
+        with_panel(0, |game, _| {
+            // In the world, past the level load: the inventory is a screen hooks see.
+            game.client.remote.as_mut().unwrap().level_load.finish();
+            game.client.title.0 = None;
+            game.player = Some(
+                sunrise_sim::motion::PlayerMotion::new(
+                    game.motion,
+                    sunrise_core::geometry::Vec3::new(0.5, 64.0, 0.5),
+                )
+                .unwrap(),
+            );
+            game.client.screen = super::super::Screen::Inventory;
+            let menu = game
+                .player_container_menu(game.local_player().unwrap())
+                .unwrap();
+            assert!(game.client.renderer.0.is_none());
+            assert_eq!(game.menu_slot_boxes(menu), None, "no window, no boxes");
+            game.client
+                .render_snapshot
+                .set(Some(super::super::RenderSnapshot {
+                    framebuffer: [800, 600],
+                    prepared_generation: None,
+                    staged_prepared_draws: 0,
+                }));
+            let batch =
+                super::super::HudBatch::new([800, 600], game.client.settings.gui_scale_inputs());
+            assert!(
+                game.screen_hooks_open(),
+                "the open screen counts during a frame"
+            );
+            assert_eq!(game.native_client_menu_name(menu), Some("inventory"));
+            assert!(
+                game.inventory_menu_slot_boxes(0, "inventory", &batch)
+                    .is_some()
+            );
+            let boxes = game.menu_slot_boxes(menu).unwrap();
+            assert_eq!(boxes.len(), 46);
+            assert_eq!(
+                Some(boxes),
+                game.inventory_menu_slot_boxes(0, "inventory", &batch)
+            );
+        });
+    }
+
     #[cfg(test)]
     #[test]
     #[ignore = "daily"]
     fn inventory_boxes_follow_menu_indices_and_the_input_layout() {
+        use sunrise_gameplay_common::game::Side as _;
+
         with_panel(0, |game, opening| {
             game.client.screen = super::super::Screen::Inventory;
             let batch =
@@ -434,6 +490,10 @@ pub mod tests {
                 game.inventory_menu_slot_boxes(1, PANEL, &batch),
                 Some(vec![])
             );
+            assert!(
+                crate::game::ClientState::as_server_host_mut(game).is_none(),
+                "the client cannot write the live menu's data slots"
+            );
         });
     }
 
@@ -462,7 +522,10 @@ pub mod tests {
     ) -> winit::event_loop::EventLoop<()> {
         let (event_loop, window) = crate::game::native_entity_refs::tests::test_window([320, 240]);
         game.options.offscreen = true;
-        game.client.renderer.0 = Some(game.new_renderer(window).unwrap());
+        {
+            let renderer = game.new_renderer(window).unwrap();
+            game.set_renderer(renderer);
+        }
         let remote = game.client.remote.as_mut().unwrap();
         remote.level_load.finish();
         let mut body = sunrise_sim::motion::PlayerMotion::new(
@@ -567,6 +630,9 @@ pub mod tests {
                 use mod_api::{Tag, prelude::ScreensClientHost};
                 use sunrise_client::creative::Creative;
                 use sunrise_core::nbt::JavaString;
+                use sunrise_gameplay_common::game::{
+                    api_values::TryIntoEngine as _, tables::GameItems as _,
+                };
 
                 fn component<'s>(stack: &'s mod_api::ItemStack, id: &str) -> Option<&'s Tag> {
                     stack.components()?.as_nbt().get(&JavaString::from(id))
@@ -615,9 +681,13 @@ pub mod tests {
                     };
                     let sword = game
                         .item_from_snbt(r#"{id:"minecraft:diamond_sword",count:1,components:{"minecraft:damage":5,"minecraft:enchantments":{"minecraft:sharpness":3},"minecraft:custom_name":"Blade"}}"#)
+                        .unwrap()
+                        .try_into_engine(game.items())
                         .unwrap();
                     let potion = game
                         .item_from_snbt(r#"{id:"minecraft:potion",count:1,components:{"minecraft:potion_contents":{potion:"minecraft:strong_healing"}}}"#)
+                        .unwrap()
+                        .try_into_engine(game.items())
                         .unwrap();
                     game.inventory[0] = Some(sword.clone());
                     game.inventory[9] = Some(potion.clone());

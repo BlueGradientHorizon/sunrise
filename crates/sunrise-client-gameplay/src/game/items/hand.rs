@@ -336,9 +336,8 @@ impl crate::game::ClientGame<'_> {
     /// `LocalPlayer.isHandsBusy`: paddling a boat this player controls
     /// (`getControlledVehicle`: its first passenger, on a server's client).
     pub(in crate::game::client_side) fn hands_busy(&self) -> bool {
-        self.common.riding.is_some_and(|id| {
-            self.controls_boat(id) && self.common.boats.iter().any(|b| b.id == id)
-        }) && [
+        self.common.riding.is_some_and(|id| self.controls_boat(id))
+            && [
             winit::keyboard::KeyCode::KeyW,
             winit::keyboard::KeyCode::KeyS,
             winit::keyboard::KeyCode::KeyA,

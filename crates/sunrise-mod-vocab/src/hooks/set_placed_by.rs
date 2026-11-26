@@ -10,7 +10,6 @@ pub trait Hooks {
     /// firing the item notice. Writes through the `ServerHost` participate in the
     /// current transaction, if one is open.
     #[hook(
-        target = "sunrise_gameplay::game::native_hooks::set_placed_by::ServerGame<'_>::native_set_placed_by",
         dispatch = "flat",
         side = "server",
         contract = "listen",

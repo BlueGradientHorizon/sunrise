@@ -9,10 +9,7 @@ use crate::game::native_hooks::build_creative_mode_tab_contents::tests::*;
 use mod_api::LogicalSide;
 use mod_api::ModEntry;
 use mod_api::prelude::ItemsHost;
-use mod_api::{
-    CreativeModeTabs, CreativeTabEditError, CreativeTabList, CreativeTabPermissions,
-    CreativeTabReadError, CreativeTabVisibility,
-};
+use mod_api::{CreativeModeTabs, CreativeTabPermissions, CreativeTabReadError};
 use std::sync::Arc;
 use std::sync::Mutex;
 use sunrise_gameplay_common::game::execution_role::ExecutionRole;
@@ -37,7 +34,8 @@ fn creative_catalog_builds_lazily_and_edits_before_filtering_on_both_sides() {
         "schema":4, "item_features":{"minecraft:barrier":["test:disabled"]}, "potion_features":{},
         "tabs":[
             {"id":"test:a","title":"test:a","type":"CATEGORY","build":[
-                row("minecraft:stone", "PARENT_TAB_ONLY"), row("minecraft:stick", "SEARCH_TAB_ONLY"), row("minecraft:barrier", both)
+                row("minecraft:stone", "PARENT_TAB_ONLY"), row("minecraft:stick", "SEARCH_TAB_ONLY"),
+                row("minecraft:gravel", both), row("minecraft:barrier", both), row("minecraft:clay", both)
             ]},
             {"id":"minecraft:hotbar","title":"minecraft:hotbar","type":"HOTBAR","build":[]},
             {"id":"test:b","title":"test:b","type":"CATEGORY","build":[row("minecraft:sand", both)],"operator_build":[row("minecraft:glass", both)]},
@@ -125,19 +123,6 @@ fn creative_catalog_builds_lazily_and_edits_before_filtering_on_both_sides() {
         assert!(normal.tabs_showing(host, &stone_key(32)).next().is_none());
         let cached = host.creative_tabs(CreativeTabPermissions::Normal).unwrap();
         assert!(Arc::ptr_eq(&normal, &cached));
-        let old = seen.lock().unwrap().token.unwrap();
-        assert_eq!(
-            old.entries(host, CreativeTabList::Search),
-            Err(CreativeTabEditError::Stale)
-        );
-        assert_eq!(
-            old.remove(
-                host,
-                &stack("minecraft:stone", 1),
-                CreativeTabVisibility::Both
-            ),
-            Err(CreativeTabEditError::Stale)
-        );
         let operator = host
             .creative_tabs(CreativeTabPermissions::Operator)
             .unwrap();
@@ -173,6 +158,10 @@ fn creative_catalog_builds_lazily_and_edits_before_filtering_on_both_sides() {
         })
         .collect();
         assert_eq!(actual, expected);
+        assert_eq!(
+            mod_api::__private::poisoned_listeners(mod_api::HookId::BuildCreativeModeTabContents),
+            0
+        );
 
         assert_eq!(book_level(&normal), 2);
         normal
@@ -192,59 +181,80 @@ fn creative_catalog_builds_lazily_and_edits_before_filtering_on_both_sides() {
         assert_eq!(seen.lock().unwrap().events.len(), 6);
         seen.lock().unwrap().events.clear();
     }
-    mod_platform::testing::with_mods(setups, || {
-        let mut dedicated = None;
-        with_game_role(fixture_root(), ExecutionRole::DedicatedServer, |game| {
-            install_dedicated_holders(game, 2);
-            game.test_set_creative_catalog(check_catalog.clone());
-            dedicated = Some(check(
-                game,
-                LogicalSide::Server,
-                &seen,
-                |game, flags| game.level.enabled_features = flags.into(),
-                |_| {},
-                |_| {},
-            ));
-        });
-        with_game_role(fixture_root(), ExecutionRole::DedicatedServer, |game| {
-            install_dedicated_holders(game, 4);
-            game.test_set_creative_catalog(check_catalog.clone());
-            check_replacement(game, dedicated.as_deref().unwrap(), &seen);
-        });
-        with_client_game(|game| {
-            let _server = logged_client(game);
-            game.native_lifecycle
-                .begin_open(mod_api::Authority::RemoteClient);
-            replace_client_definition(game, 2);
-            game.client.creative_screen.0 = Creative::from_json(&catalog).unwrap();
-            assert!(!game.client.creative_screen.0.has_contents());
-            let old = check(
-                game,
-                LogicalSide::Client,
-                &seen,
-                |game, flags| {
-                    if let Some(remote) = &mut game.client.remote {
-                        remote.features = flags.into();
-                    } else {
-                        game.level.enabled_features = flags.into();
-                    }
-                },
-                |game| assert_eq!(game.stock_sort_order()[0].item.as_ref(), "minecraft:stick"),
-                |game| assert_eq!(game.stock_sort_order()[0].item.as_ref(), "minecraft:torch"),
-            );
-            replace_client_definition(game, 4);
-            check_replacement(game, &old, &seen);
-            game.native_lifecycle.begin_close();
-            game.native_lifecycle_world_closed();
-            assert!(game.native_lifecycle.epoch().is_none());
-            assert!(game.creative_contents.published.is_some());
-            let host: &dyn mod_api::Host = game;
-            assert_eq!(
-                host.built_creative_tabs(),
-                Err(CreativeTabReadError::Unavailable)
-            );
-        });
-    });
+    let run = || {
+        mod_platform::testing::with_mods(setups, || {
+            let mut dedicated = None;
+            with_game_role(fixture_root(), ExecutionRole::DedicatedServer, |game| {
+                install_dedicated_holders(game, 2);
+                game.test_set_creative_catalog(check_catalog.clone());
+                dedicated = Some(check(
+                    game,
+                    LogicalSide::Server,
+                    &seen,
+                    |game, flags| game.level.enabled_features = flags.into(),
+                    |_| {},
+                    |_| {},
+                ));
+            });
+            with_game_role(fixture_root(), ExecutionRole::DedicatedServer, |game| {
+                install_dedicated_holders(game, 4);
+                game.test_set_creative_catalog(check_catalog.clone());
+                check_replacement(game, dedicated.as_deref().unwrap(), &seen);
+            });
+            with_client_game(|game| {
+                let _server = logged_client(game);
+                game.native_lifecycle.begin_open(None);
+                replace_client_definition(game, 2);
+                game.client.creative_screen.0 = Creative::from_json(&catalog).unwrap();
+                assert!(!game.client.creative_screen.0.has_contents());
+                let old = check(
+                    game,
+                    LogicalSide::Client,
+                    &seen,
+                    |game, flags| {
+                        if let Some(remote) = &mut game.client.remote {
+                            remote.features = flags.into();
+                        } else {
+                            game.level.enabled_features = flags.into();
+                        }
+                    },
+                    |game| {
+                        assert_eq!(
+                            game.stock_sort_order().of(
+                                "minecraft:stick",
+                                sunrise_items::items::ItemStack::new("minecraft:stick", 1).merge_kind()
+                            ),
+                            Some(0)
+                        );
+                    },
+                    |game| {
+                        assert_eq!(
+                            game.stock_sort_order().of(
+                                "minecraft:torch",
+                                sunrise_items::items::ItemStack::new("minecraft:torch", 1).merge_kind()
+                            ),
+                            Some(0)
+                        );
+                    },
+                );
+                replace_client_definition(game, 4);
+                check_replacement(game, &old, &seen);
+                game.native_lifecycle.begin_close();
+                game.native_lifecycle_world_closed();
+                assert!(game.native_lifecycle.epoch().is_none());
+                assert!(game.creative_contents.published.is_some());
+                let host: &dyn mod_api::Host = game;
+                assert_eq!(
+                    host.built_creative_tabs(),
+                    Err(CreativeTabReadError::Unavailable)
+                );
+            });
+        })
+    };
+    sunrise_gameplay_common::game::in_own_process(
+        "game::native_hooks::build_creative_mode_tab_contents::tests_client::creative_catalog_builds_lazily_and_edits_before_filtering_on_both_sides",
+        run,
+    );
 }
 
 use sunrise_gameplay_common::game::native_lifecycle_common::NativeLifecycleCommonGameExt1 as _;

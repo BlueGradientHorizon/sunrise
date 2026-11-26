@@ -1,19 +1,22 @@
+pub use mod_api::ShaderPackState;
+pub use mod_api::NameTagLine;
+pub use mod_api::ExperienceOrbRef;
+mod client_visual_text;
+
 use self::screen_view::{screen_view_for_mod, screen_view_with_id};
 use crate::game::client_side::key_codes::{glfw_button, glfw_modifiers};
 #[allow(unused_imports)]
 use crate::game::client_side::native_panel_recipes::RecipePage;
 use crate::game::client_side::screen_build::ObservedScreen;
-use mod_api::game::Shake;
 use mod_api::{
     self, Answered, ClientModifiers, EntityRef, PlayerRef, RecipeBookCategory, ScreenId,
     ScreenOpening, ScreenTarget,
 };
-pub use mod_api::{BlockRim, ColoredLight, PanelEvent, ScreenView};
-use mod_api::{CameraType, SoundPlay, SoundRef};
+pub use mod_api::{BlockRim, ColoredLight, PanelEvent, ScreenView, EnchantmentEffects};
+use mod_api::CameraType;
 use mod_api::{FluidStack, LogicalSide, TriState};
 use std::{sync::Arc, time::Duration};
 use sunrise_client::{
-    chat::ChatSource,
     extras::Corner,
     hud::{HudBatch, rgba},
     keybinds,
@@ -21,49 +24,43 @@ use sunrise_client::{
 };
 use sunrise_game_data::text::Text;
 pub use sunrise_gameplay_common::game::native_hooks::NativeRecipeView;
-pub use sunrise_gameplay_common::game::native_hooks::NativeRecipes;
-use sunrise_gameplay_common::game::native_hooks::camera_math::bounded_shake;
 use sunrise_gameplay_common::game::native_hooks::client_packet_view;
+#[cfg(test)]
 use sunrise_gameplay_common::game::native_hooks::mod_menu;
 use sunrise_gameplay_common::game::native_hooks::screen_chars::chars_to_type;
 use sunrise_gameplay_common::game::native_hooks::serverbound_packet_view;
-use sunrise_gameplay_common::game::native_hooks::shake_pose;
 use sunrise_gameplay_common::game::native_hooks::sound_and_shader_helpers::sound_id;
-use sunrise_gameplay_common::game::native_hooks::sound_and_shader_helpers::{
-    finite, finite_params, local_sound_ok,
-};
 pub use sunrise_gameplay_common::game::native_hooks::{
     ActiveEffect, AttachmentStore, Attack, BLOCK_CONTACT_HOOKS, BlockClick, BlockClickAnswer,
     BlockEntityDataSource, BlockEntityRef, BlockKey, BlockPos, BlockRegistry,
     BlockStateDefinitionRegistration, BlockTintSources, BlockUpdateFlags, BonemealAsk,
     BonemealCheck, BonemealSource, CauldronFluidContents, CauldronInteractions, ChunkRef,
     ClientMiningPrediction, ClientPacket, ClientPayload, ClientReloadListeners, ClockAdjustment,
-    ColorResolvers, Compound, ConfigFile, ConnectionKind, ConnectsToCall, ContainerLootFilled,
+    ColorResolvers, Compound, ConnectionKind, ConnectsToCall, ContainerLootFilled,
     CreativeCache, DAMAGE_HOOKS, DamageContainer, DamageHooks, DamageLevel, DataMapType,
-    DebugEntry, DebugRenderer, Despawn, Direction, EffectKey, EnchantmentDamageEffects,
+    DebugEntry, DebugRenderer, Despawn, Direction, EffectKey,
     EnchantmentInfo, EntityLayers, EntityRenderers, ExplosionStart, FluidKind, FrameModel,
-    FrameModelEdit, FxHashMap, GameLevel, GameMode, GameRuleActor, GameRuleValue, GameTests,
+    FrameModelEdit, FxHashMap, GameLevel, GameMode, GameRuleValue, GameTests,
     GuiLayerRegistrar, HandDrawContext, HandRender, HitLevel, HurtSource, Hurting, Identifier,
     Ingredient, InsideEffects, InteractionAttempt, InteractionKey, ItemAfterVerticalCollisionCall,
     ItemClick, ItemEntityRef, ItemFished, ItemModelRegistration, ItemTintSourceRegistration,
     JsonAnimationTypeRegistration, Knock, LayerDefinitionRegistration, LevelAccess, LevelDimension,
     LevelRef, LevelView, LifecycleContext, LiveDamageContainer, LiveDamageRead, LivingRef,
     LoadConditions, LootDrops, MOD_MENUS, MapDecorationType, MobRef, ModBlockEntity,
-    ModBlockEntityFields, ModGameExt1, ModelLoaderRegistration, NativeHookHost, NativeItem,
-    NativePlayer, NativeRecipe, NativeRecipeKind, NativeRecipeLayout, NativeRecipeResult,
-    NativeRecipeStack, NeighbourUpdate, NoteBlockChange, ParticleGroupRegistration,
+    ModBlockEntityFields, ModGameExt1, ModelLoaderRegistration, NativeHookHost,
+    NativeRecipeLayout, NeighbourUpdate, NoteBlockChange, ParticleGroupRegistration,
     ParticleOptions, ParticleProviders, ParticleType, Path, PathBuf, PathComputationType,
     PermissionLevel, PhantomSpawnResult, Placement, PlacementContext, PoiTypeExtensions,
-    PortalShape, PreRemoveSideEffectsCall, PresetEditorFactoryRegistration, RailShape,
-    RangeSelectPropertyRegistration, SHAKE_MAX_DEGREES, SHAKE_MAX_OFFSET, ScheduleResult, Screen,
+    PortalShape, PresetEditorFactoryRegistration, RailShape,
+    RangeSelectPropertyRegistration, ScheduleResult, Screen,
     ScreenWidgets, ScreenshotImage, SelectPropertyRegistration, ServerReloadListeners,
     ServerTickPhase, SharedGameExt1, ShieldBlock, SkullModel, SleepProblem, SpawnEntry,
     SpecialModelRenderers, SpriteSourceRegistration, StandaloneModelRegistration, Suggestion, Tag,
-    TextureAtlasRegistration, TickPriority, TicketController, Ticks, ToolUse, TooltipElement,
+    TextureAtlasRegistration, TickPriority, Ticks, ToolUse, TooltipElement,
     TryIntoApi, TryIntoEngine, UpdateShapeCall, UseAnimation, UsePhase, Victim,
-    VillagerProfessions, Who, WorldPhase, add_pack_finders, add_section_geometry,
+    VillagerProfessions, Who, add_pack_finders, add_section_geometry,
     add_server_reload_listeners, adjacent_block_path_type, affect_neighbors_after_removal,
-    animal_tame, another_mods, anvil_update, apply_enchantments, apply_menu_button_cursor,
+    animal_tame, anvil_update, apply_enchantments, apply_menu_button_cursor,
     armor_hurt, arrow_nock, authoritative_world_for_mods, baby_entity_spawn,
     beacon_color_multiplier, block_drops, block_entity_load_additional, block_entity_neighbors,
     block_entity_on_load_routes_tests, block_entity_on_load_tests, block_entity_read,
@@ -74,7 +71,7 @@ pub use sunrise_gameplay_common::game::native_hooks::{
     can_drop_from_explosion, can_entity_destroy, can_equip, can_harvest_block, can_perform_action,
     can_place_item, can_player_sleep, can_sustain_plant, chat_recipient,
     chunk_ticket_level_updated, chunk_watch, client_information_updated, client_pause_read,
-    client_visual_text, clone_item_stack, config_dir, connects_to, console_line,
+    clone_item_stack, config_dir, connects_to, console_line,
     container_loot_filled, crafting_remainder, create_fluid_source, create_skull_models,
     create_spawn_position, creator_mod_id, crop_grow, custom_click_action, custom_spawners,
     damage_item, damage_post, damage_pre, data_maps_updated, default_components_bound,
@@ -94,25 +91,25 @@ pub use sunrise_gameplay_common::game::native_hooks::{
     is_possible_to_respawn_in, is_primary_item_for, item_after_vertical_collision, item_attack,
     item_container, item_crafted, item_destroyed, item_fallthrough, item_fished, item_interact_mob,
     item_smelted, item_stacked_on_other, item_toss, knockback, level_helpers, level_save,
-    level_sound_playable, level_sounds, level_tick_tests, level_world, light_emission,
+    level_sounds, level_tick_tests, level_world, light_emission,
     living_breathe, living_change_target, living_conversion_post, living_conversion_pre,
     living_damage_post, living_damage_pre, living_death, living_death_message, living_death_post,
     living_destroy_block, living_drops, living_experience_drop, living_get_projectile,
     living_shield_block, living_use_totem, living_visibility, loot, makes_piglins_neutral,
     map_decoration_types, math, menu_links, menu_slot_changed, menu_slot_rules, menu_slot_take,
     menu_transfer, minecart_pass, mob_effect_events, mob_kind, mob_source, mob_spawn_checks,
-    mob_split, mod_api_host, mod_configs, mod_data_root, mod_list, mod_mismatch, mod_particles_ok,
-    mod_settings, mod_sound_ok, must_survive, native_add_section_geometry,
+    mob_split, mod_api_host, mod_data_root, mod_list, mod_mismatch, mod_particles_ok,
+    mod_settings, must_survive, native_add_section_geometry,
     native_block_entity_on_load, native_block_entity_type_add_blocks,
     native_block_entity_update_tag, native_blocks, native_can_place_item, native_component_types,
-    native_config_dir, native_create_skull_models, native_extend_poi_types, native_items,
+    native_create_skull_models, native_extend_poi_types, native_items,
     native_map_decoration_types, native_menu_button, native_menu_quick_move, native_menu_slot_take,
     native_note_block_change, native_piston_push_reaction, native_potential_spawns,
     native_register_block_state_models, native_register_block_tint_sources,
     native_register_cauldron_fluid_content, native_register_cauldron_interaction,
     native_register_color_resolvers, native_register_debug_entries,
     native_register_debug_renderers, native_register_dimension_transition_screen,
-    native_register_enchantment_damage_effects, native_register_entity_renderers,
+    native_register_entity_renderers,
     native_register_entity_spectator_shaders, native_register_fluid_models,
     native_register_item_models, native_register_item_tint_sources,
     native_register_json_animation_types, native_register_layer_definitions,
@@ -136,7 +133,7 @@ pub use sunrise_gameplay_common::game::native_hooks::{
     recipe_result, recipe_sources, register_block_state_models, register_block_tint_sources,
     register_cauldron_fluid_content, register_cauldron_interaction, register_color_resolvers,
     register_debug_entries, register_debug_renderers, register_dimension_transition_screen,
-    register_enchantment_damage_effects, register_entity_renderers,
+    register_entity_renderers,
     register_entity_spectator_shaders, register_fluid_models, register_game_tests,
     register_item_models, register_item_tint_sources, register_json_animation_types,
     register_layer_definitions, register_load_conditions, register_model_loaders,
@@ -147,11 +144,13 @@ pub use sunrise_gameplay_common::game::native_hooks::{
     respawn_position, right_click_item, runtime_environment, screen_chars, server_chat,
     server_tick_rate_changed, set_placed_by, shield_block, should_check_weak_power,
     should_redstone_wire_connect_to, sound_and_shader_helpers, spread_players_teleport,
-    startup_math_profile, startup_setting, stateful_block_entity, supported, supports_enchantment,
+    startup_math_profile, stateful_block_entity, supported, supports_enchantment,
     sweep_attack, tags_updated, teleport_command, tool_modified_state, translate,
-    use_item_on_block, use_totem, validate_tickets, vanilla_game_event, wind_burst, with_property,
+    use_item_on_block, use_totem, vanilla_game_event, wind_burst, with_property,
     world_for_mods, xp_orb_targeting, xp_repair_ratio,
 };
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+use sunrise_gameplay_common::game::native_hooks::mod_settings::ModSettingsGameExt as _;
 pub use sunrise_gameplay_common::game::native_hooks::ExecutionRole;
 #[cfg(feature = "test-support")]
 pub use sunrise_gameplay_common::game::native_hooks::{block_entity_for_block, item_fall_on_tests};
@@ -194,8 +193,6 @@ pub(in crate::game) mod build_creative_mode_tab_contents;
 #[path = "can_start_swimming_client.rs"]
 pub(in crate::game) mod can_start_swimming;
 
-#[path = "camera_pose.rs"]
-pub(in crate::game) mod camera_pose;
 
 #[path = "camera_read_client.rs"]
 pub(in crate::game) mod camera_read;
@@ -364,7 +361,11 @@ impl crate::game::ClientGame<'_> {
         if screen != Screen::DemoIntro {
             self.client.demo_intro = None;
         }
+        if self.client.screen == Screen::Chat && screen != Screen::Chat {
+            self.remove_chat_screen(crate::game::client_side::chat::ChatExit::Interrupted);
+        }
         self.client.screen = screen;
+        self.client.native_mod_screen_parent = false;
         if let Some(owner) = owner {
             self.client.native_mod_screen = Some(owner.to_owned());
         } else if screen != Screen::Mod {
@@ -496,7 +497,7 @@ impl crate::game::ClientGame<'_> {
             remote.craft_result = None;
         }
         self.remove_sign_editor();
-        self.remove_chat_screen();
+        self.remove_chat_screen(crate::game::client_side::chat::ChatExit::Interrupted);
         self.close_dialogs();
         self.client.book = None;
         self.client.link_prompt = None;
@@ -563,7 +564,7 @@ impl crate::game::ClientGame<'_> {
         new: &ScreenView<'_>,
         closes: bool,
     ) -> ScreenDecision {
-        self.screen_decision_with(self.screen_change(current, new, true, closes), true)
+        self.decide_screen(current, new, closes, true)
     }
     /// The open mod screen: a plain panel with its slots' frames, the mod's
     /// drawing over it, then the title and the inventory's label. False when
@@ -682,40 +683,6 @@ impl crate::game::ClientGame<'_> {
             || self.screen_over_playing()
             || self.remote_loading()
     }
-    /// The camera native mods draw this frame from (`native_camera_pose`), starting from
-    /// `view`, vanilla's position, yaw and pitch.
-    pub fn native_camera_pose_now(
-        &mut self,
-        partial: f32,
-        view: (glam::DVec3, f32, f32),
-    ) -> (glam::DVec3, f32, f32) {
-        let (mut position, mut yaw, mut pitch) = (view.0.to_array(), view.1, view.2);
-        self.native_camera_pose(partial, &mut position, &mut yaw, &mut pitch);
-        let posed = posed_camera(view, position, yaw, pitch);
-        if self.apply_requested_camera_type()
-            && let Some(refreshed) = self.camera_view(partial)
-        {
-            // Refresh vanilla components, not the listener's explicit overrides.
-            return (
-                if posed.0 == view.0 {
-                    refreshed.0
-                } else {
-                    posed.0
-                },
-                if posed.1 == view.1 {
-                    refreshed.1
-                } else {
-                    posed.1
-                },
-                if posed.2 == view.2 {
-                    refreshed.2
-                } else {
-                    posed.2
-                },
-            );
-        }
-        posed
-    }
     /// Deliver a non-repeat key press to the native panel.
     pub(in crate::game) fn native_panel_key_event(
         &mut self,
@@ -800,7 +767,7 @@ impl crate::game::ClientGame<'_> {
         {
             return false;
         }
-        self.client.audio.0.play_button_click();
+        self.play_audio_button_click();
         true
     }
     /// Where the open mod screen puts container slot `slot` this frame: where
@@ -867,39 +834,6 @@ impl crate::game::ClientGame<'_> {
     /// The open mod screen's width.
     pub(in crate::game) fn native_screen_width(&self) -> Option<f32> {
         self.shown_native_screen().map(|s| s.layout().width)
-    }
-    /// The pose of native mods' camera shake in this frame (`native_camera_shake`),
-    /// none while not playing.
-    pub(crate) fn native_shake_matrix(&self, partial: f32) -> glam::Mat4 {
-        if !self.playing() {
-            return glam::Mat4::IDENTITY;
-        }
-        let mut shake = Shake::default();
-        self.native_camera_shake(partial, &mut shake);
-        if shake == Shake::default() {
-            return glam::Mat4::IDENTITY;
-        }
-        shake_pose(bounded_shake(shake, self.screen_effect_scale()))
-    }
-    /// The zoom in effect while playing (a native mod's); the spyglass's own
-    /// view wins.
-    pub(crate) fn native_zoom_now(&self) -> Option<mod_api::Zoom> {
-        if !self.playing() || self.scoping() {
-            return None;
-        }
-        let mut zoom = None;
-        self.native_zoom(&mut zoom);
-        let z = zoom?;
-        let factor = finite(z.factor, 1.0, 10.0);
-        (factor > 1.0).then_some(mod_api::Zoom {
-            factor,
-            smooth: z.smooth,
-            turn: if z.turn.is_finite() {
-                z.turn.clamp(0.05, 1.0)
-            } else {
-                1.0
-            },
-        })
     }
     /// What the frame's screen changed since the last one. The `Screen` list,
     /// the overlays' opening and the title's screens announce their own
@@ -1090,7 +1024,7 @@ impl crate::game::ClientGame<'_> {
                 .filter(|old| old.overlay);
             let from = from.map(ObservedScreen::view);
             let to = screen_view_with_id(&none, id);
-            self.decide_screen(from.as_ref().unwrap_or(&none), &to, from.is_some())
+            self.decide_screen(from.as_ref().unwrap_or(&none), &to, from.is_some(), false)
         };
         match decision {
             ScreenDecision::Keep => return false,
@@ -1134,7 +1068,9 @@ impl crate::game::ClientGame<'_> {
             }
             ScreenTarget::Advancements => self.open_advancements(false),
             ScreenTarget::Stats => self.open_stats(),
-            ScreenTarget::Chat => self.begin_chat_screen("", false),
+            ScreenTarget::Chat => {
+                self.begin_chat_screen("", false);
+            }
             _ => {
                 // A title screen: set the title mode first so `set_screen(Playing)`
                 // commits directly into the target title screen without double-init.
@@ -1292,8 +1228,9 @@ impl crate::game::ClientGame<'_> {
     pub(in crate::game) fn screen_decision(
         &self,
         answer: Option<Answered<ScreenOpening>>,
+        clears_overlays: bool,
     ) -> ScreenDecision {
-        self.screen_decision_with(answer, false)
+        self.screen_decision_for_context(answer, clears_overlays, self.client.title.0.is_some())
     }
     pub(in crate::game) fn screen_decision_for_context(
         &self,
@@ -1343,13 +1280,6 @@ impl crate::game::ClientGame<'_> {
             .answered
             .set(!matches!(decision, ScreenDecision::Open));
         decision
-    }
-    pub(in crate::game) fn screen_decision_with(
-        &self,
-        answer: Option<Answered<ScreenOpening>>,
-        clears_overlays: bool,
-    ) -> ScreenDecision {
-        self.screen_decision_for_context(answer, clears_overlays, self.client.title.0.is_some())
     }
     /// Whether a change of screen asks the screen hooks: a mod listens to
     /// `screen_opening` or `screen_closing`, on a client's own `Game` (not a
@@ -1570,6 +1500,34 @@ impl crate::game::ClientGame<'_> {
         screen: Screen,
         before: impl FnOnce(&mut Self),
     ) {
+        self.transition_screen(screen, false, |game, _| before(game));
+    }
+
+    /// Dismisses the current screen without a vetoable opening.
+    pub(in crate::game) fn dismiss_screen_with(&mut self, before: impl FnOnce(&mut Self)) {
+        if self.client.screen == Screen::Playing {
+            before(self);
+            return;
+        }
+        if self.screen_hooks_heard() {
+            let current = self.screen_change_view(self.client.screen);
+            self.native_screen_closing(&current);
+        }
+        before(self);
+        if self.client.screen == Screen::Options {
+            self.client.chat_ui.options.discard_draw();
+        }
+        self.apply_screen_with_mod_book(Screen::Playing, None);
+        self.client.screen_state.0.observed = self.observed_now();
+    }
+
+    /// Runs preparation after admission, passing the accepted screen or None for a redirect.
+    pub(in crate::game) fn transition_screen(
+        &mut self,
+        screen: Screen,
+        new_instance: bool,
+        before: impl FnOnce(&mut Self, Option<Screen>),
+    ) {
         let opening_native =
             screen == Screen::Inventory && self.active_native_screen().is_some_and(|s| !s.shown);
         let new_menu_gen = (screen == Screen::Inventory)
@@ -1585,7 +1543,7 @@ impl crate::game::ClientGame<'_> {
                 .as_ref()
                 .and_then(|o| o.menu_generation)
                 != new_menu_gen;
-        if self.client.screen == screen {
+        if self.client.screen == screen && !new_instance {
             if opening_native || menu_replaced {
                 self.apply_screen_with_mod_book(screen, None);
             }
@@ -1595,9 +1553,11 @@ impl crate::game::ClientGame<'_> {
         let mut owner = None;
         if self.screen_hooks_heard() {
             let decision = {
-                let current = self.screen_change_view(self.client.screen);
+                let observed = new_instance.then(|| self.observed_screen_view()).flatten();
+                let current =
+                    observed.unwrap_or_else(|| self.screen_change_view(self.client.screen));
                 let new = self.screen_change_view(screen);
-                self.decide_screen(&current, &new, self.client.screen != Screen::Playing)
+                self.decide_screen(&current, &new, current.id != "playing", new_instance)
             };
             match decision {
                 ScreenDecision::Keep => {
@@ -1613,7 +1573,10 @@ impl crate::game::ClientGame<'_> {
                     owner = Some(mod_id);
                 }
                 ScreenDecision::Vanilla(target) => {
-                    before(self);
+                    if new_instance {
+                        self.remove_replaced_overlays();
+                    }
+                    before(self, None);
                     if opening_native && self.active_native_screen().is_some() {
                         self.remote_close_container();
                     }
@@ -1623,15 +1586,31 @@ impl crate::game::ClientGame<'_> {
                 ScreenDecision::Open => {}
             }
         }
-        if self.client.screen == screen && owner.is_none() {
+        if self.client.screen == screen && owner.is_none() && !new_instance {
             return;
         }
-        before(self);
+        if new_instance {
+            self.remove_replaced_overlays();
+            self.client.screen_state.0.build.reopened();
+        }
+        before(self, Some(screen));
         if self.client.screen == Screen::Options {
             self.client.chat_ui.options.discard_draw();
         }
         self.apply_screen_with_mod_book(screen, owner);
     }
+
+    /// Clears accepted replacements without invoking the overlays' user actions.
+    fn remove_replaced_overlays(&mut self) {
+        self.client.command_prompt.0 = None;
+        self.client.link_prompt = None;
+        self.client.code_of_conduct = None;
+        self.client.server_packs.0.prompt = None;
+        self.close_dialogs();
+        self.client.book = None;
+        self.remove_sign_editor();
+    }
+
     pub fn settle_title_mode(&mut self) {
         let heard = self.screen_hooks_heard();
         let gated = heard
@@ -1653,7 +1632,7 @@ impl crate::game::ClientGame<'_> {
             let none = self.screen_change_view(Screen::Playing);
             let from = screen_view_with_id(&none, current);
             let to = screen_view_with_id(&none, id);
-            self.decide_screen(&from, &to, true)
+            self.decide_screen(&from, &to, true, false)
         } else {
             ScreenDecision::Open
         };
@@ -1785,8 +1764,12 @@ impl crate::game::ClientGame<'_> {
         current: &ScreenView<'_>,
         new: &ScreenView<'_>,
         closes: bool,
+        removes_overlays: bool,
     ) -> ScreenDecision {
-        self.screen_decision(self.screen_change(current, new, true, closes))
+        self.screen_decision(
+            self.screen_change(current, new, true, closes),
+            removes_overlays,
+        )
     }
     /// Fires `screen_opening` and `screen_closing` in order for a screen transition.
     pub(in crate::game) fn screen_change(
@@ -1834,6 +1817,14 @@ impl crate::game::ClientGame<'_> {
         self.native_toast_add(kind, title, description, &mut cancel);
         !cancel
     }
+    pub(in crate::game) fn tick_rate(&self) -> Option<mod_api::ClientTickRate> {
+        self.native_client_level().is_some().then(|| mod_api::ClientTickRate {
+            tick_rate: self.common.clock.rate(),
+            frozen: self.common.clock.frozen(),
+            frozen_ticks_to_run: self.common.clock.step_state().remaining,
+        })
+    }
+
     /// Client tick target duration in ms (`Minecraft.getTickTargetMillis`), after mod hooks.
     pub fn tick_target_millis(&self) -> f32 {
         let vanilla = self.common.clock.tick_target_millis();
@@ -1996,12 +1987,17 @@ impl crate::game::ClientGame<'_> {
             }
         }
     }
-    /// Next-frame position of container slot `slot` on open mod menu `menu`.
+    pub(in crate::game) fn native_screen_player_slot(&self, slot: usize) -> Option<(f32, f32)> {
+        let [x, y] = self.shown_native_screen()?.player_slot_position(slot)?;
+        Some((x, y))
+    }
+
+    /// Next-frame position of menu slot `slot` on open mod menu `menu`.
     pub fn screen_slot(&self, menu: &str, slot: usize) -> Option<[f32; 2]> {
         let s = self.shown_native_screen().filter(|s| s.menu.name == menu)?;
-        s.slot_moves.latest(&s.layout().slots, slot)
+        s.slot_moves.latest(slot, s.declared_slot(slot))
     }
-    /// Moves, activates, or hides container slot `slot` on open mod menu `menu` from next frame.
+    /// Moves, activates, or hides menu slot `slot` on open mod menu `menu` from next frame.
     pub fn set_screen_slot(
         &self,
         menu: &str,
@@ -2012,7 +2008,7 @@ impl crate::game::ClientGame<'_> {
             .shown_native_screen()
             .filter(|s| s.menu.name == menu)
             .ok_or(mod_api::ScreenSlotRefusal::NoScreen)?;
-        s.slot_moves.set(&s.layout().slots, slot, pos)
+        s.slot_moves.set(slot, s.declared_slot(slot), pos)
     }
     /// Options > Mods rows for loaded code mods, after the content-only rows.
     pub(in crate::game) fn list_native_mods(&mut self) {
@@ -2072,44 +2068,25 @@ impl crate::game::ClientGame<'_> {
                     category: k.category.clone(),
                 })
                 .collect();
-            row.native = Some(NativePage { mappings, settings });
+            row.native = Some(NativePage {
+                mappings,
+                settings,
+                own_screen: mod_api::__private::has_config_screen(&row.id),
+            });
             self.client.settings.mods.installed.push(row);
         }
     }
-    /// The settings mod `mod_id` registered, with their kept values, as its page shows them.
+    /// The settings a mod registered, with values from the live client store.
     pub(in crate::game) fn native_page_settings(&self, mod_id: &str) -> Vec<NativeSetting> {
         mod_api::__private::settings()
             .iter()
             .filter(|(owner, _)| *owner == mod_id)
-            .map(|(_, spec)| {
-                let kept = self.common.stored_setting(mod_id, &spec.key);
-                let value = match (&spec.kind, spec.read(kept.as_deref())) {
-                    (_, mod_api::SettingValue::Toggle(on)) => NativeSettingValue::Toggle(on),
-                    (
-                        mod_api::SettingKind::Choice { options, .. },
-                        mod_api::SettingValue::Choice(index),
-                    ) => NativeSettingValue::Choice {
-                        options: options.clone(),
-                        index,
-                    },
-                    (
-                        mod_api::SettingKind::Range { min, max, step, .. },
-                        mod_api::SettingValue::Range(value),
-                    ) => NativeSettingValue::Range {
-                        min: *min,
-                        max: *max,
-                        step: *step,
-                        value,
-                    },
-                    (_, mod_api::SettingValue::Color(rgb)) => NativeSettingValue::Color(rgb),
-                    _ => NativeSettingValue::Toggle(false),
-                };
-                NativeSetting {
-                    key: spec.key.clone(),
-                    label: spec.label.clone(),
-                    tooltip: spec.tooltip.clone(),
-                    value,
-                }
+            .map(|(owner, spec)| NativeSetting {
+                key: spec.key.clone(),
+                label: spec.label.clone(),
+                tooltip: spec.tooltip.clone(),
+                value: ui_setting_value(spec, self.live_setting(owner, spec)),
+                category: mod_api::__private::setting_category(mod_id, &spec.key).map(str::to_owned),
             })
             .collect()
     }
@@ -2128,15 +2105,57 @@ impl crate::game::ClientGame<'_> {
             NativeSettingValue::Range { value, .. } => mod_api::SettingValue::Range(*value),
             NativeSettingValue::Color(rgb) => mod_api::SettingValue::Color(*rgb),
         };
-        let kept = mod_api::__private::setting(&id, &key).and_then(|spec| spec.store(value));
-        let Some(kept) = kept else {
+        let Some(handle) = mod_api::__private::setting_key_by_name(&id, &key) else {
             return;
         };
-        if self.common.store_setting(&id, &key, &kept) {
-            self.native_setting_changed(&id, &key);
+        let Some((owner, spec)) =
+            mod_api::__private::setting_entry(handle).map(|(owner, spec)| (*owner, spec))
+        else {
+            return;
+        };
+        let root = self.native_settings_root();
+        if self
+            .apply_native_setting_write(&root, owner, spec, value)
+            .is_err()
+        {
+            let live = self.live_setting(owner, spec);
+            if let Some(setting) = self
+                .client
+                .settings
+                .mods
+                .installed
+                .get_mut(i)
+                .and_then(|row| row.native.as_mut())
+                .and_then(|page| page.settings.get_mut(j))
+            {
+                setting.value = ui_setting_value(spec, live);
+            }
         }
     }
-    /// Native mod `i`'s page opened: its settings' kept values read again.
+    #[inline(always)]
+    pub(in crate::game) fn sync_native_setting_ui_row(
+        &mut self,
+        owner: &str,
+        spec: &mod_api::SettingSpec,
+        value: mod_api::SettingValue,
+    ) {
+        let Some(page) = self
+            .client
+            .settings
+            .mods
+            .installed
+            .iter_mut()
+            .find(|row| row.id == owner)
+            .and_then(|row| row.native.as_mut())
+        else {
+            return;
+        };
+        if let Some(setting) = page.settings.iter_mut().find(|setting| setting.key == spec.key) {
+            setting.value = ui_setting_value(spec, value);
+        }
+    }
+
+    /// Refreshes the mod's live settings from disk and rebuilds its page rows.
     pub(crate) fn native_settings_refresh(&mut self, i: usize) {
         let Some(id) = self
             .client
@@ -2148,26 +2167,13 @@ impl crate::game::ClientGame<'_> {
         else {
             return;
         };
+        let root = self.native_settings_root();
+        self.refresh_native_settings_owner(&root, &id);
         let settings = self.native_page_settings(&id);
         let row = self.client.settings.mods.installed.get_mut(i);
         if let Some(page) = row.and_then(|m| m.native.as_mut()) {
             page.settings = settings;
         }
-    }
-    /// Shader-pack params from native mods this frame, with non-finite values zeroed.
-    pub(in crate::game) fn native_shader_params_now(&self, partial: f32) -> [[f32; 4]; 8] {
-        let mut params = [[0.0; 4]; 8];
-        self.native_shader_params(partial, &mut params);
-        finite_params(params)
-    }
-    /// A client mod's command (the `command` hook); a server never asks.
-    pub(in crate::game) fn client_mod_command(&mut self, command: &str) -> bool {
-        if self.common.is_logical_server() {
-            return false;
-        }
-        let mut ran = false;
-        self.native_command(command, &mut ran);
-        ran
     }
     /// Validated category and icon of a custom recipe type, or None before load or outside a world.
     pub(in crate::game) fn recipe_book_category(
@@ -2181,29 +2187,45 @@ impl crate::game::ClientGame<'_> {
     }
 }
 
-/// A mod's camera (`native_camera_pose`): each non-finite component keeps vanilla's `view`.
-pub(in crate::game) fn posed_camera(
-    view: (glam::DVec3, f32, f32),
-    position: [f64; 3],
-    yaw: f32,
-    pitch: f32,
-) -> (glam::DVec3, f32, f32) {
-    let position = std::array::from_fn(|i| {
-        if position[i].is_finite() {
-            position[i]
-        } else {
-            view.0[i]
+pub(in crate::game) fn ui_setting_value(
+    spec: &mod_api::SettingSpec,
+    value: mod_api::SettingValue,
+) -> NativeSettingValue {
+    use mod_api::{SettingKind, SettingValue};
+
+    match (&spec.kind, value) {
+        (_, SettingValue::Toggle(on)) => NativeSettingValue::Toggle(on),
+        (SettingKind::Choice { options, .. }, SettingValue::Choice(index)) => {
+            NativeSettingValue::Choice {
+                options: options.clone(),
+                index,
+            }
         }
-    });
-    (
-        glam::DVec3::from_array(position),
-        if yaw.is_finite() { yaw } else { view.1 },
-        if pitch.is_finite() { pitch } else { view.2 },
-    )
+        (SettingKind::Range { min, max, step, .. }, SettingValue::Range(value)) => {
+            NativeSettingValue::Range {
+                min: *min,
+                max: *max,
+                step: *step,
+                value,
+            }
+        }
+        (_, SettingValue::Color(rgb)) => NativeSettingValue::Color(rgb),
+        _ => NativeSettingValue::Toggle(false),
+    }
 }
 
 #[cfg(any(test, feature = "test-support"))]
 impl crate::game::ClientGame<'_> {
+    #[inline(always)]
+    pub fn test_frame_camera(&mut self, partial: f32) -> Option<(glam::DVec3, f32, f32, f32)> {
+        self.frame_camera(partial)
+    }
+
+    #[inline(always)]
+    pub fn test_commit_screen_transition(&mut self) {
+        self.commit_screen_transition();
+    }
+
     pub fn test_title(&self) -> Option<&sunrise_client::title::Title> {
         self.client.title.0.as_ref()
     }

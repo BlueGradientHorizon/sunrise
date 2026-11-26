@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use mod_api::{PlayerRef, SwimmingCheck};
-use sunrise_items::creative_catalog::{Catalog, Holders};
+use sunrise_items::creative_catalog::{Catalog, Holders, TabContents};
 use sunrise_items::items::ItemStack;
 use sunrise_level::chunk::Chunk;
 
@@ -25,6 +25,19 @@ pub trait ModapiHooksSideGameExt<'__sg>: crate::game::SideGame<'__sg> {
 
     fn side_reset_creative_screen(&mut self) {
         <Self::State as SideOps>::side_reset_creative_screen(self)
+    }
+
+    fn side_publish_creative_order(&self, lists: &[Arc<TabContents>]) {
+        <Self::State as SideOps>::side_publish_creative_order(self, lists);
+    }
+
+    fn side_sync_native_setting_ui_row(
+        &mut self,
+        owner: &str,
+        spec: &mod_api::SettingSpec,
+        value: mod_api::SettingValue,
+    ) {
+        <Self::State as SideOps>::side_sync_native_setting_ui_row(self, owner, spec, value);
     }
 
     fn side_ask_swim_eligibility(&self, check: SwimmingCheck) -> Option<bool> {
@@ -68,6 +81,13 @@ pub trait SideOps: Sized {
     fn side_creative_catalog<'__side_g>(game: &'__side_g Self::Game<'_>)
     -> &'__side_g Arc<Catalog>;
     fn side_reset_creative_screen(game: &mut Self::Game<'_>);
+    fn side_publish_creative_order(game: &Self::Game<'_>, lists: &[Arc<TabContents>]);
+    fn side_sync_native_setting_ui_row(
+        game: &mut Self::Game<'_>,
+        owner: &str,
+        spec: &mod_api::SettingSpec,
+        value: mod_api::SettingValue,
+    );
     fn side_ask_swim_eligibility(game: &Self::Game<'_>, check: SwimmingCheck) -> Option<bool>;
     fn side_acting_id(game: &mut Self::Game<'_>) -> u128;
     fn side_clicker(game: &mut Self::Game<'_>) -> (u128, i32);

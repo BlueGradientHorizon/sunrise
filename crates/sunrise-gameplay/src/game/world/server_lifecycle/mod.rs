@@ -4,7 +4,17 @@ use crate::game::ServerGame;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use sunrise_game_data::Result;
 
+#[cfg(test)]
+mod interrupted_turn_tests;
+
 pub(in crate::game) use sunrise_gameplay::crash_save::CrashSave;
+
+pub enum ServerRunOutcome {
+    /// Startup succeeded and the run stopped normally.
+    Orderly,
+    /// The dedicated server failed to bind its listener.
+    FailedInit(std::io::Error),
+}
 
 impl ServerGame<'_> {
     /// `MinecraftServer.runServer`'s finally: once startup begins, every exit
@@ -12,25 +22,29 @@ impl ServerGame<'_> {
     pub fn run_server_lifecycle(
         &mut self,
         dedicated: bool,
-        run: impl FnOnce(&mut Self, &mut bool) -> Result<()>,
+        run: impl FnOnce(&mut Self) -> Result<ServerRunOutcome>,
     ) -> Result<()> {
-        let mut startup_began = false;
-        let run = catch_unwind(AssertUnwindSafe(|| run(self, &mut startup_began)));
+        let run = catch_unwind(AssertUnwindSafe(|| run(self)));
         let crashed = run.is_err();
-        let result = match run {
-            Ok(result) => result,
+        let (orderly, result) = match run {
+            Ok(Ok(ServerRunOutcome::Orderly)) => (true, Ok(())),
+            Ok(Ok(ServerRunOutcome::FailedInit(error))) => {
+                let message = format!("Failed to initialize server: {error}");
+                log::error!("{message}");
+                (false, Err(message.into()))
+            }
+            Ok(Err(error)) => (false, Err(error)),
             Err(payload) => {
                 let message = super::dedicated::panic_message(payload.as_ref());
                 log::error!("The server thread panicked: {message}");
                 self.prepare_server_crash();
-                Err(format!("the server thread panicked: {message}").into())
+                (
+                    false,
+                    Err(format!("the server thread panicked: {message}").into()),
+                )
             }
         };
-        if !startup_began {
-            return result;
-        }
-        let run_error = result.as_ref().err().map(ToString::to_string);
-        let shutdown = self.shutdown_started_server(dedicated, crashed, run_error.as_deref());
+        let shutdown = self.shutdown_started_server(dedicated, crashed, orderly);
         result.and(shutdown)
     }
 
@@ -40,23 +54,26 @@ impl ServerGame<'_> {
         &mut self,
         dedicated: bool,
         crashed: bool,
-        run_error: Option<&str>,
+        orderly: bool,
     ) -> Result<()> {
         // There will be no next server tick; do not keep logs for another world.
         sunrise_level::logging::stop_tap();
         let mut failure = None;
         self.exclude_interrupted_players(crashed, |m| log::warn!("{m}"));
-        if let Err(payload) =
-            catch_unwind(AssertUnwindSafe(|| self.native_server_stopping(dedicated)))
-        {
-            remember_shutdown(&mut failure, shutdown_panic(payload.as_ref()).into());
+        self.native_lifecycle.begin_close();
+        if orderly {
+            if let Err(payload) =
+                catch_unwind(AssertUnwindSafe(|| self.native_server_stopping(dedicated)))
+            {
+                remember_shutdown(&mut failure, shutdown_panic(payload.as_ref()).into());
+            }
+            self.exclude_interrupted_players(crashed, |m| log::warn!("{m}"));
         }
-        self.exclude_interrupted_players(crashed, |m| log::warn!("{m}"));
         match catch_unwind(AssertUnwindSafe(|| {
             if dedicated {
-                self.stop_dedicated(crashed, run_error)
+                self.stop_dedicated(crashed)
             } else {
-                self.stop_integrated(crashed, run_error)
+                self.stop_integrated(crashed)
             }
         })) {
             Ok(Ok(())) => {}
@@ -65,19 +82,17 @@ impl ServerGame<'_> {
                 failure.get_or_insert(error);
             }
             Err(payload) => {
-                let message = shutdown_panic(payload.as_ref());
-                remember_shutdown(&mut failure, message.clone().into());
-                // A config/player callback may unwind before the stop path reaches its final
-                // save, including inside a new player's turn. The tail reapplies the exclusion
-                // and saves before reporting the original runtime or shutdown error.
-                if let Err(error) = self.finish_server_save(crashed, run_error.or(Some(&message))) {
-                    remember_shutdown(&mut failure, error);
-                }
+                remember_shutdown(&mut failure, shutdown_panic(payload.as_ref()).into());
             }
         }
         if let Err(payload) =
             catch_unwind(AssertUnwindSafe(|| self.native_server_stopped(dedicated)))
         {
+            remember_shutdown(&mut failure, shutdown_panic(payload.as_ref()).into());
+        }
+        // ServerLifecycleHooks.handleServerStopped posts the event before
+        // unloading the world's SYNCED configs, even on a failed run.
+        if let Err(payload) = catch_unwind(AssertUnwindSafe(|| self.native_configs_server_stop())) {
             remember_shutdown(&mut failure, shutdown_panic(payload.as_ref()).into());
         }
         match failure {
@@ -149,28 +164,78 @@ impl ServerGame<'_> {
     /// open must never overwrite a world the server did not successfully adopt.
     /// The session lock is not that marker: it is installed before the prepared
     /// level, so tag reads work, and a save in that gap would write the placeholder.
-    pub fn finish_server_save(&mut self, crashed: bool, run_error: Option<&str>) -> Result<()> {
+    pub fn finish_server_save(&mut self, dedicated: bool, crashed: bool) -> Result<()> {
         let before = self.server.save.0.record_save_failures();
-        // IntegratedServer.teardownPublishedState must happen even if an
-        // earlier callback panicked; otherwise lan_close only unpublishes a
-        // still-serving server instead of disconnecting and dropping its hub.
+        // 1. Network admission and published-state teardown (`getConnection().stop()`).
         self.stop_serving();
-        let mut result = match catch_unwind(AssertUnwindSafe(|| {
+        self.stop_network_transport();
+
+        // 2. Player save & removal (`PlayerList.saveAll`, `PlayerList.removeAll`).
+        let mut result: Result<()> = Ok(());
+        if dedicated && self.server.lan.is_some() {
+            crate::game::server_side::dedicated::log("INFO", "Saving players");
+        }
+        self.exclude_interrupted_players(crashed, |m| log::warn!("{m}"));
+        if let Err(payload) = catch_unwind(AssertUnwindSafe(|| self.native_players_leaving()))
+            && result.is_ok()
+        {
+            result = Err(shutdown_panic(payload.as_ref()).into());
+        }
+        self.exclude_interrupted_players(crashed, |m| log::warn!("{m}"));
+        if !crashed
+            && !dedicated
+            && let Err(payload) = catch_unwind(AssertUnwindSafe(|| self.award_leave_game_to_all()))
+            && result.is_ok()
+        {
+            result = Err(shutdown_panic(payload.as_ref()).into());
+        }
+        match catch_unwind(AssertUnwindSafe(|| {
             if crashed {
                 Ok(())
             } else {
                 self.free_player_beds()
             }
         })) {
-            Ok(result) => result,
-            Err(payload) => Err(shutdown_panic(payload.as_ref()).into()),
-        };
-        // The cleanup can unwind inside a new player's turn too (entering a level fires a load
-        // callback), before the save writes the players the exclusion does not name.
+            Ok(Ok(())) => {}
+            Ok(Err(error)) => {
+                if result.is_ok() {
+                    result = Err(error);
+                }
+            }
+            Err(payload) => {
+                if result.is_ok() {
+                    result = Err(shutdown_panic(payload.as_ref()).into());
+                }
+            }
+        }
+        // `free_player_beds` can enter another level and trigger callbacks before
+        // players are written.
         self.exclude_interrupted_players(crashed, |m| log::warn!("{m}"));
+        let owner_saved = match catch_unwind(AssertUnwindSafe(|| self.save_leaving_guests())) {
+            Ok(saved) => saved,
+            Err(payload) => {
+                if result.is_ok() {
+                    result = Err(shutdown_panic(payload.as_ref()).into());
+                }
+                false
+            }
+        };
+        self.exclude_interrupted_players(crashed, |m| log::warn!("{m}"));
+        if let Err(payload) = catch_unwind(AssertUnwindSafe(|| self.lan_disconnect(false)))
+            && result.is_ok()
+        {
+            result = Err(shutdown_panic(payload.as_ref()).into());
+        }
+
+        // Only an adopted world can be saved.
+        let save_world = self.server.world_adopted && self.server.session_lock.0.is_some();
+        if dedicated && save_world {
+            crate::game::server_side::dedicated::log("INFO", "Saving worlds");
+        }
         let saved = match catch_unwind(AssertUnwindSafe(|| {
-            if self.server.world_adopted && self.server.session_lock.0.is_some() {
-                self.save_game()
+            if save_world {
+                // PlayerList already saved the live owner; the shell is not a player.
+                self.save_world_after_players(owner_saved)
             } else {
                 Ok(())
             }
@@ -178,70 +243,44 @@ impl ServerGame<'_> {
             Ok(result) => result,
             Err(payload) => Err(shutdown_panic(payload.as_ref()).into()),
         };
-        result = result.and(saved);
-        // The save can unwind inside a new player's turn, and `lan_close` writes every player the
-        // exclusion does not name.
-        self.exclude_interrupted_players(crashed, |m| log::warn!("{m}"));
-        if let Err(payload) = catch_unwind(AssertUnwindSafe(|| self.lan_close(false))) {
-            let message = shutdown_panic(payload.as_ref());
-            if result.is_ok() {
-                result = Err(message.into());
-            }
-        }
-        // A player callback/save in lan_close can also unwind before taking
-        // the host. Reuse its transport teardown independently of callbacks.
-        if let Err(payload) = catch_unwind(AssertUnwindSafe(|| self.lan_disconnect(false)))
-            && result.is_ok()
-        {
-            result = Err(shutdown_panic(payload.as_ref()).into());
-        }
-        match catch_unwind(AssertUnwindSafe(|| self.server.save.0.flush())) {
-            Ok(saved) => result = result.and(saved),
-            Err(payload) => {
-                let message = shutdown_panic(payload.as_ref());
-                if result.is_ok() {
-                    result = Err(message.into());
-                }
-            }
-        }
+        let save_ok = saved.is_ok();
         let failed = self.server.save.0.record_save_failures() - before;
         if crashed && failed != 0 {
             log::warn!(
                 "Partial save during crash shutdown: {failed} chunk records could not be saved"
             );
         }
-        // Save hooks and entity references need the live epoch through the last write. Only
-        // now unload the levels; an independent crash keeps its original close cause.
-        if let Err(payload) = catch_unwind(AssertUnwindSafe(|| {
-            if let Some(error) = run_error {
-                if self.common.native_lifecycle.is_opening() {
-                    self.native_lifecycle_world_failed(error);
-                } else {
-                    self.native_lifecycle_close_failed(error);
-                }
-            } else if let Err(error) = &result {
-                self.native_lifecycle_close_failed(&error.to_string());
-            } else {
-                self.native_lifecycle_world_closed();
-            }
-        })) && result.is_ok()
+        if dedicated && save_world && save_ok {
+            self.log_saved_levels();
+        }
+        result = result.and(saved);
+
+        // A successful world save permits the per-level close loop.
+        if save_ok
+            && (self.server.world_adopted || self.server.levels.0.has_loaded_levels())
+            && let Err(payload) =
+                catch_unwind(AssertUnwindSafe(|| self.close_loaded_levels_for_stop()))
+            && result.is_ok()
+        {
+            result = Err(shutdown_panic(payload.as_ref()).into());
+        }
+
+        // Retire the session even when a save or close fails.
+        if let Err(payload) =
+            catch_unwind(AssertUnwindSafe(|| self.server_lifecycle_world_closed()))
+            && result.is_ok()
         {
             result = Err(shutdown_panic(payload.as_ref()).into());
         }
         self.server.session_lock.0 = None;
         self.server.interrupted_turns.clear();
         self.server.crash_save = Default::default();
-        // The integrated client retains these resources after joining this
-        // thread. Retire the world's maps here, also on failed opens that
-        // published tables before adopting a world.
+        // Clear world maps even if startup failed after publishing them.
         if let Some(rest) = self.common.res.rest.get() {
             rest.behaviours.set_block_maps(None);
         }
         super::cauldron_interactions::clear();
         self.clear_world_parts();
-        self.server.server_loot.0.set(None);
-        self.common.server_items = None;
-        self.server.world_tables.0 = None;
         self.server.world_adopted = false;
         self.server.startup_ticket_restore_pending = false;
         result
@@ -265,4 +304,3 @@ fn remember_shutdown(
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
-use sunrise_gameplay_common::game::native_lifecycle_common::NativeLifecycleCommonGameExt1 as _;

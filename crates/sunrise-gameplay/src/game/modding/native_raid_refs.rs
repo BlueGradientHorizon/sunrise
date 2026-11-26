@@ -1,8 +1,8 @@
-//! Raid handles for native server mods (`Raid`, `Raids`). Sunrise keeps the
-//! raids of current and parked server levels. Earlier opens, closed levels
-//! and client reads return `None` or `false`.
+//! Raid handles for native server mods (`Raid`, `Raids`). Reads use the raid
+//! data of the current or parked server level without moving either level.
 use super::commands::Target;
-use mod_api::{EntityRef, LevelRef, MobRef, RaidRef, RaidStatus};
+use core::ops::ControlFlow;
+use mod_api::{EntityRef, LevelReadError, LevelRef, MobRef, RaidReadError, RaidRef, RaidStatus};
 use sunrise_sim::{
     lan::playerdata::ints_uuid,
     mobs::Mob,
@@ -12,14 +12,26 @@ use sunrise_sim::{
 impl crate::game::ServerGame<'_> {
     // Diverges from upstream: handles resolve the requested server level without
     // swapping it into place, including during hooks for another level.
-    fn native_level_raid_collections(&self, level: LevelRef) -> Option<(&Raids, &[Mob])> {
-        self.native_level_world(level)?;
-        if level.dimension() == self.common.dim.key() {
-            Some((self.raids_in_place()?, &self.common.mobs))
+    fn native_level_raid_collections(
+        &self,
+        level: LevelRef,
+    ) -> Result<(&Raids, &[Mob]), LevelReadError> {
+        self.native_level_world_result(level)?;
+        let (raids, mobs) = if level.dimension() == self.common.dim.key() {
+            (self.raids_in_place(), self.common.mobs.as_ref())
         } else {
-            let parked = self.server.levels.0.parked_of(level.dimension_id())?;
-            Some((parked.raiding.raids(level.dimension_id())?, &parked.mobs))
-        }
+            let parked = self
+                .server
+                .levels
+                .0
+                .parked_of(level.dimension_id())
+                .ok_or(LevelReadError::Stale)?;
+            (
+                parked.raiding.raids(level.dimension_id()),
+                parked.mobs.as_ref(),
+            )
+        };
+        Ok((raids.ok_or(LevelReadError::Unavailable)?, mobs))
     }
     pub fn native_level_raids_mut(&mut self, level: LevelRef) -> Option<&mut Raids> {
         self.native_level_world(level)?;
@@ -34,16 +46,22 @@ impl crate::game::ServerGame<'_> {
                 .raids_mut(level.dimension_id())
         }
     }
-    fn native_raid_members(&self, raid: RaidRef) -> Option<impl Iterator<Item = &Mob>> {
+    fn native_raid_collections(&self, raid: RaidRef) -> Result<(&Raid, &[Mob]), RaidReadError> {
         let (raids, mobs) = self.native_level_raid_collections(raid.level())?;
-        raids.get(raid.id())?;
-        Some(super::raids::members(mobs, raid.id()))
+        Ok((raids.get(raid.id()).ok_or(RaidReadError::Stale)?, mobs))
+    }
+    fn native_raid_members(
+        &self,
+        raid: RaidRef,
+    ) -> Result<impl Iterator<Item = &Mob>, RaidReadError> {
+        let (_, mobs) = self.native_raid_collections(raid)?;
+        Ok(super::raids::members(mobs, raid.id()))
     }
     /// The raid a handle names now, or None for a stale or foreign one.
     fn native_raid_data(&self, raid: RaidRef) -> Option<&Raid> {
-        self.native_level_raid_collections(raid.level())?
-            .0
-            .get(raid.id())
+        self.native_raid_collections(raid)
+            .ok()
+            .map(|(raid, _)| raid)
     }
 
     /// `Raids.get(id)`: the raid saved under `id` in the requested level, if
@@ -56,21 +74,25 @@ impl crate::game::ServerGame<'_> {
     /// `ServerLevel.getRaidAt(pos)`: the closest active raid whose centre is
     /// less than 96 blocks away (`Raids.getNearbyRaid`, 9216 squared).
     pub fn level_raid_at(&self, level: LevelRef, pos: [i32; 3]) -> Option<RaidRef> {
-        let (id, _) = self.native_level_raid_collections(level)?.0.nearby(pos)?;
+        let (id, _) = self
+            .native_level_raid_collections(level)
+            .ok()?
+            .0
+            .nearby(pos)?;
         Some(RaidRef::new(level, id))
     }
 
-    /// Every raid `Raids` holds, in its iteration order, stopped ones
-    /// included until their next tick. None for a closed or stale level.
-    pub fn level_raids(&self, level: LevelRef) -> Option<Vec<RaidRef>> {
-        Some(
-            self.native_level_raid_collections(level)?
-                .0
-                .ids()
-                .into_iter()
-                .map(|id| RaidRef::new(level, id))
-                .collect(),
-        )
+    /// Every raid `Raids` holds, in map order, including stopped raids until their next tick.
+    pub fn level_visit_raids(
+        &self,
+        level: LevelRef,
+        visit: &mut dyn FnMut(RaidRef) -> ControlFlow<()>,
+    ) -> Result<ControlFlow<()>, LevelReadError> {
+        let (raids, _) = self.native_level_raid_collections(level)?;
+        Ok(raids
+            .iter_ids()
+            .map(|id| RaidRef::new(level, id))
+            .try_for_each(visit))
     }
 
     /// `Raider.getCurrentRaid`: the raid a raider belongs to, even a stopped
@@ -150,7 +172,8 @@ impl crate::game::ServerGame<'_> {
     /// `Raid.getHealthOfLivingRaiders`.
     pub fn raid_living_health(&self, raid: RaidRef) -> Option<f32> {
         Some(
-            self.native_raid_members(raid)?
+            self.native_raid_members(raid)
+                .ok()?
                 .fold(0.0, |a, m| a + m.health),
         )
     }
@@ -160,36 +183,42 @@ impl crate::game::ServerGame<'_> {
         Some(self.native_raid_data(raid)?.bar.progress)
     }
 
-    /// `Raid.getAllRaiders`: the living raiders that joined, in mob-list
-    /// order, as entity handles.
-    pub fn raid_raiders(&self, raid: RaidRef) -> Option<Vec<EntityRef>> {
-        Some(
-            self.native_raid_members(raid)?
-                .map(|m| EntityRef::new(raid.level().epoch(), m.id))
-                .collect(),
-        )
+    /// `Raid.getAllRaiders`: the living raiders that joined, in mob-list order.
+    pub fn raid_visit_raiders(
+        &self,
+        raid: RaidRef,
+        visit: &mut dyn FnMut(EntityRef) -> ControlFlow<()>,
+    ) -> Result<ControlFlow<()>, RaidReadError> {
+        let epoch = raid.level().epoch();
+        Ok(self
+            .native_raid_members(raid)?
+            .map(|m| EntityRef::new(epoch, m.id))
+            .try_for_each(visit))
     }
 
     /// The living raiders of one wave (`groupRaiderMap.get(wave)`).
-    pub fn raid_wave_raiders(&self, raid: RaidRef, wave: i32) -> Option<Vec<EntityRef>> {
-        Some(
-            self.native_raid_members(raid)?
-                .filter(|m| sunrise_sim::mobs::raider::state(m).is_some_and(|s| s.wave == wave))
-                .map(|m| EntityRef::new(raid.level().epoch(), m.id))
-                .collect(),
-        )
+    pub fn raid_visit_wave_raiders(
+        &self,
+        raid: RaidRef,
+        wave: i32,
+        visit: &mut dyn FnMut(EntityRef) -> ControlFlow<()>,
+    ) -> Result<ControlFlow<()>, RaidReadError> {
+        let epoch = raid.level().epoch();
+        Ok(self
+            .native_raid_members(raid)?
+            .filter(|m| sunrise_sim::mobs::raider::state(m).is_some_and(|s| s.wave == wave))
+            .map(|m| EntityRef::new(epoch, m.id))
+            .try_for_each(visit))
     }
 
-    /// `Raid.heroesOfTheVillage`: the UUIDs of the players who got Hero of
-    /// the Village, online or not, in the order vanilla's set iterates them.
-    pub fn raid_heroes(&self, raid: RaidRef) -> Option<Vec<u128>> {
-        Some(
-            self.native_raid_data(raid)?
-                .heroes()
-                .into_iter()
-                .map(ints_uuid)
-                .collect(),
-        )
+    /// `Raid.heroesOfTheVillage`: every recorded UUID in the vanilla set's order.
+    pub fn raid_visit_heroes(
+        &self,
+        raid: RaidRef,
+        visit: &mut dyn FnMut(u128) -> ControlFlow<()>,
+    ) -> Result<ControlFlow<()>, RaidReadError> {
+        let (raid, _) = self.native_raid_collections(raid)?;
+        Ok(raid.iter_heroes().map(ints_uuid).try_for_each(visit))
     }
 
     /// `Raid.stop`: the raid ends as `stopped` and its boss bar leaves the

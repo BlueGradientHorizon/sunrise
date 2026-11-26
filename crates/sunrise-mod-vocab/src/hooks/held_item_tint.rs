@@ -14,7 +14,6 @@ pub trait Hooks {
     /// next Part, then to the model's own colors. First-person hands, GUI previews, worn
     /// equipment, item frames and dropped items are not asked. Client-side.
     #[hook(
-        target = "sunrise_client_gameplay::game::native_hooks::held_item_tint::ClientGame<'_>::native_held_item_tint",
         receiver = "read",
         dispatch = "flat",
         side = "client",

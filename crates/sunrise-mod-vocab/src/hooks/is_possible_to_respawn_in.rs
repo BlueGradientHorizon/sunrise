@@ -10,7 +10,6 @@ pub trait Hooks {
     /// answer; the host is read-only. This does not choose a bed or anchor's
     /// stand-up position (see `respawn_position`).
     #[hook(
-        target = "sunrise_gameplay::game::native_hooks::is_possible_to_respawn_in::ServerGame<'_>::native_is_possible_to_respawn_in",
         receiver = "read",
         dispatch = "flat",
         side = "server",

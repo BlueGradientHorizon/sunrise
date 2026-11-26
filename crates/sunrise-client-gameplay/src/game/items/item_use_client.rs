@@ -4,6 +4,7 @@ use sunrise_gameplay_common::game::held_items::OFFHAND_SLOT;
 #[cfg(test)]
 use sunrise_gameplay_common::game::item_use_common::ItemUseState;
 use sunrise_gameplay_common::game::item_use_common::hand_of;
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;
 use sunrise_items::items::{ItemInfo, ItemStack};
 
 impl crate::game::ClientGame<'_> {
@@ -41,17 +42,28 @@ impl crate::game::ClientGame<'_> {
         self.client_apply_use_cooldown(stack);
         let mut result = self.finish_result(stack, info);
         let hand = hand_of(Some((slot, 0))).unwrap_or(self.common.hand);
-        self.native_living_entity_use_item_finish(stack, None, hand, 0, &mut result);
+        self.native_living_entity_use_item_finish(
+            stack,
+            Some(self.own_entity_id()),
+            hand,
+            0,
+            &mut result,
+        );
         let before = self.creative_stacks();
-        if !self.common.creative && stack.count == 1 && self.consumable(stack).is_some() {
-            if self.common.stack_in(slot) != Some(stack) {
-                return;
+        'write: {
+            if !self.common.creative && stack.count == 1 && self.consumable(stack).is_some() {
+                // A listener replaced the used-up stack: its stack stays, and only the
+                // hand write is skipped. `stopUsingItem` still ends the use below.
+                if self.common.stack_in(slot) != Some(stack) {
+                    break 'write;
+                }
+                *self.common.stack_in_mut(slot) = None;
+                self.player_item_destroyed(stack, Some(hand));
             }
-            *self.common.stack_in_mut(slot) = None;
-            self.player_item_destroyed(stack, Some(hand));
+            *self.common.stack_in_mut(slot) = result.filter(|s| s.count > 0);
+            self.remote_synced_since(&before);
         }
-        *self.common.stack_in_mut(slot) = result.filter(|s| s.count > 0);
-        self.remote_synced_since(&before);
+        self.stopped_using(stack, Some(self.own_entity_id()), hand, 0);
     }
     /// Client-side `UseCooldown.apply`: updates local cooldowns until server sync confirms or clears.
     pub(in crate::game) fn client_apply_use_cooldown(&mut self, stack: &ItemStack) {

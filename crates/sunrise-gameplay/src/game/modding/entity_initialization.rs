@@ -10,8 +10,17 @@
 use crate::game::ServerGame;
 use mod_api::Holder;
 use std::collections::HashSet;
+use sunrise_gameplay_common::game::entity_initialization_common::Construction;
 
 impl ServerGame<'_> {
+    pub(in crate::game) fn server_after_entity_constructing_fault(&mut self, _id: u32) {
+        #[cfg(test)]
+        {
+            use super::pending_births::escaping_fault::{self, At};
+            escaping_fault::reach(At::Constructed, _id);
+        }
+    }
+
     pub(in crate::game) fn server_bind_constructed_entity_attachments(&mut self, id: u32) {
         if self.native_authoritative()
             && self
@@ -44,11 +53,14 @@ impl ServerGame<'_> {
             self.common
                 .forget_entity_initialization(Holder::Player(uuid));
         }
-        self.initialize_guest_player_under_data(uuid, conn);
+        self.initialize_construction(
+            Construction::ServerPlayer { uuid, conn },
+            "minecraft:player",
+        );
     }
 
-    /// `PlayerList.respawn`: the guest gets a new `ServerPlayer`, told again, and the data it
-    /// keeps (`copy_on_death`, already in place) is restored over it.
+    /// `PlayerList.respawn` constructs another `ServerPlayer` before `restoreFrom`,
+    /// even though the replacement uses the same connection and UUID.
     pub(in crate::game::server_side) fn reinitialize_server_player(
         &mut self,
         uuid: u128,
@@ -56,32 +68,10 @@ impl ServerGame<'_> {
     ) {
         self.common
             .forget_entity_initialization(Holder::Player(uuid));
-        self.initialize_guest_player_under_data(uuid, conn);
-    }
-
-    /// Tell a guest's player whose attachments already hold its data, then read that data
-    /// back over what the listeners set: the end state of vanilla's order, where the player is
-    /// constructed before its data is read (`Entity.load`, `restoreFrom`).
-    pub(in crate::game) fn initialize_guest_player_under_data(&mut self, uuid: u128, conn: u32) {
-        if !mod_api::__private::listened(mod_api::HookId::EntityConstructing) {
-            return;
-        }
-        let data = self
-            .server
-            .lan
-            .as_mut()
-            .and_then(|host| host.hub.guests.attachments_mut(conn))
-            .map(|attachments| attachments.to_nbt());
-        self.initialize_entity(Holder::Player(uuid), "minecraft:player");
-        if let Some(data) = data
-            && let Some(attachments) = self
-                .server
-                .lan
-                .as_mut()
-                .and_then(|host| host.hub.guests.attachments_mut(conn))
-        {
-            attachments.read_saved_over(data);
-        }
+        self.initialize_construction(
+            Construction::ServerPlayer { uuid, conn },
+            "minecraft:player",
+        );
     }
 }
 

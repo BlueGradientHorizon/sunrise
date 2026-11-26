@@ -21,7 +21,6 @@ pub trait Hooks {
     /// a component-dependent answer is not supported by this hook or its
     /// `supports_enchantment` pair.
     #[hook(
-        target = "sunrise_gameplay::game::native_hooks::is_primary_item_for::ServerGame<'_>::native_is_primary_item_for",
         receiver = "read",
         dispatch = "flat",
         side = "server",

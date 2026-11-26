@@ -30,15 +30,16 @@ impl crate::game::ServerGame<'_> {
         let Some(entry) = self.common.dropped.get_mut(index) else {
             return Vec::new();
         };
+        let items = self.common.res.clone();
         if !mod_api::__private::item_listens(mod_api::HookId::ItemDestroyed, &entry.stack.item) {
-            return entry.spill_destroyed_contents();
+            return entry.spill_destroyed_contents(items.items());
         }
         let id = entry.id;
-        let vanilla_spilled = entry.peek_destroyed_contents();
+        let vanilla_spilled = entry.peek_destroyed_contents(items.items());
         let stack = entry.stack.clone();
         let Some(handle) = self.entity(id).and_then(|entity| self.item_entity(entity)) else {
             if let Some(entry) = self.common.dropped.get_mut(index).filter(|e| e.id == id) {
-                return entry.spill_destroyed_contents();
+                return entry.spill_destroyed_contents(items.items());
             }
             return vanilla_spilled;
         };
@@ -68,7 +69,7 @@ impl crate::game::ServerGame<'_> {
             }
         };
         if let Some(entry) = self.common.dropped.iter_mut().find(|e| e.id == id) {
-            let _ = entry.spill_destroyed_contents();
+            let _ = entry.spill_destroyed_contents(items.items());
         }
         result
     }

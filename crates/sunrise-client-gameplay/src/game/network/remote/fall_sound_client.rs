@@ -34,11 +34,11 @@ impl crate::game::ClientGame<'_> {
         {
             return;
         }
-        let sound = self.own_sound_type(
+        let sound = self.own_block_sound(
             [position.x, position.y, position.z],
             state,
             mod_api::BlockSoundCause::Fall,
         );
-        self.play_client_player_sound(&sound.fall, sound.volume * 0.5, sound.pitch * 0.75);
+        self.play_client_player_sound(sound.event.as_str(), sound.volume * 0.5, sound.pitch * 0.75);
     }
 }

@@ -10,7 +10,6 @@ pub trait Hooks {
     /// at its own rate. Client-side. Beyond NeoForge: there is no counterpart. Diverges from
     /// upstream: new hook.
     #[hook(
-        target = "sunrise_client_gameplay::game::native_hooks::tick_target_millis::ClientGame<'_>::native_tick_target_millis",
         receiver = "read",
         dispatch = "flat",
         side = "client",

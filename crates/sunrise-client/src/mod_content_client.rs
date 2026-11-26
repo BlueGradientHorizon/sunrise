@@ -514,11 +514,9 @@ mod tests {
         );
         assert_eq!(&*block("signs:board").item, "signs:notice");
         assert_eq!(&*block("signs:bracket").item, "signs:lantern");
-        let defaults = sunrise_world::item_defaults::read(&root).unwrap();
         let mut renderer = crate::block_entity_render::BlockEntityRenderer::load(
             &sunrise_assets::resource_source::ResourceRoot::directory(root.to_path_buf()),
             registry,
-            &defaults,
         )
         .unwrap();
         renderer.add_mod_signs(&facts, registry);
@@ -642,7 +640,11 @@ mod tests {
                 music_volume: Some(0.25),
             },
         };
-        let declared = [["zinc".to_owned(), "declared:oasis".to_owned(), typed.json()]];
+        let declared = [[
+            "zinc".to_owned(),
+            "data/zinc/neoforge/biome_modifier/oasis.json".to_owned(),
+            typed.json(),
+        ]];
         let packs = sunrise_world::worldgen::overrides::WorldgenOverrides::default();
         let overridden = biome_modifiers_over_packs(&out, &packs, &declared)
             .unwrap()
@@ -823,8 +825,8 @@ mod tests {
                 independent_behaviours.facts(state).flags
             );
             assert_eq!(
-                deferred_behaviours.data(state).sounds.place,
-                independent_behaviours.data(state).sounds.place
+                deferred_behaviours.facts(state).placement_sound,
+                independent_behaviours.facts(state).placement_sound
             );
             assert_eq!(shared_facts.get(state).emission, facts.get(state).emission);
             assert_eq!(shared_facts.get(state).classes, facts.get(state).classes);
@@ -833,8 +835,8 @@ mod tests {
                 independent_behaviours.facts(state).flags,
             );
             assert_eq!(
-                shared_behaviours.data(state).sounds.place,
-                independent_behaviours.data(state).sounds.place,
+                shared_behaviours.facts(state).placement_sound,
+                independent_behaviours.facts(state).placement_sound,
             );
         }
 
@@ -1261,5 +1263,77 @@ mod tests {
         );
         assert!(!properties.bind_can_occlude().contains(open));
         fs::remove_dir_all(scratch).unwrap();
+    }
+
+    /// Face rules declared in a content block's data reach the visibility table the mesher culls
+    /// with, over the prepared game: `skip_rendering`, `hides_neighbor_face` and
+    /// `supports_external_face_hiding` decide the face between two neighbours.
+    #[test]
+    #[ignore = "daily"]
+    fn content_block_face_rules_reach_the_mesher_visibility() {
+        use sunrise_core::geometry::Direction;
+        let Some(base) = prepared() else {
+            return;
+        };
+        let scratch =
+            std::env::temp_dir().join(format!("sunrise-face-rules-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&scratch);
+        let manifest_text = manifest("testmod", "");
+        let m = folder_mod(
+            &scratch.join("mod"),
+            &[
+                ("sunrise-mod.toml", manifest_text.as_str()),
+                (
+                    "data/testmod/sunrise/block/self_skip.json",
+                    r#"{"template":"minecraft:glass","item":false,"properties":{"occludes":false,"skip_rendering":[{"neighbor":"self"}]}}"#,
+                ),
+                (
+                    "data/testmod/sunrise/block/no_skip.json",
+                    r#"{"template":"minecraft:glass","item":false,"properties":{"occludes":false,"skip_rendering":[]}}"#,
+                ),
+                (
+                    "data/testmod/sunrise/block/hider.json",
+                    r#"{"template":"minecraft:glass","item":false,"properties":{"occludes":false,"skip_rendering":[],"hides_neighbor_face":[{"neighbor":"testmod:no_skip"},{"neighbor":"testmod:opt_out"}]}}"#,
+                ),
+                (
+                    "data/testmod/sunrise/block/opt_out.json",
+                    r#"{"template":"minecraft:glass","item":false,"properties":{"occludes":false,"skip_rendering":[],"supports_external_face_hiding":false}}"#,
+                ),
+            ],
+        );
+        let root =
+            resource_root_fixture(&base, Path::new(""), &[m], &scratch.join("cache")).unwrap();
+        let assets = Assets::load(&root).unwrap();
+        let registry = assets.registry;
+        let mut visibility = crate::models::load_visibility(&root, registry).unwrap();
+        let state = |id: &str| BlockStateId(registry.default_state(id).unwrap().0);
+        let (self_skip, no_skip, hider, opt_out) = (
+            state("testmod:self_skip"),
+            state("testmod:no_skip"),
+            state("testmod:hider"),
+            state("testmod:opt_out"),
+        );
+        let mut shown = |a, b| {
+            visibility
+                .should_render_face(a, b, Direction::East, true)
+                .unwrap()
+        };
+        assert!(
+            !shown(self_skip, self_skip),
+            "skip_rendering self hides the shared face"
+        );
+        assert!(
+            shown(no_skip, no_skip),
+            "an empty skip_rendering drops glass's same-block skip"
+        );
+        assert!(
+            !shown(no_skip, hider),
+            "hides_neighbor_face hides the neighbour's face"
+        );
+        assert!(
+            shown(opt_out, hider),
+            "supports_external_face_hiding: false keeps the face"
+        );
+        let _ = fs::remove_dir_all(&scratch);
     }
 }

@@ -289,6 +289,9 @@ impl crate::game::ClientGame<'_> {
                 .0
                 .packs
                 .push(p.id, &p.url, parse_sha1(&p.hash));
+            // `acceptPack`/`pushPack` report ACCEPTED or DECLINED from the packet handler, so
+            // it reaches the server in this phase: before a FinishConfiguration behind it.
+            self.send_pack_replies();
             return;
         }
         // addOrUpdatePackPrompt: one prompt for every pack pushed before it is answered.
@@ -344,6 +347,13 @@ impl crate::game::ClientGame<'_> {
         }
     }
 
+    /// `DownloadedPackSource`'s feedback: `connection.send` as each status is reported.
+    fn send_pack_replies(&mut self) {
+        for (id, status) in self.client.server_packs.0.packs.take_replies() {
+            self.send_pack_status(id, status);
+        }
+    }
+
     /// `PackConfirmScreen`'s callback: push every pending pack and save the server list.
     /// Declining a required pack closes the connection without changing its stored policy.
     pub fn answer_pack_prompt(&mut self, yes: bool) -> Result<()> {
@@ -371,6 +381,7 @@ impl crate::game::ClientGame<'_> {
             .server_packs
             .0
             .complete_prompt(prompt, Some(yes));
+        self.send_pack_replies();
         Ok(())
     }
 
@@ -388,7 +399,6 @@ impl crate::game::ClientGame<'_> {
             keep
         });
         self.client.server_packs.0.notifiers = notifiers;
-        self.drive_mod_browser();
         // A reload waits for the world's resources (`reload_packs`).
         if self.common.rest_loader.is_some() {
             return;
@@ -424,9 +434,7 @@ impl crate::game::ClientGame<'_> {
                 self.start_pack_reload(&load);
             }
         }
-        for (id, status) in self.client.server_packs.0.packs.take_replies() {
-            self.send_pack_status(id, status);
-        }
+        self.send_pack_replies();
     }
     fn start_pack_downloads(&mut self, requests: Vec<sunrise_client::server_packs::Request>) {
         let state = &mut self.client.server_packs.0;
@@ -576,13 +584,14 @@ impl crate::game::ClientGame<'_> {
             .with_title_color(sunrise_client::hud::rgba(255, 85, 85, 255));
             // Audio playback notices retain the player's existing F1 visibility rule.
             let hide_with_f1 = matches!(report.hook, "AudioStream::read" | "AudioStream::drop");
-            self.client
-                .toast_manager
-                .queued
-                .push_back(Toast::Diagnostic {
+            let clock = sunrise_client::toasts::ToastClock::of(self.common.clock.still());
+            self.client.toast_manager.post(
+                clock,
+                Toast::Diagnostic {
                     toast,
                     hide_with_f1,
-                });
+                },
+            );
         }
     }
 
@@ -596,7 +605,7 @@ impl crate::game::ClientGame<'_> {
             .answer_at(self.client.cursor);
         match answer {
             Some(yes) => {
-                self.client.audio.0.play_button_click();
+                self.play_audio_button_click();
                 self.answer_pack_prompt(yes)?;
                 Ok(true)
             }

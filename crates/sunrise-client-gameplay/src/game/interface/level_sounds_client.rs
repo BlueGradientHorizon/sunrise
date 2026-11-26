@@ -2,9 +2,7 @@ use crate::game::ClientGame;
 use mod_api::{Identifier, SoundSource};
 use std::borrow::Cow;
 use sunrise_gameplay_common::game::level_sounds_common::{HeardSound, LevelSound, listened};
-use sunrise_gameplay_common::game::native_hooks::{
-    level_sound_playable, level_sounds::GameHooks as _,
-};
+use sunrise_gameplay_common::game::native_hooks::level_sounds::GameHooks as _;
 
 impl ClientGame<'_> {
     /// `ClientLevel.playSeededSound`: ask this client's mods before playback.
@@ -39,7 +37,7 @@ impl ClientGame<'_> {
             return;
         };
         match entity {
-            Some(entity) => self.client.audio.0.play_entity_seeded(
+            Some(entity) => self.play_audio_entity_seeded(
                 &heard.name,
                 heard.source.index(),
                 heard.volume,
@@ -47,7 +45,7 @@ impl ClientGame<'_> {
                 seed,
                 entity,
             ),
-            None => self.client.audio.0.play_on_seeded(
+            None => self.play_audio_on_seeded(
                 heard.source.index(),
                 &heard.name,
                 Some(at),
@@ -67,7 +65,7 @@ impl ClientGame<'_> {
         let seed = self.client.audio.0.next_sound_seed();
         let at = sound.at;
         if let Some(heard) = self.client_ask_level_sound(self.common.dim.id(), sound) {
-            self.client.audio.0.play_on_seeded(
+            self.play_audio_on_seeded(
                 heard.source.index(),
                 &heard.name,
                 Some(at),
@@ -151,7 +149,7 @@ impl ClientGame<'_> {
             }
         }
         drop(guard);
-        if cancel || !level_sound_playable(at, volume_now, pitch_now) {
+        if cancel {
             return None;
         }
         Some(HeardSound {

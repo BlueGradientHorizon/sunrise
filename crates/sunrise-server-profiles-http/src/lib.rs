@@ -301,6 +301,16 @@ struct Entry {
     /// `None` while the fetch is in flight.
     resolved: Option<Option<ResolvedProfile>>,
 }
+impl Entry {
+    fn live_at(&self, now: std::time::Instant) -> bool {
+        now - self.touched < PROFILE_TTL
+    }
+    fn resolution(&self) -> Resolve {
+        self.resolved
+            .clone()
+            .map_or(Resolve::Pending, Resolve::Done)
+    }
+}
 /// `ProfileResolver.Cached`'s cache bounds.
 const MAX_PROFILES: usize = 256;
 const PROFILE_TTL: std::time::Duration = std::time::Duration::from_secs(10 * 60);
@@ -372,26 +382,41 @@ impl ProfileCache {
             lookup: Box::new(lookup),
         }
     }
-    /// `CacheBuilder.expireAfterAccess` with `maximumSize`.
-    fn sweep(&mut self) {
-        if self.last_sweep.elapsed() < std::time::Duration::from_secs(30) {
-            return;
+    fn sweep_time(&self) -> Option<std::time::Instant> {
+        let now = std::time::Instant::now();
+        (now - self.last_sweep >= std::time::Duration::from_secs(30)).then_some(now)
+    }
+    /// `CacheBuilder.expireAfterAccess` with `maximumSize`. Compute the same
+    /// removals for a prospective lookup and for a committed sweep.
+    fn over_capacity(&self, now: std::time::Instant) -> Vec<NameOrId> {
+        if self.entries.len() <= MAX_PROFILES {
+            return Vec::new();
         }
-        self.last_sweep = std::time::Instant::now();
-        self.entries
-            .retain(|_, e| e.touched.elapsed() < PROFILE_TTL);
-        while self.entries.len() > MAX_PROFILES
-            && let Some(oldest) = self
-                .entries
-                .iter()
-                .min_by_key(|(_, e)| e.touched)
-                .map(|(k, _)| k.clone())
-        {
-            self.entries.remove(&oldest);
+        let mut live = self
+            .entries
+            .iter()
+            .filter(|(_, entry)| entry.live_at(now))
+            .collect::<Vec<_>>();
+        let excess = live.len().saturating_sub(MAX_PROFILES);
+        if excess == 0 {
+            return Vec::new();
+        }
+        live.sort_by_key(|(_, entry)| entry.touched);
+        live.into_iter()
+            .take(excess)
+            .map(|(key, _)| key.clone())
+            .collect()
+    }
+    fn sweep(&mut self) {
+        if let Some(now) = self.sweep_time() {
+            self.last_sweep = now;
+            for key in self.over_capacity(now) {
+                self.entries.remove(&key);
+            }
+            self.entries.retain(|_, entry| entry.live_at(now));
         }
     }
-    /// How the resolution of `key` stands, starting it the first time.
-    pub fn state(&mut self, key: &NameOrId) -> Resolve {
+    fn receive_completed(&mut self) {
         while let Ok((key, resolved)) = self.done.try_recv() {
             self.entries.insert(
                 key,
@@ -401,13 +426,27 @@ impl ProfileCache {
                 },
             );
         }
+    }
+    /// Inspect the cached resolution without starting a lookup or mutating access times.
+    pub fn peek(&mut self, key: &NameOrId) -> Resolve {
+        self.receive_completed();
+        let Some(entry) = self.entries.get(key) else {
+            return Resolve::Pending;
+        };
+        if let Some(now) = self.sweep_time()
+            && (!entry.live_at(now) || self.over_capacity(now).contains(key))
+        {
+            return Resolve::Pending;
+        }
+        entry.resolution()
+    }
+    /// How the resolution of `key` stands, starting it the first time.
+    pub fn state(&mut self, key: &NameOrId) -> Resolve {
+        self.receive_completed();
         self.sweep();
         if let Some(entry) = self.entries.get_mut(key) {
             entry.touched = std::time::Instant::now();
-            return match &entry.resolved {
-                Some(resolved) => Resolve::Done(resolved.clone()),
-                None => Resolve::Pending,
-            };
+            return entry.resolution();
         }
         // `fetchByName` refuses an invalid name without a fetch; like every
         // other empty answer that is the cached result.

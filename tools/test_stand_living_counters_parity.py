@@ -14,11 +14,9 @@ import subprocess
 import sys
 import tempfile
 
-try:
-    from . import command_exec_corpus as corpus_module, lab
-except ImportError:
-    import command_exec_corpus as corpus_module
-    import lab
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+from tools import command_exec_corpus as corpus_module, lab
 
 WITNESS_ENV = 'SUNRISE_STAND_LIVING_COUNTERS_WITNESS'
 WITNESS_NAME = 'stand_living_counters.json'

@@ -4,21 +4,17 @@ use sunrise_level::containers::ModBlockEntity;
 /// Server-level helpers for native mods.
 impl GameLevel<'_> {
     /// Play a sound event for nearby players in this server level. The return
-    /// value means queued, not heard. A `minecraft:` event must be registered:
-    /// an unknown one is dropped at dispatch. Another namespace's event (a
-    /// mod's, `mymod:machine_hum`) is sent by name, as vanilla sends a sound
-    /// that isn't in its registry (`Holder.direct`, a variable range): players
-    /// hear it if their resources define it (`assets/mymod/sounds.json`, a
-    /// content mod's).
+    /// value means queued, not heard. The server sends registered sounds by ID and other valid
+    /// keys by name (`Holder.direct`). The receiving client resolves the sound resources.
     pub(in crate::game) fn native_play_sound(
         &mut self,
         sound: &str,
         at: [f64; 3],
-        source: usize,
+        source: mod_api::SoundSource,
         volume: f32,
         pitch: f32,
     ) -> bool {
-        if !self.native_authoritative || !mod_sound_ok(sound, at, source, volume, pitch) {
+        if !self.native_authoritative || !sound_id(sound) {
             return false;
         }
         // `Level.playSound` draws `soundSeedGenerator.nextLong` at the call;
@@ -30,8 +26,9 @@ impl GameLevel<'_> {
             .push(crate::game::creatures::NativeSound {
                 dimension: dimension_id(self.dimension),
                 sound: sound.to_owned(),
+                inline_range: None,
                 at,
-                source: source as i32,
+                source: source.index() as i32,
                 volume,
                 pitch,
                 seed,
@@ -102,10 +99,7 @@ impl GameLevel<'_> {
     }
     /// Creates a declared state-aware block entity from its actual state. No answer
     /// means no entity; the registered declaration owns its type identity.
-    pub(in crate::game) fn new_block_entity_for_state(
-        &self,
-        state: BlockStateId,
-    ) -> Option<BlockEntity> {
+    pub fn new_block_entity_for_state(&self, state: BlockStateId) -> Option<BlockEntity> {
         let placed = self.registry.state(state)?;
         let name = &placed.name;
         if self.world.block_entities.stateful_entity(state.0) {

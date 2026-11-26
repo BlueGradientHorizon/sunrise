@@ -3,6 +3,7 @@ use super::{
     collision_source::{Mover, boat, cart, cart_reach, player},
     commands_common::Target,
 };
+use sunrise_gameplay_common::game::transactions::entities::EntityRemovalGameExt as _;
 use sunrise_sim::entity_solids::{Candidate, Mover as Rule, Side, SolidKind, Solids};
 
 impl crate::game::ServerGame<'_> {
@@ -118,7 +119,7 @@ impl crate::game::ServerGame<'_> {
                     let c = m.solid_candidate();
                     let target = Target::Mob(m.id);
                     if solids.accepts(&c, || self.server_boat_collision_root(m.id, target))
-                        && !self.common.target_removed(&target)
+                        && !self.target_removed(&target)
                     {
                         each(&c, Some(j));
                     }
@@ -148,7 +149,7 @@ impl crate::game::ServerGame<'_> {
                     )
                 {
                     if solids.accepts(&c, || self.server_boat_collision_root(c.id, target))
-                        && !self.common.target_removed(&target)
+                        && !self.target_removed(&target)
                     {
                         each(&c, None);
                     }

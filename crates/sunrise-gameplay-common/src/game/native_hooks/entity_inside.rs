@@ -5,11 +5,9 @@ impl HitLevel<'_> {
     /// `Block.entityInside`: an entity's sweep crossed a block with a part for it
     /// (`precise` is `Entity.checkInsideBlocks`' flag), told mid-sweep, on the level
     /// host a hit or a landing uses. The part draws the level's random in vanilla's
-    /// order and queues its writes on the event: the typed entity writes and effects
-    /// apply to the swept entity inside its own tick, and the level writes land at the
-    /// touched block at the batch end, guarded on the state. Generated dispatch stages
-    /// every requested API `InsideWrite` before committing; an invalid state refuses
-    /// the whole callback's output.
+    /// order and queues effects and owned callbacks on `event.apply`, `event.run_before`,
+    /// and `event.run_after`, which flush at the end of the sweep via
+    /// `InsideEffects::apply_and_clear` with live entity and level access.
     pub(in crate::game) fn native_entity_inside(
         &mut self,
         call: super::fire::EntityInsideCall<'_>,
@@ -28,6 +26,7 @@ pub mod sweep_tests {
     #[derive(Clone, Default)]
     pub struct InsidePart {
         pub contacts: std::sync::Arc<std::sync::Mutex<Vec<[i32; 3]>>>,
+        pub applied_order: std::sync::Arc<std::sync::Mutex<Vec<(&'static str, i32)>>>,
         pub wither: std::sync::Arc<std::sync::Mutex<Option<mod_api::EffectKey>>>,
         pub speed: std::sync::Arc<std::sync::Mutex<Option<mod_api::EffectKey>>>,
         pub hurt_after: Option<(usize, f32)>,
@@ -48,42 +47,36 @@ pub mod sweep_tests {
             // A level draw, in vanilla's order: between the vanilla contacts.
             let _ = host.with_random(|random| random.next_long());
             if self.panic_after.is_some_and(|after| seen > after) {
+                // Unlike an owned closure, this effect would not be skipped by owner poisoning
+                // if a failed listener accidentally published its staged collector.
+                event.apply(mod_api::InsideEffect::LavaIgnite);
                 panic!("an entity_inside part panics");
             }
             if let Some((after, amount)) = self.hurt_after
                 && seen > after
             {
-                event.run_after(
-                    mod_api::InsideEffect::Freeze,
-                    mod_api::EntityWrite::Hurt {
-                        damage_type: self.generic.lock().unwrap().unwrap(),
-                        amount,
-                    },
-                );
+                event.run_after(mod_api::InsideEffect::Freeze, move |view| {
+                    view.hurt("minecraft:generic", amount);
+                });
             }
-            event.run_after(
-                mod_api::InsideEffect::Freeze,
-                mod_api::EntityWrite::Push([0.5, 0.0, 0.0]),
-            );
+            event.run_after(mod_api::InsideEffect::Freeze, |view| {
+                view.push([0.5, 0.0, 0.0]);
+            });
             if let Some(wither) = *self.wither.lock().unwrap() {
-                event.run_after(
-                    mod_api::InsideEffect::Freeze,
-                    mod_api::EntityWrite::AddEffect {
-                        effect: wither,
-                        duration: 40,
-                        amplifier: 0,
-                    },
-                );
+                let order = self.applied_order.clone();
+                event.run_after(mod_api::InsideEffect::Freeze, move |view| {
+                    if view.add_effect(wither, 40, 0) {
+                        order.lock().unwrap().push(("minecraft:wither", 40));
+                    }
+                });
             }
             if let Some(speed) = *self.speed.lock().unwrap() {
-                event.run_after(
-                    mod_api::InsideEffect::Extinguish,
-                    mod_api::EntityWrite::AddEffect {
-                        effect: speed,
-                        duration: 20,
-                        amplifier: 0,
-                    },
-                );
+                let order = self.applied_order.clone();
+                event.run_after(mod_api::InsideEffect::Extinguish, move |view| {
+                    if view.add_effect(speed, 20, 0) {
+                        order.lock().unwrap().push(("minecraft:speed", 20));
+                    }
+                });
             }
         }
     }

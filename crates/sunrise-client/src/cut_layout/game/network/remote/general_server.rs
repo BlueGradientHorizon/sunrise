@@ -121,6 +121,11 @@ pub(crate) mod tests {
                     velocity: [0.0; 3],
                     rotation: [0.0; 2],
                     owner: None,
+                    custom_name: None,
+                    custom_name_visible: false,
+                    no_gravity: false,
+                    on_ground: false,
+                    fall_distance: 0.0,
                     uuid: [1, 0, 0, 4],
                     envelope: GeneralTypeEnvelope {
                         type_key: PACKAGE.into(),

@@ -68,9 +68,6 @@ pub mod level_world;
 #[path = "living_death_server.rs"]
 pub mod living_death;
 
-#[path = "mod_configs_server.rs"]
-pub mod mod_configs;
-
 #[path = "mod_mismatch_server.rs"]
 pub mod mod_mismatch;
 
@@ -86,8 +83,8 @@ pub mod player_bed_leave;
 #[path = "player_leave_server.rs"]
 pub mod player_leave;
 
-#[path = "register_enchantment_damage_effects_server.rs"]
-pub mod register_enchantment_damage_effects;
+pub mod register_enchantment_effects;
+pub mod register_mob_parts;
 
 #[path = "shared/item_fallthrough_server.rs"]
 pub mod item_fallthrough;
@@ -119,25 +116,45 @@ impl crate::game::ServerGame<'_> {
         cancel
     }
     /// The [`Attack`] of `attacker` (an entity id, 0 for none) for the level a hit lands in
-    /// ([`DamageLevel::attacked_by`]). While a native mod listens it also records what the
-    /// attacker holds (the player's selected and off-hand stacks, a mob's main hand) for
-    /// `living_knockback` and the weapon of `living_incoming_damage`; without one it is the
-    /// id alone, two `None`s and no allocation. Taken before the level's borrows of the game.
+    /// ([`DamageLevel::attacked_by`]). Record the attacker's hand state only if a
+    /// subscribed hit, death or loot hook may read it, or when the main hand carries
+    /// `minecraft:armor_effectiveness`, which the hit reads as its weapon. Capture before
+    /// the level borrows the game so nested damage can't substitute a different attacker's
+    /// hands.
     pub fn attack_of(&self, attacker: i32) -> Attack {
-        let held = if mod_api::__private::mods().is_empty() {
-            [None, None]
-        } else if self
+        let listens = [
+            mod_api::HookId::LivingIncomingDamage,
+            mod_api::HookId::LivingKnockback,
+            mod_api::HookId::LivingDeath,
+            mod_api::HookId::LootDrops,
+        ]
+        .into_iter()
+        .any(mod_api::__private::listened);
+        let enchantments = &server_world_stations!(self).enchantments;
+        let main = |stack: Option<&sunrise_items::items::ItemStack>| {
+            stack
+                .filter(|stack| {
+                    listens || enchantments.has_component(stack, "minecraft:armor_effectiveness")
+                })
+                .cloned()
+        };
+        let held = if self
             .common
             .player
             .as_ref()
             .is_some_and(|p| p.entity_id == attacker)
         {
             [
-                self.common.stack_in(self.common.selected).cloned(),
-                self.common.offhand.clone(),
+                main(self.common.stack_in(self.common.selected)),
+                listens.then(|| self.common.offhand.clone()).flatten(),
             ]
-        } else if let Some(mob) = self.common.mobs.iter().find(|m| m.id as i32 == attacker) {
-            [mob.extra.main_hand_stack().cloned(), None]
+        } else if let Some(index) = self
+            .common
+            .mob_index
+            .find_ref(&self.common.mobs, attacker as u32)
+        {
+            let mob = &self.common.mobs[index];
+            [main(mob.extra.main_hand_stack()), None]
         } else if let Some(guest) = self
             .server
             .lan
@@ -145,8 +162,8 @@ impl crate::game::ServerGame<'_> {
             .and_then(|host| host.hub.guests.iter().find(|g| g.entity_id == attacker))
         {
             [
-                guest.inventory.get(guest.selected).cloned().flatten(),
-                guest.offhand.clone(),
+                main(guest.inventory.get(guest.selected).and_then(Option::as_ref)),
+                listens.then(|| guest.offhand.clone()).flatten(),
             ]
         } else {
             [None, None]
@@ -180,6 +197,8 @@ impl crate::game::ServerGame<'_> {
                 .then(|| self.known_attacker_uuid(attacker as u32))
                 .flatten(),
             player_uuid,
+            enchantment_attacker: self.enchantment_actor(attacker),
+            enchantment_direct: None,
         }
     }
     /// Finish a lethal or totem-protected hit only once the owning level has settled it.
@@ -268,29 +287,6 @@ impl crate::game::ServerGame<'_> {
             &source,
             mod_api::DamageContainerView::new(&live),
         );
-    }
-    /// `ItemStack.onItemUseFirst` for a click on a block: the broadcast
-    /// event's `ItemBeforeBlock` phase, then the held item's Part. Canceling skips that Part.
-    /// Only `Pass` continues to the block.
-    pub(crate) fn item_use_first(
-        &mut self,
-        hit: &sunrise_gameplay_common::game::Hit,
-        hand: Hand,
-        stack: &ItemStack,
-    ) -> Option<mod_api::InteractionResult> {
-        if let Some(answer) =
-            self.use_item_on_block(hit, hand, Some(stack), UsePhase::ItemBeforeBlock)
-        {
-            return Some(answer);
-        }
-        if !mod_api::__private::has_part_hook(mod_api::HookId::OnItemUseFirst) {
-            return None;
-        }
-        let snapshot = stack.try_into_api().ok()?;
-        let click = self.block_click(hit, hand, Some(&snapshot));
-        let mut answer = None;
-        self.native_on_item_use_first(&snapshot, &click, &mut answer);
-        answer.filter(|answer| *answer != mod_api::InteractionResult::Pass)
     }
     /// `MobEvent::PlaceBlock`: a mob sets `state` at `pos` unless a mod
     /// cancels `entity_place`. Enderman attempts use `enderman_place_block`.
@@ -417,27 +413,6 @@ impl crate::game::ServerGame<'_> {
     pub(in crate::game) fn server_apply_after_use_components(&mut self, stack: &ItemStack) {
         self.apply_after_use_components(stack);
     }
-    /// A write an `entity_inside` part asked for, applied as a landing write is: at the
-    /// touched block, once the entity's batch has ticked.
-    pub(in crate::game) fn apply_inside_write(
-        &mut self,
-        level: mod_api::LevelRef,
-        pos: BlockPos,
-        write: sunrise_world::level::InsideWrite,
-    ) {
-        let at = [pos.x, pos.y, pos.z];
-        match write {
-            sunrise_world::level::InsideWrite::SetBlock(state) => {
-                let flags = BlockUpdateFlags::NEIGHBORS | BlockUpdateFlags::CLIENTS;
-                let _ = self.level_set_block(level, at, state, flags);
-            }
-            sunrise_world::level::InsideWrite::DestroyBlock { drop } => {
-                self.level_destroy_block(level, at, drop, None, false);
-            }
-            // A write a later API adds that this game does not know is not applied.
-            _ => {}
-        }
-    }
     /// Apply one already-validated engine write, at the block the entity landed on.
     /// The original-state guard runs once before the ordered batch, not between writes.
     pub(in crate::game) fn apply_landing_write(
@@ -454,7 +429,7 @@ impl crate::game::ServerGame<'_> {
                 let _ = self.level_set_block(level, at, state, flags);
             }
             sunrise_world::level::LandingWrite::DestroyBlock { drop } => {
-                self.level_destroy_block(level, at, drop, None, false);
+                self.level_destroy_block(level, at, drop, None, None, false);
             }
             // A write a later API adds that this game does not know is not applied.
             _ => {}
@@ -472,17 +447,14 @@ impl crate::game::ServerGame<'_> {
         }
     }
     /// Deliver what the batch just ticked recorded, in order: `minecart_pass`
-    /// to the parts, and the writes a landing, step, or mid-walk `entity_inside`
-    /// contact asked for to the level. A write is skipped when the block at
-    /// its position is no longer the state it touched, as vanilla never sees
-    /// a stale one. The parts' own `entity_inside` contacts fire mid-walk now,
-    /// on the shared inside sweep, not here.
+    /// to the parts, and the writes a landing (`Block.fallOn`) or step (`Block.stepOn`)
+    /// asked for to the level. A write is skipped when the block at its position is no
+    /// longer the state it touched, as vanilla never sees a stale one.
     pub fn drain_entity_inside(&mut self) {
         for contact in sunrise_sim::block_contact::take_pending() {
             let (state, pos) = match &contact {
                 Pending::Landed(landed) => (landed.state, landed.position),
                 Pending::MinecartPass(pass) => (pass.state, pass.position),
-                Pending::InsideWritten(written) => (written.state, written.position),
             };
             let Some(level) = self.level(self.common.dim.id()) else {
                 continue;
@@ -504,34 +476,22 @@ impl crate::game::ServerGame<'_> {
                         self.apply_landing_write(level, pos, write);
                     }
                 }
-                // The mid-walk contacts' own level writes, guarded on the touched
-                // state above, as a landing's are.
-                Pending::InsideWritten(written) => {
-                    for write in written.writes {
-                        self.apply_inside_write(level, pos, write);
-                    }
-                }
             }
         }
     }
     /// The mobs from index `from` on are new in the world.
-    pub fn native_mobs_joined(&mut self, from: usize, natural: bool) {
-        // Preserve saved/constructed UUIDs. Natural spawns built with provisional
-        // IDs get their persistent identity when admitted, not on their first hit.
+    pub fn admit_new_mobs(&mut self, from: usize) {
+        // Preserve saved or constructed UUIDs. Insertion paths without an
+        // identity still need one before their join listeners run.
         for mob in self.common.mobs.iter().skip(from) {
             self.common
                 .persist
                 .uuids
                 .get_or_insert_with(mob.id, sunrise_sim::save::random_uuid);
         }
+        self.flush_pending_mob_parts();
         self.join_spawn_tags(from);
-        // A mod can keep a mob out; it is then taken out and not told of.
         self.native_joins_flush(false, 0);
-        for i in from..self.common.mobs.len() {
-            let m = &self.common.mobs[i];
-            let (kind, pos) = (mob_kind(m), [m.position.x, m.position.y, m.position.z]);
-            self.native_mob_spawned(self.common.dim.id(), &kind, pos, natural);
-        }
     }
     pub(in crate::game) fn placement_canceled(
         &mut self,
@@ -652,7 +612,8 @@ impl crate::game::ServerGame<'_> {
                 self.trigger_block("minecraft:placed_block", target, stack);
             }
         }
-        self.with_level(|b, level, ticks| b.report_placement(level, ticks, &placed));
+        let placer = by_player.then(|| self.native_clicker().1.cast_unsigned());
+        self.with_level(|b, level, ticks| b.report_placement(level, ticks, &placed, placer));
         Ok(Some(placed))
     }
     /// `GameRuleChangedEvent` once the server set the rule `name` to `value`
@@ -661,8 +622,13 @@ impl crate::game::ServerGame<'_> {
         &mut self,
         name: &str,
         value: GameRuleValue,
-        actor: Option<&GameRuleActor<'_>>,
+        actor: Option<PlayerRef>,
     ) {
+        // MinecraftServer.onGameRuleChanged refreshes the chunk source for this
+        // rule, but not when spawn_mobs itself changes.
+        if name == "minecraft:spawn_monsters" {
+            self.update_mob_spawning_flags();
+        }
         if mod_api::__private::listened(mod_api::HookId::GameRuleChanged) {
             self.native_game_rule_changed(name, value, actor);
         }
@@ -687,17 +653,8 @@ impl crate::game::ServerGame<'_> {
             self.native_player_logged_out(player, &name);
         }
     }
-    /// The acting player's blow killed mob `index`.
-    pub fn native_kill_event(&mut self, index: usize) {
-        let (entity, kind) = (
-            self.common.mobs[index].id,
-            mob_kind(&self.common.mobs[index]),
-        );
-        let player = self.native_acting_id();
-        self.native_mob_killed(player, entity, &kind);
-    }
     /// The containers of the mod blocks' block entities, by block state
-    /// (`native_block_entity_container`), checked.
+    /// (`native_block_entity_container`).
     pub fn native_containers(&self) -> FxHashMap<u32, Arc<ModContainer>> {
         let registry = self.common.pack.assets.registry;
         let mut by_block: FxHashMap<String, Option<Arc<ModContainer>>> = FxHashMap::default();
@@ -706,7 +663,7 @@ impl crate::game::ServerGame<'_> {
             let Some(state) = registry.state(sunrise_world::registry::BlockStateId(i)) else {
                 continue;
             };
-            if state.name.starts_with("minecraft:") {
+            if !mod_api::__private::is_content_block(&state.name) {
                 continue;
             }
             let container = by_block.entry(state.name.clone()).or_insert_with(|| {
@@ -714,10 +671,6 @@ impl crate::game::ServerGame<'_> {
                 self.native_block_entity_container(&state.name, &mut container);
                 container.map(|mut c| {
                     let n = c.slots;
-                    for list in c.faces.iter_mut().chain([&mut c.inputs, &mut c.outputs]) {
-                        list.retain(|&s| s < n);
-                    }
-                    c.insert_rules.truncate(n);
                     c.menu = c
                         .menu
                         .filter(|m| mod_menu(m).is_some_and(|(_, size)| size == n));
@@ -731,8 +684,8 @@ impl crate::game::ServerGame<'_> {
         out
     }
     /// The energy buffers of the mod blocks' block entities, by block state
-    /// (`native_block_entity_energy`), checked as the containers are.
-    pub(in crate::game) fn native_energy_tables(&self) -> FxHashMap<u32, Arc<ModEnergyBuffer>> {
+    /// (`native_block_entity_energy`).
+    pub fn native_energy_tables(&self) -> FxHashMap<u32, Arc<ModEnergyBuffer>> {
         let registry = self.common.pack.assets.registry;
         let mut by_block: FxHashMap<String, Option<Arc<ModEnergyBuffer>>> = FxHashMap::default();
         let mut out = FxHashMap::default();
@@ -740,17 +693,13 @@ impl crate::game::ServerGame<'_> {
             let Some(state) = registry.state(sunrise_world::registry::BlockStateId(i)) else {
                 continue;
             };
-            if state.name.starts_with("minecraft:") {
+            if !mod_api::__private::is_content_block(&state.name) {
                 continue;
             }
             let buffer = by_block.entry(state.name.clone()).or_insert_with(|| {
                 let mut energy = None;
                 self.native_block_entity_energy(&state.name, &mut energy);
-                energy.filter(|e| e.capacity >= 1).map(|mut e| {
-                    e.max_insert = e.max_insert.clamp(0, e.capacity);
-                    e.max_extract = e.max_extract.clamp(0, e.capacity);
-                    Arc::new(e)
-                })
+                energy.map(Arc::new)
             });
             if let Some(b) = buffer {
                 out.insert(i, Arc::clone(b));
@@ -759,8 +708,8 @@ impl crate::game::ServerGame<'_> {
         out
     }
     /// The fluid tanks of the mod blocks' block entities, by block state
-    /// (`native_block_entity_fluids`), checked as the containers are.
-    pub(in crate::game) fn native_fluid_tables(&self) -> FxHashMap<u32, Arc<ModFluidTanks>> {
+    /// (`native_block_entity_fluids`).
+    pub fn native_fluid_tables(&self) -> FxHashMap<u32, Arc<ModFluidTanks>> {
         let registry = self.common.pack.assets.registry;
         let mut by_block: FxHashMap<String, Option<Arc<ModFluidTanks>>> = FxHashMap::default();
         let mut out = FxHashMap::default();
@@ -768,25 +717,13 @@ impl crate::game::ServerGame<'_> {
             let Some(state) = registry.state(sunrise_world::registry::BlockStateId(i)) else {
                 continue;
             };
-            if state.name.starts_with("minecraft:") {
+            if !mod_api::__private::is_content_block(&state.name) {
                 continue;
             }
             let tanks = by_block.entry(state.name.clone()).or_insert_with(|| {
                 let mut fluids = None;
                 self.native_block_entity_fluids(&state.name, &mut fluids);
-                fluids.map(|mut f| {
-                    f.tanks.truncate(16);
-                    // Clamped, not dropped: the face and fill lists name
-                    // tanks by number, which must not shift.
-                    for c in &mut f.tanks {
-                        *c = (*c).clamp(1, 1_000_000);
-                    }
-                    let n = f.tanks.len();
-                    for list in f.faces.iter_mut().chain([&mut f.inputs, &mut f.outputs]) {
-                        list.retain(|&t| t < n);
-                    }
-                    Arc::new(f)
-                })
+                fluids.map(Arc::new)
             });
             if let Some(t) = tanks {
                 out.insert(i, Arc::clone(t));
@@ -796,14 +733,25 @@ impl crate::game::ServerGame<'_> {
     }
     /// The acting player's hit landed on mob `index`, holding `stack`.
     pub(in crate::game) fn native_hurt_enemy_event(&mut self, stack: &ItemStack, index: usize) {
+        if !mod_api::__private::item_listens(mod_api::HookId::HurtEnemy, &stack.item) {
+            return;
+        }
         let mob = &self.common.mobs[index];
-        let kind = ["minecraft:", mob.kind.id.trim_start_matches("minecraft:")].concat();
-        self.native_hurt_enemy(stack, mob.id, &kind);
+        let entity = mob.id;
+        // MobTypes retains the canonical registry id for vanilla and content types alike.
+        let kind = mob.kind.clone();
+        sunrise_gameplay_common::game::api_values::with_stack_view(Some(stack), |view| {
+            if let Some(view) = view {
+                self.native_hurt_enemy(view, entity, &kind.id);
+            }
+        });
     }
     /// `Inventory.tick` for the acting player: each carried stack goes through
     /// `native_inventory_tick`.
-    pub(in crate::game) fn native_inventory_ticks(&mut self) {
-        if self.common.player.is_none() {
+    pub fn native_inventory_ticks(&mut self) {
+        if self.common.player.is_none()
+            || !mod_api::__private::has_part_hook(mod_api::HookId::InventoryTick)
+        {
             return;
         }
         for i in 0..self.common.inventory.len() {
@@ -816,47 +764,24 @@ impl crate::game::ServerGame<'_> {
         self.native_slot_tick(-106, false);
     }
     pub(in crate::game) fn native_slot_tick(&mut self, slot: i32, selected: bool) {
-        if !mod_api::__private::has_part_hook(mod_api::HookId::InventoryTick) {
-            return;
-        }
-        let Some(stack) = self.native_carried_slot(slot).and_then(|s| s.clone()) else {
+        let Some(stack) = self.native_carried_slot(slot).and_then(|s| s.as_ref()) else {
             return;
         };
-        self.native_inventory_tick(&stack, slot, selected);
+        if stack.count > 0
+            && mod_api::__private::item_listens(mod_api::HookId::InventoryTick, &stack.item)
+            && let Some(item) = mod_api::__private::item_key(&stack.item)
+        {
+            let place = mod_api::ItemPlace::PlayerSlot {
+                player: self.native_acting_id(),
+                slot,
+            };
+            self.native_inventory_tick(item, &place, slot, selected);
+        }
         if let Some(stack) = self.native_carried_slot(slot)
             && stack.as_ref().is_some_and(|s| s.count == 0)
         {
             *stack = None;
         }
-    }
-    /// Whether a native mod's block `name` has a ticking block entity.
-    pub fn native_ticks(&self, name: &str) -> bool {
-        let mut ticks = false;
-        self.native_block_entity_ticks(name, &mut ticks);
-        ticks
-    }
-    /// Runs `change` on the mod block entity at `pos` (a generator charging
-    /// the machine beside it) and returns what it returns; none for any
-    /// other block entity. Afterwards, as its `setChanged` would, its chunk is saved next
-    /// time and, when its items changed, comparators read it again.
-    #[allow(dead_code)]
-    pub(in crate::game) fn native_with_mod_block_entity<R>(
-        &mut self,
-        pos: [i32; 3],
-        change: impl FnOnce(&mut EngineBlockEntity) -> R,
-    ) -> Option<R> {
-        let key = (pos[0], pos[1], pos[2]);
-        let Some(BlockEntity::Mod(m)) = self.common.world.block_entities.get_mut(&key) else {
-            return None;
-        };
-        let items = m.items.clone();
-        let out = change(m);
-        let moved = m.items != items;
-        self.common.world.modified.insert((key.0 >> 4, key.2 >> 4));
-        if moved {
-            self.container_changed(key);
-        }
-        Some(out)
     }
     /// `entity_tame` for the pet at `index`, just tamed by its owner.
     pub(in crate::game) fn pet_tamed(&mut self, index: usize) {

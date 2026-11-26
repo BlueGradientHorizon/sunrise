@@ -724,6 +724,10 @@ mod tests {
         impl mod_api::Hooks for Resize {}
 
         with_game(|game| {
+            super::super::native_entity_refs::tests::fixture_resident_column(
+                &mut game.world,
+                (0, 0),
+            );
             let kind = game.res.mob_types().get("minecraft:cow").unwrap().clone();
             let mut cow = Mob::new(77, kind, Vec3::ZERO, 0.0);
             sunrise_sim::mobs::finalize::set_baby(&mut cow, true);

@@ -1,3 +1,5 @@
+#![cfg(test)]
+
 #[cfg(test)]
 #[path = "entities/armor_stand_refind_tests.rs"]
 pub(crate) mod armor_stand_refind_tests;
@@ -750,6 +752,14 @@ pub(crate) mod mace;
 
 #[path = "items/item_use.rs"]
 pub(crate) mod item_use;
+
+#[cfg(test)]
+#[path = "items/continue_using_tests.rs"]
+mod continue_using_tests;
+
+#[cfg(test)]
+#[path = "items/stop_using_tests.rs"]
+mod stop_using_tests;
 
 #[path = "items/item_entities.rs"]
 pub(crate) mod item_entities;

@@ -13,7 +13,7 @@ use sunrise_core::{
 };
 use sunrise_gameplay::village_siege::VillageSiege;
 use sunrise_level::chunk::{Chunk, Light, block_entity::Next};
-use sunrise_sim::{mobs::Species, patrol::GameplayAttributes};
+use sunrise_sim::mobs::Species;
 use sunrise_sim::{
     mobs::{
         data::Placement,
@@ -347,7 +347,6 @@ fn patrols_and_sieges_bypass_registered_predicates_and_placement_listeners() {
             with_game(|game| {
                 game.set_difficulty_forced(2);
                 game.world.day_time = 6000;
-                game.server.raiding.0.attributes = Some(Arc::new(GameplayAttributes::default()));
                 game.player =
                     Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 0.5)).unwrap());
                 let stone = game

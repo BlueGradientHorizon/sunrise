@@ -177,9 +177,12 @@ pub(crate) mod tests {
         struct Lore;
         #[mod_api::sunrise_part]
         impl ItemPart for Lore {
-            fn tooltip(&self, _: &dyn ClientHost, event: &mut TooltipEvent<'_>) {
+            fn tooltip(&self, _: &dyn ClientHost, event: &mut TooltipEvent<'_, '_>) {
                 assert!(event.lines.is_empty());
-                event.lines.push((mod_api::Text::literal("part"), u32::MAX));
+                event
+                    .lines
+                    .push((mod_api::Text::literal("part"), u32::MAX))
+                    .unwrap();
             }
         }
         struct Mod;

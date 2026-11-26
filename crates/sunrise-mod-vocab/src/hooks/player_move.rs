@@ -47,7 +47,6 @@ pub trait Hooks {
 
 - **`player_move(host, event)`**: Bukkit's `PlayerMoveEvent` for a guest's own movement, fired from `ServerGamePacketListenerImpl.handlePlayerPositionChange`'s place: after the server validated the report, before it is committed. Cancelling vetoes it; the client is sent back to the accepted position and rotation. The engine applies no threshold: a mod that wants Paper's 1/256 square block or ten degrees compares `from` and `to` itself."#]
     #[hook(
-        target = "sunrise_gameplay::game::native_hooks::player_move::ServerGame<'_>::native_player_move",
         dispatch = "flat",
         side = "server",
         contract = "cancel",

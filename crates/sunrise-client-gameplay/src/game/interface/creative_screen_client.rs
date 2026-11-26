@@ -31,7 +31,7 @@ impl crate::game::ClientGame<'_> {
             self.client.inv_clicks.skip_release();
             let page = self.client.creative_screen.0.page as i64 + step;
             if (0..self.client.creative_screen.0.pages() as i64).contains(&page) {
-                self.client.audio.0.play_button_click();
+                self.play_audio_button_click();
                 self.client.creative_screen.0.set_page(page as u32);
                 self.refresh_saved_hotbars();
             }

@@ -1,5 +1,5 @@
 //! `ThrownTrident`: the thrown trident's state, its NBT and the flight rules that need no level.
-use crate::arrows::Pickup;
+use crate::entities::arrows::Pickup;
 use sunrise_core::{
     geometry::{Aabb, Vec3},
     random::RandomSource,
@@ -20,6 +20,9 @@ pub struct ThrownTrident {
     pub needs_sync: bool,
     pub yaw: f32,
     pub pitch: f32,
+    /// `Entity.yRotO` and `xRotO`: the yaw and pitch when its tick began (`setOldPosAndRot`).
+    pub previous_yaw: f32,
+    pub previous_pitch: f32,
     pub in_ground: bool,
     /// `AbstractArrow.inGroundTime`: the ticks it has been stuck, from 0 on
     /// load; past 4, Loyalty calls the trident back.
@@ -93,7 +96,11 @@ impl ThrownTrident {
         self.previous = n.position;
         self.yaw = n.yaw;
         self.pitch = n.pitch;
-        self.loyalty = n.item.enchantment_level("minecraft:loyalty");
+        // Entity.load ends with setOldPosAndRot.
+        self.previous_yaw = n.yaw;
+        self.previous_pitch = n.pitch;
+        // The server resolves Loyalty against its current enchantment table after this read.
+        self.loyalty = 0;
         self.stack = n.item;
         self.velocity = n.motion;
         self.in_ground = n.in_ground;
@@ -172,6 +179,8 @@ impl ThrownTrident {
             needs_sync: false,
             yaw,
             pitch,
+            previous_yaw: yaw,
+            previous_pitch: pitch,
             in_ground: false,
             in_ground_time: 0,
             life: 0,
@@ -248,11 +257,11 @@ impl ThrownTrident {
             atan2_degrees(m.x, m.z)
         };
         let x_rot = atan2_degrees(m.y, m.horizontal_distance());
-        self.pitch = crate::arrows::lerp_rotation(self.pitch, x_rot);
-        self.yaw = crate::arrows::lerp_rotation(self.yaw, y_rot);
+        self.pitch = crate::entities::arrows::lerp_rotation(self.pitch, x_rot);
+        self.yaw = crate::entities::arrows::lerp_rotation(self.yaw, y_rot);
     }
     /// `AbstractArrow.shouldFall`: stuck, and nothing solid within 0.06 of it.
-    pub fn should_fall(&self, scene: &crate::arrows::ArrowScene<'_, '_>) -> bool {
+    pub fn should_fall(&self, scene: &crate::entities::arrows::ArrowScene<'_, '_>) -> bool {
         let at = self.position;
         self.in_ground
             && scene.no_block_collision(Aabb::new(at, at).inflate(Vec3::new(0.06, 0.06, 0.06)))

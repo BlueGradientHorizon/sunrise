@@ -18,6 +18,7 @@ pub use sunrise_gameplay_common::game::lan_common::{LanSettings, sync};
 use sunrise_gameplay_common::game::{
     api_values::TryIntoApi,
     cauldron_prediction::publish_registrations,
+    commands_common::CommandsCommonGameExt2 as _,
     lan_mob_metadata::mob_effects,
     native_living_body::{active_effect, mob_effect},
 };
@@ -74,8 +75,6 @@ pub struct LanHost {
     /// whose respawn replaces their waypoint.
     pub waypoints: std::collections::HashMap<String, lan::waypoints::Waypoints>,
     pub waypoint_dead: std::collections::HashSet<u128>,
-    /// The world border as the guests were last told of it (lan/border.rs).
-    pub border_sent: Option<lan::border::Sent>,
     /// Guests' commands waiting for the hub to be back in `self.lan`, where
     /// a command can reach every player (game/network/lan_actions/commands.rs).
     pub commands: Vec<sunrise_gameplay_common::game::lan_actions::GuestCommand>,
@@ -329,19 +328,15 @@ impl crate::game::ServerGame<'_> {
             &self.pack_files(),
         )?;
         let features = self.enabled_feature_ids().to_vec();
-        // A world whose packs change biomes sends its own biome registry.
-        let packed = self.common.world_biomes.clone().filter(|b| b.has_packs());
-        if packed.is_some()
-            || sync.features.iter().any(|f| !features.contains(f))
+        if sync.features.iter().any(|f| !features.contains(f))
             || features.iter().any(|f| !sync.features.contains(f))
         {
-            // The shared resource preload has vanilla flags and vanilla biomes.
-            // Feature flags and biomes belong to this world, not to the cached
-            // resources or the next world opened.
+            // The registries are already frozen. Publish this world's flags
+            // rather than the flags of the resource preload.
             let mut world_sync = SyncData::load_over(
                 &self.common.options.resources,
                 &self.pack_files(),
-                packed.as_deref(),
+                None,
                 &sync,
                 self.common.res.item_defaults(),
                 sync::server_sources(
@@ -398,6 +393,7 @@ impl crate::game::ServerGame<'_> {
             .then(|| sunrise_sim::lod_net::Service::new(net.lod_distance, biome_names.clone()));
         let lan = super::lan_configuration_tasks::start(sync.clone(), net)?;
         let mut hub = Hub::new(lan, sync, encoder, config, self.common.loop_context.clone());
+        hub.allow_commands = self.allow_commands();
         hub.dispatch_move_effects = true;
         self.bind_guest_residency(&mut hub);
         self.common.passages.record_on(&mut hub);
@@ -423,7 +419,6 @@ impl crate::game::ServerGame<'_> {
             owner: None,
             waypoints: Default::default(),
             waypoint_dead: Default::default(),
-            border_sent: None,
             commands: Vec::new(),
             quiet: std::collections::VecDeque::new(),
             far,
@@ -452,15 +447,30 @@ impl crate::game::ServerGame<'_> {
         self.lan_disconnect(announce);
     }
 
+    /// `ServerConnectionListener.stop`: stop accepting new connections and
+    /// refuse incoming logins before player and world shutdown saves run,
+    /// while keeping connected guest entries alive for `save_leaving_guests`
+    /// and `lan_disconnect`.
+    pub(in crate::game) fn stop_network_transport(&mut self) {
+        if let Some(host) = self.server.lan.as_mut() {
+            host.hub.lan.shared.refuse_logins();
+            host.hub.lan.stop();
+            let _ = host.hub.lan.poll();
+        }
+    }
+
     /// The transport close, separate from player callbacks and saves so that
     /// server shutdown can still disconnect after one of those unwinds.
     pub fn lan_disconnect(&mut self, announce: bool) {
         let Some(mut host) = self.server.lan.take() else {
             return;
         };
+        let had_guests = !host.hub.guests.is_empty();
         host.hub.disconnect_all();
-        // Give the network threads a moment to flush the disconnect packets.
-        std::thread::sleep(std::time::Duration::from_millis(100));
+        if had_guests {
+            // Give the network threads a moment to flush the disconnect packets.
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
         self.common.world.block_log = None;
         self.common.world.connection_group_log = None;
         self.common.world.light_log = None;
@@ -481,9 +491,9 @@ impl crate::game::ServerGame<'_> {
 
     /// `PlayerList.removeAll`: every guest leaves in turn, the vehicle it
     /// alone rides with it (`PlayerList.remove`), and is saved.
-    pub fn save_leaving_guests(&mut self) {
+    pub fn save_leaving_guests(&mut self) -> bool {
         let Some(host) = self.server.lan.as_ref() else {
-            return;
+            return false;
         };
         // Remove the open menu and window 0 in the guest's own level before
         // saving, so held stacks and inputs return to their inventory or drop
@@ -500,71 +510,76 @@ impl crate::game::ServerGame<'_> {
             })
             .map(|g| (g.conn, super::Dim::from_id(&g.dimension)))
             .collect();
+        let mut holds = Vec::new();
         for (conn, dim) in open {
             if self.enter_level(dim).is_ok() {
-                self.guest_close_menus_for_save(conn);
+                holds.push(self.guest_close_menus_for_save(conn));
             }
         }
         if let Err(e) = self.enter_level(back) {
             log::error!("could not reopen {}: {e}", back.id());
         }
         let Some(host) = self.server.lan.as_ref() else {
-            return;
+            return false;
         };
         let count = host.hub.guests.len();
+        let owner = host.owner.as_ref().map(|owner| owner.uuid);
+        let mut owner_saved = false;
         for i in 0..count {
             let Some(host) = self.server.lan.as_mut() else {
-                return;
+                break;
             };
             if !host.hub.guests[i].participates_in_player_simulation() {
                 continue;
             }
             let mut g = host.hub.guests.take_for_save(i);
             self.take_parent_vehicle(&mut g);
-            self.save_guest(&mut g);
+            if self.save_guest(&mut g) && owner == Some(g.uuid) {
+                owner_saved = true;
+            }
             let Some(host) = self.server.lan.as_mut() else {
-                return;
+                break;
             };
             host.hub.guests.insert(i, g);
         }
+        // These players are leaving: a menu a closing listener asked for never opens.
+        for hold in holds {
+            self.discard_menu_opens(hold);
+        }
+        owner_saved
     }
     /// Save a guest when they leave or the world closes (after
     /// `take_parent_vehicle`, `PlayerList.save`): an integrated server's owner
     /// into the level (`/data`) and both its files (`playerdata::save_owner`),
     /// anyone else into their own file.
-    pub fn save_guest(&mut self, guest: &mut sunrise_sim::lan::guest::Guest) {
+    pub fn save_guest(&mut self, guest: &mut sunrise_sim::lan::guest::Guest) -> bool {
         if !guest.participates_in_player_simulation() {
-            return;
+            return false;
         }
         // A proxy released this record to another server, which now owns saving it.
-        if guest.joined() && !guest.released && !self.server.crash_save.excludes(guest.conn) {
+        let saved = if guest.joined() && !guest.released && !self.server.crash_save.excludes(guest.conn) {
             let _ = self.finish_player_autosaves(true);
-            if self
-                .server
+            if self.server
                 .lan
                 .as_ref()
                 .and_then(|host| host.owner.as_ref())
                 .is_some_and(|o| o.uuid == guest.uuid)
             {
-                playerdata::save_owner(
-                    guest,
-                    &mut self.common.level,
-                    &self.server.world_root,
-                    self.common.res.items(),
-                );
+                playerdata::save_owner(guest, &mut self.common.level, &self.server.world_root, self.common.res.items())
             } else {
-                self.server.player_autosaves.0.save_after(
-                    guest,
-                    &self.server.world_root,
-                    self.common.res.items(),
-                );
+                playerdata::save(guest, &self.server.world_root, self.common.res.items())
             }
+        } else {
+            false
+        };
+        if saved {
             let directory = playerdata::directory(&self.server.world_root);
             self.native_player_save_to_file(guest.uuid, &guest.name, &directory);
         }
         if let Some(host) = self.server.lan.as_ref() {
             self.save_guest_records(host, guest);
         }
+        saved
     }
     /// The vehicles the other players in level `dim` ride, all but the
     /// guest `but` (`Entity.hasExactlyOnePlayerPassenger`); `host` adds the
@@ -820,16 +835,14 @@ impl crate::game::ServerGame<'_> {
     /// The integrated server's owner into the world's player, for `Level::write`.
     /// Returns the owner's uuid and name when they were stored.
     pub fn store_owner(&mut self) -> Option<(u128, String)> {
-        let uuid = self
-            .server
-            .lan
-            .as_ref()
-            .and_then(|h| h.owner.as_ref())?
-            .uuid;
-        let (riding, dim, others) = self.server.lan.as_ref().and_then(|h| {
-            let g = h.hub.online_players().find(|g| g.uuid == uuid)?;
+        let uuid = self.server.lan.as_ref().and_then(|h| h.owner.as_ref())?.uuid;
+        let (conn, riding, dim, others) = self.server.lan.as_ref().and_then(|h| {
+            let g = h
+                .hub
+                .online_players()
+                .find(|g| g.uuid == uuid && !g.released && !self.server.crash_save.excludes(g.conn))?;
             let others = self.ridden_by_others(&h.hub.guests, &g.dimension, Some(uuid), true);
-            Some((g.vehicle, g.dimension.clone(), others))
+            Some((g.conn, g.vehicle, g.dimension.clone(), others))
         })?;
         // The vehicle the owner rides (`ServerPlayer.saveParentVehicle`).
         let vehicle = self
@@ -837,27 +850,27 @@ impl crate::game::ServerGame<'_> {
             .map(|(tag, _)| tag);
         let mut host = self.server.lan.take()?;
         let mut stored = None;
-        if let Some(i) =
-            host.hub.guests.iter().position(|g| {
-                g.uuid == uuid && g.placed && !self.server.crash_save.excludes(g.conn)
-            })
-        {
+        if let Some(i) = host.hub.guests.iter().position(|g| g.conn == conn) {
             // The owner's map is the game's only during their own turn
             // (`guest_turn`); otherwise their record holds it, whoever acts.
-            let live = (self.server.lan_acting_uuid == Some(uuid))
-                .then(|| self.common.player_state.attachments.clone());
+            let live =
+                (self.server.lan_acting_uuid == Some(uuid)).then(|| self.common.player_state.attachments.clone());
+            let mut store_ok = true;
             host.hub.guests.update(i, |g| {
                 let held = live.map(|a| std::mem::replace(&mut g.attachments, a));
-                playerdata::store(g, &mut self.common.level, vehicle);
+                if let Err(error) = playerdata::try_store(g, &mut self.common.level, vehicle) {
+                    log::error!("Sunrise: the owner's playerdata is not saved: {error}");
+                    store_ok = false;
+                }
                 if let Some(held) = held {
                     g.attachments = held;
                 }
             });
             let g = &host.hub.guests[i];
             self.save_guest_records(&host, g);
-            stored = Some(g.name.clone());
-        } else if let Some(saved) = host.owner.as_ref().and_then(|o| o.saved.as_ref()) {
-            self.common.level.position = saved.position;
+            if store_ok {
+                stored = Some(g.name.clone());
+            }
         }
         self.server.lan = Some(host);
         stored.map(|name| (uuid, name))
@@ -885,10 +898,16 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// Update the live view distance used for player chunk tracking.
-    pub(in crate::game) fn set_view_distance(&mut self, distance: i32) {
-        if let Some(host) = self.server.lan.as_mut() {
-            host.hub.set_view_distance(distance);
+    pub(in crate::game) fn set_view_distance(&mut self, distance: i32) -> bool {
+        if !self.is_logical_server() {
+            return false;
         }
+        let Some(host) = self.server.lan.as_mut() else {
+            return false;
+        };
+        host.hub.set_view_distance(distance);
+        self.server.settings.render_distance = sunrise_sim::lan::hub::effective_view_distance(distance);
+        true
     }
 
     /// Update the live spawn-protection radius.
@@ -899,10 +918,16 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// Update the live simulation distance sent to player clients.
-    pub(in crate::game) fn set_simulation_distance(&mut self, distance: i32) {
-        if let Some(host) = self.server.lan.as_mut() {
-            host.hub.set_simulation_distance(distance);
+    pub(in crate::game) fn set_simulation_distance(&mut self, distance: i32) -> bool {
+        if !self.is_logical_server() {
+            return false;
         }
+        let Some(host) = self.server.lan.as_mut() else {
+            return false;
+        };
+        host.hub.set_simulation_distance(distance);
+        self.server.settings.simulation_distance = distance;
+        true
     }
 
     /// Update the live entity tracking range percentage.
@@ -938,12 +963,9 @@ impl crate::game::ServerGame<'_> {
 
     /// New command access and game mode forcing settings of the open world.
     pub(in crate::game) fn lan_apply_settings(&mut self, guest_commands: bool, force: bool) {
-        // An integrated server gives guests commands only where the world
-        // allows them (IntegratedServer.getCustomPermissionLevel).
-        let effective = guest_commands && (!self.serving() || self.common.allow_commands());
         if let Some(host) = self.server.lan.as_mut() {
             host.settings.guest_commands = guest_commands;
-            host.hub.config.guest_commands = effective;
+            host.hub.config.guest_commands = guest_commands;
         }
         self.set_force_game_mode(force);
         self.resend_commands_filtered();
@@ -1056,7 +1078,9 @@ impl crate::game::ServerGame<'_> {
             let Some(host) = self.server.lan.as_mut() else {
                 return;
             };
-            let stack = host.hub.stack(&Some(d.stack.clone()));
+            let stack = host.hub.stack(
+                &Some(d.stack.clone()).filter(|s| s.count > 0 && &*s.item != "minecraft:air"),
+            );
             // `ServerEntity.getRequiresPrecisePosition` is false for an item:
             // `needs_sync` asks for its data again, not for an exact position.
             // The collision case is `full_precision_required` in the tracker.
@@ -1092,6 +1116,8 @@ impl crate::game::ServerGame<'_> {
             e.meta.push((8, serializer::INT, Value::Int(o.value)));
         }
         self.lan_object_states(out, drain_minecart_steps, after);
+        // PersistentEntitySectionManager only tracks accessible sections.
+        out.retain(|entity| self.entity_position_accessible(entity.position));
     }
 
     /// `LivingEntity.updateSynchronizedMobEffectParticles` while a native mod
@@ -1247,11 +1273,8 @@ impl crate::game::ServerGame<'_> {
                         id,
                     });
                 }
-                event @ (HostEvent::Chat { .. } | HostEvent::Warn(_) | HostEvent::Error(_)) => {
+                event @ (HostEvent::Warn(_) | HostEvent::Error(_)) => {
                     self.lan_log_event(event);
-                }
-                HostEvent::PlayerChat { sender, text } => {
-                    self.lan_player_chatted(sender, &text);
                 }
                 HostEvent::ChatSubmitted {
                     message,
@@ -1330,15 +1353,23 @@ impl crate::game::ServerGame<'_> {
                     if cancel {
                         continue;
                     }
-                    let mut line = format!("<{name}> {raw}");
                     if text != original {
                         // `withUnsignedContent`: clients show the mod's text,
                         // the signature still covers what was typed.
                         message.unsigned_content =
                             Some(sunrise_sim::lan::data::component_nbt(&text.component()));
-                        line = format!("<{name}> {}", text.plain());
                     }
-                    self.lan_broadcast_chat(&message, &bound, line, &name, &text.plain())?;
+                    let shown_name = sunrise_game_data::scoreboard::comp_text(
+                        &sunrise_game_data::scoreboard::tag_to_json(&bound.name),
+                    );
+                    let line = Text::translate("chat.type.text", &[shown_name, text.clone()]);
+                    self.lan_broadcast_chat(
+                        (sender, &name),
+                        &text.plain(),
+                        line,
+                        &bound,
+                        super::lan_chat::ChatDelivery::Player(&message),
+                    );
                     self.lan_player_chatted(sender, &raw);
                 }
                 HostEvent::ChatSessionStarted(update) => {
@@ -1418,7 +1449,7 @@ impl crate::game::ServerGame<'_> {
                     if self.common.options.execution_role.is_dedicated_server()
                         && let Some((uuid, name)) =
                             host.hub.guest(conn).map(|g| (g.uuid, g.name.clone()))
-                        && let Some(old) = super::dedicated::cached_user_by_id(uuid)
+                        && let Some(old) = self.server.user_cache.as_mut().and_then(|c| c.get_by_id(uuid))
                     {
                         if !old.name.eq_ignore_ascii_case(&name) {
                             renamed = Some(old.name.clone());
@@ -1427,15 +1458,20 @@ impl crate::game::ServerGame<'_> {
                     }
                     self.lan_guest_joined(conn, entities, spawn, prepared);
                     let host = self.server.lan.as_ref()?;
-                    publish_registrations(
-                        &super::cauldron_interactions::snapshot(),
-                        host.hub.guest(conn),
-                    );
-                    if self.common.is_dedicated_server()
-                        && let Some(g) = host.hub.guest(conn)
+                    let guest = host.hub.guest(conn);
+                    publish_registrations(&super::cauldron_interactions::snapshot(), guest);
+                    // PlayerList.placeNewPlayer remembers the joined identity on either server.
+                    if let (Some(cache), Some(g)) =
+                        (self.server.user_cache.as_mut(), guest.filter(|g| g.placed))
                     {
-                        // PlayerList.placeNewPlayer, then the broadcast join message.
-                        super::dedicated::player_joined(g.uuid, &g.name);
+                        cache.add(sunrise_server_files::user_lists::NameAndId {
+                            id: g.uuid,
+                            name: g.name.clone(),
+                        });
+                    }
+                    if self.common.is_dedicated_server()
+                        && let Some(g) = guest
+                    {
                         super::dedicated::events::record(
                             "join",
                             &g.name,
@@ -1498,26 +1534,74 @@ impl crate::game::ServerGame<'_> {
                         }
                         continue;
                     }
-                    // Close the guest's menu in their level before `player_logged_out`.
+                    let tell_logout = self.announce_guest_left(&guest);
+                    // `ServerPlayer.disconnect` ejects passengers and wakes a sleeping player,
+                    // then `PlayerList.remove` posts logout at entry (player still listed in
+                    // join order so listener edits are saved), then
+                    // `ServerLevel.removePlayerImmediately` -> `Player.remove` closes the menu.
                     if guest.placed {
                         let back = self.common.dim;
                         let theirs = super::Dim::from_id(&guest.dimension);
-                        if self.enter_level(theirs).is_ok() {
-                            let conn = guest.conn;
-                            let host = self.server.lan.as_mut()?;
-                            let carrier = guest.entity_id as u32;
+                        if let Err(error) = self.enter_level(theirs) {
+                            log::error!(
+                                "Could not remove player {} in {}: {error}",
+                                guest.name,
+                                theirs.id()
+                            );
+                            if tell_logout {
+                                guest = self.native_departing_guest_logout(guest);
+                            }
+                            let held = guest.menu.as_ref().map(|menu| menu.window);
+                            if let Some(menu) = guest.menu.as_mut()
+                                && let Some(closed) = menu.native_removed(
+                                    guest.uuid,
+                                    guest.menu_generation,
+                                    &mut guest.native_menu,
+                                    false,
+                                )
+                            {
+                                self.deliver_menu_removed(closed);
+                            }
+                            // The Open a listener heard gets its matching Close before the
+                            // tracked menu is forgotten below.
+                            if let Some(window) = held {
+                                let generation = guest.menu_generation;
+                                guest = self
+                                    .native_departing_guest_menu_closed(guest, window, generation);
+                            }
+                        } else {
+                            let (conn, uuid, name, carrier) = (
+                                guest.conn,
+                                guest.uuid,
+                                guest.name.clone(),
+                                guest.entity_id as u32,
+                            );
                             let asleep = guest.bed.is_some();
-                            host.hub.guests.push(*guest);
+                            guest.disconnect_pending = true;
+                            let host = self.server.lan.as_mut()?;
+                            // Right behind the last of the players listed ahead of them who are still here.
+                            let at = host
+                                .hub
+                                .guests
+                                .iter()
+                                .rposition(|g| guest.listed_behind.contains(&g.conn))
+                                .map_or(0, |i| i + 1);
+                            host.hub.guests.insert(at, *guest);
+                            host.hub.departing = Some(conn);
                             // A player logging out carries no mob a mod seated on it.
                             self.eject_player_riders(Some(carrier));
                             // ServerPlayer.disconnect: stopSleepInBed(true, false).
                             if asleep && let Some(gi) = self.guest_index(conn) {
                                 self.wake_guest(gi, true, false);
                             }
+                            if tell_logout {
+                                self.native_player_logged_out(uuid, &name);
+                            }
                             self.guest_disconnected(conn);
                             let Some(host) = self.server.lan.as_mut() else {
                                 unreachable!("LanHost dropped inside a tick; closes are deferred")
                             };
+                            host.hub.departing = None;
                             let at =
                                 host.hub.guests.connection_index(conn).expect(
                                     "a leaving player stays listed while their menu closes",
@@ -1527,11 +1611,10 @@ impl crate::game::ServerGame<'_> {
                         if let Err(e) = self.enter_level(back) {
                             log::error!("could not reopen {}: {e}", back.id());
                         }
+                    } else if tell_logout {
+                        guest = self.native_departing_guest_logout(guest);
                     }
                     self.lan_crafting_left(&mut guest);
-                    // PlayerList.remove: the mods hear the leave first, then the
-                    // statistic, the vehicle and the save follow.
-                    let mut guest = self.native_guest_left(guest);
                     if guest.joined() {
                         self.award_leave_game(guest.conn, guest.uuid, &guest.name);
                     }
@@ -1546,6 +1629,13 @@ impl crate::game::ServerGame<'_> {
                     for e in guest.tracker.take_events() {
                         self.tell_tracking(guest.uuid, &guest.name, &e);
                     }
+                }
+                HostEvent::CloseInvalidContainer {
+                    conn,
+                    window,
+                    generation,
+                } => {
+                    self.close_guest_window(conn, window, generation, true);
                 }
                 HostEvent::Flight { conn, flying } => {
                     self.lan_flight_toggled(conn, flying);
@@ -1921,7 +2011,7 @@ impl crate::game::ServerGame<'_> {
     /// after the scheduled and random ticks, before the block events, so the
     /// players get the blocks as they are then. What the tick writes from
     /// there on goes out with the next tick's.
-    pub(in crate::game::server_side) fn lan_broadcast_changes(&mut self) -> Option<usize> {
+    pub fn lan_broadcast_changes(&mut self) -> Option<usize> {
         if let Some(host) = self.server.lan.as_mut() {
             host.hub.broadcast_changes(&mut self.common.world);
         }
@@ -1955,53 +2045,56 @@ impl crate::game::ServerGame<'_> {
     /// described (their ids are above the counter the states were taken at),
     /// and nothing when the counter has not moved or no guest is in the level.
     pub(in crate::game::server_side) fn lan_note_joined(&mut self) {
-        let Some(host) = self.server.lan.take() else {
+        if self.server.lan.is_none() {
             return;
-        };
-        let mut host = self.lan_flush_tracking(host);
-        host.states_next_entity = None;
-        self.server.lan = Some(host);
+        }
+        self.lan_flush_tracking();
+        if let Some(host) = self.server.lan.as_mut() {
+            host.states_next_entity = None;
+        }
         self.flush_attachment_sync();
     }
 
     /// Deliver start/stop callbacks before sounds and attachment snapshots.
     /// A callback can spawn another entity, whose pairing is part of the same
     /// operation, as a nested ChunkMap.addEntity would be in vanilla.
-    pub(in crate::game::server_side) fn lan_flush_tracking(
-        &mut self,
-        mut host: LanHost,
-    ) -> LanHost {
+    pub(in crate::game::server_side) fn lan_flush_tracking(&mut self) {
         loop {
-            self.lan_pair_joined(&mut host);
+            self.lan_pair_joined();
+            let Some(host) = self.server.lan.as_mut() else {
+                return;
+            };
             host.hub.collect_tracking();
             if host.hub.native_tracking.is_empty() {
-                return host;
+                return;
             }
-            self.server.lan = Some(host);
             self.run_native_tracking();
-            host = self
-                .server
-                .lan
-                .take()
-                .expect("the hub is back after the tracking events");
         }
     }
 
     /// Pair late arrivals before a sound flush as well as at the end of the
     /// tick. The counter prevents taking or draining an entity's state twice.
-    pub(in crate::game::server_side) fn lan_pair_joined(&mut self, host: &mut LanHost) {
-        if let Some(next) = host.states_next_entity
-            && host.hub.guests.iter().any(|g| host.hub.watches(g))
-        {
-            self.lan_assign_ids();
-            if self.server.next_entity != next {
-                let mut states = States::default();
-                self.lan_entities(&mut states, false, next, None);
-                self.lan_hook_states(&mut states);
-                self.lan_entity_uuids(&mut states);
+    pub(in crate::game::server_side) fn lan_pair_joined(&mut self) {
+        let Some(next) = self.server
+            .lan
+            .as_ref()
+            .filter(|host| host.hub.guests.iter().any(|g| host.hub.watches(g)))
+            .and_then(|host| host.states_next_entity)
+        else {
+            return;
+        };
+        self.lan_assign_ids();
+        if self.server.next_entity != next {
+            let mut states = States::default();
+            self.lan_entities(&mut states, false, next, None);
+            self.lan_hook_states(&mut states);
+            self.lan_entity_uuids(&mut states);
+            if let Some(host) = self.server.lan.as_mut() {
                 host.hub
                     .note_joined(states.as_slice(), Some(&*self.common.entity_attachments));
             }
+        }
+        if let Some(host) = self.server.lan.as_mut() {
             host.states_next_entity = Some(self.server.next_entity);
         }
     }
@@ -2110,7 +2203,11 @@ impl crate::game::ServerGame<'_> {
                 let mut idle_states = std::mem::take(&mut host.idle_states);
                 let mut kept = if self.server.level_pass.packets_drained {
                     let percent = if host.hub.config.integrated {
-                        (self.server.settings.entity_distance * 100.0).round() as i32
+                        let scale = self.server.serving.as_ref().map_or(
+                            self.server.settings.entity_distance,
+                            super::integrated::Serving::entity_distance,
+                        );
+                        (scale * 100.0).round() as i32
                     } else {
                         host.hub.entity_range_percent
                     };
@@ -2239,8 +2336,11 @@ impl crate::game::ServerGame<'_> {
                 // option scales what an integrated server or a LAN host tracks (a
                 // dedicated one keeps its entity-broadcast-range-percentage).
                 if host.hub.config.integrated {
-                    host.hub.entity_range_percent =
-                        (self.server.settings.entity_distance * 100.0).round() as i32;
+                    let scale = self.server.serving.as_ref().map_or(
+                        self.server.settings.entity_distance,
+                        super::integrated::Serving::entity_distance,
+                    );
+                    host.hub.entity_range_percent = (scale * 100.0).round() as i32;
                 }
                 host.hub.set_immediate_respawn(
                     self.common
@@ -2346,7 +2446,6 @@ impl crate::game::ServerGame<'_> {
         self.lan_guest_poses();
         self.lan_update_waypoints();
         self.lan_sync_scoreboard();
-        self.lan_sync_border();
         drop(holding);
         self.flush_attachment_sync();
         self.flush_far_terrain();
@@ -2379,7 +2478,16 @@ impl crate::game::ServerGame<'_> {
         spawn: [f64; 3],
         prepared: Option<PreparedSpawn>,
     ) {
+        let Some(uuid) = self.command_guest(conn).map(|guest| guest.uuid) else {
+            return;
+        };
+        let loaded = self.loaded_level_order();
         let spawn_level = self.world_spawn_level();
+        let spawn_level = if loaded.contains(&spawn_level) {
+            spawn_level
+        } else {
+            super::Dim::Overworld
+        };
         let back = self.common.dim;
         // `PrepareSpawnTask.Ready.spawn` waits for saved entities before the player loads.
         // Streaming commits terrain and the corresponding entity records together.
@@ -2400,6 +2508,7 @@ impl crate::game::ServerGame<'_> {
                 return;
             }
         }
+        self.initialize_server_player(uuid, conn);
         let Some(host) = self.server.lan.as_mut() else {
             return;
         };
@@ -2407,9 +2516,8 @@ impl crate::game::ServerGame<'_> {
         let force = host.hub.config.force_game_mode;
         let root = self.server.world_root.clone();
         let in_place = host.hub.config.dimension.clone();
-        let levels = host.hub.config.levels;
         let owner = host.owner.as_mut();
-        let Some((known, uuid, name)) = host.hub.update_guest(conn, |g| {
+        let Some((known, name)) = host.hub.update_guest(conn, |g| {
             // PlayerList.loadPlayerData: the owner gets the world's player file,
             // everyone else their own.
             let known = match owner.filter(|o| o.uuid == g.uuid) {
@@ -2419,16 +2527,15 @@ impl crate::game::ServerGame<'_> {
             // `PrepareSpawnTask.start`: a saved level the world no longer has is the world
             // spawn's (the Overworld when that one is gone too); the saved position and
             // rotation stay.
-            if !levels.has(&g.dimension) {
+            if !loaded.iter().any(|dim| dim.id() == g.dimension) {
                 g.dimension = spawn_level.id().to_owned();
             }
             // PlayerEvent.LoadFromFile: the player's data is read and applied,
             // the player not yet placed.
-            (known, g.uuid, g.name.clone())
+            (known, g.name.clone())
         }) else {
             return;
         };
-        self.initialize_server_player(uuid, conn);
         self.native_player_load_from_file(uuid, &name, &playerdata::directory(&root));
         let Some(host) = self.server.lan.as_mut() else {
             return;
@@ -2503,34 +2610,45 @@ impl crate::game::ServerGame<'_> {
         } else {
             entities
         };
-        let clock_rate = self.network_clock_rate();
-        let mut ctx = TickCtx {
-            sea_level: self
-                .common
-                .end
-                .locator()
-                .map_or(63, |terrain| terrain.sea_level()),
-            world: &mut self.common.world,
-            entities,
-            next_entity: &mut self.server.next_entity,
-            spawn,
-            spawn_angle: self.common.level.world_spawn_angle,
-            spawn_dimension: sunrise_gameplay_common::game::Dim::of_world_spawn(&self.common.level)
-                .id(),
-            difficulty: i32::from(self.common.ui.difficulty),
-            difficulty_locked: self.common.level.difficulty_locked,
-            clock_rate,
-            tick_rate: self.common.clock.rate(),
-            tick_frozen: self.common.clock.frozen(),
-            tick_steps: self.common.clock.step_state(),
-            collision: Some(self.common.collision),
-            border: &self.common.border,
-            streaming: Some(&self.server.streaming),
+        macro_rules! join_ctx {
+            () => {{
+                let clock_rate = self.network_clock_rate();
+                TickCtx {
+                    sea_level: self.common.end.locator().map_or(63, |terrain| terrain.sea_level()),
+                    world: &mut self.common.world,
+                    entities,
+                    next_entity: &mut self.server.next_entity,
+                    spawn,
+                    spawn_angle: self.common.level.world_spawn_angle,
+                    spawn_dimension: sunrise_gameplay_common::game::Dim::of_world_spawn(&self.common.level).id(),
+                    difficulty: i32::from(self.common.ui.difficulty),
+                    difficulty_locked: self.common.level.difficulty_locked,
+                    clock_rate,
+                    tick_rate: self.common.clock.rate(),
+                    tick_frozen: self.common.clock.frozen(),
+                    tick_steps: self.common.clock.step_state(),
+                    collision: Some(self.common.collision),
+                    border: &self.common.border,
+                    streaming: Some(&self.server.streaming),
+                }
+            }};
+        }
+        let joining = {
+            let ctx = join_ctx!();
+            self.server.lan
+                .as_mut()
+                .and_then(|host| host.hub.begin_player_join(conn, &ctx))
+                .is_some()
         };
-        let Some(host) = self.server.lan.as_mut() else {
-            return;
-        };
-        host.hub.place_new_player(conn, &mut ctx);
+        if joining {
+            self.send_player_command_tree(conn);
+            let ctx = join_ctx!();
+            if let Some(host) = self.server.lan.as_mut()
+                && let Some(i) = host.hub.guests.connection_index(conn)
+            {
+                host.hub.finish_player_join(i, &ctx);
+            }
+        }
         self.bind_player_attachments(conn, false);
         self.lan_register_player_waypoint(conn);
         self.lan_update_waypoints();
@@ -2818,7 +2936,8 @@ impl crate::game::ServerGame<'_> {
         // chunks past it. An extra area finishes its chunks out to its radius + 1. That covers what
         // the player tracks (`ChunkTrackingView`, within its view distance + 1) and those chunks'
         // lit neighbours. The viewed areas (#3716) are squares of their own.
-        let radius = host.hub.config.view_distance + 1;
+        let radius =
+            sunrise_sim::lan::hub::effective_view_distance(host.hub.config.view_distance) + 1;
         let rule = self
             .common
             .ui
@@ -2892,21 +3011,20 @@ impl crate::game::ServerGame<'_> {
         let conn = g.conn;
         self.detect_rate_spam(conn, false);
     }
-    /// A hub's chat and log lines: a dedicated server logs them
-    /// (MinecraftServer.logChatMessage, `[Not Secure]` for unsigned or
-    /// expired messages); a LAN host shows the chat.
+
+    /// `MinecraftServer.logChatMessage`: public chat is logged, not captured as command feedback.
+    pub(super) fn record_public_chat(&mut self, line: Text, secure: bool) {
+        let mark = if secure { "" } else { "[Not Secure] " };
+        if self.common.is_dedicated_server() {
+            super::dedicated::log_public_chat(&format!("{mark}{}", line.plain()));
+        } else {
+            log::info!("{mark}{}", line.plain());
+        }
+    }
+    /// Warnings and errors from the hub's validation and connection paths.
     pub(in crate::game::server_side) fn lan_log_event(&mut self, event: HostEvent) {
         let dedicated = self.common.is_dedicated_server();
         match event {
-            HostEvent::Chat { line, secure } if dedicated => {
-                let tag = if secure { "" } else { "[Not Secure] " };
-                super::dedicated::log("INFO", &format!("{tag}{line}"));
-            }
-            // Player chat (and `/say`'s or `/me`'s, which are chat messages
-            // too): the host's Chat option decides, as `ChatListener` does
-            // for the guests' packets. Command feedback is a system message
-            // and takes the system-message permission instead.
-            HostEvent::Chat { line, .. } => log::info!("{line}"),
             HostEvent::Warn(line) if dedicated => super::dedicated::log("WARN", &line),
             HostEvent::Warn(line) => log::warn!("{line}"),
             HostEvent::Error(line) if dedicated => super::dedicated::log("ERROR", &line),
@@ -3052,7 +3170,6 @@ impl LanHost {
             owner: None,
             waypoints: Default::default(),
             waypoint_dead: Default::default(),
-            border_sent: None,
             commands: Default::default(),
             quiet: Default::default(),
             far: None,
@@ -3981,11 +4098,15 @@ pub(in crate::game) mod tests {
         use super::sync::{
             SyncCache, cached_sync_data, initialize_world_sync_data, prepare_sync_reload,
         };
-        use std::path::Path;
+        use std::path::{Path, PathBuf};
         use sunrise_world::{damage_source::Catalog, loot::PackOverlay};
-        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../.local/sunrise-client")
-            .join(sunrise_core::VANILLA_VERSION);
+        let root = std::env::var_os("SUNRISE_TEST_RESOURCES")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| {
+                Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("../../.local/sunrise-client")
+                    .join(sunrise_core::VANILLA_VERSION)
+            });
         let item_data = sync_test_items(&root);
         let items =
             sunrise_items::items::Items::catalog(&root, &PackOverlay::NONE, item_data.defaults())
@@ -3996,15 +4117,15 @@ pub(in crate::game) mod tests {
             vec![br#"{"type":"minecraft:notice","title":"Before"}"#.to_vec()],
         )];
         let initial = PackOverlay::new(&initial);
-        let packed = sunrise_sim::lan::data::SyncData::stage_registry_definitions(
+        let (packed, admitted) = sunrise_sim::lan::data::SyncData::stage_registry_definitions(
             &root,
             item_data.defaults(),
             &initial,
             &Default::default(),
             &Default::default(),
             |_| true,
-        )
-        .unwrap();
+        );
+        admitted.unwrap();
         let mut cache = SyncCache {
             packed_registries: Some(std::sync::Arc::new(packed)),
             ..SyncCache::default()
@@ -4513,7 +4634,7 @@ pub(in crate::game) mod tests {
                     seed: 0,
                     max_players: 3,
                     integrated: true,
-                    levels: game.server.level_shapes,
+                    levels: game.server.level_shapes.clone(),
                     level_seeds: game.server.levels.0.runtime.seeds(),
                 };
                 game.lan_host(settings, net, config).unwrap();
@@ -4788,7 +4909,7 @@ pub(in crate::game) mod tests {
                 seed: 0,
                 max_players: 2,
                 integrated: true,
-                levels: game.server.level_shapes,
+                levels: game.server.level_shapes.clone(),
                 level_seeds: game.server.levels.0.runtime.seeds(),
             };
             game.lan_host(settings, net, config).unwrap();
@@ -5091,6 +5212,152 @@ pub(in crate::game) mod advancement_records;
 include!("advancement_save_tests.rs");
 
 #[cfg(test)]
+mod late_pairing_tests {
+    #[test]
+    #[ignore = "daily"]
+    fn late_paired_item_display_sends_its_stack_on_pairing() {
+        use sunrise_gameplay_common::game::commands_common::OtherEntity;
+        use super::LanSettings;
+        use mod_api::ItemDisplayContext;
+        use std::sync::{
+            Arc,
+            atomic::{AtomicI32, AtomicUsize},
+        };
+        use sunrise_items::items::ItemStack;
+        use sunrise_sim::lan::{
+            Joined, NetConfig, Out, PlayerSender, guest::Guest, hub::HubConfig,
+        };
+        use sunrise_sim::text_display_data::resident::{DisplayContents, DisplayState};
+        use sunrise_core::geometry::Vec3;
+        use sunrise_protocol::entity_data::{Value, serializer};
+        use sunrise_protocol::packets::{configuration::ClientInformation, play::Clientbound};
+
+        crate::game::native_entity_refs::tests::with_game(|game| {
+            let settings = LanSettings {
+                port: 0,
+                guest_commands: false,
+                force_game_mode: false,
+            };
+            let net = NetConfig {
+                listen: false,
+                announce: false,
+                lod_distance: 0,
+                ..NetConfig::lan(0, String::new(), 2)
+            };
+            let config = HubConfig {
+                default_game_mode: 0,
+                guest_commands: false,
+                force_game_mode: false,
+                hardcore: false,
+                view_distance: 2,
+                simulation_distance: 2,
+                dimension: game.dim.id().to_owned(),
+                allow_flight: true,
+                seed: 0,
+                max_players: 2,
+                integrated: true,
+                levels: game.server.level_shapes.clone(),
+                level_seeds: game.server.levels.0.runtime.seeds(),
+            };
+            game.lan_host(settings, net, config).unwrap();
+            let (tx, rx) = std::sync::mpsc::channel();
+            let mut guest = Guest::new(
+                Joined {
+                    conn: 12,
+                    uuid: 12,
+                    name: "guest12".into(),
+                    properties: Vec::new(),
+                    info: ClientInformation::new(8),
+                    brand: String::new(),
+                    sender: PlayerSender::new(tx, Arc::new(AtomicUsize::new(0))),
+                    latency: Arc::new(AtomicI32::new(0)),
+                    address: "127.0.0.1:1".parse().unwrap(),
+                    expected: false,
+                },
+                12,
+                [3.0, 64.0, 5.0],
+                10,
+            );
+            guest.placed = true;
+            guest.dimension = game.dim.id().to_owned();
+            guest.sent_chunks.insert((0, 0));
+            let diamond_id = game.server
+                .lan
+                .as_ref()
+                .unwrap()
+                .hub
+                .sync_data()
+                .builtin
+                .get("minecraft:item")
+                .unwrap()
+                .id("minecraft:diamond")
+                .unwrap();
+            {
+                let host = game.server.lan.as_mut().unwrap();
+                host.hub.guests.push(guest);
+                host.states_next_entity = Some(game.server.next_entity);
+            }
+            let world = &mut game.common.world;
+            if !world.chunks.contains_key(&(0, 0)) {
+                let chunk = sunrise_level::chunk::Chunk::with_layout(0, 0, world.layout());
+                world.chunks.insert((0, 0), Arc::new(chunk));
+            }
+            let display_id = game.server.next_entity + 1;
+            game.server.next_entity = display_id;
+            game.server.others.0.push(OtherEntity {
+                attachment_lifetime: Default::default(),
+                knot_check: None,
+                size_answer: None,
+                eye: None,
+                join: Default::default(),
+                display: Some(Arc::new(DisplayState::new(DisplayContents::Item {
+                    stack: Some(Arc::new(ItemStack::new("minecraft:diamond", 3))),
+                    context: ItemDisplayContext::Head,
+                }))),
+                interaction: None,
+                id: display_id,
+                kind: "minecraft:item_display".into(),
+                position: Vec3::new(3.0, 64.0, 5.0),
+                yaw: 0.0,
+                pitch: 0.0,
+            });
+            game.lan_note_joined();
+
+            let mut values = Vec::new();
+            for out in rx.try_iter() {
+                let bodies = match out {
+                    Out::Packet(body) => vec![body],
+                    Out::Packets(bodies) => bodies,
+                    Out::Disconnect(_) => Vec::new(),
+                };
+                for body in bodies {
+                    let mut reader = sunrise_protocol::buf::Reader::new(&body);
+                    let id = reader.varint().unwrap();
+                    if let Clientbound::SetEntityData(data) =
+                        Clientbound::decode(id, reader.rest()).unwrap()
+                        && data.id == display_id as i32
+                    {
+                        values.extend(data.values);
+                    }
+                }
+            }
+            assert!(values.iter().any(|entry| matches!(
+                entry,
+                (23, kind, Value::Item(Some(stack)))
+                    if *kind == serializer::ITEM_STACK
+                        && stack.item == diamond_id
+                        && stack.count == 3
+            )));
+            assert!(values.contains(&(
+                24,
+                serializer::BYTE,
+                Value::Byte(ItemDisplayContext::Head as i8),
+            )));
+        });
+    }
+}
+
+#[cfg(test)]
 pub(in crate::game) mod merchant_packet_tests {
     //! Vanilla notifyTrade changes the live offer while its frozen owner retains
     //! the last outbound offer packet. No sockets, server loop or world generation.
@@ -5101,6 +5368,7 @@ pub(in crate::game) mod merchant_packet_tests {
     };
 
     pub(in crate::game) struct ReplaceOnTradeVoice {
+        buyer: mod_api::PlayerRef,
         pub(in crate::game) abort: bool,
     }
 
@@ -5116,17 +5384,15 @@ pub(in crate::game) mod merchant_packet_tests {
                     panic!("the trade voice is a server level sound");
                 };
                 let open = |host: &mut dyn mod_api::ServerHost| {
-                    assert!(
-                        host.open_menu(
-                            2,
+                    self.buyer
+                        .open_chest_menu(
+                            host,
                             1,
                             mod_api::Text::literal("Replacement"),
                             Vec::new(),
-                            mod_api::MenuReplace::InPlace
+                            mod_api::MenuReplace::InPlace,
                         )
-                        .unwrap()
-                        .is_some()
-                    );
+                        .unwrap();
                 };
                 if self.abort {
                     let aborted = host.transaction(|host, _| {
@@ -5153,7 +5419,7 @@ pub(in crate::game) mod merchant_packet_tests {
             geometry::Vec3,
             random::{LegacyRandom, RandomSource},
         };
-        use sunrise_protocol::packets::play::Clientbound;
+        use sunrise_protocol::packets::play::{self, Clientbound};
         use sunrise_sim::{
             merchant::TradeFeedback,
             mobs::{Damage, Mob},
@@ -5271,6 +5537,12 @@ pub(in crate::game) mod merchant_packet_tests {
             guest.placed = true;
             guest.dimension = "minecraft:overworld".into();
             guest.sent_chunks.insert((0, 0));
+            if !game.common.world.chunks.contains_key(&(0, 0)) {
+                game.common.world.chunks.insert(
+                    (0, 0),
+                    Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
+                );
+            }
             guest.inventory[0] = Some(sunrise_items::items::ItemStack::new("minecraft:emerald", 8));
             hub.guests.push(guest);
             game.server.lan = Some(super::LanHost {
@@ -5291,7 +5563,6 @@ pub(in crate::game) mod merchant_packet_tests {
                 owner: None,
                 waypoints: Default::default(),
                 waypoint_dead: Default::default(),
-                border_sent: None,
                 commands: Default::default(),
                 quiet: Default::default(),
                 far: None,
@@ -5453,7 +5724,11 @@ pub(in crate::game) mod merchant_packet_tests {
                 1,
                 "price refresh sends even an unchanged offer"
             );
-            assert!(game.lan_merchant_closed(1, Some(window)));
+            game.lan_guest_packet(
+                1,
+                play::Serverbound::ContainerClose(play::ContainerClose { container: window }),
+            );
+            assert!(game.server.lan.as_ref().unwrap().menus[&1].merchant.is_none());
             assert!(packets(&rx).0.is_empty(), "closing does not resend offers");
 
             // Crossing the real level-two boundary runs updateSpecialPrices while
@@ -5625,10 +5900,11 @@ pub(in crate::game) mod merchant_packet_tests {
                 );
             };
             if case.starts_with("sound-replaces-") {
+                let buyer = game.server_player(2).expect("buyer player handle");
                 let abort = case.ends_with("-abort");
                 let mods = vec![mod_api::ModEntry::new(
                     "replace_on_trade_voice",
-                    Box::new(ReplaceOnTradeVoice { abort }),
+                    Box::new(ReplaceOnTradeVoice { buyer, abort }),
                 )]
                 .into();
                 mod_platform::testing::with_mods(mods, || {
@@ -5780,7 +6056,7 @@ pub(in crate::game) mod merchant_packet_tests {
                 .push(Mob::new(78, kind.clone(), Vec3::new(1.0, 4.0, 1.0), 0.0));
             game.mobs
                 .push(Mob::new(79, kind, Vec3::new(1.5, 4.0, 1.0), 0.0));
-            game.native_mobs_joined(0, false);
+            game.admit_new_mobs(0);
             assert!(game.mob_hits_mob(77, 5.0, Damage::mob(78, at)));
             assert!(!game.mob_hits_mob(77, 2.0, Damage::mob(79, at)));
             assert!(game.mob_hits_mob(77, 7.0, Damage::mob(78, at)));

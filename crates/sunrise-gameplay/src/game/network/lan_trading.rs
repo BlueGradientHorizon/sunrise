@@ -103,38 +103,37 @@ impl crate::game::ServerGame<'_> {
             self.merchant_closed(&mut state);
             return;
         }
-        // ServerPlayer.openMenu closes the menu that was open.
-        self.guest_close_all(conn);
-        let Some(window) = self
-            .server
-            .lan
-            .as_mut()
-            .and_then(|host| host.hub.open_merchant_window(conn, title))
-        else {
-            self.merchant_closed(&mut state);
-            return;
-        };
-        let mut gm = GuestMerchant {
-            window,
-            state: 0,
-            slots: [None, None, None],
-            drag: QuickCraftDrag::default(),
-            merchant: Box::new(state),
-            sent: Vec::new(),
-            sent_level: 0,
-            sent_xp: 0,
-            sent_result: None,
-        };
-        self.lan_send_offers(conn, &mut gm);
-        self.lan_send_merchant_content(conn, &mut gm);
-        if let Some(host) = self.server.lan.as_mut() {
-            host.menus
-                .entry(conn)
-                .or_default()
-                .merchant
-                .restore(Some(gm));
-        }
-        self.player_menu_opening(conn);
+        self.guest_replace_menu(conn, false, |game| {
+            let Some(window) = game.server
+                .lan
+                .as_mut()
+                .and_then(|host| host.hub.open_merchant_window(conn, title))
+            else {
+                game.merchant_closed(&mut state);
+                return;
+            };
+            let mut gm = GuestMerchant {
+                window,
+                state: 0,
+                slots: [None, None, None],
+                drag: QuickCraftDrag::default(),
+                merchant: Box::new(state),
+                sent: Vec::new(),
+                sent_level: 0,
+                sent_xp: 0,
+                sent_result: None,
+            };
+            game.lan_send_offers(conn, &mut gm);
+            game.lan_send_merchant_content(conn, &mut gm);
+            if let Some(host) = game.server.lan.as_mut() {
+                host.menus
+                    .entry(conn)
+                    .or_default()
+                    .merchant
+                    .restore(Some(gm));
+            }
+            game.player_menu_opening(conn);
+        })
     }
     /// `Entity.getDisplayName` of the merchant, the screen's title: its name
     /// (custom, else the profession's) with the show_entity hover event and
@@ -363,16 +362,6 @@ impl crate::game::ServerGame<'_> {
         };
         if !traded.is_empty() {
             // The guest's own statistic and advancements.
-            if let Some((uuid, name)) = self
-                .server
-                .lan
-                .as_ref()
-                .and_then(|host| host.hub.guests.iter().find(|g| g.conn == conn))
-                .map(|g| (g.uuid, g.name.clone()))
-                && let Some(entity_id) = gm.merchant.mob
-            {
-                self.native_player_trade(uuid, &name, entity_id);
-            }
             let mob = gm.merchant.mob;
             self.as_guest(conn, |g| {
                 g.merchant_traded(mob, &mut session.offers, &traded)
@@ -497,14 +486,8 @@ impl crate::game::ServerGame<'_> {
                 .and_then(|h| h.menus.get(&conn))
                 .and_then(|p| p.merchant.as_ref())
                 .map(|m| m.window);
-            if let Some(window) = window
-                && self.lan_merchant_closed(conn, Some(window))
-                && let Some(host) = self.server.lan.as_mut()
-            {
-                host.hub.send_to(
-                    conn,
-                    &C::ContainerClose(play::ContainerClose { container: window }),
-                );
+            if let Some(window) = window {
+                self.reply_menu_click(conn, sunrise_gameplay_common::game::lan_menu_data::ClickReply::Close(window));
             }
         }
     }
@@ -641,12 +624,7 @@ impl crate::game::ServerGame<'_> {
             self.native_trade_select(uuid, &name, villager, index);
         }
     }
-    /// The guest closed the trading window (or it is closed for them):
-    /// MerchantMenu.removed, then the villager gets its state back.
-    pub(in crate::game) fn lan_merchant_closed(&mut self, conn: u32, window: Option<i32>) -> bool {
-        self.lan_merchant_removed(conn, window, super::lan_crafting::MenuRemoval::Live)
-    }
-
+    /// The guest closed the trading window (or it is closed for them): MerchantMenu.removed restores the villager's state.
     pub(in crate::game) fn lan_merchant_removed(
         &mut self,
         conn: u32,
@@ -696,9 +674,6 @@ impl crate::game::ServerGame<'_> {
             self.lan_place_back(gi, carried.into_iter().collect());
             self.merchant_drops(conn, [a, b].into_iter().flatten().collect());
         }
-        if window.is_some() {
-            self.player_menu_closing(conn);
-        }
         true
     }
     /// `Merchant.stillValid` for a trader: it is alive and the guest is within
@@ -722,61 +697,64 @@ impl crate::game::ServerGame<'_> {
                     && guest_within_entity_range(g, &m.bounds(), 4.0)
             })
     }
+
+    /// `ServerPlayer.tick`: broadcast menu changes before checking `stillValid` for one guest.
+    pub(in crate::game) fn lan_merchant_tick_one(&mut self, conn: u32) {
+        let Some((window, sync_result, close)) = self.server.lan.as_ref().and_then(|host| {
+            let gm = host.menus.get(&conn)?.merchant.as_ref()?;
+            let g = host.hub.guest(conn).filter(|g| host.hub.here(g))?;
+            let sync_result = gm.slots[2] != gm.sent_result;
+            let close = gm
+                .merchant
+                .mob
+                .is_some_and(|id| !self.lan_merchant_valid(g, id));
+            (sync_result || close).then_some((gm.window, sync_result, close))
+        }) else {
+            return;
+        };
+        if sync_result
+            && let Some(host) = self.server.lan.as_mut()
+            && let Some(gm) = host
+                .menus
+                .get_mut(&conn)
+                .and_then(|menu| menu.merchant.as_mut())
+            && gm.window == window
+            && gm.slots[2] != gm.sent_result
+        {
+            gm.state = (gm.state + 1) & 0x7FFF;
+            gm.sent_result.clone_from(&gm.slots[2]);
+            let item = host.hub.stack(&gm.sent_result);
+            host.hub.send_to(
+                conn,
+                &C::ContainerSetSlot(play::ContainerSetSlot {
+                    container: window,
+                    state: gm.state,
+                    slot: 2,
+                    item,
+                }),
+            );
+        }
+        if close {
+            self.reply_menu_click(conn, sunrise_gameplay_common::game::lan_menu_data::ClickReply::Close(window));
+        }
+    }
     /// `ServerPlayer.tick`: broadcast menu changes before checking `stillValid`.
+    #[cfg(test)]
     pub(in crate::game) fn lan_merchant_tick(&mut self) {
-        let changes: Vec<_> =
-            self.server
-                .lan
-                .as_ref()
-                .map(|host| {
-                    host.menus
-                        .iter()
-                        .filter_map(|(conn, p)| {
-                            let gm = p.merchant.as_ref()?;
-                            let g = host.hub.guest(*conn).filter(|g| {
-                                host.hub.here(g) && !self.player_tick_canceled(*conn)
-                            })?;
-                            let sync_result = gm.slots[2] != gm.sent_result;
-                            let close = gm
-                                .merchant
-                                .mob
-                                .is_some_and(|id| !self.lan_merchant_valid(g, id));
-                            (sync_result || close).then_some((*conn, gm.window, sync_result, close))
-                        })
-                        .collect()
-                })
-                .unwrap_or_default();
-        for (conn, window, sync_result, close) in changes {
-            if sync_result
-                && let Some(host) = self.server.lan.as_mut()
-                && let Some(gm) = host
-                    .menus
-                    .get_mut(&conn)
-                    .and_then(|menu| menu.merchant.as_mut())
-                && gm.window == window
-                && gm.slots[2] != gm.sent_result
-            {
-                gm.state = (gm.state + 1) & 0x7FFF;
-                gm.sent_result.clone_from(&gm.slots[2]);
-                let item = host.hub.stack(&gm.sent_result);
-                host.hub.send_to(
-                    conn,
-                    &C::ContainerSetSlot(play::ContainerSetSlot {
-                        container: window,
-                        state: gm.state,
-                        slot: 2,
-                        item,
-                    }),
-                );
-            }
-            if close
-                && self.lan_merchant_closed(conn, Some(window))
-                && let Some(host) = self.server.lan.as_mut()
-            {
-                host.hub.send_to(
-                    conn,
-                    &C::ContainerClose(play::ContainerClose { container: window }),
-                );
+        let conns: Vec<u32> = self.server
+            .lan
+            .as_ref()
+            .map(|host| {
+                host.menus
+                    .iter()
+                    .filter(|(_, p)| p.merchant.is_some())
+                    .map(|(c, _)| *c)
+                    .collect()
+            })
+            .unwrap_or_default();
+        for conn in conns {
+            if !self.player_tick_canceled(conn) {
+                self.lan_merchant_tick_one(conn);
             }
         }
     }
@@ -1084,7 +1062,7 @@ pub mod tests {
             seed: 0,
             max_players: 2,
             integrated: true,
-            levels: game.server.level_shapes,
+            levels: game.server.level_shapes.clone(),
             level_seeds: game.server.levels.0.runtime.seeds(),
         };
         game.lan_host(settings, net, config).unwrap();

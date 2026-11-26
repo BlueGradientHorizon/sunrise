@@ -598,11 +598,15 @@ impl ServerGame<'_> {
             );
         }
         let special = self.common.local_difficulty(at).special();
-        // `SkeletonTrapGoal.enchant`: the weapon and the helmet, always.
+        // `SkeletonTrapGoal.enchant`: clear existing enchantments on the weapon
+        // and the helmet, then apply `mob_spawn_equipment`, always.
         for slot in [
             sunrise_sim::mobs::finalize::MAINHAND,
             sunrise_sim::mobs::finalize::HEAD,
         ] {
+            if let Some(m) = self.common.mobs.iter_mut().find(|m| m.id == id) {
+                sunrise_sim::mobs::finalize::set_slot_enchantments(m, slot, Vec::new());
+            }
             self.enchant_item(id, slot, special);
         }
         Some(id)
@@ -636,14 +640,13 @@ pub(in crate::game) mod player_seat_tests {
 
 #[cfg(any(test, feature = "test-support"))]
 pub mod nested_vehicle_discard_tests {
-    use sunrise_gameplay_common::game::server_side::passengers::nested_vehicle_discard_tests::VEHICLE_VALUE;
-
-    pub fn set_vehicle_test_attachment(game: &mut crate::game::ServerGame<'_>) {
+    pub fn set_vehicle_test_attachment(
+        game: &mut crate::game::ServerGame<'_>,
+        key: &mod_api::AttachmentKey<i32>,
+    ) {
         // The real store path binds the resident owner's registration. Rebinding
         // it manually would replace that lifetime before removal is exercised.
-        VEHICLE_VALUE
-            .set(game, mod_api::Holder::Entity(71), 37)
-            .unwrap();
+        key.set(game, mod_api::Holder::Entity(71), 37).unwrap();
     }
 }
 

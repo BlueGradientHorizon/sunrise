@@ -88,7 +88,7 @@ pub fn has_pick_result(target: Option<crate::game::commands_common::Target>) -> 
 
 pub trait PickEntityCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// `Entity.getPickResult` of the entity `id`.
-    fn entity_pick_result(&self, id: i32) -> Option<ItemStack> {
+    fn pick_result_of(&self, id: i32) -> Option<ItemStack> {
         let id = id as u32;
         // EnderDragonPart.getPickResult delegates to its owner's Mob.getPickResult.
         let id = self

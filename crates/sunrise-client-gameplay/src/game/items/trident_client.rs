@@ -4,8 +4,8 @@ use sunrise_client::mesher::Vertex;
 use sunrise_core::{geometry::Vec3, position::BlockPos};
 use sunrise_sim::thrown_trident::{HALF, ThrownTrident};
 #[allow(unused_imports)]
-use sunrise_sim::{arrows::Pickup, mobs::anim::Poses};
-use sunrise_sim::{arrows::back_off, projectiles::ProjectileWorld};
+use sunrise_sim::{entities::arrows::Pickup, mobs::anim::Poses};
+use sunrise_sim::{entities::arrows::back_off, projectiles::ProjectileWorld};
 
 impl ClientGame<'_> {
     /// ThrownTridentRenderer.
@@ -229,6 +229,8 @@ pub(in crate::game) fn remote_tick(
     owner_eye: Option<Vec3>,
 ) {
     t.previous = t.position;
+    t.previous_yaw = t.yaw;
+    t.previous_pitch = t.pitch;
     t.shake -= i32::from(t.shake > 0);
     if t.in_ground_time > 4 {
         t.dealt_damage = true;

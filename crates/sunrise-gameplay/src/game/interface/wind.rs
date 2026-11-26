@@ -1,7 +1,7 @@
 //! Wind charges: the item a player throws (`WindChargeItem`), the charges
 //! breezes shoot, and the burst they make (`ServerExplosion` with
 //! `TRIGGER_BLOCK`: no damage, only knockback and the blocks that react).
-use super::entity::{Blast, Entity as _};
+use super::entity::{Blast, Entity as _, with_entity, with_entity_mut};
 use crate::game::ServerGame;
 use crate::game::server_side::entity_server::for_each_entity_mut;
 use std::collections::BTreeSet;
@@ -11,6 +11,7 @@ use sunrise_core::{
     random::RandomSource,
 };
 use sunrise_game_data::Result;
+use sunrise_gameplay_common::game::transactions::entities::EntityRemovalGameExt as _;
 use sunrise_items::items::ItemStack;
 use sunrise_level::chunk::LevelShape;
 use sunrise_sim::advancements::EntityView;
@@ -240,8 +241,15 @@ impl ServerGame<'_> {
     /// `Player.itemAttackInteraction` applies trigger-only held-item effects
     /// after an EnderDragonPart is successfully hit.
     pub(in crate::game::server_side) fn post_attack_dragon_burst(&mut self) {
-        if let Some(held) = self.common.held().cloned() {
-            self.post_attack_bursts(&held, "minecraft:ender_dragon");
+        if let Some(id) = self.common.dragon.as_ref().map(|dragon| dragon.id) {
+            let held = self.common.held().cloned();
+            let motion = self
+                .common
+                .player
+                .as_ref()
+                .map_or((0.0, false), |p| (p.fall_distance, p.fall_flying));
+            let damage_type = self.stack_melee_damage_type(held.as_ref(), motion, true);
+            self.post_player_melee(id, "minecraft:ender_dragon", &damage_type, held.as_ref());
         }
     }
 
@@ -255,7 +263,12 @@ impl ServerGame<'_> {
         multiplier: f32,
         blocks: &[[i32; 3]],
     ) {
-        let Some(d) = self.common.dragon.as_ref() else {
+        let Some(d) = self
+            .common
+            .dragon
+            .as_ref()
+            .filter(|d| self.server.combat.0.visits(d.id))
+        else {
             return;
         };
         let whole = d.whole_box();
@@ -391,11 +404,13 @@ impl ServerGame<'_> {
             if self.mobs.iter().any(|m| m.id == id && m.species() == Species::Breeze));
         match who {
             Who::Player => {
-                self.mob_hits_player_kind(
+                if self.mob_hits_player(
                     1.0,
                     [p.previous.x, p.previous.y, p.previous.z],
                     "minecraft:wind_charge",
-                );
+                ) {
+                    self.shot_post_attack(p, who, "minecraft:wind_charge");
+                }
             }
             // An ender dragon part takes the point of damage too; a crystal is
             // not hit (`AbstractWindCharge.canHitEntity`).
@@ -430,6 +445,7 @@ impl ServerGame<'_> {
                     kind: DamageKind::WindCharge,
                     attacker: p.owner,
                     from: Some([p.previous.x, p.previous.y, p.previous.z]),
+                    direct: Some(p.entity_type()),
                     attacker_species: owner_breeze.then_some(Species::Breeze),
                 };
                 let Some(index) = self.common.mob_index.find(&self.common.mobs, id) else {
@@ -475,7 +491,7 @@ impl ServerGame<'_> {
                 self.finish_mob_damage_at(index);
                 self.settle_mob_hurt(id);
                 if hurt {
-                    self.shot_post_attack(p, who, p.kind.id(), "minecraft:wind_charge");
+                    self.shot_post_attack(p, who, "minecraft:wind_charge");
                 }
             }
         }
@@ -586,14 +602,24 @@ impl ServerGame<'_> {
         // The player, then every other player in the level (LAN guests),
         // each swapped in as the player. In a guest's turn (a mace's wind
         // burst) the player is that guest.
-        let own = self.wind_push_player(center, radius, multiplier, src, blocks);
+        let own = if self
+            .server
+            .lan_acting_entity
+            .is_some_and(|id| !self.server.combat.0.visits(id))
+        {
+            None
+        } else {
+            self.wind_push_player(center, radius, multiplier, src, blocks)
+        };
         let mut pushed: Vec<_> = self.server.lan_acting.zip(own).into_iter().collect();
         if let Some(host) = self.server.lan.as_ref() {
+            let combat = &self.server.combat.0;
             let guests: Vec<u32> = host
                 .hub
                 .guests
                 .iter()
                 .filter(|g| host.hub.here(g) && g.loaded && !g.dead)
+                .filter(|g| u32::try_from(g.entity_id).map_or(true, |id| combat.visits(id)))
                 .map(|g| g.conn)
                 .collect();
             for conn in guests {
@@ -609,7 +635,9 @@ impl ServerGame<'_> {
         // Every other entity takes `Entity.pushFromExplosion` alike: its
         // distance is from its feet, its direction from its eyes. A kind sits
         // out where its `ignoreExplosion` says (items and visible stands for a
-        // charge, vehicles for a mob's burst with mob griefing off).
+        // charge, vehicles for a mob's burst with mob griefing off). When a
+        // listening `explosion_detonate` left a list, walk that list in order;
+        // otherwise enumerate storages directly.
         let burst = Blast {
             vehicles_ignore: src.mob
                 && !self
@@ -622,26 +650,77 @@ impl ServerGame<'_> {
         };
         let source = self.server.wind_source;
         let (done, announced) = (self.server.ordered.done, self.server.ordered.announced);
+        let mut cursor = self.entity_id_cursor();
+        let mut listed_at = 0;
         let mut late = Vec::new();
-        let mut entities = self.take_entities();
-        for_each_entity_mut!(entities, entity => {
-            if entity.ignores_explosion(&burst) || !entity.pushed_by_wind() {
-                return;
+        loop {
+            let next = if let Some(list) = self.server.combat.0.blast_hit_list.as_ref() {
+                let Some(&id) = list.get(listed_at) else {
+                    break;
+                };
+                listed_at += 1;
+                self.blast_handle(id).map(|handle| (id, handle))
+            } else {
+                let Some(next) = self.next_entity_id(&mut cursor) else {
+                    break;
+                };
+                Some(next)
+            };
+            let Some((entity, handle)) = next else {
+                continue;
+            };
+            if with_entity!(self, handle, e => e.is_removed())
+                || with_entity!(self, handle, e => e.selector_target())
+                    .is_some_and(|target| self.target_removed(&target))
+            {
+                continue;
             }
-            let feet = entity.position();
-            let feet = [feet.x, feet.y, feet.z];
-            let dist = distance(feet) / diameter;
-            if dist > 1.0 {
-                return;
+            if !self.server.combat.0.visits(entity) {
+                continue;
             }
-            let b = entity.explosion_box();
-            let (lo, hi) = (b.min_position(), b.max_position());
-            let exposure = self.seen_percent(center, [lo.x, lo.y, lo.z], [hi.x, hi.y, hi.z]);
+            let computed = with_entity!(self, handle, e => {
+                if e.ignores_explosion(&burst) || !e.pushed_by_wind() {
+                    None
+                } else {
+                    let feet = e.position();
+                    let feet = [feet.x, feet.y, feet.z];
+                    let dist = distance(feet) / diameter;
+                    if dist > 1.0 {
+                        None
+                    } else {
+                        let b = e.explosion_box();
+                        let (lo, hi) = (b.min_position(), b.max_position());
+                        let eye_h = e.explosion_eye_height();
+                        let joined = e.join_seq();
+                        let waiting = e.ticks_after_projectiles()
+                            && (done.is_none_or(|d| joined > d)
+                                || (joined >= announced && e.waits_for_spawn_packet()));
+                        Some((
+                            feet,
+                            dist,
+                            [lo.x, lo.y, lo.z],
+                            [hi.x, hi.y, hi.z],
+                            eye_h,
+                            joined,
+                            waiting,
+                        ))
+                    }
+                }
+            });
+            let Some((feet, dist, lo, hi, eye_h, joined, waiting)) = computed else {
+                continue;
+            };
+            let exposure = self.seen_percent(center, lo, hi);
             let power = (1.0 - dist) * f64::from(exposure) * multiplier;
-            let dir = direction([feet[0], feet[1] + entity.explosion_eye_height(), feet[2]]);
+            let dir = direction([feet[0], feet[1] + eye_h, feet[2]]);
             let mut push = [dir[0] * power, dir[1] * power, dir[2] * power];
-            let id = Some(entity.id());
-            self.native_explosion_knockback(self.dim.id(), center, blocks, id, &mut push);
+            self.native_explosion_knockback(
+                self.common.dim.id(),
+                center,
+                blocks,
+                Some(entity),
+                &mut push,
+            );
             let push = Vec3::new(push[0], push[1], push[2]);
             // ServerLevel ticks entities in the order they joined. One that
             // joined before the charge has ticked by now in vanilla, so the
@@ -649,17 +728,12 @@ impl ServerGame<'_> {
             // projectiles, so the push waits for that tick to run. An orb
             // can advance the early cursor past an unannounced TNT or falling
             // block; that entity still waits for the late pass.
-            let joined = entity.join_seq();
-            let waiting = entity.ticks_after_projectiles()
-                && (done.is_none_or(|d| joined > d)
-                    || (joined >= announced && entity.waits_for_spawn_packet()));
             if push_waits_for_tick(waiting, joined, source) {
-                late.push((entity.id(), push));
-            } else {
-                entity.push_from_explosion(push);
+                late.push((entity, push));
+            } else if let Some(handle) = self.refresh_entity_handle(entity, handle) {
+                with_entity_mut!(self, handle, e => e.push_from_explosion(push));
             }
-        });
-        self.restore_entities(entities);
+        }
         self.server.late_wind_pushes.extend(late);
         pushed
     }
@@ -780,9 +854,11 @@ impl ServerGame<'_> {
             return Ok(());
         }
         let cause = src.cause;
-        if self.server.serving.is_some() || self.common.options.dedicated.is_some() {
+        if self.common.is_logical_server() {
+            let entity =
+                |id| Some(mod_api::EntityRef::new(self.common.native_lifecycle.epoch()?, id));
             let start = mod_api::ExplosionStart::from(mod_api::__private::built::ExplosionStart {
-                dimension: self.common.dim.id(),
+                dimension: self.common.dim.key(),
                 center,
                 radius,
                 fire: false,
@@ -793,8 +869,8 @@ impl ServerGame<'_> {
                 } else {
                     "minecraft:explosion"
                 },
-                source: cause.source,
-                owner: cause.owner,
+                source: cause.source.and_then(entity),
+                owner: cause.owner.and_then(entity),
             });
             if self.explosion_start_cancelled(&start) {
                 return Ok(());
@@ -804,8 +880,32 @@ impl ServerGame<'_> {
         let ctx = sunrise_level::sculk::Context::default();
         self.post_game_event("minecraft:explode", center, ctx);
         let mut targets = self.wind_positions(center, radius);
+        // NeoForge ServerExplosion.hurtEntities posts Detonate for TRIGGER
+        // explosions before knockback and block interaction, even when mob
+        // griefing disables a breeze charge's block triggers.
+        let outer = std::mem::take(&mut self.server.combat.0.blast_hit_list);
+        let outer_ids = std::mem::take(&mut self.server.combat.0.blast_hit_ids);
+        // The direct entity: the charge that burst (a breeze's or a thrown one), or for Wind
+        // Burst the player who attacked, who deals the blast itself.
+        let direct_kind = if src.breeze {
+            "minecraft:breeze_wind_charge"
+        } else if src.wind_charge {
+            "minecraft:wind_charge"
+        } else {
+            "minecraft:player"
+        };
+        let outer_direct = std::mem::replace(
+            &mut self.server.combat.0.explosion_direct,
+            cause.source.map(|id| (id, direct_kind)),
+        );
+        if self.common.is_logical_server() {
+            self.explosion_detonate(center, radius, &mut targets);
+        }
         let pushed = self.wind_knockback(center, radius, multiplier, src, &targets);
         self.wind_burst_knockback(center, radius, multiplier, &targets);
+        self.server.combat.0.blast_hit_list = outer;
+        self.server.combat.0.blast_hit_ids = outer_ids;
+        self.server.combat.0.explosion_direct = outer_direct;
         let block_count = targets.len();
         // Explosion.canTriggerBlocks: a breeze's charge needs mob griefing.
         if !src.breeze

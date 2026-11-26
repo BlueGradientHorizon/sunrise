@@ -5,6 +5,7 @@
 use crate::game::ServerGame;
 use sunrise_core::position::BlockPos;
 use sunrise_game_data::text::Text;
+use sunrise_gameplay_common::game::item_abilities::ability;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::{
     mobs::{Species, Who, sulfur_cube},
@@ -69,7 +70,7 @@ impl ServerGame<'_> {
             self.award_stat("used", item, 1);
             return true;
         }
-        if item == "minecraft:shears" && sulfur_cube::has_body(m) {
+        if self.held_shears(ability::SHEARS_REMOVE_ARMOR) && sulfur_cube::has_body(m) {
             // shear: out comes the block, and nothing is swallowed for 5 s.
             let sheared = self.common.mobs[index]
                 .extra

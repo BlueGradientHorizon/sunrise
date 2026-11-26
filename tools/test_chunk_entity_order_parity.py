@@ -11,11 +11,11 @@ import os
 import subprocess
 import sys
 
-try:
-    from . import lab, oracle_harness as h
-except ImportError:
-    import lab
-    import oracle_harness as h
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+from tools import lab, oracle_harness as h
 
 TEST = 'chunk_loaded_families_keep_vanilla_lookup_and_save_order'
 

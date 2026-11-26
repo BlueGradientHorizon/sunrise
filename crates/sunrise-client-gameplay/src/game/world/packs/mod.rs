@@ -492,8 +492,15 @@ impl crate::game::ClientGame<'_> {
         // The reload's mod listeners register here, on the thread that owns
         // the game, before the staging worker starts: each listener keeps its
         // registering mod for crash attribution.
-        let client_listeners = self.register_client_reload_listeners();
+        let max_atlas_size = self.client.renderer.0.as_ref().map_or(
+            sunrise_client::hud::MAX_ATLAS_SIZE,
+            |renderer| renderer.device.limits().max_texture_dimension_2d,
+        );
+        let captured = self.common.capture_candidate_settings(&self.common.options.resources)
+            .map_err(|error| std::io::Error::other(error.to_string()))?;
+        let client_listeners = self.register_client_reload_listeners(&captured);
         let texture_atlases = super::client_reload::collect_texture_atlases();
+        let emissive_sprites = super::client_reload::collect_emissive_sprites();
         crate::game::client_side::mods_client::register_fluid_models(
             self.common.options.execution_role,
         );
@@ -501,21 +508,27 @@ impl crate::game::ClientGame<'_> {
             let Some(client_res) = client_res_slot.get() else {
                 return Err("client resources not loaded".to_owned());
             };
-            stage_pack(
+            stage_pack_with_emissive(
                 &vanilla,
                 &selected,
                 &server,
                 &mod_sources,
                 client_listeners,
                 &texture_atlases,
+                &emissive_sprites,
                 &assets,
                 &res,
                 client_res,
                 &context,
                 unicode,
                 japanese,
+                max_atlas_size,
                 progress,
             )
+            .map(|mut staged| {
+                staged.settings = Some(captured);
+                staged
+            })
             .map_err(|e| e.to_string())
         };
         #[cfg(test)]
@@ -524,6 +537,10 @@ impl crate::game::ClientGame<'_> {
         self.client.reload_overlay = Some(ReloadOverlay::default());
         Ok(())
     }
+    pub(in crate::game) fn reload_overlay_visible(&self) -> bool {
+        self.client.pack_reload.0.is_some() || self.client.reload_overlay.is_some()
+    }
+
     /// One frame of the pack reload's `LoadingOverlay`: its bar eased toward
     /// the reload's progress (all of it once applied) and how far it has
     /// faded. `None`, and the overlay dropped, once it has faded out.
@@ -595,20 +612,32 @@ impl crate::game::ClientGame<'_> {
             block_entity_shapes,
             waypoint_styles,
             armor_stand_assets,
+            entity_models,
             frame_models,
             sounds,
             language,
+            settings,
         } = staged;
         // All fallible preflight finishes before any listener or the game
         // publishes the candidate. In particular, registration can refuse it.
-        let loop_context = self.common.prepare_loop_context(&root)?;
+        let loop_context = match settings {
+            Some(captured) => self.common.prepare_loop_context_from(captured),
+            None => self.common.prepare_loop_context(&root)?,
+        };
         let professions = self.prepare_client_professions()?;
-        let item_extensions = Self::prepare_client_item_extensions(&gui)?;
+        let item_extensions =
+            Self::prepare_client_item_extensions(&gui, &mut self.client.client_item_extension_owners);
         // A reload from the title can apply before the start's world-rest worker is done.
         self.common.join_world_rest()?;
         let tab_modifiers = sunrise_client::polytone_creative_tabs::TabModifier::read_all(&root);
         let standalone_geometry =
-            super::native_block_entity_draw::StandaloneGeometry::new(&pack, &client_pack, &gui);
+            super::native_block_entity_draw::StandaloneGeometry::new(
+                &pack,
+                &client_pack,
+                &gui,
+                Some(self.client_res().block_entity_render()),
+            );
+        self.client.native_shaders.pick_hdr.get_mut().forget();
         // Keep the working GPU resources, and hand its window surface over.
         if let Some(renderer) = &mut self.client.renderer.0 {
             renderer.release_surface();
@@ -625,13 +654,16 @@ impl crate::game::ClientGame<'_> {
                     &pack,
                     &client_pack,
                     &gui,
-                    self.client.renderer.0.as_deref(),
+                    self.client.renderer.0.as_deref().map_or(
+                        sunrise_client::gfx::RendererDevice::New,
+                        sunrise_client::gfx::RendererDevice::Reuse,
+                    ),
                     Some(textures),
                     self.client.settings.sunrise.api,
                     self.client.settings.sunrise.translucent_batching,
-                    self.client.settings.vsync,
+                    self.effective_vsync(),
                     &self.client.settings.sunrise,
-                    super::shader_packs::picked_pack_shape(&self.client.settings),
+                    self.picked_pack_shape(),
                     self.client
                         .renderer
                         .0
@@ -687,6 +719,7 @@ impl crate::game::ClientGame<'_> {
                 .armor_stand_assets
                 .0
                 .apply_resources(armor_stand_assets);
+            game.client.entity_models = entity_models;
             game.client.armor_stand_assets.0.extensions = item_extensions;
             game.side_clear_random_tick_sections();
             game.portal_sections.clear();
@@ -791,11 +824,6 @@ impl crate::game::ClientGame<'_> {
             if has_renderer {
                 game.apply_ui_settings();
             }
-            // Sunrise's own shader pack is built again: its sprite tags name the old atlas's
-            // layers, and a new renderer runs no pack.
-            game.client.native_shaders = super::native_shaders::NativeShaders::picking(
-                &std::mem::take(&mut game.client.native_shaders.picked),
-            );
             game.client.chat_ui.chat.rescale(&game.client.gui.atlas);
             game.install_loop_context(loop_context);
             game.resolve_entity_renderers();
@@ -817,7 +845,7 @@ pub fn stage_pack(
     server: &[Pack],
     mod_sources: &super::mods::ModsState,
     client_listeners: mod_api::ClientListenerRegistry,
-    texture_atlases: &[mod_api::TextureAtlasRegistration],
+    texture_atlases: &[mod_api::Answered<mod_api::TextureAtlasRegistration>],
     assets: &Arc<Assets>,
     res: &Resources,
     client_res: &ClientResources,
@@ -826,6 +854,45 @@ pub fn stage_pack(
     japanese: bool,
     progress: &super::Progress,
 ) -> sunrise_game_data::Result<StagedPack> {
+    stage_pack_with_emissive(
+        vanilla_root,
+        selected,
+        server,
+        mod_sources,
+        client_listeners,
+        texture_atlases,
+        &[],
+        assets,
+        res,
+        client_res,
+        context,
+        force_unicode,
+        japanese,
+        sunrise_client::hud::MAX_ATLAS_SIZE,
+        progress,
+    )
+}
+
+#[cfg(feature = "client")]
+fn stage_pack_with_emissive(
+    vanilla_root: &Path,
+    selected: &[String],
+    server: &[Pack],
+    mod_sources: &super::mods::ModsState,
+    client_listeners: mod_api::ClientListenerRegistry,
+    texture_atlases: &[mod_api::Answered<mod_api::TextureAtlasRegistration>],
+    emissive_sprites: &[mod_api::Answered<mod_api::EmissiveSpriteRegistration>],
+    assets: &Arc<Assets>,
+    res: &Resources,
+    client_res: &ClientResources,
+    context: &WorkerContext,
+    force_unicode: bool,
+    japanese: bool,
+    max_atlas_size: u32,
+    progress: &super::Progress,
+) -> sunrise_game_data::Result<StagedPack> {
+    let entity_models_doc = sunrise_client::mobs::EntityModelDocument::load(vanilla_root)
+        .map_err(|error| format!("loading vanilla entity model definitions: {error}"))?;
     let resource_root = startup_root(vanilla_root, selected, server, mod_sources)?.selected?;
     let resource_root = super::client_reload::stage_texture_atlases(resource_root, texture_atlases);
     let root = resource_root.prepared().to_path_buf();
@@ -837,7 +904,6 @@ pub fn stage_pack(
         || -> sunrise_game_data::Result<_> {
             // The world's models and sprites and the GUI atlas read the same root and nothing of
             // each other: about a second each, side by side.
-            let pool = crate::game::client_side::resource_tables_client::dynamic_texture_pool();
             // The sound events and the language are read here too, not in
             // the frame that applies the reload (about 20 ms of it).
             let (render, atlas, panorama, (sounds, language)) = std::thread::scope(|s| {
@@ -848,7 +914,7 @@ pub fn stage_pack(
                         let game = sunrise_assets::resource_source::ResourceSource::directory(
                             vanilla_root.to_path_buf(),
                         );
-                        HudAtlas::build_over_with_dynamic_textures(&source, &source, &game, pool)
+                        HudAtlas::build_over_and_limit(&source, &source, &game, max_atlas_size)
                             .map_err(|e| e.to_string())
                     },
                 );
@@ -868,7 +934,7 @@ pub fn stage_pack(
                     },
                 );
                 (
-                    sunrise_client::assets::RenderAssets::load(&resource_root, assets),
+                    sunrise_client::assets::RenderAssets::load_with_emissive(&resource_root, assets, emissive_sprites),
                     atlas.join(),
                     panorama.join(),
                     small
@@ -924,9 +990,11 @@ pub fn stage_pack(
                 block_entity_shapes,
                 waypoint_styles,
                 armor_stand_assets,
+                entity_models: super::EntityModels::load(Some(&entity_models_doc)),
                 frame_models,
                 sounds,
                 language,
+                settings: None,
             })
         },
     )
@@ -960,6 +1028,8 @@ pub struct StagedPack {
     /// The root's sound events and current language.
     pub sounds: sunrise_level::sound_events::SoundRegistry,
     pub language: lang::Language,
+    entity_models: super::EntityModels,
+    settings: Option<sunrise_world::native_load_context::SettingsCapture>,
 }
 
 /// A pack reload's stages, indexed by `progress`: the overlay draws how far
@@ -1003,7 +1073,7 @@ pub struct PackReload {
 /// faded out (`Minecraft.setOverlay(null)`), two seconds after the reload.
 #[derive(Default)]
 #[cfg(feature = "client")]
-pub(in crate::game) struct ReloadOverlay {
+pub struct ReloadOverlay {
     /// `fadeInStart`: the overlay's first frame.
     pub(in crate::game) fade_in: Option<Instant>,
     /// `fadeOutStart`: when the reload was applied.

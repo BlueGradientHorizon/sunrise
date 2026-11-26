@@ -51,7 +51,7 @@ impl ChunkGenerator for Spires {
         }
         Some(chunk)
     }
-    fn proto(&self, _: &mut (), _: i32, _: i32) -> Proto {
+    fn proto(&self, _: &mut (), _: i32, _: i32) -> std::result::Result<Proto, String> {
         unreachable!("every column is saved")
     }
     fn finish(&self, _: Proto) -> Chunk {
@@ -156,6 +156,7 @@ fn a_tall_column_streams_lights_and_meshes_to_its_top() {
             cutout_leaves: true,
             opaque_ice: false,
             translucent_layers: &[],
+            layer_overrides: &[],
             leaf_culling: LeafCullingMode::Off,
             assets: &context.chunk.assets,
             render: &context.mesh.render,

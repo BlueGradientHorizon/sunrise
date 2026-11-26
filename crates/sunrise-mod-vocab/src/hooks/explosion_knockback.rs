@@ -9,13 +9,13 @@ pub trait Hooks {
     /// are also omitted from ordinary blasts: Sunrise removes them without a
     /// velocity to change. Server-side.
     #[hook(
-        target = "sunrise_gameplay::game::native_hooks::explosion_knockback::ServerGame<'_>::native_explosion_knockback",
         dispatch = "flat",
         side = "server",
         contract = "collect",
         out = "knockback_velocity",
         neoforge = "ExplosionKnockbackEvent",
-        cancellable = false
+        cancellable = false,
+        version = 2
     )]
     fn explosion_knockback(
         dimension: &str,

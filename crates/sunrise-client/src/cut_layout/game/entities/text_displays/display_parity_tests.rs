@@ -186,7 +186,9 @@ fn teleport_duration_unclamped_negative_same_target_and_rotation_match_vanilla_2
     // 2. NBT readAdditionalSaveData still clamps teleport_duration to 0..59.
     let mut tag = Compound::new();
     tag.insert("teleport_duration".into(), Tag::Int(100));
-    let nbt_entries = sunrise_sim::text_display_data::display_data(&Tag::Compound(tag), false);
+    let state = sunrise_gameplay::game::persist::display::read_text_display_nbt(&Tag::Compound(tag));
+    let mut nbt_entries = Vec::new();
+    state.append_metadata(None, false, |_| None, &mut nbt_entries);
     let nbt_tp = nbt_entries
         .iter()
         .find_map(|(id, _, v)| match (id, v) {
@@ -320,7 +322,7 @@ fn display_camera_angles_and_billboard_use_active_camera_not_player_26_3() {
             let ent_yaw = hex_f32(&case["entity_yRot_bits"]);
             let ent_pitch = hex_f32(&case["entity_xRot_bits"]);
             let bb = case["billboard"].as_i64().unwrap() as i8;
-            game.client.posed_rotation = Some((cam_yaw, cam_pitch));
+            game.client.posed_rotation = Some((cam_yaw, cam_pitch, 0.0));
             game.client.view.y_rot = cam_yaw;
             game.client.view.x_rot = cam_pitch;
             let got = game.display_camera_angles();
@@ -342,7 +344,7 @@ fn display_camera_angles_and_billboard_use_active_camera_not_player_26_3() {
                 83083,
                 "minecraft:block_display",
                 pos,
-                (ent_yaw, ent_pitch),
+                [ent_yaw, ent_pitch, 0.0],
                 0
             ));
             let d = game.client.text_displays.0.get_mut(&83083).unwrap();
@@ -402,7 +404,7 @@ fn no_culling_text_displays_are_not_frustum_culled_26_3() {
         game.client.camera_type = CameraType::FirstPerson;
         game.yaw = 0.0;
         game.pitch = 0.0;
-        game.client.posed_rotation = Some((0.0, 0.0));
+        game.client.posed_rotation = Some((0.0, 0.0, 0.0));
         game.client.view.y_rot = 0.0;
         game.client.view.x_rot = 0.0;
         game.client.view_frustum = Some(looking_south_frustum(70.0, 1280.0 / 800.0));
@@ -412,7 +414,7 @@ fn no_culling_text_displays_are_not_frustum_culled_26_3() {
             1001,
             "minecraft:text_display",
             [0.5, 301.62, 0.5],
-            (0.0, 0.0),
+            [0.0; 3],
             0,
         ));
         game.client
@@ -436,7 +438,7 @@ fn no_culling_text_displays_are_not_frustum_culled_26_3() {
             1002,
             "minecraft:text_display",
             [0.5, 301.62, -1.0],
-            (0.0, 0.0),
+            [0.0; 3],
             0,
         ));
         game.client
@@ -462,7 +464,7 @@ fn no_culling_text_displays_are_not_frustum_culled_26_3() {
             1003,
             "minecraft:text_display",
             [0.5, 301.62, 2.0],
-            (0.0, 0.0),
+            [0.0; 3],
             0,
         ));
         game.client
@@ -498,7 +500,7 @@ fn display_lifecycle_pre_tick_deferred_swap_live_culling_and_culled_progress_26_
     let live = &w["live_culling_and_no_culling"];
     with_client_game(|game| {
         game.client.view_frustum = None;
-        game.client.posed_rotation = Some((0.0, 0.0));
+        game.client.posed_rotation = Some((0.0, 0.0, 0.0));
         game.client.view.y_rot = 0.0;
         game.client.view.x_rot = 0.0;
         // Match VanillaDisplayParityOracle's `Entity.setViewScale(1.0)`.
@@ -519,7 +521,7 @@ fn display_lifecycle_pre_tick_deferred_swap_live_culling_and_culled_progress_26_
 
         // 1. BlockDisplay: no rendering pre-tick or after empty tick; first metadata tick snaps; swap defers to tick.
         let bd_case = &lc["block_display_pre_tick_and_swap"];
-        assert!(game.spawn_remote_object(2001, "minecraft:block_display", [0.0; 3], (0.0, 0.0), 0));
+        assert!(game.spawn_remote_object(2001, "minecraft:block_display", [0.0; 3], [0.0; 3], 0));
         let mut out = Vec::new();
         game.block_item_display_geometry(DVec3::ZERO, 1.0, &mut out);
         assert_eq!(
@@ -594,7 +596,7 @@ fn display_lifecycle_pre_tick_deferred_swap_live_culling_and_culled_progress_26_
         // 2. ItemDisplay: pre-tick renders nothing; item & context swap defers to tick.
         game.client.text_displays.0.clear();
         let id_case = &lc["item_display_pre_tick_and_swap"];
-        assert!(game.spawn_remote_object(2002, "minecraft:item_display", [0.0; 3], (0.0, 0.0), 0));
+        assert!(game.spawn_remote_object(2002, "minecraft:item_display", [0.0; 3], [0.0; 3], 0));
         game.client.text_displays.0.get_mut(&2002).unwrap().show(
             &[(24, 0, Value::Byte(6))],
             Some(Some(ItemStack::new("minecraft:end_crystal", 1))),
@@ -627,7 +629,7 @@ fn display_lifecycle_pre_tick_deferred_swap_live_culling_and_culled_progress_26_
             2003,
             "minecraft:text_display",
             [0.5, 301.62, 0.5],
-            (0.0, 0.0),
+            [0.0; 3],
             0,
         ));
         game.client
@@ -712,7 +714,7 @@ fn display_lifecycle_pre_tick_deferred_swap_live_culling_and_culled_progress_26_
         // 4. last_progress must NOT advance during frames where the display is culled.
         game.client.text_displays.0.clear();
         let culled_case = &lc["last_progress_while_culled"];
-        assert!(game.spawn_remote_object(2004, "minecraft:text_display", [0.0; 3], (0.0, 0.0), 0));
+        assert!(game.spawn_remote_object(2004, "minecraft:text_display", [0.0; 3], [0.0; 3], 0));
         game.client
             .text_displays
             .0
@@ -783,7 +785,7 @@ fn display_lifecycle_pre_tick_deferred_swap_live_culling_and_culled_progress_26_
         // 5. Rendering during duration == 0 must return 1.0 without overwriting last_progress.
         game.client.text_displays.0.clear();
         let dur_case = &lc["duration_zero_and_negative"];
-        assert!(game.spawn_remote_object(2005, "minecraft:text_display", [0.0; 3], (0.0, 0.0), 0));
+        assert!(game.spawn_remote_object(2005, "minecraft:text_display", [0.0; 3], [0.0; 3], 0));
         game.client
             .text_displays
             .0
@@ -863,7 +865,7 @@ fn text_display_render_order_solid_split_and_see_through_sort_26_3() {
     let phases = &w["text_submit_phases_and_sorting"];
     with_client_game(|game| {
         game.client.view_frustum = None;
-        game.client.posed_rotation = Some((0.0, 0.0));
+        game.client.posed_rotation = Some((0.0, 0.0, 0.0));
         game.client.view.y_rot = 0.0;
         game.client.view.x_rot = 0.0;
         // Match VanillaDisplayParityOracle's `Entity.setViewScale(1.0)`.
@@ -879,7 +881,7 @@ fn text_display_render_order_solid_split_and_see_through_sort_26_3() {
                 eid,
                 "minecraft:text_display",
                 [0.0; 3],
-                (0.0, 0.0),
+                [0.0; 3],
                 0
             ));
             let argb = 0xFF00_0001u32 + idx as u32;
@@ -941,7 +943,7 @@ fn text_display_render_order_solid_split_and_see_through_sort_26_3() {
                 3001,
                 "minecraft:text_display",
                 [0.0; 3],
-                (0.0, 0.0),
+                [0.0; 3],
                 0
             ));
             game.client
@@ -1022,7 +1024,7 @@ fn text_display_render_order_solid_split_and_see_through_sort_26_3() {
                 id,
                 "minecraft:text_display",
                 [0.0, 0.0, z],
-                (0.0, 0.0),
+                [0.0; 3],
                 0
             ));
             game.client
@@ -1096,7 +1098,7 @@ fn text_display_resolves_inline_player_head_profiles_26_3() {
 
     with_client_game(|game| {
         game.client.view_frustum = None;
-        game.client.posed_rotation = Some((0.0, 0.0));
+        game.client.posed_rotation = Some((0.0, 0.0, 0.0));
         game.client.view.y_rot = 0.0;
         game.client.view.x_rot = 0.0;
         // Match VanillaDisplayParityOracle's `Entity.setViewScale(1.0)`.
@@ -1109,7 +1111,7 @@ fn text_display_resolves_inline_player_head_profiles_26_3() {
             83225,
             "minecraft:text_display",
             [0.5, 301.62, 0.5],
-            (0.0, 0.0),
+            [0.0; 3],
             0,
         ));
         game.client
@@ -1157,7 +1159,7 @@ fn block_display_backface_culling_translucent_pass_and_light_emission_26_3() {
     }
     with_client_game(|game| {
         game.client.view_frustum = None;
-        game.client.posed_rotation = Some((0.0, 0.0));
+        game.client.posed_rotation = Some((0.0, 0.0, 0.0));
         game.client.view.y_rot = 0.0;
         game.client.view.x_rot = 0.0;
         game.client.settings.render_distance = 8;
@@ -1176,7 +1178,7 @@ fn block_display_backface_culling_translucent_pass_and_light_emission_26_3() {
                 id,
                 "minecraft:block_display",
                 [0.5, 64.0, 0.5],
-                (0.0, 0.0),
+                [0.0; 3],
                 0,
             ));
             game.client
@@ -1271,7 +1273,7 @@ fn display_name_tags_and_fire_block_light_match_vanilla_26_3() {
     }
     with_client_game(|game| {
         game.client.view_frustum = None;
-        game.client.posed_rotation = Some((0.0, 0.0));
+        game.client.posed_rotation = Some((0.0, 0.0, 0.0));
         game.client.view.y_rot = 0.0;
         game.client.view.x_rot = 0.0;
         game.client.settings.render_distance = 8;
@@ -1280,7 +1282,7 @@ fn display_name_tags_and_fire_block_light_match_vanilla_26_3() {
         game.world.chunks.insert((0, 0), std::sync::Arc::new(chunk));
 
         // 1. Display name tags.
-        assert!(game.spawn_remote_object(6001, "minecraft:text_display", [0.0; 3], (0.0, 0.0), 0));
+        assert!(game.spawn_remote_object(6001, "minecraft:text_display", [0.0; 3], [0.0; 3], 0));
         game.client
             .text_displays
             .0
@@ -1378,7 +1380,7 @@ fn display_name_tags_and_fire_block_light_match_vanilla_26_3() {
             6002,
             "minecraft:block_display",
             [0.5, 64.0, 0.5],
-            (0.0, 0.0),
+            [0.0; 3],
             0,
         ));
         {
@@ -1419,7 +1421,7 @@ fn section_compiled_and_visible_gates_displays_and_mobs_26_3() {
     with_client_game(|game| {
         let _event_loop = frame_scene(game);
         game.client.view_frustum = None;
-        game.client.posed_rotation = Some((0.0, 0.0));
+        game.client.posed_rotation = Some((0.0, 0.0, 0.0));
         game.client.view.y_rot = 0.0;
         game.client.view.x_rot = 0.0;
         let stone = game
@@ -1435,7 +1437,7 @@ fn section_compiled_and_visible_gates_displays_and_mobs_26_3() {
             7001,
             "minecraft:text_display",
             [0.5, 65.5, 3.5],
-            (0.0, 0.0),
+            [0.0; 3],
             0,
         ));
         game.client
@@ -1448,7 +1450,7 @@ fn section_compiled_and_visible_gates_displays_and_mobs_26_3() {
             7002,
             "minecraft:block_display",
             [0.5, 65.5, 3.5],
-            (0.0, 0.0),
+            [0.0; 3],
             0,
         ));
         game.client
@@ -1543,7 +1545,7 @@ fn section_compiled_and_visible_gates_displays_and_mobs_26_3() {
                 id,
                 "minecraft:text_display",
                 [0.5, y, 3.5],
-                (0.0, 0.0),
+                [0.0; 3],
                 0,
             ));
             game.client
@@ -1590,7 +1592,7 @@ fn bold_missing_glyph_displays_and_block_display_83224_match_vanilla_26_3() {
     with_client_game(|game| {
         game.client.view_frustum = None;
         game.client.camera_type = CameraType::FirstPerson;
-        game.client.posed_rotation = Some((0.0, 0.0));
+        game.client.posed_rotation = Some((0.0, 0.0, 0.0));
         game.client.view.y_rot = 0.0;
         game.client.view.x_rot = 0.0;
         game.client.settings.render_distance = 8;
@@ -1608,7 +1610,7 @@ fn bold_missing_glyph_displays_and_block_display_83224_match_vanilla_26_3() {
             let billboard = case["billboard"].as_i64().unwrap() as i8;
             let cursor_tag = decode_network_nbt_hex(&case["component_nbt_hex"]);
 
-            game.client.posed_rotation = Some((cam_yaw, cam_pitch));
+            game.client.posed_rotation = Some((cam_yaw, cam_pitch, 0.0));
             game.client.view.y_rot = cam_yaw;
             game.client.view.x_rot = cam_pitch;
             game.client.text_displays.0.clear();
@@ -1616,7 +1618,7 @@ fn bold_missing_glyph_displays_and_block_display_83224_match_vanilla_26_3() {
                 83100,
                 "minecraft:text_display",
                 ent_pos,
-                (ent_yaw, ent_pitch),
+                [ent_yaw, ent_pitch, 0.0],
                 0,
             ));
             game.client
@@ -1682,7 +1684,7 @@ fn bold_missing_glyph_displays_and_block_display_83224_match_vanilla_26_3() {
         }
 
         // 2. EID 83224 (minecraft:lime_concrete): exact 6-face vertex parity + opaque atlas padding.
-        game.client.posed_rotation = Some((0.0, 0.0));
+        game.client.posed_rotation = Some((0.0, 0.0, 0.0));
         game.client.view.y_rot = 0.0;
         game.client.view.x_rot = 0.0;
         let ent_pos = [
@@ -1703,7 +1705,7 @@ fn bold_missing_glyph_displays_and_block_display_83224_match_vanilla_26_3() {
             .unwrap();
         game.client.text_displays.0.clear();
         assert!(
-            game.spawn_remote_object(83224, "minecraft:block_display", ent_pos, (0.0, 0.0), 0,)
+            game.spawn_remote_object(83224, "minecraft:block_display", ent_pos, [0.0; 3], 0,)
         );
         {
             let d = game.client.text_displays.0.get_mut(&83224).unwrap();
@@ -1860,7 +1862,7 @@ fn set_camera_on_display_and_unbobbed_culling_match_vanilla_26_3() {
         assert_eq!(snap.eye_height, 0.0);
 
         game.client.view_frustum = None;
-        game.client.posed_rotation = Some((0.0, 0.0));
+        game.client.posed_rotation = Some((0.0, 0.0, 0.0));
         game.client.view.y_rot = 0.0;
         game.client.view.x_rot = 0.0;
         game.client.camera_type = CameraType::FirstPerson;
@@ -1900,7 +1902,7 @@ fn set_camera_on_display_and_unbobbed_culling_match_vanilla_26_3() {
             9002,
             "minecraft:text_display",
             [0.0, 64.0, -2.0],
-            (0.0, 0.0),
+            [0.0; 3],
             0,
         ));
         game.client
@@ -1917,7 +1919,7 @@ fn set_camera_on_display_and_unbobbed_culling_match_vanilla_26_3() {
             9003,
             "minecraft:text_display",
             [0.0, 64.0, -6.0],
-            (0.0, 0.0),
+            [0.0; 3],
             0,
         ));
         game.client

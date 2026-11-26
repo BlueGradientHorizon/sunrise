@@ -4,7 +4,6 @@ pub trait Hooks {
     /// A village siege found a spawn position on the server. Set `canceled`
     /// to stop the siege. There is one siege per dimension.
     #[hook(
-        target = "sunrise_gameplay::game::native_hooks::native_village_siege::ServerGame<'_>::native_village_siege",
         dispatch = "flat",
         side = "server",
         contract = "cancel",

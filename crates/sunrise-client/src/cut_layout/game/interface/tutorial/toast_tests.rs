@@ -59,7 +59,9 @@ fn social_toast_is_dismissed_only_by_the_multiplayer_key() {
                         .toast_manager
                         .queued
                         .push_back(Toast::Tutorial(toast));
-                    game.client.toast_manager.update(1.0);
+                    game.client
+                        .toast_manager
+                        .update(sunrise_client::toasts::ToastClock::Real, 1.0);
                 };
                 let wanted = |game: &sunrise_client_gameplay::game::ClientGame<'_>| {
                     let Toast::Tutorial(toast) = &game.client.toast_manager.visible[0].toast else {

@@ -96,6 +96,11 @@ pub trait EventsSideGameExt<'__sg>: crate::game::SideGame<'__sg> {
         <Self::State as SideOps>::side_tx_journal_player(self, uuid)
     }
 
+    #[inline(always)]
+    fn side_tx_invalidate_placement_hopper(&mut self, pos: (i32, i32, i32)) {
+        <Self::State as SideOps>::side_tx_invalidate_placement_hopper(self, pos);
+    }
+
     fn side_tx_journal_block_entity(&mut self, pos: (i32, i32, i32)) {
         <Self::State as SideOps>::side_tx_journal_block_entity(self, pos)
     }
@@ -146,6 +151,7 @@ pub trait SideOps: Sized {
         holder: Option<BlockEntityIdentity>,
     ) -> transactions::After;
     fn side_tx_journal_player(game: &mut Self::Game<'_>, uuid: u128);
+    fn side_tx_invalidate_placement_hopper(_game: &mut Self::Game<'_>, _pos: (i32, i32, i32)) {}
     fn side_tx_journal_block_entity(game: &mut Self::Game<'_>, pos: (i32, i32, i32));
     fn side_tx_journal_menus(game: &mut Self::Game<'_>, player: mod_api::PlayerRef);
 }

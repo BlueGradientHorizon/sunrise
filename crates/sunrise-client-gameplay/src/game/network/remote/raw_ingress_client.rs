@@ -178,6 +178,7 @@ impl crate::game::ClientGame<'_> {
             reason,
             key,
             from_server,
+            after_login,
         } = event
         else {
             unreachable!("listener only retains the disconnect notice");
@@ -193,11 +194,17 @@ impl crate::game::ClientGame<'_> {
             sunrise_hooks::connection::By::Connection
         };
         self.connection_ended(&reason, key.as_deref(), by);
+        // Only the common listener calls Minecraft.disconnect; a failed
+        // ConnectScreen or login handshake just changes screens.
         let screen_reason = match key.as_deref() {
             Some(k) if sunrise_game_data::lang::get(k) == reason => Text::translate(k, &[]),
             _ => Text::literal(reason),
         };
-        self.leave_server(Some(screen_reason))
+        if after_login {
+            self.leave_server(Some(screen_reason))
+        } else {
+            self.finish_leave_server(Some(screen_reason))
+        }
     }
     pub(in crate::game::client_side) fn handle_listener_transfer(
         &mut self,
@@ -258,7 +265,7 @@ impl crate::game::ClientGame<'_> {
                 })
                 .collect::<Option<Vec<_>>>()
             else {
-                return self.refuse_play_payload("connection groups: unexpected packet in bundle");
+                return self.refuse_remote_input("connection groups: unexpected packet in bundle");
             };
             self.route_connection_group_bundle(&group_packets, negotiated)?;
             return Ok(());
@@ -331,10 +338,21 @@ impl crate::game::ClientGame<'_> {
             }
             Event::Joined {
                 registries,
+                datapacks,
                 name,
                 uuid,
             } => {
-                self.set_registries(registries);
+                if let Err(error) = self.set_registries(registries) {
+                    return self.refuse_remote_input(error);
+                }
+                // Vanilla `ClientConfigurationPacketListenerImpl.handleConfigurationFinished` ->
+                // `RegistryDataCollector.collectGameRegistries` throws on registry decode failure
+                // and disconnects via `ClientCommonPacketListenerImpl.onPacketError`.
+                if let Err(error) = self.install_client_datapack_receiver(datapacks) {
+                    log::warn!("Sunrise: failed to bind datapack vanilla values: {error}");
+                    self.record_packet_error(turn, packet_error_notice);
+                    return Ok(());
+                }
                 self.connection_joined();
                 self.close_dialogs();
                 if let Some(r) = self.client.remote.as_mut() {
@@ -350,7 +368,19 @@ impl crate::game::ClientGame<'_> {
             }
             Event::Features(features) => {
                 if let Some(remote) = &mut self.client.remote {
-                    remote.features = features.into();
+                    // ClientConfigurationPacketListenerImpl.handleEnabledFeatures resolves
+                    // network identifiers through FeatureFlags.REGISTRY.fromNames.
+                    let flags: sunrise_sim::save::FeatureFlagIds = features
+                        .iter()
+                        .filter_map(|id| {
+                            let flag = mod_api::FeatureFlag::from_id(id);
+                            if flag.is_none() {
+                                log::warn!("Unknown feature flag: {id}");
+                            }
+                            flag
+                        })
+                        .collect();
+                    remote.features = flags.as_arc().clone();
                 }
             }
             Event::Brand(brand) => {
@@ -387,10 +417,17 @@ impl crate::game::ClientGame<'_> {
                 self.flush_chat_queue();
                 self.send_chat_acknowledgement();
                 self.close_dialogs();
+                // clearClientLevel posts Unload before clearing the level.
+                self.unload_client_level();
+                // Minecraft.clearClientLevel -> updateLevelInEngines(null) stops
+                // sound immediately after the level-unload event fires.
+                self.stop_sounds_for_new_level();
                 // The server configuring us now (a proxy's next one)
                 // offers its own far terrain, or none, and announces its
                 // own features again.
                 if let Some(remote) = &mut self.client.remote {
+                    remote.datapacks = Default::default();
+                    remote.datapack_vanilla_values = None;
                     remote.has_logical_player = false;
                     remote.viewed.clear();
                     remote.far_terrain = None;
@@ -411,33 +448,25 @@ impl crate::game::ClientGame<'_> {
                 self.clear_spectated_entity_post_effect();
                 self.set_screen(Screen::Playing);
                 self.capture(false);
-                // clearClientLevel drops the client level now, so its
-                // unload comes before the configuration screen, not
-                // after the next login's load.
                 self.forget_all_remote_columns();
-                if let Some(old) = self
-                    .client
-                    .remote
-                    .as_mut()
-                    .and_then(|r| r.heard_level.take())
-                {
-                    self.native_client_level_unload(&old);
-                }
-                // Minecraft.clearClientLevel -> updateLevelInEngines(null) stops
-                // sound immediately after the level-unload event fires.
-                self.stop_sounds_for_new_level();
                 self.common.native_lifecycle.begin_close();
                 self.native_lifecycle_world_closed();
                 let ticks = self.common.ticks;
                 if let Some(r) = self.client.remote.as_mut() {
                     self.client.packet_holds.borrow_mut().clear();
                     r.reconfiguring = Some(ticks);
+                    r.server_chat_tree = None;
                     r.logged_in = false;
-                    r.chat_tree_received = false;
                 }
                 resume.acknowledge();
             }
-            Event::Reconfigured(registries) => {
+            Event::Reconfigured {
+                registries,
+                datapacks,
+            } => {
+                if let Err(error) = self.set_registries(registries) {
+                    return self.refuse_remote_input(error);
+                }
                 // handleConfigurationStart → clearClientLevel, and the next
                 // ClientPacketListener starts with no players or scoreboard,
                 // no waypoints (its own ClientWaypointManager: a proxy's next
@@ -449,6 +478,8 @@ impl crate::game::ClientGame<'_> {
                 self.common.score.board = Default::default();
                 self.clear_waypoints();
                 if let Some(r) = self.client.remote.as_mut() {
+                    r.datapacks = Default::default();
+                    r.datapack_vanilla_values = None;
                     r.clear_attachments();
                     r.players.clear();
                     r.tab_players.clear();
@@ -461,7 +492,14 @@ impl crate::game::ClientGame<'_> {
                     r.custom_completions.clear();
                 }
                 self.common.ui.registries.custom_completions.clear();
-                self.set_registries(registries);
+                // Vanilla `ClientConfigurationPacketListenerImpl.handleConfigurationFinished` ->
+                // `RegistryDataCollector.collectGameRegistries` disconnects via `onPacketError`.
+                if let Err(error) = self.install_client_datapack_receiver(datapacks) {
+                    log::warn!("Sunrise: failed to bind datapack vanilla values: {error}");
+                    self.record_packet_error(turn, packet_error_notice);
+                    return Ok(());
+                }
+                self.begin_book_negotiation();
             }
             Event::Transfer(task) => {
                 if let Some(packet) = task.into_eligible_packet() {

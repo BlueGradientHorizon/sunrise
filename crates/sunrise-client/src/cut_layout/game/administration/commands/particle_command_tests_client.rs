@@ -40,6 +40,101 @@ fn block_crumble_draws_the_block_it_names() {
     });
 }
 
+/// `TerrainParticle.Provider` keeps no particle for air: the command still reaches the
+/// player, but the window draws nothing, not some other block's crumbs.
+#[test]
+#[ignore = "daily"]
+fn block_particles_of_air_reach_the_player_and_draw_nothing() {
+    use {
+        sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client,
+        sunrise_protocol::entity_data::{Particle, ParticleData},
+        sunrise_sim::lan::server_effects::ServerParticleData,
+    };
+    let mut resources = None;
+    let mut server = game(&mut resources);
+    server.server.pending_particles.clear();
+    assert!(server.run_command(
+        "particle minecraft:block{block_state:\"minecraft:air\"} 0.5 100.5 0.5 0 0 0 0 1"
+    ));
+    assert_eq!(server.server.pending_particles.len(), 1);
+    let queued = server.server.pending_particles.remove(0);
+    let ServerParticleData::Block(state) = queued.particle.data else {
+        panic!("expected block particle data, got {:?}", queued.particle.data);
+    };
+    crate::game::native_entity_refs::tests::with_client_game(|client| {
+        let _server = logged_client(client);
+        let id = client
+            .client
+            .remote
+            .as_ref()
+            .unwrap()
+            .builtin
+            .get("minecraft:particle_type")
+            .unwrap()
+            .id(&format!("minecraft:{}", queued.particle.ty.name()))
+            .unwrap();
+        assert!(
+            client
+                .received_particle(
+                    &Particle {
+                        id,
+                        data: Some(ParticleData::State(state.0 as i32)),
+                    },
+                    queued.at,
+                )
+                .is_none()
+        );
+    });
+}
+
+/// `BlockMarker.Provider` draws air's particle material, the missing model's: the missing
+/// texture the particle atlas packs.
+#[test]
+#[ignore = "daily"]
+fn a_block_marker_of_air_draws_the_missing_texture() {
+    use {
+        sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client,
+        sunrise_protocol::entity_data::{Particle, ParticleData},
+        sunrise_sim::lan::server_effects::ServerParticleData,
+    };
+    let mut resources = None;
+    let mut server = game(&mut resources);
+    server.server.pending_particles.clear();
+    assert!(server.run_command(
+        "particle minecraft:block_marker{block_state:\"minecraft:air\"} 0.5 100.5 0.5 0 0 0 0 1"
+    ));
+    assert_eq!(server.server.pending_particles.len(), 1);
+    let queued = server.server.pending_particles.remove(0);
+    let ServerParticleData::Block(state) = queued.particle.data else {
+        panic!("expected block particle data, got {:?}", queued.particle.data);
+    };
+    crate::game::native_entity_refs::tests::with_client_game(|client| {
+        let _server = logged_client(client);
+        let id = client
+            .client
+            .remote
+            .as_ref()
+            .unwrap()
+            .builtin
+            .get("minecraft:particle_type")
+            .unwrap()
+            .id(&format!("minecraft:{}", queued.particle.ty.name()))
+            .unwrap();
+        let marker = client
+            .received_particle(
+                &Particle {
+                    id,
+                    data: Some(ParticleData::State(state.0 as i32)),
+                },
+                queued.at,
+            )
+            .expect("the marker is drawn");
+        let (sprite, tint) = marker.block.expect("the marker carries its sprite");
+        assert_eq!(sprite, sunrise_client::hud::MISSING_SPRITE);
+        assert_eq!(tint, 0xFFFFFF);
+    });
+}
+
 /// The one particle the server queues for `command`, decoded into client `ParticleOptions`.
 pub(crate) fn drawn(
     game: &mut sunrise_gameplay::game::ServerGame<'_>,

@@ -507,7 +507,7 @@ fn check_target(sources: &mut Sources<'_>, hook: &Hook, build: &Build) -> Result
         }
     }
     if outgoing || incoming.is_some() {
-        let scope = routes.module(&package, bridge)?;
+        let (bridge_package, scope) = routes.bridge_module(&package, bridge)?;
         if !routes.has_slot(scope, table, name) {
             return Err(format!("{bridge}::{table} is missing its {name} slot"));
         }
@@ -550,7 +550,7 @@ fn check_target(sources: &mut Sources<'_>, hook: &Hook, build: &Build) -> Result
                 module: "entry",
                 installer,
                 install: Target::Definition {
-                    package: &package,
+                    package: &bridge_package,
                     module: bridge,
                     name: "install",
                 },
@@ -1272,6 +1272,73 @@ mod tests {
             ",
         );
         check(root, &hooks).unwrap();
+    }
+
+    #[test]
+    fn client_library_bridge_resolves_the_reexported_sim_installer() {
+        let root = tempfile::tempdir().unwrap();
+        let root = root.path();
+        fixture(root, "sunrise-client-lib/Cargo.toml", "");
+        fixture(root, "sunrise-sim/Cargo.toml", "");
+        fixture(root, "sunrise-client/Cargo.toml", "");
+        fixture(
+            root,
+            "sunrise-client-lib/src/lib.rs",
+            "pub use sunrise_sim::native_client_hooks; mod mobs;",
+        );
+        fixture(
+            root,
+            "sunrise-client-lib/src/mobs.rs",
+            "fn native_fixture_callback() { crate::native_client_hooks::fixture_callback(); }",
+        );
+        fixture(
+            root,
+            "sunrise-sim/src/lib.rs",
+            "pub mod native_client_hooks;",
+        );
+        fixture(
+            root,
+            "sunrise-sim/src/native_client_hooks.rs",
+            "pub struct NativeClientHooks { fixture_callback: fn() }
+             pub fn install(_: NativeClientHooks) {}
+             pub fn fixture_callback() { (get().fixture_callback)(); }",
+        );
+        fixture(root, "sunrise-client/src/lib.rs", "mod entry;");
+        fixture(
+            root,
+            "sunrise-client/src/entry.rs",
+            "fn install_client_hooks() {
+                sunrise_sim::native_client_hooks::install(sunrise_sim::native_client_hooks::NativeClientHooks {
+                    fixture_callback: || mod_api::dispatch_fixture_callback(),
+                });
+            }",
+        );
+        let mut hook = Hook::sample(
+            "sunrise_client_lib::mobs::native_fixture_callback",
+            Side::Client,
+        );
+        hook.name = "fixture_callback".into();
+        check(root, &[hook]).unwrap();
+    }
+
+    #[test]
+    fn living_model_posed_dispatches_directly_in_the_client_library() {
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path();
+        fixture(root, "sunrise-client-lib/Cargo.toml", "");
+        fixture(root, "sunrise-client-lib/src/lib.rs", "mod mobs;");
+        fixture(root, "sunrise-client-lib/src/mobs.rs", "mod render;");
+        fixture(
+            root,
+            "sunrise-client-lib/src/mobs/render.rs",
+            "fn native_living_model_posed() { mod_api::dispatch_living_model_posed(); }",
+        );
+        let mut hook = Hook::sample(
+            "sunrise_client_lib::mobs::render::native_living_model_posed",
+            Side::Client,
+        );
+        hook.name = "living_model_posed".into();
+        check(root, &[hook]).unwrap();
     }
 
     #[test]

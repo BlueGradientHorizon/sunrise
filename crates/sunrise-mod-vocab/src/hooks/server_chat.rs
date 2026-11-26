@@ -13,7 +13,6 @@ pub trait Hooks {
     /// A component deeper than 512 nodes refuses capture or the whole writeback;
     /// no event field is applied if any Text field fails conversion.
     #[hook(
-        target = "sunrise_gameplay::game::native_hooks::server_chat::ServerGame<'_>::native_server_chat",
         dispatch = "api_carrier",
         side = "server",
         contract = "cancel",

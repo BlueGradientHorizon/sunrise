@@ -5,7 +5,6 @@ pub trait Hooks {
     /// `ClientTickEvent.Post`): the window's `Game` only, so not on a server's
     /// own tick (`server_tick` is that moment). Client-side.
     #[hook(
-        target = "sunrise_client_gameplay::game::native_hooks::client_tick_post::ClientGame<'_>::native_client_tick_post",
         dispatch = "flat",
         side = "client",
         contract = "listen",

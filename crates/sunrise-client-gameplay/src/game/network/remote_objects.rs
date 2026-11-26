@@ -43,10 +43,9 @@ impl ClientGame<'_> {
         id: i32,
         kind: &str,
         position: [f64; 3],
-        rotation: (f32, f32),
+        [yaw, pitch, head_yaw]: [f32; 3],
         data: i32,
     ) -> bool {
-        let (yaw, pitch) = rotation;
         let id = id as u32;
         let at = Vec3::new(position[0], position[1], position[2]);
         let block = position.map(|v| v.floor() as i32);
@@ -104,7 +103,13 @@ impl ClientGame<'_> {
             }
             self.common.boats.push(b);
         } else if kind == "minecraft:armor_stand" {
+            // LivingEntity.recreateFromPacket seeds the body and head from
+            // the packet's head yaw, independently of the view yaw.
             let mut stand = ArmorStand::new(id, at, yaw);
+            stand.body_yaw = head_yaw;
+            stand.previous_body_yaw = head_yaw;
+            stand.head_yaw = head_yaw;
+            stand.previous_head_yaw = head_yaw;
             let clamped = (pitch % 360.0).clamp(-90.0, 90.0);
             stand.pitch = clamped;
             stand.previous_pitch = clamped;
@@ -187,7 +192,7 @@ impl ClientGame<'_> {
             let json = sunrise_game_data::scoreboard::tag_to_json(tag);
             return sunrise_gameplay_common::painting_variants::Variant::decode(name, &json).ok();
         }
-        self.common.painting_variants.get(name).cloned()
+        world_paintings!(self).get(name).cloned()
     }
 
     /// `handleSetEntityData` for an object: what changes how it looks.
@@ -409,10 +414,9 @@ impl ClientGame<'_> {
                 if Some(id) == driven {
                     return;
                 }
-                // AbstractBoat keeps a LinearInterpolationHandler: the new yaw is
+                // AbstractBoat keeps a LinearInterpolationHandler: a move's yaw is
                 // the target of the three-tick lerp (`tick_remote_objects`), not
-                // the boat's yaw at once.
-                let _ = yaw;
+                // the boat's yaw at once, so only its ground state is taken here.
                 b.ground.on_ground = on_ground;
             });
         } else if let Some(i) = self.common.carts.iter().position(|c| c.id == id)
@@ -471,13 +475,6 @@ impl ClientGame<'_> {
                 if self.common.carts[cart].on_rails != on_rails {
                     self.common.carts.update(cart, |c| c.on_rails = on_rails);
                 }
-            }
-            if kind == super::minecarts::CartKind::Tnt && fuse {
-                self.client.particles.0.add(
-                    &ParticleOptions::simple(ParticleType::Smoke),
-                    [to.x, to.y + 0.5, to.z],
-                    [0.0; 3],
-                );
             }
             if kind == super::minecarts::CartKind::Furnace
                 && fuel > 0
@@ -666,6 +663,36 @@ use sunrise_gameplay_common::game::minecarts::MinecartRailGameExt as _;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `MinecartTNT.tick` on the client (#6011): a primed TNT minecart counts its fuse down
+    /// and adds one smoke particle a tick, not two.
+    #[test]
+    #[ignore = "daily"]
+    fn a_primed_tnt_minecart_adds_one_smoke_particle_a_tick() {
+        use sunrise_gameplay_common::game::minecarts::{CartKind, Minecart};
+        use sunrise_sim::motion::PlayerMotion;
+        super::super::native_entity_refs::tests::with_client_game(|game| {
+            let at = Vec3::new(0.5, 64.0, 0.5);
+            game.common.player = Some(PlayerMotion::new(game.common.motion, at).unwrap());
+            let mut cart = Minecart::new(71, CartKind::Tnt, Vec3::new(2.5, 64.0, 0.5));
+            cart.fuse = 3;
+            game.common.carts.push(cart);
+            // Capture what the level is asked for, ahead of the camera-distance limiter.
+            game.client.particles.0.requested = Some(Vec::new());
+            let mut smoke = || {
+                game.tick_remote_objects(|_, p| p, |_, yaw| yaw, |_| false);
+                let asked = game.client.particles.0.requested.replace(Vec::new()).unwrap();
+                asked
+                    .iter()
+                    .filter(|(options, ..)| options.ty == ParticleType::Smoke)
+                    .count()
+            };
+            for tick in 0..3 {
+                assert_eq!(smoke(), 1, "smoke on tick {tick}");
+            }
+            assert_eq!(smoke(), 0, "no smoke once the fuse is out");
+        });
+    }
 
     #[test]
     fn rot_lerp_takes_the_short_way_round() {

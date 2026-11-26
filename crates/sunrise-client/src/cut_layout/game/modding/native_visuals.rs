@@ -44,9 +44,7 @@ mod tests {
 
                 let mut lines = Vec::new();
                 let camera = glam::DVec3::new(0.5, 66.0, 0.5);
-                let lights = game
-                    .native_frame_visuals(0.0, &mut lines)
-                    .finish(game, camera);
+                let lights = game.native_frame_visuals(&mut lines).finish(camera);
                 assert_eq!(lines.len(), 12, "a full block's twelve edges");
                 assert!(
                     lines

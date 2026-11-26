@@ -769,10 +769,7 @@ impl crate::game::ClientGame<'_> {
         if self.client.stats_ui.key(key, ctrl, shift, active) && self.client.stats_ui.tab != before
         {
             // TabManager.setCurrentTab(.., true): the click of a tab press.
-            self.client
-                .audio
-                .0
-                .play("minecraft:ui.button.click", None, 0.25, 1.0);
+            self.play_audio("minecraft:ui.button.click", None, 0.25, 1.0);
         }
     }
     pub(in crate::game::client_side) fn stats_click(&mut self, size: [u32; 2]) -> bool {
@@ -790,10 +787,7 @@ impl crate::game::ClientGame<'_> {
             {
                 self.client.stats_ui.tab = i;
                 self.client.stats_ui.scroll.amount = 0.0;
-                self.client
-                    .audio
-                    .0
-                    .play("minecraft:ui.button.click", None, 0.25, 1.0);
+                self.play_audio("minecraft:ui.button.click", None, 0.25, 1.0);
                 return true;
             }
         }
@@ -804,10 +798,7 @@ impl crate::game::ClientGame<'_> {
             200.0,
             20.0,
         ) {
-            self.client
-                .audio
-                .0
-                .play("minecraft:ui.button.click", None, 0.25, 1.0);
+            self.play_audio("minecraft:ui.button.click", None, 0.25, 1.0);
             self.set_screen(Screen::Paused);
             return true;
         }
@@ -825,10 +816,7 @@ impl crate::game::ClientGame<'_> {
                         Some((sc, _)) if sc == c => None,
                         _ => Some((c, -1)),
                     };
-                    self.client
-                        .audio
-                        .0
-                        .play("minecraft:ui.button.click", None, 0.25, 1.0);
+                    self.play_audio("minecraft:ui.button.click", None, 0.25, 1.0);
                 }
             }
         }

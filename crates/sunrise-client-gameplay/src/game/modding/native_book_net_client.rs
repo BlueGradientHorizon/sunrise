@@ -3,49 +3,38 @@ use crate::game::ClientGame;
 use std::collections::BTreeSet;
 use sunrise_protocol::packets::{configuration::CustomPayload, play::Serverbound as S};
 use sunrise_sim::recipe_book::{
+    placement_sync::ResourceId,
     settings_codec,
     settings_sync::{CHANNEL, Message},
 };
 
-fn registered() -> BTreeSet<String> {
+pub(in crate::game) fn book_payload(message: &Message) -> Option<CustomPayload> {
+    match settings_codec::encode(message) {
+        Ok(data) => Some(CustomPayload {
+            channel: CHANNEL.into(),
+            data,
+        }),
+        Err(error) => {
+            log::warn!("[recipe book] cannot send {CHANNEL}: {error}");
+            None
+        }
+    }
+}
+
+fn registered() -> BTreeSet<ResourceId> {
     mod_api::RecipeBookTypeKey::registered()
         .into_iter()
-        .map(|key| key.as_str().to_owned())
+        .map(|key| ResourceId::from_registered_book(&key))
         .collect()
 }
 
 impl ClientGame<'_> {
-    pub(in crate::game::client_side) fn tick_book_snapshot_retry(&mut self) {
-        self.check_mod_book_placement_timeout();
-        if self
-            .common
-            .native_net
-            .book_retry_at
-            .is_some_and(|at| std::time::Instant::now() >= at)
-        {
-            let message = if self.common.native_net.book_view.epoch.is_none() {
-                Message::Offer(registered().into_iter().collect())
-            } else {
-                Message::Resnapshot
-            };
-            self.common.native_net.book_retry_at = None;
-            if let Some(data) = settings_codec::encode(&message) {
-                self.send(S::CustomPayload(CustomPayload {
-                    channel: CHANNEL.into(),
-                    data,
-                }));
-            }
-        }
-    }
-
     pub fn reset_book_view(&mut self) {
         self.common.native_net.placement.client = Default::default();
-        self.common.native_net.placement.deadline = None;
         self.clear_mod_book_placement_screen();
         self.common.native_net.book_view = Default::default();
         self.common.native_net.book_request = 0;
         self.common.native_net.book_ready = false;
-        self.common.native_net.book_retry_at = None;
         self.build_screen();
     }
 
@@ -83,20 +72,17 @@ impl ClientGame<'_> {
         let message = Message::Request {
             epoch,
             number,
-            key: book.as_str().into(),
+            key: ResourceId::from_registered_book(book),
             flags: sunrise_sim::recipe_book::BookFlags {
                 open: flags.open,
                 filtering: flags.filtering,
             },
         };
-        let Some(data) = settings_codec::encode(&message) else {
+        let Some(payload) = book_payload(&message) else {
             return false;
         };
         self.common.native_net.book_request = number;
-        self.send(S::CustomPayload(CustomPayload {
-            channel: CHANNEL.into(),
-            data,
-        }));
+        self.send(S::CustomPayload(payload));
         true
     }
 
@@ -107,16 +93,13 @@ impl ClientGame<'_> {
             .remote
             .as_ref()
             .is_some_and(|r| r.custom_books && r.joined)
-            && let Some(data) = settings_codec::encode(&Message::Hello)
+            && let Some(payload) = book_payload(&Message::Hello)
         {
-            self.send(S::CustomPayload(CustomPayload {
-                channel: CHANNEL.into(),
-                data,
-            }));
+            self.send(S::CustomPayload(payload));
         }
     }
 
-    pub(in crate::game) fn remote_book_settings(&mut self, data: &[u8]) {
+    pub fn remote_book_settings(&mut self, data: &[u8]) {
         if !self
             .client
             .remote
@@ -126,41 +109,38 @@ impl ClientGame<'_> {
             return;
         }
         let Some(message) = settings_codec::decode(data) else {
+            log::warn!(
+                "[recipe book] ignored malformed settings payload ({} bytes)",
+                data.len()
+            );
             return;
         };
         if let Message::Placement(frame) = message {
             if self.common.native_net.book_ready && self.common.native_net.book_view.ready {
                 self.remote_mod_book_placement(frame);
+            } else {
+                log::warn!("[recipe book] ignored placement frame before settings sync completed");
             }
-            return;
-        }
-        if message == Message::Busy && self.common.native_net.book_ready {
-            self.clear_mod_book_placement_screen();
-            self.common.native_net.book_view.ready = false;
-            self.common.native_net.book_retry_at.get_or_insert_with(|| {
-                std::time::Instant::now() + std::time::Duration::from_secs(1)
-            });
-            self.build_screen();
             return;
         }
         if message == Message::Ready {
             if self.common.native_net.book_ready {
+                log::warn!("[recipe book] ignored duplicate settings ready");
                 return;
             }
             self.common.native_net.book_ready = true;
-            if let Some(data) =
-                settings_codec::encode(&Message::Offer(registered().into_iter().collect()))
+            if let Some(payload) = book_payload(&Message::Offer(registered().into_iter().collect()))
             {
-                self.send(S::CustomPayload(CustomPayload {
-                    channel: CHANNEL.into(),
-                    data,
-                }));
+                self.send(S::CustomPayload(payload));
             }
             return;
         }
         if !self.common.native_net.book_ready
             || !matches!(message, Message::Snapshot { .. } | Message::Update { .. })
         {
+            log::warn!(
+                "[recipe book] ignored unexpected clientbound settings message: {message:?}"
+            );
             return;
         }
         let previous_epoch = self.common.native_net.book_view.epoch;
@@ -169,23 +149,16 @@ impl ClientGame<'_> {
             .native_net
             .book_view
             .receive(message, &registered())
-            && !self.common.native_net.book_view.ready
-            && let Some(data) = settings_codec::encode(&Message::Resnapshot)
         {
-            self.send(S::CustomPayload(CustomPayload {
-                channel: CHANNEL.into(),
-                data,
-            }));
+            log::warn!("[recipe book] ignored stale or invalid settings update");
+            return;
         }
         if previous_epoch != self.common.native_net.book_view.epoch {
             self.common.native_net.placement.client = Default::default();
-            self.common.native_net.placement.deadline = None;
             self.clear_mod_book_placement_screen();
         }
-        // Both accepted settings and readiness loss change the visible panel.
         self.build_screen();
         if self.common.native_net.book_view.ready {
-            self.common.native_net.book_retry_at = None;
             self.begin_mod_book_placement();
             self.ensure_mod_book_catalog();
         }

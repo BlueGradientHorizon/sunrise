@@ -5,13 +5,28 @@ use super::*;
 #[derive(Default)]
 pub(in crate::game) struct FrameAttempt<K = FrameKey>(Option<K>);
 
-/// The frame the renderer would be made with (`Renderer::requested_frame`), the pick's path,
-/// its outcome.
+/// Requested frame, pick path, load outcome and HDR tonemap.
 type FrameKey = (
     Option<sunrise_client::gfx::FrameConfiguration>,
     PathBuf,
-    Option<Option<sunrise_shader_api::Api>>,
+    Option<bool>,
+    Option<sunrise_shaders::Tonemap>,
 );
+
+fn look_again<C: PartialEq>(
+    attempts: &mut FrameAttempt<(
+        Option<C>,
+        PathBuf,
+        Option<bool>,
+        Option<sunrise_shaders::Tonemap>,
+    )>,
+    wanted: Option<C>,
+    path: PathBuf,
+    outcome: Option<bool>,
+    hdr: Option<sunrise_shaders::Tonemap>,
+) -> bool {
+    attempts.changed((wanted, path, outcome, hdr))
+}
 
 impl<K: PartialEq> FrameAttempt<K> {
     // Remember attempts, including failures, until the requested configuration changes.
@@ -29,6 +44,7 @@ impl crate::game::ClientGame<'_> {
         pack: &PackResources,
         client_pack: &crate::game::client_side::resource_tables_client::ClientPackResources,
         gui: &UiResources,
+        opened: Option<sunrise_client::gfx::Opened>,
     ) -> Result<Box<Renderer>> {
         build_renderer(
             window,
@@ -36,13 +52,21 @@ impl crate::game::ClientGame<'_> {
             pack,
             client_pack,
             gui,
-            self.client.renderer.0.as_deref(),
+            opened.map_or_else(
+                || {
+                    self.client.renderer.0.as_deref().map_or(
+                        sunrise_client::gfx::RendererDevice::New,
+                        sunrise_client::gfx::RendererDevice::Reuse,
+                    )
+                },
+                |device| sunrise_client::gfx::RendererDevice::Opened(Box::new(device)),
+            ),
             None,
             self.client.settings.sunrise.api,
             self.client.settings.sunrise.translucent_batching,
-            self.client.settings.vsync,
+            self.effective_vsync(),
             &self.client.settings.sunrise,
-            shader_packs::picked_pack_shape(&self.client.settings),
+            self.picked_pack_shape(),
             self.client
                 .renderer
                 .0
@@ -65,40 +89,36 @@ impl crate::game::ClientGame<'_> {
             return;
         }
         let picked = shader_packs::picked_pack(&self.client.settings);
-        let path = self.client.native_shaders.resolve_path(
-            &Self::shader_packs_dir(),
-            picked,
-            shader_packs::dev_pack().is_some(),
-        );
+        let dir = Self::shader_packs_dir();
+        let path = dir.join(picked);
         let available = path.exists()
+            && !sunrise_client::shader_pack_list::unsupported(&dir, picked)
             && path.file_name().is_none_or(|f| {
-                !shader_packs::active_pack(&f.to_string_lossy(), &self.client.settings.mods)
-                    .is_empty()
+                !shader_packs::active_pack(&f.to_string_lossy(), &self.client.settings.mods).is_empty()
             });
         let outcome = if available {
             native_shaders::outcome(&path)
         } else {
-            Some(None)
+            Some(false)
         };
         // The renderer's offer can change while the game runs (Vulkan's formats follow desktop
         // HDR and the window's output), and the frame with it.
-        let request = shader_packs::picked_pack_shape(&self.client.settings).frame();
+        let shape = self.picked_pack_shape();
+        let request = shape.frame();
         let wanted = self
             .client
             .renderer
             .0
             .as_ref()
             .map(|r| r.requested_frame(&self.client.settings.sunrise, request));
-        if !self.client.frame_attempted.changed((wanted, path, outcome)) {
+        if !look_again(&mut self.client.frame_attempted, wanted, path, outcome, shape.hdr) {
             return;
         }
-        if self
-            .client
-            .renderer
-            .0
-            .as_ref()
-            .is_none_or(|r| r.frame_follows(&self.client.settings.sunrise, request))
-        {
+        let Some(renderer) = &mut self.client.renderer.0 else {
+            return;
+        };
+        let follows = renderer.frame_follows(&self.client.settings.sunrise, request);
+        if !shader_packs::reconcile_pack_hdr(follows, &mut renderer.pack_hdr, shape.hdr) {
             return;
         }
         if let Err(e) = self.rebuild_renderer() {
@@ -122,6 +142,7 @@ impl crate::game::ClientGame<'_> {
             &self.common.pack,
             &self.client.client_pack,
             &self.client.gui,
+            None,
         ) {
             Ok(renderer) => renderer,
             Err(error) => {
@@ -272,7 +293,6 @@ impl crate::game::ClientGame<'_> {
         self.client.trim_slots.forget();
         self.client.map_patches.clear();
         self.client.text_patches.get_mut().clear();
-        self.client.dynamic_textures.forget_uploads();
         self.client.kept_block_entities.get_mut().clear();
         sunrise_client::ui_theme::reset_atlas();
     }
@@ -283,6 +303,7 @@ impl crate::game::ClientGame<'_> {
             &self.common.pack,
             &self.client.client_pack,
             &self.client.gui,
+            None,
         )
     }
 
@@ -304,7 +325,8 @@ impl crate::game::ClientGame<'_> {
         // on their way carry them.
         self.client.border_renderer.invalidate();
         renderer.keep_pack_sources(self.client.streaming.shader_pack);
-        self.client.renderer.0 = Some(renderer);
+        self.set_renderer(renderer);
+        self.bind_dynamic_textures();
         self.forget_atlas_slots();
         if !world_kept {
             self.clear_lod();
@@ -314,9 +336,6 @@ impl crate::game::ClientGame<'_> {
                 .streaming
                 .reload_resources(&mut self.common.world, context);
         }
-        self.client.native_shaders = native_shaders::NativeShaders::picking(&std::mem::take(
-            &mut self.client.native_shaders.picked,
-        ));
         self.apply_ui_settings();
     }
 
@@ -336,8 +355,30 @@ impl crate::game::ClientGame<'_> {
 
 #[cfg(test)]
 mod tests {
-    use super::FrameAttempt;
-    use sunrise_shader_api::Api;
+    use super::{FrameAttempt, look_again};
+    use crate::game::shader_packs::reconcile_pack_hdr;
+    use std::path::PathBuf;
+    use sunrise_shaders::Tonemap;
+
+    #[test]
+    fn a_new_hdr_request_alone_is_looked_at_again() {
+        let mut attempts = FrameAttempt::default();
+        let path = PathBuf::from("pack");
+        let mut installed = Some(Tonemap::Pack);
+        let mut look =
+            |hdr| look_again(&mut attempts, Some("8-bit"), path.clone(), Some(true), hdr);
+        assert!(look(Some(Tonemap::Pack)));
+        assert!(!look(Some(Tonemap::Pack)));
+        assert!(look(Some(Tonemap::Sunrise)));
+        assert!(!reconcile_pack_hdr(
+            true,
+            &mut installed,
+            Some(Tonemap::Sunrise)
+        ));
+        assert_eq!(installed, Some(Tonemap::Sunrise));
+        assert!(!look(Some(Tonemap::Sunrise)));
+        assert!(look(None));
+    }
 
     #[test]
     fn failed_frame_attempt_waits_for_a_policy_or_setting_change() {
@@ -349,10 +390,10 @@ mod tests {
             ("8-bit", "p", None),
             // HDR output offered later, with HDR On: the frame is looked at again.
             ("float", "p", None),
-            ("float", "p", Some(Some(Api::V0_2))),
-            ("float", "p", Some(Some(Api::V0_2))),
-            ("float", "p", Some(None)),
-            ("float", "p", Some(None)),
+            ("float", "p", Some(true)),
+            ("float", "p", Some(true)),
+            ("float", "p", Some(false)),
+            ("float", "p", Some(false)),
             ("float", "q", None),
             ("8-bit", "q", None),
         ] {

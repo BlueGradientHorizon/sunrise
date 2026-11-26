@@ -5,21 +5,21 @@ use super::commands::Target;
 use crate::game::ServerGame;
 use std::convert::Infallible;
 use std::sync::Arc;
+use sunrise_core::equipment_slot::EquipmentSlot;
 use sunrise_items::items::Items;
 use sunrise_sim::living_attributes::{ModifierChanges, ModifierSnapshot};
 use sunrise_sim::mobs::{
     Mob,
-    finalize::{self, Attr, Op},
+    finalize::{self, Attr, Op, equipment_attribute_seed as equipment_seed},
 };
 use sunrise_world::attributes::{
     AttributeError, Instance, Modifier, Observer, Operation,
     entity::{AttributeId, Catalog},
 };
 
-/// One mob's `collectEquipmentChanges`: each slot whose stack is not the one
-/// the map holds swaps the old stack's attribute modifiers for the new one's,
-/// full stacks with their components compared, as the tick's pass and a write
-/// both run it. The map is taken out so the seed can read the mob.
+/// Refresh the live equipment modifiers outside the body tick, e.g. after a
+/// mod writes gear or an attribute write rebuilds the map. This does not
+/// consume the next `LivingEntity.detectEquipmentUpdates` observation.
 pub(in crate::game::server_side) fn collect_equipment(
     catalog: &Arc<Catalog>,
     items: &Items,
@@ -27,19 +27,15 @@ pub(in crate::game::server_side) fn collect_equipment(
 ) {
     sunrise_sim::mobs::armor::prepare(m, catalog);
     let mut live = std::mem::take(&mut m.extra.live);
-    let changed =
-        live.collect_equipment_changes(catalog, &m.kind.id, &m.extra.equipment, items, || {
-            equipment_seed(m)
-        });
-    warn_failed(m.id, &m.kind.id, changed);
+    let result = live.refresh_equipment(
+        catalog,
+        &m.kind.id,
+        items,
+        |slot| finalize::equipment_slot(m, slot),
+        || equipment_seed(m),
+    );
+    warn_failed(m.id, &m.kind.id, result);
     m.extra.live = live;
-}
-
-fn equipment_seed(m: &Mob) -> Vec<sunrise_core::nbt::Tag> {
-    sunrise_sim::entity_nbt::attribute_entries(m)
-        .into_iter()
-        .map(|(_, entry)| entry)
-        .collect()
 }
 
 pub(in crate::game::server_side) fn modifier_invalidation_undo(
@@ -107,23 +103,60 @@ pub(in crate::game::server_side) fn write_unspawned_attribute(
 }
 
 impl ServerGame<'_> {
-    /// `LivingEntity.tick`'s `collectEquipmentChanges` for what the server
-    /// simulates besides players: each slot whose item is not the one the map
-    /// holds swaps the old item's attribute modifiers for the new one's. An
-    /// entity that changed nothing costs a compare of its eight slots, and
-    /// one that wears nothing and never wore anything is skipped outright.
-    pub fn tick_equipment_attributes(&mut self) {
+    /// `LivingEntity.detectEquipmentUpdates`, paused after base tick and item use.
+    /// With the owning level restored, observe each remaining slot in order so
+    /// an earlier listener's writes to a later slot are visible this tick.
+    pub fn detect_mob_equipment_updates(
+        &mut self,
+        id: u32,
+        join: sunrise_sim::join_seq::JoinSeq,
+        first: EquipmentSlot,
+    ) {
+        let mut deltas = sunrise_sim::living_attributes::EquipmentDeltas::default();
+        for &slot in &EquipmentSlot::ALL[first as usize..] {
+            let Some(i) = self
+                .common
+                .mob_index
+                .find(&self.common.mobs, id)
+                .filter(|&i| self.common.mobs[i].join == join && !self.common.mobs[i].removed)
+            else {
+                return;
+            };
+            let Some(change) = finalize::changed_equipment_slot(&self.common.mobs[i], slot) else {
+                continue;
+            };
+            let current = change.current.map(|read| read.project().into_owned());
+            if let Some(epoch) = self.living_equipment_notify_epoch() {
+                let previous = change.previous.cloned();
+                let living = mod_api::LivingRef::new(mod_api::EntityRef::new(epoch, id));
+                self.dispatch_living_equipment_change(
+                    living,
+                    slot,
+                    previous.as_ref(),
+                    current.as_ref(),
+                );
+            }
+            deltas.set(slot, current);
+        }
+        if let Some(i) = self
+            .common
+            .mob_index
+            .find(&self.common.mobs, id)
+            .filter(|&i| self.common.mobs[i].join == join && !self.common.mobs[i].removed)
+        {
+            let catalog = self.common.motion.attributes.clone();
+            let items = server_world_items!(self);
+            finalize::finish_equipment_tick(&mut self.common.mobs[i], &catalog, items, deltas);
+        }
+    }
+
+    /// Attribute upkeep for the separately simulated stands and dragon.
+    pub fn refresh_stand_and_dragon_equipment_attributes(&mut self) {
         if !self.common.is_logical_server() {
             return;
         }
         let catalog = self.common.motion.attributes.clone();
         let items = server_world_items!(self);
-        for m in self.common.mobs.iter_mut().filter(|m| !m.removed) {
-            if m.extra.equipment.is_empty() && !m.extra.live.has_worn() {
-                continue;
-            }
-            collect_equipment(&catalog, items, m);
-        }
         for a in self.common.armor_stands.iter_mut() {
             if a.equipment.is_empty() && !a.live.has_worn() {
                 continue;
@@ -304,12 +337,7 @@ impl AttributeWrite {
                 || (id == "minecraft:baby" && finalize::transient(m, a).is_some())
         };
         let remove = |m: &mut Mob, id: &str| {
-            if id == "minecraft:baby" && finalize::transient(m, a).is_some() {
-                m.extra
-                    .attributes
-                    .get_or_insert_with(Box::default)
-                    .baby_speed_removed = true;
-            }
+            finalize::remove_baby_modifier(m, a, id);
             finalize::remove_modifier(m, a, id);
         };
         match self {
@@ -325,11 +353,7 @@ impl AttributeWrite {
                     }
                     remove(m, id);
                 }
-                let op = match modifier.operation() {
-                    Operation::AddValue => Op::AddValue,
-                    Operation::AddMultipliedBase => Op::AddMultipliedBase,
-                    Operation::AddMultipliedTotal => Op::AddMultipliedTotal,
-                };
+                let op = Op::from(modifier.operation());
                 if permanent {
                     finalize::add_modifier(m, a, id.to_owned(), modifier.amount(), op);
                 } else {
@@ -514,7 +538,7 @@ impl ServerGame<'_> {
         write: AttributeWrite,
         default: f64,
     ) -> Option<bool> {
-        let map = self.generic_attributes(t, name)?;
+        let map = self.generic_attributes(t)?;
         if !map.has(id) {
             return None;
         }
@@ -525,6 +549,13 @@ impl ServerGame<'_> {
             .ok()?;
         if done {
             self.write_live_attributes(t, name, write, default);
+            // `onAttributeUpdated(SCALE)`: the mob's dimensions follow.
+            if name == "minecraft:scale"
+                && let Target::Mob(id) = t
+                && let Some(m) = self.mobs.iter_mut().find(|m| m.id == id && !m.removed)
+            {
+                sunrise_sim::mobs::finalize::scale_changed(m);
+            }
         }
         Some(done)
     }

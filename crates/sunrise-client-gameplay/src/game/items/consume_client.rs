@@ -1,6 +1,6 @@
 use crate::game::ClientGame;
 use std::convert::Infallible;
-use sunrise_core::random::LegacyRandom;
+use sunrise_core::random::EntityRandom;
 use sunrise_gameplay_common::game::item_use_common::ItemConsumable;
 use sunrise_items::items::ItemStack;
 use sunrise_level::particle_options::{ParticleOptions, ParticleType};
@@ -13,9 +13,9 @@ impl EmissionWorld for ClientEmitter<'_, '_> {
     type Stack = ItemStack;
     type Sound = String;
     type Random = ();
-    type Source = LegacyRandom;
-    fn random_source(&mut self, (): ()) -> &mut LegacyRandom {
-        &mut self.0.world.random
+    type Source = EntityRandom;
+    fn random_source(&mut self, (): ()) -> &mut EntityRandom {
+        &mut self.0.common.player.as_mut().expect("emitting player").random
     }
     fn spawn_item_particles(&mut self, stack: ItemStack, count: i32) -> Result<(), Infallible> {
         self.0.eat_particles(&stack, count.max(0) as u32);
@@ -41,7 +41,9 @@ impl ClientGame<'_> {
         stack: &ItemStack,
         count: i32,
     ) {
-        let Ok(()) = consumable.emit(&mut ClientEmitter(self), (), stack.clone(), count);
+        if self.common.player.is_some() {
+            let Ok(()) = consumable.emit(&mut ClientEmitter(self), (), stack.clone(), count);
+        }
     }
 
     /// `LivingEntity.handleEntityEvent(46)` for the entity the packet names:

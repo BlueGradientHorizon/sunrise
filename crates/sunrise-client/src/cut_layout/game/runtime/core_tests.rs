@@ -86,11 +86,19 @@ fn client_input_options_follow_settings() {
 
 #[test]
 fn weather_follows_the_dimension_type_not_the_id() {
-    use sunrise_gameplay_common::game::level_can_have_weather as w;
-    assert!(w(true, false, false)); // open sky
-    assert!(!w(true, true, false)); // ceiling (Nether, overworld_caves)
-    assert!(!w(false, false, false)); // no sky light
-    assert!(!w(true, false, true)); // the End is named by id
+    use sunrise_client::chunk::LevelShape;
+
+    let open = LevelShape::OVERWORLD;
+    assert!(open.can_have_weather(false));
+    assert!(!open.with_ceiling(true).can_have_weather(false));
+    assert!(
+        !LevelShape {
+            sky_light: false,
+            ..open
+        }
+        .can_have_weather(false)
+    );
+    assert!(!open.can_have_weather(true)); // the End is named by id
 }
 
 use sunrise_client::container_screen::{Button, Clicks, Release, Target};
@@ -599,25 +607,30 @@ fn sleep_fade_lasts_ten_ticks_after_waking() {
         _ => panic!("sleep overlay must be a full-screen fill"),
     };
     assert_eq!(tick_sleep_timer(0, false), 0);
+    assert_eq!(tick_sleep_timer(-2, false), -2);
+    assert_eq!(tick_sleep_timer(-2, true), -1);
+    assert_eq!(tick_sleep_timer(110, false), 0);
+    assert_eq!(tick_sleep_timer(110, true), 100);
+    assert_eq!(tick_sleep_timer(i32::MAX, true), i32::MIN);
     let mut timer = 0;
     for _ in 0..50 {
         timer = tick_sleep_timer(timer, true);
     }
-    assert_eq!(alpha(timer as i32), 110);
+    assert_eq!(alpha(timer), 110);
     for _ in 0..100 {
         timer = tick_sleep_timer(timer, true);
     }
     assert_eq!(timer, 100);
-    assert_eq!(alpha(timer as i32), 220);
+    assert_eq!(alpha(timer), 220);
     for _ in 0..5 {
         timer = tick_sleep_timer(timer, false);
     }
-    assert_eq!(alpha(timer as i32), 110);
+    assert_eq!(alpha(timer), 110);
     for _ in 0..5 {
         timer = tick_sleep_timer(timer, false);
     }
     assert_eq!(timer, 0);
-    assert!(hud_overlays::sleep_overlay(320, 240, timer as i32).is_empty());
+    assert!(hud_overlays::sleep_overlay(320, 240, timer).is_empty());
 }
 
 #[test]
@@ -843,32 +856,32 @@ fn quit_shortcut_blocks_window_close_when_option_disabled() {
 
 #[test]
 fn integrated_server_save_persists_owner_player_data() {
+    use sunrise_client::lan::playerdata;
+
     let dir = std::env::temp_dir().join(format!(
         "sunrise-integrated-player-save-{}",
         std::process::id()
     ));
     let _ = std::fs::remove_dir_all(&dir);
 
-    // Initial world creation writes `level.dat` before the player spawns.
+    // Initial world creation writes the profile reference before the player spawns.
+    let owner = 12;
     let mut level = Level {
         name: "Creative".into(),
         creative: true,
         game_mode: 1,
+        player_uuid: Some(playerdata::uuid_ints(owner)),
         ..Level::default()
     };
-    level.write(&dir, &Default::default()).unwrap();
+    level.write_keeping_player(&dir).unwrap();
 
     // The integrated server stores the owner's state in `level` and saves the world.
     level.position = Some([128.5, 72.0, -64.25]);
     level.inventory = vec![(0, "minecraft:diamond_pickaxe".into(), 1, 0)];
-    write_level_for_role(
-        &mut level,
-        &dir,
-        execution_role::ExecutionRole::IntegratedServer,
-        &Default::default(),
-        false,
-    )
-    .unwrap();
+    level.write_player(&dir, &Default::default()).unwrap();
+    level.write_without_player(&dir).unwrap();
+    let player_file = playerdata::path(&dir, owner);
+    let player_bytes = std::fs::read(&player_file).unwrap();
 
     let reopened = Level::read(&dir).unwrap();
     assert_eq!(reopened.position, Some([128.5, 72.0, -64.25]));
@@ -883,14 +896,8 @@ fn integrated_server_save_persists_owner_player_data() {
         day_time: 6000,
         ..Level::default()
     };
-    write_level_for_role(
-        &mut dedicated,
-        &dir,
-        execution_role::ExecutionRole::DedicatedServer,
-        &Default::default(),
-        false,
-    )
-    .unwrap();
+    dedicated.write_without_player(&dir).unwrap();
+    assert_eq!(std::fs::read(&player_file).unwrap(), player_bytes);
 
     let reopened = Level::read(&dir).unwrap();
     assert_eq!(reopened.day_time, 6000);

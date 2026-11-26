@@ -138,7 +138,7 @@ pub struct Settings {
     pub extras: crate::extras::Extras,
     /// The Sunrise mods turned on (`sunrise-mods.txt`), all off by default.
     pub mods: crate::mod_list::ModList,
-    /// The packs in `shaderpacks/`, listed when the Shader Packs page opens; the pick is
+    /// The packs in `shaderpacks/`, listed when Sunrise Settings opens (Shaders); the pick is
     /// `sunrise.shader_pack`.
     pub shader_packs: Vec<crate::shader_pack_list::Entry>,
     /// The picked pack's options while its Shader Options page is open.
@@ -289,7 +289,7 @@ impl Settings {
                 .map(|read| read.text),
             None => None,
         });
-        let mut sunrise = path
+        let sunrise = path
             .parent()
             .map(|dir| {
                 crate::graphics::Graphics::load_text(
@@ -299,16 +299,6 @@ impl Settings {
             })
             .unwrap_or_default();
         crate::mipmap::set_dither_cutouts(sunrise.dither_cutout_mips);
-        if let Some(dir) = path.parent() {
-            let (key, _) = crate::shader_pack_list::resolve(
-                &crate::logging::shared_dir(dir).join(crate::shader_pack_list::DIR),
-                &sunrise.shader_pack,
-            );
-            if key != sunrise.shader_pack {
-                sunrise.shader_pack = key;
-                sunrise.save(dir);
-            }
-        }
         let controller = path
             .parent()
             .map(crate::gamepad::PadSettings::load)

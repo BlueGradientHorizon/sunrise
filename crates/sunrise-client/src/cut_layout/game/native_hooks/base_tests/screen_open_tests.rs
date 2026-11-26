@@ -456,7 +456,7 @@ fn mod_screen_open_replaces_vanilla_screens_overlays_and_mod_screens() {
             game.options.offscreen = true;
             *game.test_window_mut() = Some(window.clone());
             let renderer = game.new_renderer(window).unwrap();
-            *game.test_renderer_mut() = Some(renderer);
+            game.test_set_renderer(renderer);
             *game.test_title_mut() = None;
             game.player = Some(
                 sunrise_sim::motion::PlayerMotion::new(

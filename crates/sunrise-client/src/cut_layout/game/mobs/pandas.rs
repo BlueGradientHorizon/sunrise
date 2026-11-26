@@ -47,6 +47,7 @@ pub(crate) mod pickup_tests {
                 name: "pickup".into(),
                 trigger: TRIGGER.into(),
                 conditions: LazyJson::new(&serde_json::json!({})),
+                player: None,
             }],
             requirements: vec![vec!["pickup".into()]],
             rewards: Default::default(),
@@ -74,7 +75,7 @@ pub(crate) mod pickup_tests {
         game.set_allow_commands(true);
         // Opening the world installs its staged advancement tree. Install the
         // custom tree afterwards so the first tick cannot replace it.
-        game.open_world_datapacks(&game.level.enabled_features.clone())
+        game.open_world_datapacks(&game.level.enabled_features.clone(), None)
             .unwrap();
         install_pickup_advancement(&mut game);
         // `DistanceManager` keeps a chunk entity-ticking only while its whole

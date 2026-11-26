@@ -14,6 +14,14 @@ pub fn initialize(resources: &MotionResources, guest: &mut Guest) -> bool {
         return false;
     };
     let mut motion = motion;
+    motion.body_yaw = guest.carried_body_yaw.take().unwrap_or_else(|| {
+        // Entity.load initializes the joining player's body yaw from its saved view.
+        if guest.saved.is_some() {
+            guest.yaw
+        } else {
+            0.0
+        }
+    });
     let spectator = guest.spectator();
     motion.spectator = spectator;
     motion.local_spectator = spectator;

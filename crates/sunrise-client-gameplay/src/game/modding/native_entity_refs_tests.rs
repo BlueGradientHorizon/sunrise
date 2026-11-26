@@ -89,7 +89,6 @@ pub fn with_game_role_and_facts_client(
     test: impl FnOnce(&mut crate::game::ClientGame<'_>),
 ) {
     use crate::game::{Audio, Settings};
-    use mod_api::Authority;
     use sunrise_gameplay_common::game::{Options, resource_load::Progress};
 
     sunrise_gameplay_common::game::test_fixtures::prepare_game_boot(
@@ -154,8 +153,7 @@ pub fn with_game_role_and_facts_client(
     )
     .unwrap();
 
-    game.native_lifecycle
-        .begin_open(Authority::IntegratedServer);
+    game.native_lifecycle.begin_open(None);
 
     // A game that opened its world resolves its parts; the harness stops
     // short of the open, so do it here for the by-state part table.

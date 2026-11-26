@@ -14,7 +14,6 @@ pub trait Hooks {
     /// [`ClientSetupContext`] for client setup and published resource queries without
     /// world handles or transactions.
     #[hook(
-        target = "sunrise_client_gameplay::game::native_hooks::client_setup::native_client_setup",
         receiver = "associated",
         context = "client_setup",
         dispatch = "flat",

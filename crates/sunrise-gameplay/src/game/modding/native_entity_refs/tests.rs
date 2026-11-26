@@ -1,8 +1,9 @@
 use mod_api::{EntityRef, LevelReadError, LevelRef};
 use std::ops::ControlFlow;
 pub use sunrise_gameplay_common::game::test_fixtures::{
-    FRESH_CASE_LIMIT, fixture_block_names, fixture_root, output_within, ran_one_test, record_key,
-    resolve_parts, run_fresh_cases, run_fresh_cases_at_once, run_with_game_stack,
+    FRESH_CASE_LIMIT, fixture_block_names, fixture_resident_column, fixture_root, output_within,
+    ran_one_test, record_key, resolve_parts, run_fresh_cases, run_fresh_cases_at_once,
+    run_fresh_cases_with_env, run_with_game_stack,
 };
 use sunrise_gameplay_common::game::{
     GameGameExt1 as _, PackResources, Resources,
@@ -135,7 +136,7 @@ pub fn bind_acting_guest(game: &mut crate::game::ServerGame<'_>) {
             seed: 0,
             max_players: 2,
             integrated: true,
-            levels: game.server.level_shapes,
+            levels: game.server.level_shapes.clone(),
             level_seeds: game.server.levels.0.runtime.seeds(),
         },
     )
@@ -215,7 +216,7 @@ pub fn with_game_role_and_facts(
             .unwrap();
     game.reset_entity_residency();
     game.native_lifecycle
-        .begin_open(Authority::IntegratedServer);
+        .begin_open(Some(Authority::IntegratedServer));
 
     // A game that opened its world resolves its parts; the harness stops
     // short of the open, so do it here for the by-state part table.

@@ -119,7 +119,7 @@ impl crate::game::ClientGame<'_> {
         use sunrise_level::particle_options::{ParticleOptions, ParticleType};
         let p = self.common.boats[i].position;
         let pitch = 0.8 + 0.4 * self.common.world.random.next_float();
-        self.client.audio.0.play(
+        self.play_audio(
             "minecraft:entity.generic.splash",
             Some([p.x, p.y, p.z]),
             1.0,
@@ -271,69 +271,6 @@ impl crate::game::ClientGame<'_> {
             }
             self.finish_entity_occlusion(culling, b, out, entity_start);
         }
-    }
-    /// The horizontal water plane around the camera for the water mirror: the median
-    /// standing-water surface of a grid of columns 48 blocks around, each scanned down from
-    /// the camera to its ground. A lake or the sea has one plane; the mirror shows only the
-    /// water on it. With no water in reach the last plane found stays, so the mirror never
-    /// switches off as the camera moves.
-    pub(in crate::game::client_side) fn water_plane(&self, camera: glam::DVec3) -> Option<f32> {
-        const RADIUS: i32 = 48;
-        const STEP: usize = 4;
-        const DEPTH: i32 = 96;
-        let (cx, cz) = (camera.x.floor() as i32, camera.z.floor() as i32);
-        let top = camera.y.floor() as i32 + 2;
-        // Scanned again once the camera moves 8 blocks, or every 5 seconds: a scan reads up
-        // to 60 000 blocks on the game thread, and the plane rarely changes.
-        let scan = (
-            [cx >> 3, top >> 3, cz >> 3],
-            self.common.world.game_time.div_euclid(100),
-        );
-        if self.client.water_plane_scan.replace(Some(scan)) == Some(scan) {
-            return self.client.water_plane_memo.get();
-        }
-        let mut heights = Vec::with_capacity(625);
-        for x in (cx - RADIUS..=cx + RADIUS).step_by(STEP) {
-            for z in (cz - RADIUS..=cz + RADIUS).step_by(STEP) {
-                // The top of the column's water: the highest standing water under the
-                // camera (a full block's water continues above it).
-                for y in (top - DEPTH..=top).rev() {
-                    if let Some((h, source)) = self.common.fluid_height(x, y, z) {
-                        if source && h < 1.0 {
-                            heights.push(y as f32 + h);
-                        }
-                        break;
-                    }
-                    if self
-                        .common
-                        .res
-                        .facts()
-                        .get(self.common.world.block(x, y, z))
-                        .solid_render
-                    {
-                        break;
-                    }
-                }
-            }
-        }
-        if heights.is_empty() {
-            return self.client.water_plane_memo.get();
-        }
-        heights.sort_by(f32::total_cmp);
-        let found = heights[heights.len() / 2];
-        // The plane in use stays while a quarter of the columns are still on it, so two
-        // lakes at different heights do not make the mirror flicker between them.
-        let plane = match self.client.water_plane_memo.get() {
-            Some(last)
-                if 4 * heights.iter().filter(|h| (*h - last).abs() < 0.05).count()
-                    >= heights.len() =>
-            {
-                last
-            }
-            _ => found,
-        };
-        self.client.water_plane_memo.set(Some(plane));
-        Some(plane)
     }
 
     pub(in crate::game) fn client_boat_can_simulate_movement(&self, id: u32) -> bool {

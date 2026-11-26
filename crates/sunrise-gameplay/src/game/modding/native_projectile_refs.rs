@@ -6,7 +6,7 @@ use super::commands::Target;
 use mod_api::{ArrowPickup, Deflection, EntityRef, PierceLevelError, ProjectileRef};
 use sunrise_core::geometry::Vec3;
 use sunrise_sim::{
-    arrows::Pickup,
+    entities::arrows::Pickup,
     lan::playerdata::{ints_uuid, uuid_ints},
     mobs::Who,
     projectiles::{OwnerFields, Projectile, ProjectileKind, Turn},
@@ -355,8 +355,8 @@ impl crate::game::ServerGame<'_> {
         }
     }
 
-    /// `AbstractArrow.setBaseDamage`. False for a stale handle, a projectile
-    /// that is not an arrow, or a value that is not finite.
+    /// `AbstractArrow.setBaseDamage`: stores `damage` as supplied. False for a stale
+    /// handle or a projectile without an arrow's base damage.
     pub(in crate::game) fn projectile_set_base_damage(
         &mut self,
         projectile: ProjectileRef,
@@ -369,9 +369,6 @@ impl crate::game::ServerGame<'_> {
             let ProjectileKind::Arrow { base_damage, .. } = &mut p.kind else {
                 return false;
             };
-            if !damage.is_finite() {
-                return false;
-            }
             *base_damage = damage;
             true
         })

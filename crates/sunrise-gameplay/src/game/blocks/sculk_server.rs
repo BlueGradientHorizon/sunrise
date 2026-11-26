@@ -771,7 +771,7 @@ impl crate::game::ServerGame<'_> {
                 continue;
             }
             self.common.mobs.push(mob);
-            self.native_mobs_joined(self.common.mobs.len() - 1, false);
+            self.admit_new_mobs(self.common.mobs.len() - 1);
             return true;
         }
         false
@@ -1058,6 +1058,12 @@ impl crate::game::ServerGame<'_> {
         }
         self.sculk_sync_writes();
         true
+    }
+
+    /// `LevelChunk.removeGameEventListener`: unregister a sculk block entity's
+    /// game-event listener when its block entity is removed.
+    pub(super) fn sculk_unregister_listener(&mut self, key: (i32, i32, i32)) {
+        self.server.sculk.index.remove(&key);
     }
 
     pub(in crate::game::server_side) fn sculk_sync_writes(&mut self) {
@@ -1390,9 +1396,10 @@ impl crate::game::ServerGame<'_> {
         if dist_sqr(source_block, key) > i64::from(radius * radius) {
             return;
         }
+        let tags = self.items().game_event_tags.clone();
         let listens = match kind {
-            SculkKind::Shrieker => sculk::shrieker_can_listen(event),
-            _ => sculk::is_vibration(event),
+            SculkKind::Shrieker => sculk::shrieker_can_listen(&tags, event),
+            _ => sculk::is_vibration(&tags, event),
         };
         // VibrationSystem.User.isValidVibration: a player sneaking past a
         // sensor, whose step it ignores, is AVOID_VIBRATION (sensors only;
@@ -1402,11 +1409,11 @@ impl crate::game::ServerGame<'_> {
             && ctx.source == Some(Who::Player.into())
             && !ctx.spectator
             && ctx.stepping_carefully
-            && sculk::ignored_when_sneaking(event)
+            && sculk::ignored_when_sneaking(&tags, event)
         {
             self.trigger_player("minecraft:avoid_vibration");
         }
-        if !sculk::valid_vibration(listens, event, ctx) {
+        if !sculk::valid_vibration(&tags, listens, event, ctx) {
             return;
         }
         let state = self.common.world.block(key.0, key.1, key.2);
@@ -1490,12 +1497,14 @@ impl crate::game::ServerGame<'_> {
         let now = self.common.world.game_time;
         let ctx = warden::heard_by(*ctx, &self.mob_teams(), self.common.mobs[index].id);
         let (occludes, world) = (&self.server.sculk.tables.occludes, &self.common.world);
+        let tags = self.items().game_event_tags.clone();
         let avoided = warden::listen(
             &mut self.common.mobs[index],
             now,
             event,
             pos,
             &ctx,
+            &tags,
             |a, b| {
                 sculk::is_occluded(a, b, |p| {
                     let state = world.block(p.x, p.y, p.z);
@@ -1520,12 +1529,14 @@ impl crate::game::ServerGame<'_> {
         let now = self.common.world.game_time;
         let (occludes, world) = (&self.server.sculk.tables.occludes, &self.common.world);
         let dimension = self.common.dim.id();
+        let tags = self.items().game_event_tags.clone();
         allay::listen(
             &mut self.common.mobs[index],
             now,
             event,
             pos,
             ctx,
+            &tags,
             dimension,
             |a, b| {
                 sculk::is_occluded(a, b, |p| {
@@ -2002,7 +2013,7 @@ impl crate::game::ServerGame<'_> {
         let effect =
             sunrise_level::effects::EffectInstance::new("darkness", warden::DARKNESS_DURATION, 0)
                 .with_flags(false, false);
-        self.apply_player_effect(effect);
+        self.add_player_effect(effect);
     }
 
     // ---- catalysts ----
@@ -2789,7 +2800,7 @@ impl crate::game::ServerGame<'_> {
     }
 }
 
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
+use sunrise_gameplay_common::game::tables::{GameItems as _, WorldTablesExt as _};
 
 use sunrise_gameplay_common::game::GameGameExt1 as _;
 

@@ -5,12 +5,43 @@ use std::collections::{HashMap, HashSet};
 
 #[derive(Default)]
 pub struct EntityInitialization {
-    /// The object holders already told (entity IDs and separate player UUIDs).
+    /// The object holders already told (entity IDs and separate player UUIDs). An entity is forgotten when it leaves the world (`forget_entity`:
+    /// death, a chunk unloading), so the next one made from its data is
+    /// told again, as vanilla constructs a new entity for each of those.
     pub initialized: HashSet<Holder>,
-    /// Each LAN guest's connection when its player was last told.
+    /// Each LAN guest's connection when its player was last told: a new connection is a new
+    /// `ServerPlayer`.
     pub players: HashMap<u128, u32>,
-    /// The holder being told now: its attachments are reachable before it is in the level.
-    pub active: Option<Holder>,
+    /// The object being told now: its attachments are reachable before it is in the level.
+    pub active: Option<Construction>,
+}
+
+#[derive(Clone, Copy)]
+pub enum Construction {
+    Holder(Holder),
+    ServerPlayer { uuid: u128, conn: u32 },
+}
+
+impl Construction {
+    pub fn holder(self) -> Holder {
+        match self {
+            Self::Holder(holder) => holder,
+            Self::ServerPlayer { uuid, .. } => Holder::Player(uuid),
+        }
+    }
+}
+
+impl EntityInitialization {
+    pub fn is_constructing(&self, holder: Holder) -> bool {
+        self.active.is_some_and(|object| object.holder() == holder)
+    }
+
+    pub fn constructing_player_connection(&self, uuid: u128) -> Option<u32> {
+        match self.active {
+            Some(Construction::ServerPlayer { uuid: player, conn }) if player == uuid => Some(conn),
+            _ => None,
+        }
+    }
 }
 
 impl crate::game::CommonGame<'_> {
@@ -27,18 +58,30 @@ impl crate::game::CommonGame<'_> {
 pub trait EntityInitializationCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// Tell the listeners about a new entity of type `kind`, unless it was already told.
     fn initialize_entity(&mut self, holder: Holder, kind: &str) {
-        if !mod_api::__private::listened(mod_api::HookId::EntityConstructing) {
+        if matches!(holder, Holder::Entity(_) | Holder::Player(_)) {
+            self.initialize_construction(Construction::Holder(holder), kind);
+        }
+    }
+
+    /// Mark before dispatch so a listener's attachment access doesn't tell the same object again.
+    fn initialize_construction(&mut self, object: Construction, kind: &str) {
+        let holder = object.holder();
+        if !mod_api::__private::listened(mod_api::HookId::EntityConstructing)
+            || !self.entity_initialization.initialized.insert(holder)
+        {
             return;
         }
-        if !matches!(holder, Holder::Entity(_) | Holder::Player(_)) {
-            return;
-        }
-        if !self.entity_initialization.initialized.insert(holder) {
-            return;
-        }
-        let previous = self.entity_initialization.active.replace(holder);
-        self.native_entity_constructing(holder, kind);
+        let previous = self.entity_initialization.active.replace(object);
+        let run = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            self.native_entity_constructing(holder, kind);
+            if let Holder::Entity(id) = holder {
+                self.side_after_entity_constructing_fault(id);
+            }
+        }));
         self.entity_initialization.active = previous;
+        if let Err(panic) = run {
+            std::panic::resume_unwind(panic);
+        }
         if let Holder::Entity(id) = holder {
             self.side_bind_constructed_entity_attachments(id);
         }

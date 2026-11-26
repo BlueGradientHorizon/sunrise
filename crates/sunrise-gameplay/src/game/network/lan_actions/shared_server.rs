@@ -25,7 +25,7 @@ pub struct GuestPlay {
     pub(in crate::game) suggestion_budget: bool,
     /// The guest's `Player.getCooldowns()` (`Game::cooldowns` for its turn).
     pub cooldowns: sunrise_items::cooldowns::Cooldowns,
-    pub(in crate::game) attack_ticks: u32,
+    pub(in crate::game) attack_ticks: i32,
     /// The main hand's item at the guest's last tick (`Game::attack_item`).
     pub(in crate::game) attack_item: Option<std::sync::Arc<str>>,
     pub(in crate::game) swing: sunrise_sim::first_person_sim::SwingState,
@@ -51,11 +51,14 @@ pub struct GuestPlay {
     pub(in crate::game) mount_window: Option<super::lan_mount_menu::GuestMount>,
     /// The lectern the guest reads (game/network/lan_stations.rs).
     pub(in crate::game) lectern: Option<super::lan_stations::GuestLectern>,
-    /// The equipment the mods last heard this guest wear (`native_players_equipment`), by
-    /// `EquipmentSlot`: main hand, off hand, feet, legs, chest, head.
-    pub(in crate::game) equipment_heard: Option<Box<[Option<sunrise_items::items::ItemStack>; 6]>>,
+    /// The equipment `LivingEntity.detectEquipmentUpdates` /
+    /// `collectEquipmentChanges` last saw this guest wear (`lastEquipmentItems`),
+    /// by `EquipmentSlot` ordinal (`mainhand` through `saddle`). Shared between
+    /// equipment attribute refreshes and `living_equipment_change`; allocated
+    /// only while non-empty.
+    pub last_equipment: Option<Box<sunrise_items::equipment::Equipment>>,
     /// The slots of the guest's inventories the mods last heard (`native_players_inventory_changes`),
-    /// by `NativeInventoryKind`: Player, Ender, Cursor, Crafting.
+    /// in player inventory, ender chest, cursor and crafting order.
     pub(in crate::game) inventory_heard:
         Option<Box<[Vec<Option<sunrise_items::items::ItemStack>>; 4]>>,
     /// What the guest's body was given for its effects and enchantments.
@@ -78,12 +81,8 @@ pub struct GuestPlay {
     pub(in crate::game) level_up_sound: sunrise_sim::entities::LevelUpSound,
     /// What last killed the guest outright (`/kill`): the death message's key.
     pub(in crate::game) death_cause: Option<String>,
-    /// The equipment modifiers on the guest's attributes (`apply_equipment`)
-    /// and the armour and hands they were put on for: the hub's player
-    /// is a `ServerPlayer` too, whose worn armour counts
-    /// (`LivingEntity.collectEquipmentChanges`).
+    /// The equipment modifiers on the guest's attributes (`apply_equipment`).
     pub(in crate::game) modifiers: Vec<(String, String)>,
-    pub(in crate::game) equipped: Option<Vec<Option<ItemStack>>>,
     pub(in crate::game) craft_grid: Vec<Option<ItemStack>>,
     /// The guest's cast fishing hook (`Player.fishing`).
     pub(in crate::game) hook:
@@ -96,7 +95,7 @@ pub struct GuestPlay {
 
 impl GuestPlay {
     /// The guest's `Player.attackStrengthTicker` outside its turn.
-    pub(in crate::game) fn attack_ticks(&self) -> u32 {
+    pub(in crate::game) fn attack_ticks(&self) -> i32 {
         self.attack_ticks
     }
     /// The main-hand item of the guest's last tick (`Game.attack_item`).

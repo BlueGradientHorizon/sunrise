@@ -8,7 +8,9 @@ use sunrise_core::{
     random::RandomSource,
 };
 use sunrise_game_data::{Result, text::Text};
-use sunrise_gameplay_common::game::tnt_common::PrimedTnt;
+use sunrise_gameplay_common::game::{
+    item_abilities::ItemAbilitiesGameExt1 as _, tnt_common::PrimedTnt,
+};
 use sunrise_items::items::ItemStack;
 use sunrise_sim::lan::playerdata::uuid_ints;
 use sunrise_sim::mobs::Who;
@@ -269,7 +271,7 @@ impl ServerGame<'_> {
             let interaction =
                 self.destroy_type(sunrise_game_data::gamerules::vanilla::TNT_EXPLOSION_DROP_DECAY);
             self.server.combat.0.explosion_in_water = in_water;
-            self.server.combat.0.explosion_direct = Some(id);
+            self.server.combat.0.explosion_direct = Some((id, "minecraft:tnt"));
             self.set_blast_owner(owner, guest);
             let result = self.with_hive_emptying_blast(|g| {
                 g.server_explode_from(
@@ -425,7 +427,12 @@ impl ServerGame<'_> {
     /// `TntBlock.useItemOn`: flint and steel or a fire charge primes TNT.
     pub(in crate::game::server_side) fn ignite_tnt(&mut self, stack: &ItemStack) -> Result<bool> {
         let item = &*stack.item;
-        if item != "minecraft:flint_and_steel" && item != "minecraft:fire_charge" {
+        let starter = matches!(item, "minecraft:flint_and_steel" | "minecraft:fire_charge");
+        if !self.stack_can_perform(
+            stack,
+            super::item_abilities::ability::FIRESTARTER_LIGHT,
+            starter,
+        ) {
             return Ok(false);
         }
         let Some(hit) = self.pick() else {

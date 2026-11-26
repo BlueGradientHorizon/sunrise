@@ -5,7 +5,6 @@ pub trait Hooks {
     /// (`BrewingStandMenu.PotionSlot.onTake`): `player` is their UUID and
     /// `player_entity_id` their network id.
     #[hook(
-        target = "sunrise_gameplay::game::native_hooks::player_brewed_potion::ServerGame<'_>::native_player_brewed_potion",
         dispatch = "flat",
         side = "server",
         contract = "listen",

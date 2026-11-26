@@ -17,7 +17,6 @@ impl crate::game::ClientGame<'_> {
         seq: i32,
     ) -> bool {
         let is_fire_charge = &*stack.item == "minecraft:fire_charge";
-        let clicked = self.common.world.block(hit.pos[0], hit.pos[1], hit.pos[2]);
         let name = self.block_name(hit.pos);
         // TntBlock.useItemOn primes TNT unless sneaking with hands full.
         // Server priming sends TNT_PRIMED and can refuse priming; leave ignition
@@ -25,19 +24,17 @@ impl crate::game::ClientGame<'_> {
         let sneaking = self.remote_shift_down();
         let hands_full =
             self.common.stack_in(self.common.selected).is_some() || self.common.offhand.is_some();
-        if !(sneaking && hands_full) && &*name == "minecraft:tnt" {
+        let starter = sunrise_gameplay_common::game::item_abilities::ability::FIRESTARTER_LIGHT;
+        if !(sneaking && hands_full)
+            && &*name == "minecraft:tnt"
+            && self.stack_can_perform(stack, starter, true)
+        {
             return true;
         }
-        if self.can_light(clicked, &name) {
-            let registry = self.common.pack.assets.registry;
-            if let Some(mut state) = registry.state(clicked).cloned() {
-                state.properties.insert("lit".into(), "true".into());
-                if let Ok(lit_state) = registry.resolve(&state) {
-                    let pos =
-                        sunrise_core::position::BlockPos::new(hit.pos[0], hit.pos[1], hit.pos[2]);
-                    self.predict_blocks(&[(pos, lit_state)], seq);
-                }
-            }
+        if let Ok(Some(lit_state)) = self.with_hand(hand, |g| g.fire_starter_lit(hit, stack, true))
+        {
+            let pos = sunrise_core::position::BlockPos::new(hit.pos[0], hit.pos[1], hit.pos[2]);
+            self.predict_blocks(&[(pos, lit_state)], seq);
             let at = [
                 f64::from(hit.pos[0]) + 0.5,
                 f64::from(hit.pos[1]) + 0.5,
@@ -52,7 +49,7 @@ impl crate::game::ClientGame<'_> {
                 is_fire_charge,
                 &mut self.common.world.random,
             );
-            self.client.audio.0.play(sound, Some(at), 1.0, pitch);
+            self.play_audio(sound, Some(at), 1.0, pitch);
             if is_fire_charge && !self.common.creative {
                 self.with_hand(hand, ItemUseStacksGameExt1::consume_held);
             }
@@ -77,7 +74,7 @@ impl crate::game::ClientGame<'_> {
                 f64::from(target[1]) + 0.5,
                 f64::from(target[2]) + 0.5,
             ];
-            self.client.audio.0.play(sound, Some(target_at), 1.0, pitch);
+            self.play_audio(sound, Some(target_at), 1.0, pitch);
             if is_fire_charge && !self.common.creative {
                 self.with_hand(hand, ItemUseStacksGameExt1::consume_held);
             }
@@ -94,3 +91,6 @@ use sunrise_gameplay_common::game::GameGameExt1 as _;
 use sunrise_gameplay_common::game::block_props::BlockPropsGameExt1 as _;
 
 use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::item_abilities::ItemAbilitiesGameExt1 as _;
+use sunrise_gameplay_common::game::tool_modification::ToolModificationGameExt1 as _;

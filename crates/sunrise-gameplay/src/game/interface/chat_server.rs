@@ -99,8 +99,6 @@ impl ServerGame<'_> {
         let clock = self.common.level_clock_name(self.common.dim);
         self.common.world.day_time = self.common.switch_clock(&clock);
         self.build_registries();
-        // The world opens with its test instances (`Registries.TEST_INSTANCE`).
-        self.snapshot_test_defs();
         self.common.sync_rules();
         self.carrier_world_opened()
     }

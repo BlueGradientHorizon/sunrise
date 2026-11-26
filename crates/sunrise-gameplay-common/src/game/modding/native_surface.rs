@@ -3,8 +3,9 @@
 pub use super::api_values::{TryIntoApi, TryIntoEngine, block_state};
 use super::{Dim, boats_common::Boat};
 use mod_api::{
-    __private::game::Fields, BlockEntityRef, BlockKey, BlockState, Compound, FeatureFlags,
-    FluidState, LevelHost, LevelReadError, LevelRef, LightLayer,
+    __private::game::Fields, BlockEntityRef, BlockKey, BlockState, Compound, EntityRef,
+    EntityTypeKey, FeatureFlags, FluidState, LevelHost, LevelReadError, LevelRef, LightLayer,
+    WorldEpoch,
 };
 use std::cell::RefCell;
 use sunrise_core::position::BlockPos;
@@ -12,7 +13,6 @@ use sunrise_items::items::Items;
 use sunrise_level::world::World;
 pub use sunrise_sim::motion::{FrictionLevel, read_friction};
 use sunrise_world::{
-    fluid::FluidState as EngineFluidState,
     native_load_context::LoopSide,
     registry::{BlockRegistry, BlockStateId},
 };
@@ -25,6 +25,7 @@ pub struct GameSide<'a> {
     /// The level handle of the open world, absent before a world has an epoch.
     pub level: Option<LevelRef>,
     pub facts: &'a sunrise_items::blocks::BlockFacts,
+    pub tables: super::native_block_tables::BlockTables<'a>,
     pub biomes: &'a sunrise_level::biome::Biomes,
     pub behaviours: &'a sunrise_world::level::Behaviours,
     pub features: &'a std::sync::Arc<[String]>,
@@ -112,9 +113,17 @@ impl sunrise_sim::motion::SideLevel for GameSide<'_> {
             world, registry, self.items, entity,
         )
     }
+
+    fn world_epoch(&self) -> Option<WorldEpoch> {
+        self.level.map(LevelRef::epoch)
+    }
+
+    fn block_states(&self) -> Option<mod_api::BlockStates<'_>> {
+        Some(mod_api::BlockStates::of(&self.tables))
+    }
 }
 
-type Query = (*const World, BlockPos, BlockStateId, Option<u32>);
+type Query = (*const World, BlockPos, BlockStateId, Option<EntityRef>);
 thread_local! {
     static ACTIVE_FRICTION: RefCell<[Option<Query>; 16]> = const { RefCell::new([None; 16]) };
 }
@@ -138,38 +147,50 @@ pub fn friction(
     if !block_state::block_listens(mod_api::HookId::Friction, state) {
         return true;
     }
-    let query = (
-        std::ptr::from_ref(level.world),
-        pos,
-        state,
-        entity.map(|(id, _)| id),
-    );
-    let Some(_guard) = ACTIVE_FRICTION.with_borrow_mut(|active| {
-        if active.contains(&Some(query)) {
-            return None;
-        }
-        let slot = active.iter().position(Option::is_none)?;
-        active[slot] = Some(query);
-        Some(QueryGuard(slot))
-    }) else {
-        return false;
-    };
-    FrictionView(level).native_friction(pos, state, entity, friction);
-    true
+    let entity = entity.and_then(|(id, kind)| {
+        let handle = EntityRef::new(level.side.world_epoch()?, id);
+        Some((handle, mod_api::__private::resolved_entity_type_key(kind)))
+    });
+    FrictionView(level, entity).adjust(pos, state, friction)
 }
 
-pub struct FrictionView<'a>(pub FrictionLevel<'a>);
+pub struct FrictionView<'a>(
+    pub FrictionLevel<'a>,
+    pub Option<(EntityRef, Option<EntityTypeKey>)>,
+);
 
 impl FrictionView<'_> {
-    fn state_fluid(&self, state: BlockStateId) -> Option<FluidState> {
-        let state = self.0.registry.state(state)?;
-        crate::game::native_world_read_common::api_fluid_state(
-            EngineFluidState::from_block(state).ok()?,
-        )
+    fn adjust(&self, pos: BlockPos, state: BlockStateId, friction: &mut f32) -> bool {
+        let entity = self.1.map(|(entity, _)| entity);
+        let query = (std::ptr::from_ref(self.0.world), pos, state, entity);
+        let Some(_guard) = ACTIVE_FRICTION.with_borrow_mut(|active| {
+            if active.contains(&Some(query)) {
+                return None;
+            }
+            let slot = active.iter().position(Option::is_none)?;
+            active[slot] = Some(query);
+            Some(QueryGuard(slot))
+        }) else {
+            return false;
+        };
+        self.native_friction(pos, state, entity, friction);
+        true
+    }
+
+    fn query(&self, [x, y, z]: [i32; 3], state: BlockStateId) -> Option<f32> {
+        let own = (self.0.coefficient)(state)?;
+        let mut friction = own;
+        if block_state::block_listens(mod_api::HookId::Friction, state)
+            && !self.adjust(BlockPos::new(x, y, z), state, &mut friction)
+        {
+            return None;
+        }
+        Some(if friction.is_finite() { friction } else { own })
     }
 }
 
 impl super::mod_api_host::SidedLevel for FrictionView<'_> {
+    #[inline]
     fn client_side(&self) -> bool {
         self.0.context.side() == LoopSide::Client
     }
@@ -178,19 +199,41 @@ impl super::mod_api_host::SidedLevel for FrictionView<'_> {
 super::native_tags::impl_tags!(FrictionView<'_>, view, view.0.side.tag_items());
 
 impl LevelHost for FrictionView<'_> {
-    fn friction(
-        &self,
-        [x, y, z]: [i32; 3],
-        state: BlockState,
-        entity: Option<(u32, &str)>,
-    ) -> Option<f32> {
-        query_friction(self.0, [x, y, z], state.try_into_engine(&()).ok()?, entity)
+    #[inline]
+    fn block_states(&self) -> mod_api::BlockStates<'_> {
+        struct NoTables;
+        impl LevelHost for NoTables {
+            fn block_entity_data(&self, _: BlockEntityRef) -> Option<Compound> {
+                None
+            }
+        }
+        static NONE: NoTables = NoTables;
+        self.0
+            .side
+            .block_states()
+            .unwrap_or_else(|| NONE.block_states())
     }
 
+    #[inline]
+    fn friction(&self, pos: [i32; 3], state: BlockState, entity: Option<EntityRef>) -> Option<f32> {
+        let entity = match entity {
+            Some(entity) => Some(self.1.filter(|&(known, _)| known == entity)?),
+            None => None,
+        };
+        FrictionView(self.0, entity).query(pos, state.try_into_engine(&()).ok()?)
+    }
+
+    #[inline]
+    fn entity_kind(&self, entity: EntityRef) -> Option<EntityTypeKey> {
+        self.1.filter(|&(known, _)| known == entity)?.1
+    }
+
+    #[inline]
     fn block_state(&self, [x, y, z]: [i32; 3]) -> Option<BlockState> {
         self.0.world.block(x, y, z).try_into_api().ok()
     }
 
+    #[inline]
     fn state_block(&self, state: BlockState) -> Option<&str> {
         self.0
             .registry
@@ -198,6 +241,7 @@ impl LevelHost for FrictionView<'_> {
             .map(|state| &*state.name)
     }
 
+    #[inline]
     fn block_state_id(&self, name: &str) -> Option<BlockState> {
         super::native_block_states::parse(
             &super::native_block_states::block_registries(self.0.registry),
@@ -208,10 +252,12 @@ impl LevelHost for FrictionView<'_> {
         .ok()
     }
 
+    #[inline]
     fn block_state_default(&self, block: BlockKey) -> Option<BlockState> {
         super::api_values::default_state(block)?.try_into_api().ok()
     }
 
+    #[inline]
     fn state_string(&self, state: BlockState) -> Option<String> {
         self.0
             .registry
@@ -219,54 +265,46 @@ impl LevelHost for FrictionView<'_> {
             .map(super::native_block_states::serialize)
     }
 
+    #[inline]
     fn min_y(&self) -> i32 {
         self.0.world.shape.min_y
     }
 
+    #[inline]
     fn height(&self) -> i32 {
         self.0.world.shape.height
     }
 
-    fn block_in_tag(&self, block: BlockKey, tag: &str) -> Option<bool> {
-        self.0.side.tag_items()?;
-        crate::game::native_world_read_common::block_in_tag(block, tag)
-    }
-
+    #[inline]
     fn block_entity(&self, [x, y, z]: [i32; 3]) -> Option<BlockEntityRef> {
         self.0
             .side
             .block_entity(self.0.world, BlockPos::new(x, y, z))
     }
 
+    #[inline]
     fn block_entity_data(&self, entity: BlockEntityRef) -> Option<Compound> {
         self.0
             .side
             .block_entity_data(self.0.world, self.0.registry, entity)
     }
 
+    #[inline]
     fn tags(&self) -> &dyn mod_api::Tags {
         self
     }
 
+    #[inline]
     fn fluid_state(&self, [x, y, z]: [i32; 3]) -> Option<FluidState> {
         if !self.0.world.is_loaded_at(x, y, z) {
             return None;
         }
-        self.state_fluid(self.0.world.block(x, y, z))
+        let states = self.0.side.block_states()?;
+        let state = self.0.world.block(x, y, z).try_into_api().ok()?;
+        state.fluid_state(&states)
     }
 
-    fn state_fluid_state(&self, state: BlockState) -> Option<FluidState> {
-        self.state_fluid(state.try_into_engine(&()).ok()?)
-    }
-
-    fn fluid_in_tag(&self, fluid: &str, tag: &str) -> Option<bool> {
-        Some(crate::game::native_world_read_common::fluid_in_tag(
-            self.0.side.tag_items()?,
-            fluid,
-            tag,
-        ))
-    }
-
+    #[inline]
     fn state_with_property(&self, state: BlockState, key: &str, value: &str) -> Option<BlockState> {
         super::native_hooks::with_property(
             self.0.registry,
@@ -278,6 +316,7 @@ impl LevelHost for FrictionView<'_> {
         .ok()
     }
 
+    #[inline]
     fn can_see_sky(&self, pos: [i32; 3]) -> Option<bool> {
         Some(crate::game::native_world_read_common::can_see_sky(
             self.0.world,
@@ -285,44 +324,34 @@ impl LevelHost for FrictionView<'_> {
         ))
     }
 
+    #[inline]
     fn brightness(&self, layer: LightLayer, pos: [i32; 3]) -> i32 {
         crate::game::native_world_read_common::world_brightness(self.0.world, layer, pos)
     }
 
+    #[inline]
     fn raw_brightness(&self, pos: [i32; 3], sky_darken: i32) -> i32 {
         let block = self.brightness(LightLayer::Block, pos);
         let sky = self.brightness(LightLayer::Sky, pos);
         block.max(sky.wrapping_sub(sky_darken))
     }
 
+    #[inline]
     fn is_loaded(&self, [x, y, z]: [i32; 3]) -> bool {
         self.0.world.is_loaded_at(x, y, z)
     }
 
+    #[inline]
     fn is_raining_at(&self, [x, y, z]: [i32; 3]) -> bool {
         self.0
             .side
             .is_raining_at(self.0.world, BlockPos::new(x, y, z))
     }
 
+    #[inline]
     fn enabled_features(&self) -> FeatureFlags {
         FeatureFlags::new(self.0.side.enabled_features().clone())
     }
-}
-
-fn query_friction(
-    level: FrictionLevel<'_>,
-    [x, y, z]: [i32; 3],
-    state: BlockStateId,
-    entity: Option<(u32, &str)>,
-) -> Option<f32> {
-    read_friction(
-        level,
-        entity,
-        BlockPos::new(x, y, z),
-        state,
-        (level.coefficient)(state)?,
-    )
 }
 
 impl crate::game::CommonGame<'_> {}
@@ -333,7 +362,7 @@ pub trait NativeSurfaceGameExt1<'__sg>: crate::game::SideGame<'__sg> {
         level: LevelRef,
         pos: [i32; 3],
         state: BlockStateId,
-        entity: Option<(u32, &str)>,
+        entity: Option<EntityRef>,
     ) -> Result<Option<f32>, LevelReadError> {
         let world = self.native_level_view_world(level).ok_or_else(|| {
             if self.side_level_handle_current(level) {
@@ -360,7 +389,14 @@ pub trait NativeSurfaceGameExt1<'__sg>: crate::game::SideGame<'__sg> {
             },
             coefficient: &|id| facts.states.get(id.0 as usize).map(|facts| facts.friction),
         };
-        Ok(query_friction(level, pos, state, entity))
+        let entity = entity
+            .map(|entity| {
+                self.entity_kind(entity)
+                    .map(|kind| (entity, Some(kind)))
+                    .ok_or(LevelReadError::Stale)
+            })
+            .transpose()?;
+        Ok(FrictionView(level, entity).query(pos, state))
     }
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> NativeSurfaceGameExt1<'__sg> for G {}

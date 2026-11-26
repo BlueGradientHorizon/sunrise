@@ -5,7 +5,37 @@
 //! (`boat_passengers::BOARDING_COOLDOWN`).
 use crate::game::ServerGame;
 use sunrise_gameplay_common::game::entity_memory::OffLevel;
-use sunrise_sim::mobs::Mob;
+use sunrise_sim::{lan::guest::Guest, mobs::Mob};
+
+pub(super) fn next_boarded_rider(
+    after: Option<u32>,
+    mut seats: impl FnMut(&mut dyn FnMut(i64, u32) -> bool),
+) -> Option<u32> {
+    let mut after_key = None;
+    if let Some(after) = after {
+        let mut ordinal = 0usize;
+        seats(&mut |place, rider| {
+            if rider == after {
+                after_key = Some((place, ordinal));
+                return true;
+            }
+            ordinal += 1;
+            false
+        });
+        after_key?;
+    }
+    let mut ordinal = 0usize;
+    let mut next = None;
+    seats(&mut |place, rider| {
+        let key = (place, ordinal);
+        ordinal += 1;
+        if after_key.is_none_or(|after| key > after) && next.is_none_or(|(best, _)| key < best) {
+            next = Some((key, rider));
+        }
+        false
+    });
+    next.map(|(_, rider)| rider)
+}
 
 /// `Entity.getIndirectPassengersStream` for `vehicle`: the vehicle and every
 /// vehicle riding it, directly or through another rider. `mounts` holds
@@ -64,33 +94,7 @@ impl ServerGame<'_> {
         lent_mobs: &[Mob],
         mut matches: impl FnMut((i64, u32, bool)) -> bool,
     ) -> bool {
-        let acting = sunrise_gameplay_common::game::Side::lan_acting(&self.server)
-            .filter(|_| self.common.player.is_some());
-        let mut acting_listed = false;
-        for g in self
-            .server
-            .lan
-            .iter()
-            .flat_map(|h| h.hub.guests.iter())
-            .filter(|g| g.placed && g.dimension == self.common.dim.id())
-        {
-            let rides = if acting == Some(g.conn) {
-                acting_listed = true;
-                self.common.riding
-            } else {
-                g.vehicle
-            };
-            if rides == Some(vehicle) && matches((g.vehicle_order, g.entity_id as u32, true)) {
-                return true;
-            }
-        }
-        // An unlisted acting guest goes first. This game's own player keeps its seat order.
-        if let Some((me, place)) = self.riding_player()
-            && !acting_listed
-            && self.common.player.is_some()
-            && self.common.riding == Some(vehicle)
-            && matches((place, me, true))
-        {
+        if self.any_player_passenger_seat(vehicle, |place, id| matches((place, id, true))) {
             return true;
         }
         let other_mobs = lent_mobs
@@ -118,6 +122,63 @@ impl ServerGame<'_> {
                 .iter()
                 .filter(|b| b.mount == Some(vehicle))
                 .any(|b| matches((b.vehicle_order, b.id, false)))
+    }
+
+    /// Player seats in source encounter order, shared with the mob tick's live loan.
+    pub(super) fn any_player_passenger_seat(
+        &self,
+        vehicle: u32,
+        mut matches: impl FnMut(i64, u32) -> bool,
+    ) -> bool {
+        let acting = self.server.lan_acting.filter(|_| self.common.player.is_some());
+        let mut acting_listed = false;
+        for g in self.placed_seat_guests() {
+            let rides = if acting == Some(g.conn) {
+                acting_listed = true;
+                self.riding
+            } else {
+                g.vehicle
+            };
+            if rides == Some(vehicle) && matches(g.vehicle_order, g.entity_id as u32) {
+                return true;
+            }
+        }
+        // An unlisted acting guest goes first. This game's own player keeps its seat order.
+        self.riding_player().is_some_and(|(me, place)| {
+            !acting_listed
+                && self.player.is_some()
+                && self.riding == Some(vehicle)
+                && matches(place, me)
+        })
+    }
+
+    fn placed_seat_guests(&self) -> impl Iterator<Item = &Guest> {
+        self.server.lan
+            .iter()
+            .flat_map(|h| h.hub.guests.iter())
+            .filter(move |g| g.placed && g.dimension == self.dim.id())
+    }
+
+    /// The parent behind a boarded seat. A displaced player's handle can be hidden during a
+    /// nested guest turn, but the player's seat still has a parent in the hub.
+    pub(super) fn seated_passenger_vehicle(&self, rider: u32) -> Option<u32> {
+        if self.player.is_some() && self.riding_player().is_some_and(|(id, _)| id == rider) {
+            return self.riding;
+        }
+        if let Some(guest) = self
+            .placed_seat_guests()
+            .find(|g| g.entity_id as u32 == rider)
+        {
+            return guest.vehicle;
+        }
+        self.vehicle_of_any(rider)
+    }
+
+    /// The first actual rider, or the rider directly after `after`, even off-level.
+    pub(super) fn next_passenger_seat(&self, vehicle: u32, after: Option<u32>) -> Option<u32> {
+        next_boarded_rider(after, |visit| {
+            self.any_passenger_seat(vehicle, &[], |(place, id, _)| visit(place, id));
+        })
     }
 
     /// `Entity.startRiding` for the acting player: the rider link, then

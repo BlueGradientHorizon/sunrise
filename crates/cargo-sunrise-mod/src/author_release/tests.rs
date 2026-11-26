@@ -10,6 +10,42 @@ path = 'mods/example'
 project = 'Ab3dE9xY'
 ";
 const USES: &str = "sunrise-org/sunrise-mods/.github/workflows/release.yml@release-v17";
+
+/// A GitHub API request carries `GH_TOKEN`, else `GITHUB_TOKEN`, as a bearer token (#5805); no
+/// other host is sent one, and an unset or blank token sends none.
+#[test]
+fn only_a_github_api_request_carries_a_token() {
+    let env = |vars: &'static [(&'static str, &'static str)]| {
+        move |name: &str| {
+            vars.iter()
+                .find(|(n, _)| *n == name)
+                .map(|(_, v)| (*v).to_owned())
+        }
+    };
+    let api = "https://api.github.com/repos/author/example";
+    let both = env(&[("GH_TOKEN", "gh-token"), ("GITHUB_TOKEN", "actions-token")]);
+    assert_eq!(
+        github_authorization(api, both).as_deref(),
+        Some("Bearer gh-token")
+    );
+    let github = env(&[("GH_TOKEN", " "), ("GITHUB_TOKEN", "actions-token")]);
+    assert_eq!(
+        github_authorization(api, github).as_deref(),
+        Some("Bearer actions-token")
+    );
+    assert_eq!(github_authorization(api, env(&[])), None);
+    for other in [
+        format!(
+            "{}/release-workflow.toml",
+            sunrise_addresses::MOD_REGISTRY_METADATA
+        ),
+        "https://github.com/author/example".to_owned(),
+        "http://api.github.com/repos/author/example".to_owned(),
+        "https://api.github.com.example.invalid/repos/author/example".to_owned(),
+    ] {
+        assert_eq!(github_authorization(&other, both), None, "{other}");
+    }
+}
 const TEMPLATE: &str = "\
 # Written by `cargo sunrise-mod release`, which rewrites it: edits here are replaced.
 name: Sunrise release
@@ -627,6 +663,67 @@ mod git_fixtures {
         assert_eq!(
             repo.git(["rev-parse", "refs/tags/v1.4.3"]),
             repo.git(["rev-parse", "HEAD"])
+        );
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn release_pushes_the_branch_before_the_tag() {
+        let repo = Repo::new();
+        repo.put(MANIFEST, MOD);
+        repo.commit();
+        repo.git(["push", "-u", "origin", "main"]);
+        let old = repo.git(["rev-parse", "HEAD"]);
+        // The hook logs each push with the refs it carries, and refuses the tag.
+        let pushes = repo.bare.join("pushes");
+        let hook = repo.bare.join("hooks/pre-receive");
+        fs::write(
+            &hook,
+            format!(
+                "#!/bin/sh\nline=push\nwhile read -r _ _ ref; do line=\"$line $ref\"; done\necho \"$line\" >> '{}'\ncase \"$line\" in *' refs/tags/v1.4.3') exit 1;; esac\n",
+                pushes.display()
+            ),
+        )
+        .unwrap();
+        fs::set_permissions(&hook, fs::Permissions::from_mode(0o755)).unwrap();
+
+        let error = repo.release(".", &["patch"], |_, _| Ok(())).unwrap_err();
+        assert!(
+            error.contains("The release commit is on origin and only v1.4.3 remains local"),
+            "{error}"
+        );
+        assert!(
+            error.contains("then push it with `git push origin refs/tags/v1.4.3`"),
+            "{error}"
+        );
+        // Two pushes, the branch alone first.
+        assert_eq!(
+            fs::read_to_string(&pushes).unwrap(),
+            "push refs/heads/main\npush refs/tags/v1.4.3\n"
+        );
+        let commit = repo.git(["rev-parse", "HEAD"]);
+        assert_eq!(repo.git(["rev-parse", "HEAD~1"]), old);
+        assert_eq!(
+            repo.git
+                .text(&repo.bare, ["rev-parse", "refs/heads/main"])
+                .unwrap(),
+            commit
+        );
+        assert!(
+            repo.git
+                .text(&repo.bare, ["rev-parse", "--verify", "refs/tags/v1.4.3"])
+                .is_err()
+        );
+        assert_eq!(repo.git(["rev-parse", "refs/tags/v1.4.3"]), commit);
+
+        // Finishing as the message says publishes the tag on its own.
+        fs::remove_file(&hook).unwrap();
+        repo.git(["push", "origin", "refs/tags/v1.4.3"]);
+        assert_eq!(
+            repo.git
+                .text(&repo.bare, ["rev-parse", "refs/tags/v1.4.3"])
+                .unwrap(),
+            commit
         );
     }
 

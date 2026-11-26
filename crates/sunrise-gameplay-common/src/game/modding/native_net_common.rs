@@ -7,5 +7,4 @@ pub struct NativeNet {
     pub book_view: sunrise_sim::recipe_book::settings_sync::ClientView,
     pub book_request: u64,
     pub book_ready: bool,
-    pub book_retry_at: Option<std::time::Instant>,
 }

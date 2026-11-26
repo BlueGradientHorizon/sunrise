@@ -17,7 +17,7 @@ sunrise-items = { path = "../sunrise-items" }
 sunrise-java-properties = { path = "../sunrise-java-properties" }
 sunrise-level = { path = "../sunrise-level" }
 sunrise-mod-api-macros = { path = "../sunrise-mod-api-macros" }
-sunrise-mod-package = { path = "../sunrise-mod-package" }
+sunrise-mod-package = { path = "../sunrise-mod-package", default-features = false }
 sunrise-mod-runtime = { path = "../sunrise-mod-runtime" }
 mod_api = { package = "sunrise-mod-vocab", path = "../sunrise-mod-vocab" }
 sunrise-perf-format = { path = "../sunrise-perf-format" }
@@ -39,7 +39,7 @@ serde_json = { version = "1.0.151", features = ["raw_value"] }
 sha1 = "0.10"
 sha2 = "0.10.9"
 xxhash-rust = { version = "0.8.19", features = ["xxh3"] }
-zip = { version = "9.1.3", default-features = false, features = ["deflate"] }
+zip = { version = "9.1.3", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 
 [target.'cfg(unix)'.dependencies]
 rustix = { version = "1", default-features = false, features = ["std", "time", "process", "fs"] }
@@ -51,6 +51,8 @@ test-payload-probe = []
 test-publication-scope = []
 test-residency-observer = []
 test-dry-side = []
+# `FixedStep::still_for_tests`: a clock with SUNRISE_STILL on, for game fixtures only.
+test-still-clock = []
 test-mob-kind = []
 tracker-send-bench = []
 rng-trace = ["sunrise-core/rng-trace"]
@@ -63,6 +65,7 @@ tempfile = "3"
 mod_platform = { package = "sunrise-mod-api", path = "../sunrise-mod-api", features = ["testing"] }
 mod_api = { package = "sunrise-mod-vocab", path = "../sunrise-mod-vocab", features = ["testing"] }
 sunrise-items = { path = "../sunrise-items", features = ["test-support"] }
+sunrise-game-data = { path = "../sunrise-game-data", features = ["test-effect-registry"] }
 sunrise-world = { path = "../sunrise-world", features = ["test-support"] }
 png = "0.18"
 sunrise-level = { path = "../sunrise-level", features = ["test-support"] }

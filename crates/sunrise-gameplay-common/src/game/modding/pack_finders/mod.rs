@@ -181,7 +181,8 @@ pub fn data_packs(mods: &ModsState) -> Vec<std::sync::Arc<DataPack>> {
 }
 
 pub fn data_pack(pack: PackMeta) -> std::sync::Arc<DataPack> {
-    let mut data = DataPack::from_source(pack.id, pack.source.open().expect("retained source"));
+    let mut data = DataPack::from_source(pack.id, pack.source.open().expect("retained source"))
+        .with_filter(pack.filter);
     data.selection = pack.selection;
     std::sync::Arc::new(data)
 }
@@ -192,7 +193,16 @@ pub fn data_repository(
     resources: &std::path::Path,
     additional: &[std::sync::Arc<DataPack>],
 ) -> Vec<DataPack> {
-    let mut packs = sunrise_level::datapack::discover_with_features(world, resources);
+    data_repository_in(&world.join("datapacks"), resources, additional)
+}
+
+/// [`data_repository`] over a pack folder itself (Create World's `mcworld-` folder).
+pub fn data_repository_in(
+    folder: &std::path::Path,
+    resources: &std::path::Path,
+    additional: &[std::sync::Arc<DataPack>],
+) -> Vec<DataPack> {
+    let mut packs = sunrise_level::datapack::discover_folder_with_features(folder, resources);
     packs.extend(additional.iter().map(|pack| (**pack).clone()));
     packs.sort_by(|a, b| sunrise_level::datapack::compare_ids(&a.id, &b.id));
     packs

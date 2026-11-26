@@ -6,8 +6,9 @@ pub(crate) mod tests {
     use sunrise_core::geometry::Vec3;
     use sunrise_core::nbt::Compound;
     use sunrise_gameplay::game::commands::data::DataRef;
-    use sunrise_gameplay::game::native_entity_refs::tests::with_game;
+    use sunrise_gameplay::game::native_entity_refs::tests::{fixture_resident_column, with_game};
     use sunrise_gameplay_common::game::commands_common::Target;
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
 
     /// `EntityDataAccessor.setData` keeps the entity's id and UUID: a
     /// `/data merge` that carries a different UUID does not take, and a
@@ -17,6 +18,7 @@ pub(crate) mod tests {
     #[ignore = "daily"]
     fn merging_display_nbt_keeps_the_uuid_and_forces_the_start_delay() {
         with_game(|game| {
+            fixture_resident_column(&mut game.world, (0, 0));
             let mut raw = Compound::new();
             raw.insert(
                 "Pos".into(),
@@ -26,14 +28,18 @@ pub(crate) mod tests {
                         .to_vec(),
                 ),
             );
-            game.persist.raw.insert(12, Tag::Compound(raw));
+            let raw = Tag::Compound(raw);
+            let display = game
+                .read_display_nbt("minecraft:block_display", &raw)
+                .map(std::sync::Arc::new);
+            game.persist.raw.insert(12, raw);
             game.persist.uuids.insert(12, [1, 2, 3, 4]);
             game.server.others.0.push(
                 sunrise_gameplay_common::game::commands_common::OtherEntity {
                     size_answer: None,
                     attachment_lifetime: Default::default(),
                     join: Default::default(),
-                    item_transformation: None,
+                    display,
                     knot_check: None,
                     eye: None,
                     interaction: None,
@@ -55,10 +61,14 @@ pub(crate) mod tests {
             );
             merge.insert("UUID".into(), Tag::IntArray(vec![9, 9, 9, 9]));
             merge.insert("start_interpolation".into(), Tag::Int(0));
+            merge.insert("view_range".into(), Tag::Float(2.5_f32.to_bits()));
             game.apply_entity_nbt(Target::Other(12), Tag::Compound(merge))
                 .unwrap();
             assert_eq!(game.uuid_for(12), [1, 2, 3, 4]);
             assert_eq!(game.persist.forced_meta.get(&12), Some(&[1 << 8, 0, 0, 0]));
+            let entity = game.entity(12).unwrap();
+            assert_eq!(game.display(entity).unwrap().view_range(game), Some(2.5));
+            assert!(game.persist.raw[&12].get("view_range").is_none());
             game.spend_forced_meta();
             let ctx = sunrise_command::Context {
                 root: 0,

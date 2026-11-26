@@ -540,7 +540,7 @@ impl crate::game::ClientGame<'_> {
         &self,
         entity: EntityRef,
     ) -> Option<[f64; 3]> {
-        let (remote, id) = self.native_client_entity_context(entity)?;
+        let (remote, id) = self.native_client_entity_context(entity).ok()?;
         if !remote.has_level() {
             return None;
         }
@@ -759,8 +759,7 @@ impl crate::game::ClientGame<'_> {
     }
 
     pub(in crate::game) fn client_level(&self, dimension: &str) -> Option<LevelRef> {
-        let epoch = self.common.native_lifecycle.epoch()?;
-        Some(LevelRef::new(epoch, self.client_level_key(dimension)?))
+        self.client_level_by_name(dimension)
     }
 
     pub(in crate::game) fn client_native_current_level(&self) -> Option<LevelRef> {

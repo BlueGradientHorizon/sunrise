@@ -189,7 +189,11 @@ fn panicking_client_reload_registration_discards_its_listener_and_edges() {
                 &[],
                 &[],
                 &game.mods,
-                game.register_client_reload_listeners(),
+                game.register_client_reload_listeners(
+                    &game
+                        .capture_candidate_settings(&game.options.resources)
+                        .unwrap(),
+                ),
                 &[],
                 &game.pack.assets,
                 &game.res,
@@ -385,6 +389,14 @@ fn a_converted_file_outside_the_pack_is_absent_not_empty() {
 #[test]
 #[ignore = "daily"]
 fn initial_load_stages_and_applies_client_reload_listeners() {
+    // Start a fresh process for the startup path, which installs the standalone model fixture.
+    if sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases(
+        "client_reload::tests::initial_load_stages_and_applies_client_reload_listeners",
+        "SUNRISE_INITIAL_RELOAD_CHILD",
+        &["startup"],
+    ) {
+        return;
+    }
     use mod_api::{
         __private::game::RegistrationContextNew, AddClientReloadListenersEvent, ClientHost,
         ClientItemExtensionsRegistrar, ClientReloadListenerContext, Hooks, ModEntry,
@@ -451,7 +463,7 @@ fn initial_load_stages_and_applies_client_reload_listeners() {
         }
     }
     thread_local! {
-        static REFUSE_EXTENSIONS: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+        static CHECK_UNKNOWN_TEXTURE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     }
     struct Probe(Arc<Mutex<Vec<&'static str>>>);
     #[mod_api::__subscriptions]
@@ -506,12 +518,12 @@ fn initial_load_stages_and_applies_client_reload_listeners() {
             event: &mut mod_api::RegisterClientItemExtensionsEvent<'_>,
         ) {
             let extensions: &mut dyn ClientItemExtensionsRegistrar = &mut *event.extensions;
-            if REFUSE_EXTENSIONS.get() {
-                assert!(
-                    extensions
-                        .register_texture("startup_anchor:missing")
-                        .is_err()
+            if CHECK_UNKNOWN_TEXTURE.get() {
+                assert_eq!(
+                    extensions.register_texture("startup_anchor:missing"),
+                    Err("unknown armour texture startup_anchor:missing".into())
                 );
+                self.0.lock().unwrap().push("refuse unknown texture");
             }
         }
 
@@ -560,8 +572,10 @@ fn initial_load_stages_and_applies_client_reload_listeners() {
                 );
                 let _models =
                     sunrise_client::models::StandaloneFixture::from_registrations(registrations);
-                for refusal in [None, Some("renderer"), Some("extensions")] {
-                    REFUSE_EXTENSIONS.set(refusal == Some("extensions"));
+                for (reject_renderer, unknown_texture) in
+                    [(false, false), (true, false), (false, true)]
+                {
+                    CHECK_UNKNOWN_TEXTURE.set(unknown_texture);
                     trace.lock().unwrap().clear();
                     let root = fixture_root();
                     let scratch = tempfile::tempdir().unwrap();
@@ -587,7 +601,7 @@ fn initial_load_stages_and_applies_client_reload_listeners() {
                         &options.mods,
                     )
                     .unwrap();
-                    if refusal.is_none() {
+                    if !reject_renderer && !unknown_texture {
                         let reports = mod_api::__private::take_hook_panics();
                         assert_eq!(
                             reports.as_slice(),
@@ -638,7 +652,7 @@ fn initial_load_stages_and_applies_client_reload_listeners() {
                     );
                     let pending = game.client.pending_initial_models.0.take().unwrap();
                     let candidate = pending.models.client_pack.render.generation;
-                    let renderer = if refusal == Some("renderer") {
+                    let renderer = if reject_renderer {
                         Err("renderer validation refused".into())
                     } else {
                         Ok(None)
@@ -646,13 +660,9 @@ fn initial_load_stages_and_applies_client_reload_listeners() {
                     APPLY_GENERATIONS.replace(Some(Vec::new()));
                     let result = game.apply_pending_client_start(*pending, renderer);
                     let generations = APPLY_GENERATIONS.take().unwrap();
-                    if let Some(refusal) = refusal {
-                        let error = result.expect_err("startup must refuse the unknown texture");
-                        assert!(error.to_string().contains(if refusal == "renderer" {
-                            "renderer validation refused"
-                        } else {
-                            "unknown armour texture startup_anchor:missing"
-                        }));
+                    if reject_renderer {
+                        let error = result.expect_err("startup must refuse a failed renderer");
+                        assert!(error.to_string().contains("renderer validation refused"));
                         assert_eq!(game.client.client_pack.render.generation, 0);
                         assert!(generations.is_empty());
                         assert_eq!(
@@ -669,18 +679,18 @@ fn initial_load_stages_and_applies_client_reload_listeners() {
                         [0, candidate],
                         "generation at the before- and after-model applies"
                     );
-                    assert_eq!(
-                        *trace.lock().unwrap(),
-                        [
-                            "prepare before",
-                            "bake model",
-                            "prepare after",
-                            "publish atlas without models",
-                            "apply before",
-                            "observe published models",
-                            "apply after",
-                        ]
-                    );
+                    let mut expected = vec!["prepare before", "bake model", "prepare after"];
+                    if unknown_texture {
+                        // Returning an extension error rejects just that binding; startup still applies.
+                        expected.push("refuse unknown texture");
+                    }
+                    expected.extend([
+                        "publish atlas without models",
+                        "apply before",
+                        "observe published models",
+                        "apply after",
+                    ]);
+                    assert_eq!(*trace.lock().unwrap(), expected);
                 }
             });
         })
@@ -851,11 +861,16 @@ fn client_reload_reads_real_assets_with_pack_overrides() {
             // The mod's packaged asset over nothing, with the real root's own
             // assets in the same view.
             let root = merged(&[]);
-            let ((), prepared) =
-                stage_client_reload(&root, game.register_client_reload_listeners(), || {
-                    Ok::<_, ReloadStageError>(())
-                })
-                .unwrap();
+            let ((), prepared) = stage_client_reload(
+                &root,
+                game.register_client_reload_listeners(
+                    &game
+                        .capture_candidate_settings(&game.options.resources)
+                        .unwrap(),
+                ),
+                || Ok::<_, ReloadStageError>(()),
+            )
+            .unwrap();
             assert!(live.lock().unwrap().is_empty(), "nothing published yet");
             apply_client_reload(prepared);
             assert_eq!(live.lock().unwrap().as_slice(), ["mod"]);
@@ -870,21 +885,30 @@ fn client_reload_reads_real_assets_with_pack_overrides() {
             );
             assert_eq!(packs.len(), 1);
             let root = merged(&packs);
-            let ((), prepared) =
-                stage_client_reload(&root, game.register_client_reload_listeners(), || {
-                    Ok::<_, ReloadStageError>(())
-                })
-                .unwrap();
+            let ((), prepared) = stage_client_reload(
+                &root,
+                game.register_client_reload_listeners(
+                    &game
+                        .capture_candidate_settings(&game.options.resources)
+                        .unwrap(),
+                ),
+                || Ok::<_, ReloadStageError>(()),
+            )
+            .unwrap();
             apply_client_reload(prepared);
             assert_eq!(live.lock().unwrap().as_slice(), ["mod", "pack"]);
             // A rejected prepare aborts the reload and keeps the previous state.
             reject.store(true, Ordering::Relaxed);
             let root = merged(&[]);
-            let Err(error) =
-                stage_client_reload(&root, game.register_client_reload_listeners(), || {
-                    Ok::<_, ReloadStageError>(())
-                })
-            else {
+            let Err(error) = stage_client_reload(
+                &root,
+                game.register_client_reload_listeners(
+                    &game
+                        .capture_candidate_settings(&game.options.resources)
+                        .unwrap(),
+                ),
+                || Ok::<_, ReloadStageError>(()),
+            ) else {
                 panic!("a failing listener stops the whole reload")
             };
             assert!(error.to_string().contains("client_test:hats"));
@@ -953,10 +977,10 @@ fn only_the_first_local_client_is_the_client_start() {
     });
 }
 
-/// A world's moments reach a listener once each and in order: the server's start
-/// (`server_about_to_start`, then `server_started` where `WorldOpenReady` was, only once
-/// per open and not for a failed one), its stop (`server_stopping`, then the final close),
-/// and the client's own close (`client_stopping`).
+/// Server and client lifecycle moments reach a listener once each and in NeoForge's
+/// order: the server's start (`server_about_to_start`, `server_starting`, `server_started`
+/// once per open), its stop (`server_stopping`, `server_stopped`, `game_shutting_down`),
+/// and the client's own close (`client_stopping`, `client_stopped`, `game_shutting_down`).
 #[test]
 #[ignore = "daily"]
 fn the_lifecycle_moments_fire_once_each_in_order() {
@@ -1013,13 +1037,6 @@ fn the_lifecycle_moments_fire_once_each_in_order() {
                 .unwrap()
                 .push(format!("stopping dedicated={}", e.dedicated));
         }
-        fn world_lifecycle(
-            &self,
-            _host: &mut dyn ServerHost,
-            event: &mut mod_api::WorldLifecycleEvent<'_>,
-        ) {
-            self.0.lock().unwrap().push(format!("{:?}", event.phase));
-        }
         fn client_stopping(
             &self,
             _host: &mut dyn ClientHost,
@@ -1056,8 +1073,8 @@ fn the_lifecycle_moments_fire_once_each_in_order() {
             game.native_lifecycle_world_closed();
             log.lock().unwrap().clear();
             game.native_server_about_to_start(true);
-            game.native_server_starting(true);
             game.native_lifecycle_open_started();
+            game.native_server_starting(true);
             game.native_lifecycle_world_ready();
             game.native_lifecycle_world_ready();
             game.native_lifecycle.begin_close();
@@ -1080,7 +1097,6 @@ fn the_lifecycle_moments_fire_once_each_in_order() {
             "starting dedicated=true",
             "started dedicated=true",
             "stopping dedicated=true",
-            "WorldCloseFinal",
             "stopped dedicated=true",
             "shutting_down server",
             "client_stopping",
@@ -1175,9 +1191,10 @@ fn resolved_ui_resources_do_not_restore_a_filtered_panorama_face() {
         }
     }
     assert!(base.contains("assets/minecraft/textures/gui/title/background/panorama_1.png"));
-    let gui = sunrise_client_gameplay::game::UiResources::load(
+    let gui = sunrise_client_gameplay::game::UiResources::load_with_limit(
         &ResourceSource::indexed(files),
         &scratch.0,
+        sunrise_level::pack_image::MAX_ATLAS_SIZE,
     )
     .unwrap();
     assert_eq!(
@@ -1202,7 +1219,11 @@ fn refused_client_context_keeps_pack_and_listeners() {
             &[],
             &[],
             &game.mods,
-            game.register_client_reload_listeners(),
+            game.register_client_reload_listeners(
+                &game
+                    .capture_candidate_settings(&game.options.resources)
+                    .unwrap(),
+            ),
             &[],
             &game.pack.assets,
             &game.res,
@@ -1287,7 +1308,12 @@ fn startup_client_reload_listener_context_reports_known_facts_and_no_published_a
     )]
     .into();
     mod_platform::testing::with_mods(mods, || {
-        let _ = register_startup_client_reload_listeners(Some(&settings));
+        let capture = sunrise_world::native_load_context::SettingsCapture::new(
+            std::path::Path::new(""),
+            [],
+            [],
+        );
+        let _ = register_startup_client_reload_listeners(Some(&settings), &capture);
     });
     let seen = observed.lock().unwrap().take().expect("startup hook fired");
     assert_eq!(seen.dist, Dist::Client);
@@ -1354,7 +1380,11 @@ fn client_completion_reads_published_resources_without_world_access() {
     with_client_game(|game| {
         mod_platform::testing::with_mods(mods, || {
             let version = game.block_sprites_version();
-            let _ = game.register_client_reload_listeners();
+            let _ = game.register_client_reload_listeners(
+                &game
+                    .capture_candidate_settings(&game.options.resources)
+                    .unwrap(),
+            );
             assert_eq!(*seen.lock().unwrap(), [version]);
             game.native_client_resources_reloaded();
             game.native_client_resources_reloaded();
@@ -1373,43 +1403,36 @@ fn client_startup_finishes_configs_before_the_first_runtime_callback() {
         .spawn(|| {
             use {sunrise_client_lib::audio::Audio, sunrise_client_gameplay::game::UiResources, crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_client_gameplay::game::client_side::loading_window::start_client_game};
             use mod_api::{
-                ClientHost, ClientSetupContext, ClientSetupEvent, ClientTickPreEvent,
-                ConfigContext, ConfigLoadingEvent, Hooks, ModEntry, RegisterConfigsEvent,
-                ScreenOpening, ScreenOpeningEvent,
+                ClientHost, ClientSetupContext, ClientSetupEvent, ClientTickPreEvent, ConfigEvent,
+                ConfigKind, ConfigListener, ConfigSnapshot, ConfigSpec, Hooks, ModEntry, Mods,
+                Registrar, RegistrationContext, ScreenOpening, ScreenOpeningEvent,
             };
             use std::{sync::Mutex, time::Instant};
 
-            struct Probe(Arc<Mutex<Vec<String>>>);
+            struct Probe(Arc<Mutex<Vec<String>>>, std::path::PathBuf);
             #[mod_api::__subscriptions]
             impl Hooks for Probe {
-                fn register_configs(
-                    &self,
-                    _: &dyn ConfigContext,
-                    event: &mut RegisterConfigsEvent<'_>,
-                ) {
-                    event.configs.push(mod_api::Config::new(
-                        "startup_phase",
-                        mod_api::ConfigKind::Client,
-                        "enabled = true\n",
-                    ));
-                    event.configs.push(mod_api::Config::new(
-                        "startup_phase",
-                        mod_api::ConfigKind::Common,
-                        "enabled = true\n",
-                    ));
+                fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
+                    for kind in [ConfigKind::Client, ConfigKind::Common] {
+                        let seen = self.0.clone();
+                        let listener: Arc<ConfigListener> =
+                            Arc::new(move |event: ConfigEvent<'_>, config: &ConfigSnapshot| {
+                                if let ConfigEvent::Loading(context) = event {
+                                    assert!(context.config_dir().ends_with("config"));
+                                    seen.lock().unwrap().push(format!("{:?}", config.kind));
+                                }
+                                Ok(())
+                            });
+                        r.register_config(
+                            ConfigSpec::new(kind, "enabled = true\n")
+                                .file(self.1.join(format!("{kind:?}.toml"))),
+                            Some(listener),
+                        )
+                        .unwrap();
+                    }
                 }
                 fn client_setup(&self, _: &mut dyn ClientSetupContext, _: &mut ClientSetupEvent) {
                     self.0.lock().unwrap().push("setup".into());
-                }
-                fn config_loading(
-                    &self,
-                    _: &dyn ConfigContext,
-                    event: &mut ConfigLoadingEvent<'_>,
-                ) {
-                    self.0
-                        .lock()
-                        .unwrap()
-                        .push(format!("{:?}", event.config.kind));
                 }
                 fn screen_opening(
                     &self,
@@ -1427,12 +1450,14 @@ fn client_startup_finishes_configs_before_the_first_runtime_callback() {
                 }
             }
             let seen = Arc::new(Mutex::new(Vec::new()));
-            let mods = vec![ModEntry::new(
+            let temp = tempfile::tempdir().unwrap();
+            let mods: Mods = vec![ModEntry::new(
                 "startup_phase",
-                Box::new(Probe(seen.clone())),
+                Box::new(Probe(seen.clone(), temp.path().to_owned())),
             )]
             .into();
-            mod_platform::testing::with_mods(mods, || {
+            mod_platform::testing::with_mods(mods.clone(), || {
+                mod_platform::__private::part_tests::install_parts_fixture(&mods).unwrap();
                 for pack_error in [None, Some("selected resource pack failed")] {
                     seen.lock().unwrap().clear();
                     with_client_game(|game| {
@@ -1627,7 +1652,7 @@ fn humanoid_arm_pose_mod_reads_mob_state_and_changes_the_model() {
             let models = game.client_res().client_mob_models();
             game.mobs.iter().map(|m| arms(m, models)).collect()
         };
-        game.tick_remote_arm_poses();
+        game.extract_remote_arm_poses();
         {
             let models = game.client_res().client_mob_models();
             assert_eq!(
@@ -1642,7 +1667,7 @@ fn humanoid_arm_pose_mod_reads_mob_state_and_changes_the_model() {
         with_mods(
             vec![ModEntry::new("mob-pose", Box::new(MobPose(calls.clone())))].into(),
             || {
-                game.tick_remote_arm_poses();
+                game.extract_remote_arm_poses();
                 assert_eq!(
                     game.mobs[0].extra.held_arm_pose,
                     [Some(sunrise_core::arm_pose::ArmPose::ThrowTrident), None]
@@ -1659,7 +1684,7 @@ fn humanoid_arm_pose_mod_reads_mob_state_and_changes_the_model() {
                 let empty = Mob::new(60, game.mobs[0].kind.clone(), Vec3::ZERO, 0.0);
                 assert_eq!(game.held_arm_poses(60, &empty), [None; 2]);
                 // The local player's extraction also exposes its actual off-hand stack.
-                game.tick_player_model();
+                game.extract_player_arm_pose();
                 let own = game.client.player_model.as_ref().unwrap();
                 assert_eq!(
                     anim::humanoid_arm_poses(own, own.extra.held_arm_pose, 0.0),
@@ -1668,7 +1693,7 @@ fn humanoid_arm_pose_mod_reads_mob_state_and_changes_the_model() {
             },
         );
         assert_eq!(calls.load(Ordering::Relaxed), 2);
-        game.tick_remote_arm_poses();
+        game.extract_remote_arm_poses();
         let models = game.client_res().client_mob_models();
         assert_eq!(
             game.mobs

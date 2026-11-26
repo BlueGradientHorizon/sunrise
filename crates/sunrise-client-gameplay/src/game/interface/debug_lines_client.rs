@@ -358,7 +358,7 @@ impl ClientGame<'_> {
             self.client.debug,
             reduced,
         ) {
-            d.group(debug_entries::group_key(group), lines);
+            d.group(group, lines);
         }
     }
     /// The camera's feet (`Entity.blockPosition`).

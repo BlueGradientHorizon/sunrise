@@ -21,7 +21,6 @@ pub trait Hooks {
     /// tells nothing until it is. NeoForge's `chunkHolder` is not given:
     /// Sunrise keeps no chunk holders. Server-side.
     #[hook(
-        target = "sunrise_gameplay::game::native_hooks::chunk_ticket_level_updated::ServerGame<'_>::native_chunk_ticket_level_updated",
         dispatch = "flat",
         side = "server",
         contract = "listen",

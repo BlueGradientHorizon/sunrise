@@ -4,6 +4,7 @@
 use super::Dim;
 use super::respawn_anchor::RespawnConfig;
 use sunrise_core::geometry::Vec3;
+use sunrise_gameplay_common::game::player_state::CloneScope;
 
 /// Where a respawn ends, as the server found it: a level, a point and the
 /// player's facing.
@@ -47,7 +48,7 @@ impl crate::game::ServerGame<'_> {
         let (mut level, mut position) = (found.dim.level(), original);
         let (mut yaw, mut pitch) = (found.yaw, found.pitch);
         let mut copy = missing.is_none();
-        self.with_cloning_player(conn, |game| {
+        self.with_cloning_player(conn, CloneScope::LendBody, |game| {
             let player = game.player(uuid)?;
             game.native_player_respawn_position(mod_api::__private::PlayerRespawnPositionCall {
                 player,

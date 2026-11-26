@@ -203,7 +203,7 @@ use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sunrise_gameplay_common::game::native_bots_common::{aabb_of, corners};
+    use sunrise_gameplay_common::game::native_bots_common::aabb_of;
 
     fn input(forward: f32, strafe: f32) -> PlayerInput {
         let mut input = PlayerInput::default();
@@ -417,9 +417,65 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "daily"]
+    fn player_simulate_move_hears_living_travel_edits() {
+        use crate::game::native_entity_refs::tests::with_game;
+        use mod_api::{Flow, Hooks, LivingTravelEvent, LoopContext};
+        use sunrise_level::chunk::Chunk;
+        use {
+            crate::game::server_side::native_item_places::tests::open_to_lan,
+            sunrise_gameplay_common::game::server_side::native_item_places::tests::guest,
+        };
+
+        struct Boost;
+        #[mod_api::__subscriptions]
+        impl Hooks for Boost {
+            fn living_travel(
+                &self,
+                _: &dyn LoopContext,
+                event: &mut LivingTravelEvent<'_>,
+            ) -> Flow {
+                event.velocity[0] += 0.5;
+                Flow::Continue
+            }
+        }
+
+        with_game(|game| {
+            open_to_lan(game);
+            game.server
+                .streaming
+                .insert_remote(&mut game.common.world, Chunk::empty(0, 0));
+            let mut guest = guest(1);
+            guest.position = [1.5, 64.0, 1.5];
+            guest.on_ground = false;
+            guest.loaded = true;
+            guest.motion = Some(Box::new(
+                PlayerMotion::new(game.motion, Vec3::new(1.5, 64.0, 1.5)).unwrap(),
+            ));
+            let uuid = guest.uuid;
+            game.server.lan.as_mut().unwrap().hub.guests.push(guest);
+            let player = game.player(uuid).unwrap();
+
+            let plain = game.player_simulate_move(player, input(0.0, 0.0)).unwrap();
+            let mods: mod_api::Mods = vec![mod_api::ModEntry::new("boost", Box::new(Boost))].into();
+            let boosted = mod_platform::testing::with_mods(mods, || {
+                game.player_simulate_move(player, input(0.0, 0.0)).unwrap()
+            });
+            assert!(
+                (boosted.position[0] - (plain.position[0] + 0.5)).abs() < 1e-6,
+                "expected living_travel velocity edit in simulated move: plain={:?} boosted={:?}",
+                plain.position,
+                boosted.position
+            );
+        });
+    }
+
+    #[test]
     fn boxes_round_trip_and_bad_boxes_are_refused() {
         let b = [0.0, 1.0, 2.0, 3.0, 4.5, 6.0];
-        assert_eq!(corners(aabb_of(b).unwrap()), b);
+        let bounds = aabb_of(b).unwrap();
+        assert_eq!(bounds.min_position().components(), [0.0, 1.0, 2.0]);
+        assert_eq!(bounds.max_position().components(), [3.0, 4.5, 6.0]);
         assert!(aabb_of([1.0, 0.0, 0.0, 0.0, 1.0, 1.0]).is_none());
         assert!(aabb_of([0.0, f64::NAN, 0.0, 1.0, 1.0, 1.0]).is_none());
     }

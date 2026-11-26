@@ -13,7 +13,6 @@ impl crate::game::ServerGame<'_> {
             &self.common.res,
             &self.common.pack,
             &self.common.options,
-            &self.server.settings,
             &sunrise_world::datafix::progress::UpgradeProgress::new(),
         )?;
         self.load_opening_game_rules(&prepared);

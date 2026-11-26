@@ -62,6 +62,7 @@ pub(in crate::game) enum OutputNotice {
 
 pub(crate) struct Probe {
     pub(crate) family: Family,
+    pub(crate) retained: Mutex<Option<mod_api::AttachmentKey<i32>>>,
     pub(crate) calls: AtomicUsize,
     pub(crate) posts: Mutex<Vec<u32>>,
     pub(crate) first_proposal: Mutex<Option<Proposal>>,
@@ -89,7 +90,9 @@ impl Probe {
 
     pub(crate) fn progress(&self, host: &mut dyn mod_api::LevelRandomHost) {
         *self.draw.lock().unwrap() = host.with_random(|random| random.next_long());
-        let _ = VALUE.set(host.attachments(), Holder::Level, 314);
+        if let Some(retained) = self.retained.lock().unwrap().as_ref() {
+            let _ = retained.set_in(host, Holder::Level, 314);
+        }
     }
 }
 
@@ -192,15 +195,19 @@ impl mod_api::BlockPart for HealthyLanding {
 }
 #[mod_api::sunrise_part]
 impl mod_api::EntityPart for GoalPart {
-    fn register_goals(&self, goals: &mut mod_api::GoalRegistrar<'_>) {
-        goals.add_target_goal(
+    fn register_goals(
+        &self,
+        _host: &mut dyn mod_api::ServerHost,
+        event: &mut mod_api::RegisterGoalsEvent<'_, '_>,
+    ) {
+        event.goals.add_target_goal(
             0,
             GoalSpec {
                 probe: self.0.clone(),
                 target: true,
             },
         );
-        goals.add_goal(
+        event.goals.add_goal(
             0,
             GoalSpec {
                 probe: self.0.clone(),
@@ -233,26 +240,13 @@ impl mod_api::Hooks for Hooks {
             self.probe.outputs.lock().unwrap().push(OutputNotice::Egg);
         }
     }
-    fn entity_tick_listened(
-        &self,
-        _: mod_api::HostSide<'_>,
-        event: &mut mod_api::EntityTickListenedEvent,
-    ) {
-        if self.panics {
-            event.listened = true;
-        }
-    }
     fn entity_tick_post(
         &self,
         _: mod_api::HostSide<'_>,
         event: &mut mod_api::EntityTickPostEvent<'_>,
     ) {
         if self.panics {
-            self.probe
-                .posts
-                .lock()
-                .unwrap()
-                .extend_from_slice(event.entities);
+            self.probe.posts.lock().unwrap().push(event.entity);
         }
     }
     fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
@@ -267,8 +261,13 @@ impl mod_api::Hooks for Hooks {
         if !self.panics {
             return;
         }
-        r.register_attachment_type("borrowed-panic:retained", false)
+        let retained = r
+            .register_attachment_type(mod_api::AttachmentDescriptor::new(
+                "borrowed-panic:retained",
+                || 0i32,
+            ))
             .unwrap();
+        *self.probe.retained.lock().unwrap() = Some(retained);
         if self.probe.family.is_goal() {
             r.entity_part("minecraft:zombie", GoalPart(self.probe.clone()));
         }
@@ -370,7 +369,7 @@ pub(crate) const VALUE: AttachmentType<i32> = AttachmentType {
     default: || 0,
     codec: None,
     copy_on_death: false,
-    sync: false,
+    sync_codec: None,
 };
 pub(crate) struct Scratch(pub(crate) std::path::PathBuf);
 impl Drop for Scratch {
@@ -477,7 +476,7 @@ pub(crate) fn prime_hook(mob: &mut Mob, family: Family) {
 }
 
 pub(crate) fn fixture_mob(
-    game: &sunrise_gameplay::game::ServerGame<'_>,
+    game: &mut sunrise_gameplay::game::ServerGame<'_>,
     id: u32,
     family: Family,
     output: Output,
@@ -677,15 +676,6 @@ impl mod_api::Hooks for Consumer {
         self.probe.eggs.lock().unwrap().push(event.entity);
     }
 
-    fn entity_tick_listened(
-        &self,
-        _: mod_api::HostSide<'_>,
-        event: &mut mod_api::EntityTickListenedEvent,
-    ) {
-        if self.panics {
-            event.listened = true;
-        }
-    }
 
     fn entity_tick_post(
         &self,
@@ -693,11 +683,7 @@ impl mod_api::Hooks for Consumer {
         event: &mut mod_api::EntityTickPostEvent<'_>,
     ) {
         if self.panics {
-            self.probe
-                .posts
-                .lock()
-                .unwrap()
-                .extend_from_slice(event.entities);
+            self.probe.posts.lock().unwrap().push(event.entity);
         }
     }
 }

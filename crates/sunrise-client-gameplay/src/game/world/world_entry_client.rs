@@ -9,6 +9,18 @@ impl crate::game::ClientGame<'_> {
     pub(in crate::game) fn client_resolve_enchant_particles(&self) {
         self.resolve_enchant_particles();
     }
+    pub(in crate::game) fn install_pot_patterns(
+        &self,
+        assets: std::collections::HashMap<String, String>,
+    ) {
+        self.client_res().block_entity_render().set_pot_patterns(
+            sunrise_client_render::block_entity_render::pot_pattern_textures(
+                self.common.res.item_defaults(),
+                |pattern| assets.get(pattern).cloned(),
+            ),
+        );
+    }
+
     #[inline(always)]
     pub(in crate::game) fn client_tags_ready(&self) -> bool {
         false
@@ -36,106 +48,63 @@ impl crate::game::ClientGame<'_> {
         log::info!("Sunrise: world entry waiting for world resources");
         Ok(true)
     }
-    /// `CreateWorldScreen.openCreateWorldScreen`: read the world generation
-    /// data the create screen describes, on a worker, then open the screen
-    /// (`title.preparing`).
-    pub(in crate::game::client_side) fn poll_world_creation(&mut self) {
+    /// Yield one frame before validating the selected datapacks.
+    pub(in crate::game::client_side) fn poll_world_creation(&mut self) -> Result<()> {
         let Some(title) = self.client.title.0.as_ref() else {
-            return;
+            return Ok(());
         };
-        if !title.preparing() {
-            return;
+        if !title.preparing() || self.common.rest_loader.is_some() {
+            return Ok(());
         }
-        if self.client.creation_job.0.is_none() {
-            let dir = self.common.options.resources.join("worldgen");
-            let registry = self.common.pack.assets.registry;
-            // The chosen packs' worldgen over the game's own:
-            // `applyNewPackConfig` reloads with the new pack config.
-            let overrides = title
-                .creation_packs()
-                .map(|(dir, packs)| {
-                    sunrise_gameplay_common::game::world_preload::creation_worldgen_overrides(
-                        dir.as_deref(),
-                        &self.common.options.resources,
-                        &packs,
-                        self.common.res.biomes(),
-                        &self.common.pack.additional_data,
-                    )
+        if !std::mem::replace(&mut self.client.creation_read_started, true) {
+            return Ok(());
+        }
+        self.client.creation_read_started = false;
+        let (dir, packs) = title.creation_packs().unwrap_or_default();
+        use sunrise_gameplay_common::game::integrated_link::CreationPackRead;
+        let outcome = self.common.options.read_creation_packs
+            .ok_or("world creation validation is not configured")
+            .map_err(str::to_owned)
+            .and_then(|read| {
+                read(CreationPackRead {
+                    resources: &self.common.res,
+                    pack: &self.common.pack,
+                    options: &self.common.options,
+                    settings: self.client.settings.sim_settings(),
+                    pack_dir: dir.as_deref(),
+                    selected: &packs,
+                    profile_resolver: self.client.profile_resolver,
                 })
-                .unwrap_or_default();
-            let data_source = self.common.pack.data_changes.clone();
-            let job = std::thread::Builder::new()
-                .stack_size(sunrise_threads::GAME_THREAD_STACK_BYTES)
-                .name("world-creation".into())
-                .spawn(move || {
-                    sunrise_sim::vanillagen::shared_data_from(
-                        &dir,
-                        &overrides,
-                        registry,
-                        &data_source,
-                    )
-                    .map(|_| ())
-                    .map_err(|e| e.to_string())
-                });
-            match job {
-                Ok(job) => self.client.creation_job.0 = Some(job),
-                Err(error) => {
-                    log::warn!("Sunrise: world creation worker could not start: {error}");
-                    if let Some(title) = self.client.title.0.as_mut() {
+                .map_err(|error| error.to_string())
+            });
+        if let Some(title) = self.client.title.0.as_mut() {
+            match outcome {
+                Ok(()) => title.finish_preparing(),
+
+
+                Err(e) => {
+                    log::warn!("Sunrise: preparing world creation failed: {e}");
+
+
+
+
+
+                    if !title.pack_validation_failed() {
                         title.finish_preparing();
                         title.failed(format!(
-                            "{}: {error}",
+                            "{}: {e}",
                             sunrise_game_data::lang::get("createWorld.preparing")
                         ));
                     }
                 }
             }
-            return;
         }
-        if !self
-            .client
-            .creation_job
-            .0
-            .as_ref()
-            .is_none_or(std::thread::JoinHandle::is_finished)
-        {
-            return;
-        }
-        let outcome = self
-            .client
-            .creation_job
-            .0
-            .take()
-            .and_then(|job| job.join().ok());
-        if let Some(title) = self.client.title.0.as_mut() {
-            match outcome {
-                Some(Ok(())) => title.finish_preparing(),
-                // `applyNewPackConfig`'s failure: back out of the read with
-                // the message, the Create screen's options intact.
-                outcome => {
-                    let e = outcome
-                        .and_then(|r| r.err())
-                        .unwrap_or_else(|| "the read never ran".to_owned());
-                    log::warn!("Sunrise: preparing world creation failed: {e}");
-                    // Clear the flag first: `failed` sets the error screen
-                    // with Create as its back target, which
-                    // `finish_preparing` would replace with a fresh world.
-                    title.finish_preparing();
-                    title.failed(format!(
-                        "{}: {e}",
-                        sunrise_game_data::lang::get_or(
-                            "createWorld.preparing",
-                            "Preparing for world creation..."
-                        )
-                    ));
-                }
-            }
-        }
+        Ok(())
     }
     pub fn resume_world_entry(&mut self) -> Result<()> {
         self.poll_integrated_start()?;
         self.common.poll_world_rest()?;
-        self.poll_world_creation();
+        self.poll_world_creation()?;
         if self.common.rest_loader.is_some() {
             return Ok(());
         }

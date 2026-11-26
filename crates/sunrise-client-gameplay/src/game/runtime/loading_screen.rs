@@ -76,6 +76,8 @@ pub struct Loading {
     pub session_verifier: SessionVerifier,
     pub window: Option<Arc<Window>>,
     pub renderer: Option<Renderer>,
+    /// The opened GPU device's `max_texture_dimension_2d`, shared with the background loader.
+    pub max_atlas_size: Arc<AtomicU32>,
     /// The boot screen's atlas, until the pack's GUI atlas replaces it.
     pub boot: sunrise_client::hud::HudAtlas,
     pub gui: Option<UiResources>,
@@ -199,7 +201,13 @@ impl Loading {
             None,
             self.settings.sunrise.api,
         ) {
-            Ok(r) => self.renderer = Some(r),
+            Ok(r) => {
+                self.max_atlas_size.store(
+                    r.device.limits().max_texture_dimension_2d,
+                    Ordering::Relaxed,
+                );
+                self.renderer = Some(r);
+            }
             Err(e) => {
                 #[cfg(target_os = "windows")]
                 if let Some(stop) = &boot_paint_stop {
@@ -237,11 +245,26 @@ impl Loading {
     }
     /// The menu bundle arrived: rebuild the loading screen with the real atlas
     /// and title panorama.
-    pub fn set_ui(&mut self, gui: UiResources, root: PathBuf) {
+    pub fn set_ui(
+        &mut self,
+        mut gui: UiResources,
+        root: PathBuf,
+        source: sunrise_assets::resource_source::ResourceSource,
+    ) {
         log::info!(
             "Sunrise: loading the title artwork after {} ms",
             self.started.elapsed().as_millis()
         );
+        if let Some(renderer) = &self.renderer
+            && let Err(error) = gui.stitch_for_device(
+                &source,
+                &self.vanilla_root,
+                renderer.device.limits().max_texture_dimension_2d,
+            )
+        {
+            self.error = Some(error);
+            return;
+        }
         let additional = self.options.as_ref().map_or_else(Vec::new, |options| {
             sunrise_gameplay_common::game::pack_discovery::data_packs(&options.mods)
         });
@@ -320,7 +343,7 @@ impl Loading {
             self.settings.file.double("panoramaScrollSpeed") as f32,
         );
         if let Some(renderer) = &mut self.renderer {
-            match renderer.render(&frame) {
+            match renderer.render(&frame, None) {
                 Ok(true) if self.gui.is_some() && self.menu.pending.is_none() => {
                     self.title_drawn = true;
                 }
@@ -357,20 +380,24 @@ impl Loading {
             renderer.release_surface();
         }
         let renderer_at = Instant::now();
-        let (renderer, clouds) = startup::time("renderer.world", || {
+        let mut pick_hdr = shader_packs::PickHdr::default();
+        let (renderer, required) = startup::time("renderer.world", || {
             build_renderer(
                 window.clone(),
                 options.offscreen,
                 &loaded.pack,
                 &client_pack,
                 &gui,
-                self.renderer.as_ref(),
+                self.renderer.as_ref().map_or(
+                    sunrise_client::gfx::RendererDevice::New,
+                    sunrise_client::gfx::RendererDevice::Reuse,
+                ),
                 loaded.renderer_cpu,
                 self.settings.sunrise.api,
                 self.settings.sunrise.translucent_batching,
                 self.settings.vsync,
                 &self.settings.sunrise,
-                shader_packs::picked_pack_shape(&self.settings),
+                shader_packs::startup_pack_shape(&self.settings, &mut pick_hdr),
                 self.renderer
                     .as_ref()
                     .map(|r| r.display_reading())
@@ -431,9 +458,10 @@ impl Loading {
         let game_ms = game_at.elapsed().as_millis();
         game.client.fullscreen = self.fullscreen;
         game.client.panorama_rotation = self.panorama_rotation;
+        *game.client.native_shaders.pick_hdr.get_mut() = pick_hdr;
         self.menu.handoff(&mut game);
         game.apply_settings();
-        if let Err(error) = clouds {
+        if let Err(error) = required {
             game.selection_reload_failed(&error);
         }
         game.previous = Instant::now();

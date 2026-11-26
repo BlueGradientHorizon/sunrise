@@ -33,6 +33,7 @@ pub(crate) fn install_criteria(
                     json!({"location": {"type": "minecraft:match_tool", "predicate": tool}})
                 })
                 .into(),
+                player: None,
             }],
             requirements: vec![vec!["seen".into()]],
             rewards: Default::default(),

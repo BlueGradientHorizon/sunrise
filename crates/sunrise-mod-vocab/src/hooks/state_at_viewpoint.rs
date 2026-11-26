@@ -15,7 +15,6 @@ pub trait Hooks {
     /// part on any block the subscription check skips the asks; otherwise each block read costs
     /// one table lookup. Diverges from upstream: new hook.
     #[hook(
-        target = "sunrise_client_gameplay::game::native_hooks::state_at_viewpoint::ClientGame<'_>::native_state_at_viewpoint",
         receiver = "read",
         dispatch = "flat",
         side = "client",
@@ -23,7 +22,8 @@ pub trait Hooks {
         out = "seen",
         scope = "block",
         key = "state",
-        neoforge = "IBlockExtension.getStateAtViewpoint, IBlockStateExtension.getStateAtViewpoint"
+        neoforge = "IBlockExtension.getStateAtViewpoint, IBlockStateExtension.getStateAtViewpoint",
+        version = 2
     )]
     fn state_at_viewpoint(
         state: BlockState,

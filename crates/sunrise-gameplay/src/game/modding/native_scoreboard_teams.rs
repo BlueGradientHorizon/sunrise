@@ -1,4 +1,4 @@
-//! Scoreboard team handles for native server mods, and the client's teams.
+//! Scoreboard team handles for native server mods.
 //!
 //! As the objectives of `native_scoreboard.rs`: every write is made on the same `Scoreboard`
 //! `/team` writes, with its methods, so the sync, the save and the selectors need to know
@@ -7,15 +7,15 @@ use super::native_scoreboard::api_text;
 use core::ops::ControlFlow;
 use mod_api::__private::game::*;
 use mod_api::{
-    CollisionRule, ScoreHolder, TeamColor, TeamError, TeamMembersReadError, TeamRef,
-    TeamVisibility, TextFormError,
+    CollisionRule, ScoreHolder, ServerReadError, TeamColor, TeamError, TeamMembersReadError,
+    TeamRef, TeamVisibility, TextFormError,
 };
 use sunrise_game_data::{
     scoreboard::{self as sb, Comp, comp_text},
     text::Text as EngineText,
 };
 
-fn api_visibility(visibility: sb::Visibility) -> TeamVisibility {
+pub(super) fn api_visibility(visibility: sb::Visibility) -> TeamVisibility {
     match visibility {
         sb::Visibility::Always => TeamVisibility::Always,
         sb::Visibility::Never => TeamVisibility::Never,
@@ -33,7 +33,7 @@ fn engine_visibility(visibility: TeamVisibility) -> sb::Visibility {
     }
 }
 
-fn api_collision_rule(rule: sb::CollisionRule) -> CollisionRule {
+pub(super) fn api_collision_rule(rule: sb::CollisionRule) -> CollisionRule {
     match rule {
         sb::CollisionRule::Always => CollisionRule::Always,
         sb::CollisionRule::Never => CollisionRule::Never,
@@ -52,12 +52,12 @@ fn engine_collision_rule(rule: CollisionRule) -> sb::CollisionRule {
 }
 
 /// The API's color of a team, which the board keeps as the color's name.
-fn api_color(team: &sb::Team) -> Option<TeamColor> {
+pub(super) fn api_color(team: &sb::Team) -> Option<TeamColor> {
     team.color.as_deref().and_then(TeamColor::from_name)
 }
 
 #[allow(dead_code)]
-fn api_comp(comp: &Comp) -> Result<mod_api::Text, TextFormError> {
+pub(super) fn api_comp(comp: &Comp) -> Result<mod_api::Text, TextFormError> {
     api_text(&comp_text(comp))
 }
 
@@ -108,17 +108,19 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// `Scoreboard.getPlayerTeams`.
-    pub(in crate::game) fn teams(&self) -> Vec<TeamRef> {
-        if !self.common.is_logical_server() {
-            return Vec::new();
-        }
-        self.common
+    pub(in crate::game) fn visit_teams(
+        &self,
+        visit: &mut dyn FnMut(TeamRef) -> ControlFlow<()>,
+    ) -> Result<ControlFlow<()>, ServerReadError> {
+        let epoch = self.scoreboard_visit_epoch()?;
+        Ok(self
+            .common
             .score
             .board
             .teams
             .iter()
-            .filter_map(|t| self.team_handle(t))
-            .collect()
+            .map(|t| team_ref(epoch, t.identity.0))
+            .try_for_each(visit))
     }
 
     /// `/team add`.
@@ -148,8 +150,8 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// `PlayerTeam.getName`.
-    pub(in crate::game) fn team_name(&self, team: TeamRef) -> Option<String> {
-        self.team_state(team).map(|t| t.name.clone())
+    pub(in crate::game) fn team_name(&self, team: TeamRef) -> Option<&str> {
+        self.team_state(team).map(|t| t.name.as_str())
     }
 
     /// `PlayerTeam.getDisplayName`.
@@ -426,6 +428,10 @@ mod tests {
                 .push(guest(456, 2));
             let (a, b) = (game.player(123).unwrap(), game.player(456).unwrap());
             let text = mod_api::Text::literal;
+            assert_eq!(
+                ScoreboardServerHost::visit_teams(game, &mut |_| panic!("empty board")),
+                Ok(ControlFlow::Continue(()))
+            );
 
             // A name is any string; only a taken one is refused.
             let red = ScoreboardServerHost::add_team(game, "red").unwrap();
@@ -437,6 +443,15 @@ mod tests {
                 assert!(ScoreboardServerHost::add_team(game, odd).is_ok());
             }
             assert_eq!(game.team("red"), Some(red));
+            let mut first_team = Vec::new();
+            assert_eq!(
+                ScoreboardServerHost::visit_teams(game, &mut |team| {
+                    first_team.push(team);
+                    ControlFlow::Break(())
+                }),
+                Ok(ControlFlow::Break(()))
+            );
+            assert_eq!(first_team, [red]);
             assert_eq!(red.name(game).as_deref(), Some("red"));
             let mut unexpected_visits = 0;
             let mut count = |_: &str| {
@@ -562,19 +577,6 @@ mod tests {
                 game.server.lan.as_ref().unwrap().hub.guests[0].scoreboard,
                 view
             );
-
-            // The client's snapshot of the teams reads what the board holds.
-            let board_snapshot = game.score.board.clone();
-            crate::game::native_entity_refs::tests::with_client_game(|client| {
-                client.score.board = board_snapshot;
-                let teams = client.client_teams().unwrap();
-                let sent = teams.iter().find(|t| t.name == "red").unwrap();
-                assert_eq!(sent.display_name, text("Reds"));
-                assert_eq!(sent.color, Some(TeamColor::Blue));
-                assert_eq!(sent.prefix, text("[R] "));
-                assert_eq!(sent.collision_rule, CollisionRule::PushOwnTeam);
-                assert_eq!(sent.members, ["offline"]);
-            });
 
             // Saved, the file holds the team and its members.
             game.save_scoreboard();

@@ -7,7 +7,6 @@ pub trait Hooks {
     /// and nothing was hurt. Listen only. Once for each landing, after the fall's
     /// block reaction. The player's state is swapped in. Server-side.
     #[hook(
-        target = "sunrise_gameplay::game::native_hooks::player_flyable_fall::ServerGame<'_>::native_player_flyable_fall",
         dispatch = "flat",
         side = "server",
         contract = "listen",

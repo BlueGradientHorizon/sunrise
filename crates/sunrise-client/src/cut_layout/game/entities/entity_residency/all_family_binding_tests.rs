@@ -1,4 +1,5 @@
 use super::super::native_entity_refs::tests::with_game;
+use sunrise_gameplay_common::game::test_fixtures::fixture_resident_column;
 use mod_api::DimensionKey;
 use std::{
     num::NonZeroU32,
@@ -17,13 +18,16 @@ static VALUE: AttachmentType<i32> = AttachmentType {
     default: || 0,
     codec: None,
     copy_on_death: false,
-    sync: false,
+    sync_codec: None,
 };
 
 #[test]
 #[ignore = "daily"]
 fn every_ordinary_resident_family_binds_its_actual_owned_slot() {
     with_game(|game| {
+        // A handle resolves only for an entity in an accessible section
+        // (`LevelEntityGetter`); every entity here stands in chunk (0, 0).
+        fixture_resident_column(&mut game.world, (0, 0));
         let index = Arc::new(Mutex::new(AttachmentIndex::default()));
         let key = ("test".into(), "all_resident_families".into());
         let mut maps = Vec::new();
@@ -122,8 +126,20 @@ fn every_ordinary_resident_family_binds_its_actual_owned_slot() {
                 previous: sunrise_core::geometry::Vec3::ZERO,
                 velocity: sunrise_core::geometry::Vec3::ZERO,
                 rotation: [0.0, 0.0],
+                previous_rotation: [0.0, 0.0],
                 owner: None,
                 fall_distance: 0.0,
+                custom_name: None,
+                custom_name_visible: false,
+                no_gravity: false,
+                on_ground: false,
+                tick_count: 0,
+                no_physics: false,
+                horizontal_collision: false,
+                vertical_collision: false,
+                vertical_collision_below: false,
+                fluids: Default::default(),
+                under_water: false,
                 payload_version: 1,
                 payload_bytes: Vec::new(),
                 mount: None,

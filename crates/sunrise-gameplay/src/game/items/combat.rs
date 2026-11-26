@@ -4,6 +4,8 @@ use super::commands_common::Target;
 #[cfg(test)]
 use sunrise_core::random::RandomSource;
 use sunrise_gameplay_common::game::combat_common::{DROWN_EVENT, PlayerCredit};
+use sunrise_gameplay_common::game::creatures::KnownCause;
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
 use {
     sunrise_game_data::text::Text, sunrise_level::particle_options::ParticleType,
     sunrise_sim::health::Attack, sunrise_sim::health::HealthEvent, sunrise_sim::mobs::Damage,
@@ -105,13 +107,11 @@ pub struct CombatTracker {
     /// Player`), not a mob whose UUID the TNT's `owner` names.
     pub blast_owner_player: bool,
     pub(in crate::game) projectile_attacker: Option<(u32, Text)>,
-    pub(in crate::game) enchantment_projectile_attacker: Option<u32>,
+    /// The player shooter identified before the victim took the acting slot.
+    pub(in crate::game) enchantment_projectile_attacker: Option<i32>,
     /// The projectile hitting the player now is another player's that
     /// `ServerPlayer.canHarmPlayer` refuses (the `pvp` rule, an ally).
     pub(in crate::game) refuse_player_hit: bool,
-    /// The hit on the player now runs its post-attack effects (thorns) only
-    /// if the player lives through it (`WitherSkull.onHitEntity`).
-    pub(in crate::game) post_attack_if_alive: bool,
     /// The mob whose swing is being applied, when the caller knows it. Without
     /// it the attacker is the mob nearest to where the hit came from, which
     /// walks every mob.
@@ -138,9 +138,9 @@ pub struct CombatTracker {
     /// fire decides whom the blast may hurt.
     pub explosion_source: Option<u32>,
     /// The primed TNT, TNT cart, fireball, wither skull or end crystal
-    /// exploding now, by entity id (`Explosion.getDirectSourceEntity`; a
-    /// mob's is `explosion_source`).
-    pub explosion_direct: Option<u32>,
+    /// exploding now, by entity id and type (`Explosion.getDirectSourceEntity`;
+    /// a mob's is `explosion_source`).
+    pub explosion_direct: Option<(u32, &'static str)>,
     /// The exploding mob as predicates see it (`ServerExplosion.source`,
     /// `ServerPlayer.currentExplosionCause`), for a mob already out of the list.
     pub(in crate::game) explosion_cause: Option<sunrise_sim::advancements::EntityView>,
@@ -156,6 +156,9 @@ pub struct CombatTracker {
     /// `blast_hit_list`'s ids as a set, so a walk's membership check stays
     /// constant time however large the list is.
     pub(in crate::game) blast_hit_ids: std::collections::HashSet<u32>,
+    /// The one list entry the blast is reaching now: while it is set, every pass that asks
+    /// [`Self::visits`] sees only that entity.
+    pub blast_turn: Option<u32>,
     /// The blast's direct source is in water (`Explosion.getDirectSourceEntity`
     /// `.isInWater`): paintings, item frames and cushions ignore it
     /// (`BlockAttachedEntity.ignoreExplosion`).
@@ -197,7 +200,8 @@ impl CombatTracker {
     /// the walk, unless a listening `explosion_detonate` left a list, and
     /// then only what that list names is.
     pub fn visits(&self, id: u32) -> bool {
-        self.blast_hit_list.is_none() || self.blast_hit_ids.contains(&id)
+        self.blast_turn.is_none_or(|turn| turn == id)
+            && (self.blast_hit_list.is_none() || self.blast_hit_ids.contains(&id))
     }
 
     /// The attack lent by the enclosing [`Game::with_attack`] (`damage_level_of!(game, game.combat.attack(), .., ..)`).
@@ -299,7 +303,9 @@ impl crate::game::ServerGame<'_> {
             None => Text::translate(&format!("entity.{}", m.kind.id.replace(':', ".")), &[]),
         })
     }
-    /// `getLastHurtByMob`: the last mob to hurt the player, for 100 ticks.
+    /// `getLastHurtByMob`: the last mob to hurt the player, for 100 ticks. The id is a
+    /// player's too when a player dealt the hit (`Who::Mob` names any entity id), which
+    /// `OwnerHurtByTargetGoal` resolves through the tick's player selection.
     pub(in crate::game::server_side) fn player_hurt_by(
         &self,
     ) -> Option<(sunrise_sim::mobs::Who, i64)> {
@@ -1055,7 +1061,8 @@ impl crate::game::ServerGame<'_> {
 
 /// Hits one mob's tick deals another, handled after the mob loop.
 impl crate::game::ServerGame<'_> {
-    /// A melee hit on another mob, then `postAttack`; whether it landed.
+    /// A melee hit on another mob, then `postAttack`: the victim's
+    /// equipment, then the attacker's weapon; whether it landed.
     pub(in crate::game::server_side) fn mob_attacks_mob(
         &mut self,
         target: u32,
@@ -1089,9 +1096,13 @@ impl crate::game::ServerGame<'_> {
             _ => None,
         };
         let landed = match target {
-            Who::Player => {
-                self.hurt_player_from(amount, Some(from), "minecraft:mob_attack", Some(mob), false)
-            }
+            Who::Player => self.hurt_player_from(
+                amount,
+                Some(from),
+                "minecraft:mob_attack",
+                mob.map_or(KnownCause::None, KnownCause::Entity),
+                false,
+            ),
             Who::Mob(id) => self.mob_attacks_mob(id, amount, source),
         };
         self.server.combat.0.hit_landed = landed;
@@ -1101,17 +1112,20 @@ impl crate::game::ServerGame<'_> {
             }
             return;
         }
+        let source = mob.and_then(|id| self.entity(id));
         match target {
             Who::Player => {
                 self.server.combat.0.stuck.add_stinger();
                 if poison_ticks > 0 {
-                    self.give_player_effect("minecraft:poison", poison_ticks, 0);
+                    self.give_player_effect_from("minecraft:poison", poison_ticks, 0, source);
                 }
             }
             Who::Mob(id) if poison_ticks > 0 => {
-                if let Some(t) = self.common.mobs.iter_mut().find(|m| m.id == id) {
-                    t.add_effect("minecraft:poison", poison_ticks, 0);
-                }
+                self.add_mob_effect(
+                    id,
+                    sunrise_level::effects::EffectInstance::new("poison", poison_ticks, 0),
+                    source,
+                );
             }
             Who::Mob(_) => {}
         }

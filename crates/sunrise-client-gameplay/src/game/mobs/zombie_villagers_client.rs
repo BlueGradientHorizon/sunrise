@@ -8,12 +8,7 @@ impl ClientGame<'_> {
             && let Some(sunrise_sim::mobs::MobEvent::Sound(name, at, volume, pitch)) =
                 zombie_villager::cure_sound(m)
         {
-            self.client.audio.0.play_unshared(
-                &format!("minecraft:{name}"),
-                Some(at),
-                volume,
-                pitch,
-            );
+            self.play_audio_unshared(&format!("minecraft:{name}"), Some(at), volume, pitch);
         }
     }
 }

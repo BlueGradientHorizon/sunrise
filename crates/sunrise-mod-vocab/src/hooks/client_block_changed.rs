@@ -28,7 +28,6 @@ vanilla, and told when the acknowledgement applies it. A write that keeps the st
 An integrated world's own blocks are the server's `block_changed`; a level the server opens for
 viewing is not told."##]
     #[hook(
-        target = "sunrise_client_gameplay::game::native_hooks::client_block_changed::ClientGame<'_>::native_client_block_changed",
         receiver = "read",
         dispatch = "flat",
         side = "client",

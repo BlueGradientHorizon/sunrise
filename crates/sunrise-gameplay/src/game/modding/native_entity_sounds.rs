@@ -36,7 +36,14 @@ impl crate::game::ServerGame<'_> {
     /// phantoms, shulkers, slimes and a killer bunny are `Hostile`; dropped
     /// items and experience orbs `Ambient`; every other entity `Neutral`.
     pub fn entity_sound_source(&self, entity: EntityRef) -> Option<SoundSource> {
-        Some(match self.native_entity_target(entity)? {
+        self.target_sound_source(self.native_entity_target(entity)?)
+    }
+
+    pub(in crate::game::server_side) fn target_sound_source(
+        &self,
+        target: Target,
+    ) -> Option<SoundSource> {
+        Some(match target {
             Target::Player | Target::Guest(_) => SoundSource::Players,
             Target::Mob(id) => {
                 let m = self.common.mobs.iter().find(|m| m.id == id)?;
@@ -61,8 +68,7 @@ impl crate::game::ServerGame<'_> {
     /// the entity under its sound source, for the players within range. A
     /// silent mob plays nothing, as vanilla's check is `isSilent`; a player
     /// (`Player.playSound`) doesn't hear it themself, their own client plays
-    /// it. True means queued, not heard; false for an unknown `minecraft:`
-    /// event or a volume or pitch that isn't a finite non-negative number.
+    /// it. True means queued, not heard. Registered events go by ID and other valid keys by name.
     pub fn entity_play_sound(
         &mut self,
         entity: EntityRef,
@@ -99,6 +105,7 @@ impl crate::game::ServerGame<'_> {
             pitch,
             except,
             entity: None,
+            inline_range: None,
             seed: None,
         })
     }

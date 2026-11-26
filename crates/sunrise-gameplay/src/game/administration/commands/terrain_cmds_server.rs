@@ -1,6 +1,5 @@
 use super::{Arg, Context, R, Target, err, items::Owner};
 use crate::game::commands::terrain_cmds::holder;
-use crate::game::commands::terrain_cmds::loot_location_block;
 use crate::game::commands::terrain_cmds::num;
 use sunrise_command::CommandError;
 #[allow(unused_imports)]
@@ -27,6 +26,9 @@ impl crate::game::ServerGame<'_> {
                     let json = sunrise_game_data::scoreboard::tag_to_json(&tag);
                     sunrise_world::loot::validate_loot_table(&json)
                         .map_err(|e| err("argument.nbt.invalid", &[&e]))?;
+                    let prepared = server_world_items!(self)
+                        .prepare_inline_loot_table(&json)
+                        .map_err(|e| err("argument.nbt.invalid", &[&e.to_string()]))?;
                     // LootCommand's omitted fishing tool is EMPTY, not mainhand.
                     let held = if id == "loot.fish"
                         && (ctx.get("tool").is_some() || ctx.has("mainhand") || ctx.has("offhand"))
@@ -41,19 +43,20 @@ impl crate::game::ServerGame<'_> {
                                 .server
                                 .rand_sequences
                                 .get(sequence, self.common.level.seed);
-                            server_world_items!(self).inline_loot_table_for_command(
-                                &json,
+                            server_world_items!(self).roll_prepared_inline_loot_table_for_command(
+                                &prepared,
                                 held.as_ref(),
                                 random,
                                 keep_empty,
                             )
                         }
-                        None => server_world_items!(self).inline_loot_table_for_command(
-                            &json,
-                            held.as_ref(),
-                            &mut self.common.world.random,
-                            keep_empty,
-                        ),
+                        None => server_world_items!(self)
+                            .roll_prepared_inline_loot_table_for_command(
+                                &prepared,
+                                held.as_ref(),
+                                &mut self.common.world.random,
+                                keep_empty,
+                            ),
                     };
                     (drops, None)
                 } else {
@@ -95,8 +98,7 @@ impl crate::game::ServerGame<'_> {
                 };
                 let ty = self.target_type(t);
                 // `EntityType.getDefaultLootTable`, in the type's namespace.
-                let (namespace, path) = ty.split_once(':').unwrap_or(("minecraft", ty.as_str()));
-                let table = format!("{namespace}:entities/{path}");
+                let table = sunrise_sim::mobs::drops::entity_type_loot_table(&ty);
                 if t == Target::Player || !world_items!(self).has_loot_table(&table) {
                     return Err(err(
                         "commands.drop.no_loot_table.entity",
@@ -106,7 +108,7 @@ impl crate::game::ServerGame<'_> {
                 // LootCommand.dropKillLoot: the source's entity is the killer.
                 // A connected player is the last damage player, and its own
                 // stack counts; it is in place only to read that stack.
-                let guest = match self.server.command_source.map(|s| s.entity) {
+                let guest = match self.server.command_source.as_ref().map(|s| s.entity) {
                     Some(Some(Target::Guest(conn))) => self.for_player(Target::Guest(conn), |g| {
                         g.slot_get(&super::items::Slot::Inv(g.selected))
                     }),
@@ -116,7 +118,7 @@ impl crate::game::ServerGame<'_> {
                     Some(held) => (true, held),
                     None => (
                         matches!(
-                            self.server.command_source.map(|s| s.entity),
+                            self.server.command_source.as_ref().map(|s| s.entity),
                             None | Some(Some(Target::Player))
                         ),
                         self.slot_get(&super::items::Slot::Inv(self.common.selected)),
@@ -129,6 +131,7 @@ impl crate::game::ServerGame<'_> {
                     killer: self
                         .server
                         .command_source
+                        .as_ref()
                         .map(|s| s.entity)
                         .unwrap_or(Some(Target::Player)),
                     by_player,
@@ -156,7 +159,7 @@ impl crate::game::ServerGame<'_> {
                     pending.record_saved(p, &saved);
                 }
                 // LootCommand: the source's entity is `this`, if it has one.
-                let entity = match self.server.command_source.map(|s| s.entity) {
+                let entity = match self.server.command_source.as_ref().map(|s| s.entity) {
                     None | Some(Some(Target::Player)) => Some(self.native_clicker().1 as u32),
                     Some(Some(Target::Guest(conn))) => self
                         .player_entity_id_by_connection(Some(conn))
@@ -166,25 +169,10 @@ impl crate::game::ServerGame<'_> {
                     }
                     Some(None) => None,
                 };
-                // The hook may borrow the live level mutably. Keep a read-only
-                // view of the location for this roll rather than borrow Game.
-                let mut chunks = sunrise_level::chunk_map::ChunkMap::default();
-                for (&key, chunk) in self.common.world.chunks.iter() {
-                    chunks.insert(key, chunk.clone());
-                }
-                let items = self
-                    .common
-                    .server_items
-                    .clone()
-                    .unwrap_or_else(|| std::sync::Arc::new(world_items!(self).clone()));
-                let registry = self.common.pack.assets.registry;
-                let location = |condition: &serde_json::Value| {
-                    loot_location_block(condition, p, &chunks, registry, &items)
-                };
+                // The roll's location checks read the level at the block's centre.
                 let roll = sunrise_items::items::BlockLootRoll {
                     held: tool.as_ref(),
                     keep_empty,
-                    location: Some(&location),
                     breaker: entity.is_some(),
                     ..Default::default()
                 };
@@ -402,6 +390,7 @@ impl crate::game::ServerGame<'_> {
         let entity = self
             .server
             .command_source
+            .as_ref()
             .and_then(|s| s.entity)
             .unwrap_or(Target::Player);
         let slot = if ctx.has("offhand") {

@@ -559,8 +559,7 @@ pub(in crate::game) mod tests {
                     .set_read_timeout(Some(std::time::Duration::from_secs(5)))
                     .unwrap();
                 finish_login(game, &mut server);
-                game.native_lifecycle
-                    .begin_open(mod_api::Authority::RemoteClient);
+                game.native_lifecycle.begin_open(None);
                 game.world
                     .chunks
                     .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
@@ -919,7 +918,7 @@ pub(in crate::game) mod tests {
                         position: Vec3::new(6.5, 70.0, 2.5),
                         yaw: 0.0,
                         pitch: 0.0,
-                        item_transformation: None,
+                        display: None,
                         interaction: None,
                     });
             }

@@ -14,6 +14,7 @@ use sunrise_gameplay_common::game::fishing_common::inside_medium;
 use sunrise_gameplay_common::game::fishing_common::{
     Hook, HookLerp, HookMedium, SIZE, State, bite_impulse, bounds, rebound, synchronized_random,
 };
+use sunrise_gameplay_common::game::item_abilities::ItemAbilitiesGameExt1 as _;
 use sunrise_protocol::entity_data::{Value, serializer};
 use sunrise_sim::advancements::EntityView;
 use sunrise_sim::lan::entity::States;
@@ -56,6 +57,7 @@ pub fn fishing_loot(
     level_random: &mut LegacyRandom,
     world_seed: i64,
     biome: Option<&str>,
+    location: Option<sunrise_world::loot::LootLocation<'_>>,
     open_water: bool,
     params: &sunrise_world::loot::EntityLootParams,
 ) -> Vec<sunrise_world::loot::LootStack> {
@@ -64,10 +66,18 @@ pub fn fishing_loot(
             table,
             sequences.get(sequence, world_seed),
             biome,
+            location,
             Some(open_water),
             params,
         ),
-        None => loot.roll_as(table, level_random, biome, Some(open_water), params),
+        None => loot.roll_as(
+            table,
+            level_random,
+            biome,
+            location,
+            Some(open_water),
+            params,
+        ),
     }
 }
 
@@ -297,7 +307,7 @@ impl crate::game::ServerGame<'_> {
                 .map(|orb| orb.value)
                 .collect();
             rows.push(serde_json::json!({
-                "seed": seed, "level_next": self.world.random.next_long(), "items": items, "xp": xp,
+                "seed": seed, "level_next": self.common.world.random.next_long(), "items": items, "xp": xp,
             }));
         }
         rows
@@ -322,7 +332,7 @@ impl crate::game::ServerGame<'_> {
             .unwrap();
         self.level_set(block, water).unwrap();
         assert_eq!(
-            self.world.block(block[0], block[1], block[2]),
+            self.common.world.block(block[0], block[1], block[2]),
             water,
             "bobbing fixture water not placed"
         );
@@ -401,9 +411,18 @@ impl crate::game::ServerGame<'_> {
         self.level_set(block, old_block).unwrap();
         rows
     }
+    /// Whether `stack` holds a cast line as a rod does (`fishing_rod_cast`).
+    fn casts(&self, stack: &ItemStack) -> bool {
+        self.stack_can_perform(
+            stack,
+            sunrise_gameplay_common::game::item_abilities::ability::FISHING_ROD_CAST,
+            self.is_rod(stack),
+        )
+    }
+    /// `FishingHook.shouldStopFishing`: a hand still holds a casting stack.
     pub(in crate::game::server_side) fn holds_rod(&self) -> bool {
-        self.common.held().is_some_and(|s| self.is_rod(s))
-            || self.common.offhand.as_ref().is_some_and(|s| self.is_rod(s))
+        self.common.held().is_some_and(|s| self.casts(s))
+            || self.common.offhand.as_ref().is_some_and(|s| self.casts(s))
     }
     /// `FishingRodItem.use`.
     pub fn use_fishing_rod(&mut self, stack: &ItemStack) -> bool {
@@ -451,9 +470,6 @@ impl crate::game::ServerGame<'_> {
         } else {
             let pitch = 0.4 / (self.common.world.random.next_float() * 0.4 + 0.8);
             self.server_play_sound("minecraft:entity.fishing_bobber.throw", at, 0.5, pitch);
-            // FishingHook(player, level, luck, lureSpeed)
-            let lure = stack.enchantment_level("minecraft:lure") as i32 * 5 * 20;
-            let luck = stack.enchantment_level("minecraft:luck_of_the_sea") as i32;
             let (yaw, pitch) = (self.common.yaw, self.common.pitch);
             let (y_sin, y_cos, dir_y) = cast_direction(yaw, pitch);
             let eye_y = pos.y + f64::from(eye_height);
@@ -463,6 +479,24 @@ impl crate::game::ServerGame<'_> {
                 eye_y,
                 pos.z - f64::from(y_cos) * 0.3,
             );
+            // FishingRodItem samples lure time, then luck, from the fisher's stream.
+            let shooter = self.own_entity_id() as u32;
+            let lure = self.entity_enchantment_value(
+                stack,
+                shooter,
+                "minecraft:player",
+                "minecraft:fishing_time_reduction",
+                0.0,
+            );
+            let lure = ((if lure < 0.0 { 0.0 } else { lure }) * 20.0) as i32;
+            let luck = (self.entity_enchantment_value(
+                stack,
+                shooter,
+                "minecraft:player",
+                "minecraft:fishing_luck_bonus",
+                0.0,
+            ) as i32)
+                .max(0);
             // The hook's own random (`Entity.random`).
             let mut random = random_source::entity();
             let uuid = sunrise_sim::save::insecure_uuid(&mut random);
@@ -487,6 +521,9 @@ impl crate::game::ServerGame<'_> {
                 left_owner: false,
                 yaw: hook_yaw,
                 pitch: hook_pitch,
+                // Projectile.shoot ends with yRotO = getYRot(), xRotO = getXRot().
+                previous_yaw: hook_yaw,
+                previous_pitch: hook_pitch,
                 last_deflected_by: None,
                 needs_sync: false,
                 tick_count: 0,
@@ -632,23 +669,33 @@ impl crate::game::ServerGame<'_> {
             // `LootContextParamSets.FISHING`: the hook is THIS_ENTITY, the rod
             // the TOOL, and the hook's position the ORIGIN; its owner is the
             // attacking entity.
+            let origin = [hook.position.x, hook.position.y, hook.position.z];
             let params = hook_params(luck, Some(self.killer_loot_entity(None)));
             let caller = self.caller_loot(
-                Some([hook.position.x, hook.position.y, hook.position.z]),
+                Some(origin),
                 Some(sunrise_gameplay_common::game::creatures::to_loot(rod)),
             );
+            let mut sequences = std::mem::take(&mut self.server.rand_sequences);
+            let mut random = self.common.world.random.clone();
             let items = caller.with(|| {
+                let level = crate::game::advancements::View(&*self);
+                let read = |predicate: &serde_json::Value, at: [f64; 3]| {
+                    sunrise_sim::advancements::location(predicate, at, &level)
+                };
                 fishing_loot(
                     &loot,
                     table,
-                    &mut self.server.rand_sequences,
-                    &mut self.common.world.random,
+                    &mut sequences,
+                    &mut random,
                     self.common.level.seed,
                     biome.as_deref(),
+                    Some(sunrise_sim::advancements::loot_location(origin, &read)),
                     hook.open_water,
                     &params,
                 )
             });
+            self.server.rand_sequences = sequences;
+            self.common.world.random = random;
             let mut caught: Vec<ItemStack> = items
                 .into_iter()
                 .map(|stack| {
@@ -939,7 +986,8 @@ impl crate::game::ServerGame<'_> {
             return None;
         }
         h.tick_count += 1;
-        let mut old_yaw = h.yaw;
+        h.previous_yaw = h.yaw;
+        h.previous_pitch = h.pitch;
         // Projectile.tick: update leftOwner using the caster's full root-vehicle tree.
         if !h.left_owner {
             let swept = h
@@ -1097,7 +1145,7 @@ impl crate::game::ServerGame<'_> {
                         match hit_entity(&mut h, id, breeze.is_some()) {
                             EntityCollision::Deflected { first, rot } => {
                                 if first {
-                                    old_yaw += rot;
+                                    h.previous_yaw += rot;
                                     if let Some(at) = breeze {
                                         self.server_play_sound(
                                             "minecraft:entity.breeze.deflect",
@@ -1374,9 +1422,9 @@ impl crate::game::ServerGame<'_> {
             );
             // FishingHook.tick turns before grounding or drag zeros/scales motion.
             let [yaw, pitch] = hook_rotation(h.velocity);
-            let lerp = sunrise_sim::arrows::lerp_rotation;
-            h.yaw = lerp(old_yaw, yaw);
-            h.pitch = lerp(h.pitch, pitch);
+            let lerp = sunrise_sim::entities::arrows::lerp_rotation;
+            h.yaw = lerp(h.previous_yaw, yaw);
+            h.pitch = lerp(h.previous_pitch, pitch);
             if h.state == State::Flying && (h.ground.on_ground || h.ground.horizontal_collision) {
                 h.velocity = Vec3::ZERO;
             }
@@ -1832,6 +1880,7 @@ pub(in crate::game) mod tests {
                 &mut level_random,
                 seed,
                 None,
+                None,
                 true,
                 &super::hook_params(0.0, None),
             );
@@ -2036,6 +2085,8 @@ pub(in crate::game) mod tests {
             ground: sunrise_world::ground_support::GroundState::from_ground_flag(true),
             vertical_collision: false,
             age: 0,
+            stack_revision: 0,
+            lifespan: ItemEntity::LIFETIME,
             pickup_delay: 0,
             bob_offset: 0.0,
             ticks: 0,

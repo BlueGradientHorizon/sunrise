@@ -16,7 +16,7 @@ impl crate::game::ClientGame<'_> {
         seq: i32,
     ) -> bool {
         let pos = hit.pos;
-        let (Some(held), Some(mut state)) = (held, self.common.campfire_to_douse(pos, held)) else {
+        let (Some(held), Some(mut state)) = (held, self.campfire_to_douse(pos, held)) else {
             return false;
         };
         state.properties.insert("lit".into(), "false".into());

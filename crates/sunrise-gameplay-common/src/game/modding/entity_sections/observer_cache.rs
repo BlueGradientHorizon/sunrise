@@ -1,10 +1,6 @@
 //! Retain the live observer's two allocations across borrowed creature passes.
-#[allow(unused_imports)]
 use super::{EntitySections, LiveSectionObserver, Scope};
-#[allow(unused_imports)]
 use std::{cell::RefCell, rc::Rc};
-#[allow(unused_imports)]
-use sunrise_sim::mobs::living::section_writes::Observer;
 
 pub(in crate::game) type SharedSections = Rc<RefCell<EntitySections>>;
 pub(in crate::game) type SharedObserver = Rc<RefCell<LiveSectionObserver>>;
@@ -49,7 +45,7 @@ impl ObserverCache {
         &mut self,
         sections: &mut EntitySections,
         scope: Option<Scope>,
-    ) -> (Option<SharedSections>, Option<Observer>) {
+    ) -> (Option<SharedSections>, Option<SharedObserver>) {
         let shared = self.sections.get_or_insert_with(Default::default);
         std::mem::swap(sections, &mut shared.borrow_mut());
         let observer = scope.map(|scope| {
@@ -59,8 +55,12 @@ impl ObserverCache {
                     scope,
                 )))
             });
-            observer.borrow_mut().scope = scope;
-            Rc::clone(observer) as Observer
+            {
+                let mut live = observer.borrow_mut();
+                live.scope = scope;
+                live.current = None;
+            }
+            Rc::clone(observer)
         });
         (Some(Rc::clone(shared)), observer)
     }

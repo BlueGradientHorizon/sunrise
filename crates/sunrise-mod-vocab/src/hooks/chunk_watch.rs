@@ -10,7 +10,6 @@ pub trait Hooks {
     /// the state after that step; the order per player and chunk is vanilla's.
     /// Server-side.
     #[hook(
-        target = "sunrise_gameplay::game::native_hooks::chunk_watch::ServerGame<'_>::native_chunk_watch",
         dispatch = "flat",
         side = "server",
         contract = "listen",
@@ -23,7 +22,6 @@ pub trait Hooks {
     /// network step for the level, with the state after that step, as
     /// `chunk_watch`. Server-side.
     #[hook(
-        target = "sunrise_gameplay::game::native_hooks::chunk_watch::ServerGame<'_>::native_chunk_sent",
         dispatch = "flat",
         side = "server",
         contract = "listen",
@@ -38,7 +36,6 @@ pub trait Hooks {
     /// with the state after that step, as `chunk_watch`. Not told when the
     /// server stops. Server-side.
     #[hook(
-        target = "sunrise_gameplay::game::native_hooks::chunk_watch::ServerGame<'_>::native_chunk_unwatch",
         dispatch = "flat",
         side = "server",
         contract = "listen",

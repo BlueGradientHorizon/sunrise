@@ -1,13 +1,14 @@
 //! #795, the mob slice: a handle fired inside a mob's own tick resolves the
 //! mob the tick holds out of the game, without a copy or a placeholder.
 use mod_api::{
-    Despawn, EntityTickListenedEvent, EntityTickPreEvent, HostSide, ModEntry, ServerHost,
+    Despawn, EntityTickPreEvent, HostSide, ModEntry, ServerHost,
 };
 use std::sync::{
     Arc, Mutex,
     atomic::{AtomicU32, Ordering},
 };
 use sunrise_core::geometry::Vec3;
+use sunrise_gameplay_common::game::{TryIntoApi as _, chat_common::ChatCommonGameExt1 as _};
 use sunrise_sim::mobs::Mob;
 
 /// The `mob_despawn` facts a listener reads through its handle: its own
@@ -46,14 +47,15 @@ pub(crate) struct MoveOnPre {
 
 #[mod_api::__subscriptions]
 impl mod_api::Hooks for MoveOnPre {
-    fn entity_tick_listened(&self, _: HostSide<'_>, event: &mut EntityTickListenedEvent) {
-        event.listened = true;
-    }
-    fn entity_tick_pre(&self, host: HostSide<'_>, event: &mut EntityTickPreEvent<'_>) {
+    fn entity_tick_pre(
+        &self,
+        host: HostSide<'_>,
+        event: &mut EntityTickPreEvent<'_>,
+    ) -> mod_api::Flow {
         let HostSide::Server(host) = host else {
             panic!("server fixture");
         };
-        if event.entities.contains(&self.id) {
+        if event.entity == self.id {
             let entity = host.entity(self.id).expect("a live handle in its own Pre");
             let at = entity
                 .position(host)
@@ -64,6 +66,7 @@ impl mod_api::Hooks for MoveOnPre {
                 "the tick view writes its position"
             );
         }
+        mod_api::Flow::Continue
     }
 }
 
@@ -331,8 +334,8 @@ pub(crate) struct ExtendLife {
 
 #[mod_api::__subscriptions]
 impl mod_api::Hooks for ExtendLife {
-    fn item_expire(&self, _: &mut dyn ServerHost, event: &mut mod_api::ItemExpireEvent<'_>) {
-        if event.entity == self.id.load(Ordering::Relaxed) {
+    fn item_expire(&self, _: &mut dyn ServerHost, event: &mut mod_api::ItemExpireEvent) {
+        if event.item.entity().id() == self.id.load(Ordering::Relaxed) {
             event.extra_life += 100;
         }
     }
@@ -348,14 +351,15 @@ pub(crate) struct DiscardOnPre {
 
 #[mod_api::__subscriptions]
 impl mod_api::Hooks for DiscardOnPre {
-    fn entity_tick_listened(&self, _: HostSide<'_>, event: &mut EntityTickListenedEvent) {
-        event.listened = true;
-    }
-    fn entity_tick_pre(&self, host: HostSide<'_>, event: &mut EntityTickPreEvent<'_>) {
+    fn entity_tick_pre(
+        &self,
+        host: HostSide<'_>,
+        event: &mut EntityTickPreEvent<'_>,
+    ) -> mod_api::Flow {
         let HostSide::Server(host) = host else {
             panic!("server fixture");
         };
-        if event.entities.contains(&self.id) {
+        if event.entity == self.id {
             let victim = host
                 .entity(self.victim)
                 .expect("the other mob is live at the Pre");
@@ -366,6 +370,7 @@ impl mod_api::Hooks for DiscardOnPre {
                 .unwrap()
                 .push((self.victim, discarded, self_live));
         }
+        mod_api::Flow::Continue
     }
 }
 
@@ -396,10 +401,8 @@ fn a_tick_hook_discards_another_mob_nested() {
     });
 }
 
-/// What a tick listener heard: each call's phase and entities, and at a Post where the first
-/// of them stands. Names the types of `named` to `entity_tick_each`.
+/// A tick listener that records the phase, entity and position at Post.
 pub(crate) struct TickTiming {
-    pub(crate) named: &'static [&'static str],
     pub(crate) replace_cancels: bool,
     pub(crate) heard: Arc<Mutex<TickCalls>>,
 }
@@ -409,43 +412,36 @@ pub(crate) type TickCalls = Vec<(&'static str, Vec<u32>, Option<[f64; 3]>)>;
 
 #[mod_api::__subscriptions]
 impl mod_api::Hooks for TickTiming {
-    fn entity_tick_listened(&self, _: HostSide<'_>, event: &mut EntityTickListenedEvent) {
-        event.listened = true;
-    }
-    fn entity_tick_pre(&self, _: HostSide<'_>, event: &mut EntityTickPreEvent<'_>) {
+    fn entity_tick_pre(
+        &self,
+        _: HostSide<'_>,
+        event: &mut EntityTickPreEvent<'_>,
+    ) -> mod_api::Flow {
         let mut heard = self.heard.lock().unwrap();
-        heard.push(("pre", event.entities.to_vec(), None));
-        if self.replace_cancels {
-            event.canceled.clear();
-            if event.entities == [71] {
-                event.canceled.push(71);
-            }
+        heard.push(("pre", vec![event.entity], None));
+        if self.replace_cancels && event.entity == 71 {
+            return mod_api::Flow::Cancel;
         }
+        mod_api::Flow::Continue
     }
     fn entity_tick_post(&self, host: HostSide<'_>, event: &mut mod_api::EntityTickPostEvent<'_>) {
         let HostSide::Server(host) = host else {
             panic!("server fixture");
         };
         let at = host
-            .entity(event.entities[0])
+            .entity(event.entity)
             .and_then(|entity| entity.position(host));
         let mut heard = self.heard.lock().unwrap();
-        heard.push(("post", event.entities.to_vec(), at));
-    }
-    fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
-        for kind in self.named {
-            r.entity_tick_each(kind);
-        }
+        heard.push(("post", vec![event.entity], at));
     }
 }
 
 /// The two pigs' tick hooks through the real creature pass; the first pig falls in its tick.
-pub(crate) fn pig_ticks(named: bool, replace_cancels: bool) -> TickCalls {
+pub(crate) fn pig_ticks(replace_cancels: bool) -> TickCalls {
     let heard = Arc::new(Mutex::new(Vec::new()));
     let mods: mod_api::Mods = vec![ModEntry::new(
         "mob-tick-timing",
         Box::new(TickTiming {
-            named: if named { &["minecraft:pig"] } else { &[] },
             replace_cancels,
             heard: heard.clone(),
         }),
@@ -468,12 +464,83 @@ pub(crate) fn pig_ticks(named: bool, replace_cancels: bool) -> TickCalls {
     std::mem::take(&mut *heard.lock().unwrap())
 }
 
+#[test]
+#[ignore = "daily"]
+fn lethal_burning_applies_totem_effects_before_the_effect_pass() {
+    with_two_pigs(|game| {
+        game.build_registries();
+        game.mobs.update(0, |mob| {
+            mob.health = 1.0;
+            mob.fire_ticks = 20;
+            mob.add_effect("minecraft:poison", 25, 0);
+            mob.extra
+                .set_main_hand_stack(Some(sunrise_items::items::ItemStack::new(
+                    "minecraft:totem_of_undying",
+                    1,
+                )));
+        });
+        game.tick_creature_entities().unwrap();
+        let mob = game.mobs.iter().find(|mob| mob.id == 71).unwrap();
+        assert!(mob.alive());
+        assert!(mob.extra.main_hand_stack().is_none());
+        assert!(!mob.has_effect("minecraft:poison"));
+        assert_eq!(
+            mob.extra
+                .effects
+                .iter()
+                .find(|e| e.id == "minecraft:regeneration")
+                .map(|e| e.duration),
+            Some(899),
+            "the new regeneration, not the pre-hit effects, gets this tick"
+        );
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn trader_milk_finishes_before_its_own_entity_tick_post() {
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    let mods: mod_api::Mods = vec![ModEntry::new(
+        "trader-drink-post",
+        Box::new(TraderDrinkPost(seen.clone())),
+    )]
+    .into();
+    mod_platform::testing::with_mods(mods, || {
+        with_two_pigs(|game| {
+            game.build_registries();
+            game.world.day_time = 6000;
+            let kind = game
+                .res
+                .mob_types()
+                .get("minecraft:wandering_trader")
+                .unwrap()
+                .clone();
+            let mut trader = Mob::new(71, kind, game.mobs[0].position, 0.0);
+            trader.no_gravity = true;
+            trader.ground.on_ground = true;
+            trader.add_effect("minecraft:invisibility", 3600, 0);
+            game.mobs.remove(0);
+            game.mobs.push(trader);
+            // Start the actual daylight drink goal, whose first tick still precedes completion.
+            game.tick_creature_entities().unwrap();
+            let i = game.mobs.iter().position(|mob| mob.id == 71).unwrap();
+            assert_eq!(
+                game.mobs[i].extra.main_hand_id(),
+                Some("minecraft:milk_bucket")
+            );
+            game.mobs.update(i, |mob| mob.extra.using_item = 32);
+            game.tick_creature_entities().unwrap();
+        });
+    });
+    assert_eq!(*seen.lock().unwrap(), [(true, true), (false, false)]);
+}
+
 /// A type a mod names is told at NeoForge's moment: each pig alone, its Post right after its
 /// own tick and before the next pig's Pre, and a Post handle reads where its tick took it.
 #[test]
 #[ignore = "daily"]
 fn a_named_type_hears_each_entitys_own_pre_and_post() {
-    let heard = pig_ticks(true, false);
+    let heard = pig_ticks(false);
     let phases: Vec<_> = heard
         .iter()
         .map(|(phase, entities, _)| (*phase, entities.clone()))
@@ -495,7 +562,7 @@ fn a_named_type_hears_each_entitys_own_pre_and_post() {
 #[test]
 #[ignore = "daily"]
 fn a_named_pre_cannot_clear_an_earlier_turns_cancellation() {
-    let phases: Vec<_> = pig_ticks(true, true)
+    let phases: Vec<_> = pig_ticks(true)
         .into_iter()
         .map(|(phase, entities, _)| (phase, entities))
         .collect();
@@ -505,16 +572,23 @@ fn a_named_pre_cannot_clear_an_earlier_turns_cancellation() {
     );
 }
 
-/// With no type named, the mobs are told as one family: one Pre before the first tick, one
-/// Post after the last, as before.
+/// Any subscribed listener hears each mob's own Pre and Post without any opt-in flag.
 #[test]
 #[ignore = "daily"]
 fn an_unnamed_family_hears_one_pre_and_one_post() {
-    let phases: Vec<_> = pig_ticks(false, false)
+    let phases: Vec<_> = pig_ticks(false)
         .into_iter()
         .map(|(phase, entities, _)| (phase, entities))
         .collect();
-    assert_eq!(phases, [("pre", vec![71, 72]), ("post", vec![71, 72])]);
+    assert_eq!(
+        phases,
+        [
+            ("pre", vec![71]),
+            ("post", vec![71]),
+            ("pre", vec![72]),
+            ("post", vec![72]),
+        ]
+    );
 }
 
 /// Moves pig 72 into a second arrow's path in the Post of the arrow `first` (an arrow named to
@@ -525,23 +599,332 @@ pub(crate) struct MoveOnArrowPost {
 
 #[mod_api::__subscriptions]
 impl mod_api::Hooks for MoveOnArrowPost {
-    fn entity_tick_listened(&self, _: HostSide<'_>, event: &mut EntityTickListenedEvent) {
-        event.listened = true;
-    }
     fn entity_tick_post(&self, host: HostSide<'_>, event: &mut mod_api::EntityTickPostEvent<'_>) {
         let HostSide::Server(host) = host else {
             panic!("server fixture");
         };
-        if event.entities == [self.first.load(Ordering::Relaxed)] {
+        if event.entity == self.first.load(Ordering::Relaxed) {
             let pig = host.entity(72).expect("the pig");
             assert!(pig.teleport_to(host, [4.0, 80.0, 5.5], None));
         }
-    }
-    fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
-        r.entity_tick_each("minecraft:arrow");
     }
 }
 
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt6 as _;
+
+struct TraderDrinkPost(Arc<Mutex<Vec<(bool, bool)>>>);
+
+#[mod_api::__subscriptions]
+impl mod_api::Hooks for TraderDrinkPost {
+    fn entity_tick_post(&self, host: HostSide<'_>, event: &mut mod_api::EntityTickPostEvent<'_>) {
+        let HostSide::Server(host) = host else {
+            panic!("server fixture");
+        };
+        if event.entity == 71 {
+            let living = host.living(host.entity(71).unwrap()).unwrap();
+            let invisibility = host.effect_key("minecraft:invisibility").unwrap();
+            let invisible = living.effect(host, invisibility).is_some();
+            let holding_drink = living
+                .with_hand_item(host, mod_api::Hand::Main, |_| ())
+                .is_some();
+            self.0.lock().unwrap().push((invisible, holding_drink));
+        }
+    }
+}
+
+#[test]
+#[ignore = "daily"]
+fn named_mobs_and_projectiles_yield_only_for_subscribed_phase() {
+    type Recorded = Arc<Mutex<Vec<(&'static str, Vec<u32>, Option<[f64; 3]>)>>>;
+
+    fn record(heard: &Recorded, host: &HostSide<'_>, phase: &'static str, entities: &[u32]) {
+        let HostSide::Server(host) = host else {
+            panic!("server fixture");
+        };
+        let pos = entities
+            .first()
+            .and_then(|&id| host.entity(id))
+            .and_then(|entity| entity.position(*host));
+        heard.lock().unwrap().push((phase, entities.to_vec(), pos));
+    }
+
+    struct PreOnly(Recorded);
+    #[mod_api::__subscriptions]
+    impl mod_api::Hooks for PreOnly {
+        fn entity_tick_pre(
+            &self,
+            host: HostSide<'_>,
+            event: &mut EntityTickPreEvent<'_>,
+        ) -> mod_api::Flow {
+            record(&self.0, &host, "pre", std::slice::from_ref(&event.entity));
+            mod_api::Flow::Continue
+        }
+    }
+
+    struct PostOnly(Recorded);
+    #[mod_api::__subscriptions]
+    impl mod_api::Hooks for PostOnly {
+        fn entity_tick_post(
+            &self,
+            host: HostSide<'_>,
+            event: &mut mod_api::EntityTickPostEvent<'_>,
+        ) {
+            record(&self.0, &host, "post", std::slice::from_ref(&event.entity));
+        }
+    }
+
+    for pre_only in [true, false] {
+        let heard: Recorded = Arc::default();
+        let entry = if pre_only {
+            ModEntry::new("server-pre-only", Box::new(PreOnly(heard.clone())))
+        } else {
+            ModEntry::new("server-post-only", Box::new(PostOnly(heard.clone())))
+        };
+        let mods: mod_api::Mods = vec![entry].into();
+        let mut arrow_id = 0;
+        let mut mob_yields = 0;
+        let mut projectile_handbacks = 0;
+        mod_platform::testing::with_mods(mods, || {
+            with_two_pigs(|game| {
+                game.build_registries();
+                game.set_allow_commands(true);
+                assert!(game.run_command(
+                    "summon minecraft:arrow 1.5 80.5 5.5 {NoGravity:1b,Motion:[1.0d,0.0d,0.0d]}"
+                ));
+                arrow_id = game.common.creatures.projectiles[0].id;
+                game.server.ticked_entities_through = u32::MAX;
+                BORROWED_MOB_YIELDS.with(|count| count.set(0));
+                PROJECTILE_HANDBACKS.with(|count| count.set(0));
+                game.tick_mobs().unwrap();
+                mob_yields = BORROWED_MOB_YIELDS.with(std::cell::Cell::get);
+                projectile_handbacks =
+                    PROJECTILE_HANDBACKS.with(std::cell::Cell::get);
+            });
+        });
+        assert_eq!(
+            mob_yields, 2,
+            "one yield per named pig, none for the absent phase"
+        );
+        assert_eq!(
+            projectile_handbacks, 1,
+            "one handback for the named arrow, none for the absent phase"
+        );
+        let heard = heard.lock().unwrap();
+        let phase = if pre_only { "pre" } else { "post" };
+        let phases: Vec<_> = heard
+            .iter()
+            .map(|(p, entities, _)| (*p, entities.clone()))
+            .collect();
+        assert_eq!(
+            phases,
+            [
+                (phase, vec![71]),
+                (phase, vec![72]),
+                (phase, vec![arrow_id]),
+            ]
+        );
+        let arrow_pos = heard[2].2.expect("arrow handle resolves during its hook");
+        if pre_only {
+            assert_eq!(arrow_pos, [1.5, 80.5, 5.5]);
+        } else {
+            assert!(arrow_pos[0] > 1.5);
+        }
+    }
+}
+
+#[test]
+#[ignore = "daily"]
+fn mob_equipment_change_fires_before_post_and_skips_canceled_ticks() {
+    use std::sync::atomic::AtomicBool;
+
+    type Log = Arc<
+        Mutex<
+            Vec<(
+                &'static str,
+                u32,
+                Option<mod_api::EquipmentSlot>,
+                Option<mod_api::ItemStack>,
+            )>,
+        >,
+    >;
+
+    struct OrderProbe {
+        cancel_72: Arc<AtomicBool>,
+        log: Log,
+    }
+
+    #[mod_api::__subscriptions]
+    impl mod_api::Hooks for OrderProbe {
+        fn entity_tick_pre(
+            &self,
+            _: HostSide<'_>,
+            event: &mut EntityTickPreEvent<'_>,
+        ) -> mod_api::Flow {
+            let id = event.entity;
+            self.log.lock().unwrap().push(("pre", id, None, None));
+            if id == 72 && self.cancel_72.load(Ordering::Relaxed) {
+                mod_api::Flow::Cancel
+            } else {
+                mod_api::Flow::Continue
+            }
+        }
+        fn living_equipment_change(
+            &self,
+            _: &mut dyn ServerHost,
+            event: &mut mod_api::LivingEquipmentChangeEvent<'_>,
+        ) {
+            self.log.lock().unwrap().push((
+                "equip",
+                event.entity.id(),
+                Some(event.slot),
+                event.to.as_ref().and_then(|stack| stack.project()),
+            ));
+        }
+        fn entity_tick_post(&self, _: HostSide<'_>, event: &mut mod_api::EntityTickPostEvent<'_>) {
+            self.log
+                .lock()
+                .unwrap()
+                .push(("post", event.entity, None, None));
+        }
+    }
+
+    let helmet = sunrise_items::items::ItemStack::new("minecraft:iron_helmet", 1);
+    let cancel_72 = Arc::new(AtomicBool::new(true));
+    let log: Log = Arc::default();
+    let mods: mod_api::Mods = vec![ModEntry::new(
+        "mob-equip-order",
+        Box::new(OrderProbe {
+            cancel_72: cancel_72.clone(),
+            log: log.clone(),
+        }),
+    )]
+    .into();
+    mod_platform::testing::with_mods(mods, || {
+        with_two_pigs(|game| {
+            let api_helmet = Some(helmet.try_into_api().unwrap());
+            for mob in game.common.mobs.iter_mut() {
+                assert!(
+                    mob.set_equipment_stack(sunrise_items::equipment::HEAD, Some(helmet.clone()),)
+                );
+            }
+            game.tick_mobs().unwrap();
+            assert_eq!(
+                std::mem::take(&mut *log.lock().unwrap()),
+                [
+                    ("pre", 71, None, None),
+                    (
+                        "equip",
+                        71,
+                        Some(mod_api::EquipmentSlot::Head),
+                        api_helmet.clone()
+                    ),
+                    ("post", 71, None, None),
+                    ("pre", 72, None, None),
+                ]
+            );
+            assert!(
+                game.common.mobs
+                    .iter()
+                    .find(|m| m.id == 71)
+                    .unwrap()
+                    .extra
+                    .live
+                    .has_worn()
+            );
+            assert!(
+                !game
+                    .mobs
+                    .iter()
+                    .find(|m| m.id == 72)
+                    .unwrap()
+                    .extra
+                    .live
+                    .has_worn(),
+                "a canceled mob tick must not prepare or fire living_equipment_change"
+            );
+
+            // Once pig 72 is allowed to tick, it fires its own equipment change before its Post,
+            // while pig 71 does not re-fire an unchanged slot.
+            cancel_72.store(false, Ordering::Relaxed);
+            game.tick_mobs().unwrap();
+            assert_eq!(
+                std::mem::take(&mut *log.lock().unwrap()),
+                [
+                    ("pre", 71, None, None),
+                    ("post", 71, None, None),
+                    ("pre", 72, None, None),
+                    (
+                        "equip",
+                        72,
+                        Some(mod_api::EquipmentSlot::Head),
+                        api_helmet.clone()
+                    ),
+                    ("post", 72, None, None),
+                ]
+            );
+        });
+    });
+
+    // An unsubscribed tick still advances vanilla history without yielding to the owning game.
+    mod_platform::testing::with_mods(mod_api::Mods::default(), || {
+        with_two_pigs(|game| {
+            assert!(
+                game.common.mobs[0]
+                    .set_equipment_stack(sunrise_items::equipment::HEAD, Some(helmet.clone()),)
+            );
+            BORROWED_MOB_YIELDS.with(|count| count.set(0));
+            game.tick_mobs().unwrap();
+            assert!(game.common.mobs[0].extra.live.has_worn());
+            assert_eq!(BORROWED_MOB_YIELDS.with(std::cell::Cell::get), 0);
+        });
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn an_equipped_mob_discarded_by_despawn_does_not_report_equipment() {
+    struct EquipmentProbe(Arc<Mutex<Vec<u32>>>);
+    #[mod_api::__subscriptions]
+    impl mod_api::Hooks for EquipmentProbe {
+        fn living_equipment_change(
+            &self,
+            _: &mut dyn ServerHost,
+            event: &mut mod_api::LivingEquipmentChangeEvent<'_>,
+        ) {
+            self.0.lock().unwrap().push(event.entity.id());
+        }
+    }
+
+    let heard = Arc::new(Mutex::new(Vec::new()));
+    let mods: mod_api::Mods = vec![
+        ModEntry::new(
+            "mob-equip-despawn",
+            Box::new(DespawnProbe {
+                records: Arc::default(),
+                allow: Arc::new(AtomicU32::new(71)),
+            }),
+        ),
+        ModEntry::new("mob-equip-observe", Box::new(EquipmentProbe(heard.clone()))),
+    ]
+    .into();
+    mod_platform::testing::with_mods(mods, || {
+        with_two_pigs(|game| {
+            for mob in game.common.mobs.iter_mut() {
+                assert!(mob.set_equipment_stack(
+                    sunrise_items::equipment::HEAD,
+                    Some(sunrise_items::items::ItemStack::new(
+                        "minecraft:iron_helmet",
+                        1
+                    )),
+                ));
+            }
+            game.tick_creature_entities().unwrap();
+            assert_eq!(game.common.mobs.iter().map(|m| m.id).collect::<Vec<_>>(), [72]);
+            assert_eq!(*heard.lock().unwrap(), [72]);
+        });
+    });
+}
+
+use sunrise_gameplay::game::server_side::creatures_server::{BORROWED_MOB_YIELDS, PROJECTILE_HANDBACKS};

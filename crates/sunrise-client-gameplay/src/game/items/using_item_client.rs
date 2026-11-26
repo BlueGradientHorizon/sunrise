@@ -46,7 +46,41 @@ impl crate::game::ClientGame<'_> {
     pub(in crate::game) fn client_current_level_ref(&self) -> Option<mod_api::LevelRef> {
         self.native_client_level()
     }
+    /// `LivingEntity.updatingUsingItem`'s may-still-use check, one rule for both
+    /// sides: `ItemStack.isSameItem(held, began)`, then the parts of `began`'s
+    /// item (`IItemExtension.canContinueUsing`) may answer either way.
+    pub(in crate::game) fn can_continue_using(
+        &self,
+        began: &ItemStack,
+        held: &ItemStack,
+        entity: Option<i32>,
+        hand: sunrise_sim::first_person_sim::Hand,
+    ) -> bool {
+        let mut can_continue = began.item == held.item;
+        if mod_api::__private::item_listens(mod_api::HookId::CanContinueUsing, &began.item) {
+            self.native_can_continue_using(began, held, entity, hand, &mut can_continue);
+        }
+        can_continue
+    }
+    /// `IItemExtension.onStopUsing` of `stack`, its use by `entity` (a player's
+    /// id or a mob's) in `hand` cleared `time_left` ticks before its end (0 for a
+    /// finished use): only the parts of its item hear it.
+    pub(in crate::game) fn stopped_using(
+        &mut self,
+        stack: &ItemStack,
+        entity: Option<i32>,
+        hand: sunrise_sim::first_person_sim::Hand,
+        time_left: i32,
+    ) {
+        if mod_api::__private::item_listens(mod_api::HookId::OnStopUsing, &stack.item) {
+            self.native_on_stop_using(stack, entity, hand, time_left);
+        }
+    }
 }
+
+use sunrise_gameplay_common::game::native_hooks::can_continue_using::GameHooks as _;
+
+use sunrise_gameplay_common::game::native_hooks::on_stop_using::GameHooks as _;
 
 use sunrise_gameplay_common::game::GameGameExt1 as _;
 

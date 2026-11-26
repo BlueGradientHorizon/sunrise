@@ -180,15 +180,16 @@ impl ServerGame<'_> {
         // if its new root/seat is reached later in this pass.
         self.common.resident_entities.general.riders.ticked[index] = true;
         let kind = pass.catalog.key(slot);
-        let ticks = !pass.round.listening() || self.native_tick_pre_one(&mut pass.round, id, kind);
+        let ticks = !pass.round.pre() || self.native_tick_pre_one(&mut pass.round, id, kind);
         if !general_row_live(self, index, mount) {
-            if ticks {
-                pass.round.not_ticked(id);
-            }
             return None;
         }
         if ticks || mount.is_some() {
-            self.begin_general_row_tick(index, mount);
+            self.begin_general_row_tick(index, mount, pass.epoch);
+            // `Entity.checkBelowWorld` discarded it: no tick for a removed row.
+            if !general_row_live(self, index, mount) {
+                return None;
+            }
         }
         if ticks {
             if pass.subscribed.get(slot).copied().unwrap_or(false)
@@ -196,7 +197,7 @@ impl ServerGame<'_> {
             {
                 self.dispatch_general_tick(kind, epoch, id);
             }
-            if pass.round.listening() {
+            if pass.round.post() {
                 self.native_tick_post_one(&pass.round, id, kind);
             }
         }
@@ -228,12 +229,42 @@ impl ServerGame<'_> {
         general_row_live(self, index, mount).then_some(id)
     }
 
-    fn begin_general_row_tick(&mut self, index: usize, mount: Option<u32>) {
+    /// `Entity.commonTick` and `Entity.baseTick` before the type's tick (`GeneralRow::base_tick`),
+    /// with the level's fluids; a row below the world is discarded (`Entity.checkBelowWorld`).
+    fn begin_general_row_tick(
+        &mut self,
+        index: usize,
+        mount: Option<u32>,
+        epoch: Option<mod_api::WorldEpoch>,
+    ) {
+        let min_y = self.common.world.layout().min_y();
         let row = &mut self.common.resident_entities.general.rows[index];
-        row.previous = row.position;
-        row.boarding_cooldown = (row.boarding_cooldown - 1).max(0);
-        if mount.is_some() {
-            row.velocity = sunrise_core::geometry::Vec3::ZERO;
+        let id = row.id;
+        let bounds = sunrise_gameplay_common::game::entity::Entity::bounds(row);
+        let (_, height) = general_type_catalog().dimensions(row.type_slot);
+        let alive = row.base_tick(
+            bounds,
+            height,
+            mount.is_some(),
+            min_y,
+            |bounds, at, eye, velocity| {
+                sunrise_sim::entities::scan_entity_fluids(
+                    bounds,
+                    at,
+                    eye,
+                    velocity,
+                    &self.common.world,
+                    &self.common.res.motion().fluids,
+                    &self.common.loop_context,
+                )
+            },
+        );
+        if alive {
+            return;
+        }
+        match epoch {
+            Some(epoch) => self.remove_target_now(EntityRef::new(epoch, id), Target::General(id)),
+            None => self.common.persist.removals.push(Target::General(id)),
         }
     }
 

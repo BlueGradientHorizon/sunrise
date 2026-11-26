@@ -8,7 +8,7 @@ pub(crate) mod tests {
 
     use sunrise_client_gameplay::game::remote::general::tests::rows;
 
-    use sunrise_gameplay_common::game::remote::general::tests::FUEL;
+    use sunrise_gameplay_common::game::remote::general::tests::FUEL_CODEC;
 
     use sunrise_gameplay_common::game::remote::general::tests::Declare;
 
@@ -18,7 +18,7 @@ pub(crate) mod tests {
 
     use sunrise_gameplay_common::game::remote::general::tests::spawn_facing;
 
-    use sunrise_mod_runtime::attachments::Holder;
+    use sunrise_mod_runtime::attachments::{Attachments, Holder};
 
     
 
@@ -27,8 +27,10 @@ pub(crate) mod tests {
     #[test]
     #[ignore = "daily"]
     fn riding_reads_follow_the_server_passenger_lists() {
-        use mod_api::{ClientHost, EntityRef, WorldEpoch};
+        use mod_api::{ClientHost, EntityReadError, EntityRef, WorldEpoch};
+        use std::ops::ControlFlow;
         use sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases;
+        use sunrise_gameplay_common::game::test_fixtures::collect_entity_visit;
 
         if run_fresh_cases(
             "game::remote::general::tests::riding_reads_follow_the_server_passenger_lists",
@@ -111,7 +113,10 @@ pub(crate) mod tests {
                     );
                     game.handle_packet(set(9, vec![99])).unwrap();
                     let host: &dyn ClientHost = game;
-                    assert_eq!(vehicle.passengers(host), Some(vec![]));
+                    assert_eq!(
+                        vehicle.visit_passengers(host, &mut |_| panic!("empty seat list visited")),
+                        Ok(ControlFlow::Continue(()))
+                    );
                     assert_eq!(vehicle.is_vehicle(host), Some(false));
 
                     game.handle_packet(set(9, vec![12, 99, 7])).unwrap();
@@ -119,15 +124,41 @@ pub(crate) mod tests {
                     game.position_riders();
                     assert_eq!(row.position(game), Some([2.5, 71.25, 1.5]));
                     let host: &dyn ClientHost = game;
-                    assert_eq!(vehicle.passengers(host), Some(vec![row, me]));
+                    assert_eq!(
+                        collect_entity_visit(|visit| vehicle.visit_passengers(host, visit)),
+                        Ok(vec![row, me])
+                    );
+                    let mut visited = None;
+                    assert_eq!(
+                        vehicle.visit_passengers(host, &mut |rider| {
+                            assert!(visited.replace(rider).is_none());
+                            ControlFlow::Break(())
+                        }),
+                        Ok(ControlFlow::Break(()))
+                    );
+                    assert_eq!(visited, Some(row));
+                    assert_eq!(
+                        vehicle.visit_indirect_passengers(host, &mut |_| {
+                            panic!("client walked the tree")
+                        }),
+                        Err(EntityReadError::Unavailable)
+                    );
                     assert_eq!(vehicle.is_vehicle(host), Some(true));
                     assert_eq!(row.vehicle(host), Some(vehicle));
                     assert_eq!(me.vehicle(host), Some(vehicle));
                     assert_eq!(cloud.is_passenger(host), Some(true));
                     assert_eq!(cloud.root_vehicle(host), Some(vehicle));
                     assert_eq!(unknown.vehicle(host), None);
-                    assert_eq!(unknown.passengers(host), None);
-                    assert_eq!(stale.passengers(host), None);
+                    assert_eq!(
+                        unknown.visit_passengers(host, &mut |_| {
+                            panic!("untracked vehicle visited")
+                        }),
+                        Err(EntityReadError::Stale)
+                    );
+                    assert_eq!(
+                        stale.visit_passengers(host, &mut |_| panic!("stale vehicle visited")),
+                        Err(EntityReadError::Stale)
+                    );
                     assert_eq!(stale.is_vehicle(host), None);
 
                     // An unknown vehicle can't displace a real relationship. Later tracking
@@ -138,7 +169,10 @@ pub(crate) mod tests {
                     let late = game.entity(99).unwrap();
                     assert_eq!(late.is_passenger(game), Some(false));
                     assert_eq!(late.is_vehicle(game), Some(false));
-                    assert_eq!(vehicle.passengers(game), Some(vec![row, me]));
+                    assert_eq!(
+                        collect_entity_visit(|visit| vehicle.visit_passengers(game, visit)),
+                        Ok(vec![row, me])
+                    );
 
                     game.handle_packet(set(4, vec![9])).unwrap();
                     assert_eq!(vehicle.vehicle(game), None);
@@ -150,7 +184,10 @@ pub(crate) mod tests {
                     for refused in [5, 6] {
                         let cannot_carry = game.entity(refused).unwrap();
                         game.handle_packet(set(refused as i32, vec![12])).unwrap();
-                        assert_eq!(cannot_carry.passengers(game), Some(vec![]));
+                        assert_eq!(
+                            collect_entity_visit(|visit| cannot_carry.visit_passengers(game, visit)),
+                            Ok(vec![])
+                        );
                         assert_eq!(row.vehicle(game), Some(vehicle));
                     }
 
@@ -185,13 +222,22 @@ pub(crate) mod tests {
                     );
                     let host: &dyn ClientHost = game;
                     assert_eq!(me.is_passenger(host), Some(false));
-                    assert_eq!(me.passengers(host), Some(vec![]));
+                    assert_eq!(
+                        collect_entity_visit(|visit| me.visit_passengers(host, visit)),
+                        Ok(vec![])
+                    );
                     assert_eq!(late.is_passenger(host), Some(false));
-                    assert_eq!(vehicle.passengers(host), Some(vec![row]));
+                    assert_eq!(
+                        collect_entity_visit(|visit| vehicle.visit_passengers(host, visit)),
+                        Ok(vec![row])
+                    );
                     assert_eq!(cloud.root_vehicle(host), Some(vehicle));
 
                     game.handle_packet(set(9, vec![])).unwrap();
-                    assert_eq!(vehicle.passengers(game), Some(vec![]));
+                    assert_eq!(
+                        collect_entity_visit(|visit| vehicle.visit_passengers(game, visit)),
+                        Ok(vec![])
+                    );
                     assert_eq!(cloud.root_vehicle(game), Some(row));
                 },
             )
@@ -213,6 +259,7 @@ pub(crate) mod tests {
             mod_platform::__private::part_tests::install_parts_fixture(&declare()).unwrap();
             crate::game::client_side::item_entities_client::thrown_items_tests::with_remote_game(
                 |game| {
+                    let fuel_key = mod_api::testing::attachment_key::<i32>("mymod", "fuel");
                     // An attachment sync for an unknown entity is ignored without storing anything.
                     game.remote_attachment_sync(attachment_message(5, false, Some(99)));
                     assert!(
@@ -230,36 +277,41 @@ pub(crate) mod tests {
                         .unwrap();
                     game.handle_packet(spawn(5, "mymod:missile", [9.5, 70.0, 0.5]))
                         .unwrap();
+                    let empty_capture = mod_api::__private::game::capture_entity_render_attachments(
+                        &Attachments::default(),
+                    );
                     let held = rows(game);
                     assert_eq!(held.keys().collect::<Vec<_>>(), [&5]);
                     assert_eq!(held[&5].position, [0.5, 70.0, 0.5]);
                     assert_eq!(held[&5].uuid, 0x77);
                     // Immediately visible with empty render attachments even without attachment_sync.
-                    assert_eq!(
-                        held[&5].render_attachments,
-                        mod_api::EntityRenderAttachments::default()
-                    );
-                    assert_eq!(held[&5].render_attachments.get(&FUEL), Ok(None));
+                    assert_eq!(held[&5].render_attachments, empty_capture);
+                    assert_eq!(held[&5].render_attachments.get(&fuel_key), Ok(None));
                     // Both deltas and whole snapshots publish to render_attachments for a known row.
                     game.remote_attachment_sync(attachment_message(5, false, Some(12)));
-                    assert_eq!(rows(game)[&5].render_attachments.get(&FUEL), Ok(Some(&12)));
+                    assert_eq!(
+                        rows(game)[&5].render_attachments.get(&fuel_key),
+                        Ok(Some(&12))
+                    );
                     game.remote_attachment_sync(attachment_message(5, true, Some(9)));
                     assert_eq!(row_ids(game), [5]);
-                    assert_eq!(rows(game)[&5].render_attachments.get(&FUEL), Ok(Some(&9)));
+                    assert_eq!(
+                        rows(game)[&5].render_attachments.get(&fuel_key),
+                        Ok(Some(&9))
+                    );
                     let fuel = |game: &sunrise_client_gameplay::game::ClientGame<'_>, id: u32| {
                         let held = game.client.remote.as_ref().unwrap();
                         let map = held.attachments.get(&Holder::Entity(id))?;
                         let value = map
-                            .synced()
+                            .synced(sunrise_sim::lan::entity::project_attachment_sync(
+                                Holder::Entity(id),
+                            ))
                             .into_iter()
                             .find(|entry| {
                                 entry.namespace == "mymod".into() && entry.name == "fuel".into()
                             })?
                             .value?;
-                        match value.get(&"n".into()) {
-                            Some(sunrise_core::nbt::Tag::Int(n)) => Some(*n),
-                            _ => None,
-                        }
+                        (FUEL_CODEC.decode)(&value).ok()
                     };
                     assert_eq!(fuel(game, 5), Some(9));
                     // A second row spawned with no attachment_sync at all is immediately visible with
@@ -267,10 +319,7 @@ pub(crate) mod tests {
                     game.handle_packet(spawn(8, "mymod:missile", [0.5, 70.0, 0.5]))
                         .unwrap();
                     assert_eq!(row_ids(game), [5, 8]);
-                    assert_eq!(
-                        rows(game)[&8].render_attachments,
-                        mod_api::EntityRenderAttachments::default()
-                    );
+                    assert_eq!(rows(game)[&8].render_attachments, empty_capture);
                     game.handle_packet(C::EntityPositionSync(play::EntityPositionSync {
                         id: 5,
                         path: play::PositionPath::Linear([3.5, 70.0, 0.5]),
@@ -330,6 +379,7 @@ pub(crate) mod tests {
         mod_platform::testing::with_mods(declare().into(), || {
             mod_platform::__private::part_tests::install_parts_fixture(&declare()).unwrap();
             crate::game::native_entity_refs::tests::with_client_game(|game| {
+                let fuel_key = mod_api::testing::attachment_key::<i32>("mymod", "fuel");
                 let local = raw_payloads::Local::capture(raw_payloads::Side::Server).unwrap();
                 let (_reader, mut writer) = connect_play_test(game, |reader, writer| {
                     offer_test_payloads(reader, writer, &local.manifest);
@@ -353,7 +403,106 @@ pub(crate) mod tests {
                 let held = rows(game);
                 assert_eq!(held.keys().collect::<Vec<_>>(), [&15]);
                 assert_eq!(held[&15].position, [1.5, 70.0, 2.5]);
-                assert_eq!(held[&15].render_attachments.get(&FUEL), Ok(Some(&42)));
+                assert_eq!(held[&15].render_attachments.get(&fuel_key), Ok(Some(&42)));
+            })
+        });
+    }
+
+    /// `Entity.DATA_CUSTOM_NAME` (2) and `DATA_CUSTOM_NAME_VISIBLE` (3) reach a general row
+    /// through vanilla's `SetEntityData`, after its spawn and again when they change, and the
+    /// client's `EntityRef` reads them (`name`, the styled `custom_name` and
+    /// `custom_name_visible`); a name taken away reads as none and false.
+    #[test]
+    #[ignore = "daily"]
+    fn a_general_rows_synced_name_and_visibility_read_through_its_handle() {
+        use sunrise_core::nbt::Tag;
+        use sunrise_protocol::entity_data::{Value, serializer};
+
+        mod_platform::__private::initialize().unwrap();
+        let _phase = mod_platform::__private::RegistrationGuard::open();
+        let declare = || vec![mod_api::ModEntry::new("mymod", Box::new(Declare))];
+        mod_platform::testing::with_mods(declare().into(), || {
+            mod_platform::__private::part_tests::install_parts_fixture(&declare()).unwrap();
+            crate::game::client_side::item_entities_client::thrown_items_tests::with_remote_game(
+                |game| {
+                    game.handle_packet(C::Login(play::Login {
+                    player_id: 7,
+                    hardcore: false,
+                    levels: vec!["minecraft:overworld".into()],
+                    max_players: 20,
+                    chunk_radius: 8,
+                    simulation_distance: 8,
+                    reduced_debug_info: false,
+                    show_death_screen: true,
+                    limited_crafting: false,
+                    spawn: play::SpawnInfo {
+                        dimension_type: 0,
+                        dimension: "minecraft:overworld".into(),
+                        seed: 1,
+                        game_type: 0,
+                        previous_game_type: None,
+                        debug: false,
+                        flat: false,
+                        last_death: None,
+                        portal_cooldown: 0,
+                        sea_level: 63,
+                    },
+                    online_mode: false,
+                    enforces_secure_chat: false,
+                }))
+                .unwrap();
+                game.handle_packet(C::PlayerPosition(play::PlayerPosition {
+                    teleport: 1,
+                    position: [0.5, 70.0, 0.5],
+                    delta: [0.0; 3],
+                    yaw: 0.0,
+                    pitch: 0.0,
+                    relatives: 0,
+                }))
+                .unwrap();
+                game.handle_packet(spawn(12, "mymod:missile", [0.5, 70.0, 0.5]))
+                    .unwrap();
+                let row = game.entity(12).unwrap();
+                let data = |values: Vec<(u8, i32, Value)>| {
+                    C::SetEntityData(play::SetEntityData { id: 12, values })
+                };
+                let named = |name: Option<&str>, visible: bool| {
+                    data(vec![
+                        (
+                            2,
+                            serializer::OPTIONAL_COMPONENT,
+                            Value::OptText(name.map(|n| Tag::String(n.into()))),
+                        ),
+                        (3, serializer::BOOLEAN, Value::Bool(visible)),
+                    ])
+                };
+
+                // Before any data: no name, not visible.
+                assert_eq!(row.custom_name(game).unwrap(), None);
+                assert_eq!(row.custom_name_visible(game), Some(false));
+                assert_ne!(row.name(game).as_deref(), Some("Grumbles"));
+
+                game.handle_packet(named(Some("Grumbles"), true)).unwrap();
+                assert_eq!(row.name(game).as_deref(), Some("Grumbles"));
+                assert_eq!(
+                    row.custom_name(game).unwrap(),
+                    Some(mod_api::Text::literal("Grumbles"))
+                );
+                assert_eq!(row.custom_name_visible(game), Some(true));
+
+                game.handle_packet(named(Some("Rumbles"), false)).unwrap();
+                assert_eq!(row.name(game).as_deref(), Some("Rumbles"));
+                assert_eq!(
+                    row.custom_name(game).unwrap(),
+                    Some(mod_api::Text::literal("Rumbles"))
+                );
+                assert_eq!(row.custom_name_visible(game), Some(false));
+
+                game.handle_packet(named(None, false)).unwrap();
+                assert_ne!(row.name(game).as_deref(), Some("Rumbles"));
+                assert_eq!(rows(game)[&12].custom_name, None);
+                assert_eq!(row.custom_name(game).unwrap(), None);
+                assert_eq!(row.custom_name_visible(game), Some(false));
             })
         });
     }
@@ -367,10 +516,11 @@ pub(crate) mod tests {
             mod_platform::__private::part_tests::install_parts_fixture(&declare()).unwrap();
             crate::game::client_side::item_entities_client::thrown_items_tests::with_remote_game(
                 |game| {
+                    let fuel_key = mod_api::testing::attachment_key::<i32>("mymod", "fuel");
                     // Path 1: no prior Holder::Entity entry -> empty initial snapshot.
                     game.handle_packet(spawn(21, "mymod:missile", [0.0, 70.0, 0.0]))
                         .unwrap();
-                    assert_eq!(rows(game)[&21].render_attachments.get(&FUEL), Ok(None));
+                    assert_eq!(rows(game)[&21].render_attachments.get(&fuel_key), Ok(None));
 
                     // Path 2: existing Holder::Entity map present before spawn -> captured on spawn.
                     let mut existing =
@@ -388,7 +538,10 @@ pub(crate) mod tests {
                         .insert(Holder::Entity(22), existing);
                     game.handle_packet(spawn(22, "mymod:missile", [1.0, 70.0, 0.0]))
                         .unwrap();
-                    assert_eq!(rows(game)[&22].render_attachments.get(&FUEL), Ok(Some(&77)));
+                    assert_eq!(
+                        rows(game)[&22].render_attachments.get(&fuel_key),
+                        Ok(Some(&77))
+                    );
                 },
             )
         });

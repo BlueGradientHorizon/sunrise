@@ -83,14 +83,15 @@ impl crate::game::ClientGame<'_> {
         })?;
         Ok(index)
     }
-    pub(in crate::game::client_side) fn remote_mod_book_placement(&mut self, frame: sync::Frame) {
+    pub fn remote_mod_book_placement(&mut self, frame: sync::Frame) {
         match frame {
             sync::Frame::Ready { epoch, schema } => {
                 if self.common.native_net.placement.client.ready(epoch, schema) {
-                    if self.common.native_net.placement.client.window().is_none() {
-                        self.common.native_net.placement.deadline = None;
-                    }
                     self.ensure_mod_book_catalog();
+                } else {
+                    log::warn!(
+                        "[recipe book] ignored mismatched placement ready for epoch {epoch}"
+                    );
                 }
             }
             sync::Frame::Start {
@@ -102,6 +103,10 @@ impl crate::game::ClientGame<'_> {
                 if self.native_book_placement_window().as_ref()
                     != self.common.native_net.placement.client.window()
                 {
+                    log::warn!(
+                        "[recipe book] ignored placement catalogue start for inactive window {}",
+                        identity.window
+                    );
                     return;
                 }
                 let expected = mod_api::RecipeBookLayout::registered(identity.menu.as_str())
@@ -117,13 +122,24 @@ impl crate::game::ClientGame<'_> {
                     .placement
                     .client
                     .start(identity, layout, total);
-                if (started.is_ok() && !matches) || started == Err(sync::Refusal::TooLarge) {
-                    self.common.native_net.placement.client.invalidate(epoch);
-                    self.common.native_net.placement.view = None;
-                    self.reset_mod_book_placement_ui();
-                    log::error!(
-                        "remote recipe-book catalogue load refused: incompatible menu metadata or oversized catalogue"
-                    );
+                match started {
+                    Ok(()) if matches => {}
+                    Ok(()) => {
+                        self.common.native_net.placement.client.invalidate(epoch);
+                        self.common.native_net.placement.view = None;
+                        self.reset_mod_book_placement_ui();
+                        log::error!(
+                            "remote recipe-book catalogue load refused: incompatible menu metadata"
+                        );
+                    }
+                    Err(reason) => {
+                        if matches!(reason, sync::Refusal::TooLarge | sync::Refusal::Invalid) {
+                            self.common.native_net.placement.client.invalidate(epoch);
+                            self.common.native_net.placement.view = None;
+                            self.reset_mod_book_placement_ui();
+                        }
+                        log::warn!("remote recipe-book catalogue start refused: {reason:?}");
+                    }
                 }
             }
             sync::Frame::Part {
@@ -135,16 +151,26 @@ impl crate::game::ClientGame<'_> {
                 if self.native_book_placement_window().as_ref()
                     != self.common.native_net.placement.client.window()
                 {
+                    log::warn!(
+                        "[recipe book] ignored placement catalogue part for inactive epoch {epoch}"
+                    );
                     return;
                 }
-                let Ok(Some(data)) = self
+                let data = match self
                     .common
                     .native_net
                     .placement
                     .client
                     .part(epoch, number, offset, bytes)
-                else {
-                    return;
+                {
+                    Ok(Some(data)) => data,
+                    Ok(None) => return,
+                    Err(reason) => {
+                        log::warn!(
+                            "[recipe book] ignored placement catalogue part ({epoch}/{number}): {reason:?}"
+                        );
+                        return;
+                    }
                 };
                 match self.load_remote_mod_book_catalogue(&data) {
                     Ok(index) => {
@@ -155,7 +181,6 @@ impl crate::game::ClientGame<'_> {
                             .client
                             .accept_catalog(data.identity.clone())
                         {
-                            self.common.native_net.placement.deadline = None;
                             self.common.native_net.placement.view =
                                 Some(sunrise_gameplay_common::game::native_book_placement::View {
                                     identity: data.identity,
@@ -176,30 +201,23 @@ impl crate::game::ClientGame<'_> {
                     }
                 }
             }
-            sync::Frame::Reply { selection, outcome } => {
+            sync::Frame::Ghost {
+                catalog,
+                recipe,
+                display,
+            } => {
                 if self.native_book_placement_window().as_ref()
-                    == self.common.native_net.placement.client.window()
-                    && let Some(outcome) = self
-                        .common
-                        .native_net
-                        .placement
-                        .client
-                        .reply(&selection, outcome)
+                    != self.common.native_net.placement.client.window()
+                    || !self.common.native_net.placement.client.accepts_ghost(&catalog)
                 {
-                    self.common.native_net.placement.deadline = None;
-                    match outcome {
-                        sync::Outcome::MissingIngredients => {
-                            self.install_mod_book_ghost(&selection)
-                        }
-                        sync::Outcome::Refused(
-                            sync::Refusal::Stale | sync::Refusal::UnknownDisplay,
-                        ) => {
-                            self.clear_mod_book_placement_screen();
-                            self.ensure_mod_book_catalog();
-                        }
-                        _ => {}
-                    }
+                    log::warn!(
+                        "[recipe book] ignored stale ghost for {} in window {}",
+                        recipe.as_str(),
+                        catalog.window
+                    );
+                    return;
                 }
+                self.install_mod_book_ghost(&catalog, &recipe, &display);
             }
             sync::Frame::Refused {
                 epoch,
@@ -215,20 +233,30 @@ impl crate::game::ClientGame<'_> {
                     .client
                     .refused(epoch, number, window, nonce)
                 {
-                    self.common.native_net.placement.deadline = None;
                     self.common.native_net.placement.view = None;
                     self.reset_mod_book_placement_ui();
                     log::error!("mod recipe-book placement load refused: {reason:?}");
+                } else {
+                    log::warn!(
+                        "[recipe book] ignored stale placement refusal ({epoch}/{number}): {reason:?}"
+                    );
                 }
             }
-            sync::Frame::Invalidate { epoch }
-                if self.common.native_net.placement.client.catalog().is_some()
-                    && self.common.native_net.placement.client.invalidate(epoch) =>
-            {
-                self.clear_mod_book_placement_screen();
-                self.ensure_mod_book_catalog();
+            sync::Frame::Invalidate { epoch } => {
+                if self.common.native_net.placement.client.invalidate(epoch) {
+                    self.clear_mod_book_placement_screen();
+                    self.ensure_mod_book_catalog();
+                } else {
+                    log::warn!(
+                        "[recipe book] ignored stale placement invalidation for epoch {epoch}"
+                    );
+                }
             }
-            _ => {}
+            other => {
+                log::warn!(
+                    "[recipe book] ignored unexpected clientbound placement frame: {other:?}"
+                );
+            }
         }
     }
 }

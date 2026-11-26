@@ -8,9 +8,9 @@ pub trait Hooks {
     /// damage or knockback, no sound, particles or game event. Before
     /// `explosion_prime`, which a cancel skips. Server-side.
     #[hook(
-        target = "sunrise_gameplay::game::native_hooks::explosion_start::ServerGame<'_>::native_explosion_start",
         dispatch = "flat",
         side = "server",
+        version = 2,
         contract = "cancel",
         out = "cancel",
         neoforge = "ExplosionEvent.Start",

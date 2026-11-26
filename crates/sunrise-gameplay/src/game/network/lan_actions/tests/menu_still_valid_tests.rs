@@ -12,7 +12,7 @@ use sunrise_level::{
     containers::{BlockEntity, ModMenuType},
 };
 use sunrise_protocol::packets::play::{ContainerButtonClick, ContainerClick, Serverbound};
-use sunrise_sim::lan::menu::{Menu, NativeMenuEvent, Slots, VEHICLE_KEY_Y, asks_still_valid};
+use sunrise_sim::lan::menu::{Menu, Slots, VEHICLE_KEY_Y, asks_still_valid};
 
 /// What the part answers, and how often it was asked.
 static KEEP: AtomicBool = AtomicBool::new(true);
@@ -236,6 +236,8 @@ fn a_mod_menu_part_decides_whether_its_menu_stays_open() {
                 links: Vec::new(),
                 asks_still_valid: asks_still_valid(Some(shell), "test:shell"),
                 opening_item: None,
+                opener_block: None,
+                removed: false,
                 slot_changed_seen: None,
             };
             assert!(menu.asks_still_valid);
@@ -395,13 +397,13 @@ fn a_blockless_mod_menu_closes_when_its_part_answers_false() {
                     assert_eq!(window_of_guest(game), None);
                     assert_eq!(answer.asks.load(Ordering::Relaxed), before + 1);
                     assert!(
-                        game.server.lan
+                        game.server
+                            .lan
                             .as_ref()
                             .unwrap()
                             .hub
                             .native_menu_events
-                            .iter()
-                            .any(|event| matches!(event, NativeMenuEvent::Closed { window: closed, .. } if *closed == window))
+                            .is_empty()
                     );
                 });
             },

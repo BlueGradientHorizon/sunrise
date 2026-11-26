@@ -7,6 +7,10 @@ use sunrise_gameplay_common::command_blocks::{
     CommandBlockEdit, CommandBlockTransition, command_block_mut, conditional, facing_step,
     facing_yaw, mark_condition_met, offset, set_powered,
 };
+use sunrise_gameplay_common::game::{
+    journal_level_effects::PendingWrite,
+    transactions::{After, SaveChunkScope, TransactionsGameExt as _},
+};
 use sunrise_items::items::ItemStack;
 use sunrise_level::command_block::{self, CommandBlock, Mode};
 use sunrise_protocol::packets::play::{self, Clientbound as C};
@@ -34,7 +38,15 @@ impl crate::game::ServerGame<'_> {
 
     pub(in crate::game::server_side) fn schedule_command_block(&mut self, pos: Pos) {
         let at = BlockPos::new(pos.0, pos.1, pos.2);
-        self.with_level(|b, level, ticks| b.schedule_tick(level, ticks, at, 1));
+        if self.captures_placement() {
+            let state = self.world.block(pos.0, pos.1, pos.2);
+            let block = self.res.behaviours().block(state);
+            self.after_commit(After::LevelWrite(Box::new(
+                PendingWrite::BlockTick(self.dim, at, block, 1),
+            )));
+        } else {
+            self.with_level(|b, level, ticks| b.schedule_tick(level, ticks, at, 1));
+        }
     }
 
     /// `isAutomatic` of the command block at `pos`, before new data loads.
@@ -90,6 +102,10 @@ impl crate::game::ServerGame<'_> {
         };
         let saved = |c: &CommandBlock| (c.track_output, c.auto, c.powered, c.condition_met);
         let before = self.common.command_block(pos).map(saved);
+        let staged = self.captures_placement();
+        if staged {
+            self.journal_block_entity(pos);
+        }
         let auto = command_block::automatic_block(name);
         if defaults && let Some(c) = command_block_mut(&mut self.common.world, pos) {
             c.track_output = feedback;
@@ -107,7 +123,12 @@ impl crate::game::ServerGame<'_> {
             self.schedule_command_block(pos);
         }
         if self.common.command_block(pos).map(saved) != before {
-            self.common.world.modified.insert((pos.0 >> 4, pos.2 >> 4));
+            let chunk = (pos.0 >> 4, pos.2 >> 4);
+            if staged {
+                self.journal_chunk_save(chunk, SaveChunkScope::Level);
+            } else {
+                self.common.world.modified.insert(chunk);
+            }
         }
     }
 
@@ -252,6 +273,7 @@ impl crate::game::ServerGame<'_> {
                 dimension: self.common.dim,
                 origin_dimension: self.common.dim,
                 origin_player: false,
+                native_output: None,
                 level: None,
                 block: Some(pos),
                 cart: None,

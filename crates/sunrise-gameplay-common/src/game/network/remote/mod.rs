@@ -367,6 +367,8 @@ pub type DryUse = (DryChanges, Vec<DrySound>);
 /// Where `BlockItem.place` on the dry level placed, and the blocks it set.
 pub struct DryPlace {
     pub pos: sunrise_core::position::BlockPos,
+    /// Sound type comes from BlockItem.place's `placedState`, read before setPlacedBy writes.
+    pub sound_state: BlockStateId,
     pub matches_candidate: bool,
     pub changes: DryChanges,
 }
@@ -582,14 +584,6 @@ pub fn snapshot_value(s: &play::AttributeSnapshot) -> f64 {
     value
 }
 
-/// What `ChatScreen.handleChatInput` sends of typed chat once `ClientChatEvent` (`ask`, with
-/// the outgoing message and the cancel flag) had its say: nothing when canceled or emptied.
-pub fn chat_after_event(message: &str, ask: impl FnOnce(&mut String, &mut bool)) -> Option<String> {
-    let mut outgoing = message.to_owned();
-    let mut cancel = false;
-    ask(&mut outgoing, &mut cancel);
-    (!cancel && !outgoing.is_empty()).then_some(outgoing)
-}
 /// `Entity.isOnFire` for the window's player: while the server's flag is set
 /// the predicted tick's countdown never takes `fire_ticks` below 1.
 pub fn hold_server_fire(fire_ticks: i32, server_on_fire: bool) -> i32 {

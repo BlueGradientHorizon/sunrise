@@ -154,6 +154,15 @@ impl ServerGame<'_> {
         }
         Ok(())
     }
+    pub fn bind_server_ticking_states(&mut self) {
+        self.common.world.block_entities.set_mod_ticker_states(
+            sunrise_gameplay_common::game::api_values::block_state::mod_ticker_states(
+                mod_api::LogicalSide::Server,
+            ),
+        );
+        let states = self.ticking_states();
+        self.common.world.block_entities.set_states(states);
+    }
     /// `BlockState.getTicker` of every state, for the block entities ticked
     /// here. A creaking heart keeps its slot while uprooted (see
     /// `tick_creaking_heart`).
@@ -196,7 +205,6 @@ impl ServerGame<'_> {
                         if record { Ticking::Yes } else { Ticking::Idle }
                     }
                     n if FurnaceKind::from_block(n).is_some() => Ticking::Yes,
-                    _ if !name.starts_with("minecraft:") && self.native_ticks(name) => Ticking::Yes,
                     _ => Ticking::No,
                 }
             })

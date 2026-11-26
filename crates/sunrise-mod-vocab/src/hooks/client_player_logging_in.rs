@@ -6,7 +6,6 @@ pub trait Hooks {
     /// is the server's entity ID. Client-side,
     /// once per connection, including single player.
     #[hook(
-        target = "sunrise_client_gameplay::game::native_hooks::client_player_logging_in::ClientGame<'_>::native_client_player_logging_in",
         dispatch = "flat",
         side = "client",
         contract = "listen",

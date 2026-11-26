@@ -6,9 +6,14 @@ use sunrise_client::{
     hud::{HudBatch, rgba},
     ui::EditBox,
 };
+use sunrise_core::position::BlockPos;
 use sunrise_level::containers::BlockEntity;
 use sunrise_level::signs_data::editor_sprite;
 use sunrise_protocol::packets::play::{self, Serverbound as S};
+use sunrise_sim::lan::{
+    guest::{native_block_interaction_range, within_block_range},
+    playerdata::ints_uuid,
+};
 use winit::keyboard::KeyCode;
 
 pub struct SignEditor {
@@ -25,7 +30,7 @@ pub struct SignEditor {
 pub(in crate::game::client_side) fn sign_box() -> EditBox {
     let mut edit = EditBox::new(0.0, 0.0, 90.0, 9.0);
     edit.bordered = false;
-    edit.max_length = 384;
+    edit.max_length = play::SignLines::MAX_UTF16;
     edit.focused = true;
     edit
 }
@@ -76,9 +81,19 @@ impl ClientGame<'_> {
             return;
         };
         let (x, y, z) = edit.pos;
-        let near = self.common.eye_position().is_some_and(|eye| {
-            sunrise_sim::lan::guest::within_block_range(eye, self.common.reach() + 4.0, [x, y, z])
+        let buffer = 4.0;
+        let mut near = self.common.eye_position().is_some_and(|eye| {
+            within_block_range(eye, self.common.reach() + buffer, [x, y, z])
         });
+        if let Some(uuid) = self.common.level.player_uuid {
+            native_block_interaction_range(
+                &self.common.loop_context,
+                ints_uuid(uuid),
+                BlockPos::new(x, y, z),
+                buffer,
+                &mut near,
+            );
+        }
         let sign = matches!(
             self.world.block_entities.get(&edit.pos),
             Some(BlockEntity::Sign(_))
@@ -328,7 +343,7 @@ impl ClientGame<'_> {
         let (x, y) = done_button(b.width, b.height);
         let (mx, my) = self.client.cursor;
         if mx >= x && mx < x + 200.0 && my >= y && my < y + 20.0 {
-            self.client.audio.0.play_button_click();
+            self.play_audio_button_click();
             self.close_sign_editor();
             return true;
         }

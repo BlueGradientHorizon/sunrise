@@ -4,7 +4,10 @@ use std::sync::{
     atomic::{AtomicI32, AtomicUsize},
 };
 use sunrise_core::geometry::Vec3;
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+use sunrise_gameplay_common::game::{
+    execution_role::ExecutionRole,
+    native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _,
+};
 use sunrise_protocol::packets::configuration::ClientInformation;
 use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
 
@@ -16,7 +19,15 @@ pub fn with_guests_at(
     root: std::path::PathBuf,
     test: impl FnOnce(&mut crate::game::ServerGame<'_>),
 ) {
-    super::native_entity_refs::tests::with_game_at(root, |game| {
+    with_guests_for_role(root, ExecutionRole::IntegratedServer, test);
+}
+
+pub fn with_guests_for_role(
+    root: std::path::PathBuf,
+    role: ExecutionRole,
+    test: impl FnOnce(&mut crate::game::ServerGame<'_>),
+) {
+    super::native_entity_refs::tests::with_game_role(root, role, |game| {
         let settings = LanSettings {
             port: 0,
             guest_commands: false,
@@ -39,8 +50,8 @@ pub fn with_guests_at(
             allow_flight: true,
             seed: 0,
             max_players: 2,
-            integrated: true,
-            levels: game.server.level_shapes,
+            integrated: role == ExecutionRole::IntegratedServer,
+            levels: game.server.level_shapes.clone(),
             level_seeds: game.server.levels.0.runtime.seeds(),
         };
         game.lan_host(settings, net, config).unwrap();
@@ -137,15 +148,10 @@ pub fn summon_stand(game: &mut crate::game::ServerGame<'_>) -> mod_api::EntityRe
     else {
         unreachable!()
     };
-    let id = game
-        .summon(
-            game.dim.id(),
-            "minecraft:armor_stand",
-            [1.5, 70.0, 1.5],
-            tag,
-        )
-        .unwrap();
-    game.entity(id).unwrap()
+    let level = game.level(game.dim.id()).unwrap();
+    game.level_summon(level, "minecraft:armor_stand", [1.5, 70.0, 1.5], tag)
+        .unwrap()
+        .unwrap()
 }
 
 /// Whether anything the server sent the acting player since `before` is a chat line.

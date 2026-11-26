@@ -1,12 +1,17 @@
-//! World-border writes for native server mods through a `LevelRef`, as `/worldborder` makes
-//! them: `WorldBorder.setCenter`, `setSize` / `lerpSizeBetween`, `setDamagePerBlock`,
-//! `setSafeZone`, `setWarningBlocks` and `setWarningTime`. Sunrise keeps one border for every
-//! level, so a write through any level the server has opened moves it everywhere. The players
-//! are told on the next host sync, as for the command.
-use crate::game::ServerGame;
+//! Native server writes to the resident border named by a `LevelRef`.
+use super::Result;
+use crate::game::{ServerGame, world_border::BorderTarget};
 use mod_api::LevelRef;
-use sunrise_gameplay_common::game::level_control_hooks::LevelControl;
-use sunrise_level::worldborder::{MAX_CENTER, MAX_SIZE};
+
+fn report_border_write(level: LevelRef, operation: &str, result: Result<()>) -> bool {
+    if let Err(error) = result {
+        let mod_id = mod_api::content::crash::current_native_mod().unwrap_or("unknown");
+        let dimension = level.dimension_id();
+        log::warn!("mod {mod_id}: {operation} refused for {dimension}: {error}");
+        return false;
+    }
+    true
+}
 
 impl ServerGame<'_> {
     /// `WorldBorder.setCenter(x, z)`; the border-center hook hears it. The centre it already
@@ -18,20 +23,8 @@ impl ServerGame<'_> {
         level: LevelRef,
         center: [f64; 2],
     ) -> bool {
-        if self.native_level_world(level).is_none()
-            || !center
-                .iter()
-                .all(|v| v.is_finite() && v.abs() <= MAX_CENTER)
-            || LevelControl::BorderCenter.is_heard()
-        {
-            return false;
-        }
-        if self.common.border.center() == center {
-            return true;
-        }
-        self.common.border.set_center(center);
-        self.native_world_border_center_changed();
-        true
+        let result = self.set_border_center(BorderTarget::Handle(level), center);
+        report_border_write(level, "set_world_border_center", result)
     }
     /// `setSize(size)` when `ticks` is 0, otherwise `lerpSizeBetween(current, size, ticks)`; the
     /// border-bounds hook hears it. A still border set to the size it has is true with nothing
@@ -43,22 +36,8 @@ impl ServerGame<'_> {
         size: f64,
         ticks: i64,
     ) -> bool {
-        if self.native_level_world(level).is_none()
-            || !(1.0..=MAX_SIZE).contains(&size)
-            || ticks < 0
-            || LevelControl::BorderBounds.is_heard()
-        {
-            return false;
-        }
-        if ticks == 0
-            && self.common.border.remaining_ticks() == 0
-            && self.common.border.size() == size
-        {
-            return true;
-        }
-        self.common.border.lerp_to(size, ticks);
-        self.native_world_border_bounds_changed();
-        true
+        let result = self.set_border_size(BorderTarget::Handle(level), size, ticks);
+        report_border_write(level, "set_world_border_size", result)
     }
     /// `setDamagePerBlock` and `setSafeZone`: the damage a player outside takes per block past
     /// the safe zone, and how far outside they are safe. False for a value that is negative
@@ -69,13 +48,17 @@ impl ServerGame<'_> {
         per_block: f64,
         safe_zone: f64,
     ) -> bool {
-        let ok = |v: f64| v.is_finite() && v >= 0.0;
-        if self.native_level_world(level).is_none() || !ok(per_block) || !ok(safe_zone) {
-            return false;
-        }
-        self.common.border.damage_per_block = per_block;
-        self.common.border.safe_zone = safe_zone;
-        true
+        let result = self
+            .border_mut(BorderTarget::Handle(level))
+            .and_then(|mut border| {
+                if !per_block.is_finite() || !safe_zone.is_finite() {
+                    return Err("non-finite damage or safe zone".into());
+                }
+                Self::set_border_damage_per_block(&mut border, per_block);
+                Self::set_border_safe_zone(&mut border, safe_zone);
+                Ok(())
+            });
+        report_border_write(level, "set_world_border_damage", result)
     }
     /// `setWarningBlocks` and `setWarningTime`: how near the border, in blocks, and how soon a
     /// shrinking border reaches the player, in ticks, before their screen tints red. False
@@ -86,12 +69,13 @@ impl ServerGame<'_> {
         distance: i32,
         ticks: i32,
     ) -> bool {
-        if self.native_level_world(level).is_none() || distance < 0 || ticks < 0 {
-            return false;
-        }
-        self.common.border.warning_distance = distance;
-        self.common.border.warning_time = ticks;
-        true
+        let result = self
+            .border_mut(BorderTarget::Handle(level))
+            .map(|mut border| {
+                Self::set_border_warning_blocks(&mut border, distance);
+                Self::set_border_warning_time(&mut border, ticks);
+            });
+        report_border_write(level, "set_world_border_warning", result)
     }
 }
 

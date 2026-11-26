@@ -344,7 +344,7 @@ fn rocket_and_mob_trident_post_only_on_their_first_tick() {
             );
             if route == "finish_hit" {
                 let p = game.creatures.projectiles.pop().unwrap();
-                game.finish_arrow_hit(p, sunrise_sim::arrows::EntityHit::Deflected);
+                game.finish_arrow_hit(p, sunrise_sim::entities::arrows::EntityHit::Deflected);
             } else {
                 game.tick_projectiles().unwrap();
             }
@@ -381,7 +381,7 @@ fn finish_hit_dispatches_once_and_the_next_tick_does_not_repeat_it() {
         assert!(!arrow.arrow.as_ref().unwrap().has_been_shot);
         let id = arrow.id;
         start_events();
-        game.finish_arrow_hit(arrow, sunrise_sim::arrows::EntityHit::Deflected);
+        game.finish_arrow_hit(arrow, sunrise_sim::entities::arrows::EntityHit::Deflected);
         let first = take_shots();
         assert!(
             game.creatures

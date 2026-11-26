@@ -163,10 +163,7 @@ impl crate::game::ClientGame<'_> {
             ));
         }
         let pitch = if enabled { 1.0 } else { 0.75 };
-        self.client
-            .audio
-            .0
-            .play("minecraft:ui.button.click", None, 0.4, pitch);
+        self.play_audio("minecraft:ui.button.click", None, 0.4, pitch);
     }
 }
 

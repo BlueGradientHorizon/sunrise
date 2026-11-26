@@ -2,7 +2,8 @@
 //! hooks and the hit's level host: when each fires in a hit, and what a mod may change.
 use super::native_entity_refs::tests::with_game;
 use mod_api::{
-    self, Hand, HitHost, Hooks, LivingDamagePostEvent, LivingShieldBlockEvent, LivingUseTotemEvent,
+    self, Hand, HitHost, Hooks, LivingDamagePostEvent, LivingDeathProtectionEvent,
+    LivingShieldBlockEvent, LivingUseTotemEvent,
 };
 use std::sync::{Arc, Mutex};
 use sunrise_core::{geometry::Vec3};
@@ -19,8 +20,10 @@ struct Heard {
     totem: Vec<(i32, Hand, String)>,
     /// What the shield hook sets: `blocked`, `blocked_damage`.
     set_block: Option<(bool, f32)>,
-    cancel_totem: bool,
+    refuse_hand: Option<Hand>,
     random_draw: bool,
+    /// What `living_death_protection` answers with, if anything: a worn accessory's item, one.
+    lend: Option<&'static str>,
 }
 
 struct Probe(Arc<Mutex<Heard>>);
@@ -41,6 +44,22 @@ impl Hooks for Probe {
             level.with_random(|random| random.next_int());
         }
     }
+
+    fn living_death_protection(
+        &self,
+        _: &mut dyn HitHost,
+        event: &mut LivingDeathProtectionEvent<'_>,
+    ) {
+        let mut heard = self.0.lock().unwrap();
+        heard.order.push("protection");
+        if event.protector.is_none()
+            && let Some(item) = heard.lend.take()
+        {
+            use sunrise_gameplay_common::game::api_values::TryIntoApi;
+            let stack = sunrise_items::items::ItemStack::new(item, 1);
+            *event.protector = Some(stack.try_into_api().unwrap());
+        }
+    }
     fn living_damage_post(&self, _: &mut dyn HitHost, _: &mut LivingDamagePostEvent<'_>) {
         self.0.lock().unwrap().order.push("post");
     }
@@ -51,10 +70,14 @@ impl Hooks for Probe {
     ) -> mod_api::Flow {
         let mut heard = self.0.lock().unwrap();
         heard.order.push("totem");
-        heard
-            .totem
-            .push((event.entity, event.hand, event.item.to_string()));
-        if heard.cancel_totem {
+        heard.totem.push((
+            event.entity,
+            event.hand,
+            mod_api::__private::item_key_id(event.stack.item())
+                .unwrap()
+                .to_owned(),
+        ));
+        if heard.refuse_hand == Some(event.hand) {
             return mod_api::Flow::Cancel;
         }
         mod_api::Flow::Continue
@@ -146,7 +169,7 @@ fn setting_blocked_false_blocks_nothing() {
 #[ignore = "daily"]
 fn the_totem_hook_fires_after_the_health_is_gone_and_a_cancel_lets_the_mob_die() {
     let setup = Heard {
-        cancel_totem: true,
+        refuse_hand: Some(Hand::Main),
         ..Heard::default()
     };
     let heard = heard(setup, |game| {
@@ -165,24 +188,48 @@ fn the_totem_hook_fires_after_the_health_is_gone_and_a_cancel_lets_the_mob_die()
     assert_eq!(heard.order, ["shield", "totem", "post"]);
 }
 
-#[cfg(any())]
 #[test]
 #[ignore = "daily"]
 fn an_uncanceled_totem_saves_the_mob() {
-    let heard = heard(Heard::default(), |game| {
-        let mut hit = zombie(game, 226006);
-        hit.extra
-            .set_main_hand(Some("minecraft:totem_of_undying".into()));
-        hit.damage(
-            damage_level_of!(game, &sunrise_sim::health::NO_ATTACK, no_push, None),
-            1000.0,
-            Damage::of(DamageKind::Generic),
-        );
-        assert_eq!(hit.health, 1.0);
-        assert!(hit.extra.main_hand_stack().is_none());
-    });
-    assert_eq!(heard.totem.len(), 1);
-    assert_eq!(heard.order, ["shield", "totem", "post"]);
+    use sunrise_core::nbt::Tag;
+    let heard = heard(
+        Heard {
+            refuse_hand: Some(Hand::Main),
+            ..Heard::default()
+        },
+        |game| {
+            let mut hit = zombie(game, 226006);
+            let main = sunrise_items::items::ItemStack::new("minecraft:totem_of_undying", 1);
+            let mut off = sunrise_items::items::ItemStack::new("minecraft:stick", 2);
+            off.data_mut().set_other(
+                "minecraft:death_protection",
+                Some(Tag::compound([] as [(&str, Tag); 0])),
+            );
+            hit.extra.set_main_hand_stack(Some(main.clone()));
+            hit.extra
+                .set_slot_stack(sunrise_items::equipment::OFFHAND, Some(off));
+            game.mobs.push(hit);
+            assert!(game.mob_hits_mob(226006, 1000.0, Damage::of(DamageKind::Generic)));
+            let hit = &game.mobs[0];
+            assert_eq!(hit.health, 1.0);
+            assert_eq!(hit.extra.main_hand_stack(), Some(&main));
+            assert_eq!(
+                hit.extra
+                    .slot_stack(sunrise_items::equipment::OFFHAND)
+                    .unwrap()
+                    .count,
+                1
+            );
+        },
+    );
+    assert_eq!(
+        heard.totem,
+        [
+            (226006, Hand::Main, "minecraft:totem_of_undying".to_owned()),
+            (226006, Hand::Off, "minecraft:stick".to_owned()),
+        ]
+    );
+    assert_eq!(heard.order, ["shield", "totem", "totem", "post"]);
 }
 
 /// The hit's level is the one the hit draws from: a mod's draw moves the world's random on by

@@ -29,7 +29,7 @@ pub(crate) mod player_leave_tests {
             },
         }),
         copy_on_death: false,
-        sync: false,
+        sync_codec: None,
     };
 
     /// What a listener heard, in order.
@@ -53,7 +53,10 @@ pub(crate) mod player_leave_tests {
     impl Hooks for Leave {
         fn register(&self, registrar: &mut dyn Registrar, _: &mod_api::RegistrationContext) {
             registrar
-                .register_attachment_type("leave_test:value", false)
+                .register_attachment_type(mod_api::AttachmentDescriptor::new(
+                    "leave_test:value",
+                    || 0i32,
+                ))
                 .unwrap();
         }
         fn player_bed_leave(&self, _: &mut dyn ServerHost, event: &mut PlayerBedLeaveEvent<'_>) {

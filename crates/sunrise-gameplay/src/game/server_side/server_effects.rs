@@ -43,6 +43,23 @@ impl ServerGame<'_> {
         }
     }
 
+    pub(in crate::game) fn server_play_placement_sound(
+        &mut self,
+        event: &str,
+        at: [f64; 3],
+        volume: f32,
+        pitch: f32,
+        except_entity: Option<u32>,
+    ) {
+        if self.server.audio_capture_active {
+            self.server.pending_sounds.push(ServerSound {
+                source: mod_api::SoundSource::Blocks.index(),
+                except_entity,
+                ..ServerSound::new(event, at, volume, pitch)
+            });
+        }
+    }
+
     pub fn server_play_sound_on(
         &mut self,
         source: usize,
@@ -50,6 +67,30 @@ impl ServerGame<'_> {
         at: [f64; 3],
         volume: f32,
         pitch: f32,
+    ) {
+        self.capture_sound_on(source, event, at, volume, pitch, None);
+    }
+
+    pub(in crate::game::server_side) fn server_play_sound_on_seeded(
+        &mut self,
+        source: usize,
+        event: &str,
+        at: [f64; 3],
+        volume: f32,
+        pitch: f32,
+        seed: i64,
+    ) {
+        self.capture_sound_on(source, event, at, volume, pitch, Some(seed));
+    }
+
+    fn capture_sound_on(
+        &mut self,
+        source: usize,
+        event: &str,
+        at: [f64; 3],
+        volume: f32,
+        pitch: f32,
+        seed: Option<i64>,
     ) {
         assert!(
             self.is_logical_server(),
@@ -62,7 +103,7 @@ impl ServerGame<'_> {
                 position: at,
                 volume,
                 pitch,
-                seed: None,
+                seed,
                 entity: None,
                 except_entity: None,
             });

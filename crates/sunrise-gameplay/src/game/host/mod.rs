@@ -2,7 +2,7 @@ use super::ServerGame;
 use mod_api::__private::game::*;
 use mod_api::*;
 use sunrise_gameplay_common::game::api_values::{TryIntoApi, TryIntoEnginePreservingCount};
-use sunrise_gameplay_common::game::item_snapshot::ItemBoundary;
+use sunrise_gameplay_common::game::item_snapshot::ItemSnapshotGameExt1 as _;
 
 sunrise_gameplay_common::impl_shared_phase_contexts!(ServerGame<'_>);
 
@@ -47,9 +47,9 @@ impl ServerHost for ServerGame<'_> {
         ) -> bool,
     ) -> Result<Option<Option<ItemStack>>, ScratchScopeError> {
         let engine_stack = self
-            .boundary_items()
+            .stack_boundary_items()
             .ok_or(StackWriteError::Unavailable)
-            .and_then(|items| stack.try_into_engine_preserving_count(items))
+            .and_then(|items| stack.try_into_engine_preserving_count(&items))
             .map_err(ScratchScopeError::Stack)?;
         let taken = self
             .scratch_scope(
@@ -71,9 +71,9 @@ impl ServerHost for ServerGame<'_> {
         ) -> bool,
     ) -> Result<Option<(Option<ItemStack>, Option<ItemStack>)>, ScratchScopeError> {
         let engine_stack = self
-            .boundary_items()
+            .stack_boundary_items()
             .ok_or(StackWriteError::Unavailable)
-            .and_then(|items| stack.try_into_engine_preserving_count(items))
+            .and_then(|items| stack.try_into_engine_preserving_count(&items))
             .map_err(ScratchScopeError::Stack)?;
         let taken = self
             .scratch_scope(None, engine_stack, |game, tx, place| {
@@ -106,7 +106,8 @@ use sunrise_gameplay_common::game::transactions::scratch::ScratchGameExt1 as _;
 sunrise_gameplay_common::game::native_tags::impl_tags!(
     ServerGame<'_>,
     game,
-    sunrise_gameplay_common::game::tables::WorldTablesExt::native_tag_items(game)
+    sunrise_gameplay_common::game::tables::WorldTablesExt::native_tag_items(game),
+    sunrise_gameplay_common::game::tables::WorldTablesExt::loaded_biome_keys(game)
 );
 
 include!(concat!(env!("OUT_DIR"), "/game_host_generated.rs"));

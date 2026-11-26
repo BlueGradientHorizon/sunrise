@@ -7,22 +7,6 @@ use sunrise_core::nbt::Tag;
 #[allow(unused_imports)]
 pub use sunrise_items::items::ItemStack;
 
-/// Failure to access a native item component.
-#[derive(Debug)]
-pub enum NativeComponentError {
-    UnknownType,
-    InvalidValue(sunrise_protocol::Error),
-}
-impl std::fmt::Display for NativeComponentError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::UnknownType => f.write_str("unregistered component type"),
-            Self::InvalidValue(error) => write!(f, "invalid component value: {error}"),
-        }
-    }
-}
-impl std::error::Error for NativeComponentError {}
-
 /// Use the attack calculations with a private RNG snapshot, never the world's live source.
 pub fn stack_attack_bonus_preview(
     enchantments: &sunrise_items::enchant::Enchantments,
@@ -214,41 +198,13 @@ pub trait NativeComponentsGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
     /// `ItemStack.isBarVisible`, `getBarWidth`, `getBarColor`, before client-only hooks.
     fn item_resource_bar(&self, stack: &ItemStack) -> Option<mod_api::ItemBar> {
-        use super::api_values::TryIntoApi;
-        let snapshot = stack.try_into_api().ok()?;
-        let resource = mod_api::ItemResource::of(&snapshot);
-        let component = |id| {
-            resource.value(
-                <Self::State as crate::game::Side>::as_host(self),
-                &mod_api::ComponentId::new(id).expect("built-in component"),
-            )
-        };
-        if self.items().get(&stack.item)?.bundle {
-            let contents = component("minecraft:bundle_contents")?;
-            let patch = Tag::compound([("minecraft:bundle_contents", contents)]);
-            let (damage, extra) = sunrise_items::item_data::decode_components(Some(&patch));
-            let effective = ItemStack {
-                item: stack.item.clone(),
-                count: 1,
-                damage,
-                extra,
-            };
-            let (width, color) =
-                sunrise_items::bundle::Contents::of(self.items(), &effective)?.bar()?;
-            return Some(mod_api::ItemBar { width, color });
-        }
-        if !resource.damageable(<Self::State as crate::game::Side>::as_host(self)) {
-            return None;
-        }
-        let max_damage = component("minecraft:max_damage")
-            .as_ref()
-            .and_then(sunrise_items::properties::component_int)?;
-        let damage = component("minecraft:damage")
-            .as_ref()
-            .and_then(sunrise_items::properties::component_int)?;
-        sunrise_items::properties::damage_bar(damage, max_damage)
-            .try_into_api()
-            .unwrap()
+        let items = self.items();
+        let info = items.get(&stack.item)?;
+        let bar = sunrise_items::properties::stack_bar(items, stack, Some(info))?;
+        Some(mod_api::ItemBar {
+            width: bar.width,
+            color: bar.color,
+        })
     }
     fn item_resource_attack_damage_bonus(
         &self,
@@ -342,84 +298,6 @@ pub trait NativeComponentsGameExt1<'__sg>: crate::game::SideGame<'__sg> {
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> NativeComponentsGameExt1<'__sg> for G {}
 
-// Native mods use these helpers.
-#[allow(dead_code)]
-pub trait NativeComponentsGameExt2<'__sg>: crate::game::SideGame<'__sg> {
-    /// Read a native component, including the item's default when not patched.
-    fn native_component<'a>(
-        &'a self,
-        stack: &'a ItemStack,
-        id: &str,
-    ) -> Result<Option<&'a Tag>, NativeComponentError>
-    where
-        '__sg: 'a,
-    {
-        if sunrise_protocol::item::custom::id(id).is_none() {
-            return Err(NativeComponentError::UnknownType);
-        }
-        if let Some(data) = stack.data() {
-            if data.other(&format!("!{id}")).is_some() {
-                return Ok(None);
-            }
-            if let Some(value) = data.other(id) {
-                return Ok(Some(value));
-            }
-        }
-        Ok(self
-            .items()
-            .get(&stack.item)
-            .and_then(|item| item.custom_components.get(id)))
-    }
-
-    /// Set a registered native component after checking the network NBT limits.
-    fn native_set_component(
-        &self,
-        stack: &mut ItemStack,
-        id: &str,
-        value: Tag,
-    ) -> Result<(), NativeComponentError> {
-        if sunrise_protocol::item::custom::id(id).is_none() {
-            return Err(NativeComponentError::UnknownType);
-        }
-        sunrise_core::nbt::validate_component_value(&value).map_err(|error| {
-            NativeComponentError::InvalidValue(sunrise_protocol::Error::new(error))
-        })?;
-        let default = self
-            .items()
-            .get(&stack.item)
-            .and_then(|item| item.custom_components.get(id));
-        let value = (default != Some(&value)).then_some(value);
-        let removed = format!("!{id}");
-        let data = stack.data_mut();
-        data.set_other(&removed, None);
-        data.set_other(id, value);
-        stack.tidy();
-        Ok(())
-    }
-
-    /// Remove a native component, including its item default.
-    fn native_remove_component(
-        &self,
-        stack: &mut ItemStack,
-        id: &str,
-    ) -> Result<(), NativeComponentError> {
-        if sunrise_protocol::item::custom::id(id).is_none() {
-            return Err(NativeComponentError::UnknownType);
-        }
-        let default = self
-            .items()
-            .get(&stack.item)
-            .is_some_and(|item| item.custom_components.contains_key(id));
-        let removed = format!("!{id}");
-        let data = stack.data_mut();
-        data.set_other(id, None);
-        data.set_other(&removed, default.then(|| Tag::Compound(Default::default())));
-        stack.tidy();
-        Ok(())
-    }
-}
-impl<'__sg, G: crate::game::SideGame<'__sg>> NativeComponentsGameExt2<'__sg> for G {}
-
 pub trait NativeComponentsGameExt3<'__sg>: crate::game::SideGame<'__sg> {
     /// `EntityType.is(TagKey)`: whether `entity_type` (`minecraft:player`) is in the entity
     /// type tag `tag` (`minecraft:cannot_be_pushed_onto_boats`).
@@ -441,20 +319,6 @@ pub fn stack_can_be_hurt_by(
         .get(stack.item.as_ref())
         .and_then(|components| components.get("minecraft:damage_resistant"));
     sunrise_sim::item_damage::stack_can_be_hurt_by(default, catalog, stack, name)
-}
-
-pub const ITEM_ENVIRONMENT_DAMAGE: [&str; 4] = [
-    "minecraft:on_fire",
-    "minecraft:lava",
-    "minecraft:in_fire",
-    "minecraft:cactus",
-];
-
-pub fn item_damage_resolver<'a>(
-    models: &'a sunrise_assets::item_model::ItemModels,
-    catalog: &'a sunrise_world::damage_source::Catalog,
-) -> impl Fn(&ItemStack, &str) -> bool + 'a {
-    move |stack, damage| stack_can_be_hurt_by(models, catalog, stack, damage).unwrap_or(true)
 }
 
 use crate::game::side_ops::modapi_modding::ModapiModdingSideGameExt as _;

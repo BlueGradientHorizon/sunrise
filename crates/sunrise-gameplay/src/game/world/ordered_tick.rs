@@ -185,16 +185,14 @@ impl crate::game::ServerGame<'_> {
         if let Some(dragon) = self.common.dragon.as_ref() {
             offer(dragon.join, Pending::Dragon);
         }
-        // Only while a mod hears entity ticks and named the type: otherwise none is offered.
+        // Only while a mod hears entity ticks: otherwise none is offered.
         let told = self.server.ordered.told;
         if told.listening() {
             self.server
                 .others
                 .0
                 .iter()
-                .filter(|o| {
-                    super::native_ticks_server::other_ticks(&o.kind) && told.alone_kind(&o.kind)
-                })
+                .filter(|o| super::native_ticks_server::other_ticks(&o.kind))
                 .for_each(|o| offer(o.join, Pending::Other));
         }
         pending.sort_unstable_by_key(|&(j, _)| j);
@@ -281,7 +279,9 @@ impl crate::game::ServerGame<'_> {
                         continue;
                     };
                     let at = self.server.others.0[i].position;
-                    if entity_ticking(at.x.floor() as i32, at.z.floor() as i32) {
+                    if entity_ticking(at.x.floor() as i32, at.z.floor() as i32)
+                        && self.entity_position_accessible([at.x, at.y, at.z])
+                    {
                         self.native_other_tick_alone(told, i);
                     }
                 }
@@ -392,6 +392,7 @@ impl crate::game::ServerGame<'_> {
                                         causing: 0,
                                         direct: 0,
                                         position: None,
+                                        direct_type: None,
                                     };
                                     let vanilla = self
                                         .resident_item_or_orb_immune(orb_id, entity.1, kind, false);
@@ -469,6 +470,7 @@ impl crate::game::ServerGame<'_> {
                                     causing: 0,
                                     direct: 0,
                                     position: None,
+                                    direct_type: None,
                                 };
                                 sunrise_sim::health::DamageLevel::of(
                                     world,

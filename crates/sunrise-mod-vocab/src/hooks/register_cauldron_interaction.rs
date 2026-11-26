@@ -9,7 +9,6 @@ pub trait Hooks {
 
 `register_cauldron_interaction` registers item and item-tag callbacks on both sides. See [Registering cauldron interactions](../how-to/world/cauldron-interactions.md) for the server-side `Interaction::interact` callback, overwrite-in-place precedence and server-corrected prediction contract."]
     #[hook(
-        target = "sunrise_gameplay_common::game::native_hooks::register_cauldron_interaction::native_register_cauldron_interaction",
         receiver = "associated",
         dispatch = "flat",
         side = "both",

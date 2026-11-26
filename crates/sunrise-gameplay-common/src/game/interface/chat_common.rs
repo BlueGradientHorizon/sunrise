@@ -1,4 +1,5 @@
 //! Common command registries, resource-id caches, permissions, and shared helpers.
+use crate::game::side_ops::tables::TablesSideGameExt as _;
 use std::{
     collections::BTreeMap,
     path::{Path, PathBuf},
@@ -49,9 +50,10 @@ pub struct WorldCommandState {
     /// Overworld's while empty. The totals of the others are in `command_clocks`.
     pub active_clock: String,
     pub end_clock: WorldClock,
-    /// Time markers and timelines of the overworld clock.
-    pub markers: BTreeMap<String, TimeMarker>,
-    pub timelines: BTreeMap<String, Option<i64>>,
+    /// Time markers by `(clock_id, marker_id)` and timelines by `timeline_id -> (clock_id, period)`
+    /// from the world's `minecraft:timeline` registry.
+    pub markers: BTreeMap<(String, String), TimeMarker>,
+    pub timelines: BTreeMap<String, (String, Option<i64>)>,
     /// 0 peaceful .. 3 hard.
     pub difficulty: u8,
     /// Death message key set by the cause of death (e.g. /kill).
@@ -69,10 +71,6 @@ pub struct ResourceIds {
     pub(in crate::game) enchantments: Vec<String>,
     pub(in crate::game) structures: Vec<String>,
     pub(in crate::game) biomes: Vec<String>,
-    pub(in crate::game) clocks: Vec<String>,
-    /// The overworld clock's timelines, their periods and time markers.
-    pub(in crate::game) timelines: Vec<(String, Option<i64>)>,
-    pub(in crate::game) markers: Vec<(String, TimeMarker)>,
 }
 
 pub(in crate::game) static RESOURCE_IDS: Mutex<Vec<(PathBuf, Arc<ResourceIds>)>> =
@@ -95,43 +93,6 @@ pub(in crate::game) fn json_ids_in(dir: &Path) -> Vec<String> {
     out
 }
 
-/// The overworld clock's timelines and time markers, read from `data/minecraft/timeline`.
-pub fn overworld_timelines(root: &Path) -> (Vec<(String, Option<i64>)>, Vec<(String, TimeMarker)>) {
-    let dir = root.join("data/minecraft/timeline");
-    let (mut timelines, mut markers) = (Vec::new(), Vec::new());
-    for name in json_ids_in(&dir) {
-        let path = dir.join(format!("{}.json", name.trim_start_matches("minecraft:")));
-        let Ok(v) =
-            serde_json::from_slice::<serde_json::Value>(&std::fs::read(path).unwrap_or_default())
-        else {
-            continue;
-        };
-        if v["clock"].as_str() != Some("minecraft:overworld") {
-            continue;
-        }
-        let period = v["period_ticks"].as_i64();
-        timelines.push((name.clone(), period));
-        for (marker, def) in v["time_markers"].as_object().into_iter().flatten() {
-            let (ticks, show) = match def {
-                serde_json::Value::Number(n) => (n.as_i64().unwrap_or(0), false),
-                other => (
-                    other["ticks"].as_i64().unwrap_or(0),
-                    other["show_in_commands"].as_bool().unwrap_or(false),
-                ),
-            };
-            markers.push((
-                marker.clone(),
-                TimeMarker {
-                    ticks,
-                    period,
-                    show,
-                },
-            ));
-        }
-    }
-    (timelines, markers)
-}
-
 pub fn resource_ids(root: &Path) -> Arc<ResourceIds> {
     let mut cache = RESOURCE_IDS.lock().unwrap_or_else(|e| e.into_inner());
     if let Some((_, ids)) = cache.iter().find(|(cached, _)| cached == root) {
@@ -139,7 +100,6 @@ pub fn resource_ids(root: &Path) -> Arc<ResourceIds> {
     }
     let data = root.join("data/minecraft");
     let entity_types = super::entity_type_rows::entity_type_rows(root).ids.clone();
-    let (timelines, markers) = overworld_timelines(root);
     let ids = Arc::new(ResourceIds {
         // `/recipe <id>` must suggest a content mod's recipes too.
         recipes: json_ids_of_every_namespace(root, "recipe"),
@@ -149,9 +109,6 @@ pub fn resource_ids(root: &Path) -> Arc<ResourceIds> {
         enchantments: json_ids_of_every_namespace(root, "enchantment"),
         structures: json_ids_in(&data.join("worldgen/structure")),
         biomes: json_ids_in(&data.join("worldgen/biome")),
-        clocks: json_ids_in(&data.join("world_clock")),
-        timelines,
-        markers,
     });
     cache.push((root.to_owned(), ids.clone()));
     ids
@@ -533,8 +490,9 @@ pub trait ChatCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
         reg.enchantments = ids.enchantments.clone();
         reg.structures = ids.structures.clone();
         reg.biomes = ids.biomes.clone();
-        reg.clocks = ids.clocks.clone();
-        // The mods' clocks (`register_world_clock`) for `/time of`.
+        // The mods' clocks (`register_world_clock`) for `/time of`; the world's own
+        // join them when it opens (`sync_timeline_registries`).
+        reg.clocks = Vec::new();
         reg.clocks
             .extend(mod_api::__private::world_clock_declarations());
         reg.clocks.sort();
@@ -544,9 +502,6 @@ pub trait ChatCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
             "minecraft:the_end".into(),
         ];
         reg.players = vec![PLAYER_NAME.into()];
-        // Timelines of the overworld clock and their time markers.
-        common.ui.timelines = ids.timelines.iter().cloned().collect();
-        common.ui.markers = ids.markers.iter().cloned().collect();
         // Vanilla's built-in registries (mob effects, components, dialogs...).
         for dir in [&common.options.resources, &common.ui.vanilla_root] {
             if let Some(export) = command_export(dir, common.options.dedicated.is_none()) {
@@ -594,24 +549,31 @@ pub trait ChatCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
                 reg.persistent_components.push(name.to_owned());
             }
         }
-        reg.timelines = common.ui.timelines.keys().cloned().collect();
-        reg.time_markers = common
-            .ui
-            .markers
-            .iter()
-            .filter(|(_, m)| m.show)
-            .map(|(k, _)| k.clone())
-            .collect();
+        self.sync_timeline_registries();
         self.sync_enchantment_registries();
-        if self.is_logical_server() {
-            self.ui.registries.selector_tokens = super::native_entity_selectors::selector_tokens();
-        }
         // After the export, which keys the registry with vanilla's tags.
         self.sync_stat_registries();
         self.side_sync_pack_tag_ids();
+        self.side_sync_test_registry_ids();
     }
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> ChatCommonGameExt1<'__sg> for G {}
+
+impl crate::game::CommonGame<'_> {
+    /// Every world clock's total ticks by id, for the loot conditions that read one.
+    pub fn loot_clock_ticks(&self) -> std::collections::BTreeMap<String, i64> {
+        let mut clocks: std::collections::BTreeMap<String, i64> = self
+            .ui
+            .command_clocks
+            .iter()
+            .map(|(name, state)| (name.clone(), state.0))
+            .collect();
+        for name in [self.active_clock(), OVERWORLD_CLOCK, "minecraft:the_end"] {
+            clocks.insert(name.to_owned(), self.command_clock_time(name));
+        }
+        clocks
+    }
+}
 
 use crate::game::side_ops::presentation::PresentationSideGameExt as _;
 

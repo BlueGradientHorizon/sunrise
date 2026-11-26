@@ -226,6 +226,8 @@ pub(crate) mod world_spawn_join_tests {
     fn a_returning_player_from_a_missing_level_joins_in_the_world_spawn_level() {
         sunrise_gameplay::game::native_guest_turn_tests::with_guests(|game| {
             game.server.world_root = game.server.save.0.root.clone();
+            game.enter_level(sunrise_gameplay_common::game::Dim::Nether).unwrap();
+            game.enter_level(sunrise_gameplay_common::game::Dim::Overworld).unwrap();
             game.level.world_spawn_dimension = Some("minecraft:the_nether".into());
             let guests = &mut game.server.lan.as_mut().unwrap().hub.guests;
             guests.update(0, |g| {

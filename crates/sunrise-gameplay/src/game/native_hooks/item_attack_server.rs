@@ -1,4 +1,5 @@
 use super::*;
+use sunrise_gameplay_common::game::api_values::with_stack_view;
 
 /// The hook points. Each does nothing in Sunrise.
 impl crate::game::ServerGame<'_> {
@@ -16,10 +17,15 @@ impl crate::game::ServerGame<'_> {
         if !mod_api::__private::item_listens(mod_api::HookId::OnLeftClickEntity, &stack.item) {
             return false;
         }
+        // Keep the stack which started the action while the Part has a mutable Host.
         let stack = stack.clone();
         let player = self.native_acting_id();
         let mut canceled = false;
-        self.native_on_left_click_entity(player, &stack, entity, kind, &mut canceled);
+        with_stack_view(Some(&stack), |view| {
+            if let Some(view) = view {
+                self.native_on_left_click_entity(player, view, entity, kind, &mut canceled);
+            }
+        });
         canceled
     }
 }
@@ -34,7 +40,7 @@ impl crate::game::ServerGame<'_> {
     pub(in crate::game) fn native_on_left_click_entity(
         &mut self,
         player: u128,
-        stack: &ItemStack,
+        stack: mod_api::ItemStackView<'_>,
         entity: i32,
         kind: &str,
         canceled: &mut bool,

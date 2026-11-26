@@ -15,14 +15,7 @@ impl ServerGame<'_> {
         matches!(
             self.world.block_entities.get(&key),
             Some(BlockEntity::Lectern(l)) if l.book.is_some()
-        ) && g.within_block_range([key.0, key.1, key.2], 4.0)
-    }
-    /// `AbstractContainerMenu.removed` of the guest's station (`window`;
-    /// None closes it whichever it is): the carried stack and the inputs go
-    /// back to the inventory, what doesn't fit is dropped. False when no such
-    /// window is open.
-    pub(in crate::game) fn lan_station_closed(&mut self, conn: u32, window: Option<i32>) -> bool {
-        self.lan_station_removed(conn, window, super::lan_crafting::MenuRemoval::Live)
+        ) && g.within_interaction_range(&self.loop_context, [key.0, key.1, key.2], 4.0)
     }
     /// How many slots of its own the guest's open station menu has before the
     /// player's inventory (`slot_count - 36`), if one is open.
@@ -47,6 +40,7 @@ impl ServerGame<'_> {
             .facts()
             .get(self.common.world.block(x, y, z))
             .name;
-        StationKind::from_block(name) == Some(gs.kind) && g.within_block_range(gs.pos, 4.0)
+        StationKind::from_block(name) == Some(gs.kind)
+            && g.within_interaction_range(&self.common.loop_context, gs.pos, 4.0)
     }
 }

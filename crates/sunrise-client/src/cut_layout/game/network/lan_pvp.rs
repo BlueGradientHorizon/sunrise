@@ -254,8 +254,45 @@ pub(crate) mod arrow_hit_sound_tests {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use sunrise_command::args::GameMode;
     use sunrise_game_data::gamerules::Value;
+    use sunrise_gameplay::game::native_entity_refs::tests::{
+        bind_local_player, fixture_resident_column, run_fresh_cases, run_with_game_stack,
+    };
+    use sunrise_gameplay::game::native_guest_turn_tests::with_guests;
     use sunrise_gameplay::game::server_side::lan_pvp::{Strike, Sweep, Victim};
+    use sunrise_items::items::ItemStack;
+    use sunrise_sim::{
+        mobs::Mob,
+        motion::PlayerMotion,
+        projectiles::{Hit, Projectile, ProjectileKind},
+    };
+
+    fn ready_victim(game: &mut sunrise_gameplay::game::ServerGame<'_>, with_full_armor: bool) {
+        game.server
+            .lan
+            .as_mut()
+            .unwrap()
+            .hub
+            .update_guest(13, |guest| {
+                guest.loaded = true;
+                guest.load_timeout = 0;
+            })
+            .unwrap();
+        game.as_guest(13, |game| {
+            game.set_mode(GameMode::Survival);
+            let mut chest = ItemStack::new("minecraft:diamond_chestplate", 1);
+            chest.set_crafting_enchantments(vec![("minecraft:thorns".into(), 255)]);
+            game.armor[1] = Some(chest);
+            if with_full_armor {
+                game.armor[0] = Some(ItemStack::new("minecraft:diamond_helmet", 1));
+                game.armor[2] = Some(ItemStack::new("minecraft:diamond_leggings", 1));
+                game.armor[3] = Some(ItemStack::new("minecraft:diamond_boots", 1));
+            }
+            game.put_equipment_modifiers();
+        })
+        .unwrap();
+    }
 
     /// A fresh survival body for guest `conn` (entity `conn`), where `with_guests` stands it.
     fn fresh_body(game: &mut sunrise_gameplay::game::ServerGame<'_>, conn: u32) {
@@ -274,11 +311,106 @@ mod tests {
             })
             .unwrap();
         game.as_guest(conn, |g| {
-            use sunrise_command::args::GameMode;
             g.set_game_mode(GameMode::Creative);
             g.set_game_mode(GameMode::Survival);
         })
         .unwrap();
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn pvp_mace_smash_keeps_the_players_breach_and_does_not_retaliate_on_a_bystander() {
+        if run_fresh_cases(
+            "game::lan_pvp::tests::pvp_mace_smash_keeps_the_players_breach_and_does_not_retaliate_on_a_bystander",
+            "SUNRISE_PVP_MACE_SMASH_CHILD",
+            &["smash"],
+        ) {
+            return;
+        }
+        run_with_game_stack(|| {
+            with_guests(|game| {
+                fixture_resident_column(&mut game.world, (0, 0));
+                ready_victim(game, true);
+                game.world.health_rules.difficulty = sunrise_world::food::Difficulty::Hard;
+                let mut mace = ItemStack::new("minecraft:mace", 1);
+                mace.enchant("minecraft:breach", 4);
+                game.server
+                    .lan
+                    .as_mut()
+                    .unwrap()
+                    .hub
+                    .update_guest(12, |guest| {
+                        guest.inventory[guest.selected] = Some(mace);
+                    })
+                    .unwrap();
+                let mut strike = Strike::test_blow(12);
+                strike.amount = 5.0;
+                strike.damage_type = "minecraft:mace_smash".into();
+                let cow = game.res.mob_types().get("minecraft:cow").unwrap().clone();
+                game.mobs
+                    .push(Mob::new(41, cow, Vec3::new(3.0, 64.0, 5.0), 0.0));
+                let bystander_health = game.mobs[0].health;
+                assert!(game.pvp_land(Victim::Guest(13), &strike).is_some());
+                let victim = game.server.lan.as_ref().unwrap().hub.guest(13).unwrap();
+                // CombatRules.getDamageAfterAbsorb: full diamond blocks 0.75 of a 5-point
+                // hit; Breach IV subtracts 0.60 from that fraction, leaving 4.25 damage.
+                assert_eq!(victim.health, 15.75);
+                assert_eq!(game.mobs[0].health, bystander_health);
+            });
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn guest_thorns_answers_the_host_that_shot_the_arrow() {
+        if run_fresh_cases(
+            "game::lan_pvp::tests::guest_thorns_answers_the_host_that_shot_the_arrow",
+            "SUNRISE_PVP_ARROW_THORNS_CHILD",
+            &["arrow"],
+        ) {
+            return;
+        }
+        run_with_game_stack(|| {
+            with_guests(|game| {
+                fixture_resident_column(&mut game.world, (0, 0));
+                ready_victim(game, false);
+                let start = Vec3::new(1.0, 65.0, 5.0);
+                game.player = Some(PlayerMotion::new(game.motion, start).unwrap());
+                bind_local_player(game, 77, 77);
+                game.set_mode(GameMode::Survival);
+                let before = game.player.as_ref().unwrap().health.health();
+                let at = Vec3::new(3.0, 65.0, 5.0);
+                let mut arrow = Projectile::new(
+                    ProjectileKind::Arrow {
+                        base_damage: 2.0,
+                        critical: false,
+                        effect: None,
+                    },
+                    at,
+                    Some(Who::Player),
+                );
+                arrow.id = 90;
+                arrow.previous = start;
+                arrow.velocity = Vec3::new(2.0, 0.0, 0.0);
+                game.projectile_hits_player(
+                    &arrow,
+                    Hit::Entity {
+                        who: Who::Mob(13),
+                        at,
+                    },
+                    Victim::Guest(13),
+                )
+                .unwrap();
+                let victim = game.server.lan.as_ref().unwrap().hub.guest(13).unwrap();
+                assert!(victim.health < 20.0, "the arrow did not hurt the guest");
+                let host = game.player.as_ref().unwrap();
+                assert_eq!(host.entity_id, 77);
+                assert!(
+                    host.health.health() < before,
+                    "Thorns did not hurt the shooter"
+                );
+            });
+        });
     }
 
     fn health(game: &sunrise_gameplay::game::ServerGame<'_>, conn: u32) -> f32 {
@@ -308,7 +440,7 @@ mod tests {
         let attacker_team = game.score.board.players_team("guest12").cloned();
         let mut blow = Strike::test_blow(12);
         blow.team = attacker_team.clone();
-        let melee = game.pvp_land(Victim::Guest(13), &blow);
+        let melee = game.pvp_land(Victim::Guest(13), &blow).is_some();
 
         fresh_body(game, 13);
         let sweep = Sweep {
@@ -316,12 +448,11 @@ mod tests {
             creative: false,
             from: [3.0, 64.0, 5.0],
             damage: 1.0,
-            custom_damage: None,
+            enchanted_damage: None,
             knockback: (0.0, 0.0),
             team: attacker_team,
             hit_box: Aabb::new(Vec3::new(0.0, 60.0, 0.0), Vec3::new(6.0, 70.0, 10.0)),
             skip: None,
-            ignite: 0.0,
         };
         let before = health(game, 13);
         game.sweep_players(&sweep);

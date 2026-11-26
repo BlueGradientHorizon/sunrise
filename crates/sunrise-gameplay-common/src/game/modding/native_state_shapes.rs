@@ -1,7 +1,9 @@
 //! Shape queries for a supplied state without replacing the block in the world.
 
 pub use mod_api::BlockShapeKind;
+use std::ops::ControlFlow;
 use sunrise_core::{geometry::VoxelShape, position::BlockPos};
+use sunrise_items::blocks::VisualShape;
 use sunrise_level::{collisions::SceneCollisions, world::World};
 use sunrise_level::{fast_hash::FxHashMap, shulker_box::Shulker};
 use sunrise_world::{
@@ -11,15 +13,14 @@ use sunrise_world::{
     registry::BlockStateId,
 };
 
-/// A state's empty-context collision boxes at `pos`, block-local: a block entity's published
-/// shape where its block publishes one, else the declared or vanilla shape. Collision errors
-/// return no boxes. The one read behind `LevelRef::block_shape` and `LevelHost::collision_shape`.
-pub fn collision_boxes(
+/// Common empty-context `BlockStateBase.getCollisionShape` query, including contextual
+/// and block-entity-published shapes. The returned grid shares its backing storage.
+pub fn collision_shape(
     collision: &BlockCollisionRegistry<'_>,
     world: &World,
     state: BlockStateId,
     pos: [i32; 3],
-) -> Vec<[f64; 6]> {
+) -> VoxelShape {
     let mut scene = SceneCollisions {
         world,
         binding: collision,
@@ -32,18 +33,7 @@ pub fn collision_boxes(
             BlockPos::new(pos[0], pos[1], pos[2]),
             &CollisionContext::empty(false),
         )
-        .map(|shape| {
-            shape
-                .boxes()
-                .iter()
-                .map(|bounds| {
-                    let min = bounds.min_position();
-                    let max = bounds.max_position();
-                    [min.x, min.y, min.z, max.x, max.y, max.z]
-                })
-                .collect()
-        })
-        .unwrap_or_default()
+        .unwrap_or_else(|_| VoxelShape::empty())
 }
 
 /// The geometry chosen by selection, before its column offset is applied.
@@ -136,22 +126,36 @@ pub trait NativeStateShapesGameExt1<'__sg>: crate::game::SideGame<'__sg> {
         outline_boxes(outline, base)
     }
 
-    fn state_shape_boxes(
+    fn visit_state_shape(
         &self,
         world: &World,
         shulkers: &FxHashMap<[i32; 3], Shulker>,
         state: BlockStateId,
         pos: [i32; 3],
         kind: BlockShapeKind,
-    ) -> Vec<[f64; 6]> {
+        visit: &mut dyn FnMut([f64; 6]) -> ControlFlow<()>,
+    ) -> ControlFlow<()> {
         match kind {
             BlockShapeKind::Outline => {
                 let (outline, offset) = self.selected_outline(world, state, shulkers, pos, false);
-                // Stay block-local: adding world coordinates and subtracting them again
-                // would lose precision in offsets used to sample debris.
-                outline_boxes(outline, offset).collect()
+                // Stay block-local; translating to world space and back loses precision.
+                outline_boxes(outline, offset).try_for_each(visit)
             }
-            BlockShapeKind::Collision => collision_boxes(self.collision, world, state, pos),
+            BlockShapeKind::Collision => mod_api::__private::voxel_shape_from_core(
+                collision_shape(self.collision, world, state, pos),
+            )
+            .boxes()
+            .try_for_each(visit),
+            // `BlockStateBase.getVisualShape`, from the same table `ClipBlock::Visual` reads.
+            BlockShapeKind::Visual => {
+                let kind = match self.res.facts().get(state).visual_shape() {
+                    VisualShape::Collision => BlockShapeKind::Collision,
+                    VisualShape::Outline => BlockShapeKind::Outline,
+                    VisualShape::Empty => return ControlFlow::Continue(()),
+                    VisualShape::Block => return visit([0.0, 0.0, 0.0, 1.0, 1.0, 1.0]),
+                };
+                self.visit_state_shape(world, shulkers, state, pos, kind, visit)
+            }
             _ => unreachable!("BlockShapeKind: unhandled variant"),
         }
     }

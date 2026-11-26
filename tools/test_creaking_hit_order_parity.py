@@ -6,14 +6,12 @@ import os
 import tempfile
 from pathlib import Path
 
-try:
-    from . import lab, oracle_harness, test_rust_parity as base
-    from .integration_env import game_environment
-except ImportError:
-    import lab
-    import oracle_harness
-    import test_rust_parity as base
-    from integration_env import game_environment
+import sys
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+from tools import lab, oracle_harness, test_rust_parity as base
+from tools.integration_env import game_environment
 
 LIVE_TEST = ('game::server_side::commands::world_cmds::registered_damage_tests::'
              'live_damage_and_blast_creaking_reactions_and_timed_player_credit')

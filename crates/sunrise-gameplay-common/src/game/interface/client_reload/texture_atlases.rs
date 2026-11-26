@@ -8,14 +8,14 @@ pub mod tests {
     /// `map_decorations` definition, already in the resources.
     pub struct Maps(std::sync::Arc<std::sync::Mutex<(u32, Vec<Option<mod_api::AtlasRegion>>)>>);
     pub fn maps() -> TextureAtlasRegistration {
-        registration("maps_mod:maps", "minecraft:map_decorations")
+        registration("maps_mod:maps", "maps_mod:maps")
     }
     /// An atlas whose name holds `presets`, which the menu's own picture folder also has.
     pub fn presets() -> TextureAtlasRegistration {
-        registration("maps_mod:presets", "minecraft:map_decorations")
+        registration("maps_mod:presets", "maps_mod:presets")
     }
     pub fn player(atlas: &TextureAtlasRegistration) -> Identifier {
-        atlas.sprite_name(&Identifier::parse("minecraft:player").unwrap())
+        atlas.sprite_name(&Identifier::parse("maps_mod:player").unwrap())
     }
     #[cfg(test)]
     #[mod_api::__subscriptions]
@@ -27,7 +27,7 @@ pub mod tests {
         ) {
             let mut kept = self.0.lock().unwrap();
             kept.0 += 1;
-            if kept.0 == 1 {
+            if kept.0 == 2 {
                 event.register(maps());
                 event.register(presets());
             }

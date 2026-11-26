@@ -6,6 +6,7 @@ pub(crate) mod tests {
     use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
     use sunrise_gameplay_common::game::native_block_entity_read::NativeBlockEntityReadGameExt1;
     use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
+    use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;
     use sunrise_gameplay_common::game::native_lifecycle_common::NativeLifecycleCommonGameExt1;
     use sunrise_gameplay_common::game::server_side::view_pass::tests::decode_ordered;
     use sunrise_gameplay_common::game::server_side::view_pass::tests::{Got, Sent};
@@ -166,11 +167,19 @@ pub(crate) mod tests {
         let (mut game, rx, mut all) = stream_the_nether(&mut resources, "view-pass");
         assert!(all.opened, "the Nether was opened on the client");
         assert_eq!(all.chunks, square(), "the area's chunks, wrapped");
-        // Kept loaded for 40 more ticks, its clock the server's.
+        game.native_lifecycle
+            .begin_open(Some(mod_api::Authority::IntegratedServer));
+        let nether = game.level(Dim::Nether.id()).unwrap();
+        let chunk = game.chunk(nether, [40, 40]).unwrap();
+        assert_eq!(chunk.resend(&mut game), Ok(()));
+        let mut resent = Vec::new();
         for _ in 0..40 {
             game.tick_server(false).unwrap();
-            all.times.extend(sent(&rx).times);
+            let updates = sent(&rx);
+            all.times.extend(updates.times);
+            resent.extend(updates.chunks);
         }
+        assert_eq!(resent, [(40, 40)], "resend goes to the viewed-level holder");
         let world = game.server.levels.0.parked_world(Dim::Nether).unwrap();
         assert!(
             square().iter().all(|c| world.chunks.contains_key(c)),
@@ -680,7 +689,7 @@ pub(crate) mod tests {
         assert!(all.sounds.is_empty());
         // A mod's handle needs the world's epoch, which this test world never began.
         game.native_lifecycle
-            .begin_open(mod_api::Authority::IntegratedServer);
+            .begin_open(Some(mod_api::Authority::IntegratedServer));
         let nether = game.level(Dim::Nether.id()).unwrap();
         let blocks = mod_api::SoundSource::Blocks;
         let at = [648.5, 70.0, 650.25];
@@ -719,7 +728,7 @@ pub(crate) mod tests {
         assert!(tracks(&game), "the view tracks the pig");
         game.enter_level(Dim::Nether).unwrap();
         game.native_lifecycle
-            .begin_open(mod_api::Authority::IntegratedServer);
+            .begin_open(Some(mod_api::Authority::IntegratedServer));
         let emitter = game.entity(pig as u32).unwrap();
         let neutral = mod_api::SoundSource::Neutral;
         let sound = "minecraft:entity.pig.ambient";

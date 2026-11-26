@@ -1,6 +1,4 @@
 use super::*;
-#[cfg(any(test, feature = "test-support"))]
-use crate::game::resource_tables::DYNAMIC_TEXTURE_POOL_OVERRIDE;
 use std::path::Path;
 use sunrise_client_render::streaming::{MeshWorkerContext, WorkerContext};
 use sunrise_gameplay_common::game::api_values::{self, TryIntoApi};
@@ -43,7 +41,10 @@ impl PackResourcesClientExt for PackResources {
         item_data: &sunrise_world::item_defaults::ItemData,
     ) -> Result<(PackResources, ClientPackResources)> {
         let visibility = models::load_visibility(root.prepared(), assets.registry)?;
-        api_values::resolve_block_definitions(assets.registry)?;
+        api_values::resolve_block_definitions_for_role(
+            assets.registry,
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::Client,
+        )?;
         mods::extend_poi_types(assets.registry);
         mods::register_cauldron_fluid_contents(assets.registry);
         let tables = Arc::new(
@@ -150,9 +151,18 @@ impl UiResources {
     /// The resolved resource generation, including the base layer and pack filters, over the
     /// game's own resources at `vanilla` (which tell the packs' core shaders from the game's).
     /// Its splash pool is empty until `with_splashes`.
+    #[cfg(test)]
     pub fn load(
         root: &sunrise_assets::resource_source::ResourceSource,
         vanilla: &Path,
+    ) -> Result<Self> {
+        Self::load_with_limit(root, vanilla, sunrise_client::hud::MAX_ATLAS_SIZE)
+    }
+    /// Build the title resources within the supplied device texture dimension.
+    pub fn load_with_limit(
+        root: &sunrise_assets::resource_source::ResourceSource,
+        vanilla: &Path,
+        max_atlas_size: u32,
     ) -> Result<Self> {
         // The title screen waits for both: the panorama's six faces decode
         // beside the atlas.
@@ -162,10 +172,9 @@ impl UiResources {
                     sunrise_client::gfx::panorama::Faces::load(root, root)
                 })
             });
-            let pool = dynamic_texture_pool();
             let game = sunrise_assets::resource_source::ResourceSource::directory(vanilla.into());
             let atlas = startup::time("ui.atlas", || {
-                HudAtlas::build_over_with_dynamic_textures(root, root, &game, pool)
+                HudAtlas::build_over_and_limit(root, root, &game, max_atlas_size)
             });
             let panorama = panorama
                 .join()
@@ -177,6 +186,25 @@ impl UiResources {
                 plain_texts: PlainTexts::default(),
             })
         })
+    }
+    /// The provisional dimensions may have refused sprites even when the base HUD itself fits.
+    /// Rebuild the final stitch from the accepted staged source on either limit change.
+    pub(in crate::game) fn stitch_for_device(
+        &mut self,
+        source: &sunrise_assets::resource_source::ResourceSource,
+        vanilla: &Path,
+        limit: u32,
+    ) -> Result<bool> {
+        if self.atlas.stitch_limit == Some(limit) {
+            return Ok(false);
+        }
+        let game =
+            sunrise_assets::resource_source::ResourceSource::directory(vanilla.to_path_buf());
+        let mut atlas = HudAtlas::build_over_and_limit(source, source, &game, limit)?;
+        atlas.font.uniform = self.atlas.font.uniform;
+        atlas.font.japanese = self.atlas.font.japanese;
+        self.atlas = atlas;
+        Ok(true)
     }
     /// The title's splash pool from `stack` (`sunrise_client::splashes::pool`).
     pub fn with_splashes(
@@ -391,12 +419,24 @@ impl crate::game::client_side::ClientState {
     pub(in crate::game) fn client_res(&self) -> &ClientResources {
         Self::expect_client_res(&self.client_res)
     }
+
+    #[inline]
+    pub fn try_block_entity_render(&self) -> Option<&BlockEntityRenderer> {
+        self.client_res
+            .get()
+            .map(ClientResources::block_entity_render)
+    }
 }
 
 impl crate::game::ClientGame<'_> {
     #[inline]
     pub fn client_res(&self) -> &ClientResources {
         self.client.client_res()
+    }
+
+    #[inline]
+    pub fn try_block_entity_render(&self) -> Option<&BlockEntityRenderer> {
+        self.client.try_block_entity_render()
     }
 }
 
@@ -480,19 +520,6 @@ pub struct PlainTexts(
 #[cfg(feature = "client")]
 impl PlainTexts {
     pub(in crate::game) const MAX: usize = 256;
-}
-
-/// Whether the HUD atlas packs the pool of dynamic texture slots: whenever a client mod is
-/// loaded, since any of them can call `ClientHost::create_dynamic_texture`, with
-/// no mixin and no opt-in (#4437). A game with no mod packs no slot and its atlas does not grow.
-/// Read where the atlas is built: at the first load and on a resource reload.
-#[cfg(feature = "client")]
-pub fn dynamic_texture_pool() -> bool {
-    #[cfg(any(test, feature = "test-support"))]
-    if let Some(pool) = DYNAMIC_TEXTURE_POOL_OVERRIDE.get() {
-        return pool;
-    }
-    !mod_api::__private::mods().is_empty()
 }
 
 /// misc/forcefield.png for the world border wall (square, power of two).

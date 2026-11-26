@@ -6,6 +6,7 @@ use {
     sunrise_gameplay::game::server_side::server_travel::credits_respawn_tests::charge_anchor,
     sunrise_gameplay::game::server_side::server_travel::credits_respawn_tests::light_spawn_chunks,
     sunrise_gameplay_common::game::Dim,
+    sunrise_gameplay_common::game::player_state::CloneScope,
     sunrise_gameplay_common::game::server_side::server_travel::credits_respawn_tests::ANCHOR,
 };
 
@@ -123,7 +124,11 @@ fn a_point_in_another_level_is_refused_while_a_player_is_swapped_in() {
         let mut resources = None;
         let (_scratch, mut game, _rx) = server_with_a_nether_anchor(&mut resources);
         let answer = game
-            .with_cloning_player(2, |game| respawn_target(game))
+            .with_cloning_player(
+                2,
+                CloneScope::LendBody,
+                |game| respawn_target(game),
+            )
             .unwrap();
         assert_eq!(answer, Err(RespawnTargetUnavailable::InPlayerHook));
     });

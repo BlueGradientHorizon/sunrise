@@ -320,6 +320,7 @@ pub(in crate::game) mod tests {
     use sunrise_gameplay_common::game::{
         native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _,
         native_living_body::NativeLivingBodyGameExt3 as _,
+        player_identity::PlayerIdentityGameExt1 as _,
     };
     use sunrise_items::items::ItemStack;
     #[cfg(test)]
@@ -411,11 +412,57 @@ pub(in crate::game) mod tests {
                 assert!(game.living_release_using_item(player));
                 assert_eq!(game.using, None);
                 let uses = uses.lock().unwrap();
-                assert_eq!(uses.stops, [(None, Hand::Main, second)]);
+                assert_eq!(uses.stops, [(Some(20), Hand::Main, second)]);
                 assert_eq!(uses.tick_remaining.last(), Some(&first));
-                assert_eq!(uses.releases, [(None, second)]);
+                assert_eq!(uses.releases, [(Some(20), second)]);
                 assert_eq!(uses.finishes, 0);
             }
+        });
+    }
+
+    /// Every item-use hook names the player who uses, as NeoForge's
+    /// `LivingEntityUseItemEvent` carries its entity: an apple eaten (Start,
+    /// the may-still-use check, Tick, `onUseTick`, Finish), then a bow drawn
+    /// and let go (Stop, `releaseUsing`), each use ending in `onStopUsing`.
+    #[test]
+    #[ignore = "daily"]
+    fn the_item_use_hooks_name_the_player_who_uses() {
+        with_uses(|game, uses, player| {
+            assert_eq!(game.own_entity_id(), 20);
+            game.common.inventory[game.common.selected] =
+                Some(ItemStack::new("minecraft:apple", 2));
+            uses.lock().unwrap().start_duration = Some(2);
+            assert!(game.living_start_using_item(player, Hand::Main));
+            for _ in 0..3 {
+                game.tick_using_server();
+            }
+            assert_eq!(game.using, None);
+            assert_eq!(uses.lock().unwrap().finishes, 1);
+            uses.lock().unwrap().start_duration = None;
+            game.common.inventory[game.common.selected] = Some(ItemStack::new("minecraft:bow", 1));
+            assert!(game.living_start_using_item(player, Hand::Main));
+            game.tick_using_server();
+            assert!(game.living_release_using_item(player));
+            let heard = std::mem::take(&mut uses.lock().unwrap().heard);
+            for hook in [
+                "start",
+                "can_continue_using",
+                "tick",
+                "on_use_tick",
+                "finish",
+                "stop",
+                "release_using",
+                "on_stop_using",
+            ] {
+                assert!(
+                    heard.iter().any(|(h, _)| *h == hook),
+                    "{hook} not heard: {heard:?}"
+                );
+            }
+            assert!(
+                heard.iter().all(|(_, entity)| *entity == Some(20)),
+                "{heard:?}"
+            );
         });
     }
 
@@ -567,9 +614,9 @@ pub(in crate::game) mod tests {
                 assert_eq!(game.creatures.projectiles.len(), arrows + 1);
                 let uses = uses.lock().unwrap();
                 assert_eq!(uses.stops.len(), round + 1);
-                assert_eq!(uses.stops[round], (None, hand, 71_975));
+                assert_eq!(uses.stops[round], (Some(20), hand, 71_975));
                 assert_eq!(uses.releases.len(), round + 1);
-                assert_eq!(uses.releases[round], (None, 71_975));
+                assert_eq!(uses.releases[round], (Some(20), 71_975));
                 assert_eq!(uses.released_again, vec![false; round + 1]);
             }
         });
@@ -596,7 +643,7 @@ pub(in crate::game) mod tests {
             assert!(game.living_start_using_item(player, Hand::Off));
             game.tick_using_server();
             assert_eq!(game.living_used_item_hand(player), None);
-            assert_eq!(uses.lock().unwrap().stops, [(None, Hand::Off, 72_000)]);
+            assert_eq!(uses.lock().unwrap().stops, [(Some(20), Hand::Off, 72_000)]);
         });
     }
 

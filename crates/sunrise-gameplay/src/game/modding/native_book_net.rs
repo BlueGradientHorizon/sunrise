@@ -5,12 +5,30 @@ use std::{
     sync::atomic::{AtomicU64, Ordering},
 };
 use sunrise_protocol::packets::{configuration::CustomPayload, play::Clientbound as C};
-use sunrise_sim::recipe_book::{settings_codec, settings_sync::CHANNEL};
+use sunrise_sim::recipe_book::{
+    placement_sync::ResourceId,
+    settings_codec,
+    settings_sync::{CHANNEL, Message},
+};
 static EPOCH: AtomicU64 = AtomicU64::new(1);
-fn registered() -> BTreeSet<String> {
+
+pub(super) fn book_payload(message: &Message) -> Option<CustomPayload> {
+    match settings_codec::encode(message) {
+        Ok(data) => Some(CustomPayload {
+            channel: CHANNEL.into(),
+            data,
+        }),
+        Err(error) => {
+            log::warn!("[recipe book] cannot send {CHANNEL}: {error}");
+            None
+        }
+    }
+}
+
+fn registered() -> BTreeSet<ResourceId> {
     mod_api::RecipeBookTypeKey::registered()
         .into_iter()
-        .map(|key| key.as_str().to_owned())
+        .map(|key| ResourceId::from_registered_book(&key))
         .collect()
 }
 impl ServerGame<'_> {
@@ -34,11 +52,8 @@ impl ServerGame<'_> {
             return;
         };
         authority.revision = revision;
-        if let Some(data) = settings_codec::encode(&authority.snapshot(&guest.recipe_book.custom)) {
-            guest.send(&C::CustomPayload(CustomPayload {
-                channel: CHANNEL.into(),
-                data,
-            }));
+        if let Some(payload) = book_payload(&authority.snapshot(&guest.recipe_book.custom)) {
+            guest.send(&C::CustomPayload(payload));
         }
     }
 
@@ -92,24 +107,17 @@ impl ServerGame<'_> {
             return;
         };
         if let Some(message) = authority.server_update(book.as_str(), flags)
-            && let Some(data) = settings_codec::encode(&message)
+            && let Some(payload) = book_payload(&message)
         {
-            guest.send(&C::CustomPayload(CustomPayload {
-                channel: CHANNEL.into(),
-                data,
-            }));
+            guest.send(&C::CustomPayload(payload));
         }
     }
 
-    pub(in crate::game::server_side) fn guest_book_settings(&mut self, conn: u32, data: &[u8]) {
+    pub fn guest_book_settings(&mut self, conn: u32, data: &[u8]) {
         let Some(host) = self.server.lan.as_mut() else {
             return;
         };
-        if !host
-            .hub
-            .guest(conn)
-            .is_some_and(|guest| guest.placed && guest.brand == "sunrise")
-        {
+        if !host.hub.guest(conn).is_some_and(|guest| guest.placed) {
             return;
         }
         let connection = self
@@ -119,7 +127,7 @@ impl ServerGame<'_> {
             .entry(conn)
             .or_default();
         if data.first() == Some(&settings_codec::PLACEMENT_TAG) {
-            let frame = connection.receive_placement(data, std::time::Instant::now());
+            let frame = connection.receive_placement(data);
             if let Some(frame) = frame {
                 self.guest_mod_book_placement(conn, frame);
             }
@@ -129,18 +137,12 @@ impl ServerGame<'_> {
             .hub
             .guests
             .update_connection(conn, |guest| {
-                let reply = connection.receive(
-                    data,
-                    &mut guest.recipe_book.custom,
-                    registered,
-                    || EPOCH.fetch_add(1, Ordering::Relaxed),
-                    std::time::Instant::now(),
-                )?;
-                if let Some(data) = settings_codec::encode(&reply.message) {
-                    guest.send(&C::CustomPayload(CustomPayload {
-                        channel: CHANNEL.into(),
-                        data,
-                    }));
+                let reply =
+                    connection.receive(data, &mut guest.recipe_book.custom, registered, || {
+                        EPOCH.fetch_add(1, Ordering::Relaxed)
+                    })?;
+                if let Some(payload) = book_payload(&reply.message) {
+                    guest.send(&C::CustomPayload(payload));
                 }
                 reply
                     .changed
@@ -150,7 +152,7 @@ impl ServerGame<'_> {
         if let Some((uuid, name, id, flags)) = changed
             && let Some(key) = mod_api::RecipeBookTypeKey::registered()
                 .into_iter()
-                .find(|key| key.as_str() == id)
+                .find(|key| key.as_str() == id.as_str())
         {
             self.native_player_recipe_book_settings_change(
                 uuid,

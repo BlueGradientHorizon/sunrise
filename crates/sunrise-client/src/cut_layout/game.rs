@@ -9,6 +9,30 @@ pub(crate) use sunrise_client_gameplay::game::client_side::test_key_codes::{
 pub(crate) use sunrise_client_gameplay::hud_gates::{block_outline_drawn, debug_crosshair_drawn};
 #[path = "../benchmark_retention.rs"]
 pub(crate) mod benchmark_retention;
+#[cfg(all(test, feature = "client"))]
+#[path = "game/network/remote_mob_data/frog_variant_meta_tests.rs"]
+mod frog_variant_meta_tests;
+#[cfg(test)]
+#[path = "game/modding/quiet_write_tests.rs"]
+mod quiet_write_tests;
+#[cfg(test)]
+#[path = "game/modding/container_loot_table_tests.rs"]
+mod container_loot_table_tests;
+#[cfg(all(test, feature = "client"))]
+#[path = "game/modding/native_player_post_effects_tests.rs"]
+mod native_player_post_effects_tests;
+#[cfg(all(test, feature = "client"))]
+#[path = "game/modding/native_living_model_posed_tests.rs"]
+mod native_living_model_posed_tests;
+#[cfg(all(test, feature = "client"))]
+#[path = "game/modding/native_datapack_values_tests.rs"]
+mod native_datapack_values_tests;
+#[cfg(all(test, feature = "client"))]
+#[path = "game/modding/inventory_menu_parts_tests.rs"]
+mod inventory_menu_parts_tests;
+#[cfg(all(test, feature = "client"))]
+#[path = "game/interface/pack_layer_frame_tests.rs"]
+mod pack_layer_frame_tests;
 #[cfg(any(test, not(feature = "client")))]
 #[path = "../server_startup_settings.rs"]
 mod server_startup_settings;
@@ -39,7 +63,9 @@ use sunrise_client_gameplay::game::client_side::{mods_client, packs::startup_roo
 #[cfg(feature = "client")]
 use sunrise_client_lib::audio::Audio;
 #[cfg(feature = "client")]
-use sunrise_gameplay::game::server_side::integrated::{run_component_harness_on_server, serve};
+use sunrise_gameplay::game::server_side::integrated::{
+    run_component_harness_on_server, serve_with_ticket_activation,
+};
 use sunrise_gameplay::game::server_side::{
     loading_server::{configure_launch_spans, start_dedicated_game},
     resource_load_server::load_resources_server,
@@ -153,9 +179,6 @@ mod glide_wear_tests;
 #[cfg(test)]
 #[path = "game/modding/gui_gradient_tests.rs"]
 mod gui_gradient_tests;
-#[cfg(test)]
-#[path = "game/modding/gui_paint_items_tests.rs"]
-mod gui_paint_items_tests;
 #[cfg(test)]
 #[path = "game/entities/hanging_refind_tests.rs"]
 mod hanging_refind_tests;
@@ -282,6 +305,7 @@ mod native_live_holder_tests;
 #[cfg(test)]
 #[path = "game/modding/native_living_renderers_tests.rs"]
 mod native_living_renderers_tests;
+
 #[cfg(test)]
 #[path = "game/modding/native_living_travel_sweep_tests.rs"]
 mod native_living_travel_sweep_tests;
@@ -462,6 +486,10 @@ pub(crate) fn run_with(
     #[cfg(not(feature = "client"))]
     let read_auth = None;
     let mut options = Options::read(options, read_auth)?;
+    #[cfg(feature = "client")]
+    {
+        options.read_creation_packs = Some(sunrise_gameplay::game::creation_packs::read_creation_packs);
+    }
     #[cfg(not(feature = "client"))]
     if !options.execution_role.is_dedicated_server() {
         return Err("this binary was built without the `client` feature; pass --dedicated".into());
@@ -556,8 +584,13 @@ pub(crate) fn run_with(
     let jar_store = sunrise_level::logging::game_home().join("jars");
     let admission = options.mods.admit_startup_packages(&jar_store)?;
     package_snapshot::install_packages(admission.native_packages(), admission.content_packages())?;
+    let instance_dir = sunrise_gameplay_common::game::option_paths::game_dir();
+    if let Err(error) = sunrise_gameplay_common::game::native_hooks::config_dir(&instance_dir) {
+        log::warn!("Sunrise: config folder: {error}");
+    }
     mods::install_registration_data(
         &vanilla_root,
+        instance_dir,
         mods::runtime_files::sources(&options.mods),
         mods::package_files::sources(&admission),
     )?;
@@ -580,6 +613,27 @@ pub(crate) fn run_with(
         {
             log::warn!("Mod pool element types already installed; keeping the first table");
         }
+        if sunrise_world::worldgen::structure::mod_processors::install_mod_structure_processor_types(
+            native_structure_processors::installed_structure_processor_types(),
+        )
+        .is_err()
+        {
+            log::warn!("Mod structure processor types already installed; keeping the first table");
+        }
+        if sunrise_world::worldgen::mod_rule_tests::install_mod_rule_test_types(
+            native_rule_tests::installed_rule_test_types(),
+        )
+        .is_err()
+        {
+            log::warn!("Mod rule test types already installed; keeping the first table");
+        }
+        if sunrise_world::worldgen::mod_rule_tests::install_mod_pos_rule_test_types(
+            native_rule_tests::installed_pos_rule_test_types(),
+        )
+        .is_err()
+        {
+            log::warn!("Mod position rule test types already installed; keeping the first table");
+        }
         // Their feature types, before any world decodes its configured features.
         if sunrise_world::worldgen::mod_features::install_mod_feature_types(
             native_feature_types::installed_feature_types(),
@@ -587,6 +641,13 @@ pub(crate) fn run_with(
         .is_err()
         {
             log::warn!("Mod feature types already installed; keeping the first table");
+        }
+        if sunrise_world::worldgen::placement::mod_placements::install_mod_placement_modifier_types(
+            native_placement_modifiers::installed_placement_modifier_types(),
+        )
+        .is_err()
+        {
+            log::warn!("Mod placement modifier types already installed; keeping the first table");
         }
         // The levels they registered, below the data packs of every world opened.
         if sunrise_world::worldgen::overrides::install_mod_dimensions(
@@ -618,9 +679,9 @@ pub(crate) fn run_with(
         mods_client::register_select_item_model_properties(options.execution_role);
         #[cfg(feature = "client")]
         mods_client::register_resource_sources(options.execution_role);
-        mods::register_enchantment_damage_effects();
+        sunrise_gameplay::game::mods::register_enchantment_effects();
         #[cfg(feature = "client")]
-        mods_client::register_client_presentations(options.execution_role)?;
+        mods_client::register_client_presentations(options.execution_role, &vanilla_root)?;
         #[cfg(feature = "client")]
         mods_client::register_meshing(options.execution_role);
         #[cfg(feature = "client")]
@@ -662,6 +723,15 @@ pub(crate) fn run_with(
     // Snapshots of derived tables live in the game folder, never beside the
     // shared resources.
     Behaviours::set_cache_dir(std::env::current_dir()?.join(".sunrise-cache"));
+    let ticket_activation = crate::entry::ticket_activation();
+    #[cfg(feature = "client")]
+    let serve_integrated: sunrise_gameplay_common::game::integrated_link::Serve =
+        |res, pack, options, settings, launch, flags, tasks, ready, resolver| {
+            serve_with_ticket_activation(
+                res, pack, options, settings, launch, flags, tasks, ready, resolver,
+                crate::entry::ticket_activation(),
+            )
+        };
     #[cfg(feature = "client")]
     if !synchronous_startup(&options) {
         return run_loading(
@@ -670,7 +740,7 @@ pub(crate) fn run_with(
             vanilla_root,
             None,
             started,
-            serve,
+            serve_integrated,
             run_component_harness_on_server,
             session_verifier(),
             profile_resolver,
@@ -721,7 +791,7 @@ pub(crate) fn run_with(
             std::mem::take(&mut loaded.client_applies),
             loaded.entity_models,
             None,
-            serve,
+            serve_integrated,
             run_component_harness_on_server,
             session_verifier(),
             profile_resolver,
@@ -766,6 +836,7 @@ pub(crate) fn run_with(
         dedicated_services(),
         profile_resolver,
         benchmark_retention::keep_benchmark,
+        ticket_activation,
     )
 }
 

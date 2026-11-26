@@ -36,7 +36,7 @@ fn advancement_criteria_straddle_the_player_body_even_with_entity_cancel() {
                 game.server.world_root = game.options.game_dir.clone().unwrap();
                 // Load the world's tables before installing the test trees. Otherwise
                 // the first tick's scheduled functions replace the game's tree.
-                game.open_world_datapacks(&[]).unwrap();
+                game.open_world_datapacks(&[], None).unwrap();
                 open_to_lan(game);
                 game.world
                     .chunks
@@ -151,6 +151,7 @@ fn player_tick_hooks_observe_advanced_dig_progress_and_skipped_body_still_ticks_
                     .unwrap();
                 let start = 20_000;
                 game.server.lan.as_mut().unwrap().hub.ticks = start;
+                game.native_level_opened(Dim::Overworld);
                 for (dim, conns) in [(Dim::Overworld, [1, 3]), (Dim::Nether, [2, 4])] {
                     game.enter_level(dim).unwrap();
                     game.world

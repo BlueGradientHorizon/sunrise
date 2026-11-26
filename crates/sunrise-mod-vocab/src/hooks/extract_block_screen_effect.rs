@@ -16,7 +16,6 @@ pub trait Hooks {
     /// `partial_tick` is world interpolation; `player_partial_tick` is local-player interpolation,
     /// which continues when the level is frozen. Client-side.
     #[hook(
-        target = "sunrise_client_gameplay::game::native_hooks::extract_block_screen_effect::ClientGame<'_>::native_extract_block_screen_effect",
         receiver = "read",
         dispatch = "flat",
         side = "client",

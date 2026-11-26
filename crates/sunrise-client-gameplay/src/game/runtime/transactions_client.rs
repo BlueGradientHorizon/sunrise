@@ -136,7 +136,7 @@ impl ClientGame<'_> {
     pub(in crate::game) fn client_tx_run_after(&mut self, after: After) {
         match after {
             After::Payload(payload) => payload.publish(),
-            After::Packet(packet, body) => self.publish_mod_held(packet, body),
+            After::Packet(packet, owner) => self.publish_mod_packet(packet, owner),
             After::Block(_)
             | After::BulkBlocks(..)
             | After::ConnectionGroup(..)

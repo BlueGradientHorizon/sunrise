@@ -285,6 +285,7 @@ impl ClientGame<'_> {
         &mut self,
         item: &mut ItemEntity,
         _client: bool,
+        _sources: sunrise_gameplay_common::game::entity_common::InsideSources<'_>,
     ) -> bool {
         let _ = self.client_body_step_on(
             (item.id, "minecraft:item"),

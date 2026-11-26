@@ -43,7 +43,7 @@ impl MobLevel for ServerGame<'_> {
         &mut self,
         stack: sunrise_items::items::ItemStack,
         position: [f64; 3],
-        pickup_delay: u32,
+        pickup_delay: i32,
     ) -> [f64; 3] {
         crate::game::ServerGame::spawn_item_own(self, stack, position, pickup_delay)
     }

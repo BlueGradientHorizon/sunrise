@@ -42,7 +42,10 @@ impl crate::game::ServerGame<'_> {
         };
         self.player_on_equip("offhand", old_off, offhand.as_ref());
         self.player_on_equip("mainhand", old_main, main.as_ref());
-        self.common.using = None;
+        // handlePlayerAction ends with stopUsingItem.
+        if self.common.using.is_some() {
+            self.stop_active_item_use();
+        }
     }
 }
 

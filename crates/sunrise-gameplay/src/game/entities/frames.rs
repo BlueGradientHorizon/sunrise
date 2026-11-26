@@ -9,6 +9,8 @@ use sunrise_core::{
     random::RandomSource,
 };
 use sunrise_gameplay_common::game::frames_common::center;
+use sunrise_gameplay_common::game::native_ticks::NativeTicksGameExt1 as _;
+use sunrise_gameplay_common::game::transactions::entities::EntityRemovalGameExt as _;
 use sunrise_gameplay_common::painting_variants::frame_coexists;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::entities::ItemFrame;
@@ -618,13 +620,53 @@ impl crate::game::ServerGame<'_> {
     pub fn tick_item_frames(&mut self) {
         // ServerLevel.tick: only entities in entity-ticking chunks tick.
         let ticking = self.entity_ticking_area();
+        let mut round = self.native_tick_round();
+        // The frame whose tick just ended: it hears its Post before the next one's Pre.
+        let mut told = None;
+        // EntityTickList copy-on-iterate: while a listener may remove frames, the round visits
+        // the frames that were there when it began, each found again by its join.
+        let joins: Option<Vec<_>> = round
+            .told_listening()
+            .then(|| self.common.item_frames.iter().map(|f| f.join).collect());
+        let mut turns = joins.iter().flatten();
         let mut i = 0;
-        while i < self.common.item_frames.len() {
+        loop {
+            if let Some((id, kind)) = told.take() {
+                self.native_tick_post_one(&round, id, kind);
+            }
+            if joins.is_some() {
+                let Some(&join) = turns.next() else { break };
+                let Some(at) = self.common.item_frames.locate(join) else {
+                    continue;
+                };
+                i = at;
+            } else if i >= self.common.item_frames.len() {
+                break;
+            }
             let at = center(&self.common.item_frames[i]);
             if !ticking(at[0].floor() as i32, at[2].floor() as i32) {
                 i += 1;
                 continue;
             }
+            let (id, kind) = (self.common.item_frames[i].id, self.common.item_frames[i].kind());
+            // ServerLevel.tick skips an entity that `isRemoved`, here one whose removal is queued.
+            let target = super::commands::Target::Frame(id);
+            if self.target_removed(&target) || !self.native_tick_pre_one(&mut round, id, kind) {
+                i += 1;
+                continue;
+            }
+            // The Pre's listener may have removed frames, this one included.
+            if self.target_removed(&target) {
+                i += 1;
+                continue;
+            }
+            if self.common.item_frames.get(i).is_none_or(|f| f.id != id) {
+                let Some(now) = self.common.item_frames.iter().position(|f| f.id == id) else {
+                    continue;
+                };
+                i = now;
+            }
+            told = Some((id, kind));
             // `Entity.tickCount` is raised before the rest of the tick, and is not saved.
             self.common.item_frames[i].ticks = self.common.item_frames[i].ticks.saturating_add(1);
             self.common.item_frames[i].check_interval += 1;
@@ -658,6 +700,9 @@ impl crate::game::ServerGame<'_> {
                 }
             }
             i += 1;
+        }
+        if let Some((id, kind)) = told {
+            self.native_tick_post_one(&round, id, kind);
         }
     }
 }

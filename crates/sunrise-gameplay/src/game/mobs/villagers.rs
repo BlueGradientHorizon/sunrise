@@ -218,7 +218,7 @@ impl ServerGame<'_> {
             self.server_play_sound(&format!("minecraft:{sound}"), at, 1.0, 1.0);
         }
         self.common.mobs.push(golem);
-        self.native_mobs_joined(self.common.mobs.len() - 1, false);
+        self.admit_new_mobs(self.common.mobs.len() - 1);
         true
     }
 

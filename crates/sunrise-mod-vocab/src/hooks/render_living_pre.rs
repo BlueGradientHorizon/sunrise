@@ -23,7 +23,6 @@ pub trait Hooks {
     /// this hook follows level join order, including this window's player at its own slot,
     /// interleaved with general entity renderer submissions.
     #[hook(
-        target = "sunrise_client_gameplay::game::native_hooks::render_living_pre::ClientGame<'_>::native_render_living_pre",
         receiver = "read",
         dispatch = "flat",
         side = "client",

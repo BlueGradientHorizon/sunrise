@@ -78,7 +78,7 @@ pub(crate) fn check_namespace(name: &str, manifest: &Manifest) -> Result<(), Str
     let owned = own || manifest.namespaces.iter().any(|n| n == namespace);
     // Vanilla's own files stay vanilla's; a mod may only add to its
     // tags and atlases, and to the convention tags mods share.
-    let shared = matches!(namespace, "minecraft" | "c");
+    let shared = matches!(namespace, "minecraft" | "c" | "neoforge");
     let atlas = top == "assets" && namespace == "minecraft" && rest.starts_with("atlases/");
     let mut extension = false;
     if top == "data" && namespace == "sunrise" && rest.starts_with("tags/") {
@@ -113,7 +113,7 @@ pub(crate) fn check_namespace(name: &str, manifest: &Manifest) -> Result<(), Str
         || name == RECIPE_PRIORITIES_PATH;
     if !allowed {
         return Err(format!(
-            "{name}: a mod adds files in its own namespaces ({top}/{id}/ and those listed in namespaces), to vanilla and convention (c) tags, to vanilla's atlases, or to declared shared resource paths"
+            "{name}: a mod adds files in its own namespaces ({top}/{id}/ and those listed in namespaces), to vanilla and convention (c, neoforge) tags, to vanilla's atlases, or to declared shared resource paths"
         ));
     }
 
@@ -196,13 +196,48 @@ pub struct BlockProperties {
     /// Whether placement and features may replace this block; the held-own-item rule still applies.
     #[serde(default, deserialize_with = "deserialize_replaceable")]
     pub replaceable: Option<bool>,
-    /// Skip faces against any state of this same block; false disables the template's render rule.
-    /// Leaf and ice graphics culling still follows the template class.
-    #[serde(default, deserialize_with = "deserialize_skip_same_block_faces")]
-    pub skip_same_block_faces: Option<bool>,
+    /// Data rules replacing vanilla `BlockBehaviour.skipRendering` for this block.
+    /// `None` inherits the template's render rule; `Some(vec![])` disables it.
+    #[serde(default, deserialize_with = "face_rules::deserialize_skip_rendering")]
+    pub skip_rendering: Option<Vec<mod_vocab::FaceRule>>,
+    /// Data rules implementing NeoForge `IBlockExtension.hidesNeighborFace`.
+    #[serde(
+        default,
+        deserialize_with = "face_rules::deserialize_hides_neighbor_face"
+    )]
+    pub hides_neighbor_face: Vec<mod_vocab::FaceRule>,
+    /// NeoForge `IBlockExtension.supportsExternalFaceHiding` (default `true`).
+    #[serde(
+        default,
+        deserialize_with = "face_rules::deserialize_supports_external_face_hiding"
+    )]
+    pub supports_external_face_hiding: Option<bool>,
+    /// Which mobs may spawn on the block (`BlockBehaviour.Properties.isValidSpawn`); unset keeps
+    /// the template block's rule. Set on every state of the block, from the block alone: a
+    /// `dynamic_light` block's cell light and an outline declared over the template's do not
+    /// reach it (see [`SpawnRule::Default`]).
+    pub spawn_rule: Option<SpawnRule>,
     /// Opt into `VegetationBlock` survival independently of the template.
     #[serde(default)]
     pub vegetation: bool,
+}
+
+/// A block's mob spawn rule (`BlockBehaviour.Properties.isValidSpawn`), the answer of
+/// `BlockState.isValidSpawn` for every entity type; a polar bear follows the rule like any other mob.
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum SpawnRule {
+    /// Vanilla's default: the top face is sturdy and the block's light emission is below 14. The
+    /// top face is the template's, and the emission is the declared `light` (or `state_light`),
+    /// else the template's: a `dynamic_light` block is judged by that static light, since the
+    /// spawn tables hold one answer per state.
+    Default,
+    /// Every mob spawns on the block (`Blocks::always`).
+    Always,
+    /// No mob spawns on the block (`Blocks::never`).
+    Never,
+    /// Only ocelots and parrots spawn on the block (`Blocks::ocelotOrParrot`).
+    OcelotOrParrot,
 }
 
 /// Vanilla's per-column offset mode (`BlockBehaviour.OffsetType`).
@@ -271,11 +306,6 @@ fn deserialize_replaceable<'de, D: serde::Deserializer<'de>>(
     d: D,
 ) -> Result<Option<bool>, D::Error> {
     property_bool(d, "replaceable")
-}
-fn deserialize_skip_same_block_faces<'de, D: serde::Deserializer<'de>>(
-    d: D,
-) -> Result<Option<bool>, D::Error> {
-    property_bool(d, "skip_same_block_faces")
 }
 
 /// Vanilla's `PushReaction`, by its constant's name.
@@ -575,6 +605,8 @@ struct BlockFile {
     base_block: Option<String>,
     #[serde(default = "yes")]
     item: bool,
+    #[serde(default = "yes")]
+    use_block_description_prefix: bool,
     #[serde(default, deserialize_with = "GateSound::deserialize_open")]
     open_sound: Option<GateSound>,
     #[serde(default, deserialize_with = "GateSound::deserialize_close")]
@@ -676,6 +708,10 @@ pub struct Block {
     pub default_state: BTreeMap<String, String>,
     /// Also add a block item with the same id.
     pub item: bool,
+    /// The block item is named by its own key, `item.<namespace>.<path>`, not the block's
+    /// `block.<namespace>.<path>`: a mod whose `Item.Properties` do not call
+    /// `useBlockDescriptionPrefix`. False, the block's key, as vanilla's `Items.registerBlock`.
+    pub own_item_name: bool,
     /// A fence gate's opening sounds (`WoodType.fenceGateOpen`). `All` replaces
     /// every site; `Sites` keeps the template wood's sound for each missing site.
     /// Needs a `*_fence_gate` template.
@@ -734,14 +770,16 @@ struct FluidFile {
     sprite: Option<String>,
     tint: Option<u32>,
     world: Option<WorldFluid>,
+    bucket_item: Option<String>,
     temperature: Option<i32>,
     density: Option<i32>,
     viscosity: Option<i32>,
+    light_level: Option<u8>,
 }
 
 /// A fluid's `FluidType` numbers, which mods read for one another's fluids: NeoForge's
-/// `FluidType.getTemperature`, `getDensity` and `getViscosity`. Each defaults to
-/// `FluidType.Properties`' own, which are water's.
+/// `FluidType.getTemperature`, `getDensity`, `getViscosity` and `getLightLevel`. Each defaults
+/// to `FluidType.Properties`' own, which are water's.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct FluidMeasures {
     /// How hot it is, room temperature in kelvin by default: 300.
@@ -750,6 +788,8 @@ pub struct FluidMeasures {
     pub density: i32,
     /// How thick it is, 0 or more, water's by default: 1000.
     pub viscosity: i32,
+    /// The light it gives, 0 to 15, water's by default: 0.
+    pub light_level: u8,
 }
 impl Default for FluidMeasures {
     fn default() -> Self {
@@ -757,6 +797,7 @@ impl Default for FluidMeasures {
             temperature: 300,
             density: 1000,
             viscosity: 1000,
+            light_level: 0,
         }
     }
 }
@@ -764,20 +805,24 @@ impl Default for FluidMeasures {
 /// What makes a fluid exist in the world: a block holding it, as `minecraft:water`'s does, and
 /// how it flows. Each value defaults to water's, in `data/<id>/sunrise/fluid/` as in code
 /// (`Registrar::declare_world_fluid`).
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 #[serde(default, deny_unknown_fields)]
 pub struct WorldFluid {
-    /// Game ticks between two flow steps (`Fluid.getTickDelay`), 1 or more.
+    /// Game ticks between two flow steps (`Fluid.getTickDelay`).
     pub tick_delay: i32,
-    /// What it loses per block it flows (`FlowingFluid.getDropOff`), 1 to 7.
+    /// What it loses per block it flows (`FlowingFluid.getDropOff`), 0 or more.
     pub drop_off: i32,
-    /// How far it looks for a way down (`FlowingFluid.getSlopeFindDistance`), 1 to 4.
+    /// How far it looks for a way down (`FlowingFluid.getSlopeFindDistance`).
     pub slope_find_distance: i32,
     /// Whether two sources make a third (`FlowingFluid.canConvertToSource`). Off by default:
     /// water's comes from a game rule, which a mod's fluid does not read.
     pub source_conversion: bool,
-    /// Whether it has a filled bucket, the item `<id>_bucket`.
+    /// Whether the game registers its filled bucket, a water bucket under the id the look's
+    /// `bucket_item` names, `<id>_bucket` when it names none.
     pub bucket: bool,
+    /// The registry name of its flowing form, in the fluid's namespace;
+    /// `<namespace>:flowing_<path>` when unset.
+    pub flowing: Option<String>,
 }
 impl Default for WorldFluid {
     fn default() -> Self {
@@ -787,20 +832,17 @@ impl Default for WorldFluid {
             slope_find_distance: 4,
             source_conversion: false,
             bucket: true,
+            flowing: None,
         }
     }
 }
 impl WorldFluid {
-    /// Refuses values the simulation cannot run: no step, no spread, or an unbounded search.
+    /// Refuses a negative `drop_off`: the level a spread computes (`FlowingFluid.getNewLiquid`,
+    /// the highest neighbour less the drop-off) must stay within `FlowingFluid.LEVEL`'s 1 to 8.
+    /// Every other value is NeoForge's `BaseFlowingFluid.Properties` domain, any `int`.
     pub fn check(&self) -> Result<(), String> {
-        if self.tick_delay < 1 {
-            return Err("tick_delay is 1 or more".into());
-        }
-        if !(1..=7).contains(&self.drop_off) {
-            return Err("drop_off is 1 to 7".into());
-        }
-        if !(1..=4).contains(&self.slope_find_distance) {
-            return Err("slope_find_distance is 1 to 4".into());
+        if self.drop_off < 0 {
+            return Err("drop_off is 0 or more".into());
         }
         Ok(())
     }
@@ -819,26 +861,69 @@ pub struct FluidLook {
     pub tint: Option<u32>,
     /// How it exists in the world; none for a fluid only a tank holds.
     pub world: Option<WorldFluid>,
-    /// Its temperature, density and viscosity.
+    /// The item that holds a bucket of it (`Fluid.getBucket`): another item for a tank-only
+    /// fluid or a world fluid without a generated bucket, the generated bucket's id otherwise.
+    pub bucket_item: Option<String>,
+    /// Its temperature, density, viscosity and light level.
     pub measures: FluidMeasures,
 }
 impl FluidLook {
-    /// The registry name of its flowing form: `<namespace>:flowing_<path>`.
+    /// The registry name of its flowing form: the world fluid's `flowing`, else
+    /// `<namespace>:flowing_<path>`.
     pub fn flowing_id(&self) -> String {
+        if let Some(flowing) = self.world.as_ref().and_then(|world| world.flowing.clone()) {
+            return flowing;
+        }
         match self.id.split_once(':') {
             Some((namespace, path)) => format!("{namespace}:flowing_{path}"),
             None => format!("flowing_{}", self.id),
         }
     }
-    /// The filled bucket a world fluid has.
+    /// The item a bucket of it is (`Fluid.getBucket`): `bucket_item`, else `<id>_bucket` for a
+    /// world fluid with a generated bucket. None for a fluid no bucket holds.
     pub fn bucket_id(&self) -> Option<String> {
-        self.world
-            .filter(|world| world.bucket)
-            .map(|_| format!("{}_bucket", self.id))
+        self.bucket_item.clone().or_else(|| {
+            self.world
+                .as_ref()
+                .filter(|world| world.bucket)
+                .map(|_| format!("{}_bucket", self.id))
+        })
+    }
+    /// Refuses names and numbers the game cannot register: an id that is not
+    /// `namespace:path`, a flowing form or generated bucket outside the fluid's namespace, and a
+    /// light level above 15.
+    pub fn check(&self) -> Result<(), String> {
+        let namespace = self.id.split_once(':').map(|(namespace, _)| namespace);
+        let own = |id: &str| namespaced_id(id) && id.split_once(':').map(|(n, _)| n) == namespace;
+        if let Some(world) = &self.world {
+            world.check().map_err(|e| format!("world: {e}"))?;
+            if world
+                .flowing
+                .as_deref()
+                .is_some_and(|flowing| !own(flowing) || flowing == self.id)
+            {
+                return Err(
+                    "world: flowing is an id in the fluid's namespace, not the fluid's own".into(),
+                );
+            }
+        }
+        if let Some(item) = &self.bucket_item {
+            let generated = self.world.as_ref().is_some_and(|world| world.bucket);
+            if !namespaced_id(item) || (generated && !own(item)) {
+                return Err(
+                    "bucket_item is an item id, in the fluid's namespace when the game registers it"
+                        .into(),
+                );
+            }
+        }
+        if self.measures.light_level > 15 {
+            return Err("light_level is 0 to 15".into());
+        }
+        Ok(())
     }
     /// The block a world fluid is in the world: water's behaviour and states under its own id.
     pub fn world_block(&self) -> Option<Block> {
-        self.world.map(|_| Block {
+        self.world.as_ref().map(|_| Block {
             id: self.id.clone(),
             template: "minecraft:water".into(),
             ..Block::default()
@@ -846,7 +931,8 @@ impl FluidLook {
     }
     /// The item its bucket is: a water bucket's under its own id, leaving the empty bucket.
     pub fn world_bucket(&self) -> Option<Item> {
-        self.bucket_id().map(|id| Item {
+        let generated = self.world.as_ref().is_some_and(|world| world.bucket);
+        self.bucket_id().filter(|_| generated).map(|id| Item {
             id,
             template: "minecraft:water_bucket".into(),
             crafting_remainder: Some("minecraft:bucket".into()),
@@ -915,10 +1001,10 @@ pub struct Item {
     pub rarity: Option<Rarity>,
     /// A 26.3 data component patch over the template's: `!minecraft:<type>` removes one.
     pub components: BTreeMap<String, serde_json::Value>,
-    /// What it leaves in the crafting grid (`Item.Properties.craftRemainder`):
-    /// a vanilla item or one of the mod's own.
+    /// The registered item it leaves in the crafting grid (`Item.Properties.craftRemainder`).
+    /// Omit this field for no remainder; `minecraft:air` is not a stack.
     pub crafting_remainder: Option<String>,
-    /// The block placed by this item, if any.
+    /// The registered block placed by this item, if any.
     pub block: Option<String>,
     /// The arm pose a humanoid takes holding it, in place of vanilla's (`ArmPose`).
     pub arm_pose: Option<ArmPose>,
@@ -933,8 +1019,9 @@ pub enum EffectCategory {
     Neutral,
 }
 
-/// A mob effect the mod adds: what `new MobEffect(category, color)` takes.
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+/// A mob effect the mod adds: what `new MobEffect(category, color)` takes,
+/// and the attribute modifiers its constructor adds.
+#[derive(Clone, Debug, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct MobEffect {
     /// `<mod id>:<path>`.
@@ -948,6 +1035,70 @@ pub struct MobEffect {
     /// compares the colour, which it is when absent.
     #[serde(default)]
     pub sort_order: Option<i32>,
+    /// `MobEffect.addAttributeModifier`, one per attribute: on an entity while
+    /// the effect is, its amount times the amplifier plus one.
+    #[serde(default)]
+    pub attribute_modifiers: Vec<EffectAttributeModifier>,
+}
+
+/// One `MobEffect.addAttributeModifier(attribute, id, amount, operation)`.
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct EffectAttributeModifier {
+    /// The attribute, vanilla's or a mod's, `namespace:path`.
+    pub attribute: String,
+    /// The modifier's id, `namespace:path`.
+    pub id: String,
+    /// The amount at amplifier 0.
+    pub amount: f64,
+    pub operation: ModifierOperation,
+}
+
+/// `AttributeModifier.Operation`, by its codec name.
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ModifierOperation {
+    AddValue,
+    AddMultipliedBase,
+    AddMultipliedTotal,
+}
+
+impl MobEffect {
+    /// The checks a declaration's attribute modifiers pass at load: each
+    /// attribute and id a `namespace:path` (`Identifier`'s rules, which refuse
+    /// the namespace `..`), and one modifier per attribute
+    /// (vanilla keys its templates by attribute). JSON has no infinite or NaN
+    /// amount: one out of `f64`'s range fails to parse. Whether the attribute
+    /// exists is the game's check, which knows the mods' attributes.
+    fn check_attribute_modifiers(&self) -> Result<(), String> {
+        let identifier =
+            |id: &str| sunrise_core::identifier::Identifier::parse_namespaced(id).is_some();
+        for (i, modifier) in self.attribute_modifiers.iter().enumerate() {
+            let entry = format!("attribute_modifiers[{i}]");
+            if !identifier(&modifier.attribute) {
+                return Err(format!(
+                    "{entry}: attribute {:?} is an attribute id (namespace:path)",
+                    modifier.attribute
+                ));
+            }
+            if !identifier(&modifier.id) {
+                return Err(format!(
+                    "{entry}: id {:?} is a modifier id (namespace:path)",
+                    modifier.id
+                ));
+            }
+            if let Some(first) = self.attribute_modifiers[..i]
+                .iter()
+                .position(|m| m.attribute == modifier.attribute)
+            {
+                return Err(format!(
+                    "attribute_modifiers[{first}] ({}) and {entry} ({}) both modify {}: one modifier per attribute",
+                    self.attribute_modifiers[first].id, modifier.id, modifier.attribute
+                ));
+            }
+        }
+        Ok(())
+    }
 }
 
 /// Vanilla's `DyeColor` names, by id.
@@ -1010,6 +1161,8 @@ pub const LIVING_TEMPLATES: [&str; 8] = [
 pub mod entity_sounds;
 mod entity_type;
 pub use entity_type::EntityType;
+mod face_rules;
+pub use face_rules::{check_face_rule_properties, parse_face_rules};
 pub mod fluid_interaction;
 pub use fluid_interaction::FluidInteraction;
 mod lenient;
@@ -1017,7 +1170,7 @@ pub use lenient::without_comments;
 #[cfg(feature = "references")]
 mod references;
 #[cfg(feature = "references")]
-pub use references::{Findings, check_references};
+pub use references::{Findings, JarLayer, check_references};
 
 /// A block entity type declared in code, with the blocks it supports.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -1440,38 +1593,22 @@ pub fn clash(a: (&str, &[String]), b: (&str, &[String])) -> Option<String> {
 
 impl Content {
     /// The content of the mod at `path` (a `.smod` or a mod folder).
-    ///
-    /// For package-only checks (`cargo sunrise-mod build`, `check`, archive inspection) without
-    /// runtime code declarations, a `[native]` or `served_by` package may name a valid
-    /// `crafting_remainder` in one of its own namespaces; engine loading calls
-    /// [`Content::read_declaring`] with the actual code-declared items.
+    /// Item references are validated as identifiers here and resolved against the game's registries at load.
     pub fn read(path: &Path, manifest: &Manifest) -> Result<Content, String> {
-        Self::read_inner(&ContentSource::open(path)?, manifest, None, false)
-    }
-    /// [`Content::read`] for a mod whose native code (or serving host) also declares items
-    /// (`native_items` / `blocks`): a file's `crafting_remainder` may name one of those `declared`
-    /// ids, which are not in the files.
-    pub fn read_declaring(
-        path: &Path,
-        manifest: &Manifest,
-        declared: &[String],
-    ) -> Result<Content, String> {
-        Self::read_inner(&ContentSource::open(path)?, manifest, Some(declared), false)
+        Self::read_inner(&ContentSource::open(path)?, manifest, false)
     }
 
     /// Read the declarations using the source already checked against this manifest at admission.
     pub fn read_opened(
         source: &AdmittedContentSource,
         manifest: &Manifest,
-        declared: &[String],
     ) -> Result<Content, String> {
-        Self::read_inner(source.source(), manifest, Some(declared), true)
+        Self::read_inner(source.source(), manifest, true)
     }
 
     fn read_inner(
         source: &ContentSource,
         manifest: &Manifest,
-        declared: Option<&[String]>,
         from_admission: bool,
     ) -> Result<Content, String> {
         let mut content = Content {
@@ -1489,7 +1626,7 @@ impl Content {
             menu_types: Vec::new(),
             namespaces: manifest.owned_namespaces().map(str::to_owned).collect(),
         };
-        content.check(manifest, declared)?;
+        content.check(manifest)?;
         Ok(content)
     }
 
@@ -1516,9 +1653,8 @@ impl Content {
     /// Adds blocks and items a native mod declares in code (`native_blocks`,
     /// `native_items`), checked as declaration files are: ids in any of this
     /// mod's owned namespaces (its id and manifest `namespaces`) and declared once
-    /// with what it already has, a vanilla template, a crafting remainder
-    /// that is vanilla or this mod's. All or nothing: on an error nothing is
-    /// added.
+    /// with what it already has, a vanilla template, and well-formed item and block references.
+    /// The references resolve at game load. All or nothing: on an error nothing is added.
     pub fn declare(
         &mut self,
         blocks: &[Block],
@@ -1545,7 +1681,6 @@ impl Content {
             items
                 .iter()
                 .map(|i| (i, in_own(&i.id).and_then(|()| check_item(i)))),
-            &[],
         )?;
         self.blocks.extend_from_slice(blocks);
         self.items.extend_from_slice(items);
@@ -1553,19 +1688,14 @@ impl Content {
     }
 
     /// Joins declarations whose fields and submitting namespaces were checked at registration.
-    /// `admitted_items` lists item IDs (items and item-bearing blocks) already admitted in
-    /// content packages served by this host, so code-declared items may name them as
-    /// `crafting_remainder`.
     pub fn declare_validated(
         &mut self,
         blocks: &[LocalDeclaration<Block>],
         items: &[LocalDeclaration<Item>],
-        admitted_items: &[&str],
     ) -> Result<(), Vec<(DeclarationKind, DeclarationError)>> {
         self.check_declaration_batch(
             blocks.iter().map(|b| (b.get(), Ok(()))),
             items.iter().map(|i| (i.get(), Ok(()))),
-            admitted_items,
         )?;
         self.blocks.extend(blocks.iter().map(|b| b.get().clone()));
         self.items.extend(items.iter().map(|i| i.get().clone()));
@@ -1576,14 +1706,8 @@ impl Content {
         &self,
         blocks: impl IntoIterator<Item = (&'a Block, Result<(), String>)>,
         items: impl IntoIterator<Item = (&'a Item, Result<(), String>)>,
-        admitted_items: &[&str],
     ) -> Result<(), Vec<(DeclarationKind, DeclarationError)>> {
-        let mut ids: BTreeSet<&str> = self
-            .blocks
-            .iter()
-            .map(|b| b.id.as_str())
-            .chain(self.items.iter().map(|i| i.id.as_str()))
-            .collect();
+        let mut block_ids: BTreeSet<&str> = self.blocks.iter().map(|b| b.id.as_str()).collect();
         let mut item_ids: BTreeSet<&str> = self
             .blocks
             .iter()
@@ -1605,12 +1729,13 @@ impl Content {
         for (block, fields) in blocks {
             let id = block.id.as_str();
             let result = fields.and_then(|()| {
-                if !ids.insert(id) {
+                if block_ids.contains(id) {
                     return Err("declared twice".into());
                 }
-                if block.item {
-                    item_ids.insert(id);
+                if block.item && !item_ids.insert(id) {
+                    return Err("block's item is already declared".into());
                 }
+                block_ids.insert(id);
                 Ok(())
             });
             match result {
@@ -1620,34 +1745,15 @@ impl Content {
         }
         sign_wall_refusals(&all_blocks)
             .for_each(|(id, reason)| refuse(DeclarationKind::Block, id, reason));
-        let mut valid_items = Vec::new();
         for (item, fields) in items {
             let id = item.id.as_str();
-            let result = fields.and_then(|()| {
+            if let Err(reason) = fields.and_then(|()| {
                 if !item_ids.insert(id) {
                     return Err("declared twice, or is also a block's item".into());
                 }
                 Ok(())
-            });
-            match result {
-                Ok(()) => valid_items.push(item),
-                Err(reason) => refuse(DeclarationKind::Item, id, reason),
-            }
-        }
-        for item in valid_items {
-            if let Some(rest) = &item.crafting_remainder
-                && (rest == "minecraft:air"
-                    || !vanilla_id(rest)
-                        && !item_ids.contains(rest.as_str())
-                        && !admitted_items.contains(&rest.as_str()))
-            {
-                refuse(
-                    DeclarationKind::Item,
-                    &item.id,
-                    format!(
-                        "crafting_remainder {rest:?} is not a vanilla item (minecraft:...) or one of this mod's"
-                    ),
-                );
+            }) {
+                refuse(DeclarationKind::Item, id, reason);
             }
         }
         if !errors.is_empty() {
@@ -1712,8 +1818,8 @@ impl Content {
         self.source.reader()
     }
 
-    /// Read and validate declarations, enforcing the namespace fence if not checked at admission.
-    fn check(&mut self, manifest: &Manifest, declared: Option<&[String]>) -> Result<(), String> {
+    /// Where content may go, and the declarations.
+    fn check(&mut self, manifest: &Manifest) -> Result<(), String> {
         let id = manifest.id.as_str();
         let mut blocks = Vec::new();
         let mut items = Vec::new();
@@ -1794,6 +1900,7 @@ impl Content {
                 state_properties: file.state_properties,
                 default_state: file.default_state,
                 item: file.item,
+                own_item_name: !file.use_block_description_prefix,
                 open_sound: file.open_sound,
                 close_sound: file.close_sound,
                 block_item: file.block_item,
@@ -1822,7 +1929,6 @@ impl Content {
         {
             return Err(format!("{id}: {reason}"));
         }
-        let mut remainders = Vec::new();
         for (item, name) in items {
             let file: ItemFile =
                 serde_json::from_slice(&reader.read(&name)?).map_err(|e| format!("{name}: {e}"))?;
@@ -1840,9 +1946,6 @@ impl Content {
             if !ids.insert(item.id.clone()) {
                 return Err(format!("{name}: {} is also a block's item", item.id));
             }
-            if let Some(rest) = &item.crafting_remainder {
-                remainders.push((name, rest.clone()));
-            }
             self.items.push(item);
         }
         for (effect, name) in effects {
@@ -1851,33 +1954,9 @@ impl Content {
             if file.color > 0xFF_FFFF {
                 return Err(format!("{name}: color is RGB, 0 to 16777215 (0xFFFFFF)"));
             }
+            file.check_attribute_modifiers()
+                .map_err(|e| format!("{name}: {e}"))?;
             self.effects.push(MobEffect { id: effect, ..file });
-        }
-        // After every item, so a remainder may be declared in a later file.
-        for (name, rest) in remainders {
-            if rest == "minecraft:air" {
-                return Err(format!(
-                    "{name}: crafting_remainder {rest:?} is no remainder (leave it out)"
-                ));
-            }
-            let valid_id = namespaced_id(&rest);
-            let known_local = vanilla_id(&rest) || ids.contains(&rest);
-            let allowed = valid_id
-                && match declared {
-                    Some(declared) => known_local || declared.contains(&rest),
-                    None => {
-                        known_local
-                            || ((manifest.native.is_some() || manifest.served_by.is_some())
-                                && rest.split_once(':').is_some_and(|(ns, _)| {
-                                    manifest.owned_namespaces().any(|owned| owned == ns)
-                                }))
-                    }
-                };
-            if !allowed {
-                return Err(format!(
-                    "{name}: crafting_remainder {rest:?} is not a vanilla item (minecraft:...) or one of this mod's"
-                ));
-            }
         }
         for (tab, name) in tabs {
             let file: CreativeTabFile =
@@ -1906,9 +1985,6 @@ impl Content {
                     "{name}: sprite is an atlas sprite id (namespace:path)"
                 ));
             }
-            if let Some(world) = &file.world {
-                world.check().map_err(|e| format!("{name}: world: {e}"))?;
-            }
             // `FluidType.Properties.viscosity` throws for a negative one; the others take any.
             if file.viscosity.is_some_and(|viscosity| viscosity < 0) {
                 return Err(format!("{name}: viscosity is never negative"));
@@ -1919,12 +1995,15 @@ impl Content {
                 sprite: file.sprite,
                 tint: file.tint,
                 world: file.world,
+                bucket_item: file.bucket_item,
                 measures: FluidMeasures {
                     temperature: file.temperature.unwrap_or(defaults.temperature),
                     density: file.density.unwrap_or(defaults.density),
                     viscosity: file.viscosity.unwrap_or(defaults.viscosity),
+                    light_level: file.light_level.unwrap_or(defaults.light_level),
                 },
             };
+            look.check().map_err(|e| format!("{name}: {e}"))?;
             if self.fluids.iter().any(|known| {
                 known.id == look.id
                     || (known.world.is_some() && known.flowing_id() == look.id)
@@ -2277,12 +2356,17 @@ fn check_item(item: &Item) -> Result<(), String> {
     if item.max_stack_size.is_some_and(|n| !(1..=99).contains(&n)) {
         return Err("max_stack_size is 1 to 99".into());
     }
-    if let Some(block) = &item.block
-        && (!namespaced_id(block)
-            || block.split_once(':').map(|(ns, _)| ns) != item.id.split_once(':').map(|(ns, _)| ns)
-                && !vanilla_id(block))
-    {
-        return Err("block is a vanilla block or a block in this item's namespace".into());
+    if let Some(rest) = &item.crafting_remainder {
+        if !namespaced_id(rest) {
+            return Err(format!(
+                "crafting_remainder {rest:?} must be a namespaced item id"
+            ));
+        }
+        if rest == "minecraft:air" {
+            return Err(format!(
+                "crafting_remainder {rest:?} is no remainder (leave it out)"
+            ));
+        }
     }
     check_components(&item.components, &["max_stack_size", "rarity"])
 }
@@ -2381,6 +2465,12 @@ fn check_block(file: &Block) -> Result<(), String> {
     }
     if p.sounds.as_deref().is_some_and(|s| !vanilla_id(s)) {
         return Err("sounds names a vanilla block (minecraft:...)".into());
+    }
+    if let Some(rules) = &p.skip_rendering {
+        face_rules::check_face_rules("skip_rendering", rules)?;
+    }
+    if !p.hides_neighbor_face.is_empty() {
+        face_rules::check_face_rules("hides_neighbor_face", &p.hides_neighbor_face)?;
     }
     if !file.item && !file.components.is_empty() {
         return Err("item is false, so the block has no item to take components".into());
@@ -2916,7 +3006,10 @@ capabilities = ["registries"]
 
     #[test]
     fn place_block_checks_files_and_native_declarations() {
-        for (i, target) in ["ruby:frame", "minecraft:stone"].iter().enumerate() {
+        for (i, target) in ["ruby:frame", "minecraft:stone", "other:frame"]
+            .into_iter()
+            .enumerate()
+        {
             let text = format!(r#"{{"template":"minecraft:stick","block":"{target}"}}"#);
             let content = smod(
                 &format!("place-block-{i}"),
@@ -2924,37 +3017,90 @@ capabilities = ["registries"]
                 &[("data/ruby/sunrise/item/empty_frame.json", text.as_bytes())],
             )
             .unwrap();
-            assert_eq!(content.items[0].block.as_deref(), Some(*target));
+            assert_eq!(content.items[0].block.as_deref(), Some(target));
+            let mut declared = Content::declared("ruby");
+            declared.declare(&[], &content.items).unwrap();
+            assert_eq!(declared.items[0].block.as_deref(), Some(target));
         }
-        for (i, target) in ["stone", "other:frame", "ruby:Bad", "ruby:"]
-            .iter()
-            .enumerate()
-        {
+        for (i, target) in ["stone", "ruby:Bad", "ruby:"].into_iter().enumerate() {
             let text = format!(r#"{{"template":"minecraft:stick","block":"{target}"}}"#);
+            let error = smod(
+                &format!("bad-place-block-{i}"),
+                MANIFEST_TEXT,
+                &[("data/ruby/sunrise/item/empty_frame.json", text.as_bytes())],
+            )
+            .err()
+            .unwrap();
             assert!(
-                smod(
-                    &format!("bad-place-block-{i}"),
-                    MANIFEST_TEXT,
-                    &[("data/ruby/sunrise/item/empty_frame.json", text.as_bytes())]
-                )
-                .is_err()
+                error.contains("block must be a namespaced block id"),
+                "{error}"
             );
             let mut content = Content::declared("ruby");
+            let errors = content
+                .declare(
+                    &[],
+                    &[Item {
+                        id: "ruby:empty_frame".into(),
+                        template: "minecraft:stick".into(),
+                        block: Some(target.into()),
+                        ..Default::default()
+                    }],
+                )
+                .unwrap_err();
+            assert_eq!(errors.len(), 1);
             assert!(
-                content
-                    .declare(
-                        &[],
-                        &[Item {
-                            id: "ruby:empty_frame".into(),
-                            template: "minecraft:stick".into(),
-                            block: Some((*target).into()),
-                            ..Default::default()
-                        }]
-                    )
-                    .is_err()
+                errors[0]
+                    .1
+                    .to_string()
+                    .contains("block must be a namespaced block id")
             );
             assert!(content.items.is_empty());
         }
+
+        // Referencing another namespace does not let this package write its files there.
+        let foreign_path = "data/other/sunrise/item/empty_frame.json";
+        let error = smod(
+            "foreign-place-block-file",
+            MANIFEST_TEXT,
+            &[(
+                foreign_path,
+                br#"{"template":"minecraft:stick","block":"other:frame"}"#,
+            )],
+        )
+        .err()
+        .unwrap();
+        assert!(
+            error.contains(foreign_path) && error.contains("own namespaces"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn block_without_an_item_can_share_an_existing_item_key() {
+        let mut content = Content::declared("ruby");
+        content.items.push(Item {
+            id: "ruby:lamp".into(),
+            template: "minecraft:stick".into(),
+            ..Item::default()
+        });
+        let block = Block {
+            id: "ruby:lamp".into(),
+            template: "minecraft:stone".into(),
+            item: true,
+            ..Block::default()
+        };
+        assert!(content.declare(std::slice::from_ref(&block), &[]).is_err());
+        content
+            .declare(
+                &[Block {
+                    item: false,
+                    ..block
+                }],
+                &[],
+            )
+            .unwrap();
+        assert_eq!(content.items[0].id, "ruby:lamp");
+        assert_eq!(content.blocks[0].id, "ruby:lamp");
     }
 
     #[test]
@@ -3049,7 +3195,7 @@ capabilities = ["registries"]
         };
         assert!(refused(&[], &[stack]).contains("max_stack_size"));
         let rest = Item {
-            crafting_remainder: Some("emerald:dust".into()),
+            crafting_remainder: Some("emerald:bad dust".into()),
             ..item("ruby:dust")
         };
         assert!(refused(&[block("ruby:pipe")], &[rest]).contains("crafting_remainder"));
@@ -3105,6 +3251,7 @@ capabilities = ["registries"]
                     ..BlockProperties::default()
                 },
                 item: true,
+                own_item_name: false,
                 open_sound: None,
                 close_sound: None,
                 block_item: None,
@@ -3198,98 +3345,46 @@ capabilities = ["registries"]
     }
 
     #[test]
-    fn a_file_item_may_leave_a_code_declared_item_as_its_remainder() {
-        // `native_items` declares ruby:wrench in code; a file item names it as its remainder.
-        let files: &[(&str, &[u8])] = &[(
-            "data/ruby/sunrise/item/tool.json",
-            br#"{"template": "minecraft:iron_pickaxe", "crafting_remainder": "ruby:wrench"}"#,
-        )];
-        let read = |declared: &[String]| {
-            let dir = scratch("declared-remainder");
-            let path = dir.join("m.smod");
-            std::fs::write(&path, Package::write_files(MANIFEST_TEXT, files).unwrap()).unwrap();
-            let package = Package::read(&path).unwrap();
-            let content = Content::read_declaring(&path, &package.manifest, declared);
-            std::fs::remove_dir_all(&dir).unwrap();
-            content
-        };
-        assert!(read(&[]).is_err(), "a remainder nobody declares is refused");
-        let content = read(&["ruby:wrench".to_owned()]).expect("the code-declared item is known");
-        assert_eq!(
-            content.items[0].crafting_remainder.as_deref(),
-            Some("ruby:wrench")
-        );
-    }
-
-    #[test]
-    fn served_package_crafting_remainder_defers_host_declaration_only_to_load() {
-        let served_manifest =
+    fn served_package_crafting_remainder_defers_registry_lookup_to_load() {
+        let served =
             format!("{MANIFEST_TEXT}namespaces = [\"ruby_extra\"]\nserved_by = \"horizon_java\"\n");
-        let check = |label: &str, manifest: &str, remainder: &str, declared: Option<&[String]>| {
+        let dir = scratch("served-remainder");
+        let path = dir.join("m.smod");
+        for (remainder, accepted) in [
+            ("ruby:host_bowl", true),
+            ("ruby_extra:host_bowl", true),
+            ("other:bowl", true),
+            ("ruby:Bad", false),
+            ("minecraft:air", false),
+        ] {
             let body = format!(
-                r#"{{"template": "minecraft:mushroom_stew", "crafting_remainder": "{remainder}"}}"#
+                r#"{{"template":"minecraft:mushroom_stew","crafting_remainder":"{remainder}"}}"#
             );
-            let dir = scratch(&format!("served-rem-{label}"));
-            let path = dir.join("m.smod");
             std::fs::write(
                 &path,
                 Package::write_files(
-                    manifest,
+                    &served,
                     &[("data/ruby/sunrise/item/stew.json", body.as_bytes())],
                 )
                 .unwrap(),
             )
             .unwrap();
             let package = Package::read(&path).unwrap();
-            let result = match declared {
-                None => Content::read(&path, &package.manifest),
-                Some(declared) => Content::read_declaring(&path, &package.manifest, declared),
-            };
-            std::fs::remove_dir_all(&dir).unwrap();
-            result
-        };
-        // Package-only read (build/check/inspect) accepts owned-namespace host remainders.
-        for remainder in ["ruby:host_bowl", "ruby_extra:host_bowl"] {
-            let content = check("ok-read", &served_manifest, remainder, None).unwrap();
-            assert_eq!(
-                content.items[0].crafting_remainder.as_deref(),
-                Some(remainder)
-            );
+            match Content::read(&path, &package.manifest) {
+                Ok(content) => {
+                    assert!(accepted, "{remainder}");
+                    assert_eq!(
+                        content.items[0].crafting_remainder.as_deref(),
+                        Some(remainder)
+                    );
+                }
+                Err(error) => {
+                    assert!(!accepted, "{error}");
+                    assert!(error.contains(remainder), "{error}");
+                }
+            }
         }
-        // Package-only read still refuses minecraft:air, malformed IDs, foreign namespaces,
-        // and undeclared remainders on unserved content packages.
-        for (label, manifest, remainder) in [
-            ("air", served_manifest.as_str(), "minecraft:air"),
-            ("bad-id", served_manifest.as_str(), "ruby:Bad"),
-            ("foreign", served_manifest.as_str(), "other:bowl"),
-            ("unserved", MANIFEST_TEXT, "ruby:host_bowl"),
-        ] {
-            assert!(
-                check(label, manifest, remainder, None).is_err(),
-                "{label} ({remainder}) should be refused"
-            );
-        }
-        // Load-time admission (`read_declaring`) requires the host to actually declare the item.
-        assert!(
-            check(
-                "missing-host",
-                &served_manifest,
-                "ruby:host_bowl",
-                Some(&[])
-            )
-            .is_err()
-        );
-        let loaded = check(
-            "declared-host",
-            &served_manifest,
-            "ruby:host_bowl",
-            Some(&["ruby:host_bowl".to_owned()]),
-        )
-        .unwrap();
-        assert_eq!(
-            loaded.items[0].crafting_remainder.as_deref(),
-            Some("ruby:host_bowl")
-        );
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
@@ -3361,6 +3456,102 @@ capabilities = ["registries"]
                 "missing field",
             ),
         ] {
+            let files: &[(&str, &[u8])] =
+                &[("data/ruby/sunrise/mob_effect/a.json", file.as_bytes())];
+            let e = smod(case, MANIFEST_TEXT, files).unwrap_err();
+            assert!(e.contains(why), "{case}: {e}");
+        }
+    }
+
+    /// #4473: `attribute_modifiers` is `MobEffect.addAttributeModifier`'s
+    /// arguments, one entry per attribute; without it there are none.
+    #[test]
+    fn mob_effects_take_attribute_modifiers_one_per_attribute() {
+        let stun = br#"{"category": "harmful", "color": 1, "attribute_modifiers": [
+            {"attribute": "minecraft:movement_speed", "id": "ruby:effect/stun_speed",
+             "amount": -1.0, "operation": "add_multiplied_total"},
+            {"attribute": "ruby:mana", "id": "ruby:effect/stun_mana",
+             "amount": 2.5, "operation": "add_value"}]}"#;
+        let files: &[(&str, &[u8])] = &[
+            ("data/ruby/sunrise/mob_effect/stun.json", stun),
+            (
+                "data/ruby/sunrise/mob_effect/plain.json",
+                br#"{"category": "neutral", "color": 1}"#,
+            ),
+        ];
+        let content = smod("effect-modifiers", MANIFEST_TEXT, files).unwrap();
+        assert!(content.effects[0].attribute_modifiers.is_empty());
+        assert_eq!(
+            content.effects[1].attribute_modifiers,
+            [
+                EffectAttributeModifier {
+                    attribute: "minecraft:movement_speed".into(),
+                    id: "ruby:effect/stun_speed".into(),
+                    amount: -1.0,
+                    operation: ModifierOperation::AddMultipliedTotal,
+                },
+                EffectAttributeModifier {
+                    attribute: "ruby:mana".into(),
+                    id: "ruby:effect/stun_mana".into(),
+                    amount: 2.5,
+                    operation: ModifierOperation::AddValue,
+                },
+            ]
+        );
+        let entry = |attribute: &str, id: &str, amount: &str, operation: &str| {
+            format!(
+                r#"{{"attribute": "{attribute}", "id": "{id}", "amount": {amount}, "operation": "{operation}"}}"#
+            )
+        };
+        let speed = entry("minecraft:movement_speed", "ruby:a", "1", "add_value");
+        for (case, modifiers, why) in [
+            (
+                "modifier-attribute",
+                entry("movement_speed", "ruby:a", "1", "add_value"),
+                "attribute_modifiers[0]: attribute \"movement_speed\" is an attribute id",
+            ),
+            (
+                "modifier-id",
+                entry("minecraft:movement_speed", "Ruby:A", "1", "add_value"),
+                "attribute_modifiers[0]: id \"Ruby:A\" is a modifier id",
+            ),
+            (
+                "modifier-id-dot-dot",
+                entry("minecraft:movement_speed", "..:stun", "1", "add_value"),
+                "attribute_modifiers[0]: id \"..:stun\" is a modifier id",
+            ),
+            (
+                "modifier-attribute-dot-dot",
+                entry("..:speed", "ruby:a", "1", "add_value"),
+                "attribute_modifiers[0]: attribute \"..:speed\" is an attribute id",
+            ),
+            (
+                "modifier-amount",
+                entry("minecraft:movement_speed", "ruby:a", "1e999", "add_value"),
+                "number out of range",
+            ),
+            (
+                "modifier-operation",
+                entry("minecraft:movement_speed", "ruby:a", "1", "multiply"),
+                "unknown variant `multiply`",
+            ),
+            (
+                "modifier-twice",
+                format!(
+                    "{speed}, {}",
+                    entry("minecraft:movement_speed", "ruby:b", "2", "add_value")
+                ),
+                "attribute_modifiers[0] (ruby:a) and attribute_modifiers[1] (ruby:b) both modify minecraft:movement_speed",
+            ),
+            (
+                "modifier-key",
+                speed.replace('}', r#", "slot": "any"}"#),
+                "unknown field `slot`",
+            ),
+        ] {
+            let file = format!(
+                r#"{{"category": "neutral", "color": 1, "attribute_modifiers": [{modifiers}]}}"#
+            );
             let files: &[(&str, &[u8])] =
                 &[("data/ruby/sunrise/mob_effect/a.json", file.as_bytes())];
             let e = smod(case, MANIFEST_TEXT, files).unwrap_err();
@@ -3905,6 +4096,105 @@ capabilities = ["registries"]
             let error =
                 smod("offset-refusal", MANIFEST_TEXT, &[(file, json.as_bytes())]).unwrap_err();
             assert!(error.contains(file) && error.contains(key), "{error}");
+        }
+    }
+
+    #[test]
+    fn block_face_rules_parse_and_refuse_unknown_facts_and_directions() {
+        let json = r##"{
+            "skip_rendering": [
+                {"neighbor": "self", "same": ["axis"], "faces": "horizontal"},
+                {"neighbor": "#minecraft:slabs", "faces": ["north", "up"], "facts": {"can_occlude": false, "is_air": false}},
+                {"neighbor": {"block": "minecraft:glass", "state": {"facing": "east"}}, "state": {"half": "bottom"}, "faces": "vertical"}
+            ],
+            "hides_neighbor_face": [
+                {"neighbor": {"tag": "test:targets", "state": {"lit": "true"}}, "facts": {"is_solid_render": false, "liquid": false}}
+            ],
+            "supports_external_face_hiding": false
+        }"##;
+        let props: BlockProperties = serde_json::from_str(json).unwrap();
+        let skip = props.skip_rendering.as_ref().unwrap();
+        assert_eq!(skip.len(), 3);
+        assert_eq!(props.hides_neighbor_face.len(), 1);
+        assert_eq!(props.supports_external_face_hiding, Some(false));
+        assert!(face_rules::check_face_rules("skip_rendering", skip).is_ok());
+        assert!(
+            face_rules::check_face_rules("hides_neighbor_face", &props.hides_neighbor_face).is_ok()
+        );
+
+        assert!(
+            serde_json::from_str::<BlockProperties>(
+                r#"{"skip_rendering":[{"facts":{"blocks_motion":false}}]}"#
+            )
+            .is_err()
+        );
+        assert!(
+            serde_json::from_str::<BlockProperties>(
+                r#"{"hides_neighbor_face":[{"faces":["north","sideways"]}]}"#
+            )
+            .is_err()
+        );
+
+        use mod_vocab::{FaceNeighbor, FaceRule};
+        let bad_typed = vec![FaceRule {
+            neighbor: FaceNeighbor::Block {
+                id: "not_namespaced".into(),
+                state: BTreeMap::new(),
+            },
+            ..FaceRule::default()
+        }];
+        assert!(face_rules::check_face_rules("skip_rendering", &bad_typed).is_err());
+
+        let file = "data/ruby/sunrise/block/bad_rules.json";
+        assert!(
+            smod(
+                "bad-face-rule",
+                MANIFEST_TEXT,
+                &[(
+                    file,
+                    br#"{"template":"minecraft:stone","properties":{"skip_rendering":[{"facts":{"unknown_fact":true}}]}}"#,
+                )],
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn face_rules_refuse_properties_the_block_does_not_declare() {
+        use mod_vocab::{FaceNeighbor, FaceRule};
+        let known = BTreeMap::from([(
+            "axis".to_owned(),
+            std::collections::BTreeSet::from(["x".to_owned(), "y".to_owned()]),
+        )]);
+        let rule = |state: &[(&str, &str)], same: &[&str]| FaceRule {
+            state: state
+                .iter()
+                .map(|(k, v)| ((*k).to_owned(), (*v).to_owned()))
+                .collect(),
+            same: same.iter().map(|k| (*k).to_owned()).collect(),
+            ..FaceRule::default()
+        };
+        let accepted = [
+            rule(&[("axis", "x")], &["axis"]),
+            FaceRule {
+                neighbor: FaceNeighbor::Tag {
+                    id: "optional:empty".into(),
+                    state: BTreeMap::from([("elsewhere".to_owned(), "1".to_owned())]),
+                },
+                ..FaceRule::default()
+            },
+        ];
+        assert!(
+            face_rules::check_face_rule_properties("skip_rendering", &accepted, &known).is_ok()
+        );
+        for bad in [
+            rule(&[("axs", "x")], &[]),
+            rule(&[("axis", "z")], &[]),
+            rule(&[], &["axs"]),
+        ] {
+            assert!(
+                face_rules::check_face_rule_properties("skip_rendering", &[bad], &known).is_err()
+            );
         }
     }
 
@@ -4512,6 +4802,22 @@ capabilities = ["registries"]
     }
 
     #[test]
+    fn a_world_fluid_takes_neoforges_property_domain_but_no_negative_drop_off() {
+        let fluid = |tick_delay, drop_off, slope_find_distance| WorldFluid {
+            tick_delay,
+            drop_off,
+            slope_find_distance,
+            ..WorldFluid::default()
+        };
+        assert_eq!(fluid(0, 0, 0).check(), Ok(()));
+        assert_eq!(fluid(-3, 8, 12).check(), Ok(()));
+        assert_eq!(
+            fluid(5, -1, 4).check(),
+            Err("drop_off is 0 or more".to_owned())
+        );
+    }
+
+    #[test]
     fn a_world_fluid_brings_its_block_and_bucket() {
         let files: &[(&str, &[u8])] = &[
             (
@@ -4526,8 +4832,8 @@ capabilities = ["registries"]
         let content = smod("world-fluid", MANIFEST_TEXT, files).unwrap();
         let oil = content.fluids.iter().find(|f| f.id == "ruby:oil").unwrap();
         assert_eq!(oil.flowing_id(), "ruby:flowing_oil");
-        assert_eq!(oil.world.unwrap().tick_delay, 20);
-        assert!(!oil.world.unwrap().source_conversion);
+        assert_eq!(oil.world.as_ref().unwrap().tick_delay, 20);
+        assert!(!oil.world.as_ref().unwrap().source_conversion);
         let block = content.blocks.iter().find(|b| b.id == "ruby:oil").unwrap();
         assert_eq!(block.template, "minecraft:water");
         assert!(!block.item, "the fluid's block has no block item");
@@ -4539,18 +4845,83 @@ capabilities = ["registries"]
         assert_eq!(bucket.template, "minecraft:water_bucket");
         assert!(content.blocks.iter().any(|b| b.id == "ruby:mist"));
         assert!(!content.items.iter().any(|i| i.id == "ruby:mist_bucket"));
+        assert_eq!(
+            content
+                .fluids
+                .iter()
+                .find(|f| f.id == "ruby:mist")
+                .unwrap()
+                .bucket_id(),
+            None
+        );
+    }
+
+    /// A port keeps its mod's ids (Sophisticated Core's `xp_still`, `xp_flowing` and
+    /// `xp_bucket`): a world fluid names its flowing form and generated bucket, a tank-only
+    /// fluid an item of its own as its bucket, and either states its light level.
+    #[test]
+    fn fluids_name_their_bucket_flowing_form_and_light() {
+        let files: &[(&str, &[u8])] = &[
+            (
+                "data/ruby/sunrise/fluid/xp_still.json",
+                br#"{"bucket_item":"ruby:xp_bucket","light_level":10,"world":{"flowing":"ruby:xp_flowing"}}"#,
+            ),
+            (
+                "data/ruby/sunrise/fluid/essence.json",
+                br#"{"bucket_item":"ruby:essence_jar","light_level":15}"#,
+            ),
+        ];
+        let content = smod("named-fluid", MANIFEST_TEXT, files).unwrap();
+        let xp = content
+            .fluids
+            .iter()
+            .find(|f| f.id == "ruby:xp_still")
+            .unwrap();
+        assert_eq!(xp.flowing_id(), "ruby:xp_flowing");
+        assert_eq!(xp.bucket_id().as_deref(), Some("ruby:xp_bucket"));
+        assert_eq!(xp.measures.light_level, 10);
+        assert!(content.items.iter().any(|i| i.id == "ruby:xp_bucket"));
+        assert!(!content.items.iter().any(|i| i.id == "ruby:xp_still_bucket"));
+        let essence = content
+            .fluids
+            .iter()
+            .find(|f| f.id == "ruby:essence")
+            .unwrap();
+        assert_eq!(essence.bucket_id().as_deref(), Some("ruby:essence_jar"));
+        assert_eq!(essence.measures.light_level, 15);
+        assert!(
+            !content.items.iter().any(|i| i.id == "ruby:essence_jar"),
+            "a tank-only fluid's bucket is an item the mod declares"
+        );
+        for (body, refusal) in [
+            (&br#"{"light_level":16}"#[..], "light_level"),
+            (br#"{"bucket_item":"jar"}"#, "bucket_item"),
+            (br#"{"bucket_item":"other:jar","world":{}}"#, "bucket_item"),
+            (br#"{"world":{"flowing":"other:oil_flowing"}}"#, "flowing"),
+            (br#"{"world":{"flowing":"ruby:oil"}}"#, "flowing"),
+        ] {
+            let bad: &[(&str, &[u8])] = &[("data/ruby/sunrise/fluid/oil.json", body)];
+            let e = smod("bad-named-fluid", MANIFEST_TEXT, bad).unwrap_err();
+            assert!(e.contains(refusal), "{e}");
+        }
+        let tank_named_elsewhere: &[(&str, &[u8])] = &[(
+            "data/ruby/sunrise/fluid/oil.json",
+            br#"{"bucket_item":"other:jar"}"#,
+        )];
+        assert!(smod("tank-bucket", MANIFEST_TEXT, tank_named_elsewhere).is_ok());
     }
 
     #[test]
-    fn a_world_fluid_refuses_what_cannot_flow_and_a_second_block() {
-        for world in [
-            br#"{"world":{"tick_delay":0}}"#.as_slice(),
-            br#"{"world":{"drop_off":8}}"#,
-            br#"{"world":{"slope_find_distance":5}}"#,
-        ] {
-            let files: &[(&str, &[u8])] = &[("data/ruby/sunrise/fluid/oil.json", world)];
-            assert!(smod("bad-world-fluid", MANIFEST_TEXT, files).is_err());
-        }
+    fn a_world_fluid_refuses_a_negative_drop_off_and_a_second_block() {
+        let files: &[(&str, &[u8])] = &[(
+            "data/ruby/sunrise/fluid/oil.json",
+            br#"{"world":{"drop_off":-1}}"#,
+        )];
+        assert!(
+            smod("bad-world-fluid", MANIFEST_TEXT, files)
+                .unwrap_err()
+                .contains("drop_off is 0 or more")
+        );
         let files: &[(&str, &[u8])] = &[
             ("data/ruby/sunrise/fluid/oil.json", br#"{"world":{}}"#),
             (
@@ -4583,6 +4954,7 @@ capabilities = ["registries"]
                     sprite: None,
                     tint: None,
                     world: None,
+                    bucket_item: None,
                     measures: FluidMeasures::default(),
                 },
                 FluidLook {
@@ -4590,6 +4962,7 @@ capabilities = ["registries"]
                     sprite: Some("ruby:gui/fluids/steam".into()),
                     tint: Some(4291343520),
                     world: None,
+                    bucket_item: None,
                     measures: FluidMeasures::default(),
                 },
             ]
@@ -4635,6 +5008,7 @@ capabilities = ["registries"]
                         temperature: -5,
                         density: 1000,
                         viscosity: 1000,
+                        light_level: 0,
                     }
                 ),
                 (
@@ -4643,6 +5017,7 @@ capabilities = ["registries"]
                         temperature: 1500,
                         density: -200,
                         viscosity: 0,
+                        light_level: 0,
                     }
                 ),
             ]
@@ -4824,20 +5199,14 @@ capabilities = ["registries"]
             let e = refused(case, &[("data/ruby/sunrise/item/a.json", item.as_bytes())]);
             assert!(e.contains(why), "{case}: {e}");
         }
-        let glass = br#"{"template": "minecraft:glass", "item": false}"#;
         for (case, rest) in [
             ("bare-remainder", "bowl"),
-            ("missing-remainder", "ruby:bowl"),
-            ("other-mod-remainder", "jade:bowl"),
-            ("itemless-remainder", "ruby:glass"),
+            ("malformed-remainder", "jade:bad bowl"),
             ("air-remainder", "minecraft:air"),
         ] {
             let item =
                 format!(r#"{{"template": "minecraft:stick", "crafting_remainder": "{rest}"}}"#);
-            let files: &[(&str, &[u8])] = &[
-                ("data/ruby/sunrise/item/a.json", item.as_bytes()),
-                ("data/ruby/sunrise/block/glass.json", glass),
-            ];
+            let files: &[(&str, &[u8])] = &[("data/ruby/sunrise/item/a.json", item.as_bytes())];
             let e = refused(case, files);
             assert!(e.contains("crafting_remainder"), "{case}: {e}");
         }

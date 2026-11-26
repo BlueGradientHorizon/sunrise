@@ -20,9 +20,18 @@ pub(in crate::game) struct Sequence {
     next: u32,
     path: PathBuf,
     reply: Sender<String>,
-    /// What must stay as it was at the start (`Game::sequence_scene`).
+    /// What must stay as it was at the command start (`Game::sequence_scene`).
     scene: String,
+    /// The camera comes from the first actual frame extraction, not a preview call.
+    camera: Option<SequenceCamera>,
     pack: Value,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct SequenceCamera {
+    position: [u64; 3],
+    rotation: [u32; 3],
+    camera_type: sunrise_client::camera::CameraType,
 }
 
 impl Sequence {
@@ -95,32 +104,46 @@ impl crate::game::ClientGame<'_> {
         }
     }
 
-    /// What a sequence's frames must share: the world, the camera, the settings, the pack and
-    /// the window's size.
-    fn sequence_scene(&mut self) -> Result<String> {
-        let view = self.camera_view(1.0).ok_or("no camera")?;
-        let (position, yaw, pitch) = self.native_camera_pose_now(1.0, view);
-        let renderer = self.client.renderer.0.as_ref().ok_or("no renderer")?;
-        Ok(format!(
+    /// What a sequence's frames must share apart from the extracted camera.
+    fn sequence_scene(&self, renderer: &sunrise_client::gfx::Renderer) -> String {
+        format!(
             "{:?}",
             (
                 (self.dim.id(), self.world.game_time, self.world.day_time),
                 (self.world.revision, self.world.chunks.len()),
                 self.world.chunks.membership_revision(),
-                (
-                    position.to_array().map(f64::to_bits),
-                    yaw.to_bits(),
-                    pitch.to_bits()
-                ),
-                format!("{:?}", self.client.camera_type),
-                format!("{:?}", self.client.settings),
+                &self.client.settings,
                 (
                     &self.client.native_shaders.picked,
                     renderer.shader_pack_kind()
                 ),
                 [renderer.config.width, renderer.config.height],
             )
-        ))
+        )
+    }
+
+    /// Check the camera that this frame will actually draw. On failure, render the same frame
+    /// normally (the sequence's queued screenshot and clock are cleared), without firing hooks
+    /// again to extract another camera.
+    pub(in crate::game::client_side) fn check_screenshot_sequence_camera(
+        &mut self,
+        view: Option<(glam::DVec3, f32, f32, f32)>,
+    ) {
+        let Some(sequence) = &mut self.client.screenshot_sequence.0 else {
+            return;
+        };
+        let Some((position, yaw, pitch, roll)) = view else {
+            self.end_screenshot_sequence(Err("no camera".into()));
+            return;
+        };
+        let camera = SequenceCamera {
+            position: position.to_array().map(f64::to_bits),
+            rotation: [yaw, pitch, roll].map(f32::to_bits),
+            camera_type: self.client.camera_type,
+        };
+        if *sequence.camera.get_or_insert(camera) != camera {
+            self.end_screenshot_sequence(Err("the camera changed while it ran".into()));
+        }
     }
 
     /// `screenshot-sequence ...`; `None` while the reply waits for the PNG.
@@ -154,7 +177,7 @@ impl crate::game::ClientGame<'_> {
         if !picked.is_empty() && kind.is_none() {
             return Err("the shader pack isn't running (still loading, or it failed)".into());
         }
-        let scene = self.sequence_scene()?;
+        let scene = self.sequence_scene(renderer);
         let renderer = self.client.renderer.0.as_mut().ok_or("no renderer yet")?;
         renderer.reset_shader_pack_history();
         self.client.screenshot_sequence.0 = Some(Sequence {
@@ -164,6 +187,7 @@ impl crate::game::ClientGame<'_> {
             path,
             reply: reply.clone(),
             scene,
+            camera: None,
             pack: json!({
                 "kind": kind.unwrap_or("none"),
                 "name": (!picked.is_empty()).then_some(picked),
@@ -221,25 +245,21 @@ impl crate::game::ClientGame<'_> {
             .0
             .as_ref()
             .expect("a running sequence");
-        let (last, path, scene) = (
-            sequence.next == sequence.frames,
-            sequence.path.clone(),
-            sequence.scene.clone(),
-        );
-        let refusal = self.sequence_refusal();
-        match (refusal, self.sequence_scene()) {
-            (None, Ok(now)) if now == scene => {}
-            (refusal, _) => {
-                let reason = refusal.unwrap_or(
-                    "the camera, world, settings, shader pack or window size changed while it ran",
-                );
-                self.end_screenshot_sequence(Err(reason.into()));
-                return self.render_frame();
-            }
+        let refusal = self.sequence_refusal().or_else(|| {
+            let Some(renderer) = &self.client.renderer.0 else {
+                return Some("no renderer");
+            };
+            (self.sequence_scene(renderer) != sequence.scene)
+                .then_some("the world, settings, shader pack or window size changed while it ran")
+        });
+        if let Some(reason) = refusal {
+            self.end_screenshot_sequence(Err(reason.into()));
+            return self.render_frame();
         }
+        let last = sequence.next == sequence.frames;
         if last && let Some(renderer) = &mut self.client.renderer.0 {
             renderer.screenshot = Some(ScreenshotRequest {
-                path,
+                path: sequence.path.clone(),
                 size: None,
                 scaled: false,
                 background: false,
@@ -247,13 +267,29 @@ impl crate::game::ClientGame<'_> {
             renderer.screenshot_result = None;
         }
         let drawn = self.render_frame();
+        if self.client.screenshot_sequence.0.is_none() {
+            // The extracted camera changed; its frame was drawn outside the sequence.
+            return drawn;
+        }
         let renderer = self.client.renderer.0.as_mut().ok_or("no renderer")?;
         // Still queued when the frame wasn't drawn, or when the PNG is to be taken
         // again smaller (out of memory): not this sequence's frame.
         let queued = last && renderer.screenshot.take().is_some();
         let failed = drawn.is_err();
         let done = match drawn {
-            Ok(false) => return Ok(false),
+            Ok(false) => {
+                let sequence = self
+                    .client
+                    .screenshot_sequence
+                    .0
+                    .as_mut()
+                    .expect("a running sequence");
+                if sequence.next == 1 {
+                    // The surface did not draw this attempt. The first drawn frame sets the baseline.
+                    sequence.camera = None;
+                }
+                return Ok(false);
+            }
             Err(e) => Err(e.to_string()),
             Ok(true) => renderer.finish_sequence_frame().map_err(|e| e.to_string()),
         };
@@ -305,8 +341,143 @@ impl crate::game::ClientGame<'_> {
 
 #[cfg(test)]
 mod tests {
-    use super::parse;
-    use std::path::PathBuf;
+    use super::{Screen, parse};
+    use crate::game::{
+        native_entity_refs::tests::with_client_game,
+        native_hooks::particle_count_tests::frame_scene,
+    };
+    use mod_api::{
+        CameraPositionEvent, ClientHost, ComputeCameraAnglesEvent, Hooks, ModEntry,
+        RenderViewTransformEvent,
+    };
+    use std::{
+        path::PathBuf,
+        sync::{
+            Arc,
+            atomic::{AtomicUsize, Ordering},
+            mpsc,
+        },
+    };
+    use sunrise_gameplay_common::game::test_fixtures::run_fresh_cases_with_env;
+
+    struct FrameEdits(Arc<AtomicUsize>, Arc<AtomicUsize>);
+    #[mod_api::__subscriptions]
+    impl Hooks for FrameEdits {
+        fn compute_camera_angles(&self, _: &dyn ClientHost, event: &mut ComputeCameraAnglesEvent) {
+            event.yaw = if self.0.fetch_add(1, Ordering::Relaxed) == 0 {
+                45.0
+            } else {
+                90.0
+            };
+        }
+        fn camera_position(&self, _: &dyn ClientHost, event: &mut CameraPositionEvent<'_>) {
+            self.1.fetch_add(1, Ordering::Relaxed);
+            assert!(event.position.set([Some(0.25), None, None]));
+        }
+        fn render_view_transform(
+            &self,
+            _: &dyn ClientHost,
+            event: &mut RenderViewTransformEvent<'_, '_>,
+        ) {
+            assert!(event.transform.translate(2.0, 0.0, 0.0));
+        }
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn sequence_checks_the_extracted_camera_and_paused_worlds_still_apply_view_transforms() {
+        if run_fresh_cases_with_env(
+            &format!(
+                "{}::sequence_checks_the_extracted_camera_and_paused_worlds_still_apply_view_transforms",
+                module_path!().split_once("::").unwrap().1
+            ),
+            "SUNRISE_SEQUENCE_CAMERA_CHILD",
+            &["1"],
+            1,
+            &[("SUNRISE_STILL", "1")],
+        ) {
+            return;
+        }
+        let angles = Arc::new(AtomicUsize::new(0));
+        let positions = Arc::new(AtomicUsize::new(0));
+        let mods = vec![ModEntry::new(
+            "frame-edits",
+            Box::new(FrameEdits(angles.clone(), positions.clone())),
+        )];
+        mod_platform::testing::with_mods(mods.into(), || {
+            with_client_game(|game| {
+                let _event_loop = frame_scene(game);
+                game.client.screen = Screen::Playing;
+                game.client.settings.view_bobbing = false;
+                // This scene freezes before the camera tick that initializes the FOV scale.
+                game.client.view.fov_modifier = 1.0;
+                game.client.view.old_fov_modifier = 1.0;
+                game.client.settings.chunk_fade = 0.0;
+                game.client.settings.sunrise.lod_distance = 0;
+                game.client.settings.sunrise.taa = false;
+                game.client.settings.sunrise.shadow_cache = false;
+                game.client.settings.sunrise.frame_generation =
+                    sunrise_client::graphics::FrameGeneration::Off;
+                game.common.clock.set_frozen(true);
+                let (reply, result) = mpsc::channel();
+                let scratch = tempfile::tempdir().unwrap();
+                let target = scratch.path().join("final.png");
+                assert!(
+                    game.screenshot_sequence_command(
+                        &format!("screenshot-sequence 2 16 {}", target.display()),
+                        &reply,
+                    )
+                    .unwrap()
+                    .is_none()
+                );
+                assert_eq!(angles.load(Ordering::Relaxed), 0);
+                assert_eq!(positions.load(Ordering::Relaxed), 0);
+
+                assert!(game.render_sequence_frame().unwrap());
+                assert_eq!(angles.load(Ordering::Relaxed), 1);
+                assert_eq!(positions.load(Ordering::Relaxed), 1);
+                assert_eq!(game.client.screenshot_sequence.0.as_ref().unwrap().next, 2);
+                assert!(result.try_recv().is_err());
+
+                assert!(game.render_sequence_frame().unwrap());
+                assert_eq!(angles.load(Ordering::Relaxed), 2);
+                assert_eq!(positions.load(Ordering::Relaxed), 2);
+                assert!(game.client.screenshot_sequence.0.is_none());
+                assert!(game.client.renderer.0.as_ref().unwrap().screenshot.is_none());
+                assert!(
+                    game.client
+                        .renderer
+                        .0
+                        .as_ref()
+                        .unwrap()
+                        .screenshot_result
+                        .is_none()
+                );
+                assert!(!target.exists());
+                let response: serde_json::Value =
+                    serde_json::from_str(&result.try_recv().unwrap()).unwrap();
+                assert_eq!(response["frame"].as_u64(), Some(2));
+                assert!(
+                    response["error"]
+                        .as_str()
+                        .unwrap()
+                        .contains("camera changed"),
+                    "{response}"
+                );
+
+                game.client.screen = Screen::Paused;
+                game.render_with(|_, frame| {
+                    assert_eq!(frame.bob, glam::Mat4::IDENTITY);
+                    assert_eq!(
+                        frame.view_transform,
+                        glam::Mat4::from_translation(glam::Vec3::new(2.0, 0.0, 0.0))
+                    );
+                    Ok(true)
+                })
+                .unwrap();
+            });
+        });
+    }
 
     #[test]
     fn the_path_is_the_rest_of_the_line_and_the_counts_are_bounded() {

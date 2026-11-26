@@ -135,9 +135,15 @@ impl ClientGame<'_> {
             }
             return;
         };
-        // A horse its rider's client moves goes at its own speed and jumps
-        // its own height (`getSpeed`, `getCustomJump`).
-        if sunrise_sim::mobs::equine::moved_by_rider(m.species()) {
+        if m.kind.id == "minecraft:player" {
+            // A spectated RemotePlayer's FOV reads the synchronized attribute value,
+            // already including any sprint modifier, not Mob::movement_speed().
+            if let Some(speed) = speed {
+                m.attrs.speed = speed;
+            }
+        } else if sunrise_sim::mobs::equine::moved_by_rider(m.species()) {
+            // A horse its rider's client moves goes at its own speed and jumps
+            // its own height (`getSpeed`, `getCustomJump`).
             if let Some(speed) = speed {
                 sunrise_sim::mobs::finalize::set_base(
                     m,

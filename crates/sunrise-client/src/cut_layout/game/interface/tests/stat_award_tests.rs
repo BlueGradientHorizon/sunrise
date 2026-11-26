@@ -268,7 +268,7 @@ fn break_stone(game: &mut sunrise_gameplay::game::ServerGame<'_>) {
         .default_state("minecraft:stone")
         .unwrap();
     game.world.set(6, 64, 4, stone).unwrap();
-    assert!(game.player_break_block([6, 64, 4]).unwrap());
+    assert!(game.player_break_block([6, 64, 4], None).unwrap());
     assert_eq!(
         game.res
             .facts()

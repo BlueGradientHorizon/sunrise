@@ -77,8 +77,8 @@ impl ChunkGenerator for TestTerrain {
             biome: self.plains,
         })
     }
-    fn proto(&self, w: &mut (), x: i32, z: i32) -> crate::chunk_streamer::Proto {
-        Box::new(self.generate(w, x, z))
+    fn proto(&self, w: &mut (), x: i32, z: i32) -> Result<crate::chunk_streamer::Proto, String> {
+        Ok(Box::new(self.generate(w, x, z)))
     }
     // The proto already has all terrain and features. The last FULL ring
     // needs these blocks for lighting without promoting its neighbours.

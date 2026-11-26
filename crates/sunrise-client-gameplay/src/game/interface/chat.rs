@@ -1,7 +1,13 @@
 //! Chat, the command registries and the per-world state behind commands
 //! (game rules, the world clock, difficulty), bound to the game.
 
+#[cfg(all(test, feature = "client"))]
+#[path = "chat/submit_order_tests.rs"]
+mod submit_order_tests;
+
 use super::Screen;
+use std::path::Path;
+use sunrise_gameplay_common::game::native_server;
 use sunrise_client::{
     chat::{
         Chat, ChatAction, ChatScreen, ChatSource, Commands, QUEUE_EXPAND_ID, SYSTEM_INDICATOR,
@@ -154,32 +160,53 @@ impl crate::game::ClientGame<'_> {
             Some(tree) => tree,
             None => sunrise_command::vanilla::game_dispatcher(),
         };
-        let mut commands = Vec::new();
-        self.native_register_client_commands(&mut commands);
-        commands.retain(|command| {
-            let keep = command.level == 0;
-            if !keep {
-                log::warn!(
-                    "Sunrise: a client command was left out: `{}` has an operator level",
-                    command.usage
-                );
-            }
-            keep
-        });
-        let arguments = super::native_server::command_arguments();
-        let (tree, _, problems) = super::native_server::client_command_tree(
-            &commands,
-            |name| base.find(name).is_some(),
-            &arguments,
-        );
+        let mut registrations = Vec::new();
+        self.native_register_client_commands(&mut registrations);
+        let mut usages = Vec::with_capacity(registrations.len());
+        let mut executors = Vec::with_capacity(registrations.len());
+        for registration in registrations {
+            let owner = registration.mod_id;
+            let (command, call) =
+                mod_api::__private::split_client_command_registration(registration.answer);
+            let index = mod_api::__private::mod_index(owner)
+                .expect("client command registrations come from installed listeners");
+            let executor = super::native_server_client::RegisteredClientExecutor::new(
+                owner,
+                index,
+                &command.usage,
+                call,
+            );
+            usages.push(command);
+            executors.push(Some(executor));
+        }
+        let arguments = native_server::command_arguments();
+        let mut slots = std::collections::HashMap::new();
+        let (tree, _, problems) =
+            native_server::client_command_tree(&usages, &arguments, Some(&mut slots));
         for problem in problems {
             log::warn!("Sunrise: a client command was left out: {problem}");
         }
-        let mut tree_with_mods = base.clone();
-        super::native_server::register_dispatcher(
+        let mut client_dispatcher = Dispatcher::new();
+        native_server::register_command_nodes(
+            &mut client_dispatcher,
+            &tree,
+            MOD_COMMAND,
+            &arguments,
+            Some(&slots),
+        );
+        let retained: std::collections::HashSet<_> = slots.values().copied().collect();
+        for (slot, executor) in executors.iter_mut().enumerate() {
+            if !retained.contains(&slot) {
+                *executor = None;
+            }
+        }
+        self.client.native_client_commands
+            .install(client_dispatcher, executors);
+        let mut tree_with_mods = base.clone_with_unmerged_redirects();
+        native_server::register_dispatcher(
             &mut tree_with_mods,
             &tree,
-            sunrise_command::MOD_COMMAND,
+            MOD_COMMAND,
             &arguments,
         );
         with_studio_commands(&with_native_commands(&tree_with_mods, &["studio"])).with_profiler()
@@ -193,12 +220,12 @@ pub struct ChatDraft {
 }
 /// `ChatScreen.ExitReason`: why the chat screen went away.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum ChatExit {
+pub(in crate::game) enum ChatExit {
     /// Another screen replaced it (death, a container, a disconnect).
     Interrupted,
     /// The player closed it (Escape).
     Intentional,
-    /// A message was sent.
+    /// The message was sent or transferred into the replacement chat screen.
     Done,
 }
 /// `ChatScreen.shouldDiscardDraft`.
@@ -215,8 +242,6 @@ pub struct ChatUiState {
     pub chat_screen: Option<ChatScreen>,
     /// `ChatComponent.latestDraft`.
     pub chat_draft: Option<ChatDraft>,
-    /// `ChatScreen.isDraft`: the box opened with the draft and is unchanged since.
-    pub chat_draft_shown: bool,
     /// When the chat screen opened (its input took the focus: the cursor blink).
     pub chat_opened: Option<std::time::Instant>,
     /// The chat screen is `InBedChatScreen`: the sleeper's, with a Leave Bed button.
@@ -460,45 +485,53 @@ impl crate::game::ClientGame<'_> {
             .filter(|d| !command || d.command)
             .map(|d| d.text.clone());
         self.begin_chat_screen(draft.as_deref().unwrap_or(prefix), draft.is_some());
-        self.client.chat_ui.chat_draft_shown =
-            draft.is_some() && self.client.chat_ui.chat_screen.is_some();
     }
     /// Open the chat box on `initial`; `is_draft` when that text is the saved
     /// draft (`ChatComponent.createScreen`), which draws grey italic until it
     /// is edited.
-    pub fn begin_chat_screen(&mut self, initial: &str, is_draft: bool) {
+    pub fn begin_chat_screen(&mut self, initial: &str, is_draft: bool) -> bool {
+        self.replace_chat_screen(initial, is_draft, ChatExit::Interrupted)
+    }
+
+    fn replace_chat_screen(&mut self, initial: &str, is_draft: bool, reason: ChatExit) -> bool {
         if self.common.player.is_none() {
-            return;
+            return false;
         }
-        self.client.chat_ui.chat_draft_shown = false;
-        self.refresh_dynamic_registries();
-        let size = self
-            .client
-            .renderer
-            .0
-            .as_ref()
-            .map_or([1280, 720], |r| [r.config.width, r.config.height]);
-        let b = HudBatch::new(size, self.client.settings.gui_scale_inputs());
-        let m = Measure(&self.client.gui.atlas.font);
-        let c = Commands {
-            dispatcher: chat_tree(&self.client.remote),
-            registries: &self.common.ui.registries,
-        };
-        let mut screen = ChatScreen::new(
-            &m,
-            &c,
-            initial,
-            is_draft,
-            self.client.chat_ui.chat.recent.len(),
-            b.width as i32,
-            b.height as i32,
-            self.chat_abilities(),
-        );
-        screen.auto_suggestions = self.client.settings.auto_suggestions;
-        self.client.chat_ui.chat_screen = Some(screen);
-        self.client.chat_ui.chat_opened = Some(std::time::Instant::now());
-        self.set_screen(Screen::Chat);
-        self.capture(false);
+        self.transition_screen(Screen::Chat, true, |game, accepted| {
+            if accepted != Some(Screen::Chat) {
+                game.remove_chat_screen(ChatExit::Interrupted);
+                return;
+            }
+            game.remove_chat_screen(reason);
+            game.refresh_dynamic_registries();
+            let size = game
+                .client
+                .renderer
+                .0
+                .as_ref()
+                .map_or([1280, 720], |r| [r.config.width, r.config.height]);
+            let b = HudBatch::new(size, game.client.settings.gui_scale_inputs());
+            let m = Measure(&game.client.gui.atlas.font);
+            let c = Commands {
+                dispatcher: chat_tree(&game.client.remote),
+                registries: &game.common.ui.registries,
+            };
+            let mut screen = ChatScreen::new(
+                &m,
+                &c,
+                initial,
+                is_draft,
+                game.client.chat_ui.chat.recent.len(),
+                b.width as i32,
+                b.height as i32,
+                game.chat_abilities(),
+            );
+            screen.auto_suggestions = game.client.settings.auto_suggestions;
+            game.client.chat_ui.chat_screen = Some(screen);
+            game.client.chat_ui.chat_opened = Some(std::time::Instant::now());
+            game.capture(false);
+        });
+        true
     }
     pub fn close_chat(&mut self, reason: ChatExit) {
         // InBedChatScreen.onClose: leaving the screen means getting up; the
@@ -507,89 +540,95 @@ impl crate::game::ClientGame<'_> {
             self.remote_stop_sleeping();
             return;
         }
-        let text = self
-            .client
-            .chat_ui
-            .chat_screen
-            .as_ref()
-            .map_or_else(String::new, |s| s.value().to_owned());
-        self.keep_chat_draft(&text, reason);
-        self.client.chat_ui.chat_draft_shown = false;
-        self.client.chat_ui.chat_screen = None;
-        self.client.chat_ui.chat.reset_scroll();
         if self.client.screen == Screen::Chat {
-            self.set_screen(Screen::Playing);
-            self.capture(true);
+            // `Gui.setScreen(null)`: Closing fires, no vetoable Opening does.
+            self.dismiss_screen_with(|game| game.remove_chat_screen(reason));
+            if self.client.screen == Screen::Playing {
+                self.capture(true);
+            }
+        } else {
+            self.remove_chat_screen(reason);
         }
+    }
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn test_close_chat_intentionally(&mut self) {
+        self.close_chat(ChatExit::Intentional);
+    }
+
+    /// `ChatScreen.removed`, called only after the screen transition is accepted.
+    pub fn remove_chat_screen(&mut self, reason: ChatExit) {
+        if let Some(screen) = self.client.chat_ui.chat_screen.take() {
+            self.keep_chat_draft(screen.value(), screen.is_draft(), reason);
+            self.client.chat_ui.chat_opened = None;
+            self.client.chat_ui.chat.reset_scroll();
+        }
+        self.client.chat_ui.in_bed_chat = false;
     }
     /// `ChatScreen.removed`: the text left in the box becomes the draft unless
     /// `shouldDiscardDraft` (closed on purpose without Save Chat Drafts, or
     /// sent); blank text discards the draft. A draft still shown unchanged
     /// stays as it is.
-    pub(in crate::game::client_side) fn keep_chat_draft(&mut self, text: &str, reason: ChatExit) {
+    fn keep_chat_draft(&mut self, text: &str, is_draft: bool, reason: ChatExit) {
         // During PvP & HUD's chat search the box holds the query: the draft is the text the
         // search put aside, whichever way the chat closed.
-        let aside;
-        let text = if self.client.pvp.chat_search {
-            self.client.pvp.chat_search = false;
-            aside = std::mem::take(&mut self.client.pvp.chat_search_aside);
-            aside.as_str()
-        } else {
-            text
-        };
-        let unchanged = self.client.chat_ui.chat_draft_shown
-            && self
-                .client
-                .chat_ui
-                .chat_draft
-                .as_ref()
-                .is_some_and(|d| d.text == text);
+        let aside = self.client.pvp.chat_search_aside.take();
+        let (text, is_draft) = aside.as_ref().map_or((text, is_draft), |(text, is_draft)| {
+            (text.as_str(), *is_draft)
+        });
         if should_discard_draft(reason, self.client.settings.file.bool("saveChatDrafts"))
             || text.trim().is_empty()
         {
             self.client.chat_ui.chat_draft = None;
-        } else if !unchanged {
+        } else if !is_draft {
             self.client.chat_ui.chat_draft = Some(ChatDraft {
                 text: text.to_owned(),
                 command: text.starts_with('/'),
             });
         }
     }
-    /// `ChatScreen.removed` after another screen interrupted chat.
-    pub fn remove_chat_screen(&mut self) {
-        if let Some(chat) = self.client.chat_ui.chat_screen.take() {
-            self.keep_chat_draft(chat.value(), ChatExit::Interrupted);
-            self.client.chat_ui.chat_draft_shown = false;
-            self.client.chat_ui.chat.reset_scroll();
-        }
-        self.client.chat_ui.in_bed_chat = false;
-    }
-
     /// `Gui.tick`: a sleeper gets `InBedChatScreen`; when the player has
     /// woken (`onPlayerWokeUp`) it closes, or turns into the plain chat
     /// screen if something was typed.
     pub(in crate::game::client_side) fn tick_in_bed_chat(&mut self) {
         if self.client.screen != Screen::Chat {
-            self.remove_chat_screen();
+            self.remove_chat_screen(ChatExit::Interrupted);
         }
-        if self.client.chat_ui.in_bed_chat {
-            if self.common.sleeping.is_none() {
-                self.client.chat_ui.in_bed_chat = false;
-                let text = self
+        if self.client.chat_ui.in_bed_chat
+            && self.common.sleeping.is_none()
+            && !self.screen_over_playing()
+        {
+            // InBedChatScreen.onPlayerWokeUp: replace once, discarding the
+            // outgoing draft only when non-draft typed text transfers into
+            // ordinary chat; empty or untouched-draft wake dismisses via
+            // `Gui.setScreen(null)` (Closing without a vetoable Opening).
+            let typed = self.client.chat_ui.chat_screen.as_ref().and_then(|screen| {
+                let (text, is_draft) = self
                     .client
-                    .chat_ui
-                    .chat_screen
+                    .pvp
+                    .chat_search_aside
                     .as_ref()
-                    .map_or_else(String::new, |s| s.value().to_owned());
-                self.close_chat(ChatExit::Interrupted);
-                if !text.is_empty() {
-                    // InBedChatScreen.onPlayerWokeUp: a new ChatScreen with
-                    // the typed text, not a draft.
-                    self.begin_chat_screen(&text, false);
+                    .map_or((screen.value(), screen.is_draft()), |(text, is_draft)| {
+                        (text.as_str(), *is_draft)
+                    });
+                (!is_draft && !text.is_empty()).then(|| text.to_owned())
+            });
+            if let Some(text) = typed {
+                self.replace_chat_screen(&text, false, ChatExit::Done);
+                // A vetoed replacement keeps the outgoing instance and its draft; the
+                // sleeping-to-awake transition has been offered once and is not repeated.
+                self.client.chat_ui.in_bed_chat = false;
+            } else {
+                self.dismiss_screen_with(|game| game.remove_chat_screen(ChatExit::Interrupted));
+                if self.client.screen == Screen::Playing {
+                    self.capture(true);
                 }
             }
-        } else if self.common.sleeping.is_some() && self.client.screen == Screen::Playing {
-            self.begin_chat_screen("", false);
+        } else if self.common.sleeping.is_some()
+            && self.client.screen == Screen::Playing
+            && !self.screen_over_playing()
+        {
+            let draft = self.client.chat_ui.chat_draft.as_ref().map(|draft| draft.text.clone());
+            self.begin_chat_screen(draft.as_deref().unwrap_or(""), draft.is_some());
             self.client.chat_ui.in_bed_chat = self.client.screen == Screen::Chat;
         }
     }
@@ -633,6 +672,17 @@ impl crate::game::ClientGame<'_> {
         );
         button
     }
+    pub(in crate::game) fn chat_history_limit(&self) -> u32 {
+        u32::try_from(self.client.chat_ui.chat.history_limit()).unwrap_or(u32::MAX)
+    }
+
+    pub(in crate::game) fn set_chat_history_limit(&mut self, limit: u32) {
+        self.client
+            .chat_ui
+            .chat
+            .set_history_limit(usize::try_from(limit).unwrap_or(usize::MAX));
+    }
+
     /// `ChatComponent.addClientSystemMessage`: a line the client adds itself.
     /// It joins the connection's chat and its history, with the system
     /// marker; the Chat option's server-message filter does not hide it
@@ -710,7 +760,7 @@ impl crate::game::ClientGame<'_> {
         if self.pvp_chat().search
             && match key {
                 KeyCode::KeyF => ctrl,
-                KeyCode::Enter | KeyCode::NumpadEnter => self.client.pvp.chat_search,
+                KeyCode::Enter | KeyCode::NumpadEnter => self.client.pvp.chat_search_aside.is_some(),
                 _ => false,
             }
         {
@@ -754,19 +804,28 @@ impl crate::game::ClientGame<'_> {
                 self.close_chat(ChatExit::Intentional);
             }
             ChatAction::Submit(message) => {
-                // InBedChatScreen sends without closing (`closeOnSubmit` is
-                // false): the box empties and the screen stays.
-                if self.client.chat_ui.in_bed_chat && self.common.sleeping.is_some() {
-                    screen.suggest_command(&m, &c, "");
-                    self.client.chat_ui.chat.reset_scroll();
-                    self.client.chat_ui.chat_screen = Some(screen);
-                } else {
-                    // The screen is taken here, so close_chat sees no text: a sent
-                    // message discards the draft (DONE).
-                    self.close_chat(ChatExit::Done);
-                }
+                // ChatScreen.keyPressed: handleChatInput runs with the screen still open,
+                // then `closeOnSubmit` closes it. InBedChatScreen sends without closing
+                // (`closeOnSubmit` is false): the box empties and the screen stays.
+                let close_on_submit = !(self.client.chat_ui.in_bed_chat && self.common.sleeping.is_some());
+                self.client.chat_ui.chat_screen = Some(screen);
                 if !message.is_empty() {
                     self.handle_chat_input(&message);
+                }
+                if close_on_submit {
+                    // A sent message discards the draft (DONE), whatever the box holds.
+                    self.close_chat(ChatExit::Done);
+                } else {
+                    // The line is handled first, then the box empties and chat scrolls back.
+                    if let Some(screen) = self.client.chat_ui.chat_screen.as_mut() {
+                        let m = Measure(&self.client.gui.atlas.font);
+                        let c = Commands {
+                            dispatcher: chat_tree(&self.client.remote),
+                            registries: &self.common.ui.registries,
+                        };
+                        screen.suggest_command(&m, &c, "");
+                    }
+                    self.client.chat_ui.chat.reset_scroll();
                 }
             }
             ChatAction::None => {
@@ -832,7 +891,7 @@ impl crate::game::ClientGame<'_> {
     /// 256 UTF-16 units the packet holds), into history, then as a command or
     /// a chat line. The Chat option's restrictions stop the message here too,
     /// so a control-socket `chat` cannot send what the player's setting hides.
-    pub(in crate::game::client_side) fn handle_chat_input(&mut self, message: &str) {
+    pub fn handle_chat_input(&mut self, message: &str) {
         let message = normalize_chat_message(message);
         if message.is_empty() || !self.chat_abilities().allows(&message) {
             return;
@@ -844,35 +903,30 @@ impl crate::game::ClientGame<'_> {
             self.profiler_chat(args);
             return;
         }
-        // On a server (single player's own included) the server runs it,
-        // unless a client mod owns the command.
-        if let Some(command) = message.strip_prefix('/')
-            && self.client_mod_command(command)
-        {
-            return;
-        }
         if self.client.remote.is_some() {
-            self.send_chat_from_screen(&message);
+            self.send_signed_chat_input(&message);
             return;
         }
-        if !message.starts_with('/') {
-            let line = Text::translate(
-                "chat.type.text",
-                &[
-                    Text::literal(self.common.options.player_name()),
-                    Text::untrusted(message.as_str()),
-                ],
-            );
-            let focused = self.client.screen == Screen::Chat;
-            self.client.chat_ui.chat.add(
-                &self.client.gui.atlas,
-                line,
-                None,
-                ChatSource::Player,
-                self.visual_ticks(),
-                focused,
-            );
+        if let Some(command) = message.strip_prefix('/') {
+            self.run_client_native_command(command);
+            return;
         }
+        let line = Text::translate(
+            "chat.type.text",
+            &[
+                Text::literal(self.common.options.player_name()),
+                Text::untrusted(message.as_str()),
+            ],
+        );
+        let focused = self.client.screen == Screen::Chat;
+        self.client.chat_ui.chat.add(
+            &self.client.gui.atlas,
+            line,
+            None,
+            ChatSource::Player,
+            self.visual_ticks(),
+            focused,
+        );
     }
     pub(in crate::game::client_side) fn chat_scroll(&mut self, amount: f32) {
         let cursor = self.client.cursor;
@@ -1045,34 +1099,78 @@ impl crate::game::ClientGame<'_> {
             return;
         }
         if self.client.settings.chat_links_prompt {
-            self.open_screen_overlay("link_prompt", |game| game.client.link_prompt = Some(url));
+            self.open_screen_overlay("link_prompt", |game| game.client.link_prompt = Some(url.into()));
         } else {
             super::packs::open_uri(&url);
         }
+    }
+
+    /// `ConfirmLinkScreen.confirmLinkNow` for a mod: the confirmation opens over whatever
+    /// screen is open, and either answer returns to it. The player's answer is the consent, so
+    /// the chat's link options do not apply (they gate chat click events only). Only http and
+    /// https pass, as `Util.parseAndValidateUntrustedUri` has it.
+    pub(in crate::game) fn confirm_link(
+        &mut self,
+        uri: &str,
+        trusted: bool,
+    ) -> Result<(), mod_api::OpenLinkError> {
+        use mod_api::OpenLinkError;
+        if !self.native_window() {
+            return Err(OpenLinkError::Unavailable);
+        }
+        if !sunrise_core::text::untrusted_http_url(uri) {
+            return Err(OpenLinkError::Invalid);
+        }
+        self.open_screen_overlay("link_prompt", |game| {
+            game.client.link_prompt = Some(LinkPrompt {
+                url: uri.to_owned(),
+                trusted,
+            });
+        });
+        Ok(())
+    }
+
+    /// `Blaze3D.openPath` for a mod: the desktop's handler at once, with no confirmation.
+    pub(in crate::game) fn open_path(&self, path: &Path) -> Result<(), mod_api::OpenPathError> {
+        use mod_api::OpenPathError;
+        if !self.native_window() {
+            return Err(OpenPathError::Unavailable);
+        }
+        sunrise_client::desktop::open_path(path).map_err(|error| {
+            if error.kind() == std::io::ErrorKind::NotFound {
+                OpenPathError::NotFound
+            } else {
+                OpenPathError::Failed(error.to_string())
+            }
+        })
     }
     /// `ConfirmLinkScreen` (untrusted): the link and its warning over the
     /// chat, answered yes to open it.
     pub(in crate::game::client_side) fn link_prompt_layout(
         &self,
-        url: &str,
+        prompt: &LinkPrompt,
         size: (f32, f32),
     ) -> sunrise_client::confirm_screen::Choice {
-        let warning = Text::translate("chat.link.warning", &[]).with_color(0xFF_CCCC);
-        let message = Text::literal(url)
-            .append(Text::literal("\n"))
-            .append(warning);
+        let message = if prompt.trusted {
+            Text::literal(&prompt.url)
+        } else {
+            let warning = Text::translate("chat.link.warning", &[]).with_color(0xFF_CCCC);
+            Text::literal(&prompt.url)
+                .append(Text::literal("\n"))
+                .append(warning)
+        };
         // ConfirmLinkScreen.addButtons: yes, copy and no, 100 wide each.
         sunrise_client::confirm_screen::Choice::new(
             &self.client.gui.atlas.font,
             size,
-            &Text::translate("chat.link.confirm", &[]),
+            &Text::translate(prompt.title_key(), &[]),
             &message,
             3,
             100.0,
         )
     }
     pub(in crate::game::client_side) fn draw_link_prompt(&self, batch: &mut HudBatch) {
-        let Some(url) = &self.client.link_prompt else {
+        let Some(prompt) = &self.client.link_prompt else {
             return;
         };
         sunrise_client::widgets::cover_frame();
@@ -1081,46 +1179,42 @@ impl crate::game::ClientGame<'_> {
         sunrise_client::widgets::begin_screen(|| {
             super::screen_info::confirm(
                 "chat/confirm_link",
-                &super::screen_info::tr("chat.link.confirm", &[]),
-                url,
+                &super::screen_info::tr(prompt.title_key(), &[]),
+                &prompt.url,
             )
         });
         let atlas = &self.client.gui.atlas;
         let (w, h) = (batch.width, batch.height);
         sunrise_client::ui::menu_background(batch, atlas, 0.0, 0.0, w, h, true);
-        let labels = [
-            Text::translate("gui.yes", &[]),
-            Text::translate("chat.copy", &[]),
-            Text::translate("gui.no", &[]),
-        ];
-        let mut layout = self.link_prompt_layout(url, (w, h));
+        let labels = prompt.button_keys().map(|key| Text::translate(key, &[]));
+        let mut layout = self.link_prompt_layout(prompt, (w, h));
         layout.declare_no(2);
         layout.draw(batch, atlas, self.client.cursor, &labels);
         self.draw_overlay_mounted_widgets(batch, "link_prompt");
     }
     /// The prompt's answer: the link opens on yes; either way the chat is back.
     pub fn answer_link_prompt(&mut self, yes: bool) {
-        let Some(url) = self.client.link_prompt.take() else {
+        let Some(prompt) = self.client.link_prompt.take() else {
             return;
         };
         self.refresh_screen_widgets();
         if yes {
-            super::packs::open_uri(&url);
+            super::packs::open_uri(&prompt.url);
         }
     }
     pub(in crate::game::client_side) fn link_prompt_click(&mut self) -> bool {
-        let Some(url) = self.client.link_prompt.clone() else {
+        let Some(prompt) = self.client.link_prompt.clone() else {
             return false;
         };
         let pressed = self
-            .link_prompt_layout(&url, self.gui_size())
+            .link_prompt_layout(&prompt, self.gui_size())
             .pressed_at(self.client.cursor);
         if let Some(button) = pressed {
-            self.client.audio.0.play_button_click();
+            self.play_audio_button_click();
             if button == LINK_COPY {
                 // ConfirmLinkScreen.copyToClipboard, then the callback's no.
                 use sunrise_client::clipboard::Clipboard;
-                self.client.clipboard.0.set(&url);
+                self.client.clipboard.0.set(&prompt.url);
             }
             self.answer_link_prompt(button == LINK_YES);
         }
@@ -1131,67 +1225,54 @@ impl crate::game::ClientGame<'_> {
     /// first, as `ClientPacketListener.sendUnattendedCommand` lets client
     /// commands take it.
     pub(in crate::game::client_side) fn click_command(&mut self, command: &str) {
-        let command = command.strip_prefix('/').unwrap_or(command);
-        if self.client_mod_command(command) {
-            return;
-        }
         if self.client.remote.is_some() {
             self.send_unattended_command(command);
+        } else {
+            let command = command.strip_prefix('/').unwrap_or(command);
+            self.run_client_native_command(command);
         }
     }
     /// PvP & HUD's chat search on or off. The box holds the query: what was typed is put aside
     /// when the search starts and comes back when it stops.
-    pub(in crate::game::client_side) fn toggle_chat_search(&mut self) {
-        let typed = self
-            .client
-            .chat_ui
-            .chat_screen
-            .as_ref()
-            .map(|s| s.value().to_owned());
-        let next = if self.client.pvp.chat_search {
-            std::mem::take(&mut self.client.pvp.chat_search_aside)
+    fn toggle_chat_search(&mut self) {
+        let Some(screen) = self.client.chat_ui.chat_screen.as_mut() else {
+            return;
+        };
+        let next = if let Some((text, _)) = self.client.pvp.chat_search_aside.take() {
+            text
         } else {
-            self.client.pvp.chat_search_aside = typed.unwrap_or_default();
+            self.client.pvp.chat_search_aside = Some((screen.value().to_owned(), screen.is_draft()));
             String::new()
         };
-        self.client.pvp.chat_search = !self.client.pvp.chat_search;
         let m = Measure(&self.client.gui.atlas.font);
         let c = Commands {
             dispatcher: chat_tree(&self.client.remote),
             registries: &self.common.ui.registries,
         };
-        if let Some(screen) = self.client.chat_ui.chat_screen.as_mut() {
-            screen.suggest_command(&m, &c, &next);
-        }
+        screen.suggest_command(&m, &c, &next);
     }
     /// Chat lines over the HUD (focused while the chat screen is open).
     pub(in crate::game) fn draw_chat(&mut self, batch: &mut HudBatch) {
         let focused = self.client.screen == Screen::Chat;
         let options = self.pvp_chat();
-        self.client
-            .chat_ui
-            .chat
-            .set_qol(&self.client.gui.atlas, options.qol());
+        self.client.chat_ui.chat.set_qol(&self.client.gui.atlas, options.qol());
         // A search ends with its option; a chat closed some other way ends it in keep_chat_draft.
-        if self.client.pvp.chat_search && self.client.chat_ui.chat_screen.is_none() {
+        if self.client.chat_ui.chat_screen.is_none() {
             // The chat went without closing (leaving the world): nothing to give back.
-            self.client.pvp.chat_search = false;
-            self.client.pvp.chat_search_aside.clear();
-        } else if self.client.pvp.chat_search && !options.search {
+            self.client.pvp.chat_search_aside = None;
+        } else if self.client.pvp.chat_search_aside.is_some() && !options.search {
             self.toggle_chat_search();
         }
+        let searching = focused && self.client.pvp.chat_search_aside.is_some();
         let query = self
             .client
             .chat_ui
             .chat_screen
             .as_ref()
-            .filter(|_| focused && self.client.pvp.chat_search)
+            .filter(|_| searching)
             .map(|s| s.value());
-        self.client
-            .chat_ui
-            .chat
-            .set_search(&self.client.gui.atlas, query);
-        self.client.chat_ui.chat.search_prompt = focused && self.client.pvp.chat_search;
+        self.client.chat_ui.chat.set_search(&self.client.gui.atlas, query);
+        self.client.chat_ui.chat.search_prompt = searching;
         // `ChatComponent`'s queue row: the messages Chat Delay holds back.
         self.client.chat_ui.chat.queue = self.chat_queue_len();
         if self.client.chat_ui.hide_gui && !focused {
@@ -1615,6 +1696,49 @@ pub(in crate::game::client_side) fn screenshot_name(
 pub(in crate::game) const LINK_YES: usize = 0;
 pub(in crate::game) const LINK_COPY: usize = 1;
 
+#[derive(Clone)]
+pub struct LinkPrompt {
+    url: String,
+    trusted: bool,
+}
+
+impl From<String> for LinkPrompt {
+    /// A chat click's link: untrusted.
+    fn from(url: String) -> Self {
+        Self {
+            url,
+            trusted: false,
+        }
+    }
+}
+
+impl From<&str> for LinkPrompt {
+    /// An untrusted link, as a chat click opens it.
+    fn from(url: &str) -> Self {
+        url.to_owned().into()
+    }
+}
+
+impl LinkPrompt {
+    /// `ConfirmLinkScreen.confirmMessage`'s title.
+    fn title_key(&self) -> &'static str {
+        if self.trusted {
+            "chat.link.confirmTrusted"
+        } else {
+            "chat.link.confirm"
+        }
+    }
+    /// Labels for the chosen trust mode, with the same copy button in both.
+    fn button_keys(&self) -> [&'static str; 3] {
+        if self.trusted {
+            ["chat.link.open", "chat.copy", "gui.cancel"]
+        } else {
+            ["gui.yes", "chat.copy", "gui.no"]
+        }
+    }
+}
+
+
 #[cfg(feature = "client")]
 #[cfg(test)]
 pub(in crate::game) mod tests {
@@ -1622,7 +1746,7 @@ pub(in crate::game) mod tests {
     use std::sync::Arc;
     use sunrise_client::chat::{ChatAbilities, ChatVisibility};
     use sunrise_command::Registries;
-    use sunrise_gameplay_common::game::chat_common::{overworld_timelines, summonable_entities};
+    use sunrise_gameplay_common::game::chat_common::summonable_entities;
 
     #[test]
     fn a_typed_profiler_is_the_clients_unless_the_server_owns_the_name() {
@@ -1723,44 +1847,6 @@ pub(in crate::game) mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
-    /// Only the overworld clock's timelines count; a marker is a bare tick
-    /// count (hidden from commands) or an object that may show itself.
-    #[test]
-    fn overworld_timelines_and_markers() {
-        let root = std::env::temp_dir().join(format!("sunrise-timelines-{}", std::process::id()));
-        let dir = root.join("data/minecraft/timeline");
-        std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(
-            dir.join("day.json"),
-            r#"{"clock":"minecraft:overworld","period_ticks":24000,
-                "time_markers":{"minecraft:noon":6000,
-                "minecraft:night":{"ticks":13000,"show_in_commands":true}}}"#,
-        )
-        .unwrap();
-        std::fs::write(
-            dir.join("other.json"),
-            r#"{"clock":"minecraft:the_end","time_markers":{"minecraft:x":1}}"#,
-        )
-        .unwrap();
-        std::fs::write(dir.join("broken.json"), "{").unwrap();
-        let (timelines, markers) = overworld_timelines(&root);
-        assert_eq!(timelines, [("minecraft:day".to_owned(), Some(24000))]);
-        let mut markers: Vec<_> = markers
-            .iter()
-            .map(|(name, m)| (name.as_str(), m.ticks, m.period, m.show))
-            .collect();
-        markers.sort();
-        assert_eq!(
-            markers,
-            [
-                ("minecraft:night", 13000, Some(24000), true),
-                ("minecraft:noon", 6000, Some(24000), false),
-            ]
-        );
-        let _ = std::fs::remove_dir_all(&root);
-    }
-
-    /// The export is read once per folder; a folder without one stays without.
     #[test]
     fn command_exports_are_read_once_per_folder() {
         let dir = std::env::temp_dir().join(format!("sunrise-export-{}", std::process::id()));
@@ -1785,30 +1871,49 @@ pub(in crate::game) mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// A client command's usage becomes real nodes in the chat tree: its
-    /// argument is parsed (a wrong shape is red, as a vanilla command's would
-    /// be) and a run goes to `native_command` with the line as typed.
     #[test]
     fn a_client_commands_usage_is_parsed_by_the_chat_tree() {
         let reg = Registries::default();
         let vanilla = sunrise_command::vanilla::game_dispatcher();
         let commands = [mod_api::Command::new("xmode <mode:word>")];
-        let arguments = super::super::native_server::command_arguments();
-        let (tree, _, problems) = super::super::native_server::client_command_tree(
+        let arguments = native_server::command_arguments();
+        let mut slots = std::collections::HashMap::new();
+        let (tree, _, problems) = native_server::client_command_tree(
             &commands,
-            |name| vanilla.find(name).is_some(),
             &arguments,
+            Some(&mut slots),
         );
         assert!(problems.is_empty(), "{problems:?}");
-        let mut chat = vanilla.clone();
-        super::super::native_server::register_dispatcher(
-            &mut chat,
+        let mut client_dispatcher = Dispatcher::new();
+        native_server::register_command_nodes(
+            &mut client_dispatcher,
             &tree,
-            sunrise_command::MOD_COMMAND,
+            MOD_COMMAND,
             &arguments,
+            Some(&slots),
         );
+        let parsed = client_dispatcher.parse("xmode fast", &reg);
+        let (ctx, handler) = parsed.executable().unwrap();
+        assert_eq!(handler, MOD_COMMAND);
+        let key = ctx.executor.expect("client node binds an executor key");
+        assert_eq!(key.slot(), 0);
+        assert!(client_dispatcher.owns_executor(key));
+
+        // Rebuilding the client dispatcher mints a fresh generation; stale keys are rejected.
+        let mut rebuilt = Dispatcher::new();
+        native_server::register_command_nodes(
+            &mut rebuilt,
+            &tree,
+            MOD_COMMAND,
+            &arguments,
+            Some(&slots),
+        );
+        assert!(!rebuilt.owns_executor(key));
+
+        let mut chat = vanilla.clone_with_unmerged_redirects();
+        native_server::register_dispatcher(&mut chat, &tree, MOD_COMMAND, &arguments);
         let parse = chat.parse("xmode fast", &reg);
-        assert_eq!(parse.executable().unwrap().1, sunrise_command::MOD_COMMAND);
+        assert_eq!(parse.executable().unwrap().1, MOD_COMMAND);
         assert!(
             chat.parse("xmode", &reg).executable().is_err(),
             "needs its mode"
@@ -1817,13 +1922,112 @@ pub(in crate::game) mod tests {
             chat.parse("xmode fast extra", &reg).executable().is_err(),
             "one word, not two"
         );
-        // A name the game has is not taken over.
-        let (_, _, problems) = super::super::native_server::client_command_tree(
-            &[mod_api::Command::new("help <x:word>")],
-            |name| vanilla.find(name).is_some(),
+        // Server redirects and permissions in `base` remain intact after merging client commands.
+        let tp = chat.find("tp").expect("tp alias remains");
+        let tp_target = chat.nodes[tp].redirect.expect("tp redirect remains");
+        assert_eq!(chat.nodes[tp_target].name(), "teleport");
+        assert_eq!(chat.nodes[tp].permission, 2);
+        let op_reg = Registries {
+            permission: 2,
+            ..Registries::default()
+        };
+        assert!(chat.parse("tp 0 64 0", &reg).executable().is_err());
+        assert_eq!(
+            chat.parse("tp 0 64 0", &op_reg).executable().unwrap().1,
+            "teleport.location"
+        );
+    }
+
+    #[test]
+    fn display_merge_keeps_server_redirects_on_unmerged_server_targets() {
+        let mut server = Dispatcher::new();
+        let shared = server.literal(0, "shared");
+        let remote = server.literal(shared, "server");
+        server.executes(remote, "remote");
+        let alias = server.literal(0, "alias");
+        server.redirect(alias, shared);
+        let run = server.literal(0, "run");
+        server.redirect(run, 0);
+
+        let arguments = native_server::command_arguments();
+        let client_cmds = [
+            mod_api::Command::new("shared local <value:integer>"),
+            mod_api::Command::new("clientonly"),
+        ];
+        let (tree, _, problems) =
+            native_server::client_command_tree(&client_cmds, &arguments, None);
+        assert!(problems.is_empty(), "{problems:?}");
+
+        let mut display = server.clone_with_unmerged_redirects();
+        native_server::register_dispatcher(
+            &mut display,
+            &tree,
+            MOD_COMMAND,
             &arguments,
         );
-        assert_eq!(problems.len(), 1);
+        let reg = Registries::default();
+
+        // Direct path displays both server and client branches.
+        assert_eq!(
+            display.parse("shared server", &reg).executable().unwrap().1,
+            "remote"
+        );
+        assert_eq!(
+            display
+                .parse("shared local 7", &reg)
+                .executable()
+                .unwrap()
+                .1,
+            MOD_COMMAND
+        );
+        let direct_suggestions: Vec<String> = display
+            .client_suggestions(&display.parse("shared ", &reg), 7, &reg)
+            .1
+            .into_iter()
+            .map(|s| s.text)
+            .collect();
+        assert_eq!(direct_suggestions, ["local", "server"]);
+
+        // Server alias to the shared root keeps the server branch and never exposes the client branch.
+        assert_eq!(
+            display.parse("alias server", &reg).executable().unwrap().1,
+            "remote"
+        );
+        assert!(display.parse("alias local 7", &reg).executable().is_err());
+        let alias_suggestions: Vec<String> = display
+            .client_suggestions(&display.parse("alias ", &reg), 6, &reg)
+            .1
+            .into_iter()
+            .map(|s| s.text)
+            .collect();
+        assert_eq!(alias_suggestions, ["server"]);
+
+        // A server redirect to the dispatcher root traverses only the unmerged server tree
+        // and preserves Brigadier's `...` smart-usage marker.
+        assert_eq!(
+            display
+                .parse("run shared server", &reg)
+                .executable()
+                .unwrap()
+                .1,
+            "remote"
+        );
+        assert!(
+            display
+                .parse("run shared local 7", &reg)
+                .executable()
+                .is_err()
+        );
+        assert!(display.parse("run clientonly", &reg).executable().is_err());
+        let run_suggestions: Vec<String> = display
+            .client_suggestions(&display.parse("run ", &reg), 4, &reg)
+            .1
+            .into_iter()
+            .map(|s| s.text)
+            .collect();
+        assert!(!run_suggestions.iter().any(|s| s == "clientonly"));
+        let usage = display.smart_usage(0, 0);
+        assert!(usage.iter().any(|(_, line)| line == "run ..."), "{usage:?}");
     }
 
     #[test]
@@ -1855,7 +2059,7 @@ pub(in crate::game) mod tests {
         assert!(plain.find("flyspeed").is_none());
         let tree = with_native_commands(vanilla, &["flyspeed"]);
         assert!(tree.find("flyspeed").is_some());
-        // The rest of the line goes to the mod, as `native_command` gets it.
+        // The rest of the line is parsed as a greedy argument in the chat tree.
         let parse = tree.parse("flyspeed 4", &reg);
         assert_eq!(parse.executable().unwrap().1, sunrise_command::MOD_COMMAND);
         let parse = tree.parse("fly", &reg);
@@ -2163,3 +2367,149 @@ pub(in crate::game) mod damage_type_registry_tests {}
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::pick_ray::PickRayGameExt1 as _;
+
+#[cfg(all(test, feature = "client"))]
+mod link_and_path_tests {
+    use super::*;
+    use crate::game::ClientGame;
+    use crate::game::native_entity_refs::tests::{
+        fixture_root, with_client_game, with_game_role_client,
+    };
+    use sunrise_gameplay_common::game::execution_role::ExecutionRole;
+    use mod_api::{ClientHost, ClientTickPreEvent, Hooks, ModEntry, OpenLinkError, OpenPathError};
+    use mod_platform::testing::with_mods;
+    use std::sync::{Arc, Mutex};
+
+    /// A mod that asks for a link from its client tick and keeps the answer.
+    struct Asker {
+        uri: &'static str,
+        trusted: bool,
+        answer: Arc<Mutex<Option<Result<(), OpenLinkError>>>>,
+    }
+    #[mod_api::__subscriptions]
+    impl Hooks for Asker {
+        fn client_tick_pre(&self, host: &mut dyn ClientHost, _: &mut ClientTickPreEvent) {
+            *self.answer.lock().unwrap() = Some(host.confirm_link(self.uri, self.trusted));
+        }
+    }
+
+    /// Run the mod's link request from a client tick.
+    fn ask(
+        uri: &'static str,
+        trusted: bool,
+        check: impl FnOnce(&mut ClientGame<'_>, Result<(), OpenLinkError>),
+    ) {
+        let answer = Arc::new(Mutex::new(None));
+        let mods: mod_api::Mods = vec![ModEntry::new(
+            "linker",
+            Box::new(Asker {
+                uri,
+                trusted,
+                answer: answer.clone(),
+            }),
+        )]
+        .into();
+        with_mods(mods, || {
+            with_client_game(|game| {
+                game.common.options.headless = true;
+                game.native_client_tick_pre();
+                let result = answer.lock().unwrap().take().unwrap();
+                check(game, result);
+            });
+        });
+    }
+
+    /// Trust changes the prompt labels, and declining returns to the same screen.
+    #[test]
+    #[ignore = "daily"]
+    fn a_mod_asks_to_open_a_web_link() {
+        ask("https://example.com/a?b=c", false, |game, result| {
+            assert_eq!(result, Ok(()));
+            let prompt = game.client.link_prompt.clone().expect("the prompt opens");
+            assert_eq!(prompt.url, "https://example.com/a?b=c");
+            assert!(!prompt.trusted);
+            assert_eq!(prompt.title_key(), "chat.link.confirm");
+            assert_eq!(prompt.button_keys(), ["gui.yes", "chat.copy", "gui.no"]);
+            let was_playing = game.client.screen == Screen::Playing;
+            game.answer_link_prompt(false);
+            assert!(game.client.link_prompt.is_none());
+            assert_eq!(game.client.screen == Screen::Playing, was_playing);
+        });
+        ask("https://example.com/a?b=c", true, |game, result| {
+            assert_eq!(result, Ok(()));
+            let prompt = game.client.link_prompt.clone().expect("the prompt opens");
+            assert!(prompt.trusted);
+            assert_eq!(prompt.title_key(), "chat.link.confirmTrusted");
+            assert_eq!(
+                prompt.button_keys(),
+                ["chat.link.open", "chat.copy", "gui.cancel"]
+            );
+            game.answer_link_prompt(false);
+            assert!(game.client.link_prompt.is_none());
+        });
+    }
+
+    /// The mod prompt accepts HTTP(S) even when chat links are disabled.
+    #[test]
+    #[ignore = "daily"]
+    fn a_mod_link_must_be_http_or_https() {
+        with_client_game(|game| {
+            game.common.options.headless = true;
+            (game.client.settings.chat_links, game.client.settings.chat_links_prompt) = (false, false);
+            assert_eq!(game.confirm_link("HTTPS://Example.com", false), Ok(()));
+            assert!(game.client.link_prompt.is_some());
+            game.answer_link_prompt(false);
+            for bad in [
+                "file:///etc/passwd",
+                "javascript:alert(1)",
+                "example.com",
+                "ftp://example.com",
+                "http://a b",
+            ] {
+                assert_eq!(
+                    game.confirm_link(bad, false),
+                    Err(OpenLinkError::Invalid),
+                    "{bad}"
+                );
+                assert!(game.client.link_prompt.is_none(), "{bad}");
+            }
+        });
+    }
+
+    /// A path that does not exist is refused before any process starts.
+    #[test]
+    #[ignore = "daily"]
+    fn open_path_refuses_a_missing_path() {
+        with_client_game(|game| {
+            game.common.options.headless = true;
+            let missing = std::env::temp_dir().join("sunrise-open-path-missing/never-created");
+            assert_eq!(game.open_path(&missing), Err(OpenPathError::NotFound));
+        });
+    }
+
+    /// Without a native window both methods answer `Unavailable`.
+    #[test]
+    #[ignore = "daily"]
+    fn link_and_path_are_unavailable_without_a_window() {
+        for role in [
+            ExecutionRole::IntegratedServer,
+            ExecutionRole::DedicatedServer,
+        ] {
+            with_game_role_client(
+                fixture_root(),
+                role,
+                |game| {
+                    assert_eq!(
+                        game.confirm_link("https://example.com", false),
+                        Err(OpenLinkError::Unavailable)
+                    );
+                    assert!(game.client.link_prompt.is_none());
+                    assert_eq!(
+                        game.open_path(Path::new(".")),
+                        Err(OpenPathError::Unavailable)
+                    );
+                },
+            );
+        }
+    }
+}

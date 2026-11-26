@@ -43,7 +43,10 @@ impl crate::game::ServerGame<'_> {
         let viewed: Vec<Dim> = Dim::all()
             .into_iter()
             .filter(|d| {
-                !ticked.contains(d) && (self.needs_view_pass(*d) || self.has_spawn_tickets(*d))
+                !ticked.contains(d)
+                    && (self.needs_view_pass(*d)
+                        || self.has_spawn_tickets(*d)
+                        || self.has_async_chunk_requests(*d))
             })
             .collect();
         for dim in viewed {

@@ -204,7 +204,7 @@ impl crate::game::ClientGame<'_> {
         }) else {
             return false;
         };
-        self.client.audio.0.play_button_click();
+        self.play_audio_button_click();
         if button == 0 {
             self.confirm_trusted_link(BUY_MINECRAFT_JAVA, Screen::Playing);
         } else {

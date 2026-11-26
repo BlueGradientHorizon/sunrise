@@ -5,7 +5,6 @@
 //! client's draw the gas clouds and the eruption's plume, play its sound and
 //! push the local player, who moves on its own client and not on the server.
 use crate::game::ServerGame;
-use crate::game::server_side::potions_server::mob_effect_id;
 use sunrise_core::{geometry::Aabb, position::BlockPos, random::RandomSource};
 use sunrise_game_data::Result;
 #[allow(unused_imports)]
@@ -20,16 +19,7 @@ use sunrise_level::potent_sulfur_level::{
     SulfurLevel, can_be_reached_by_noxious_gas, unobstructed_block_count,
 };
 use sunrise_level::{block_entities::Pos, containers::BlockEntity, effects::EffectInstance};
-use sunrise_sim::mobs::Mob;
 use sunrise_world::{level::flags, registry::BlockStateId};
-
-/// `PotentSulfurBlockEntity.applyNauseaEffect` on a mob that passed the
-/// `canBeAffected` ask.
-pub(in crate::game::server_side) fn apply_nausea_effect_to_mob(mob: &mut Mob) {
-    if let Some(nausea) = mob_effect_id("nausea") {
-        mob.add_effect(nausea, EFFECT_DURATION_IN_TICKS, 0);
-    }
-}
 
 impl ServerGame<'_> {
     /// `PotentSulfurBlock.getTicker` on the server, for the block entity at
@@ -98,19 +88,11 @@ impl ServerGame<'_> {
         if near.is_empty() {
             return;
         }
-        let reached: Vec<_> = near
-            .into_iter()
-            .map(|j| {
-                let m = &self.common.mobs[j as usize];
-                (m.id, m.kind.id.clone())
-            })
-            .collect();
-        for (id, kind) in reached {
-            if self.can_be_affected(Some(id as i32), &kind, "nausea")
-                && let Some(m) = self.common.mobs.iter_mut().find(|m| m.id == id)
-            {
-                apply_nausea_effect_to_mob(m);
-            }
+        let reached: Vec<_> = near.into_iter().map(|j| self.common.mobs[j as usize].id).collect();
+        for id in reached {
+            let mut nausea = EffectInstance::new("nausea", EFFECT_DURATION_IN_TICKS, 0);
+            nausea.ambient = true;
+            self.add_mob_effect(id, nausea, None);
         }
         // Applicability listeners can move or remove mobs: never acknowledge their
         // writes against the pre-hook grid.

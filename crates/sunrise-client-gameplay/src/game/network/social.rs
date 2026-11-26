@@ -185,7 +185,7 @@ impl crate::game::ClientGame<'_> {
         let social_screen::Click::Action(action) = kind else {
             return false;
         };
-        self.client.audio.0.play_button_click();
+        self.play_audio_button_click();
         match action {
             Action::Page(page) => {
                 self.client.social.page = page;

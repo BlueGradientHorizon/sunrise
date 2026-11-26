@@ -174,6 +174,107 @@ pub(crate) mod tests {
             std::fs::remove_dir_all(&world).unwrap();
         });
     }
+
+    #[test]
+    #[ignore = "daily"]
+    fn edits_to_the_dead_players_record_follow_the_respawn_copy_policy() {
+        use mod_api::{Hand, PlayerDataRefusal};
+        use sunrise_gameplay_common::game::{
+            native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _,
+            native_give_stack::NativeGiveStackGameExt1 as _,
+            native_server::NativeServerGameExt1 as _,
+        };
+
+        // The game fixture publishes engine registries. Run it in its own process.
+        const CHILD: &str = "SUNRISE_RESIDENT_PLAYER_SETTERS_CHILD";
+        if std::env::var_os(CHILD).is_none() {
+            let result = std::process::Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--include-ignored",
+                    "--exact",
+                    "cut_layout::game::native_player_death::tests::edits_to_the_dead_players_record_follow_the_respawn_copy_policy",
+                ])
+                .env(CHILD, "1")
+                .status()
+                .unwrap();
+            assert!(result.success());
+            return;
+        }
+        super::super::native_guest_turn_tests::with_guests(|game| {
+            let player = game.player(13).unwrap();
+            let other = game.player(12).unwrap();
+            let pearl = "minecraft:ender_pearl";
+            let rock = game
+                .item_from_snbt(r#"{id:"minecraft:stone",count:3}"#)
+                .unwrap();
+            let saved = Some(at([4, 72, -3]));
+            for (mode, selected, copied_count) in [(0, 0, None), (3, 5, Some(3))] {
+                game.server
+                    .lan
+                    .as_mut()
+                    .unwrap()
+                    .hub
+                    .update_guest(13, |guest| {
+                        guest.health = 0.0;
+                        guest.dead = true;
+                        guest.game_mode = mode;
+                    })
+                    .unwrap();
+                assert!(game.player_set_item_cooldown(player, pearl, 18));
+                let living = game.living(player.entity()).unwrap();
+                assert_eq!(living.alive(&*game), Some(false));
+                assert!(
+                    living
+                        .set_hand_item(game, Hand::Off, Some(rock.clone()))
+                        .unwrap()
+                );
+                game.as_guest(13, |game| {
+                    assert!(player.set_selected_slot(game, 5));
+                    assert_eq!(
+                        game.player_item_cooldowns(player).unwrap()[0].ticks_left,
+                        18
+                    );
+                    assert!(game.player_remove_item_cooldown(player, pearl));
+                    assert_eq!(game.player_has_item_cooldown(player, pearl), Some(false));
+                    assert_eq!(
+                        player.set_inventory_slot(game, 5, Some(rock.clone())),
+                        Ok(())
+                    );
+                    assert_eq!(
+                        player.set_ender_chest_slot(game, 8, Some(rock.clone())),
+                        Ok(())
+                    );
+                    assert!(player.set_last_death_location(game, saved.clone()));
+                    game.as_guest(12, |game| {
+                        assert!(!player.set_last_death_location(game, None));
+                        assert_eq!(
+                            player.set_inventory_slot(game, 5, None),
+                            Err(PlayerDataRefusal::Stale)
+                        );
+                        assert_eq!(other.last_death_location(&*game), None);
+                    })
+                    .unwrap();
+                })
+                .unwrap();
+                let slots = |view: mod_api::InventoryView<'_>| {
+                    [5, 40].map(|slot| view.get(slot).map(|stack| stack.count()))
+                };
+                assert_eq!(player.with_inventory(&*game, slots), Some([Some(3); 2]));
+                assert_eq!(player.respawn(game), Ok(()));
+                assert_eq!(player.selected_slot(&*game), Some(selected));
+                assert_eq!(
+                    player.with_inventory(&*game, slots),
+                    Some([copied_count; 2])
+                );
+                assert_eq!(
+                    player.with_ender_chest(&*game, |view| view.get(8).map(|stack| stack.count())),
+                    Some(Some(3))
+                );
+                assert_eq!(player.last_death_location(&*game), saved);
+            }
+        });
+    }
+
     #[test]
     #[ignore = "daily"]
     fn a_death_records_the_floored_block_and_dimension() {
@@ -209,11 +310,14 @@ pub(crate) mod tests {
                     BlockPos::new(-2, 64, 7)
                 ))
             );
-            assert!(!player.set_last_death_location(game, Some(at([1, 2, 3]))));
-            assert_eq!(
-                player.last_death_location(&*game).unwrap().pos(),
-                BlockPos::new(-2, 64, 7)
-            );
+            assert!(player.set_last_death_location(game, Some(at([1, 2, 3]))));
+            assert_eq!(player.last_death_location(&*game), Some(at([1, 2, 3])));
+            game.as_guest(1, |game| {
+                assert!(game.player.as_ref().unwrap().health.dead_or_dying());
+                assert!(player.set_last_death_location(game, None));
+            })
+            .unwrap();
+            assert_eq!(player.last_death_location(&*game), None);
         });
     }
 }

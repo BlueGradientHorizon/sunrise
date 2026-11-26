@@ -55,11 +55,12 @@ impl crate::game::ServerGame<'_> {
             causing: 0,
             direct: 0,
             position: None,
+            direct_type: None,
         };
         self.native_nonliving_invulnerable(id, kind, source, vanilla)
     }
     /// A player's body, where it is kept now.
-    pub(in crate::game::server_side) fn native_player_body(
+    pub(in crate::game) fn native_player_body(
         &self,
         t: Target,
     ) -> Option<&sunrise_sim::motion::PlayerMotion> {
@@ -153,13 +154,17 @@ impl crate::game::ServerGame<'_> {
         true
     }
 
+    fn timer_read_target(&self, entity: EntityRef) -> Option<Target> {
+        self.native_entity_read_target(entity)
+    }
+
     /// `Entity.invulnerableTime` (#916): the entity-level invulnerability
     /// window, its own field on a mob and a player — never the living damage
     /// cooldown — and the saved `invulnerable_time` tag for the other kinds.
     /// Counted down by the base tick; `isTemporarilyInvulnerable` is it above
     /// zero. None for a stale handle or a kind that keeps none.
     pub fn entity_invulnerable_time(&self, entity: EntityRef) -> Option<i32> {
-        match self.native_entity_target(entity)? {
+        match self.timer_read_target(entity)? {
             Target::Mob(id) => Some(
                 self.common
                     .mobs
@@ -343,7 +348,14 @@ impl crate::game::ServerGame<'_> {
         // `DamageSource(type, cause, at)`: the source position the knockback
         // pushes away from is the direct entity's.
         let from = direct.and_then(|t| self.target_position(t));
-        Some(self.hurt_target(target, amount, damage_type, direct, causing, from))
+        Some(self.hurt_target(
+            target,
+            amount,
+            damage_type,
+            direct,
+            causing.or(direct),
+            from,
+        ))
     }
 
     /// `Entity.isInvulnerableTo` for a source of `damage_type`: #842's own
@@ -396,6 +408,7 @@ impl crate::game::ServerGame<'_> {
             causing: attacker,
             direct: attacker,
             position: None,
+            direct_type: None,
         };
         let vanilla =
             self.saved_refuses_damage(id, "minecraft:player_attack", self.common.creative);
@@ -472,7 +485,7 @@ impl crate::game::ServerGame<'_> {
     /// while it is above 10 a hit does only what it deals beyond the last
     /// one. Mobs and players.
     pub fn entity_damage_cooldown_time(&self, entity: EntityRef) -> Option<i32> {
-        match self.native_entity_target(entity)? {
+        match self.timer_read_target(entity)? {
             Target::Mob(id) => Some(self.common.mobs.iter().find(|m| m.id == id)?.invulnerable),
             t => Some(self.native_player_body(t)?.health.hurt.cooldown),
         }
@@ -504,6 +517,8 @@ impl crate::game::ServerGame<'_> {
 
 use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
 
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5 as _;
+use sunrise_gameplay_common::game::native_entity_refs_common::{
+    NativeEntityRefsCommonGameExt1 as _, NativeEntityRefsCommonGameExt5 as _,
+};
 
 use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

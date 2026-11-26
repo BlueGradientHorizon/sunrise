@@ -306,8 +306,13 @@ pub(crate) mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_handle_lists_its_attributes_and_reads_its_modifiers() {
-        use mod_api::{AttributeOperation, AttributeOperation::*, Identifier, ModifierLifetime::*};
+        use mod_api::{
+            AttributeOperation, AttributeOperation::*, EntityReadError, Identifier,
+            ModifierLifetime::*,
+        };
+        use std::ops::ControlFlow;
         use sunrise_core::geometry::Vec3;
+        use sunrise_gameplay::game::native_entity_refs::tests::fixture_resident_column;
         use sunrise_items::equipment::HEAD;
         use sunrise_sim::entities::ArmorStand;
         use sunrise_sim::mobs::Mob;
@@ -316,6 +321,7 @@ pub(crate) mod tests {
             AttributeModifier::new(Identifier::parse(id).unwrap(), amount, operation)
         };
         super::super::native_entity_refs::tests::with_game(|game| {
+            fixture_resident_column(&mut game.world, (0, 0));
             let zombie_kind = game
                 .res
                 .mob_types()
@@ -327,31 +333,72 @@ pub(crate) mod tests {
             let zombie = game.living(game.entity(12).unwrap()).unwrap();
             let stand = game.living(game.entity(13).unwrap()).unwrap();
 
-            // The zombie's type has these attributes, and the stand's lacks
-            // attack damage.
-            let listed = |living: mod_api::LivingRef| living.attributes(game).unwrap();
-            for name in [
+            let read_names = |game: &dyn mod_api::Host, living: LivingRef| {
+                let mut names = Vec::new();
+                let result = living.visit_attributes(game, &mut |name| {
+                    names.push(name.to_owned());
+                    ControlFlow::Continue(())
+                });
+                assert_eq!(result, Ok(ControlFlow::Continue(())));
+                names
+            };
+            let read_modifiers = |game: &dyn mod_api::Host,
+                                  living: LivingRef,
+                                  name: &str|
+             -> Result<Vec<_>, EntityReadError> {
+                let mut modifiers = Vec::new();
+                assert_eq!(
+                    living.visit_attribute_modifiers(game, name, &mut |m| {
+                        modifiers.push((m.id.to_owned(), m.amount, m.operation));
+                        ControlFlow::Continue(())
+                    })?,
+                    ControlFlow::Continue(())
+                );
+                Ok(modifiers)
+            };
+            // Zombie.createAttributes supports these; Attributes registers them in this order.
+            let known = [
+                "minecraft:armor",
+                "minecraft:attack_damage",
                 "minecraft:max_health",
                 "minecraft:movement_speed",
-                "minecraft:attack_damage",
-            ] {
-                assert!(
-                    listed(zombie).contains(&Identifier::parse(name).unwrap()),
-                    "{name}"
-                );
-            }
+            ];
+            let names = read_names(game, zombie);
+            let matching: Vec<_> = names
+                .iter()
+                .map(String::as_str)
+                .filter(|id| known.contains(id))
+                .collect();
+            assert_eq!(matching, known);
+            let mut first_name = Vec::new();
+            assert_eq!(
+                zombie.visit_attributes(game, &mut |id| {
+                    first_name.push(id.to_owned());
+                    ControlFlow::Break(())
+                }),
+                Ok(ControlFlow::Break(()))
+            );
+            assert_eq!(first_name, ["minecraft:air_drag_modifier".to_owned()]);
             assert!(
-                !listed(stand).contains(&Identifier::parse("minecraft:attack_damage").unwrap())
+                !read_names(game, stand)
+                    .iter()
+                    .any(|id| id == "minecraft:attack_damage")
             );
 
-            // An attribute with no modifier answers an empty list, one the
-            // type lacks None.
+            // A known attribute with no modifiers completes; an unknown or unsupported one refuses.
             let speed = "minecraft:movement_speed";
-            assert_eq!(zombie.attribute_modifiers(game, speed), Some(Vec::new()));
-            assert_eq!(zombie.attribute_modifiers(game, "missing:attribute"), None);
+            assert_eq!(read_modifiers(game, zombie, speed), Ok(Vec::new()));
             assert_eq!(
-                stand.attribute_modifiers(game, "minecraft:attack_damage"),
-                None
+                zombie.visit_attribute_modifiers(game, "missing:attribute", &mut |_| panic!(
+                    "unknown attribute visited"
+                )),
+                Err(EntityReadError::Unavailable)
+            );
+            assert_eq!(
+                stand.visit_attribute_modifiers(game, "minecraft:attack_damage", &mut |_| panic!(
+                    "unsupported attribute visited"
+                )),
+                Err(EntityReadError::Unavailable)
             );
 
             // The add, replace and remove writes the reads follow.
@@ -368,12 +415,25 @@ pub(crate) mod tests {
                 Transient
             ));
             assert_eq!(
-                zombie.attribute_modifiers(game, speed),
-                Some(vec![
-                    modifier("test:fast", 1.0, AddMultipliedBase),
-                    modifier("test:boost", 0.5, AddMultipliedTotal)
+                read_modifiers(game, zombie, speed),
+                Ok(vec![
+                    ("test:fast".to_owned(), 1.0, AddMultipliedBase),
+                    ("test:boost".to_owned(), 0.5, AddMultipliedTotal),
                 ])
             );
+            let mut first_modifier = Vec::new();
+            assert_eq!(
+                zombie.visit_attribute_modifiers(game, speed, &mut |m| {
+                    first_modifier.push((m.id.to_owned(), m.amount, m.operation));
+                    ControlFlow::Break(())
+                }),
+                Ok(ControlFlow::Break(()))
+            );
+            assert_eq!(
+                first_modifier,
+                [("test:fast".to_owned(), 1.0, AddMultipliedBase)]
+            );
+
             // Replacing puts the new one at the end, its lifetime changed.
             assert!(zombie.replace_attribute_modifier(
                 game,
@@ -384,27 +444,24 @@ pub(crate) mod tests {
             let boost = Identifier::parse("test:boost").unwrap();
             assert!(zombie.remove_attribute_modifier(game, speed, &boost));
             assert_eq!(
-                zombie.attribute_modifiers(game, speed),
-                Some(vec![modifier("test:fast", 2.0, AddValue)])
+                read_modifiers(game, zombie, speed),
+                Ok(vec![("test:fast".to_owned(), 2.0, AddValue)])
             );
 
             // A worn helmet's modifier is read off the stand's live map.
             game.armor_stands[0]
                 .equipment
                 .set(HEAD, Some(ItemStack::new("minecraft:diamond_helmet", 1)));
-            game.tick_equipment_attributes();
-            let armor = stand.attribute_modifiers(game, "minecraft:armor").unwrap();
-            assert!(
-                armor.iter().any(|m| (m.amount - 3.0).abs() < 1e-9),
-                "{armor:?}"
-            );
+            game.refresh_stand_and_dragon_equipment_attributes();
+            let armor = read_modifiers(game, stand, "minecraft:armor").unwrap();
+            assert!(armor.iter().any(|m| m.1 == 3.0), "{armor:?}");
 
             // A player's own map answers the same read.
             game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
             sunrise_gameplay::game::native_entity_refs::tests::bind_local_player(game, 20, 123);
             let player = game.living(game.entity(20).unwrap()).unwrap();
             let health = "minecraft:max_health";
-            assert_eq!(player.attribute_modifiers(game, health), Some(Vec::new()));
+            assert_eq!(read_modifiers(game, player, health), Ok(Vec::new()));
             assert!(player.add_attribute_modifier(
                 game,
                 health,
@@ -412,16 +469,29 @@ pub(crate) mod tests {
                 Permanent
             ));
             assert_eq!(
-                player.attribute_modifiers(game, health),
-                Some(vec![modifier("test:hearty", 0.5, AddMultipliedBase)])
+                read_modifiers(game, player, health),
+                Ok(vec![("test:hearty".to_owned(), 0.5, AddMultipliedBase)])
             );
 
-            // A stale handle reads None.
+            // A stale handle refuses before calling either visitor.
             game.mobs.clear();
             game.armor_stands.clear();
-            assert_eq!(zombie.attributes(game), None);
-            assert_eq!(zombie.attribute_modifiers(game, speed), None);
-            assert_eq!(stand.attribute_modifiers(game, "minecraft:armor"), None);
+            assert_eq!(
+                zombie.visit_attributes(game, &mut |_| panic!("stale attributes visited")),
+                Err(EntityReadError::Stale)
+            );
+            assert_eq!(
+                zombie.visit_attribute_modifiers(game, speed, &mut |_| panic!(
+                    "stale modifier visited"
+                )),
+                Err(EntityReadError::Stale)
+            );
+            assert_eq!(
+                stand.visit_attribute_modifiers(game, "minecraft:armor", &mut |_| panic!(
+                    "stale modifier visited"
+                )),
+                Err(EntityReadError::Stale)
+            );
         });
     }
     #[test]
@@ -1713,11 +1783,10 @@ pub(crate) mod tests {
                 host: &mut dyn ServerHost,
                 event: &mut LivingEquipmentChangeEvent<'_>,
             ) {
-                if event.entity == 18 && event.slot == "mainhand" {
-                    let entity = host.entity(event.entity).unwrap();
-                    let living = host.living(entity).unwrap();
+                if event.entity.id() == 18 && event.slot == EquipmentSlot::MainHand {
                     assert!(
-                        living
+                        event
+                            .entity
                             .set_equipment(
                                 host,
                                 EquipmentSlot::Head,
@@ -1906,5 +1975,43 @@ pub(crate) mod tests {
                 (Some(&body), Some(&saddle))
             );
         });
+    }
+
+    #[test]
+    fn a_worn_items_dye_override_reads_without_a_patch_projection() {
+        use mod_api::{Tag, prelude::ItemsHost};
+        use std::num::NonZeroU32;
+        use sunrise_gameplay_common::game::native_equipment_read::with_equipment_view;
+        use sunrise_sim::mobs::finalize::EquipmentRead;
+
+        let mut host = mod_api::testing::FakeHost::new();
+        let id = mod_api::Identifier::parse("armor_test:chest").unwrap();
+        host.registries.resolve_items([id.clone()]).unwrap();
+        let item = host.item_key(&id).unwrap();
+        let metadata = (item, NonZeroU32::MIN, None);
+        let probe = |stack: &ItemStack, ids: &[&str]| {
+            with_equipment_view(&EquipmentRead::resident(stack), metadata, |_, read| {
+                ids.iter().map(|id| read(id)).collect::<Vec<_>>()
+            })
+        };
+        let dyed_id = ["minecraft:dyed_color", "!minecraft:dyed_color"];
+        let mut stack = ItemStack::new("minecraft:leather_chestplate", 1);
+        assert_eq!(probe(&stack, &dyed_id), [None, None], "absence");
+        stack.data_mut().dyed_color = Some(0x12_34_56);
+        assert_eq!(
+            probe(&stack, &dyed_id),
+            [Some(Tag::Int(0x12_34_56)), None],
+            "the typed field"
+        );
+        let mut removed = ItemStack::new("minecraft:leather_chestplate", 1);
+        removed.data_mut().set_other(
+            "!minecraft:dyed_color",
+            Some(Tag::Compound(Default::default())),
+        );
+        assert_eq!(
+            probe(&removed, &dyed_id),
+            [None, Some(Tag::Compound(Default::default()))],
+            "the removal marker"
+        );
     }
 }

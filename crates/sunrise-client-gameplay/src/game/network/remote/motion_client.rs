@@ -202,9 +202,7 @@ impl crate::game::ClientGame<'_> {
             .as_ref()
             .is_some_and(|d| d.id as i32 == id);
         let driven = self.driven_mount().is_some_and(|m| m.id as i32 == id)
-            || u32::try_from(id).is_ok_and(|id| {
-                self.controls_boat(id) && self.common.boats.iter().any(|b| b.id == id)
-            });
+            || u32::try_from(id).is_ok_and(|id| self.controls_boat(id));
         let mob = self
             .common
             .mob_index
@@ -539,8 +537,77 @@ impl crate::game::ClientGame<'_> {
         }
         self.turn_remote_projectile(id, rotation);
     }
+
+    /// `Entity.moveOrInterpolateTo` for a client mod (`EntityRef::interpolate_to`):
+    /// routes to the family's own interpolation handler, falling back to a direct
+    /// set for families without one. Refuses bodies the client simulates
+    /// (`Entity.canSimulateMovement`), non-finite inputs, stale handles and
+    /// server-side calls.
+    pub(in crate::game) fn entity_interpolate_to(
+        &mut self,
+        entity: mod_api::EntityRef,
+        position: [f64; 3],
+        rotation: Option<[f32; 2]>,
+    ) -> bool {
+        if !position.iter().all(|v| v.is_finite())
+            || rotation.is_some_and(|[yaw, pitch]| !yaw.is_finite() || !pitch.is_finite())
+        {
+            return false;
+        }
+        if self.common.is_logical_server() {
+            return false;
+        }
+        let Ok((remote, id)) = self.native_client_entity_context(entity) else {
+            return false;
+        };
+        let entity_id = entity.id();
+        if id == remote.entity_id || self.resident_dragon_part(entity_id).is_some() {
+            return false;
+        }
+        if remote.tracked_entity(id).is_none() {
+            return false;
+        }
+        // Vanilla `Entity.canSimulateMovement`: refuse vehicles driven by the
+        // local player (`AUTHORITATIVE_SIDE`) and every `SERVER_AND_CLIENT` body.
+        let simulated = self.driven_mount().is_some_and(|m| m.id == entity_id)
+            || self.controls_boat(entity_id)
+            || self.common.dropped.iter().any(|d| d.id == entity_id)
+            || remote.pending_items.contains_key(&id)
+            || self.common.tnts.iter().any(|t| t.id == entity_id)
+            || self.common.falling.iter().any(|f| f.id == entity_id)
+            || self.common.orbs.iter().any(|o| o.id == entity_id)
+            || self
+                .common
+                .creatures
+                .projectiles
+                .iter()
+                .any(|p| p.id == entity_id)
+            || self.common.tridents.iter().any(|t| t.id == entity_id)
+            || self.common.rockets.iter().any(|f| f.id == entity_id)
+            || self.common.hook.as_ref().is_some_and(|h| h.id() == entity_id)
+            || self.client.remote_hooks.iter().any(|h| h.id() == entity_id)
+            || self.common.potions.has_thrown(entity_id)
+            || self
+                .common
+                .dragon
+                .as_ref()
+                .is_some_and(|d| d.id == entity_id && (d.death_time > 0 || !d.alive()));
+        if simulated {
+            return false;
+        }
+        let on_ground = self.entity_on_ground(entity).unwrap_or(false);
+        self.remote_move_entity_and_file(
+            id,
+            Some(Path::Linear(position)),
+            rotation.map(|[yaw, pitch]| (yaw, pitch)),
+            on_ground,
+        );
+        true
+    }
 }
 
 use sunrise_gameplay_common::game::side_ops::player::PlayerSideGameExt as _;
 
 use sunrise_gameplay_common::game::entity_sections::EntitySectionsGameExt1 as _;
+use sunrise_gameplay_common::game::dragon_common::DragonCommonGameExt1 as _;
+use sunrise_gameplay_common::game::native_entity_motion_values::NativeEntityMotionValuesGameExt1 as _;

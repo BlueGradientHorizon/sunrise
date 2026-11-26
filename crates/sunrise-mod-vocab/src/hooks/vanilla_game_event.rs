@@ -14,7 +14,6 @@ pub trait Hooks {
     /// overflow insertion or preparation. With a caller-owned transaction in that level,
     /// publication waits for the outermost commit. Server-side.
     #[hook(
-        target = "sunrise_gameplay::game::native_hooks::vanilla_game_event::ServerGame<'_>::native_vanilla_game_event",
         dispatch = "flat",
         side = "server",
         contract = "cancel",

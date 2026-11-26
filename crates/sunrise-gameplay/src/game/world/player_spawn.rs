@@ -30,26 +30,8 @@ impl crate::game::ServerGame<'_> {
             p
         } else if self.common.spawn.is_none() || self.server.player_spawn.is_some() {
             // A new world: its spawn, then the first player around it.
-            if self.common.spawn.is_none() {
-                let Some([x, y, z]) = self.find_world_spawn()? else {
-                    return Ok(());
-                };
-                self.common.spawn = Some(Vec3::new(
-                    f64::from(x) + 0.5,
-                    f64::from(y),
-                    f64::from(z) + 0.5,
-                ));
-                self.common.level.spawn = Some([f64::from(x), f64::from(y), f64::from(z)]);
-                // The world's spawn from the start, not only once saved: a bed set
-                // before the first save must not become it.
-                self.common.level.world_spawn.get_or_insert([x, y, z]);
-                // The "Bonus Chest" create-world option, placed once with the spawn.
-                if !self.server.spawn_hook_cancelled
-                    && sunrise_sim::save::WorldGen::read(&self.server.world_root)
-                        .is_some_and(|g| g.bonus_chest)
-                {
-                    self.place_bonus_chest([x, y, z])?;
-                }
+            if self.common.spawn.is_none() && !self.try_initialize_world_spawn(false)? {
+                return Ok(());
             }
             let s = self
                 .common

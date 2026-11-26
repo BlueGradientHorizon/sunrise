@@ -1,5 +1,6 @@
 //! Display/TextDisplay synced data (26.3), checked against vanilla accessors
 //! and ClientboundSetEntityDataPacket's own stream codec.
+pub use sunrise_sim::text_display_data::resident;
 use crate::text::Text;
 use serde::Serialize;
 use std::sync::Arc;

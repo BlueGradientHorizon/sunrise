@@ -48,9 +48,8 @@ mod post {
     pub struct PackPost { pub entities: Option<Entities>, pub shadow_targets: Option<()> }
     impl PackPost { __CASTERS__ }
 }
-struct Native { shadow: Option<()> }
-struct Renderer { pack_post: Option<(i32, Option<post::PackPost>)>, native: Option<Native> }
-impl Renderer { __NATIVE__ __GETTER__ }
+struct Renderer { pack_post: Option<(i32, Option<post::PackPost>)> }
+impl Renderer { __GETTER__ }
 #[derive(Clone, Copy, PartialEq)]
 enum Dim { Overworld, Nether, End }
 struct Settings { entity_shadows: bool }
@@ -87,10 +86,7 @@ fn scene(kind: &str, dim: Dim, enabled: bool, sprite: bool) -> ClientGame {
     ClientGame {
         dim,
         client: ClientState {
-            renderer: ((kind != "no_renderer").then_some(Renderer {
-                pack_post,
-                native: (kind == "native").then_some(Native { shadow: Some(()) }),
-            }),),
+            renderer: ((kind != "no_renderer").then_some(Renderer { pack_post }),),
             settings: Settings { entity_shadows: enabled },
             client_pack: Pack { polytone_colors: Colors { shadows: kind != "pack_hides" } },
             gui: Gui { atlas: Atlas { sprites: if sprite {
@@ -101,10 +97,9 @@ fn scene(kind: &str, dim: Dim, enabled: bool, sprite: bool) -> ClientGame {
 }
 '''
     source = (support.replace("__CASTERS__", method(post, "shadow_casters"))
-              .replace("__NATIVE__", method(gfx, "native_shadow"))
               .replace("__GETTER__", getter).replace("__GUARD__", guard))
     # Independent expected outcomes: a full standard entity caster owns the
-    # mob shadow in each dimension. Native shadows own it only in the Overworld.
+    # mob shadow in each dimension.
     rows = [
         ("full", [None, None, None]),
         ("player_only", [73, 73, 73]),
@@ -115,7 +110,6 @@ fn scene(kind: &str, dim: Dim, enabled: bool, sprite: bool) -> ClientGame {
         ("pending", [73, 73, 73]),
         ("no_pack", [73, 73, 73]),
         ("no_renderer", [73, 73, 73]),
-        ("native", [None, 73, 73]),
         ("pack_hides", [None, None, None]),
     ]
     for kind, expected in rows:

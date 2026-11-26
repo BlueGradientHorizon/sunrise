@@ -6,11 +6,11 @@ import os
 from pathlib import Path
 import subprocess
 import re
-try:
-    from . import lab, test_rust_parity as base
-except ImportError:
-    import lab
-    import test_rust_parity as base
+import sys
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+from tools import lab, test_rust_parity as base
 
 
 def main(argv=None):
@@ -29,6 +29,9 @@ def main(argv=None):
     sources = [Path(__file__), oracle,
                lab.ROOT / 'crates/sunrise-sim/src/mobs/villager.rs',
                lab.ROOT / 'crates/sunrise-sim/src/mobs/villager_brain.rs',
+               lab.ROOT / 'crates/sunrise-sim/src/mobs/villager_brain/memories.rs',
+               lab.ROOT / 'crates/sunrise-sim/src/mobs/villager_brain/schedules.rs',
+               lab.ROOT / 'crates/sunrise-sim/src/mobs/villager_brain/tasks.rs',
                lab.ROOT / 'crates/sunrise-sim/src/mobs/villager_brain/reputation.rs',
                lab.ROOT / 'crates/sunrise-sim/src/mobs/villager_brain/reputation_witness_tests.rs',
                lab.ROOT / 'crates/sunrise-gameplay/src/game/mobs/villagers.rs',

@@ -8,7 +8,6 @@ use super::{
     chat_common::PLAYER_NAME, commands_common::Target, lan_actions_server::CombatPlayer,
     lan_mobs::guest_bounds, mace::Spared,
 };
-use sunrise_items::enchant::EffectContext;
 
 use sunrise_core::geometry::{Aabb, Vec3};
 use sunrise_game_data::{Result, text::Text};
@@ -38,13 +37,6 @@ pub enum Victim {
     Guest(u32),
 }
 
-impl Victim {
-    fn conn(self) -> Option<u32> {
-        let Victim::Guest(conn) = self;
-        Some(conn)
-    }
-}
-
 /// The attacker's side of the hit.
 pub struct Strike {
     /// The attacking guest, kept after their turn through `as_guest` ends.
@@ -52,7 +44,7 @@ pub struct Strike {
     /// The attacker's creative mode: their hit passes the victim's
     /// invulnerability (`DamageSource.isCreativePlayer`, #916).
     creative: bool,
-    amount: f32,
+    pub amount: f32,
     scale: f32,
     crit: bool,
     /// `Player.attack`'s `magicBoost > 0`: the enchantments added damage.
@@ -65,14 +57,15 @@ pub struct Strike {
     /// yaw), and whether the hit is a sprinting knockback attack.
     knockback: (f32, f64, f64),
     knockback_attack: bool,
+    direct_motion: Option<(f64, bool)>,
     /// The attacker's team, for the victim's `Player.canHarmPlayer`.
     pub team: Option<sunrise_game_data::scoreboard::Team>,
     /// The attacker's main-hand item with a custom name, for the death
     /// message's `.item` form.
     item: Option<sunrise_game_data::text::Text>,
-    /// The weapon's `minecraft:ignite` (Fire Aspect) on the victim, in
-    /// seconds (`EnchantmentHelper.doPostAttackEffects`).
-    ignite: f32,
+    /// The weapon that actually produced the strike, before either guest moves.
+    pub(in crate::game::server_side) weapon: Option<sunrise_items::items::ItemStack>,
+    pub damage_type: String,
 }
 
 /// A player's blow on another player as the native hooks name it: the hit's
@@ -83,6 +76,7 @@ const PVP_SOURCE: HurtSource<'static> = HurtSource {
     causing: 0,
     direct: 0,
     position: None,
+    direct_type: None,
 };
 
 #[cfg(any(test, feature = "test-support"))]
@@ -99,11 +93,13 @@ impl Strike {
             from: [3.0, 64.0, 5.0],
             disable_blocking: 0.0,
             sweep: None,
-            knockback: (0.5, 1.0, 0.0),
+            knockback: (1.0, 1.0, 0.0),
             knockback_attack: false,
+            direct_motion: None,
             team: None,
             item: None,
-            ignite: 0.0,
+            weapon: None,
+            damage_type: "minecraft:player_attack".into(),
         }
     }
 }
@@ -132,7 +128,7 @@ pub struct Sweep {
     /// The damage after the enchantments and the attack strength.
     pub damage: f32,
     /// Custom effects need the actual victim, so keep their pre-hit input until each landing.
-    pub custom_damage: Option<SweepDamage>,
+    pub enchanted_damage: Option<SweepDamage>,
     /// The push along the attacker's yaw.
     pub knockback: (f64, f64),
     pub team: Option<sunrise_game_data::scoreboard::Team>,
@@ -140,17 +136,6 @@ pub struct Sweep {
     pub hit_box: Aabb,
     /// The entity id of the player the sweep started from, which it spares.
     pub skip: Option<i32>,
-    /// The weapon's `minecraft:ignite` (Fire Aspect) on each swept player, in
-    /// seconds (`doPostAttackEffects` after a sweep hit lands).
-    pub ignite: f32,
-}
-
-impl Strike {
-    /// Whether it has extra knockback, which stops the attacker's sprint
-    /// once it lands (Player.causeExtraKnockback).
-    pub(in crate::game::server_side) fn stops_sprint(&self) -> bool {
-        self.knockback.0 > 0.0
-    }
 }
 
 impl crate::game::ServerGame<'_> {
@@ -196,7 +181,8 @@ impl crate::game::ServerGame<'_> {
         let (amount, scale, crit, magic) =
             self.melee_damage("minecraft:player", true, Some(victim));
         let sweep = self.sweep_attack_position(scale, crit, "minecraft:player");
-        let (strength, knockback_attack) = self.extra_knockback("minecraft:player", scale);
+        let strength = self.player_attack_knockback();
+        let knockback_attack = scale > 0.9 && self.common.player.as_ref().is_some_and(|p| p.sprinting);
         let (xd, zd) = self.extra_knockback_direction();
         self.server.attack_ticks = 0;
         self.swing_arm();
@@ -209,7 +195,12 @@ impl crate::game::ServerGame<'_> {
                 .held()
                 .map_or(0.0, |stack| self.items().weapon_disable_blocking(stack))
         };
-        let ignite = self.weapon_ignite_seconds();
+        let weapon = self.held().cloned();
+        let motion = self
+            .player
+            .as_ref()
+            .map_or((0.0, false), |p| (p.fall_distance, p.fall_flying));
+        let damage_type = self.stack_melee_damage_type(weapon.as_ref(), motion, true);
         Some(Strike {
             attacker: self.server.lan_acting,
             creative: self.common.creative,
@@ -222,32 +213,12 @@ impl crate::game::ServerGame<'_> {
             sweep,
             knockback: (strength, xd, zd),
             knockback_attack,
+            direct_motion: Some(motion),
             team: self.player_team().cloned(),
             item: self.main_hand_custom_name(),
-            ignite,
+            weapon,
+            damage_type,
         })
-    }
-
-    /// The held weapon's `minecraft:ignite` (Fire Aspect) seconds on a player
-    /// victim (`EnchantmentHelper.doPostAttackEffects`).
-    pub(in crate::game::server_side) fn weapon_ignite_seconds(&mut self) -> f32 {
-        let Some(held) = self.common.held().cloned() else {
-            return 0.0;
-        };
-        let ctx = EffectContext {
-            this: Some("minecraft:player"),
-            attacker: Some("minecraft:player"),
-            direct_attacker: Some("minecraft:player"),
-            is_direct: true,
-            items: Some(world_items!(self)),
-            ..Default::default()
-        };
-        let mut random = self.common.world.random.clone();
-        world_stations!(self).enchantments.ignite_seconds(
-            &held.all_enchantments(),
-            &ctx,
-            &mut random,
-        )
     }
 
     /// The guests by connection, with their entity ids.
@@ -359,27 +330,37 @@ impl crate::game::ServerGame<'_> {
             at,
         };
         let shooter = self.player_attacker(p.guest);
-        let effect_attacker = shooter
-            .as_ref()
-            .map_or(self.own_entity_id() as u32, |s| s.0);
-        let result = match victim {
-            Victim::Guest(conn) => self.guest_hit_by(conn, |g| {
-                g.server.combat.0.refuse_player_hit = refused;
-                g.server.combat.0.projectile_attacker = shooter;
-                let saved_effect_attacker = g
-                    .server
-                    .combat
-                    .0
-                    .enchantment_projectile_attacker
-                    .replace(effect_attacker);
-                let r = g.projectile_hit(p, on_player);
-                g.server.combat.0.refuse_player_hit = false;
-                g.server.combat.0.projectile_attacker = None;
-                g.server.combat.0.enchantment_projectile_attacker = saved_effect_attacker;
-                r
-            }),
-        };
-        result.unwrap_or(Ok(()))
+        let effect_attacker = self.player_entity_id_by_connection(p.guest);
+        let Victim::Guest(conn) = victim;
+        let mut landed_arrow = None;
+        self.guest_hit_by(conn, |g| {
+            g.server.combat.0.refuse_player_hit = refused;
+            g.server.combat.0.projectile_attacker = shooter;
+            let saved_effect_attacker = std::mem::replace(
+                &mut g.server.combat.0.enchantment_projectile_attacker,
+                effect_attacker,
+            );
+            let displaced = effect_attacker.is_some_and(|id| {
+                matches!(
+                    g.combat_player(id as u32),
+                    Some(CombatPlayer::Displaced(..))
+                )
+            });
+            let result = g.projectile_hit_deferring_player_arrow(
+                p,
+                on_player,
+                displaced.then_some(&mut landed_arrow),
+            );
+            g.server.combat.0.refuse_player_hit = false;
+            g.server.combat.0.projectile_attacker = None;
+            g.server.combat.0.enchantment_projectile_attacker = saved_effect_attacker;
+            result
+        })
+        .unwrap_or(Ok(()))?;
+        if let Some(landed) = landed_arrow {
+            self.resume_guest_arrow_hit(conn, landed);
+        }
+        Ok(())
     }
 
     /// `AbstractArrow.onHitEntity`: an arrow that hurt a player tells its owner, a player other
@@ -416,11 +397,13 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// The hit landing on the victim with its extra knockback, then the
-    /// attacker's attack sound. Whether the victim was hurt.
-    pub fn pvp_land(&mut self, victim: Victim, s: &Strike) -> bool {
-        let Some(host) = self.server.lan.as_ref() else {
-            return false;
-        };
+    /// attacker's attack sound. Returns whether extra knockback was applied when hurt.
+    pub fn pvp_land(&mut self, victim: Victim, s: &Strike) -> Option<bool> {
+        self.server.lan.as_ref()?;
+        if s.knockback_attack {
+            self.server_play_sound("minecraft:entity.player.attack.knockback", s.from, 1.0, 1.0);
+        }
+        let host = self.server.lan.as_ref()?;
         // CombatTracker: the attacking player is the death message's killer.
         // Without it the message is built with one argument and a template
         // that names a killer ("%1$s was slain by %2$s") shows as written.
@@ -445,9 +428,6 @@ impl crate::game::ServerGame<'_> {
             }),
         };
         let harm = self.player_may_harm(harm_attacker, victim_id, s.team.as_ref(), team);
-        if s.knockback_attack {
-            self.server_play_sound("minecraft:entity.player.attack.knockback", s.from, 1.0, 1.0);
-        }
         // Player.attack: the hurt (with its knockback away from the
         // attacker), then causeExtraKnockback along the attacker's yaw.
         // Taken here, before the victim is swapped in, so the attacker's hands are found.
@@ -456,18 +436,29 @@ impl crate::game::ServerGame<'_> {
             g.with_attack(attack.clone(), |g| {
                 g.server.combat.0.player_attacker = Some((s.from, s.disable_blocking));
                 if let Some((id, name)) = attacker_note.clone() {
-                    g.note_player_attacker(
-                        "minecraft:player_attack",
-                        id as u32,
-                        name,
-                        s.item.clone(),
-                    );
+                    g.note_player_attacker(&s.damage_type, id as u32, name, s.item.clone());
                 }
-                let hurt =
-                    g.mob_hits_player_from(s.amount, s.from, "minecraft:player_attack", s.creative);
+                let hurt = g.mob_hits_player_from(s.amount, s.from, &s.damage_type, s.creative);
                 g.server.combat.0.player_attacker = None;
-                let (strength, xd, zd) = s.knockback;
-                if hurt && strength > 0.0 {
+                if !hurt {
+                    return None;
+                }
+                let (base, xd, zd) = s.knockback;
+                let source = attack.player_source(&s.damage_type, attack.attacker);
+                let mut ctx = attack.enchantment_context(source, "minecraft:player");
+                ctx.direct_motion = s.direct_motion;
+                ctx.attacker_motion = s.direct_motion;
+                let strength = s.weapon.as_ref().map_or(base, |weapon| {
+                    g.evaluate_weapon_value(
+                        weapon,
+                        "minecraft:knockback",
+                        Some(g.own_entity_id() as u32),
+                        ctx,
+                        base,
+                    )
+                });
+                let strength = strength * 0.5 + if s.knockback_attack { 0.5 } else { 0.0 };
+                if strength > 0.0 {
                     g.knock_back_player_full(
                         f64::from(strength),
                         xd,
@@ -478,26 +469,15 @@ impl crate::game::ServerGame<'_> {
                         true,
                     );
                 }
-                // Entity.igniteForSeconds on the victim: the fire timer only
-                // rises, and a fire-immune victim (no player is by type) is spared.
-                if hurt
-                    && s.ignite > 0.0
-                    && let Some(p) = g.player.as_mut()
-                {
-                    let _ = p.ignite_for_ticks((s.ignite * 20.0) as i32);
-                }
-                // The victim's thorns, dealt to the attacker below.
-                let thorns = if hurt { g.thorns_damage() } else { Vec::new() };
-                (hurt, thorns)
+                Some(strength > 0.0)
             })
         };
-        let (hurt, thorns) = if harm {
-            match victim {
-                Victim::Guest(conn) => self.guest_struck_by(conn, land).unwrap_or_default(),
-            }
-        } else {
-            Default::default()
-        };
+        let landed = harm
+            .then(|| match victim {
+                Victim::Guest(conn) => self.guest_struck_by(conn, land).flatten(),
+            })
+            .flatten();
+        let hurt = landed.is_some();
         if hurt && (s.crit || s.magic) {
             let target = match victim {
                 Victim::Guest(conn) => self
@@ -522,7 +502,6 @@ impl crate::game::ServerGame<'_> {
                 }
             }
         }
-        self.pvp_aftermath(victim, s.attacker, thorns);
         let sound = match (hurt, s.crit, s.scale > 0.9) {
             (false, ..) => "minecraft:entity.player.attack.nodamage",
             (true, true, _) => "minecraft:entity.player.attack.crit",
@@ -561,38 +540,7 @@ impl crate::game::ServerGame<'_> {
         if swept.is_none() || s.crit {
             self.server_play_sound(sound, s.from, 1.0, 1.0);
         }
-        hurt
-    }
-
-    /// What follows a player's blow on a player as the victim's hurt ends:
-    /// the victim's thorns dealt back to the attacker (`ServerPlayer.die`'s
-    /// `awardKillScore` waits for the death itself, in
-    /// [`guest_award_kill_score`](Self::guest_award_kill_score)).
-    pub(in crate::game::server_side) fn pvp_aftermath(
-        &mut self,
-        victim: Victim,
-        attacker: Option<u32>,
-        thorns: Vec<f32>,
-    ) {
-        let thorns_cause = self.player_attacker(victim.conn());
-        for damage in thorns {
-            match attacker {
-                None => {
-                    if let Some((id, name)) = &thorns_cause {
-                        self.note_named_attacker("minecraft:thorns", *id, name.clone());
-                    }
-                    self.hurt_player_by("minecraft:thorns", damage);
-                }
-                Some(conn) => {
-                    self.guest_hit_by(conn, |g| {
-                        if let Some((id, name)) = &thorns_cause {
-                            g.note_named_attacker("minecraft:thorns", *id, name.clone());
-                        }
-                        g.hurt_player_by("minecraft:thorns", damage)
-                    });
-                }
-            }
-        }
+        landed
     }
 
     /// `ServerPlayer.die`'s `killer.awardKillScore(this, source)` for a guest,
@@ -653,10 +601,9 @@ impl crate::game::ServerGame<'_> {
             .player
             .as_ref()
             .map_or([0.0; 3], |p| [p.position.x, p.position.y, p.position.z]);
-        let custom_damage = self
+        let enchanted_damage = self
             .common
             .held()
-            .filter(|_| self.stations().enchantments.has_custom_damage_effects())
             .zip(self.common.player.as_ref())
             .map(|(held, player)| {
                 let weapon = self.common.item_combat_stack(held);
@@ -673,22 +620,21 @@ impl crate::game::ServerGame<'_> {
                     direct_motion: Some(motion),
                 }
             });
-        let damage = if custom_damage.is_some() {
+        let damage = if enchanted_damage.is_some() {
             0.0
         } else {
-            self.enchanted_damage("minecraft:player", base, None) * scale
+            base * scale
         };
         Sweep {
             attacker: self.server.lan_acting,
             creative: self.common.creative,
             from,
             damage,
-            custom_damage,
+            enchanted_damage,
             knockback: self.extra_knockback_direction(),
             team: self.player_team().cloned(),
             hit_box: Aabb::new(Vec3::ZERO, Vec3::ZERO),
             skip: None,
-            ignite: self.weapon_ignite_seconds(),
         }
     }
 
@@ -749,7 +695,7 @@ impl crate::game::ServerGame<'_> {
         let attacker_id = self.common.player.as_ref().map_or(0, |p| p.entity_id);
         let attack = self.attack_of(attacker.as_ref().map_or(attacker_id, |(id, _)| *id as i32));
         let land = |g: &mut Self| {
-            let damage = if let Some(damage) = &sweep.custom_damage {
+            let damage = if let Some(damage) = &sweep.enchanted_damage {
                 let victim = g.player.as_ref().map(|player| player.entity_id as u32);
                 g.weapon_enchanted_damage(
                     &damage.weapon,
@@ -762,26 +708,21 @@ impl crate::game::ServerGame<'_> {
             } else {
                 sweep.damage
             };
+            let damage_type = sweep
+                .enchanted_damage
+                .as_ref()
+                .map_or("minecraft:player_attack", |damage| {
+                    damage.damage_type.as_str()
+                });
             g.with_attack(attack.clone(), |g| {
                 if let Some((id, name)) = &attacker {
-                    g.note_named_attacker("minecraft:player_attack", *id, name.clone());
+                    g.note_named_attacker(damage_type, *id, name.clone());
                 }
-                if g.mob_hits_player_from(
-                    damage,
-                    sweep.from,
-                    "minecraft:player_attack",
-                    sweep.creative,
-                ) {
+                let hurt = g.mob_hits_player_from(damage, sweep.from, damage_type, sweep.creative);
+                if hurt {
                     g.knock_back_player(0.4, xd, zd, PVP_SOURCE, &attack, damage);
-                    if sweep.ignite > 0.0
-                        && let Some(p) = g.player.as_mut()
-                    {
-                        let _ = p.ignite_for_ticks((sweep.ignite * 20.0) as i32);
-                    }
-                    // The swept player's thorns are dealt after the hit.
-                    return g.thorns_damage();
                 }
-                Vec::new()
+                hurt
             })
         };
         let attacker_id = attacker.as_ref().map_or(attacker_id, |(id, _)| *id as i32);
@@ -793,27 +734,23 @@ impl crate::game::ServerGame<'_> {
                 continue;
             }
             let Victim::Guest(conn) = victim;
-            let thorns = self.guest_struck_by(conn, land).unwrap_or_default();
-            // doPostAttackEffects' victim side: its armour's thorns hurt the
-            // attacker, as on a direct hit (pvp_land).
-            let thorns_cause = self.player_attacker(victim.conn());
-            for damage in thorns {
-                match sweep.attacker {
-                    None => {
-                        if let Some((id, name)) = &thorns_cause {
-                            self.note_named_attacker("minecraft:thorns", *id, name.clone());
-                        }
-                        self.hurt_player_by("minecraft:thorns", damage);
-                    }
-                    Some(conn) => {
-                        self.guest_hit_by(conn, |g| {
-                            if let Some((id, name)) = &thorns_cause {
-                                g.note_named_attacker("minecraft:thorns", *id, name.clone());
-                            }
-                            g.hurt_player_by("minecraft:thorns", damage)
-                        });
-                    }
-                }
+            if self.guest_struck_by(conn, land).unwrap_or_default() {
+                let damage_type = sweep
+                    .enchanted_damage
+                    .as_ref()
+                    .map_or("minecraft:player_attack", |damage| {
+                        damage.damage_type.as_str()
+                    });
+                let source = attack.player_source(damage_type, attack.attacker);
+                let weapon = sweep.enchanted_damage.as_ref().map(|damage| &damage.weapon);
+                self.post_attack(
+                    id as u32,
+                    "minecraft:player",
+                    &attack,
+                    source,
+                    weapon,
+                    false,
+                );
             }
         }
     }

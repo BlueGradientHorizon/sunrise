@@ -871,7 +871,7 @@ impl ClientGame<'_> {
                         continue;
                     };
                     // ItemDisplayWidget: the item at its corner, then its decorations.
-                    self.draw_item_model(batch, &stack, x, y);
+                    self.draw_item_model(batch, &stack, x, y, 0);
                     if *show_decorations {
                         self.draw_item_decorations(batch, &stack, x, y, None);
                     }
@@ -966,12 +966,12 @@ impl ClientGame<'_> {
             .answer_at(cursor);
             match answer {
                 Some(true) => {
-                    self.client.audio.0.play_button_click();
+                    self.play_audio_button_click();
                     let reason = Text::translate("menu.custom_screen_info.disconnect", &[]);
                     self.leave_server(Some(reason))?;
                 }
                 Some(false) => {
-                    self.client.audio.0.play_button_click();
+                    self.play_audio_button_click();
                     self.return_from_dialog_warning();
                 }
                 None => {}
@@ -986,7 +986,7 @@ impl ClientGame<'_> {
                 ((h - 53.0) / 2.0).trunc() + 33.0,
             );
             if active && ui::hovered(cursor, bx, by, 200.0, 20.0) {
-                self.client.audio.0.play_button_click();
+                self.play_audio_button_click();
                 self.client.dialogs.0.waiting = None;
                 self.dialog_receiver_changed();
                 return Ok(true);
@@ -998,7 +998,7 @@ impl ClientGame<'_> {
         };
         let [wx, wy, ww, wh] = layout.warning;
         if ui::hovered(cursor, wx, wy, ww, wh) {
-            self.client.audio.0.play_button_click();
+            self.play_audio_button_click();
             self.open_screen_overlay("dialog", |game| game.client.dialogs.0.warning = true);
             return Ok(true);
         }
@@ -1120,7 +1120,7 @@ impl ClientGame<'_> {
             self.run_dialog_action(Some(click), after)?;
             return Ok(true);
         };
-        self.client.audio.0.play_button_click();
+        self.play_audio_button_click();
         let Some(index) = action else {
             return Ok(true);
         };
@@ -1252,7 +1252,7 @@ impl ClientGame<'_> {
                 return true;
             }
             if open.dragging.take().is_some() {
-                self.client.audio.0.play_button_click();
+                self.play_audio_button_click();
                 return true;
             }
         }

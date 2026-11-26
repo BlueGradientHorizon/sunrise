@@ -372,25 +372,10 @@ pub(in crate::game::client_side) fn run_entity_draw_order_after_client_packets()
             portal_cooldown: 0,
             sea_level: 63,
         };
-        game.client.pack_ids = Some(super::shader_packs::PackIds {
-            entities: [
-                ("minecraft:ender_dragon".into(), 101),
-                ("minecraft:end_crystal".into(), 102),
-            ]
-            .into(),
-            blocks: Default::default(),
-            block_states: Default::default(),
-            missing_entity: 0,
-            missing_block: 0,
-            items: Default::default(),
-            missing_item: 0,
-            block_items: Default::default(),
-            item_file: false,
-            old_hand_light: false,
-            vignette: false,
-            old_lighting: false,
-            separate_ao: false,
-        });
+        game.client.pack_ids = Some(super::shader_packs::PackIds::with_entity_ids([
+            ("minecraft:ender_dragon", 101),
+            ("minecraft:end_crystal", 102),
+        ]));
         let mut snapshots = Vec::new();
         let mut check_beams = false;
         for line in include_str!("entity-draw-order.txt").lines() {

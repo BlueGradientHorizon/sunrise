@@ -5,9 +5,7 @@
 //! level's own sound hooks.
 use super::routing::RouteError;
 use mod_api::{HookId, Identifier, LevelRef, SoundSource};
-use sunrise_gameplay_common::game::{
-    level_sounds_common::LevelSound, native_hooks::level_sound_playable,
-};
+use sunrise_gameplay_common::game::level_sounds_common::LevelSound;
 use sunrise_protocol::{
     packets::play::{self, Clientbound as C},
     viewed_levels::ViewedLevelsError,
@@ -99,7 +97,7 @@ impl crate::game::ClientGame<'_> {
             _ => None,
         };
         if let Some(play) = play {
-            self.client.audio.0.play_on_seeded(
+            self.play_audio_on_seeded(
                 play.source.index(),
                 &play.name,
                 Some(play.at),
@@ -113,8 +111,8 @@ impl crate::game::ClientGame<'_> {
 
     /// `viewed_level_sound` for sound `p` of viewed level `level`: where it plays in the player's
     /// level, with the volume and pitch the listeners left and the server's seed. None when they
-    /// left `play_at` None, or left a position that is not finite, or a volume or pitch that is
-    /// not finite and at least 0 (`level_sound_playable`).
+    /// left `play_at` None or gave a non-finite position. The sound engine handles gain and pitch
+    /// just as it does for a sound in the player's own level.
     pub fn ask_viewed_level_sound(&mut self, level: i32, p: ViewedSound<'_>) -> Option<ViewedPlay> {
         let name = self
             .remote_sound_name(p.sound)
@@ -139,7 +137,7 @@ impl crate::game::ClientGame<'_> {
             seed: p.seed,
             play_at: &mut play_at,
         });
-        let at = play_at.filter(|&at| level_sound_playable(at, volume, pitch))?;
+        let at = play_at.filter(|at| at.iter().all(|v| v.is_finite()))?;
         Some(ViewedPlay {
             name,
             source,

@@ -32,7 +32,7 @@ pub(crate) mod tests {
                 host: &mut dyn ServerHost,
                 event: &mut EntityJoinLevelEvent<'_>,
             ) -> Flow {
-                let entity = host.entity(event.entity).expect("joining handle");
+                let entity = host.entity(event.subject.id()).expect("joining handle");
                 assert_eq!(
                     entity.kind(host).and_then(|kind| kind.id(host)).as_deref(),
                     Some(event.kind)
@@ -60,6 +60,9 @@ pub(crate) mod tests {
         .into();
         mod_platform::testing::with_mods(mods, || {
             super::super::native_entity_refs::tests::with_game(|game| {
+                game.world
+                    .chunks
+                    .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
                 game.native_joins_skip();
                 let kinds = [
                     "minecraft:block_display",
@@ -136,12 +139,9 @@ pub(crate) mod tests {
                             .to_vec(),
                     ),
                 )]);
-                let opaque = sunrise_gameplay::game::ServerGame::other_from_nbt(
-                    &mut record,
-                    game.server.next_entity,
-                    "missing:object",
-                )
-                .unwrap();
+                let opaque = game
+                    .other_from_nbt(&mut record, game.server.next_entity, "missing:object")
+                    .unwrap();
                 game.server.others.0.push(opaque);
                 game.native_joins_flush(true, 0);
                 assert_eq!(
@@ -241,12 +241,15 @@ pub(crate) mod tests {
                 let (Tag::Compound(tag), _) = sunrise_core::nbt::parse_snbt(nbt).unwrap() else {
                     unreachable!()
                 };
-                let id = game
-                    .summon(game.dim.id(), kind, [1.0, 70.0, 1.0], tag)
+                let level = game.level(game.dim.id()).unwrap();
+                let entity = game
+                    .level_summon(level, kind, [1.0, 70.0, 1.0], tag)
+                    .unwrap()
                     .unwrap();
+                let id = entity.id();
                 assert_eq!(id, base + 1);
                 assert_eq!(game.server.next_entity, base + 1);
-                assert!(game.entity(id).is_some());
+                assert_eq!(game.entity(id), Some(entity));
                 let waiting = match kind {
                     "minecraft:tnt" => game.tnts[0].id,
                     "minecraft:falling_block" => game.falling[0].id,
@@ -261,8 +264,10 @@ pub(crate) mod tests {
                         unreachable!()
                     };
                     let fallback = game
-                        .summon(game.dim.id(), kind, [1.0, 70.0, 1.0], unknown_state)
-                        .unwrap();
+                        .level_summon(level, kind, [1.0, 70.0, 1.0], unknown_state)
+                        .unwrap()
+                        .unwrap()
+                        .id();
                     assert_eq!(fallback, base + 2);
                     assert_eq!(game.server.next_entity, base + 2);
                     assert_eq!(game.falling.len(), 3);
@@ -338,7 +343,7 @@ pub(crate) mod tests {
             default: || 0,
             codec: None,
             copy_on_death: false,
-            sync: false,
+            sync_codec: None,
         };
         for (kind, nbt) in [
             (
@@ -398,7 +403,7 @@ pub(crate) mod tests {
                 event: &mut EntityJoinLevelEvent<'_>,
             ) -> Flow {
                 self.joins.lock().unwrap().push((
-                    event.entity,
+                    event.subject.id(),
                     event.kind.into(),
                     event.loaded_from_disk,
                 ));

@@ -459,7 +459,7 @@ fn the_arrow_cells_match_the_sweep_they_replaced() {
     for case in 0..CASES {
         let m = seeded_move(&mut rng);
         let e = f64::from(1.0e-5f32);
-        let deflated = crate::arrows::arrow_bounds(m.to).deflate(Vec3::new(e, e, e));
+        let deflated = crate::entities::arrows::arrow_bounds(m.to).deflate(Vec3::new(e, e, e));
         let mut old = Vec::new();
         let _ = sweep_intersected_blocks(m.from, m.to, deflated, 1_000_000, |p, iteration| {
             if iteration >= 16 {
@@ -469,7 +469,7 @@ fn the_arrow_cells_match_the_sweep_they_replaced() {
             true
         });
         assert_eq!(
-            crate::arrows::blocks_inside(m.from, m.to),
+            crate::entities::arrows::blocks_inside(m.from, m.to),
             old,
             "case {case}: {m:?}"
         );

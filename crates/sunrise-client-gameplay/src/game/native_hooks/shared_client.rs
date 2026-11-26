@@ -93,37 +93,38 @@ impl SlotMoves {
             .copied()
             .unwrap_or(declared)
     }
-    /// Where slot `slot` of a screen that declared `slots` will be from the
-    /// next build: the last move, pending or committed, else its declaration.
-    pub(in crate::game) fn latest(
+    /// Where menu slot `slot` will be from the next build: the last move,
+    /// pending or committed, else its declaration. `declared` is the screen's
+    /// declaration (`OpenNativeScreen::declared_slot`), None for no such slot.
+    pub fn latest(
         &self,
-        slots: &[Option<mod_api::ScreenSlot>],
         slot: usize,
+        declared: Option<Option<[f32; 2]>>,
     ) -> Option<[f32; 2]> {
-        let declared = slots.get(slot)?.as_ref().map(|slot| slot.position);
+        let declared = declared?;
         let pending = self.pending.borrow().get(&slot).copied();
         match pending {
             Some(pending) => pending,
             None => self.position(slot, declared),
         }
     }
-    /// Moves or activates slot `slot` of a screen that declared `slots` to `pos`,
-    /// or hides it with None, from the next build (`Slot.isActive()`). A refusal
-    /// or a repeat changes nothing, not even the move count.
-    pub(in crate::game) fn set(
+    /// Moves or activates menu slot `slot` to `pos`, or hides it with None,
+    /// from the next build (`Slot.isActive()`). `declared` is as in `latest`.
+    /// A refusal or a repeat changes nothing, not even the move count.
+    pub fn set(
         &self,
-        slots: &[Option<mod_api::ScreenSlot>],
         slot: usize,
+        declared: Option<Option<[f32; 2]>>,
         pos: Option<[f32; 2]>,
     ) -> Result<(), mod_api::ScreenSlotRefusal> {
         use mod_api::ScreenSlotRefusal;
-        if slot >= slots.len() {
+        if declared.is_none() {
             return Err(ScreenSlotRefusal::NoSuchSlot);
         }
         if pos.is_some_and(|[x, y]| !x.is_finite() || !y.is_finite()) {
             return Err(ScreenSlotRefusal::BadPosition);
         }
-        if self.latest(slots, slot) != pos {
+        if self.latest(slot, declared) != pos {
             self.pending.borrow_mut().insert(slot, pos);
             self.count.set(self.count.get().wrapping_add(1));
         }
@@ -137,6 +138,8 @@ impl SlotMoves {
         }
     }
 }
+
+const MAIN_INVENTORY_SLOTS: usize = 27;
 
 impl OpenNativeScreen {
     pub fn layout(&self) -> &mod_api::MenuScreenLayout {
@@ -165,12 +168,12 @@ impl OpenNativeScreen {
 
     /// How many slot moves changed a position, so a layout built before the
     /// last one is rebuilt.
-    pub(in crate::game) fn slot_move_count(&self) -> u32 {
+    pub fn slot_move_count(&self) -> u32 {
         self.slot_moves.count.get()
     }
     /// Makes the slot moves a mod made since the last build the screen's
     /// positions; the layout build calls it before it reads them.
-    pub(in crate::game) fn commit_slot_moves(&self) {
+    pub fn commit_slot_moves(&self) {
         self.slot_moves.commit();
     }
     /// Data slot `index` of window `window`'s menu: false for another window.
@@ -205,6 +208,49 @@ impl OpenNativeScreen {
             .map_or(36, sunrise_level::containers::ModMenuType::player_slots)
     }
 
+    /// Where the screen declared menu slot `slot` (container slots, then the
+    /// player's main inventory and hotbar, as `AbstractContainerMenu.slots`
+    /// holds them): Some(None) for a container slot declared inactive, None
+    /// for no such slot.
+    pub fn declared_slot(&self, slot: usize) -> Option<Option<[f32; 2]>> {
+        let layout = self.layout();
+        if let Some(declared) = layout.slots.get(slot) {
+            return Some(declared.as_ref().map(|slot| slot.position));
+        }
+        let player = slot - layout.slots.len();
+        if player >= self.player_slots() {
+            return None;
+        }
+        let (column, row_y) = if player < MAIN_INVENTORY_SLOTS {
+            (player % 9, layout.inventory_y + (player / 9) as f32 * 18.0)
+        } else {
+            (player - MAIN_INVENTORY_SLOTS, layout.inventory_y + 58.0)
+        };
+        Some(Some([layout.inventory_x + column as f32 * 18.0, row_y]))
+    }
+
+    /// Menu slot of the player's inventory slot `slot` (0..9 the hotbar, 9..36
+    /// the main inventory), None when the menu has no such player slot.
+    pub fn player_menu_slot(&self, slot: usize) -> Option<usize> {
+        if slot >= 9 + MAIN_INVENTORY_SLOTS {
+            return None;
+        }
+        let player = if slot >= 9 {
+            slot - 9
+        } else {
+            MAIN_INVENTORY_SLOTS + slot
+        };
+        (player < self.player_slots()).then(|| self.layout().slots.len() + player)
+    }
+
+    /// Where this frame puts the player's inventory slot `slot`: where the
+    /// last build committed it (None once hidden), else its declared place.
+    pub fn player_slot_position(&self, slot: usize) -> Option<[f32; 2]> {
+        let menu_slot = self.player_menu_slot(slot)?;
+        self.slot_moves
+            .position(menu_slot, self.declared_slot(menu_slot)?)
+    }
+
     pub(in crate::game) fn visible_container_slots(&self) -> impl Iterator<Item = usize> + '_ {
         let base = self.container_slot_base();
         self.layout()
@@ -218,8 +264,10 @@ impl OpenNativeScreen {
             })
     }
 
-    pub(in crate::game) fn visible_slots(&self) -> impl Iterator<Item = usize> + '_ {
-        (0..self.player_slots()).chain(self.visible_container_slots())
+    pub fn visible_slots(&self) -> impl Iterator<Item = usize> + '_ {
+        (0..self.player_slots())
+            .filter(move |&slot| self.player_slot_position(slot).is_some())
+            .chain(self.visible_container_slots())
     }
 }
 

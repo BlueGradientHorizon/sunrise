@@ -14,7 +14,7 @@ impl ServerGame<'_> {
     /// `PowderSnowBlock.entityInside` (runBefore EXTINGUISH) for a burning player.
     pub(in crate::game) fn powder_snow_melt(&mut self, pos: BlockPos) {
         let at = [pos.x, pos.y, pos.z];
-        if !self.common.is_powder_snow(at) || !self.may_interact_at(pos) {
+        if !self.may_interact_at(pos) {
             return;
         }
         self.with_level(|b, level, ticks| b.destroy_block(level, ticks, pos, false));

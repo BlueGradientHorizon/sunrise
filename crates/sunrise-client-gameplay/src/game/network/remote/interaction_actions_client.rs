@@ -1,4 +1,5 @@
 use super::*;
+use sunrise_gameplay_common::game::item_abilities::{ItemAbilitiesGameExt1 as _, ability};
 
 #[cfg(feature = "client")]
 impl crate::game::ClientGame<'_> {
@@ -97,7 +98,7 @@ impl crate::game::ClientGame<'_> {
                 })
             }
             "minecraft:pumpkin" => held
-                .is_some_and(|s| &*s.item == "minecraft:shears")
+                .is_some_and(|s| self.stack_shears(s, ability::SHEARS_CARVE))
                 .then_some(InteractionResult::Success),
             "minecraft:copper_golem_statue" => held
                 .is_some_and(|s| self.item_in_tag("minecraft:axes", &s.item))
@@ -187,18 +188,19 @@ impl crate::game::ClientGame<'_> {
             self.apply_predicted_item(at, stack);
         }
         self.predict_blocks(rest, seq);
-        let state = primary.1;
+        let state = placed.sound_state;
         if !self.common.res.facts().is_air(state) {
-            let sound = self.own_sound_type(at, state, mod_api::BlockSoundCause::Place);
-            self.play_client_local_sound(
-                LevelSound::new(
-                    &sound.place,
-                    at.map(|n| f64::from(n) + 0.5),
-                    (sound.volume + 1.0) / 2.0,
-                    sound.pitch * 0.8,
-                )
-                .in_source(mod_api::SoundSource::Blocks),
-            );
+            let sound = self
+                .own_block_sound(at, state, mod_api::BlockSoundCause::Place)
+                .for_placement(&stack.item);
+            self.play_client_local_sound(LevelSound {
+                name: sound.event.as_str(),
+                at: at.map(|n| f64::from(n) + 0.5),
+                volume: sound.volume,
+                pitch: sound.pitch,
+                source: mod_api::SoundSource::Blocks,
+                emitter: None,
+            });
         }
     }
     /// `handleAnimate`: a player wakes up, or an entity gets the critical
@@ -230,7 +232,7 @@ impl crate::game::ClientGame<'_> {
         self.client
             .particles
             .0
-            .tracking_emitter(ParticleOptions::simple(particle), target, body);
+            .tracking_emitter(ParticleOptions::simple(particle), target, body, None);
     }
     /// Run BlockItem.place on a disposable level for a click: where it placed
     /// and the blocks it set. The real level supplies collision shapes and
@@ -616,21 +618,29 @@ impl crate::game::ClientGame<'_> {
     /// in the same tick, when a keybind opens a screen.
     pub fn release_remote_use(&mut self) {
         self.send_action(6);
-        // a mod's Stop may skip the item's release, and a mod's own release follows.
+        // a mod's Stop may skip the item's release; a mod's release, then on_stop_using, follow.
         let hand = self.common.used_hand();
         if let Some((slot, ticks)) = self.common.using.take()
             && let Some(hand) = hand
             && let Some(stack) = self.common.stack_in(slot).cloned()
         {
             self.with_hand(hand, |g| {
-                if !g.use_item_stopped(&stack, ticks) {
-                    return;
+                if g.use_item_stopped(&stack, ticks) {
+                    if &*stack.item == "minecraft:trident" {
+                        let held_ticks = g.ticks_held(&stack, ticks);
+                        g.client_release_trident(held_ticks);
+                    }
+                    g.mod_release_using(&stack, ticks);
                 }
-                if &*stack.item == "minecraft:trident" {
-                    let held_ticks = g.ticks_held(&stack, ticks);
-                    g.client_release_trident(held_ticks);
-                }
-                g.mod_release_using(&stack, ticks);
+                g.stopped_using(
+                    &stack,
+                    Some(g.own_entity_id()),
+                    hand,
+                    sunrise_gameplay_common::game::item_use_common::ticks_left(
+                        g.common.use_duration,
+                        ticks,
+                    ),
+                );
             });
         }
     }
@@ -653,3 +663,5 @@ use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
 use sunrise_gameplay_common::game::pick_ray::PickRayGameExt1 as _;
 
 use sunrise_gameplay_common::game::spear::SpearGameExt1 as _;
+
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

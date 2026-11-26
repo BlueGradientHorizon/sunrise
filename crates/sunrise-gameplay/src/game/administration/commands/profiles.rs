@@ -8,6 +8,7 @@
 //! SaveAllCommand, SaveOffCommand, SaveOnCommand), on the switches the lists
 //! share.
 use super::{Arg, Context, R, Target, err};
+use mod_api::Players;
 use sunrise_game_data::text::Text;
 use sunrise_protocol::text::translatable;
 use sunrise_server_files::user_lists::{BanEntry, NameAndId, OpEntry, WhiteEntry};
@@ -53,35 +54,53 @@ impl crate::game::ServerGame<'_> {
         Ok(1)
     }
 
-    /// `GameProfileArgument.getGameProfiles`: a selector's players
-    /// (`SelectorResult.getNames`, no players is an error), else the name in
-    /// the user cache.
+    /// `GameProfileArgument.getGameProfiles`: resolve the selector or use the caller's name lookup.
+    fn resolve_profiles(
+        &mut self,
+        argument: Option<&Arg>,
+        lookup: impl FnOnce(&mut Self, &str) -> Option<NameAndId>,
+    ) -> R<Vec<NameAndId>> {
+        match argument {
+            Some(Arg::Entity(selector)) => {
+                let players = self
+                    .resolve_entity_argument(selector, true)?
+                    .into_iter()
+                    .filter_map(|target| self.target_profile(target))
+                    .collect::<Vec<_>>();
+                if players.is_empty() {
+                    return Err(err("argument.entity.notfound.player", &[]));
+                }
+                Ok(players)
+            }
+            Some(Arg::Str(name)) => lookup(self, name)
+                .map(|profile| vec![profile])
+                .ok_or_else(|| err("argument.player.unknown", &[])),
+            _ => Err(err("argument.player.unknown", &[])),
+        }
+    }
+
+    /// The built-in commands may contact the profile service or create an offline
+    /// identity if a name is not cached.
     pub(in crate::game::server_side) fn game_profiles(
         &mut self,
         ctx: &Context,
         name: &str,
     ) -> R<Vec<NameAndId>> {
-        match ctx.get(name).cloned() {
-            Some(Arg::Entity(s)) => {
-                let players: Vec<Target> = self
-                    .select(&s)
-                    .into_iter()
-                    .filter(|t| t.is_player())
-                    .collect();
-                if players.is_empty() {
-                    return Err(err("argument.entity.notfound.player", &[]));
-                }
-                Ok(players
-                    .into_iter()
-                    .filter_map(|t| self.target_profile(t))
-                    .collect())
-            }
-            Some(Arg::Str(text)) => self
-                .resolve_name(&text)
-                .map(|p| vec![p])
-                .ok_or_else(|| err("argument.player.unknown", &[])),
-            _ => Err(err("argument.player.unknown", &[])),
-        }
+        self.resolve_profiles(ctx.get(name), Self::resolve_name)
+    }
+
+    /// Mods resolve plain names only from server state.
+    pub(in crate::game) fn mod_game_profiles(&mut self, argument: &Arg) -> R<Vec<(u128, String)>> {
+        Ok(self
+            .resolve_profiles(Some(argument), |game, name| {
+                game.profile_by_name(name).map(|profile| NameAndId {
+                    id: profile.uuid,
+                    name: profile.name.to_owned(),
+                })
+            })?
+            .into_iter()
+            .map(|profile| (profile.id, profile.name))
+            .collect())
     }
 
     /// `OpCommand.opPlayers`, `DeOpCommands.deopPlayers`,

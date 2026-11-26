@@ -5,10 +5,23 @@ pub use sunrise_game_data::registries::SelectorToken;
 
 /// The frozen base selections validated when the installed mods registered their tokens.
 pub fn selector_tokens() -> Vec<SelectorToken> {
-    mod_api::__private::entity_selector_types()
-        .map(|(name, base)| SelectorToken {
+    let mut tokens = Vec::new();
+    for (name, owner, selector) in mod_api::__private::entity_selector_types() {
+        if !owner.is_enabled() {
+            continue;
+        }
+        let base = match owner.call("entity_selector", "entity_selector.base", || {
+            selector.base()
+        }) {
+            Ok(base) => base,
+            Err(why) => {
+                log::warn!("entity selector @{name} base failed: {why}");
+                continue;
+            }
+        };
+        tokens.push(SelectorToken {
             name: name.to_owned(),
-            tooltip: base.tooltip.clone(),
+            tooltip: base.tooltip,
             players_only: base.players_only,
             limit: base.limit.map_or(usize::MAX, |limit| limit as usize),
             sort: match base.sort {
@@ -17,6 +30,7 @@ pub fn selector_tokens() -> Vec<SelectorToken> {
                 SelectorSort::Random => "random",
                 _ => "arbitrary",
             },
-        })
-        .collect()
+        });
+    }
+    tokens
 }

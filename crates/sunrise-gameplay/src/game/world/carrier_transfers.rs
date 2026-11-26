@@ -20,8 +20,8 @@
 
 use crate::game::ServerGame;
 use sunrise_core::position::BlockPos;
-use sunrise_sim::carrier_store::{MAX_CARRIERS, Store};
 use sunrise_sim::save::block_entity_encode;
+use sunrise_sim::save::carrier::{MAX_CARRIERS, Store};
 use sunrise_world::carrier::codec;
 use sunrise_world::carrier::contact::RigidTransform;
 use sunrise_world::carrier::model::{Carrier, Cell, Invalid, LocalPos, MAX_CELLS};
@@ -180,8 +180,8 @@ impl ServerGame<'_> {
         uuid: u128,
         cells: &[BlockPos],
     ) -> Result<(), TransferError> {
-        use sunrise_sim::carrier_store::{CellImage, OpKind, encode_operation, envelope_preflight};
-        use sunrise_sim::carrier_store::{Operation, OperationCell};
+        use sunrise_sim::save::carrier::{CellImage, OpKind, encode_operation, envelope_preflight};
+        use sunrise_sim::save::carrier::{Operation, OperationCell};
         use sunrise_sim::join_seq::visibility::PassLease;
 
         // A remote guest's mirror never transfers: the server's own
@@ -252,8 +252,8 @@ impl ServerGame<'_> {
         #[cfg(not(test))]
         let capacity = MAX_CARRIERS;
         let mut store = match Store::open_with_capacity(&self.server.world_root, capacity) {
-            Ok(sunrise_sim::carrier_store::Opened::Live(store)) => store,
-            Ok(sunrise_sim::carrier_store::Opened::NeverUsed) => {
+            Ok(sunrise_sim::save::carrier::Opened::Live(store)) => store,
+            Ok(sunrise_sim::save::carrier::Opened::NeverUsed) => {
                 // The gate reads the flag captured at world open, not
                 // the folder's existence now: a data folder created
                 // this session does not pass for an old one.
@@ -431,7 +431,7 @@ impl ServerGame<'_> {
         store
             .write_carrier(uuid, generation, &carrier_bytes)
             .map_err(|e| TransferError::Store(e.to_string()))?;
-        let read_back = sunrise_sim::carrier_store::read_bounded(
+        let read_back = sunrise_sim::save::carrier::read_bounded(
             &store.carrier_path(uuid, generation),
             codec::MAX_INPUT_BYTES,
         )
@@ -512,7 +512,7 @@ impl ServerGame<'_> {
         rotation: [f64; 4],
     ) -> Result<(), TransferError> {
         use sunrise_core::nbt::{self, Tag};
-        use sunrise_sim::carrier_store::{
+        use sunrise_sim::save::carrier::{
             CellImage, OpKind, Operation, OperationCell, cube_symmetry_rotation, envelope_preflight,
         };
         use sunrise_sim::join_seq::visibility::PassLease;
@@ -549,7 +549,7 @@ impl ServerGame<'_> {
         #[cfg(not(test))]
         let capacity = MAX_CARRIERS;
         let mut store = match Store::open_with_capacity(&self.server.world_root, capacity) {
-            Ok(sunrise_sim::carrier_store::Opened::Live(store)) => store,
+            Ok(sunrise_sim::save::carrier::Opened::Live(store)) => store,
             _ => {
                 return Err(TransferError::Store(
                     "the carrier store does not open".into(),
@@ -562,7 +562,7 @@ impl ServerGame<'_> {
                 "the journal does not list this carrier".into(),
             ));
         }
-        let carrier_bytes = sunrise_sim::carrier_store::read_bounded(
+        let carrier_bytes = sunrise_sim::save::carrier::read_bounded(
             &store.carrier_path(uuid, generation),
             codec::MAX_INPUT_BYTES,
         )
@@ -682,7 +682,7 @@ impl ServerGame<'_> {
             dimension: self.common.dim.id().to_string(),
             cells: operation_cells.clone(),
         };
-        let encoded = sunrise_sim::carrier_store::encode_operation(&operation)
+        let encoded = sunrise_sim::save::carrier::encode_operation(&operation)
             .map_err(|_| TransferError::Envelope)?;
 
         store
@@ -793,7 +793,7 @@ impl ServerGame<'_> {
     /// replaceable, with no block entity.
     pub fn revalidate_destinations(
         &mut self,
-        cells: &[sunrise_sim::carrier_store::OperationCell],
+        cells: &[sunrise_sim::save::carrier::OperationCell],
     ) -> Result<(), TransferError> {
         for cell in cells {
             let pos = cell.world;
@@ -850,7 +850,7 @@ impl ServerGame<'_> {
     /// entity, read straight from the live world.
     pub fn revalidate_cells(
         &self,
-        cells: &[sunrise_sim::carrier_store::OperationCell],
+        cells: &[sunrise_sim::save::carrier::OperationCell],
         registry: &sunrise_world::registry::BlockRegistry,
     ) -> Result<(), TransferError> {
         for cell in cells {
@@ -912,8 +912,8 @@ impl ServerGame<'_> {
         self.common.world.carrier_data_existed_at_open =
             self.server.world_root.join("data").is_dir();
         self.server.carrier_retention_snapshot = match Store::open(&self.server.world_root) {
-            Ok(sunrise_sim::carrier_store::Opened::Live(store)) => store.retention_snapshot(),
-            Ok(sunrise_sim::carrier_store::Opened::NeverUsed) => Vec::new(),
+            Ok(sunrise_sim::save::carrier::Opened::Live(store)) => store.retention_snapshot(),
+            Ok(sunrise_sim::save::carrier::Opened::NeverUsed) => Vec::new(),
             Err(error) => {
                 self.common.world.carrier_fences.mark_broken();
                 return Err(format!("world load refused: {error}").into());
@@ -935,7 +935,7 @@ impl ServerGame<'_> {
         if self.common.world.carrier_fences.locks_cell(&pos) {
             return Err("a carrier transfer holds this cell".into());
         }
-        self.player_break_block(pos).map(|_| ())
+        self.player_break_block(pos, None).map(|_| ())
     }
 
     /// Recovers the world's carrier store at open, before any chunk
@@ -946,8 +946,8 @@ impl ServerGame<'_> {
     /// while the store stays exactly as recovery found it.
     pub fn carrier_recover_all_levels(&mut self) -> sunrise_game_data::Result<()> {
         // No pending operation: no level is touched at all.
-        let dimension = match sunrise_sim::carrier_store::Store::open(&self.server.world_root) {
-            Ok(sunrise_sim::carrier_store::Opened::Live(store)) => {
+        let dimension = match sunrise_sim::save::carrier::Store::open(&self.server.world_root) {
+            Ok(sunrise_sim::save::carrier::Opened::Live(store)) => {
                 match store.journal().in_progress.as_ref() {
                     Some(op) => op.dimension.clone(),
                     // No pending operation — but retention still runs: the
@@ -959,7 +959,7 @@ impl ServerGame<'_> {
                     }
                 }
             }
-            Ok(sunrise_sim::carrier_store::Opened::NeverUsed) => return Ok(()),
+            Ok(sunrise_sim::save::carrier::Opened::NeverUsed) => return Ok(()),
             Err(error) => return Err(format!("world load refused: {error}").into()),
         };
         // Recovery enters the operation's own dimension and no other: a
@@ -1007,8 +1007,8 @@ impl ServerGame<'_> {
     /// the storage layer, run from world open. Errors are logged and
     /// swallowed: cleanup is retention work, never a load refusal.
     fn carrier_cleanup(&mut self) {
-        let mut store = match sunrise_sim::carrier_store::Store::open(&self.server.world_root) {
-            Ok(sunrise_sim::carrier_store::Opened::Live(store)) => store,
+        let mut store = match sunrise_sim::save::carrier::Store::open(&self.server.world_root) {
+            Ok(sunrise_sim::save::carrier::Opened::Live(store)) => store,
             _ => return,
         };
         if let Err(error) = store.cleanup() {
@@ -1020,9 +1020,9 @@ impl ServerGame<'_> {
     /// store's in-progress operation replays against this level's region
     /// directory, and only if the operation names this level.
     fn carrier_recover_current(&mut self) -> Result<(), String> {
-        let mut store = match sunrise_sim::carrier_store::Store::open(&self.server.world_root) {
-            Ok(sunrise_sim::carrier_store::Opened::Live(store)) => store,
-            Ok(sunrise_sim::carrier_store::Opened::NeverUsed) => return Ok(()),
+        let mut store = match sunrise_sim::save::carrier::Store::open(&self.server.world_root) {
+            Ok(sunrise_sim::save::carrier::Opened::Live(store)) => store,
+            Ok(sunrise_sim::save::carrier::Opened::NeverUsed) => return Ok(()),
             Err(error) => return Err(error.to_string()),
         };
         if store.journal().in_progress.is_none() {
@@ -1032,8 +1032,8 @@ impl ServerGame<'_> {
         // region/ child.
         let region = self.server.save.0.root.join("region");
         let states =
-            sunrise_sim::carrier_store::RegistryStates::new(self.common.pack.assets.registry);
-        sunrise_sim::carrier_store::recover(&mut store, &region, &states, self.common.dim.id())
+            sunrise_sim::save::carrier::RegistryStates::new(self.common.pack.assets.registry);
+        sunrise_sim::save::carrier::recover(&mut store, &region, &states, self.common.dim.id())
             .map(|_| ())
             .map_err(|e| e.to_string())
     }
@@ -1098,7 +1098,7 @@ mod tests {
     /// The store's default capacity is the contract's 4,096.
     #[test]
     fn the_default_index_capacity_is_4096() {
-        use sunrise_sim::carrier_store::MAX_CARRIERS;
+        use sunrise_sim::save::carrier::MAX_CARRIERS;
         assert_eq!(MAX_CARRIERS, 4096);
         // The public constructors carry the default; a store built with
         // it enforces the same bound at encode, visible by refusing an
@@ -1107,7 +1107,7 @@ mod tests {
             std::env::temp_dir().join(format!("sunrise-capacity-default-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(root.join("data")).unwrap();
-        let mut journal = sunrise_sim::carrier_store::Journal::default();
+        let mut journal = sunrise_sim::save::carrier::Journal::default();
         for i in 0..=MAX_CARRIERS as u128 {
             journal.carriers.push((i, 1));
         }

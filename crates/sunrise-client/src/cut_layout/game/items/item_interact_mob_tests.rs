@@ -152,7 +152,7 @@ fn actual_item_interact_mob_fallback_priority_and_filters_isolated() {
         )
         .unwrap();
         game.native_lifecycle
-            .begin_open(mod_api::Authority::IntegratedServer);
+            .begin_open(Some(mod_api::Authority::IntegratedServer));
         sunrise_gameplay::game::native_entity_refs::tests::resolve_parts(&game).unwrap();
         game.world = World::new(game.res.facts().air, 1);
         game.world

@@ -18,7 +18,6 @@ pub trait Hooks {
     /// in explosions (asked for the exploding entity, and for the mob that
     /// causes the blast). Asked often: answer fast. Server-side.
     #[hook(
-        target = "sunrise_gameplay::game::native_hooks::entity_mob_griefing::ServerGame<'_>::native_entity_mob_griefing",
         receiver = "read",
         dispatch = "flat",
         side = "server",

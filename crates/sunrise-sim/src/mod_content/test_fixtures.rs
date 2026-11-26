@@ -94,7 +94,7 @@ pub fn block_base_of(tag: &str, declarations: &[&str], facts: &str) -> (PathBuf,
         Some(J::Arr(rows)) => rows.len(),
         _ => panic!("{tag}: facts.json has no states"),
     };
-    let rows = vec![r#"{"item":"minecraft:test"}"#; count].join(",");
+    let rows = vec![r#"{"item":"minecraft:test","sound":{"identity":"other"}}"#; count].join(",");
     fs::write(
         base.join("gameplay-facts.json"),
         format!(r#"{{"states":[{rows}]}}"#),
@@ -271,7 +271,7 @@ pub fn content_files(
         "sunrise-content".into(),
         resources.data_changes().clone(),
     );
-    crate::datapack::DataStore::load(&[&content])
+    crate::datapack::DataStore::load(&crate::datapack::DataPacks::new(&[&content]))
         .files
         .into_iter()
         .collect()

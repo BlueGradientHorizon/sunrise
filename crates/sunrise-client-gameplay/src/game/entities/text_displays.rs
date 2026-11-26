@@ -432,6 +432,10 @@ impl RemoteTextDisplay {
     pub(in crate::game) fn position(&self) -> glam::DVec3 {
         self.position
     }
+    /// `Entity.xo`, `yo`, `zo`: where the display was when its tick began (`setOldPosAndRot`).
+    pub fn previous_position(&self) -> glam::DVec3 {
+        self.previous
+    }
     /// `Display.shouldRenderAtSqrDistance`: strict `<`, uninterpolated position, live `view_range`.
     pub fn in_range(&self, camera: glam::DVec3, view_scale: f64) -> bool {
         let range = f64::from(self.data.view_range) * 64.0 * view_scale;
@@ -1016,38 +1020,17 @@ impl ClientGame<'_> {
             return;
         }
         let mut round = self.native_tick_round();
-        if !round.listening() {
+        if !round.told_listening() {
             for id in eligible {
                 self.count_client_tick(id as u32);
                 self.tick_and_file_display(id);
             }
             return;
         }
-        let mut alone = Vec::new();
-        let mut batch = Vec::new();
         for id in eligible {
-            let Some(display) = self.client.text_displays.0.get(&id) else {
+            let Some(kind) = self.client.text_displays.0.get(&id).map(|d| d.shows.kind()) else {
                 continue;
             };
-            if round.alone_kind(display.shows.kind()) {
-                alone.push((id, display.shows.kind()));
-            } else {
-                round.add(
-                    id as u32,
-                    super::native_ticks::TickKind::Fixed(display.shows.kind()),
-                );
-                batch.push(id);
-            }
-        }
-        self.native_tick_pre_batch(&mut round);
-        for id in batch {
-            let ticks = !round.canceled(id as u32);
-            self.count_told_client_tick(id as u32, ticks);
-            if ticks {
-                self.tick_and_file_display(id);
-            }
-        }
-        for (id, kind) in alone {
             // A passenger's ride visit counts it before its own Pre.
             let passenger = self.client_passenger(id as u32);
             if passenger {
@@ -1061,7 +1044,6 @@ impl ClientGame<'_> {
                 self.native_tick_post_one(&round, id as u32, kind);
             }
         }
-        self.native_tick_post_batch(round);
     }
     /// Active render `Camera` yaw and pitch (`DisplayRenderer.extractRenderState`), sharing the
     /// same camera source of truth as `particle_rotation` (`ThirdPersonFront` already baked in).
@@ -1072,10 +1054,10 @@ impl ClientGame<'_> {
                 self.client.studio.freecam.pitch,
             ];
         }
-        let (yaw, pitch) = self
+        let (yaw, pitch, _) = self
             .client
             .posed_rotation
-            .unwrap_or((self.client.view.y_rot, self.client.view.x_rot));
+            .unwrap_or((self.client.view.y_rot, self.client.view.x_rot, 0.0));
         [yaw, pitch]
     }
     /// `DisplayRenderer.getBlockLightLevel` and `getSkyLightLevel`: the
@@ -1278,13 +1260,10 @@ impl ClientGame<'_> {
                         .strip_prefix("minecraft:")
                         .is_some_and(has_special_model)
                     {
-                        let packed = ((((effective_light & 0xFF) / 16) << 4)
-                            | (((effective_light >> 8) & 0xFF) / 16))
-                            as u8;
                         self.special_block_model(
                             state,
                             pose.to_glam(),
-                            packed,
+                            super::minecarts_client::special_light(effective_light),
                             &mut translucent.scratch,
                         );
                     }

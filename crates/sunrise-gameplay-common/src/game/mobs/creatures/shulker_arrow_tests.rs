@@ -1,6 +1,6 @@
 use super::*;
 use sunrise_core::random::LegacyRandom;
-use sunrise_sim::arrows::{ArrowEvent, deflect_reverse};
+use sunrise_sim::entities::arrows::{ArrowEvent, deflect_reverse};
 
 /// `AbstractArrow.onHitEntity` after `hurtOrSimulate` fails and the target
 /// still takes a projectile's side effects: `deflect(REVERSE, …, 0.2)`,

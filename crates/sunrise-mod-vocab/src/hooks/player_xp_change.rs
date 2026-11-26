@@ -8,7 +8,6 @@ pub trait Hooks {
     /// Experience bottles and furnaces make orbs, so they come through the orb
     /// path. Server-side.
     #[hook(
-        target = "sunrise_gameplay::game::native_hooks::player_xp_change::ServerGame<'_>::native_player_xp_change",
         dispatch = "flat",
         side = "server",
         contract = "cancel",

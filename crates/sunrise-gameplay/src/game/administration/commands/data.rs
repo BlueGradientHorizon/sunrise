@@ -67,6 +67,13 @@ pub(in crate::game) fn place_summoned(tag: &mut Tag, pos: [f64; 3]) {
     }
 }
 
+/// `Level.isInSpawnableBounds(BlockPos.containing(pos))`.
+pub(in crate::game) fn summon_position_ok([x, y, z]: [f64; 3]) -> bool {
+    (-30_000_000.0..30_000_000.0).contains(&x)
+        && (-20_000_000.0..20_000_000.0).contains(&y)
+        && (-30_000_000.0..30_000_000.0).contains(&z)
+}
+
 impl crate::game::ServerGame<'_> {
     // ---- entity data ---------------------------------------------------
 
@@ -84,6 +91,12 @@ impl crate::game::ServerGame<'_> {
         if let Some(u) = self.saved_player_uuid() {
             set_key(&mut tag, "UUID", Tag::IntArray(u.to_vec()));
         }
+        // Entity.saveWithoutId: the live `portalCooldown`, the player's own on its turn.
+        set_key(
+            &mut tag,
+            "PortalCooldown",
+            Tag::Int(self.common.portal_player.cooldown),
+        );
         // NbtPredicate.getEntityTagToCompare: a player's held stack.
         let selected = self.common.level.selected_slot;
         let held = match tag.get("Inventory") {
@@ -456,7 +469,7 @@ impl crate::game::ServerGame<'_> {
             .and_then(|chunk| chunk.saved.as_ref())
             .and_then(|saved| saved.pending_loot.get(&key));
         let items = self.items();
-        Some(save::block_entity_encode::data_with(
+        let current = save::block_entity_encode::data_with(
             key,
             e,
             &name,
@@ -468,6 +481,15 @@ impl crate::game::ServerGame<'_> {
             },
             items,
             |row| self.capture_block_entity_payload(key, &name, row, items),
+        );
+        // Over the NBT it was loaded from, as the chunk save and a loot roll read it.
+        Some(sunrise_gameplay_common::game::spill_common::live_full_metadata(
+            &self.common.world,
+            key,
+            e,
+            &name,
+            items,
+            current,
         ))
     }
     /// `BlockEntity.loadWithComponents` for the block entity at `key` from its full saved
@@ -492,6 +514,9 @@ impl crate::game::ServerGame<'_> {
     /// What `BlockDataAccessor.setData` tells the world after a load: `setChanged` and
     /// `sendBlockUpdated(3)`, even when the block state stays the same.
     pub(in crate::game::server_side) fn block_entity_updated(&mut self, key: (i32, i32, i32)) {
+        if self.defer_placed_block_entity_update(key) {
+            return;
+        }
         self.mark_block_entity_updated(key);
         let state = self.common.world.block(key.0, key.1, key.2);
         // Redraw what shows the block entity (signs, banners).
@@ -918,11 +943,44 @@ impl crate::game::ServerGame<'_> {
     // ---- /summon ---------------------------------------------------------
 
     /// The `summon <entity> <pos> <nbt>` form.
-    pub fn summon_with_nbt(&mut self, kind: &str, pos: [f64; 3], nbt: &str) -> R<Option<Target>> {
-        let (mut tag, _) = parse_snbt(nbt).map_err(|e| err("argument.nbt.invalid", &[&e]))?;
-        if !matches!(tag, Tag::Compound(_)) {
+    pub fn summon_with_nbt(
+        &mut self,
+        kind: &str,
+        pos: [f64; 3],
+        nbt: &str,
+    ) -> R<Option<Target>> {
+        let (tag, _) = parse_snbt(nbt).map_err(|e| err("argument.nbt.invalid", &[&e]))?;
+        let Tag::Compound(nbt) = tag else {
             return Err(err("argument.nbt.expected.compound", &[]));
+        };
+        self.summon_from_compound(kind, pos, nbt)
+    }
+
+    /// `SummonCommand.createEntity` with explicit NBT, shared by commands and level handles.
+    pub(in crate::game) fn summon_from_compound(
+        &mut self,
+        kind: &str,
+        pos: [f64; 3],
+        nbt: Compound,
+    ) -> R<Option<Target>> {
+        if !summon_position_ok(pos) {
+            return Err(err("commands.summon.invalidPosition", &[]));
         }
+        if matches!(kind, "minecraft:player" | "minecraft:fishing_bobber") {
+            return Err(err("entity.not_summonable", &[&kind]));
+        }
+        let peaceful = self.difficulty_id() == 0;
+        if peaceful
+            && self
+                .common
+                .res
+                .mob_types()
+                .get(kind)
+                .is_some_and(|t| !t.allowed_in_peaceful())
+        {
+            return Err(err("commands.summon.failed.peaceful", &[]));
+        }
+        let mut tag = Tag::Compound(nbt);
         // SummonCommand.createEntity with an NBT argument passes
         // `finalize = false`: the mob is what its compound says, and the
         // `sunrise:finalize` marker worldgen leaves on a structure mob is not
@@ -939,15 +997,16 @@ impl crate::game::ServerGame<'_> {
             });
             set_key(&mut tag, "home_pos", Tag::IntArray(home.to_vec()));
         }
-        if self.difficulty_id() == 0 {
+        if peaceful {
             self.prune_peaceful_summon_passengers(&mut tag);
         }
         place_summoned(&mut tag, pos);
-        // ServerLevel.tryAddFreshEntityWithPassengers: a UUID of the tree that
-        // an entity (including a player) in the destination level holds refuses
-        // the whole tree before any of it joins.
+        let Some(tree) = self.stage_entity_tree(tag) else {
+            return Ok(None);
+        };
+        // Check UUIDs only for the feature-eligible tree that will be published.
         if self
-            .summon_tree_uuids(&tag)
+            .summon_tree_uuids(tree.tag())
             .into_iter()
             .any(|u| self.is_loaded_uuid_in_level(u))
         {
@@ -955,8 +1014,8 @@ impl crate::game::ServerGame<'_> {
         }
         let from = self.common.mobs.len();
         let canceled = self.common.persist.joins_canceled;
-        let target = self.spawn_entity_from_nbt(tag);
-        self.native_mobs_joined(from, false);
+        let target = self.spawn_staged_entity_from_nbt(tree);
+        self.admit_new_mobs(from);
         // A mod kept the entity out: tryAddFreshEntityWithPassengers is false.
         if self.common.persist.joins_canceled != canceled
             && target.is_none_or(|t| self.target_position(t).is_none())
@@ -996,7 +1055,7 @@ impl crate::game::ServerGame<'_> {
 /// compounds a player's NBT arrives in: `/summon`'s argument, `/data`'s and the
 /// `minecraft:entity_data` component's (`Game::apply_entity_nbt`), and
 /// `native_summon`, which takes `/summon`'s argument.
-pub(in crate::game) fn strip_finalize_tree(tag: &mut Tag) {
+pub(in crate::game::server_side) fn strip_finalize_tree(tag: &mut Tag) {
     let Tag::Compound(c) = tag else { return };
     c.remove(&"sunrise:finalize".into());
     if let Some(Tag::List(passengers)) = c.get_mut(&"Passengers".into()) {
@@ -1009,6 +1068,7 @@ pub(in crate::game) fn strip_finalize_tree(tag: &mut Tag) {
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
+use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
 
 use sunrise_gameplay_common::game::native_hooks::block_entity_save_additional::BlockEntitySaveAdditionalGameExt1 as _;
 

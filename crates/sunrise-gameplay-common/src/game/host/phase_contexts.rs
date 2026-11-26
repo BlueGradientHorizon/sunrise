@@ -5,12 +5,15 @@
 macro_rules! impl_shared_phase_contexts {
     ($game:ty) => {
         impl mod_api::ConfigContext for $game {
-            fn setting(&self, mod_id: &str, key: &str) -> Option<String> {
-                <Self as mod_api::prelude::ConfigHost>::setting(self, mod_id, key)
+            fn setting(
+                &self,
+                key: mod_api::SettingKey,
+            ) -> Result<mod_api::SettingValue, mod_api::SettingAccessError> {
+                self.common.setting(key)
             }
 
-            fn config_files(&self) -> &'static dyn mod_api::ConfigFiles {
-                <Self as mod_api::prelude::ConfigHost>::config_files(self)
+            fn config_dir(&self) -> &std::path::Path {
+                <Self as mod_api::prelude::ConfigHost>::config_dir(self)
             }
         }
 
@@ -30,8 +33,11 @@ macro_rules! impl_shared_phase_contexts {
             fn on(&self, mod_id: &str) -> bool {
                 <Self as mod_api::prelude::ConfigHost>::on(self, mod_id)
             }
-            fn setting(&self, mod_id: &str, key: &str) -> Option<String> {
-                <Self as mod_api::prelude::ConfigHost>::setting(self, mod_id, key)
+            fn setting(
+                &self,
+                key: mod_api::SettingKey,
+            ) -> Result<mod_api::SettingValue, mod_api::SettingAccessError> {
+                self.common.setting(key)
             }
             fn game_tests_enabled(&self) -> bool {
                 sunrise_level::runtime_env::runtime_environment::get().game_tests_enabled()
@@ -123,6 +129,12 @@ macro_rules! impl_shared_phase_contexts {
             ) -> Option<mod_api::RegistryName> {
                 <Self as mod_api::prelude::KeysBackend>::entity_type_key_id(self, key)
             }
+            fn entity_type_category(
+                &self,
+                key: mod_api::EntityTypeKey,
+            ) -> Option<mod_api::MobCategory> {
+                <Self as mod_api::prelude::KeysBackend>::entity_type_category(self, key)
+            }
             fn menu_key_id(&self, key: mod_api::MenuKey) -> Option<mod_api::RegistryName> {
                 <Self as mod_api::prelude::KeysBackend>::menu_key_id(self, key)
             }
@@ -132,8 +144,12 @@ macro_rules! impl_shared_phase_contexts {
             ) -> Option<mod_api::RegistryName> {
                 <Self as mod_api::prelude::KeysBackend>::enchantment_key_id(self, key)
             }
-            fn biome_key_id(&self, key: mod_api::BiomeKey) -> Result<&str, mod_api::BiomeKeyError> {
-                <Self as mod_api::prelude::KeysBackend>::biome_key_id(self, key)
+            fn biome_key_id(
+                &self,
+                key: &mod_api::BiomeKey,
+            ) -> Result<&str, mod_api::BiomeKeyError> {
+                <Self as mod_api::prelude::KeysBackend>::biome_view(self, key)
+                    .map(|view| view.id())
             }
             fn dimension_key_id(&self, key: mod_api::DimensionKey) -> Option<&str> {
                 <Self as mod_api::prelude::LevelDimensionBackend>::dimension_key_id(self, key)

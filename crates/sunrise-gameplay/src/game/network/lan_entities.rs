@@ -6,7 +6,7 @@
 use crate::game::ServerGame;
 use sunrise_protocol::entity_data::{PaintingHolder, PaintingVariant, Value, serializer};
 use sunrise_sim::lan::{
-    entity::{EntityState, Riding, States},
+    entity::{DisplayTracking, EntityState, Riding, States},
     playerdata::ints_uuid,
 };
 use {sunrise_core::nbt::Tag, sunrise_world::registry::BlockStateId};
@@ -416,7 +416,7 @@ impl ServerGame<'_> {
                 a.yaw,
                 a.ground.on_ground,
             );
-            e.head_yaw = a.yaw;
+            e.head_yaw = a.head_yaw;
             e.velocity = [a.velocity.x, a.velocity.y, a.velocity.z];
             let mut flags = 0i8;
             if a.is_on_fire() {
@@ -635,169 +635,14 @@ impl ServerGame<'_> {
             if o.eye.as_ref().is_some_and(|eye| eye.synced_fire) {
                 e.meta.push((0, serializer::BYTE, Value::Byte(1)));
             }
-            if let Some(tag) = self.common.persist.raw.get(&o.id)
-                && let Some(item) = self.lan_display_data_kept(o.id, tag, e)
-                && let Some((_, _, Value::Item(stack))) =
-                    e.meta.iter_mut().find(|(index, _, _)| *index == 23)
-            {
-                *stack = self
-                    .server
-                    .lan
-                    .as_mut()
-                    .and_then(|host| host.hub.stack(&Some(item)));
-            }
+            e.display = o.display.as_ref().map(|display| {
+                DisplayTracking::new(display, self.server.lan.as_ref().map(|lan| &lan.hub))
+            });
         }
-        // Only this level's displays: the others are kept for their own level's pass.
-        KEPT_DISPLAYS.with(|kept| {
-            let mut kept = kept.borrow_mut();
-            let Some(kept) = kept.get_mut(&self.common.dim) else {
-                return;
-            };
-            if kept.len() > self.server.others.0.len() + 64 {
-                let ids: sunrise_level::fast_hash::FxHashSet<u32> =
-                    self.server.others.0.iter().map(|o| o.id).collect();
-                kept.retain(|id, _| ids.contains(id));
-            }
-        });
     }
-    /// [`Self::lan_display_data`] for the display `id`, built again only when
-    /// its compound changed: a server's holograms and menus are text displays
-    /// whose text, item and transformation were parsed again every tick.
-    pub fn lan_display_data_kept(
-        &self,
-        id: u32,
-        tag: &Tag,
-        e: &mut EntityState,
-    ) -> Option<sunrise_items::items::ItemStack> {
-        if !matches!(
-            e.kind.as_str(),
-            "minecraft:text_display" | "minecraft:block_display" | "minecraft:item_display"
-        ) {
-            return self.lan_display_data(tag, e);
-        }
-        // Block states are read through the pack's registry: a kept build is
-        // only the same for the same one.
-        let registry = std::ptr::from_ref(self.common.pack.assets.registry) as usize;
-        KEPT_DISPLAYS.with(|kept| {
-            let mut kept = kept.borrow_mut();
-            let kept = kept.entry(self.common.dim).or_default();
-            let same =
-                |k: &KeptDisplay| k.registry == registry && k.kind == e.kind && k.tag == *tag;
-            if let Some(k) = kept.get(&id).filter(|k| same(k)) {
-                e.meta.clone_from(&k.meta);
-                e.defaults.clone_from(&k.defaults);
-                return k.item.clone();
-            }
-            let item = self.lan_display_data(tag, e);
-            kept.insert(
-                id,
-                KeptDisplay {
-                    registry,
-                    kind: e.kind.clone(),
-                    tag: tag.clone(),
-                    meta: e.meta.clone(),
-                    defaults: e.defaults.clone(),
-                    item: item.clone(),
-                },
-            );
-            item
-        })
-    }
-}
-
-/// A display's synched data as [`Game::lan_display_data`] built it from
-/// `tag`, kept for the display's id on the thread that tracks entities, per
-/// level: a server thread tracks each dimension's `others` in turn.
-struct KeptDisplay {
-    registry: usize,
-    kind: String,
-    tag: Tag,
-    meta: Vec<(u8, i32, Value)>,
-    defaults: Vec<(u8, i32, Value)>,
-    /// An item display's item and the index in `meta` its stack goes in.
-    item: Option<sunrise_items::items::ItemStack>,
-}
-thread_local! {
-    static KEPT_DISPLAYS: std::cell::RefCell<
-        sunrise_level::fast_hash::FxHashMap<super::Dim, sunrise_level::fast_hash::FxHashMap<u32, KeptDisplay>>,
-    > = Default::default();
 }
 
 impl ServerGame<'_> {
-    /// The synched data of a text, block or item display kept unsimulated,
-    /// from its compound (`Display.readAdditionalSaveData`), with the
-    /// defaults to send when a value goes back to one.
-    pub fn lan_display_data(
-        &self,
-        tag: &Tag,
-        e: &mut EntityState,
-    ) -> Option<sunrise_items::items::ItemStack> {
-        use {
-            sunrise_sim::text_display_data::display_data,
-            sunrise_sim::text_display_data::text_display_data,
-        };
-        let mut item_stack = None;
-        let empty = Tag::Compound(Default::default());
-        let (meta, defaults) = match e.kind.as_str() {
-            "minecraft:text_display" => (
-                text_display_data(tag, false),
-                text_display_data(&empty, true),
-            ),
-            "minecraft:block_display" => {
-                // DATA_BLOCK_STATE_ID, air by default.
-                let state = |t: Option<BlockStateId>| {
-                    (
-                        23,
-                        serializer::BLOCK_STATE,
-                        Value::Id(t.map_or(0, |s| s.0 as i32)),
-                    )
-                };
-                let air = self
-                    .common
-                    .pack
-                    .assets
-                    .registry
-                    .default_state("minecraft:air");
-                let shown = tag.get("block_state").and_then(|t| self.state_from_nbt(t));
-                (vec![state(shown.or(air))], vec![state(air)])
-            }
-            "minecraft:item_display" => {
-                // DATA_ITEM_STACK and DATA_ITEM_DISPLAY_ID (`ItemDisplayContext`).
-                item_stack = tag.get("item").and_then(sunrise_sim::save::item_from_nbt);
-                let context = match tag.get("item_display") {
-                    Some(Tag::String(s)) => match s.to_string_lossy().as_str() {
-                        "thirdperson_lefthand" => 1,
-                        "thirdperson_righthand" => 2,
-                        "firstperson_lefthand" => 3,
-                        "firstperson_righthand" => 4,
-                        "head" => 5,
-                        "gui" => 6,
-                        "ground" => 7,
-                        "fixed" => 8,
-                        "on_shelf" => 9,
-                        _ => 0,
-                    },
-                    _ => 0,
-                };
-                (
-                    vec![
-                        (23, serializer::ITEM_STACK, Value::Item(None)),
-                        (24, serializer::BYTE, Value::Byte(context)),
-                    ],
-                    vec![
-                        (23, serializer::ITEM_STACK, Value::Item(None)),
-                        (24, serializer::BYTE, Value::Byte(0)),
-                    ],
-                )
-            }
-            _ => return None,
-        };
-        e.meta = display_data(tag, false);
-        e.meta.extend(meta);
-        e.defaults = display_data(&empty, true);
-        e.defaults.extend(defaults);
-        item_stack
-    }
 
     /// `ClientboundAddEntityPacket(Entity, ServerEntity, int)`: the entity's
     /// own UUID (`Entity.getUUID`), the one `/data`, saves and UUID
@@ -899,6 +744,28 @@ impl ServerGame<'_> {
             [e.yaw, e.pitch] = row.rotation;
             e.head_yaw = row.rotation[0];
             e.general = Some(catalog.tracking(row.type_slot));
+            if let Some(name) = &row.custom_name {
+                e.meta.push((
+                    2,
+                    serializer::OPTIONAL_COMPONENT,
+                    Value::OptText(Some(sunrise_game_data::scoreboard::json_to_tag(
+                        &name.component(),
+                    ))),
+                ));
+            }
+            if row.custom_name_visible {
+                e.meta.push((3, serializer::BOOLEAN, Value::Bool(true)));
+            }
+            if row.no_gravity {
+                e.meta.push((5, serializer::BOOLEAN, Value::Bool(true)));
+            }
+            // A name taken away or hidden again, or gravity back, is sent as none / false.
+            e.defaults
+                .push((2, serializer::OPTIONAL_COMPONENT, Value::OptText(None)));
+            e.defaults
+                .push((3, serializer::BOOLEAN, Value::Bool(false)));
+            e.defaults
+                .push((5, serializer::BOOLEAN, Value::Bool(false)));
         }
     }
 
@@ -909,6 +776,7 @@ impl ServerGame<'_> {
             return;
         };
         let hub = &mut host.hub;
+        let chunks = &self.common.world.chunks;
         let owner = |who: Option<sunrise_sim::mobs::Who>| match who {
             Some(sunrise_sim::mobs::Who::Mob(id)) => id as i32,
             Some(sunrise_sim::mobs::Who::Player) | None => 0,
@@ -1106,6 +974,7 @@ impl ServerGame<'_> {
             // to the next tick's send_changes so impact updates (e.g. point-blank wall
             // collision) arrive after the client's first tick has completed.
             if !hub.tracks(p.id as i32)
+                && crate::game::native_entity_refs::entity_section_accessible(chunks, at(p.position))
                 && let Some(a) = p.arrow.as_deref()
                 && let (Some(spawn_pos), Some(spawn_vel), Some((pitch, yaw))) =
                     (a.spawn_pos, a.spawn_velocity, a.spawn_rot)
@@ -1358,6 +1227,163 @@ mod tests {
         );
         let plain = sunrise_sim::entities::ArmorStand::new(1, Default::default(), 0.0);
         assert!(stand_poses(&plain).is_empty());
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn a_stands_add_entity_packet_keeps_head_yaw_separate_from_view_yaw() {
+        use crate::game::native_entity_refs::tests::run_fresh_cases;
+        use sunrise_core::geometry::Vec3;
+        use sunrise_protocol::packets::play::Clientbound;
+        use sunrise_sim::entities::ArmorStand;
+        use sunrise_sim::lan::entity::{Entities, Tracker};
+
+        if run_fresh_cases(
+            "game::lan_entities::tests::a_stands_add_entity_packet_keeps_head_yaw_separate_from_view_yaw",
+            "SUNRISE_STAND_PAIR_TEST",
+            &["pair"],
+        ) {
+            return;
+        }
+        crate::game::native_guest_turn_tests::with_guests(|game| {
+            let at = [3.0, 64.0, 5.0];
+            let mut stand = ArmorStand::new(40, Vec3::new(at[0], at[1], at[2]), 45.0);
+            stand.head_yaw = 90.0;
+            game.armor_stands.push(stand);
+            let packet = track_stands(game, &mut Entities::default(), &mut Tracker::default())
+                .into_iter()
+                .find_map(|packet| match packet {
+                    Clientbound::AddEntity(p) if p.id == 40 => Some(p),
+                    _ => None,
+                })
+                .expect("the tracker sent the stand's AddEntity");
+            assert_eq!([packet.yaw, packet.head_yaw], [32, 64]);
+        });
+    }
+
+    /// Track from a guest's chunk for one stand update interval. This lets the
+    /// test observe both initial pairing and updates to that same viewer.
+    fn track_stands(
+        game: &mut crate::game::ServerGame<'_>,
+        level: &mut sunrise_sim::lan::entity::Entities,
+        tracker: &mut sunrise_sim::lan::entity::Tracker,
+    ) -> Vec<sunrise_protocol::packets::play::Clientbound> {
+        use sunrise_protocol::{buf::Reader, packets::play::Clientbound};
+        use sunrise_sim::lan::entity::Viewer;
+
+        let mut rows = States::default();
+        game.lan_object_states(&mut rows, false, 0);
+        let rows: Vec<_> = rows.as_slice().iter().collect();
+        let mut out = Vec::new();
+        let chunks = [(0, 0)].into_iter().collect();
+        let sync = game.server.lan.as_ref().unwrap().hub.sync_data();
+        let mut viewers = [Viewer {
+            entity_id: 12,
+            spectator: false,
+            permission: 0,
+            sunrise: false,
+            general_entity: false,
+            moved: false,
+            position: [3.0, 64.0, 5.0],
+            view_distance: 2,
+            chunks: &chunks,
+            sources: None,
+            far: &[],
+            attachment_sender: None,
+            tracker,
+            out: &mut out,
+        }];
+        let riding = Riding::default();
+        for _ in 0..sunrise_sim::lan::tracking::settings("minecraft:armor_stand").1 {
+            level.tick(&rows, &riding, &mut viewers, None, |kind| {
+                sync.id("minecraft:entity_type", kind)
+            });
+        }
+        out.iter()
+            .map(|body| {
+                let mut reader = Reader::new(body);
+                Clientbound::decode(reader.varint().unwrap(), reader.rest()).unwrap()
+            })
+            .collect()
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn stand_rotation_commands_update_the_head_for_an_already_paired_viewer() {
+        use crate::game::native_entity_refs::tests::run_fresh_cases;
+        use sunrise_protocol::packets::play::Clientbound;
+        use sunrise_sim::lan::entity::{Entities, Tracker};
+
+        if run_fresh_cases(
+            "game::lan_entities::tests::stand_rotation_commands_update_the_head_for_an_already_paired_viewer",
+            "SUNRISE_STAND_COMMAND_YAW_TEST",
+            &["rotate", "teleport", "teleport_without_rotation"],
+        ) {
+            return;
+        }
+        let case = std::env::var("SUNRISE_STAND_COMMAND_YAW_TEST").unwrap();
+        crate::game::native_guest_turn_tests::with_guests(|game| {
+            game.options.dedicated = Some(Vec::new());
+            game.world.chunks.insert(
+                (0, 0),
+                std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
+            );
+            let run = |game: &mut crate::game::ServerGame<'_>, command| {
+                game.server.chat_capture = Some(Vec::new());
+                let ok = game.as_console_in_spawn_level(|g| g.run_command(command));
+                let feedback = game.server.chat_capture.take().unwrap();
+                assert!(
+                    ok,
+                    "{command}: {:?}",
+                    feedback.iter().map(|m| m.plain()).collect::<Vec<_>>()
+                );
+            };
+            let stand = game
+                .summon_with_nbt(
+                    "minecraft:armor_stand",
+                    [3.0, 64.0, 5.0],
+                    r#"{Tags:["turn_me"],Rotation:[45f,0f]}"#,
+                )
+                .unwrap();
+            let Some(crate::game::commands::Target::Stand(id)) = stand else {
+                panic!("the loaded entity was not an armor stand");
+            };
+            let id = id as i32;
+            let (command, expected) = match case.as_str() {
+                "rotate" => ("rotate @e[tag=turn_me,limit=1] 90 0", [64, 64]),
+                "teleport" => ("teleport @e[tag=turn_me,limit=1] 4 64 5 135 0", [96, 96]),
+                "teleport_without_rotation" => {
+                    // The head can be turned independently of view before /tp.
+                    game.armor_stands.iter_mut().next().unwrap().head_yaw = 90.0;
+                    ("teleport @e[tag=turn_me,limit=1] 4 64 5", [32, 32])
+                }
+                _ => unreachable!(),
+            };
+            let mut level = Entities::default();
+            let mut tracker = Tracker::default();
+            let paired = track_stands(game, &mut level, &mut tracker);
+            assert!(
+                paired
+                    .iter()
+                    .any(|p| matches!(p, Clientbound::AddEntity(a) if a.id == id))
+            );
+            run(game, command);
+            let packets = track_stands(game, &mut level, &mut tracker);
+            assert!(
+                packets.iter().any(|p| {
+                    matches!(p, Clientbound::RotateHead(r) if r.id == id && r.head_yaw == expected[1])
+                }),
+                "no RotateHead with yaw {} after {command}",
+                expected[1]
+            );
+            let late = track_stands(game, &mut Entities::default(), &mut Tracker::default());
+            assert!(
+                late.iter().any(|p| {
+                    matches!(p, Clientbound::AddEntity(a) if a.id == id && [a.yaw, a.head_yaw] == expected)
+                }),
+                "no AddEntity with yaw {expected:?} after {command}"
+            );
+        });
     }
 
     /// Issue #8050: a cart's custom display block and offset reach clients

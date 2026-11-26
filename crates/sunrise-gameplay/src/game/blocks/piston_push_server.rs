@@ -402,6 +402,7 @@ impl crate::game::ServerGame<'_> {
                     .boats
                     .update(i, |boat| boat.fall_distance = fall);
             }
+            self.reset_general_fall(target, body.position, moved);
             self.apply_push(&mut gate, target, moved);
         }
         let Some(target) = self.resolve_push_target(selected) else {
@@ -893,6 +894,7 @@ impl crate::game::ServerGame<'_> {
             let moved = resolved.length_squared() > 1.0e-7
                 || limited.length_squared() - resolved.length_squared() < 1.0e-7;
             if moved {
+                self.reset_general_fall(target, from, resolved);
                 self.apply_push(&mut gate, target, resolved);
             }
             let after = if moved {
@@ -1070,6 +1072,7 @@ impl crate::game::ServerGame<'_> {
                         Some(&self.common.pack.block_registries),
                         &self.common.damage_hooks,
                     )
+                    .with_variants(world_variants!(self))
                     .with_reads(crate::game::entity_server::hit_reads_of!(self))
                     .with_mob_hurt_handoff(&mut paused_hurt);
                     mobs[i].update_pushed_support(&world, wanted, moved);
@@ -1187,6 +1190,28 @@ impl crate::game::ServerGame<'_> {
         };
         with_entity_mut!(self, handle, entity => *entity.velocity_mut() = velocity);
         Some(MoveWho::Entity(handle))
+    }
+
+    /// Reset fall distance before placement so the fall check only adds the rest of the move.
+    fn reset_general_fall(&mut self, target: MoveWho, from: Vec3, moved: Vec3) {
+        let MoveWho::Entity(EntityHandle::General(i)) = target else {
+            return;
+        };
+        let row = &self.resident_entities.general.rows[i];
+        if row.no_physics || row.fall_distance == 0.0 || moved.length_squared() < 1.0 {
+            return;
+        }
+        let reset = &self.res.motion().fall_reset;
+        let hit = sunrise_sim::entities::fall_reset_hit(
+            &self.world,
+            &self.res.motion().fluids,
+            |p| reset.contains(&*self.res.facts().get(self.world.block(p.x, p.y, p.z)).name),
+            from,
+            moved,
+        );
+        if hit {
+            self.resident_entities.general.rows[i].fall_distance = 0.0;
+        }
     }
 
     /// Server arm of [`Game::side_move_local_player`]: `Entity.move(mover, …)`
@@ -1467,6 +1492,12 @@ impl crate::game::ServerGame<'_> {
         if let EntityHandle::Mob(i) = handle {
             self.common.mobs[i].ground.horizontal_collision =
                 different(wanted.x, moved.x) || different(wanted.z, moved.z);
+            return;
+        }
+        // A general row's `Entity.move` end, for every cause: the flags, the fall check and
+        // the blocked axes; a `noPhysics` row never gets here.
+        if let EntityHandle::General(i) = handle {
+            self.resident_entities.general.rows[i].finish_move(wanted, moved);
             return;
         }
         let authoritative = match handle {

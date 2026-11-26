@@ -88,7 +88,8 @@ impl ServerGame<'_> {
                 Some(*player)
             }
             ItemPlace::PlayerCursor { menu } => self
-                .menu_carried(*menu)
+                .native_menu_guest(*menu)
+                .filter(|guest| !Self::menu_cursor_retired(guest))
                 .map(|_| menu.fields().player.uuid()),
             _ => None,
         }
@@ -118,7 +119,7 @@ impl ServerGame<'_> {
             let size = sunrise_gameplay_common::mount_rules::mount_columns(m) * 3;
             if m.extra.items.len() < size {
                 let dim = self.common.dim;
-                if let Some(level) = self.common.transactions.last_mut() {
+                if let Some(level) = self.common.transactions.level_frame(dim) {
                     level.keep_mob_length(dim, id, m.extra.items.len());
                 }
                 m.extra.items.resize(size, None);
@@ -372,6 +373,9 @@ impl ServerGame<'_> {
             }
             ItemPlace::PlayerCursor { menu } => {
                 let guest = self.native_menu_guest(*menu)?;
+                if Self::menu_cursor_retired(guest) {
+                    return None;
+                }
                 if self.server.lan_acting == Some(guest.conn) {
                     self.common.carried.as_ref()
                 } else {
@@ -452,7 +456,7 @@ impl ServerGame<'_> {
                     return Ok(());
                 };
                 let dim = self.common.dim;
-                if let Some(level) = self.common.transactions.last_mut() {
+                if let Some(level) = self.common.transactions.level_frame(dim) {
                     level.keep_equipment(dim, entity, equipment, mob_gear.as_deref());
                 }
                 let held = equipment[index].as_mut().expect("prepared equipment slot");
@@ -543,6 +547,7 @@ impl ServerGame<'_> {
             ItemPlace::PlayerCursor { menu } => {
                 let guest = self
                     .native_menu_guest(menu)
+                    .filter(|guest| !Self::menu_cursor_retired(guest))
                     .ok_or(ItemPlaceEditError::NotHeld)?;
                 let player = guest.uuid;
                 let (parked, carried) = if self.server.lan_acting == Some(guest.conn) {
@@ -625,7 +630,7 @@ impl ServerGame<'_> {
             sunrise_gameplay_common::game::api_values::stack_value(stack)
                 .map_err(|_| CraftedByError::Unavailable)?
         } else {
-            // Read engine storage directly: its API snapshot omits the transient directive.
+            // Read an engine stack directly when the menu owns the slot.
             match slot {
                 Some(slot) => self.menu_slot(menu, slot),
                 None => self.menu_carried(menu),

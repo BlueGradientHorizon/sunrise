@@ -48,7 +48,7 @@ pub(crate) mod tests {
             };
 
             // Saved with one key more than vanilla's tag, and only while it carries.
-            let saved = game.saved_moving_piston(at, &piston);
+            let saved = game.saved_moving_piston(at, &piston).unwrap();
             let vanilla = game.moving_piston_to_nbt(at, &piston);
             let Tag::Compound(mut without) = saved.clone() else {
                 unreachable!()
@@ -71,18 +71,18 @@ pub(crate) mod tests {
                 game.world
                     .block_entities
                     .attachments(to)
-                    .map(Attachments::to_nbt),
+                    .map(|a| a.try_to_nbt().unwrap()),
                 Some(saved_attachments)
             );
             assert_eq!(
-                game.saved_moving_piston(at, &piston),
+                game.saved_moving_piston(at, &piston).unwrap(),
                 vanilla,
                 "nothing carried, nothing added"
             );
 
             // Attachments that can't be read: the block entity lands without them.
             assert!(game.world.block_entities.carry(to, to));
-            let mut saved = game.saved_moving_piston(at, &piston);
+            let mut saved = game.saved_moving_piston(at, &piston).unwrap();
             let Some(Tag::Compound(carried)) = saved.get_mut(CARRIED_KEY) else {
                 panic!("the carried block entity is saved")
             };

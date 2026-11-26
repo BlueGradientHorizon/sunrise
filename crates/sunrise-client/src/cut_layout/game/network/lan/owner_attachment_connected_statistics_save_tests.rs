@@ -18,7 +18,7 @@ mod owner_attachment_save_tests {
             },
         }),
         copy_on_death: true,
-        sync: false,
+        sync_codec: None,
     };
 
     /// The live value as the named owner file would hold it.
@@ -135,7 +135,8 @@ mod connected_statistics_save_tests {
         game.options.execution_role = ExecutionRole::DedicatedServer;
         // The command's dedicated-only guard also checks the launch mode.
         game.options.dedicated = Some(Vec::new());
-        let dir = std::env::current_dir().unwrap().join(if stale {
+        let scratch = tempfile::tempdir().unwrap();
+        let dir = scratch.path().join(if stale {
             "stats-stale"
         } else {
             "stats-missing"
@@ -238,7 +239,8 @@ mod connected_statistics_save_tests {
 mod connected_statistics_save_exclusion_tests {
 
     /// Source controls for the bounded eligibility gates; these excluded
-    /// guests are not counted as successfully saved players.
+    /// guests are not counted as successfully saved players. A placed guest of an
+    /// integrated server is saved, as on a dedicated one (#5780).
     #[test]
     #[ignore = "daily"]
     fn excluded_guest_records_are_not_invented_or_written() {
@@ -246,7 +248,8 @@ mod connected_statistics_save_exclusion_tests {
         let mut game = sunrise_gameplay::game::game_tests::tests::server_game(&mut resources);
         let _rx =
             sunrise_gameplay::game::server_side::lan::world_spawn_sync_tests::host_for(&mut game);
-        game.server.world_root = std::env::current_dir().unwrap().join("stats-excluded");
+        let scratch = tempfile::tempdir().unwrap();
+        game.server.world_root = scratch.path().join("stats-excluded");
         std::fs::create_dir_all(&game.server.world_root).unwrap();
         let path = sunrise_gameplay::game::server_side::stats::player_json(
             &game.server.world_root,
@@ -272,9 +275,16 @@ mod connected_statistics_save_exclusion_tests {
         assert!(!path.exists(), "no play record: no invented statistics");
         host.play.insert(1, play);
         game.server.lan = Some(host);
+        // An integrated server saves its connected guests too: `IntegratedPlayerList.save`
+        // keeps the owner's data for level.dat and hands every player to `PlayerList.save`,
+        // which saves their stats.
         game.options.dedicated = None;
         game.save_game_metadata().unwrap();
-        assert!(!path.exists(), "the existing dedicated gate is preserved");
+        assert!(
+            path.exists(),
+            "an integrated server writes a placed guest's statistics"
+        );
+        std::fs::remove_file(&path).unwrap();
         game.options.dedicated = Some(Vec::new());
         game.options.execution_role =
             sunrise_gameplay_common::game::execution_role::ExecutionRole::Client;

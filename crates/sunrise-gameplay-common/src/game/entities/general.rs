@@ -15,6 +15,7 @@ use std::borrow::Cow;
 use sunrise_core::fast_hash::{FxHashMap, FxHashSet};
 pub use sunrise_core::geometry::{Aabb, Vec3};
 pub use sunrise_core::nbt::Tag;
+use sunrise_game_data::text::Text;
 use sunrise_sim::entity_rules::EntityRules;
 use sunrise_sim::impl_joined;
 pub use sunrise_sim::join_seq::{JoinList, JoinSeq};
@@ -36,6 +37,16 @@ pub struct GeneralEntityRecord {
     /// The UUID of the entity that fired it (`Owner`, as `TraceableEntity`s and
     /// projectiles save it), when a spawn named one.
     pub owner: Option<[i32; 4]>,
+    /// `Entity.getCustomName`, saved as `CustomName`; absent means none.
+    pub custom_name: Option<Text>,
+    /// `Entity.isCustomNameVisible`, saved as `CustomNameVisible`; absent means false.
+    pub custom_name_visible: bool,
+    /// `Entity.isNoGravity`, saved as `NoGravity`; absent means false.
+    pub no_gravity: bool,
+    /// `Entity.onGround`, saved as `OnGround`; absent means false.
+    pub on_ground: bool,
+    /// `Entity.fallDistance`, saved as `fall_distance`; absent or not a number means zero.
+    pub fall_distance: f64,
     /// The type envelope: which registered type owns the payload, at which
     /// schema version, with which bounded payload bytes.
     pub envelope: GeneralTypeEnvelope,
@@ -221,6 +232,16 @@ pub mod format {
     pub const UUID: &str = "UUID";
     /// `Owner`: the firing entity's UUID, four ints (`Projectile.addAdditionalSaveData`'s key).
     pub const OWNER: &str = "Owner";
+    /// `CustomName`: the entity's name as a text component (`Entity.saveWithoutId`).
+    pub const CUSTOM_NAME: &str = "CustomName";
+    /// `CustomNameVisible`: written only when set (`Entity.saveWithoutId`).
+    pub const CUSTOM_NAME_VISIBLE: &str = "CustomNameVisible";
+    /// `NoGravity`: written only when set (`Entity.saveWithoutId`).
+    pub const NO_GRAVITY: &str = "NoGravity";
+    /// `OnGround`: always written (`Entity.saveWithoutId`).
+    pub const ON_GROUND: &str = "OnGround";
+    /// `fall_distance`: a double, always written (`Entity.saveWithoutId`).
+    pub const FALL_DISTANCE: &str = "fall_distance";
     /// The payload's schema version, a short.
     pub const PAYLOAD_VERSION: &str = "PayloadVersion";
     /// The payload bytes, a byte array.
@@ -277,6 +298,23 @@ impl GeneralEntityRecord {
         if let Some(owner) = self.owner {
             map.insert(format::OWNER.into(), Tag::IntArray(owner.to_vec()));
         }
+        if let Some(name) = &self.custom_name {
+            map.insert(
+                format::CUSTOM_NAME.into(),
+                sunrise_game_data::scoreboard::component_tag(&name.component()),
+            );
+        }
+        if self.custom_name_visible {
+            map.insert(format::CUSTOM_NAME_VISIBLE.into(), Tag::Byte(1));
+        }
+        if self.no_gravity {
+            map.insert(format::NO_GRAVITY.into(), Tag::Byte(1));
+        }
+        map.insert(format::ON_GROUND.into(), Tag::Byte(self.on_ground.into()));
+        map.insert(
+            format::FALL_DISTANCE.into(),
+            Tag::Double(self.fall_distance.to_bits()),
+        );
         map.insert(
             format::PAYLOAD_VERSION.into(),
             Tag::Short(i16::from_ne_bytes(
@@ -422,6 +460,15 @@ pub fn read_general_record(
             });
         }
     };
+    // `Entity.load`: a `CustomName` that fails the component codec reads as none.
+    let custom_name = tag
+        .get(format::CUSTOM_NAME)
+        .and_then(sunrise_sim::entity_nbt::decode_custom_name_text);
+    let custom_name_visible = sunrise_sim::entity_nbt::flag(tag, format::CUSTOM_NAME_VISIBLE);
+    let no_gravity = sunrise_sim::entity_nbt::flag(tag, format::NO_GRAVITY);
+    // `Entity.load`: `getBooleanOr("OnGround", false)` and `getDoubleOr("fall_distance", 0.0)`,
+    // which read any number and default on a missing key or another tag.
+    let (on_ground, fall_distance) = sunrise_sim::entity_nbt::ground_from_nbt(tag);
     let payload_version = match tag.get(format::PAYLOAD_VERSION) {
         None => 0,
         Some(Tag::Short(version)) => u16::from_ne_bytes(version.to_ne_bytes()),
@@ -461,6 +508,11 @@ pub fn read_general_record(
         rotation,
         uuid,
         owner,
+        custom_name,
+        custom_name_visible,
+        no_gravity,
+        on_ground,
+        fall_distance,
         envelope: GeneralTypeEnvelope {
             type_key: type_key.to_string_lossy(),
             payload_version,
@@ -581,6 +633,17 @@ impl GeneralTypeCatalog {
     pub fn save_policy(&self, slot: usize) -> mod_api::GeneralSavePolicy {
         self.entries[slot].save_policy
     }
+
+    /// The Minecraft feature flags this type requires (`EntityType.requiredFeatures`).
+    pub fn required_features(&self, slot: usize) -> &[mod_api::FeatureFlag] {
+        &self.entries[slot].required_features
+    }
+
+    /// Whether every Minecraft feature flag this type requires is enabled in `enabled_features`
+    /// (`EntityType.isEnabled(FeatureFlagSet)`).
+    pub fn is_enabled(&self, slot: usize, enabled_features: &mod_api::FeatureFlags) -> bool {
+        enabled_features.contains_all(self.required_features(slot))
+    }
 }
 
 /// The game's frozen registry, built from the installed declarations: the
@@ -639,11 +702,39 @@ pub struct GeneralRow {
     pub velocity: Vec3,
     /// The yaw and pitch in degrees.
     pub rotation: [f32; 2],
+    /// The yaw and pitch when the last tick began (`Entity.yRotO`, `xRotO`).
+    pub previous_rotation: [f32; 2],
     /// The UUID of the entity that fired it, kept and saved as `Owner`
     /// (`TraceableEntity.getOwner`); a spawn sets it.
     pub owner: Option<[i32; 4]>,
-    /// How far the row has fallen; stage 3's load and stage 4's tick own it.
+    /// `Entity.fallDistance`: saved as `fall_distance`, accumulated by a collided move and
+    /// reset or halved by the base tick's fluid step.
     pub fall_distance: f64,
+    /// `Entity.isNoGravity`, saved as `NoGravity`; synced as `Entity.DATA_NO_GRAVITY`. The
+    /// engine never applies gravity itself: the type's tick reads this and moves the row.
+    pub no_gravity: bool,
+    /// `Entity.onGround`, saved as `OnGround`; a collided move writes it.
+    pub on_ground: bool,
+    /// `Entity.tickCount`: counted by the base tick, wraps as Java's `int` does, not saved.
+    pub tick_count: i32,
+    /// `Entity.noPhysics`: its moves pass through blocks, and its collision flags stay false.
+    /// Not saved, and false unless a mod writes it.
+    pub no_physics: bool,
+    /// `Entity.horizontalCollision` of the last collided move.
+    pub horizontal_collision: bool,
+    /// `Entity.verticalCollision` of the last collided move.
+    pub vertical_collision: bool,
+    /// `Entity.verticalCollisionBelow` of the last collided move.
+    pub vertical_collision_below: bool,
+    /// The fluids the last base tick found it in (`Entity.updateFluidInteraction`).
+    pub fluids: sunrise_sim::mobs::living::Fluids,
+    /// `Entity.isUnderWater`: the eye was in water at the start of the base tick, and the
+    /// body touches water after it.
+    pub under_water: bool,
+    /// `Entity.getCustomName`; synced to tracking clients as `Entity.DATA_CUSTOM_NAME`.
+    pub custom_name: Option<Text>,
+    /// `Entity.isCustomNameVisible`; synced as `Entity.DATA_CUSTOM_NAME_VISIBLE`.
+    pub custom_name_visible: bool,
     /// The payload's schema version, as the record carried it and the writer
     /// returns it: no decoder owns it before stage 4.
     pub payload_version: u16,
@@ -663,6 +754,82 @@ pub struct GeneralRow {
 
 impl EntityRules for GeneralRow {}
 impl_joined!(GeneralRow);
+
+impl GeneralRow {
+    /// `Entity.getEyeY`: the feet plus `EntityDimensions.defaultEyeHeight`, `height * 0.85F`.
+    fn eye_y(feet_y: f64, height: f64) -> f64 {
+        feet_y + f64::from(height as f32 * 0.85_f32)
+    }
+
+    /// `Entity.commonTick` and `Entity.baseTick` for one tick of the row, before its type's
+    /// tick runs: `tickCount`, the old position and rotation, the boarding cooldown, then
+    /// `updateFluidInteraction` (a current pushes the velocity, as `isPushedByFluid` allows, also
+    /// a riding row's, which is zeroed first as `rideTick` does; water resets the fall and lava
+    /// halves it) and `checkBelowWorld`. `bounds` is the row's box at its position and `height`
+    /// the type's declared height, whose `0.85F` is its eye height; `scan` measures the fluids for
+    /// the box, the position and the eye's height and may add a current to the velocity it is
+    /// given. False when the row fell below the world (`min_y - 64`): the caller discards it.
+    /// Gravity, drag and moves are the type's own tick.
+    pub fn base_tick(
+        &mut self,
+        bounds: Aabb,
+        height: f64,
+        mounted: bool,
+        min_y: i32,
+        scan: impl FnOnce(Aabb, Vec3, f64, &mut Vec3) -> sunrise_sim::mobs::living::Fluids,
+    ) -> bool {
+        let first_tick = self.tick_count == 0;
+        self.tick_count = self.tick_count.wrapping_add(1);
+        self.previous = self.position;
+        self.previous_rotation = self.rotation;
+        self.boarding_cooldown = (self.boarding_cooldown - 1).max(0);
+        if mounted {
+            self.velocity = Vec3::ZERO;
+        }
+        let was_eye_in_water = self.fluids.eye_in_water;
+        let (at, eye) = (self.position, Self::eye_y(self.position.y, height));
+        // `Entity.isPushedByFluid` is true for a general row, so the scan pushes its velocity.
+        let mut fluids = scan(bounds, at, eye, &mut self.velocity);
+        // `Entity.isInLava` is false on the first tick (`firstTick`).
+        fluids.in_lava &= !first_tick;
+        if fluids.in_water {
+            self.fall_distance = 0.0;
+        }
+        if fluids.in_lava {
+            self.fall_distance *= 0.5;
+        }
+        self.under_water = was_eye_in_water && fluids.in_water;
+        self.fluids = fluids;
+        self.position.y >= f64::from(min_y - 64)
+    }
+
+    /// The part of the end of `Entity.move` that needs no level, for a collided move that wanted
+    /// `wanted` and resolved to `moved`, whatever its cause: the collision flags and the ground,
+    /// and `checkFallDamage`'s fall distance. `Game::finish_general_move` runs the rest, in
+    /// `Entity.move`'s order: the fall-reset ray before the placement, then
+    /// `restituteMovementAfterCollisions` and `getBlockSpeedFactor` after this. A `noPhysics` row
+    /// skips all of it.
+    pub fn finish_move(&mut self, wanted: Vec3, moved: Vec3) {
+        use sunrise_world::entity_move::different;
+        if self.no_physics {
+            return;
+        }
+        let blocked_x = different(wanted.x, moved.x);
+        let blocked_z = different(wanted.z, moved.z);
+        self.horizontal_collision = blocked_x || blocked_z;
+        self.vertical_collision = wanted.y != moved.y;
+        self.vertical_collision_below = self.vertical_collision && wanted.y < 0.0;
+        self.on_ground = self.vertical_collision_below;
+        // `Entity.checkFallDamage`: the distance grows by a downward move (as a float) outside
+        // water, and landing forgets it.
+        if !self.fluids.in_water && moved.y < 0.0 {
+            self.fall_distance -= f64::from(moved.y as f32);
+        }
+        if self.on_ground {
+            self.fall_distance = 0.0;
+        }
+    }
+}
 sunrise_mod_runtime::impl_attachment_lifetime!(GeneralRow);
 
 /// The general rows' list, one per level, bound to residency like the other
@@ -868,26 +1035,61 @@ impl Entity for GeneralRow {
     fn reset_fall_distance(&mut self) {
         self.fall_distance = 0.0;
     }
-    /// A stage 2 row never joins a world, so only a push reaches it, and it
-    /// carries no physics of its own: the move is a plain displacement.
+
+    fn on_ground(&self) -> bool {
+        self.on_ground
+    }
+
+    fn set_on_ground(&mut self, on_ground: bool) {
+        self.on_ground = on_ground;
+    }
+
+    fn set_piston_on_ground(&mut self, on_ground: bool) {
+        self.on_ground = on_ground;
+    }
+
+    fn no_physics(&self, _stored: Option<bool>) -> bool {
+        self.no_physics
+    }
+    /// Places the row by the movement the collision scan resolved (or, with `noPhysics`, the
+    /// whole requested one). `Entity.move`'s end, the collision flags and the fall check, is
+    /// [`GeneralRow::finish_move`], and its restitution and speed factor are
+    /// `Game::finish_general_move`, run by the caller once the scan is known.
     fn move_entity(&mut self, gate: &mut MoveGate, movement: Vec3) {
         if gate.skipped() {
             return;
         }
         let position = self.position_mut();
         *position = position.add_vector(movement);
+        if self.no_physics {
+            self.horizontal_collision = false;
+            self.vertical_collision = false;
+            self.vertical_collision_below = false;
+        }
     }
     fn rotation(&self) -> [f32; 2] {
         self.rotation
     }
+
+    #[inline]
+    fn previous_rotation(&self) -> [f32; 2] {
+        self.previous_rotation
+    }
     fn set_rotation(&mut self, rotation: [f32; 2]) {
         self.rotation = rotation;
+        self.previous_rotation = rotation;
     }
     fn bounds(&self) -> Aabb {
         general_type_catalog().bounds(self.type_slot, self.position)
     }
     fn is_pickable(&self) -> bool {
         general_type_catalog().pickable(self.type_slot)
+    }
+    fn fluid_eye_y(&self) -> f64 {
+        Self::eye_y(
+            self.position.y,
+            general_type_catalog().dimensions(self.type_slot).1,
+        )
     }
     fn selector_target(&self) -> Option<Target> {
         Some(Target::General(self.id))
@@ -901,6 +1103,10 @@ impl Entity for GeneralRow {
 }
 
 #[cfg(test)]
+#[path = "general/physics_tests.rs"]
+mod physics_tests;
+
+#[cfg(test)]
 pub mod tests {
     use super::*;
 
@@ -910,6 +1116,11 @@ pub mod tests {
             velocity: [0.0, 0.0, 0.0],
             rotation: [0.0, 0.0],
             owner: None,
+            custom_name: None,
+            custom_name_visible: false,
+            no_gravity: false,
+            on_ground: false,
+            fall_distance: 0.0,
             uuid,
             envelope: GeneralTypeEnvelope {
                 type_key: type_key.to_owned(),
@@ -1113,6 +1324,49 @@ pub mod tests {
     }
 
     #[test]
+    fn catalog_enforces_required_minecraft_feature_flags() {
+        let mut plain = declaration("amod", "amod:plain");
+        plain.required_features = Vec::new();
+        let mut redstone = declaration("amod", "amod:redstone");
+        redstone.required_features = vec![mod_api::FeatureFlag::RedstoneExperiments];
+        let mut both = declaration("amod", "amod:both");
+        both.required_features = vec![
+            mod_api::FeatureFlag::RedstoneExperiments,
+            mod_api::FeatureFlag::MinecartImprovements,
+        ];
+        let catalog = GeneralTypeCatalog::freeze(&[plain, redstone, both]).unwrap();
+        let plain_slot = catalog.slot("amod:plain").unwrap();
+        let redstone_slot = catalog.slot("amod:redstone").unwrap();
+        let both_slot = catalog.slot("amod:both").unwrap();
+
+        let vanilla_only = mod_api::FeatureFlags::new(["minecraft:vanilla".to_owned()].into());
+        assert!(catalog.is_enabled(plain_slot, &vanilla_only));
+        assert!(!catalog.is_enabled(redstone_slot, &vanilla_only));
+        assert!(!catalog.is_enabled(both_slot, &vanilla_only));
+
+        let with_redstone = mod_api::FeatureFlags::new(
+            [
+                "minecraft:vanilla".to_owned(),
+                "minecraft:redstone_experiments".to_owned(),
+            ]
+            .into(),
+        );
+        assert!(catalog.is_enabled(plain_slot, &with_redstone));
+        assert!(catalog.is_enabled(redstone_slot, &with_redstone));
+        assert!(!catalog.is_enabled(both_slot, &with_redstone));
+
+        let with_both = mod_api::FeatureFlags::new(
+            [
+                "minecraft:vanilla".to_owned(),
+                "minecraft:redstone_experiments".to_owned(),
+                "minecraft:minecart_improvements".to_owned(),
+            ]
+            .into(),
+        );
+        assert!(catalog.is_enabled(both_slot, &with_both));
+    }
+
+    #[test]
     fn catalog_slots_do_not_wrap_at_u16_boundary() {
         let declarations: Vec<_> = (0..65_537)
             .map(|index| declaration("amod", &format!("amod:type_{index:05}")))
@@ -1153,8 +1407,20 @@ pub mod tests {
             previous: Vec3::new(0.5, 64.0, 0.5),
             velocity: Vec3::ZERO,
             rotation: [0.0, 0.0],
+            previous_rotation: [0.0, 0.0],
             owner: None,
             fall_distance: 0.0,
+            custom_name: None,
+            custom_name_visible: false,
+            no_gravity: false,
+            on_ground: false,
+            tick_count: 0,
+            no_physics: false,
+            horizontal_collision: false,
+            vertical_collision: false,
+            vertical_collision_below: false,
+            fluids: Default::default(),
+            under_water: false,
             payload_version: 1,
             payload_bytes: Vec::new(),
             mount: None,

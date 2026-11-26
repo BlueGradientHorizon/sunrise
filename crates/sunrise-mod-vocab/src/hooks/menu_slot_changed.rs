@@ -40,7 +40,6 @@ pub trait Hooks {
     /// resends the menu. Outside a click the write itself stands: the listener's own writes roll
     /// back, and an unreportable change is logged and not reported.
     #[hook(
-        target = "sunrise_gameplay::game::native_hooks::menu_slot_changed::ServerGame<'_>::native_menu_slot_changed",
         dispatch = "api_carrier",
         side = "server",
         contract = "listen",

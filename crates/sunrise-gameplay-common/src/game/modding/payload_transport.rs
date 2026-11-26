@@ -78,10 +78,11 @@ pub trait PayloadTransportGameExt1<'__sg>: crate::game::SideGame<'__sg> {
         Ok(PayloadAccepted::Queued)
     }
     /// Use the receiving endpoint, not a sender resolved from a later guest incarnation.
-    fn run_payload<E: ClientEvent>(&mut self, endpoint: Endpoint<E>, incoming: Incoming) {
+    fn run_payload<E: ClientEvent>(&mut self, endpoint: Endpoint<E>, mut incoming: Incoming) {
         if !incoming.epoch.active() {
             return;
         }
+        let body = incoming.take_body();
         let (failure, reason) = self.storage_scope(|game, _| {
             let mut context = MainContext {
                 game,
@@ -92,14 +93,14 @@ pub trait PayloadTransportGameExt1<'__sg>: crate::game::SideGame<'__sg> {
                 failure: None,
                 resource_lifetime: std::marker::PhantomData,
             };
-            let result = match incoming.body {
+            let result = match body {
                 Body::Payload(bytes) if incoming.receiver.thread == HandlerThread::Main => {
                     incoming.receiver.handle(bytes, &mut context)
                 }
                 Body::Payload(_) => Err(CallbackFailure::Refused(
                     "payload was not dispatched on its declared network executor".into(),
                 )),
-                Body::Work(work) => incoming.receiver.run_work(work.as_ref(), &mut context),
+                Body::Work(work) => incoming.receiver.run_work(work, &mut context),
             };
             let failure = match result {
                 Err(error @ (CallbackFailure::Panicked | CallbackFailure::Poisoned)) => Some(error),
@@ -262,10 +263,13 @@ impl<'__carrier, S: crate::game::SideGame<'__carrier>, E: ClientEvent> IPayloadC
         work: Arc<dyn PayloadWork>,
     ) -> Result<PayloadWorkStatus, PayloadContextError> {
         if !self.epoch.active() || self.disconnect.is_some() {
+            if let Err(error) = self.receiver.dispose_work(work) {
+                self.failure = Some(error);
+            }
             return Err(PayloadContextError::Disconnected);
         }
-        let receiver = self.receiver;
-        if let Err(error) = receiver.run_work(work.as_ref(), self) {
+        let receiver = self.receiver.clone();
+        if let Err(error) = receiver.run_work(work, self) {
             // Preserve the first panic even if the caller catches or overwrites its
             // error by attempting more work on the now-disabled callback.
             if !matches!(

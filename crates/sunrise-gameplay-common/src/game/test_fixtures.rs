@@ -105,6 +105,17 @@ pub fn child_test_name(name: &str) -> std::borrow::Cow<'_, str> {
 /// [`run_fresh_cases`] with up to `at_once` children running together, for a test that runs
 /// alone in its job: each child still has its own process and folders.
 pub fn run_fresh_cases_at_once(name: &str, flag: &str, cases: &[&str], at_once: usize) -> bool {
+    run_fresh_cases_with_env(name, flag, cases, at_once, &[])
+}
+
+/// Set extra variables only on the isolated test processes.
+pub fn run_fresh_cases_with_env(
+    name: &str,
+    flag: &str,
+    cases: &[&str],
+    at_once: usize,
+    env: &[(&str, &str)],
+) -> bool {
     if std::env::var_os(flag).is_some() {
         return false;
     }
@@ -120,17 +131,10 @@ pub fn run_fresh_cases_at_once(name: &str, flag: &str, cases: &[&str], at_once: 
         let _permit = acquire_fresh_child_permit();
         let scratch = target.join(format!("fresh-case-{case}"));
         std::fs::create_dir(&scratch).unwrap();
-        let mut command = std::process::Command::new(std::env::current_exe().unwrap());
+        let mut command = mod_api::testing::fresh_case_command(name.as_ref(), flag, case);
         command
-            .args([
-                "--ignored",
-                "--exact",
-                name.as_ref(),
-                "--nocapture",
-                "--test-threads=4",
-            ])
             .current_dir(&scratch)
-            .env(flag, case)
+            .envs(env.iter().copied())
             .env("SUNRISE_TEST_RESOURCES", &resources)
             .env("SUNRISE_NO_AUDIO", "1")
             .env("SUNRISE_LAUNCHER_NO_SELF_UPDATE", "1");
@@ -294,7 +298,10 @@ pub fn offline_profiles() -> Box<dyn sunrise_level::profile_lookup::ProfileResol
 
 pub fn resolve_parts<'g>(game: &impl super::SideGame<'g>) -> Result<(), String> {
     use super::tables::{GameItems as _, WorldTablesExt as _};
-    super::api_values::resolve_block_definitions(game.pack.assets.registry)?;
+    super::api_values::resolve_block_definitions_for_role(
+        game.pack.assets.registry,
+        game.options.execution_role,
+    )?;
     mod_api::__private::resolve_items(game.items().registry_order.iter().map(|id| &**id))
         .map_err(|errors| format!("fixture item keys refused: {errors:?}"))?;
     game.resolve_parts().map_err(|error| error.to_string())
@@ -316,15 +323,36 @@ pub fn prepare_game_boot(
     ),
 ) {
     super::native_hooks::install_client_hooks();
-    register_game_keys(fixture_block_names(root).iter().cloned(), register);
-    let context =
-        <mod_api::RegistrationContext as mod_api::__private::game::RegistrationContextNew>::new();
-    mod_api::__private::install_content_owners(context.mods().iter().flat_map(|package| {
-        let owner = package.served_by().unwrap_or_else(|| package.id());
-        package
-            .namespaces()
-            .map(move |namespace| (namespace, owner))
-    }));
+    let blocks = fixture_block_names(root);
+    register_game_keys(blocks.iter().cloned(), register);
+    if !mod_api::__private::content_owners_published() {
+        let context = <mod_api::RegistrationContext as
+            mod_api::__private::game::RegistrationContextNew>::new();
+        let owners: std::collections::HashMap<_, _> = context
+            .mods()
+            .iter()
+            .flat_map(|package| {
+                let owner = package.served_by().unwrap_or_else(|| package.id());
+                package.namespaces().map(move |namespace| (namespace, owner))
+            })
+            .collect();
+        mod_api::__private::install_content_owners(
+            blocks.iter().filter_map(|id| {
+                let (namespace, _) = id.split_once(':')?;
+                owners.get(namespace).map(|&owner| (id.as_str(), owner))
+            }),
+            [],
+            [],
+            sunrise_level::containers::mod_menu_types().iter().map(|menu| {
+                let owner = context
+                    .mods()
+                    .get(menu.owner)
+                    .and_then(|package| package.served_by())
+                    .unwrap_or(menu.owner);
+                (menu.id, owner)
+            }),
+        );
+    }
     assert!(
         mod_api::__private::content_owners_published(),
         "fixture content ownership must be published before resource loading"
@@ -361,11 +389,13 @@ pub fn register_game_keys(
         sunrise_game_data::potions::all_effects()
             .map(|def| sunrise_game_data::potions::namespaced(def.id)),
         |id| sunrise_game_data::potions::effect(id).map(|def| def.index),
+        |_| true,
     )
     .unwrap();
-    mod_api::__private::validate_effect_part_owners(|id| {
-        sunrise_game_data::potions::effect(id)?.owner
-    })
+    mod_api::__private::validate_effect_part_owners(
+        |id| sunrise_game_data::potions::effect(id)?.owner,
+        |_| true,
+    )
     .unwrap();
     if let Some(types) = sunrise_game_data::block_entity_types::current() {
         // Registration just replaced the mod snapshot, but the process-wide engine
@@ -383,4 +413,27 @@ pub fn register_game_keys(
         )
         .unwrap();
     }
+}
+
+/// Install an empty column only where a fixture needs existing bodies to be tracked.
+pub fn fixture_resident_column(world: &mut sunrise_level::world::World, key: (i32, i32)) {
+    if !world.chunks.contains_key(&key) {
+        let chunk = sunrise_level::chunk::Chunk::with_layout(key.0, key.1, world.layout());
+        world.chunks.insert(key, std::sync::Arc::new(chunk));
+    }
+}
+
+/// Collect only in fixtures that compare the whole result of an entity visit.
+pub fn collect_entity_visit(
+    enumerate: impl FnOnce(
+        &mut dyn FnMut(mod_api::EntityRef) -> core::ops::ControlFlow<()>,
+    ) -> Result<core::ops::ControlFlow<()>, mod_api::EntityReadError>,
+) -> Result<Vec<mod_api::EntityRef>, mod_api::EntityReadError> {
+    let mut entities = Vec::new();
+    let complete = enumerate(&mut |entity| {
+        entities.push(entity);
+        core::ops::ControlFlow::Continue(())
+    })?;
+    assert_eq!(complete, core::ops::ControlFlow::Continue(()));
+    Ok(entities)
 }

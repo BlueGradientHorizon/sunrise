@@ -9,12 +9,21 @@ use sunrise_mod_runtime::attachments::{AttachmentBatch, index::AttachmentIndex};
 pub(in crate::game) type Indexes = HashMap<Dim, Arc<Mutex<AttachmentIndex<AttachmentHolder>>>>;
 
 impl crate::game::CommonGame<'_> {
+    pub fn attachment_validate_write(
+        &self,
+        token: mod_api::AttachmentWriteToken,
+    ) -> Result<(), mod_api::AttachmentRowError> {
+        mod_api::__private::game::validate_attachment_write(
+            &token,
+            self.attachment_indexes.get(&self.dim).map(Arc::as_ref),
+        )
+    }
+
     pub fn attachment_query(
         &self,
-        namespace: &str,
-        name: &str,
+        key: &mod_api::AttachmentCaptureKey<'_>,
     ) -> Result<mod_api::AttachmentBatch, mod_api::AttachmentError> {
-        mod_api::__private::validate_attachment_use(namespace, name, false)?;
+        let (namespace, name) = key.id();
         let batch = self
             .attachment_indexes
             .get(&self.dim)

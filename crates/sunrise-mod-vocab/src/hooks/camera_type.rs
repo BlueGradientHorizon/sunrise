@@ -10,7 +10,6 @@ pub trait Hooks {
     /// at any other moment. Client-side. Beyond NeoForge: there is no counterpart. Diverges from
     /// upstream: new hook.
     #[hook(
-        target = "sunrise_client_gameplay::game::native_hooks::camera_type::ClientGame<'_>::native_camera_type_cycle",
         dispatch = "flat",
         side = "client",
         contract = "listen",

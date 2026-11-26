@@ -46,15 +46,10 @@ impl PackageContent {
         }
     }
 
-    pub(in crate::game) fn read_declaring(
-        &self,
-        manifest: &Manifest,
-        declared: &[String],
-    ) -> Result<Content, String> {
+    pub(in crate::game) fn read(&self, manifest: &Manifest) -> Result<Content, String> {
         Content::read_opened(
             self.opened.as_ref().map_err(|e| e.detail().to_owned())?,
             manifest,
-            declared,
         )
     }
 }
@@ -333,11 +328,10 @@ pub(in crate::game) mod tests {
                 cx.package_files("native_demo").err(),
                 Some(PackageFilesError::NotEnabled)
             );
-            assert_eq!(
-                mod_api::__private::owned_declaration_id("native_demo", "native_extra:gem")
-                    .unwrap(),
-                "native_extra:gem"
-            );
+            assert!(mod_api::__private::owns_namespace(
+                "native_demo",
+                "native_extra"
+            ));
             assert_eq!(
                 cx.package_files("missing").err(),
                 Some(PackageFilesError::NotEnabled)
@@ -380,7 +374,7 @@ pub(in crate::game) mod tests {
             admission
                 .package("demo", &demo)
                 .unwrap()
-                .read_declaring(&mods.selected[0].package.manifest, &[])
+                .read(&mods.selected[0].package.manifest)
                 .is_err()
         );
         let mut rows = [sunrise_mod_package::mod_list::Installed {
@@ -407,7 +401,6 @@ pub(in crate::game) mod tests {
         let content = read_contents(&[ContentRequest {
             path,
             manifest: &mods.selected[0].package.manifest,
-            declared: vec!["demo:registered_item".into()],
             admitted: mods.startup_admission().and_then(|a| a.package(id, path)),
         }])
         .pop()

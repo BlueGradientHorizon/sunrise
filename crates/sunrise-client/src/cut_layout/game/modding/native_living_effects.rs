@@ -4,11 +4,28 @@
 #[cfg(test)]
 pub(crate) mod tests {
     use super::super::native_entity_refs::tests::with_game;
-    use mod_api::{ActiveEffect, EntityRef, LivingRef, WorldEpoch};
+    use mod_api::{ActiveEffect, EntityReadError, EntityRef, Host, LivingRef, WorldEpoch};
+    use std::ops::ControlFlow;
     use sunrise_core::geometry::Vec3;
     use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
     use sunrise_gameplay_common::game::native_living_body::NativeLivingBodyGameExt2;
+    use sunrise_gameplay_common::game::test_fixtures::fixture_resident_column;
     use sunrise_sim::mobs::Mob;
+
+    pub(crate) fn collect_effects(
+        host: &dyn Host,
+        living: LivingRef,
+    ) -> Result<Vec<ActiveEffect>, EntityReadError> {
+        let mut effects = Vec::new();
+        assert_eq!(
+            living.visit_effects(host, &mut |effect| {
+                effects.push(effect);
+                ControlFlow::Continue(())
+            })?,
+            ControlFlow::Continue(())
+        );
+        Ok(effects)
+    }
 
     pub(crate) fn effect(id: &'static str, duration: i32, amplifier: i32) -> ActiveEffect {
         ActiveEffect::from(mod_api::__private::built::ActiveEffect {
@@ -24,7 +41,10 @@ pub(crate) mod tests {
     #[test]
     #[ignore = "daily"]
     fn active_effect_ids_are_load_owned_slots() {
+        use sunrise_client::entities::ArmorStand;
+
         with_game(|game| {
+            fixture_resident_column(&mut game.world, (0, 0));
             let kind = game
                 .res
                 .mob_types()
@@ -42,13 +62,40 @@ pub(crate) mod tests {
                 true,
                 true,
             );
+            let slowness = ActiveEffect::new(
+                mod_platform::__private::part_tests::effect_key("minecraft:slowness"),
+                90,
+                2,
+                true,
+                false,
+                true,
+            );
             assert!(game.living_add_effect(zombie, &speed));
-            let listed = game.living_effects(zombie).unwrap();
+            assert!(game.living_add_effect(zombie, &slowness));
+            let listed = collect_effects(game, zombie).unwrap();
+            assert_eq!(listed, [speed.clone(), slowness]);
             assert_eq!(
                 listed[0].id,
                 mod_platform::__private::part_tests::effect_key("speed")
             );
             assert_eq!(listed[0].id.id(game), Some("minecraft:speed"));
+
+            let mut first = Vec::new();
+            assert_eq!(
+                zombie.visit_effects(game, &mut |effect| {
+                    first.push(effect);
+                    ControlFlow::Break(())
+                }),
+                Ok(ControlFlow::Break(()))
+            );
+            assert_eq!(first, [speed]);
+
+            game.armor_stands.push(ArmorStand::new(22, Vec3::ZERO, 0.0));
+            let stand = game.living(game.entity(22).unwrap()).unwrap();
+            assert_eq!(
+                stand.visit_effects(game, &mut |_| panic!("unavailable effects visited")),
+                Err(EntityReadError::Unavailable)
+            );
         });
     }
 
@@ -59,6 +106,7 @@ pub(crate) mod tests {
     fn an_effects_icon_flag_is_written_and_read_for_players_and_mobs() {
         use sunrise_sim::motion::PlayerMotion;
         with_game(|game| {
+            fixture_resident_column(&mut game.world, (0, 0));
             let kind = game.res.mob_types().get("minecraft:cow").unwrap().clone();
             game.mobs.push(Mob::new(23, kind, Vec3::ZERO, 0.0));
             game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
@@ -72,7 +120,7 @@ pub(crate) mod tests {
                     assert!(game.living_add_effect(living, &given), "{id} {show_icon}");
                     let read = game.living_effect(living, key).unwrap();
                     assert_eq!((read.show_icon, read.visible), (show_icon, true), "{id}");
-                    assert_eq!(game.living_effects(living).unwrap(), vec![read]);
+                    assert_eq!(collect_effects(game, living).unwrap(), vec![read]);
                 }
             }
         });
@@ -191,6 +239,7 @@ pub(crate) mod tests {
     #[ignore = "daily"]
     fn a_mob_takes_effects_by_the_games_own_paths() {
         with_game(|game| {
+            fixture_resident_column(&mut game.world, (0, 0));
             for (id, kind) in [
                 (12, "minecraft:zombie"),
                 (13, "minecraft:spider"),
@@ -217,8 +266,8 @@ pub(crate) mod tests {
                 Some(effect("minecraft:speed", 200, 0))
             );
             assert_eq!(
-                game.living_effects(zombie),
-                Some(vec![effect("minecraft:speed", 200, 0)])
+                collect_effects(game, zombie),
+                Ok(vec![effect("minecraft:speed", 200, 0)])
             );
 
             // A re-add is `MobEffectInstance.update`: a weaker or shorter
@@ -244,7 +293,7 @@ pub(crate) mod tests {
             // canBeAffected: a spider shrugs off poison and an undead one
             // with it, a cow takes it.
             assert!(!game.living_add_effect(spider, &effect("minecraft:poison", 100, 0)));
-            assert_eq!(game.living_effects(spider), Some(Vec::new()));
+            assert_eq!(collect_effects(game, spider), Ok(Vec::new()));
             assert!(!game.living_add_effect(zombie, &effect("minecraft:poison", 100, 0)));
             assert!(game.living_add_effect(cow, &effect("minecraft:poison", 100, 0)));
 
@@ -272,7 +321,7 @@ pub(crate) mod tests {
 
             // remove_all_effects takes the rest, and says when there was none.
             assert!(game.living_remove_all_effects(zombie));
-            assert_eq!(game.living_effects(zombie), Some(Vec::new()));
+            assert_eq!(collect_effects(game, zombie), Ok(Vec::new()));
             assert!(!game.living_potion_affected(
                 zombie,
                 mod_platform::__private::part_tests::effect_key("minecraft:speed")
@@ -290,7 +339,10 @@ pub(crate) mod tests {
                 ),
                 None
             );
-            assert_eq!(game.living_effects(stale), None);
+            assert_eq!(
+                stale.visit_effects(game, &mut |_| panic!("stale effects visited")),
+                Err(EntityReadError::Stale)
+            );
             assert!(!game.living_potion_affected(
                 stale,
                 mod_platform::__private::part_tests::effect_key("minecraft:speed")

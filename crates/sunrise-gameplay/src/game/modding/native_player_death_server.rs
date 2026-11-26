@@ -11,18 +11,12 @@ impl ServerGame<'_> {
         player: PlayerRef,
         location: Option<GlobalPos>,
     ) -> bool {
-        if self.player(player.uuid()) != Some(player) {
-            return false;
-        }
-        let stored = location.map(|l| {
-            let p = l.pos();
-            (l.dimension().to_string(), [p.x, p.y, p.z])
-        });
-        let mut done = false;
-        self.native_as_player(player.uuid(), |game| {
-            game.level.last_death = stored;
-            done = true;
-        }) && done
+        self.native_as_resident_player(player, |game| {
+            game.level.last_death = location.map(|l| {
+                let p = l.pos();
+                (l.dimension().to_string(), [p.x, p.y, p.z])
+            });
+        })
     }
 }
 

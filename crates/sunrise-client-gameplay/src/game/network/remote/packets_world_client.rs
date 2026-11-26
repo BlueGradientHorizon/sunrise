@@ -1,4 +1,5 @@
 use super::*;
+use sunrise_core::geometry::border::BorderError;
 
 #[cfg(feature = "client")]
 impl crate::game::ClientGame<'_> {
@@ -6,6 +7,7 @@ impl crate::game::ClientGame<'_> {
     pub(in crate::game) fn apply_block_destruction_packet(&mut self, p: play::BlockDestruction) {
         // ClientPacketListener.handleBlockDestruction: another player's crack.
         self.destroy_block_progress(p.id, p.pos, i32::from(p.progress));
+        self.native_client_break_progress(p.id, p.pos, i32::from(p.progress));
     }
     /// `C::BlockEvent`: its arms of `apply_packet`, guard and order kept.
     pub(in crate::game::client_side) fn apply_block_event_packet(
@@ -133,18 +135,28 @@ impl crate::game::ClientGame<'_> {
             _ => {}
         }
     }
-    /// `C::InitializeBorder`: its arms of `apply_packet`, guard and order kept.
-    pub(in crate::game) fn apply_initialize_border_packet(&mut self, p: play::InitializeBorder) {
-        let b = &mut self.common.border;
-        b.set_center([p.center_x, p.center_z]);
+    /// `ClientPacketListener.handleInitializeBorder`: install the level's incoming geometry
+    /// and warnings, without running server listeners.
+    pub(in crate::game) fn apply_initialize_border_packet(
+        &mut self,
+        p: play::InitializeBorder,
+    ) -> std::result::Result<(), BorderError> {
+        let mut border = sunrise_level::worldborder::WorldBorder::default();
+        // Validate the incoming extent against the incoming center and clip limit,
+        // not against any part of the extent this packet replaces.
+        border.set_absolute_max_size(p.absolute_max_size)?;
+        border.set_center([p.center_x, p.center_z])?;
         if p.lerp_time > 0 {
-            b.lerp_between(p.old_size, p.new_size, p.lerp_time);
+            border.lerp_between(p.old_size, p.new_size, p.lerp_time)?;
         } else {
-            b.set_size(p.new_size);
+            border.set_size(p.new_size)?;
         }
-        b.set_absolute_max_size(p.absolute_max_size);
-        b.warning_distance = p.warning_blocks;
-        b.warning_time = p.warning_time;
+        border.warning_distance = p.warning_blocks;
+        border.warning_time = p.warning_time;
+        border.damage_per_block = self.common.border.damage_per_block;
+        border.safe_zone = self.common.border.safe_zone;
+        self.common.border = border;
+        Ok(())
     }
     /// `C::SectionBlocksUpdate`: apply verified states in packet order.
     pub(in crate::game) fn apply_section_blocks_update_packet(
@@ -155,15 +167,6 @@ impl crate::game::ClientGame<'_> {
         for (pos, state) in super::super::remote_chunks::section_blocks(p) {
             self.server_block(pos, state, groups.remove(&pos));
         }
-    }
-    /// `C::SetBorderLerpSize`: its arms of `apply_packet`, guard and order kept.
-    pub(in crate::game) fn apply_set_border_lerp_size_packet(
-        &mut self,
-        p: play::SetBorderLerpSize,
-    ) {
-        self.common
-            .border
-            .lerp_between(p.old_size, p.new_size, p.lerp_time);
     }
     /// `ClientPacketListener.handleSetSpawn` / `ClientLevel.setRespawnData`: store the
     /// border-adjusted spawn position with the packet's dimension for the compass.

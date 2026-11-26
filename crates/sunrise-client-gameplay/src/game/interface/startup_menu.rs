@@ -14,7 +14,7 @@ use sunrise_client::{
     widgets::{Kind, Target},
     window::{GuiSize, PointerProjection, PointerSample, PointerSpace},
 };
-use sunrise_gameplay_common::game::pack_discovery::discover;
+use sunrise_gameplay_common::game::{api_values::game_rule_registry, pack_discovery::discover};
 use winit::{event::KeyEvent, keyboard::ModifiersState};
 
 #[derive(Default)]
@@ -61,8 +61,6 @@ pub struct StartupMenu {
     pub reload_packs: bool,
     /// A committed client pack selection, independent of other reload requests.
     pub pack_selection_revision: u64,
-    /// Browse mods' worker (`mod_browser`).
-    mod_jobs: super::mod_browser::Jobs,
     perf: sunrise_client::telemetry::Session,
 }
 
@@ -87,7 +85,7 @@ impl StartupMenu {
                 .map(|folder| PendingWorldEntry::Local {
                     folder: folder.clone(),
                     name: None,
-                    seed: Some(options.seed),
+                    seed: options.seed,
                     creative: options.creative,
                     create: None,
                 })
@@ -105,7 +103,7 @@ impl StartupMenu {
         Ok(menu)
     }
 
-    pub(in crate::game::client_side) fn set_root(
+    pub fn set_root(
         &mut self,
         root: PathBuf,
         settings: &Settings,
@@ -127,6 +125,9 @@ impl StartupMenu {
             );
             title.last_server = settings.file.string("lastServer");
             title.skip_multiplayer_warning = settings.file.bool("skipMultiplayerWarning");
+            // The mods' parts are installed before this menu opens, so Create New World's
+            // Game Rules page lists their rules from the first frame.
+            title.set_rule_registry(Arc::new(game_rule_registry()));
             // Gui.addInitialScreens: the accessibility onboarding comes first.
             if settings.file.bool("onboardAccessibility") {
                 title.start_onboarding();
@@ -138,8 +139,8 @@ impl StartupMenu {
         }
     }
 
-    pub(in crate::game::client_side) fn handoff(&mut self, game: &mut crate::game::ClientGame<'_>) {
-        let registry = Arc::new(sunrise_gameplay_common::game::api_values::game_rule_registry());
+    pub fn handoff(&mut self, game: &mut crate::game::ClientGame<'_>) {
+        let registry = Arc::new(game_rule_registry());
         if let Some(PendingWorldEntry::Local {
             create: Some(options),
             ..
@@ -173,7 +174,6 @@ impl StartupMenu {
         }
         game.client.pending_entry.0 = self.pending.take();
         game.client.perf = std::mem::take(&mut self.perf);
-        game.client.mod_jobs.0 = std::mem::take(&mut self.mod_jobs);
         game.client.cursor = self.cursor;
         if self.key_focus.is_none() {
             game.client.window_cursor = Some(self.pointer);
@@ -430,6 +430,7 @@ pub(in crate::game::client_side) fn spawn_loader(
     vanilla_root: &std::path::Path,
     started: Instant,
     progress: &Progress,
+    max_atlas_size: &Arc<AtomicU32>,
 ) -> Result<(Receiver<LoaderMsg>, JoinHandle<()>)> {
     let (sender, receiver) = std::sync::mpsc::channel();
     let settings = settings.clone();
@@ -438,6 +439,7 @@ pub(in crate::game::client_side) fn spawn_loader(
     mod_sources.capture_code_switches(&settings.mods.disabled);
     let world = launch_world(options).map(str::to_owned);
     let progress = progress.clone();
+    let max_atlas_size = max_atlas_size.clone();
     let handle = std::thread::Builder::new()
         .stack_size(sunrise_threads::GAME_THREAD_STACK_BYTES)
         .name("resource-loader".into())
@@ -445,7 +447,7 @@ pub(in crate::game::client_side) fn spawn_loader(
             let result =
                 packs::startup_root(&vanilla_root, &settings.resource_packs, &[], &mod_sources)
                     .and_then(|roots| {
-                        load_resources_for_mods(
+                        load_resources_for_mods_with_limit(
                             roots,
                             data_packs_with_icons(&mod_sources),
                             world.as_deref(),
@@ -455,8 +457,13 @@ pub(in crate::game::client_side) fn spawn_loader(
                             true,
                             load_role,
                             &progress,
-                            &mut |gui, root| {
-                                let _ = sender.send(LoaderMsg::Ui(gui, root.to_path_buf()));
+                            &max_atlas_size,
+                            &mut |gui, root, source| {
+                                let _ = sender.send(LoaderMsg::Ui(
+                                    gui,
+                                    root.to_path_buf(),
+                                    source.clone(),
+                                ));
                             },
                             &mut || {
                                 // The menu owns live settings; do not save the worker's snapshot.
@@ -485,7 +492,7 @@ impl Loading {
         if self.loaded.is_none() && !self.delivered {
             loop {
                 match self.receiver.try_recv() {
-                    Ok(LoaderMsg::Ui(gui, root)) => self.set_ui(gui, root),
+                    Ok(LoaderMsg::Ui(gui, root, source)) => self.set_ui(gui, root, source),
                     Ok(LoaderMsg::ClearPackSelection { revision, ack }) => {
                         if revision == self.menu.pack_selection_revision {
                             packs::clear_selection(&mut self.settings);
@@ -514,24 +521,7 @@ impl Loading {
                 }
             }
         }
-        self.drive_menu_mod_browser();
         self.restart_menu_resources()
-    }
-    /// The startup menu's Browse mods, as `Game::drive_mod_browser`.
-    fn drive_menu_mod_browser(&mut self) {
-        let menu = &mut self.menu;
-        let (installed, changed) = menu.mod_jobs.poll(
-            &mut menu.options.mod_browser,
-            &mut self.settings.mods,
-            false,
-        );
-        if changed {
-            menu.options.layout_changed();
-        }
-        if installed {
-            self.settings
-                .save(&sunrise_gameplay_common::game::options_path());
-        }
     }
     pub fn apply_menu_settings(&mut self) {
         if let Some(renderer) = &mut self.renderer {
@@ -734,19 +724,6 @@ impl Loading {
                     let _ = std::fs::create_dir_all(&dir);
                     packs::open_folder(&dir);
                 }
-                Event::BrowseMods => {
-                    let ui = &mut self.menu.options.mod_browser;
-                    self.menu
-                        .mod_jobs
-                        .browse(ui, sunrise_gameplay_common::game::game_dir());
-                }
-                Event::InstallMod(id) => {
-                    let ui = &mut self.menu.options.mod_browser;
-                    self.menu
-                        .mod_jobs
-                        .install(ui, sunrise_gameplay_common::game::game_dir(), id);
-                }
-                Event::OpenModPage(url) => packs::open_uri(&url),
                 // The startup menu has no screen stack for ConfirmLinkScreen; the link opens
                 // directly, as the menu's other links do.
                 Event::OpenLink(url) => packs::open_uri(&url),
@@ -755,14 +732,6 @@ impl Loading {
                     self.menu.clipboard.set(&text);
                 }
                 Event::ListShaderPacks => {
-                    let (key, _) = sunrise_client::shader_pack_list::resolve(
-                        &crate::game::ClientGame::shader_packs_dir(),
-                        &self.settings.sunrise.shader_pack,
-                    );
-                    if key != self.settings.sunrise.shader_pack {
-                        self.settings.sunrise.shader_pack = key;
-                        self.save_menu_settings();
-                    }
                     self.settings.shader_packs = sunrise_client::shader_pack_list::scan(
                         &crate::game::ClientGame::shader_packs_dir(),
                     );
@@ -778,11 +747,6 @@ impl Loading {
                 Event::ShaderOptions => {
                     if let Some(options) = self.settings.shader_options.take() {
                         super::shader_packs::write_shader_options(&options);
-                    }
-                }
-                Event::NativePackOptions(i) => {
-                    if let Some(pack) = self.settings.shader_packs.get(i) {
-                        pack.save_values(&crate::game::ClientGame::shader_packs_dir());
                     }
                 }
                 Event::OpenShaderPackFolder => {
@@ -813,9 +777,12 @@ impl Loading {
                 Event::AccessibilityHelp => {
                     super::packs::open_uri(super::options::ACCESSIBILITY_HELP_LINK)
                 }
-                // Mods' settings pages open only in a running game.
+                // Mods' settings pages and config screens open only in a running game.
                 // The HUD editor needs a world: its button is inactive here.
-                Event::NativeSettings(_) | Event::NativeSetting(..) | Event::HudEditor => {}
+                Event::NativeSettings(_)
+                | Event::NativeSetting(..)
+                | Event::ModConfigScreen(_)
+                | Event::HudEditor => {}
                 // The startup menu runs before the game opens a control socket,
                 // and before its sound engine (no clicks, no volume previews,
                 // and no music tracks to list or play).
@@ -1572,6 +1539,7 @@ impl Loading {
             &self.vanilla_root,
             self.started,
             &self.progress,
+            &self.max_atlas_size,
         )?;
         self.receiver = receiver;
         self.handle = Some(handle);

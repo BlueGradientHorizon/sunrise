@@ -9,7 +9,6 @@ pub trait Hooks {
     /// NeoForge's `dropAllDeathLoot`, it fires after the loot rolls and just
     /// before `living_drops` hears the item list. Server-side.
     #[hook(
-        target = "sunrise_gameplay::game::native_hooks::living_experience_drop::ServerGame<'_>::native_living_experience_drop",
         dispatch = "flat",
         side = "server",
         contract = "cancel",

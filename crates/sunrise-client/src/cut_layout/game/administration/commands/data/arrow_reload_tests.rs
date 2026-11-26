@@ -5,7 +5,7 @@ use crate::game::resource_load::load_resources;
 use crate::settings::Settings;
 use sunrise_core::nbt::Tag;
 use sunrise_gameplay_common::game::commands_common::Target;
-use sunrise_sim::arrows::Pickup;
+use sunrise_sim::entities::arrows::Pickup;
 use sunrise_sim::projectiles::ProjectileKind;
 use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress};
 

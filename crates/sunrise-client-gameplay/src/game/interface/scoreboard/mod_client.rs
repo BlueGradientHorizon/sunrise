@@ -74,14 +74,10 @@ impl crate::game::ClientGame<'_> {
             return;
         }
         // The faces of the players the list shows.
-        let faces: std::collections::HashSet<u128> = self
-            .client
-            .tab_list
-            .0
-            .displayed_ids(&players, &self.common.score.board)
-            .iter()
-            .copied()
-            .collect();
+        let faces: std::collections::HashSet<u128> =
+            tab_list::sorted_players(&players, &self.common.score.board)
+                .map(|player| player.uuid)
+                .collect();
         for p in players.iter_mut().filter(|p| faces.contains(&p.uuid)) {
             p.skin = self.face_skin(p.uuid, &p.skin);
         }

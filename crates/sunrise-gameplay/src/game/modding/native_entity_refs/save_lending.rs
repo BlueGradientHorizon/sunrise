@@ -12,4 +12,18 @@ impl crate::game::ServerGame<'_> {
         self.server.held_out.pop();
         result
     }
+
+    /// Let a shared callback read the current stored row, without letting a later
+    /// mutable callback touch the entity before its tick finishes storing it back.
+    pub fn with_held_entity_read<R>(&mut self, id: u32, action: impl FnOnce(&Self) -> R) -> R {
+        let held = self.server.held_out.last() == Some(&id);
+        if held {
+            self.server.held_out.pop();
+        }
+        let result = action(self);
+        if held {
+            self.server.held_out.push(id);
+        }
+        result
+    }
 }

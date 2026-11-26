@@ -6,6 +6,7 @@ use sunrise_client::actions::Action;
 use sunrise_core::geometry::{Aabb, Vec3};
 use sunrise_core::position::BlockPos;
 use sunrise_gameplay_common::game::creatures::world_view::MobWorldSideParams;
+use sunrise_gameplay_common::game::native_block_tables::BlockTables;
 use sunrise_gameplay_common::game::side_ops::{
     modapi_modding::ModapiModdingSideGameExt as _, world::WorldSideGameExt as _,
 };
@@ -54,6 +55,14 @@ impl SideLevel for crate::game::ClientGame<'_> {
     ) -> Option<Compound> {
         client_game_side!(self, self.side_game_side_meta())
             .block_entity_data(world, registry, entity)
+    }
+
+    fn world_epoch(&self) -> Option<mod_api::WorldEpoch> {
+        self.common.native_lifecycle.epoch()
+    }
+
+    fn block_states(&self) -> Option<mod_api::BlockStates<'_>> {
+        Some(mod_api::BlockStates::of(self))
     }
 }
 
@@ -171,6 +180,7 @@ impl crate::game::ClientGame<'_> {
             dim: self.common.dim,
             level,
             facts: self.common.res.facts(),
+            tables: BlockTables::new(&self.common.res, &self.common.pack),
             biomes: match &self.common.world_biomes {
                 Some(b) => b,
                 None => self.common.res.biomes(),

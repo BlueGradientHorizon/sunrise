@@ -8,12 +8,11 @@ from pathlib import Path
 import random
 import subprocess
 
-try:
-    from . import lab, test_rust_parity as base, test_model_baking_parity as baking
-except ImportError:
-    import lab
-    import test_rust_parity as base
-    import test_model_baking_parity as baking
+import sys
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+from tools import lab, test_rust_parity as base, test_model_baking_parity as baking
 
 NUMBERS = ['null', 'true', 'false', '0', '1', '-1', '16', '16.0', '16.7', '-0.9', '0.5', '1e1', '1E2', '1e100',
            '2147483647', '2147483648', '-2147483648', '4294967296', '4294967312', '4294967297.5',

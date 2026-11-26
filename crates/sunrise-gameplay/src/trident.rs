@@ -65,7 +65,7 @@ mod tests {
     /// up never counts.
     #[test]
     fn a_stuck_trident_is_discarded_when_life_reaches_1200() {
-        use sunrise_sim::arrows::Pickup;
+        use sunrise_sim::entities::arrows::Pickup;
         let mut t = ThrownTrident::remote(1, Vec3::ZERO, 0.0, 0.0);
         t.life = 1198;
         assert!(!t.tick_despawn());

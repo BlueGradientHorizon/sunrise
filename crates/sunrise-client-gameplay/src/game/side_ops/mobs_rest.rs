@@ -31,6 +31,9 @@ impl SideOps for crate::game::client_side::ClientState {
     fn side_move_guest_entity_id(&self, conn: u32) -> Option<u32> {
         None
     }
+    fn side_boat_client_controlled(game: &Self::Game<'_>, id: u32) -> bool {
+        game.controls_boat(id)
+    }
     fn side_remote_general_rotation(&self, id: u32) -> Option<[f32; 2]> {
         self.remote
             .as_ref()?
@@ -118,8 +121,23 @@ impl SideOps for crate::game::client_side::ClientState {
         game: &mut Self::Game<'_>,
         item: &mut ItemEntity,
         client: bool,
+        sources: sunrise_gameplay_common::game::entity_common::InsideSources<'_>,
     ) -> bool {
-        game.client_item_post_move_contacts(item, client)
+        game.client_item_post_move_contacts(item, client, sources)
+    }
+    fn side_hurt_lent_item_entity(
+        _game: &mut Self::Game<'_>,
+        _item: &mut ItemEntity,
+        _amount: f32,
+        _damage_type: &str,
+    ) {}
+    fn side_queue_boat_contact_hurts(
+        _game: &mut Self::Game<'_>,
+        _id: u32,
+        _hurts: Vec<(&'static str, f32)>,
+    ) {}
+    fn side_apply_boat_contact_hurts(_game: &mut Self::Game<'_>, _id: u32) -> bool {
+        false
     }
     fn side_boat_collision_root(game: &Self::Game<'_>, id: u32, target: Target) -> Option<u32> {
         game.client_boat_collision_root(id, target)

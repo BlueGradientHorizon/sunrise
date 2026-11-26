@@ -1,8 +1,25 @@
 use super::*;
 
+fn snap_use_item_rotation(yaw: &mut f32, pitch: &mut f32, target_yaw: f32, target_pitch: f32) {
+    let target_yaw = sunrise_gameplay_common::game::remote::wrap_degrees(target_yaw);
+    let target_pitch = sunrise_gameplay_common::game::remote::wrap_degrees(target_pitch);
+    if target_pitch != *pitch || target_yaw != *yaw {
+        let next_yaw = target_yaw % 360.0;
+        if next_yaw.is_finite() {
+            *yaw = next_yaw;
+        }
+        if target_pitch.is_finite() {
+            let next_pitch = target_pitch.clamp(-90.0, 90.0) % 360.0;
+            if next_pitch.is_finite() {
+                *pitch = (next_pitch % 360.0).clamp(-90.0, 90.0);
+            }
+        }
+    }
+}
+
 impl crate::game::ServerGame<'_> {
     pub(in crate::game) fn guest_drop_carried(&mut self, gi: usize) {
-        let carried = self.with_own_record(gi, |host, _| {
+        let carried = self.with_own_record(gi, |host, _, _| {
             let conn = host.hub.guests[gi].conn;
             let mut stacks = host.hub.take_closed_menu_cursors(conn).collect::<Vec<_>>();
             let (to_return, to_drop) = host.hub.take_closed_processing_inputs(conn);
@@ -158,6 +175,16 @@ impl crate::game::ServerGame<'_> {
         if self.guest_attack_stops(gi, id) {
             return Ok(false);
         }
+        Ok(self.guest_player_attack(conn, gi, id, true)? == Struck::Landed)
+    }
+
+    pub(in crate::game) fn guest_player_attack(
+        &mut self,
+        conn: u32,
+        gi: usize,
+        id: i32,
+        packet: bool,
+    ) -> Result<Struck, ActionRefused> {
         // Native mods, where Player.attack starts: the global `attack_entity`,
         // then the held item's `on_left_click_entity` Part. A canceled blow
         // does nothing (game/native_hooks.rs).
@@ -189,40 +216,44 @@ impl crate::game::ServerGame<'_> {
                 canceled || g.native_left_click_entity_event(id, &kind)
             }) == Ok(true)
         {
-            return Ok(false);
+            return Ok(Struck::Stopped);
+        }
+        if self.cannot_attack(id) {
+            return Ok(Struck::Stopped);
         }
         if let Some(victim) = self.pvp_victim(conn, id) {
-            if let Ok(Some(strike)) = self.as_guest_at(gi, conn, |g| g.pvp_strike(id as u32))
-                && self.pvp_land(victim, &strike)
-            {
-                let on_ground = self.pvp_victim_on_ground(victim);
-                let stops_sprint = strike.stops_sprint();
-                let sent = self
-                    .as_guest_at(gi, conn, |g| {
-                        g.remember_player_target(Some(id as u32));
-                        g.pvp_hit_after(on_ground, stops_sprint)
-                    })
-                    .ok()
-                    .flatten();
-                self.send_guest_motion(conn, sent);
-                return Ok(true);
-            }
-            return Ok(false);
+            let Ok(Some(strike)) = self.as_guest_at(gi, conn, |g| g.pvp_strike(id as u32)) else {
+                return Ok(Struck::Stopped);
+            };
+            let Some(stops_sprint) = self.pvp_land(victim, &strike) else {
+                return Ok(Struck::Spent);
+            };
+            let on_ground = self.pvp_victim_on_ground(victim);
+            let sent = self
+                .as_guest_at(gi, conn, |g| {
+                    g.remember_player_target(Some(id as u32));
+                    g.pvp_hit_after(id as u32, on_ground, stops_sprint, &strike)
+                })
+                .ok()
+                .flatten();
+            self.send_guest_motion(conn, sent);
+            return Ok(Struck::Landed);
         }
         // A ghast's fireball or a wind charge: turned along the guest's own
         // view (ServerGamePacketListenerImpl.handleInteract, then
         // Player.attack's AIM_DEFLECT).
-        if let Some(i) = self.common.creatures.projectiles.iter().position(|p| {
-            p.id != 0
-                && p.id as i32 == id
-                && sunrise_gameplay_common::game::deflect_common::attackable(p)
-        }) {
-            return Ok(self.as_guest_at(gi, conn, |g| {
-                if !g.within_interaction_range(i) {
+        if let Some(i) = self
+            .creatures
+            .projectiles
+            .iter()
+            .position(|p| p.id != 0 && p.id as i32 == id && sunrise_gameplay_common::game::deflect_common::attackable(p))
+        {
+            let deflected = self.as_guest_at(gi, conn, |g| {
+                if packet && !g.within_interaction_range(i) {
                     return false;
                 }
                 if matches!(
-                    g.creatures.projectiles[i].kind,
+                    g.common.creatures.projectiles[i].kind,
                     sunrise_sim::projectiles::ProjectileKind::ShulkerBullet { .. }
                 ) {
                     g.hit_shulker_bullet(i);
@@ -230,37 +261,37 @@ impl crate::game::ServerGame<'_> {
                     g.deflect(i);
                 }
                 true
-            }) == Ok(true));
+            }) == Ok(true);
+            return Ok(if deflected {
+                Struck::Landed
+            } else {
+                Struck::Stopped
+            });
         }
         if let Some(index) = self
-            .common
             .mobs
             .iter()
             .position(|m| m.id as i32 == id && m.alive())
-            .filter(|_| {
-                self.common
-                    .dragon
-                    .as_ref()
-                    .is_none_or(|d| d.id as i32 != id)
-            })
+            .filter(|_| self.common.dragon.as_ref().is_none_or(|d| d.id as i32 != id))
         {
             let Some(host) = self.server.lan.as_ref() else {
                 return Err(ActionRefused::Stale);
             };
             if host.hub.guests[gi].vehicle == Some(self.common.mobs[index].id) {
-                return Ok(false);
+                return Ok(Struck::Stopped);
             }
             // A mace's smash sets the attacker's velocity and sends it at once, before the
             // Wind Burst's push (MaceItem.hurtEnemy, then the post-attack effects).
             let sent = self
                 .as_guest_at(gi, conn, |g| {
                     let marked = g
+                        .common
                         .player
                         .as_mut()
                         .is_some_and(|p| std::mem::take(&mut p.health.sync_velocity));
                     g.attack_mob(index);
                     g.swing_arm();
-                    let p = g.player.as_mut()?;
+                    let p = g.common.player.as_mut()?;
                     let sent = std::mem::replace(&mut p.health.sync_velocity, marked);
                     sent.then_some(p.velocity)
                 })
@@ -274,40 +305,24 @@ impl crate::game::ServerGame<'_> {
             {
                 host.mob_players.insert(id, conn);
             }
-            return Ok(true);
+            return Ok(Struck::Landed);
         }
         let Some(host) = self.server.lan.as_ref() else {
             return Err(ActionRefused::Stale);
         };
         let (old_yaw, old_pitch) = (host.hub.guests[gi].yaw, host.hub.guests[gi].pitch);
-        let boat = self
-            .common
-            .boats
-            .iter()
-            .position(|boat| boat.id as i32 == id);
+        let boat = self.common.boats.iter().position(|boat| boat.id as i32 == id);
         let tnt = self
             .common
             .tnts
             .iter()
             .find(|tnt| tnt.id as i32 == id)
             .map(|tnt| tnt.id);
-        let falling = self
-            .common
-            .falling
-            .iter()
-            .any(|block| block.id as i32 == id);
-        if falling {
-            // FallingBlockEntity.isAttackable is false: Player.attack exits at cannotAttack.
-            return Ok(false);
-        }
-        let general = match u32::try_from(id)
-            .ok()
-            .and_then(|id| self.common.general_row(id))
-        {
+        let general = match u32::try_from(id).ok().and_then(|id| self.common.general_row(id)) {
             Some(row) => {
                 let catalog = sunrise_gameplay_common::game::general::general_type_catalog();
                 if !catalog.pickable(row.type_slot) {
-                    return Ok(false);
+                    return Ok(Struck::Stopped);
                 }
                 Some((row.id, catalog.key(row.type_slot)))
             }
@@ -327,6 +342,7 @@ impl crate::game::ServerGame<'_> {
         let sent = self
             .as_guest_at(gi, conn, |g| {
                 let marked = g
+                    .common
                     .player
                     .as_mut()
                     .is_some_and(|p| std::mem::take(&mut p.health.sync_velocity));
@@ -340,7 +356,7 @@ impl crate::game::ServerGame<'_> {
                 } else {
                     g.attack();
                 }
-                let p = g.player.as_mut()?;
+                let p = g.common.player.as_mut()?;
                 let sent = std::mem::replace(&mut p.health.sync_velocity, marked);
                 sent.then_some(p.velocity)
             })
@@ -349,7 +365,7 @@ impl crate::game::ServerGame<'_> {
         self.send_guest_motion(conn, sent);
         if tnt.is_some() || general.is_some() {
             // Primed TNT and plain rows refuse damage, even though the attack spent its charge.
-            return Ok(false);
+            return Ok(Struck::Spent);
         }
         // The mob now answers to this guest (game/network/lan_mobs.rs).
         let Some(host) = self.server.lan.as_mut() else {
@@ -368,7 +384,7 @@ impl crate::game::ServerGame<'_> {
             let value = old_pitch;
             host.hub.guests.update(gi, |guest| guest.pitch = value);
         }
-        Ok(true)
+        Ok(Struck::Landed)
     }
     /// `ServerGamePacketListenerImpl.handleInteract`'s entity use for a guest or the persistent fake: the border and
     /// interaction range, then that entity and hand only, never an air-use fallback.
@@ -453,7 +469,7 @@ impl crate::game::ServerGame<'_> {
         let players = self.stab_players_for(conn);
         let sound = self
             .guest_hit_by(conn, |g| {
-                if g.cannot_attack_with_item(g.server.attack_ticks as i32, 5) {
+                if g.cannot_attack_with_item(g.server.attack_ticks, 5) {
                     None
                 } else {
                     let outer = std::mem::replace(&mut g.server.stab_players, players);
@@ -564,25 +580,9 @@ impl crate::game::ServerGame<'_> {
         }
         let (spectator, spawn_egg) = (g.spectator(), held.item.ends_with("_spawn_egg"));
         if let Some((yaw, pitch)) = rotation {
-            use sunrise_sim::lan::hub::wrap_degrees;
-            let (yaw, pitch) = (wrap_degrees(yaw), wrap_degrees(pitch));
-            if yaw != g.yaw || pitch != g.pitch {
-                self.server
-                    .lan
-                    .as_mut()
-                    .unwrap()
-                    .hub
-                    .guests
-                    .update(gi, |g| {
-                        // Entity.setYRot/setXRot discard non-finite values independently.
-                        if yaw.is_finite() {
-                            g.yaw = yaw;
-                        }
-                        if pitch.is_finite() {
-                            g.pitch = pitch.clamp(-90.0, 90.0);
-                        }
-                    });
-            }
+            self.server.lan.as_mut().unwrap().hub.guests.update(gi, |g| {
+                snap_use_item_rotation(&mut g.yaw, &mut g.pitch, yaw, pitch);
+            });
         }
         // ServerPlayerGameMode.useItem returns PASS for spectators, after the turn.
         if spectator {
@@ -604,7 +604,7 @@ impl crate::game::ServerGame<'_> {
                 // A horn's sound, inline instruments included.
                 let horn = g.with_hand(hand, |g| {
                     let held = g.held()?;
-                    g.res.items().instrument(held).map(|i| i.sound)
+                    g.items().instrument(held).map(|i| i.sound)
                 });
                 let saved = g.server.guest_use;
                 g.server.guest_use = Some(GuestUse::Item(hand));
@@ -655,7 +655,12 @@ impl crate::game::ServerGame<'_> {
         };
         // handleUseItemOn: within reach, then the hit point within
         // a block of the block's centre (logged when it isn't).
-        if !host.hub.guests.update(gi, |g| g.may_reach_block(hit.pos)) {
+        let context = &host.hub.loop_context;
+        if !host
+            .hub
+            .guests
+            .update(gi, |g| g.reaches_block(context, hit.pos))
+        {
             return Err(ActionRefused::OutOfReach);
         }
         let inside = (0..3).all(|k| (hit.point[k] - f64::from(hit.pos[k]) - 0.5).abs() < 1.0000001);
@@ -899,3 +904,109 @@ use sunrise_gameplay_common::game::dragon_common::DragonCommonGameExt1 as _;
 use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
 
 use sunrise_gameplay_common::game::spear::SpearGameExt1 as _;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(in crate::game) enum Struck {
+    /// It ended before `onAttack`: a mod canceled it, or `cannotAttack`.
+    Stopped,
+    /// It spent the attack, but nothing took the blow.
+    Spent,
+    /// The blow landed.
+    Landed,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn use_item_rotation_matches_vanilla_wrap_and_abs_snap() {
+        let (mut yaw, mut pitch) = (15.0_f32, 25.0_f32);
+        snap_use_item_rotation(&mut yaw, &mut pitch, 405.0, 120.0);
+        assert_eq!((yaw, pitch), (45.0, 90.0));
+
+        // Non-finite yaw preserves previous yaw while still snapping finite pitch.
+        snap_use_item_rotation(&mut yaw, &mut pitch, f32::NAN, -120.0);
+        assert_eq!((yaw, pitch), (45.0, -90.0));
+
+        // Non-finite pitch preserves previous pitch while still wrapping finite yaw.
+        snap_use_item_rotation(&mut yaw, &mut pitch, -540.0, f32::INFINITY);
+        assert_eq!((yaw, pitch), (-180.0, -90.0));
+
+        // Both non-finite preserve both previous axes.
+        snap_use_item_rotation(&mut yaw, &mut pitch, f32::NEG_INFINITY, f32::NAN);
+        assert_eq!((yaw, pitch), (-180.0, -90.0));
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn use_item_non_finite_angles_preserve_previous_axis_and_wrap_finite_ones() {
+        use crate::game::lan::world_spawn_sync_tests::host_for;
+        use sunrise_gameplay_common::game::test_fixtures::run_fresh_cases;
+        use mod_api::PlayPacketRequest;
+        use sunrise_sim::mod_packet_builders::encode_play_packet;
+        use sunrise_protocol::{ids::play::serverbound as sb, packets::play::Serverbound};
+
+        if run_fresh_cases(
+            concat!(
+                module_path!(),
+                "::use_item_non_finite_angles_preserve_previous_axis_and_wrap_finite_ones"
+            ),
+            "SUNRISE_USE_ITEM_ROTATION_CHILD",
+            &["rotation"],
+        ) {
+            return;
+        }
+        let mut resources = None;
+        let mut game = crate::game::game_tests::tests::server_game(&mut resources);
+        let _rx = host_for(&mut game);
+        game.server.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+            g.dimension = "minecraft:overworld".into();
+            g.yaw = 15.0;
+            g.pitch = 25.0;
+            g.inventory[0] = Some(ItemStack::new("minecraft:snowball", 4));
+        });
+
+        let cases = [
+            (1, f32::NAN, 120.0_f32, 15.0_f32, 90.0_f32, 3_u32),
+            (2, 405.0_f32, f32::INFINITY, 45.0_f32, 90.0_f32, 2_u32),
+            (3, f32::NEG_INFINITY, f32::NAN, 45.0_f32, 90.0_f32, 1_u32),
+        ];
+        for (sequence, yaw, pitch, want_yaw, want_pitch, want_count) in cases {
+            let built = encode_play_packet(&PlayPacketRequest::UseItem {
+                hand: 0,
+                sequence,
+                yaw,
+                pitch,
+            })
+            .expect("UseItem preserves non-finite float bits on the wire");
+            let decoded = Serverbound::decode(sb::USE_ITEM, &built.body).unwrap();
+            let before_proj = game.common.creatures.projectiles.len();
+            game.lan_guest_packet(1, decoded);
+
+            let guest = &game.server.lan.as_ref().unwrap().hub.guests[0];
+            assert_eq!(guest.yaw, want_yaw, "sequence {sequence}");
+            assert_eq!(guest.pitch, want_pitch, "sequence {sequence}");
+            assert_eq!(
+                guest.inventory[0].as_ref().map(|s| s.count),
+                Some(want_count),
+                "sequence {sequence} still uses the held snowball"
+            );
+            assert_eq!(
+                game.common.creatures.projectiles.len(),
+                before_proj + 1,
+                "sequence {sequence} spawns a snowball"
+            );
+            let proj = game.common.creatures.projectiles.last().unwrap();
+            assert!(
+                proj.velocity.x.is_finite()
+                    && proj.velocity.y.is_finite()
+                    && proj.velocity.z.is_finite(),
+                "sequence {sequence} projectile velocity stays finite: {:?}",
+                proj.velocity
+            );
+        }
+    }
+}
+
+use sunrise_gameplay_common::game::tables::GameItems as _;

@@ -1,6 +1,7 @@
 use super::*;
 use sunrise_gameplay_common::game::lan_actions::packets::creative_count_bound;
 use sunrise_gameplay_common::game::lan_actions::packets::creative_count_exceeds;
+use sunrise_gameplay_common::game::lan_menu_data::ClickReply;
 
 impl crate::game::ServerGame<'_> {
     /// `ServerPlayer.sendBuildLimitMessage`: the red overlay with the limit.
@@ -189,6 +190,129 @@ impl crate::game::ServerGame<'_> {
             )
         });
     }
+
+    /// `ServerGamePacketListenerImpl.handleContainerClick` / `AbstractContainerMenu.clicked`
+    /// for a mod menu with registered `MenuPart::menu_clicked` callbacks: fires the hook
+    /// directly on the receiving menu before default click execution, with no synthetic
+    /// decided-action wrapper or whole-inventory snapshot/undo. Returns `true` when this
+    /// path consumed the packet, `false` when ordinary routing should run directly.
+    fn lan_menu_clicked(&mut self, conn: u32, click: &play::ContainerClick) -> bool {
+        if !mod_api::__private::has_part_hook(mod_api::HookId::MenuClicked) {
+            return false;
+        }
+        let Some(guest) = self.server.lan.as_ref().and_then(|host| host.hub.guest(conn)) else {
+            return false;
+        };
+        if guest.menu.is_none() && click.container == 0 {
+            return self.lan_inventory_menu_clicked(conn, click);
+        }
+        let Some(open) = guest.menu.as_ref().filter(|m| {
+            m.window == click.container && (m.mod_type.is_some() || m.slots == Slots::Native)
+        }) else {
+            return false;
+        };
+        if guest.spectator() {
+            return false;
+        }
+        if usize::try_from(click.slot).is_ok_and(|slot| slot >= open.slot_count()) {
+            return true;
+        }
+        if !mod_api::__private::menu_listens(mod_api::HookId::MenuClicked, &open.registry_id) {
+            return false;
+        }
+        let (uuid, generation) = (guest.uuid, guest.menu_generation);
+        let menu = open.registry_id.clone();
+        let mut skip_default = false;
+        self.native_menu_clicked(mod_api::__private::MenuClickedCall {
+            menu: &menu,
+            uuid,
+            window: click.container,
+            slot: i32::from(click.slot),
+            button: i32::from(click.button),
+            mode: click.input,
+            handled: &mut skip_default,
+        });
+        let Some(guest) = self.server.lan.as_ref().and_then(|host| host.hub.guest(conn)) else {
+            return true;
+        };
+        if guest.dead || guest.disconnect_pending || guest.menu_generation != generation {
+            return true;
+        }
+        let Some(open) = guest.menu.as_ref().filter(|m| m.window == click.container) else {
+            return true;
+        };
+        if skip_default {
+            // The client predicted the unmodified click. Resend the live menu and cursor so
+            // any override or component change reconciles authoritatively.
+            self.reply_menu_click(conn, ClickReply::Resend(click.container));
+            return true;
+        }
+        if guest.spectator() {
+            self.reply_menu_click(conn, ClickReply::Resend(click.container));
+            return true;
+        }
+        let slot_out_of_range =
+            usize::try_from(click.slot).is_ok_and(|slot| slot >= open.slot_count());
+        if !self.guest_validate_menu(conn) {
+            return true;
+        }
+        if slot_out_of_range {
+            self.reply_menu_click(conn, ClickReply::Resend(click.container));
+            return true;
+        }
+        self.journal_guest_click(conn);
+        self.journal_menu_click(conn);
+        self.lan_default_container_click(conn, click);
+        true
+    }
+
+    /// `AbstractContainerMenu.clicked` on the player's own `InventoryMenu` (window 0, no other
+    /// menu open) for the Parts attached to `minecraft:inventory`: every mod's, in mod order, since
+    /// the inventory has no owner. A handled click resends the inventory; otherwise the server
+    /// rechecks that the player is live, still has no other menu open and is not a spectator,
+    /// then runs the ordinary click. False when no Part listens or the slot is outside the menu,
+    /// leaving the click to ordinary routing.
+    fn lan_inventory_menu_clicked(&mut self, conn: u32, click: &play::ContainerClick) -> bool {
+        use sunrise_sim::menu::INVENTORY_MENU;
+        if !mod_api::__private::menu_listens(mod_api::HookId::MenuClicked, INVENTORY_MENU) {
+            return false;
+        }
+        let Some(guest) = self.server.lan.as_ref().and_then(|host| host.hub.guest(conn)) else {
+            return false;
+        };
+        let slots = sunrise_sim::menu::Kind::Inventory.slot_count();
+        if guest.spectator() || usize::try_from(click.slot).is_ok_and(|slot| slot >= slots) {
+            return false;
+        }
+        let (uuid, generation) = (guest.uuid, guest.menu_generation);
+        let mut skip_default = false;
+        self.native_menu_clicked(mod_api::__private::MenuClickedCall {
+            menu: INVENTORY_MENU,
+            uuid,
+            window: 0,
+            slot: i32::from(click.slot),
+            button: i32::from(click.button),
+            mode: click.input,
+            handled: &mut skip_default,
+        });
+        let Some(guest) = self.server.lan.as_ref().and_then(|host| host.hub.guest(conn)) else {
+            return true;
+        };
+        if guest.dead
+            || guest.disconnect_pending
+            || guest.menu_generation != generation
+            || guest.menu.is_some()
+        {
+            return true;
+        }
+        if skip_default || guest.spectator() {
+            // The client predicted the unmodified click: resend what the inventory holds.
+            self.reply_menu_click(conn, ClickReply::Inventory);
+            return true;
+        }
+        self.lan_default_container_click(conn, click);
+        true
+    }
     pub(in crate::game::server_side) fn item_from_network(
         &self,
         stack: &Option<sunrise_protocol::item::Stack>,
@@ -330,7 +454,6 @@ impl crate::game::ServerGame<'_> {
             && click.input == sunrise_sim::lan::menu::input::SWAP
             && matches!(click.button, 0..=8 | OFFHAND_BUTTON)
         {
-            use sunrise_gameplay_common::game::lan_menu_data::ClickReply;
             self.server
                 .lan
                 .as_ref()
@@ -464,7 +587,12 @@ impl crate::game::ServerGame<'_> {
                     if spectator {
                         return;
                     }
-                    if !host.hub.guests.update(gi, |g| g.may_reach_block(a.pos)) {
+                    let context = &host.hub.loop_context;
+                    if !host
+                        .hub
+                        .guests
+                        .update(gi, |g| g.reaches_block(context, a.pos))
+                    {
                         return;
                     }
                     // ServerPlayerGameMode.handleBlockBreakAction: no dig starts
@@ -579,7 +707,12 @@ impl crate::game::ServerGame<'_> {
                         return;
                     };
                     host.hub.ack(conn, a.sequence);
-                    if !host.hub.guests.update(gi, |g| g.may_reach_block(a.pos)) {
+                    let context = &host.hub.loop_context;
+                    if !host
+                        .hub
+                        .guests
+                        .update(gi, |g| g.reaches_block(context, a.pos))
+                    {
                         // Too far (handleBlockBreakAction's "too far"): the ack has the client
                         // undo its prediction, and only the dig drops — `destroy_pos` and the
                         // ticks since its START stay, so a STOP for the same block after the
@@ -989,11 +1122,6 @@ impl crate::game::ServerGame<'_> {
             }
             S::SetBeacon(p) => self.lan_station_beacon(conn, p.primary, p.secondary),
             S::SelectTrade(p) => self.lan_select_trade(conn, p.item),
-            S::ContainerClose(p)
-                if self.lan_merchant_closed(conn, Some(p.container))
-                    || self.lan_crafting_closed(conn, Some(p.container))
-                    || self.lan_station_closed(conn, Some(p.container))
-                    || self.lan_mount_closed(conn, Some(p.container)) => {}
             S::SelectBundleItem(p) => {
                 // ServerGamePacketListenerImpl.handleBundleItemSelectedPacket: the slot
                 // is the open menu's (#4436).
@@ -1007,8 +1135,13 @@ impl crate::game::ServerGame<'_> {
                     let Some(host) = self.server.lan.as_mut() else {
                         return;
                     };
-                    host.hub
-                        .select_bundle_item(conn, slot, p.index, &mut self.common.world);
+                    host.hub.select_bundle_item(
+                        conn,
+                        slot,
+                        p.index,
+                        &mut self.common.world,
+                        self.common.res.items(),
+                    );
                     if mod_api::__private::listened(mod_api::HookId::PlayerBundleItemSelect) {
                         let Some(host) = self.server.lan.as_ref() else {
                             return;
@@ -1020,49 +1153,12 @@ impl crate::game::ServerGame<'_> {
                 }
             }
             S::ContainerClick(p) => {
-                if !self.menu_clicked_decided(conn, &p) {
+                if !self.lan_menu_clicked(conn, &p) {
                     self.lan_default_container_click(conn, &p);
                 }
             }
             S::ContainerClose(p) => {
-                // A vehicle's menu closed: its slots go back to the vehicle
-                // (`ContainerEntity`), and a chest boat's `stopOpen` fires
-                // CONTAINER_CLOSE with the player as the source.
-                let Some(host) = self.server.lan.as_ref() else {
-                    return;
-                };
-                let vehicle = host.hub.guests[gi]
-                    .menu
-                    .as_ref()
-                    .filter(|m| m.window == p.container)
-                    .and_then(|m| match m.slots {
-                        Slots::Block(key)
-                            if key.1 == sunrise_gameplay_common::game::minecarts::CART_KEY_Y =>
-                        {
-                            Some(key)
-                        }
-                        _ => None,
-                    });
-                let closing = host.hub.guests[gi]
-                    .menu
-                    .as_ref()
-                    .is_some_and(|m| m.window == p.container);
-                if closing {
-                    self.guest_container_closed(conn);
-                }
-                if let Some(key) = vehicle {
-                    self.close_guest_vehicle_menu(conn, key);
-                }
-                if let Some(closed) =
-                    self.with_own_record(gi, |host, _| host.hub.container_closed(conn, p.container))
-                {
-                    // A live close: a dead player's packets are not handled, and its menus
-                    // close on its tick as killed (`lan_containers_tick`).
-                    self.settle_closed_hub_menu(conn, closed, MenuRemoval::Live);
-                }
-                if closing {
-                    self.player_menu_closing(conn);
-                }
+                self.reply_menu_click(conn, ClickReply::ClientClose(p.container));
             }
             S::ChatCommand(c) => self.guest_chat_command(conn, &c.command),
             S::CustomPayload(p) if p.channel == sunrise_protocol::quiet::CHANNEL => {
@@ -1121,6 +1217,7 @@ impl crate::game::ServerGame<'_> {
                     // The level data holds the world's difficulty: it
                     // survives the reopen, so it follows the change.
                     self.common.level.set_difficulty(self.common.ui.difficulty);
+                    self.update_mob_spawning_flags();
                     self.common.sync_rules();
                     if self.common.ui.difficulty == 0 {
                         self.common.mobs.retain(|m| !m.hostile());
@@ -1182,14 +1279,13 @@ impl crate::game::ServerGame<'_> {
                                 return;
                             };
                             let guest = &host.hub.guests[gi];
-                            let (uuid, entity_id, name) =
-                                (guest.uuid, guest.entity_id, guest.name.clone());
-                            let actor = mod_api::GameRuleActor {
-                                uuid,
-                                entity_id,
-                                name: &name,
-                            };
-                            self.game_rule_changed(&rule.name, value, Some(&actor));
+                            let actor = self.common.native_lifecycle.epoch().map(|epoch| {
+                                mod_api::__private::game::player_ref(
+                                    mod_api::EntityRef::new(epoch, guest.entity_id as u32),
+                                    guest.uuid,
+                                )
+                            });
+                            self.game_rule_changed(&rule.name, value, actor);
                         }
                         let message = sunrise_game_data::text::Text::tr(
                             "commands.gamerule.set",
@@ -1339,26 +1435,19 @@ impl crate::game::ServerGame<'_> {
                         })
                         .sum();
                     let range = g.reach() + 1.0;
-                    if d2 >= range * range {
+                    let within = d2 < range * range;
+                    if !g.within_interaction_range_of(
+                        g.server.lan_acting_uuid,
+                        p.pos,
+                        1.0,
+                        within,
+                    ) {
                         return None;
                     }
                     // The block's item, a part's in its place, then the block
                     // entity's data on whichever won (addBlockDataToItem).
                     let include_data = g.creative && p.include_data;
-                    let stack = g.clone_stack(p.pos, include_data);
-                    let state = g.world.block(p.pos[0], p.pos[1], p.pos[2]);
-                    let mut replacement = None;
-                    if let Some(player) = g.native_acting_player() {
-                        g.native_clone_item_stack(
-                            g.dim.level(),
-                            sunrise_core::position::BlockPos::new(p.pos[0], p.pos[1], p.pos[2]),
-                            state,
-                            include_data,
-                            player,
-                            &mut replacement,
-                        );
-                    }
-                    let mut stack = replacement.or(stack)?;
+                    let mut stack = g.acting_clone_stack(p.pos, include_data)?;
                     if include_data {
                         g.add_block_data(p.pos, &mut stack);
                     }
@@ -1369,7 +1458,7 @@ impl crate::game::ServerGame<'_> {
             S::PickItemFromEntity(p) => {
                 self.guest_pick_item(conn, true, [0; 3], p.id, |g| {
                     g.within_entity_range(p.id)
-                        .then(|| g.entity_pick_result(p.id))
+                        .then(|| g.pick_result_of(p.id))
                         .flatten()
                 });
             }

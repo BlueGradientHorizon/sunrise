@@ -8,7 +8,7 @@ use mod_api::{
 };
 use sunrise_gameplay_common::game::function_pack_stack::PackStack;
 use sunrise_gameplay_common::game::packs_common::reload_files;
-use sunrise_level::datapack::DataStore;
+use sunrise_level::datapack::{DataPacks, DataStore};
 
 pub(in crate::game) type PreparedReload = PreparedStep<Box<DataStore>>;
 
@@ -29,14 +29,14 @@ impl PreparedServerReload {
     }
 }
 
-/// Loads the vanilla function library from `stack`, logging per-file failures.
-fn functions_store(stack: &PackStack) -> DataStore {
+/// Logs individual vanilla function load failures and refuses invalid registry data.
+fn functions_store(stack: &PackStack) -> Result<DataStore, ReloadStageError> {
     let packs: Vec<_> = stack.builtin.iter().chain(stack.enabled_packs()).collect();
-    let store = DataStore::load(&packs);
+    let store = DataStore::load(&DataPacks::new(&packs));
     for (id, e) in &store.errors {
         log::warn!("Sunrise: failed to load function {id}: {e}");
     }
-    store
+    Ok(store)
 }
 
 pub(in crate::game) trait PackStackServerExt: Sized {
@@ -81,7 +81,7 @@ impl ServerGame<'_> {
             ordered.listeners,
             HookId::AddServerReloadListeners,
             "server_reload_prepare",
-            || Ok::<_, ReloadStageError>(Box::new(functions_store(stack))),
+            || functions_store(stack).map(Box::new),
             |id, converter| stack.reload_context(id, converter),
             ServerReloadListener::prepare,
         )?;
@@ -94,7 +94,6 @@ impl ServerGame<'_> {
     pub(in crate::game::server_side) fn apply_server_reload(
         &mut self,
         prepared: PreparedServerReload,
-        stack: &PackStack,
         enabled_features: &[String],
     ) {
         let skipped = apply_listeners(
@@ -103,7 +102,7 @@ impl ServerGame<'_> {
             "server_reload_apply",
             |store| {
                 self.build_native_commands(enabled_features);
-                self.admit_store(*store, stack);
+                self.admit_store(*store);
                 Ok::<_, std::convert::Infallible>(())
             },
         )

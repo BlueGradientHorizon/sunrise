@@ -64,39 +64,8 @@ pub fn apply_menu_button_cursor(
 #[allow(unused_imports)]
 pub use sunrise_world::level::flags;
 
-/// The largest turn a shake gives, in degrees, on each axis.
-pub const SHAKE_MAX_DEGREES: f32 = 10.0;
-/// The largest offset a shake gives, in blocks, along each axis.
-pub const SHAKE_MAX_OFFSET: f32 = 0.5;
-
-#[cfg(test)]
-pub use camera_math::bounded_shake;
 #[allow(unused_imports)]
 pub use camera_math::hand_pose_matrix;
-
-/// The pose a bounded shake multiplies into the projection, after the view
-/// bobbing: the offset, then roll, pitch and yaw.
-pub fn shake_pose(shake: Shake) -> glam::Mat4 {
-    let [x, y, z] = shake.offset;
-    glam::Mat4::from_translation(glam::Vec3::new(-x, -y, -z))
-        * glam::Mat4::from_rotation_z(shake.roll.to_radians())
-        * glam::Mat4::from_rotation_x(shake.pitch.to_radians())
-        * glam::Mat4::from_rotation_y(shake.yaw.to_radians())
-}
-
-/// The player as a native mod reads it.
-#[allow(dead_code)]
-#[derive(Clone, Debug, PartialEq)]
-pub struct NativePlayer {
-    pub x: f64,
-    pub y: f64,
-    pub z: f64,
-    /// Degrees; 0 faces south, 90 west (`Direction.fromYRot`).
-    pub yaw: f32,
-    pub pitch: f32,
-    /// `minecraft:overworld`, `minecraft:the_nether`, `minecraft:the_end`.
-    pub dimension: &'static str,
-}
 
 /// How the panel lays out a recipe of `native_panel_recipes`.
 #[allow(dead_code)]
@@ -150,105 +119,36 @@ pub struct NativeRecipeView {
     pub action: Option<bool>,
 }
 
-/// An item of [`NativeRecipes::items`], by its index there, with a count
-/// and the components it has beyond the item's own, in vanilla's item
-/// syntax (`[minecraft:potion_contents={potion:"minecraft:swiftness"}]`),
-/// or "".
-#[allow(dead_code)]
-#[derive(Clone, Debug, Default, PartialEq)]
-pub struct NativeRecipeStack {
-    pub item: u32,
-    pub count: u32,
-    pub components: String,
-}
-
-/// The station a recipe is made at.
-#[allow(dead_code)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum NativeRecipeKind {
-    CraftingShaped,
-    CraftingShapeless,
-    Smelting,
-    Blasting,
-    Smoking,
-    Campfire,
-    Stonecutting,
-    Smithing,
-    Brewing,
-}
-
-/// A recipe of [`NativeRecipes`].
-#[allow(dead_code)]
-#[derive(Clone, Debug, PartialEq)]
-pub struct NativeRecipe {
-    /// `minecraft:oak_planks`.
-    pub id: String,
-    pub kind: NativeRecipeKind,
-    /// The recipe book's tab (`crafting_building_blocks`, `furnace_food`),
-    /// or "".
-    pub category: String,
-    /// Recipes the book shows on one button share a group, or "".
-    pub group: String,
-    /// A shaped recipe's grid: `slots` holds its cells row by row. 0 for
-    /// the other kinds.
-    pub width: u32,
-    pub height: u32,
-    /// Each slot's stacks, any one of which fits; an empty list is an empty
-    /// cell. Cooking and stonecutting: the input. Smithing: the template,
-    /// the base, the addition. Brewing: the bottle, the reagent.
-    pub slots: Vec<Vec<NativeRecipeStack>>,
-    /// What it makes; several when that varies (a trim on any armour).
-    pub results: Vec<NativeRecipeStack>,
-    /// Cooking: game ticks and experience; 0 for the other kinds.
-    pub cooking_time: u32,
-    pub experience: f32,
-    /// The recipe book's id for it (one per way the book shows it), as
-    /// `known_recipes` lists them; -1 for the kinds the book doesn't
-    /// show (campfire, stonecutting, smithing, brewing).
-    pub book_id: i32,
-}
-
-/// An item of [`NativeRecipes::items`].
-#[allow(dead_code)]
-#[derive(Clone, Debug, Default, PartialEq)]
-pub struct NativeItem {
-    /// `minecraft:diamond`, `<mod>:<path>`.
-    pub id: String,
-    /// In the player's language.
-    pub name: String,
-    /// Its item tags, without the `#`.
-    pub tags: Vec<String>,
-}
-
-/// Every item and recipe the game knows (`native_recipes`): `items` in the
-/// registry's order, which each [`NativeRecipeStack::item`] indexes; the
-/// recipes are the book's in its order, then campfire, stonecutting,
-/// smithing and brewing.
-#[allow(dead_code)]
-#[derive(Clone, Debug, Default, PartialEq)]
-pub struct NativeRecipes {
-    pub items: Vec<NativeItem>,
-    pub recipes: Vec<NativeRecipe>,
-}
-
 /// `native_living_use_totem` for the damage code: whether it
 /// canceled the totem. The entity and the source are named as the damage hook names them.
-pub fn use_totem(level: DamageLevel<'_>, hurting: Hurting<'_>, off_hand: bool) -> bool {
+pub fn use_totem(
+    level: DamageLevel<'_>,
+    hurting: Hurting<'_>,
+    hand: Hand,
+    stack: &ItemStack,
+) -> bool {
     if !mod_api::__private::listened(mod_api::HookId::LivingUseTotem) {
         return false;
     }
     let (entity, kind, source) = hurt_server_args(hurting, level.attack());
-    let hand = if off_hand { Hand::Off } else { Hand::Main };
     let mut cancel = false;
-    HitLevel(level).native_living_use_totem(
-        entity,
-        kind,
-        &source,
-        hand,
-        "minecraft:totem_of_undying",
-        &mut cancel,
-    );
+    HitLevel(level).native_living_use_totem(entity, kind, &source, hand, stack, &mut cancel);
     cancel
+}
+
+/// `native_living_death_protection` for the damage code: a mod's protector from outside the
+/// hands, once neither hand protected.
+pub fn death_protection_source(
+    level: DamageLevel<'_>,
+    hurting: Hurting<'_>,
+) -> Option<ItemStack> {
+    if !mod_api::__private::listened(mod_api::HookId::LivingDeathProtection) {
+        return None;
+    }
+    let (entity, kind, source) = hurt_server_args(hurting, level.attack());
+    let mut protector = None;
+    HitLevel(level).native_living_death_protection(entity, kind, &source, &mut protector);
+    protector
 }
 
 /// The level a hit or a landing happens in, as its hooks' level host: its blocks, its random and its
@@ -256,6 +156,14 @@ pub fn use_totem(level: DamageLevel<'_>, hurting: Hurting<'_>, off_hand: bool) -
 /// tick, where the world is read by every mob and its random is lent out, and building one
 /// per hit would allocate its entity boxes.
 pub struct HitLevel<'a>(pub DamageLevel<'a>);
+
+impl<'a> HitLevel<'a> {
+    /// The item table a mod's stack is checked against as it comes back into the hit
+    /// (`living_death_protection`'s protector): the authoritative world's, as for the hit's reads.
+    pub fn stack_boundary_items(&self) -> Option<&'a sunrise_items::items::Items> {
+        self.0.tags()
+    }
+}
 
 /// Let listeners override the vanilla invulnerability decision for this hit.
 pub fn invulnerability_check(level: DamageLevel<'_>, hurting: Hurting<'_>, vanilla: bool) -> bool {
@@ -401,29 +309,44 @@ pub fn incoming_damage(
     let (entity, kind, source) = hurt_server_args(hurting, level.attack());
     let mut canceled = false;
     let attack = level.attack();
-    let Ok(weapon) = attack.weapon_of(source.direct).try_into_api() else {
-        return false;
-    };
+    let weapon = attack.weapon_of(source.direct);
     let causing_weapon = (source.causing != 0 && source.causing == attack.attacker)
         .then_some(attack.held[0].as_ref())
         .flatten();
-    let Ok(causing_weapon) = causing_weapon.try_into_api() else {
-        return false;
-    };
-    let mut live = LiveDamageContainer(container);
-    HitLevel(level.caused_by(source.causing)).native_living_incoming_damage(
-        mod_api::__private::LivingIncomingDamageCall {
-            entity,
-            kind,
-            source: &source,
-            victim: &victim,
-            weapon: weapon.as_ref(),
-            causing_weapon: causing_weapon.as_ref(),
-            container: mod_api::DamageContainer::new(&mut live),
-            canceled: &mut canceled,
-        },
-    );
+    with_hit_weapons(weapon, causing_weapon, |weapon, causing_weapon| {
+        let mut live = LiveDamageContainer(container);
+        HitLevel(level.caused_by(source.causing)).native_living_incoming_damage(
+            mod_api::__private::LivingIncomingDamageCall {
+                entity,
+                kind,
+                source: &source,
+                victim: &victim,
+                weapon,
+                causing_weapon,
+                container: mod_api::DamageContainer::new(&mut live),
+                canceled: &mut canceled,
+            },
+        );
+    });
     canceled
+}
+
+/// One melee weapon can be both the direct and the causing weapon. Feed both fields the
+/// same view so reading either doesn't encode that stack's components again.
+fn with_hit_weapons(
+    direct: Option<&ItemStack>,
+    causing: Option<&ItemStack>,
+    dispatch: impl FnOnce(Option<&mod_api::ItemStackView<'_>>, Option<&mod_api::ItemStackView<'_>>),
+) {
+    crate::game::api_values::with_stack_view(direct, |direct_view| {
+        if direct.zip(causing).is_some_and(|(a, b)| std::ptr::eq(a, b)) {
+            dispatch(direct_view.as_ref(), direct_view.as_ref());
+        } else {
+            crate::game::api_values::with_stack_view(causing, |causing_view| {
+                dispatch(direct_view.as_ref(), causing_view.as_ref());
+            });
+        }
+    });
 }
 
 /// `native_living_damage_pre` for the damage code.
@@ -500,32 +423,64 @@ pub fn knockback(level: DamageLevel<'_>, pushed: Hurting<'_>, knock: &mut Knock)
             causing => causing,
         },
     };
-    let (kill_credit, credit_main) = level.knockback_credit(&pushed);
-    let Ok(credit_main) = credit_main.map(TryIntoApi::try_into_api).transpose() else {
-        return false;
-    };
-    let (entity, kind, source) = hurt_server_args(pushed, level.attack());
+    let (level, kill_credit, credit_main) = level.split_knockback_credit(&pushed);
+    let (entity, kind, source) = hurt_server_args(pushed, attack);
     let mut canceled = false;
     let [main, off] = &attack.held;
-    let (Ok(main), Ok(off)) = (main.try_into_api(), off.try_into_api()) else {
-        return false;
+    let read_metadata = |slot: &str, stack: Option<&sunrise_items::items::ItemStack>| {
+        let stack = stack?;
+        if stack.count == 0 || &*stack.item == "minecraft:air" {
+            return None;
+        }
+        match crate::game::api_values::stack_read_metadata(stack) {
+            Ok(metadata) => Some(metadata),
+            Err(error) => {
+                log::warn!(
+                    "living_knockback on entity {entity} ({kind}): omitting unrepresentable {slot} '{}' (count {}): {error:?}",
+                    stack.item,
+                    stack.count,
+                );
+                None
+            }
+        }
     };
-    let entry = level.knockback_entry();
+    let main_metadata = read_metadata("attacker_main", main.as_ref());
+    let off_metadata = read_metadata("attacker_off", off.as_ref());
+    let credit_metadata = read_metadata("kill_credit_main", credit_main);
+    let project_main = |metadata| {
+        main.as_ref()
+            .and_then(|stack| crate::game::api_values::project_stack(stack, metadata).ok())
+    };
+    let project_off = |metadata| {
+        off.as_ref()
+            .and_then(|stack| crate::game::api_values::project_stack(stack, metadata).ok())
+    };
+    let project_credit = |metadata| {
+        credit_main.and_then(|stack| crate::game::api_values::project_stack(stack, metadata).ok())
+    };
+    let attacker_main =
+        main_metadata.map(|metadata| mod_api::ItemStackView::resident(metadata, &project_main));
+    let attacker_off =
+        off_metadata.map(|metadata| mod_api::ItemStackView::resident(metadata, &project_off));
+    let kill_credit_main =
+        credit_metadata.map(|metadata| mod_api::ItemStackView::resident(metadata, &project_credit));
+    // NeoForge `LivingEntity.knockback` posts `(float) strength` and widens the result back.
+    let mut strength = knock.strength as f32;
     HitLevel(level).native_living_knockback(mod_api::__private::LivingKnockbackCall {
         entity,
         kind,
         source: &source,
         attacker,
-        attacker_main: main.as_ref(),
-        attacker_off: off.as_ref(),
+        attacker_main,
+        attacker_off,
         kill_credit,
-        kill_credit_main: credit_main.as_ref(),
-        entry,
-        strength: &mut knock.strength,
+        kill_credit_main,
+        strength: &mut strength,
         x: &mut knock.x,
         z: &mut knock.z,
         canceled: &mut canceled,
     });
+    knock.strength = f64::from(strength);
     canceled
 }
 
@@ -538,6 +493,7 @@ pub const DAMAGE_HOOKS: DamageHooks = DamageHooks {
     owner_post_listened: Some(|| mod_api::__private::listened(mod_api::HookId::LivingDamagePost)),
     knockback: Some(knockback),
     totem: Some(use_totem),
+    protector: Some(death_protection_source),
     shield: Some(shield_block),
     accepted: Some(crate::game::native_hooks::living_death::capture_hit),
 };
@@ -557,7 +513,7 @@ pub const BLOCK_CONTACT_HOOKS: sunrise_sim::block_contact::Hooks =
                 ))
                 .native_step_on(step, movement),
                 StepLevel::Client(level) => StepOnView(mod_api::LevelRandomSide::Client(
-                    &crate::game::native_surface::FrictionView(level),
+                    &crate::game::native_surface::FrictionView(level, None),
                 ))
                 .native_step_on(step, movement),
             }
@@ -581,32 +537,21 @@ pub const BLOCK_CONTACT_HOOKS: sunrise_sim::block_contact::Hooks =
         bounce_listens: |state| {
             crate::game::api_values::block_state::block_listens(mod_api::HookId::BounceOn, state)
         },
-        inside_fire: |level, dimension, entity, kind, state, pos, precise, staged, writes| {
-            // The whole callback is staged: a panic is contained and the walk
-            // keeps the caller's collector and write list as they were (#2247's
-            // rule: a mod's panic never breaks the model).
-            let fired = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                HitLevel(level.reborrow()).native_entity_inside(
-                    crate::game::native_hooks::fire::EntityInsideCall {
-                        dimension,
-                        entity,
-                        kind,
-                        state,
-                        pos,
-                        precise,
-                        effects: staged,
-                        writes,
-                    },
-                );
-            }));
-            if let Err(payload) = fired {
-                if let Some(text) = payload.downcast_ref::<&str>() {
-                    eprintln!("an entity_inside part panicked at {text:?}");
-                } else if let Some(text) = payload.downcast_ref::<String>() {
-                    eprintln!("an entity_inside part panicked at {text:?}");
-                }
-            }
+        inside_fire: |level, dimension, entity, kind, state, pos, precise, effects| {
+            HitLevel(level.reborrow()).native_entity_inside(
+                crate::game::native_hooks::fire::EntityInsideCall {
+                    dimension,
+                    entity,
+                    kind,
+                    state,
+                    pos,
+                    precise,
+                    effects,
+                },
+            );
         },
+        state_to_api: |id| id.try_into_api().ok(),
+        state_to_engine: |state| state.try_into_engine(&()).ok(),
         fall_on: |dimension, level, c, distance, damage_multiplier, writes| {
             HitLevel(level.reborrow()).native_fall_on(
                 crate::game::native_hooks::fire::FallOnCall {
@@ -705,17 +650,22 @@ pub fn mob_kind(mob: &sunrise_sim::mobs::Mob) -> String {
 /// Both success swing sources swing on this server path.
 pub fn block_use_result(
     answer: mod_api::InteractionResult,
+    side: LogicalSide,
 ) -> Option<sunrise_world::level::InteractionResult> {
+    use mod_api::InteractionResult as Answer;
     use sunrise_world::level::InteractionResult;
     match answer {
-        mod_api::InteractionResult::Success | mod_api::InteractionResult::SuccessServer => {
-            Some(InteractionResult::Success)
-        }
-        mod_api::InteractionResult::Consume => Some(InteractionResult::Consume),
-        mod_api::InteractionResult::TryWithEmptyHand => None,
+        Answer::SuccessServer if side == LogicalSide::Client => Some(InteractionResult::Consume),
+        Answer::Success | Answer::SuccessServer => Some(InteractionResult::Success),
+        Answer::Consume => Some(InteractionResult::Consume),
+        Answer::TryWithEmptyHand => None,
         _ => Some(InteractionResult::Pass),
     }
 }
+
+/// The captured target or hand changed during client block-use prediction.
+#[derive(Debug, PartialEq, Eq)]
+pub struct StaleBlockClick;
 
 /// What the mods answered a right click on a block (`right_click_block`).
 pub enum BlockClickAnswer {
@@ -798,6 +748,105 @@ pub trait SharedGameExt1<'__sg>: crate::game::SideGame<'__sg> {
         Some(result)
     }
 
+    /// `ItemStack.onItemUseFirst` for a click on a block: the broadcast
+    /// event's `ItemBeforeBlock` phase, then the held item's Part. Canceling skips that Part.
+    /// Only `Pass` continues to the block.
+    fn item_use_first(
+        &mut self,
+        hit: &super::Hit,
+        hand: Hand,
+        stack: &ItemStack,
+    ) -> Result<Option<mod_api::InteractionResult>, StaleBlockClick> {
+        if let Some(answer) =
+            self.use_item_on_block(hit, hand, Some(stack), UsePhase::ItemBeforeBlock)
+        {
+            return Ok(Some(answer));
+        }
+        if !mod_api::__private::item_listens(mod_api::HookId::OnItemUseFirst, &stack.item) {
+            return Ok(None);
+        }
+        let Ok(snapshot) = stack.try_into_api() else {
+            return Ok(None);
+        };
+        let state = self.world.block(hit.pos[0], hit.pos[1], hit.pos[2]);
+        let click = self.block_click(hit, hand, Some(&snapshot));
+        self.with_block_click_part(&click, state, Some(stack), |game, answer| {
+            crate::game::native_hooks::on_item_use_first::GameHooks::native_on_item_use_first(
+                game, &snapshot, &click, answer,
+            );
+        })
+    }
+
+    /// Run the captured block's selected behaviour, only if that key subscribes.
+    fn predict_block_part(
+        &mut self,
+        hit: &super::Hit,
+        state: BlockStateId,
+        hand: Hand,
+        held: Option<&ItemStack>,
+        branch: sunrise_world::level::UseBranch,
+    ) -> Result<Option<mod_api::InteractionResult>, StaleBlockClick> {
+        use sunrise_world::level::UseBranch;
+        let hook = match branch {
+            UseBranch::ItemOn => mod_api::HookId::UseItemOn,
+            UseBranch::WithoutItem => mod_api::HookId::UseWithoutItem,
+        };
+        if !super::api_values::block_state::block_listens(hook, state) {
+            return Ok(None);
+        }
+        let Ok(snapshot) = held.try_into_api() else {
+            return Ok(None);
+        };
+        let click = self.block_click(hit, hand, snapshot.as_ref());
+        self.with_block_click_part(&click, state, held, |game, answer| match branch {
+            UseBranch::ItemOn => game.native_use_item_on(state, &click, answer),
+            UseBranch::WithoutItem => game.native_use_without_item(state, &click, answer),
+        })
+    }
+
+    /// A refused payload defers to the template. A stale decision must not
+    /// be applied or retried against a different block or hand. The server's
+    /// Parts may write and deliberately do not have this prediction guard.
+    fn with_block_click_part(
+        &mut self,
+        click: &BlockClick<'_>,
+        state: BlockStateId,
+        held: Option<&ItemStack>,
+        dispatch: impl FnOnce(&mut Self, &mut Option<mod_api::InteractionResult>),
+    ) -> Result<Option<mod_api::InteractionResult>, StaleBlockClick> {
+        let predicting = click.side == LogicalSide::Client;
+        if predicting
+            && (!click.hit.point.into_iter().all(f64::is_finite)
+                || !Direction::ALL
+                    .into_iter()
+                    .any(|face| face.normal() == click.hit.face))
+        {
+            return Ok(None);
+        }
+        let [x, y, z] = click.pos;
+        let selected = self.selected;
+        let epoch = self.native_lifecycle.epoch();
+        let current = |game: &Self| {
+            game.side_has_remote()
+                && game.native_lifecycle.epoch() == epoch
+                && game.dim.level() == click.dimension
+                && game.world.block(x, y, z) == state
+                && match click.hand {
+                    Hand::Main => game.selected == selected && game.stack_in(selected) == held,
+                    Hand::Off => game.offhand.as_ref() == held,
+                }
+        };
+        if predicting && !current(self) {
+            return Err(StaleBlockClick);
+        }
+        let mut answer = None;
+        dispatch(self, &mut answer);
+        if predicting && !current(self) {
+            return Err(StaleBlockClick);
+        }
+        Ok(answer)
+    }
+
     /// Tells the mods of the chunks that came into this level.
     fn native_chunks_loaded(&mut self) {
         self.side_chunks_loaded();
@@ -834,7 +883,7 @@ pub trait SharedGameExt1<'__sg>: crate::game::SideGame<'__sg> {
                 let Some(state) = registry.state(BlockStateId(id)) else {
                     return false;
                 };
-                if state.name.starts_with("minecraft:") {
+                if !mod_api::__private::is_content_block(&state.name) {
                     return false;
                 }
                 *blocks.entry(state.name.as_str()).or_insert_with(|| {
@@ -873,12 +922,11 @@ pub fn with_property(
     key: &str,
     value: &str,
 ) -> Option<BlockStateId> {
-    let mut s = registry.state(state)?.clone();
-    match s.properties.get(key) {
-        Some(v) if v == value => return Some(state),
-        Some(_) => {}
-        None => return None,
+    let current = registry.state(state)?;
+    if current.properties.get(key)? == value {
+        return Some(state);
     }
+    let mut s = current.clone();
     s.properties.insert(key.into(), value.into());
     registry.resolve(&s).ok()
 }
@@ -902,7 +950,7 @@ pub fn config_dir(game_dir: &Path) -> std::io::Result<PathBuf> {
     Ok(dir)
 }
 
-pub fn client_packet_view(packet: &sunrise_protocol::packets::play::Clientbound) -> ClientPacket {
+pub fn client_packet_view(packet: &sunrise_protocol::packets::play::Clientbound) -> ClientPacket<'_> {
     use mod_api::Identifier;
     use std::sync::LazyLock;
     use sunrise_protocol::packets::play::Clientbound;
@@ -919,7 +967,7 @@ pub fn client_packet_view(packet: &sunrise_protocol::packets::play::Clientbound)
 /// `client_packet_send`'s view of a packet the game sends: as `client_packet_view`.
 pub fn serverbound_packet_view(
     packet: &sunrise_protocol::packets::play::Serverbound,
-) -> ClientPacket {
+) -> ClientPacket<'_> {
     use mod_api::Identifier;
     use std::sync::LazyLock;
     use sunrise_protocol::packets::play::Serverbound;
@@ -942,11 +990,11 @@ pub fn packet_types(names: &[&str]) -> Vec<mod_api::Identifier> {
 }
 
 /// A packet's type, `sunrise:unknown` outside the protocol's table, and its custom payload.
-pub fn packet_view(
-    types: &[mod_api::Identifier],
+pub fn packet_view<'a>(
+    types: &'static [mod_api::Identifier],
     id: i32,
-    payload: Option<&sunrise_protocol::packets::configuration::CustomPayload>,
-) -> ClientPacket {
+    payload: Option<&'a sunrise_protocol::packets::configuration::CustomPayload>,
+) -> ClientPacket<'a> {
     use mod_api::Identifier;
     use std::sync::LazyLock;
 
@@ -955,9 +1003,8 @@ pub fn packet_view(
     let id = usize::try_from(id)
         .ok()
         .and_then(|id| types.get(id))
-        .unwrap_or(&UNKNOWN)
-        .clone();
-    let payload = payload.map(|p| ClientPayload::new(p.channel.clone(), p.data.clone()));
+        .unwrap_or(&UNKNOWN);
+    let payload = payload.map(|p| ClientPayload::new(p.channel.as_str(), p.data.as_slice()));
     ClientPacket::new(id, payload)
 }
 
@@ -969,6 +1016,8 @@ use crate::game::GameGameExt1 as _;
 use crate::game::held_items::HeldItemsGameExt1 as _;
 
 
+use crate::game::native_hooks::block_use_item_on::GameHooks as _;
+use crate::game::native_hooks::block_use_without_item::GameHooks as _;
 use crate::game::native_hooks::stateful_block_entity::GameHooks as _;
-
 use crate::game::native_hooks::use_item_on_block::GameHooks as _;
+use crate::game::side_ops::modapi_hooks::ModapiHooksSideGameExt as _;

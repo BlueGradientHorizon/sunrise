@@ -53,6 +53,8 @@ impl crate::game::ServerGame<'_> {
         });
         state.display_revision = state.display_revision.wrapping_add(1);
         self.common.ui.dispatcher.0 = Arc::new(vanilla);
+        self.common.ui.registries.selector_tokens =
+            super::super::native_entity_selectors::selector_tokens();
         self.rebind_native_commands();
     }
     /// Rebind against the new node IDs. True if the display report changed too.
@@ -106,7 +108,7 @@ impl crate::game::ServerGame<'_> {
         let state = &self.server.native_commands.0;
         if state.registered.is_none() {
             if force_resend {
-                self.resend_commands_filtered();
+                self.send_placed_command_trees(false);
             }
             return;
         }
@@ -117,15 +119,14 @@ impl crate::game::ServerGame<'_> {
             let tree = state.report.clone();
             host.native_commands_sent = revision;
             host.hub
-                .set_selector_tokens(super::super::native_entity_selectors::selector_tokens());
-            if !force_resend && !replacing {
-                host.hub.set_mod_commands(0, tree);
+                .set_selector_tokens(self.common.ui.registries.selector_tokens.clone());
+            let changed = host.hub.set_mod_commands(0, tree);
+            if !force_resend && !replacing && !changed {
                 return;
             }
-            host.hub.store_mod_commands(0, tree);
         } else if !force_resend {
             return;
         }
-        self.resend_commands_filtered();
+        self.send_placed_command_trees(false);
     }
 }

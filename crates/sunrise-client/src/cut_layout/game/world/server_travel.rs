@@ -15,10 +15,37 @@ pub(crate) mod tests {
     use mod_api::ServerHost;
 
     use std::sync::Arc;
+    use sunrise_sim::nether_portal::PLAYER_DELAY;
+
+    fn in_own_process(name: &str, case: &str) -> bool {
+        !sunrise_gameplay_common::game::test_fixtures::run_fresh_cases(
+            &format!("cut_layout::game::server_travel::tests::{name}"),
+            "SUNRISE_TEST_SERVER_PORTAL_CASE",
+            &[case],
+        )
+    }
+
+    struct CooldownWitness(Arc<std::sync::Mutex<Vec<Option<i32>>>>);
+    #[mod_api::__subscriptions]
+    impl mod_api::Hooks for CooldownWitness {
+        fn entity_travel_to_dimension(
+            &self,
+            host: &mut dyn ServerHost,
+            e: &mut mod_api::EntityTravelToDimensionEvent,
+        ) -> mod_api::Flow {
+            let host: &dyn mod_api::Host = host;
+            self.0.lock().unwrap().push(e.entity.portal_cooldown(host));
+            mod_api::Flow::Cancel
+        }
+    }
+
 
     #[test]
     #[ignore = "daily"]
     fn guest_portal_entry_uses_body_sleep_and_vehicle() {
+        if !in_own_process("guest_portal_entry_uses_body_sleep_and_vehicle", "entry") {
+            return;
+        }
         super::super::native_guest_turn_tests::with_guests(|game| {
             let mut chunk = sunrise_level::chunk::Chunk::empty(0, 0);
             chunk.lit = true;
@@ -30,12 +57,14 @@ pub(crate) mod tests {
                 .default_state("minecraft:nether_portal")
                 .unwrap();
             game.world.set(3, 64, 5, portal).unwrap();
+            // handlePortal decays the wait first; only a player that may use
+            // the portal is then marked inside it, for the next tick.
             for (body, dead, sleeping, riding, expected) in [
-                (true, false, false, false, 9),
-                (true, false, true, false, 4),
-                (true, false, false, true, 4),
-                (true, true, false, false, 4),
-                (false, false, false, false, 4),
+                (true, false, false, false, true),
+                (true, false, true, false, false),
+                (true, false, false, true, false),
+                (true, true, false, false, false),
+                (false, false, false, false, false),
             ] {
                 game.server.lan.as_mut().unwrap().hub.update_guest(12, |g| {
                     g.position = [3.5, 64.0, 5.5];
@@ -54,18 +83,105 @@ pub(crate) mod tests {
                         g.motion.as_mut().unwrap().set_health(0.0, false).unwrap();
                     }
                 });
-                game.portal_player.process = Some(sunrise_sim::nether_portal::Process {
-                    entry: BlockPos::new(3, 64, 5),
-                    time: 8,
-                    inside: false,
-                });
+                game.guest_portal(12).unwrap().process =
+                    Some(sunrise_sim::nether_portal::Process {
+                        entry: BlockPos::new(3, 64, 5),
+                        time: 8,
+                        inside: false,
+                    });
                 game.handle_server_portal(12);
+                let process = game.guest_portal(12).unwrap().process.unwrap();
                 assert_eq!(
-                    game.portal_player.process.unwrap().time,
-                    expected,
+                    (process.time, process.inside),
+                    (4, expected),
                     "body={body} dead={dead} sleeping={sleeping} riding={riding}"
                 );
             }
+            // Marked inside last tick with the wait at its threshold, then mounted: handlePortal
+            // asks canUsePortal again, so the player stays and the wait does not grow.
+            game.server.lan.as_mut().unwrap().hub.update_guest(12, |g| {
+                g.sleeping = false;
+                g.vehicle = Some(99);
+                g.motion = Some(Box::new(
+                    sunrise_sim::motion::PlayerMotion::new(
+                        game.common.motion,
+                        Vec3::new(3.5, 64.0, 5.5),
+                    )
+                    .unwrap(),
+                ));
+            });
+            let threshold = game
+                .ui
+                .rules
+                .int_at(sunrise_game_data::gamerules::vanilla::PLAYERS_NETHER_PORTAL_DEFAULT_DELAY);
+            game.guest_portal(12).unwrap().process = Some(sunrise_sim::nether_portal::Process {
+                entry: BlockPos::new(3, 64, 5),
+                time: threshold,
+                inside: true,
+            });
+            game.handle_server_portal(12);
+            assert!(!game.has_pending_travel(12));
+            assert_eq!(game.guest_portal_cooldown(12), 0);
+            let process = game.guest_portal(12).unwrap().process.unwrap();
+            assert_eq!((process.time, process.inside), (threshold, false));
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn a_travel_listener_reads_the_cooldown_the_portal_just_set() {
+        if !in_own_process(
+            "a_travel_listener_reads_the_cooldown_the_portal_just_set",
+            "listener",
+        ) {
+            return;
+        }
+        let heard = Arc::default();
+        let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
+            "cooldown-witness",
+            Box::new(CooldownWitness(Arc::clone(&heard))),
+        )]
+        .into();
+        mod_platform::testing::with_mods(mods, || {
+            super::super::native_guest_turn_tests::with_guests(|game| {
+                game.common.options.dedicated = Some(Vec::new());
+                let mut chunk = sunrise_level::chunk::Chunk::empty(0, 0);
+                chunk.lit = true;
+                game.world.chunks.insert((0, 0), Arc::new(chunk));
+                let portal = game
+                    .pack
+                    .assets
+                    .registry
+                    .default_state("minecraft:nether_portal")
+                    .unwrap();
+                game.world.set(3, 64, 5, portal).unwrap();
+                game.server.lan.as_mut().unwrap().hub.update_guest(12, |g| {
+                    g.position = [3.5, 64.0, 5.5];
+                    g.motion = Some(Box::new(
+                        sunrise_sim::motion::PlayerMotion::new(
+                            game.common.motion,
+                            Vec3::new(3.5, 64.0, 5.5),
+                        )
+                        .unwrap(),
+                    ));
+                });
+                // A survival player whose wait reaches the portal's transition time this tick.
+                let threshold = game.ui.rules.int_at(
+                    sunrise_game_data::gamerules::vanilla::PLAYERS_NETHER_PORTAL_DEFAULT_DELAY,
+                );
+                game.guest_portal(12).unwrap().process =
+                    Some(sunrise_sim::nether_portal::Process {
+                        entry: BlockPos::new(3, 64, 5),
+                        time: threshold,
+                        inside: true,
+                    });
+                game.handle_server_portal(12);
+                // Entity.handlePortal: setPortalCooldown comes before the travel is asked.
+                assert_eq!(*heard.lock().unwrap(), [Some(PLAYER_DELAY)]);
+                // The listener canceled the trip; a fresh wait must come first.
+                assert!(!game.has_pending_travel(12));
+                assert!(game.guest_portal(12).unwrap().process.is_none());
+            });
         });
     }
     #[test]
@@ -81,7 +197,7 @@ pub(crate) mod tests {
                 _: &mut dyn ServerHost,
                 event: &mut EntityJoinLevelEvent<'_>,
             ) -> Flow {
-                self.0.lock().unwrap().push(event.entity);
+                self.0.lock().unwrap().push(event.subject.id());
                 Flow::Continue
             }
         }
@@ -148,39 +264,50 @@ pub(crate) mod tests {
     #[test]
     #[ignore = "daily"]
     fn natural_carrier_moves_full_objects_and_readmits_the_tree_in_order() {
-        use mod_api::{AttachmentType, EntityConstructingEvent, Holder, Hooks, HostSide};
-        use std::sync::Mutex;
-        const STATE: AttachmentType<i32> = AttachmentType {
-            namespace: "natural_tree",
-            name: "state",
-            default: || 0,
-            codec: None,
-            copy_on_death: false,
-            sync: false,
+        use mod_api::{
+            AttachmentDescriptor, AttachmentKey, EntityConstructingEvent, Holder, Hooks, HostSide,
         };
-        struct Constructed(Arc<Mutex<Vec<Holder>>>);
+        use std::sync::Mutex;
+        struct Constructed(
+            Arc<Mutex<Vec<Holder>>>,
+            Arc<Mutex<Option<AttachmentKey<i32>>>>,
+        );
         #[mod_api::__subscriptions]
         impl Hooks for Constructed {
             fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
-                r.register_attachment_type("natural_tree:state", false)
+                let state = r
+                    .register_attachment_type(AttachmentDescriptor::new("natural_tree:state", || 0i32))
                     .unwrap();
+                *self.1.lock().unwrap() = Some(state);
             }
             fn entity_constructing(&self, host: HostSide<'_>, event: &mut EntityConstructingEvent) {
                 self.0.lock().unwrap().push(event.holder);
                 if let HostSide::Server(host) = host {
-                    STATE.set(host, event.holder, 41).unwrap();
+                    let state = self
+                        .1
+                        .lock()
+                        .unwrap()
+                        .clone()
+                        .expect("Constructed registered");
+                    state.set(host, event.holder, 41).unwrap();
                 }
             }
         }
         for conflict in [false, true] {
             let calls = Arc::new(Mutex::new(Vec::new()));
+            let state_slot = Arc::new(Mutex::new(None));
             let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
                 "natural_tree",
-                Box::new(Constructed(calls.clone())),
+                Box::new(Constructed(calls.clone(), state_slot.clone())),
             )]
             .into();
             mod_platform::testing::with_mods(mods, || {
                 super::super::native_entity_refs::tests::with_game(|game| {
+                    let state = state_slot
+                        .lock()
+                        .unwrap()
+                        .clone()
+                        .expect("Constructed registered");
                     game.options.dedicated = Some(Vec::new());
                     let tag = sunrise_core::nbt::parse_snbt(r#"{
                     id:"minecraft:pig",UUID:[I;703,0,0,1],Pos:[1.0d,80.0d,2.0d],NoAI:1b,
@@ -197,7 +324,7 @@ pub(crate) mod tests {
                     let ids = [root, held, leaf, sibling];
                     assert!(game.persist.off_level.contains_key(&held));
                     assert!(game.persist.off_level.contains_key(&sibling));
-                    STATE.set(game, Holder::Entity(leaf), 77).unwrap();
+                    state.set(game, Holder::Entity(leaf), 77).unwrap();
                     game.persist.forced_meta.insert(leaf, [5, 6, 7, 8]);
                     game.server
                         .portals
@@ -245,9 +372,9 @@ pub(crate) mod tests {
                     );
                     assert_eq!(game.persist.forced_meta.get(&leaf), Some(&[5, 6, 7, 8]));
                     assert_eq!(game.server.portals.entities[&leaf].cooldown, 19);
-                    assert_eq!(STATE.get(game, Holder::Entity(leaf)), Ok(77));
+                    assert_eq!(state.get(game, Holder::Entity(leaf), Clone::clone), Ok(77));
                     if !conflict {
-                        assert_eq!(STATE.get(game, Holder::Entity(held)), Ok(41));
+                        assert_eq!(state.get(game, Holder::Entity(held), Clone::clone), Ok(41));
                     }
                     assert!(game.mobs_below_off_level().contains(&leaf));
                     game.native_joins_flush(false, 0);
@@ -270,7 +397,7 @@ pub(crate) mod tests {
                         assert!(!game.persist.forced_meta.contains_key(&id));
                     }
                     game.enter_level(Dim::Nether).unwrap();
-                    assert_eq!(STATE.get(game, Holder::Entity(leaf)), Ok(77));
+                    assert_eq!(state.get(game, Holder::Entity(leaf), Clone::clone), Ok(77));
                     game.native_joins_flush(false, 0);
                     assert_eq!(*calls.lock().unwrap(), before);
                 })

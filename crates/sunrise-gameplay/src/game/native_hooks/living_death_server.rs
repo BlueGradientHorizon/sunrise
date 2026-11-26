@@ -22,6 +22,7 @@ impl crate::game::ServerGame<'_> {
                 causing: 0,
                 direct: 0,
                 position: None,
+                direct_type: None,
             },
             |(damage, _)| mob_source(&damage, &attack),
         );

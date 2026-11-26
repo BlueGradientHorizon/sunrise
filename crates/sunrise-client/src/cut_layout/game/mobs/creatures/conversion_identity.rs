@@ -1,10 +1,10 @@
 #![cfg(test)]
 #[cfg(test)]
 mod tests {
-    use mod_api::{AttachmentType, Holder};
+    use mod_api::Holder;
     use sunrise_core::{geometry::Vec3, nbt::Tag};
     use sunrise_gameplay::game::native_entity_refs::tests::with_game;
-    use sunrise_mod_runtime::attachments::{AttachmentCodec, AttachmentError};
+    use sunrise_mod_runtime::attachments::{AttachmentCodec, AttachmentError, AttachmentType};
     use sunrise_sim::mobs::{Mob, conversion::Params};
 
     static MARK: AttachmentType<i32> = AttachmentType {
@@ -19,7 +19,7 @@ mod tests {
             },
         }),
         copy_on_death: false,
-        sync: false,
+        sync_codec: None,
     };
     static LOOSE: AttachmentType<i32> = AttachmentType {
         namespace: "conversion_test",
@@ -27,7 +27,7 @@ mod tests {
         default: || 0,
         codec: None,
         copy_on_death: false,
-        sync: false,
+        sync_codec: None,
     };
 
     /// A villager struck into a witch keeps the attachment that has a codec and leaves the

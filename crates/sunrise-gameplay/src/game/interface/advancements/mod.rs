@@ -65,6 +65,9 @@ pub(in crate::game) struct PlayerEntityState<'a> {
 /// The game's world for predicates.
 pub struct View<'a, 'g>(pub &'a crate::game::ServerGame<'g>);
 impl adv::World for View<'_, '_> {
+    fn is_loaded(&self, [x, y, z]: [i32; 3]) -> bool {
+        self.0.world.is_loaded_at(x, y, z)
+    }
     fn predicate(&self, id: &str) -> Option<&Value> {
         self.0.server.fns.0.store.predicates.get(id)
     }
@@ -149,8 +152,14 @@ impl adv::World for View<'_, '_> {
     fn smokey(&self, p: [i32; 3]) -> bool {
         sunrise_sim::beehive::smokey(&self.0.mob_world_base(&[]), p)
     }
+    /// The same `saveWithFullMetadata` a loot roll's `match_block` reads: the live block
+    /// entity over the NBT it was loaded from, else its saved row.
     fn block_entity_nbt(&self, p: [i32; 3]) -> Option<sunrise_core::nbt::Tag> {
-        self.0.block_entity_nbt(p)
+        self.0
+            .block_entity_nbt(p)
+            .or_else(|| {
+                sunrise_gameplay_common::game::spill_common::saved_full_metadata(&self.0.world, p)
+            })
     }
     fn in_tag(&self, registry: &str, tag: &str, id: &str) -> bool {
         let tags = TagSources {
@@ -236,8 +245,24 @@ impl crate::game::ServerGame<'_> {
     pub fn advancement_tree(&mut self) -> Arc<Tree> {
         if self.common.adv.remote_tree.is_none() && self.common.adv.tree.list.is_empty() {
             let overlay = self.pack_files();
-            self.common.adv.tree =
-                Tree::shared(&self.common.options.resources.join("data"), &overlay);
+            self.common.adv.tree = if self.server.fns.0.store.predicates.is_empty() {
+                Tree::shared(&self.common.options.resources.join("data"), &overlay)
+            } else {
+                let predicates: std::collections::HashMap<String, Value> = self
+                    .server
+                    .fns
+                    .0
+                    .store
+                    .predicates
+                    .iter()
+                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .collect();
+                Arc::new(Tree::load_with_predicates(
+                    &self.common.options.resources.join("data"),
+                    &overlay,
+                    &predicates,
+                ))
+            };
             self.inventory_index();
         }
         self.common.adv.tree.clone()
@@ -278,15 +303,6 @@ impl crate::game::ServerGame<'_> {
         let tree = self.common.adv.tree.clone();
         self.common.adv.progress = progress;
         self.common.ui.registries.advancements = tree.list.iter().map(|a| a.id.clone()).collect();
-        // `PlayerAdvancements.checkForAutomaticTriggers`: an advancement with no
-        // criteria is never done (`AdvancementRequirements.test` is false), but
-        // its rewards are granted as the progress loads. Vanilla's `award(holder, "")` finds no `""`
-        // criterion to grant and so returns without a toast or an announcement;
-        // the reward grant is the whole effect, and it happens again on the next
-        // load because there is no criterion to record it.
-        for index in tree.automatic() {
-            self.grant_rewards(&tree.list[index]);
-        }
     }
     pub fn save_advancements(&self) {
         if !self.common.adv.loaded
@@ -365,7 +381,7 @@ impl crate::game::ServerGame<'_> {
                 this,
                 origin,
                 tool: None,
-                block_pos: None,
+                event_block: None,
                 target: None,
                 interacting: None,
             },
@@ -392,7 +408,7 @@ impl crate::game::ServerGame<'_> {
             this,
             origin,
             tool: None,
-            block_pos: None,
+            event_block: None,
             target: None,
             interacting: None,
         };
@@ -808,10 +824,13 @@ impl crate::game::ServerGame<'_> {
                     (id.to_owned(), amplifier, duration)
                 })
                 .collect(),
-            components: sunrise_sim::mobs::finalize::variant_component(m)
-                .map(|(id, value)| (id.to_owned(), value))
-                .into_iter()
-                .collect(),
+            components: sunrise_sim::mobs::finalize::variant_component_in(
+                m,
+                self.world_variants(),
+            )
+            .map(|(id, value)| (id.to_owned(), value))
+            .into_iter()
+            .collect(),
             custom_name: m.custom_name_text.as_ref().map(Text::component),
             passengers,
             nbt,
@@ -821,7 +840,19 @@ impl crate::game::ServerGame<'_> {
     }
     /// `SimpleCriterionTrigger.trigger`: test each open criterion of the
     /// trigger and award what it completes.
-    pub fn trigger(&mut self, name: &str, test: impl Fn(&Value, &dyn adv::World) -> bool) {
+    pub fn trigger(
+        &mut self,
+        name: &str,
+        mut test: impl FnMut(&Value, &dyn adv::World) -> bool,
+    ) {
+        self.trigger_custom(name, |c, view| test(&c.conditions, view));
+    }
+    /// `SimpleCriterionTrigger.trigger` with access to each loaded [`adv::Criterion`].
+    pub(in crate::game) fn trigger_custom(
+        &mut self,
+        name: &str,
+        test: impl FnMut(&adv::Criterion, &dyn adv::World) -> bool,
+    ) {
         if self.server.lan_acting_fake || self.no_player_here() {
             return;
         }
@@ -830,7 +861,7 @@ impl crate::game::ServerGame<'_> {
         let Some(list) = tree.by_trigger.get(name) else {
             return;
         };
-        self.trigger_criteria(&tree, list, test);
+        self.trigger_criteria_with(&tree, list, test);
     }
     /// `trigger` for some of a trigger's criteria: (advancement, criterion)
     /// indexes in `tree`, in tree order.
@@ -838,7 +869,15 @@ impl crate::game::ServerGame<'_> {
         &mut self,
         tree: &Tree,
         list: &[(usize, usize)],
-        test: impl Fn(&Value, &dyn adv::World) -> bool,
+        mut test: impl FnMut(&Value, &dyn adv::World) -> bool,
+    ) {
+        self.trigger_criteria_with(tree, list, |c, view| test(&c.conditions, view));
+    }
+    pub(in crate::game::server_side) fn trigger_criteria_with(
+        &mut self,
+        tree: &Tree,
+        list: &[(usize, usize)],
+        mut test: impl FnMut(&adv::Criterion, &dyn adv::World) -> bool,
     ) {
         if self.server.lan_acting_fake {
             return;
@@ -853,7 +892,7 @@ impl crate::game::ServerGame<'_> {
                 {
                     continue;
                 }
-                if test(&c.conditions, &view) {
+                if test(c, &view) {
                     hits.push((ai, ci));
                 }
             }
@@ -997,11 +1036,19 @@ impl crate::game::ServerGame<'_> {
                 hub.finish_native_first_tick(&task, &fresh, owners);
             });
         }
-        self.with_advancement_hub(|hub, owners| {
-            if hub.native_reload_pending {
-                hub.finish_reload_resources(owners);
-            }
-        });
+        let finished_reload = self
+            .with_advancement_hub(|hub, owners| {
+                if hub.native_reload_pending {
+                    hub.finish_reload_resources(owners);
+                    true
+                } else {
+                    false
+                }
+            })
+            .unwrap_or(false);
+        if finished_reload {
+            self.send_datapack_snapshots();
+        }
     }
     /// `PlayerAdvancements.progressChanged`, kept for a network player's client.
     pub(in crate::game::server_side) fn progress_changed(&mut self, index: usize) {
@@ -1058,10 +1105,8 @@ impl crate::game::ServerGame<'_> {
         let tree = self.common.adv.tree.clone();
         for r in &allowed {
             let list = tree.recipe_criteria(r);
-            self.trigger_criteria(&tree, &list, |c, _| {
-                c["recipes"]
-                    .as_str()
-                    .is_some_and(|id| adv::full(id) == r.as_str())
+            self.trigger_criteria(&tree, &list, |c, w| {
+                adv::id_matches(&c["recipes"], "recipe", r, w)
             });
         }
         taken_back
@@ -1208,7 +1253,25 @@ impl crate::game::ServerGame<'_> {
             .level
             .recipe_book
             .add_recipes(&server_world_stations!(self).recipe_index, &rewards);
-        for table in &a.rewards.loot {
+        // `AdvancementRewards.loot` is a `HolderSet<LootTable>`: ids, or a tag's members in order
+        // (a tag that is not bound refused the advancement when the tree loaded).
+        let loot = self.server.server_loot.0.get();
+        let tables: Vec<String> = a
+            .rewards
+            .loot
+            .iter()
+            .flat_map(|entry| match entry.strip_prefix('#') {
+                Some(tag) => loot
+                    .as_ref()
+                    .and_then(|loot| loot.registry_tags("loot_table")?.get(&*adv::full(tag)))
+                    .into_iter()
+                    .flatten()
+                    .cloned()
+                    .collect::<Vec<String>>(),
+                None => vec![entry.clone()],
+            })
+            .collect();
+        for table in &tables {
             // `LootContextParamSets.ADVANCEMENT_REWARD`: the rewarded player is
             // THIS_ENTITY and their position the ORIGIN.
             let player = self.killer_loot_entity(None);
@@ -1362,7 +1425,7 @@ impl crate::game::ServerGame<'_> {
                         this: Some(&me),
                         origin: me.position,
                         tool: None,
-                        block_pos: None,
+                        event_block: None,
                         target: None,
                         interacting: None,
                     },
@@ -1393,7 +1456,7 @@ impl crate::game::ServerGame<'_> {
                 this: Some(&me),
                 origin: me.position,
                 tool: None,
-                block_pos: None,
+                event_block: None,
                 target: None,
                 interacting: None,
             };
@@ -1434,7 +1497,7 @@ impl crate::game::ServerGame<'_> {
                 this: Some(&me),
                 origin: me.position,
                 tool: None,
-                block_pos: None,
+                event_block: None,
                 target: None,
                 interacting: None,
             };
@@ -1456,7 +1519,7 @@ impl crate::game::ServerGame<'_> {
                 this: Some(&me),
                 origin: me.position,
                 tool: None,
-                block_pos: None,
+                event_block: None,
                 target: None,
                 interacting: None,
             };
@@ -1464,7 +1527,7 @@ impl crate::game::ServerGame<'_> {
                 this: Some(&target),
                 origin: me.position,
                 tool: None,
-                block_pos: None,
+                event_block: None,
                 target: None,
                 interacting: None,
             };
@@ -1522,7 +1585,7 @@ impl crate::game::ServerGame<'_> {
                 this: Some(&me),
                 origin: me.position,
                 tool: None,
-                block_pos: None,
+                event_block: None,
                 target: None,
                 interacting: None,
             };
@@ -1632,7 +1695,7 @@ impl crate::game::ServerGame<'_> {
                 this: Some(&me),
                 origin: me.position,
                 tool: None,
-                block_pos: None,
+                event_block: None,
                 target: None,
                 interacting: None,
             };
@@ -1656,7 +1719,7 @@ impl crate::game::ServerGame<'_> {
                 this: Some(&me),
                 origin: me.position,
                 tool: None,
-                block_pos: None,
+                event_block: None,
                 target: None,
                 interacting: None,
             };
@@ -1669,7 +1732,7 @@ impl crate::game::ServerGame<'_> {
                             this: Some(cause),
                             origin: me.position,
                             tool: None,
-                            block_pos: None,
+                            event_block: None,
                             target: None,
                             interacting: None,
                         };
@@ -1689,7 +1752,7 @@ impl crate::game::ServerGame<'_> {
                 this: Some(&me),
                 origin: me.position,
                 tool: None,
-                block_pos: None,
+                event_block: None,
                 target: None,
                 interacting: None,
             };
@@ -1706,7 +1769,7 @@ impl crate::game::ServerGame<'_> {
                         this: Some(s),
                         origin: me.position,
                         tool: None,
-                        block_pos: None,
+                        event_block: None,
                         target: None,
                         interacting: None,
                     };
@@ -1747,7 +1810,7 @@ impl crate::game::ServerGame<'_> {
                 this: Some(&me),
                 origin: me.position,
                 tool: None,
-                block_pos: None,
+                event_block: None,
                 target: None,
                 interacting: None,
             };
@@ -1769,7 +1832,7 @@ impl crate::game::ServerGame<'_> {
                 this: Some(&me),
                 origin: me.position,
                 tool: None,
-                block_pos: None,
+                event_block: None,
                 target: None,
                 interacting: None,
             };
@@ -1788,7 +1851,7 @@ impl crate::game::ServerGame<'_> {
                 this: Some(&me),
                 origin: me.position,
                 tool: None,
-                block_pos: None,
+                event_block: None,
                 target: None,
                 interacting: None,
             };
@@ -1865,7 +1928,7 @@ impl crate::game::ServerGame<'_> {
                 this: Some(&me),
                 origin: me.position,
                 tool: None,
-                block_pos: None,
+                event_block: None,
                 target: None,
                 interacting: None,
             };
@@ -1911,7 +1974,7 @@ impl crate::game::ServerGame<'_> {
                 this: Some(&me),
                 origin: me.position,
                 tool: None,
-                block_pos: None,
+                event_block: None,
                 target: None,
                 interacting: None,
             };
@@ -1928,7 +1991,7 @@ impl crate::game::ServerGame<'_> {
                 this: Some(&me),
                 origin: me.position,
                 tool: None,
-                block_pos: None,
+                event_block: None,
                 target: None,
                 interacting: None,
             };
@@ -1982,7 +2045,7 @@ impl crate::game::ServerGame<'_> {
                 this: Some(&me),
                 origin: me.position,
                 tool: None,
-                block_pos: None,
+                event_block: None,
                 target: None,
                 interacting: None,
             };
@@ -1998,7 +2061,7 @@ impl crate::game::ServerGame<'_> {
                 this: Some(&me),
                 origin: me.position,
                 tool: None,
-                block_pos: None,
+                event_block: None,
                 target: None,
                 interacting: None,
             };
@@ -2017,7 +2080,7 @@ impl crate::game::ServerGame<'_> {
                 this: Some(&me),
                 origin: me.position,
                 tool: None,
-                block_pos: None,
+                event_block: None,
                 target: None,
                 interacting: None,
             };
@@ -2039,7 +2102,7 @@ impl crate::game::ServerGame<'_> {
                 this: Some(&me),
                 origin: me.position,
                 tool: None,
-                block_pos: None,
+                event_block: None,
                 target: None,
                 interacting: None,
             };
@@ -2069,7 +2132,7 @@ impl crate::game::ServerGame<'_> {
                 this: Some(&me),
                 origin: me.position,
                 tool: None,
-                block_pos: None,
+                event_block: None,
                 target: None,
                 interacting: None,
             };
@@ -2103,7 +2166,7 @@ impl crate::game::ServerGame<'_> {
                 this: Some(&me),
                 origin: me.position,
                 tool: None,
-                block_pos: None,
+                event_block: None,
                 target: None,
                 interacting: None,
             };
@@ -2118,7 +2181,7 @@ impl crate::game::ServerGame<'_> {
                 this: Some(&me),
                 origin: me.position,
                 tool: None,
-                block_pos: None,
+                event_block: None,
                 target: None,
                 interacting: None,
             };
@@ -2139,7 +2202,7 @@ impl crate::game::ServerGame<'_> {
                 this: Some(&me),
                 origin: me.position,
                 tool: None,
-                block_pos: None,
+                event_block: None,
                 target: None,
                 interacting: None,
             };
@@ -2154,26 +2217,12 @@ impl crate::game::ServerGame<'_> {
     }
     /// `ItemUsedOnLocationTrigger` (placed_block, item_used_on_block).
     pub(in crate::game) fn trigger_block(&mut self, name: &str, pos: [i32; 3], stack: &ItemStack) {
-        #[cfg(any(test, feature = "test-support"))]
-        block_use_recording::record(name, Some(stack));
-        let me = self.player_entity_for(name);
-        let it = item_view(stack);
-        self.trigger(name, move |c, w| {
-            let ctx = adv::Entities {
-                this: Some(&me),
-                origin: me.position,
-                tool: Some(&it),
-                block_pos: Some(pos),
-                target: None,
-                interacting: None,
-            };
-            adv::conditions(&c["location"], &ctx, w)
-        });
+        let _ = self.trigger_block_use(name, pos, Some(stack));
     }
     /// `DefaultBlockInteractionTrigger` (default_block_use): the player, and
     /// the block's `BLOCK_USE` context at its centre, with no tool.
     pub(in crate::game::server_side) fn trigger_default_block_use(&mut self, pos: [i32; 3]) {
-        self.trigger_block_use("minecraft:default_block_use", pos, None);
+        let _ = self.trigger_block_use("minecraft:default_block_use", pos, None);
     }
     /// `AnyBlockInteractionTrigger` (any_block_use): the player, and the
     /// block's `ADVANCEMENT_LOCATION` context at its centre with the original
@@ -2183,37 +2232,78 @@ impl crate::game::ServerGame<'_> {
         pos: [i32; 3],
         stack: &ItemStack,
     ) {
-        self.trigger_block_use("minecraft:any_block_use", pos, Some(stack));
+        let _ = self.trigger_block_use("minecraft:any_block_use", pos, Some(stack));
     }
-    pub(in crate::game::server_side) fn trigger_block_use(
+    pub(in crate::game) fn trigger_block_use(
         &mut self,
         name: &str,
         pos: [i32; 3],
         stack: Option<&ItemStack>,
-    ) {
+    ) -> Result<(), mod_api::TriggerCriterionError> {
         #[cfg(any(test, feature = "test-support"))]
         block_use_recording::record(name, stack);
+        if self.server.lan_acting_fake || self.no_player_here() {
+            return Ok(());
+        }
+        self.load_advancements();
+        let tree = self.common.adv.tree.clone();
+        let Some(criteria) = tree.by_trigger.get(name) else {
+            return Ok(());
+        };
+        let [x, y, z] = pos;
+        let column = (x >> 4, z >> 4);
+        // `Level.isInValidBounds` uses `ChunkPos.isValid`, not the world border.
+        // `ChunkPyramid.MAX_CHUNK_COORDINATE_VALUE`: packed X/Z minus the safety margin
+        // of (32 + the generation FULL step's 12 dependency distances + 1) * 2 chunks.
+        const MAX_CHUNK_COORDINATE: i32 = (33_554_431 >> 4) - (32 + 12 + 1) * 2;
+        let in_bounds = self.common.world.shape.contains_y(y)
+            && column.0.abs().max(column.1.abs()) <= MAX_CHUNK_COORDINATE;
+        let registry = self.common.pack.assets.registry;
+        let state = if !in_bounds {
+            registry.default_state("minecraft:void_air")
+        } else if self.load_full_column(column) {
+            self.common
+                .world
+                .chunks
+                .get(&column)
+                .map(|chunk| chunk.block(x & 15, y, z & 15))
+        } else {
+            None
+        };
+        let Some(state) = state.and_then(|state| registry.state(state)) else {
+            log::error!(
+                "{}: {name} could not read the block at {pos:?}",
+                self.common.dim.id()
+            );
+            return Err(mod_api::TriggerCriterionError::BlockUnavailable);
+        };
+        let event_block = Some(adv::BlockEvent {
+            state,
+            // BLOCK_USE doesn't include BLOCK_ENTITY. ADVANCEMENT_LOCATION does.
+            block_entity: (in_bounds && stack.is_some()).then_some(pos),
+        });
         let me = self.player_entity_for(name);
         let it = stack.map(item_view);
         let centre = pos.map(|c| f64::from(c) + 0.5);
-        self.trigger(name, move |c, w| {
+        self.trigger_criteria(&tree, criteria, move |c, w| {
             let player = adv::Entities {
                 this: Some(&me),
                 origin: me.position,
                 tool: None,
-                block_pos: None,
+                event_block: None,
                 target: None,
                 interacting: None,
             };
             let location = adv::Entities {
                 origin: centre,
                 tool: it.as_ref(),
-                block_pos: Some(pos),
+                event_block,
                 ..player
             };
-            adv::conditions(&c["player"], &player, w)
-                && adv::conditions(&c["location"], &location, w)
+            adv::conditions(&c["location"], &location, w)
+                && adv::conditions(&c["player"], &player, w)
         });
+        Ok(())
     }
     /// `LightningStrikeTrigger`: the bolt, and the mobs around it that it did
     /// not hit (`bystander`), each tested from this player's position.
@@ -2229,7 +2319,7 @@ impl crate::game::ServerGame<'_> {
                 this: Some(&me),
                 origin: me.position,
                 tool: None,
-                block_pos: None,
+                event_block: None,
                 target: None,
                 interacting: None,
             };
@@ -2265,7 +2355,7 @@ impl crate::game::ServerGame<'_> {
                 this: Some(&me),
                 origin: me.position,
                 tool: None,
-                block_pos: None,
+                event_block: None,
                 target: None,
                 interacting: None,
             };
@@ -2292,7 +2382,7 @@ impl crate::game::ServerGame<'_> {
                 this: Some(&me),
                 origin: me.position,
                 tool: None,
-                block_pos: None,
+                event_block: None,
                 target: None,
                 interacting: None,
             };
@@ -2318,7 +2408,7 @@ impl crate::game::ServerGame<'_> {
                 this: Some(&me),
                 origin: me.position,
                 tool: None,
-                block_pos: None,
+                event_block: None,
                 target: None,
                 interacting: None,
             };
@@ -2358,7 +2448,7 @@ impl crate::game::ServerGame<'_> {
                 this: Some(&me),
                 origin: me.position,
                 tool: None,
-                block_pos: None,
+                event_block: None,
                 target: None,
                 interacting: None,
             };
@@ -2391,7 +2481,7 @@ impl crate::game::ServerGame<'_> {
                 this: Some(&me),
                 origin: me.position,
                 tool: None,
-                block_pos: None,
+                event_block: None,
                 target: None,
                 interacting: None,
             };
@@ -2410,7 +2500,7 @@ impl crate::game::ServerGame<'_> {
                 this: Some(&me),
                 origin: me.position,
                 tool: None,
-                block_pos: None,
+                event_block: None,
                 target: None,
                 interacting: None,
             };
@@ -2433,7 +2523,7 @@ impl crate::game::ServerGame<'_> {
                     this: Some(e),
                     origin: me.position,
                     tool: None,
-                    block_pos: None,
+                    event_block: None,
                     target: None,
                     interacting: None,
                 }
@@ -2450,7 +2540,7 @@ impl crate::game::ServerGame<'_> {
                                 this: Some(e),
                                 origin: me.position,
                                 tool: None,
-                                block_pos: None,
+                                event_block: None,
                                 target: None,
                                 interacting: None,
                             },
@@ -2609,6 +2699,7 @@ pub(in crate::game) mod tests {
             name: "c".into(),
             trigger: trigger.into(),
             conditions: sunrise_world::lazy_json::LazyJson::new(&conditions),
+            player: None,
         };
         let looking = serde_json::json!({"player": {"type": "minecraft:entity_properties",
             "entity": "this", "predicate": {"minecraft:type_specific/player":
@@ -2642,6 +2733,7 @@ pub(in crate::game) mod tests {
             name: "c".into(),
             trigger: trigger.into(),
             conditions: sunrise_world::lazy_json::LazyJson::new(&conditions),
+            player: None,
         };
         let nbt = serde_json::json!({"entity": [{"condition": "minecraft:entity_properties",
             "entity": "this", "predicate": {"minecraft:nbt": "{Variant:1}"}}]});

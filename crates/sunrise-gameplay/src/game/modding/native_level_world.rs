@@ -3,6 +3,7 @@
 //! difficulty and game rules on the server, and weather on both sides.
 //! Stale handles return `None`.
 use super::Dim;
+use core::ops::ControlFlow;
 use mod_api::{BoolGameRuleKey, FeatureFlags, LevelReadError, LevelRef};
 use sunrise_command::vanilla::DIFFICULTIES;
 use sunrise_core::position::BlockPos;
@@ -179,19 +180,14 @@ impl crate::game::ServerGame<'_> {
         self.sync_hub_clocks();
         true
     }
-    /// Every game rule the world has (`GameRules`) with its current value, by `minecraft:` id
-    /// (`max_minecart_speed` only with minecart improvements): None for a stale handle and on
-    /// a client.
-    pub(in crate::game) fn level_game_rules(
+    /// Visit the server's available game rules once the named level resolves.
+    pub(in crate::game) fn level_visit_game_rules(
         &self,
         level: LevelRef,
-    ) -> Result<Vec<(String, GameRuleValue)>, LevelReadError> {
+        visit: &mut dyn FnMut(&str, mod_api::GameRuleValue) -> ControlFlow<()>,
+    ) -> Result<ControlFlow<()>, LevelReadError> {
         self.native_level_world_result(level)?;
-        let rules = &self.common.ui.rules;
-        Ok(rules
-            .available_rules()
-            .filter_map(|r| Some((r.name.clone(), rules.get(&r.name)?)))
-            .collect())
+        Ok(self.common.visit_available_game_rules(visit))
     }
     /// Whether it rains (`Level.isRaining`: a rain level above 0.2).
     pub(in crate::game) fn level_is_raining(&self, level: LevelRef) -> Option<bool> {

@@ -575,50 +575,18 @@ use joml::{Mat4, Quat};
 /// into a matrix by glam's formula, which differs in the last bits (1.0 for 0.99999994, 6e-8 for
 /// 0).
 pub fn view_rotation_matrix(yaw: f32, pitch: f32) -> (glam::Mat4, glam::Mat4) {
-    let q = Quat::rotation_yxz(PI - yaw * DEG_TO_RAD, -pitch * DEG_TO_RAD, 0.0);
-    let mut m = Mat4::IDENTITY;
-    m.rotation(Quat {
-        x: -q.x,
-        y: -q.y,
-        z: -q.z,
-        w: q.w,
-    });
-    let inverse = m.invert_orthonormal().expect("a rotation is orthonormal");
-    (m.to_glam(), inverse.to_glam())
+    view_rotation_matrix_rolled(yaw, pitch, 0.0)
 }
 
 /// `view_matrix` with a roll about the view direction, in degrees.
 pub fn view_matrix_rolled(yaw: f32, pitch: f32, roll: f32) -> glam::Mat4 {
-    let q = Quat::rotation_yxz(
-        PI - yaw * DEG_TO_RAD,
-        -pitch * DEG_TO_RAD,
-        -roll * DEG_TO_RAD,
-    );
+    // Vanilla uses the conjugate of Camera.rotation, not a world-up look-at.
+    let q = rotation_with_roll(yaw, pitch, roll);
     glam::Mat4::from_quat(glam::Quat::from_xyzw(-q.x, -q.y, -q.z, q.w))
 }
 /// `AbstractClientPlayer.getFieldOfViewModifier(firstPerson, effectScale)`.
 pub fn field_of_view_modifier(p: &FovPlayer, first_person: bool, effect_scale: f32) -> f32 {
-    let mut modifier = 1.0f32;
-    if p.flying {
-        modifier *= 1.1;
-    }
-    let walking_speed = p.walking_speed;
-    if walking_speed != 0.0 {
-        let speed_factor = p.movement_speed as f32 / walking_speed;
-        modifier *= (speed_factor + 1.0) / 2.0;
-    }
-    if let Some((item, ticks)) = p.using {
-        match item {
-            UseItem::Bow => {
-                let scale = java_min(ticks as f32 / 20.0, 1.0);
-                modifier *= 1.0 - scale * scale * 0.15;
-            }
-            // isScoping: using a spyglass.
-            UseItem::Spyglass if first_person => return 0.1,
-            _ => {}
-        }
-    }
-    lerp(effect_scale, 1.0, modifier)
+    raw_field_of_view_modifier(p, first_person).map_or(0.1, |raw| lerp(effect_scale, 1.0, raw))
 }
 
 /// The fluid `Camera.getFluidInCamera` reports, as the field of view sees it.
@@ -872,6 +840,54 @@ pub fn spinning_effect_matrix(intensity: f32, angle_degrees: f32) -> glam::Mat4 
     glam::Mat4::from_axis_angle(axis, angle)
         * glam::Mat4::from_scale(glam::Vec3::new(1.0 / skew, 1.0, 1.0))
         * glam::Mat4::from_axis_angle(axis, -angle)
+}
+
+/// [`view_rotation_matrix`] with a roll about the view direction, in degrees (`Camera.setRotation`
+/// with NeoForge's `roll`). Keeps `roll == 0.0` bit-identical to vanilla's `+0.0` z-angle.
+pub fn view_rotation_matrix_rolled(yaw: f32, pitch: f32, roll: f32) -> (glam::Mat4, glam::Mat4) {
+    let q = rotation_with_roll(yaw, pitch, roll);
+    let mut m = Mat4::IDENTITY;
+    m.rotation(Quat {
+        x: -q.x,
+        y: -q.y,
+        z: -q.z,
+        w: q.w,
+    });
+    let inverse = m.invert_orthonormal().expect("a rotation is orthonormal");
+    (m.to_glam(), inverse.to_glam())
+}
+
+/// `Camera.setRotation` with NeoForge roll, in degrees (`ViewportEvent.ComputeCameraAngles`).
+pub fn rotation_with_roll(yaw: f32, pitch: f32, roll: f32) -> Quat {
+    let angle_z = if roll == 0.0 { 0.0 } else { -roll * DEG_TO_RAD };
+    Quat::rotation_yxz(PI - yaw * DEG_TO_RAD, -pitch * DEG_TO_RAD, angle_z)
+}
+
+/// `AbstractClientPlayer.getFieldOfViewModifier`'s product before `Mth.lerp(effectScale, 1, f)`:
+/// the raw modifier `ComputeFovModifierEvent` carries. None while scoping with a spyglass in
+/// first person, where vanilla returns `0.1` before that lerp (and before the event).
+pub fn raw_field_of_view_modifier(p: &FovPlayer, first_person: bool) -> Option<f32> {
+    let mut modifier = 1.0f32;
+    if p.flying {
+        modifier *= 1.1;
+    }
+    let walking_speed = p.walking_speed;
+    if walking_speed != 0.0 {
+        let speed_factor = p.movement_speed as f32 / walking_speed;
+        modifier *= (speed_factor + 1.0) / 2.0;
+    }
+    if let Some((item, ticks)) = p.using {
+        match item {
+            UseItem::Bow => {
+                let scale = java_min(ticks as f32 / 20.0, 1.0);
+                modifier *= 1.0 - scale * scale * 0.15;
+            }
+            // isScoping: using a spyglass.
+            UseItem::Spyglass if first_person => return None,
+            _ => {}
+        }
+    }
+    Some(modifier)
 }
 
 #[cfg(test)]

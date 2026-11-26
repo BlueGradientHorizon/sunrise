@@ -9,7 +9,11 @@ impl ClientGame<'_> {
         if self.common.is_logical_server() {
             return;
         }
-        self.client.ambience.enchant_power.rebuild(
+        let enchant_power = &self.client.ambience.enchant_power;
+        enchant_power.set_hooked(mod_api::__private::listened(
+            mod_api::HookId::IsValidBookShelf,
+        ));
+        enchant_power.rebuild(
             self.common.pack.assets.registry.len(),
             |state| {
                 let origin = BlockPos::new(0, 0, 0);

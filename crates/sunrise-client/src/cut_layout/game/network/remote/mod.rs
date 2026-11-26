@@ -192,29 +192,22 @@ pub(crate) mod tests {
     #[test]
     #[ignore = "daily"]
     fn named_remote_players_are_told_one_by_one() {
-        use mod_api::{
-            EntityTickListenedEvent, EntityTickPostEvent, EntityTickPreEvent, Hooks, HostSide,
-            ModEntry, Mods, Registrar,
-        };
+        use mod_api::{EntityTickPostEvent, EntityTickPreEvent, Hooks, HostSide, ModEntry, Mods};
         use std::sync::{Arc, Mutex};
         type Calls = Arc<Mutex<Vec<(bool, Vec<u32>)>>>;
         struct Named(Calls);
         #[mod_api::__subscriptions]
         impl Hooks for Named {
-            fn entity_tick_listened(&self, _: HostSide<'_>, event: &mut EntityTickListenedEvent) {
-                event.listened = true;
-            }
-            fn register(&self, r: &mut dyn Registrar, _: &mod_api::RegistrationContext) {
-                r.entity_tick_each("minecraft:player");
-            }
-            fn entity_tick_pre(&self, _: HostSide<'_>, event: &mut EntityTickPreEvent<'_>) {
-                self.0.lock().unwrap().push((true, event.entities.to_vec()));
+            fn entity_tick_pre(
+                &self,
+                _: HostSide<'_>,
+                event: &mut EntityTickPreEvent<'_>,
+            ) -> mod_api::Flow {
+                self.0.lock().unwrap().push((true, vec![event.entity]));
+                mod_api::Flow::Continue
             }
             fn entity_tick_post(&self, _: HostSide<'_>, event: &mut EntityTickPostEvent<'_>) {
-                self.0
-                    .lock()
-                    .unwrap()
-                    .push((false, event.entities.to_vec()));
+                self.0.lock().unwrap().push((false, vec![event.entity]));
             }
         }
         let heard: Calls = Arc::default();
@@ -230,10 +223,6 @@ pub(crate) mod tests {
                 game.connect_local(client, "avatar-tick-client").unwrap();
                 let remote = game.client.remote.as_mut().unwrap();
                 let kind = remote.player_type.as_ref().unwrap().clone();
-                assert!(
-                    !kind.flags.tick_alone,
-                    "render model does not select tick routing"
-                );
                 for id in [66, 67] {
                     remote.level_players.insert(id, id as u128);
                     game.common.mobs.push(sunrise_sim::mobs::Mob::new(
@@ -414,7 +403,6 @@ pub(crate) mod tests {
 
     use {
         sunrise_gameplay_common::game::remote::boat_interact_passes,
-        sunrise_gameplay_common::game::remote::chat_after_event,
         sunrise_gameplay_common::game::remote::item_frame_interact_passes,
         sunrise_gameplay_common::game::remote::remote_object_swings,
     };

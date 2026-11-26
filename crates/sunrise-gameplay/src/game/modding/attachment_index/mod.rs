@@ -10,19 +10,6 @@ use sunrise_mod_runtime::attachments::{
 mod players;
 
 impl crate::game::ServerGame<'_> {
-    pub fn attachment_validate_write(
-        &self,
-        token: mod_api::AttachmentWriteToken,
-    ) -> Result<(), mod_api::AttachmentRowError> {
-        mod_api::__private::game::validate_attachment_write(
-            &token,
-            self.common
-                .attachment_indexes
-                .get(&self.common.dim)
-                .map(Arc::as_ref),
-        )
-    }
-
     /// Publish saved contents only when an authoritative entity owns their lifetime.
     pub(in crate::game::server_side) fn bind_saved_entity_attachments(
         &mut self,

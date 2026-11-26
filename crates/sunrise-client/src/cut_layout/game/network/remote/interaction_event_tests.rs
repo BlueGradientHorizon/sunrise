@@ -16,7 +16,7 @@ use mod_api::{
     self, BlockPart, ENTITY_ITEMS, Flow, Hooks, HostSide, HostTransaction, ItemPart, ItemResource,
     LivingEntityUseItemFinishEvent, LogicalSide, Registrar, RightClickBlockEvent,
     RightClickItemEvent, ServerHost, TriState, UseItemEvent, UseItemOnBlockEvent, UseItemOnEvent,
-    UseOnEvent, UsePhase,
+    UseOnEvent, UsePhase, UseWithoutItemEvent,
 };
 use std::sync::{Arc, Mutex};
 use sunrise_core::geometry::Vec3;
@@ -41,11 +41,12 @@ impl sunrise_client_gameplay::game::ClientGame<'_> {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub(in crate::game) enum Step {
     Phase(UsePhase, LogicalSide),
     BlockPart,
-    UseOnPart,
+    EmptyPart(Hand, bool),
+    UseOnPart(LogicalSide),
     FirstPart,
     Air(LogicalSide, Hand),
     ItemPart,
@@ -59,7 +60,12 @@ pub(in crate::game) struct Controls {
     pub(in crate::game) first_answer: Option<Answer>,
     pub(in crate::game) first_part_answer: Option<Answer>,
     pub(in crate::game) block_answer: Option<Answer>,
+    pub(in crate::game) block_part_answer: Option<Answer>,
+    pub(in crate::game) block_part_select_slot: Option<u8>,
+    pub(in crate::game) record_empty: bool,
+    pub(in crate::game) empty_part_answer: Option<Answer>,
     pub(in crate::game) item_on_answer: Option<Answer>,
+    pub(in crate::game) client_use_on_answer: Option<Answer>,
     pub(in crate::game) air_answer: Option<Answer>,
     pub(in crate::game) air_main_only: bool,
     pub(in crate::game) consume_item: bool,
@@ -82,6 +88,7 @@ pub(in crate::game) struct Controls {
     /// How many `right_click_block` events fired.
     pub(in crate::game) clicks: usize,
     pub(in crate::game) click_hands: Vec<Hand>,
+    pub(in crate::game) use_item_on_packets: usize,
     pub(in crate::game) use_item_packets: usize,
     /// The click is the host's own, not the fixture guest's: skip the guest identity asserts.
     pub(in crate::game) host_click: bool,
@@ -120,6 +127,7 @@ impl Hooks for Observer {
         event: &mut mod_api::ClientPacketSendEvent<'_>,
     ) -> Flow {
         match event.packet.id.path() {
+            "use_item_on" => self.0.lock().unwrap().use_item_on_packets += 1,
             "use_item" => self.0.lock().unwrap().use_item_packets += 1,
             "set_creative_mode_slot" => self.0.lock().unwrap().creative_slot_packets += 1,
             _ => {}
@@ -234,19 +242,44 @@ impl Hooks for Observer {
 }
 #[mod_api::sunrise_part]
 impl BlockPart for Observer {
-    fn use_item_on(&self, _: &mut dyn ServerHost, _: &mut UseItemOnEvent<'_>) -> Option<Answer> {
+    fn use_item_on(&self, host: HostSide<'_>, event: &mut UseItemOnEvent<'_>) -> Option<Answer> {
+        assert_eq!(side(&host), event.click.side);
+        let (select_slot, answer) = {
+            let mut state = self.0.lock().unwrap();
+            state.steps.push(Step::BlockPart);
+            (state.block_part_select_slot, state.block_part_answer)
+        };
+        if let (Some(slot), HostSide::Client(host)) = (select_slot, host) {
+            assert_eq!(host.select_hotbar_slot(slot), Ok(()));
+        }
+        answer
+    }
+    fn use_without_item(
+        &self,
+        host: HostSide<'_>,
+        event: &mut UseWithoutItemEvent<'_>,
+    ) -> Option<Answer> {
+        assert_eq!(side(&host), event.click.side);
         let mut state = self.0.lock().unwrap();
-        state.steps.push(Step::BlockPart);
-        None
+        if state.record_empty {
+            assert_eq!(event.click.hit.point, [0.5, 65.0, 0.5]);
+            assert!(!event.click.hit.inside);
+            state.steps.push(Step::EmptyPart(
+                event.click.hand,
+                event.click.stack.is_some(),
+            ));
+        }
+        state.empty_part_answer
     }
 }
 #[mod_api::sunrise_part]
 impl ItemPart for Observer {
     fn on_item_use_first(
         &self,
-        _: &mut dyn ServerHost,
-        _: &mut mod_api::OnItemUseFirstEvent<'_>,
+        host: HostSide<'_>,
+        event: &mut mod_api::OnItemUseFirstEvent<'_>,
     ) -> Option<Answer> {
+        assert_eq!(side(&host), event.click.side);
         let mut state = self.0.lock().unwrap();
         if state.record_first {
             state.steps.push(Step::FirstPart);
@@ -254,11 +287,13 @@ impl ItemPart for Observer {
         state.first_part_answer
     }
     fn use_on(&self, host: HostSide<'_>, _: &mut UseOnEvent<'_>) -> Option<Answer> {
-        let HostSide::Server(_) = host else {
-            return None;
+        let mut state = self.0.lock().unwrap();
+        let (side, answer) = match host {
+            HostSide::Server(_) => (LogicalSide::Server, Answer::SuccessServer),
+            HostSide::Client(_) => (LogicalSide::Client, state.client_use_on_answer?),
         };
-        self.0.lock().unwrap().steps.push(Step::UseOnPart);
-        Some(Answer::SuccessServer)
+        state.steps.push(Step::UseOnPart(side));
+        Some(answer)
     }
     fn use_item(&self, host: HostSide<'_>, event: &mut UseItemEvent<'_>) -> Option<Answer> {
         if let Some(hand) = self.0.lock().unwrap().expected_hand {

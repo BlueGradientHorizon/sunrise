@@ -85,7 +85,8 @@ impl crate::game::ServerGame<'_> {
                     self,
                     attack,
                     no_push,
-                    crate::game::server_side::entity_server::player_victim_causer!(self, decision)
+                    crate::game::server_side::entity_server::player_victim_causer!(self, decision),
+                    acting_equipment!(self.common)
                 ),
                 &self.common.health_resources,
                 rules,
@@ -119,6 +120,7 @@ impl crate::game::ServerGame<'_> {
                     causing: *causing,
                     direct: *direct,
                     position: *position,
+                    direct_type: None,
                 };
                 self.hurt_armor(&source, *amount);
             }

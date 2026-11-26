@@ -7,6 +7,8 @@ pub(in crate::game) mod menu_books;
 pub mod package_files;
 pub mod runtime_files;
 pub mod standalone;
+#[cfg(test)]
+mod content_admission_tests;
 #[allow(unused_imports)]
 pub use mod_api::__private::{DeclarationKind, DeclarationRefusal, DeclarationSink, game::*};
 #[allow(unused_imports)]
@@ -34,7 +36,6 @@ use sunrise_world::{
 pub(in crate::game) struct ContentRequest<'a> {
     pub(in crate::game) path: &'a Path,
     pub(in crate::game) manifest: &'a sunrise_mod_package::Manifest,
-    pub(in crate::game) declared: Vec<String>,
     pub(in crate::game) admitted: Option<&'a package_files::PackageContent>,
 }
 
@@ -85,16 +86,13 @@ pub(in crate::game) fn read_contents(
         |ContentRequest {
              path,
              manifest,
-             declared,
              admitted,
          }| {
             let content = match admitted {
-                Some(source) => source.read_declaring(manifest, declared),
-                None => sunrise_mod_package::Content::read_declaring(path, manifest, declared),
+                Some(source) => source.read(manifest),
+                None => sunrise_mod_package::Content::read(path, manifest),
             };
-            if declared.is_empty()
-                && let Ok(content) = &content
-            {
+            if let Ok(content) = &content {
                 remember_verdict(path, content);
             }
             content
@@ -119,6 +117,8 @@ pub(in crate::game) type ContentMaterializer =
 
 #[derive(Clone, Default)]
 pub struct ModsState {
+    /// The instance's native mod settings, shared by the window and its integrated server.
+    pub settings: crate::game::native_hooks::mod_settings::SharedSettings,
     pub active_condition_root: Option<Arc<()>>,
     pub load_condition_candidate: Option<sunrise_world::conditions::LoadConditions>,
     pub load_conditions:
@@ -168,6 +168,10 @@ pub struct ModsState {
     /// The entries of the mods' datapack registries this world session has published, at the
     /// generation of the load or reload that built them; `None` when no mod declared one.
     pub datapack_registries: Option<Arc<mod_api::DatapackRegistrySet>>,
+    /// Decoded vanilla codec values (`IntProvider`, `BlockStateProvider`, `BlockPredicate`,
+    /// `HolderSet`) for [`Self::datapack_registries`], swapped atomically on load and `/reload`.
+    pub datapack_vanilla_values:
+        Option<Arc<super::native_datapack_values::DatapackVanillaValues>>,
 }
 
 impl ModsState {
@@ -233,7 +237,7 @@ impl ModsState {
         }
     }
 
-    pub(in crate::game) fn code_owner_enabled(&self, owner: &str) -> bool {
+    pub fn code_owner_enabled(&self, owner: &str) -> bool {
         let initially_disabled = self.code_switches.as_ref().is_some_and(|switches| {
             !switches.applied.load(std::sync::atomic::Ordering::Acquire)
                 && switches.disabled.contains(owner)
@@ -401,23 +405,39 @@ pub(in crate::game) fn builtin_registry_names(
     Ok(registries)
 }
 
+pub(in crate::game) fn registration_registry_names(
+    root: &Path,
+) -> sunrise_game_data::Result<BTreeMap<String, Vec<String>>> {
+    use sunrise_game_data::potions::{EFFECTS, namespaced};
+    let mut registries = builtin_registry_names(root)?;
+    // Effects resolve against the engine table even if the prepared report omits an entry.
+    registries.insert(
+        "minecraft:mob_effect".into(),
+        EFFECTS
+            .iter()
+            .map(|def| namespaced(def.id).to_owned())
+            .collect(),
+    );
+    Ok(registries)
+}
+
 /// Capture registration's stable registries, settings and stock capability type owners.
 pub fn install_registration_data(
     root: &Path,
+    directory: PathBuf,
     runtime_files: BTreeMap<String, Arc<dyn mod_api::RuntimeFileSource>>,
     package_files: BTreeMap<String, Arc<dyn mod_api::PackageFileSource>>,
 ) -> sunrise_game_data::Result<()> {
     let packages = mod_api::__private::loaded_mods();
-    let directory = mod_api::InstanceDirectory::from_path(&crate::game::game_dir())
-        .expect("the host path has an encoding the mod API carries");
     (mod_api::__private::platform::platform()?.install_registration_data)(
         mod_api::__private::RegistrationData::new(
-            builtin_registry_names(root)?,
+            registration_registry_names(root)?,
             sunrise_world::native_load_context::capture_settings(
                 &crate::game::mod_data_root(),
                 packages.ids(),
             ),
-            directory,
+            mod_api::InstanceDirectory::from_path(&directory)
+                .expect("the host path has an encoding the mod API carries"),
             sunrise_level::runtime_env::runtime_environment::get().clone(),
         )
         .with_capability_coverage(coverage::builtin, coverage::block_entity)
@@ -440,15 +460,37 @@ pub(in crate::game) fn builtin_registries(
 /// With no mod registering any, nothing is installed, which every reader
 /// treats as no custom components, and `registries.json` isn't read.
 pub fn register_components(root: &std::path::Path) -> sunrise_game_data::Result<()> {
-    let mut names = Vec::new();
-    crate::game::native_hooks::native_component_types(&RegistrationContext::new(), &mut names);
-    if names.is_empty() {
+    let mut entries = Vec::new();
+    crate::game::native_hooks::native_component_types(&RegistrationContext::new(), &mut entries);
+    if entries.is_empty() {
         return Ok(());
     }
     let builtin = builtin_registries(root)?;
     let types = builtin
         .get("minecraft:data_component_type")
         .ok_or("missing data component registry")?;
+    let mut seen = std::collections::HashMap::<String, &'static str>::with_capacity(entries.len());
+    let mut names = Vec::with_capacity(entries.len());
+    for entry in entries {
+        let id = entry.answer;
+        let mod_id = entry.mod_id;
+        if sunrise_core::identifier::Identifier::parse_namespaced(&id).is_none() {
+            return Err(format!("mod {mod_id}: invalid native component name {id:?}").into());
+        }
+        if types.names.contains(&id) {
+            return Err(format!(
+                "mod {mod_id}: native component {id} conflicts with a built-in data component type"
+            )
+            .into());
+        }
+        if let Some(first) = seen.insert(id.clone(), mod_id) {
+            return Err(format!(
+                "mod {mod_id}: duplicate native component {id} (already registered by mod {first})"
+            )
+            .into());
+        }
+        names.push(id);
+    }
     let first = i32::try_from(types.names.len())?;
     sunrise_protocol::item::custom::install(first, names)
         .map_err(|error| format!("invalid native component registration: {error}"))?;
@@ -483,10 +525,6 @@ impl DeclarationFailures {
                 DeclarationError::InvalidId { id } => {
                     Text::translate("sunrise.mods.declaration.invalid_id", &[quoted(id)])
                 }
-                DeclarationError::UnownedNamespace { id, namespace } => Text::translate(
-                    "sunrise.mods.declaration.unowned_namespace",
-                    &[quoted(id), quoted(namespace)],
-                ),
                 DeclarationError::Rejected { id, reason } => Text::translate(
                     "sunrise.mods.declaration.rejected",
                     &[quoted(id), Text::literal(reason.clone())],
@@ -666,9 +704,9 @@ pub struct ContentOverlay {
     /// The protocol entries of the accepted mods.
     pub announced: Vec<sunrise_protocol::mod_list::Entry>,
     /// Whether the protocol's local mod list is still unset.
-    pub(in crate::game) announce: bool,
+    pub announce: bool,
     /// The accepted content-only mods, each with its version, for the worlds saved to record.
-    pub(in crate::game) content_mods: Vec<sunrise_sim::save::level_mods::ModRecord>,
+    pub content_mods: Vec<sunrise_sim::save::level_mods::ModRecord>,
 }
 
 /// A package's primary namespace is not an alias another layer can acquire.
@@ -772,7 +810,7 @@ pub fn validate_startup_packages(sources: &ModsState) -> sunrise_game_data::Resu
 
 /// The owning package ID for an admitted content layer: the serving native host for a
 /// `served_by` content package, otherwise the layer itself.
-pub(in crate::game) fn content_layer_owner<'a>(
+pub fn content_layer_owner<'a>(
     layer_id: &'a str,
     selected: &'a [sunrise_mod_package::selection::SelectedPackage],
 ) -> &'a str {
@@ -781,24 +819,6 @@ pub(in crate::game) fn content_layer_owner<'a>(
         .find(|p| p.package.manifest.id == layer_id)
         .and_then(|p| p.package.manifest.served_by.as_deref())
         .unwrap_or(layer_id)
-}
-
-/// Maps each admitted content layer's namespaces to its owning package ID:
-/// the serving native host for `served_by` content packages, otherwise the layer itself.
-pub fn content_owner_pairs<'a>(
-    mods: &'a [sunrise_sim::mod_content::ContentMod],
-    selected: &'a [sunrise_mod_package::selection::SelectedPackage],
-) -> Vec<(&'a str, &'a str)> {
-    mods.iter()
-        .flat_map(|layer| {
-            let owner = content_layer_owner(&layer.id, selected);
-            layer
-                .content
-                .namespaces
-                .iter()
-                .map(move |namespace| (namespace.as_str(), owner))
-        })
-        .collect()
 }
 
 /// Builds the content overlay: every enabled or dev content mod's files
@@ -897,16 +917,12 @@ pub(in crate::game) fn content_overlay_with_refusals(
             ContentRequest {
                 path: source.path,
                 manifest: source.manifest,
-                declared: super::native_content_items::owned_item_ids(
-                    source.manifest,
-                    &declared.batches,
-                ),
                 admitted: admission.and_then(|a| a.package(&source.manifest.id, source.path)),
             }
         })
         .collect();
     let read = read_contents(&requests);
-    for (index, content) in order.into_iter().zip(read) {
+    for (&index, content) in order.iter().zip(read) {
         let source = &packages[index];
         let m = source.manifest;
         let content = match content {
@@ -943,18 +959,6 @@ pub(in crate::game) fn content_overlay_with_refusals(
             jars: m.jar.clone(),
         };
         match mod_content::accept_mod(&mut mods, candidate, known) {
-            Ok(_) if source.content_only => {
-                content_mods.push(sunrise_sim::save::level_mods::ModRecord {
-                    id: m.id.clone(),
-                    version: m.version.to_string(),
-                });
-                announced.push(announced_entry(
-                    &m.id,
-                    &m.version.to_string(),
-                    m.side,
-                    m.runtime.as_ref(),
-                ));
-            }
             Ok(_) => {}
             Err(e) if m.served_by.is_some() => {
                 return Err(Box::new(ServedContentLoadError {
@@ -983,13 +987,26 @@ pub(in crate::game) fn content_overlay_with_refusals(
             return Err(DeclarationFailures::new(refusals).into());
         }
         admission?;
-        // A file item's remainder named a code-declared item that was refused: that mod
-        // alone is left out, not every content mod through the overlay's check.
-        for e in mod_content::drop_dangling_remainders(&mut mods) {
-            log::warn!("Sunrise: {e}");
-        }
     } else if !refusals.is_empty() {
         return Err(DeclarationFailures::new(refusals).into());
+    }
+    for (id, detail) in mod_content::drop_dangling_remainders(root, &mut mods)? {
+        if manifests
+            .iter()
+            .any(|m| m.id == id && m.served_by.is_some())
+        {
+            return Err(Box::new(ServedContentLoadError {
+                mod_id: id,
+                stage: ServedContentStage::Admit,
+                detail,
+            }));
+        }
+        // A built native package keeps its code and Parts only with the content it declared:
+        // refusing the content refuses the package, so no dependent starts without it.
+        if sources.native.built().iter().any(|native| native.id == id) {
+            return Err(format!("{id}: native content refused at admission: {detail}").into());
+        }
+        log::warn!("Sunrise: mod {id} content not loaded: {detail}");
     }
     for m in &manifests {
         let suppliers: Vec<&sunrise_mod_package::Manifest> = std::iter::once(*m)
@@ -1058,6 +1075,25 @@ pub(in crate::game) fn content_overlay_with_refusals(
         &overrides,
     )
     .map_err(|error| error.to_string())?;
+    for &index in &order {
+        let source = &packages[index];
+        if !source.content_only || !mods.iter().any(|loaded| loaded.id == source.manifest.id) {
+            continue;
+        }
+        let m = source.manifest;
+        content_mods.push(sunrise_sim::save::level_mods::ModRecord {
+            id: m.id.clone(),
+            version: m.version.to_string(),
+        });
+        if announce {
+            announced.push(announced_entry(
+                &m.id,
+                &m.version.to_string(),
+                m.side,
+                m.runtime.as_ref(),
+            ));
+        }
+    }
     let cache = sunrise_level::logging::cache_dir();
     // Content admission and the live code-dispatch boundary jointly determine
     // what loaded. Namespaces and raw startup metadata cannot answer this.
@@ -1205,15 +1241,28 @@ pub fn content_root_with(
     }
     register_mob_effects(&overlay.mods, &sources.selected);
     resolve_particle_providers(overlay.root.source())?;
+    // A package whose content was refused is not admitted: an optional dependent's effect Part
+    // on it is dropped, while an admitted provider that lacks the effect is still refused.
+    let provider_admitted = |package: &str| {
+        package == "minecraft"
+            || overlay.mods.iter().any(|content| content.id == package)
+            || sources
+                .native
+                .built()
+                .iter()
+                .any(|native| native.id == package)
+    };
     mod_api::__private::resolve_effects(
         sunrise_game_data::potions::all_effects()
             .map(|def| sunrise_game_data::potions::namespaced(def.id)),
         |id| sunrise_game_data::potions::effect(id).map(|def| def.index),
+        provider_admitted,
     )
     .map_err(|errors| errors.join("\n"))?;
-    mod_api::__private::validate_effect_part_owners(|id| {
-        sunrise_game_data::potions::effect(id)?.owner
-    })
+    mod_api::__private::validate_effect_part_owners(
+        |id| sunrise_game_data::potions::effect(id)?.owner,
+        provider_admitted,
+    )
     .map_err(|errors| errors.join("\n"))?;
     let behavior: serde_json::Value =
         sunrise_world::json_file::read(&overlay.root.prepared().join("block-behaviours.json"))?;
@@ -1242,10 +1291,34 @@ pub fn content_root_with(
     sunrise_sim::mod_content::set_fluid_interactions(&overlay.mods);
     // Freeze ownership with the startup registries, before preparing Parts. Pack and data
     // reloads can change layers but cannot replace the registered blocks and block entity types.
-    mod_api::__private::install_content_owners(content_owner_pairs(
-        &overlay.mods,
-        &sources.selected,
-    ));
+    mod_api::__private::install_content_owners(
+        overlay.mods.iter().flat_map(|m| {
+            let owner = content_layer_owner(&m.id, &sources.selected);
+            m.content
+                .blocks
+                .iter()
+                .map(move |block| (block.id.as_str(), owner))
+        }),
+        overlay.mods.iter().flat_map(|m| {
+            m.content.items.iter().map(|item| item.id.as_str()).chain(
+                m.content
+                    .blocks
+                    .iter()
+                    .filter(|block| block.item)
+                    .map(|block| block.id.as_str()),
+            )
+        }),
+        overlay.mods.iter().flat_map(|m| {
+            let owner = content_layer_owner(&m.id, &sources.selected);
+            m.content
+                .block_entity_types
+                .iter()
+                .map(move |kind| (kind.id.as_str(), owner))
+        }),
+        sunrise_level::containers::mod_menu_types()
+            .iter()
+            .map(|menu| (menu.id, content_layer_owner(menu.owner, &sources.selected))),
+    );
     Ok(overlay.root)
 }
 
@@ -1311,12 +1384,25 @@ pub(in crate::game) fn register_block_entity_types(
                 .map(|block| (block.clone(), kind.id.clone()))
         })
         .collect();
-    let mut types = BlockEntityTypes::new(membership, names.clone());
+    let mut types = BlockEntityTypes::new(
+        membership,
+        names.clone(),
+        mods.iter().flat_map(|m| {
+            m.content
+                .block_entity_types
+                .iter()
+                .map(|kind| kind.id.clone())
+        }),
+    );
     let blocks = builtin.get("minecraft:block");
+    let content_blocks: std::collections::HashSet<&str> = mods
+        .iter()
+        .flat_map(|m| m.content.blocks.iter().map(|block| block.id.as_str()))
+        .collect();
     for block in blocks
         .into_iter()
         .flat_map(|ids| &ids.names)
-        .filter(|name| name.starts_with("minecraft:"))
+        .filter(|name| !content_blocks.contains(name.as_str()))
     {
         if let Some(kind) = sunrise_sim::lan::chunks::block_entity_type(block) {
             types.template(block.clone(), block.clone(), kind.to_owned());
@@ -1330,7 +1416,12 @@ pub(in crate::game) fn register_block_entity_types(
     mod_api::__private::resolve_block_entity_types(types.names(), |id| types.key(id))
         .map_err(|errors| errors.join("\n"))?;
     types.bind_tick_parts(|id| {
-        mod_api::__private::block_entity_type_listens(mod_api::HookId::BlockEntityTick, id)
+        let key = mod_api::__private::block_entity_type_key(id);
+        let bind = |hook| key.filter(|_| mod_api::__private::block_entity_type_listens(hook, id));
+        (
+            bind(mod_api::HookId::BlockEntityTick),
+            bind(mod_api::HookId::BlockEntityClientTick),
+        )
     });
     let additions: Vec<(String, String)> = if let Some(current) = block_entity_types::current() {
         current
@@ -1466,7 +1557,8 @@ pub fn register_mob_effects(
     selected: &[sunrise_mod_package::selection::SelectedPackage],
 ) {
     use sunrise_level::brewing::{self, Category};
-    use sunrise_mod_package::content::EffectCategory;
+    use sunrise_mod_package::content::{EffectCategory, ModifierOperation};
+    use sunrise_world::attributes::Operation;
     let effects = mob_effect_entries(mods, selected);
     if effects.is_empty() {
         return;
@@ -1481,13 +1573,23 @@ pub fn register_mob_effects(
             EffectCategory::Harmful => Category::Harmful,
             EffectCategory::Neutral => Category::Neutral,
         };
-        (
-            e.id.clone(),
-            e.color,
-            category,
-            e.sort_order,
-            owner.to_owned(),
-        )
+        let modifiers = e
+            .attribute_modifiers
+            .iter()
+            .map(|m| {
+                let operation = match m.operation {
+                    ModifierOperation::AddValue => Operation::AddValue,
+                    ModifierOperation::AddMultipliedBase => Operation::AddMultipliedBase,
+                    ModifierOperation::AddMultipliedTotal => Operation::AddMultipliedTotal,
+                };
+                (m.attribute.clone(), m.id.clone(), m.amount, operation)
+            })
+            .collect();
+        brewing::ModEffect {
+            sort_order: e.sort_order,
+            modifiers,
+            ..brewing::ModEffect::new(&e.id, e.color, category, owner)
+        }
     }));
     if !set
         && brewing::mod_effects()
@@ -1703,10 +1805,15 @@ pub fn not_built(
     paths.sort();
     let mut out: Vec<Installed> = Vec::new();
     for path in paths {
-        let Ok(bundle) = sunrise_mod_package::index::native::Bundle::read(&path) else {
+        // The row names the mod, so the manifest is all it needs: the package's other entries,
+        // its source among them, stay unread.
+        let Ok(package) = sunrise_mod_package::Package::read(&path) else {
             continue;
         };
-        let m = bundle.manifest;
+        if !package.is_native() {
+            continue;
+        }
+        let m = package.manifest;
         let listed = rows.iter().chain(&out).any(|row| row.id == m.id);
         if !listed && !built.iter().any(|b| b.id == m.id) {
             out.push(Installed {
@@ -1741,19 +1848,46 @@ pub struct ModsReload {
 }
 
 impl crate::game::CommonGame<'_> {
-    pub fn prepare_loop_context(
+    pub fn capture_candidate_settings(
         &self,
         resources: &std::path::Path,
-    ) -> sunrise_game_data::Result<PreparedLoopContext> {
-        let side = self.options.execution_role.loop_side();
+    ) -> sunrise_game_data::Result<sunrise_world::native_load_context::SettingsCapture> {
         let inventory = sunrise_mod_package::enabled::EnabledMods::read(resources)?;
+        // EnabledMods yields ids in sorted order.
         let ids: Vec<_> = if self.is_logical_server() {
             inventory.server_ids().collect()
         } else {
             inventory.client_ids().collect()
         };
-        let item_data = self.res.core.item_data.context();
-        Ok(self.loop_context_readers(item_data.loop_context(side, ids.iter().copied())))
+        let registered = super::native_hooks::mod_settings::registered_setting_keys()
+            .filter(|(owner, _)| ids.binary_search(owner).is_ok());
+        Ok(sunrise_world::native_load_context::SettingsCapture::new(
+            &crate::game::mod_data_root(),
+            ids.iter().copied(),
+            registered,
+        ))
+    }
+
+    pub fn prepare_loop_context(
+        &self,
+        resources: &std::path::Path,
+    ) -> sunrise_game_data::Result<PreparedLoopContext> {
+        Ok(self.prepare_loop_context_from(self.capture_candidate_settings(resources)?))
+    }
+
+    /// The loop readers of a generation over the capture it was prepared from.
+    pub fn prepare_loop_context_from(
+        &self,
+        captured: sunrise_world::native_load_context::SettingsCapture,
+    ) -> PreparedLoopContext {
+        let side = self.options.execution_role.loop_side();
+        let context = self
+            .res
+            .core
+            .item_data
+            .context()
+            .loop_context_with_capture(side, captured);
+        self.loop_context_readers(context)
     }
 
     pub(in crate::game) fn loop_context_readers(
@@ -1824,7 +1958,6 @@ pub trait ModGameExt1<'__sg>: crate::game::SideGame<'__sg> {
         self.protect_condition_root();
         self.loop_context = context.game;
         self.refresh_recipe_property_context();
-        self.setting_overrides.borrow_mut().clear();
         self.side_set_audio_loop_context(context.audio);
         if let Some(worldgen) = context.worldgen {
             sunrise_world::native_worldgen_hooks::publish_context(Arc::new(worldgen));
@@ -1912,7 +2045,7 @@ pub trait ModGameExt1<'__sg>: crate::game::SideGame<'__sg> {
                 .capture_code_switches(&crate::game::Side::mods_list(state).disabled);
         }
         // A mod with a native version built in says so instead, and isn't news.
-        self.side_list_native_mods();
+        // The switches first: a row's config screen is offered only while its mod is on.
         self.sync_native_switches();
         let built = self.mods.native.built();
         let built_mods = native_mods_detail(built);
@@ -2002,12 +2135,14 @@ pub fn with_living_mod_type_fixture<R>(
     )
     .unwrap();
     // No attribute catalog: the rows' values stay as written.
-    let attributes = &sunrise_world::attributes::entity::Catalog::from_json(&serde_json::json!({
-        "data_version": sunrise_world::DATA_VERSION,
-        "attributes": [],
-        "entities": {},
-    }))
-    .unwrap();
+    let attributes = &Arc::new(
+        sunrise_world::attributes::entity::Catalog::from_json(&serde_json::json!({
+            "data_version": sunrise_world::DATA_VERSION,
+            "attributes": [],
+            "entities": {},
+        }))
+        .unwrap(),
+    );
     let types = sunrise_sim::mobs::MobTypes::load_for_server(&root, attributes).unwrap();
     let result = run(
         &root,
@@ -2051,26 +2186,25 @@ pub(in crate::game) fn collect_poi_extensions(
     let mut additions = Vec::new();
     let mut refusals = Vec::new();
     for (poi, predicate) in extensions.into_entries() {
-        let record = mod_api::StatePredicateRecord::from(&predicate);
-        let block = match record.target {
-            mod_api::StatePredicateTarget::Block(block) => block,
-            mod_api::StatePredicateTarget::Tag(_) => {
-                refusals.push(format!(
-                    "{poi} asked for a block tag's states; an addition names a block"
-                ));
+        let Some(block) = predicate.block_key() else {
+            refusals.push(format!(
+                "{poi} asked for a block tag's states; an addition names a block"
+            ));
+            continue;
+        };
+        let name = match mod_api::BlockMetadata::name(metadata, block) {
+            Ok(name) => name,
+            Err(error) => {
+                refusals.push(format!("{poi} could not resolve its block: {error:?}"));
                 continue;
             }
-        };
-        // The predicate was built on this metadata, so its block is known.
-        let Ok(name) = mod_api::BlockMetadata::name(metadata, block) else {
-            continue;
         };
         for index in 0..registry.len() {
             let state = registry
                 .state(sunrise_world::registry::BlockStateId(index as u32))
                 .expect("registry index is in bounds");
             if state.name == name
-                && record.constraints.iter().all(|constraint| {
+                && predicate.constraints().iter().all(|constraint| {
                     state.properties.get(constraint.name.as_str()) == Some(&constraint.value)
                 })
             {
@@ -2136,29 +2270,6 @@ pub fn collect_cauldron_fluid_contents(
     (contents, refusals)
 }
 
-/// Registered callbacks indexed directly by the slots resolved in enchantment content.
-pub static ENCHANTMENT_DAMAGE_EFFECTS: std::sync::OnceLock<
-    Vec<std::sync::Arc<dyn mod_api::EnchantmentDamageEffect>>,
-> = std::sync::OnceLock::new();
-
-pub fn register_enchantment_damage_effects() {
-    let mut effects = mod_api::EnchantmentDamageRegistry::default();
-    crate::game::native_hooks::native_register_enchantment_damage_effects(
-        &mod_api::RegistrationContext::new(),
-        &mut effects,
-    );
-    let (ids, callbacks): (Vec<_>, Vec<_>) = effects
-        .into_entries()
-        .into_iter()
-        .map(|(id, effect)| (id.to_string(), effect))
-        .unzip();
-    sunrise_items::enchant::register_damage_effects(ids);
-    assert!(
-        ENCHANTMENT_DAMAGE_EFFECTS.set(callbacks).is_ok(),
-        "damage effects already registered"
-    );
-}
-
 #[cfg(test)]
 pub(in crate::game) mod concurrent_content_tests {
     use super::*;
@@ -2197,7 +2308,6 @@ pub(in crate::game) mod concurrent_content_tests {
             .map(|(path, package)| ContentRequest {
                 path,
                 manifest: &package.manifest,
-                declared: Vec::new(),
                 admitted: None,
             })
             .collect();

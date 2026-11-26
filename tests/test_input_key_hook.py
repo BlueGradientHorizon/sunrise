@@ -5,9 +5,9 @@ import subprocess
 import tempfile
 import unittest
 
-from native_hook_sources import native_hook_sources
+from tests.native_hook_sources import native_hook_sources
 
-from test_world_input_capture import method
+from tests.test_world_input_capture import method
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -99,16 +99,12 @@ struct KeyEvent { physical_key: PhysicalKey, text: &'static str, state: ElementS
 enum WindowEvent { KeyboardInput { event: KeyEvent, is_synthetic: bool }, Other }
 fn glfw_modifiers(bits: u32) -> u32 { bits }
 struct ClientState { window: (Option<Window>,), modifiers: u32, unclaimed_window: bool }
-struct ClientGame { client: ClientState, early: bool, input: bool,
+struct ClientGame { client: ClientState, early: bool,
                     calls: Vec<&'static str>, observed: Vec<(&'static str, Option<&'static str>, u32, KeyAction, u32)> }
 impl ClientGame {
     fn scripted_run(&self) -> bool { false }
-    fn with_user_input<R>(&mut self, input: bool, f: impl FnOnce(&mut Self) -> R) -> R {
-        let was = std::mem::replace(&mut self.input, input);
-        let result = f(self);
-        self.input = was;
-        result
-    }
+    // `game/interface/pointer_capture.rs`: a mod screen's deferred pointer grab; no mod screen here.
+    fn apply_pointer_grab_request(&mut self) {}
     fn handle_window_event(&mut self, _: &ActiveEventLoop, _: WindowId, mut event: WindowEvent,
                            _: input_trace::InputOrigin) {
         self.calls.push("handle"); self.client.modifiers = 0;
@@ -118,8 +114,6 @@ impl ClientGame {
     }
     fn key_input(&mut self, name: Option<&'static str>, layout: Option<&'static str>, raw: u32, action: KeyAction,
                  modifiers: u32) {
-        // The key's route runs as input: a mod's hook there may reach the clipboard.
-        assert!(self.input);
         let name = name.unwrap_or("key.keyboard.unknown");
         self.calls.push("hook"); self.observed.push((name, layout, raw, action, modifiers));
     }
@@ -138,7 +132,7 @@ fn all_actions_consumption_and_window_gates() {
                     (true,7,true,false), (false,7,false,false)] {
                     let mut game = ClientGame {
                         client: ClientState { window: (window.then_some(Window),), modifiers: 5, unclaimed_window: false },
-                        early, input: false, calls: vec![], observed: vec![] };
+                        early, calls: vec![], observed: vec![] };
                     game.window_event(&ActiveEventLoop, id, WindowEvent::KeyboardInput { event: original.clone(), is_synthetic: synthetic });
                     let mut expected = vec!["handle"];
                     if !early { expected.push("finish"); }
@@ -151,13 +145,13 @@ fn all_actions_consumption_and_window_gates() {
     }
     let mut game = ClientGame {
         client: ClientState { window: (Some(Window),), modifiers: 5, unclaimed_window: false },
-        early: false, input: false, calls: vec![], observed: vec![] };
+        early: false, calls: vec![], observed: vec![] };
     game.window_event(&ActiveEventLoop, 7, WindowEvent::Other);
     assert!(game.observed.is_empty());
     // Nor does a person's key at an agent's window no one has clicked yet.
     let mut game = ClientGame {
         client: ClientState { window: (Some(Window),), modifiers: 5, unclaimed_window: true },
-        early: false, input: false, calls: vec![], observed: vec![] };
+        early: false, calls: vec![], observed: vec![] };
     let key = KeyEvent { physical_key: PhysicalKey::Code(1), text: "z", state: ElementState::Pressed, repeat: false };
     game.window_event(&ActiveEventLoop, 7, WindowEvent::KeyboardInput { event: key, is_synthetic: false });
     assert!(game.observed.is_empty());

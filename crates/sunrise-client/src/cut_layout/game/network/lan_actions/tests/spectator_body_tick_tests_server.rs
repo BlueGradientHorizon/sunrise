@@ -33,7 +33,7 @@ fn leftover_sleep_countdown_waits_at_the_unloaded_edge_then_resumes() {
                 .guests
                 .extend([loaded, edge]);
             game.tick_guests();
-            let timers = |game: &sunrise_gameplay::game::ServerGame<'_>| -> Vec<u32> {
+            let timers = |game: &sunrise_gameplay::game::ServerGame<'_>| -> Vec<i32> {
                 game.server
                     .lan
                     .as_ref()

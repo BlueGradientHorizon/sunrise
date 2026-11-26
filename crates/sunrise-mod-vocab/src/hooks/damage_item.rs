@@ -20,7 +20,6 @@ pub trait Hooks {
     /// swapped in, so `host.players().acting_player()` answers them. Once for
     /// each wear, on a server.
     #[hook(
-        target = "sunrise_gameplay::game::native_hooks::damage_item::ServerGame<'_>::native_damage_item",
         dispatch = "flat",
         side = "server",
         contract = "cancel",

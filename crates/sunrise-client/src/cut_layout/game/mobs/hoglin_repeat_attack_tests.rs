@@ -59,7 +59,7 @@ fn game<'a>(
     .unwrap();
     game.build_registries();
     game.native_lifecycle
-        .begin_open(mod_api::Authority::IntegratedServer);
+        .begin_open(Some(mod_api::Authority::IntegratedServer));
     game.set_allow_commands(true);
     for cx in 0..2 {
         game.world

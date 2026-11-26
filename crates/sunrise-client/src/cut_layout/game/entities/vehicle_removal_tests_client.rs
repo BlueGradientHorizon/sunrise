@@ -25,11 +25,10 @@ fn wind_charged_mob_removal_cannot_reenter_through_its_own_burst() {
             host: &mut dyn ServerHost,
             event: &mut mod_api::ExplosionStartEvent<'_>,
         ) -> Flow {
-            if event.explosion.source == Some(71)
+            if let Some(source) = event.explosion.source.filter(|source| source.id() == 71)
                 && self.0.bursts.fetch_add(1, Ordering::Relaxed) == 0
             {
                 // Only try once so an unguarded removal is a bounded failure.
-                let source = host.entity(71).expect("the burst's source still resolves");
                 assert!(
                     !source.remove(host, mod_api::RemovalReason::Killed),
                     "the burst cannot remove its own source again"

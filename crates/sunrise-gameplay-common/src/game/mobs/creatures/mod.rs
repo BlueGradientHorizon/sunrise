@@ -36,7 +36,7 @@ pub use sunrise_items::{
 };
 #[allow(unused_imports)]
 pub use sunrise_sim::{
-    arrows::EntityHit,
+    entities::arrows::EntityHit,
     crafting::Recipes,
     health::{Attack, HurtSource, Hurting, Knock},
     mobs::{
@@ -59,8 +59,8 @@ pub fn arrow_miss(dodged: bool) -> EntityHit {
     }
 }
 
-pub fn arrow_sound_name(sound: sunrise_sim::arrows::ArrowSound) -> &'static str {
-    use sunrise_sim::arrows::ArrowSound;
+pub fn arrow_sound_name(sound: sunrise_sim::entities::arrows::ArrowSound) -> &'static str {
+    use sunrise_sim::entities::arrows::ArrowSound;
     match sound {
         ArrowSound::Splash => "minecraft:entity.generic.splash",
         ArrowSound::HitGround => "minecraft:entity.arrow.hit",
@@ -112,10 +112,20 @@ pub struct DyingDrops<'a> {
     pub recently_hit: bool,
 }
 
-/// A sound a native mod queued, sent when the host is free.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum KnownCause {
+    Infer,
+    None,
+    Attack,
+    Entity(u32),
+}
+
+/// A queued mod sound and how it is delivered.
 pub struct NativeSound {
     pub dimension: &'static str,
     pub sound: String,
+    /// A direct holder, with or without a fixed broadcast radius.
+    pub inline_range: Option<Option<f32>>,
     pub at: [f64; 3],
     pub source: i32,
     pub volume: f32,
@@ -201,9 +211,6 @@ impl<T> Drop for RemainingActions<'_, T> {
 #[derive(Default)]
 pub struct Creatures {
     pub projectiles: sunrise_sim::join_seq::JoinList<Projectile, false>,
-    /// The entities a family tells the mods ticked, kept between ticks
-    /// (game/modding/native_ticks.rs).
-    pub tick_buffer: Vec<(u32, super::native_ticks::TickKind)>,
     /// What a family's Pre and Post are told from, kept between ticks
     /// (game/modding/native_ticks.rs).
     pub tick_hooks: super::native_ticks::TickBuffers,
@@ -216,7 +223,7 @@ pub struct Creatures {
     /// Per-tick scratch retained between creature ticks.
     pub event_buf: Vec<MobEvent>,
     pub pickable_projectile_targets: Vec<sunrise_sim::projectiles::TargetCandidate>,
-    pub arrow_hit_scratch: sunrise_sim::arrows::ArrowHitScratch,
+    pub arrow_hit_scratch: sunrise_sim::entities::arrows::ArrowHitScratch,
     /// For each arrow an entity hit in this projectile tick, the projectiles
     /// that ticked after it and stayed, in order: a bounced one goes back
     /// before the first still listed (`finish_arrow_hit`).
@@ -235,7 +242,7 @@ pub struct Creatures {
     /// When each player last put a parrot on a shoulder (`timeEntitySatOnShoulder`).
     pub shoulder_time: std::collections::HashMap<[i32; 4], i64>,
     /// Each level's custom spawners, built when its first tick asks (game/mobs/custom_spawners.rs).
-    pub custom_spawners: std::collections::HashMap<super::Dim, mod_api::CustomSpawners>,
+    pub custom_spawners: std::collections::HashMap<super::Dim, mod_api::__private::CustomSpawners>,
     /// True while `ask_level_sound` is running `play_level_sound_at_*` listeners so sounds emitted
     /// from inside a listener are not re-dispatched to level-sound hooks.
     pub asking_level_sound: bool,
@@ -353,10 +360,8 @@ impl crate::game::CommonGame<'_> {
     /// modifiers. A map already there (commands, armor) is kept.
     pub fn init_sulfur_attribute_maps(&mut self) {
         for m in &mut self.mobs {
-            if m.species() == sunrise_sim::mobs::Species::SulfurCube
-                && m.extra.armor_attributes.is_none()
-            {
-                m.extra.armor_attributes = self.motion.attributes.create(&m.kind.id).map(Box::new);
+            if m.species() == sunrise_sim::mobs::Species::SulfurCube {
+                sunrise_sim::mobs::finalize::attribute_map(m, &self.motion.attributes);
             }
         }
     }
@@ -542,9 +547,9 @@ impl crate::game::CommonGame<'_> {
         &'s self,
         rain: &'s dyn Fn(BlockPos) -> bool,
         mob_hooks: Option<&'s dyn sunrise_sim::mobs::MobHooks>,
-        owners: &'s dyn sunrise_sim::arrows::OwnerLookup,
-    ) -> sunrise_sim::arrows::ArrowScene<'s, 's> {
-        sunrise_sim::arrows::ArrowScene {
+        owners: &'s dyn sunrise_sim::entities::arrows::OwnerLookup,
+    ) -> sunrise_sim::entities::arrows::ArrowScene<'s, 's> {
+        sunrise_sim::entities::arrows::ArrowScene {
             world: &self.world,
             registry: self.pack.assets.registry,
             facts: self.res.facts(),

@@ -46,37 +46,86 @@ fn mob_variant_meta(
                 meta.push((18, serializer::INT, Value::Int(i32::from(e.variant))));
             }
         }
-        // Frog.DATA_VARIANT_ID, Pig's, Cow's, Chicken's and ZombieNautilus's
-        // (after the entries of their parents): registry holders.
-        "minecraft:frog"
-        | "minecraft:pig"
-        | "minecraft:cow"
-        | "minecraft:chicken"
-        | "minecraft:zombie_nautilus" => {
-            let (index, serializer, registry) = match kind {
-                "minecraft:frog" => (18, serializer::FROG_VARIANT, "minecraft:frog_variant"),
-                "minecraft:pig" => (19, serializer::PIG_VARIANT, "minecraft:pig_variant"),
-                "minecraft:cow" => (18, serializer::COW_VARIANT, "minecraft:cow_variant"),
-                "minecraft:chicken" => {
-                    (18, serializer::CHICKEN_VARIANT, "minecraft:chicken_variant")
-                }
+        "minecraft:pig" | "minecraft:cow" | "minecraft:chicken" => {
+            let (v_idx, v_ser, v_reg, s_idx, s_ser, s_reg, v_id, s_id) = match kind {
+                "minecraft:pig" => (
+                    19,
+                    serializer::PIG_VARIANT,
+                    "minecraft:pig_variant",
+                    20,
+                    serializer::PIG_SOUND_VARIANT,
+                    "minecraft:pig_sound_variant",
+                    e.pig_variant.map(|r| r.network_id() as i32),
+                    e.pig_sound_variant.map(|r| r.network_id() as i32),
+                ),
+                "minecraft:cow" => (
+                    18,
+                    serializer::COW_VARIANT,
+                    "minecraft:cow_variant",
+                    19,
+                    serializer::COW_SOUND_VARIANT,
+                    "minecraft:cow_sound_variant",
+                    e.cow_variant.map(|r| r.network_id() as i32),
+                    e.cow_sound_variant.map(|r| r.network_id() as i32),
+                ),
                 _ => (
-                    21,
-                    serializer::ZOMBIE_NAUTILUS_VARIANT,
-                    "minecraft:zombie_nautilus_variant",
+                    18,
+                    serializer::CHICKEN_VARIANT,
+                    "minecraft:chicken_variant",
+                    19,
+                    serializer::CHICKEN_SOUND_VARIANT,
+                    "minecraft:chicken_sound_variant",
+                    e.chicken_variant.map(|r| r.network_id() as i32),
+                    e.chicken_sound_variant.map(|r| r.network_id() as i32),
                 ),
             };
-            // Each registry's default (`define(DATA_VARIANT_ID, ... TEMPERATE)`)
-            // stays out of the pairing data, as other default values do.
-            let name = sunrise_sim::mobs::finalize::variant_name(m.species(), e.variant);
-            let name = name.trim_start_matches("minecraft:");
-            if let Some(v) = id(registry, name)
-                && name != "temperate"
+            let default_v = id(v_reg, "temperate");
+            if let Some(v) = v_id.or(default_v)
+                && Some(v) != default_v
             {
-                meta.push((index, serializer, Value::Id(v)));
+                meta.push((v_idx, v_ser, Value::Id(v)));
             }
-            if let Some(v) = id(registry, "temperate") {
-                defaults.push((index, serializer, Value::Id(v)));
+            if let Some(v) = default_v {
+                defaults.push((v_idx, v_ser, Value::Id(v)));
+            }
+            let default_s = id(s_reg, "classic");
+            if let Some(v) = s_id.or(default_s)
+                && Some(v) != default_s
+            {
+                meta.push((s_idx, s_ser, Value::Id(v)));
+            }
+            if let Some(v) = default_s {
+                defaults.push((s_idx, s_ser, Value::Id(v)));
+            }
+        }
+        // Frog.DATA_VARIANT_ID: the world table's network id directly (`RegistryRef<FrogVariant>`).
+        "minecraft:frog" => {
+            let default_id = id("minecraft:frog_variant", "temperate");
+            let variant_id = e.frog_variant.map(|r| r.network_id() as i32).or(default_id);
+            if let Some(v) = variant_id
+                && Some(v) != default_id
+            {
+                meta.push((18, serializer::FROG_VARIANT, Value::Id(v)));
+            }
+            if let Some(v) = default_id {
+                defaults.push((18, serializer::FROG_VARIANT, Value::Id(v)));
+            }
+        }
+        // ZombieNautilus.DATA_VARIANT_ID carries the world table's network id
+        // directly (`RegistryRef<ZombieNautilusVariant>`).
+        "minecraft:zombie_nautilus" => {
+            let default = id("minecraft:zombie_nautilus_variant", "temperate");
+            let variant_id = e
+                .zombie_nautilus_variant
+                .map(|r| r.network_id() as i32)
+                .or(default);
+            if let Some(v) = variant_id
+                && Some(v) != default
+            {
+                meta.push((21, serializer::ZOMBIE_NAUTILUS_VARIANT, Value::Id(v)));
+            }
+            if let Some(v) = default {
+                defaults.push((21, serializer::ZOMBIE_NAUTILUS_VARIANT, Value::Id(v)));
             }
         }
         // Rabbit.DATA_TYPE_ID (after AgeableMob's two) and
@@ -220,14 +269,8 @@ pub fn mob_meta(
         meta.push((5, serializer::BOOLEAN, Value::Bool(true)));
     }
     defaults.push((5, serializer::BOOLEAN, Value::Bool(false)));
-    // LivingEntity.DATA_LIVING_ENTITY_FLAGS: using an item 1, in the off
-    // hand 2 (a skeleton draws its bow). Only startUsingItem and
-    // stopUsingItem write them: a drinking witch's count is her own
-    // (`Witch.usingTime`, with `Witch.DATA_USING_ITEM` in `mob_raider_meta`),
-    // so her living flags stay 0 while she drinks. A witch that starts a real
-    // use is sent as one. An admiring piglin's count still goes out as a use:
-    // a client draws `PiglinArmPose.ADMIRING_ITEM` from it.
-    let uses_item = m.extra.using_item > 0 && !(m.species() == Species::Witch && m.extra.flag);
+    // A witch drinking and a piglin admiring do not use the active hand.
+    let uses_item = sunrise_sim::mobs::spear_use::is_using_item(m);
     let using = i8::from(uses_item) | i8::from(m.extra.using_off_hand) << 1;
     if using != 0 {
         meta.push((8, serializer::BYTE, Value::Byte(using)));
@@ -380,20 +423,40 @@ pub fn mob_meta(
             if flags != 0 {
                 meta.push((18, serializer::BYTE, Value::Byte(flags)));
             }
-            let (index, registry, name) = if kind == "minecraft:cat" {
-                let v = sunrise_sim::mobs::tame::CAT_VARIANTS[(e.variant as usize).min(10)];
-                (20, "minecraft:cat_variant", v)
+            if kind == "minecraft:cat" {
+                // Cat.DATA_VARIANT_ID and DATA_SOUND_VARIANT_ID carry the world
+                // table's network id directly (`RegistryRef<K>`).
+                if let Some(r) = e.cat_variant {
+                    meta.push((
+                        20,
+                        serializer::CAT_VARIANT,
+                        Value::Id(r.network_id() as i32),
+                    ));
+                }
+                if let Some(r) = e.cat_sound_variant {
+                    meta.push((
+                        24,
+                        serializer::CAT_SOUND_VARIANT,
+                        Value::Id(r.network_id() as i32),
+                    ));
+                }
             } else {
-                let v = sunrise_sim::mobs::tame::WOLF_VARIANTS[(e.variant as usize).min(8)].0;
-                (23, "minecraft:wolf_variant", v)
-            };
-            let serializer = if index == 20 {
-                serializer::CAT_VARIANT
-            } else {
-                serializer::WOLF_VARIANT
-            };
-            if let Some(v) = id(registry, name) {
-                meta.push((index, serializer, Value::Id(v)));
+                // Wolf.DATA_VARIANT_ID and DATA_SOUND_VARIANT_ID carry the world
+                // table's network id directly (`RegistryRef<K>`).
+                if let Some(r) = e.wolf_variant {
+                    meta.push((
+                        23,
+                        serializer::WOLF_VARIANT,
+                        Value::Id(r.network_id() as i32),
+                    ));
+                }
+                if let Some(r) = e.wolf_sound_variant {
+                    meta.push((
+                        24,
+                        serializer::WOLF_SOUND_VARIANT,
+                        Value::Id(r.network_id() as i32),
+                    ));
+                }
             }
             // Cat.IS_LYING and RELAX_STATE_ONE.
             if kind == "minecraft:cat" {

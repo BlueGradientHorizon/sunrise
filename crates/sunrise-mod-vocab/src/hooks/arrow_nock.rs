@@ -5,7 +5,6 @@ pub trait Hooks {
     /// `ArrowNockEvent`): `has_ammo` is whether `getProjectile` found ammunition
     /// or the player is in creative. Set `cancel` to fail the use.
     #[hook(
-        target = "sunrise_gameplay::game::native_hooks::arrow_nock::ServerGame<'_>::native_arrow_nock",
         dispatch = "flat",
         side = "server",
         contract = "cancel",

@@ -1,12 +1,12 @@
 //! Client ticks of mod block entities (`ClientLevel.tickBlockEntities`): the client's own
-//! ticker list, made from `native_block_entity_client_ticks`.
+//! ticker list, bound from its registered type and state.
 use super::*;
 use mod_api::{
     BlockEntityClientAccess, BlockEntityClientScope, BlockEntityReadView, BlockEntityRef,
     ClientHost,
 };
 use sunrise_client::animate_tick::campfire_particle_tick;
-use sunrise_gameplay_common::game::api_values::TryIntoApi;
+use sunrise_gameplay_common::game::api_values::{TryIntoApi, block_state::mod_ticker_states};
 use sunrise_gameplay_common::game::native_hooks::block_entity_read::ResidentReadBlockEntity;
 use sunrise_level::{block_entities::Ticking, containers::BlockEntity};
 
@@ -64,20 +64,6 @@ impl BlockEntityClientAccess for ClientBlockEntityAccess<'_, '_> {
 
     fn host(&mut self) -> &mut dyn ClientHost {
         self.game
-    }
-}
-
-#[cfg(feature = "client")]
-impl crate::game::ClientGame<'_> {
-    /// Whether block `block`'s block entity ticks on the client
-    /// (`EntityBlock.getTicker` asked with the client level): set `ticks` when
-    /// it is yours, and `native_block_entity_client_tick` runs for it once per
-    /// client tick. Asked once for each mod block, for all of its states, when the client level
-    /// initializes its ticker table (before the first column's block entities or the first ticker
-    /// pass), if a part has a client tick.
-    /// Set `ticks` to true to make it tick, and never clear a value an earlier mod or mixin set.
-    pub(in crate::game) fn native_block_entity_client_ticks(&self, block: &str, ticks: &mut bool) {
-        self.fire_block_entity_client_ticks(block, ticks);
     }
 }
 
@@ -163,10 +149,11 @@ impl crate::game::ClientGame<'_> {
         else {
             return;
         };
-        if !mod_api::__private::block_entity_type_listens(
-            mod_api::HookId::BlockEntityClientTick,
-            entity.id(),
-        ) {
+        let state = self.common.world.block(x, y, z);
+        if !entity
+            .numeric_id()
+            .is_some_and(|kind| block_entities.mod_ticking(state.0, kind) == Ticking::Yes)
+        {
             return;
         }
         let subject = mod_api::__private::game::block_entity_ref(level, [x, y, z], generation);
@@ -180,6 +167,10 @@ impl crate::game::ClientGame<'_> {
     /// ticker is decided when its block changes (`LevelChunk.updateBlockEntityTicker`).
     pub(in crate::game) fn ensure_client_ticking_states(&mut self) {
         if !self.common.world.block_entities.has_states() {
+            self.common
+                .world
+                .block_entities
+                .set_mod_ticker_states(mod_ticker_states(mod_api::LogicalSide::Client));
             let states = self.client_ticking_states();
             self.common.world.block_entities.set_states(states);
         }
@@ -190,8 +181,6 @@ impl crate::game::ClientGame<'_> {
     /// sulfur. Mod blocks opt in once per block for all of their states.
     pub(in crate::game) fn client_ticking_states(&self) -> Vec<Ticking> {
         let registry = self.common.pack.assets.registry;
-        let mod_ticks = mod_api::__private::has_part_hook(mod_api::HookId::BlockEntityClientTick);
-        let mut asked: std::collections::HashMap<&str, bool> = std::collections::HashMap::new();
         (0..registry.len())
             .map(|i| {
                 let name: &str = &self.common.res.facts().get(BlockStateId(i as u32)).name;
@@ -229,15 +218,7 @@ impl crate::game::ClientGame<'_> {
                         _ => Ticking::No,
                     };
                 }
-                if !mod_ticks {
-                    return Ticking::No;
-                }
-                let ticks = *asked.entry(name).or_insert_with(|| {
-                    let mut ticks = false;
-                    self.native_block_entity_client_ticks(name, &mut ticks);
-                    ticks
-                });
-                if ticks { Ticking::Yes } else { Ticking::No }
+                Ticking::No
             })
             .collect()
     }

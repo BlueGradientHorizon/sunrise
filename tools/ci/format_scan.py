@@ -26,7 +26,9 @@ else:
 ROOT = Path(__file__).resolve().parents[2]
 # Every `.rs` file under these folders, checked one file at a time (no child modules followed).
 TREES = ("crates/sunrise-mod-api/src", "crates/sunrise-mod-vocab/src",
-         "crates/sunrise-client/src/game", "crates/sunrise-client/src/cut_layout")
+         "crates/sunrise-client/src/game", "crates/sunrise-client/src/cut_layout",
+         "crates/sunrise-sim/src/health", "crates/sunrise-sim/src/mobs/goals",
+         "crates/sunrise-sim/src/save/carrier")
 GAMEPLAY_OWNERS = ("sunrise-gameplay-common", "sunrise-gameplay", "sunrise-client-gameplay")
 # Files no `mod` line reaches.
 DISCOVERED = ("crates/sunrise-mod-api-gen/dispatch-tests/src/fixtures/*.rs",
@@ -80,14 +82,14 @@ def split_sources(root: Path) -> set[Path]:
 
 
 def commands(root: Path) -> list[list[str]]:
-    files = sorted(str(path.relative_to(root)) for tree in TREES for path in (root / tree).rglob("*.rs"))
-    files += sorted(str(path.relative_to(root)) for pattern in DISCOVERED for path in root.glob(pattern))
+    files = sorted(path.relative_to(root).as_posix() for tree in TREES for path in (root / tree).rglob("*.rs"))
+    files += sorted(path.relative_to(root).as_posix() for pattern in DISCOVERED for path in root.glob(pattern))
     if source_layout(root) == "split":
         root = root.resolve()
         checked = {root / path for path in files}
         owners = split_sources(root)
         extra = (owners | literal_fragments(root, owners | checked)) - checked
-        files += sorted(str(path.relative_to(root)) for path in extra)
+        files += sorted(path.relative_to(root).as_posix() for path in extra)
     return [["cargo", "fmt", "--all", "--", "--check"]] + [
         RUSTFMT + files[start:start + CHUNK] for start in range(0, len(files), CHUNK)]
 

@@ -28,56 +28,87 @@ impl crate::game::ServerGame<'_> {
         autosave_interval(rate)
     }
 
+    /// `ServerTickRateManager.setTickRate`: set the rate, run the hook and autosave
+    /// adjustment, then send the current ticking state to clients.
+    pub(in crate::game) fn set_tick_rate(&mut self, rate: f32) -> bool {
+        if !self.is_logical_server() || !rate.is_finite() {
+            let mod_id = mod_api::content::crash::current_native_mod().unwrap_or("unknown");
+            log::warn!(
+                "mod {mod_id}: set_tick_rate refused {rate}: requires a finite rate on the logical server"
+            );
+            return false;
+        }
+        self.common.clock.set_rate(rate);
+        self.on_tick_rate_changed();
+        // A listener can retune the clock, so send its state after the notification.
+        if let Some(host) = &mut self.server.lan {
+            host.hub
+                .send_ticking_state(self.common.clock.rate(), self.common.clock.frozen());
+        }
+        true
+    }
+
     /// `MinecraftServer.onTickRateChanged`: mods hear of it, then a rate that
     /// asks for a shorter wait than the one already running shortens it.
     pub(in crate::game) fn on_tick_rate_changed(&mut self) {
-        self.native_server_tick_rate_changed();
+        if self.is_logical_server() {
+            self.native_server_tick_rate_changed();
+        }
         let interval = self.next_autosave_interval();
         if interval < self.server.ticks_until_autosave {
             self.server.ticks_until_autosave = interval;
         }
     }
     pub fn save_game_metadata(&mut self) -> Result<()> {
-        self.save_maps();
-        self.save_random_sequences();
-        self.save_fight();
-        self.save_wandering_trader();
-        self.save_portal_arrivals();
-        self.save_stats();
-        self.save_advancements();
-        self.save_scoreboard();
-        self.save_bossbars();
-        self.save_schedule();
-        self.save_warden_tracker();
-        self.sync_level();
-        // Level::write can synchronously replace the integrated owner file.
-        let _ = self.finish_player_autosaves(true);
-        let stored_owner = self.store_owner();
-        write_level_for_role(
-            &mut self.common.level,
-            &self.server.world_root,
-            self.common.options.execution_role,
-            self.common.res.items(),
-            self.server.crash_save.keep_owner_file,
-        )?;
-        // PlayerEvent.SaveToFile for the owner, once level.dat is written.
-        if let Some((uuid, name)) = stored_owner {
-            let directory = sunrise_sim::lan::playerdata::directory(&self.server.world_root);
-            self.native_player_save_to_file(uuid, &name, &directory);
+        let owner_saved = self.save_placed_players();
+        self.save_world_metadata(owner_saved)
+    }
+
+    pub(in crate::game) fn save_placed_players(&mut self) -> bool {
+        let mut owner_saved = false;
+        if self.common.options.execution_role.writes_singleplayer_player()
+            && !self.server.crash_save.keep_owner_file
+        {
+            let stored_owner = self.store_owner();
+
+            if stored_owner.is_some() || (self.server.lan.is_none() && self.common.player.is_some()) {
+                if stored_owner.is_none() {
+                    self.sync_level();
+                }
+
+                let _ = self.finish_player_autosaves(true);
+                match self.common.level.write_player(&self.server.world_root, self.common.res.items()) {
+                    Ok(()) => {
+                        owner_saved = true;
+                        self.save_stats();
+                        self.save_advancements();
+                        if let Some((uuid, name)) = stored_owner {
+                            let directory =
+                                sunrise_sim::lan::playerdata::directory(&self.server.world_root);
+                            self.native_player_save_to_file(uuid, &name, &directory);
+                        }
+                    }
+                    Err(error) => {
+                        log::warn!("Sunrise: the owner's playerdata is not saved: {error}")
+                    }
+                }
+            }
         }
-        // PlayerList.saveAll: every placed player saves with the server, to
-        // their own file (`PlayerDataStorage.save`); the owner is also in the
-        // file level.dat names, which is the one it loads from
-        // (`playerdata::load_owner`).
-        if self.common.options.execution_role == execution_role::ExecutionRole::DedicatedServer
+        if self.common.options.execution_role.is_logical_server()
             && let Some(host) = self.server.lan.as_mut()
         {
-            // The vehicle tree goes into a player's file when they leave
-            // (`take_parent_vehicle`); here it stays in the chunk saves.
+            let owner = host.owner.as_ref().map(|owner| owner.uuid);
+
+
             host.hub.guests.update_all(|g| {
-                if g.placed && !self.server.crash_save.excludes(g.conn) {
-                    // Read-only fixture input, correlated with the real save receipt.
-                    // Keep this identical on the untouched/fixed selector builds.
+                if g.placed
+                    && g.participates_in_player_simulation()
+                    && !g.released
+                    && Some(g.uuid) != owner
+                    && !self.server.crash_save.excludes(g.conn)
+                {
+
+
                     if std::env::var_os("SUNRISE_DEV_ADVANCEMENT_SELECTOR_AUDIT").is_some() {
                         eprintln!(
                             "advancement selector model raw: {}",
@@ -90,22 +121,40 @@ impl crate::game::ServerGame<'_> {
                     self.server.player_autosaves.0.enqueue(g, &self.server.world_root, self.common.res.items());
                 }
             });
-        }
-        if self.common.options.execution_role == execution_role::ExecutionRole::DedicatedServer
-            && let Some(host) = self.server.lan.as_ref()
-        {
+            let host = self
+                .server
+                .lan
+                .as_ref()
+                .expect("the player list is still installed");
             self.save_connected_guest_statistics(host);
             for guest in host.hub.guests.iter() {
-                if host
-                    .owner
-                    .as_ref()
-                    .is_some_and(|owner| owner.uuid == guest.uuid)
-                    || !host.play.contains_key(&guest.conn)
-                {
-                    continue;
+                if Some(guest.uuid) != owner && host.play.contains_key(&guest.conn) {
+                    self.save_guest_advancements(host, guest);
                 }
-                self.save_guest_advancements(host, guest);
             }
+        }
+
+        let _ = self.finish_player_autosaves(true);
+        owner_saved
+    }
+
+    pub(in crate::game) fn save_world_metadata(&mut self, owner_saved: bool) -> Result<()> {
+        self.save_maps();
+        self.save_random_sequences();
+        self.save_fight();
+        self.save_wandering_trader();
+        self.save_portal_arrivals();
+        self.save_scoreboard();
+        self.save_bossbars();
+        self.save_schedule();
+        self.save_warden_tracker();
+        self.sync_world_level_data();
+        if self.common.options.execution_role.writes_singleplayer_player() && !owner_saved {
+
+
+            self.common.level.write_keeping_player(&self.server.world_root)?;
+        } else {
+            self.common.level.write_without_player(&self.server.world_root)?;
         }
         self.save_world_state();
         Ok(())

@@ -3,7 +3,7 @@ use sunrise_items::items::ItemStack;
 impl crate::game::ServerGame<'_> {
     /// `IItemExtension.getXpRepairRatio`: the durability points Mending
     /// restores to `stack` per point of `experience`, arriving as vanilla's.
-    /// Server-side, including `PlayerRef::give_experience_points`.
+    /// Server-side, at orb pickup.
     pub(in crate::game) fn native_xp_repair_ratio(
         &self,
         player: u128,

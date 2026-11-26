@@ -12,7 +12,6 @@ pub trait Hooks {
     /// Only the `ItemPart`s attached to `stack`'s item are asked: an item
     /// with none costs one table lookup. Server-side, with a read-only `Host`.
     #[hook(
-        target = "sunrise_gameplay::game::native_hooks::on_dropped_by_player::ServerGame<'_>::native_on_dropped_by_player",
         dispatch = "flat",
         side = "server",
         host = "read",

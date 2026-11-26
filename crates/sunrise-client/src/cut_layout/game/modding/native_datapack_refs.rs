@@ -3,6 +3,7 @@
 
 #[cfg(test)]
 mod tests {
+    use core::ops::ControlFlow;
     use mod_api::{DatapackReadError as E, *};
     use sunrise_gameplay_common::game::native_datapack_refs::NativeDatapackRefsGameExt1;
     use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
@@ -41,6 +42,7 @@ mod tests {
                                     format!(r#"{{"power":{power}}}"#).into_bytes(),
                                 )],
                             )],
+                            &mut mod_api::__private::NoVanillaValueDecoder,
                         )
                         .unwrap()
                     };
@@ -48,8 +50,11 @@ mod tests {
                         DatapackRegistrySet::from_candidate(candidate(7)),
                     ));
                     assert_eq!(
-                        game.level_datapack_entries(level, "example:spell"),
-                        Some(vec!["addon:fire".into()])
+                        game.level_visit_datapack_entries(level, "example:spell", &mut |id| {
+                            assert_eq!(id, "addon:fire");
+                            ControlFlow::Break(())
+                        }),
+                        Ok(ControlFlow::Break(()))
                     );
                     let mut visited_refusal = false;
                     let mut unexpected_visit = |_: &DatapackEntry| visited_refusal = true;
@@ -57,7 +62,14 @@ mod tests {
                         LevelRef::new(WorldEpoch::new(level.epoch().get() + 1), level.dimension()),
                         LevelRef::new(level.epoch(), DimensionKey::NETHER),
                     ] {
-                        assert_eq!(game.level_datapack_entries(invalid, "example:spell"), None);
+                        assert_eq!(
+                            game.level_visit_datapack_entries(
+                                invalid,
+                                "example:spell",
+                                &mut |_| { panic!("unavailable level visited") }
+                            ),
+                            Err(E::UnknownRegistry)
+                        );
                         assert_eq!(
                             game.level_datapack_read(
                                 invalid,
@@ -82,8 +94,11 @@ mod tests {
                         .unwrap();
                     let parked = LevelRef::new(level.epoch(), DimensionKey::NETHER);
                     assert_eq!(
-                        game.level_datapack_entries(parked, "example:spell"),
-                        Some(vec!["addon:fire".into()])
+                        game.level_visit_datapack_entries(parked, "example:spell", &mut |id| {
+                            assert_eq!(id, "addon:fire");
+                            ControlFlow::Break(())
+                        }),
+                        Ok(ControlFlow::Break(()))
                     );
                     let mut parked_visits = 0;
                     game.level_datapack_read(parked, "example:spell", "addon:fire", &mut |entry| {

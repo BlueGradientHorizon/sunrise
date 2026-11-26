@@ -5,11 +5,12 @@
 use super::commands::Target;
 use sunrise_core::random::RandomSource;
 use sunrise_items::items::ItemStack;
+use sunrise_level::effects::EffectInstance;
 use sunrise_sim::{
     advancements as adv,
     gossip::GossipType,
     lan::playerdata,
-    mobs::{Mob, Species, drops, finalize, villager, zombie_villager},
+    mobs::{Mob, MobEvent, Species, drops, finalize, villager, zombie_villager},
 };
 use sunrise_world::food::Difficulty;
 
@@ -121,9 +122,23 @@ impl crate::game::ServerGame<'_> {
                 .random
                 .next_int_bound(zombie_villager::WAIT_SPREAD)
                 .unwrap_or(0);
-        let mut events = Vec::new();
-        zombie_villager::start_converting(&mut self.common.mobs[index], starter, time, &mut events);
-        let _ = self.handle_mob_events(events);
+        let id = self.common.mobs[index].id;
+        let at = [
+            self.common.mobs[index].position.x,
+            self.common.mobs[index].position.y,
+            self.common.mobs[index].position.z,
+        ];
+        villager::ext_mut(&mut self.common.mobs[index]).cure =
+            Some(zombie_villager::Cure { time, starter });
+        if let Some(def) = sunrise_game_data::potions::effect("weakness") {
+            self.remove_mob_effect_by_index(id, def.index);
+        }
+        self.add_mob_effect(id, EffectInstance::new("strength", time, 0), None);
+        let _ = self.handle_mob_events(vec![MobEvent::EntityEvent {
+            mob: id,
+            event: 16,
+            at,
+        }]);
         self.swing_arm();
         true
     }
@@ -197,9 +212,7 @@ impl crate::game::ServerGame<'_> {
             });
         }
         // The nausea comes after the advancement criterion (finishConversion).
-        if let Some(v) = self.common.mobs.iter_mut().find(|m| m.id == vid) {
-            v.add_effect("minecraft:nausea", 200, 0);
-        }
+        self.add_mob_effect(vid, EffectInstance::new("nausea", 200, 0), None);
         if !old.silent {
             self.server_level_event_at(
                 1027,
@@ -239,7 +252,7 @@ impl crate::game::ServerGame<'_> {
                 this: Some(e),
                 origin,
                 tool: None,
-                block_pos: None,
+                event_block: None,
                 target: None,
                 interacting: None,
             };

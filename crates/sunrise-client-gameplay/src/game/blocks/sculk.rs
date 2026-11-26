@@ -118,10 +118,7 @@ impl ClientGame<'_> {
             if r.next_float() < 0.3 + count as f32 * 0.1 {
                 let volume = 0.15 + 0.02 * (count * count) as f32 * r.next_float();
                 let pitch = 0.4 + 0.3 * count as f32 * r.next_float();
-                self.client
-                    .audio
-                    .0
-                    .play("minecraft:block.sculk.charge", Some(c), volume, pitch);
+                self.play_audio("minecraft:block.sculk.charge", Some(c), volume, pitch);
             }
             let face_data = data & 63;
             let faces: Vec<(Direction, f32, f64)> = if face_data == 0 {
@@ -167,10 +164,7 @@ impl ClientGame<'_> {
                 }
             }
         } else {
-            self.client
-                .audio
-                .0
-                .play("minecraft:block.sculk.charge", Some(c), 1.0, 1.0);
+            self.play_audio("minecraft:block.sculk.charge", Some(c), 1.0, 1.0);
             let solid = self
                 .common
                 .res
@@ -255,7 +249,7 @@ impl ClientGame<'_> {
             == Some("true");
         if !waterlogged {
             let pitch = 0.6 + self.client.particles.0.random().next_float() * 0.4;
-            self.client.audio.0.play_unshared(
+            self.play_audio_unshared(
                 "minecraft:block.sculk_shrieker.shriek",
                 Some([f64::from(pos.x) + 0.5, top, f64::from(pos.z) + 0.5]),
                 2.0,

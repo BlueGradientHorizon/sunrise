@@ -106,8 +106,8 @@ pub(crate) fn burn_in(game: &mut sunrise_gameplay::game::ServerGame<'_>, pos: [i
 /// Outside the world border, as `/worldborder center 1000 1000` and
 /// `/worldborder set 100` put the origin.
 pub(crate) fn outside_the_border(game: &mut sunrise_gameplay::game::ServerGame<'_>) {
-    game.border.set_center([1000.0, 1000.0]);
-    game.border.set_size(100.0);
+    game.border.set_center([1000.0, 1000.0]).unwrap();
+    game.border.set_size(100.0).unwrap();
 }
 
 /// `PowderSnowBlock.entityInside`: the powder snow is destroyed and the

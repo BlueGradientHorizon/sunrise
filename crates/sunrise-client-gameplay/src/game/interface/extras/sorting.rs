@@ -3,7 +3,6 @@
 //! cursor). The clicks come from `inv_sort::plan` and go through the Mouse Tweaks' ordinary slot
 //! clicks (`mouse_tweaks.rs`), so they work wherever vanilla's do.
 use sunrise_client::{
-    creative::Creative,
     hud::{HudBatch, rgba},
     keybinds,
 };
@@ -146,7 +145,7 @@ impl crate::game::ClientGame<'_> {
         let order = self.stock_sort_order();
         let clicks = {
             let rank = |s: &ItemStack| {
-                let order = Creative::order_of(&order, s).unwrap_or(usize::MAX);
+                let order = order.of(&s.item, s.merge_kind()).unwrap_or(usize::MAX);
                 (order, self.common.stack_hover_name(s))
             };
             let max = |s: &ItemStack| self.common.max_stack(s);

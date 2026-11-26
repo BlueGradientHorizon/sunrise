@@ -84,10 +84,7 @@ impl crate::game::ClientGame<'_> {
             Some(*flag)
         });
         if taken {
-            self.client
-                .audio
-                .0
-                .play("minecraft:ui.loom.select_pattern", None, 1.0, 1.0);
+            self.play_audio("minecraft:ui.loom.select_pattern", None, 1.0, 1.0);
             self.remote_station_button(index as i32);
         }
         taken

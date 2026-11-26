@@ -1,6 +1,7 @@
 use super::{Dim, vehicle_teleport::TeleportMotion};
 use crate::game::commands::OtherEntity;
 use crate::game::commands::R;
+use mod_api::CommandFeedback;
 use crate::game::commands::Target;
 use crate::game::commands::err;
 use crate::game::commands::format_double;
@@ -19,6 +20,7 @@ use sunrise_game_data::{
     gamerules::Value,
     text::{self, Text},
 };
+use sunrise_gameplay_common::game::transactions::entities::EntityRemovalGameExt as _;
 use sunrise_items::items::ItemStack;
 use sunrise_protocol::packets::play::{self, Clientbound as C};
 use sunrise_world::registry::BlockStateId;
@@ -84,7 +86,8 @@ impl crate::game::ServerGame<'_> {
     /// `CommandSource.acceptsSuccess`: a player's source takes success feedback while
     /// `send_command_feedback` is on; the server console's and an RCON client's always do.
     pub(in crate::game::server_side) fn accepts_success(&self) -> bool {
-        self.server.console_broadcast.is_some()
+        self.native_console_source()
+            || self.server.console_broadcast.is_some()
             || self
                 .common
                 .ui
@@ -96,15 +99,19 @@ impl crate::game::ServerGame<'_> {
     /// in place); a command-block minecart executing as itself, and a command
     /// block's own name, in the origin's level; the server's for the console.
     pub(in crate::game::server_side) fn admin_display_name(&mut self) -> Text {
-        let Some(source) = self.server.command_source else {
-            return if self.server.console_broadcast.is_some() {
+        let Some((entity, own_cart)) = self.server.command_source.as_ref().map(|source| {
+            (
+                source.entity,
+                source.cart.is_some() && source.entity == source.cart.map(Target::Cart),
+            )
+        }) else {
+            return if self.server.console_broadcast.is_some() || self.native_console_source() {
                 self.server_name()
             } else {
                 self.source_display_name()
             };
         };
-        let own_cart = source.cart.is_some() && source.entity == source.cart.map(Target::Cart);
-        match source.entity {
+        match entity {
             Some(_) if !own_cart => self.source_display_name(),
             _ => self.in_origin_level(|g| g.source_display_name()),
         }
@@ -124,7 +131,9 @@ impl crate::game::ServerGame<'_> {
         let rules = &self.common.ui.rules;
         let ops = rules.bool_at(sunrise_game_data::gamerules::vanilla::SEND_COMMAND_FEEDBACK);
         // `source != server`: RCON is a source of its own and is logged.
-        let console_source = self.server.console_broadcast.is_some() && !self.server.rcon_source;
+        let console_source =
+            (self.server.console_broadcast.is_some() || self.native_console_source())
+                && !self.server.rcon_source;
         let log = !console_source
             && rules.bool_at(sunrise_game_data::gamerules::vanilla::LOG_ADMIN_COMMANDS);
         if !ops && !log {
@@ -141,7 +150,11 @@ impl crate::game::ServerGame<'_> {
             // The player whose command it is never hears it back; a block's,
             // minecart's or console's line has no such player.
             let origin_is_player = self.server.console_broadcast.is_none()
-                && self.server.command_source.is_none_or(|s| s.origin_player);
+                && self
+                    .server
+                    .command_source
+                    .as_ref()
+                    .is_none_or(|s| s.origin_player);
             let source = if origin_is_player {
                 self.server.lan_acting
             } else {
@@ -264,6 +277,7 @@ impl crate::game::ServerGame<'_> {
         let source_level = self
             .server
             .command_source
+            .as_ref()
             .map_or(self.common.dim, |s| s.dimension);
         // The coordinates, from the command's own source, before any level moves.
         let position = |name: &str| -> R<[i32; 3]> {
@@ -459,20 +473,13 @@ impl crate::game::ServerGame<'_> {
         if current == value {
             return Err(err("commands.gamerule.not_set", &[&rule_id, &value]));
         }
-        let name = self.server.lan_acting_name.clone();
-        let actor = match (
-            self.server.lan_acting_uuid,
-            self.server.lan_acting_entity,
-            name.as_deref(),
-        ) {
-            (Some(uuid), Some(entity_id), Some(name)) => Some(mod_api::GameRuleActor {
-                uuid,
-                entity_id: entity_id as i32,
-                name,
-            }),
-            _ => None,
-        };
-        self.set_game_rule(&rule, value, actor.as_ref());
+        let actor = self.common.native_lifecycle.epoch().and_then(|epoch| {
+            Some(mod_api::__private::game::player_ref(
+                mod_api::EntityRef::new(epoch, self.server.lan_acting_entity?),
+                self.server.lan_acting_uuid?,
+            ))
+        });
+        self.set_game_rule(&rule, value, actor);
         self.feedback(Text::tr("commands.gamerule.set", &[&rule_id, &value]));
         Ok(match value {
             Value::Bool(b) => i32::from(b),
@@ -585,100 +592,135 @@ impl crate::game::ServerGame<'_> {
             Some(Arg::Str(s)) => s.clone(),
             _ => String::new(),
         };
-        let message = self.expand_selectors(&raw);
-        let name = self.source_display_name();
         match id {
-            "say" => {
-                // A visible copy for the acting player goes with their captured output, in order.
-                let captured_for = self
-                    .server
-                    .chat_capture
-                    .as_ref()
-                    .and(self.server.lan_acting);
-                let capture_say = self
-                    .lan_broadcast_source_say(&name, &message, captured_for)
-                    .ok_or_else(|| err("command.failed", &[]))?;
-                let line = Text::translate("chat.type.announcement", &[name, message]);
-                if self.server.lan.is_some() && self.common.is_dedicated_server() {
-                    self.lan_log_event(sunrise_sim::lan::hub::HostEvent::Chat {
-                        line: line.plain(),
-                        secure: false,
-                    });
-                }
-                if self.server.lan.is_some() {
-                    if capture_say && let Some(capture) = self.server.chat_capture.as_mut() {
-                        capture.push(line);
+            "say" | "me" => {
+                let message = self.resolve_chat_message(&raw);
+                let name = self.source_display_name();
+                let sender = match self.source_entity() {
+                    Some(Target::Player) => {
+                        self.server.lan_acting_uuid.unwrap_or_else(|| self.own_uuid())
                     }
-                } else if let Some(capture) = self.server.chat_capture.as_mut() {
-                    capture.push(line);
-                }
-                Ok(1)
-            }
-            "me" => {
-                if self.server.lan.is_some() {
-                    let captured_for = self
-                        .server
-                        .chat_capture
-                        .as_ref()
-                        .and(self.server.lan_acting);
-                    let capture_me = self
-                        .lan_broadcast_source_emote(&name, &message, captured_for)
-                        .ok_or_else(|| err("command.failed", &[]))?;
-                    let line = Text::translate("chat.type.emote", &[name, message]);
-                    if self.common.is_dedicated_server() {
-                        self.lan_log_event(sunrise_sim::lan::hub::HostEvent::Chat {
-                            line: line.plain(),
-                            secure: false,
-                        });
+                    Some(Target::Guest(conn)) => {
+                        self.command_guest(conn).map_or(0, |guest| guest.uuid)
                     }
-                    if capture_me && let Some(capture) = self.server.chat_capture.as_mut() {
-                        capture.push(line);
-                    }
-                } else if let Some(capture) = self.server.chat_capture.as_mut() {
-                    capture.push(Text::translate("chat.type.emote", &[name, message]));
+                    _ => 0,
+                };
+                if !self.lan_broadcast_command_chat(sender, &name, id, &message, None) {
+                    return Err(err("command.failed", &[]));
                 }
                 Ok(1)
             }
             _ => {
+                let message = self.expand_selectors(&raw);
+                let name = self.source_display_name();
                 let targets = self.entities(ctx, "targets", true)?;
-                for &target in &targets {
-                    let target_name = self.target_name(target);
+                let count = targets.len() as i32;
+                // ChatType.bind throws for a missing type before anything is sent.
+                let incoming_type = match &self.server.lan {
+                    Some(host) => {
+                        let (Some(incoming), Some(_)) = (
+                            host.hub.chat_type_id("msg_command_incoming"),
+                            host.hub.chat_type_id("msg_command_outgoing"),
+                        ) else {
+                            return Err(err("command.failed", &[]));
+                        };
+                        Some(incoming)
+                    }
+                    None => None,
+                };
+                for target in targets {
+                    let target_name = match target {
+                        Target::Player => self.player_display_name(),
+                        other => self.target_name(other),
+                    };
                     let out = Text::translate(
                         "commands.message.display.outgoing",
                         &[target_name, message.clone()],
                     )
                     .with_color(text::GRAY)
                     .italic();
+                    // MsgCommand.sendMessage -> CommandSourceStack.sendChatMessage:
+                    // a non-player source receives the decorated outgoing line via
+                    // sendSystemMessage; a player source receives it as its own message.
+                    self.command_system_message(out);
                     let incoming = Text::translate(
                         "commands.message.display.incoming",
                         &[name.clone(), message.clone()],
                     )
                     .with_color(text::GRAY)
                     .italic();
-                    match target {
-                        Target::Guest(conn) => {
-                            if let Some(host) = self.server.lan.as_ref() {
-                                host.hub.send_to(
-                                    conn,
-                                    &C::SystemChat(play::SystemChat {
-                                        content: sunrise_sim::lan::data::component_nbt(
-                                            &incoming.component(),
-                                        ),
-                                        overlay: false,
-                                    }),
-                                );
-                            }
-                            self.server_system_message(out);
+                    let conn = match target {
+                        Target::Guest(conn) => Some(conn),
+                        Target::Player => self.server.lan_acting,
+                        _ => None,
+                    };
+                    if let Some(conn) = conn {
+                        if self.server.lan_acting == Some(conn)
+                            && let Some(capture) = self.server.chat_capture.as_mut()
+                        {
+                            capture.push(incoming);
+                        } else if let Some(host) = &self.server.lan
+                            && let Some(t) = host.hub.guests.connection_index(conn)
+                        {
+                            // The target's copy is private chat with the incoming whisper
+                            // type, shown only to players who show chat (`Hub::whisper`).
+                            let bound = sunrise_protocol::packets::play::ChatTypeBound {
+                                chat_type: incoming_type
+                                    .expect("a hub's incoming type was checked above")
+                                    .network_id() as i32,
+                                name: sunrise_sim::lan::data::component_nbt(&name.component()),
+                                target: None,
+                            };
+                            host.hub.send_disguised(
+                                t,
+                                sunrise_sim::lan::data::component_nbt(&message.component()),
+                                bound,
+                            );
                         }
-                        Target::Player => {
-                            self.server_system_message(out);
-                            self.server_system_message(incoming);
-                        }
-                        _ => {}
+                    } else {
+                        self.server_system_message(incoming);
                     }
                 }
-                Ok(targets.len() as i32)
+                Ok(count)
             }
+        }
+    }
+    /// `CommandSourceStack.sendSystemMessage`: no success-feedback rule. Unlike `sendSuccess`
+    /// and `sendFailure`, it addresses the executing player when there is one.
+    pub(in crate::game) fn command_system_message(&mut self, message: Text) {
+        if self.server.command_source.as_ref().is_some_and(|s| s.silent) {
+            return;
+        }
+        if self.native_console_source() {
+            let conn = match self.source_entity() {
+                Some(Target::Player) => self.server.lan_acting,
+                Some(Target::Guest(conn)) => Some(conn),
+                _ => {
+                    self.send_command_output(CommandFeedback::System, message);
+                    return;
+                }
+            };
+            if let Some(conn) = conn {
+                if let Some(host) = &self.server.lan {
+                    host.hub.send_to(
+                        conn,
+                        &sunrise_gameplay_common::game::native_server::system_chat(&message),
+                    );
+                }
+            } else {
+                self.server_system_message(message);
+            }
+            return;
+        }
+        self.send_command_output(CommandFeedback::System, message);
+    }
+    /// `MessageArgument.resolveChatMessage`: only sources with entity selector permission
+    /// resolve selectors. Other players' text remains literal.
+    pub(in crate::game) fn resolve_chat_message(&mut self, raw: &str) -> Text {
+        if self.common.ui.registries.permission >= 2 {
+            self.expand_selectors(raw)
+        } else {
+            Text::literal(raw)
         }
     }
     pub(in crate::game::server_side) fn cmd_setblock(&mut self, ctx: &Context) -> R<i32> {
@@ -760,6 +802,7 @@ impl crate::game::ServerGame<'_> {
         let dimension = self
             .server
             .command_source
+            .as_ref()
             .map_or(self.common.dim, |s| s.dimension);
         let [yaw, pitch] = self.set_world_spawn(dimension, pos, rot);
         let args = [
@@ -1012,7 +1055,7 @@ impl crate::game::ServerGame<'_> {
         };
         // Entity.lookAt: from the source's anchor (the feet, unless `anchored
         // eyes`) on the teleported entity, so the eyes depend on the target.
-        let anchored_eyes = self.server.command_source.is_some_and(|s| s.eyes);
+        let anchored_eyes = self.server.command_source.as_ref().is_some_and(|s| s.eyes);
         let look_at = |this: &Self, t: Target, at: [f64; 3]| {
             let f = facing?;
             let eye = if anchored_eyes {
@@ -1025,7 +1068,7 @@ impl crate::game::ServerGame<'_> {
         // A server's player in another level than the source's (`execute
         // in`, the console's Overworld) moves there (ServerPlayer.teleport
         // into another level), after the command.
-        let source_level = match self.server.command_source.and_then(|s| s.level) {
+        let source_level = match self.server.command_source.as_ref().and_then(|s| s.level) {
             Some(level) => level,
             None if self.source_entity().is_none() => super::Dim::Overworld,
             None => self.common.dim,
@@ -1089,22 +1132,25 @@ impl crate::game::ServerGame<'_> {
     }
     /// CommandSourceStack.sendFailure: red text.
     pub(in crate::game) fn command_failure(&mut self, message: Text) {
-        if self.server.command_source.is_some_and(|s| s.silent) {
+        if self.server.command_source.as_ref().is_some_and(|s| s.silent) {
             return;
         }
-        if let Some(block) = self.server.command_source.and_then(|s| s.block) {
+        if let Some(block) = self.server.command_source.as_ref().and_then(|s| s.block) {
             self.command_block_output(block, |timestamp| {
                 formatted_command_failure(message, Some(timestamp))
             });
             return;
         }
-        if let Some(cart) = self.server.command_source.and_then(|s| s.cart) {
+        if let Some(cart) = self.server.command_source.as_ref().and_then(|s| s.cart) {
             self.cart_command_output(cart, |timestamp| {
                 formatted_command_failure(message, Some(timestamp))
             });
             return;
         }
-        self.server_system_message(formatted_command_failure(message, None));
+        self.send_command_output(
+            CommandFeedback::Failure,
+            formatted_command_failure(message, None),
+        );
     }
     pub(in crate::game::server_side) fn execute_command(
         &mut self,
@@ -1256,7 +1302,7 @@ impl crate::game::ServerGame<'_> {
         &mut self,
         f: impl FnOnce(&mut Self) -> T,
     ) -> T {
-        let origin = self.server.command_source.map(|s| s.origin_dimension);
+        let origin = self.server.command_source.as_ref().map(|s| s.origin_dimension);
         let back = origin.and_then(|dim| self.enter_command_level(dim));
         let out = f(self);
         if let Some(back) = back {
@@ -1264,7 +1310,32 @@ impl crate::game::ServerGame<'_> {
         }
         out
     }
-    pub fn kill_target_in_level(&mut self, t: Target) {
+    pub(in crate::game) fn can_kill_target_in_level(&self, t: Target) -> bool {
+        if self.target_removed(&t)
+            || self.common.persist.preparing_vehicle_removals.contains(&t)
+        {
+            return false;
+        }
+        match t {
+            Target::DragonPart(_) => false,
+            Target::Player => self
+                .common
+                .player
+                .as_ref()
+                .is_some_and(|p| p.health.health() > 0.0),
+            Target::Guest(conn) => self.command_guest(conn).is_some_and(|g| !g.dead),
+            Target::Mob(id) => self
+                .common
+                .mobs
+                .iter()
+                .any(|m| m.id == id && !m.removed && m.alive()),
+            _ => self.target_position(t).is_some(),
+        }
+    }
+    pub fn kill_target_in_level(&mut self, t: Target) -> bool {
+        if !self.can_kill_target_in_level(t) {
+            return false;
+        }
         // Entity.kill (BlockAttachedEntity.kill; ArmorStand's generic_kill hit,
         // which bypasses its invulnerability; a vehicle is no LivingEntity):
         // removed, then ENTITY_DIE by the entity itself. Mobs post theirs as
@@ -1322,16 +1393,23 @@ impl crate::game::ServerGame<'_> {
         match t {
             Target::General(id) => {
                 let Some(entity) = self.entity(id) else {
-                    return;
+                    return false;
                 };
                 self.remove_target_now(entity, t);
             }
             Target::Guest(_) => {
-                self.for_player(t, |g| g.kill_target(Target::Player));
+                return self
+                    .for_player(t, |g| g.kill_target_in_level(Target::Player))
+                    .unwrap_or(false);
             }
             Target::Player => {
-                if let Some(p) = self.common.player.as_mut() {
-                    let _ = p.set_health(0.0, false);
+                if self
+                    .common
+                    .player
+                    .as_mut()
+                    .is_none_or(|p| p.set_health(0.0, false).is_err())
+                {
+                    return false;
                 }
                 self.common.ui.death_cause = Some("death.attack.genericKill".into());
             }
@@ -1354,11 +1432,17 @@ impl crate::game::ServerGame<'_> {
                 // The hit runs LivingEntity.die before the command returns:
                 // its ENTITY_DIE, loot and experience come now, not in the
                 // next tick's deaths, which skip it (as a frog's bite does).
-                if let Some(m) = killed
-                    && !m.removed
-                    && self.server.died.insert(id)
+                let Some(m) = killed.filter(|m| !m.removed && self.server.died.insert(id)) else {
+                    return false;
+                };
+                self.mob_die(&m);
+                if self
+                    .common
+                    .mobs
+                    .iter()
+                    .any(|m| m.id == id && !m.removed && (m.alive() || m.death_canceled))
                 {
-                    self.mob_die(&m);
+                    return false;
                 }
             }
             Target::Item(id) => {
@@ -1371,7 +1455,7 @@ impl crate::game::ServerGame<'_> {
             Target::Projectile(id) => self.remove_projectile(id),
             Target::Stand(id) => {
                 if !self.remove_armor_stand_after(id, |_| {}) {
-                    return;
+                    return false;
                 }
             }
             Target::Frame(id) => {
@@ -1384,7 +1468,7 @@ impl crate::game::ServerGame<'_> {
             Target::Painting(id) => self.common.paintings.retain(|p| p.id != id),
             Target::Boat(_) | Target::Cart(_) => {
                 if !self.kill_vehicle_object(t) {
-                    return;
+                    return false;
                 }
             }
             Target::Other(id) => {
@@ -1395,7 +1479,7 @@ impl crate::game::ServerGame<'_> {
                     })
                     .is_none()
                 {
-                    return;
+                    return false;
                 }
             }
             Target::Fangs(id) => self.common.fangs.list.retain(|f| f.id != id),
@@ -1403,12 +1487,12 @@ impl crate::game::ServerGame<'_> {
             Target::Dragon(id) => self.kill_dragon(id),
             Target::Tnt(id) => {
                 if self.take_removed_tnt(id).is_none() {
-                    return;
+                    return false;
                 }
             }
             Target::Cushion(id) => {
                 if self.take_removed_cushion(id).is_none() {
-                    return;
+                    return false;
                 }
             }
             Target::Falling(id) => self.common.falling.retain(|f| f.id != id),
@@ -1418,9 +1502,13 @@ impl crate::game::ServerGame<'_> {
             Target::Cloud(id) => self.remove_breath_cloud(id),
             Target::Bolt(id) => self.remove_bolt(id),
             Target::Hook(id) => self.remove_fishing_hook(id),
-            Target::Knot(_) => {}
+            Target::Knot(id) => {
+                if !self.kill_natural_knot(id) {
+                    return false;
+                }
+            }
             // No command names a part, and `kill` on one would not stop its dragon.
-            Target::DragonPart(_) => {}
+            Target::DragonPart(_) => return false,
         }
         if let Some((id, uuid)) = destroyed_score {
             self.score_destroyed_entity_once(id, uuid);
@@ -1429,6 +1517,7 @@ impl crate::game::ServerGame<'_> {
             self.post_game_event("minecraft:entity_die", at, context);
         }
         self.native_leaves_flush();
+        true
     }
     /// The entities of the level in place a selector can find: one walk over
     /// the entity lists (a kind added there joins `@e` once it names its
@@ -1482,7 +1571,7 @@ impl crate::game::ServerGame<'_> {
         );
         candidates.extend(self.natural_knot_ids().into_iter().map(Target::Knot));
         // `isRemoved` from a mod's call on, though the sweep has not taken it out.
-        candidates.retain(|t| !self.common.target_removed(t));
+        candidates.retain(|t| !self.target_removed(t));
         candidates
     }
     /// `ServerLevel.getEntity`: whether the level in place still holds the
@@ -1500,19 +1589,6 @@ impl crate::game::ServerGame<'_> {
             }
             _ => false,
         }
-    }
-    /// The loaded levels, in the order the server holds them: the
-    /// overworld, the nether, the end (MinecraftServer.getAllLevels).
-    pub(in crate::game::server_side) fn loaded_dims(&self) -> Vec<Dim> {
-        let mut dims = vec![self.dim];
-        dims.extend(self.server.levels.0.parked_dims());
-        dims.sort_by_key(|d| match d {
-            Dim::Overworld => 0,
-            Dim::Nether => 1,
-            Dim::End => 2,
-            Dim::Extra(_) => 3,
-        });
-        dims
     }
     /// `MinecraftServer.sendSystemMessage`: a line in the server's log, as the
     /// console's replies are logged. Kept out of an RCON reply, which carries
@@ -1682,17 +1758,16 @@ impl crate::game::ServerGame<'_> {
     /// minecart origin is read in its own level (`source.origin_dimension`),
     /// which `execute in` does not move.
     pub(in crate::game) fn send_success(&mut self, message: Text, broadcast: bool) {
-        let source = self.server.command_source;
-        if source.is_some_and(|s| s.silent) {
+        if self.server.command_source.as_ref().is_some_and(|s| s.silent) {
             return;
         }
         let admins = broadcast.then(|| message.clone());
-        if let Some(block) = source.and_then(|s| s.block) {
+        if let Some(block) = self.server.command_source.as_ref().and_then(|s| s.block) {
             self.in_origin_level(|g| g.command_block_success(block, message));
-        } else if let Some(cart) = source.and_then(|s| s.cart) {
+        } else if let Some(cart) = self.server.command_source.as_ref().and_then(|s| s.cart) {
             self.in_origin_level(|g| g.cart_command_success(cart, message));
         } else if self.accepts_success() {
-            self.server_system_message(message);
+            self.send_command_output(CommandFeedback::Success, message);
         }
         if let Some(message) = admins {
             self.broadcast_to_admins(message);
@@ -1728,8 +1803,11 @@ impl crate::game::ServerGame<'_> {
     /// `broadcast-console-to-ops` (`DedicatedServer`) and RCON's
     /// `broadcast-rcon-to-ops` (`RconConsoleSource`).
     pub(in crate::game::server_side) fn should_inform_admins(&mut self) -> bool {
-        let source = self.server.command_source;
-        let origin = source.and_then(|s| s.block.map(Ok).or(s.cart.map(Err)));
+        let origin = self
+            .server
+            .command_source
+            .as_ref()
+            .and_then(|s| s.block.map(Ok).or(s.cart.map(Err)));
         let Some(origin) = origin else {
             return self.server.console_broadcast.unwrap_or(true);
         };
@@ -1760,6 +1838,7 @@ impl crate::game::ServerGame<'_> {
     pub(in crate::game) fn source_rotation(&self) -> [f32; 2] {
         self.server
             .command_source
+            .as_ref()
             .map_or([self.common.yaw, self.common.pitch], |s| s.rot)
     }
     /// What changes when an entity spawns, kinds that take their id only

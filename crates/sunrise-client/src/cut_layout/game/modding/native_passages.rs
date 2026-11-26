@@ -3,6 +3,7 @@
 pub(crate) mod tests {
 
     use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
+    use sunrise_gameplay_common::game::native_lifecycle_common::NativeLifecycleCommonGameExt1 as _;
     use sunrise_gameplay_common::game::native_passages::tests::RemoveOnSecondSent;
 
     use sunrise_gameplay_common::game::native_passages::tests::doorway;
@@ -113,7 +114,7 @@ pub(crate) mod tests {
                 game.level_register_passage(level, doorway()),
                 Ok(PassageId::from_raw(1))
             );
-            game.native_levels_closing();
+            game.close_loaded_levels_for_stop();
             assert!(game.passages.index.is_empty() && game.passages.dirty.is_empty());
             assert!(!game.level_remove_passage(level, PassageId::from_raw(1)));
             game.native_level_opened(game.dim);
@@ -122,7 +123,7 @@ pub(crate) mod tests {
                 assert_eq!(id, PassageId::from_raw(i + 2));
             }
             game.passages.held.insert(PassageId::from_raw(1), doorway());
-            game.native_lifecycle_world_failed("test failure");
+            game.native_lifecycle_world_closed();
             assert!(game.passages.levels.is_empty() && game.passages.index.is_empty());
             assert!(game.passages.dirty.is_empty() && game.passages.held.is_empty());
         });
@@ -350,7 +351,7 @@ pub(crate) mod tests {
                 seed: 0,
                 max_players: 2,
                 integrated: true,
-                levels: game.server.level_shapes,
+                levels: game.server.level_shapes.clone(),
                 level_seeds: game.server.levels.0.runtime.seeds(),
             };
             game.lan_host(settings, net, config).unwrap();
@@ -889,6 +890,85 @@ mod cross_tests {
             });
             tick(game, vec![cross(1, far)]);
             refused(game, 1, Refusal::TooFar { limit: 20 }, far);
+        });
+    }
+
+    /// A passage to chunk (300, 0), far past the view, in the player's own level: with a mod's
+    /// area there, a client that answered no revision 5 of `sunrise:levels` is refused
+    /// `FarEndNotTracked`, as the area's chunk is not sent to it; once its client answers 5, the
+    /// chunk is sent past the view and the crossing is followed.
+    #[test]
+    #[ignore = "daily"]
+    fn a_far_end_an_own_level_area_sends_is_tracked() {
+        use sunrise_sim::lan::viewed_levels::areas::{ChunkArea, ChunkAreaMode};
+        with_guests(|game| {
+            let rx = scene(game, [0.5, 65.0, 8.25]);
+            let level = game.level(game.dim.id()).unwrap();
+            let portal = Passage {
+                destination: Vec3::new(4800.5, 65.5, 8.5),
+                ..near_doorway()
+            };
+            assert_eq!(
+                game.level_register_passage(level, portal),
+                Ok(PassageId::from_raw(2))
+            );
+            let area = ChunkArea {
+                level: game.dim.id().to_owned(),
+                center: (300, 0),
+                radius: 0,
+                mode: ChunkAreaMode::Loaded,
+            };
+            let uuid = guest(game).uuid;
+            let hub = &mut game.server.lan.as_mut().unwrap().hub;
+            hub.set_viewed_areas(uuid, "test:portal", vec![area])
+                .unwrap();
+            for cx in 299..=301 {
+                for cz in -1..=1 {
+                    let mut chunk = Chunk::empty(cx, cz);
+                    chunk.lit = true;
+                    game.common.world.chunks.insert((cx, cz), Arc::new(chunk));
+                }
+            }
+            let here = [0.5, 65.0, 8.25];
+            let send_far = |game: &mut sunrise_gameplay::game::ServerGame<'_>| {
+                for _ in 0..10 {
+                    game.server.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+                        g.unacknowledged = 0;
+                    });
+                    tick(game, Vec::new());
+                }
+                guest(game).sent_chunks.contains(&(300, 0))
+            };
+            assert!(!send_far(game), "nothing past the view of an older client");
+            packets(&rx);
+            tick(game, vec![cross(2, here)]);
+            let sent = packets(&rx);
+            let reason = refusal_code(Refusal::FarEndNotTracked);
+            assert_eq!(refusals(&sent), [Message::Refused { id: 2, reason }]);
+            let teleport = position_packets(&sent)[0].teleport;
+            let accepted = S::AcceptTeleportation(play::AcceptTeleportation {
+                id: teleport,
+                x: here[0],
+                y: here[1],
+                z: here[2],
+                yaw: 0.0,
+                pitch: 0.0,
+            });
+            tick(game, vec![accepted]);
+
+            game.server.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+                g.sender.viewed_levels = sunrise_protocol::viewed_levels::Answer {
+                    revision: sunrise_protocol::viewed_levels::REVISION_5,
+                    max_levels: 2,
+                };
+            });
+            assert!(send_far(game), "the area's chunk past the view");
+            packets(&rx);
+            tick(game, vec![cross(2, here)]);
+            let sent = packets(&rx);
+            assert!(refusals(&sent).is_empty(), "{:?}", refusals(&sent));
+            assert_eq!(guest(game).position, [4800.75, 65.0, 8.5]);
+            assert_eq!(position_packets(&sent)[0].relatives, ALL);
         });
     }
 

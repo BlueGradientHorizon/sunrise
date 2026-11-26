@@ -4,7 +4,7 @@ use crate::{
     lan::NetEvent,
     net_ingress::{Prepared, Producer, ReceiveLease, Refusal, Refused},
 };
-use mod_api::PayloadContextError;
+use mod_api::{__private::game::CallbackFailure, PayloadContextError};
 
 pub enum MainQueue<E = NoClientEvent> {
     Client(Producer<E>),
@@ -41,7 +41,7 @@ impl<E: ClientEvent> MainQueue<E> {
         &self,
         incoming: Incoming,
         credit: Option<ReceiveLease<E>>,
-    ) -> Result<PreparedMain<E>, PayloadContextError> {
+    ) -> Result<PreparedMain<E>, (PayloadContextError, Option<CallbackFailure>)> {
         let refusal = |reason| match reason {
             Refusal::Pressure => PayloadContextError::Backpressure,
             Refusal::Closed => PayloadContextError::Disconnected,
@@ -54,7 +54,13 @@ impl<E: ClientEvent> MainQueue<E> {
                     None => events.prepare(event),
                 }
                 .map(PreparedMain::Client)
-                .map_err(|error| refusal(error.reason))
+                .map_err(|error| {
+                    let mut incoming = error
+                        .value
+                        .into_raw_payload()
+                        .expect("only payloads were submitted");
+                    (refusal(error.reason), incoming.dispose_body().err())
+                })
             }
             Self::ClientBundle(work) => {
                 // Incoming (including enqueued work) already holds its payload
@@ -75,7 +81,15 @@ impl<E: ClientEvent> MainQueue<E> {
                     incoming,
                 })))
                 .map(PreparedMain::Server)
-                .map_err(|error| refusal(error.reason)),
+                .map_err(|error| {
+                    let NetEvent::RawPayload(mut delivery) = error.value else {
+                        unreachable!("only payloads were submitted")
+                    };
+                    (
+                        refusal(error.reason),
+                        delivery.incoming.dispose_body().err(),
+                    )
+                }),
         }
     }
 }

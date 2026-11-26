@@ -1,11 +1,15 @@
 #[cfg(any())]
 pub mod tests {
     use super::super::{Game, commands::Target};
+    use crate::game::native_entity_refs::tests::{collect_entity_visit, fixture_resident_column};
     use mod_api::{
-        self, EntityMountEvent, EntityRef, EntityUnleashEvent, Flow, Hooks, LivingRef, ServerHost,
-        StartRidingRefusal,
+        self, EntityMountEvent, EntityReadError, EntityRef, EntityUnleashEvent, Flow, Hooks,
+        LivingRef, ServerHost, StartRidingRefusal,
     };
-    use std::sync::{Arc, Mutex};
+    use std::{
+        ops::ControlFlow,
+        sync::{Arc, Mutex},
+    };
     use sunrise_core::geometry::Vec3;
     use sunrise_level::chunk::Chunk;
     use sunrise_sim::mobs::Mob;
@@ -72,6 +76,7 @@ pub mod tests {
         .into();
         mod_platform::testing::with_mods(mods, || {
             super::super::native_entity_refs::tests::with_game(|game| {
+                fixture_resident_column(&mut game.world, (0, 0));
                 game.options.dedicated = Some(Vec::new());
                 for (index, vehicle_kind) in [
                     "minecraft:armor_stand",
@@ -97,7 +102,7 @@ pub mod tests {
                                 knot_check: None,
                                 eye: None,
                                 join: Default::default(),
-                                item_transformation: None,
+                                display: None,
                                 interaction: None,
                                 id,
                                 kind: vehicle_kind.into(),
@@ -123,7 +128,10 @@ pub mod tests {
                         assert!(game.entity_start_riding(rider, vehicle, false).is_err());
                         assert!(game.entity_start_riding(rider, vehicle, true).is_err());
                         assert_eq!(rider.vehicle(game), None);
-                        assert_eq!(vehicle.passengers(game), Some(vec![]));
+                        assert_eq!(
+                            collect_entity_visit(|visit| vehicle.visit_passengers(game, visit)),
+                            Ok(vec![])
+                        );
                         assert!(events.lock().unwrap().is_empty());
                         continue;
                     }
@@ -132,7 +140,10 @@ pub mod tests {
                     cancel.store(true, Ordering::SeqCst);
                     assert!(game.entity_start_riding(rider, vehicle, false).is_err());
                     assert_eq!(rider.vehicle(game), None);
-                    assert_eq!(vehicle.passengers(game), Some(vec![]));
+                    assert_eq!(
+                        collect_entity_visit(|visit| vehicle.visit_passengers(game, visit)),
+                        Ok(vec![])
+                    );
                     assert_eq!(
                         *events.lock().unwrap(),
                         [payload(id + 1, "minecraft:zombie", true)]
@@ -144,23 +155,35 @@ pub mod tests {
                     // Default Entity.canAddPassenger requires an empty seat. No hook for refusal.
                     assert!(game.entity_start_riding(second, vehicle, false).is_err());
                     assert_eq!(second.vehicle(game), None);
-                    assert_eq!(vehicle.passengers(game), Some(vec![rider]));
+                    assert_eq!(
+                        collect_entity_visit(|visit| vehicle.visit_passengers(game, visit)),
+                        Ok(vec![rider])
+                    );
                     assert_eq!(events.lock().unwrap().len(), 2);
                     // /ride uses the same forced path, which permits more generic passengers.
                     assert!(game.entity_start_riding(second, vehicle, true).is_ok());
                     assert_eq!(second.vehicle(game), Some(vehicle));
-                    assert_eq!(vehicle.passengers(game), Some(vec![rider, second]));
+                    assert_eq!(
+                        collect_entity_visit(|visit| vehicle.visit_passengers(game, visit)),
+                        Ok(vec![rider, second])
+                    );
 
                     cancel.store(true, Ordering::SeqCst);
                     assert!(!game.entity_stop_riding(rider));
                     assert_eq!(rider.vehicle(game), Some(vehicle));
-                    assert_eq!(vehicle.passengers(game), Some(vec![rider, second]));
+                    assert_eq!(
+                        collect_entity_visit(|visit| vehicle.visit_passengers(game, visit)),
+                        Ok(vec![rider, second])
+                    );
                     cancel.store(false, Ordering::SeqCst);
                     assert!(game.entity_stop_riding(rider));
                     assert!(game.entity_stop_riding(second));
                     assert_eq!(rider.vehicle(game), None);
                     assert_eq!(second.vehicle(game), None);
-                    assert_eq!(vehicle.passengers(game), Some(vec![]));
+                    assert_eq!(
+                        collect_entity_visit(|visit| vehicle.visit_passengers(game, visit)),
+                        Ok(vec![])
+                    );
                     assert_eq!(
                         *events.lock().unwrap(),
                         [
@@ -387,6 +410,24 @@ pub mod tests {
         });
     }
 
+    /// `Entity.showVehicleHealth` is `instanceof LivingEntity`: a horse shows its hearts, a
+    /// boat does not.
+    #[test]
+    #[ignore = "daily"]
+    fn a_living_vehicle_shows_its_health_and_a_boat_does_not() {
+        use super::super::boats_common::Boat;
+        super::super::native_entity_refs::tests::with_game(|game| {
+            let kind = game.res.mob_types().get("minecraft:horse").unwrap().clone();
+            game.mobs.push(Mob::new(70, kind, Vec3::ZERO, 0.0));
+            game.boats
+                .push(Boat::new(71, "oak".into(), Vec3::ZERO, 0.0));
+            let host = &*game as &dyn ServerHost;
+            let shows = |id| game.entity(id).unwrap().shows_vehicle_health(host);
+            assert_eq!(shows(70), Some(true));
+            assert_eq!(shows(71), Some(false));
+        });
+    }
+
     #[test]
     #[ignore = "daily"]
     fn handles_reject_held_out_and_stale_entities() {
@@ -453,6 +494,7 @@ pub mod tests {
     #[ignore = "daily"]
     fn a_nested_tree_lists_passengers_depth_first_and_shares_its_root() {
         super::super::native_entity_refs::tests::with_game(|game| {
+            fixture_resident_column(&mut game.world, (0, 0));
             let camel = add_mob(game, 80, "minecraft:camel", Vec3::ZERO);
             let first = add_mob(game, 81, "minecraft:pig", Vec3::ZERO);
             let second = add_mob(game, 82, "minecraft:pig", Vec3::ZERO);
@@ -461,24 +503,39 @@ pub mod tests {
             for (rider, vehicle) in [(81, 80), (82, 80), (83, 81)] {
                 assert!(game.start_riding_target(Target::Mob(rider), Target::Mob(vehicle), true));
             }
-            assert_eq!(camel.passengers(game), Some(vec![first, second]));
             assert_eq!(
-                camel.indirect_passengers(game),
-                Some(vec![first, top, second])
+                collect_entity_visit(|visit| camel.visit_passengers(game, visit)),
+                Ok(vec![first, second])
             );
-            assert_eq!(first.indirect_passengers(game), Some(vec![top]));
-            assert_eq!(top.indirect_passengers(game), Some(Vec::new()));
+            assert_eq!(
+                collect_entity_visit(|visit| camel.visit_indirect_passengers(game, visit)),
+                Ok(vec![first, top, second])
+            );
+            assert_eq!(
+                collect_entity_visit(|visit| first.visit_indirect_passengers(game, visit)),
+                Ok(vec![top])
+            );
+            assert_eq!(
+                top.visit_indirect_passengers(game, &mut |_| panic!("empty tree visited")),
+                Ok(ControlFlow::Continue(()))
+            );
 
             assert_eq!(top.is_passenger_of_same_vehicle(game, second), Some(true));
             assert_eq!(top.is_passenger_of_same_vehicle(game, camel), Some(true));
             assert_eq!(top.is_passenger_of_same_vehicle(game, apart), Some(false));
             assert_eq!(apart.is_passenger_of_same_vehicle(game, apart), Some(true));
             assert_eq!(top.is_passenger_of_same_vehicle(game, stale(camel)), None);
-            assert_eq!(stale(camel).indirect_passengers(game), None);
+            assert_eq!(
+                stale(camel).visit_indirect_passengers(game, &mut |_| panic!("stale tree visited")),
+                Err(EntityReadError::Stale)
+            );
             assert_eq!(stale(camel).controlling_passenger(game), None);
             // Dying is not removal: a dead first passenger still owns its place.
             game.mob_object_mut(81).unwrap().health = 0.0;
-            assert_eq!(camel.passengers(game), Some(vec![first, second]));
+            assert_eq!(
+                collect_entity_visit(|visit| camel.visit_passengers(game, visit)),
+                Ok(vec![first, second])
+            );
             assert_eq!(
                 camel.controlling_passenger(game).map(|r| r.entity()),
                 Some(first)
@@ -490,7 +547,10 @@ pub mod tests {
                 .off_level
                 .insert(81, crate::game::entity_memory::OffLevel::Mob(ghost));
             assert!(game.entity(81).is_none());
-            assert_eq!(camel.passengers(game), Some(vec![second]));
+            assert_eq!(
+                collect_entity_visit(|visit| camel.visit_passengers(game, visit)),
+                Ok(vec![second])
+            );
             assert_eq!(
                 camel.controlling_passenger(game),
                 None,
@@ -503,7 +563,19 @@ pub mod tests {
             );
             assert_eq!(top.is_passenger(game), Some(true));
             assert_eq!(top.root_vehicle(game), Some(camel));
-            assert_eq!(camel.indirect_passengers(game), Some(vec![top, second]));
+            assert_eq!(
+                collect_entity_visit(|visit| camel.visit_indirect_passengers(game, visit)),
+                Ok(vec![top, second])
+            );
+            let mut visited = None;
+            assert_eq!(
+                camel.visit_indirect_passengers(game, &mut |rider| {
+                    assert!(visited.replace(rider).is_none());
+                    ControlFlow::Break(())
+                }),
+                Ok(ControlFlow::Break(()))
+            );
+            assert_eq!(visited, Some(top));
             assert_eq!(
                 first.is_passenger(game),
                 None,
@@ -514,13 +586,19 @@ pub mod tests {
             game.persist
                 .off_level
                 .insert(82, crate::game::entity_memory::OffLevel::Mob(ghost));
-            assert_eq!(camel.passengers(game), Some(Vec::new()));
+            assert_eq!(
+                collect_entity_visit(|visit| camel.visit_passengers(game, visit)),
+                Ok(Vec::new())
+            );
             assert_eq!(
                 camel.is_vehicle(game),
                 Some(true),
                 "ghost-only children still ride"
             );
-            assert_eq!(camel.indirect_passengers(game), Some(vec![top]));
+            assert_eq!(
+                collect_entity_visit(|visit| camel.visit_indirect_passengers(game, visit)),
+                Ok(vec![top])
+            );
             let index = game.mobs.iter().position(|m| m.id == 80).unwrap();
             let ghost = game.mobs.remove(index);
             game.persist
@@ -567,7 +645,12 @@ pub mod tests {
             assert_eq!(leaf.root_vehicle(game), Some(root));
             game.mob_object_mut(200).unwrap().extra.mount = Some(leaf.id());
             assert_eq!(leaf.root_vehicle(game), None, "cycles have no root");
-            assert_eq!(root.indirect_passengers(game).unwrap().len(), 70);
+            assert_eq!(
+                collect_entity_visit(|visit| root.visit_indirect_passengers(game, visit))
+                    .unwrap()
+                    .len(),
+                70
+            );
         });
     }
 
@@ -576,6 +659,7 @@ pub mod tests {
     fn passengers_keep_the_order_they_boarded_in_not_the_mob_list() {
         use sunrise_core::nbt::Tag;
         super::super::native_entity_refs::tests::with_game(|game| {
+            fixture_resident_column(&mut game.world, (0, 0));
             let camel = add_mob(game, 80, "minecraft:camel", Vec3::ZERO);
             let first = add_mob(game, 81, "minecraft:pig", Vec3::ZERO);
             let second = add_mob(game, 82, "minecraft:pig", Vec3::ZERO);
@@ -583,10 +667,13 @@ pub mod tests {
             for (rider, vehicle) in [(82, 80), (81, 80), (83, 81)] {
                 assert!(game.start_riding_target(Target::Mob(rider), Target::Mob(vehicle), true));
             }
-            assert_eq!(camel.passengers(game), Some(vec![second, first]));
             assert_eq!(
-                camel.indirect_passengers(game),
-                Some(vec![second, first, top])
+                collect_entity_visit(|visit| camel.visit_passengers(game, visit)),
+                Ok(vec![second, first])
+            );
+            assert_eq!(
+                collect_entity_visit(|visit| camel.visit_indirect_passengers(game, visit)),
+                Ok(vec![second, first, top])
             );
 
             // The first rider going leaves the next in line first, whatever the mob list says.
@@ -597,7 +684,10 @@ pub mod tests {
             for rider in [last, next, driver] {
                 assert!(game.entity_start_riding(rider, vehicle, true).is_ok());
             }
-            assert_eq!(vehicle.passengers(game), Some(vec![last, next, driver]));
+            assert_eq!(
+                collect_entity_visit(|visit| vehicle.visit_passengers(game, visit)),
+                Ok(vec![last, next, driver])
+            );
             // `Entity.saveWithoutId` writes `getPassengers`, so a reload keeps the order.
             let index = game.mobs.iter().position(|m| m.id == 86).unwrap();
             let saved = game.mob_tree_nbt(index);
@@ -653,22 +743,40 @@ pub mod tests {
             // Ahead of a mob, behind the mobs once a player is first: `[one, cow, pig, two]`.
             assert!(game.entity_start_riding(cow, ghast, true).is_ok());
             assert!(game.entity_start_riding(one, ghast, true).is_ok());
-            assert_eq!(ghast.passengers(game), Some(vec![one, cow]));
+            assert_eq!(
+                collect_entity_visit(|visit| ghast.visit_passengers(game, visit)),
+                Ok(vec![one, cow])
+            );
             assert!(game.entity_start_riding(pig, ghast, true).is_ok());
-            assert_eq!(ghast.passengers(game), Some(vec![one, cow, pig]));
+            assert_eq!(
+                collect_entity_visit(|visit| ghast.visit_passengers(game, visit)),
+                Ok(vec![one, cow, pig])
+            );
             // On its own turn too, before the turn's end writes the record back.
             game.as_guest(2, |game| {
                 assert!(game.start_riding_target(Target::Player, Target::Mob(140), true));
-                assert_eq!(ghast.passengers(game), Some(vec![one, cow, pig, two]));
+                assert_eq!(
+                    collect_entity_visit(|visit| ghast.visit_passengers(game, visit)),
+                    Ok(vec![one, cow, pig, two])
+                );
             })
             .unwrap();
-            assert_eq!(ghast.passengers(game), Some(vec![one, cow, pig, two]));
+            assert_eq!(
+                collect_entity_visit(|visit| ghast.visit_passengers(game, visit)),
+                Ok(vec![one, cow, pig, two])
+            );
 
             // The first player leaving leaves a mob first, and the next player goes ahead of it.
             assert!(game.entity_stop_riding(one));
-            assert_eq!(ghast.passengers(game), Some(vec![cow, pig, two]));
+            assert_eq!(
+                collect_entity_visit(|visit| ghast.visit_passengers(game, visit)),
+                Ok(vec![cow, pig, two])
+            );
             assert!(game.entity_start_riding(one, ghast, true).is_ok());
-            assert_eq!(ghast.passengers(game), Some(vec![one, cow, pig, two]));
+            assert_eq!(
+                collect_entity_visit(|visit| ghast.visit_passengers(game, visit)),
+                Ok(vec![one, cow, pig, two])
+            );
         });
     }
 
@@ -678,6 +786,7 @@ pub mod tests {
         use super::super::boats_common::Boat;
         use sunrise_items::items::ItemStack;
         super::super::native_entity_refs::tests::with_game(|game| {
+            fixture_resident_column(&mut game.world, (0, 0));
             let ravager = add_mob(game, 90, "minecraft:ravager", Vec3::ZERO);
             let zombie = add_mob(game, 91, "minecraft:zombie", Vec3::ZERO);
             assert_eq!(ravager.controlling_passenger(game), None);
@@ -694,7 +803,10 @@ pub mod tests {
             let cow = add_mob(game, 92, "minecraft:cow", Vec3::ZERO);
             let slime = add_mob(game, 93, "minecraft:slime", Vec3::ZERO);
             assert!(game.start_riding_target(Target::Mob(93), Target::Mob(92), true));
-            assert_eq!(cow.passengers(game), Some(vec![slime]));
+            assert_eq!(
+                collect_entity_visit(|visit| cow.visit_passengers(game, visit)),
+                Ok(vec![slime])
+            );
             assert_eq!(cow.controlling_passenger(game), None);
 
             // A player steers a boat at once, a pig only saddled and with the stick in hand.
@@ -706,7 +818,10 @@ pub mod tests {
             // A mob in a boat steers nothing, and a player boarding after it goes first.
             let sailor = add_mob(game, 88, "minecraft:zombie", Vec3::ZERO);
             assert!(game.start_riding_target(Target::Mob(88), Target::Boat(95), true));
-            assert_eq!(boat.passengers(game), Some(vec![sailor]));
+            assert_eq!(
+                collect_entity_visit(|visit| boat.visit_passengers(game, visit)),
+                Ok(vec![sailor])
+            );
             assert_eq!(boat.controlling_passenger(game), None);
             let pig = add_mob(game, 96, "minecraft:pig", Vec3::ZERO);
             let ride = |game: &mut crate::game::ServerGame<'_>, vehicle| {
@@ -724,7 +839,10 @@ pub mod tests {
                 Some(LivingRef::new(player))
             );
             ride(game, 96);
-            assert_eq!(pig.passengers(game), Some(vec![player]));
+            assert_eq!(
+                collect_entity_visit(|visit| pig.visit_passengers(game, visit)),
+                Ok(vec![player])
+            );
             assert_eq!(pig.controlling_passenger(game), None);
             let index = game.mobs.iter().position(|m| m.id == 96).unwrap();
             game.mobs[index].extra.set_saddled(true);
@@ -998,6 +1116,7 @@ pub mod tests {
     #[ignore = "daily"]
     fn dismount_location_answers_without_a_ride_or_a_live_handle() {
         super::super::native_entity_refs::tests::with_game(|game| {
+            fixture_resident_column(&mut game.world, (0, 0));
             let at = Vec3::new(0.5, 64.0, 0.5);
             let cow = add_mob(game, 130, "minecraft:cow", at);
             let rider = add_mob(game, 131, "minecraft:zombie", at);
@@ -1026,7 +1145,7 @@ pub mod tests {
                     knot_check: None,
                     eye: None,
                     join: Default::default(),
-                    item_transformation: None,
+                    display: None,
                     interaction: None,
                     id: 132,
                     kind: "minecraft:marker".into(),

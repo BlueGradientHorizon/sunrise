@@ -1,8 +1,7 @@
-//! The `WorldDrawContext::name_tag` scene (#4171). It draws only at
-//! `AfterLevel` in a view whose game time is `SCENE_TIME`, so other tests' views stay empty.
+//! The name-tag scene submits only in the frame marked by SCENE_TIME.
 use mod_api::{
-    DrawError, NameTagOptions, RenderLevelStage, RenderLevelStageEvent, Text, WorldDepth,
-    WorldLine, text::TextStyle,
+    DrawError, NameTagOptions, Text, WorldDepth, WorldDrawContext, WorldLine, WorldRenderView,
+    text::TextStyle,
 };
 
 /// The game time of the one view this scene draws in.
@@ -40,24 +39,24 @@ pub(in crate::game::client_side) fn scene() -> Vec<([f64; 3], Text, NameTagOptio
     ]
 }
 
-pub(in crate::game::client_side) fn render_level_stage(event: &mut RenderLevelStageEvent<'_>) {
-    if event.stage != RenderLevelStage::AfterLevel || event.view.game_time != SCENE_TIME {
+pub(in crate::game::client_side) fn submit_custom_geometry(
+    view: &WorldRenderView<'_>,
+    draw: &mut dyn WorldDrawContext,
+) {
+    if view.game_time != SCENE_TIME {
         return;
     }
-    let camera = event.view.camera;
+    let camera = view.camera_position();
     for (n, (at, text, options)) in scene().into_iter().enumerate() {
-        let code = result_code(event.draw.name_tag(at, &text, options));
-        // Each call's result as a marker line one
-        // block ahead, `code` blocks to the right, `n` blocks up (see `RESULT_CODES`).
+        let code = result_code(draw.name_tag(at, &text, options));
+        // Mark each result one block ahead, code blocks to the right and n blocks up.
         let from = [
             camera[0] + f64::from(code),
             camera[1] + n as f64,
             camera[2] - 1.0,
         ];
         let to = [from[0] + 0.5, from[1], from[2]];
-        let _ = event
-            .draw
-            .lines(&[WorldLine::new(from, to, !0, 1.0, WorldDepth::Tested)]);
+        let _ = draw.lines(&[WorldLine::new(from, to, !0, 1.0, WorldDepth::Tested)]);
     }
 }
 
@@ -70,8 +69,6 @@ pub(in crate::game::client_side) fn result_code(result: Result<(), DrawError>) -
         Ok(()) => 0,
         Err(DrawError::NonFinite) => 1,
         Err(DrawError::InvalidWidth) => 2,
-        Err(DrawError::CapacityExceeded) => 3,
-        Err(DrawError::TextRefused) => 5,
-        Err(_) => 6,
+        Err(_) => 4,
     }
 }

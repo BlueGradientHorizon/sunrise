@@ -1,13 +1,13 @@
 use crate::game::spill_common::Spill;
 use mod_api::{LevelRef, PlayerRef};
-use sunrise_world::{fluid::FluidKind, level::FluidWrite};
+use sunrise_world::level::FluidWrite;
 
 /// A bucket's sound and fluid game event waiting for the outermost commit.
 pub struct FluidEffects {
     pub level: LevelRef,
     pub pos: [i32; 3],
-    /// The fluid's world form, whose bucket sounds play; none for a tank-only one.
-    pub fluid: Option<FluidKind>,
+    /// The bucket sound event resolved at enqueue time; none where the fluid has no sound.
+    pub sound: Option<&'static str>,
     /// A fill (`fluid_pickup`), else an empty (`fluid_place`).
     pub pickup: bool,
     pub player: Option<PlayerRef>,

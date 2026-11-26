@@ -78,7 +78,7 @@ pub(crate) mod tests {
             seed: 0,
             max_players: 3,
             integrated: true,
-            levels: game.server.level_shapes,
+            levels: game.server.level_shapes.clone(),
             level_seeds: game.server.levels.0.runtime.seeds(),
         };
         let settings = LanSettings {
@@ -87,6 +87,77 @@ pub(crate) mod tests {
             force_game_mode: false,
         };
         game.lan_host(settings, net, config).unwrap();
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn experience_level_up_reaches_only_the_gaining_players_level() {
+        with_game(|game| {
+            host(game);
+            let overworld = game.dim;
+            let nether = sunrise_gameplay_common::game::Dim::Nether;
+            game.enter_level(nether).unwrap();
+            game.enter_level(overworld).unwrap();
+
+            let at = [1.0, 64.0, 2.0];
+            let (mut target, rx_target) = guest(21, 21, at);
+            target.dimension = nether.id().into();
+            target.xp_level = 4;
+            let (mut nearby, rx_nearby) = guest(22, 22, at);
+            nearby.dimension = nether.id().into();
+            let (caller, rx_caller) = guest(23, 23, at);
+            game.server.lan
+                .as_mut()
+                .unwrap()
+                .hub
+                .guests
+                .extend([target, nearby, caller]);
+            game.as_guest(21, |game| {
+                for _ in 0..101 {
+                    game.server.level_up_sound.tick();
+                }
+            })
+            .unwrap();
+
+            let host: &mut dyn mod_api::ServerHost = game;
+            let target = host.player(21).unwrap();
+            assert!(target.give_experience_points(host, 15));
+            assert_eq!(target.experience(host).unwrap().level, 5);
+            assert_eq!(game.dim, overworld);
+            game.lan_broadcast_effects();
+            game.flush_native_sounds();
+            let id = game
+                .server
+                .lan
+                .as_ref()
+                .unwrap()
+                .hub
+                .sync_data()
+                .id("minecraft:sound_event", "minecraft:entity.player.levelup")
+                .unwrap();
+
+            for rx in [&rx_target, &rx_nearby] {
+                let sounds: Vec<_> = packets(rx)
+                    .into_iter()
+                    .filter_map(|packet| match packet {
+                        Clientbound::Sound(sound) => Some(sound),
+                        _ => None,
+                    })
+                    .collect();
+                let [sound] = sounds.as_slice() else {
+                    panic!("expected one nether sound")
+                };
+                assert_eq!(sound.sound, (id, None));
+                assert_eq!((sound.x, sound.y, sound.z), (8, 512, 16));
+                assert_eq!((sound.volume, sound.pitch), (0.125, 1.0));
+                assert_eq!(sound.source, SoundSource::Players.index() as i32);
+            }
+            assert!(
+                !packets(&rx_caller)
+                    .iter()
+                    .any(|p| matches!(p, Clientbound::Sound(_)))
+            );
+        });
     }
 
     /// Vanilla's `playSound(except, entity, ...)` sites ask
@@ -105,6 +176,11 @@ pub(crate) mod tests {
         mod_platform::testing::with_mods(mods, || {
             with_game(|game| {
                 host(game);
+                let key = (0, 0);
+                if !game.world.chunks.contains_key(&key) {
+                    let chunk = sunrise_level::chunk::Chunk::with_layout(0, 0, game.world.layout());
+                    game.world.chunks.insert(key, Arc::new(chunk));
+                }
                 let (a, rx) = guest(21, 21, [1.0, 64.0, 2.0]);
                 game.server.lan.as_mut().unwrap().hub.guests.push(a);
                 let mob = |game: &mut sunrise_gameplay::game::ServerGame<'_>, id, kind: &str, x| {
@@ -126,7 +202,8 @@ pub(crate) mod tests {
                 );
                 game.handle_mob_events(vec![ram]).unwrap();
                 // SnowGolem.shear from a dispenser: BLOCKS.
-                assert!(game.shear_entity((4, 64, 2)).unwrap());
+                let shears = sunrise_items::items::ItemStack::new("minecraft:shears", 1);
+                assert!(game.shear_entity((4, 64, 2), &shears).unwrap());
                 assert!(
                     heard.lock().unwrap().is_empty(),
                     "asked at the end of the tick"
@@ -201,7 +278,7 @@ pub(crate) mod tests {
                     seed: 0,
                     max_players: 3,
                     integrated: true,
-                    levels: game.server.level_shapes,
+                    levels: game.server.level_shapes.clone(),
                     level_seeds: game.server.levels.0.runtime.seeds(),
                 };
                 let settings = LanSettings {

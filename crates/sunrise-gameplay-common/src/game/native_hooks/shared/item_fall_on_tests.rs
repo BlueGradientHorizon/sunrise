@@ -28,16 +28,17 @@ impl Hooks for Mod {
     }
 }
 
-pub static LOAN_VALUE: mod_api::AttachmentType<i32> = mod_api::AttachmentType {
-    namespace: "loan_test",
-    name: "progress",
-    default: || 0,
-    codec: None,
-    copy_on_death: false,
-    sync: false,
-};
+pub static LOAN_VALUE: sunrise_mod_runtime::attachments::AttachmentType<i32> =
+    sunrise_mod_runtime::attachments::AttachmentType {
+        namespace: "loan_test",
+        name: "progress",
+        default: || 0,
+        codec: None,
+        copy_on_death: false,
+        sync_codec: None,
+    };
 
-pub(in crate::game) struct LoanPart(pub(in crate::game) std::sync::Arc<()>);
+pub(in crate::game) struct LoanPart(pub(in crate::game) std::sync::Arc<()>, mod_api::AttachmentKey<i32>);
 #[mod_api::sunrise_part]
 impl BlockPart for LoanPart {
     fn fall_on(&self, host: &mut dyn LevelRandomHost, event: &mut FallOnEvent<'_>) {
@@ -45,9 +46,7 @@ impl BlockPart for LoanPart {
             .with_random(|random| random.next_int())
             .expect("authoritative landing random");
         assert_eq!(draw, 1553932502);
-        LOAN_VALUE
-            .set(host.attachments(), mod_api::Holder::Level, 73)
-            .unwrap();
+        self.1.set_in(host, mod_api::Holder::Level, 73).unwrap();
         event.request(mod_api::LandingWrite::DestroyBlock { drop: false });
         std::panic::panic_any(self.0.clone());
     }
@@ -56,9 +55,13 @@ pub struct LoanMod(pub std::sync::Arc<()>);
 #[mod_api::__subscriptions]
 impl Hooks for LoanMod {
     fn register(&self, r: &mut dyn Registrar, _: &mod_api::RegistrationContext) {
-        r.register_attachment_type("loan_test:progress", false)
+        let progress = r
+            .register_attachment_type(mod_api::AttachmentDescriptor::new(
+                "loan_test:progress",
+                || 0i32,
+            ))
             .unwrap();
         let key = r.block_key("minecraft:stone");
-        r.block_part(key, LoanPart(self.0.clone()));
+        r.block_part(key, LoanPart(self.0.clone(), progress));
     }
 }

@@ -1,9 +1,15 @@
 //! Server-side directional push of mod moving colliders (`MoveWho::Entity(_)` only).
-use super::move_gate::MoveWho;
+use super::{
+    entity::{Entity, with_entity, with_entity_mut},
+    move_gate::MoveWho,
+};
 use sunrise_core::geometry::Vec3;
-use sunrise_gameplay_common::game::piston_push::{StepHeights, carrying::Rider};
-use sunrise_world::moving_colliders::{self, Placed, Prepared, Shove};
-use sunrise_world::{entity_move::MoverType, piston_push};
+use sunrise_gameplay_common::game::piston_push::{
+    StepHeights,
+    carrying::{Rider, cancel_shove_velocity, collect_sweeps, sweep_displacement},
+};
+use sunrise_world::entity_move::MoverType;
+use sunrise_world::moving_colliders::{self, Prepared, Shove};
 
 impl crate::game::ServerGame<'_> {
     pub(in crate::game::server_side) fn server_shove_pass(
@@ -13,24 +19,10 @@ impl crate::game::ServerGame<'_> {
         riders: &[Rider],
     ) {
         let end = self.placed_moving_colliders();
-        let starts: sunrise_level::fast_hash::FxHashMap<u32, &Placed> =
-            start.placed().map(|p| (p.id, p)).collect();
-        let mut sweeps: Vec<_> = end
-            .placed()
-            .filter_map(|after| {
-                let before = &starts.get(&after.id)?.collider;
-                let delta = after.collider.frame.origin.subtract(before.frame.origin);
-                if delta == Vec3::ZERO || !before.frame.same_turn(&after.collider.frame) {
-                    return None;
-                }
-                let swept = before.world_bounds()?.expand_towards(delta);
-                Some((after, before, delta, swept))
-            })
-            .collect();
+        let sweeps = collect_sweeps(start, &end);
         if sweeps.is_empty() {
             return;
         }
-        sweeps.sort_unstable_by_key(|(after, ..)| after.id);
 
         let targets: Vec<_> = self
             .push_targets()
@@ -40,11 +32,10 @@ impl crate::game::ServerGame<'_> {
         let mut current = end.clone();
         let mut stand_grid = None;
         let mut shoved = false;
-        for (after, before, delta, swept) in sweeps {
+        for (after, kind, swept) in sweeps {
             let source = after.id;
             let first = riders.partition_point(|rider| rider.support < source);
             let supported = &riders[first..];
-            let direction = delta.scale(1.0 / delta.length());
             for &selected in &targets {
                 if after.exempt.contains(&selected.id)
                     || supported
@@ -67,12 +58,7 @@ impl crate::game::ServerGame<'_> {
                 if no_physics || rides {
                     continue;
                 }
-                let fraction =
-                    before.translation_push_fraction(&after.collider, body.bounds, delta);
-                if fraction > 0.0 {
-                    let movement = delta
-                        .scale(fraction)
-                        .add_vector(direction.scale(piston_push::PUSH_OFFSET));
+                if let Some(movement) = sweep_displacement(&after.collider, kind, body.bounds) {
                     {
                         let _scope = moving_colliders::Scope::enter_level(
                             self.collider_level(),
@@ -89,6 +75,23 @@ impl crate::game::ServerGame<'_> {
                         );
                     }
                     shoved = true;
+                    if let Some(MoveWho::Entity(handle)) = self.resolve_push_target(selected) {
+                        let moved =
+                            with_entity!(self, handle, entity => entity.position()).subtract(body.position);
+                        if moved != Vec3::ZERO {
+                            let rise = after.collider.frame.origin.y - kind.before().frame.origin.y;
+                            let normal = movement.normalize();
+                            with_entity_mut!(self, handle, entity => {
+                                let velocity = cancel_shove_velocity(
+                                    *entity.velocity_mut(),
+                                    normal,
+                                    movement.y,
+                                    rise,
+                                );
+                                *entity.velocity_mut() = velocity;
+                            });
+                        }
+                    }
                     if current.placed().any(|p| p.exempt.contains(&selected.id)) {
                         // This body owns a collider, or is the vehicle of a holder. Its
                         // new pose is an obstacle to later shoves, not another sweep.

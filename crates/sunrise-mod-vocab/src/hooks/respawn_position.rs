@@ -19,7 +19,6 @@ pub trait Hooks {
     /// key before any event conversion, so the cost is one table lookup per respawn. Diverges
     /// from upstream: new hook.
     #[hook(
-        target = "sunrise_gameplay::game::native_hooks::respawn_position::ServerGame<'_>::native_respawn_position",
         receiver = "read",
         dispatch = "flat",
         side = "server",

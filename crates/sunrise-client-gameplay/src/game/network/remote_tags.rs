@@ -6,10 +6,16 @@ use sunrise_items::items::{Items, TagRegistry};
 use sunrise_protocol::{item::Names, packets::configuration::UpdateTags, registry::SyncedNames};
 
 /// The registries whose tags the tag helpers read.
-pub(in crate::game) const READ_REGISTRIES: [(&str, TagRegistry); 3] = [
+pub(in crate::game) const READ_REGISTRIES: [(&str, TagRegistry); 9] = [
     ("minecraft:block", TagRegistry::Block),
     ("minecraft:item", TagRegistry::Item),
     ("minecraft:fluid", TagRegistry::Fluid),
+    ("minecraft:entity_type", TagRegistry::EntityType),
+    ("minecraft:worldgen/biome", TagRegistry::Biome),
+    ("minecraft:enchantment", TagRegistry::Enchantment),
+    ("minecraft:worldgen/structure", TagRegistry::Structure),
+    ("minecraft:potion", TagRegistry::Potion),
+    ("minecraft:world_clock", TagRegistry::WorldClock),
 ];
 /// The synced registry whose tags `Tags::damage_type_in_tag` reads.
 pub(in crate::game) const DAMAGE_TYPE: &str = "minecraft:damage_type";
@@ -24,6 +30,7 @@ impl ClientGame<'_> {
         self.client_refresh_infiniburn();
         self.refresh_creative_search_tags();
         self.install_remote_tags();
+        self.refresh_face_visibility_tags();
         if self.common.recipe_tables.server_stations.is_some()
             && tags
                 .registries
@@ -31,6 +38,17 @@ impl ClientGame<'_> {
                 .any(|tags| tags.registry == "minecraft:item")
         {
             self.refresh_remote_stonecutter();
+        }
+        if tags
+            .registries
+            .iter()
+            .any(|tags| tags.registry == "minecraft:timeline")
+        {
+            if let Some(r) = self.client.remote.as_mut() {
+                r.level_environments.clear();
+            }
+            self.build_level_environments();
+            self.sync_timeline_registries();
         }
     }
 
@@ -86,7 +104,7 @@ impl ClientGame<'_> {
         // sent with no tag group binds its types with no tags, as vanilla binds received
         // elements whose tag payload was omitted.
         if let Some(types) = damage_types {
-            let members = |ids: &[i32]| {
+            let members = |ids: &[i32]| -> Vec<String> {
                 ids.iter()
                     .filter_map(|&id| names.name(DAMAGE_TYPE, id))
                     .collect()
@@ -127,7 +145,74 @@ impl ClientGame<'_> {
         self.resolve_primary_items();
         self.resolve_enchant_particles();
     }
+
+    /// Recompile tag-based block face rules (`skip_rendering` / `hides_neighbor_face`) against
+    /// the client's synced `minecraft:block` tags and remesh loaded sections when they change.
+    pub(in crate::game::client_side) fn refresh_face_visibility_tags(&mut self) {
+        if !self
+            .client
+            .client_pack
+            .context
+            .mesh
+            .tables
+            .visibility
+            .has_tag_rules()
+        {
+            return;
+        }
+        let block_tags: std::collections::BTreeMap<String, std::collections::BTreeSet<String>> = {
+            let Some(r) = self.client.remote.as_ref() else {
+                return;
+            };
+            let Some(raw_tags) = r.registries.tags.get("minecraft:block") else {
+                return;
+            };
+            let names = SyncedNames {
+                builtin: &r.builtin,
+                dynamic: &r.registries,
+            };
+            raw_tags
+                .iter()
+                .map(|(tag, ids)| {
+                    let members = ids
+                        .iter()
+                        .filter_map(|&id| names.name("minecraft:block", id))
+                        .collect();
+                    (tag.clone(), members)
+                })
+                .collect()
+        };
+        let Some(visibility) = self
+            .client
+            .client_pack
+            .context
+            .mesh
+            .tables
+            .visibility
+            .rebuild_for_tags(self.common.pack.assets.registry, &block_tags)
+        else {
+            return;
+        };
+        let old = &self.client.client_pack.context;
+        let tables = Arc::new(old.mesh.tables.with_visibility(visibility.clone()));
+        self.client.client_pack.context = Arc::new(sunrise_client_render::streaming::WorkerContext {
+            chunk: old.chunk.clone(),
+            mesh: sunrise_client_render::streaming::MeshWorkerContext {
+                tables,
+                ..old.mesh.clone()
+            },
+        });
+        self.client_res()
+            .block_entity_render()
+            .set_visibility(visibility);
+        let context = self.worker_context();
+        self.client
+            .streaming
+            .reload_resources(&mut self.common.world, context);
+    }
 }
+
+use sunrise_gameplay_common::game::command_registries::CommandRegistriesGameExt1 as _;
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
 

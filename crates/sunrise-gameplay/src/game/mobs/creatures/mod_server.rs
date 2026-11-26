@@ -1,4 +1,10 @@
 use crate::game::ServerGame;
+
+pub(in crate::game) struct LandedPlayerArrow {
+    victim: u32,
+    attack: Attack,
+    arrow: Projectile,
+}
 use super::piston_push::Lid;
 #[allow(unused_imports)]
 use super::{Dim, InteractTarget, view_vector};
@@ -15,7 +21,6 @@ use sunrise_core::{
 use sunrise_gameplay_common::game::api_values::{TryIntoApi, TryIntoEngine};
 use sunrise_gameplay_common::game::combat_common::PlayerCredit;
 use sunrise_gameplay_common::game::creatures::DyingDrops;
-use sunrise_gameplay_common::game::creatures::Finalized;
 use sunrise_gameplay_common::game::creatures::MobOutputBatch;
 use sunrise_gameplay_common::game::creatures::NativeSound;
 use sunrise_gameplay_common::game::creatures::NormalActionFrame;
@@ -39,13 +44,14 @@ use sunrise_gameplay_common::game::creatures::projectile_targets::{
 use sunrise_gameplay_common::game::creatures::seen;
 use sunrise_gameplay_common::game::creatures::to_loot;
 use sunrise_gameplay_common::game::creatures::*;
+use sunrise_gameplay_common::game::item_abilities::ability;
 use sunrise_gameplay_common::game::level_sounds_common::LevelSound;
 use sunrise_gameplay_common::projectile_world::ProjWorld;
 use sunrise_sim::health::source_damage_type;
 use {
     sunrise_game_data::Result, sunrise_items::items::ItemStack,
     sunrise_level::fast_hash::FxHashMap, sunrise_level::particle_options::ParticleType,
-    sunrise_sim::arrows::EntityHit, sunrise_sim::health::Attack, sunrise_sim::health::HealthEvent,
+    sunrise_sim::entities::arrows::EntityHit, sunrise_sim::health::Attack, sunrise_sim::health::HealthEvent,
     sunrise_sim::health::HurtSource, sunrise_sim::join_seq::JoinSeq, sunrise_sim::mobs::Damage,
     sunrise_sim::mobs::DamageKind, sunrise_sim::mobs::Mob, sunrise_sim::mobs::MobEvent,
     sunrise_sim::mobs::MobWorld, sunrise_sim::mobs::PlayerView, sunrise_sim::mobs::Seen,
@@ -235,14 +241,7 @@ impl crate::game::ServerGame<'_> {
                 None => None,
             };
         }
-        let player = (p.owner == Some(Who::Player))
-            .then(|| sunrise_sim::lan::playerdata::ints_uuid(self.acting_player_uuid()));
-        let name = if player.is_some() {
-            self.acting_player_name().to_owned()
-        } else {
-            String::new()
-        };
-        let (id, kind) = (p.id, p.entity_type());
+        let id = p.id;
         if let Some(a) = p.arrow.as_mut()
             && !p.stuck
         {
@@ -251,9 +250,17 @@ impl crate::game::ServerGame<'_> {
             a.spawn_rot = Some((p.pitch, p.yaw));
         }
         self.common.creatures.projectiles.push(p);
-        self.native_projectile_launch(player, &name, id, kind);
         id
     }
+    pub fn add_fresh_projectile(&mut self, mut projectile: Projectile) -> Option<u32> {
+        if projectile.owner == Some(Who::Player) && projectile.guest.is_none() {
+            projectile.guest = self.server.lan_acting;
+        }
+        let id = self.add_projectile(projectile);
+        let row = sunrise_gameplay_common::game::entity::EntityHandle::Projectile(self.common.creatures.projectiles.len() - 1);
+        self.announce_fresh_join(row, id).then_some(id)
+    }
+
     /// Dispatch one arrow entity hit onto LAN guest `victim_conn` without aliasing `Who::Player`.
     pub(in crate::game::server_side) fn arrow_hit_guest_victim(
         &mut self,
@@ -289,8 +296,8 @@ impl crate::game::ServerGame<'_> {
                 .combat
                 .0
                 .enchantment_projectile_attacker
-                .replace(effect_attacker);
-            let res = g.arrow_hit_one_entity(arrow, Who::Player, amount);
+                .replace(effect_attacker as i32);
+            let res = g.arrow_hit_one_entity(arrow, Who::Player, amount, None);
             g.server.combat.0.refuse_player_hit = false;
             g.server.combat.0.projectile_attacker = None;
             g.server.combat.0.enchantment_projectile_attacker = saved_effect_attacker;
@@ -303,6 +310,7 @@ impl crate::game::ServerGame<'_> {
         &mut self,
         arrow: &mut Projectile,
         amount: f32,
+        deferred: Option<&mut Option<LandedPlayerArrow>>,
     ) -> Result<EntityHit> {
         let shooter = arrow
             .guest
@@ -315,8 +323,8 @@ impl crate::game::ServerGame<'_> {
         let prev_attacker = self.server.combat.0.projectile_attacker.take();
         let prev_effect = self.server.combat.0.enchantment_projectile_attacker.take();
         self.server.combat.0.projectile_attacker = shooter;
-        self.server.combat.0.enchantment_projectile_attacker = effect_attacker;
-        let outcome = self.arrow_hit_one_entity(arrow, Who::Player, amount);
+        self.server.combat.0.enchantment_projectile_attacker = effect_attacker.map(|id| id as i32);
+        let outcome = self.arrow_hit_one_entity(arrow, Who::Player, amount, deferred);
         self.server.combat.0.projectile_attacker = prev_attacker;
         self.server.combat.0.enchantment_projectile_attacker = prev_effect;
         outcome
@@ -327,6 +335,7 @@ impl crate::game::ServerGame<'_> {
         arrow: &mut Projectile,
         who: Who,
         amount: f32,
+        deferred: Option<&mut Option<LandedPlayerArrow>>,
     ) -> Result<EntityHit> {
         self.server.combat.0.projectile_owner = match arrow.owner {
             Some(Who::Mob(id)) => Some(id),
@@ -357,12 +366,7 @@ impl crate::game::ServerGame<'_> {
             match self.projectile_hurts_non_mob(&info, id) {
                 NonMobHit::Hurt => {
                     if was_stand {
-                        let direct = if arrow.is_spectral_arrow() {
-                            "minecraft:spectral_arrow"
-                        } else {
-                            "minecraft:arrow"
-                        };
-                        self.shot_post_attack(arrow, who, direct, "minecraft:arrow");
+                        self.shot_post_attack(arrow, who, "minecraft:arrow");
                         self.arrow_post_hurt_effects(arrow, who);
                     }
                     return Ok(EntityHit::Hurt);
@@ -386,6 +390,7 @@ impl crate::game::ServerGame<'_> {
             attacker: arrow.owner,
             from: Some([arrow.previous.x, arrow.previous.y, arrow.previous.z]),
             attacker_species,
+            direct: Some(arrow.entity_type()),
         };
         let aim = self.attacker_aim(source.attacker);
         let player_fire = self.common.player.as_ref().map(|pl| pl.fire_ticks);
@@ -538,13 +543,16 @@ impl crate::game::ServerGame<'_> {
         }
         if hurt {
             if target_present {
-                let direct = if arrow.is_spectral_arrow() {
-                    "minecraft:spectral_arrow"
+                if let Some(deferred) = deferred {
+                    *deferred = Some(LandedPlayerArrow {
+                        victim: self.own_entity_id() as u32,
+                        attack: self.current_attack(),
+                        arrow: arrow.clone(),
+                    });
                 } else {
-                    "minecraft:arrow"
-                };
-                self.shot_post_attack(arrow, who, direct, "minecraft:arrow");
-                self.arrow_post_hurt_effects(arrow, who);
+                    self.shot_post_attack(arrow, who, "minecraft:arrow");
+                    self.arrow_post_hurt_effects(arrow, who);
+                }
                 if who == Who::Player {
                     self.arrow_hit_sound_to_shooter(arrow);
                 }
@@ -574,28 +582,60 @@ impl crate::game::ServerGame<'_> {
         Ok(arrow_miss(dodged))
     }
     /// Animal.spawnChildFromBreeding
+    pub(in crate::game) fn deliver_breed(&mut self, event: MobEvent, at_tick_boundary: bool) {
+        let MobEvent::Breed {
+            parent,
+            partner,
+            equine,
+            parent_variant,
+            wolf_voice,
+            experience,
+        } = event
+        else {
+            unreachable!("only the breed event is delivered here");
+        };
+        let child = self.breed(
+            parent,
+            partner,
+            equine,
+            parent_variant,
+            wolf_voice,
+            experience,
+            at_tick_boundary,
+        );
+        if at_tick_boundary {
+            for (id, other) in [(parent, partner), (partner, parent)] {
+                if let Some(mob) = self.common.mobs.iter_mut().find(|m| m.id == id) {
+                    sunrise_sim::mobs::animal_brain::forget_breed_target(mob, other);
+                }
+            }
+        }
+        self.native_entity_breed(parent, partner, child);
+    }
+
     pub fn breed(
         &mut self,
         parent: u32,
         partner: u32,
         equine: Option<Box<sunrise_sim::mobs::equine::Offspring>>,
         parent_variant: Option<bool>,
-        wolf_voice: Option<u8>,
+        wolf_voice: Option<
+            sunrise_sim::lan::data::RegistryRef<
+                sunrise_sim::mobs::variants::WolfSoundVariant,
+            >,
+        >,
         experience: sunrise_sim::mobs::BreedExperience,
+        at_tick_boundary: bool,
     ) -> Option<u32> {
         let p = self.common.mobs.iter().find(|m| m.id == parent).cloned()?;
         let q = self.common.mobs.iter().find(|m| m.id == partner).cloned();
-        // Sniffer.spawnChildFromBreeding: an egg instead of a baby.
         if p.species() == Species::Sniffer {
-            self.finalize_breeding(&p, partner, None, OrbOrder::BeforeChild);
+            self.finalize_breeding(&p, partner, None, OrbOrder::BeforeChild, false);
             self.lay_sniffer_egg(&p);
             return None;
         }
-        // TurtleBreedGoal.breed: the goal gave the mother her egg; only the
-        // experience is left, and only with mob loot on.
         if matches!(p.species(), Species::Turtle | Species::Frog) {
-            self.finalize_breeding(&p, partner, None, OrbOrder::BeforeChild);
-            // One `new ExperienceOrb`, not split as `ExperienceOrb.award` does.
+            self.finalize_breeding(&p, partner, None, OrbOrder::BeforeChild, false);
             self.award_breeding_experience(parent, [p.position.x, p.position.y, p.position.z]);
             return None;
         }
@@ -608,143 +648,182 @@ impl crate::game::ServerGame<'_> {
                 }
             }
         } else {
-            // Other species either draw their own variants or do not need a coin.
             false
         };
-        // The baby's variant; a rabbit draws its own (Rabbit.getBreedOffspring).
         let rabbit_variant = self.common.bred_rabbit_variant(parent, &p, q.as_ref());
-        // Axolotl.getBreedOffspring: useRareVariant (one in 1200) makes it blue,
-        // else either parent's variant. The draws come from the mother's random.
         let axolotl = if p.species() == Species::Axolotl {
             let other = q.as_ref().map_or(p.extra.variant, |q| q.extra.variant);
-            self.common
-                .mobs
-                .iter_mut()
-                .find(|m| m.id == parent)
-                .map(|m| {
-                    if m.random.next_int_bound(1200).unwrap_or(1) == 0 {
-                        // Axolotl.Variant.getRareSpawnVariant: the one blue, still a draw.
-                        let _ = m.random.next_int_bound(1);
-                        4
-                    } else if m.random.next_boolean() {
-                        p.extra.variant
-                    } else {
-                        other
-                    }
-                })
+            self.common.mobs.iter_mut().find(|m| m.id == parent).map(|m| {
+                if m.random.next_int_bound(1200).unwrap_or(1) == 0 {
+                    let _ = m.random.next_int_bound(1);
+                    4
+                } else if m.random.next_boolean() {
+                    p.extra.variant
+                } else {
+                    other
+                }
+            })
         } else {
             None
         };
-        // MushroomCow.getOffspringVariant, from the mother's random: the other
-        // colour 1 time in 1024 when both parents share one, otherwise either
-        // parent's colour by a coin flip.
         let mooshroom = if p.species() == Species::Mooshroom {
             let mate = q.as_ref().map_or(p.extra.variant, |q| q.extra.variant);
             let own = p.extra.variant;
-            self.common
-                .mobs
-                .iter_mut()
-                .find(|m| m.id == parent)
-                .map(|m| {
-                    if own == mate && m.random.next_int_bound(1024).unwrap_or(1) == 0 {
-                        if own == 1 { 0 } else { 1 }
-                    } else if m.random.next_boolean() {
-                        own
-                    } else {
-                        mate
-                    }
-                })
+            self.common.mobs.iter_mut().find(|m| m.id == parent).map(|m| {
+                if own == mate && m.random.next_int_bound(1024).unwrap_or(1) == 0 {
+                    if own == 1 { 0 } else { 1 }
+                } else if m.random.next_boolean() {
+                    own
+                } else {
+                    mate
+                }
+            })
         } else {
             None
         };
-        // A horse and a donkey have a mule.
         let kind = match (p.species(), q.as_ref().map(|q| q.species())) {
             (Species::Horse, Some(Species::Donkey)) | (Species::Donkey, Some(Species::Horse)) => {
                 "minecraft:mule".to_owned()
             }
             _ => p.kind.id.clone(),
         };
-        // Animal.spawnChildFromBreeding places the child at yaw zero. Its constructor still
-        // spends LivingEntity's yaw draw on the child's stream, not the level's.
         let mut child = self.create_mob_reason(
             &kind,
             [p.position.x, p.position.y, p.position.z],
             true,
             SpawnSite::Raw,
             Some(0.0),
-        )?;
-        'offspring: {
-            let child = &mut child;
-            child.extra.age = -24000;
-            // No Mob.finalizeSpawn either: no follow range bonus, right-handed.
-            spawning::bred_offspring(child);
-            // getBreedOffspring creates the baby without finalizeSpawn: it keeps
-            // the default (`classic`) sound variant.
-            child.extra.sound_variant = None;
-            // Fox.getBreedOffspring runs no finalizeSpawn: nothing in the
-            // baby fox's mouth.
-            if p.species() == Species::Fox {
-                child.extra.set_main_hand(None);
-            }
-            // Fox.FoxBreedGoal.breed: the baby trusts the players who fed its
-            // parents into love.
-            if p.species() == Species::Fox {
-                let parent_cause = self
-                    .server
-                    .love_cause
-                    .get(&parent)
-                    .copied()
-                    .and_then(|conn| self.killer_uuid(conn));
-                let partner_cause = self
-                    .server
-                    .love_cause
-                    .get(&partner)
-                    .copied()
-                    .and_then(|conn| self.killer_uuid(conn));
-                sunrise_sim::mobs::fox::trust_breeders(
-                    child,
-                    parent_cause.map(sunrise_sim::lan::playerdata::uuid_ints),
-                    partner_cause.map(sunrise_sim::lan::playerdata::uuid_ints),
-                );
-            }
-            // Goat.getBreedOffspring: GoatAi.initMemories, then the baby
-            // screams if the parent a coin toss picks does, or on a 2% roll.
-            if p.species() == Species::Goat {
-                child.extra.lost_horns = [false; 2];
-                sunrise_sim::mobs::finalize::goat_init_memories(
-                    child,
-                    &mut self.common.world.random,
-                );
-                let pick_parent = self.common.world.random.next_boolean();
-                let parent_screams = if pick_parent {
-                    p.extra.screaming
-                } else {
-                    q.as_ref().unwrap_or(&p).extra.screaming
-                };
-                child.extra.screaming =
-                    parent_screams || self.common.world.random.next_double() < 0.02;
-            }
-            // Inheritance was drawn synchronously in the breeding goal,
-            // before the parent's later same-tick aiStep rolls.
-            if let Some(o) = equine {
-                sunrise_sim::mobs::equine::apply_offspring(child, &o);
-                break 'offspring;
-            }
-            // Camel.getBreedOffspring creates a camel with default attributes.
-            if sunrise_sim::mobs::camel::is_camel(p.species()) {
-                break 'offspring;
-            }
-            if p.species() == Species::Cat {
-                // Cat.getBreedOffspring.
-                let other = q.as_ref().unwrap_or(&p);
-                child.extra.variant = if coin {
-                    p.extra.variant
-                } else {
-                    other.extra.variant
-                };
-                if p.extra.tame {
+        );
+        if let Some(child) = child.as_mut() {
+            'offspring: {
+                spawning::bred_offspring(child);
+                if p.species() == Species::Fox {
+                    child.extra.set_main_hand(None);
+                }
+                if p.species() == Species::Goat {
+                    child.extra.lost_horns = [false; 2];
+                    sunrise_sim::mobs::finalize::goat_init_memories(
+                        child,
+                        &mut self.common.world.random,
+                    );
+                    let pick_parent = self.world.random.next_boolean();
+                    let parent_screams = if pick_parent {
+                        p.extra.screaming
+                    } else {
+                        q.as_ref().unwrap_or(&p).extra.screaming
+                    };
+                    child.extra.screaming =
+                        parent_screams || self.world.random.next_double() < 0.02;
+                }
+                if let Some(o) = equine {
+                    sunrise_sim::mobs::equine::apply_offspring(child, &o);
+                    break 'offspring;
+                }
+                if sunrise_sim::mobs::camel::is_camel(p.species()) {
+                    break 'offspring;
+                }
+                if p.species() == Species::Cat {
+                    let other = q.as_ref().unwrap_or(&p);
+                    child.extra.cat_variant = if coin {
+                        p.extra.cat_variant
+                    } else {
+                        other.extra.cat_variant
+                    };
+                    if p.extra.tame {
+                        child.extra.tame = true;
+                        child.extra.owner = p.extra.owner;
+                        let mixed = dye_mix(
+                            &self.common.loop_context,
+                            server_world_recipes!(self),
+                            &mut self.common.world.random,
+                            p.extra.color,
+                            other.extra.color,
+                        );
+                        child.extra.color = mixed;
+                    }
+                    break 'offspring;
+                }
+                if p.species() == Species::Wolf {
+                    let other = q.as_ref().unwrap_or(&p);
+                    child.extra.wolf_variant = if coin {
+                        p.extra.wolf_variant
+                    } else {
+                        other.extra.wolf_variant
+                    };
+                    if p.extra.tame {
+                        sunrise_sim::mobs::tame::set_tame(child, true);
+                        child.extra.owner = p.extra.owner;
+                        let mixed = dye_mix(
+                            &self.common.loop_context,
+                            server_world_recipes!(self),
+                            &mut self.common.world.random,
+                            p.extra.color,
+                            other.extra.color,
+                        );
+                        child.extra.color = mixed;
+                    }
+                    child.extra.wolf_sound_variant =
+                        wolf_voice.or_else(|| self.bred_wolf_voice(parent));
+                    break 'offspring;
+                }
+                if p.species() == Species::Panda {
+                    sunrise_sim::mobs::panda::inherit(child, &p, q.as_ref().unwrap_or(&p));
+                    break 'offspring;
+                }
+                if let Some(variant) = axolotl {
+                    child.extra.variant = variant;
+                    child.persistent = true;
+                    break 'offspring;
+                }
+                if p.species() == Species::Nautilus && p.extra.tame {
                     child.extra.tame = true;
                     child.extra.owner = p.extra.owner;
+                    child.persistent = true;
+                }
+                match p.species() {
+                    Species::Pig => {
+                        let other = q.as_ref().unwrap_or(&p);
+                        child.extra.pig_variant = if coin {
+                            p.extra.pig_variant
+                        } else {
+                            other.extra.pig_variant
+                        };
+                    }
+                    Species::Cow => {
+                        let other = q.as_ref().unwrap_or(&p);
+                        child.extra.cow_variant = if coin {
+                            p.extra.cow_variant
+                        } else {
+                            other.extra.cow_variant
+                        };
+                    }
+                    Species::Chicken => {
+                        let other = q.as_ref().unwrap_or(&p);
+                        child.extra.chicken_variant = if coin {
+                            p.extra.chicken_variant
+                        } else {
+                            other.extra.chicken_variant
+                        };
+                    }
+                    _ => {
+                        child.extra.variant = p.extra.variant;
+                        if sunrise_sim::mobs::draws_parent_variant(p.species())
+                            && p.species() != Species::Cat
+                            && !coin
+                        {
+                            child.extra.variant =
+                                q.as_ref().map_or(p.extra.variant, |q| q.extra.variant);
+                        }
+                    }
+                }
+                if let Some(variant) = rabbit_variant {
+                    child.extra.variant = variant;
+                }
+                if let Some(variant) = mooshroom {
+                    child.extra.variant = variant;
+                }
+                if p.species() == Species::Sheep {
+                    let other = q.as_ref().unwrap_or(&p);
                     let mixed = dye_mix(
                         &self.common.loop_context,
                         server_world_recipes!(self),
@@ -754,112 +833,120 @@ impl crate::game::ServerGame<'_> {
                     );
                     child.extra.color = mixed;
                 }
-                break 'offspring;
-            }
-            if p.species() == Species::Wolf {
-                // Wolf.getBreedOffspring: a parent's variant; tame parents
-                // give a tame baby with their collar colours mixed.
-                let other = q.as_ref().unwrap_or(&p);
-                child.extra.variant = if coin {
-                    p.extra.variant
-                } else {
-                    other.extra.variant
-                };
-                if p.extra.tame {
-                    sunrise_sim::mobs::tame::set_tame(child, true);
-                    child.extra.owner = p.extra.owner;
-                    let mixed = dye_mix(
-                        &self.common.loop_context,
-                        server_world_recipes!(self),
-                        &mut self.common.world.random,
-                        p.extra.color,
-                        other.extra.color,
-                    );
-                    child.extra.color = mixed;
-                }
-                child.extra.sound_variant = wolf_voice.or_else(|| self.bred_wolf_voice(parent));
-                break 'offspring;
-            }
-            // Panda.getBreedOffspring: genes from both parents.
-            if p.species() == Species::Panda {
-                sunrise_sim::mobs::panda::inherit(child, &p, q.as_ref().unwrap_or(&p));
-                break 'offspring;
-            }
-            // Axolotl.getBreedOffspring: the drawn variant, and the baby is persistent.
-            if let Some(variant) = axolotl {
-                child.extra.variant = variant;
-                child.persistent = true;
-                break 'offspring;
-            }
-            // Nautilus.getBreedOffspring: a tame parent's baby is tame too.
-            if p.species() == Species::Nautilus && p.extra.tame {
-                child.extra.tame = true;
-                child.extra.owner = p.extra.owner;
-                child.persistent = true;
-            }
-            // Offspring inherit a parent's variant (pigs/cows/chickens) or mixed wool.
-            child.extra.variant = p.extra.variant;
-            // Fox, Pig, Cow and Chicken.getBreedOffspring: either parent's variant.
-            if sunrise_sim::mobs::draws_parent_variant(p.species())
-                && p.species() != Species::Cat
-                && !coin
-            {
-                child.extra.variant = q.as_ref().map_or(p.extra.variant, |q| q.extra.variant);
-            }
-            // The rabbit's own draw above.
-            if let Some(variant) = rabbit_variant {
-                child.extra.variant = variant;
-            }
-            if let Some(variant) = mooshroom {
-                child.extra.variant = variant;
-            }
-            // Sheep.getBreedOffspring: the lamb's wool mixes both parents' dyes.
-            if p.species() == Species::Sheep {
-                let other = q.as_ref().unwrap_or(&p);
-                let mixed = dye_mix(
-                    &self.common.loop_context,
-                    server_world_recipes!(self),
-                    &mut self.common.world.random,
-                    p.extra.color,
-                    other.extra.color,
-                );
-                child.extra.color = mixed;
             }
         }
-        // BabyEntitySpawnEvent: the baby is constructed and has inherited (its draws are
-        // spent); breeding is finalized and the baby inserted after the listeners.
-        if mod_api::__private::listened(mod_api::HookId::BabyEntitySpawn) {
-            let conn = self
-                .server
-                .love_cause
-                .get(&parent)
-                .or(self.server.love_cause.get(&partner))
-                .copied();
-            let player = (
-                conn.and_then(|c| self.killer_uuid(c)),
-                conn.and_then(|c| self.player_entity_id_by_connection(c)),
-            );
-            match self.breed_with_listeners(parent, partner, player, child, |game, baby| {
-                game.finish_live_breeding(&p, partner, baby, experience)
-            }) {
-                // The levels' normal join hooks have now run if this was the root commit.
-                Some(joined) => {
-                    return joined.filter(|&id| {
-                        self.resident_target_dimension(super::commands::Target::Mob(id))
-                            == Some(self.common.dim)
-                    });
-                }
-                None => {
+        let listened = mod_api::__private::listened(mod_api::HookId::BabyEntitySpawn);
+        let accepted = if listened {
+            let feeders = [parent, partner].map(|id| self.server.love_cause.get(&id).copied());
+            let player = feeders
+                .into_iter()
+                .flatten()
+                .find_map(|conn| match conn {
+                    Some(conn) if self.server.lan_acting != Some(conn) => {
+                        let guest = self.server.lan.as_ref()?.hub.guest(conn)?;
+                        guest
+                            .placed_in(self.common.dim.id())
+                            .then_some((guest.uuid, guest.entity_id))
+                    }
+                    conn if conn == self.server.lan_acting && self.common.player.is_some() => {
+                        Some((self.native_acting_id(), self.own_entity_id()))
+                    }
+                    _ => None,
+                })
+                .map_or((None, None), |(uuid, id)| (Some(uuid), Some(id)));
+            let constraint = if p.species() == Species::Fox {
+                super::native_pending_children::ChildConstraint::BreedingFox
+            } else {
+                super::native_pending_children::ChildConstraint::BreedingAgeable
+            };
+            match self.breed_with_listeners(parent, partner, player, child, constraint) {
+                super::pending_births::BreedOutcome::Accepted(baby) => baby,
+                super::pending_births::BreedOutcome::Cancelled => {
                     breeding_credit(&mut self.server.love_cause, parent, partner);
-                    if let Some(q) = self.common.mobs.iter_mut().find(|m| m.id == partner) {
-                        q.extra.age = 6000;
-                        q.extra.in_love = 0;
+                    for id in [parent, partner] {
+                        if let Some(m) = self.common.mobs.iter_mut().find(|m| m.id == id) {
+                            sunrise_sim::mobs::finalize::set_age(m, 6000, None);
+                            m.extra.in_love = 0;
+                        }
                     }
                     return None;
                 }
             }
+        } else {
+            child.map(|child| self.stash_breeding_child(child))
+        };
+        let (mut pending, action) = accepted?;
+        let child = &mut pending.mob;
+        let live_parent = self.common
+            .mobs
+            .iter()
+            .find(|m| m.id == parent)
+            .cloned()
+            .unwrap_or(p);
+        let fox = live_parent.species() == Species::Fox;
+        let order = if sunrise_sim::mobs::orb_after_child(live_parent.species()) {
+            OrbOrder::AfterChild
+        } else {
+            OrbOrder::BeforeChild
+        };
+        if fox {
+            let parent_cause = self.server
+                .love_cause
+                .get(&parent)
+                .copied()
+                .and_then(|conn| self.killer_uuid(conn));
+            let partner_cause = self.server
+                .love_cause
+                .get(&partner)
+                .copied()
+                .and_then(|conn| self.killer_uuid(conn));
+            sunrise_sim::mobs::fox::trust_breeders(
+                child,
+                parent_cause.map(sunrise_sim::lan::playerdata::uuid_ints),
+                partner_cause.map(sunrise_sim::lan::playerdata::uuid_ints),
+            );
+            self.finalize_breeding(
+                &live_parent,
+                partner,
+                Some(child),
+                order,
+                listened || at_tick_boundary,
+            );
         }
-        self.finish_live_breeding(&p, partner, child, experience)
+        sunrise_sim::mobs::finalize::set_baby(child, true);
+        sunrise_sim::mobs::living::teleports::snap_to(child, live_parent.position);
+        child.yaw = 0.0;
+        child.previous_yaw = 0.0;
+        child.body_yaw = 0.0;
+        child.previous_body_yaw = 0.0;
+        child.head_yaw = 0.0;
+        child.previous_head_yaw = 0.0;
+        child.head_pitch = 0.0;
+        child.previous_head_pitch = 0.0;
+        if !fox {
+            self.finalize_breeding(
+                &live_parent,
+                partner,
+                Some(child),
+                order,
+                listened || at_tick_boundary,
+            );
+        }
+        let at = [
+            live_parent.position.x,
+            live_parent.position.y,
+            live_parent.position.z,
+        ];
+        if order == OrbOrder::BeforeChild {
+            self.breeding_orb(parent, at, experience);
+        }
+        let child = self.issue_pending_child(pending, action);
+        let joined = self.insert_spawned_mob(child);
+        if order == OrbOrder::AfterChild {
+            self.mob_event_particles(parent, 18);
+            self.breeding_orb(parent, at, experience);
+        }
+        joined
     }
     pub(in crate::game) fn complete_mob_hurt_with_weapon(
         &mut self,
@@ -997,9 +1084,14 @@ impl crate::game::ServerGame<'_> {
                 sunrise_sim::mobs::spawn_rules::Reason::Conversion,
             );
         }
+        let mut nauseous = false;
         match (from.species(), kind) {
             (Species::Tadpole, "minecraft:frog") | (Species::Villager, "minecraft:witch") => {
-                self.finalize_converted(&mut mob);
+                if !self.finalize_with(&mut mob, SpawnReason::Conversion, None) {
+                    self.forget_entity(mob.id);
+                    return None;
+                }
+                mob.persistent = true;
             }
             (Species::Pig, "minecraft:zombified_piglin") => {
                 let old = self.common.mobs.iter_mut().find(|m| m.id == from.id)?;
@@ -1007,7 +1099,7 @@ impl crate::game::ServerGame<'_> {
             }
             (Species::Hoglin, "minecraft:zoglin")
             | (Species::Piglin | Species::PiglinBrute, "minecraft:zombified_piglin") => {
-                mob.add_effect("minecraft:nausea", 200, 0);
+                nauseous = true;
             }
             _ => {}
         }
@@ -1017,7 +1109,16 @@ impl crate::game::ServerGame<'_> {
         // ConversionType.SINGLE: `to.startRiding(vehicle, false, false)`.
         self.seat_mob(id);
         self.copy_conversion_attachments(from.id, id, kind);
-        self.native_mobs_joined(self.common.mobs.len() - 1, false);
+        self.admit_new_mobs(self.common.mobs.len() - 1);
+        if nauseous {
+            // `Hoglin.finishConversion` / `AbstractPiglin.finishConversion` call the hooked
+            // `LivingEntity.addEffect` on the converted mob, now that it is resident.
+            self.add_mob_effect(
+                id,
+                sunrise_level::effects::EffectInstance::new("nausea", 200, 0),
+                None,
+            );
+        }
         let transformed = self.common.mobs.iter().find(|m| m.id == id)?;
         let transformed_kind = from_kind.as_ref().map(|_| transformed.kind.id.clone());
         // Only move passengers once the new mob's join has succeeded.
@@ -1064,10 +1165,6 @@ impl crate::game::ServerGame<'_> {
         // Entity.random first supplies the UUID, then LivingEntity's initial
         // yaw; species constructor draws continue from that same stream.
         let (own, uuid) = sunrise_sim::mobs::living_random();
-        self.common
-            .persist
-            .uuids
-            .insert(self.server.next_entity, uuid);
         let mut mob = Mob::with_random(
             self.server.next_entity,
             t,
@@ -1075,16 +1172,18 @@ impl crate::game::ServerGame<'_> {
             yaw,
             own,
         );
-        // `EntityType.create`: the mob is constructed before `finalizeSpawn`.
-        self.initialize_entity(mod_api::Holder::Entity(mob.id), &kind);
+        // `EntityType.create` constructs the mob before `finalizeSpawn`.
+        self.common.persist.uuids.insert(mob.id, uuid);
+        self.initialize_unpublished_mob(mob.id, &kind);
+        self.flush_unjoined_mob_parts(&mut mob);
         mob.persistent = persistent;
         match site {
             SpawnSite::Raw => return Some(mob),
-            SpawnSite::Finalizing(reason) => match self.finalize_with(&mut mob, reason, None) {
-                Finalized::Cancelled => return self.discard_unjoined_mob(mob.id),
-                Finalized::Skipped => return Some(mob),
-                Finalized::Done => {}
-            },
+            SpawnSite::Finalizing(reason) => {
+                if !self.finalize_with(&mut mob, reason, None) {
+                    return self.discard_unjoined_mob(mob.id);
+                }
+            }
             // A plain spawn finalizes as a summoned one (vanilla's /summon
             // and egg path): its few reason-gated arms behave the same.
             SpawnSite::Plain => {
@@ -1118,7 +1217,7 @@ impl crate::game::ServerGame<'_> {
             .mobs
             .iter()
             .find(|m| m.id == mob)
-            .map(|m| drops::loot_entity(m, None));
+            .map(|m| drops::loot_entity_with_variants(m, None, Some(self.world_variants())));
         let stacks = match (loot, this) {
             (Some(loot), Some(this)) if loot.has_table(table) => {
                 let params = EntityLootParams {
@@ -1225,6 +1324,7 @@ impl crate::game::ServerGame<'_> {
         mut arrow: Projectile,
         first_who: Who,
         first_at: Vec3,
+        mut deferred: Option<&mut Option<LandedPlayerArrow>>,
     ) -> Result<()> {
         let step = arrow.arrow.as_mut().and_then(|a| a.pierce_step.take());
         let (step_end, step_block, remaining) = match step {
@@ -1271,7 +1371,7 @@ impl crate::game::ServerGame<'_> {
                 let victim_kind = self.entity_kind_for_who(hit_who);
                 let base = self.shot_damage_base(&arrow, victim_kind.as_deref(), hit_who);
                 let rounded = arrow.arrow_damage_rounded(base);
-                if !sunrise_sim::arrows::record_pierce_hit(&mut arrow, hit_who) {
+                if !sunrise_sim::entities::arrows::record_pierce_hit(&mut arrow, hit_who) {
                     self.projectile_landed_event(
                         arrow.id,
                         arrow.owner,
@@ -1287,12 +1387,12 @@ impl crate::game::ServerGame<'_> {
                 {
                     self.arrow_hit_guest_victim(&mut arrow, victim_conn, amount)?
                 } else if hit_who == Who::Player {
-                    self.arrow_hit_host_victim(&mut arrow, amount)?
+                    self.arrow_hit_host_victim(&mut arrow, amount, deferred.as_deref_mut())?
                 } else if let Some(shooter_conn) =
                     arrow.guest.filter(|&c| self.server.lan_acting != Some(c))
                 {
                     let res = self.as_guest(shooter_conn, |g| {
-                        g.arrow_hit_one_entity(&mut arrow, hit_who, amount)
+                        g.arrow_hit_one_entity(&mut arrow, hit_who, amount, None)
                     });
                     if res.is_some()
                         && self
@@ -1309,12 +1409,12 @@ impl crate::game::ServerGame<'_> {
                     }
                     match res {
                         Some(r) => r?,
-                        None => self.arrow_hit_one_entity(&mut arrow, hit_who, amount)?,
+                        None => self.arrow_hit_one_entity(&mut arrow, hit_who, amount, None)?,
                     }
                 } else {
-                    self.arrow_hit_one_entity(&mut arrow, hit_who, amount)?
+                    self.arrow_hit_one_entity(&mut arrow, hit_who, amount, None)?
                 };
-                sunrise_sim::arrows::apply_pierce_hit(&mut arrow, outcome);
+                sunrise_sim::entities::arrows::apply_pierce_hit(&mut arrow, outcome);
                 self.flush_arrow_events(&mut arrow);
                 if let Who::Mob(id) = hit_who {
                     self.settle_mob_hurt(id);
@@ -1353,7 +1453,7 @@ impl crate::game::ServerGame<'_> {
                 let rain = self.arrow_rain();
                 let scene = self.arrow_scene(&rain);
                 let live = self.live_proj_world(query, &[]);
-                sunrise_sim::arrows::step_pierce_next_live(
+                sunrise_sim::entities::arrows::step_pierce_next_live(
                     &mut arrow,
                     &scene,
                     &live,
@@ -1394,7 +1494,7 @@ impl crate::game::ServerGame<'_> {
                     if hears {
                         {
                             let rain = self.arrow_rain();
-                            sunrise_sim::arrows::apply_block_contact(
+                            sunrise_sim::entities::arrows::apply_block_contact(
                                 &mut arrow,
                                 &self.arrow_scene(&rain),
                                 BlockPos::new(pos[0], pos[1], pos[2]),
@@ -1415,12 +1515,11 @@ impl crate::game::ServerGame<'_> {
         }
         let keep = {
             let rain = self.arrow_rain();
-            sunrise_sim::arrows::finish_pierce_tick(&mut arrow, &self.arrow_scene(&rain))
+            sunrise_sim::entities::arrows::finish_pierce_tick(&mut arrow, &self.arrow_scene(&rain))
         };
         self.flush_arrow_events(&mut arrow);
         if keep {
-            self.sweep_projectile_inside(&mut arrow);
-            self.lava_mark_hurt(&mut arrow);
+            self.sweep_projectile_inside(&mut arrow, None);
             let (aid, from, to) = (arrow.id, arrow.previous, arrow.position);
             self.common.reinsert_continuing_projectile(arrow);
             self.entity_section_step(aid, from.components(), to.components());
@@ -1439,6 +1538,36 @@ impl crate::game::ServerGame<'_> {
         }
         Ok(())
     }
+    pub(in crate::game) fn flush_mob_death_protection(&mut self, id: u32) {
+        let Some(index) = self.common.mob_index.find(&self.common.mobs, id) else {
+            return;
+        };
+        let mob = &mut self.common.mobs[index];
+        let Some(mut hit) = mob.take_protected_hurt() else {
+            return;
+        };
+        let join = mob.join;
+        let same_mob = |game: &mut Self| {
+            game.common.mob_index
+                .find(&game.common.mobs, id)
+                .filter(|&i| game.common.mobs[i].join == join && !game.common.mobs[i].removed)
+        };
+        self.apply_mob_death_protection_effects(id, &hit.stack, &hit.effects);
+        let Some(i) = same_mob(self) else {
+            return;
+        };
+        let at = self.common.mobs[i].position.components();
+        self.lan_entity_event(id as i32, 35, at);
+        let variants = world_variants!(self);
+        hit.before_post(&mut self.common.mobs[i], Some(variants));
+        if let Some(post) = hit.post.take() {
+            let kind = self.common.mobs[i].kind.clone();
+            self.finish_damage_post(id as i32, &kind.id, post);
+        }
+        if let Some(i) = same_mob(self) {
+            hit.after_post(&mut self.common.mobs[i]);
+        }
+    }
     /// Settle a hit while its damage owner still has the level in place.
     pub(in crate::game::server_side) fn finish_mob_damage_at(&mut self, index: usize) {
         let Some((index, _)) = self.complete_mob_hurt(index, false) else {
@@ -1448,6 +1577,11 @@ impl crate::game::ServerGame<'_> {
         let Some(mob) = self.common.mobs.get_mut(index) else {
             return;
         };
+        if mob.has_protected_hurt() {
+            let id = mob.id;
+            self.flush_mob_death_protection(id);
+            return;
+        }
         let Some(hit) = mob.damage_completion.take() else {
             return;
         };
@@ -1513,7 +1647,6 @@ impl crate::game::ServerGame<'_> {
                     count,
                     speed,
                 } => self.server_landing_dust(state, Vec3::new(at[0], at[1], at[2]), count, speed),
-                MobEvent::DrinkFinished { mob, stack } => self.finish_mob_drink(mob, &stack),
                 MobEvent::SquidCycle { mob, at } => self.lan_entity_event(mob as i32, 19, at),
                 MobEvent::RabbitHop { mob, at } => self.lan_entity_event(mob as i32, 1, at),
                 MobEvent::Drown { mob, at, bubbles } => self.mob_drown(mob, at, bubbles),
@@ -1624,6 +1757,9 @@ impl crate::game::ServerGame<'_> {
                 MobEvent::SoundId(name, at, volume, pitch) => {
                     self.server_play_sound(&name, at, volume, pitch)
                 }
+                MobEvent::ConsumeSound(sound, at) => {
+                    self.queue_consume_sound(&sound, at, SoundSource::Neutral);
+                }
                 MobEvent::GameEvent {
                     event, at, source, ..
                 } if event == "minecraft:flap"
@@ -1683,6 +1819,9 @@ impl crate::game::ServerGame<'_> {
                 // (`entity_motion_events`, `tick_mob_sculk_events`). Birds
                 // above use their movement's flyDist/nextFlap threshold.
                 MobEvent::GameEvent { .. } => {}
+                MobEvent::WeaponAttack(hit) => {
+                    self.server.combat.0.hit_landed = self.mob_weapon_attack(hit);
+                }
                 MobEvent::AttackPlayer(amount, from, attacker) => {
                     self.server.combat.0.hit_landed =
                         self.mob_hits_player(amount, from, "minecraft:mob_attack");
@@ -1722,7 +1861,7 @@ impl crate::game::ServerGame<'_> {
                         self.give_player_effect(effect, ticks, amplifier);
                     }
                 }
-                MobEvent::DamagePlayer { amount, from, kind } => {
+                MobEvent::DamagePlayer { amount, from, kind, wielder: _ } => {
                     let hurt = self.mob_hits_player(amount, from, kind);
                     if kind == "minecraft:spear" {
                         self.server.combat.0.hit_landed = hurt;
@@ -1787,35 +1926,9 @@ impl crate::game::ServerGame<'_> {
                         mob.needs_sync = true;
                     }
                 }
-                MobEvent::Knockback {
-                    target,
-                    power,
-                    x,
-                    z,
-                    source,
-                    apply_blocking,
-                } => match target {
-                    // Ram knockback checks blocking independently of the hurt call.
-                    Who::Player => self.mob_pushes_player(power, x, z, source, apply_blocking),
-                    Who::Mob(id) => {
-                        let attack = self.attack_of_who(source.attacker);
-                        let plan = self.prepare_knockback_credit(
-                            id as i32,
-                            None,
-                            self.server.combat.0.attack(),
-                        );
-                        let mut credit = plan.lend(&mut self.server.last_hurt_by_player);
-                        if let Some(m) = self.common.mobs.iter_mut().find(|m| m.id == id) {
-                            let level = crate::game::server_side::entity_server::damage_level_of!(
-                                self,
-                                &attack,
-                                &mut credit,
-                                None
-                            );
-                            m.knockback(level, power, x, z, &source, 0.0);
-                        }
-                    }
-                },
+                MobEvent::Knockback { target, power, x, z, source, apply_blocking } => {
+                    self.mob_event_knockback(target, power, [x, z], source, apply_blocking);
+                }
                 MobEvent::LidPush {
                     shulker,
                     area,
@@ -1901,8 +2014,11 @@ impl crate::game::ServerGame<'_> {
                     let mut source =
                         super::explosion::ExplosionSource::default().with_silence(silent);
                     if let Some(id) = source_mob {
-                        source = source
-                            .with_damage_direct(id, sunrise_sim::health::DirectEntity::Living);
+                        source = source.with_damage_direct(
+                            id,
+                            None,
+                            sunrise_sim::health::DirectEntity::Living,
+                        );
                     }
                     if let Some(id) = source_mob
                         && matches!(species, Species::Creeper | Species::Wither)
@@ -1953,6 +2069,14 @@ impl crate::game::ServerGame<'_> {
                 } => {
                     self.mob_hits_mob(target, amount, source);
                 }
+                MobEvent::ContactDamageMob { target, amount, kind, attacker } => {
+                    let mut source = Damage::of(Self::damage_kind(&self.common.health_resources.damage, kind));
+                    if let Some((cube, from)) = attacker {
+                        source.attacker = Some(Who::Mob(cube));
+                        source.from = Some(from);
+                    }
+                    self.mob_hits_mob(target, amount, source);
+                }
                 MobEvent::AttackMobWithEffect {
                     target,
                     amount,
@@ -1983,7 +2107,7 @@ impl crate::game::ServerGame<'_> {
                         amount,
                         Some(from),
                         "minecraft:mob_attack",
-                        Some(Some(cube)),
+                        KnownCause::Entity(cube),
                         false,
                     ) && let Some(m) = self.common.mobs.iter_mut().find(|m| m.id == cube)
                     {
@@ -2052,6 +2176,7 @@ impl crate::game::ServerGame<'_> {
                                 attacker: Some(Who::Mob(attacker)),
                                 from: Some(from),
                                 attacker_species: Some(Species::Warden),
+                                direct: None,
                             };
                             let hurt = self.mob_hits_mob(id, 10.0, source);
                             let resistance = self
@@ -2078,9 +2203,15 @@ impl crate::game::ServerGame<'_> {
                 MobEvent::Hiss { mob } => {
                     if let Some(m) = self.common.mobs.iter().find(|m| m.id == mob) {
                         let at = m.center();
-                        let sound = sunrise_sim::mobs::finalize::variant_sound(m, "hiss")
-                            .unwrap_or("entity.cat.hiss");
-                        self.server_play_sound(&full_id(sound), at, 1.0, 1.0);
+                        let sound = sunrise_sim::mobs::ai::cat_sound(
+                            m,
+                            Some(self.world_variants()),
+                            "hiss",
+                        )
+                        .map(|s| full_id(s).into_owned());
+                        if let Some(sound) = sound {
+                            self.server_play_sound(&sound, at, 1.0, 1.0);
+                        }
                     }
                 }
                 MobEvent::StabMemory {
@@ -2268,7 +2399,7 @@ impl crate::game::ServerGame<'_> {
                     self.server.next_entity += 1;
                     m.id = self.server.next_entity;
                     self.common.mobs.push(*m);
-                    self.native_mobs_joined(self.common.mobs.len() - 1, false);
+                    self.admit_new_mobs(self.common.mobs.len() - 1);
                 }
                 MobEvent::SpawnKind { kind, at, setup } => {
                     if let Some(id) = self.spawn_mob(
@@ -2795,24 +2926,7 @@ impl crate::game::ServerGame<'_> {
                     self.common.ignite_entity(target, seconds)?
                 }
                 MobEvent::ZombieIgnite(..) => {}
-                MobEvent::Breed {
-                    parent,
-                    partner,
-                    equine,
-                    parent_variant,
-                    wolf_voice,
-                    experience,
-                } => {
-                    let child = self.breed(
-                        parent,
-                        partner,
-                        equine,
-                        parent_variant,
-                        wolf_voice,
-                        experience,
-                    );
-                    self.native_entity_breed(parent, partner, child);
-                }
+                event @ MobEvent::Breed { .. } => self.deliver_breed(event, false),
                 MobEvent::LockGaze { mob, partner } => {
                     if let Some(m) = self.common.mobs.iter_mut().find(|m| m.id == mob) {
                         sunrise_sim::mobs::animal_brain::lock_gaze(m, partner);
@@ -2981,15 +3095,24 @@ impl crate::game::ServerGame<'_> {
         amount: f32,
         from: Option<[f64; 3]>,
         damage_type: &str,
-        known: Option<Option<u32>>,
+        known: KnownCause,
         by_creative_player: bool,
     ) -> bool {
-        let post_attack_if_alive = std::mem::take(&mut self.server.combat.0.post_attack_if_alive);
+        self.hurt_player_from_inner(amount, from, damage_type, known, by_creative_player, true)
+    }
+
+    fn hurt_player_from_inner(
+        &mut self,
+        amount: f32,
+        from: Option<[f64; 3]>,
+        damage_type: &str,
+        known: KnownCause,
+        by_creative_player: bool,
+        post_attack: bool,
+    ) -> bool {
         let rocket = std::mem::take(&mut self.server.combat.0.rocket_hit);
         let pierce = std::mem::take(&mut self.server.combat.0.piercing_hit);
         let melee = self.server.combat.0.melee_mob.take();
-        // A projectile entity dealt it: `#is_projectile`, or a firework
-        // rocket (its `fireworks` type is not in the tag).
         let projectile = rocket
             || world_stations!(self)
                 .enchantments
@@ -2998,15 +3121,25 @@ impl crate::game::ServerGame<'_> {
                 .is_some_and(|t| t.contains(damage_type));
         let blocking = self.player_blocking(from, damage_type, pierce);
         let raised = blocking.is_some();
-        // Melee: the attacker stands at `from` (another player's hit has no mob behind it).
+        let owner = self.server.combat.0.projectile_owner.take();
+        let current = self.server.combat.0.attack();
+        let player_melee = known == KnownCause::Infer
+            && melee.is_none()
+            && current.projectile.is_none()
+            && current.direct.is_none()
+            && current
+                .enchantment_attacker
+                .as_ref()
+                .is_some_and(|actor| actor.kind.as_ref() == "minecraft:player");
         let attacker = match known {
-            Some(known) => known,
-            None if melee.is_some() => melee,
-            None => from
+            KnownCause::Entity(id) => Some(id),
+            KnownCause::Attack | KnownCause::None => None,
+            KnownCause::Infer if melee.is_some() => melee,
+            KnownCause::Infer if player_melee => None,
+            KnownCause::Infer => from
                 .filter(|_| !projectile && damage_type != "minecraft:player_attack")
                 .and_then(|from| {
-                    self.common
-                        .mobs
+                    self.common.mobs
                         .iter()
                         .filter(|m| m.alive())
                         .min_by(|a, b| {
@@ -3018,52 +3151,46 @@ impl crate::game::ServerGame<'_> {
                         .map(|m| m.id)
                 }),
         };
-        // The causing entity for the death message.
-        let owner = self.server.combat.0.projectile_owner.take();
-        // The mob that caused the hit, else the attack the caller landed it in (a projectile's
-        // owner, another player's blow): `combat.attack`, read through `current_attack`.
         let mut attack = match attacker.or(owner) {
             Some(id) => self.attack_of(id as i32),
             None => self.current_attack(),
         };
-        attack.projectile = self.server.combat.0.attack().projectile;
-        attack.projectile_kind = self.server.combat.0.attack().projectile_kind;
-        attack.projectile_type = self.server.combat.0.attack().projectile_type;
-        attack.direct = self.server.combat.0.attack().direct;
-        attack.direct_kind = self.server.combat.0.attack().direct_kind;
-        attack
-            .direct_type
-            .clone_from(&self.server.combat.0.attack().direct_type);
+        attack.projectile = current.projectile;
+        attack.projectile_kind = current.projectile_kind;
+        attack.projectile_type = current.projectile_type;
+        attack.enchantment_direct = current.enchantment_direct.clone();
+        attack.direct = if player_melee {
+            Some(attack.attacker)
+        } else {
+            current.direct
+        };
+        attack.direct_kind = current.direct_kind;
+        attack.direct_type.clone_from(&current.direct_type);
         attack.position = from;
-        attack.projectile_weapon = self.server.combat.0.attack().projectile_weapon.clone();
+        attack.projectile_weapon = current.projectile_weapon.clone();
         if let Some(a) = attacker.or(owner) {
             self.note_attacker(damage_type, a);
         }
         if let Some((id, name)) = self.server.combat.0.projectile_attacker.take() {
             self.note_named_attacker(damage_type, id, name);
         }
-        // The projectile is the direct entity: named when it has no owner.
         if let Some(name) = self.server.combat.0.projectile_direct.take() {
             self.note_direct_entity(damage_type, name);
         }
-        // DamageSource.scalesWithDifficulty: a mob (or its projectile's
-        // owner) caused the hit, not a player.
         let living_cause = attacker.or(owner).is_some();
-        // The native damage hook's causing entity: the one given, or the
-        // owner of the projectile that hit (`projectile_owner` outlives a
-        // projectile's other hits), not the guessed melee attacker.
         let owner = owner.filter(|_| projectile);
-        let causing = known.map_or_else(
-            || attacker.or(owner).map_or(attack.attacker, |id| id as i32),
-            |known| known.map_or(0, |id| id as i32),
-        );
+        let causing = match known {
+            KnownCause::Infer => attacker.or(owner).map_or(attack.attacker, |id| id as i32),
+            KnownCause::Attack => attack.attacker,
+            KnownCause::Entity(id) => id as i32,
+            KnownCause::None => 0,
+        };
         let mut outcome = sunrise_sim::health::BlockOutcome::default();
-        // The hit's own push, held back until after the shield's (`hurtServer`
-        // runs `applyItemBlocking` before `dealDefaultKnockback`).
         let mut default_push: Option<([f64; 2], HurtSource<'_>)> = None;
         let events_before = self.common.player.as_ref().map_or(0, |p| p.events.len());
         let damage_outcome = if let Some(id) = self.common.health_resources.damage.id(damage_type) {
-            let weapon = self.player_armor_weapon(attacker, projectile);
+            let weapon =
+                self.player_armor_weapon(&attack, attack.player_source(damage_type, causing));
             self.hurt_player_equipment(
                 id,
                 amount,
@@ -3084,14 +3211,10 @@ impl crate::game::ServerGame<'_> {
                 o.hurt
             }
         {
-            // LivingEntity.hurtServer's dealDefaultKnockback: not inside the
-            // hurt cooldown (a stronger hit there only adds its difference).
             if o.knockback {
-                // No source position: a random direction.
                 let (xd, zd) = from.map_or((0.0, 0.0), |from| {
                     (from[0] - player.position.x, from[2] - player.position.z)
                 });
-                // dealDefaultKnockback's `indicateDamage`, unless blocked.
                 if o.blocked <= 0.0 {
                     player.health.indicate_damage(xd, zd, player.yaw);
                 }
@@ -3100,12 +3223,11 @@ impl crate::game::ServerGame<'_> {
                     causing,
                     direct: attack.projectile_direct(damage_type),
                     position: None,
+                    direct_type: None,
                 };
                 default_push = Some(([xd, zd], source));
             }
         }
-        // LivingEntity.playSecondaryHurtSound: a thorns hit that landed whole
-        // sounds where the player stands, for everyone around.
         if let Some(p) = self.common.player.as_ref()
             && p.events.get(events_before..).is_some_and(|new| {
                 new.iter().any(|e| {
@@ -3121,13 +3243,7 @@ impl crate::game::ServerGame<'_> {
             let at = [p.position.x, p.position.y, p.position.z];
             self.server_play_sound("minecraft:enchant.thorns.hit", at, 1.0, 1.0);
         }
-        // LivingEntity.hurtServer: ENTITY_HURT_PLAYER, unless it returned
-        // early (invulnerable, or inside the hurt cooldown).
-        // A hit a native mod canceled records no damage (hurtServer never ran).
         self.server.combat.0.forget_noted(outcome.canceled);
-        // Player motion queues accepted-hit memory events; the normal drain runs after
-        // this function returns. A knockback listener must see those memories already
-        // committed, including absorbed/blocked hits that still reach Criterion.
         if mod_api::__private::listened(mod_api::HookId::LivingKnockback)
             && self.common.player.as_ref().is_some_and(|player| {
                 player.events[events_before..].iter().any(|event| {
@@ -3147,8 +3263,6 @@ impl crate::game::ServerGame<'_> {
                 .map(|m| self.mob_entity(m));
             self.trigger_entity_hurt_player(&sunrise_sim::advancements::DamageView {
                 kind: damage_type.to_owned(),
-                // Arrows and the like name no direct entity here; a
-                // rocket's burst names the rocket.
                 direct: if rocket {
                     Some(sunrise_sim::advancements::EntityView {
                         kind: "minecraft:firework_rocket".to_owned(),
@@ -3171,11 +3285,10 @@ impl crate::game::ServerGame<'_> {
                 causing,
                 direct: attack.projectile_direct(damage_type),
                 position: None,
+                direct_type: None,
             };
             self.after_block(outcome, (attacker, projectile), source, &attack);
         }
-        // `LivingEntity.dealDefaultKnockback`: after the item's block push, so
-        // a half-blocked hit pushes the defender back the way vanilla does.
         if let Some(([xd, zd], source)) = default_push {
             self.knock_back_player(f64::from(0.4_f32), xd, zd, source, &attack, amount);
             if let Some(p) = self.common.player.as_mut()
@@ -3185,16 +3298,19 @@ impl crate::game::ServerGame<'_> {
             }
         }
         self.finish_guest_damage();
-        // The attack runs `EnchantmentHelper.doPostAttackEffects` after `hurtServer` returns.
-        let killed = self.common.player.as_ref().is_some_and(|p| {
-            super::wither::killed(true, p.health.dead_or_dying(), p.health.totem_used)
-        });
-        if outcome.hurt
-            && let Some(a) = attacker.or(owner)
-            && !(post_attack_if_alive && killed)
+        if post_attack
+            && outcome.hurt
+            && attack.projectile.is_none()
+            && attacker.or(owner).is_some()
             && damage_type != "minecraft:thorns"
         {
-            self.thorns(a);
+            let source = attack.player_source(damage_type, causing);
+            self.post_attack_from_hand(
+                self.own_entity_id() as u32,
+                "minecraft:player",
+                &attack,
+                source,
+            );
         }
         outcome.hurt
     }
@@ -3217,7 +3333,7 @@ impl crate::game::ServerGame<'_> {
             return Ok(true);
         }
         // Shears ask the mob's entity parts first, then fire `player_shear_entity`.
-        if self.held_shears() {
+        if self.held_shears(ability::SHEARS_HARVEST) {
             let id = self.common.mobs[index].id;
             if let Some(consumed) = self.player_shear(index) {
                 return Ok(consumed);
@@ -3263,7 +3379,7 @@ impl crate::game::ServerGame<'_> {
             .as_ref()
             .map(|h| h.item.to_string())
             .unwrap_or_default();
-        let shears = self.held_shears();
+        let shears = self.held_shears(ability::SHEARS_HARVEST);
         // Bucketable.bucketMobPickup: a water bucket scoops up a fish, a
         // tadpole or an axolotl, with the data its bucket carries.
         if item == "minecraft:water_bucket"
@@ -3388,7 +3504,7 @@ impl crate::game::ServerGame<'_> {
             self.swing_arm();
             return Ok(true);
         }
-        if let Some(sheared) = self.shear_saddle(index, &item) {
+        if let Some(sheared) = self.shear_saddle(index) {
             if sheared {
                 self.swing_arm();
             }
@@ -3467,6 +3583,8 @@ impl crate::game::ServerGame<'_> {
             Some(Who::Player),
             &feeder,
         );
+        let removes_armor = self.common.mobs[index].species() == Species::Wolf
+            && self.held_shears(ability::SHEARS_REMOVE_ARMOR);
         let m = &mut self.common.mobs[index];
         if !m.alive() {
             return Ok(false);
@@ -3586,7 +3704,7 @@ impl crate::game::ServerGame<'_> {
             }
             // Entity.interact: shears take a tamed wolf's armor off for its owner.
             Species::Wolf
-                if item == "minecraft:shears"
+                if removes_armor
                     && m.extra.tame
                     && m.extra.owner == Some(acting)
                     && m.extra.body_id().is_some()
@@ -3610,7 +3728,11 @@ impl crate::game::ServerGame<'_> {
                     .map_or(2.0, |f| f.0 as f32 * 2.0);
                 // TamableAnimal.feed(.., 2.0F, 2.0F): heals twice the nutrition,
                 // then playEatingSound, which wolves leave empty.
-                m.heal(&self.common.loop_context, heal);
+                m.heal(
+                    &self.common.loop_context,
+                    &|| crate::game::entity_server::hit_reads_of!(self),
+                    heal,
+                );
                 consume = true;
             }
             // Wolf.mobInteract: the owner puts wolf armor on a tamed adult.
@@ -3759,7 +3881,11 @@ impl crate::game::ServerGame<'_> {
                     .and_then(|i| i.food.as_ref())
                     .map_or(1.0, |f| f.0 as f32);
                 // TamableAnimal.feed.
-                m.heal(&self.common.loop_context, heal);
+                m.heal(
+                    &self.common.loop_context,
+                    &|| crate::game::entity_server::hit_reads_of!(self),
+                    heal,
+                );
                 consume = true;
                 eat = eating_sound(m, &mut self.common.world.random);
             }
@@ -3819,7 +3945,11 @@ impl crate::game::ServerGame<'_> {
             Species::IronGolem
                 if item == "minecraft:iron_ingot" && m.health < m.attrs.max_health =>
             {
-                m.heal(&self.common.loop_context, 25.0);
+                m.heal(
+                    &self.common.loop_context,
+                    &|| crate::game::entity_server::hit_reads_of!(self),
+                    25.0,
+                );
                 consume = true;
                 eat = Some(("entity.iron_golem.repair", 1.0, m.golem_repair_pitch()));
             }
@@ -4219,9 +4349,11 @@ impl crate::game::ServerGame<'_> {
         self.sculk_mob_died(m);
         let mut catalyst_xp = 0;
         let consumed =
-            self.catalyst_takes_experience([m.position.x, m.position.y, m.position.z], |_| {
+            self.catalyst_takes_experience([m.position.x, m.position.y, m.position.z], |game| {
+                let base = sunrise_sim::mobs::drops::base_experience(&mut dying);
+                let reward = game.mob_kill_experience(&mut dying, base);
                 catalyst_xp = if sunrise_sim::mobs::drops::drops_experience(&dying) {
-                    sunrise_sim::mobs::drops::base_experience(&mut dying).max(0) as u32
+                    reward.max(0) as u32
                 } else {
                     0
                 };
@@ -4294,8 +4426,218 @@ impl crate::game::ServerGame<'_> {
             pos,
             source,
         );
-        self.finish_mob_death(m, &mut dying, source);
+        self.finish_mob_death(m, &mut dying, source, player);
     }
+
+    /// `AbstractCubeMob.remove` and `LivingEntity.remove`: split, run removal effects,
+    /// then retire the body. A failed callback cannot queue the removal for another tick.
+    fn complete_mob_removal(&mut self, join: JoinSeq, split: bool) {
+        let Some(index) = self.mobs.locate(join) else {
+            return;
+        };
+        let removal = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let mut random = if split {
+                let mut dying = self.mobs[index].clone();
+                self.split_cube_children(&mut dying);
+                dying.random
+            } else {
+                self.mobs[index].random.clone()
+            };
+            // LivingEntity.remove sees the body's current effects and pose, after the split
+            // and child join listeners have had a chance to edit it. Keep the split's draws.
+            let Some(index) = self.mobs.locate(join) else {
+                return;
+            };
+            let parent = &self.mobs[index];
+            if !parent.extra.effects.is_empty() {
+                let names: Vec<_> = parent
+                    .extra
+                    .effects
+                    .iter()
+                    .map(|e| e.id.trim_start_matches("minecraft:"))
+                    .collect();
+                self.effects_on_death(
+                    &names,
+                    parent.bounds(),
+                    parent.silent,
+                    Some(parent.id),
+                    Some(&mut random),
+                );
+            }
+        }));
+        if let Some(index) = self.common.mobs.locate(join) {
+            let mob = &self.common.mobs[index];
+            let id = mob.id;
+            if !mob.removed && (mob.extra.mount.is_some() || self.has_seated_passengers(id)) {
+                self.finish_mob_removal(id);
+            }
+            if let Some(index) = self.common.mobs.locate(join) {
+                self.common.mobs.remove(index);
+            }
+            self.server.last_hurt_by_player.remove(&id);
+        }
+        if let Err(payload) = removal {
+            std::panic::resume_unwind(payload);
+        }
+    }
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn complete_mob_removal_for_test(&mut self, join: JoinSeq, split: bool) {
+        self.complete_mob_removal(join, split);
+    }
+
+    fn mob_weapon_attack(&mut self, hit: sunrise_sim::mobs::WeaponHit) -> bool {
+        use sunrise_sim::mobs::{WeaponAttack, WeaponHit};
+        let WeaponHit {
+            target,
+            source,
+            weapon,
+            amount,
+            knockback,
+            direction,
+            attack: action,
+        } = hit;
+        let (victim, kind) = match target {
+            Who::Player => (self.own_entity_id() as u32, Arc::from("minecraft:player")),
+            Who::Mob(id) => {
+                let Some(mob) = self.mob_object(id).filter(|mob| !mob.removed) else {
+                    return false;
+                };
+                (id, Arc::<str>::from(mob.kind.id.as_str()))
+            }
+        };
+        let attack = self.attack_of_who(source.attacker);
+        let damage_type = source_damage_type(source);
+        let hurt_source = HurtSource {
+            damage_type,
+            causing: attack.attacker,
+            direct: attack.attacker,
+            direct_type: attack.direct_type.as_deref(),
+            position: source.from,
+        };
+        let ctx = attack.enchantment_context(hurt_source, &kind);
+        let amount = self.evaluate_weapon_damage(&weapon, Some(victim), ctx, amount);
+        let hurt = !matches!(
+            action,
+            WeaponAttack::Stab {
+                deals_damage: false,
+                ..
+            }
+        ) && match target {
+            Who::Player => self.hurt_player_from_inner(
+                amount,
+                source.from,
+                damage_type,
+                match source.attacker {
+                    Some(Who::Mob(id)) => KnownCause::Entity(id),
+                    _ => KnownCause::None,
+                },
+                false,
+                false,
+            ),
+            Who::Mob(id) => self.mob_hits_mob(id, amount, source),
+        };
+        let push = |game: &mut Self, power: f32, apply_blocking| {
+            if power > 0.0 {
+                game.mob_event_knockback(
+                    target,
+                    f64::from(power),
+                    direction,
+                    source,
+                    apply_blocking,
+                );
+                if let Some(Who::Mob(id)) = source.attacker
+                    && let Some(attacker) = game.mob_object_mut(id)
+                {
+                    attacker.velocity.x *= 0.6;
+                    attacker.velocity.z *= 0.6;
+                }
+            }
+        };
+        let stab_push = matches!(
+            action,
+            WeaponAttack::Stab {
+                deals_knockback: true,
+                ..
+            }
+        );
+        if stab_push {
+            push(self, 0.4, None);
+        }
+        if stab_push || (hurt && matches!(action, WeaponAttack::Melee { .. })) {
+            let power = self.evaluate_weapon_value(
+                &weapon,
+                "minecraft:knockback",
+                Some(victim),
+                ctx,
+                knockback,
+            ) / 2.0;
+            push(self, power, stab_push.then_some(amount));
+        }
+        if matches!(
+            action,
+            WeaponAttack::Stab {
+                dismounts: true,
+                ..
+            }
+        ) {
+            self.mount_event(&MobEvent::StabDismount { target });
+        }
+        if hurt {
+            self.post_attack_from_hand(victim, &kind, &attack, hurt_source);
+            if let WeaponAttack::Melee {
+                effect: Some((effect, ticks, amplifier)),
+            } = action
+            {
+                let cause = source.attacker.and_then(|who| match who {
+                    Who::Mob(id) => self.entity(id),
+                    Who::Player => self.entity(self.own_entity_id() as u32),
+                });
+                match target {
+                    Who::Player => self.give_player_effect_from(effect, ticks, amplifier, cause),
+                    Who::Mob(id) => {
+                        if let Some(def) = sunrise_level::brewing::effect(effect) {
+                            self.add_mob_effect(
+                                id,
+                                sunrise_level::effects::EffectInstance::from_def(
+                                    def, ticks, amplifier,
+                                ),
+                                cause,
+                            );
+                        }
+                    }
+                }
+            }
+        }
+        hurt
+    }
+
+    fn mob_event_knockback(
+        &mut self,
+        target: Who,
+        power: f64,
+        [x, z]: [f64; 2],
+        source: Damage,
+        apply_blocking: Option<f32>,
+    ) {
+        match target {
+            // Ram knockback checks blocking independently of the hurt call.
+            Who::Player => self.mob_pushes_player(power, x, z, source, apply_blocking),
+            Who::Mob(id) => {
+                let aim = self.attacker_aim(source.attacker);
+                let attack = self.attack_of_who(source.attacker);
+                let plan = self.prepare_knockback_credit(id as i32, None, self.server.combat.0.attack());
+                let mut credit = plan.lend(&mut self.server.last_hurt_by_player);
+                if let Some(m) = self.common.mobs.iter_mut().find(|m| m.id == id) {
+                    m.attacker_aim = aim;
+                    let level =
+                        crate::game::entity_server::damage_level_of!(self, &attack, &mut credit, None);
+                    m.knockback(level, power, x, z, &source, 0.0);
+                    m.attacker_aim = None;
+                }
+            }
+        }
+    }
+
     /// Melee or ranged damage to another mob; whether the hit landed.
     pub fn mob_hits_mob(&mut self, target: u32, amount: f32, mut source: Damage) -> bool {
         if source.attacker_species.is_none()
@@ -4557,6 +4899,7 @@ impl crate::game::ServerGame<'_> {
         &mut self,
         p: &Projectile,
         hit: Hit,
+        deferred: Option<&mut Option<LandedPlayerArrow>>,
     ) -> Result<()> {
         // Projectile.onHitBlock: BlockState.onProjectileHit, for every
         // projectile (a wind charge out of the world's top has no face).
@@ -4588,7 +4931,7 @@ impl crate::game::ServerGame<'_> {
             self.target_block_hit(&ProjectileHitter::of(p), pos, at, face);
         }
         if let (ProjectileKind::Arrow { .. }, Hit::Entity { who, at }) = (&p.kind, hit) {
-            return self.finish_arrow_step(p.clone(), who, at);
+            return self.finish_arrow_step(p.clone(), who, at, deferred);
         }
         let wind = matches!(
             p.kind,
@@ -4622,8 +4965,7 @@ impl crate::game::ServerGame<'_> {
             if deflected.arrow.is_some() {
                 self.finish_arrow_hit(deflected, EntityHit::Deflected);
             } else {
-                self.sweep_projectile_inside(&mut deflected);
-                self.lava_mark_hurt(&mut deflected);
+                self.sweep_projectile_inside(&mut deflected, None);
                 let (pid, from, to) = (deflected.id, deflected.previous, deflected.position);
                 self.common.reinsert_continuing_projectile(deflected);
                 self.entity_section_step(pid, from.components(), to.components());
@@ -4738,6 +5080,7 @@ impl crate::game::ServerGame<'_> {
             attacker: p.owner,
             from: Some([p.previous.x, p.previous.y, p.previous.z]),
             attacker_species,
+            direct: Some(p.entity_type()),
         };
         let aim = self.attacker_aim(source.attacker);
         match (&p.kind, hit) {
@@ -4789,7 +5132,7 @@ impl crate::game::ServerGame<'_> {
                 };
                 let outcome = if hurt {
                     if living_hit {
-                        self.shot_post_attack(p, who, "minecraft:trident", "minecraft:trident");
+                        self.shot_post_attack(p, who, "minecraft:trident");
                     }
                     EntityHit::Hurt
                 } else {
@@ -4800,12 +5143,31 @@ impl crate::game::ServerGame<'_> {
                 self.settle_hurt_teleports()?;
                 self.projectile_hit_landed_event(p.id, p.owner, hit);
             }
-            // AbstractArrow.onHitBlock plays its sound itself (ArrowEvent).
-            (ProjectileKind::Trident, Hit::Block { .. }) => {
-                self.projectile_hit_landed_event(p.id, p.owner, hit);
-            }
-            // AbstractArrow.onHitBlock plays its sound itself (ArrowEvent).
-            (ProjectileKind::Arrow { .. }, Hit::Block { .. }) => {
+            (ProjectileKind::Trident | ProjectileKind::Arrow { .. }, Hit::Block { pos, .. }) => {
+                let weapon = p.arrow.as_ref().and_then(|arrow| {
+                    if matches!(p.kind, ProjectileKind::Trident) {
+                        Some(&arrow.pickup_item)
+                    } else {
+                        arrow.fired_from_weapon.as_ref()
+                    }
+                });
+                if let Some(weapon) = weapon {
+                    let holder = match p.owner {
+                        Some(Who::Mob(id)) => Some(id),
+                        Some(Who::Player) => self
+                            .player_entity_id_by_connection(p.guest)
+                            .map(|id| id as u32),
+                        None => None,
+                    };
+                    self.hit_block_enchantment_effects(
+                        weapon,
+                        holder,
+                        p.id,
+                        p.entity_type(),
+                        at,
+                        pos,
+                    );
+                }
                 self.projectile_hit_landed_event(p.id, p.owner, hit);
             }
             (ProjectileKind::Snowball, hit) => {
@@ -4932,11 +5294,21 @@ impl crate::game::ServerGame<'_> {
                     } else {
                         1
                     };
+                    let chicken_variant = p
+                        .egg_variant
+                        .as_deref()
+                        .and_then(|id| self.world_variants().chicken.lookup(id))
+                        .or_else(|| {
+                            self.world_variants()
+                                .chicken
+                                .default_or_any("minecraft:temperate")
+                        });
                     for _ in 0..n {
                         if let Some(id) = self.spawn_mob_raw("minecraft:chicken", atp, true)
                             && let Some(c) = self.common.mobs.iter_mut().find(|m| m.id == id)
                         {
-                            (c.extra.age, c.extra.variant) = (-24000, p.egg_variant.unwrap_or(0));
+                            c.extra.age = -24000;
+                            c.extra.chicken_variant = chicken_variant;
                         }
                     }
                 }
@@ -5041,8 +5413,9 @@ impl crate::game::ServerGame<'_> {
                                 [p.previous.x, p.previous.y, p.previous.z],
                                 self.projectile_damage_type(p),
                             );
-                            if !hurt
-                                && let Some(remaining) = remaining
+                            if hurt {
+                                self.shot_post_attack(p, who, "minecraft:fireball");
+                            } else if let Some(remaining) = remaining
                                 && let Some(pl) = self.common.player.as_mut()
                             {
                                 pl.set_remaining_fire_ticks(remaining);
@@ -5056,12 +5429,7 @@ impl crate::game::ServerGame<'_> {
                                     m.ignite_for_ticks(100);
                                 }
                                 if self.damage_projectile_with_weapon(p, id, 5.0, source, aim) {
-                                    self.shot_post_attack(
-                                        p,
-                                        who,
-                                        "minecraft:small_fireball",
-                                        self.projectile_damage_type(p),
-                                    );
+                                    self.shot_post_attack(p, who, "minecraft:fireball");
                                 } else if let Some(i) =
                                     self.common.mob_index.find(&self.common.mobs, id)
                                     && self.common.mobs[i].join == join
@@ -5122,13 +5490,13 @@ impl crate::game::ServerGame<'_> {
                         Who::Mob(id) => {
                             if self.common.mob_index.find(&self.common.mobs, id).is_some() {
                                 self.damage_projectile_with_weapon(p, id, 6.0, source, aim);
-                                self.shot_post_attack(p, who, "minecraft:fireball", dmg_type);
+                                self.shot_post_attack(p, who, dmg_type);
                             } else {
                                 let info =
                                     ProjectileHitInfo::from_projectile(p, dmg_type, 6.0, None);
                                 let _ = self.projectile_hurts_non_mob(&info, id);
                                 // LargeFireball.onHitEntity runs doPostAttackEffects unconditionally.
-                                self.shot_post_attack(p, who, "minecraft:fireball", dmg_type);
+                                self.shot_post_attack(p, who, dmg_type);
                             }
                         }
                     }
@@ -5138,7 +5506,7 @@ impl crate::game::ServerGame<'_> {
                 self.server.combat.0.explosion_in_water = p.touching_water;
                 self.set_blast_by_player(p.owner == Some(Who::Player));
                 let fire = self.large_fireball_fire(p.owner, p.guest);
-                self.server.combat.0.explosion_direct = Some(p.id);
+                self.server.combat.0.explosion_direct = Some((p.id, p.entity_type()));
                 let result = self.explode_mob(
                     atp,
                     *power as f32,
@@ -5200,6 +5568,7 @@ impl crate::game::ServerGame<'_> {
                     mob,
                     block,
                     p.age,
+                    p.id,
                     &owner,
                     self.entity_silent(p.id),
                     p.velocity,
@@ -5226,12 +5595,7 @@ impl crate::game::ServerGame<'_> {
                     Who::Mob(id) => {
                         if self.common.mob_index.find(&self.common.mobs, id).is_some() {
                             if self.damage_projectile_with_weapon(p, id, 1.0, source, aim) {
-                                self.shot_post_attack(
-                                    p,
-                                    who,
-                                    "minecraft:llama_spit",
-                                    "minecraft:spit",
-                                );
+                                self.shot_post_attack(p, who, "minecraft:spit");
                             }
                         } else {
                             let info = ProjectileHitInfo::from_projectile(
@@ -5248,6 +5612,15 @@ impl crate::game::ServerGame<'_> {
             }
             // ShulkerBullet.onHitEntity: 4 damage, then levitation for 10 s.
             (ProjectileKind::ShulkerBullet { .. }, Hit::Entity { who, .. }) => {
+                let effect_source = match p.owner {
+                    Some(Who::Mob(id)) => self.entity(id),
+                    Some(Who::Player) => self
+                        .player
+                        .as_ref()
+                        .and_then(|player| self.entity(player.entity_id as u32)),
+                    None => None,
+                }
+                .or_else(|| self.entity(p.id));
                 match who {
                     Who::Player => {
                         if self.mob_hits_player(
@@ -5255,7 +5628,13 @@ impl crate::game::ServerGame<'_> {
                             [p.previous.x, p.previous.y, p.previous.z],
                             "minecraft:mob_projectile",
                         ) {
-                            self.give_player_effect("minecraft:levitation", 200, 0);
+                            self.shot_post_attack(p, who, "minecraft:mob_projectile");
+                            self.give_player_effect_from(
+                                "minecraft:levitation",
+                                200,
+                                0,
+                                effect_source,
+                            );
                         }
                     }
                     Who::Mob(id) => {
@@ -5263,23 +5642,21 @@ impl crate::game::ServerGame<'_> {
                             let join = self.common.mobs[index].join;
                             let same_target = |m: &Mob| m.id == id && m.join == join && !m.removed;
                             if self.damage_projectile_with_weapon(p, id, 4.0, source, aim) {
-                                if let Some(m) =
-                                    self.common.mobs.iter_mut().find(|m| same_target(m))
-                                {
-                                    // Shulker.hurtServer: a shulker hit by a bullet.
+                                if let Some(m) = self.common.mobs.iter_mut().find(|m| same_target(m)) {
                                     sunrise_sim::mobs::shulker::hit_by_bullet(m);
                                 }
                                 self.settle_hurt_teleports()?;
-                                self.shot_post_attack(
-                                    p,
-                                    who,
-                                    "minecraft:shulker_bullet",
-                                    "minecraft:mob_projectile",
-                                );
-                                if let Some(m) =
-                                    self.common.mobs.iter_mut().find(|m| same_target(m))
-                                {
-                                    m.add_effect("minecraft:levitation", 200, 0);
+                                self.shot_post_attack(p, who, "minecraft:mob_projectile");
+                                if self.mob_object(id).is_some_and(same_target) {
+                                    self.add_mob_effect(
+                                        id,
+                                        sunrise_level::effects::EffectInstance::new(
+                                            "levitation",
+                                            200,
+                                            0,
+                                        ),
+                                        effect_source,
+                                    );
                                 }
                             }
                         } else {
@@ -5529,39 +5906,17 @@ impl crate::game::ServerGame<'_> {
         self.server.combat.0.charged_exploders.clear();
         self.server.combat.0.exploded.clear();
         self.server.combat.0.exploded_kinds.clear();
-        // EntityTickEvent.Pre for the mobs about to tick, before the loop holds them: once for
-        // the family, then each mob it let through checks its sleep. A mob of a type a mod
-        // named hears its Pre alone, inside the loop, right before its own tick
-        // (borrowed_tick.rs).
         let mut round = self.native_tick_round();
         let sleeping = mod_api::__private::listened(mod_api::HookId::CanContinueSleeping);
-        if round.listening() || sleeping {
+        if !round.pre() && sleeping {
             let ticking = self.entity_ticking_area();
             let mut i = 0;
             while let Some(m) = self.common.mobs.get(i) {
                 let (x, z) = (m.position.x.floor() as i32, m.position.z.floor() as i32);
                 if !blocked.contains(&m.id) && self.common.world.loaded(x, z) && ticking(x, z) {
-                    // A mob told alone is told, and checks its sleep, at its own turn.
-                    if !round.alone_mob(&m.kind) {
-                        if round.listening() {
-                            let kind = super::native_ticks::TickKind::Mob(m.kind.clone());
-                            round.add(m.id, kind);
-                        } else {
-                            self.sync_sleeping_mob(i);
-                        }
-                    }
+                    self.sync_sleeping_mob(i);
                 }
                 i += 1;
-            }
-            self.native_tick_pre_batch(&mut round);
-            let (mut n, mut from) = (0, 0);
-            while sleeping && let Some(id) = round.let_through(n) {
-                if let Some(i) = super::native_ticks::place(&self.common.mobs, from, |m| m.id == id)
-                {
-                    self.sync_sleeping_mob(i);
-                    from = i + 1;
-                }
-                n += 1;
             }
         }
         self.common.init_sulfur_attribute_maps();
@@ -5598,7 +5953,6 @@ impl crate::game::ServerGame<'_> {
         #[cfg(any(test, feature = "test-support"))]
         crate::game::server_side::entity_server::taken_pass_tests::after_take(self);
         let mut dead = Vec::new();
-        let mut corpses = Vec::new();
         let mut died = std::mem::take(&mut self.server.died);
         let mut ticked = std::mem::take(&mut self.common.creatures.ticked);
         ticked.clear();
@@ -5646,7 +6000,6 @@ impl crate::game::ServerGame<'_> {
             restocks: &mut restocks,
             pushes: &mut pending.pushes,
             dead: &mut dead,
-            corpses: &mut corpses,
             died: &mut died,
             ticked: &mut ticked,
             guests: &mut guests,
@@ -5730,14 +6083,11 @@ impl crate::game::ServerGame<'_> {
             std::panic::resume_unwind(payload);
         }
         stand_result?;
-        self.native_tick_post_batch(round);
         self.tick_armor_stands_before(sunrise_sim::join_seq::JoinSeq::MAX)?;
         // ... and entity event 60 goes out as it is: the poof.
         // 🤖 Agent: the split follows the poof, as `LivingEntity.tickDeath`
         // broadcasts event 60 before it calls `remove`.
-        for (id, at, width, height, split) in gone {
-            self.finish_mob_death_animation(id, at, width, height, split);
-        }
+        self.emit_death_poofs(gone);
         laps.lap("creature_retain");
         self.sync_riders();
         self.tick_skeleton_traps();
@@ -5747,16 +6097,6 @@ impl crate::game::ServerGame<'_> {
         for m in dead {
             self.mob_die(&m);
         }
-        for mut m in corpses {
-            let names: Vec<&'static str> = m
-                .extra
-                .effects
-                .iter()
-                .map(|e| e.id.trim_start_matches("minecraft:"))
-                .collect();
-            let bounds = m.bounds();
-            self.effects_on_death(&names, bounds, m.silent, Some(m.id), Some(&mut m.random));
-        }
         self.deliver_pending_mob_actions(level_id)?;
         self.finish_creature_entities(&mut laps, &primable)
     }
@@ -5765,7 +6105,7 @@ impl crate::game::ServerGame<'_> {
         // Hurts dealt since the last creature tick (explosions, commands, the
         // systems after it) teleport an enderman before it ticks, not in its AI step.
         self.settle_hurt_teleports()?;
-        self.server.attack_ticks = self.server.attack_ticks.saturating_add(1);
+        self.server.attack_ticks = self.server.attack_ticks.wrapping_add(1);
         self.refresh_gear_knockback_resistance();
         self.tick_leads();
         // Vanilla's spawning and raids run before ChunkMap.tick.
@@ -5785,6 +6125,8 @@ impl crate::game::ServerGame<'_> {
         projectiles: sunrise_sim::join_seq::JoinList<Projectile, false>,
         tell: impl FnOnce(&mut Self),
     ) -> (sunrise_sim::join_seq::JoinList<Projectile, false>, bool) {
+        #[cfg(any(test, feature = "test-support"))]
+        PROJECTILE_HANDBACKS.with(|count| count.set(count.get() + 1));
         let no_spawns = self.common.creatures.projectiles.is_empty();
         self.common.creatures.projectiles.restore(
             projectiles,
@@ -5805,26 +6147,9 @@ impl crate::game::ServerGame<'_> {
         // tick's entity pass (a mob's shot) first ticks on the next one; a
         // player's or a dispenser's, which join before the pass, tick now.
         let through = self.server.ticked_entities_through;
-        // EntityTickEvent.Pre for the projectiles about to tick, once for the family before the
-        // loop holds them, and the Post once the hits of their ticks have landed. A projectile
-        // of a type a mod named is told alone, right before and right after its own tick.
         let mut round = self.native_tick_round();
-        let mut alone_any = false;
-        if round.listening() {
-            for p in self.common.creatures.projectiles.iter() {
-                let at = p.position;
-                if p.id <= through && ticking(at.x.floor() as i32, at.z.floor() as i32) {
-                    if round.alone_kind(p.entity_type()) {
-                        alone_any = true;
-                    } else {
-                        round.add(p.id, super::native_ticks::TickKind::Fixed(p.entity_type()));
-                    }
-                }
-            }
-            self.native_tick_pre_batch(&mut round);
-        }
-        // The impacts the mods may cancel (`native_projectile_impact`), on a server.
-        let hear = self.native_hears_impacts();
+        let told = round.pre() || round.post();
+        let mut hear = self.native_hears_impacts();
         // ThrownEnderpearl.tick: a dead player's pearl is discarded in
         // place of its tick while ender_pearls_vanish_on_death is on.
         let vanish = self
@@ -5832,12 +6157,12 @@ impl crate::game::ServerGame<'_> {
             .ui
             .rules
             .bool_at(sunrise_game_data::gamerules::vanilla::ENDER_PEARLS_VANISH_ON_DEATH);
-        if !hear && !alone_any {
-            return self.tick_projectiles_live(through, ticking, vanish, round);
+        if !hear && !told {
+            return self.tick_projectiles_live(through, ticking, vanish);
         }
         let mut projectiles = self.common.creatures.projectiles.lift();
-        // The tick's own projectiles: what joins during it (a hook's spawn) ticks from the next.
-        let last_ticked_join = projectiles.iter().map(|p| p.join).max();
+        let mut ticked = sunrise_level::fast_hash::FxHashSet::default();
+        let mut swept = sunrise_level::fast_hash::FxHashSet::default();
         let mut hits = Vec::new();
         let mut arrow_events = Vec::new();
         let mut shoot_events = Vec::new();
@@ -5851,10 +6176,7 @@ impl crate::game::ServerGame<'_> {
         let mut scratch = std::mem::take(&mut self.common.creatures.arrow_hit_scratch);
         let mut impacts: Vec<Impact> = Vec::new();
         let mut vehicle_winds = self.vehicle_winds();
-        // A projectile told alone hands the list back for its hooks, so their handles read the
-        // live rows. What that needs is made only when a mod named a projectile type this tick
-        // (`ProjectileHandBack`): with none, the loop is the family's own.
-        let mut hand_back = alone_any.then(|| ProjectileHandBack::new(&projectiles));
+        let mut hand_back = told.then(|| ProjectileHandBack::new(&projectiles));
         for slot in 0..projectiles.len() {
             let i = match hand_back.as_deref() {
                 None => slot,
@@ -5875,12 +6197,14 @@ impl crate::game::ServerGame<'_> {
                 projectiles.update(i, |p| p.previous = at);
                 continue;
             }
-            // Of a type a mod named: its own Pre, with the list handed back.
             let i = match hand_back.as_deref_mut() {
                 None => i,
                 Some(back) => {
                     let (id, kind) = (projectiles[i].id, projectiles[i].entity_type());
-                    if !round.alone_kind(kind) {
+                    if !round.pre() {
+                        if round.post() {
+                            back.told = Some((id, kind));
+                        }
                         i
                     } else {
                         let mut ticks = true;
@@ -5888,12 +6212,15 @@ impl crate::game::ServerGame<'_> {
                         (projectiles, same) = self.projectiles_told(projectiles, |game| {
                             ticks = game.native_tick_pre_one(&mut round, id, kind);
                         });
+                        hear = self.native_hears_impacts();
                         if !same {
                             back.follow(&projectiles, &mut keep_flags, &mut impacts);
                         }
                         match back.place(slot) {
                             Some(at) if ticks => {
-                                back.told = Some((id, kind));
+                                if round.post() {
+                                    back.told = Some((id, kind));
+                                }
                                 at
                             }
                             _ => continue,
@@ -5901,10 +6228,10 @@ impl crate::game::ServerGame<'_> {
                     }
                 }
             };
-            // A mod canceled its tick: it stays as it is.
             if round.canceled(projectiles[i].id) {
                 continue;
             }
+            ticked.insert(projectiles[i].id);
             let section_from = projectiles[i].position;
             let skip_wind = matches!(
                 projectiles[i].kind,
@@ -5975,7 +6302,7 @@ impl crate::game::ServerGame<'_> {
                     let (keep, hit) = if p.arrow.is_some() {
                         let rain = self.arrow_rain();
                         let scene = self.arrow_scene(&rain);
-                        sunrise_sim::arrows::tick_to_block_contact_live(
+                        sunrise_sim::entities::arrows::tick_to_block_contact_live(
                             p,
                             &scene,
                             &live,
@@ -6034,7 +6361,7 @@ impl crate::game::ServerGame<'_> {
                     let mut shot_after_hit = false;
                     if let Some(a) = p.arrow.as_mut() {
                         for event in a.events.drain(..) {
-                            if event == sunrise_sim::arrows::ArrowEvent::ShootEvent {
+                            if event == sunrise_sim::entities::arrows::ArrowEvent::ShootEvent {
                                 if matches!(hit, Hit::Block { .. }) {
                                     shot_after_hit = true;
                                 } else {
@@ -6054,6 +6381,7 @@ impl crate::game::ServerGame<'_> {
                         && keep
                         && let Some(hit) = self.wind_ceiling_contact(p)
                     {
+                        swept.insert(p.id);
                         hits.push(ProjectileHit {
                             projectile: p.clone(),
                             hit,
@@ -6102,15 +6430,50 @@ impl crate::game::ServerGame<'_> {
                     section_from,
                     keep_flags[i],
                 );
-            // Its own Post, right after its tick, also when it ended in it. Its block effects and
-            // hits land after the family's ticks, as they do for every projectile.
+            hear = self.native_hears_impacts();
             if let Some(back) = hand_back.as_deref_mut()
                 && let Some((id, kind)) = back.told.take()
             {
+                if ticked.contains(&id)
+                    && !swept.contains(&id)
+                    && let Some(pos) = projectiles.iter().position(|p| p.id == id)
+                {
+                    swept.insert(id);
+                    let mut destroyed = false;
+                    let mut swept_row = None;
+                    projectiles.update_with_rest(pos, |shot, before, after| {
+                        let sources = |src_id| {
+                            before
+                                .iter()
+                                .chain(after)
+                                .find(|p| p.id == src_id && crate::game::entity_server::shot_alive(p))
+                                .map(|p| {
+                                    (
+                                        crate::game::commands::Target::Projectile(src_id),
+                                        p.position.components(),
+                                    )
+                                })
+                        };
+                        self.sweep_projectile_inside(shot, Some(&sources));
+                        destroyed = shot.destroyed;
+                        swept_row = Some(shot.clone());
+                    });
+                    if let Some(row) = swept_row {
+                        for h in &mut hits {
+                            if h.projectile.join == row.join {
+                                h.projectile.clone_from(&row);
+                            }
+                        }
+                    }
+                    if destroyed {
+                        keep_flags[pos] = false;
+                    }
+                }
                 let same;
                 (projectiles, same) = self.projectiles_told(projectiles, |game| {
                     game.native_tick_post_one(&round, id, kind);
                 });
+                hear = self.native_hears_impacts();
                 if !same {
                     back.follow(&projectiles, &mut keep_flags, &mut impacts);
                 }
@@ -6118,7 +6481,104 @@ impl crate::game::ServerGame<'_> {
         }
         self.common.creatures.pickable_projectile_targets = winds;
         self.common.creatures.arrow_hit_scratch = scratch;
-        // Track followers so bounced/deflected projectiles reinsert in tick order.
+        for impact in &mut impacts {
+            if let Some(i) = impact.index {
+                impact.keep = keep_flags[i];
+                if !projectiles[i].destroyed {
+                    keep_flags[i] = true;
+                }
+            }
+        }
+        let mut flags = keep_flags.into_iter();
+        projectiles.retain(|_| flags.next().unwrap());
+        for i in 0..projectiles.len() {
+            let id = projectiles[i].id;
+            if !ticked.contains(&id)
+                || swept.contains(&id)
+                || hear && self.projectile_removal_pending(id)
+            {
+                continue;
+            }
+            swept.insert(id);
+            projectiles.update_with_rest(i, |shot, before, after| {
+                let sources = |src_id| {
+                    before
+                        .iter()
+                        .chain(after)
+                        .find(|p| p.id == src_id && crate::game::entity_server::shot_alive(p))
+                        .map(|p| {
+                            (
+                                crate::game::commands::Target::Projectile(src_id),
+                                p.position.components(),
+                            )
+                        })
+                };
+                self.sweep_projectile_inside(shot, Some(&sources));
+            });
+        }
+        for h in &mut hits {
+            let shot = &mut h.projectile;
+            if hear && self.projectile_removal_pending(shot.id) {
+                continue;
+            }
+            if swept.contains(&shot.id) {
+                if let Some(row) = projectiles.iter().find(|p| p.join == shot.join) {
+                    shot.clone_from(row);
+                }
+                continue;
+            }
+            if shot.arrow.is_some() {
+                continue;
+            }
+            let sources = |src_id| {
+                projectiles
+                    .iter()
+                    .find(|p| p.id == src_id && crate::game::entity_server::shot_alive(p))
+                    .map(|p| {
+                        (
+                            crate::game::commands::Target::Projectile(src_id),
+                            p.position.components(),
+                        )
+                    })
+            };
+            self.sweep_projectile_inside(shot, Some(&sources));
+        }
+        let mut destroyed_ids = sunrise_level::fast_hash::FxHashSet::default();
+        for p in projectiles.iter() {
+            if p.destroyed {
+                destroyed_ids.insert(p.id);
+            }
+        }
+        for h in &hits {
+            if h.projectile.destroyed {
+                destroyed_ids.insert(h.projectile.id);
+            }
+        }
+        if !destroyed_ids.is_empty() {
+            let mut hit_remap: Vec<Option<usize>> = Vec::with_capacity(hits.len());
+            let mut next_slot = 0usize;
+            hits.retain(|h| {
+                if h.projectile.destroyed || destroyed_ids.contains(&h.projectile.id) {
+                    hit_remap.push(None);
+                    false
+                } else {
+                    hit_remap.push(Some(next_slot));
+                    next_slot += 1;
+                    true
+                }
+            });
+            impacts.retain_mut(|impact| {
+                if destroyed_ids.contains(&impact.before.id) {
+                    return false;
+                }
+                let Some(slot) = hit_remap.get(impact.hit_slot).copied().flatten() else {
+                    return false;
+                };
+                impact.hit_slot = slot;
+                true
+            });
+            projectiles.retain(|p| !p.destroyed && !destroyed_ids.contains(&p.id));
+        }
         self.common.creatures.bounced_followers.clear();
         for ProjectileHit {
             projectile: p, hit, ..
@@ -6128,25 +6588,16 @@ impl crate::game::ServerGame<'_> {
                 && let Some(i) = projectiles.iter().position(|q| q.id == p.id)
             {
                 let followers = (i + 1..projectiles.len())
-                    .filter(|&j| keep_flags[j])
+                    .filter(|&j| {
+                        impacts
+                            .iter()
+                            .all(|imp| imp.before.join != projectiles[j].join || imp.keep)
+                    })
                     .map(|j| projectiles[j].id)
                     .collect();
-                self.common
-                    .creatures
-                    .bounced_followers
-                    .push((p.id, followers));
+                self.common.creatures.bounced_followers.push((p.id, followers));
             }
         }
-        // Do not retire an impact owner just because vanilla would consume it. Its live
-        // row is what the event resolves and what transaction commit will remove.
-        for impact in &mut impacts {
-            if let Some(i) = impact.index {
-                impact.keep = keep_flags[i];
-                keep_flags[i] = true;
-            }
-        }
-        let mut flags = keep_flags.into_iter();
-        projectiles.retain(|_| flags.next().unwrap());
         let hears_impact = !impacts.is_empty();
         let scope = self.storage_scope_guard(hears_impact);
         let game = &mut *scope.game;
@@ -6193,19 +6644,7 @@ impl crate::game::ServerGame<'_> {
                 game.server_arrow_event(at, event);
             }
         }
-        // `Entity.applyEffectsFromBlocks` sweeps the original cohort by join identity:
-        // settlement can remove rows or append hook spawns. Contacts need the lent
-        // level here, after the read-only borrow, each still in this batch's tick.
-        for i in 0..projectiles.len() {
-            if last_ticked_join.is_none_or(|last| projectiles[i].join > last)
-                || hears_impact && game.projectile_removal_pending(projectiles[i].id)
-            {
-                continue;
-            }
-            projectiles.update(i, |p| game.sweep_projectile_inside(p));
-            projectiles.update(i, |p| game.lava_mark_hurt(p));
-        }
-        game.creatures.projectiles.restore(
+        game.common.creatures.projectiles.restore(
             projectiles,
             sunrise_sim::join_seq::RestoreOrder::SpawnsFirst,
         );
@@ -6215,12 +6654,10 @@ impl crate::game::ServerGame<'_> {
         self.common.creatures.bounced_followers.clear();
         result?;
         self.flush_lan_explosions();
-        let flushed = self.flush_wind_bursts();
-        self.native_tick_post_batch(round);
-        flushed
+        self.flush_wind_bursts()
     }
     pub fn touch_arrows(&mut self) {
-        use sunrise_sim::arrows::Touch;
+        use sunrise_sim::entities::arrows::Touch;
         let Some(p) = self.common.player.as_ref() else {
             return;
         };
@@ -6346,8 +6783,15 @@ impl crate::game::ServerGame<'_> {
         };
         // SpawnEggItem.spawnMob: `EntityType.create` finalizes the mob, then
         // `PostSpawnProcessor` puts the egg's components on it.
+        let variants = self
+            .server
+            .world_tables
+            .0
+            .as_ref()
+            .map_or_else(|| self.common.res.variants(), |tables| tables.variants.as_ref());
         if let Some(m) = self.common.mobs.iter_mut().find(|m| m.id == id) {
             sunrise_sim::entity_nbt::apply_item_components(m, stack);
+            sunrise_sim::entity_nbt::apply_item_variant_components(m, stack, variants);
         }
         self.apply_spawn_egg_entity_data(id, &data);
         self.post_block_game_event("minecraft:entity_place", p, Some(Who::Player), None);
@@ -6397,9 +6841,9 @@ impl crate::game::ServerGame<'_> {
     pub(in crate::game) fn server_arrow_event(
         &mut self,
         at: Vec3,
-        event: sunrise_sim::arrows::ArrowEvent,
+        event: sunrise_sim::entities::arrows::ArrowEvent,
     ) {
-        use sunrise_sim::arrows::{ArrowEvent, BlockReaction};
+        use sunrise_sim::entities::arrows::{ArrowEvent, BlockReaction};
         match event {
             ArrowEvent::Particle { .. } => {}
             ArrowEvent::PotionPuff { id, .. } => {
@@ -6446,7 +6890,7 @@ impl crate::game::ServerGame<'_> {
     pub fn arrow_scene<'s>(
         &'s self,
         rain: &'s dyn Fn(BlockPos) -> bool,
-    ) -> sunrise_sim::arrows::ArrowScene<'s, 's> {
+    ) -> sunrise_sim::entities::arrows::ArrowScene<'s, 's> {
         self.common.arrow_scene_with(
             rain,
             self.grief_hooked()
@@ -6657,7 +7101,7 @@ impl crate::game::ServerGame<'_> {
     pub(in crate::game) fn insert_spawned_mob(&mut self, mob: Mob) -> Option<u32> {
         let id = mob.id;
         self.common.mobs.push(mob);
-        self.native_mobs_joined(self.common.mobs.len() - 1, false);
+        self.admit_new_mobs(self.common.mobs.len() - 1);
         if !self.common.mobs.iter().any(|m| m.id == id) {
             return None;
         }
@@ -6835,12 +7279,6 @@ impl crate::game::ServerGame<'_> {
             self.lan_entity_event(id as i32, event, at);
         }
     }
-    /// Finalize a converted frog or witch before it joins the level.
-    pub(in crate::game) fn finalize_converted(&mut self, mob: &mut Mob) {
-        // A mod that stops a conversion's finalization leaves the mob as converted.
-        self.finalize_with(mob, SpawnReason::Conversion, None);
-        mob.persistent = true;
-    }
     /// `Mob.convertTo(type, ConversionParams.single(...))`: a new mob of
     /// `kind`, made without spawn finalization unless its conversion asks, takes
     /// its place with what `conversion::single` carries over, and the old
@@ -6898,14 +7336,15 @@ impl crate::game::ServerGame<'_> {
         &mut self,
         mob: &mut Mob,
         reason: SpawnReason,
-        spawner: Option<mod_api::SpawnSource>,
-    ) -> Finalized {
+        spawner: Option<mod_api::Spawner>,
+    ) -> bool {
+        self.flush_unjoined_mob_parts(mob);
         let mut group = None;
         let (outcome, difficulty) = self.finalize_spawn_event(mob, reason, spawner, &mut group);
-        if outcome == Finalized::Done {
+        if !outcome.skip_initialization {
             self.finalize_grouped(mob, &difficulty, reason, group);
         }
-        outcome
+        !outcome.veto_admission
     }
     /// `Mob.finalizeSpawn`'s event, the half listeners own: they hear the
     /// spawn, cancel it, take it over, set its difficulty, edit the mob
@@ -6916,51 +7355,53 @@ impl crate::game::ServerGame<'_> {
         &self,
         mob: &mut Mob,
         reason: SpawnReason,
-        spawner: Option<mod_api::SpawnSource>,
+        spawner: Option<mod_api::Spawner>,
         group: &mut Option<Group>,
-    ) -> (Finalized, spawning::LocalDifficulty) {
+    ) -> (
+        sunrise_sim::mobs::finalize::SpawnEvent,
+        spawning::LocalDifficulty,
+    ) {
         let at = [mob.position.x, mob.position.y, mob.position.z];
         let difficulty = self.common.local_difficulty(at);
-        if !mod_api::__private::listened(mod_api::HookId::FinalizeSpawn) {
-            return (Finalized::Done, difficulty);
-        }
-        let kind = mob.kind.id.clone();
-        self.finalize_spawn_lent(&kind, at, reason, spawner, difficulty, Some(mob), group)
+        self.finalize_spawn_with_difficulty(mob, reason, spawner, difficulty, group)
     }
-    /// `Mob.getMaxSpawnClusterSize` as the entity parts of the finalized `mob`'s type answer it
-    /// (`EntityPart::spawn_cluster_size`), asked with `mob` lent as it stands before it joins the
-    /// level: the first part in dispatch order to answer wins, and none answering leaves vanilla's
-    /// `vanilla` to the spawner. A type with no part costs one table lookup. Server-side.
-    pub(in crate::game) fn spawn_cluster_size(
+    pub(in crate::game) fn finalize_spawn_with_difficulty(
         &self,
         mob: &mut Mob,
         reason: SpawnReason,
-        spawner: Option<mod_api::SpawnSource>,
-        vanilla: u32,
-    ) -> Option<u32> {
-        if !mod_api::__private::has_entity_parts() {
-            return None;
+        spawner: Option<mod_api::Spawner>,
+        difficulty: spawning::LocalDifficulty,
+        group: &mut Option<Group>,
+    ) -> (sunrise_sim::mobs::finalize::SpawnEvent, spawning::LocalDifficulty) {
+        if !mod_api::__private::listened(mod_api::HookId::FinalizeSpawn) {
+            return (Default::default(), difficulty);
         }
-        let parts = mod_api::__private::entity_parts();
+        let at = mob.position.components();
         let kind = mob.kind.id.clone();
-        let list = parts.entity_parts(&kind);
-        if list.is_empty() {
-            return None;
+        self.finalize_spawn_lent(&kind, at, reason, spawner, difficulty, Some(mob), group)
+    }
+
+    /// Query the composed cluster size after the mob joins.
+    pub(in crate::game) fn spawn_cluster_size(&self, mob: mod_api::MobRef, kind: &str, vanilla: i32) -> i32 {
+        if !mod_api::__private::has_scoped_hook(mod_api::HookId::SpawnClusterSize)
+            || !mod_api::__private::entity_part_hooked(
+                mod_api::HookId::SpawnClusterSize,
+                "spawn_cluster_size",
+                kind,
+            )
+        {
+            return vanilla;
         }
-        let at = [mob.position.x, mob.position.y, mob.position.z];
-        self.lend_unspawned(&kind, at, Some(mob), |lent, _| {
-            list.iter().find_map(|attached| {
-                let _guard =
-                    mod_api::content::crash::enter_native_mod(mod_api::content::crash::ModCall {
-                        id: attached.mod_id(),
-                        hook: "spawn_cluster_size",
-                        part: Some(attached.type_name()),
-                    });
-                attached
-                    .part()
-                    .spawn_cluster_size(self, lent, reason, spawner, vanilla)
-            })
-        })
+        let mut size = vanilla;
+        self.native_spawn_cluster_size(
+            mod_api::__private::SpawnClusterSizeCall {
+                mob,
+                vanilla,
+                size: &mut size,
+            },
+            kind,
+        );
+        size
     }
     /// The shared finalization decision for a mob type the game keeps apart
     /// from mobs (the dragon), before the entity joins the level: its lend has
@@ -6970,11 +7411,14 @@ impl crate::game::ServerGame<'_> {
         kind: &str,
         at: [f64; 3],
         reason: SpawnReason,
-        spawner: Option<mod_api::SpawnSource>,
-    ) -> (Finalized, spawning::LocalDifficulty) {
+        spawner: Option<mod_api::Spawner>,
+    ) -> (
+        sunrise_sim::mobs::finalize::SpawnEvent,
+        spawning::LocalDifficulty,
+    ) {
         let difficulty = self.common.local_difficulty(at);
         if !mod_api::__private::listened(mod_api::HookId::FinalizeSpawn) {
-            return (Finalized::Done, difficulty);
+            return (Default::default(), difficulty);
         }
         self.finalize_spawn_lent(kind, at, reason, spawner, difficulty, None, &mut None)
     }
@@ -6986,46 +7430,54 @@ impl crate::game::ServerGame<'_> {
         kind: &str,
         at: [f64; 3],
         reason: SpawnReason,
-        spawner: Option<mod_api::SpawnSource>,
+        spawner: Option<mod_api::Spawner>,
         difficulty: spawning::LocalDifficulty,
         mob: Option<&mut Mob>,
         group: &mut Option<Group>,
-    ) -> (Finalized, spawning::LocalDifficulty) {
+    ) -> (
+        sunrise_sim::mobs::finalize::SpawnEvent,
+        spawning::LocalDifficulty,
+    ) {
         let mut heard = mod_api::Difficulty::from(difficulty);
-        let (mut spawn_cancelled, mut skip) = (false, false);
+        let (mut spawn_cancelled, mut skip_finalize) = (false, false);
         let given = group.as_ref().and_then(|g| {
-            crate::game::native_unspawned_mob::native_spawn_group(g, self.lend_epoch())
+            crate::game::native_unspawned_mob::native_spawn_group(
+                g,
+                self.lend_epoch(),
+                self.world_variants(),
+            )
         });
         let mut native_group = given.clone();
-        self.lend_unspawned(kind, at, mob, |mob, edits| {
-            self.native_finalize_spawn(mod_api::__private::FinalizeSpawnCall {
-                dimension: self.common.dim.id(),
-                kind,
-                reason,
-                pos: at,
-                spawner,
-                difficulty: &mut heard,
-                spawn_cancelled: &mut spawn_cancelled,
-                mob,
-                edits,
-                group: &mut native_group,
-                cancel: &mut skip,
-            });
+        let mut borrowed = self.borrowed_unspawned_mob_mut(kind, at, mob);
+        self.native_finalize_spawn(mod_api::__private::FinalizeSpawnCall {
+            dimension: self.common.dim.id(),
+            kind,
+            reason,
+            pos: at,
+            spawner,
+            difficulty: &mut heard,
+            spawn_cancelled: &mut spawn_cancelled,
+            mob: mod_api::UnspawnedMobEditor::new(&mut borrowed),
+            group: &mut native_group,
+            cancel: &mut skip_finalize,
         });
         if native_group != given {
             *group = native_group
                 .as_ref()
-                .and_then(crate::game::native_unspawned_mob::spawn_group);
+                .and_then(|g| crate::game::native_unspawned_mob::spawn_group(g, self.world_variants()));
         }
-        if spawn_cancelled {
-            return (Finalized::Cancelled, difficulty);
-        }
-        if skip {
-            return (Finalized::Skipped, difficulty);
-        }
-        (Finalized::Done, heard.into())
+        (
+            sunrise_sim::mobs::finalize::SpawnEvent {
+                skip_initialization: skip_finalize,
+                veto_admission: spawn_cancelled,
+            },
+            if skip_finalize {
+                difficulty
+            } else {
+                heard.into()
+            },
+        )
     }
-
     /// Generation's animals for the chunks generated since, once lit: chunk
     /// generation places them whether the level ticks or not.
     pub(in crate::game) fn spawn_fresh_chunks(&mut self) {
@@ -7098,20 +7550,9 @@ impl crate::game::ServerGame<'_> {
         }
     }
 
-    /// `LivingEntity.tickDeath` broadcasts the poof before `remove`, which
-    /// also splits a large cube before it reaches `Entity.setRemoved`.
-    pub(in crate::game) fn finish_mob_death_animation(
-        &mut self,
-        id: u32,
-        at: Vec3,
-        _width: f64,
-        _height: f64,
-        split: Option<Mob>,
-    ) {
-        let at = at.components();
-        self.lan_entity_event(id as i32, 60, at);
-        if let Some(mob) = split {
-            self.split_dead_cube(mob);
+    fn emit_death_poofs(&mut self, gone: impl IntoIterator<Item = (u32, Vec3, f64, f64)>) {
+        for (id, at, _, _) in gone {
+            self.lan_entity_event(id as i32, 60, at.components());
         }
     }
 
@@ -7125,6 +7566,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// `AbstractCubeMob.remove`: split only as the dead body is removed.
+    #[cfg(any(test, feature = "test-support"))]
     pub fn split_dead_cube(&mut self, mut dying: Mob) {
         if matches!(
             dying.species(),
@@ -7236,7 +7678,7 @@ impl crate::game::ServerGame<'_> {
         &mut self,
         dying: &DyingDrops<'_>,
         stacks: Vec<(ItemStack, [f64; 3], i32)>,
-        pickup_delay: u32,
+        pickup_delay: i32,
         mut velocity: impl FnMut(&mut Self) -> Option<[f64; 3]>,
     ) {
         let Some(source) = &dying.source else {
@@ -7522,37 +7964,21 @@ impl crate::game::ServerGame<'_> {
         }
     }
 
-    pub(in crate::game) fn finish_live_breeding(
-        &mut self,
-        p: &Mob,
-        partner: u32,
-        child: Mob,
-        experience: sunrise_sim::mobs::BreedExperience,
-    ) -> Option<u32> {
-        let parent = p.id;
-        let order = if sunrise_sim::mobs::orb_after_child(p.species()) {
-            OrbOrder::AfterChild
-        } else {
-            OrbOrder::BeforeChild
-        };
-        self.finalize_breeding(p, partner, Some(&child), order);
-        let at = [p.position.x, p.position.y, p.position.z];
-        match order {
-            OrbOrder::AfterChild => {
-                let joined = self.insert_spawned_mob(child);
-                self.mob_event_particles(parent, 18);
-                self.breeding_orb(parent, at, experience);
-                joined
-            }
-            OrbOrder::BeforeChild => {
-                self.breeding_orb(parent, at, experience);
-                self.insert_spawned_mob(child)
-            }
-        }
-    }
+
     /// A status effect from a mob, arrow or splash potion (`addEffect`).
     pub fn give_player_effect(&mut self, effect: &'static str, ticks: i32, amplifier: i32) {
         self.give_mob_effect(effect, ticks, amplifier, false);
+    }
+
+    /// [`Self::give_player_effect`] with an explicit causing entity for `MobEffectEvent.Added`.
+    pub(in crate::game) fn give_player_effect_from(
+        &mut self,
+        effect: &'static str,
+        ticks: i32,
+        amplifier: i32,
+        source: Option<mod_api::EntityRef>,
+    ) {
+        self.give_mob_effect_from(effect, ticks, amplifier, false, source);
     }
     /// A mob's effect on the player. Creative and spectator players shrug off
     /// the damaging effects here, but the nautilus's ambient Breath is plain
@@ -7564,9 +7990,20 @@ impl crate::game::ServerGame<'_> {
         amplifier: i32,
         ambient: bool,
     ) {
+        self.give_mob_effect_from(effect, ticks, amplifier, ambient, None);
+    }
+
+    fn give_mob_effect_from(
+        &mut self,
+        effect: &'static str,
+        ticks: i32,
+        amplifier: i32,
+        ambient: bool,
+        source: Option<mod_api::EntityRef>,
+    ) {
         let immune = self.common.creative || self.common.spectator();
         if let Some(instance) = mob_effect_instance(effect, ticks, amplifier, ambient, immune) {
-            self.apply_player_effect(instance);
+            self.add_player_effect_from(instance, source);
         }
     }
     /// `WitherRoseBlock.entityInside` for the player: on a server level that
@@ -7586,7 +8023,6 @@ impl crate::game::ServerGame<'_> {
         through: u32,
         ticking: impl Fn(i32, i32) -> bool,
         vanish: bool,
-        round: sunrise_gameplay_common::game::native_ticks::TickRound,
     ) -> Result<()> {
         let cohort: Vec<JoinSeq> = self
             .common
@@ -7600,9 +8036,6 @@ impl crate::game::ServerGame<'_> {
             let Some(pos) = self.common.creatures.projectiles.locate(join) else {
                 continue;
             };
-            if round.canceled(self.common.creatures.projectiles[pos].id) {
-                continue;
-            }
             let at = self.common.creatures.projectiles[pos].position;
             if !ticking(at.x.floor() as i32, at.z.floor() as i32) {
                 self.common
@@ -7661,7 +8094,7 @@ impl crate::game::ServerGame<'_> {
                 let (keep, hit) = if p.arrow.is_some() {
                     let rain = self.arrow_rain();
                     let scene = self.arrow_scene(&rain);
-                    sunrise_sim::arrows::tick_to_block_contact_live(
+                    sunrise_sim::entities::arrows::tick_to_block_contact_live(
                         &mut p,
                         &scene,
                         &live,
@@ -7744,7 +8177,7 @@ impl crate::game::ServerGame<'_> {
             let mut pending_arrow_events = Vec::new();
             if let Some(a) = p.arrow.as_mut() {
                 for event in a.events.drain(..) {
-                    if event == sunrise_sim::arrows::ArrowEvent::ShootEvent {
+                    if event == sunrise_sim::entities::arrows::ArrowEvent::ShootEvent {
                         if matches!(hit, Hit::Block { .. }) {
                             shot_after_hit = true;
                         } else {
@@ -7774,6 +8207,13 @@ impl crate::game::ServerGame<'_> {
                 self.apply_projectile_hit(&p, ceiling)?;
                 continue;
             }
+            if keep || hit != Hit::None && p.arrow.is_none() {
+                self.sweep_projectile_inside(&mut p, None);
+                if p.destroyed {
+                    self.common.creatures.projectiles.retire_extracted(pid, join);
+                    continue;
+                }
+            }
             if matches!(hit, Hit::Entity { .. }) && (!keep || p.arrow.is_some()) {
                 let followers: Vec<u32> = self
                     .common
@@ -7789,8 +8229,6 @@ impl crate::game::ServerGame<'_> {
                     .push((pid, followers));
             }
             if keep {
-                self.sweep_projectile_inside(&mut p);
-                self.lava_mark_hurt(&mut p);
                 let to = p.position;
                 let place = pos.min(self.common.creatures.projectiles.len());
                 if hit == Hit::None {
@@ -7843,9 +8281,7 @@ impl crate::game::ServerGame<'_> {
             result?;
         }
         self.flush_lan_explosions();
-        let flushed = self.flush_wind_bursts();
-        self.native_tick_post_batch(round);
-        flushed
+        self.flush_wind_bursts()
     }
 
     pub(in crate::game) fn apply_projectile_hits(
@@ -7883,8 +8319,7 @@ impl crate::game::ServerGame<'_> {
                         if let Some(ceiling) = self.wind_ceiling_contact(&p) {
                             Some((p, ceiling))
                         } else {
-                            self.sweep_projectile_inside(&mut p);
-                            self.lava_mark_hurt(&mut p);
+                            self.sweep_projectile_inside(&mut p, None);
                             let (pid, to) = (p.id, p.position);
                             self.common.reinsert_continuing_projectile(p);
                             self.entity_section_step(pid, from.components(), to.components());
@@ -8011,15 +8446,41 @@ impl crate::game::ServerGame<'_> {
     /// `EnchantmentHelper.doPostAttackEffects` after the player's shot `p`
     /// (its `direct` entity, a hit of `damage_type`) hurt the mob `who`: the
     /// victim's own post-attack enchantments answer the player (Thorns).
-    pub(in crate::game) fn shot_post_attack(
+    pub(in crate::game) fn shot_post_attack(&mut self, p: &Projectile, who: Who, damage_type: &str) {
+        let attack = self.current_attack();
+        let (victim, kind) = match who {
+            Who::Player => (self.own_entity_id() as u32, "minecraft:player".into()),
+            Who::Mob(id) => {
+                let Some(target) = self.level_entity(id as i32) else {
+                    return;
+                };
+                (id, self.target_type(target))
+            }
+        };
+        self.shot_post_attack_against(p, victim, &kind, &attack, damage_type);
+    }
+
+    fn shot_post_attack_against(
         &mut self,
         p: &Projectile,
-        who: Who,
-        direct: &str,
+        victim: u32,
+        kind: &str,
+        attack: &Attack,
         damage_type: &str,
     ) {
-        if let Who::Mob(id) = who {
-            self.mob_post_attack(id, p.owner, Some(direct), Some(damage_type));
+        let source = attack.player_source(damage_type, attack.attacker);
+        let trident = matches!(p.kind, ProjectileKind::Trident);
+        let weapon = p.arrow.as_ref().and_then(|arrow| {
+            if trident {
+                Some(&arrow.pickup_item)
+            } else {
+                arrow.fired_from_weapon.as_ref()
+            }
+        });
+        if p.arrow.is_some() {
+            self.post_attack(victim, kind, attack, source, weapon, trident);
+        } else {
+            self.post_attack_from_hand(victim, kind, attack, source);
         }
     }
     /// `BellBlock.onProjectileHit`: a projectile that strikes the bell proper
@@ -8086,7 +8547,7 @@ impl crate::game::ServerGame<'_> {
                 | ProjectileKind::WindCharge
                 | ProjectileKind::BreezeWindCharge
         );
-        use sunrise_sim::arrows::OwnerLookup;
+        use sunrise_sim::entities::arrows::OwnerLookup;
         let shooter_may_break = match p.owner {
             Some(Who::Player) => self.common.mode != GameMode::Adventure,
             Some(Who::Mob(_)) => {
@@ -8164,9 +8625,9 @@ impl crate::game::ServerGame<'_> {
         };
         let (events, item) = (std::mem::take(&mut a.events), a.pickup_item.clone());
         for event in events {
-            if event == sunrise_sim::arrows::ArrowEvent::Drop {
+            if event == sunrise_sim::entities::arrows::ArrowEvent::Drop {
                 self.spawn_at_location(arrow.position, f64::from(0.1f32), item.clone());
-            } else if event == sunrise_sim::arrows::ArrowEvent::ShootEvent {
+            } else if event == sunrise_sim::entities::arrows::ArrowEvent::ShootEvent {
                 self.projectile_shoot_event(arrow.owner, arrow.guest, arrow.position.components());
             } else {
                 self.server_arrow_event(arrow.position, event);
@@ -8178,7 +8639,7 @@ impl crate::game::ServerGame<'_> {
     pub fn finish_arrow_hit(&mut self, mut arrow: Projectile, outcome: EntityHit) {
         let keep = {
             let rain = self.arrow_rain();
-            sunrise_sim::arrows::finish_entity_hit(&mut arrow, &self.arrow_scene(&rain), outcome)
+            sunrise_sim::entities::arrows::finish_entity_hit(&mut arrow, &self.arrow_scene(&rain), outcome)
         };
         self.flush_arrow_events(&mut arrow);
         if keep {
@@ -8304,8 +8765,16 @@ impl crate::game::ServerGame<'_> {
 
     /// A projectile's hit, landed in the attack of its owner.
     pub fn projectile_hit(&mut self, p: &Projectile, hit: Hit) -> Result<()> {
+        self.projectile_hit_deferring_player_arrow(p, hit, None)
+    }
+    pub(in crate::game) fn projectile_hit_deferring_player_arrow(
+        &mut self,
+        p: &Projectile,
+        hit: Hit,
+        deferred: Option<&mut Option<LandedPlayerArrow>>,
+    ) -> Result<()> {
         let attack = self.projectile_attack(p);
-        let result = self.with_attack(attack, |g| g.projectile_hit_landed(p, hit));
+        let result = self.with_attack(attack, |g| g.projectile_hit_landed(p, hit, deferred));
         self.settle_dealt_absorbed(p.owner == Some(Who::Player));
         result?;
         if let Hit::Entity {
@@ -8317,6 +8786,24 @@ impl crate::game::ServerGame<'_> {
         // The hit's hurt teleports an enderman or a shulker now (`hurtServer`).
         self.settle_hurt_teleports()
     }
+    pub(in crate::game) fn resume_guest_arrow_hit(&mut self, conn: u32, landed: LandedPlayerArrow) {
+        let LandedPlayerArrow {
+            victim,
+            attack,
+            arrow,
+        } = landed;
+        self.shot_post_attack_against(
+            &arrow,
+            victim,
+            "minecraft:player",
+            &attack,
+            "minecraft:arrow",
+        );
+        self.guest_hit_by(conn, |g| {
+            g.with_attack(attack, |g| g.arrow_post_hurt_effects(&arrow, Who::Player));
+        });
+    }
+
     /// `Snowball`/`ThrownEgg.onHit`: entity event 3 for the guests, before the
     /// projectile is discarded (the clients lose it when the tracker next runs).
     pub(in crate::game) fn thrown_break_event(&mut self, id: u32, at: [f64; 3]) {
@@ -8408,6 +8895,12 @@ impl crate::game::ServerGame<'_> {
         );
         let (species, variant, color) =
             (parent.species(), parent.extra.variant, parent.extra.color);
+        let (wolf_variant, pig_variant, cow_variant, chicken_variant) = (
+            parent.extra.wolf_variant,
+            parent.extra.pig_variant,
+            parent.extra.cow_variant,
+            parent.extra.chicken_variant,
+        );
         // `MushroomCow.getBreedOffspring(level, this)`: the egg's mate is the
         // parent itself, so the colour always rolls `nextInt(1024) == 0` to
         // flip, and every other roll spends the coin flip that can only pick
@@ -8436,6 +8929,10 @@ impl crate::game::ServerGame<'_> {
         };
         if let Some(child) = self.common.mobs.iter_mut().find(|m| m.id == id) {
             sunrise_sim::mobs::finalize::spawn_egg_offspring(child, species, variant, color);
+            child.extra.wolf_variant = wolf_variant;
+            child.extra.pig_variant = pig_variant;
+            child.extra.cow_variant = cow_variant;
+            child.extra.chicken_variant = chicken_variant;
         }
         // `Mob.checkAndHandleImportantInteractions` then calls
         // `onOffspringSpawnedFromEgg`: `Fox`'s makes the baby trust the player
@@ -8545,7 +9042,7 @@ impl crate::game::ServerGame<'_> {
     }
 }
 
-impl sunrise_sim::arrows::OwnerLookup for ServerGame<'_> {
+impl sunrise_sim::entities::arrows::OwnerLookup for ServerGame<'_> {
     fn non_player_entity(&self, uuid: [i32; 4]) -> bool {
         let found = self.target_by_uuid(sunrise_sim::lan::playerdata::ints_uuid(uuid));
         !matches!(
@@ -8581,8 +9078,6 @@ use sunrise_gameplay_common::game::GameGameExt1 as _;
 
 use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
 
-use sunrise_gameplay_common::game::entity_initialization_common::EntityInitializationCommonGameExt1 as _;
-
 use sunrise_gameplay_common::game::entity_sections::EntitySectionsGameExt1 as _;
 
 use sunrise_gameplay_common::game::game_mode_common::GameModeCommonGameExt1 as _;
@@ -8604,3 +9099,14 @@ use sunrise_gameplay_common::game::native_ticks::NativeTicksGameExt1 as _;
 use sunrise_gameplay_common::game::pick_ray::PickRayGameExt1 as _;
 
 use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;
+
+#[cfg(test)]
+mod projectile_block_effects_tests;
+
+#[cfg(any(test, feature = "test-support"))]
+thread_local! {
+    pub static PROJECTILE_HANDBACKS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+#[cfg(any(test, feature = "test-support"))]
+pub use borrowed_tick::BORROWED_MOB_YIELDS;

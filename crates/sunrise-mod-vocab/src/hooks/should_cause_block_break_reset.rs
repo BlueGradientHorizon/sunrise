@@ -14,7 +14,6 @@ pub trait Hooks {
     /// client alike). Only the `ItemPart`s attached to `stack`'s item are
     /// asked. Client-side.
     #[hook(
-        target = "sunrise_client_gameplay::game::native_hooks::should_cause_block_break_reset::ClientGame<'_>::native_should_cause_block_break_reset",
         receiver = "read",
         dispatch = "flat",
         side = "client",

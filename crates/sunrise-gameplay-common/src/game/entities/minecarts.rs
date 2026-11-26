@@ -479,6 +479,7 @@ pub fn container_keep(signal: i32, loot_pending: bool, in_water: bool) -> f64 {
     }
     f64::from(keep)
 }
+
 impl crate::game::CommonGame<'_> {
     /// `positionRider` for the mobs in minecarts: each sits on the cart's
     /// passenger attachment, less its own vehicle attachment.

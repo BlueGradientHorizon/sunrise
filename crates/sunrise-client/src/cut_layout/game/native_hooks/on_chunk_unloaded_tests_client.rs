@@ -73,7 +73,7 @@ fn each_mod_block_entity_of_an_unloading_chunk_is_told_once() {
         }
 
         // Closing the world, its chunks with it, tells nothing.
-        game.finish_server_save(false, None).unwrap();
+        game.finish_server_save(false, false).unwrap();
         game.world.chunks.clear();
         assert!(
             game.world.chunks.is_empty(),

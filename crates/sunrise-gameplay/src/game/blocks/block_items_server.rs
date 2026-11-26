@@ -59,6 +59,55 @@ impl ServerGame<'_> {
         }
     }
 
+    /// `BlockState.getCloneItemStack` at `pos` as the server answers the acting player: the
+    /// block's own stack, or a block Part's `clone_item_stack` answer in its place. With no
+    /// player acting, no Part is asked.
+    pub(in crate::game) fn acting_clone_stack(
+        &self,
+        pos: [i32; 3],
+        include_data: bool,
+    ) -> Option<ItemStack> {
+        let stack = self.clone_stack(pos, include_data);
+        let Some(player) = self.native_acting_player() else {
+            return stack;
+        };
+        let state = self.common.world.block(pos[0], pos[1], pos[2]);
+        let mut replacement = None;
+        self.native_clone_item_stack(
+            self.common.dim.level(),
+            sunrise_core::position::BlockPos::new(pos[0], pos[1], pos[2]),
+            state,
+            include_data,
+            player,
+            &mut replacement,
+        );
+        replacement.or(stack)
+    }
+
+    /// `PlayerRef::clone_item_stack`: [`Self::acting_clone_stack`] with `player` acting, in
+    /// the level in place. None on a client, for a stale or dead player, another level and an
+    /// unloaded position.
+    pub(in crate::game) fn player_clone_item_stack(
+        &mut self,
+        player: mod_api::PlayerRef,
+        level: mod_api::LevelRef,
+        pos: [i32; 3],
+        include_data: bool,
+    ) -> Option<ItemStack> {
+        if !self.common.is_logical_server()
+            || self.native_level_read_world(level).is_none()
+            || level.dimension() != self.common.dim.key()
+            || !self.common.world.is_loaded_at(pos[0], pos[1], pos[2])
+        {
+            return None;
+        }
+        let mut answer = None;
+        self.native_as_player_handle(player, |game| {
+            answer = game.acting_clone_stack(pos, include_data);
+        });
+        answer
+    }
+
     /// `BlockItem.updateCustomBlockEntityTag` and `updateBlockEntityComponents`
     /// for the block entity just placed at `pos` from `stack`; `game_master`:
     /// the placer can use game master blocks (a dispenser can't).
@@ -85,3 +134,5 @@ use sunrise_gameplay_common::game::native_hooks::SharedGameExt1 as _;
 use sunrise_gameplay_common::game::native_hooks::block_entity_load_additional::BlockEntityLoadAdditionalGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_hooks::block_entity_save_additional::BlockEntitySaveAdditionalGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;

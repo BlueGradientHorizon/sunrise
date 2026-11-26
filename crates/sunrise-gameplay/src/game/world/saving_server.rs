@@ -27,7 +27,6 @@ impl ServerGame<'_> {
             // ChunkMap.save consumes the dirty mark before capturing the snapshot.
             self.common.world.modified.remove(&key);
             let chunks = self.with_entities(self.common.world.chunks.get(&key));
-            self.native_full_chunk_snapshots(&chunks);
             self.server.save.0.save_later(
                 &chunks,
                 self.common.pack.assets.registry,
@@ -94,12 +93,10 @@ impl ServerGame<'_> {
             self.server.streaming.commanded(),
             self.server.tickets.0.portal_tickets(),
         )?;
-        self.server
-            .save
-            .0
-            .save_mod_tickets(self.server.streaming.mod_tickets(), |slot| {
-                mod_api::TicketController::from_slot(slot).map(|c| c.id())
-            })
+        self.server.save.0.save_mod_tickets(
+            self.server.streaming.mod_tickets(),
+            mod_api::__private::game::ticket_controller_id,
+        )
     }
     /// Save the level in place: its changed chunks, its entities and its raids.
     pub fn save_level(&mut self, wait: bool) -> Result<()> {
@@ -116,11 +113,9 @@ impl ServerGame<'_> {
                 .prepare_save(&mut self.common.world, wait, deadline)
             {
                 sunrise_level::chunk_streamer::SaveStep::Full(chunk) => {
-                    self.native_late_full_chunk_snapshot(&chunk);
-                    self.server.streaming.save_finished(chunk);
+                    self.save_late_full_chunk(chunk);
                 }
                 sunrise_level::chunk_streamer::SaveStep::Protos(protos) => {
-                    self.native_proto_snapshots(&protos);
                     self.server.streaming.finish_save(protos, wait);
                     break;
                 }
@@ -128,10 +123,11 @@ impl ServerGame<'_> {
             }
         }
         let keys: Vec<_> = self.common.world.modified.iter().copied().collect();
-        self.server
-            .save
-            .0
-            .save_attachments(&self.common.world.attachments)?;
+        if let Err(error) = self.server.save.0.save_attachments(&self.common.world.attachments)
+            && !error.is::<sunrise_mod_runtime::attachments::AttachmentEncodeError>()
+        {
+            return Err(error);
+        }
         // ChunkMap.save calls tryMarkSaved before creating the snapshot. A record failure
         // finishes this attempt and does not put the mark back.
         for key in &keys {
@@ -139,7 +135,6 @@ impl ServerGame<'_> {
         }
         let chunks =
             self.with_entities(keys.iter().filter_map(|k| self.common.world.chunks.get(k)));
-        self.native_full_chunk_snapshots(&chunks);
         self.server.save.0.save_later(
             &chunks,
             self.common.pack.assets.registry,
@@ -210,11 +205,9 @@ impl ServerGame<'_> {
                         {
                             sunrise_level::chunk_streamer::SaveStep::Pending => break,
                             sunrise_level::chunk_streamer::SaveStep::Full(chunk) => {
-                                self.native_late_full_chunk_snapshot(&chunk);
-                                self.server.streaming.save_finished(chunk);
+                                self.save_late_full_chunk(chunk);
                             }
                             sunrise_level::chunk_streamer::SaveStep::Protos(protos) => {
-                                self.native_proto_snapshots(&protos);
                                 if self.server.streaming.submit_protos(protos) {
                                     save.stage = Stage::Chunks(
                                         self.common.world.modified.iter().copied().collect(),

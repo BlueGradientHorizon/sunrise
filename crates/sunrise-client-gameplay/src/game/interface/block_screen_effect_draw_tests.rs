@@ -8,7 +8,7 @@ use BlockScreenEffect::{Block, Fire, Water};
 #[allow(unused_imports)]
 use mod_api::{
     BlockScreenEffect, BlockScreenEffectRender, BlockScreenEffectRenderer, CameraSubmersionEvent,
-    ClientHost, ExtractBlockScreenEffectEvent, Flow, GuiRenderPostEvent, Hooks, ModEntry, Mods,
+    ClientHost, ExtractBlockScreenEffectEvent, Flow, Hooks, ModEntry, Mods, RenderGuiPostEvent,
 };
 #[allow(unused_imports)]
 use std::{
@@ -929,7 +929,7 @@ pub(in crate::game::client_side) fn drawn_frame(
         scaled: false,
         background: false,
     });
-    game.render_with(|renderer, frame| renderer.render(frame))
+    game.render_with(|renderer, frame| renderer.render(frame, None))
         .unwrap();
     let result = game
         .client
@@ -960,12 +960,10 @@ impl Hooks for Painter {
         }
         Flow::Continue
     }
-    fn gui_render_post(&self, _: &dyn ClientHost, event: &mut GuiRenderPostEvent<'_>) {
+    fn render_gui_post(&self, _: &dyn ClientHost, event: &mut RenderGuiPostEvent<'_>) {
         if DRAWING.load(std::sync::atomic::Ordering::Relaxed) {
-            let [width, height] = event.batch.size();
-            event
-                .batch
-                .fill([0.0, 0.0, width / 2.0, height], 0xFF00FF00);
+            let [width, height] = event.draw.size();
+            event.draw.fill([0.0, 0.0, width / 2.0, height], 0xFF00FF00);
         }
     }
 }
@@ -1026,7 +1024,8 @@ fn screen_effect_quads_draw_over_the_level_and_under_the_gui() {
                     .unwrap(),
             );
             game.options.offscreen = true;
-            game.client.renderer.0 = Some(game.new_renderer(window).unwrap());
+            let renderer = game.new_renderer(window).unwrap();
+            game.set_renderer(renderer);
             game.client.title.0 = None;
             burning_player(game);
             game.previous_position = game.player.as_ref().unwrap().position;

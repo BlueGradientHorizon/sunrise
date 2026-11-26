@@ -181,36 +181,25 @@ impl crate::game::ClientGame<'_> {
         let r = self.client.remote.as_ref()?;
         Some(r.chat.iter().rev().take(n).map(|l| l.0.clone()).collect())
     }
-    /// ChatScreen.handleChatInput fires the client event for chat, not commands.
-    pub(in crate::game) fn send_chat_from_screen(&mut self, message: &str) {
-        if message.starts_with('/') || !mod_api::__private::listened(mod_api::HookId::ClientChat) {
-            self.send_signed_chat_input(message);
-        } else if let Some(uuid) = self.client.remote.as_ref().map(|r| r.profile) {
-            let id = self.own_entity_id();
-            let sent = chat_after_event(message, |outgoing, cancel| {
-                self.native_client_chat(id, uuid, message, outgoing, cancel);
-            });
-            if let Some(outgoing) = sent {
-                self.send_signed_chat(&outgoing);
-            }
-        }
-    }
     /// ClientPacketListener.sendChat / sendCommand, signed with a chat
     /// session (game/network/remote_chat.rs). The Chat option's Hidden and System
     /// levels keep chat out and Hidden keeps the commands out (ChatAbilities).
-    pub(in crate::game) fn send_signed_chat_input(&mut self, message: &str) {
-        let message = message.trim();
+    pub(in crate::game) fn send_signed_chat_input(
+        &mut self,
+        message: &str,
+    ) -> Option<sunrise_gameplay_common::game::native_server::ClientCommandOutcome> {
         if message.is_empty() || !self.chat_abilities().allows(message) {
-            return;
+            return None;
         }
         if let Some(command) = message.strip_prefix('/') {
-            if self.studio_command(command) {
-                return;
+            match self.send_command(command) {
+                Ok(outcome) => return outcome,
+                Err(error) => log::warn!("Command input could not be sent: {error}"),
             }
-            self.send_command(command);
-        } else {
-            self.send_signed_chat(message);
+        } else if let Err(error) = self.send_chat(message) {
+            log::warn!("Chat input could not be sent: {error}");
         }
+        None
     }
     /// `ChatListener.showMessageToPlayer`, `handleDisguisedChatMessage` and
     /// `handleChatMessageError`: check the current restrictions before presentation.

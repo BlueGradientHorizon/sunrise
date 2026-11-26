@@ -1,19 +1,46 @@
 use super::*;
 use crate::game::server_side::potions_server::swap_player;
 
+type ExitFault = Box<dyn std::any::Any + Send>;
+
 impl crate::game::ServerGame<'_> {
     /// `as_guest`, with the system messages the guest's action earns (the
     /// `player::sendSystemMessage` of a packet handler) sent to that guest.
-    pub fn as_guest_messaged<R>(&mut self, conn: u32, f: impl FnOnce(&mut Self) -> R) -> Option<R> {
+    pub fn as_guest_messaged<R>(
+        &mut self,
+        conn: u32,
+        f: impl FnOnce(&mut Self) -> R,
+    ) -> Option<R> {
         // The outer capture comes back even when `f` panics (a native callback can), so later
         // feedback isn't trapped in this guest's capture. What the guest was already told still
         // reaches them before the panic goes on, after `as_guest` has restored the swap.
-        let (result, lines) = self.as_guest(conn, |game| {
-            let outer = game.server.chat_capture.replace(Vec::new());
-            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f(game)));
-            let lines = std::mem::replace(&mut game.server.chat_capture, outer).unwrap_or_default();
-            (result, lines)
-        })?;
+        let (result, lines) = self.as_guest(conn, |game| game.capture_guest_messages(f))?;
+        self.send_guest_messages(conn, lines);
+        match result {
+            Ok(result) => self.server.lan.is_some().then_some(result),
+            Err(payload) => {
+                // `f`'s panic was caught inside the turn, which ended cleanly: record it here.
+                self.record_interrupted_turn(conn);
+                std::panic::resume_unwind(payload)
+            }
+        }
+    }
+
+    /// Restore the outer chat capture before the guest swap is unwound.
+    pub(in crate::game) fn capture_guest_messages<R>(
+        &mut self,
+        f: impl FnOnce(&mut Self) -> R,
+    ) -> (std::thread::Result<R>, Vec<sunrise_game_data::text::Text>) {
+        let outer = self.server.chat_capture.replace(Vec::new());
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f(self)));
+        let lines = std::mem::replace(&mut self.server.chat_capture, outer).unwrap_or_default();
+        (result, lines)
+    }
+    pub(in crate::game) fn send_guest_messages(
+        &self,
+        conn: u32,
+        lines: Vec<sunrise_game_data::text::Text>,
+    ) {
         if let Some(host) = self.server.lan.as_ref() {
             for line in lines {
                 host.hub.send_to(
@@ -25,15 +52,8 @@ impl crate::game::ServerGame<'_> {
                 );
             }
         }
-        match result {
-            Ok(result) => self.server.lan.is_some().then_some(result),
-            Err(payload) => {
-                // `f`'s panic was caught inside the turn, which ended cleanly: record it here.
-                self.record_interrupted_turn(conn);
-                std::panic::resume_unwind(payload)
-            }
-        }
     }
+
     /// Resolve a recorded player entity id even when a nested turn has lent
     /// the acting slot to another body. A displaced guest's hub row still
     /// names them, but it does not own their body or stats.
@@ -98,7 +118,7 @@ impl crate::game::ServerGame<'_> {
         conn: u32,
         outer_dimension: Dim,
         run: &mut dyn FnMut(&mut Self),
-    ) -> Result<(), TurnRefused> {
+    ) -> Result<Option<ExitFault>, TurnRefused> {
         let spawn_protection = self.server.lan.as_ref().and_then(|host| {
             host.hub
                 .guests
@@ -137,6 +157,13 @@ impl crate::game::ServerGame<'_> {
                 .0
                 .for_turn(conn, Some(outer), building_players(host));
         let fresh = host.hub.guests[i].motion.is_none();
+        let loaded_cooldown = (fresh && host.hub.guests[i].loaded_body.is_some()).then(|| {
+            host.hub.guests[i]
+                .saved
+                .as_ref()
+                .and_then(|tag| sunrise_sim::save::number(tag.get("PortalCooldown")))
+                .unwrap_or(0) as i32
+        });
         if fresh {
             let initialized = host.hub.guests.update(i, |guest| {
                 super::guest_body::initialize(self.common.motion, guest)
@@ -159,10 +186,13 @@ impl crate::game::ServerGame<'_> {
         );
         let mut play = host.play.remove(&conn).unwrap_or_default();
         play.hook.begin_loan();
+        if let Some(cooldown) = loaded_cooldown {
+            play.portal.cooldown = cooldown;
+        }
         if fresh {
             // A new body (joined, respawned, changed level): nothing on it yet,
             // its effects' modifiers and armor protection included.
-            play.equipped = None;
+            play.last_equipment = None;
             play.potions = Default::default();
             play.sculk = Default::default();
             // A new ServerPlayer has everything to record again.
@@ -263,6 +293,7 @@ impl crate::game::ServerGame<'_> {
                 total: g.xp_total,
             },
         );
+        let player_score = std::mem::replace(&mut self.common.player_score, g.score);
         let level_up_sound =
             std::mem::replace(&mut self.server.level_up_sound, play.level_up_sound);
         // The host's held keys stay theirs: the guest holds only sneak, and a
@@ -422,7 +453,6 @@ impl crate::game::ServerGame<'_> {
         let block_sounds = std::mem::take(&mut self.server.guest_block_sounds);
         let equipment_breaks = std::mem::take(&mut self.server.guest_equipment_breaks);
         let swings = self.common.swings_started;
-        let projectiles = self.common.creatures.projectiles.len();
         let modifiers = std::mem::replace(
             &mut self.server.applied_modifiers,
             std::mem::take(&mut play.modifiers),
@@ -433,7 +463,6 @@ impl crate::game::ServerGame<'_> {
         if fresh {
             self.apply_effect_status();
         }
-        self.update_totem_ready();
         self.common.entity_reach =
             self.common
                 .interaction_range("minecraft:entity_interaction_range", 3.0, 5.0);
@@ -496,6 +525,19 @@ impl crate::game::ServerGame<'_> {
                     }
                 }
             }
+            // Player.playSound: everyone near but the guest, in the players' source,
+            // through `ServerLevel.playSeededSound` like any level sound.
+            for (name, at, volume, pitch) in std::mem::take(&mut self.server.guest_player_sounds) {
+                let sound =
+                    LevelSound::new(&name, at, volume, pitch).in_source(SoundSource::Players);
+                self.send_level_sound(sound, Some(conn));
+            }
+            // Block-source sounds exclude the acting player, like player sounds.
+            for (name, at, volume, pitch) in std::mem::take(&mut self.server.guest_block_sounds) {
+                let sound =
+                    LevelSound::new(&name, at, volume, pitch).in_source(SoundSource::Blocks);
+                self.send_level_sound(sound, Some(conn));
+            }
         }));
         let panic = callbacks.err();
         if panic.is_some() {
@@ -508,62 +550,11 @@ impl crate::game::ServerGame<'_> {
         let guest_combat = std::mem::replace(&mut self.server.combat.0, host_combat);
         self.server.guest_combat.0.insert(conn, guest_combat);
         play.modifiers = std::mem::replace(&mut self.server.applied_modifiers, modifiers);
-        // What the guest shot is theirs (Projectile.setOwner).
-        for i in projectiles..self.common.creatures.projectiles.len() {
-            self.common.creatures.projectiles.update(i, |p| {
-                if p.owner == Some(sunrise_sim::mobs::Who::Player) && p.guest.is_none() {
-                    p.guest = Some(conn);
-                }
-            });
-        }
-        let listening = mod_api::__private::listened(mod_api::HookId::PlayerLaunchProjectile);
-        for projectile in projectiles..self.common.creatures.projectiles.len() {
-            if !listening {
-                break;
-            }
-            let item = match &self.common.creatures.projectiles[projectile].kind {
-                sunrise_sim::projectiles::ProjectileKind::Snowball => {
-                    Some("minecraft:snowball".to_owned())
-                }
-                sunrise_sim::projectiles::ProjectileKind::Egg => Some("minecraft:egg".to_owned()),
-                sunrise_sim::projectiles::ProjectileKind::EnderPearl => {
-                    Some("minecraft:ender_pearl".to_owned())
-                }
-                sunrise_sim::projectiles::ProjectileKind::Trident => {
-                    Some("minecraft:trident".to_owned())
-                }
-                sunrise_sim::projectiles::ProjectileKind::Potion(stack, _) => {
-                    Some(stack.item.to_string())
-                }
-                _ => None,
-            };
-            if let Some(item) = item {
-                let Some(host) = self.server.lan.as_ref() else {
-                    unreachable!("LanHost dropped inside a guest turn; closes are deferred");
-                };
-                let guest = &host.hub.guests[i];
-                let (uuid, name) = (guest.uuid, guest.name.clone());
-                self.native_player_launch_projectile(uuid, &name, &item);
-            }
-        }
         // The guest's swings are theirs: the host's own count stays the host's.
         play.swings += self.common.swings_started.wrapping_sub(swings);
         self.common.swings_started = swings;
-        // Player.playSound: everyone near but the guest, in the players' source,
-        // through `ServerLevel.playSeededSound` like any level sound.
-        for (name, at, volume, pitch) in
-            std::mem::replace(&mut self.server.guest_player_sounds, player_sounds)
-        {
-            let sound = LevelSound::new(&name, at, volume, pitch).in_source(SoundSource::Players);
-            self.send_level_sound(sound, Some(conn));
-        }
-        // Block-source sounds exclude the acting player, like player sounds.
-        for (name, at, volume, pitch) in
-            std::mem::replace(&mut self.server.guest_block_sounds, block_sounds)
-        {
-            let sound = LevelSound::new(&name, at, volume, pitch).in_source(SoundSource::Blocks);
-            self.send_level_sound(sound, Some(conn));
-        }
+        self.server.guest_player_sounds = player_sounds;
+        self.server.guest_block_sounds = block_sounds;
         let outgoing = std::mem::replace(&mut self.server.guest_packets, packets);
         let Some(host) = self.server.lan.as_mut() else {
             unreachable!("LanHost dropped inside a guest turn; closes are deferred");
@@ -728,6 +719,7 @@ impl crate::game::ServerGame<'_> {
             g.xp_level = new_xp.level;
             g.xp_progress = new_xp.progress;
             g.xp_total = new_xp.total;
+            g.score = std::mem::replace(&mut self.common.player_score, player_score);
             self.common.mode = outer_player.mode;
             self.common.creative = creative;
             self.common.entity_reach = entity_reach;
@@ -899,6 +891,7 @@ impl crate::game::ServerGame<'_> {
         }
         // An ender chest a mod opened for them in the turn (`player_open_ender_chest`).
         self.open_turn_ender_menus(conn);
+        self.drain_menu_opens(conn);
         // The turn's teleports are in the hub now: the mods hear them.
         self.flush_teleport_notes();
         if let Some(host) = self.server.lan.as_ref() {
@@ -912,13 +905,10 @@ impl crate::game::ServerGame<'_> {
                     .0
                     .for_turn(actor, None, building_players(host));
         }
-        if let Some(payload) = panic {
-            std::panic::resume_unwind(payload);
-        }
-        if !already_recorded {
+        if panic.is_none() && !already_recorded {
             self.server.interrupted_turns.retain(|&c| c != conn);
         }
-        Ok(())
+        Ok(panic)
     }
     /// The host can be parked below a projectile victim's guest turn.
     pub(in crate::game) fn projectile_player_owner_id(&self, conn: Option<u32>) -> Option<u32> {
@@ -982,12 +972,15 @@ impl crate::game::ServerGame<'_> {
     }
     /// Run `f` with the player's own inventory in their hub record. The live
     /// actor's inventory is in `Game`; a suspended actor's is in the next turn's
-    /// guest record. Only LAN and the item table are lent to `f`, so game
-    /// callbacks run after the normal ownership is restored.
-    pub(in crate::game) fn with_own_record<R>(
+    /// guest record. The closure reads the item table and world while ownership is lent.
+    pub fn with_own_record<R>(
         &mut self,
         gi: usize,
-        f: impl FnOnce(&mut LanHost, &sunrise_items::items::Items) -> Option<R>,
+        f: impl FnOnce(
+            &mut LanHost,
+            &sunrise_items::items::Items,
+            &sunrise_level::world::World,
+        ) -> Option<R>,
     ) -> Option<R> {
         let host = self.server.lan.as_ref()?;
         let conn = host.hub.guests[gi].conn;
@@ -1014,12 +1007,13 @@ impl crate::game::ServerGame<'_> {
                     std::mem::swap(&mut game.common.offhand, &mut g.offhand);
                     std::mem::swap(&mut game.common.equipment, &mut g.equipment);
                     std::mem::swap(&mut game.common.carried, &mut g.carried);
+                    std::mem::swap(&mut game.server.ender_items, &mut g.ender_items);
                 }),
                 None => {}
             }
         };
         swap_inventory(self);
-        let result = f(self.server.lan.as_mut()?, server_world_items!(self));
+        let result = f(self.server.lan.as_mut()?, server_world_items!(self), &self.common.world);
         swap_inventory(self);
         result
     }
@@ -1040,7 +1034,7 @@ impl crate::game::ServerGame<'_> {
         conn: u32,
         f: impl FnOnce(&mut Self) -> R,
     ) -> Result<R, TurnRefused> {
-        let result = self.with_guest_swap_at(gi, conn, self.common.dim, |game| {
+        let (result, exit_fault) = self.with_guest_swap_at(gi, conn, self.common.dim, |game| {
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 let dimension = (game.server.serving.is_some() || game.options.dedicated.is_some())
                     .then_some(game.dim.id());
@@ -1056,9 +1050,11 @@ impl crate::game::ServerGame<'_> {
             result
         })?;
         // The guest's progress and the outer player were restored before propagating a panic.
-        match result {
-            Ok(result) => Ok(result),
-            Err(payload) => std::panic::resume_unwind(payload),
+        // When the body and the turn's exit work both unwound, the body's fault is the one
+        // that propagates, as it would without the exit work.
+        match (result, exit_fault) {
+            (Ok(result), None) => Ok(result),
+            (Err(payload), _) | (Ok(_), Some(payload)) => std::panic::resume_unwind(payload),
         }
     }
 
@@ -1077,7 +1073,11 @@ impl crate::game::ServerGame<'_> {
         f: impl FnOnce(&mut Self) -> R,
     ) -> Option<R> {
         let i = self.guest_index(conn)?;
-        self.with_guest_swap_at(i, conn, outer_dimension, f).ok()
+        let (result, exit_fault) = self.with_guest_swap_at(i, conn, outer_dimension, f).ok()?;
+        if let Some(payload) = exit_fault {
+            std::panic::resume_unwind(payload);
+        }
+        Some(result)
     }
 
     pub(in crate::game) fn with_guest_swap_at<R>(
@@ -1086,13 +1086,13 @@ impl crate::game::ServerGame<'_> {
         conn: u32,
         outer_dimension: Dim,
         f: impl FnOnce(&mut Self) -> R,
-    ) -> Result<R, TurnRefused> {
+    ) -> Result<(R, Option<ExitFault>), TurnRefused> {
         let mut f = Some(f);
         let mut result = None;
-        self.guest_turn(i, conn, outer_dimension, &mut |game| {
+        let exit_fault = self.guest_turn(i, conn, outer_dimension, &mut |game| {
             result = Some(f.take().unwrap()(game));
         })?;
-        Ok(result.unwrap())
+        Ok((result.unwrap(), exit_fault))
     }
 
     /// `ServerLevel.broadcastDamageEvent` for a guest that took an unblocked hit.

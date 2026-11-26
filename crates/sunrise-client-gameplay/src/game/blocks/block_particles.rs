@@ -10,13 +10,19 @@ impl crate::game::ClientGame<'_> {
         pos: [i32; 3],
         state: BlockStateId,
     ) -> Vec<[f64; 6]> {
-        self.state_shape_boxes(
+        let mut boxes = Vec::new();
+        let _ = self.visit_state_shape(
             &self.common.world,
             &self.client.be_anims.shulkers,
             state,
             pos,
             mod_api::BlockShapeKind::Outline,
-        )
+            &mut |bounds| {
+                boxes.push(bounds);
+                std::ops::ControlFlow::Continue(())
+            },
+        );
+        boxes
     }
 
     /// `ClientLevel.addBreakingBlockEffects`' particle step, called after the sound with a

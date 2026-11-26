@@ -5,6 +5,9 @@ impl SideOps for crate::game::server_side::ServerState {
     fn side_swing_hand(game: &mut Self::Game<'_>, hand: Hand, animation: SwingAnimation) -> bool {
         game.server_swing_hand(hand, animation)
     }
+    fn side_fake_action_unswung(game: &Self::Game<'_>) -> bool {
+        game.server.fake_action.0.unswung()
+    }
     fn side_sound_event_names(game: &Self::Game<'_>) -> Vec<String> {
         game.server_sound_event_names()
     }

@@ -80,10 +80,13 @@ impl crate::game::ServerGame<'_> {
                     .join("data/minecraft/world_border.dat"),
             );
         }
-        root.as_ref()
-            .and_then(|root| root.get("data"))
-            .map(sunrise_level::worldborder::WorldBorder::unpack)
-            .unwrap_or_default()
+        if let Some(data) = root.as_ref().and_then(|root| root.get("data")) {
+            match sunrise_level::worldborder::WorldBorder::unpack(data) {
+                Ok(border) => return border,
+                Err(error) => log::warn!("invalid saved world border in {}: {error}", dim.id()),
+            }
+        }
+        sunrise_level::worldborder::WorldBorder::default()
     }
     /// Save the border of the level in place (`SavedData`, one per level).
     pub(in crate::game::server_side) fn save_border(&self) {
@@ -909,7 +912,7 @@ impl Env for GameEnv<'_, '_> {
         }
     }
     fn source(&mut self) -> Option<(Holder, bool)> {
-        let entity = match self.g.server.command_source {
+        let entity = match &self.g.server.command_source {
             Some(s) => s.entity,
             None => Some(Target::Player),
         }?;

@@ -16,33 +16,16 @@ impl ClientReloadHost for ClientGame<'_> {
     fn instance_groups(&self) -> &dyn InstanceGroups {
         <Self as prelude::ServicesClientHost>::instance_groups(self)
     }
-    fn instance_group_write(
-        &self,
-        group: InstanceGroupRef,
-        first: u32,
-        instances: &[ModelInstance],
-    ) -> Result<(), GroupError> {
-        <Self as prelude::ClientRenderClientHost>::instance_group_write(
-            self, group, first, instances,
-        )
-    }
-    fn instance_group_set_len(&self, group: InstanceGroupRef, len: u32) -> Result<(), GroupError> {
-        <Self as prelude::ClientRenderClientHost>::instance_group_set_len(self, group, len)
-    }
-    fn instance_group_set_transform(
-        &self,
-        group: InstanceGroupRef,
-        transform: [f32; 12],
-    ) -> Result<(), GroupError> {
-        <Self as prelude::ClientRenderClientHost>::instance_group_set_transform(
-            self, group, transform,
-        )
-    }
-    fn instance_group_destroy(&self, group: InstanceGroupRef) -> Result<(), GroupError> {
-        <Self as prelude::ClientRenderClientHost>::instance_group_destroy(self, group)
-    }
     fn item_uses_block_light(&self, stack: &ItemStack, context: ItemDisplayContext) -> bool {
         <Self as prelude::ClientRenderClientHost>::item_uses_block_light(self, stack, context)
+    }
+    fn prepare_item(
+        &self,
+        stack: &ItemStack,
+        display: ItemDisplayContext,
+        seed: i32,
+    ) -> Result<PreparedItemRef, ModelError> {
+        <Self as prelude::ClientRenderClientHost>::prepare_item(self, stack, display, seed)
     }
     fn block_sprites(&self, blocks: &[BlockState]) -> Vec<Option<BlockSprites>> {
         <Self as prelude::ClientRenderClientHost>::block_sprites(self, blocks)
@@ -81,8 +64,8 @@ impl ClientReloadListenerContext for ClientGame<'_> {
     fn is_loaded(&self, id: &str) -> bool {
         <Self as prelude::LevelsHost>::is_loaded(self, id)
     }
-    fn setting(&self, mod_id: &str, key: &str) -> Option<String> {
-        <Self as prelude::ConfigHost>::setting(self, mod_id, key)
+    fn setting(&self, key: SettingKey) -> Result<SettingValue, SettingAccessError> {
+        self.common.setting(key)
     }
     fn math_profile(&self) -> MathProfile {
         <Self as prelude::MathHost>::math_profile(self)
@@ -97,26 +80,23 @@ impl ClientReloadListenerContext for ClientGame<'_> {
 
 #[cfg(feature = "client")]
 impl ClientSetupContext for ClientGame<'_> {
-    fn config_files(&self) -> &'static dyn ConfigFiles {
-        <Self as prelude::ConfigHost>::config_files(self)
-    }
-    fn data_files(&self) -> &'static dyn ConfigFiles {
-        <Self as prelude::ConfigHost>::data_files(self)
+    fn config_dir(&self) -> &std::path::Path {
+        <Self as prelude::ConfigHost>::config_dir(self)
     }
     fn translate(&self, key: &str) -> Option<String> {
         <Self as prelude::ConfigClientHost>::translate(self, key)
     }
     fn enchantments(&self) -> Vec<EnchantmentInfo> {
-        <Self as prelude::ItemsClientHost>::enchantments(self)
+        <Self as prelude::ItemsHost>::enchantments(self)
     }
     fn potions(&self) -> Vec<PotionInfo> {
         <Self as prelude::ItemsClientHost>::potions(self)
     }
     fn enchantment_min_cost(&self, id: &str, level: u32) -> Option<i32> {
-        <Self as prelude::ItemsClientHost>::enchantment_min_cost(self, id, level)
+        <Self as prelude::ItemsHost>::enchantment_min_cost(self, id, level)
     }
     fn enchantment_supports(&self, id: &str, item: ItemKey) -> bool {
-        <Self as prelude::ItemsClientHost>::enchantment_supports(self, id, item)
+        <Self as prelude::ItemsHost>::enchantment_supports(self, id, item)
     }
     fn sound_events(&self) -> Vec<Identifier> {
         <Self as prelude::EffectsClientHost>::sound_events(self)

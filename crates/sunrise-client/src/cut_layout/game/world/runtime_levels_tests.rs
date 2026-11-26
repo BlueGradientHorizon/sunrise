@@ -7,54 +7,272 @@ use mod_api::{
 };
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::{Arc, Mutex};
-use sunrise_gameplay::game::server_side::runtime_levels::RuntimeTable;
+use sunrise_gameplay::game::server_side::runtime_levels::{
+    Generate, OpenLevel, RuntimeTable, classify_biome_source_error, runtime_biome_source_json,
+};
+use mod_api::{BiomePoint, RuntimeBiomeSource};
 use sunrise_gameplay_common::game::Dim;
 
 fn flat() -> RuntimeLevel {
     RuntimeLevel::new("minecraft:overworld", RuntimeGenerator::Flat, 1)
 }
 
-#[test]
-fn the_cap_refuses_the_open_past_it_and_a_removal_frees_a_place() {
-    let mut table = RuntimeTable::default();
-    table.set_cap(2);
-    assert!(table.queue_open("test", "cap:a", flat()).is_ok());
-    assert!(table.queue_open("test", "cap:b", flat()).is_ok());
-    assert_eq!(
-        table.queue_open("test", "cap:c", flat()),
-        Err(RuntimeLevelError::CapReached)
-    );
-    table.remove("cap:a");
-    assert!(table.queue_open("test", "cap:c", flat()).is_ok());
+fn admitted_flat(seed: i64) -> OpenLevel {
+    OpenLevel {
+        dimension_type: "minecraft:overworld".into(),
+        shape: sunrise_level::chunk::LevelShape::OVERWORLD,
+        facts: sunrise_world::dimension_type::DimensionFacts::overworld().clone(),
+        seed,
+        generate: Generate::Layers {
+            flat: true,
+            biome: 0,
+        },
+    }
 }
 
 #[test]
-fn the_default_cap_is_64() {
+fn runtime_biome_source_validates_local_fields() {
+    assert_eq!(
+        RuntimeBiomeSource::Fixed("minecraft:plains".into()).invalid_field(),
+        None
+    );
+    assert!(
+        RuntimeBiomeSource::Fixed(String::new())
+            .invalid_field()
+            .is_some()
+    );
+    assert!(
+        RuntimeBiomeSource::Checkerboard {
+            biomes: vec![],
+            scale: 2,
+        }
+        .invalid_field()
+        .is_some()
+    );
+    assert!(
+        RuntimeBiomeSource::Checkerboard {
+            biomes: vec!["minecraft:plains".into()],
+            scale: 63,
+        }
+        .invalid_field()
+        .is_some()
+    );
+    assert_eq!(
+        RuntimeBiomeSource::Checkerboard {
+            biomes: vec!["minecraft:plains".into(), "minecraft:desert".into()],
+            scale: 62,
+        }
+        .invalid_field(),
+        None
+    );
+    assert_eq!(
+        RuntimeBiomeSource::Checkerboard {
+            biomes: vec!["#minecraft:is_forest".into()],
+            scale: 0,
+        }
+        .invalid_field(),
+        None
+    );
+    assert!(
+        RuntimeBiomeSource::Checkerboard {
+            biomes: vec!["minecraft:plains".into(), "#minecraft:is_forest".into()],
+            scale: 0,
+        }
+        .invalid_field()
+        .is_some()
+    );
+    assert!(
+        RuntimeBiomeSource::Checkerboard {
+            biomes: vec!["#minecraft:is_forest".into(), "#minecraft:is_ocean".into()],
+            scale: 0,
+        }
+        .invalid_field()
+        .is_some()
+    );
+    assert!(
+        RuntimeBiomeSource::MultiNoise(String::new())
+            .invalid_field()
+            .is_some()
+    );
+    assert_eq!(
+        RuntimeBiomeSource::MultiNoise("minecraft:overworld".into()).invalid_field(),
+        None
+    );
+    assert_eq!(RuntimeBiomeSource::End.invalid_field(), None);
+    assert!(RuntimeBiomeSource::Points(vec![]).invalid_field().is_some());
+    assert_eq!(
+        RuntimeBiomeSource::Points(vec![BiomePoint {
+            biome: "minecraft:plains".into(),
+            temperature: (-1.0, 1.0),
+            humidity: (0.0, 0.0),
+            continentalness: (0.0, 0.0),
+            erosion: (0.0, 0.0),
+            depth: (0.0, 0.0),
+            weirdness: (0.0, 0.0),
+            offset: 0.0,
+        }])
+        .invalid_field(),
+        None
+    );
+    assert!(
+        RuntimeBiomeSource::Registered(String::new())
+            .invalid_field()
+            .is_some()
+    );
+    assert_eq!(
+        RuntimeBiomeSource::Registered("mymod:rings".into()).invalid_field(),
+        None
+    );
+}
+
+#[test]
+fn biome_source_admission_errors_separate_invalid_from_unknown() {
+    use std::collections::{BTreeMap, BTreeSet};
+    use sunrise_world::worldgen::{
+        biome_source::{BiomeSourceCatalog, BiomeSourceError},
+        mod_biome_sources::{LevelBiomeSource, ModBiomeSource, ModBiomeSources},
+    };
+    let biomes = BTreeSet::from(["minecraft:plains".into(), "minecraft:desert".into()]);
+    let tags = BTreeMap::from([(
+        "minecraft:is_dry".into(),
+        vec!["minecraft:desert".into(), "minecraft:plains".into()],
+    )]);
+    let presets = BTreeSet::from(["minecraft:overworld".into()]);
+    let catalog = BiomeSourceCatalog::new(&biomes, &tags, &presets).unwrap();
+    let bind_err = |json: &str| {
+        classify_biome_source_error(
+            catalog
+                .bind_custom_source(json, &BTreeMap::new(), 0)
+                .unwrap_err(),
+        )
+    };
+    for invalid in [
+        r#"{"type":"minecraft:fixed","biome":"BAD!ID"}"#,
+        r#"{"type":"minecraft:fixed","biome":"test:bad names the unknown biome test:missing"}"#,
+        r#"{"type":"minecraft:fixed","biome":""}"#,
+        r##"{"type":"minecraft:checkerboard","biomes":"#BAD!TAG","scale":0}"##,
+        r#"{"type":"minecraft:checkerboard","biomes":[],"scale":0}"#,
+        r#"{"type":"minecraft:checkerboard","biomes":["minecraft:plains"],"scale":63}"#,
+        r#"{"type":"minecraft:checkerboard","biomes":{"type":"neoforge:or"},"scale":0}"#,
+        r#"{"type":"minecraft:checkerboard","biomes":{"type":"neoforge:or","values":["test:bad names the unknown biome test:missing"]}}"#,
+        r#"{"type":"minecraft:multi_noise","preset":"BAD!ID"}"#,
+    ] {
+        assert_eq!(
+            bind_err(invalid),
+            RuntimeLevelError::InvalidBiomeSource,
+            "{invalid}"
+        );
+    }
+    for unknown in [
+        r#"{"type":"minecraft:fixed","biome":"mymod:missing"}"#,
+        r##"{"type":"minecraft:checkerboard","biomes":"#mymod:missing","scale":0}"##,
+        r#"{"type":"minecraft:checkerboard","biomes":{"type":"neoforge:or","values":["test:missing"]}}"#,
+        r#"{"type":"minecraft:multi_noise","preset":"mymod:missing"}"#,
+        r#"{"type":"minecraft:the_end"}"#,
+        r#"{"type":"mymod:missing_source"}"#,
+    ] {
+        assert_eq!(
+            bind_err(unknown),
+            RuntimeLevelError::UnknownBiomeSource,
+            "{unknown}"
+        );
+    }
+    struct Source(Vec<String>);
+    impl ModBiomeSource for Source {
+        fn possible_biomes(&self) -> &[String] {
+            &self.0
+        }
+        fn noise_biome(&self, _: [i32; 3], _: i64) -> Result<u16, String> {
+            unreachable!("a refused source is not sampled")
+        }
+    }
+    for (entries, expected) in [
+        (vec![], RuntimeLevelError::InvalidBiomeSource),
+        (
+            vec!["test:missing".into()],
+            RuntimeLevelError::UnknownBiomeSource,
+        ),
+    ] {
+        let sources = ModBiomeSources::from([(
+            "test:source".into(),
+            Arc::new(Source(entries)) as Arc<dyn ModBiomeSource>,
+        )]);
+        let error =
+            LevelBiomeSource::<()>::resolve("test:source", &sources, 0, |_| None).unwrap_err();
+        assert_eq!(classify_biome_source_error(error.into()), expected);
+    }
+    assert_eq!(
+        classify_biome_source_error(BiomeSourceError::MissingPreset),
+        RuntimeLevelError::UnknownBiomeSource
+    );
+
+    assert_eq!(
+        runtime_biome_source_json(&RuntimeBiomeSource::Checkerboard {
+            biomes: vec!["minecraft:plains".into(), "#minecraft:is_dry".into()],
+            scale: 0,
+        }),
+        Err(RuntimeLevelError::InvalidBiomeSource)
+    );
+    assert_eq!(
+        runtime_biome_source_json(&RuntimeBiomeSource::Checkerboard {
+            biomes: vec!["#minecraft:is_dry".into(), "#minecraft:is_forest".into()],
+            scale: 0,
+        }),
+        Err(RuntimeLevelError::InvalidBiomeSource)
+    );
+    assert_eq!(
+        runtime_biome_source_json(&RuntimeBiomeSource::Checkerboard {
+            biomes: vec!["#minecraft:is_dry".into()],
+            scale: 0,
+        })
+        .unwrap()["biomes"],
+        serde_json::json!("#minecraft:is_dry")
+    );
+    for builtin in [
+        "minecraft:fixed",
+        "fixed",
+        "minecraft:checkerboard",
+        "minecraft:multi_noise",
+        "minecraft:the_end",
+    ] {
+        assert_eq!(
+            runtime_biome_source_json(&RuntimeBiomeSource::Registered(builtin.into())),
+            Err(RuntimeLevelError::UnknownBiomeSource),
+            "{builtin}"
+        );
+    }
+    for invalid in ["", "BAD!ID"] {
+        assert_eq!(
+            runtime_biome_source_json(&RuntimeBiomeSource::Registered(invalid.into())),
+            Err(RuntimeLevelError::InvalidBiomeSource),
+            "{invalid}"
+        );
+    }
+}
+
+#[test]
+fn runtime_table_has_no_artificial_level_cap() {
     let mut table = RuntimeTable::default();
-    for n in 0..64 {
+    for n in 0..80 {
         assert!(
             table
-                .queue_open("test", &format!("cap:l{n}"), flat())
+                .queue_open("test", &format!("cap:l{n}"), admitted_flat(1))
                 .is_ok()
         );
     }
-    assert_eq!(
-        table.queue_open("test", "cap:l64", flat()),
-        Err(RuntimeLevelError::CapReached)
-    );
 }
 
 #[test]
 fn an_id_is_open_once_and_each_open_has_its_own_generation() {
     let mut table = RuntimeTable::default();
-    let first = table.queue_open("test", "gen:a", flat()).unwrap();
+    let first = table.queue_open("test", "gen:a", admitted_flat(1)).unwrap();
     assert_eq!(
-        table.queue_open("test", "gen:a", flat()),
+        table.queue_open("test", "gen:a", admitted_flat(1)),
         Err(RuntimeLevelError::AlreadyOpen)
     );
     assert_eq!(table.generation_of("gen:a"), first);
     table.remove("gen:a");
-    let second = table.queue_open("test", "gen:a", flat()).unwrap();
+    let second = table.queue_open("test", "gen:a", admitted_flat(1)).unwrap();
     assert_ne!(first, second);
     assert_eq!(table.generation_of("gen:a"), second);
     assert_eq!(table.generation_of("minecraft:the_nether"), 0);
@@ -63,25 +281,27 @@ fn an_id_is_open_once_and_each_open_has_its_own_generation() {
 #[test]
 fn a_level_is_open_after_its_request_is_applied_and_until_its_close_is() {
     let mut table = RuntimeTable::default();
-    table.queue_open("test", "state:a", flat()).unwrap();
+    table
+        .queue_open("test", "state:a", admitted_flat(1))
+        .unwrap();
     assert!(!table.is_open("state:a"));
     assert_eq!(
-        table.queue_unload("state:a"),
+        table.queue_unload("test", "state:a"),
         Err(RuntimeLevelError::NotOpen)
     );
     table.mark_open("state:a");
     assert!(table.is_open("state:a"));
-    assert_eq!(table.queue_unload("state:a"), Ok(()));
+    assert_eq!(table.queue_unload("test", "state:a"), Ok(()));
     assert!(
         table.is_open("state:a"),
         "still open until the close is applied"
     );
     assert_eq!(
-        table.queue_unload("state:a"),
+        table.queue_unload("test", "state:a"),
         Err(RuntimeLevelError::NotOpen)
     );
     assert_eq!(
-        table.queue_unload("state:none"),
+        table.queue_unload("test", "state:none"),
         Err(RuntimeLevelError::NotOpen)
     );
 }
@@ -319,15 +539,12 @@ fn tick_post(game: &mut sunrise_gameplay::game::ServerGame<'_>) {
 
 #[test]
 #[ignore = "daily"]
-fn a_mod_opens_only_ids_in_its_own_namespace() {
+fn a_mod_can_open_other_namespaces_but_not_reserved_or_invalid_ids() {
     for (id, expected) in [
-        ("other:x", Err(RuntimeLevelError::OutsideNamespace)),
+        ("other:x", Ok(())),
         ("mymod:../x", Err(RuntimeLevelError::InvalidId)),
         ("mymod:a//b", Err(RuntimeLevelError::InvalidId)),
-        (
-            "minecraft:overworld",
-            Err(RuntimeLevelError::OutsideNamespace),
-        ),
+        ("minecraft:overworld", Err(RuntimeLevelError::ReservedId)),
         // Names Windows maps to a device or to another folder: refused before any folder exists.
         ("mymod:con", Err(RuntimeLevelError::InvalidId)),
         ("mymod:a/nul.txt", Err(RuntimeLevelError::InvalidId)),
@@ -403,19 +620,85 @@ fn the_idle_close_keeps_a_runtime_level_open_until_its_unload() {
         game.apply_runtime_levels();
         let handle = seen.answers.lock().unwrap()[0].unwrap();
         let dim = Dim::extra("idle:a").unwrap();
-        // What the idle close does to a level nobody is in.
-        game.close_parked_level(dim).unwrap();
-        assert_eq!(*seen.unloads.lock().unwrap(), ["idle:a"]);
+        game.enter_level(dim).unwrap();
+        game.world
+            .chunks
+            .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
+        let registry = game.pack.assets.registry;
+        let stone = registry.default_state("minecraft:stone").unwrap();
+        game.world.set(1, 64, 1, stone).unwrap();
+        game.summon_with_nbt("minecraft:pig", [2.0, 64.0, 2.0], "{}")
+            .unwrap()
+            .unwrap();
+        let save = game.server.save.0.clone();
+        // Encoding is refused before the batch can enter the writer.
+        game.server.save.0 = Arc::new(sunrise_sim::save::SaveDir::new(
+            game.server.world_root.join("no-item-catalog"),
+            game.world.shape,
+            None,
+        ));
+        game.enter_level(Dim::Overworld).unwrap();
+        let error = game.evict_idle_level_chunks(dim).unwrap_err();
+        assert!(error.to_string().contains("without a loaded item catalog"));
+        assert_eq!(game.dim, Dim::Overworld);
+        game.enter_level(dim).unwrap();
+        assert_eq!(game.world.block(1, 64, 1), stone);
+        assert!(game.world.modified.contains(&(0, 0)));
+        assert_eq!(game.mobs.len(), 1);
+        game.server.save.0 = save.clone();
+        game.enter_level(Dim::Overworld).unwrap();
+
+        // After a successful submission, only the chunks and entities leave.
+        game.evict_idle_level_chunks(dim).unwrap();
+        assert_eq!(
+            save.load(0, 0, registry, game.world_biomes.as_ref().unwrap_or_else(|| game.res.biomes()))
+                .unwrap()
+                .block(1, 64, 1),
+            stone
+        );
+        assert_eq!(save.load_entities(0, 0).unwrap().len(), 1);
+        assert!(game.server.levels.0.parked[&dim].world.chunks.is_empty());
+        assert!(seen.unloads.lock().unwrap().is_empty());
         assert!(game.runtime_level_is_open("idle:a"));
         assert!(game.level_handle_current(handle));
+        assert!(game.server.levels.0.parked.contains_key(&dim));
         game.enter_level(dim).unwrap();
-        assert_eq!(*seen.loads.lock().unwrap(), ["idle:a", "idle:a"]);
+        assert_eq!(*seen.loads.lock().unwrap(), ["idle:a"]);
         game.enter_level(Dim::Overworld).unwrap();
         assert_eq!(unload_as(game, "idle", "idle:a"), Ok(()));
         game.apply_runtime_levels();
         assert!(!game.runtime_level_is_open("idle:a"));
         assert!(Dim::extra("idle:a").is_none());
-        assert_eq!(*seen.unloads.lock().unwrap(), ["idle:a", "idle:a"]);
+        assert_eq!(*seen.unloads.lock().unwrap(), ["idle:a"]);
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn an_idle_close_with_outstanding_light_saves_the_column_unlit() {
+    with_opener("lit", "lit:a", flat(), |game, _| {
+        tick_post(game);
+        game.apply_runtime_levels();
+        place_block(game, "lit:a", "minecraft:stone");
+        let dim = Dim::extra("lit:a").unwrap();
+        game.enter_level(dim).unwrap();
+        Arc::make_mut(game.world.chunks.get_mut(&(0, 0)).unwrap()).lit = true;
+        game.world.dirty_light.insert((0, 0));
+        game.world.modified.insert((0, 0));
+        game.enter_level(Dim::Overworld).unwrap();
+        game.close_parked_level(dim).unwrap();
+        game.enter_level(dim).unwrap();
+        game.server.streaming.forced.insert((0, 0));
+        for _ in 0..2000 {
+            game.server_update_world();
+            if game.world.chunks.contains_key(&(0, 0)) {
+                break;
+            }
+            game.server.streaming.wait(std::time::Duration::from_millis(5));
+        }
+        let reopened = game.world.chunks.get(&(0, 0)).expect("the chunk reopened");
+        assert!(!reopened.lit, "the saved column was marked lit");
+        game.enter_level(Dim::Overworld).unwrap();
     });
 }
 
@@ -491,7 +774,8 @@ fn an_idle_level_aborts_an_abandoned_chunk_unload_transaction_before_it_closes()
 
                     game.close_parked_level(dim).unwrap();
                     assert!(!game.server.levels.0.parked.contains_key(&dim));
-                    assert_eq!(*open_frames.lock().unwrap(), [false, false]);
+                    // `chunk_unload` runs after the abandoned frame is aborted; `level_unload` runs in its own frame.
+                    assert_eq!(*open_frames.lock().unwrap(), [false, true]);
                     assert!(game.transaction_matches(None));
                     assert_eq!(home.connection_group(game, POS), Ok(Some(10)));
                     game.abort_abandoned_transactions(0);
@@ -509,58 +793,60 @@ fn an_idle_level_aborts_an_abandoned_chunk_unload_transaction_before_it_closes()
 #[test]
 #[ignore = "daily"]
 fn a_ticket_a_chunk_unload_listener_adds_keeps_an_idle_custom_level_open() {
-    use super::native_entity_refs::tests::run_fresh_cases;
-    use sunrise_gameplay::game::server_side::levels::IDLE_TICKS;
+    use sunrise_gameplay_common::game::test_fixtures::run_fresh_cases;
+    use sunrise_level::chunk::Chunk;
 
-    // A parallel world load can replace the process-wide dimension list during the idle ticks.
     if run_fresh_cases(
-        "game::server_side::runtime_levels_tests::a_ticket_a_chunk_unload_listener_adds_keeps_an_idle_custom_level_open",
+        "cut_layout::game::runtime_levels_tests::a_ticket_a_chunk_unload_listener_adds_keeps_an_idle_custom_level_open",
         "SUNRISE_RUNTIME_LEVEL_RESCUE_CHILD",
         &["rescue"],
     ) {
         return;
     }
     with_opener("rescue", "rescue:a", flat(), |game, seen| {
+        game.native_level_opened(Dim::Overworld);
+        game.enter_level(Dim::Nether).unwrap();
+        let chunk_data = Arc::new(Chunk::with_layout(0, 0, game.world.layout()));
+        game.world.chunks.insert((0, 0), chunk_data);
+        let nether = ChunkRef::new(game.level("minecraft:the_nether").unwrap(), [0, 0]);
+        game.enter_level(Dim::Overworld).unwrap();
+
         tick_post(game);
         game.apply_runtime_levels();
-        seen.mode.store(IDLE, Ordering::SeqCst);
         let dim = Dim::extra("rescue:a").unwrap();
-        let custom = ChunkRef::new(game.level("rescue:a").unwrap(), [0, 0]);
-        // Idle the custom level to one server tick short of its close.
-        for _ in 1..IDLE_TICKS {
-            game.tick_server(false).unwrap();
-        }
-        assert_eq!(game.server.levels.0.parked[&dim].idle, IDLE_TICKS - 1);
-        // Open the Nether only now and load its chunk (0, 0), then release it:
-        // its first drain leaves the view it opened with, so that drain unloads
-        // the chunk at once, in the tick the custom level's close is due.
-        game.server.settings.render_distance = 2;
-        game.enter_level(Dim::Nether).unwrap();
-        let nether = ChunkRef::new(game.level("minecraft:the_nether").unwrap(), [0, 0]);
-        assert!(game.chunk_set_forced(nether, true));
-        assert!(game.chunk_set_forced(nether, false));
+        game.enter_level(dim).unwrap();
+        // Record a forced ticket without unrelated generation. The distant column would
+        // leave if a stale eviction plan swept the reactivated level anyway.
+        game.server.streaming.paused = true;
+        let chunk_data = Arc::new(Chunk::with_layout(16, 0, game.world.layout()));
+        game.world.chunks.insert((16, 0), chunk_data);
+        let level = game.level("rescue:a").unwrap();
+        let forced = ChunkRef::new(level, [0, 0]);
+        let distant = ChunkRef::new(level, [16, 0]);
         game.enter_level(Dim::Overworld).unwrap();
-        assert!(game.chunk_loaded(nether));
+
         seen.mode.store(RESCUE, Ordering::SeqCst);
-        game.tick_server(false).unwrap();
+        game.evict_idle_levels().unwrap();
         assert!(
             !game.chunk_loaded(nether),
-            "the released Nether chunk unloaded"
+            "the first idle level evicted immediately"
         );
         assert_eq!(*seen.rescued.lock().unwrap(), [true]);
-        seen.mode.store(IDLE, Ordering::SeqCst);
-        // Through the idle close and past it, the level and the ticket both remain.
-        for _ in 0..=IDLE_TICKS {
-            game.tick_server(false).unwrap();
-        }
-        // The ticket may make this the first level to tick, leaving it in place.
+        assert_eq!(game.chunk_forced(forced), Some(true));
         assert!(
-            game.native_level_world(custom.level()).is_some(),
-            "the custom level stays open"
+            game.chunk_loaded(distant),
+            "the later level was reactivated before its sweep"
         );
+
+        assert!(game.chunk_set_forced(forced, false));
+        game.evict_idle_levels().unwrap();
+        assert!(
+            !game.chunk_loaded(distant),
+            "the level can evict again once unticketed"
+        );
+        assert_eq!(game.level("minecraft:the_nether"), Some(nether.level()));
+        assert_eq!(game.level("rescue:a"), Some(level));
         assert!(seen.unloads.lock().unwrap().is_empty());
-        assert_eq!(game.chunk_forced(custom), Some(true));
-        assert!(game.chunk_loaded(custom));
     });
 }
 
@@ -570,7 +856,7 @@ fn a_ticket_a_chunk_unload_listener_adds_keeps_an_idle_custom_level_open() {
 #[test]
 #[ignore = "daily"]
 fn load_chunk_fails_where_a_mods_generator_panics() {
-    use super::native_entity_refs::tests::run_fresh_cases;
+    use sunrise_gameplay_common::game::test_fixtures::run_fresh_cases;
     use mod_api::ChunkLoadError;
     use sunrise_world::worldgen::mod_generators::{
         ChunkAccess, ModChunkGenerator, ModChunkGenerators, install_mod_chunk_generators,
@@ -637,12 +923,11 @@ fn load_chunk_fails_where_a_mods_generator_panics() {
 #[test]
 #[ignore = "daily"]
 fn a_live_loading_ticket_keeps_an_idle_custom_level_open_until_it_expires() {
-    use super::native_entity_refs::tests::run_fresh_cases;
-    use sunrise_gameplay::game::server_side::levels::IDLE_TICKS;
+    use sunrise_gameplay_common::game::test_fixtures::run_fresh_cases;
+    use sunrise_level::chunk::Chunk;
 
-    // A parallel world load can replace the process-wide dimension list during the idle ticks.
     if run_fresh_cases(
-        "game::server_side::runtime_levels_tests::a_live_loading_ticket_keeps_an_idle_custom_level_open_until_it_expires",
+        "cut_layout::game::runtime_levels_tests::a_live_loading_ticket_keeps_an_idle_custom_level_open_until_it_expires",
         "SUNRISE_RUNTIME_LEVEL_LOADING_TICKET_CHILD",
         &["loading_ticket"],
     ) {
@@ -655,35 +940,30 @@ fn a_live_loading_ticket_keeps_an_idle_custom_level_open_until_it_expires() {
         let dim = Dim::extra("loading:a").unwrap();
         let level = game.level("loading:a").unwrap();
         let chunk = ChunkRef::new(level, [5, 5]);
-        // Idle the custom level to one server tick short of its close.
-        for _ in 1..IDLE_TICKS {
-            game.tick_server(false).unwrap();
-        }
-        assert_eq!(game.server.levels.0.parked[&dim].idle, IDLE_TICKS - 1);
         assert!(!game.chunk_loaded(chunk));
         let host: &mut dyn ServerHost = game;
         assert_eq!(level.load_chunk(host, [5, 5]), Ok(()));
-        // The close falls due in this tick, and the ticket outlives it.
+
+        game.enter_level(dim).unwrap();
+        let chunk_data = Arc::new(Chunk::with_layout(16, 0, game.world.layout()));
+        game.world.chunks.insert((16, 0), chunk_data);
+        game.enter_level(Dim::Overworld).unwrap();
+        let distant = ChunkRef::new(level, [16, 0]);
         game.tick_server(false).unwrap();
-        assert!(
-            game.native_level_world(level).is_some(),
-            "the custom level stays open for the live ticket"
-        );
         assert!(game.chunk_loaded(chunk));
+        assert!(game.chunk_loaded(distant));
         assert!(
             !game.levels_to_tick().contains(&dim),
             "the ticket does not make the level tick"
         );
-        assert!(seen.unloads.lock().unwrap().is_empty());
-        // The ticket expires within two purges; the idle level then closes.
-        for _ in 0..3 {
-            game.tick_server(false).unwrap();
-        }
+
+        game.tick_server(false).unwrap();
         assert!(
-            game.native_level_world(level).is_none(),
-            "the idle level closes once the ticket expired"
+            !game.chunk_loaded(distant),
+            "the expired ticket allows idle eviction"
         );
-        assert_eq!(*seen.unloads.lock().unwrap(), ["loading:a"]);
+        assert_eq!(game.level("loading:a"), Some(level));
+        assert!(seen.unloads.lock().unwrap().is_empty());
     });
 }
 
@@ -869,7 +1149,7 @@ fn a_delete_closes_the_level_and_removes_its_folder_and_references_file() {
         write_file(&references);
         // The save of the unload writes the folder; a stray file is in it too.
         write_file(&folder.join("data/minecraft/raids.dat"));
-        assert_eq!(delete_as(game, "erase", "erase:instance/ab"), Ok(()));
+        assert_eq!(delete_as(game, "another_mod", "erase:instance/ab"), Ok(()));
         assert!(
             game.runtime_level_is_open("erase:instance/ab"),
             "open until the delete is applied"
@@ -931,23 +1211,16 @@ fn a_delete_of_a_level_that_is_not_open_removes_its_leftovers() {
 /// never touched.
 #[test]
 #[ignore = "daily"]
-fn a_delete_outside_the_mods_namespace_is_refused_and_removes_nothing() {
+fn a_delete_of_reserved_or_invalid_ids_is_refused_and_removes_nothing() {
     with_opener("mine", "mine:a", flat(), |game, _| {
-        let other = game
-            .server
-            .world_root
-            .join("dimensions/other/x/region/r.0.0.mca");
         let vanilla = game
-            .server
-            .world_root
+            .server.world_root
             .join("dimensions/minecraft/overworld/region/r.0.0.mca");
         let escape = game.server.world_root.join("dimensions/mine/x");
-        write_file(&other);
         write_file(&vanilla);
         write_file(&escape.join("keep.txt"));
         for (id, expected) in [
-            ("other:x", RuntimeLevelError::OutsideNamespace),
-            ("minecraft:overworld", RuntimeLevelError::OutsideNamespace),
+            ("minecraft:overworld", RuntimeLevelError::ReservedId),
             ("mine:../other/x", RuntimeLevelError::InvalidId),
             ("mine:x/../../other/x", RuntimeLevelError::InvalidId),
             ("mine:con", RuntimeLevelError::InvalidId),
@@ -955,7 +1228,7 @@ fn a_delete_outside_the_mods_namespace_is_refused_and_removes_nothing() {
             assert_eq!(delete_as(game, "mine", id), Err(expected), "{id}");
         }
         game.apply_runtime_levels();
-        assert!(other.is_file() && vanilla.is_file() && escape.join("keep.txt").is_file());
+        assert!(vanilla.is_file() && escape.join("keep.txt").is_file());
     });
 }
 
@@ -1102,7 +1375,7 @@ fn a_delete_of_a_level_still_waiting_to_open_is_refused() {
 #[test]
 fn a_delete_marks_an_open_level_closing_and_a_second_unload_finds_it_not_open() {
     let mut table = RuntimeTable::default();
-    table.queue_open("test", "del:a", flat()).unwrap();
+    table.queue_open("test", "del:a", admitted_flat(1)).unwrap();
     assert_eq!(
         table.queue_delete("test", "del:a"),
         Err(RuntimeLevelError::AlreadyOpen)
@@ -1110,9 +1383,12 @@ fn a_delete_marks_an_open_level_closing_and_a_second_unload_finds_it_not_open() 
     table.mark_open("del:a");
     assert_eq!(table.queue_delete("test", "del:a"), Ok(()));
     assert!(table.is_open("del:a"));
-    assert_eq!(table.queue_unload("del:a"), Err(RuntimeLevelError::NotOpen));
     assert_eq!(
-        table.queue_open("test", "del:a", flat()),
+        table.queue_unload("test", "del:a"),
+        Err(RuntimeLevelError::NotOpen)
+    );
+    assert_eq!(
+        table.queue_open("test", "del:a", admitted_flat(1)),
         Err(RuntimeLevelError::AlreadyOpen),
         "no reopen until the delete is applied"
     );
@@ -1652,23 +1928,23 @@ fn reopening_one_id_with_any_seed_reuses_the_metadata_its_first_open_leaked() {
         let mut first = None;
         for seed in [1, 2, 3, i64::MIN, i64::MAX] {
             let level = RuntimeLevel::new("minecraft:overworld", RuntimeGenerator::Flat, seed);
-            game.server
-                .levels
-                .0
-                .runtime
-                .queue_open("cycle", "cycle:a", level)
-                .unwrap();
+            game.runtime_level_open("cycle:a", level).unwrap();
             game.apply_runtime_levels();
             assert!(game.runtime_level_is_open("cycle:a"));
             assert_eq!(
                 game.server.levels.0.runtime.seeds().get("cycle:a").copied(),
                 Some(seed)
             );
-            let table = game.server.level_shapes.extra;
-            let level = table.iter().find(|level| level.id == "cycle:a").unwrap();
+            let level = game
+                .server
+                .level_shapes
+                .extra
+                .iter()
+                .find(|level| level.id == "cycle:a")
+                .copied()
+                .unwrap();
             let facts = sunrise_world::dimension_type::DimensionFacts::of_level(key);
             let leaked = (
-                table.as_ptr(),
                 level.id.as_ptr(),
                 level.dimension_type.as_ptr(),
                 std::ptr::from_ref(facts),
@@ -1677,10 +1953,7 @@ fn reopening_one_id_with_any_seed_reuses_the_metadata_its_first_open_leaked() {
             unload_as(game, "cycle", "cycle:a").unwrap();
             game.apply_runtime_levels();
             assert!(!game.runtime_level_is_open("cycle:a"));
-            assert_eq!(
-                game.server.levels.0.runtime.seeds().get("cycle:a").copied(),
-                None
-            );
+            assert_eq!(game.server.levels.0.runtime.seeds().get("cycle:a").copied(), None);
         }
     });
 }

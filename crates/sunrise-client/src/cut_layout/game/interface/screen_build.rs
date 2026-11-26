@@ -475,8 +475,7 @@ pub(crate) mod tests {
                 // The inventory and creative screen belong to a client in a world. An
                 // in-memory connection supplies the client registry holder for creative tabs.
                 let _server = sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client(game);
-                game.native_lifecycle
-                    .begin_open(mod_api::Authority::RemoteClient);
+                game.native_lifecycle.begin_open(None);
                 game.player = Some(
                     sunrise_sim::motion::PlayerMotion::new(
                         game.motion,

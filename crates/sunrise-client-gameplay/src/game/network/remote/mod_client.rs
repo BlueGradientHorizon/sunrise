@@ -4,9 +4,10 @@ use super::render_tick::{mob_tracking_body, player_tracking_body};
 use super::{Dim, Hit, Mining, Screen};
 use mod_api::InteractionKey;
 pub(in crate::game) use session_state::{
-    BACKLOG_LIMIT, CHUNK_PACKETS_PER_FRAME, ClientMenu, ItemUseAim, NoTerrain, OwnProfile,
-    PendingCauldron, PendingItem, PlayerTextures, Remote, RemoteDimensionEntry, ServicesKeys,
-    TICK_DECODE_WAIT, Tracked, client_millis, seat_passengers, skin_entries,
+    BACKLOG_LIMIT, CHUNK_PACKETS_PER_FRAME, ClientMenu, ConstructingClientLevel, ItemUseAim,
+    NoTerrain, OwnProfile, PendingCauldron, PendingItem, PlayerTextures, Remote,
+    RemoteDimensionEntry, ServicesKeys, TICK_DECODE_WAIT, Tracked, client_millis, seat_passengers,
+    skin_entries,
 };
 use std::{
     collections::{HashMap, VecDeque},
@@ -22,6 +23,7 @@ use sunrise_core::{geometry::Vec3, profile::AccountProperty, random::RandomSourc
 #[allow(unused_imports)]
 use sunrise_game_data::{Result, text::Text};
 use sunrise_gameplay_common::game::collision_source::Mover;
+use sunrise_gameplay_common::game::native_hooks::base::GameHooks as _;
 use sunrise_gameplay_common::game::remote::DryChanges;
 use sunrise_gameplay_common::game::remote::DryPlace;
 use sunrise_gameplay_common::game::remote::DrySound;
@@ -30,7 +32,6 @@ use sunrise_gameplay_common::game::remote::Lerp;
 use sunrise_gameplay_common::game::remote::MOUNT_MENU;
 use sunrise_gameplay_common::game::remote::SHIFT_INPUT;
 use sunrise_gameplay_common::game::remote::boat_interact_passes;
-use sunrise_gameplay_common::game::remote::chat_after_event;
 use sunrise_gameplay_common::game::remote::chat_received::{QueuedChat, QueuedChatKind};
 use sunrise_gameplay_common::game::remote::client_fluid_step;
 use sunrise_gameplay_common::game::remote::client_view_distance;
@@ -77,6 +78,7 @@ use sunrise_level::{
     containers::{BlockEntity, Furnace, FurnaceKind},
     profile_lookup::SPECTATOR,
     random_source,
+    world::World,
 };
 use sunrise_protocol::{
     entity_data::{ITEM_ENTITY_ITEM, Value},
@@ -140,6 +142,7 @@ pub(in crate::game) mod level_format;
 
 #[path = "raw_ingress_client.rs"]
 pub(in crate::game) mod raw_ingress;
+pub(in crate::game) use ingress_state::PacketError;
 
 #[path = "recipe_properties_client.rs"]
 pub(in crate::game) mod recipe_properties;
@@ -264,6 +267,8 @@ mod sync_reads;
 
 #[path = "tab_entries.rs"]
 mod tab_entries;
+#[cfg(test)]
+pub(in crate::game) use tab_entries::listed_player_skins;
 
 #[cfg(feature = "client")]
 impl sunrise_client::interaction_input::InteractionWorld for RemoteInputWorld<'_, '_> {
@@ -385,8 +390,23 @@ impl crate::game::ClientGame<'_> {
                 self.receive_cauldron_use(&p.data)?;
             }
             // The server's next generation of mod registries: all of it or the connection.
+            // Follows vanilla `ClientCommonPacketListenerImpl.onPacketError`: an invalid
+            // snapshot or vanilla-value decode disconnects cleanly without replacing live state.
             C::CustomPayload(p) if p.channel == sunrise_sim::datapack_net::CHANNEL => {
-                sunrise_sim::datapack_net::accept_chunk(&p.data)?;
+                let decoded = if let Some(remote) = &mut self.client.remote {
+                    remote.datapacks.decode_chunk(&p.data).map_err(|error| {
+                        log::warn!("Sunrise: invalid datapack snapshot payload: {error}");
+                        PacketError("Invalid datapack registry snapshot.")
+                    })?
+                } else {
+                    None
+                };
+                if let Some(set) = decoded {
+                    self.install_client_datapack_set(&set).map_err(|error| {
+                        log::warn!("Sunrise: invalid datapack vanilla value: {error}");
+                        PacketError("Invalid datapack vanilla value.")
+                    })?;
+                }
             }
             C::CustomPayload(p)
                 if p.channel == sunrise_sim::lan::commands::selector_sync::CHANNEL =>
@@ -413,7 +433,7 @@ impl crate::game::ClientGame<'_> {
             }
             // Per-position connected-texture groups synced for the window's chunks.
             C::CustomPayload(p) if p.channel == sunrise_protocol::connection_groups::CHANNEL => {
-                self.refuse_play_payload("connection groups: payload outside its bundle")?;
+                self.refuse_remote_input("connection groups: payload outside its bundle")?;
             }
             // Full-width data slots for the open blockless mod menu.
             C::CustomPayload(p) if p.channel == sunrise_protocol::menu_extra::DATA_CHANNEL => {
@@ -635,10 +655,30 @@ impl crate::game::ClientGame<'_> {
             C::PlayerInfoUpdate(p) => self.apply_player_info_update_packet(p),
             C::PlayerInfoRemove(p) => self.apply_player_info_remove_packet(p),
             C::TabList(p) => self.apply_tab_list_packet(p),
-            C::InitializeBorder(p) => self.apply_initialize_border_packet(p),
-            C::SetBorderCenter(p) => self.common.border.set_center([p.x, p.z]),
-            C::SetBorderLerpSize(p) => self.apply_set_border_lerp_size_packet(p),
-            C::SetBorderSize(p) => self.common.border.set_size(p.size),
+            C::InitializeBorder(p) => {
+                if let Err(error) = self.apply_initialize_border_packet(p) {
+                    log::warn!("invalid initialize_border packet: {error}");
+                }
+            }
+            C::SetBorderCenter(p) => {
+                if let Err(error) = self.common.border.set_center([p.x, p.z]) {
+                    log::warn!("invalid set_border_center packet: {error}");
+                }
+            }
+            C::SetBorderLerpSize(p) => {
+                if let Err(error) = self
+                    .common
+                    .border
+                    .lerp_between(p.old_size, p.new_size, p.lerp_time)
+                {
+                    log::warn!("invalid set_border_lerp_size packet: {error}");
+                }
+            }
+            C::SetBorderSize(p) => {
+                if let Err(error) = self.common.border.set_size(p.size) {
+                    log::warn!("invalid set_border_size packet: {error}");
+                }
+            }
             C::SetBorderWarningDelay(p) => self.common.border.warning_time = p.delay,
             C::SetBorderWarningDistance(p) => self.common.border.warning_distance = p.blocks,
             C::SetObjective(p) => self.remote_objective(p),
@@ -916,7 +956,7 @@ impl crate::game::ClientGame<'_> {
     /// `ServerReconfigScreen`: a vertical layout of cells padded by 10, the
     /// title (9 high) over Disconnect (150 x 20), centred. The title's and the
     /// button's top left corners.
-    pub(in crate::game) fn reconfigure_layout(
+    pub fn reconfigure_layout(
         &self,
         (w, h): (f32, f32),
     ) -> ((f32, f32), (f32, f32)) {
@@ -1094,7 +1134,7 @@ impl crate::game::ClientGame<'_> {
             .filter_map(|(id, uuid)| Some((*id as u32, r.level_player_name(*id, uuid)?.to_owned())))
             .collect()
     }
-    pub(in crate::game::client_side) fn remote_player_uuid(&self, id: u32) -> Option<u128> {
+    pub(in crate::game) fn remote_player_uuid(&self, id: u32) -> Option<u128> {
         let remote = self.client.remote.as_ref()?;
         if self
             .client
@@ -1248,10 +1288,10 @@ impl crate::game::ClientGame<'_> {
 
     pub fn send(&self, packet: S) {
         if self.client.remote.is_some() {
-            // MultiPlayerGameMode's attack, interact, useItem, useItemOn, releaseUsingItem, dropItem and
-            // piercingAttack run ensureHasSentCarriedItem before their packet: a slot the number keys
-            // chose this tick goes out first. A miss, a dig's start or a swap waits for the next tick.
-            if let S::Attack(_) | S::Interact(_) | S::UseItem(_) | S::UseItemOn(_) = &packet {
+            // MultiPlayerGameMode's attack, interact, useItem, releaseUsingItem, dropItem and
+            // piercingAttack sync the carried slot before their packet. useItemOn does this
+            // separately, before prediction. A miss, a dig's start or a swap waits for the next tick.
+            if let S::Attack(_) | S::Interact(_) | S::UseItem(_) = &packet {
                 self.remote_send_carried();
             } else if let S::PlayerAction(a) = &packet
                 && matches!(a.action, 4 | 5 | 6 | 8)
@@ -1275,7 +1315,12 @@ impl crate::game::ClientGame<'_> {
         if damage <= 0.0 {
             return;
         }
-        let crit = living && self.common.critical_attack(scale);
+        let mut crit = living && self.common.critical_attack(scale);
+        if living {
+            let vanilla = crit;
+            let mut multiplier = if vanilla { 1.5 } else { 1.0 };
+            self.native_critical_hit(target, vanilla, &mut crit, &mut multiplier);
+        }
         self.sweep_decision(scale, crit, target);
     }
 
@@ -1346,15 +1391,25 @@ impl crate::game::ClientGame<'_> {
 }
 
 impl PlayerTextures {
-    pub fn new(property: AccountProperty) -> Self {
-        Self {
-            property,
-            unpacked: std::sync::OnceLock::new(),
-        }
+    pub fn new(profile: u128, property: AccountProperty) -> Self {
+        Self(sunrise_client_render::skins::PackedTextures {
+            profile,
+            value: property.value,
+            signature: property.signature,
+        })
     }
 }
 
 impl Remote {
+    pub(in crate::game) fn constructing(
+        &self,
+        level: mod_api::LevelRef,
+    ) -> Option<&ConstructingClientLevel> {
+        self.constructing_level
+            .as_ref()
+            .filter(|pending| pending.handle == level)
+    }
+
     /// Project the session address for display once, dropping the memory transport's marker.
     pub(in crate::game) fn display_address_for(address: &str) -> Option<String> {
         (address != "local").then(|| sunrise_client_lib::net::shown_address(address))
@@ -1402,6 +1457,10 @@ pub(in crate::game) mod level_sound_tests;
 #[cfg(test)]
 #[path = "frozen_screen_effects_tests_client.rs"]
 pub(in crate::game) mod frozen_screen_effects_tests;
+
+#[cfg(all(test, feature = "client"))]
+#[path = "client_break_progress_tests.rs"]
+mod client_break_progress_tests;
 
 use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameExt as _;
 

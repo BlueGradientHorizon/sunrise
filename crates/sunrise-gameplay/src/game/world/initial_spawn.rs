@@ -55,10 +55,54 @@ impl ServerGame<'_> {
         };
         Ok(((origin.x, origin.z), 64))
     }
+
+    /// Initialize Overworld spawn after its load event and before opening other levels.
+    pub(in crate::game::server_side) fn initialize_overworld_spawn(&mut self) -> Result<()> {
+        let dedicated = self.is_dedicated_server();
+        if self.common.level.world_spawn.is_none() && self.server.world_debug {
+            // Debug worlds skip the spawn hook and bonus chest.
+            self.common.level.world_spawn = Some([0, 80, 0]);
+            self.common.level.world_spawn_angle = [0.0, 0.0];
+            self.common.level.spawn = Some([0.0, 80.0, 0.0]);
+        }
+        if self.common.level.world_spawn.is_none() {
+            if dedicated {
+                self.server.streaming.radius = -1;
+            }
+            self.try_initialize_world_spawn(true)?;
+        }
+        if dedicated {
+            self.common.spawn = self
+                .common.level
+                .world_spawn
+                .map(|[x, y, z]| Vec3::new(f64::from(x) + 0.5, f64::from(y), f64::from(z) + 0.5));
+        }
+        Ok(())
+    }
+
+    pub(in crate::game::server_side) fn try_initialize_world_spawn(&mut self, wait: bool) -> Result<bool> {
+        let Some([x, y, z]) = self.find_world_spawn(wait)? else {
+            return Ok(false);
+        };
+        self.common.spawn = Some(Vec3::new(
+            f64::from(x) + 0.5,
+            f64::from(y),
+            f64::from(z) + 0.5,
+        ));
+        self.common.level.spawn = Some([f64::from(x), f64::from(y), f64::from(z)]);
+        // A personal spawnpoint must not replace the world's spawn.
+        self.common.level.world_spawn.get_or_insert([x, y, z]);
+        if !self.server.spawn_hook_cancelled
+            && sunrise_sim::save::WorldGen::read(&self.server.world_root).is_some_and(|g| g.bonus_chest)
+        {
+            self.place_bonus_chest([x, y, z])?;
+        }
+        Ok(true)
+    }
     /// MinecraftServer.setInitialSpawn: the first chunk of the spiral with a
     /// valid respawn column gives the world spawn, else the origin chunk's
     /// centre at the spawn height. None while a chunk to test is loading.
-    pub(in crate::game::server_side) fn find_world_spawn(&mut self) -> Result<Option<[i32; 3]>> {
+    pub(in crate::game::server_side) fn find_world_spawn(&mut self, wait: bool) -> Result<Option<[i32; 3]>> {
         if !self.server.spawn_hook_fired {
             self.server.spawn_hook_fired = true;
             let mut position = self.common.level.world_spawn.unwrap_or([0, 0, 0]);
@@ -79,15 +123,9 @@ impl ServerGame<'_> {
         while let Some((dx, dz)) = self.server.spawn_spiral.current() {
             if self.server.spawn_spiral.tested() {
                 let (cx, cz) = (ox + dx, oz + dz);
-                if self.common.is_dedicated_server() {
-                    // getChunk(FULL) of the tested chunk alone: its 3x3 is decorated.
-                    if !self.common.world.chunks.contains_key(&(cx, cz)) {
-                        let area = [((cx, cz), -1)];
-                        if self.server.streaming.extra != area {
-                            self.server.streaming.extra = area.to_vec();
-                            self.server.streaming.rank_full_task(cx, cz);
-                        }
-                        return Ok(None);
+                if wait {
+                    if self.load_full_chunk(None, (cx, cz)).is_err() {
+                        return Err(format!("could not load initial spawn chunk {cx},{cz}").into());
                     }
                 } else if !self.server.streaming.is_lit(cx, cz) {
                     self.server.streaming.center = (cx, cz);
@@ -314,3 +352,91 @@ impl ServerGame<'_> {
 }
 
 use sunrise_gameplay_common::game::GameGameExt1 as _;
+
+#[cfg(test)]
+mod tests {
+    use crate::game::native_entity_refs::tests::{run_fresh_cases, with_game};
+    use crate::game::world_loading::WorldRequest;
+    use mod_api::{ChunkLoadEvent, Hooks, LevelLoadEvent, ModEntry, ServerHost};
+    use std::sync::{Arc, Mutex};
+    use sunrise_gameplay_common::game::native_lifecycle_common::NativeLifecycleCommonGameExt1 as _;
+    use sunrise_sim::{save::WorldPreset, world_options::{FlatSettings, WorldOptions}};
+
+    #[test]
+    #[ignore = "daily"]
+    fn integrated_creation_finishes_world_spawn_before_opening_the_nether() {
+        if run_fresh_cases(
+            "game::server_side::initial_spawn::tests::integrated_creation_finishes_world_spawn_before_opening_the_nether",
+            "SUNRISE_INITIAL_WORLD_SPAWN_CASE",
+            &["flat"],
+        ) {
+            return;
+        }
+
+        struct Log(Arc<Mutex<Vec<&'static str>>>);
+        #[mod_api::__subscriptions]
+        impl Hooks for Log {
+            fn level_load(&self, _: &mut dyn ServerHost, event: &mut LevelLoadEvent<'_>) {
+                match event.dimension {
+                    "minecraft:overworld" => self.0.lock().unwrap().push("overworld"),
+                    "minecraft:the_nether" => self.0.lock().unwrap().push("nether"),
+                    _ => {}
+                }
+            }
+            fn chunk_load(&self, _: &mut dyn ServerHost, event: &mut ChunkLoadEvent<'_>) {
+                if event.dimension == "minecraft:overworld" && event.chunk == [0, 0] {
+                    self.0.lock().unwrap().push("spawn column");
+                }
+            }
+        }
+        let log = Arc::new(Mutex::new(Vec::new()));
+        mod_platform::testing::with_mods(
+            vec![ModEntry::new("spawn_order", Box::new(Log(log.clone())))].into(),
+            || {
+                with_game(|game| {
+                    let root = tempfile::tempdir().unwrap();
+                    game.join_world_rest().unwrap();
+                    let options = WorldOptions {
+                        world_type: WorldPreset::Flat,
+                        flat_settings: Some(FlatSettings {
+                            structure_overrides: Vec::new(),
+                            ..FlatSettings::default()
+                        }),
+                        structures: false,
+                        ..WorldOptions::default()
+                    };
+                    let mut request = WorldRequest::new(
+                        "spawn_order",
+                        Some("Flat spawn"),
+                        Some(1),
+                        false,
+                        Some(&options),
+                        game.common.level.rule_registry.clone(),
+                    )
+                    .unwrap();
+                    request.save_root = root.path().to_path_buf();
+                    request.stem_order = Some(&[
+                        "minecraft:overworld",
+                        "minecraft:the_nether",
+                        "minecraft:the_end",
+                    ]);
+                    let prepared = game.prepare_world_and_rules(request).unwrap();
+                    assert!(prepared.level.world_spawn.is_none());
+                    game.native_lifecycle_open_started();
+                    game.finish_open_world(prepared).unwrap();
+
+
+                    assert_eq!(game.common.level.world_spawn, Some([0, -60, 0]));
+                    assert!(
+                        game.common.player.is_none(),
+                        "the owner's player is prepared separately"
+                    );
+                })
+            },
+        );
+        assert_eq!(
+            *log.lock().unwrap(),
+            ["overworld", "spawn column", "nether"]
+        );
+    }
+}

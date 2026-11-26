@@ -28,9 +28,6 @@ pub(crate) mod server_tick_rate_changed;
 #[path = "trident_family_tests_server.rs"]
 pub(crate) mod trident_family_tests;
 
-#[path = "register_enchantment_damage_effects_server.rs"]
-pub(crate) mod register_enchantment_damage_effects;
-
 #[path = "player_leave_server.rs"]
 pub(crate) mod player_leave;
 

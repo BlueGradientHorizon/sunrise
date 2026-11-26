@@ -5,6 +5,14 @@ use sunrise_items::blocks::{MAP_COLORS, RenderShape};
 use sunrise_level::particle_options::{ParticleOptions, ParticleType};
 
 impl crate::game::ClientGame<'_> {
+    fn particle_atlas_sprite(sprite: String) -> String {
+        if sprite == "missingno" {
+            sunrise_client::hud::MISSING_SPRITE.into()
+        } else {
+            sprite
+        }
+    }
+
     pub(in crate::game) fn block_provider_options(
         &self,
         ty: ParticleType,
@@ -15,8 +23,10 @@ impl crate::game::ClientGame<'_> {
         let facts = self.common.res.facts();
         let block = facts.get(state);
         let sprite = || {
-            Self::block_particle_sprite(&self.client.client_pack, state)
-                .unwrap_or_else(|| "missingno".into())
+            Self::particle_atlas_sprite(
+                Self::block_particle_sprite(&self.client.client_pack, state)
+                    .unwrap_or_else(|| "missingno".into()),
+            )
         };
         let options = match ty {
             ParticleType::Block | ParticleType::DustPillar | ParticleType::BlockCrumble => {
@@ -149,7 +159,7 @@ impl crate::game::ClientGame<'_> {
         state: BlockStateId,
         pos: [i32; 3],
     ) -> Option<(String, u32)> {
-        let sprite = Self::block_particle_sprite(&self.client.client_pack, state)?;
+        let sprite = Self::particle_atlas_sprite(Self::block_particle_sprite(&self.client.client_pack, state)?);
         let tint = self.terrain_particle_tint(state, pos).unwrap_or(0xFFFFFF);
         Some((sprite, tint))
     }

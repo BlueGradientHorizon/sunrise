@@ -32,7 +32,7 @@ impl crate::game::ClientGame<'_> {
 
     /// `ConnectScreen`'s Cancel: a server's (single player's server isn't
     /// joined through `ConnectScreen`), until the login is done.
-    pub(in crate::game::client_side) fn connect_cancel(
+    pub fn connect_cancel(
         &self,
         (w, h): (f32, f32),
     ) -> Option<(f32, f32)> {
@@ -43,14 +43,14 @@ impl crate::game::ClientGame<'_> {
     /// A click on `ConnectScreen`: Cancel aborts the connection
     /// (`connect.aborted`) and goes back. Escape does nothing there
     /// (`shouldCloseOnEsc` is false).
-    pub(in crate::game::client_side) fn connect_screen_click(&mut self) -> Result<bool> {
+    pub fn connect_screen_click(&mut self) -> Result<bool> {
         // ServerReconfigScreen's Disconnect, once it is active.
         if let Some(since) = self.client.remote.as_ref().and_then(|r| r.reconfiguring) {
             let (_, (x, y)) = self.reconfigure_layout(self.gui_size());
             if self.common.ticks.saturating_sub(since) >= 600
                 && sunrise_client::ui::hovered(self.client.cursor, x, y, 150.0, 20.0)
             {
-                self.client.audio.0.play_button_click();
+                self.play_audio_button_click();
                 self.leave_server(None)?;
                 return Ok(true);
             }
@@ -60,8 +60,10 @@ impl crate::game::ClientGame<'_> {
             return Ok(false);
         };
         if sunrise_client::ui::hovered(self.client.cursor, x, y, 200.0, 20.0) {
-            self.client.audio.0.play_button_click();
-            self.leave_server(None)?;
+            self.play_audio_button_click();
+            // ConnectScreen Cancel aborts the pending connection and returns to
+            // its parent screen without calling Minecraft.disconnect.
+            self.finish_leave_server(None)?;
             return Ok(true);
         }
         Ok(false)
@@ -71,7 +73,7 @@ impl crate::game::ClientGame<'_> {
         self.connect_server_with_options(address, name, None, false, false, None)
     }
     /// `ConnectScreen.startConnecting`: keep LAN discovery's server kind through loading.
-    pub(in crate::game::client_side) fn connect_server_with_options(
+    pub fn connect_server_with_options(
         &mut self,
         address: &str,
         name: &str,
@@ -250,7 +252,7 @@ impl crate::game::ClientGame<'_> {
             .as_ref()
             .is_some_and(|server| server.lan)
     }
-    pub fn set_registries(&mut self, registries: Arc<Dynamic>) {
+    pub fn set_registries(&mut self, registries: Arc<Dynamic>) -> Result<()> {
         let entries: Vec<(&str, serde_json::Value)> = registries
             .registries
             .get("minecraft:enchantment")
@@ -263,26 +265,31 @@ impl crate::game::ClientGame<'_> {
                 ))
             })
             .collect();
-        let enchantments = match self
+        let enchantments = self
             .stations()
             .enchantments
             .with_entries(entries.iter().map(|(n, v)| (*n, v)))
-        {
-            Ok(table) => table.map(Arc::new),
-            Err(error) => {
-                log::warn!("Sunrise: refused enchantment registry: {error}");
-                return;
-            }
-        };
+            .map_err(|error| format!("refused enchantment registry: {error}"))?
+            .map(Arc::new);
         // Bind a per-session biome pair so client biome-color mods never mutate `pack.context`.
-        let table = registries
+        let world_biomes = registries
             .registries
             .get(BIOME_REGISTRY)
-            .and_then(|list| client_biomes(self.common.res.biomes(), list))
+            .map(|list| client_biomes(self.common.res.biomes(), list))
+            .transpose()
+            .map_err(|error| format!("refused biome registry: {error}"))?
+            .flatten()
             .map(Arc::new)
             .unwrap_or_else(|| self.common.res.biomes().clone());
-        self.common.world_biomes_base = Some(table.clone());
-        self.common.world_biomes = Some(table);
+        // The trims render from the registries the server sent, in its sync order.
+        self.client
+            .armor_stand_assets
+            .0
+            .trims
+            .set_synced(&registries)
+            .map_err(|error| format!("refused trim registry: {error}"))?;
+        self.common.world_biomes_base = Some(world_biomes.clone());
+        self.common.world_biomes = Some(world_biomes);
         let context = self.worker_context();
         self.client
             .streaming
@@ -296,6 +303,13 @@ impl crate::game::ClientGame<'_> {
                     .collect()
             })
             .unwrap_or_default();
+        let variants = Arc::new(
+            sunrise_sim::mobs::variants::VariantTables::from_synced(
+                &registries,
+                self.common.res.variants(),
+            )
+            .map_err(|error| format!("refused variant registries: {error}"))?,
+        );
         if let Some(r) = self.client.remote.as_mut() {
             r.enchantments = enchantments;
             let bits = ceil_log2(biomes.len());
@@ -303,11 +317,14 @@ impl crate::game::ClientGame<'_> {
             r.chunk_format =
                 Arc::new(ChunkFormat::new(&r.dimension, biomes, bits).in_column(column));
             r.registries = registries;
+            r.variants = variants;
             r.resolve_clocks();
+            r.level_environments.clear();
             self.install_server_items();
             self.reset_creative_contents();
             self.refresh_creative_search_tags();
         }
+        Ok(())
     }
 }
 

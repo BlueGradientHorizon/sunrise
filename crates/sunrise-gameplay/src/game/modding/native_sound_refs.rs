@@ -3,16 +3,12 @@
 //! `StopSoundCommand`'s packet, a `ClientboundSoundPacket` for one player
 //! (`PlaySoundCommand`) and `Level.playSound(null, entity, ...)`, which
 //! sends a `ClientboundSoundEntityPacket` to the players in range. They
-//! return false for a stale handle, a player who isn't online here, an
-//! unknown `minecraft:` event, and a volume or pitch that isn't a finite
-//! non-negative number.
+//! return false for an unavailable target or malformed event key. Recipients resolve
+//! the event in their sound resources; packet delivery does not imply playback.
 use super::{commands::Target, journal_level_effects::PendingWrite};
 use mod_api::{EntityRef, PlayerRef, SoundSource};
 use sunrise_core::random::RandomSource;
-use sunrise_gameplay_common::game::{
-    native_hooks::{mod_sound_ok, sound_id},
-    transactions::After,
-};
+use sunrise_gameplay_common::game::{native_hooks::sound_id, transactions::After};
 
 impl crate::game::ServerGame<'_> {
     /// Where `player` is reached now: the window's own player or a guest.
@@ -27,16 +23,6 @@ impl crate::game::ServerGame<'_> {
             t @ (Target::Player | Target::Guest(_)) => Some(t),
             _ => None,
         }
-    }
-    /// Whether the server's registry has `sound`, when it is a vanilla
-    /// event; a mod's goes by name.
-    pub(in crate::game::server_side) fn native_sound_known(&self, sound: &str) -> bool {
-        !sound.starts_with("minecraft:")
-            || self.server.lan.as_ref().is_none_or(|host| {
-                host.hub
-                    .registry_id("minecraft:sound_event", sound)
-                    .is_some()
-            })
     }
     /// `StopSoundCommand` for one player: their client stops the playing
     /// sounds that match `sound` (an event id) and `source`; `None` matches
@@ -84,9 +70,7 @@ impl crate::game::ServerGame<'_> {
         let Some(at) = self.target_position(target) else {
             return false;
         };
-        if !mod_sound_ok(sound, at, source.index(), volume, pitch)
-            || !self.native_sound_known(sound)
-        {
+        if !sound_id(sound) {
             return false;
         }
         if !self.has_level_transaction() {
@@ -168,6 +152,7 @@ impl crate::game::ServerGame<'_> {
             pitch,
             except,
             entity: Some(id),
+            inline_range: None,
             seed,
         })
     }

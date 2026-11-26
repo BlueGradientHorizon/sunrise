@@ -36,7 +36,6 @@ nowhere the sampler asks nothing. `random` is the level's random itself: the par
 during the call (`host.add_particle`'s roll under the Decreased Particles option) move the one stream in call
 order. It never runs on a server, and a screen's block scene (`animate_scene`) does not call it."##]
     #[hook(
-        target = "sunrise_client_gameplay::game::native_hooks::animate_tick::ClientGame<'_>::native_animate_tick",
         side = "client",
         contract = "listen",
         scope = "block",

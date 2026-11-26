@@ -365,19 +365,18 @@ impl crate::game::ServerGame<'_> {
             None => {}
         }
     }
-    /// `PhantomSpawner.tick`: tired players under an open night sky draw
-    /// phantoms. A custom spawner ticks only while `spawn_mobs` is on
-    /// (`ServerChunkCache.tickChunks`), and this one only spawns enemies
-    /// (`ServerLevel.isSpawningMonsters`: `spawn_monsters` too). Every
-    /// player of the level counts: the game's own and the hosted ones (a
-    /// server thread's players are all hosted).
-    pub fn spawn_phantoms(&mut self) {
-        let rules = &self.common.ui.rules;
-        if !rules.bool_at(sunrise_game_data::gamerules::vanilla::SPAWN_MOBS)
-            || !rules.bool_at(sunrise_game_data::gamerules::vanilla::SPAWN_MONSTERS)
-            || !rules.bool_at(sunrise_game_data::gamerules::vanilla::SPAWN_PHANTOMS)
+    /// `PhantomSpawner.tick` (`ServerLevel.tickCustomSpawners`): tired players
+    /// under an open night sky draw phantoms. `spawn_enemies` is the chunk
+    /// source's stored setting, independent of Peaceful difficulty. The game's
+    /// own and hosted players count (a server thread's players are all hosted).
+    pub(in crate::game) fn tick_phantom_spawner(&mut self, spawn_enemies: bool) {
+        if !spawn_enemies
+            || !self
+                .common
+                .ui
+                .rules
+                .bool_at(sunrise_game_data::gamerules::vanilla::SPAWN_PHANTOMS)
             || self.common.dim != Dim::Overworld
-            || !self.has_custom_spawner(mod_api::SpawnerKind::Phantom)
         {
             return;
         }
@@ -422,6 +421,19 @@ impl crate::game::ServerGame<'_> {
         }
         for target in players {
             self.spawn_phantoms_near(target);
+        }
+    }
+    /// Direct test entry for `PhantomSpawner.tick` with the chunk pass's eligibility check.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn spawn_phantoms(&mut self) {
+        if !self.server.world_debug
+            && self
+                .common
+                .ui
+                .rules
+                .bool_at(sunrise_game_data::gamerules::vanilla::SPAWN_MOBS)
+        {
+            self.tick_phantom_spawner(self.server.chunk_spawn_enemies);
         }
     }
     /// One player's turn of `PhantomSpawner.tick`.

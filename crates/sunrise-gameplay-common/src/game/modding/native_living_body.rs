@@ -8,10 +8,10 @@ use crate::game::{
     native_equipment_read::{hand_slot, lend_equipment},
 };
 use mod_api::{
-    ActiveEffect, AttributeModifier, AttributeOperation, EffectKey, EquipmentSlot, Identifier,
-    ItemStackView, LivingRef, Pose,
+    ActiveEffect, AttributeModifierView, AttributeOperation, EffectKey, EntityReadError,
+    EquipmentSlot, ItemStackView, LivingRef, Pose, __private::LivingParty,
 };
-use std::sync::Arc;
+use std::{ops::ControlFlow, sync::Arc};
 use sunrise_core::{geometry::Vec3, position::BlockPos};
 use sunrise_level::effects::{EffectInstance, PlayerEffects};
 use sunrise_sim::health::{FixedBody, LivingBody, PlayerBody, PlayerHealthRead};
@@ -229,6 +229,89 @@ pub fn dragon_body(d: &Dragon) -> LivingBody<'_> {
     })
 }
 
+/// A lent living body with what naming and reading it needs: the one place a `LivingView` reads a
+/// body, whichever hook lends it (a hit's victim or causer, a healed or moving entity).
+#[derive(Clone, Copy)]
+pub struct BodyReads<'a> {
+    pub body: LivingBody<'a>,
+    pub reads: sunrise_sim::health::HitReads<'a>,
+}
+
+/// The view's reads of `body`; `party` only says which body a hook lent, and a `BodyReads` holds
+/// the one it names.
+impl mod_api::__private::LivingReads for BodyReads<'_> {
+    fn living_entity(&self, _: LivingParty) -> Option<mod_api::EntityRef> {
+        let id = match self.body {
+            LivingBody::Mob(m) => m.id,
+            LivingBody::Player(p) => u32::try_from(p.id).ok()?,
+            LivingBody::Stand(s) | LivingBody::Dragon(s) => s.id,
+        };
+        Some(mod_api::EntityRef::new(self.reads.epoch, id))
+    }
+    fn living_kind(&self, _: LivingParty) -> Option<mod_api::EntityTypeKey> {
+        body_kind(self.body, self.reads.living_types)
+    }
+    fn living_holder(&self, _: LivingParty) -> Option<mod_api::Holder> {
+        body_holder(self.body)
+    }
+    fn living_health(&self, _: LivingParty) -> Option<f32> {
+        body_health(self.body)
+    }
+    fn living_absorption(&self, _: LivingParty) -> Option<f32> {
+        body_absorption(self.body)
+    }
+    fn living_max_health(&self, _: LivingParty) -> Option<f32> {
+        body_max_health(self.body)
+    }
+    fn living_effect(&self, _: LivingParty, effect: mod_api::EffectKey) -> Option<ActiveEffect> {
+        let def = mod_api::__private::effect_index(effect)
+            .and_then(sunrise_game_data::potions::effect_by_index)?;
+        body_effect(self.body, def.index)
+    }
+    fn living_effects(&self, _: LivingParty) -> Option<Vec<ActiveEffect>> {
+        body_effects(self.body)
+    }
+    fn living_potion_affected(&self, _: LivingParty, effect: mod_api::EffectKey) -> bool {
+        mod_api::__private::effect_index(effect)
+            .and_then(sunrise_game_data::potions::effect_by_index)
+            .is_some_and(|def| body_potion_affected(self.body, def.index))
+    }
+    fn living_attribute_value(&self, _: LivingParty, id: &str) -> Option<f64> {
+        body_attribute(self.body, self.reads.attributes, id, ValueKind::Computed)
+    }
+    fn living_hand_item(
+        &self,
+        _: LivingParty,
+        hand: mod_api::Hand,
+        read: &mut dyn for<'s> FnMut(mod_api::ItemStackView<'s>),
+    ) -> Option<()> {
+        let stack = body_equipment(self.body, hand_slot(hand))?;
+        lend_equipment(stack, read)
+    }
+    fn living_no_ai(&self, _: LivingParty) -> Option<bool> {
+        body_no_ai(self.body)
+    }
+}
+
+/// Lend `lend`'s entity to a heal or movement hook's listeners as a [`mod_api::LivingView`]:
+/// `dispatch` runs with it once its reads are built, and not at all where they cannot be (no
+/// open world names the entity). Called only behind the hook's subscription check.
+pub fn with_lent_view(
+    lend: sunrise_sim::health::LivingLend<'_>,
+    dispatch: impl FnOnce(&mod_api::LivingView<'_>),
+) {
+    let Some(reads) = (lend.reads)() else {
+        return;
+    };
+    let lent = BodyReads {
+        body: lend.living_body(&reads),
+        reads,
+    };
+    if let Some(view) = mod_api::LivingView::new(&lent, LivingParty::Subject) {
+        dispatch(&view);
+    }
+}
+
 /// A player's effect as the API's load-owned key and instance data.
 pub fn active_effect(e: &EffectInstance) -> ActiveEffect {
     ActiveEffect::from(mod_api::__private::built::ActiveEffect {
@@ -257,6 +340,18 @@ pub fn mob_effect(m: &Mob, e: &sunrise_sim::mobs::StoredEffect) -> ActiveEffect 
         visible: !m.extra.hidden_effects.contains(&e.id),
         show_icon: e.show_icon,
     })
+}
+
+/// Project mob effects in store order, stopping before projecting the next on a break.
+pub fn visit_mob_effects(
+    mob: &Mob,
+    visit: &mut dyn FnMut(ActiveEffect) -> std::ops::ControlFlow<()>,
+) -> std::ops::ControlFlow<()> {
+    mob.extra
+        .effects
+        .iter()
+        .map(|e| mob_effect(mob, e))
+        .try_for_each(visit)
 }
 
 pub trait NativeLivingBodyGameExt1<'__sg>: crate::game::SideGame<'__sg> {
@@ -341,12 +436,31 @@ pub trait NativeLivingBodyGameExt2<'__sg>: crate::game::SideGame<'__sg> {
         body_effect(self.native_living_body(target)?, def.index)
     }
 
-    /// The entity's active effects (`LivingEntity.getActiveEffects`), in the
-    /// order their store keeps them, in `Some` even when it has none. None
-    /// for an armor stand, the dragon, a stale handle or a client.
-    fn living_effects(&self, living: LivingRef) -> Option<Vec<ActiveEffect>> {
-        let target = self.native_living_read_target(living)?;
-        body_effects(self.native_living_body(target)?)
+    /// Visit `LivingEntity.getActiveEffects` over the resident player, guest or mob store.
+    fn living_visit_effects(
+        &self,
+        living: LivingRef,
+        visit: &mut dyn FnMut(ActiveEffect) -> std::ops::ControlFlow<()>,
+    ) -> Result<std::ops::ControlFlow<()>, mod_api::EntityReadError> {
+        let result = match self.native_living_visit_target(living)? {
+            t @ (Target::Player | Target::Guest(_)) => self
+                .native_living_player_effects(t)
+                .ok_or(mod_api::EntityReadError::Unavailable)?
+                .list
+                .iter()
+                .map(active_effect)
+                .try_for_each(visit),
+            Target::Mob(id) => {
+                let mob = self
+                    .mobs
+                    .iter()
+                    .find(|m| m.id == id && !m.removed)
+                    .ok_or(mod_api::EntityReadError::Stale)?;
+                visit_mob_effects(mob, visit)
+            }
+            _ => return Err(mod_api::EntityReadError::Unavailable),
+        };
+        Ok(result)
     }
 
     /// Whether the entity has `effect` (`LivingEntity.hasEffect`), using its resolved key.
@@ -479,6 +593,17 @@ pub trait NativeLivingBodyGameExt4<'__sg>: crate::game::SideGame<'__sg> {
             Target::Player => Some(self.player.as_ref()?.jumping),
             Target::Guest(_) => Some(false),
             Target::Mob(_) => Some(false),
+            _ => None,
+        }
+    }
+
+    /// `LivingEntity.noJumpDelay`: ticks before a held jump can jump again.
+    fn living_no_jump_delay(&self, living: LivingRef) -> Option<i32> {
+        match self.native_living_read_target(living)? {
+            Target::Player => Some(self.player.as_ref()?.no_jump_delay),
+            Target::Mob(id) if self.is_logical_server() => {
+                Some(self.mobs.iter().find(|m| m.id == id)?.ai.no_jump_delay)
+            }
             _ => None,
         }
     }
@@ -670,23 +795,36 @@ pub trait NativeLivingBodyGameExt5<'__sg>: crate::game::SideGame<'__sg> {
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> NativeLivingBodyGameExt5<'__sg> for G {}
 
-/// The map's modifiers as the API's, in their order. Their ids are canonical
-/// (`Modifier` normalizes them), so none is dropped.
-fn attribute_modifiers(list: Vec<Modifier>) -> Vec<AttributeModifier> {
-    list.iter().filter_map(api_modifier).collect()
+/// Project each modifier without copying its canonical id out of the live map.
+pub fn visit_attribute_modifiers(
+    modifiers: &[Modifier],
+    visit: &mut dyn FnMut(AttributeModifierView<'_>) -> ControlFlow<()>,
+) -> ControlFlow<()> {
+    modifiers.iter().try_for_each(|m| {
+        visit(mod_api::__private::game::attribute_modifier_view(
+            m.id(),
+            m.amount(),
+            match m.operation() {
+                Operation::AddValue => AttributeOperation::AddValue,
+                Operation::AddMultipliedBase => AttributeOperation::AddMultipliedBase,
+                Operation::AddMultipliedTotal => AttributeOperation::AddMultipliedTotal,
+            },
+        ))
+    })
 }
 
-/// One map modifier as the API's.
-fn api_modifier(m: &Modifier) -> Option<AttributeModifier> {
-    Some(AttributeModifier::new(
-        Identifier::parse(m.id()).ok()?,
-        m.amount(),
-        match m.operation() {
-            Operation::AddValue => AttributeOperation::AddValue,
-            Operation::AddMultipliedBase => AttributeOperation::AddMultipliedBase,
-            Operation::AddMultipliedTotal => AttributeOperation::AddMultipliedTotal,
-        },
-    ))
+/// Use the mob's saved-attribute seed if its map has not been built yet.
+pub fn mob_attribute_modifiers<'a>(
+    mob: &'a Mob,
+    catalog: &Arc<Catalog>,
+    name: &str,
+) -> Option<&'a [Modifier]> {
+    mob.extra.live.modifiers(catalog, &mob.kind.id, name, || {
+        sunrise_sim::entity_nbt::attribute_entries(mob)
+            .into_iter()
+            .map(|(_, entry)| entry)
+            .collect()
+    })
 }
 
 pub trait NativeLivingBodyGameExt6<'__sg>: crate::game::SideGame<'__sg> {
@@ -696,38 +834,89 @@ pub trait NativeLivingBodyGameExt6<'__sg>: crate::game::SideGame<'__sg> {
         self.native_living_attribute(living, id, sunrise_world::attribute_map::ValueKind::Base)
     }
 
-    /// The ids of the attributes the entity's type has
-    /// (`AttributeMap`'s holder's attribute set), in registry order: the same
-    /// set the value and base reads answer for. None for a stale handle or an
-    /// unavailable entity; on a client, for any entity but the local player
-    /// (the client keeps no attribute map of another entity's, only the few
-    /// fields it draws).
-    fn living_attributes(&self, living: LivingRef) -> Option<Vec<Identifier>> {
-        let catalog = &self.motion.attributes;
-        let entity = self.native_living_attribute_entity(living)?;
-        Some(
-            catalog
-                .attributes()
-                .filter(|(id, _)| catalog.default_base(entity, *id).is_some())
-                // The catalog's names are canonical, so none is dropped.
-                .filter_map(|(_, a)| Identifier::parse(&a.name).ok())
-                .collect(),
-        )
+    /// Resolve the visitor's target. Only the local player has these reads on the client.
+    fn native_living_visit_target(&self, living: LivingRef) -> Result<Target, EntityReadError> {
+        let target = self.native_entity_visit_target(living.entity())?;
+        if !matches!(target, Target::Player) && !self.is_logical_server() {
+            return Err(EntityReadError::Unavailable);
+        }
+        Ok(target)
     }
 
-    /// The modifiers on the entity's attribute `id`
-    /// (`AttributeInstance.getModifiers`), in the order they were added: a
-    /// mod's transient and permanent ones, the saved list's, and what the
-    /// worn and held items grant. An attribute no modifier is on answers an
-    /// empty list; None for an attribute the entity type does not have, a
-    /// stale handle, or on a client for any entity but the local player,
-    /// whose copy of the synced instances it reads.
-    fn living_attribute_modifiers(
+    /// Lend the entity type's attribute ids in registry order.
+    fn living_visit_attributes(
+        &self,
+        living: LivingRef,
+        visit: &mut dyn FnMut(&str) -> ControlFlow<()>,
+    ) -> Result<ControlFlow<()>, EntityReadError> {
+        let entity = match self.native_living_visit_target(living)? {
+            Target::Player | Target::Guest(_) => "minecraft:player",
+            Target::Mob(id) => self
+                .mobs
+                .iter()
+                .find(|m| m.id == id && !m.removed)
+                .ok_or(EntityReadError::Stale)?
+                .kind
+                .id
+                .as_str(),
+            Target::Stand(_) => "minecraft:armor_stand",
+            Target::Dragon(_) => "minecraft:ender_dragon",
+            _ => return Err(EntityReadError::Unavailable),
+        };
+        Ok(self
+            .motion
+            .attributes
+            .attribute_names_for(entity)
+            .try_for_each(visit))
+    }
+
+    /// Lend resident modifiers from the same attribute instances the value reads use.
+    fn living_visit_attribute_modifiers(
         &self,
         living: LivingRef,
         id: &str,
-    ) -> Option<Vec<AttributeModifier>> {
-        self.native_target_attribute_modifiers(self.native_living_read_target(living)?, id)
+        visit: &mut dyn FnMut(AttributeModifierView<'_>) -> ControlFlow<()>,
+    ) -> Result<ControlFlow<()>, EntityReadError> {
+        let catalog = &self.motion.attributes;
+        let modifiers = match self.native_living_visit_target(living)? {
+            Target::Player => self
+                .player
+                .as_ref()
+                .ok_or(EntityReadError::Unavailable)?
+                .attributes
+                .modifiers(id),
+            Target::Guest(conn) => self
+                .command_guest(conn)
+                .and_then(|guest| guest.motion.as_deref())
+                .ok_or(EntityReadError::Unavailable)?
+                .attributes
+                .modifiers(id),
+            Target::Mob(mob) => {
+                let m = self
+                    .mobs
+                    .iter()
+                    .find(|m| m.id == mob && !m.removed)
+                    .ok_or(EntityReadError::Stale)?;
+                mob_attribute_modifiers(m, catalog, id)
+            }
+            Target::Stand(stand) => self
+                .armor_stands
+                .iter()
+                .find(|a| a.id == stand)
+                .ok_or(EntityReadError::Stale)?
+                .live
+                .modifiers(catalog, "minecraft:armor_stand", id, Vec::new),
+            Target::Dragon(dragon) => self
+                .dragon
+                .as_ref()
+                .filter(|d| d.id == dragon)
+                .ok_or(EntityReadError::Stale)?
+                .live
+                .modifiers(catalog, "minecraft:ender_dragon", id, Vec::new),
+            _ => None,
+        }
+        .ok_or(EntityReadError::Unavailable)?;
+        Ok(visit_attribute_modifiers(modifiers, visit))
     }
 
     fn native_living_attribute(
@@ -737,88 +926,6 @@ pub trait NativeLivingBodyGameExt6<'__sg>: crate::game::SideGame<'__sg> {
         kind: sunrise_world::attribute_map::ValueKind,
     ) -> Option<f64> {
         self.native_target_attribute(self.native_living_read_target(living)?, name, kind)
-    }
-
-    /// The entity's type key, for the catalog's attribute defaults: the same
-    /// set the value and base reads answer for. On a client only the local
-    /// player resolves (`native_living_read_target`).
-    fn native_living_attribute_entity<'__loan>(&'__loan self, living: LivingRef) -> Option<&'__loan str>
-    where
-        '__sg: '__loan,
-    {
-        match self.native_living_read_target(living)? {
-            Target::Player | Target::Guest(_) => Some("minecraft:player"),
-            Target::Mob(id) => self
-                .mobs
-                .iter()
-                .find(|m| m.id == id && !m.removed)
-                .map(|m| m.kind.id.as_str()),
-            Target::Stand(_) => Some("minecraft:armor_stand"),
-            Target::Dragon(_) => Some("minecraft:ender_dragon"),
-            _ => None,
-        }
-    }
-
-    /// The modifiers of `name` on `target`'s attribute map, as
-    /// `native_target_attribute` reads its value.
-    fn native_target_attribute_modifiers(
-        &self,
-        target: Target,
-        name: &str,
-    ) -> Option<Vec<AttributeModifier>> {
-        let catalog = &self.motion.attributes;
-        let player = match target {
-            Target::Player => self.player.as_ref()?,
-            Target::Guest(conn) => self.command_guest(conn)?.motion.as_deref()?,
-            Target::Mob(id) => {
-                let m = self.mobs.iter().find(|m| m.id == id && !m.removed)?;
-                return m
-                    .extra
-                    .live
-                    .modifiers(catalog, &m.kind.id, name, || {
-                        sunrise_sim::entity_nbt::attribute_entries(m)
-                            .into_iter()
-                            .map(|(_, entry)| entry)
-                            .collect()
-                    })
-                    .map(attribute_modifiers);
-            }
-            Target::Stand(id) => {
-                let a = self.armor_stands.iter().find(|a| a.id == id)?;
-                return a
-                    .live
-                    .modifiers(catalog, "minecraft:armor_stand", name, Vec::new)
-                    .map(attribute_modifiers);
-            }
-            Target::Dragon(id) => {
-                let d = self.dragon.as_ref().filter(|d| d.id == id)?;
-                return d
-                    .live
-                    .modifiers(catalog, "minecraft:ender_dragon", name, Vec::new)
-                    .map(attribute_modifiers);
-            }
-            _ => return None,
-        };
-        // The base read's own None: an attribute the type does not have.
-        let key = player.attributes.key(name)?;
-        player
-            .attributes
-            .value(
-                Some(key.clone()),
-                sunrise_world::attribute_map::ValueKind::Base,
-            )
-            .ok()?;
-        Some(
-            player
-                .attributes
-                .lookup(Some(&key))
-                .and_then(|handle| player.attributes.instance(&handle).ok())
-                .map(|instance| instance.modifiers())
-                .unwrap_or_default()
-                .iter()
-                .filter_map(api_modifier)
-                .collect(),
-        )
     }
 
     fn native_target_attribute(
@@ -880,4 +987,6 @@ use crate::game::side_ops::modapi_modding::ModapiModdingSideGameExt as _;
 
 use crate::game::commands_common::CommandsCommonGameExt2 as _;
 
-use crate::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+use crate::game::native_entity_refs_common::{
+    NativeEntityRefsCommonGameExt1 as _, NativeEntityRefsCommonGameExt5 as _,
+};

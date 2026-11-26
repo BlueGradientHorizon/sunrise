@@ -33,10 +33,25 @@ impl crate::game::ClientGame<'_> {
         stages
     }
 
+    /// The stage stored at each cracked position, origin and extras alike: what a mod block
+    /// entity's draw reads as `crumbling_stage`. Empty, with nothing allocated, when no crack is live.
+    pub fn crack_stage_map(&self) -> sunrise_client::fast_hash::FxHashMap<[i32; 3], u8> {
+        self.crack_stages()
+            .into_iter()
+            .filter_map(|(pos, stage)| Some((pos, u8::try_from(stage).ok()?)))
+            .collect()
+    }
+
+    /// The atlas origin of the `destroy_stage_*` sprite drawn for `stage`, if the atlas has it.
+    pub(in crate::game) fn crack_origin(&self, stage: u32) -> Option<[f32; 2]> {
+        let name = crack_stage_names(self.client.settings.improved_transparency).get(stage as usize)?;
+        let r = self.client.gui.atlas.sprites.get(*name)?;
+        Some([r.u0, r.v0])
+    }
+
     /// `renderBlockDestroyAnimation`: eligible cells within 32 blocks of the camera,
     /// with each stage sprite's atlas origin. No hook is asked during extraction.
     pub fn cracks(&self, camera: glam::DVec3) -> Vec<([i32; 3], [f32; 2])> {
-        let names = crack_stage_names(self.client.settings.improved_transparency);
         self.crack_stages()
             .into_iter()
             .filter(|(pos, _)| {
@@ -49,11 +64,7 @@ impl crate::game::ClientGame<'_> {
                 let state = self.common.world.block(pos[0], pos[1], pos[2]);
                 self.common.res.facts().get(state).destroy_overlay
             })
-            .filter_map(|(pos, stage)| {
-                let name = names.get(stage as usize)?;
-                let r = self.client.gui.atlas.sprites.get(*name)?;
-                Some((pos, [r.u0, r.v0]))
-            })
+            .filter_map(|(pos, stage)| Some((pos, self.crack_origin(stage)?)))
             .collect()
     }
     /// SkyRenderer.renderSunMoonAndStars: bodies on a frame rotated Y -90 then X by angle.
@@ -97,25 +108,33 @@ impl crate::game::ClientGame<'_> {
     ) {
         if mod_api::__private::listened(mod_api::HookId::RenderArm) {
             let eye = self.common.eye_position().unwrap_or_default();
-            let mut draw = BlockEntityDraw::posed(
-                partial,
-                self.common.world.game_time,
-                light,
-                eye.map(|c| c.floor() as i32),
-                m,
-                sunrise_client::block_entity_render::diffuse_lights(self.common.dim == Dim::Nether),
-                std::mem::take(out),
-            )
-            .animated(self.animation_time());
-            let mut canceled = false;
-            self.native_render_arm(
-                self.own_uuid(),
-                self.own_entity_id(),
-                left,
-                &mut draw,
-                &mut canceled,
+            let camera = self.client.native_camera_frame.as_ref().map_or_else(
+                || glam::DVec3::from_array(eye),
+                |c| glam::DVec3::from(c.position),
             );
-            *out = draw.into_vertices();
+            let mut canceled = false;
+            self.with_world_view(camera, partial, None, |view| {
+                let mut draw = BlockEntityDraw::posed_with_view(
+                    view,
+                    light,
+                    eye.map(|c| c.floor() as i32),
+                    m,
+                    sunrise_client::block_entity_render::diffuse_lights(self.common.dim == Dim::Nether),
+                    std::mem::take(out),
+                )
+                .with_quad_budget(
+                    self.entity_quad_capacity(),
+                    self.entity_batch_reserved_quads(),
+                );
+                self.native_render_arm(
+                    self.own_uuid(),
+                    self.own_entity_id(),
+                    left,
+                    &mut draw,
+                    &mut canceled,
+                );
+                *out = draw.into_vertices();
+            });
             if canceled {
                 return;
             }

@@ -137,34 +137,41 @@ impl ServerGame<'_> {
         &mut self,
         placed: [i32; 3],
     ) -> sunrise_game_data::Result<()> {
-        // The transaction journals ordinary state and entity changes, not this
-        // pattern's flag-2 writes, destroy events and subsequent neighbour pass.
-        // The mod placement preflight refuses a completing formation before it writes.
-        // Do not clear a formation created reentrantly by the write's neighbours either.
-        if !self.common.transactions.is_empty() {
+        // A chosen placement captures the pattern clears in its savepoint. Other
+        // transactional routes still do not stage the wither callback.
+        let staged = self.captures_placement();
+        if !self.common.transactions.is_empty() && !staged {
             return Ok(());
         }
         let state = self.common.world.block(placed[0], placed[1], placed[2]);
         let Some((found, cells)) = self.wither_spawn_pattern(placed, state) else {
             return Ok(());
         };
+        if staged {
+            self.clear_pattern_blocks(&cells)?;
+            self.after_commit(
+                sunrise_gameplay_common::game::transactions::After::WitherPattern(found, cells),
+            );
+            return Ok(());
+        }
         // Clear and update the formation before the item notice, without publishing
         // unrelated effects that were already queued (notably the item's place sound
         // and block_place event). Restore those even if pattern processing fails.
         let pending = std::mem::take(&mut self.common.level_events);
-        let result = self.spawn_wither_pattern(found, &cells);
+        let result = self
+            .clear_pattern_blocks(&cells)
+            .and_then(|()| self.finish_wither_pattern(found, &cells));
         self.common.level_events.splice(..0, pending);
         result
     }
 
-    fn spawn_wither_pattern(
+    pub(in crate::game) fn finish_wither_pattern(
         &mut self,
         found: PatternMatch,
         cells: &[[i32; 3]],
     ) -> sunrise_game_data::Result<()> {
-        // Clear the pattern, the wither appears on the middle of the bottom
-        // row facing along the pattern's forwards axis, then neighbours update.
-        self.clear_pattern_blocks(cells)?;
+        // The cells were cleared before spawning. The wither appears on the middle of
+        // the bottom row facing along the pattern's forwards axis, then neighbours update.
         let base = found.block(1, 2, 0);
         let at = [
             f64::from(base[0]) + 0.5,
@@ -205,6 +212,14 @@ impl ServerGame<'_> {
             Some(Who::Mob(id)) => Some(id),
             _ => None,
         };
+        // A live player owner is the lent attack's attacker; no owner at all
+        // names no causing entity (`magic()`), even though the skull's attack
+        // still carries the dead shooter.
+        let cause = match live_owner {
+            Some(Who::Mob(id)) => sunrise_gameplay_common::game::creatures::KnownCause::Entity(id),
+            Some(Who::Player) => sunrise_gameplay_common::game::creatures::KnownCause::Attack,
+            None => sunrise_gameplay_common::game::creatures::KnownCause::None,
+        };
         let from = [p.previous.x, p.previous.y, p.previous.z];
         let skull = skull_source(live_owner, from);
         let (amount, kind) = (skull.amount, skull.kind);
@@ -218,30 +233,28 @@ impl ServerGame<'_> {
                 // WitherSkull.onHitEntity's source: the wither launched
                 // it, and `magic` names no entity and no position.
                 self.server.combat.0.projectile_owner = owner;
-                // EnchantmentHelper.doPostAttackEffects runs only on a
-                // target that lived.
-                self.server.combat.0.post_attack_if_alive = true;
                 if skull.from.is_none() {
                     self.server.combat.0.projectile_direct = None;
                 }
-                let hit = self.hurt_player_from(
-                    amount,
-                    skull.from,
-                    sunrise_gameplay_common::game::creatures::damage_type(kind, false),
-                    Some(owner),
-                    false,
-                );
-                if hit && wither_ticks > 0 {
-                    self.give_player_effect("minecraft:wither", wither_ticks, 1);
-                }
+                let damage_type =
+                    sunrise_gameplay_common::game::creatures::damage_type(kind, false);
+                let hit = self.hurt_player_from(amount, skull.from, damage_type, cause, false);
                 // A totem that fired saves the player inside hurtServer:
-                // still alive, so no heal.
-                let killed =
-                    self.common.player.as_ref().is_some_and(|pl| {
-                        killed(hit, pl.health.dead_or_dying(), pl.health.totem_used)
-                    });
+                // still alive, so run the enchantments instead of healing the owner.
+                let killed = self.common.player.as_ref().is_some_and(|pl| {
+                    killed(
+                        hit,
+                        pl.health.dead_or_dying(),
+                        pl.health.has_pending_protection(),
+                    )
+                });
                 if killed {
                     self.heal_skull_owner(p, live_owner);
+                } else if hit && live_owner.is_some() {
+                    self.shot_post_attack(p, Who::Player, damage_type);
+                }
+                if hit && wither_ticks > 0 {
+                    self.give_player_effect("minecraft:wither", wither_ticks, 1);
                 }
             }
             // EnderDragonPart.hurtServer / EndCrystal.hurtServer: skull with live owner uses wither_skull, else magic.
@@ -269,6 +282,8 @@ impl ServerGame<'_> {
                     kind,
                     attacker: live_owner,
                     from: skull.from,
+                    // `magic()` for an ownerless skull names no entity.
+                    direct: live_owner.is_some().then(|| p.entity_type()),
                     attacker_species: owner_species,
                 };
                 let mut survived_hit = false;
@@ -327,19 +342,22 @@ impl ServerGame<'_> {
                     self.mob_post_attack(
                         id,
                         live_owner,
-                        Some("minecraft:wither_skull"),
+                        Some((p.id, "minecraft:wither_skull")),
                         Some("minecraft:wither_skull"),
                     );
                 }
-                if survived_hit
-                    && wither_ticks > 0
-                    && let Some(m) = self
-                        .common
-                        .mobs
-                        .iter_mut()
-                        .find(|m| m.id == id && m.species() != Species::Wither)
-                {
-                    m.add_effect("minecraft:wither", wither_ticks, 1);
+                if survived_hit && wither_ticks > 0 {
+                    let effect_source = match live_owner {
+                        Some(Who::Mob(owner_id)) => self.entity(owner_id),
+                        Some(Who::Player) => self.entity(self.own_entity_id() as u32),
+                        None => None,
+                    }
+                    .or_else(|| self.entity(p.id));
+                    self.add_mob_effect(
+                        id,
+                        sunrise_level::effects::EffectInstance::new("wither", wither_ticks, 1),
+                        effect_source,
+                    );
                 }
                 if killed {
                     self.heal_skull_owner(p, live_owner);
@@ -361,7 +379,7 @@ impl ServerGame<'_> {
         ) {
             self.server.combat.0.blast_resistance_cap = Some(0.8);
         }
-        self.server.combat.0.explosion_direct = Some(p.id);
+        self.server.combat.0.explosion_direct = Some((p.id, p.entity_type()));
         let result = self.with_impacting_projectile(p, |g| {
             g.with_hive_emptying_blast(|g| {
                 g.explode(
@@ -420,7 +438,11 @@ impl ServerGame<'_> {
                     .iter_mut()
                     .find(|m| m.id == id && m.alive())
                 {
-                    w.heal(&self.common.loop_context, 5.0);
+                    w.heal(
+                        &self.common.loop_context,
+                        &|| crate::game::entity_server::hit_reads_of!(self),
+                        5.0,
+                    );
                 }
             }
             // The player (or the guest acting now) who owns the skull.
@@ -470,6 +492,9 @@ pub(in crate::game::server_side) fn skull_source(
 }
 
 use sunrise_gameplay_common::game::GameGameExt1 as _;
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;
+use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
 
 #[cfg(test)]
 mod tests {

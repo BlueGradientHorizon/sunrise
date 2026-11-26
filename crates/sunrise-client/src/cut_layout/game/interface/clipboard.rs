@@ -41,15 +41,14 @@ mod tests {
         }
     }
 
-    /// A tick and a frame reach no clipboard, read or write; a click from the window does,
-    /// and its copy is what the clipboard holds after.
     #[test]
     #[ignore = "daily"]
-    fn a_mod_reaches_the_clipboard_only_while_input_is_handled() {
+    fn a_mod_reaches_the_clipboard_from_any_client_callback() {
         let reads = Reads::default();
         let mods: mod_api::Mods = vec![ModEntry::new("paste", Box::new(Mod(reads.clone())))].into();
         with_mods(mods, || {
             sunrise_client_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+                // Headless has no window, but a client role is what `native_window` asks.
                 game.options.headless = true;
                 game.client.clipboard.0.set_text("pasted");
 
@@ -65,19 +64,43 @@ mod tests {
                     },
                     sunrise_client_gameplay::input_trace::InputOrigin::User,
                 );
-                game.native_client_tick_pre();
                 let got = reads.0.lock().unwrap().clone();
                 assert_eq!(
                     got,
                     [
-                        ("tick", None, false),
-                        ("frame", None, false),
-                        ("click", Some("pasted".to_owned()), true),
-                        ("tick", None, false),
+                        ("tick", Some("pasted".to_owned()), true),
+                        ("frame", Some("tick".to_owned()), true),
+                        ("click", Some("frame".to_owned()), true),
                     ]
                 );
                 assert_eq!(game.client.clipboard.0.text(), "click");
+
+                // The Create-shaped case: a payload handler copies reply text, and a read
+                // after it returns that text.
+                let host: &mut dyn ClientHost = game;
+                assert!(host.set_clipboard_text("reply text"));
+                assert_eq!(host.clipboard_text().as_deref(), Some("reply text"));
+
+                // Empty text is ignored.
+                assert!(host.set_clipboard_text(""));
+                assert_eq!(host.clipboard_text().as_deref(), Some("reply text"));
             });
+            for role in [
+                sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer,
+                sunrise_gameplay_common::game::execution_role::ExecutionRole::DedicatedServer,
+            ] {
+                crate::game::native_entity_refs::tests::with_game_role_client(
+                    crate::game::native_entity_refs::tests::fixture_root(),
+                    role,
+                    |game| {
+                        game.client.clipboard.0.set_text("kept");
+                        let host: &dyn ClientHost = &*game;
+                        assert_eq!(host.clipboard_text(), None);
+                        assert!(!host.set_clipboard_text("lost"));
+                        assert_eq!(game.client.clipboard.0.text(), "kept");
+                    },
+                );
+            }
         });
     }
 }

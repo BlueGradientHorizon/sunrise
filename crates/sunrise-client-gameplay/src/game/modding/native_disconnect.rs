@@ -31,9 +31,11 @@ impl ClientGame<'_> {
         Ok(())
     }
 
-    /// What follows the frame's render: the cursor icon, then a mod's `disconnect` (below).
+    /// What follows the frame's render: the cursor icon, any deferred client command
+    /// submissions, then a mod's `disconnect` (below).
     pub(in crate::game::client_side) fn native_frame_end(&mut self) -> Result<()> {
         sunrise_level::spans::time("pr_cursor", || self.apply_cursor_icon());
+        self.drain_pending_client_commands();
         self.native_leave_if_asked()
     }
 

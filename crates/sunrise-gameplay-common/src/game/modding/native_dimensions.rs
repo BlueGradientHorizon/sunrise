@@ -219,6 +219,7 @@ mod tests {
                 r.register_dimension("pocket", DimensionSettings::default());
                 r.register_dimension("pocket", DimensionSettings::default());
                 r.register_dimension("other:pocket", DimensionSettings::default());
+                r.register_dimension("minecraft:overworld", DimensionSettings::default());
                 r.register_dimension("", DimensionSettings::default());
                 r.register_dimension(
                     "uneven",
@@ -256,7 +257,7 @@ mod tests {
         let errors = install_parts(&[ModEntry::new("test", Box::new(Invalid))]).unwrap_err();
         assert_eq!(errors.len(), 7, "{errors:?}");
         assert!(errors[0].contains("test registered dimension test:pocket twice"));
-        assert!(errors[1].contains("namespace"));
+        assert!(errors[1].contains("minecraft:overworld, which is a vanilla level"));
         assert!(errors[2].contains("test declares invalid identifier \"test:\""));
         assert!(errors[3].contains("test:uneven"));
         assert!(errors[4].contains("test:low_ceiling"));
@@ -303,13 +304,18 @@ mod tests {
                 r.register_chunk_generator("void", Void);
                 r.register_chunk_generator("void", Void);
                 r.register_chunk_generator("other:void", Void);
+                r.register_chunk_generator("minecraft:flat", Void);
                 r.register_chunk_generator("", Void);
             }
         }
         let errors = install_parts(&[ModEntry::new("test", Box::new(Invalid))]).unwrap_err();
         assert_eq!(errors.len(), 3, "{errors:?}");
         assert!(errors[0].contains("test registered chunk generator test:void twice"));
-        assert!(errors[1].contains("test declares \"other:void\" in unowned namespace \"other\""));
+        assert!(
+            errors[1].contains(
+                "test registered chunk generator minecraft:flat, which is the game's own"
+            )
+        );
         assert!(errors[2].contains("test declares invalid identifier \"test:\""));
     }
 
@@ -363,7 +369,8 @@ mod tests {
         assert!(generators.contains_key("later:void"));
     }
 
-    /// What the engine calls is the mod's own code, under its namespaced id.
+    /// What the engine calls is the mod's own code, under its namespaced id: its terrain, the
+    /// block-entity data it sets and the biomes its resolver names.
     #[test]
     fn a_registered_generator_reaches_the_engine() {
         use mod_api::{ChunkAccess, ChunkPos};
@@ -379,6 +386,19 @@ mod tests {
                 assert!(chunk.set_block([1, chunk.min_y(), 2], state));
                 let invalid = mod_api::__private::block_state_from_ordinal(self.0, u16::MAX);
                 assert!(!chunk.set_block([2, chunk.min_y(), 2], invalid));
+                let mut nbt = mod_api::Compound::new();
+                nbt.insert(
+                    "id".into(),
+                    sunrise_core::nbt::Tag::String("minecraft:chest".into()),
+                );
+                chunk.set_block_entity_nbt(nbt);
+            }
+            fn create_biomes(&self, chunk: &mut dyn mod_api::ChunkBiomes) {
+                assert_eq!(chunk.level(), "test:pocket");
+                chunk.fill_biomes_from_noise(&mut |[x, y, z]| {
+                    mod_api::BiomeKey::parse(if x + y + z == 0 { "desert" } else { "plains" })
+                        .unwrap()
+                });
             }
         }
         struct Writes;
@@ -392,6 +412,7 @@ mod tests {
         struct Written(
             Vec<([i32; 3], BlockStateId)>,
             &'static sunrise_world::registry::BlockRegistry,
+            Vec<sunrise_core::nbt::Compound>,
         );
         impl EngineChunk for Written {
             fn registry(&self) -> &'static sunrise_world::registry::BlockRegistry {
@@ -422,6 +443,36 @@ mod tests {
                 self.0.push((pos, state));
                 true
             }
+            fn set_block_entity_nbt(&mut self, nbt: sunrise_core::nbt::Compound) {
+                self.2.push(nbt);
+            }
+        }
+        /// The engine's biome cells: the identifiers the resolver gives two quarts.
+        struct Cells(Vec<String>);
+        impl sunrise_world::worldgen::mod_generators::ChunkBiomes for Cells {
+            fn pos(&self) -> ChunkPos {
+                ChunkPos::new(0, 0)
+            }
+            fn level(&self) -> &str {
+                "test:pocket"
+            }
+            fn seed(&self) -> i64 {
+                0
+            }
+            fn min_y(&self) -> i32 {
+                -64
+            }
+            fn height(&self) -> i32 {
+                384
+            }
+            fn fill_biomes_from_noise(
+                &mut self,
+                resolver: &mut dyn FnMut([i32; 3]) -> sunrise_core::identifier::Identifier,
+            ) {
+                for quart in [[0, 0, 0], [1, 0, 0]] {
+                    self.0.push(resolver(quart).as_str().to_owned());
+                }
+            }
         }
         install_parts(&[ModEntry::new("test", Box::new(Writes))]).unwrap();
         let generators = crate::game::native_chunk_generator::installed_chunk_generators();
@@ -431,14 +482,25 @@ mod tests {
         ));
         crate::game::api_values::resolve_block_definitions(registry).unwrap();
         let generator = generators["test:marker"].clone();
-        let writes = std::thread::spawn(move || {
-            let mut chunk = Written(Vec::new(), registry);
+        let (writes, data, biomes) = std::thread::spawn(move || {
+            let mut chunk = Written(Vec::new(), registry, Vec::new());
             generator.build_terrain(&mut chunk);
-            chunk.0
+            let mut cells = Cells(Vec::new());
+            generator.create_biomes(&mut cells);
+            (chunk.0, chunk.2, cells.0)
         })
         .join()
         .unwrap();
         assert_eq!(writes, [([1, -64, 2], BlockStateId(1))]);
+        assert_eq!(
+            data.iter()
+                .map(|nbt| nbt.get(&"id".into()))
+                .collect::<Vec<_>>(),
+            [Some(&sunrise_core::nbt::Tag::String(
+                "minecraft:chest".into()
+            ))]
+        );
+        assert_eq!(biomes, ["minecraft:desert", "minecraft:plains"]);
     }
 
     /// The vanilla levels are in the `minecraft` namespace, so only a mod with
@@ -877,12 +939,27 @@ mod biome_source_tests {
             })
             .contains("biome_preset")
         );
-        assert!(
+        assert_eq!(
             refused(|s| {
                 s.biome_source = BiomeSourceKind::End;
                 s.generator = "mymod:void".into();
-            })
-            .contains("fixed biome source")
+            }),
+            ""
+        );
+        assert_eq!(
+            refused(|s| {
+                s.biome_source = BiomeSourceKind::Checkerboard;
+                s.biomes = vec!["minecraft:plains".into(), "minecraft:desert".into()];
+                s.generator = "mymod:void".into();
+            }),
+            ""
+        );
+        assert_eq!(
+            refused(|s| {
+                s.biome_source = BiomeSourceKind::MultiNoise;
+                s.generator = "mymod:void".into();
+            }),
+            ""
         );
         assert_eq!(
             refused(|s| {
@@ -921,17 +998,16 @@ mod biome_source_tests {
         assert!(points(|p| p.offset = 1.5).contains("biome point"));
         assert!(points(|p| p.offset = -0.1).contains("biome point"));
         assert!(points(|p| p.biome.clear()).contains("biome point"));
-        // A valid points source still refuses a chunk generator of the mod's own.
-        assert!(
+        // A valid points source composes with a mod's own chunk generator as well as noise.
+        assert_eq!(
             DimensionSettings {
                 biome_source: BiomeSourceKind::Points,
                 biome_points: vec![point()],
                 generator: "mymod:void".into(),
                 ..Default::default()
             }
-            .invalid_biome_source()
-            .unwrap_or_default()
-            .contains("fixed biome source")
+            .invalid_biome_source(),
+            None
         );
     }
 }

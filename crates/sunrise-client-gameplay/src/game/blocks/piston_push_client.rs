@@ -9,18 +9,30 @@ use sunrise_core::position::BlockPos;
 use sunrise_gameplay_common::game::collision_source::Mover;
 use sunrise_gameplay_common::game::entity::{Entity, EntityHandle};
 use sunrise_gameplay_common::game::piston_push::{
-    Body, Lid, Push, PushTarget, ShulkerPush, carrying::support_of, pushed_movement, shulker_lid,
+    Body, Lid, Push, PushTarget, ShulkerPush,
+    carrying::{
+        SUPPORT_PROBE, cancel_shove_velocity, collect_sweeps, support_of, sweep_displacement,
+        upright_tilt_clearance,
+    },
+    pushed_movement, shulker_lid,
 };
 use sunrise_gameplay_common::game::remote::passengers::passenger_root;
-use sunrise_level::collisions::{SceneCollisions, with_piston_noclip};
+use sunrise_level::collisions::{EntityCollisions, SceneCollisions, with_piston_noclip};
 use sunrise_sim::entity_rules::EntityRules;
 use sunrise_sim::join_seq::{JoinSeq, Joined};
 use sunrise_sim::motion::{BodyCollision, BodyMotion, BodyMove, MotionWorld};
-use sunrise_world::moving_colliders::{self, Placed, Prepared, Shove};
+use sunrise_world::collision_context::CollisionContext;
+use sunrise_world::entity_obstruction::EntityIdentity;
+use sunrise_world::moving_colliders::{self, Prepared, Shove};
+use sunrise_world::world_movement::{CollisionCheckRequest, no_world_collision};
 use sunrise_world::{
     entity_move::MoverType, level::data::PushReaction, move_gate::MoveGate,
     piston_movement::PistonMovement, piston_push,
 };
+
+thread_local! {
+    static CLIENT_CARRY_HEIGHTS: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+}
 
 impl crate::game::ClientGame<'_> {
     /// Client arm of [`Game::side_move_local_player`]: `Entity.move(mover, …)`
@@ -749,7 +761,7 @@ impl crate::game::ClientGame<'_> {
     }
 
     /// Client arm of [`Game::side_carry_pass`]: carries and shoves only the local
-    /// player using client collider frames and the previous tick's shove snapshot.
+    /// player using client collider frames and the previous tick's snapshot.
     pub(in crate::game) fn client_carry_pass(&mut self, start: &Prepared) {
         let last = self
             .client
@@ -757,36 +769,33 @@ impl crate::game::ClientGame<'_> {
             .as_mut()
             .and_then(|r| r.collider_shove_start.take())
             .filter(|(level, _)| *level == self.common.dim);
-        let carry = start.placed().any(|p| {
-            self.client_collider_now_frame(p.id)
-                .is_some_and(|now| now != p.collider.frame)
-        });
-        let shove = last.as_ref().map_or(carry, |(_, placed)| {
-            placed.placed().any(|p| {
+        let before = last.as_ref().map_or(start, |(_, placed)| placed);
+        if !before.is_empty()
+            && before.placed().any(|p| {
                 self.client_collider_now_frame(p.id)
                     .is_some_and(|now| now != p.collider.frame)
             })
-        });
-        if carry || shove {
+        {
             let mut carried_support = None;
-            if carry
-                && self.common.riding.is_none()
+            if self.common.riding.is_none()
                 && let Some((player_id, bounds)) = self
                     .common
                     .player
                     .as_ref()
                     .filter(|p| !p.spectator && p.ground.on_ground)
                     .map(|p| (p.entity_id as u32, p.bounds()))
-                && let Some(support) = support_of(start, bounds, player_id)
+                && let Some(support) = support_of(before, bounds, player_id)
             {
                 carried_support = Some(support);
                 let now = self.client_placed_moving_colliders();
                 {
-                    let _scope =
-                        moving_colliders::Scope::enter_level(self.client_collider_level(), now);
-                    if let (Some(before), Some(after)) = (
-                        start.placed().find(|p| p.id == support),
-                        self.client_collider_now_frame(support),
+                    let _scope = moving_colliders::Scope::enter_level(
+                        self.client_collider_level(),
+                        now.clone(),
+                    );
+                    if let (Some(before_p), Some(after_p)) = (
+                        before.placed().find(|p| p.id == support),
+                        now.placed().find(|p| p.id == support),
                     ) && let Some(bounds) = self
                         .common
                         .player
@@ -796,24 +805,41 @@ impl crate::game::ClientGame<'_> {
                     {
                         let centre = bounds.center();
                         let contact = Vec3::new(centre.x, bounds.min(Axis::Y), centre.z);
-                        let carried = after
-                            .to_world(before.collider.frame.to_local(contact))
+                        let rigid = after_p
+                            .collider
+                            .frame
+                            .to_world(before_p.collider.frame.to_local(contact))
                             .subtract(contact);
+                        let turned = !before_p.collider.frame.same_turn(&after_p.collider.frame);
+                        let carried = if turned {
+                            CLIENT_CARRY_HEIGHTS.with(|cell| {
+                                let mut heights = cell.borrow_mut();
+                                upright_tilt_clearance(&after_p.collider, bounds, rigid, &mut heights)
+                            })
+                        } else {
+                            rigid
+                        };
                         if carried.length_squared() >= 1.0e-18 {
+                            let _shove = Shove::enter(player_id, support);
                             let _ =
                                 self.client_move_local_player(MoverType::Carried, carried, false);
-                            if let Some(player) = self.common.player.as_mut() {
-                                player.ground.on_ground = true;
-                            }
+                        }
+                        let grounded = self
+                            .common
+                            .player
+                            .as_ref()
+                            .filter(|p| !p.spectator)
+                            .is_some_and(|p| {
+                                self.client_carried_body_grounded(player_id, p.position, p.bounds())
+                            });
+                        if let Some(player) = self.common.player.as_mut() {
+                            player.ground.on_ground = grounded;
                         }
                     }
                 }
                 self.position_riders();
             }
-            if shove {
-                let before_shove = last.as_ref().map_or(start, |(_, placed)| placed);
-                self.client_shove_pass(before_shove, carried_support);
-            }
+            self.client_shove_pass(before, carried_support);
         }
         if self
             .client
@@ -828,39 +854,54 @@ impl crate::game::ClientGame<'_> {
         }
     }
 
+    fn client_carried_body_grounded(&self, id: u32, position: Vec3, bounds: Aabb) -> bool {
+        use sunrise_gameplay_common::game::collision_source::CollisionSourceGameExt1 as _;
+        let entities = self.entity_collisions(Mover::Player);
+        let mut collisions = EntityCollisions::with_border(
+            SceneCollisions {
+                world: &self.common.world,
+                binding: self.common.collision,
+                subject: None,
+            },
+            self.common.border.geometry(),
+            [position.x, position.z],
+        );
+        collisions.entities = &entities;
+        let mut clear = |test| {
+            no_world_collision(
+                &mut collisions,
+                CollisionCheckRequest {
+                    entity: EntityIdentity(u64::from(id)),
+                    context: CollisionContext::position(bounds.min(Axis::Y)),
+                    bounds: test,
+                    candidate_budget: 1_000_000,
+                },
+            )
+        };
+        clear(bounds).is_ok_and(|clear| clear)
+            && clear(bounds.move_by(Vec3::new(0.0, -SUPPORT_PROBE, 0.0)))
+                .is_ok_and(|clear| !clear)
+    }
+
     fn client_shove_pass(&mut self, start: &Prepared, carried_support: Option<u32>) {
         let end = self.client_placed_moving_colliders();
-        let starts: sunrise_level::fast_hash::FxHashMap<u32, &Placed> =
-            start.placed().map(|p| (p.id, p)).collect();
-        let mut sweeps: Vec<_> = end
-            .placed()
-            .filter_map(|after| {
-                let before = &starts.get(&after.id)?.collider;
-                let delta = after.collider.frame.origin.subtract(before.frame.origin);
-                if delta == Vec3::ZERO || !before.frame.same_turn(&after.collider.frame) {
-                    return None;
-                }
-                let swept = before.world_bounds()?.expand_towards(delta);
-                Some((after, before, delta, swept))
-            })
-            .collect();
+        let sweeps = collect_sweeps(start, &end);
         if sweeps.is_empty() {
             return;
         }
-        sweeps.sort_unstable_by_key(|(after, ..)| after.id);
 
         let mut current = end.clone();
         let mut shoved = false;
-        for (after, before, delta, swept) in sweeps {
+        for (after, kind, swept) in sweeps {
             if self.common.riding.is_some() {
                 break;
             }
-            let Some((player_id, bounds)) = self
+            let Some((player_id, before_pos, bounds)) = self
                 .common
                 .player
                 .as_ref()
                 .filter(|p| !p.spectator)
-                .map(|p| (p.entity_id as u32, p.bounds()))
+                .map(|p| (p.entity_id as u32, p.position, p.bounds()))
             else {
                 break;
             };
@@ -871,12 +912,7 @@ impl crate::game::ClientGame<'_> {
             if !swept.intersects(bounds) {
                 continue;
             }
-            let fraction = before.translation_push_fraction(&after.collider, bounds, delta);
-            if fraction > 0.0 {
-                let direction = delta.scale(1.0 / delta.length());
-                let movement = delta
-                    .scale(fraction)
-                    .add_vector(direction.scale(piston_push::PUSH_OFFSET));
+            if let Some(movement) = sweep_displacement(&after.collider, kind, bounds) {
                 {
                     let _scope = moving_colliders::Scope::enter_level(
                         self.client_collider_level(),
@@ -886,6 +922,15 @@ impl crate::game::ClientGame<'_> {
                     let _ = self.client_move_local_player(MoverType::Carried, movement, false);
                 }
                 shoved = true;
+                if let Some(player) = self.common.player.as_mut() {
+                    let moved = player.position.subtract(before_pos);
+                    if moved != Vec3::ZERO {
+                        let rise = after.collider.frame.origin.y - kind.before().frame.origin.y;
+                        let normal = movement.normalize();
+                        player.velocity =
+                            cancel_shove_velocity(player.velocity, normal, movement.y, rise);
+                    }
+                }
                 if current.placed().any(|p| p.exempt.contains(&player_id)) {
                     self.position_riders();
                     current = self.client_placed_moving_colliders();

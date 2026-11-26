@@ -34,7 +34,11 @@ mod item_destroyed_tests {
 
     #[mod_api::sunrise_part]
     impl ItemPart for DestroyPart {
-        fn item_destroyed(&self, host: &mut dyn ServerHost, event: &mut ItemDestroyedEvent<'_>) {
+        fn item_destroyed(
+            &self,
+            host: &mut dyn ServerHost,
+            event: &mut ItemDestroyedEvent<'_, '_>,
+        ) {
             let pos = event.item.entity().position(host);
             self.seen
                 .lock()
@@ -54,7 +58,8 @@ mod item_destroyed_tests {
                 let key = mod_api::__private::item_key(item).unwrap();
                 event
                     .drops
-                    .push(mod_api::ItemStack::new(key, count).unwrap());
+                    .push(mod_api::ItemStack::new(key, count).unwrap())
+                    .unwrap();
             }
             if self.panic {
                 panic!("item_destroyed part failed");
@@ -77,7 +82,7 @@ mod item_destroyed_tests {
     fn setup_server_world(game: &mut sunrise_gameplay::game::ServerGame<'_>) {
         game.options.dedicated = Some(Vec::new());
         game.native_lifecycle
-            .begin_open(mod_api::Authority::IntegratedServer);
+            .begin_open(Some(mod_api::Authority::IntegratedServer));
         game.build_registries();
         game.set_allow_commands(true);
         game.world = sunrise_level::world::World::new(game.res.facts().air, 1);
@@ -319,14 +324,6 @@ mod item_destroyed_tests {
                 r.item_part(key, self.part.clone());
             }
 
-            fn entity_tick_listened(
-                &self,
-                _: mod_api::HostSide<'_>,
-                event: &mut mod_api::EntityTickListenedEvent,
-            ) {
-                event.listened = true;
-            }
-
             fn entity_tick_post(
                 &self,
                 mut host: mod_api::HostSide<'_>,
@@ -338,14 +335,11 @@ mod item_destroyed_tests {
                 if !self.armed.load(Ordering::Relaxed) {
                     return;
                 }
-                for (&id, &kind) in event.entities.iter().zip(event.kinds.iter()) {
-                    if kind == "minecraft:item" && self.armed.swap(false, Ordering::Relaxed) {
-                        let entity = mod_api::prelude::EntitiesHost::entity(&**server, id)
-                            .expect("ticked item entity ref");
-                        let hit = entity.hurt(*server, "minecraft:magic", 10.0, None, None);
-                        self.hurt_results.lock().unwrap().push(hit);
-                        break;
-                    }
+                if event.kind == "minecraft:item" && self.armed.swap(false, Ordering::Relaxed) {
+                    let entity = mod_api::prelude::EntitiesHost::entity(&**server, event.entity)
+                        .expect("ticked item entity ref");
+                    let hit = entity.hurt(*server, "minecraft:magic", 10.0, None, None);
+                    self.hurt_results.lock().unwrap().push(hit);
                 }
             }
         }
@@ -478,7 +472,7 @@ mod item_destroyed_tests {
             fn item_destroyed(
                 &self,
                 host: &mut dyn ServerHost,
-                event: &mut ItemDestroyedEvent<'_>,
+                event: &mut ItemDestroyedEvent<'_, '_>,
             ) {
                 let on_event = bundle_entry_count(event.stack);
                 let on_entity = event
@@ -521,7 +515,7 @@ mod item_destroyed_tests {
                         sunrise_items::bundle::Contents::of(game.items(), &bundle).unwrap();
                     let mut iron = ItemStack::new("minecraft:iron_ingot", 4);
                     assert_eq!(contents.try_insert(game.items(), &mut iron, true), 4);
-                    contents.store(&mut bundle);
+                    contents.store(game.items(), &mut bundle);
                     bundle
                 };
 
@@ -617,7 +611,7 @@ mod item_destroyed_tests {
                     sunrise_items::bundle::Contents::of(game.items(), &bundle).unwrap();
                 let mut iron = ItemStack::new("minecraft:iron_ingot", 4);
                 assert_eq!(contents.try_insert(game.items(), &mut iron, true), 4);
-                contents.store(&mut bundle);
+                contents.store(game.items(), &mut bundle);
 
                 game.spawn_item(bundle, [3.5, 64.0, 3.5], [0.0; 3], 0);
                 let id = game.dropped.last().unwrap().id;

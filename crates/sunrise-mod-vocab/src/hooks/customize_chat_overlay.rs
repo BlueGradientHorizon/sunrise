@@ -10,7 +10,6 @@ pub trait Hooks {
     /// clicks and hovers on messages, stay where vanilla puts them, as with NeoForge.
     /// Client-side.
     #[hook(
-        target = "sunrise_client_gameplay::game::native_hooks::customize_chat_overlay::ClientGame<'_>::native_customize_chat_overlay",
         dispatch = "flat",
         side = "client",
         contract = "listen",

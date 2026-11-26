@@ -1,4 +1,151 @@
 use std::collections::HashMap;
+
+mod refused_entity_unload {
+    use super::*;
+    use sunrise_gameplay::game::native_entity_refs::tests::{fixture_root, with_game_at};
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::time::{Duration, Instant};
+    use sunrise_mod_runtime::attachments::{
+        AttachmentCodec, AttachmentError, AttachmentType, Attachments, Holder,
+    };
+
+    const CHUNK: (i32, i32) = (100, 100);
+
+    #[derive(Clone)]
+    struct Fallible {
+        value: i32,
+        fail: Arc<AtomicBool>,
+    }
+    static FALLIBLE: AttachmentType<Fallible> = AttachmentType {
+        namespace: "refusal",
+        name: "fallible",
+        default: || Fallible {
+            value: 0,
+            fail: Arc::new(AtomicBool::new(false)),
+        },
+        codec: Some(AttachmentCodec {
+            encode: |v: &Fallible| {
+                if v.fail.load(Ordering::Relaxed) {
+                    return Err(AttachmentError::Encode);
+                }
+                Ok([("value".into(), Tag::Int(v.value))].into())
+            },
+            decode: |c| match c.get(&"value".into()) {
+                Some(Tag::Int(value)) => Ok(Fallible {
+                    value: *value,
+                    fail: Arc::new(AtomicBool::new(false)),
+                }),
+                _ => Err(AttachmentError::Decode),
+            },
+        }),
+        copy_on_death: false,
+        sync_codec: None,
+    };
+
+    fn request(root: &std::path::Path) -> sunrise_gameplay::game::world_loading::WorldRequest {
+        let rules = Arc::new(sunrise_game_data::gamerules::RuleRegistry::vanilla());
+        let options = sunrise_sim::world_options::WorldOptions {
+            world_type: sunrise_sim::save::WorldPreset::Flat,
+            rules: sunrise_game_data::gamerules::GameRules::with_registry(rules.clone(), &[]),
+            ..Default::default()
+        };
+        let mut request = sunrise_gameplay::game::world_loading::WorldRequest::new(
+            "refusal",
+            Some("refusal"),
+            Some(1),
+            true,
+            Some(&options),
+            rules,
+        )
+        .unwrap();
+        request.save_root = root.to_owned();
+        request
+    }
+
+    fn pump_until(game: &mut sunrise_gameplay::game::ServerGame<'_>, done: impl Fn(&sunrise_gameplay::game::ServerGame<'_>) -> bool) {
+        let deadline = Instant::now() + Duration::from_secs(120);
+        while !done(game) || game.server.streaming.busy() {
+            assert!(Instant::now() < deadline, "streaming did not settle");
+            game.server.streaming.wait(Duration::from_millis(5));
+            game.server_update_world();
+        }
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn an_unload_keeps_a_column_whose_entity_record_was_refused() {
+        let scratch = tempfile::tempdir().unwrap();
+        mod_platform::testing::with_mods(Default::default(), || {
+            with_game_at(fixture_root(), |game| {
+                game.load_world(request(&scratch.path().join("save")))
+                    .unwrap();
+                game.set_allow_commands(true);
+                assert!(game.run_command("forceload add 1600 1600"));
+                pump_until(game, |game| game.world.chunks.contains_key(&CHUNK));
+                game.tick_world(true).unwrap();
+                let target = game
+                    .summon_with_nbt(
+                        "minecraft:armor_stand",
+                        [1604.5, 100.0, 1604.5],
+                        "{NoGravity:1b}",
+                    )
+                    .unwrap()
+                    .unwrap();
+                let id = game.resident_target_id(target).unwrap();
+
+                let fail = Arc::new(AtomicBool::new(false));
+                FALLIBLE
+                    .set(
+                        game.entity_attachments.entry(id).or_default(),
+                        Holder::Entity(id),
+                        Fallible {
+                            value: 7,
+                            fail: fail.clone(),
+                        },
+                    )
+                    .unwrap();
+                fail.store(true, Ordering::Relaxed);
+
+                assert!(game.run_command("forceload remove 1600 1600"));
+                for _ in 0..40 {
+                    game.server.streaming.wait(Duration::from_millis(5));
+                    game.server_update_world();
+                }
+                assert!(
+                    game.world.chunks.contains_key(&CHUNK),
+                    "a refused entity record keeps its column"
+                );
+                assert!(game.entity(id).is_some(), "and the entity in it");
+                game.server.save.0.flush().unwrap();
+                assert!(
+                    game.server.save.0
+                        .load_entities(CHUNK.0, CHUNK.1)
+                        .unwrap()
+                        .is_empty(),
+                    "no partial record was written"
+                );
+
+                fail.store(false, Ordering::Relaxed);
+                pump_until(game, |game| !game.world.chunks.contains_key(&CHUNK));
+                assert!(game.entity(id).is_none());
+                game.server.save.0.flush().unwrap();
+                let records = game.server.save.0.load_entities(CHUNK.0, CHUNK.1).unwrap();
+                assert_eq!(records.len(), 1);
+                let Some(Tag::Compound(saved)) = records[0].get(ATTACHMENTS_KEY) else {
+                    panic!("the entity saved without its attachments");
+                };
+                let mut reloaded = Attachments::from_nbt(saved.clone());
+                assert_eq!(
+                    FALLIBLE
+                        .get_existing(&mut reloaded, Holder::Entity(id))
+                        .unwrap()
+                        .map(|v| v.value),
+                    Some(7)
+                );
+            });
+        });
+    }
+}
 use std::collections::HashSet;
 use std::sync::Arc;
 use sunrise_core::geometry::Vec3;
@@ -63,7 +210,7 @@ mod transient_entities {
             assert_eq!(game.entity(display.id()), Some(display));
             let uuid = sunrise_sim::lan::playerdata::uuid_ints(game.entity_uuid(display).unwrap());
             assert_eq!(game.entity_chunks(&chunks, false), vec![((0, 0), vec![])]);
-            let capture = game.snapshot_entity_chunks(&chunks, EntitySnapshot::Structure);
+            let (capture, _) = game.snapshot_entity_chunks(&chunks, EntitySnapshot::Structure);
             assert_eq!(capture[0].1.len(), 1);
             assert_eq!(entity_nbt::uuid(&capture[0].1[0]), Some(uuid));
 
@@ -89,7 +236,11 @@ mod transient_entities {
             );
 
             let chunk = game.world.chunks.remove(&(0, 0)).unwrap();
-            game.unload_entities(std::slice::from_ref(&chunk));
+            let keys = [(chunk.x, chunk.z)].into_iter().collect();
+            let (snapshots, refused) = game.unloading_entity_snapshots(&keys);
+            assert!(refused.is_empty());
+            game.server.save.0.save_entities(snapshots).unwrap();
+            game.remove_unloading_entities(&keys);
             game.server.save.0.flush().unwrap();
             assert_eq!(game.entity(display.id()), None);
             let records = game.server.save.0.load_entities(0, 0).unwrap();
@@ -759,7 +910,7 @@ fn entity_attachment_boundary_does_not_alias_equal_uuid_passengers() {
             },
         }),
         copy_on_death: false,
-        sync: false,
+        sync_codec: None,
     };
     let root_id = [1, 2, 3, 4];
     let child_id = root_id;
@@ -777,7 +928,7 @@ fn entity_attachment_boundary_does_not_alias_equal_uuid_passengers() {
             )])]),
         ),
     ]);
-    write_attachments(&mut root, 12, &maps);
+    write_attachments(&mut root, 12, &maps).unwrap();
     let Some(Tag::List(children)) = root.get("Passengers") else {
         panic!("passenger missing");
     };
@@ -808,7 +959,7 @@ fn saved_attachments_read_over_a_constructed_map_but_not_a_live_one() {
                 },
             }),
             copy_on_death: false,
-            sync: false,
+            sync_codec: None,
         }
     }
     let (saved, unsaved) = (key("saved"), key("unsaved"));
@@ -817,7 +968,7 @@ fn saved_attachments_read_over_a_constructed_map_but_not_a_live_one() {
     saved.set(&mut data, Holder::Level, 7).unwrap();
     let tag = Tag::compound([
         ("UUID", Tag::IntArray(uuid.to_vec())),
-        (ATTACHMENTS_KEY, Tag::Compound(data.to_nbt())),
+        (ATTACHMENTS_KEY, Tag::Compound(data.try_to_nbt().unwrap())),
     ]);
     let listener = || {
         let mut map = Attachments::default();
@@ -893,7 +1044,7 @@ fn an_older_save_loads_its_entities_attachments_back_onto_them() {
             },
         }),
         copy_on_death: false,
-        sync: false,
+        sync_codec: None,
     };
     let mark = |n: i32| {
         Tag::compound([(

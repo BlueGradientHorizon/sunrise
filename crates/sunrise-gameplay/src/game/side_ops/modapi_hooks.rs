@@ -22,6 +22,16 @@ impl SideOps for crate::game::server_side::ServerState {
     fn side_reset_creative_screen(game: &mut Self::Game<'_>) {
         {}
     }
+    fn side_publish_creative_order(_game: &Self::Game<'_>, _lists: &[Arc<TabContents>]) {}
+
+    fn side_sync_native_setting_ui_row(
+        _game: &mut Self::Game<'_>,
+        _owner: &str,
+        _spec: &mod_api::SettingSpec,
+        _value: mod_api::SettingValue,
+    ) {
+    }
+
     fn side_ask_swim_eligibility(game: &Self::Game<'_>, check: SwimmingCheck) -> Option<bool> {
         game.server_ask_swim_eligibility(check)
     }
@@ -56,5 +66,6 @@ use std::sync::Arc;
 use sunrise_gameplay_common::game::side_ops::modapi_hooks::SideOps;
 use sunrise_items::creative_catalog::Catalog;
 use sunrise_items::creative_catalog::Holders;
+use sunrise_items::creative_catalog::TabContents;
 use sunrise_items::items::ItemStack;
 use sunrise_level::chunk::Chunk;

@@ -3,10 +3,14 @@
 //! `ServerRecipeBook`. Reads return None for a stale handle or a player who
 //! isn't online here. Writes return false (or None) for those, for a dead
 //! player, and, inside another player's turn, for anyone but that player.
-use super::{lan_actions_server::CombatPlayer, stats::Stats};
-use mod_api::{PlayerRef, StatType};
+use super::{advancements::progress_snapshot, lan_actions_server::CombatPlayer, stats::Stats};
+use core::ops::ControlFlow;
+use mod_api::{
+    AdvancementError, AdvancementProgress, EntityReadError, Identifier, PlayerRef, StatType,
+};
 use sunrise_gameplay_common::game::{native_server::PlayerRead, transactions::DeferredEffect};
 use sunrise_gameplay_common::stats::StatValues;
+use sunrise_sim::advancements::Progress;
 
 use super::native_namespaced_id::namespaced;
 
@@ -56,6 +60,185 @@ impl crate::game::ServerGame<'_> {
             .native_player_stats(player)?
             .map_or_else(|| Stats::default().to_json(), Stats::to_json);
         Some(json.to_string())
+    }
+
+    /// The player's live advancement progress, including one lent to a nested turn.
+    /// `None` while the engine has not loaded that player's advancements.
+    fn native_player_advancements(&self, player: PlayerRef) -> Option<&Progress> {
+        match self.player_handle_read(player) {
+            Some(PlayerRead::Guest(g)) => g.advancements_loaded.then_some(&g.advancements),
+            Some(PlayerRead::Acting { .. }) => {
+                self.common.adv.loaded.then_some(&self.common.adv.progress)
+            }
+            None => {
+                let entity = player.entity();
+                if self.server.lan_displaced_players.0.is_empty()
+                    || self.common.native_lifecycle.epoch()? != entity.epoch()
+                {
+                    return None;
+                }
+                let CombatPlayer::Displaced(depth, _) = self.combat_player(entity.id())? else {
+                    return None;
+                };
+                let frame = &self.server.lan_displaced_players.0[depth];
+                if frame.uuid != Some(player.uuid()) || !frame.adv_loaded {
+                    return None;
+                }
+                Some(
+                    &self
+                        .server
+                        .lan
+                        .as_ref()?
+                        .hub
+                        .guest(frame.record_conn)?
+                        .advancements,
+                )
+            }
+        }
+    }
+
+    /// `ServerPlayer.getAdvancements().getOrStartProgress(holder)` for one loaded
+    /// advancement.
+    pub(in crate::game) fn player_advancement_progress(
+        &self,
+        player: PlayerRef,
+        id: &Identifier,
+    ) -> Option<AdvancementProgress> {
+        if !self.common.is_logical_server() {
+            return None;
+        }
+        let progress = self.native_player_advancements(player)?;
+        let advancement = self.common.adv.tree.get(id.as_str())?;
+        Some(progress_snapshot(advancement, progress))
+    }
+
+    /// `PlayerAdvancements.award(holder, criterion)` (or all remaining criteria when
+    /// `criterion` is `None`, matching `AdvancementCommands.Action.GRANT`).
+    pub(in crate::game) fn player_award_advancement(
+        &mut self,
+        player: PlayerRef,
+        id: &Identifier,
+        criterion: Option<&str>,
+    ) -> Result<bool, AdvancementError> {
+        self.player_change_advancement(player, id, criterion, true)
+    }
+
+    /// `PlayerAdvancements.revoke(holder, criterion)` (or all obtained criteria when
+    /// `criterion` is `None`, matching `AdvancementCommands.Action.REVOKE`).
+    pub(in crate::game) fn player_revoke_advancement(
+        &mut self,
+        player: PlayerRef,
+        id: &Identifier,
+        criterion: Option<&str>,
+    ) -> Result<bool, AdvancementError> {
+        self.player_change_advancement(player, id, criterion, false)
+    }
+
+    fn player_change_advancement(
+        &mut self,
+        player: PlayerRef,
+        id: &Identifier,
+        criterion: Option<&str>,
+        grant: bool,
+    ) -> Result<bool, AdvancementError> {
+        if !self.common.is_logical_server() {
+            return Err(AdvancementError::NotServer);
+        }
+        if !self.native_player_writable(player) {
+            return Err(AdvancementError::PlayerUnavailable);
+        }
+        let target = self
+            .native_entity_target(player.entity())
+            .ok_or(AdvancementError::PlayerUnavailable)?;
+        let tree = self.advancement_tree();
+        let Some(index) = tree.find_id(id.as_str()) else {
+            return Err(AdvancementError::UnknownAdvancement);
+        };
+        if let Some(name) = criterion
+            && !tree.list[index].criteria.iter().any(|c| c.name == name)
+        {
+            return Err(AdvancementError::UnknownCriterion);
+        }
+        if self.common.transactions.last().is_some() {
+            let progress = self
+                .native_player_advancements(player)
+                .ok_or(AdvancementError::PlayerUnavailable)?;
+            let snapshot = progress_snapshot(&tree.list[index], progress);
+            let would_change = match (grant, criterion) {
+                (true, Some(name)) => snapshot
+                    .criteria
+                    .iter()
+                    .any(|c| c.name == name && c.obtained_at.is_none()),
+                (true, None) => !snapshot.done,
+                (false, Some(name)) => snapshot
+                    .criteria
+                    .iter()
+                    .any(|c| c.name == name && c.obtained_at.is_some()),
+                (false, None) => snapshot.criteria.iter().any(|c| c.obtained_at.is_some()),
+            };
+            self.defer_effect(DeferredEffect::ChangeAdvancement {
+                player,
+                id: id.as_str().to_owned(),
+                criterion: criterion.map(str::to_owned),
+                grant,
+            });
+            return Ok(would_change);
+        }
+        self.for_player(target, |game| {
+            game.load_advancements();
+            let Some(index) = game.common.adv.tree.find_id(id.as_str()) else {
+                return Err(AdvancementError::UnknownAdvancement);
+            };
+            if let Some(name) = criterion
+                && !game.common.adv.tree.list[index]
+                    .criteria
+                    .iter()
+                    .any(|c| c.name == name)
+            {
+                return Err(AdvancementError::UnknownCriterion);
+            }
+            Ok(if grant {
+                game.grant_advancement(index, criterion)
+            } else {
+                game.revoke_advancement(index, criterion)
+            })
+        })
+        .ok_or(AdvancementError::PlayerUnavailable)?
+    }
+
+    /// Apply a deferred `PlayerRef::award_advancement` / `revoke_advancement` at root commit.
+    pub(in crate::game) fn apply_deferred_advancement_change(
+        &mut self,
+        player: PlayerRef,
+        id: &str,
+        criterion: Option<&str>,
+        grant: bool,
+    ) {
+        if !self.common.is_logical_server() || !self.native_player_writable(player) {
+            return;
+        }
+        let Some(target) = self.native_entity_target(player.entity()) else {
+            return;
+        };
+        let _ = self.for_player(target, |game| {
+            game.load_advancements();
+            let Some(index) = game.common.adv.tree.find_id(id) else {
+                return;
+            };
+            if let Some(name) = criterion
+                && !game.common.adv.tree.list[index]
+                    .criteria
+                    .iter()
+                    .any(|c| c.name == name)
+            {
+                return;
+            }
+            if grant {
+                game.grant_advancement(index, criterion);
+            } else {
+                game.revoke_advancement(index, criterion);
+            }
+        });
     }
 
     /// Decode with the server's registries before entering the player's turn. Inside a
@@ -213,18 +396,27 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// Every recipe the player's recipe book knows (`ServerRecipeBook.recipes`), qualified ids in
-    /// order. None for a player it can't reach.
-    pub fn player_discovered_recipes(&self, player: PlayerRef) -> Option<Vec<String>> {
-        if !self.native_player_current(player) {
-            return None;
+    /// order.
+    pub(in crate::game) fn player_visit_discovered_recipes(
+        &self,
+        player: PlayerRef,
+        visit: &mut dyn FnMut(&str) -> ControlFlow<()>,
+    ) -> Result<ControlFlow<()>, EntityReadError> {
+        if !self.common.is_logical_server() {
+            return Err(EntityReadError::Unavailable);
         }
-        let book = match self.native_player_resting(player) {
-            Some(g) => &g.recipe_book.recipes,
-            None => &self.common.level.recipe_book.recipes,
+        let book = match self
+            .player_handle_read(player)
+            .ok_or(EntityReadError::Stale)?
+        {
+            PlayerRead::Guest(guest) => &guest.recipe_book.recipes,
+            PlayerRead::Acting { .. } => &self.common.level.recipe_book.recipes,
         };
-        Some(book.iter().cloned().collect())
+        Ok(book.iter().map(String::as_str).try_for_each(visit))
     }
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5 as _;
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
 

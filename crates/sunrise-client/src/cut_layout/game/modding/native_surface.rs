@@ -50,6 +50,8 @@ mod tests {
             ground: sunrise_world::ground_support::GroundState::from_ground_flag(true),
             fall_distance: 0.0,
             age: 0,
+            stack_revision: 0,
+            lifespan: ItemEntity::LIFETIME,
             pickup_delay: 0,
             bob_offset: 0.0,
             ticks: 0,
@@ -105,6 +107,13 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_block_part_answers_the_friction_an_entity_reads() {
+        if super::super::native_entity_refs::tests::run_fresh_cases(
+            "game::native_surface::tests::a_block_part_answers_the_friction_an_entity_reads",
+            "SUNRISE_FRICTION_TRAVEL_CHILD",
+            &["travel"],
+        ) {
+            return;
+        }
         // Glass asks for its material's friction for players. White wool answers 0.98;
         // red wool answers NaN, blue 3.0, green infinity, black -0.5 and orange 1.5.
         let calls = mod_platform::__private::part_tests::friction_game_thread();
@@ -148,7 +157,7 @@ mod tests {
                 travel_in_air(
                     &mut world,
                     &mut sunrise_world::move_gate::MoveGate::new(),
-                    Vec3::new(1.0, 0.0, 0.0),
+                    Vec3::new(1.0, 0.0, 0.0).into(),
                 )
                 .unwrap();
                 let reads = calls.load(Ordering::SeqCst);
@@ -375,16 +384,14 @@ mod tests {
             let registry = game.pack.assets.registry;
             let lime = registry.default_state("minecraft:lime_wool").unwrap();
             let level = game.level_ref(game.native_lifecycle.epoch().unwrap(), game.dim.key());
+            game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
+            super::super::native_entity_refs::tests::bind_local_player(game, 100, 100);
+            let player = game.entity(100).unwrap();
             calls.store(0, Ordering::SeqCst);
-            // Each nested ask names another entity id, so no query repeats: only the bound stops
+            // Each nested ask names another position, so no query repeats: only the bound stops
             // the chain. The innermost part is refused and answers 0.5, which every part above passes on.
             assert_eq!(
-                level.friction(
-                    game,
-                    [5, 64, 5],
-                    lime.try_into_api().unwrap(),
-                    Some((100, "minecraft:player")),
-                ),
+                level.friction(game, [5, 64, 5], lime.try_into_api().unwrap(), Some(player),),
                 Ok(Some(0.5)),
             );
             assert_eq!(calls.load(Ordering::SeqCst), 16);
@@ -393,15 +400,23 @@ mod tests {
             let pink = registry.default_state("minecraft:pink_wool").unwrap();
             calls.store(0, Ordering::SeqCst);
             assert_eq!(
-                level.friction(
-                    game,
-                    [5, 64, 5],
-                    pink.try_into_api().unwrap(),
-                    Some((100, "minecraft:player")),
-                ),
+                level.friction(game, [5, 64, 5], pink.try_into_api().unwrap(), Some(player),),
                 Ok(Some(0.9)),
             );
             assert_eq!(calls.load(Ordering::SeqCst), 2);
+            let stale = mod_api::EntityRef::new(
+                mod_api::WorldEpoch::new(player.epoch().get() + 1),
+                player.id(),
+            );
+            assert_eq!(
+                level.friction(game, [5, 64, 5], lime.try_into_api().unwrap(), Some(stale)),
+                Err(mod_api::LevelReadError::Stale),
+            );
+            assert_eq!(
+                calls.load(Ordering::SeqCst),
+                2,
+                "a stale entity does not dispatch"
+            );
             let unknown = sunrise_world::registry::BlockStateId(u32::MAX);
             assert_eq!(
                 game.level_friction(level, [5, 64, 5], unknown, None),
@@ -471,7 +486,7 @@ mod tests {
         }
         #[mod_api::sunrise_part]
         impl BlockPart for Panel {
-            fn friction(&self, side: LevelSide<'_>, event: &mut FrictionEvent<'_>) {
+            fn friction(&self, side: LevelSide<'_>, event: &mut FrictionEvent) {
                 let LevelSide::Server(level) = side else {
                     return;
                 };
@@ -558,24 +573,50 @@ mod tests {
             );
             let side = game_side!(game, game.side_game_side_meta());
             let coefficient = |_: sunrise_world::registry::BlockStateId| None;
-            let view = FrictionView(FrictionLevel {
-                world: &game.world,
-                registry: game.pack.assets.registry,
-                context: &game.loop_context,
-                side: &side,
-                coefficient: &coefficient,
-            });
+            let view = FrictionView(
+                FrictionLevel {
+                    world: &game.world,
+                    registry: game.pack.assets.registry,
+                    context: &game.loop_context,
+                    side: &side,
+                    coefficient: &coefficient,
+                },
+                None,
+            );
             // A tagged block, an untagged one and a fluid tag answer as the game's own host does.
             let stone = mod_platform::__private::part_tests::block_key("stone");
-            assert_eq!(view.block_in_tag(stone, "base_stone_overworld"), Some(true));
+            let water = mod_api::__private::fluid_key("minecraft:water").unwrap();
+            let base_stone = view
+                .tags()
+                .key(&mod_api::Identifier::parse("base_stone_overworld").unwrap())
+                .unwrap()
+                .typed();
+            let climbable = view
+                .tags()
+                .key(&mod_api::Identifier::parse("minecraft:climbable").unwrap())
+                .unwrap()
+                .typed();
+            let water_tag = view
+                .tags()
+                .key(&mod_api::Identifier::parse("minecraft:water").unwrap())
+                .unwrap()
+                .typed();
+            assert_eq!(stone.is_in_tag(view.tags(), base_stone), Some(true));
             assert_eq!(
-                view.block_in_tag(stone, "base_stone_overworld"),
-                game.block_in_tag(stone, "base_stone_overworld")
+                stone.is_in_tag(view.tags(), base_stone),
+                stone.is_in_tag(&*game, base_stone)
             );
-            assert_eq!(view.block_in_tag(stone, "minecraft:climbable"), Some(false));
+            assert_eq!(stone.is_in_tag(view.tags(), climbable), Some(false));
+            assert_eq!(water.is_in_tag(view.tags(), water_tag), Some(true));
+            let stone_state = view.block_state_default(stone).unwrap();
+            let view_states = view.block_states();
             assert_eq!(
-                view.fluid_in_tag("minecraft:water", "minecraft:water"),
-                Some(true)
+                stone_state.outline(&view_states),
+                Some(&[[0.0, 0.0, 0.0, 1.0, 1.0, 1.0]][..])
+            );
+            assert_eq!(
+                water.pickup_sound(&view_states),
+                Some("minecraft:item.bucket.fill")
             );
             // A resident block entity has the handle of this side's level; an empty position none.
             let level = game.level_ref(game.native_lifecycle.epoch().unwrap(), game.dim.key());

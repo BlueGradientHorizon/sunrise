@@ -1,6 +1,7 @@
 //! The tail of a mob's death: the wither rose, the copper golem's preserved
 //! equipment, and the notice `living_death_post` hears once it has all run.
 use super::*;
+use sunrise_gameplay_common::game::native_namespaced_id::namespaced;
 
 impl crate::game::ServerGame<'_> {
     /// `LivingEntity.die` after `dropAllDeathLoot`: the wither rose, the
@@ -13,6 +14,7 @@ impl crate::game::ServerGame<'_> {
         m: &Mob,
         dying: &mut Mob,
         source: Option<(&'static str, u32)>,
+        credited_player: Option<u128>,
     ) {
         self.create_wither_rose(m);
         if m.species() == Species::CopperGolem {
@@ -23,6 +25,15 @@ impl crate::game::ServerGame<'_> {
             return;
         }
         let (damage_type, attacker) = source.unwrap_or(("minecraft:generic", 0));
-        self.native_living_death_post(m.id, damage_type, attacker);
+        let kind = namespaced(&m.kind.id);
+        self.native_living_death_post(mod_api::__private::LivingDeathPostCall {
+            entity: m.id,
+            kind: &kind,
+            damage_type,
+            attacker,
+            player: None,
+            credited_player,
+            message_key: None,
+        });
     }
 }

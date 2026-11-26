@@ -1,7 +1,8 @@
 use super::*;
 use sunrise_core::geometry::Vec3;
 pub(in crate::game::server_side) use sunrise_gameplay_common::game::lan_actions::guest_body::initialize;
-use sunrise_sim::{lan::hub::CommittedMove, landing::PlayerLandingPause, motion::ServerTravel};
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+use sunrise_sim::{lan::hub::CommittedMove, landing::PlayerLandingPause};
 
 /// The server copy of the acting guest's body, borrowing its player and the level from `game`.
 /// A macro so that the borrow can end where the game itself is needed (a hook's owning host)
@@ -31,7 +32,7 @@ macro_rules! settle_guest_hit {
     ($game:ident, $side:ident, $world:ident, $id:ident) => {
         if $world.player.health.damage_completion.is_some() {
             if let Err(collected) = $game.finish_guest_damage_before_resume() {
-                return (collected, None, ServerTravel::Continue);
+                return (collected, None);
             }
             let Some(player) = $game
                 .common
@@ -39,7 +40,7 @@ macro_rules! settle_guest_hit {
                 .as_mut()
                 .filter(|p| p.entity_id as u32 == $id)
             else {
-                return (Vec::new(), None, ServerTravel::Continue);
+                return (Vec::new(), None);
             };
             $side = server_game_side!($game);
             $world = motion_world!($game, $side, player);
@@ -280,15 +281,21 @@ impl crate::game::ServerGame<'_> {
                         .as_ref()
                         .and_then(|host| host.hub.guest(conn))
                         .map(|g| (g.entity_id as u32, "minecraft:player"));
-                    let sound = self.common.block_sound_type(
+                    let sound = self.selected_block_sound(
                         [position.x, position.y, position.z],
                         state,
                         entity,
                         mod_api::BlockSoundCause::Fall,
                     );
                     self.send_level_sound(
-                        LevelSound::new(&sound.fall, at, sound.volume * 0.5, sound.pitch * 0.75)
-                            .in_source(mod_api::SoundSource::Players),
+                        // `Player.playSound` plays in the players' source.
+                        LevelSound::new(
+                            sound.event.as_str(),
+                            at,
+                            sound.volume * 0.5,
+                            sound.pitch * 0.75,
+                        )
+                        .in_source(mod_api::SoundSource::Players),
                         Some(conn),
                     );
                 }
@@ -402,11 +409,16 @@ impl crate::game::ServerGame<'_> {
             self.as_guest(conn, |game| {
                 game.handle_shoulder_entities();
                 let rules = game.world.health_rules;
+                let blocking = game.player_blocking_component().is_some();
                 let Some(player) = game.common.player.as_mut() else {
                     return;
                 };
                 player.health.advance_body_clock();
-                let _ = player.peaceful_regeneration(&game.common.loop_context, rules);
+                let _ = player.peaceful_regeneration(
+                    &game.common.loop_context,
+                    &|| crate::game::entity_server::hit_reads_of!(game),
+                    rules,
+                );
                 let _ = player.food_tick(
                     &game.common.loop_context,
                     crate::game::entity_server::damage_level_of!(
@@ -428,13 +440,20 @@ impl crate::game::ServerGame<'_> {
                 else {
                     return;
                 };
+                player.body_yaw = sunrise_sim::mobs::living::player_body_yaw(
+                    player.body_yaw,
+                    game.common.yaw,
+                    0.0,
+                    0.0,
+                    game.common.swing.animation > 0.0,
+                    blocking,
+                );
                 let events = std::mem::take(&mut player.events);
                 game.record_combat(&events);
             });
             return;
         }
         let at = g.position;
-        let travel_teleport = g.teleport_counter;
         let dimensions = g.dimensions();
         let (sneaking, sleeping) = (g.sneaking, g.sleeping);
         let riding = g.vehicle.is_some();
@@ -445,7 +464,6 @@ impl crate::game::ServerGame<'_> {
             self.as_guest(conn, |game| game.server_spin_attack());
         }
         let in_wall = !sleeping && self.in_wall(conn, at, dimensions);
-        let mut soul = None;
         let events = self.as_guest(conn, |game| {
             let (rules, motion) = (game.world.health_rules, game.motion);
             let health = &motion.health;
@@ -454,7 +472,7 @@ impl crate::game::ServerGame<'_> {
             let boat = game.riding_boat_fluid_box();
             let swim_listener = game.has_swim_eligibility_listener();
             let Some(player) = game.common.player.as_mut() else {
-                return (Vec::new(), None, ServerTravel::Continue);
+                return (Vec::new(), None);
             };
             player.fluids.boat = boat;
             player.leather_boots = leather_boots;
@@ -470,7 +488,7 @@ impl crate::game::ServerGame<'_> {
                     .as_mut()
                     .filter(|p| p.entity_id as u32 == id)
                 else {
-                    return (Vec::new(), None, ServerTravel::Continue);
+                    return (Vec::new(), None);
                 };
                 side = server_game_side!(game);
                 w = motion_world!(game, side, player);
@@ -531,13 +549,30 @@ impl crate::game::ServerGame<'_> {
             let _ = w.player.set_sleeping(sleeping);
             w.player.freeze_immune = freeze_immune;
             let mut contact = None;
-            loop {
+            let inside_effects = loop {
                 let progress = w.server_block_damage_until_hit(start, &mut contact);
                 settle_guest_hit!(game, side, w, id);
-                if !matches!(progress, Ok(false)) {
-                    break;
+                match progress {
+                    Ok(Some(effects)) => break effects,
+                    Ok(None) => continue,
+                    Err(_) => break mod_api::InsideEffects::default(),
                 }
+            };
+            if !inside_effects.is_empty() {
+                let mut collected = std::mem::take(&mut w.player.events);
+                let _ = w;
+                let _ = side;
+                game.flush_player_inside(inside_effects);
+                let Some(player) = game.common.player.as_mut() else {
+                    return (collected, None);
+                };
+                collected.append(&mut player.events);
+                player.events = collected;
+                side = server_game_side!(game);
+                w = motion_world!(game, side, player);
             }
+            let _ = w.finish_server_block_damage_freezing();
+            settle_guest_hit!(game, side, w, id);
             let _ = w.update_soul_speed_block();
             // LivingEntity.baseTick's air supply: decided here, then `living_breathe` is
             // asked with the game itself, which `w` borrows, and its answer applied.
@@ -551,7 +586,7 @@ impl crate::game::ServerGame<'_> {
                     step => step.map(|step| (step, step.vanilla)),
                 };
                 let Some(player) = game.common.player.as_mut() else {
-                    return (collected, None, ServerTravel::Continue);
+                    return (collected, None);
                 };
                 collected.append(&mut player.events);
                 player.events = collected;
@@ -564,8 +599,7 @@ impl crate::game::ServerGame<'_> {
                 let _ = w.tick_lava_contact();
                 settle_guest_hit!(game, side, w, id);
             }
-            let _ = w.apply_fire_contact();
-            settle_guest_hit!(game, side, w, id);
+            w.reset_unlit_fire();
             if w.check_below_world().is_ok() {
                 settle_guest_hit!(game, side, w, id);
                 if in_wall {
@@ -578,21 +612,10 @@ impl crate::game::ServerGame<'_> {
             game.block_extinguish_player(&events);
             // Entity.baseTick: rain puts out a burning player.
             game.rain_extinguish_player();
-            // WitherRoseBlock.entityInside along those moves, and an
-            // `entity_inside` part's typed effect writes.
-            for event in &events {
-                match event {
-                    MotionEvent::InsideWitherRose => game.wither_rose_contact(),
-                    MotionEvent::InsideEffect {
-                        id,
-                        duration,
-                        amplifier,
-                    } if game.is_logical_server() && game.ui.difficulty != 0 => {
-                        game.give_player_effect(id, *duration, i32::from(*amplifier));
-                    }
-                    _ => {}
-                }
-            }
+            // WitherRoseBlock.entityInside along those moves.
+            game.apply_player_inside_events(&events);
+            // `LivingEntity.baseTick` runs the equipment tick before location effects.
+            game.tick_equipment_enchantments(crate::game::commands::Target::Player, id);
             // LivingEntity.baseTick: a new block position runs the worn
             // enchantments' location_changed effects (frost walker).
             game.location_changed_effects([start.x, start.y, start.z], from_ground);
@@ -603,7 +626,7 @@ impl crate::game::ServerGame<'_> {
             // attributes refresh in `LivingEntity.tick`. `Player.tick` then
             // chooses its pose, including for a passenger (#4509 / #3308).
             let Some(player) = game.common.player.as_mut() else {
-                return (events, None, ServerTravel::Continue);
+                return (events, None);
             };
             let side = server_game_side!(game);
             let mut w = motion_world!(game, side, player);
@@ -614,14 +637,16 @@ impl crate::game::ServerGame<'_> {
                 let _ = w.server_player_pose_tick();
             }
             game.apply_player_waypoint_updates();
-            // Soul Speed's effects (LivingEntity.baseTick's location_changed
-            // and tick effects); its particle goes to the players around.
-            soul = game.tick_soul_speed();
+            game.update_soul_speed_location();
             game.handle_shoulder_entities();
             let Some(player) = game.common.player.as_mut() else {
-                return (Vec::new(), None, ServerTravel::Continue);
+                return (Vec::new(), None);
             };
-            let _ = player.peaceful_regeneration(&game.common.loop_context, rules);
+            let _ = player.peaceful_regeneration(
+                &game.common.loop_context,
+                &|| crate::game::entity_server::hit_reads_of!(game),
+                rules,
+            );
             let _ = player.food_tick(
                 &game.common.loop_context,
                 crate::game::entity_server::damage_level_of!(
@@ -641,22 +666,32 @@ impl crate::game::ServerGame<'_> {
                 .as_mut()
                 .filter(|p| p.entity_id as u32 == id)
             else {
-                return (events, None, ServerTravel::Continue);
+                return (events, None);
             };
             events.append(&mut player.events);
             player.carry_client_movement(tick_movement);
             let side = server_game_side!(game);
-            let travel = motion_world!(game, side, player)
-                .server_travel()
-                .unwrap_or(ServerTravel::Continue);
+            let _ = motion_world!(game, side, player).server_travel();
             game.finish_guest_damage();
             // Player.aiStep's entity contacts run with the player's body,
             // even when the level and its mobs are frozen. Flush their damage
             // events and marked velocity through the existing guest path.
             game.touch_pufferfish();
+            let blocking = body && game.player_blocking_component().is_some();
             let Some(player) = game.common.player.as_mut() else {
-                return (events, None, ServerTravel::Continue);
+                return (events, None);
             };
+            if body {
+                let movement = player.position.subtract(vector(at));
+                player.body_yaw = sunrise_sim::mobs::living::player_body_yaw(
+                    player.body_yaw,
+                    game.common.yaw,
+                    movement.x,
+                    movement.z,
+                    game.common.swing.animation > 0.0,
+                    blocking,
+                );
+            }
             // Landing damage from this travel reaches the tracker too.
             events.append(&mut player.events);
             // A hurt since the last tick marked the velocity (Entity.markHurt):
@@ -664,21 +699,11 @@ impl crate::game::ServerGame<'_> {
             let marked = std::mem::take(&mut player.health.sync_velocity);
             let velocity = marked.then_some(player.velocity);
             game.record_guest_motion_combat(&events);
-            (events, velocity, travel)
+            (events, velocity)
         });
-        let Some((events, marked, travel)) = events else {
+        let Some((events, marked)) = events else {
             return;
         };
-        let travel_synced = self
-            .server
-            .lan
-            .as_mut()
-            .is_some_and(|host| host.hub.apply_server_travel(conn, travel_teleport, travel));
-        if let Some((at, velocity)) = soul
-            && let Some(host) = self.server.lan.as_ref()
-        {
-            crate::game::lan_particles::send_soul_particle(host, at, velocity);
-        }
         self.as_guest(conn, |game| {
             game.sculk_step_on_player();
             game.tick_player_sculk_events();
@@ -701,12 +726,11 @@ impl crate::game::ServerGame<'_> {
             {
                 self.native_player_velocity(uuid, &name, [v.x, v.y, v.z]);
             }
-            if !travel_synced
-                && let Some(g) = self
-                    .server
-                    .lan
-                    .as_ref()
-                    .and_then(|host| host.hub.guest(conn))
+            if let Some(g) = self
+                .server
+                .lan
+                .as_ref()
+                .and_then(|host| host.hub.guest(conn))
             {
                 g.send(&C::SetEntityMotion(play::SetEntityMotion {
                     id: g.entity_id,
@@ -728,10 +752,351 @@ impl crate::game::ServerGame<'_> {
         self.record_combat(events);
         self.wear_armor(events);
     }
+
+    /// Flush a server player's collected `InsideEffects` with a live `&mut ServerGame`
+    /// loan (`InsideBlockEffectApplier.StepBasedCollector.applyAndClear`), then
+    /// play the extinguish hiss once if the sweep put a burning player out.
+    pub(in crate::game) fn flush_player_inside(&mut self, mut effects: mod_api::InsideEffects) {
+        if effects.is_empty() {
+            return;
+        }
+        let was_on_fire = self.common.player.as_ref().is_some_and(|p| p.is_on_fire());
+        let mut access = GamePlayerInsideAccess { game: self };
+        effects.apply_and_clear(&mut access);
+        if was_on_fire
+            && let Some(p) = self.common.player.as_ref()
+            && !p.is_on_fire()
+        {
+            let at = [p.position.x, p.position.y, p.position.z];
+            self.extinguish_sound(at);
+        }
+    }
+
+    /// `WitherRoseBlock.entityInside` and `step_on`'s `EntityWrite::AddEffect`
+    /// queued along a server player's moves: vanilla's Peaceful check applies
+    /// only to the wither rose, not to general `LivingEntity.addEffect`.
+    pub(in crate::game) fn apply_player_inside_events(&mut self, events: &[MotionEvent]) {
+        for event in events {
+            match event {
+                MotionEvent::InsideWitherRose => self.wither_rose_contact(),
+                MotionEvent::InsideEffect {
+                    id,
+                    duration,
+                    amplifier,
+                } => {
+                    self.give_player_effect(id, *duration, i32::from(*amplifier));
+                }
+                _ => {}
+            }
+        }
+    }
+}
+
+/// Live server backing for [`mod_api::InsideEntityView`] while flushing a server
+/// player's `InsideEffects` collector directly against `ServerGame`.
+struct GamePlayerInsideAccess<'a, 'g> {
+    game: &'a mut crate::game::ServerGame<'g>,
+}
+
+impl mod_api::InsideEntityAccess for GamePlayerInsideAccess<'_, '_> {
+    #[inline]
+    fn id(&self) -> u32 {
+        self.game
+            .common
+            .player
+            .as_ref()
+            .map_or(0, |p| p.entity_id as u32)
+    }
+
+    #[inline]
+    fn kind(&self) -> &str {
+        "minecraft:player"
+    }
+
+    #[inline]
+    fn is_alive(&self) -> bool {
+        self.game
+            .common
+            .player
+            .as_ref()
+            .is_some_and(|p| !p.health.dead_or_dying())
+    }
+
+    #[inline]
+    fn position(&self) -> [f64; 3] {
+        self.game
+            .common
+            .player
+            .as_ref()
+            .map_or([0.0; 3], |p| [p.position.x, p.position.y, p.position.z])
+    }
+
+    #[inline]
+    fn velocity(&self) -> [f64; 3] {
+        self.game
+            .common
+            .player
+            .as_ref()
+            .map_or([0.0; 3], |p| [p.velocity.x, p.velocity.y, p.velocity.z])
+    }
+
+    #[inline]
+    fn fire_ticks(&self) -> i32 {
+        self.game
+            .common
+            .player
+            .as_ref()
+            .map_or(0, |p| p.fire_ticks)
+    }
+
+    #[inline]
+    fn is_on_fire(&self) -> bool {
+        self.game
+            .common
+            .player
+            .as_ref()
+            .is_some_and(|p| p.is_on_fire())
+    }
+
+    #[inline]
+    fn fall_distance(&self) -> f64 {
+        self.game
+            .common
+            .player
+            .as_ref()
+            .map_or(0.0, |p| p.fall_distance)
+    }
+
+    #[inline]
+    fn block_state(&self, pos: [i32; 3]) -> Option<mod_api::BlockState> {
+        use sunrise_gameplay_common::game::api_values::TryIntoApi as _;
+        let level = self.game.level(self.game.common.dim.id())?;
+        self.game
+            .level_block_state(level, pos)
+            .and_then(|id| id.try_into_api().ok())
+    }
+
+    #[inline]
+    fn push(&mut self, delta: [f64; 3]) -> bool {
+        if !delta.iter().all(|v| v.is_finite()) {
+            return false;
+        }
+        let Some(p) = self.game.common.player.as_mut() else {
+            return false;
+        };
+        p.velocity = p
+            .velocity
+            .add_vector(Vec3::new(delta[0], delta[1], delta[2]));
+        true
+    }
+
+    #[inline]
+    fn set_velocity(&mut self, velocity: [f64; 3]) -> bool {
+        if !velocity.iter().all(|v| v.is_finite()) {
+            return false;
+        }
+        let Some(p) = self.game.common.player.as_mut() else {
+            return false;
+        };
+        p.velocity = Vec3::new(velocity[0], velocity[1], velocity[2]);
+        true
+    }
+
+    #[inline]
+    fn make_stuck_in_block(&mut self, speed_multiplier: [f64; 3]) -> bool {
+        if !speed_multiplier.iter().all(|v| v.is_finite()) {
+            return false;
+        }
+        let Some(p) = self.game.common.player.as_mut() else {
+            return false;
+        };
+        p.apply_stuck_in_block(Vec3::new(
+            speed_multiplier[0],
+            speed_multiplier[1],
+            speed_multiplier[2],
+        ));
+        true
+    }
+
+    #[inline]
+    fn reset_fall_distance(&mut self) {
+        if let Some(p) = self.game.common.player.as_mut() {
+            p.fall_distance = 0.0;
+        }
+    }
+
+    #[inline]
+    fn set_remaining_fire_ticks(&mut self, ticks: i32) {
+        if let Some(p) = self.game.common.player.as_mut() {
+            p.set_remaining_fire_ticks(ticks);
+        }
+    }
+
+    #[inline]
+    fn add_effect(&mut self, effect: mod_api::EffectKey, duration: i32, amplifier: u8) -> bool {
+        let Some(def) = mod_api::__private::effect_index(effect)
+            .and_then(sunrise_game_data::potions::effect_by_index)
+        else {
+            return false;
+        };
+        if self.game.common.player.is_none() {
+            return false;
+        }
+        let instance =
+            sunrise_level::effects::EffectInstance::from_def(def, duration, i32::from(amplifier));
+        self.game.add_player_effect(instance)
+    }
+
+    #[inline]
+    fn hurt_with_source(
+        &mut self,
+        damage_type: &str,
+        amount: f32,
+        direct: Option<mod_api::EntityRef>,
+        causing: Option<mod_api::EntityRef>,
+    ) -> bool {
+        let Some(p) = self.game.common.player.as_ref() else {
+            return false;
+        };
+        let subject_id = p.entity_id as u32;
+        let subject_pos = [p.position.x, p.position.y, p.position.z];
+        let Some((direct, causing, from)) = self.game.resolve_inside_damage_sources(
+            subject_id,
+            crate::game::commands::Target::Player,
+            subject_pos,
+            direct,
+            causing,
+            None,
+        ) else {
+            return false;
+        };
+        self.game.hurt_target(
+            crate::game::commands::Target::Player,
+            amount,
+            damage_type,
+            direct,
+            causing,
+            from,
+        )
+    }
+
+    #[inline]
+    fn set_block(&mut self, pos: [i32; 3], state: mod_api::BlockState) -> bool {
+        use sunrise_gameplay_common::game::api_values::TryIntoEngine as _;
+        let Some(level) = self.game.level(self.game.common.dim.id()) else {
+            return false;
+        };
+        let Ok(id) = state.try_into_engine(&self.game.common) else {
+            return false;
+        };
+        let flags = mod_api::BlockUpdateFlags::NEIGHBORS | mod_api::BlockUpdateFlags::CLIENTS;
+        self.game
+            .level_set_block(level, pos, id, flags)
+            .unwrap_or(false)
+    }
+
+    #[inline]
+    fn destroy_block(&mut self, pos: [i32; 3], drop: bool) -> bool {
+        let Some(level) = self.game.level(self.game.common.dim.id()) else {
+            return false;
+        };
+        self.game
+            .level_destroy_block(level, pos, drop, None, None, false)
+            .is_some()
+    }
+
+    #[inline]
+    fn apply_effect(&mut self, effect: mod_api::InsideEffect) {
+        match effect {
+            mod_api::InsideEffect::Freeze => {
+                if let Some(p) = self.game.common.player.as_mut() {
+                    p.in_powder_snow = true;
+                    if p.can_freeze() {
+                        p.ticks_frozen =
+                            (p.ticks_frozen + 1).min(PlayerMotion::TICKS_REQUIRED_TO_FREEZE);
+                    }
+                }
+            }
+            mod_api::InsideEffect::ClearFreeze => {
+                if let Some(p) = self.game.common.player.as_mut() {
+                    p.ticks_frozen = 0;
+                }
+            }
+            mod_api::InsideEffect::FireIgnite => {
+                let Some(p) = self.game.common.player.as_mut() else {
+                    return;
+                };
+                p.fire_ignite_contact(&mut self.game.common.world.random);
+            }
+            mod_api::InsideEffect::LavaIgnite => {
+                if let Some(p) = self.game.common.player.as_mut()
+                    && !p.mod_fire_immune
+                {
+                    let _ = p.ignite_for_ticks(300);
+                }
+            }
+            mod_api::InsideEffect::Extinguish => {
+                if let Some(p) = self.game.common.player.as_mut() {
+                    p.fire_ticks = p.fire_ticks.min(0);
+                }
+            }
+        }
+    }
+
+    #[inline]
+    fn apply_builtin(&mut self, action: mod_api::__private::BuiltinInsideAction) {
+        match action {
+            mod_api::__private::BuiltinInsideAction::PowderSnowMelt(pos) => {
+                if self
+                    .game
+                    .common
+                    .player
+                    .as_ref()
+                    .is_some_and(|p| p.is_on_fire() && !p.spectator)
+                {
+                    self.game
+                        .powder_snow_melt(sunrise_core::position::BlockPos::new(
+                            pos[0], pos[1], pos[2],
+                        ));
+                }
+            }
+            mod_api::__private::BuiltinInsideAction::LayeredCauldronExtinguish { pos, state } => {
+                let [x, y, z] = pos;
+                let pos = sunrise_core::position::BlockPos::new(x, y, z);
+                if self
+                    .game
+                    .common
+                    .player
+                    .as_ref()
+                    .is_some_and(|p| p.is_on_fire())
+                    && self.game.may_interact_at(pos)
+                {
+                    self.game
+                        .cauldron_extinguish_at(pos, sunrise_world::registry::BlockStateId(state));
+                }
+            }
+            mod_api::__private::BuiltinInsideAction::FireHurt(damage) => {
+                self.hurt_with_source("minecraft:in_fire", damage, None, None);
+            }
+            mod_api::__private::BuiltinInsideAction::LavaHurt => {
+                if self
+                    .game
+                    .common
+                    .player
+                    .as_ref()
+                    .is_some_and(|p| !p.mod_fire_immune)
+                {
+                    self.hurt_with_source("minecraft:lava", 4.0, None, None);
+                }
+            }
+        }
+    }
 }
 
 use sunrise_gameplay_common::game::GameGameExt1 as _;
 
 use sunrise_gameplay_common::game::entity_sections::EntitySectionsGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_block_sounds::NativeBlockSoundsGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_hooks::can_start_swimming::GameHooks as _;

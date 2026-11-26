@@ -186,9 +186,242 @@ pub(crate) mod tests {
                 game.selected, 1,
                 "the prefix applied but the suffix did not"
             );
-            assert!(
-                matches!(turn.end, Some(Event::Disconnected { key: Some(key), from_server: false, .. }) if key == "disconnect.packetError")
+            assert!(matches!(
+                turn.end,
+                Some(Event::Disconnected {
+                    key: Some(key),
+                    from_server: false,
+                    after_login: true,
+                    ..
+                }) if key == "disconnect.packetError"
+            ));
+        });
+    }
+
+    fn push_events(
+        game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
+        events: impl IntoIterator<Item = Event>,
+    ) {
+        let publish = game
+            .client
+            .remote
+            .as_ref()
+            .unwrap()
+            .session
+            .received_event_probe();
+        for event in events {
+            publish(event);
+        }
+        game.wait_for_test_remote_event(
+            |event| matches!(event, Event::Packet(packet) if matches!(&**packet, C::Login(_))),
+        );
+    }
+
+    fn login_packet() -> play::Clientbound {
+        C::Login(play::Login {
+            player_id: 7,
+            hardcore: false,
+            levels: vec!["minecraft:overworld".into()],
+            max_players: 1,
+            chunk_radius: 2,
+            simulation_distance: 2,
+            reduced_debug_info: false,
+            show_death_screen: true,
+            limited_crafting: false,
+            spawn: play::SpawnInfo {
+                dimension_type: 0,
+                dimension: "minecraft:overworld".into(),
+                seed: 0,
+                game_type: 1,
+                previous_game_type: None,
+                debug: false,
+                flat: true,
+                last_death: None,
+                portal_cooldown: 0,
+                sea_level: 63,
+            },
+            online_mode: false,
+            enforces_secure_chat: false,
+        })
+    }
+
+    fn registries_with_biome(
+        base: &sunrise_protocol::registry::Dynamic,
+        biome_id: &str,
+    ) -> std::sync::Arc<sunrise_protocol::registry::Dynamic> {
+        let mut registries = base.clone();
+        registries.registries.insert(
+            "minecraft:dimension_type".into(),
+            vec![("minecraft:overworld".into(), None)],
+        );
+        registries.registries.insert(
+            "minecraft:worldgen/biome".into(),
+            vec![
+                ("minecraft:plains".into(), None),
+                (
+                    biome_id.into(),
+                    Some(sunrise_core::nbt::Tag::Compound(
+                        sunrise_core::nbt::Compound::new(),
+                    )),
+                ),
+            ],
+        );
+        std::sync::Arc::new(registries)
+    }
+
+    fn assert_disconnected_with_generic_reason(
+        game: &sunrise_client_gameplay::game::ClientGame<'_>,
+    ) {
+        assert!(
+            game.client.remote.is_none(),
+            "client must disconnect on invalid registry"
+        );
+        assert!(
+            !game.client.connection_open,
+            "connection must close on invalid registry"
+        );
+        let mode = &game.client.title.0.as_ref().expect("the disconnect screen").mode;
+        assert!(matches!(
+            mode,
+            sunrise_client_lib::title::Mode::Multiplayer(
+                sunrise_client_lib::multiplayer::Screen::Disconnected { reason, .. }
+            ) if reason.translation_key() == Some("disconnect.genericReason")
+        ));
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn invalid_biome_registry_disconnects_before_join_or_reconfigured_play() {
+        with_client_game(|game| {
+            // Joined with an invalid biome identifier (e.g. `..:bad` with supplied data) must
+            // disconnect before marking the join complete or processing queued play packets.
+            game.client.title.0 = None;
+            let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
+            game.connect_local(pipe, "InvalidBiomeJoin").unwrap();
+            game.connection_starts("example.invalid:25565", "InvalidBiomeJoin", false);
+            let invalid = registries_with_biome(
+                &game.client.remote.as_ref().unwrap().registries,
+                "..:bad",
             );
+            push_events(
+                game,
+                [
+                    Event::Joined {
+                        registries: invalid,
+                        datapacks: Default::default(),
+                        uuid: 1,
+                        name: "Alex".into(),
+                    },
+                    Event::Packet(Box::new(login_packet())),
+                ],
+            );
+            game.poll_remote_events(true).unwrap();
+            assert_disconnected_with_generic_reason(game);
+
+            // Reconfigured with an invalid biome identifier after a valid play session must
+            // disconnect rather than allowing play to resume with the previous registries.
+            game.common.world_biomes = None;
+            game.common.world_biomes_base = None;
+            game.client.title.0 = None;
+            let (_reader, mut writer) = connect_play_test(game, |_, _| {});
+            if !game.client.remote.as_ref().unwrap().joined {
+                game.wait_for_test_remote_event(|event| matches!(event, Event::Joined { .. }));
+                game.poll_remote_events(true).unwrap();
+            }
+            game.connection_starts("example.invalid:25565", "InvalidBiomeReconfigure", false);
+            let valid = registries_with_biome(
+                &game.client.remote.as_ref().unwrap().registries,
+                "test:marsh",
+            );
+            let invalid = registries_with_biome(
+                &game.client.remote.as_ref().unwrap().registries,
+                "..:bad",
+            );
+            push_events(
+                game,
+                [
+                    Event::Joined {
+                        registries: valid,
+                        datapacks: Default::default(),
+                        uuid: 2,
+                        name: "Steve".into(),
+                    },
+                    Event::Packet(Box::new(login_packet())),
+                ],
+            );
+            game.poll_remote_events(true).unwrap();
+            assert!(
+                game.client
+                    .remote
+                    .as_ref()
+                    .is_some_and(|r| r.joined && r.logged_in && r.reconfiguring.is_none())
+            );
+            let biomes = game
+                .common
+                .world_biomes
+                .as_deref()
+                .unwrap_or_else(|| game.common.res.biomes());
+            assert!(biomes.contains("test:marsh"));
+
+            writer
+                .send(&C::StartConfiguration(sunrise_protocol::packets::Empty).encode())
+                .unwrap();
+            game.wait_for_test_remote_event(|event| matches!(event, Event::Reconfiguring(_)));
+            game.poll_remote_events(true).unwrap();
+            assert!(game.client.remote.as_ref().unwrap().reconfiguring.is_some());
+            push_events(
+                game,
+                [
+                    Event::Reconfigured {
+                        registries: invalid,
+                        datapacks: Default::default(),
+                    },
+                    Event::Packet(Box::new(login_packet())),
+                ],
+            );
+            game.poll_remote_events(true).unwrap();
+            assert_disconnected_with_generic_reason(game);
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn malformed_trim_material_registry_disconnects_before_join() {
+        with_client_game(|game| {
+            // A malformed synced trim_material entry must fail the registry load and disconnect
+            // instead of falling back to the client's own file for minecraft:gold.
+            game.client.title.0 = None;
+            let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
+            game.connect_local(pipe, "MalformedTrimJoin").unwrap();
+            game.connection_starts("example.invalid:25565", "MalformedTrimJoin", false);
+            let mut registries = (*game.client.remote.as_ref().unwrap().registries).clone();
+            registries.registries.insert(
+                "minecraft:dimension_type".into(),
+                vec![("minecraft:overworld".into(), None)],
+            );
+            registries.registries.insert(
+                "minecraft:trim_material".into(),
+                vec![(
+                    "minecraft:gold".into(),
+                    Some(sunrise_core::nbt::Tag::Compound(
+                        sunrise_core::nbt::Compound::new(),
+                    )),
+                )],
+            );
+            push_events(
+                game,
+                [
+                    Event::Joined {
+                        registries: std::sync::Arc::new(registries),
+                        datapacks: Default::default(),
+                        uuid: 1,
+                        name: "Alex".into(),
+                    },
+                    Event::Packet(Box::new(login_packet())),
+                ],
+            );
+            game.poll_remote_events(true).unwrap();
+            assert_disconnected_with_generic_reason(game);
         });
     }
 }

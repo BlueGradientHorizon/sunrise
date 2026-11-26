@@ -1,4 +1,5 @@
 use super::*;
+use crate::game::api_values::with_stack_view;
 
 pub trait GameHooks<'__sg>: crate::game::SideGame<'__sg> {
     /// `IItemExtension.onEntitySwing`: the player in place (`entity`) is
@@ -6,7 +7,7 @@ pub trait GameHooks<'__sg>: crate::game::SideGame<'__sg> {
     /// Set `canceled` and no swing starts: no animation, no packet.
     fn native_on_entity_swing(
         &mut self,
-        stack: &ItemStack,
+        stack: mod_api::ItemStackView<'_>,
         entity: Option<i32>,
         hand: Hand,
         canceled: &mut bool,
@@ -39,7 +40,11 @@ pub trait ItemAttackGameExt2<'__sg>: crate::game::SideGame<'__sg> {
         let stack = stack.clone();
         let entity = self.player.as_ref().map(|p| p.entity_id);
         let mut canceled = false;
-        self.native_on_entity_swing(&stack, entity, hand, &mut canceled);
+        with_stack_view(Some(&stack), |view| {
+            if let Some(view) = view {
+                self.native_on_entity_swing(view, entity, hand, &mut canceled);
+            }
+        });
         canceled
     }
 }

@@ -56,6 +56,11 @@ impl crate::game::ClientGame<'_> {
                         age: p.ticks as f32 + partial,
                         yaw: f32::from(p.facing & 3) * 90.0,
                         pitch: 0.0,
+                        position: at.to_array(),
+                        // EntityTypes.PAINTING: sized(0.5F, 0.5F), default eyeHeight 0.85 * 0.5.
+                        size: [0.5, 0.5],
+                        eye_height: 0.425,
+                        distance_to_camera_sq: (at - camera).length_squared(),
                         living: None,
                         tnt_fuse: None,
                         orb_value: None,
@@ -89,7 +94,7 @@ impl crate::game::ClientGame<'_> {
             };
             let asset = match p.asset.as_deref() {
                 Some(asset) => asset,
-                None => match self.common.painting_variants.get(&p.variant) {
+                None => match world_paintings!(self).get(&p.variant) {
                     Some(v) => v.asset.as_str(),
                     None => continue,
                 },

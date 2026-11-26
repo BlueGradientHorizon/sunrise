@@ -124,7 +124,7 @@ fn run_in(
     std::fs::create_dir(&root).unwrap();
     std::fs::write(
         root.join("gameplay-facts.json"),
-        serde_json::json!({"states":(0..states.len()).map(|id|serde_json::json!({"id":id})).collect::<Vec<_>>()} ).to_string(),
+        serde_json::json!({"states":(0..states.len()).map(|id|serde_json::json!({"id":id,"sound":{"identity":"other"}})).collect::<Vec<_>>()} ).to_string(),
     )
     .unwrap();
     let behaviours = serde_json::json!({"states":(0..states.len()).map(|id|if id==1||id==20{[63,0]}else{[0,0]}).collect::<Vec<_>>(),"blocks":(["air","stone","water","bubble_column","tnt"].iter().map(|name|serde_json::json!({"name":format!("minecraft:{name}"),"class":["Block"]})).collect::<Vec<_>>())});
@@ -370,14 +370,14 @@ fn water_bubbles_use_damped_motion_and_crit_streaks_use_original_motion() {
                 kind: ArrowParticle::Bubble,
                 position,
                 velocity,
-            } => Some((*position, *velocity)),
+            } => Some((position, velocity)),
             _ => None,
         })
         .collect();
     assert_eq!(bubbles.len(), 4);
     for (position, velocity) in bubbles {
-        assert_eq!(velocity, damped);
-        assert_eq!(position, previous.position.add_vector(damped.scale(-0.25)));
+        assert_eq!(*velocity, damped);
+        assert_eq!(*position, previous.position.add_vector(damped.scale(-0.25)));
     }
     let crits: Vec<_> = events
         .iter()
@@ -386,18 +386,18 @@ fn water_bubbles_use_damped_motion_and_crit_streaks_use_original_motion() {
                 kind: ArrowParticle::Crit,
                 position,
                 velocity,
-            } => Some((*position, *velocity)),
+            } => Some((position, velocity)),
             _ => None,
         })
         .collect();
     assert_eq!(crits.len(), 4);
     for (i, (position, velocity)) in crits.into_iter().enumerate() {
         assert_eq!(
-            position,
+            *position,
             previous.position.add_vector(original.scale(i as f64 / 4.0))
         );
         assert_eq!(
-            velocity,
+            *velocity,
             Vec3::new(-original.x, -original.y + 0.2, -original.z)
         );
     }

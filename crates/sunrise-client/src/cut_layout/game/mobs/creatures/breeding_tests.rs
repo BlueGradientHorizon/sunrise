@@ -215,14 +215,10 @@ fn first_chicken_breed_matches_without_mods_and_with_an_empty_mod() {
 #[ignore = "daily"]
 fn empty_mod_never_defers_breeding_xp() {
     use mod_api::{self, Hooks};
-    use sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases;
-    if run_fresh_cases(
-        "game::creatures::breeding_tests::empty_mod_never_defers_breeding_xp",
-        "SUNRISE_EMPTY_BREED_CHILD",
-        &["empty"],
-    ) {
-        return;
-    }
+    use sunrise_gameplay::game::server_side::native_pending_children::{
+        BabyChildSlot, ChildConstraint,
+    };
+
     struct Empty;
     #[mod_api::__subscriptions]
     impl Hooks for Empty {}
@@ -230,25 +226,26 @@ fn empty_mod_never_defers_breeding_xp() {
     mod_platform::testing::with_mods(mods, || {
         sunrise_gameplay::game::native_entity_refs::tests::with_game(|game| {
             assert!(!game.mob_world_base(&[]).asks_baby_spawn);
-            let kept = game.dispatch_pending_children(
-                mod_api::HookId::BabyEntitySpawn,
-                true,
-                Vec::new(),
-                &[],
-                |game, edits, cancel| {
-                    game.native_baby_entity_spawn(mod_api::__private::BabyEntitySpawnCall {
-                        dimension: "minecraft:overworld",
-                        parent: 1,
-                        partner: 2,
-                        player: None,
-                        player_entity_id: None,
-                        edits,
-                        cancel,
-                    });
-                },
-                |_, _| (),
-            );
-            assert!(kept.is_none());
+            let mut slot = None;
+            let mut cancel = false;
+            let mut editor = BabyChildSlot {
+                action: 0,
+                slot: &mut slot,
+                resources: game.common.res.clone(),
+                attributes: game.common.motion.attributes.clone(),
+                dimension: game.common.dim,
+                constraint: ChildConstraint::BreedingAgeable,
+            };
+            game.native_baby_entity_spawn(mod_api::__private::BabyEntitySpawnCall {
+                dimension: "minecraft:overworld",
+                parent: 1,
+                partner: 2,
+                player: None,
+                player_entity_id: None,
+                child: mod_api::BabyEntitySpawnChild::new(&mut editor),
+                cancel: &mut cancel,
+            });
+            assert!(slot.is_none());
             assert!(!game.mob_world_base(&[]).asks_baby_spawn);
         });
     });

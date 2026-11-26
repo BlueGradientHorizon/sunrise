@@ -37,13 +37,13 @@ impl ClientGame<'_> {
                         0.5 + b.random.next_float() * 0.2,
                     )
                 });
-                self.client.audio.0.play(
+                self.play_audio(
                     "minecraft:entity.lightning_bolt.thunder",
                     Some(at),
                     10000.0,
                     thunder_pitch,
                 );
-                self.client.audio.0.play(
+                self.play_audio(
                     "minecraft:entity.lightning_bolt.impact",
                     Some(at),
                     2.0,

@@ -115,10 +115,8 @@ impl crate::game::ServerGame<'_> {
             // general rows (#792), then the mobile kinds' remainder.
             self.ordered_before(ordered_tick::Batch::General)?;
             sunrise_level::spans::time("tick_general", || self.tick_general())?;
-            // Orbs, primed TNT and falling blocks still to tick, in join order.
+            // Orbs, primed TNT, falling blocks and observed unsimulated entities still to tick.
             self.run_ordered_ticks(sunrise_sim::join_seq::JoinSeq::MAX, false)?;
-            // Unsimulated entities no mod named are told once for the family.
-            self.native_others_tick_family(self.server.ordered.told, self.server.ordered.born);
             sunrise_level::spans::time("tick_experience", || self.tick_experience());
             // Merged, despawned or picked up.
             span("mods_leaves_flush", || self.native_leaves_flush());
@@ -197,19 +195,17 @@ impl crate::game::ServerGame<'_> {
     }
 
     pub fn tick_mobs(&mut self) -> Result<()> {
-        self.sync_mob_death_protection();
         self.tick_creatures()?;
         if !self.common.entity_attachments.is_empty() {
             self.prune_entity_attachments();
         }
-        self.native_mobs_equipment();
-        self.tick_equipment_attributes();
+        self.refresh_stand_and_dragon_equipment_attributes();
         self.position_rider();
         self.tick_player_stat_counters();
         self.tick_scoreboard();
         self.load_bossbars();
-        self.tick_worldborder();
-        self.spawn_phantoms();
+        self.common.player_border();
+        self.border_damage();
         self.tick_advancements();
         Ok(())
     }

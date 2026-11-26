@@ -16,6 +16,7 @@
 use super::super::Dim;
 use super::Level;
 use crate::game::commands_common::Target;
+use crate::game::entity::EntityHandle;
 use mod_api::EntityRef;
 use std::collections::{HashMap, HashSet};
 use sunrise_sim::join_seq::JoinSeq;
@@ -56,6 +57,8 @@ pub enum Removal {
         killed: bool,
     },
     Other(EntityRef),
+    /// A full Entity.kill, including its death and removal effects, not just discard.
+    Kill(EntityRef),
 }
 
 /// What mods are told of entities joining and leaving, held while a transaction is open.
@@ -67,10 +70,18 @@ pub enum Announcement {
         loaded_from_disk: bool,
         through: JoinSeq,
     },
+    /// `addFreshEntity` for one row, independent of unrelated joins held by `item_toss`.
+    FreshJoin { handle: EntityHandle, id: u32 },
     /// `native_entity_left`.
     Left(u32),
     /// `native_leaves_flush`.
     Leaves,
+}
+
+impl Announcement {
+    pub fn is_join(self) -> bool {
+        matches!(self, Self::Joins { .. } | Self::FreshJoin { .. })
+    }
 }
 
 /// One place in a commit's queue.
@@ -83,8 +94,8 @@ pub enum Step {
 impl Step {
     /// A journal's steps: its joins, then its removals, then the rest of what it held.
     pub fn of(announcements: Vec<Announcement>, removals: Vec<Removal>) -> Vec<Step> {
-        let (joins, rest): (Vec<_>, Vec<_>) = (announcements.into_iter())
-            .partition(|announcement| matches!(announcement, Announcement::Joins { .. }));
+        let (joins, rest): (Vec<_>, Vec<_>) =
+            (announcements.into_iter()).partition(|announcement| announcement.is_join());
         let steps = joins.into_iter().map(Step::Tell);
         let steps = steps.chain([Step::Remove(removals)]);
         steps.chain(rest.into_iter().map(Step::Tell)).collect()
@@ -235,25 +246,6 @@ impl crate::game::CommonGame<'_> {
             level.lifetimes.arrivals.insert(id);
         }
     }
-    /// Whether an open transaction removes `target`, which reads as gone until it closes.
-    pub fn removal_pending(&self, target: &Target) -> bool {
-        self.removal_pending_in(self.dim, target)
-    }
-    /// [`Self::removal_pending`] of the entity in `dimension`, parked or not: the transactions
-    /// stay with the game when a level is swapped out.
-    pub fn removal_pending_in(&self, dimension: Dim, target: &Target) -> bool {
-        let id = crate::game::commands_common::target_id(*target);
-        let open = self.transactions.iter().any(|level| {
-            level.dimension == Some(dimension)
-                && (level.lifetimes.removals.iter())
-                    .any(|removal| matches!(removal, Removal::Other(e) if Some(e.id()) == id))
-        });
-        // A commit's removals wait for its joins to be told: its entities read as gone until then.
-        open || (self.transactions.committing.iter()).any(|commit| {
-            commit.dimension == dimension
-                && id.is_some_and(|id| commit.removed.contains(&id) && commit.removing != Some(id))
-        })
-    }
     /// `entity_remove` of `target`, which `entity` names, inside a transaction: marked now and
     /// removed at the root commit. False, with nothing done, when none is open in this level.
     pub fn journal_removal(&mut self, entity: EntityRef, target: Target, killed: bool) -> bool {
@@ -273,7 +265,51 @@ impl crate::game::CommonGame<'_> {
         }
         true
     }
+    /// Mark an admitted kill invisible now, leaving its effects to the root commit.
+    pub fn journal_kill(&mut self, entity: EntityRef) -> bool {
+        let Some(level) = open_in(&mut self.transactions, self.dim) else {
+            return false;
+        };
+        level.lifetimes.removals.push(Removal::Kill(entity));
+        true
+    }
 }
+
+pub trait EntityRemovalGameExt<'g>: crate::game::SideGame<'g> {
+    /// Whether a mod or an open transaction removed `target` in the active level.
+    fn target_removed(&self, target: &Target) -> bool {
+        self.persist.removals.contains(target)
+            || self.persist.destroying_vehicles.contains(target)
+            || self.removal_pending(target)
+    }
+
+    /// Whether an open transaction removes `target`, which reads as gone until it closes.
+    fn removal_pending(&self, target: &Target) -> bool {
+        self.removal_pending_in(self.dim, target)
+    }
+
+    /// Transactions keep pending removals when their level is parked.
+    fn removal_pending_in(&self, dimension: Dim, target: &Target) -> bool {
+        let Some(id) = <Self::State as crate::game::side_ops::world::SideOps>::side_resident_target_id(
+            self, *target,
+        )
+        else {
+            return false;
+        };
+        let open = self.transactions.iter().any(|level| {
+            level.dimension == Some(dimension)
+                && (level.lifetimes.removals.iter()).any(|removal| {
+                    matches!(removal, Removal::Other(e) | Removal::Kill(e) if e.id() == id)
+                })
+        });
+        // A commit's removals wait for its joins to be told: its entities read as gone until then.
+        open || (self.transactions.committing.iter()).any(|commit| {
+            commit.dimension == dimension && commit.removed.contains(&id) && commit.removing != Some(id)
+        })
+    }
+}
+
+impl<'g, G: crate::game::SideGame<'g>> EntityRemovalGameExt<'g> for G {}
 
 /// Where an abort leaves the way back for a map whose entity was taken for a transfer and has
 /// not arrived yet: its arrival puts these contents in place of the map it carries. It lives

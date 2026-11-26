@@ -9,6 +9,8 @@ use sunrise_core::{
     position::{BlockPos, ChunkPos},
 };
 use sunrise_gameplay_common::game::GameGameExt1;
+use sunrise_gameplay_common::game::api_values::TryIntoApi as _;
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
 use sunrise_world::level::{PlaceContext, PlaceOutcome};
 
 struct Plant(Arc<AtomicUsize>);
@@ -122,6 +124,23 @@ fn declared_vegetation_places_and_breaks_independently_of_its_template() {
                         game.world
                             .set(5, 64, 5, registry.default_state(soil).unwrap())
                             .unwrap();
+                        let candidate = registry
+                            .default_state(plant)
+                            .unwrap()
+                            .try_into_api()
+                            .unwrap();
+                        let level = game.level(game.dim.id()).unwrap();
+                        let before = heard.load(Ordering::Relaxed);
+                        assert_eq!(
+                            level.can_survive(game, [pos.x, pos.y, pos.z], candidate),
+                            Ok(allowed),
+                            "candidate {plant} on {soil}"
+                        );
+                        assert_eq!(
+                            heard.load(Ordering::Relaxed) > before,
+                            asks_plant,
+                            "soil Part decides before the plant Part"
+                        );
                         let context = PlaceContext {
                             clicked_pos: BlockPos::new(5, 64, 5),
                             face: Direction::Up,
@@ -202,6 +221,25 @@ fn declared_vegetation_places_and_breaks_independently_of_its_template() {
                     point: [5.5, 65.0, 5.5],
                     inside: false,
                 };
+                game.client.remote.as_mut().unwrap().logged_in = true;
+                let level = game.native_client_level().unwrap();
+                let plant = game
+                    .pack
+                    .assets
+                    .registry
+                    .default_state("garden:glass")
+                    .unwrap()
+                    .try_into_api()
+                    .unwrap();
+                for (soil, allowed) in [("minecraft:stone", false), ("minecraft:dirt", true)] {
+                    let support = game.pack.assets.registry.default_state(soil).unwrap();
+                    game.world.set(5, 64, 5, support).unwrap();
+                    assert_eq!(
+                        level.can_survive(game, [5, 65, 5], plant),
+                        Ok(allowed),
+                        "client's loaded replica: {soil}"
+                    );
+                }
                 for (soil, allowed) in [("minecraft:stone", false), ("minecraft:dirt", true)] {
                     let ground = game.pack.assets.registry.default_state(soil).unwrap();
                     game.world.set(5, 64, 5, ground).unwrap();

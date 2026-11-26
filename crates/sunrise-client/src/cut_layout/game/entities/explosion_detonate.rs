@@ -83,6 +83,78 @@ mod tests {
         assert!(heard.contains(&900) && heard.contains(&SPARED), "{heard:?}");
     }
 
+    /// `ServerExplosion.hurtEntities` iterates the edited list itself: the entries are
+    /// reached in its order across kinds, and one named twice is reached twice.
+    #[test]
+    #[ignore = "daily"]
+    fn the_edited_list_is_walked_in_order_across_kinds_and_with_repeats() {
+        const CRYSTAL: u32 = 950;
+        struct Reorder;
+        #[mod_api::__subscriptions]
+        impl Hooks for Reorder {
+            fn explosion_detonate(
+                &self,
+                _: &mut dyn ServerHost,
+                event: &mut ExplosionDetonateEvent<'_>,
+            ) {
+                let epoch = event.entities.first().unwrap().epoch();
+                event.entities.clear();
+                for id in [900, CRYSTAL, 901, 901] {
+                    event.entities.push(EntityRef::new(epoch, id));
+                }
+            }
+        }
+        struct Seen(Arc<Mutex<Vec<(u32, bool)>>>);
+        #[mod_api::__subscriptions]
+        impl Hooks for Seen {
+            fn explosion_knockback(
+                &self,
+                host: &mut dyn ServerHost,
+                event: &mut mod_api::ExplosionKnockbackEvent<'_>,
+            ) {
+                if let Some(id) = event.entity {
+                    self.0
+                        .lock()
+                        .unwrap()
+                        .push((id, host.entity(CRYSTAL).is_some()));
+                }
+            }
+        }
+        let heard = Arc::new(Mutex::new(Vec::new()));
+        let mods: mod_api::Mods = vec![
+            mod_api::ModEntry::new("reorder", Box::new(Reorder)),
+            mod_api::ModEntry::new("seen", Box::new(Seen(heard.clone()))),
+        ]
+        .into();
+        mod_platform::testing::with_mods(mods, || {
+            with_game(|game| {
+                zombie(game, 900, 2.0);
+                zombie(game, 901, -2.0);
+                game.crystals.push(sunrise_gameplay_common::game::dragon_common::Crystal {
+                    attachment_lifetime: Default::default(),
+                    join: Default::default(),
+                    id: CRYSTAL,
+                    position: Vec3::new(1.0, 1.0, 0.0),
+                    previous: Vec3::new(1.0, 1.0, 0.0),
+                    rotation: [0.0, 0.0],
+                    fire: 0,
+                    show_bottom: false,
+                    time: 0,
+                    beam: None,
+                    invulnerable: false,
+                    fall: (false, 0.0),
+                    size_answer: None,
+                });
+                explode(game);
+            });
+        });
+        // The crystal stands for the first mob and is gone for both visits of the second.
+        assert_eq!(
+            *heard.lock().unwrap(),
+            [(900, true), (901, false), (901, false)]
+        );
+    }
+
     /// `getEntities(source, box)` leaves the blast's exploding source out:
     /// it is not in the list and its own blast does not hurt it.
     #[test]
@@ -98,7 +170,7 @@ mod tests {
             with_game(|game| {
                 zombie(game, 900, 2.0);
                 zombie(game, 910, -2.0);
-                game.server.combat.0.explosion_direct = Some(900);
+                game.server.combat.0.explosion_direct = Some((900, "minecraft:zombie"));
                 explode(game);
                 let source = game.mobs.iter().find(|m| m.id == 900).unwrap();
                 assert_eq!(source.health, 20.0);
@@ -601,5 +673,50 @@ mod tests {
                 if empty { vec![] } else { vec![960, 955] }
             );
         }
+    }
+
+    /// A position a listener adds to `blocks` is destroyed, and an extreme Y
+    /// coordinate added with fire enabled does not panic.
+    #[test]
+    #[ignore = "daily"]
+    fn a_position_added_by_a_listener_is_destroyed() {
+        struct AddBlocks;
+        #[mod_api::__subscriptions]
+        impl Hooks for AddBlocks {
+            fn explosion_detonate(
+                &self,
+                _: &mut dyn ServerHost,
+                event: &mut ExplosionDetonateEvent<'_>,
+            ) {
+                event.blocks.push([12, 80, 12]);
+                event.blocks.push([0, i32::MIN, 0]);
+            }
+        }
+        let mods: mod_api::Mods =
+            vec![mod_api::ModEntry::new("add_blocks", Box::new(AddBlocks))].into();
+        mod_platform::testing::with_mods(mods, || {
+            with_game(|game| {
+                game.world
+                    .chunks
+                    .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
+                let stone = game
+                    .pack
+                    .assets
+                    .registry
+                    .default_state("minecraft:stone")
+                    .unwrap();
+                game.world.set(12, 80, 12, stone).unwrap();
+                game.server_explode_as(
+                    [0.0, 1.0, 0.0],
+                    3.0,
+                    sunrise_gameplay::game::server_side::explosion::BlockInteraction::Destroy,
+                    true,
+                    "minecraft:explosion",
+                    None,
+                )
+                .unwrap();
+                assert_eq!(game.world.block(12, 80, 12), game.world.air);
+            });
+        });
     }
 }

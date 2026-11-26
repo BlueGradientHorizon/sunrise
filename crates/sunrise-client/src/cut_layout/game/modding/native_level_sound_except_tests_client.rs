@@ -2,7 +2,7 @@ use mod_api::SoundSource;
 use std::sync::{Arc, mpsc};
 use sunrise_gameplay::game::native_guest_turn_tests::with_guests;
 use sunrise_gameplay::game::server_side::native_level_sound_except_tests::decode_packets;
-use sunrise_gameplay::game::server_side::native_level_sound_except_tests::in_isolated_process;
+use sunrise_gameplay_common::game::in_own_process;
 use sunrise_protocol::packets::play::Clientbound as C;
 use sunrise_sim::lan::PlayerSender;
 
@@ -14,13 +14,15 @@ use sunrise_sim::lan::PlayerSender;
 #[test]
 #[ignore = "daily"]
 fn cross_level_transaction_replays_effects_in_request_level_and_preserves_packet_order() {
-    in_isolated_process(
-        "cross_level_transaction_replays_effects_in_request_level_and_preserves_packet_order",
+    in_own_process(
+        "cut_layout::game::client_side::native_level_sound_except_tests_client::cross_level_transaction_replays_effects_in_request_level_and_preserves_packet_order",
         || {
             use sunrise_core::random::RandomSource;
             use sunrise_game_data::gamerules::Value;
             use sunrise_level::particle_options::{ParticleOptions, ParticleType};
 
+            let mut committed_global = Vec::new();
+            let mut rolled_back = Vec::new();
             with_guests(|game| {
                 game.options.dedicated = Some(Vec::new());
                 assert!(game.ui.rules.set("global_sound_events", Value::Bool(true)));
@@ -103,6 +105,8 @@ fn cross_level_transaction_replays_effects_in_request_level_and_preserves_packet
                         Ok::<(), ()>(())
                     });
                     assert!(nether_committed.is_ok());
+                    assert!(decode_packets(&rx12).is_empty());
+                    assert!(decode_packets(&rx13).is_empty());
                     game.enter_level(sunrise_gameplay_common::game::Dim::Overworld)
                         .unwrap();
                     Ok::<(), ()>(())
@@ -122,6 +126,8 @@ fn cross_level_transaction_replays_effects_in_request_level_and_preserves_packet
                     ow_packets[0],
                     C::LevelEvent(ref e) if e.kind == 1038 && e.global
                 ));
+
+                committed_global = ow_packets;
 
                 // Nether guest 13 receives every packet on one connection in exact call order, and
                 // `PlayerRef::play_sound` drew its seed from Nether's `world.random`.
@@ -162,6 +168,7 @@ fn cross_level_transaction_replays_effects_in_request_level_and_preserves_packet
                 // and stay discarded on abort.
                 let nether_handle = game.level("minecraft:the_nether").unwrap();
                 let cross_abort = game.storage_transaction(|game, _| {
+                    assert!(game.level_global_level_event(nether_handle, 1038, pos, 0));
                     assert!(game.level_send_particles(
                         nether_handle,
                         &heart,
@@ -183,7 +190,8 @@ fn cross_level_transaction_replays_effects_in_request_level_and_preserves_packet
                     Err::<(), ()>(())
                 });
                 assert!(cross_abort.is_err());
-                assert!(decode_packets(&rx12).is_empty());
+                rolled_back = decode_packets(&rx12);
+                assert!(rolled_back.is_empty());
                 assert!(decode_packets(&rx13).is_empty());
 
                 let cross_commit = game.storage_transaction(|game, _| {
@@ -256,6 +264,27 @@ fn cross_level_transaction_replays_effects_in_request_level_and_preserves_packet
                     })
                     .collect();
                 assert_eq!(turn_tags, vec!["stop_anvil", "global_1038", "stop_portal"]);
+            });
+
+            super::super::server_side::native_entity_refs::tests::with_client_game(|client| {
+                const END_PORTAL: &str = "minecraft:block.end_portal.spawn";
+                client.client.audio.0.set_listener(
+                    [3.0, 64.0, 5.0],
+                    [0.0, 0.0, 1.0],
+                    [0.0, 1.0, 0.0],
+                );
+                let before = client.client.audio.0.heard.get(END_PORTAL).copied().unwrap_or(0);
+                for packet in rolled_back {
+                    client.apply_packet(packet).unwrap();
+                }
+                assert_eq!(
+                    client.client.audio.0.heard.get(END_PORTAL).copied().unwrap_or(0),
+                    before
+                );
+                for packet in committed_global {
+                    client.apply_packet(packet).unwrap();
+                }
+                assert_eq!(client.client.audio.0.heard.get(END_PORTAL).copied(), Some(before + 1));
             });
         },
     );

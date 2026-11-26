@@ -1,4 +1,5 @@
 use super::*;
+use sunrise_core::geometry::Vec3;
 use winit::keyboard::KeyCode;
 
 #[test]

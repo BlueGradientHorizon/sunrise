@@ -14,10 +14,11 @@ import os
 from pathlib import Path
 import subprocess
 import tempfile
-try:
-    from . import lab, oracle_harness as harness, test_rust_parity as base, integration_env
-except ImportError:
-    import lab, oracle_harness as harness, test_rust_parity as base, integration_env
+import sys
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+from tools import lab, oracle_harness as harness, test_rust_parity as base, integration_env
 
 CASES = 2 * (5 * 8 + 1) * 6
 TESTS = [
@@ -59,7 +60,10 @@ def main():
                lab.ROOT / 'crates/sunrise-sim/src/mobs.rs',
                lab.ROOT / 'crates/sunrise-sim/src/breathing.rs',
                lab.ROOT / 'crates/sunrise-sim/src/entity_nbt.rs',
+               lab.ROOT / 'crates/sunrise-sim/src/entity_nbt/common.rs',
                lab.ROOT / 'crates/sunrise-sim/src/entity_nbt/mob_load.rs',
+               lab.ROOT / 'crates/sunrise-sim/src/entity_nbt/mob_read.rs',
+               lab.ROOT / 'crates/sunrise-sim/src/entity_nbt/mob_write.rs',
                lab.ROOT / 'crates/sunrise-sim/src/mobs/ai.rs',
                lab.ROOT / 'crates/sunrise-sim/src/mobs/living.rs',
                lab.ROOT / 'crates/sunrise-sim/src/mobs/world.rs',

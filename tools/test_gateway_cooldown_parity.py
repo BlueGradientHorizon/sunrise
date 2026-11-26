@@ -11,11 +11,11 @@ from pathlib import Path
 import re
 import subprocess
 import tempfile
-try:
-    from . import lab, test_rust_parity as base
-except ImportError:
-    import lab
-    import test_rust_parity as base
+import sys
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+from tools import lab, test_rust_parity as base
 
 TEST = 'game::server_side::end::cooldown_tests::gateway_counters_match_actual_vanilla_methods'
 

@@ -30,7 +30,6 @@ including clearing a completed wither pattern. A refusal, placement failure,
 subscribed Part cost one `item_listens` lookup and no stack conversion.
 "##]
     #[hook(
-        target = "sunrise_gameplay::game::native_hooks::on_block_placed_by::ServerGame<'_>::native_on_block_placed_by",
         side = "server",
         contract = "listen",
         scope = "item",

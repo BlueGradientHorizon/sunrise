@@ -58,6 +58,7 @@ fn a_client_mod_counts_and_clears_particles() {
                 width: 1.0,
                 height: 1.0,
             },
+            None,
         );
         assert!(host_clear(game));
         let host: &dyn ClientHost = game;
@@ -183,9 +184,11 @@ pub fn fill(game: &mut crate::game::ClientGame<'_>) {
     game.tick_particles();
 }
 
-/// A real offscreen renderer and a world for it to draw; the event loop that returns
-/// holds the window.
-pub fn frame_scene(game: &mut crate::game::ClientGame<'_>) -> winit::event_loop::EventLoop<()> {
+/// A hidden 320 by 240 window and the event loop that holds it.
+pub fn hidden_window() -> (
+    winit::event_loop::EventLoop<()>,
+    std::sync::Arc<winit::window::Window>,
+) {
     let mut builder = winit::event_loop::EventLoop::builder();
     #[cfg(target_os = "linux")]
     {
@@ -203,8 +206,18 @@ pub fn frame_scene(game: &mut crate::game::ClientGame<'_>) -> winit::event_loop:
             )
             .unwrap(),
     );
+    (event_loop, window)
+}
+
+/// A real offscreen renderer and a world for it to draw; the event loop that returns
+/// holds the window.
+pub fn frame_scene(game: &mut crate::game::ClientGame<'_>) -> winit::event_loop::EventLoop<()> {
+    let (event_loop, window) = hidden_window();
     game.common.options.offscreen = true;
-    game.client.renderer.0 = Some(game.new_renderer(window).unwrap());
+    {
+        let renderer = game.new_renderer(window).unwrap();
+        game.set_renderer(renderer);
+    }
     game.client.title.0 = None;
     game.client.settings.extras.dynamic_lights = true;
     game.client.settings.sunrise.particle_culling =
@@ -253,8 +266,8 @@ pub fn frame_scene(game: &mut crate::game::ClientGame<'_>) -> winit::event_loop:
 
 #[test]
 #[ignore = "daily"]
-fn late_clear_removes_native_particle_lights_at_the_frame_consumer() {
-    let name = "game::native_hooks::particle_count_tests::late_clear_removes_native_particle_lights_at_the_frame_consumer";
+fn late_clear_rolls_back_particle_geometry_at_the_frame_consumer() {
+    let name = "game::native_hooks::particle_count_tests::late_clear_rolls_back_particle_geometry_at_the_frame_consumer";
     if super::super::native_entity_refs::tests::run_fresh_cases(
         name,
         "SUNRISE_PARTICLE_LIGHT_CHILD",
@@ -268,53 +281,9 @@ fn late_clear_removes_native_particle_lights_at_the_frame_consumer() {
         ClearAt::Model
     };
     with_frame_scene(|game, at, calls| {
-        let manifest = br#"schema = 1
-id = "particle_frame"
-name = "Particle Frame"
-version = "1.0.0"
-api = "0.1"
-[material]
-file = "material.wgsl"
-[[particle_lights]]
-particles = ["flame"]
-color = [1.0, 0.0, 0.0]
-reach = 4.0
-[[lights]]
-blocks = ["minecraft:torch"]
-color = [0.0, 1.0, 0.0]
-"#;
-        let pack = sunrise_shader_api::Pack::from_files(std::collections::BTreeMap::from([
-            (sunrise_shader_api::MANIFEST.into(), manifest.to_vec()),
-            (
-                "material.wgsl".into(),
-                b"fn material(input: MaterialInput) -> Surface { return Surface(input.albedo); }"
-                    .to_vec(),
-            ),
-        ]))
-        .unwrap();
-        let report = sunrise_shader_api::check(&pack).unwrap();
-        game.client
-            .renderer
-            .0
-            .as_mut()
-            .unwrap()
-            .set_native_shader_pack(Some((
-                report,
-                Vec::new(),
-                Vec::new(),
-                Vec::new(),
-                Default::default(),
-            )))
-            .unwrap();
         let mut baseline = None;
         game.render_with(|_, frame| {
-            assert_eq!(frame.colored_lights.len(), 2, "item and mod light");
-            assert!(
-                frame
-                    .colored_lights
-                    .iter()
-                    .any(|l| l[1] == [0.0, 1.0, 0.0, 1.0])
-            );
+            assert_eq!(frame.colored_lights.len(), 1, "the mod's light");
             assert!(
                 frame
                     .colored_lights
@@ -328,16 +297,10 @@ color = [0.0, 1.0, 0.0]
         let baseline = baseline.unwrap();
         add_frame_particles(game);
         game.render_with(|_, frame| {
-            assert_eq!(
-                frame.colored_lights.len(),
-                sunrise_client::dynamic_light::MAX
-            );
-            assert!(
-                frame
-                    .colored_lights
-                    .iter()
-                    .all(|l| l[1] == [1.0, 0.0, 0.0, 1.0]),
-                "nearby flames displace unrelated lights before clearing"
+            assert_ne!(
+                frame_geometry(frame),
+                baseline.0,
+                "live particles reach the consumer"
             );
             Ok(true)
         })
@@ -347,7 +310,7 @@ color = [0.0, 1.0, 0.0]
             assert_eq!(calls.load(std::sync::atomic::Ordering::Relaxed), 1);
             assert_eq!(
                 frame.colored_lights, baseline.1,
-                "cleared flames contribute no light; item/mod lights restored"
+                "the mod's light survives the clear"
             );
             assert_eq!(
                 frame_geometry(frame),

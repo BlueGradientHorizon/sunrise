@@ -19,7 +19,6 @@ pub trait Hooks {
     /// component conversion is deferred until that stack view is projected.
     /// Server-side, for every dropped item that ticks.
     #[hook(
-        target = "sunrise_gameplay::game::native_hooks::on_entity_item_update::native_on_entity_item_update",
         receiver = "associated",
         dispatch = "api_carrier",
         side = "server",
@@ -28,7 +27,7 @@ pub trait Hooks {
         scope = "item",
         key = "subject",
         neoforge = "IItemExtension.onEntityItemUpdate",
-        version = 3
+        version = 4
     )]
     fn on_entity_item_update(subject: mod_api::ItemEntityServerScope<'_>, canceled: &mut bool);
 }

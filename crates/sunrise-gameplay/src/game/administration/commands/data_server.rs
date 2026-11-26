@@ -67,6 +67,7 @@ impl crate::game::ServerGame<'_> {
                 .ok_or_else(stale)?;
                 sunrise_sim::mobs::armor::prepare(&new, &self.common.motion.attributes);
                 self.resolve_loaded_profession(&mut new);
+                entity_nbt::read_mob_variants(&mut new, &tag, self.world_variants());
                 let unresolved = self
                     .stations()
                     .professions
@@ -149,7 +150,7 @@ impl crate::game::ServerGame<'_> {
                     // Mob.readAdditionalSaveData updates persistent home fields,
                     // while retaining the rest of the live AI/runtime state.
                     entity_nbt::read_mob_home(slot, &tag);
-                    slot.extra.armor_attributes = old.extra.armor_attributes;
+                    slot.extra.generic_attributes = old.extra.generic_attributes;
                     // LivingEntity.lastEquipmentItems is runtime state Entity.load
                     // keeps: the next tick swaps the archetype modifiers.
                     slot.extra.adopted_body = old.extra.adopted_body;
@@ -178,18 +179,17 @@ impl crate::game::ServerGame<'_> {
                     .position(|o| o.id == id)
                     .ok_or_else(stale)?;
                 let slot = &self.server.others.0[i];
-                let mut new = Self::other_from_nbt(&mut tag, id, &slot.kind).ok_or_else(stale)?;
+                let mut new = self
+                    .other_from_nbt(&mut tag, id, &slot.kind)
+                    .ok_or_else(stale)?;
                 new.join = slot.join;
-                let is_display = matches!(
-                    slot.kind.as_str(),
-                    "minecraft:block_display" | "minecraft:item_display" | "minecraft:text_display"
-                );
+                if let Some(display) = &new.display {
+                    crate::game::persist::display::strip_display_nbt(display, &mut tag);
+                    self.common.persist.force_meta(id, 8);
+                }
                 self.server.others.0.update(i, |slot| *slot = new);
                 // `EntityDataAccessor.setData` keeps the entity's UUID.
                 set_key(&mut tag, "UUID", Tag::IntArray(self.uuid_for(id).to_vec()));
-                if is_display {
-                    self.common.persist.force_meta(id, 8);
-                }
             }
             Target::Item(id) => {
                 let mut new = entity_nbt::item_entity_from_nbt(&tag, id, 0.0).ok_or_else(stale)?;
@@ -221,6 +221,8 @@ impl crate::game::ServerGame<'_> {
                     // Entity.load keeps the existing entity's firstTick state
                     // and its place in the level's join order.
                     new.first_tick = slot.first_tick;
+                    new.random = slot.random.clone();
+                    new.body_yaw = slot.body_yaw;
                     new.join = slot.join;
                     sunrise_sim::join_seq::store_back(slot, new);
                 }
@@ -444,7 +446,7 @@ impl crate::game::ServerGame<'_> {
                 let (pos, facing) =
                     entity_nbt::painting_placement_from_nbt(&tag).ok_or_else(stale)?;
                 let known = entity_nbt::painting_from_nbt(&tag)
-                    .and_then(|(_, _, v)| self.common.painting_variants.get(&v?).cloned());
+                    .and_then(|(_, _, v)| world_paintings!(self).get(&v?).cloned());
                 let p = self
                     .common
                     .paintings
@@ -835,7 +837,7 @@ impl crate::game::ServerGame<'_> {
                         join: Default::default(),
                         id,
                         kind: "minecraft:area_effect_cloud".into(),
-                        item_transformation: None,
+                        display: None,
                         interaction: None,
                         knot_check: None,
                         eye: None,
@@ -948,7 +950,7 @@ impl crate::game::ServerGame<'_> {
                     position: sunrise_sim::mobs::leash::knot_state(fence).position,
                     yaw: 0.0,
                     pitch: 0.0,
-                    item_transformation: None,
+                    display: None,
                     interaction: None,
                     knot_check: None,
                     eye: None,
@@ -1120,22 +1122,19 @@ impl crate::game::ServerGame<'_> {
     /// Spawn an entity from its compound (`EntityType.loadEntityRecursive`);
     /// returns what was created.
     pub fn spawn_entity_from_nbt(&mut self, tag: Tag) -> Option<Target> {
+        self.spawn_staged_entity_from_nbt(self.stage_entity_tree(tag)?)
+    }
+
+    pub(in crate::game::server_side) fn spawn_staged_entity_from_nbt(
+        &mut self,
+        tree: crate::game::persist::StagedEntityTree,
+    ) -> Option<Target> {
         let key = {
-            let p = entity_nbt::position(&tag)?;
+            let p = entity_nbt::position(tree.tag())?;
             ((p.x.floor() as i32) >> 4, (p.z.floor() as i32) >> 4)
         };
-        // Only this stack spawns now: the entities of chunks that finished
-        // loading wait for the level's entity tick, as in vanilla
-        // (PersistentEntitySectionManager.processPendingLoads), and must not
-        // take the ids counted as this stack's.
-        let mut waiting = std::mem::take(&mut self.common.world.loaded_entities);
         let before = self.server.next_entity;
-        let mut tag = tag;
-        crate::game::persist::mark_fresh(&mut tag);
-        self.common.world.queue_entity_nbt(key, vec![tag]);
-        self.spawn_loaded_entities();
-        waiting.append(&mut self.common.world.loaded_entities);
-        self.common.world.loaded_entities = waiting;
+        self.spawn_staged_entity_tree(key, tree);
         if self.server.next_entity == before {
             return None;
         }

@@ -202,6 +202,12 @@ pub mod prelude {
     pub trait TablesBackend { fn table(&self) -> u32; }
 }
 pub mod __private {
+    pub mod game {
+        pub struct CallbackOwner;
+        impl CallbackOwner {
+            pub fn call_host<T>(call: impl FnOnce() -> T) -> T { call() }
+        }
+    }
     pub fn published() -> u32 { 99 }
     pub fn backend_ref(v: &dyn crate::Backend) -> crate::BackendRef<'_> { crate::BackendRef(v) }
     pub fn backend_read<T>(host: &dyn crate::Host, f: impl FnOnce(&dyn crate::Backend) -> T) -> Option<T> {
@@ -294,7 +300,7 @@ pub mod game {{
         pub mod fire {{ {} }}
         use fire::FireHooks;
         pub trait GameHooks<'g>: FireHooks<'g> {{
-            fn native_shared(&self) {{ FireHooks::fire_shared(self); }}
+            fn native_shared(&self) {{ <Self as FireHooks<'g>>::fire_shared(self); }}
         }}
         impl<'g, T: FireHooks<'g> + ?Sized> GameHooks<'g> for T {{}}
     }}

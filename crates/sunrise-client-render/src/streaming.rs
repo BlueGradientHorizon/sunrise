@@ -8,6 +8,7 @@ use crate::{
     mesher::{MeshScratch, MeshTables, Region, SectionMesh},
     world::World,
 };
+use std::collections::HashSet;
 use std::sync::{Arc, Mutex, RwLock};
 use sunrise_core::biome::BiomeZoom;
 use sunrise_level::chunk_streamer::{
@@ -17,9 +18,9 @@ use sunrise_level::chunk_streamer::{
 
 pub use sunrise_level::chunk_streamer::{
     Band, ChunkGenerator, ChunkState, ChunkStreamer, ChunkWorkerContext, FinalWrites, FullColumn,
-    IDLE_RELEASE, LodDetail, LodSampler, LodSource, Proto, ProtoAccess, ProtoCensus, ProtoSave,
-    ProtoSnapshot, QueueCensus, SaveStep, ViewArrival, chunk_pos_is_valid, full_column_ready,
-    in_view_distance, job_stats, take_resent_column,
+    IDLE_RELEASE, LodDetail, LodSampler, LodSource, Proto, ProtoCensus, ProtoSave, QueueCensus,
+    SaveStep, ViewArrival, chunk_pos_is_valid, full_column_ready, in_view_distance, job_stats,
+    take_resent_column,
 };
 
 /// Render-side resources needed by section meshing workers.
@@ -65,6 +66,7 @@ pub struct MeshSettings {
     pub(super) cutout_leaves: bool,
     pub(super) opaque_ice: bool,
     pub(super) translucent_layers: Arc<[bool]>,
+    pub(super) layer_overrides: Arc<[Option<sunrise_shaders::RenderLayer>]>,
     pub(super) leaf_culling: LeafCullingMode,
     /// The section's frozen `section_visibility` plan; `None` on the no-mod path.
     pub(super) visibility: Option<Arc<section_visibility::FrozenPlan>>,
@@ -232,6 +234,23 @@ pub struct StreamingUpdate {
     chunk: ChunkUpdate,
 }
 
+impl StreamingUpdate {
+    /// Columns selected for removal. After `prepare_commit`, only the columns actually removed.
+    pub fn unloading_columns(&self) -> &HashSet<(i32, i32)> {
+        self.chunk.unloading_columns()
+    }
+
+    /// Leave the live columns alone when their save could not be submitted.
+    pub fn keep_columns(&mut self) {
+        self.chunk.keep_columns();
+    }
+
+    /// Keep only columns that may be committed by this sweep.
+    pub fn retain_unloading_columns(&mut self, can_unload: impl FnMut(&(i32, i32)) -> bool) {
+        self.chunk.retain_unloading_columns(can_unload);
+    }
+}
+
 /// Result of processing generation results, pausing before a late full save.
 pub enum PlanStep {
     Ready(StreamingUpdate),
@@ -295,7 +314,7 @@ pub struct MeshStreamer {
     /// Dirty sections of loaded columns past the render distance, meshed once
     /// the player comes closer, and the area they were set aside for.
     waiting: FxHashSet<(i32, i32, i32)>,
-    waiting_area: ((i32, i32), i32, usize),
+    waiting_area: ((i32, i32), i32, usize, (usize, u64)),
     /// Per-update meshing scratch retained to avoid allocator churn.
     mesh_candidates_scratch: Vec<(i64, i32, i32, crate::section_mask::SectionMask)>,
     mesh_columns_scratch: Vec<((i32, i32), crate::section_mask::SectionMask)>,
@@ -329,6 +348,9 @@ pub struct MeshStreamer {
     /// Sprite layers a shader pack draws in the translucent pass (`[[materials]]
     /// translucent`), by layer; empty without one.
     pub translucent_layers: Arc<[bool]>,
+    /// By state id, the terrain layer a `shaders/` pack's `layer.*` rules move the state to
+    /// (`Mesher::layer_overrides`); empty without a pack or a state it moves.
+    pub layer_overrides: Arc<[Option<sunrise_shaders::RenderLayer>]>,
     /// What the mesher does with leaf faces inside a canopy (`LeafCullingMode`).
     pub leaf_culling: LeafCullingMode,
     pub meshed_total: u64,
@@ -385,7 +407,7 @@ impl MeshStreamer {
             compile_started: Default::default(),
             meshed: Default::default(),
             waiting: Default::default(),
-            waiting_area: ((0, 0), 0, 0),
+            waiting_area: ((0, 0), 0, 0, (0, 0)),
             mesh_candidates_scratch: Vec::new(),
             mesh_columns_scratch: Vec::new(),
             center_y: 0,
@@ -401,6 +423,7 @@ impl MeshStreamer {
             cutout_leaves: true,
             opaque_ice: false,
             translucent_layers: Arc::from([]),
+            layer_overrides: Arc::from([]),
             leaf_culling: LeafCullingMode::Off,
             meshed_total: 0,
             mesh: true,
@@ -465,6 +488,12 @@ impl MeshStreamer {
     /// Remove resident columns before clearing their streaming and level state.
     pub fn take_remote_columns(world: &mut World, gone: &FxHashSet<(i32, i32)>) -> Vec<Arc<Chunk>> {
         ChunkStreamer::take_remote_columns(world, gone)
+    }
+    /// The columns whose sections have been queued for meshing since they loaded, `(x, z)` in
+    /// chunk coordinates, in no order. A column leaves it when it unloads or drops past the
+    /// render distance.
+    pub fn meshed_columns(&self) -> impl Iterator<Item = (i32, i32)> + '_ {
+        self.meshed.iter().copied()
     }
     /// Clear streaming state after resident remote columns have been removed.
     pub fn forget_columns(&mut self, world: &mut World, gone: &FxHashSet<(i32, i32)>) {
@@ -648,9 +677,9 @@ impl MeshStreamer {
     pub fn finish_update(
         &mut self,
         world: &mut World,
-        plan: StreamingUpdate,
+        mut plan: StreamingUpdate,
     ) -> (Vec<MeshUpload>, Vec<Arc<Chunk>>) {
-        let (commit, protos) = self.prepare_commit(world, plan);
+        let (commit, protos) = self.prepare_commit(world, &mut plan);
         self.submit_protos(protos);
         self.complete_commit(world, commit)
     }
@@ -658,10 +687,10 @@ impl MeshStreamer {
     pub fn prepare_commit(
         &mut self,
         world: &mut World,
-        plan: StreamingUpdate,
+        plan: &mut StreamingUpdate,
     ) -> (StreamingCommit, Vec<ProtoSave>) {
-        let StreamingUpdate { uploads, chunk } = plan;
-        if chunk.is_paused() {
+        let uploads = std::mem::take(&mut plan.uploads);
+        if plan.chunk.is_paused() {
             return (
                 StreamingCommit {
                     uploads,
@@ -670,14 +699,13 @@ impl MeshStreamer {
                 Vec::new(),
             );
         }
-        let (commit, proto_saves) = self.chunks.prepare_commit(world, chunk);
+        let (commit, proto_saves) = self.chunks.prepare_commit(world, &mut plan.chunk);
         if !commit.sweep_far().is_empty() {
             let far = commit.sweep_far();
             self.forget_visibility(world, far.iter().copied());
             for key in far {
                 self.meshed.remove(key);
             }
-            let far = commit.sweep_far_set();
             self.meshing.retain(|k, _| !far.contains(&(k.0, k.2)));
             self.compile_started
                 .retain(|k, _| !far.contains(&(k.0, k.2)));
@@ -722,17 +750,19 @@ impl MeshStreamer {
         // is within the render distance (`in_view_distance`, the columns
         // vanilla draws). Sections set aside past it come back
         // when the player moves: a column that loads with its light gets no
-        // other request (#228).
+        // other request (#228). A server's far column (`ChunkMap::is_far`) is
+        // drawn wherever it is, as a forced one.
         let area = (
             self.chunks.center,
             self.chunks.radius,
             self.chunks.forced.len(),
+            world.chunks.far_state(),
         );
         if self.waiting_area != area {
             self.waiting_area = area;
             let chunks = &self.chunks;
             self.waiting.retain(|&(x, sy, z)| {
-                let back = chunks.in_view(x, z);
+                let back = chunks.in_view(x, z) || world.chunks.is_far((x, z));
                 if back {
                     world.dirty_sections.insert_mesh((x, sy, z));
                 }
@@ -748,7 +778,7 @@ impl MeshStreamer {
                 world.dirty_sections.take_column(x, z);
                 continue;
             }
-            if !self.chunks.in_view(x, z) {
+            if !self.chunks.in_view(x, z) && !world.chunks.is_far((x, z)) {
                 world.dirty_sections.take_column(x, z);
                 for sy in sections.iter().map(|sy| sy as i32) {
                     let key = (x, sy, z);
@@ -887,6 +917,15 @@ impl MeshStreamer {
         self.mesh_columns_scratch = columns;
         (uploads, removed)
     }
+    /// Advance light work only, without streaming generation, unloads or meshing.
+    /// Used for parked server levels so relights queued on them run and batch on
+    /// their own worker pool without waiting for that dimension to be ticked.
+    pub fn update_light(&mut self, world: &mut World) {
+        self.chunks.update_light(world);
+        if !self.mesh {
+            world.dirty_sections.clear();
+        }
+    }
     /// Abort unvisited background chunk generation, decoration, and meshing on world exit.
     pub fn abort_generation(&mut self) {
         self.waiting.clear();
@@ -985,6 +1024,30 @@ fn forget_pending_sections(
 mod tests {
     use super::section_visibility::tests::fixture;
     use super::*;
+
+    #[test]
+    #[ignore = "daily"]
+    fn a_far_column_past_the_render_distance_is_not_set_aside() {
+        let (mut world, mut streaming, _) = fixture();
+        streaming.center = (0, 0);
+        streaming.radius = 2;
+        for x in [300, 400] {
+            world.chunks.insert((x, 0), Arc::new(Chunk::empty(x, 0)));
+            world.dirty_sections.insert_mesh((x, 0, 0));
+        }
+        assert!(
+            world.chunks.keep_far(&[(300, 0)]).is_empty(),
+            "nothing was hidden"
+        );
+        streaming.update(&mut world);
+        assert!(
+            world.dirty_sections.contains(&(300, 0, 0)),
+            "waits for its light"
+        );
+        assert!(!world.dirty_sections.contains(&(400, 0, 0)));
+        assert!(streaming.waiting.contains(&(400, 0, 0)));
+        assert!(!streaming.waiting.contains(&(300, 0, 0)));
+    }
 
     #[test]
     fn mesh_pool_reuses_capacity_with_clean_geometry_state() {

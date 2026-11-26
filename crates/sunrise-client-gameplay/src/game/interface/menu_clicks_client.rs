@@ -1,4 +1,8 @@
 use super::*;
+use sunrise_gameplay_common::game::{
+    api_values::{project_stack, stack_read_metadata},
+    native_hooks::item_smelted::GameHooks as _,
+};
 
 impl crate::game::ClientGame<'_> {
     /// `quickMoveStack` of the open plain menu for a shift-click.
@@ -635,7 +639,9 @@ impl crate::game::ClientGame<'_> {
         }
         let menu_id = if matches!(kind, Kind::Mount(_)) {
             Some("sunrise:mount_inventory")
-        } else if matches!(kind, Kind::Inventory | Kind::ItemPicker) {
+        } else if kind == Kind::Inventory {
+            Some(sunrise_sim::menu::INVENTORY_MENU)
+        } else if kind == Kind::ItemPicker {
             None
         } else {
             self.remote_menu_type()
@@ -643,6 +649,7 @@ impl crate::game::ClientGame<'_> {
         menu.set_registry_id(menu_id);
         menu.set_block_pos(self.common.container.map(|(x, y, z)| [x, y, z]));
         menu.brewed_potion_hook = !mod_api::__private::mods().is_empty();
+        menu.item_smelted_hook = mod_api::__private::listened(mod_api::HookId::ItemSmelted);
         if matches!(kind, Kind::Mount(_)) {
             menu.mount = self.mount_menu_entity();
         }
@@ -812,6 +819,7 @@ impl crate::game::ClientGame<'_> {
             self.player_menu_sound(sound);
         }
         let item_crafted = std::mem::take(&mut menu.item_crafted);
+        let item_smelted = std::mem::take(&mut menu.item_smelted);
         for (_, stack, _) in &item_crafted {
             self.tutorial_get_item(Some(stack));
         }
@@ -877,6 +885,23 @@ impl crate::game::ClientGame<'_> {
             self.apply_crafter_slot_states(&menu);
         }
         self.apply_equipment();
+        if !item_smelted.is_empty()
+            && mod_api::__private::listened(mod_api::HookId::ItemSmelted)
+            && let Some(player) = self.local_player()
+        {
+            for (stack, amount_removed) in &item_smelted {
+                let Ok(metadata) = stack_read_metadata(stack) else {
+                    continue;
+                };
+                let project = |metadata| project_stack(stack, metadata).ok();
+                let stack = mod_api::ItemStackView::resident(metadata, &project);
+                self.native_item_smelted(mod_api::__private::ItemSmeltedCall {
+                    player,
+                    stack,
+                    amount_removed: *amount_removed,
+                });
+            }
+        }
         true
     }
     /// A screen closed or lost its pointer: discard the unfinished click gesture.
@@ -943,6 +968,8 @@ use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
 use sunrise_gameplay_common::game::menu_clicks::MenuClicksGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_hooks::item_smelted::GameHooks as _;
 
 use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;
 

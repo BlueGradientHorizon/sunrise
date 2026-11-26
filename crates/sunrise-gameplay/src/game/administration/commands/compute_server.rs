@@ -61,6 +61,7 @@ impl crate::game::ServerGame<'_> {
                 let source = self
                     .server
                     .command_source
+                    .clone()
                     .unwrap_or_else(|| self.player_source());
                 // Scores are read from the holder's board only where
                 // an `entity_scores` leaf may ask.

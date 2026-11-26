@@ -3,8 +3,9 @@
 //! from their live bodies, and reads their attachments without writing them.
 use super::native_entity_refs::tests::{bind_local_player, run_fresh_cases, with_game};
 use mod_api::{
-    ActiveEffect, AttachmentError, AttachmentType, EffectKey, Flow, Hand, HitHost, Holder, Hooks,
-    LivingDamagePostEvent, LivingDamagePreEvent, LivingIncomingDamageEvent, LivingView,
+    ActiveEffect, AttachmentDescriptor, AttachmentError, AttachmentKey, EffectKey, Flow, Hand,
+    HitHost, Holder, Hooks, LivingDamagePostEvent, LivingDamagePreEvent, LivingIncomingDamageEvent,
+    LivingView,
 };
 use std::sync::{Arc, Mutex};
 use sunrise_command::args::GameMode;
@@ -13,15 +14,9 @@ use sunrise_gameplay::game::server_side::native_living_refs::tests::summon_mob;
 use sunrise_sim::mobs::{Damage, DamageKind, Who};
 use sunrise_sim::motion::PlayerMotion;
 
-/// The probe's attachment, set on the player and on some mobs before the hits.
-static MARK: AttachmentType<i32> = AttachmentType {
-    namespace: "probe",
-    name: "mark",
-    default: || -1,
-    codec: None,
-    copy_on_death: false,
-    sync: false,
-};
+/// The probe's attachment: registered as `probe:mark`, set on the player and on some mobs
+/// before the hits.
+const MARK: AttachmentDescriptor<i32> = AttachmentDescriptor::new("probe:mark", || -1);
 
 /// What a listener read of one living entity of a hit.
 #[derive(Clone, Debug, PartialEq)]
@@ -58,14 +53,18 @@ fn speed() -> EffectKey {
     mod_platform::__private::part_tests::effect_key("minecraft:speed")
 }
 
-fn read(level: &mut dyn HitHost, view: impl FnOnce(&dyn HitHost) -> Option<Read>) -> Option<Read> {
+fn read(
+    level: &mut dyn HitHost,
+    mark: &AttachmentKey<i32>,
+    view: impl FnOnce(&dyn HitHost) -> Option<Read>,
+) -> Option<Read> {
     let mut read = view(&*level)?;
     // The attachments go through the host the view borrows; its reads come first.
     if let Some(holder) = read.holder {
-        read.has = Some(MARK.has(level.attachments(), holder));
-        read.mark = Some(MARK.get_existing(level.attachments(), holder));
-        read.get = Some(MARK.get(level.attachments(), holder));
-        read.set = Some(MARK.set(level.attachments(), holder, 99));
+        read.has = Some(mark.has_in(level, holder));
+        read.mark = Some(mark.get_existing_in(level, holder, |value| value.copied()));
+        read.get = Some(mark.get_in(level, holder, |value| *value));
+        read.set = Some(mark.set_in(level, holder, 99));
     }
     Some(read)
 }
@@ -94,13 +93,27 @@ fn view_read(view: LivingView<'_>) -> Read {
     }
 }
 
-struct Probe(Arc<Mutex<Vec<Seen>>>);
+struct Probe {
+    seen: Arc<Mutex<Vec<Seen>>>,
+    /// The key `register` issued for the current installation: the fixture registers the mods
+    /// again for each case, and a key of an earlier one is stale.
+    mark: Arc<Mutex<Option<AttachmentKey<i32>>>>,
+}
 
 impl Probe {
     fn seen(&self, hook: &'static str, entity: i32, level: &mut dyn HitHost) {
-        let victim = read(level, |host| host.victim().map(view_read));
-        let causing = read(level, |host| host.causing().map(view_read));
-        self.0.lock().unwrap().push(Seen {
+        let mark = self.mark.lock().unwrap().clone();
+        let victim = read(
+            level,
+            mark.as_ref().expect("probe:mark registered"),
+            |host| host.victim().map(view_read),
+        );
+        let causing = read(
+            level,
+            mark.as_ref().expect("probe:mark registered"),
+            |host| host.causing().map(view_read),
+        );
+        self.seen.lock().unwrap().push(Seen {
             hook,
             entity,
             victim,
@@ -112,7 +125,7 @@ impl Probe {
 #[mod_api::__subscriptions]
 impl Hooks for Probe {
     fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
-        r.register_attachment_type("probe:mark", false).unwrap();
+        *self.mark.lock().unwrap() = Some(r.register_attachment_type(MARK).unwrap());
     }
     fn living_incoming_damage(
         &self,
@@ -156,7 +169,17 @@ fn handle_read(game: &mut sunrise_gameplay::game::ServerGame<'_>, id: u32) -> Re
         speed: living
             .effect(game, speed())
             .map(|e| (e.amplifier, e.duration)),
-        effects: living.effects(game).map(|list| list.len()),
+        effects: {
+            // Part 3 lends each effect through `visit_effects` instead of a list.
+            let mut count = 0;
+            living
+                .visit_effects(game, &mut |_| {
+                    count += 1;
+                    core::ops::ControlFlow::Continue(())
+                })
+                .map(|_| count)
+                .ok()
+        },
         speed_affected: living.potion_affected(game, speed()),
         main_hand: living.with_hand_item(game, Hand::Main, |stack| {
             (stack.count(), Some(stack.item()) == stick)
@@ -199,13 +222,18 @@ fn a_hit_listener_reads_its_victim_and_causer_live_and_their_attachments_read_on
         return the_acting_guest_is_read_with_its_holder();
     }
     let seen = Arc::new(Mutex::new(Vec::new()));
+    let mark = Arc::new(Mutex::new(None));
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
         "probe",
-        Box::new(Probe(seen.clone())),
+        Box::new(Probe {
+            seen: seen.clone(),
+            mark: mark.clone(),
+        }),
     )]
     .into();
     mod_platform::testing::with_mods(mods, || {
         with_game(|game| {
+            let mark = mark.lock().unwrap().clone().expect("probe:mark registered");
             game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
             bind_local_player(game, 7, 7);
             game.set_game_mode(GameMode::Survival);
@@ -219,9 +247,9 @@ fn a_hit_listener_reads_its_victim_and_causer_live_and_their_attachments_read_on
                 let effect = ActiveEffect::new(speed(), 400, amplifier, false, true, true);
                 assert!(game.living_add_effect(living, &effect));
             }
-            MARK.set(game, Holder::Player(7), 3).unwrap();
-            MARK.set(game, Holder::Entity(zombie), 5).unwrap();
-            MARK.set(game, Holder::Entity(pig), 8).unwrap();
+            mark.set(game, Holder::Player(7), 3).unwrap();
+            mark.set(game, Holder::Entity(zombie), 5).unwrap();
+            mark.set(game, Holder::Entity(pig), 8).unwrap();
 
             // A mob's melee hit on the player: the player's body is lent by its combat, the
             // zombie by the hit's site.
@@ -360,6 +388,7 @@ fn a_hit_listener_reads_its_victim_and_causer_live_and_their_attachments_read_on
                 kind: DamageKind::MobAttack,
                 attacker: Some(Who::Mob(zombie)),
                 from: Some([0.5, 70.0, 0.5]),
+                direct: None,
                 attacker_species: None,
             };
             assert!(game.mob_hits_mob(cow, 2.0, source));
@@ -372,7 +401,7 @@ fn a_hit_listener_reads_its_victim_and_causer_live_and_their_attachments_read_on
                     Some(read_only(zombie_before.clone(), Some(5)))
                 );
             }
-            assert_eq!(MARK.has(game, Holder::Entity(cow)), Ok(false));
+            assert_eq!(mark.has(game, Holder::Entity(cow)), Ok(false));
 
             // A lent attacker that is removed is no causing entity.
             let set_removed = |game: &mut sunrise_gameplay::game::ServerGame<'_>, removed: bool| {
@@ -387,6 +416,7 @@ fn a_hit_listener_reads_its_victim_and_causer_live_and_their_attachments_read_on
                 kind: DamageKind::MobAttack,
                 attacker: Some(Who::Mob(zombie)),
                 from: Some([0.5, 70.0, 0.5]),
+                direct: None,
                 attacker_species: None,
             };
             assert!(game.mob_hits_mob(cow, 1.0, source));
@@ -411,7 +441,13 @@ fn a_hit_listener_reads_its_victim_and_causer_live_and_their_attachments_read_on
             assert_eq!(post.causing.as_ref().map(|read| read.id), Some(7));
 
             // A hit with no causing entity lends none.
-            game.hurt_player_from(1.0, None, "minecraft:generic", Some(None), false);
+            game.hurt_player_from(
+                1.0,
+                None,
+                "minecraft:generic",
+                sunrise_gameplay_common::game::creatures::KnownCause::None,
+                false,
+            );
             let calls = std::mem::take(&mut *seen.lock().unwrap());
             assert_eq!(calls.len(), 3);
             for call in &calls {
@@ -420,9 +456,10 @@ fn a_hit_listener_reads_its_victim_and_causer_live_and_their_attachments_read_on
             }
 
             // Nothing a listener did wrote an attachment.
-            assert_eq!(MARK.get_existing(game, Holder::Player(7)), Ok(Some(3)));
-            assert_eq!(MARK.get_existing(game, Holder::Entity(zombie)), Ok(Some(5)));
-            assert_eq!(MARK.get_existing(game, Holder::Entity(pig)), Ok(Some(8)));
+            let mut existing = |holder| mark.get_existing(game, holder, |value| value.copied());
+            assert_eq!(existing(Holder::Player(7)), Ok(Some(3)));
+            assert_eq!(existing(Holder::Entity(zombie)), Ok(Some(5)));
+            assert_eq!(existing(Holder::Entity(pig)), Ok(Some(8)));
         });
     });
 }
@@ -431,13 +468,18 @@ fn a_hit_listener_reads_its_victim_and_causer_live_and_their_attachments_read_on
 /// into place): the view reads that guest and names its attachment holder by its UUID.
 fn the_acting_guest_is_read_with_its_holder() {
     let seen = Arc::new(Mutex::new(Vec::new()));
+    let mark = Arc::new(Mutex::new(None));
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
         "probe",
-        Box::new(Probe(seen.clone())),
+        Box::new(Probe {
+            seen: seen.clone(),
+            mark: mark.clone(),
+        }),
     )]
     .into();
     mod_platform::testing::with_mods(mods, || {
         super::native_guest_turn_tests::with_guests(|game| {
+            let mark = mark.lock().unwrap().clone().expect("probe:mark registered");
             game.server
                 .lan
                 .as_mut()
@@ -456,7 +498,7 @@ fn the_acting_guest_is_read_with_its_holder() {
                     let living = g.living(g.entity(13).unwrap()).unwrap();
                     let effect = ActiveEffect::new(speed(), 300, 2, false, true, true);
                     assert!(g.living_add_effect(living, &effect));
-                    MARK.set(g, Holder::Player(13), 4).unwrap();
+                    mark.set(g, Holder::Player(13), 4).unwrap();
                     handle_read(g, 13)
                 })
                 .unwrap();
@@ -485,7 +527,7 @@ fn the_acting_guest_is_read_with_its_holder() {
                 assert_eq!(call.causing.as_ref().map(|read| read.id), Some(zombie));
             }
             let mark = game
-                .as_guest(13, |g| MARK.get_existing(g, Holder::Player(13)))
+                .as_guest(13, |g| mark.get_existing(g, Holder::Player(13), |value| value.copied()))
                 .unwrap();
             assert_eq!(mark, Ok(Some(4)));
         });

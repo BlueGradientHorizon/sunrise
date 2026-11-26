@@ -145,16 +145,7 @@ impl crate::game::ClientGame<'_> {
         origin: input_trace::InputOrigin,
         retained_sample: Option<PointerSample>,
     ) {
-        let input = matches!(
-            event,
-            WindowEvent::KeyboardInput { .. }
-                | WindowEvent::MouseInput { .. }
-                | WindowEvent::MouseWheel { .. }
-                | WindowEvent::Ime(_)
-        );
-        self.with_user_input(input, |game| {
-            game.handle_window_event_as(event_loop, id, event, origin, retained_sample);
-        });
+        self.handle_window_event_as(event_loop, id, event, origin, retained_sample);
     }
 
     pub(in crate::game::client_side) fn handle_window_event_as(
@@ -174,6 +165,17 @@ impl crate::game::ClientGame<'_> {
         if !ours {
             return;
         }
+        // Flush drops before another event can change their receiving screen.
+        if !matches!(event, WindowEvent::DroppedFile(_)) {
+            self.fire_dropped_files();
+        }
+        // The window's state, not input: kept whoever's turn it is.
+        track_window_state(
+            origin,
+            &event,
+            &mut self.client.window_hovered,
+            &mut self.client.window_occluded,
+        );
         if let Some(modifiers) = held_modifiers(origin, self.client.unclaimed_window, &event) {
             self.client.unclaimed_modifiers = Some(modifiers);
         }
@@ -320,6 +322,7 @@ impl crate::game::ClientGame<'_> {
     /// winit's `about_to_wait`: what happens between frames (stop requests, the closing
     /// save, world entry, the control socket, pads), then the next frame.
     pub fn idle(&mut self, event_loop: &dyn EventLoopCtl) {
+        self.fire_dropped_files();
         let quit_requested = match self.client.client_quit.get() {
             ClientQuit::Running => sunrise_threads::stop_requests() > 0,
             ClientQuit::Requested => true,
@@ -479,16 +482,37 @@ impl ApplicationHandler for crate::game::ClientGame<'_> {
             sunrise_threads::system_menu::suppress(hwnd);
         }
         drop(window_step);
-        let pending = self.client.pending_initial_models.0.take();
-        let renderer = match &pending {
-            Some(start) => self.renderer_for(
+        let mut pending = self.client.pending_initial_models.0.take();
+        let renderer = (|| {
+            let Some(start) = &mut pending else {
+                return self.new_renderer(window.clone());
+            };
+            let models = &mut start.models;
+            let device = pollster::block_on(sunrise_client::gfx::Opened::for_window(
+                &window,
+                self.common.options.offscreen,
+                self.client.settings.sunrise.api,
+                models.client_pack.render.texture_layers,
+            ))?;
+            if models.gui.stitch_for_device(
+                &models.pack.source,
+                &self.common.vanilla_root(),
+                device.max_atlas_size(),
+            )? {
+                self.client.particles.0.reload(
+                    &models.pack.source,
+                    &models.gui.atlas.sprites,
+                    &models.gui.atlas.translucent,
+                );
+            }
+            self.renderer_for(
                 window.clone(),
-                &start.models.pack,
-                &start.models.client_pack,
-                &start.models.gui,
-            ),
-            None => self.new_renderer(window.clone()),
-        };
+                &models.pack,
+                &models.client_pack,
+                &models.gui,
+                Some(device),
+            )
+        })();
         self.client.resize_state = Some(self.resize_state_of(window.inner_size()));
         self.client.window.0 = Some(window);
         if let Some(pending) = pending {
@@ -515,7 +539,7 @@ impl ApplicationHandler for crate::game::ClientGame<'_> {
         } else {
             match renderer {
                 Ok(renderer) => {
-                    self.client.renderer.0 = Some(renderer);
+                    self.set_renderer(renderer);
                     self.client.world_renderer_ready = true;
                 }
                 Err(error) => {
@@ -531,6 +555,7 @@ impl ApplicationHandler for crate::game::ClientGame<'_> {
         self.common.previous = Instant::now();
     }
     fn window_event(&mut self, event_loop: &ActiveEventLoop, id: WindowId, event: WindowEvent) {
+        self.apply_pointer_grab_request();
         let key = if self.client.window.0.as_ref().is_some_and(|w| w.id() == id)
             && !self.scripted_run()
             && !self.client.unclaimed_window
@@ -561,13 +586,11 @@ impl ApplicationHandler for crate::game::ClientGame<'_> {
                 (_, false) => mod_api::KeyAction::Press,
                 (_, true) => mod_api::KeyAction::Repeat,
             };
-            // Still the key's handling: a mod's key hook may reach the clipboard.
-            self.with_user_input(true, |game| {
-                game.key_input(name, layout_key, raw_code, action, modifiers);
-            });
+            self.key_input(name, layout_key, raw_code, action, modifiers);
         }
     }
     fn device_event(&mut self, event_loop: &ActiveEventLoop, _: DeviceId, event: DeviceEvent) {
+        self.apply_pointer_grab_request();
         // Offscreen runs do not use native pointer motion.
         if self.client.pending_save.0.is_none()
             && !self.scripted_run()
@@ -575,25 +598,20 @@ impl ApplicationHandler for crate::game::ClientGame<'_> {
             && self.client.captured
             && self.client.focused
             && !self.common.options.offscreen
-            && self.client.screen == Screen::Playing
+            && (self.client.screen == Screen::Playing || self.mod_screen_grabs_pointer())
             && let DeviceEvent::MouseMotion { delta: (x, y) } = event
         {
-            if self.pad_radial_captures() {
+            if !self.mod_screen_grabs_pointer() && self.pad_radial_captures() {
                 return;
             }
             if x != 0.0 || y != 0.0 {
                 self.pad_yield_input(event_loop);
             }
-            // MouseHandler.onMove with the pointer grabbed; applied once per frame.
-            self.note_input(
-                input_trace::InputOrigin::User,
-                input_trace::TraceKind::Motion { x, y },
-            );
-            self.client.mouse.on_move(0.0, 0.0, x, y, true, true);
-            self.client.last_input = Instant::now();
+            self.grabbed_pointer_motion([x, y]);
         }
     }
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        self.apply_pointer_grab_request();
         // Every event-loop pass, drawn or not: a window that stops redrawing (a lost
         // device, an occluded window) must still end after a server crash.
         self.exit_after_server_crash();
@@ -604,6 +622,23 @@ impl ApplicationHandler for crate::game::ClientGame<'_> {
     /// window turns it into a window close, so Minecraft.stop saves the world.
     fn exiting(&mut self, _event_loop: &ActiveEventLoop) {
         self.shut_down();
+    }
+}
+
+fn track_window_state(
+    origin: input_trace::InputOrigin,
+    event: &WindowEvent,
+    hovered: &mut bool,
+    occluded: &mut bool,
+) {
+    match event {
+        WindowEvent::CursorEntered { .. } => *hovered = true,
+        WindowEvent::CursorLeft { .. } => *hovered = false,
+        WindowEvent::CursorMoved { .. } if origin == input_trace::InputOrigin::User => {
+            *hovered = true;
+        }
+        WindowEvent::Occluded(now) => *occluded = *now,
+        _ => {}
     }
 }
 
@@ -638,6 +673,40 @@ mod tests {
             WindowEvent::ModifiersChanged(Modifiers::from(ModifiersState::empty())),
             WindowEvent::Ime(Ime::Commit("a".into())),
         ]
+    }
+
+    #[test]
+    fn the_window_tracks_the_pointer_over_it_and_its_occlusion() {
+        let device_id = DeviceId::dummy();
+        let moved = WindowEvent::CursorMoved {
+            device_id,
+            position: PhysicalPosition::new(10.0, 20.0),
+        };
+        let (mut hovered, mut occluded) = (false, false);
+        let mut track = |origin, event: &WindowEvent| {
+            track_window_state(origin, event, &mut hovered, &mut occluded);
+            (hovered, occluded)
+        };
+        // An agent's move says nothing of the person's pointer; theirs does.
+        assert_eq!(track(InputOrigin::Agent, &moved), (false, false));
+        assert_eq!(track(InputOrigin::User, &moved), (true, false));
+        let left = WindowEvent::CursorLeft { device_id };
+        assert_eq!(track(InputOrigin::User, &left), (false, false));
+        let entered = WindowEvent::CursorEntered { device_id };
+        assert_eq!(track(InputOrigin::User, &entered), (true, false));
+        assert_eq!(
+            track(InputOrigin::User, &WindowEvent::Occluded(true)),
+            (true, true)
+        );
+        // Focus and other events change neither.
+        assert_eq!(
+            track(InputOrigin::User, &WindowEvent::Focused(false)),
+            (true, true)
+        );
+        assert_eq!(
+            track(InputOrigin::User, &WindowEvent::Occluded(false)),
+            (true, false)
+        );
     }
 
     #[test]

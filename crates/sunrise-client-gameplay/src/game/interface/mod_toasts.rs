@@ -26,6 +26,10 @@ enum Icon {
 }
 
 impl crate::game::ClientGame<'_> {
+    pub(in crate::game) fn set_toasts_held(&self, held: bool) -> bool {
+        self.client.toast_manager.hold(mod_api::content::crash::current_native_mod(), held)
+    }
+
     /// Queue from a shared ClientHost without dispatching back into a running hook.
     pub fn add_toast(&self, request: ModToast) -> Result<(), AddToastError> {
         let title = to_engine(&request.title).map_err(AddToastError::Text)?;
@@ -83,10 +87,10 @@ impl crate::game::ClientGame<'_> {
                 entry.request.icon = request.icon;
                 entry.layout = layout;
             } else {
+                let clock = sunrise_client::toasts::ToastClock::of(self.common.clock.still());
                 self.client
                     .toast_manager
-                    .queued
-                    .push_back(Toast::Mod(Entry { request, layout }));
+                    .post(clock, Toast::Mod(Entry { request, layout }));
             }
         }
     }

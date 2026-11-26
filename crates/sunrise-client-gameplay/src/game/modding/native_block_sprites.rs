@@ -1,7 +1,8 @@
 //! Where blocks' textures are in the block sprite arrays, for a client mod drawing blocks with the player's own
 //! textures (resource packs included) in its own pass: with `WorldDrawn::block_sprites`, the arrays themselves.
 use crate::game::ClientGame;
-use mod_api::{AtlasRegion, ColorResolver, Identifier, LevelReadError};
+use mod_api::{AtlasRegion, AtlasSpriteError, AtlasSpritePixels, ColorResolver, Identifier, LevelReadError};
+use sunrise_client_render::assets::RenderAssets;
 use sunrise_client::block_sprites::{BlockSprites, Lookup, SpriteRef};
 use sunrise_level::chunk::Chunk;
 use sunrise_world::registry::BlockStateId;
@@ -32,9 +33,9 @@ impl ClientGame<'_> {
             })
             .collect()
     }
-    /// For a client mod: each texture's sprite by name (`minecraft:block/stone`, `block/stone`), none for one no
-    /// model uses. API 380.
-    pub(in crate::game) fn texture_sprites(&self, textures: &[&str]) -> Vec<Option<SpriteRef>> {
+    pub(in crate::game) fn sprite_atlas_and_split(
+        &self,
+    ) -> (&RenderAssets, u32) {
         let atlas = self
             .client
             .stitching_block_atlas
@@ -47,11 +48,26 @@ impl ClientGame<'_> {
             .0
             .as_ref()
             .map_or(u32::MAX, |r| r.sprite_split());
+        (atlas, split)
+    }
+
+    /// For a client mod: each texture's sprite by name, or none for one no model uses.
+    pub(in crate::game) fn texture_sprites(&self, textures: &[&str]) -> Vec<Option<SpriteRef>> {
+        let (atlas, split) = self.sprite_atlas_and_split();
         textures
             .iter()
             .map(|name| sunrise_client::block_sprites::texture_at(atlas, split, name))
             .collect()
     }
+    #[inline(always)]
+    pub(in crate::game) fn native_atlas_sprite_pixels(
+        &self,
+        sprite: SpriteRef,
+    ) -> Result<AtlasSpritePixels, AtlasSpriteError> {
+        let (atlas, split) = self.sprite_atlas_and_split();
+        atlas.atlas_sprite_pixels(sprite, split)
+    }
+
     /// `ClientLevel.getBlockTint(pos, resolver)`, without consulting block or fluid tint sources.
     pub(in crate::game) fn biome_tint(
         &self,

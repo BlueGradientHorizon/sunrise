@@ -313,6 +313,11 @@ fn node(source: Source<'_>, lenient: bool) -> Result<Node<'_>, Error> {
                     sprite,
                     fallback: Some(Source::Str(fallback)),
                 },
+                Some(engine::InlineObject::Dynamic { id, fallback, .. }) => Content::Atlas {
+                    atlas: "minecraft:gui",
+                    sprite: id,
+                    fallback: Some(Source::Str(fallback)),
+                },
                 None => Content::Literal(&span.text),
             };
             node.style = Style::Native(&span.style);
@@ -1537,7 +1542,7 @@ fn assign_local_styles(root: &Text) -> (HashMap<usize, usize>, Vec<StyleEntry<'_
     (ids, styles)
 }
 /// In-process engine text paired with its inherited API styles so layout and
-/// visual-order reads (`text_split`, `text_visual_order`, `text_lines`)
+/// formatted reads (`text_split`, `visit_text_visual_order`, `visit_text_lines`)
 /// preserve opaque click/hover/metadata payloads without JSON serialization.
 pub struct LocalText<'a> {
     engine: engine::Text,
@@ -1668,6 +1673,31 @@ mod text_capture_tests {
                 matches!(&api.content, mod_api::text::TextContent::Translatable { fallback: Some(template), .. } if template == "Hi %s")
             );
             assert_eq!(api.try_into_engine(&()).unwrap().plain(), "Hi Steve");
+        });
+    }
+
+    /// `Text::translate_with_fallback` (#5389): a language without the key formats the fallback
+    /// with the arguments, and one with the key uses its own template.
+    #[test]
+    fn a_mods_translation_with_a_fallback_formats_it_where_the_key_is_missing() {
+        let text = mod_api::Text::translate_with_fallback(
+            "item.container.item_count",
+            "%s x %s",
+            vec![mod_api::Text::literal("Stone"), mod_api::Text::literal("3")],
+        );
+        let missing = sunrise_game_data::lang::Language::of("en_us", []);
+        sunrise_game_data::lang::scoped(missing, || {
+            assert_eq!(text.try_into_engine(&()).unwrap().plain(), "Stone x 3");
+        });
+        let present = sunrise_game_data::lang::Language::of(
+            "en_us",
+            [("item.container.item_count".into(), "%s, %s of them".into())],
+        );
+        sunrise_game_data::lang::scoped(present, || {
+            assert_eq!(
+                text.try_into_engine(&()).unwrap().plain(),
+                "Stone, 3 of them"
+            );
         });
     }
 

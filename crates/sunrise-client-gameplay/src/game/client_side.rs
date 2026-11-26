@@ -6,6 +6,54 @@ use {crate::game::*, sunrise_gameplay_common::game::*};
 #[path = "runtime/activity.rs"]
 pub mod activity;
 #[cfg(feature = "client")]
+#[path = "interface/pack_layers.rs"]
+pub(in crate::game) mod pack_layers;
+#[cfg(feature = "client")]
+#[path = "mobs/part_shearing_client.rs"]
+pub(in crate::game) mod part_shearing_client;
+#[cfg(feature = "client")]
+#[path = "modding/native_level_tick_rate.rs"]
+pub(in crate::game) mod native_level_tick_rate;
+#[cfg(feature = "client")]
+#[path = "modding/native_render_hooks.rs"]
+pub(in crate::game) mod native_render_hooks;
+#[cfg(feature = "client")]
+#[path = "modding/native_section_dirty.rs"]
+pub(in crate::game) mod native_section_dirty;
+#[path = "modding/native_entity_previous_client.rs"]
+pub(in crate::game) mod native_entity_previous_client;
+#[path = "modding/native_datapack_values_client.rs"]
+pub(in crate::game) mod native_datapack_values_client;
+#[cfg(feature = "client")]
+#[path = "modding/hotbar_items.rs"]
+pub(in crate::game) mod hotbar_items;
+#[path = "entities/stock_layer_mask.rs"]
+pub(in crate::game) mod stock_layer_mask;
+#[cfg(all(test, feature = "client"))]
+#[path = "modding/native_chunk_snapshot_client_tests.rs"]
+mod native_chunk_snapshot_client_tests;
+#[cfg(all(test, feature = "client"))]
+#[path = "modding/native_block_tables_tests.rs"]
+mod native_block_tables_tests;
+#[cfg(all(test, feature = "client"))]
+#[path = "modding/gui_canvas_items_tests.rs"]
+pub(in crate::game) mod gui_canvas_items_tests;
+#[cfg(all(test, feature = "client"))]
+#[path = "modding/frame_view_retained_draw_tests.rs"]
+mod frame_view_retained_draw_tests;
+#[cfg(all(test, feature = "client"))]
+#[path = "modding/native_entity_previous_tests_client.rs"]
+mod native_entity_previous_tests_client;
+#[cfg(all(test, feature = "client"))]
+#[path = "modding/native_configs/lifecycle_tests_client.rs"]
+mod native_configs_lifecycle_tests_client;
+#[cfg(all(test, feature = "client"))]
+#[path = "modding/native_render_hooks_tests.rs"]
+mod native_render_hooks_tests;
+#[cfg(all(test, feature = "client"))]
+#[path = "interface/world_text_frame_tests.rs"]
+mod world_text_frame_tests;
+#[cfg(feature = "client")]
 #[path = "interface/advancements/mod_client.rs"]
 pub(in crate::game) mod advancements_client;
 #[cfg(feature = "client")]
@@ -137,9 +185,6 @@ pub(in crate::game) mod dialogs;
 #[path = "mobs/dragon_client.rs"]
 pub(in crate::game) mod dragon_client;
 #[cfg(feature = "client")]
-#[path = "modding/draw_boundary.rs"]
-pub(in crate::game) mod draw_boundary;
-#[cfg(feature = "client")]
 #[path = "interface/dynamic_lights.rs"]
 pub(in crate::game) mod dynamic_lights;
 #[cfg(any(test, feature = "client"))]
@@ -217,12 +262,6 @@ pub(in crate::game) mod gui_clips;
 #[cfg(feature = "client")]
 #[path = "interface/gui_entity.rs"]
 pub mod gui_entity;
-#[cfg(feature = "client")]
-#[path = "modding/gui_paint_items.rs"]
-pub(in crate::game) mod gui_paint_items;
-#[cfg(feature = "client")]
-#[path = "modding/gui_pose.rs"]
-pub(in crate::game) mod gui_pose;
 #[path = "items/hand.rs"]
 pub(in crate::game) mod hand;
 #[cfg(feature = "client")]
@@ -314,9 +353,6 @@ pub(in crate::game) mod mob_light;
 #[path = "mobs/mob_sounds.rs"]
 pub(in crate::game) mod mob_sounds;
 #[cfg(feature = "client")]
-#[path = "interface/mod_browser.rs"]
-pub(in crate::game) mod mod_browser;
-#[cfg(feature = "client")]
 #[path = "interface/mod_toasts.rs"]
 pub mod mod_toasts;
 #[cfg(feature = "client")]
@@ -379,8 +415,8 @@ pub mod native_client_services;
 #[path = "modding/native_client_session.rs"]
 pub mod native_client_session;
 #[cfg(feature = "client")]
-#[path = "modding/native_config_files.rs"]
-pub(in crate::game) mod native_config_files;
+#[path = "modding/native_player_attack_client.rs"]
+pub(in crate::game) mod native_player_attack_client;
 #[path = "modding/native_connection_groups.rs"]
 pub mod native_connection_groups;
 #[cfg(feature = "client")]
@@ -961,6 +997,8 @@ pub(in crate::game) mod menu_clicks_client;
 #[cfg(feature = "client")]
 #[path = "entities/minecarts_client.rs"]
 pub(in crate::game) mod minecarts_client;
+#[cfg(all(feature = "client", any(test, feature = "test-support")))]
+pub use minecarts_client::special_light;
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "modding/mod_container_openers_tests_client.rs"]
@@ -1014,8 +1052,8 @@ pub(in crate::game) mod native_mob_refs_client;
 #[path = "modding/native_passages_client.rs"]
 pub(in crate::game) mod native_passages_client;
 #[cfg(feature = "client")]
-#[path = "modding/native_scoreboard_client.rs"]
-pub(in crate::game) mod native_scoreboard_client;
+#[path = "modding/native_client_scoreboard.rs"]
+pub(in crate::game) mod native_client_scoreboard;
 #[cfg(feature = "client")]
 #[path = "modding/native_server_client.rs"]
 pub(in crate::game) mod native_server_client;
@@ -1168,6 +1206,8 @@ pub struct ClientState {
     /// `DebugEntryChunkGeneration`'s `lastPos` and `result`: F3's `Density` line is sampled
     /// again only when the feet block (or the dimension) changes.
     pub(in crate::game::client_side) debug_density: RefCell<debug_keys::DensityCache>,
+    /// What each mod added to F3's frame rate line (`set_debug_fps_text`), by mod id.
+    pub(in crate::game) debug_fps_texts: RefCell<Vec<(&'static str, String)>>,
     pub pending_pack_reload: bool,
     /// HDR, Smooth Gradients, picked path and outcome at the last frame attempt, including a failed
     /// replacement (`follow_frame`).
@@ -1180,14 +1220,15 @@ pub struct ClientState {
     )>,
     /// Its `LoadingOverlay`, up from the reload's start until it has faded
     /// out after it: no input reaches the game meanwhile.
-    pub(in crate::game::client_side) reload_overlay: Option<packs::ReloadOverlay>,
+    pub reload_overlay: Option<packs::ReloadOverlay>,
     /// The link a chat click asks to open (`ConfirmLinkScreen`).
-    pub link_prompt: Option<String>,
+    pub link_prompt: Option<chat::LinkPrompt>,
     /// A server's Code of Conduct to accept (game/interface/code_of_conduct.rs).
     pub(in crate::game) code_of_conduct: Option<code_of_conduct::Prompt>,
     pub(in crate::game::client_side) world_renderer_ready: bool,
     pub(in crate::game::client_side) instance_groups:
         std::cell::RefCell<native_instance_groups::InstanceGroupStorage>,
+    pub(in crate::game) prepared_items: std::cell::RefCell<native_instance_groups::PreparedItemStorage>,
     pub(in crate::game::client_side) standalone_geometry:
         native_block_entity_draw::StandaloneGeometry,
     /// `FogRenderer`'s evolving state.
@@ -1263,9 +1304,19 @@ pub struct ClientState {
     /// wanting it takes it again (`MouseHandler.grabMouse`, whose grab
     /// outlives the window's focus).
     pub(in crate::game::client_side) regrab_on_refocus: bool,
+    /// The open mod screen holds the pointer (`ClientHost::set_pointer_grab`): `captured` is its grab, and the device's motion goes to `screen_pointer_motion`, not the camera. Cleared by any release and when the screen changes.
+    pub(in crate::game) screen_grab: bool,
+    /// A grab or release the calling mod asked for through `&self` (`set_pointer_grab`), applied by `apply_pointer_grab_request` at the next input event or frame.
+    pub(in crate::game) pointer_grab_request: std::cell::Cell<Option<bool>>,
+    /// Files dropped on the window in this event-loop pass, in the order winit gave them (one event each), kept only while a mod listens to `screen_files_dropped`; the pass's `idle` fires them as one list, as vanilla's `MouseHandler.onDrop` hands `Screen.onFilesDrop`.
+    pub(in crate::game) dropped_files: Vec<std::path::PathBuf>,
     /// Controller connection notices.
     pub controller_notice: sunrise_client::controller_notice::NoticeSlot,
     pub focused: bool,
+    /// The pointer is over the window, as the window system last told (its enter and leave events, or a move inside it).
+    pub(in crate::game) window_hovered: bool,
+    /// The window is fully hidden (`WindowEvent::Occluded`): covered, on another desktop, or minimized where the system reports that.
+    pub(in crate::game) window_occluded: bool,
     /// The visible window of a game an agent started, until a person clicks into it: its
     /// pointer grab stays inside the game as `--offscreen`'s does, so the person's pointer is
     /// never taken, hidden or moved, and their keys and mouse don't reach the game.
@@ -1319,6 +1370,8 @@ pub struct ClientState {
     pub see_through_vertices: Vec<Vertex>,
     /// The first-person player's model, which only a native pack's shadow pass draws.
     pub(in crate::game::client_side) shadow_only_vertices: std::cell::RefCell<Vec<Vertex>>,
+    /// Complete quads already committed to other streams in the active frame's combined entity batch (additive, hand, and entity vertices outside the current target buffer).
+    pub(in crate::game) frame_batch_reserved_quads: std::cell::Cell<usize>,
     /// Runs of `entity_vertices` by entity, for a shader pack's per-entity draws; recorded only
     /// while `pack_ids` is set (game/interface/shader_packs.rs).
     pub entity_spans: std::cell::RefCell<Vec<sunrise_client::gfx::pack_draw::EntitySpan>>,
@@ -1359,13 +1412,23 @@ pub struct ClientState {
     pub(in crate::game::client_side) prepared_model_draws:
         std::cell::RefCell<Vec<sunrise_client::gfx::PreparedModelDraw>>,
     /// Scratch for the copies a frame draws through the terrain materials.
-    pub(in crate::game::client_side) model_copy_order: Vec<u32>,
+    pub(in crate::game::client_side) model_copy_order: RefCell<Vec<u32>>,
     pub(in crate::game::client_side) world_geometry:
         Option<sunrise_client::world_geometry::WorldGeometry>,
+    /// Read-only renderer snapshot cached while `self.renderer` is temporarily taken for `Renderer::render` so `ClientHost` queries still see framebuffer size and prepared-model limits.
+    pub(in crate::game) render_snapshot: std::cell::Cell<Option<RenderSnapshot>>,
+    /// A session VSync change came while `Renderer::render` had the renderer out: the surface is reconfigured once it is back (`apply_pending_present_mode`).
+    pub(in crate::game) present_mode_pending: bool,
     /// `DebugRenderer.lastDebugEntriesVersion`: none before the first view of a world.
     pub(in crate::game::client_side) debug_renderers_version: Option<u64>,
     /// Next undrawn mod layer in HUD `gui_layers::order`; `None` while hidden or outside its pass.
     pub hud_layer_next: Option<usize>,
+    /// Drawn bounding rectangles `[x, y, width, height]` in GUI pixels for HUD layers drawn so far in the current HUD pass (`ScreensClientHost::hud_layer_bounds`). Cleared before screens draw.
+    pub(in crate::game) hud_layer_bounds: Vec<(&'static str, [f32; 4])>,
+    /// The status columns' heights in this HUD pass (NeoForge's `Hud.leftHeight`, `rightHeight`).
+    pub(in crate::game) hud_status_heights: sunrise_client_render::hud_layout::StatusBarHeights,
+    /// Heights a mod set during the current HUD layer (`set_gui_status_heights`), applied to `hud_status_heights` before the next body draws. A cell, as mods write through `&self`.
+    pub(in crate::game) hud_status_heights_set: std::cell::Cell<Option<[i32; 2]>>,
     /// The mod block entities' view distances, asked of the parts once (`native_block_entity_draw`).
     pub(in crate::game::client_side) mod_view_distances:
         std::cell::OnceCell<native_block_entity_draw::ViewDistances>,
@@ -1401,7 +1464,9 @@ pub struct ClientState {
     pub(in crate::game::client_side) music_notes: sunrise_client::toasts::MusicNotes,
     pub ambience: sunrise_client::ambience::Ambience,
     /// The sound engine was told the game paused (pauseAllExcept).
-    pub(in crate::game::client_side) sound_paused: bool,
+    pub(in crate::game::client_side) sound_paused: (bool, bool),
+    /// A client mod paused every sound (`set_sounds_paused`).
+    pub(in crate::game) mod_sounds_paused: bool,
     /// Minecarts whose `MinecartSoundInstance` is playing.
     pub(in crate::game::client_side) cart_sounds: HashSet<u32>,
     /// The minecart the riding sounds were started for (`LocalPlayer.startRiding`).
@@ -1427,6 +1492,8 @@ pub struct ClientState {
     pub station_ui: Option<stations_client::StationUi>,
     /// LevelLoadingScreen.smoothedProgress while the player is not placed yet.
     pub(in crate::game::client_side) loading_progress: f32,
+    /// `createWorld.preparing` has been drawn: the data read runs on the next poll.
+    pub(in crate::game) creation_read_started: bool,
     /// When `loading_progress` last eased (the server thread's load, 50 ms a step).
     pub(in crate::game::client_side) loading_progress_at: Option<std::time::Instant>,
     /// A received packet started or ended a piston's move: `poll_remote`
@@ -1462,6 +1529,8 @@ pub struct ClientState {
     /// the hand doesn't show yet (`Game::hand_stack_replaced`).
     pub(in crate::game::client_side) hands_replaced: [bool; 2],
     pub hand_strength: sunrise_sim::attack_strength::AttackStrength,
+    /// Video options a mod set for this session only (`set_session_vsync`, `set_session_clouds`): never in `settings`, so never saved.
+    pub(in crate::game) session_video: SessionVideo,
     pub(in crate::game::client_side) look: look::LookCache,
     pub(in crate::game::client_side) tutorial: tutorial::Tutorial,
     pub toast_manager: toast_manager::ToastManager,
@@ -1497,9 +1566,10 @@ pub struct ClientState {
     /// The camera the last frame drew from (position, yaw, pitch, fov), for the locator bar.
     pub locator_camera: Option<([f64; 3], f32, f32, f32)>,
     pub native_camera_frame: Option<mod_api::Camera>,
-    /// The yaw and pitch a native mod's camera drew the last frame from (`native_camera_pose`),
-    /// none when it drew from vanilla's.
-    pub posed_rotation: Option<(f32, f32)>,
+    /// The camera entity's interpolated eye position for the current world frame, or `None` when there is no camera entity (title screen, scenes).
+    pub(in crate::game) native_camera_entity_eye: Option<[f64; 3]>,
+    /// The yaw, pitch and roll a native mod's or spectated camera drew the last frame from.
+    pub posed_rotation: Option<(f32, f32, f32)>,
     /// `LocalPlayer.postEffects`: the chains the server has the screen run
     /// (`ClientboundPostEffectsPacket`), in order.
     pub post_effects: Vec<String>,
@@ -1542,7 +1612,9 @@ pub struct ClientState {
     /// block (`LeashFenceKnotEntity`).
     pub(in crate::game::client_side) remote_knots: HashMap<u32, [i32; 3]>,
     pub(in crate::game::client_side) text_display_vertices: usize,
-    pub(in crate::game::client_side) skin_slots: sunrise_client::skins::SkinSlots,
+    pub(in crate::game) skin_slots: sunrise_client::skins::SkinSlots,
+    /// What `apply_player_skin_override` resolved for the selected dynamic texture.
+    pub(in crate::game) player_skin_slot: Option<crate::game::native_hooks::resolve_player_skin::PlayerSkinSlot>,
     pub(in crate::game::client_side) skin_profiles: RefCell<sunrise_client::skins::Resolver>,
     pub chat_ui: chat::ChatUiState,
     pub(in crate::game::client_side) map_slots: super::atlas_slots::AtlasSlots<i32>,
@@ -1595,16 +1667,12 @@ pub struct ClientState {
     pub view_frustum: Option<sunrise_client::gfx::JoinedFrusta>,
     /// `SUNRISE_TICK_SCRIPT`'s scenario (game/world/tick_script.rs).
     pub(in crate::game::client_side) tick_script: tick_script::TickScript,
-    /// The last water plane `water_plane` found, kept while none is in reach.
-    pub(in crate::game::client_side) water_plane_memo: std::cell::Cell<Option<f32>>,
-    /// The camera's block and the second `water_plane` last scanned at.
-    pub(in crate::game::client_side) water_plane_scan: std::cell::Cell<Option<([i32; 3], i64)>>,
     /// The server this window connected to last over the network: kept while something may
     /// connect there again (game/network/remote/connection.rs).
     pub(in crate::game::client_side) last_connection: Option<sunrise_hooks::connection::Server>,
     /// A connection over the network is open: started, not yet closed (one `Hooks::left` or
     /// `Hooks::ended` each).
-    pub(in crate::game::client_side) connection_open: bool,
+    pub connection_open: bool,
     /// The crates' answer to the last connection's end, until the Disconnected screen shows it.
     pub(in crate::game::client_side) pending_retry: Option<sunrise_hooks::connection::Retry>,
     /// A connection the Disconnected screen makes on its next frame, as that answer asked.
@@ -1656,15 +1724,12 @@ pub struct ClientState {
     pub(in crate::game::client_side) focus_screen: u64,
     pub(in crate::game::client_side) gamemode_switcher:
         Option<sunrise_client::game_mode_switcher::GameModeSwitcher>,
-    /// The game is handling a key, mouse or typed-text event, from the window or the
-    /// control socket: the only time a mod reaches the clipboard (`with_user_input`).
-    pub(in crate::game::client_side) user_input: std::cell::Cell<bool>,
     /// Select All in the append-only text fields.
     pub(in crate::game::client_side) text_selection: sunrise_client::clipboard::AppendSelection,
     /// The client loop consumes a mod's quit request outside the calling hook.
     pub(in crate::game::client_side) client_quit: std::cell::Cell<saving::ClientQuit>,
     /// The world was saved for the application ending (`save_for_exit`).
-    pub(in crate::game) saved_for_exit: bool,
+    pub saved_for_exit: bool,
     /// The last world frame reached the swap chain. A window the compositor
     /// stops showing gets no frames, and the event loop must not spin on it.
     pub(in crate::game::client_side) frame_drawn: bool,
@@ -1672,6 +1737,8 @@ pub struct ClientState {
     /// `None` without a local world, or once the save has its icon.png.
     pub(in crate::game::client_side) world_icon: Option<WorldIcon>,
     pub client_pick: native_hooks_client::client_pick::ClientPick,
+    /// Client-side native mod commands bound to the current client dispatcher generation.
+    pub native_client_commands: native_server_client::NativeClientCommandState,
     /// `Hud.bossOverlay`: the bars this window is showing.
     pub boss_overlay: sunrise_client::boss_overlay::BossOverlay,
     /// `WorldBorderRenderer` and its render state.
@@ -1688,7 +1755,7 @@ pub struct ClientState {
     /// The local player as a model (third person, the inventory).
     pub player_model: Option<Mob>,
 
-    pub(in crate::game::client_side) pending_entry: ClientOnly<Option<PendingWorldEntry>>,
+    pub pending_entry: ClientOnly<Option<PendingWorldEntry>>,
     /// A pack reload staged on a worker until `drive_pack_reload` applies it.
     pub pack_reload: ClientOnly<Option<packs::PackReload>>,
     /// A server's resource packs (game/world/server_packs.rs).
@@ -1710,6 +1777,8 @@ pub struct ClientState {
     pub(in crate::game::client_side) video_modes: ClientOnly<sunrise_client::window::VideoModeList>,
     pub screen_state: ClientOnly<screen_build::ScreenState>,
     pub window: ClientShared<Option<Arc<Window>>>,
+    /// The renderer's mod GPU tables and device handles, set with the renderer by `set_renderer`. Declared before `renderer` so it drops first: its `Device` and `Queue` clones are gone before the renderer's surface is, at `Game` drop. Invariant: it is `Some` exactly when a renderer is installed or `Game::render` has it out; install both through `set_renderer`.
+    pub(in crate::game) mod_gpu: Option<sunrise_client_render::gfx::ModGpuResources>,
     pub renderer: ClientShared<Option<Box<Renderer>>>,
     /// Mob models posed on the GPU (`Frame::skin`, `mobs::skin`): the models stored there,
     /// and this frame's draws.
@@ -1723,6 +1792,9 @@ pub struct ClientState {
     pub pad: ClientShared<pad::Pads>,
     /// Mod screens' living scenes, per mod and clock id (game/modding/native_scene_live.rs).
     pub live_scenes: ClientOnly<std::cell::RefCell<native_scene_live::LiveScenes>>,
+    /// The shader pack's state and bound mod pipeline slots as the latest frame's render callbacks read them, set before `Renderer::render` takes `self.renderer` away (`ClientOptionsClientHost::shader_pack_state`, `RenderAssets::pipeline_pack_bound`).
+    pub(in crate::game) pack_frame_state: std::cell::Cell<Option<mod_api::ShaderPackState>>,
+    pub(in crate::game) pack_frame_slots: std::cell::RefCell<Vec<usize>>,
     /// `DebugRenderer.renderers`: active mod renderers and their owners, resolved at refresh.
     pub(in crate::game::client_side) debug_renderers:
         ClientOnly<Vec<sunrise_client::debug_entries::ActiveDebugRenderer>>,
@@ -1730,12 +1802,9 @@ pub struct ClientState {
     pub particles: ClientShared<sunrise_client::particles::ParticleEngine>,
     /// `ItemPickupParticle`s: taken items, orbs and arrows flying to their collector.
     pub pickups: ClientOnly<pickups::Pickups>,
-    /// `CreateWorldScreen.openCreateWorldScreen`'s data read, on a worker,
-    /// while the title says `createWorld.preparing`.
-    pub(in crate::game::client_side) creation_job:
-        ClientOnly<Option<std::thread::JoinHandle<std::result::Result<(), String>>>>,
     pub title: ClientShared<Option<Title>>,
     pub armor_stand_assets: ClientOnly<armor_stands_client::ArmorStandAssets>,
+    pub client_item_extension_owners: client_item_extensions::ItemExtensionOwners,
     pub text_displays: ClientOnly<indexmap::IndexMap<i32, text_displays::RemoteTextDisplay>>,
     /// Player skin downloads, and which skin each atlas skin slot holds
     /// (least recently shown first).
@@ -1759,10 +1828,10 @@ pub struct ClientState {
         ClientOnly<Option<std::sync::mpsc::Sender<String>>>,
     pub(in crate::game::client_side) pending_bench:
         ClientOnly<Option<(Instant, std::sync::mpsc::Sender<String>, bool)>>,
-    /// The in-game browser's worker, separate from the cloneable reload inputs.
-    pub(in crate::game::client_side) mod_jobs: ClientOnly<mod_browser::Jobs>,
     /// Main-hand input captured by a client mod, independent of living-item use.
     pub client_item_use: ClientShared<Option<native_claimed_items::ActiveClientItemUse>>,
+    /// The open mod screen came from the Mods screen's Config (`IConfigScreenFactory`'s `parent`): closing it returns to Options > Mods.
+    pub(in crate::game) native_mod_screen_parent: bool,
     /// Meshed sections waiting for an upload budget (Sunrise settings).
     pub(in crate::game::client_side) pending_uploads:
         ClientOnly<Vec<sunrise_client::streaming::MeshUpload>>,
@@ -1838,6 +1907,11 @@ pub(in crate::game) struct ClientConstructEffects {
 
 #[cfg(feature = "client")]
 impl ClientState {
+    #[cfg(any(test, feature = "test-support"))]
+    pub(in crate::game) fn test_rain_sound_time(&self) -> i32 {
+        self.rain_sound_time
+    }
+
     // Kept out-of-line so its field temporaries do not bloat `ClientGame::construct`'s unoptimised frame.
     #[inline(never)]
     #[allow(clippy::too_many_arguments, clippy::boxed_local)]
@@ -1851,6 +1925,7 @@ impl ClientState {
         profile: crate::game::client_side::profile_capture::Profile,
         now: Instant,
         music_toast: u8,
+        is_client: bool,
         tutorial: tutorial::Tutorial,
         standalone_geometry: native_block_entity_draw::StandaloneGeometry,
         prepared: Box<ClientCpuResources>,
@@ -1863,6 +1938,12 @@ impl ClientState {
         session_verifier: sunrise_sim::lan::SessionVerifier,
         profile_resolver: integrated_link::ProfileResolverFactory,
     ) -> Box<Self> {
+        let hud_layer_bounds = if is_client {
+            use sunrise_client::gui_layers::{VanillaGuiLayer, order};
+            Vec::with_capacity(order().map_or(VanillaGuiLayer::ALL.len(), |order| order.slots().len()))
+        } else {
+            Vec::new()
+        };
         Box::new(Self {
             integrated_starting: None,
             station_loom: Default::default(),
@@ -1894,6 +1975,7 @@ impl ClientState {
             perf: Default::default(),
             profile,
             debug_density: RefCell::default(),
+            debug_fps_texts: RefCell::default(),
             pending_pack_reload: false,
             frame_attempted: render_settings::FrameAttempt::default(),
             pack_folder: None,
@@ -1902,6 +1984,7 @@ impl ClientState {
             code_of_conduct: None,
             world_renderer_ready: false,
             instance_groups: Default::default(),
+            prepared_items: Default::default(),
             standalone_geometry,
             fog: effects.fog,
             screen_fx: Default::default(),
@@ -1940,8 +2023,13 @@ impl ClientState {
             captured: false,
             capture_mode: None,
             regrab_on_refocus: false,
+            screen_grab: false,
+            pointer_grab_request: std::cell::Cell::new(None),
+            dropped_files: Vec::new(),
             controller_notice: Default::default(),
             focused: true,
+            window_hovered: false,
+            window_occluded: false,
             unclaimed_window: false,
             unclaimed_modifiers: None,
             focus_after_run: None,
@@ -1967,6 +2055,7 @@ impl ClientState {
             luminance: Default::default(),
             see_through_vertices: Vec::new(),
             shadow_only_vertices: Default::default(),
+            frame_batch_reserved_quads: Default::default(),
             entity_spans: Default::default(),
             entity_runs: Vec::new(),
             entity_motion: Default::default(),
@@ -1986,10 +2075,15 @@ impl ClientState {
             dynamic_textures: Default::default(),
             text_patches: Default::default(),
             prepared_model_draws: Default::default(),
-            model_copy_order: Vec::new(),
+            model_copy_order: RefCell::default(),
             world_geometry: Some(Default::default()),
+            render_snapshot: std::cell::Cell::new(None),
+            present_mode_pending: false,
             debug_renderers_version: None,
             hud_layer_next: None,
+            hud_layer_bounds,
+            hud_status_heights: Default::default(),
+            hud_status_heights_set: Default::default(),
             mod_view_distances: Default::default(),
             block_entity_reach: Default::default(),
             item_level_cache: Default::default(),
@@ -2007,7 +2101,8 @@ impl ClientState {
             music_toast_state: music_toast,
             music_notes: Default::default(),
             ambience: effects.ambience,
-            sound_paused: false,
+            sound_paused: (false, false),
+            mod_sounds_paused: false,
             cart_sounds: HashSet::new(),
             riding_cart_sounds: None,
             riding_sound: None,
@@ -2021,6 +2116,7 @@ impl ClientState {
             book_last_click: None,
             station_ui: None,
             loading_progress: 0.0,
+            creation_read_started: false,
             loading_progress_at: None,
             moving_pistons_stale: false,
             view: Default::default(),
@@ -2037,6 +2133,7 @@ impl ClientState {
             visible_hands: [(0, None), (0, None)],
             hands_replaced: [false; 2],
             hand_strength: Default::default(),
+            session_video: SessionVideo::default(),
             look: Default::default(),
             tutorial,
             toast_manager: Default::default(),
@@ -2058,6 +2155,7 @@ impl ClientState {
             waypoints: Default::default(),
             locator_camera: None,
             native_camera_frame: None,
+            native_camera_entity_eye: None,
             posed_rotation: None,
             post_effects: Vec::new(),
             requested_post_effects_buf: Vec::new(),
@@ -2082,6 +2180,7 @@ impl ClientState {
             remote_knots: Default::default(),
             text_display_vertices: 0,
             skin_slots: sunrise_client::skins::SkinSlots::new(sunrise_client::hud::SKIN_SLOTS),
+            player_skin_slot: None,
             skin_profiles: effects.skin_profiles,
             chat_ui: effects.chat_ui,
             map_slots: super::atlas_slots::AtlasSlots::new(sunrise_client::hud::MAP_SLOTS),
@@ -2112,8 +2211,6 @@ impl ClientState {
             native_shaders: Default::default(),
             mod_keys: Default::default(),
             native_mod_screen: None,
-            water_plane_memo: Default::default(),
-            water_plane_scan: Default::default(),
             last_connection: None,
             connection_open: false,
             pending_retry: None,
@@ -2139,13 +2236,13 @@ impl ClientState {
             death_focus: None,
             focus_screen: 0,
             gamemode_switcher: None,
-            user_input: Default::default(),
             text_selection: Default::default(),
             client_quit: std::cell::Cell::new(saving::ClientQuit::Running),
             saved_for_exit: false,
             frame_drawn: true,
             world_icon: None,
             client_pick: Default::default(),
+            native_client_commands: Default::default(),
             boss_overlay: Default::default(),
             border_renderer: Default::default(),
             border_section: None,
@@ -2170,18 +2267,21 @@ impl ClientState {
             video_modes: wc.video_modes,
             screen_state: wc.screen_state,
             window: wc.window,
+            mod_gpu: None,
             renderer: wr.renderer,
             skin_models: wc.skin_models,
             lent_level_random: wc.lent_level_random,
             pad: wc.pad,
             live_scenes: wc.live_scenes,
+            pack_frame_state: std::cell::Cell::new(None),
+            pack_frame_slots: Default::default(),
             debug_renderers: wc.debug_renderers,
             audio: extra.audio,
             particles: extra.particles,
             pickups: wc.pickups,
-            creation_job: wc.creation_job,
             title: wc.title,
             armor_stand_assets: extra.armor_stand_assets,
+            client_item_extension_owners: Default::default(),
             text_displays: wc.text_displays,
             skin_downloads: extra.skin_downloads,
             recipe_ui: wc.recipe_ui,
@@ -2198,9 +2298,9 @@ impl ClientState {
             repro: wc.repro,
             occlusion: wc.occlusion,
             async_particle_culler: wc.async_particle_culler,
+            native_mod_screen_parent: false,
             pending_uploads: wc.pending_uploads,
             pending_uploads_merge: wc.pending_uploads_merge,
-            mod_jobs: wc.mod_jobs,
             client_item_use: wc.client_item_use,
             client_tasks: wc.client_tasks,
             pending_client_tasks: wc.pending_client_tasks,
@@ -2387,6 +2487,11 @@ pub(in crate::game) mod key_focus;
 
 #[cfg(feature = "client")]
 impl crate::game::ClientGame<'_> {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn test_pending_uploads_empty(&self) -> bool {
+        self.client.pending_uploads.0.is_empty()
+    }
+
     pub(in crate::game) fn presence_status(&self) -> sunrise_client::social::PresenceStatus {
         use sunrise_client::social::PresenceStatus;
         if let Some(integrated) = self.client.integrated.as_ref() {
@@ -2407,6 +2512,41 @@ impl crate::game::ClientGame<'_> {
         } else {
             PresenceStatus::Online
         }
+    }
+}
+
+#[cfg(all(feature = "client", any(test, feature = "test-support")))]
+impl ClientGame<'_> {
+    pub fn test_set_pointer_grab(&self, grab: bool) -> bool {
+        self.set_pointer_grab(grab)
+    }
+
+    pub fn test_pointer_grabbed(&self) -> bool {
+        self.pointer_grabbed()
+    }
+
+    pub fn test_apply_pointer_grab_request(&mut self) {
+        self.apply_pointer_grab_request();
+    }
+
+    pub fn test_grabbed_pointer_motion(&mut self, delta: [f64; 2]) {
+        self.grabbed_pointer_motion(delta);
+    }
+
+    pub fn test_mod_screen_grabs_pointer(&self) -> bool {
+        self.mod_screen_grabs_pointer()
+    }
+
+    pub fn test_screen_pointer_motion(&self, delta: [f64; 2]) {
+        self.screen_pointer_motion(delta);
+    }
+
+    pub fn test_screen_grab(&self) -> bool {
+        self.client.screen_grab
+    }
+
+    pub fn test_pointer_accumulated(&self) -> (f64, f64) {
+        self.client.mouse.accumulated()
     }
 }
 
@@ -2609,8 +2749,12 @@ impl<'a> ClientGame<'a> {
             1,
         );
         streaming.paused = true;
-        let standalone_geometry =
-            native_block_entity_draw::StandaloneGeometry::new(&pack, &client_pack, &gui);
+        let standalone_geometry = native_block_entity_draw::StandaloneGeometry::new(
+            &pack,
+            &client_pack,
+            &gui,
+            client_res.get().map(ClientResources::block_entity_render),
+        );
         let GameCpuResources {
             painting_variants,
             frame_model,

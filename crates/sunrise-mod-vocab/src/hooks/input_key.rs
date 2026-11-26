@@ -1,5 +1,4 @@
 //! The `input_key` hook: declarations the mod API generator reads (see `hooks/mod.rs`).
-// catalog-order: 0125
 
 pub trait Hooks {
     /// A key event after handling, the window's or the control socket's `key` (one press, then
@@ -13,7 +12,6 @@ pub trait Hooks {
     /// the platform scan code, stable within a platform only). `action` is what it did, and the modifier bits
     /// the screen hooks' GLFW encoding. Not cancellable.
     #[hook(
-        target = "sunrise_client_gameplay::game::native_hooks::input_key::ClientGame<'_>::native_input_key",
         dispatch = "flat",
         side = "client",
         contract = "listen",

@@ -132,9 +132,7 @@ fn owner_gets_release_or_reset_with_live_typed_stack() {
             assert!(game.client.client_item_use.0.is_some());
             game.remote_handle_input();
             assert!(game.client.client_item_use.0.is_none());
-            game.close_chat(
-                sunrise_client_gameplay::game::client_side::chat::ChatExit::Intentional,
-            );
+            game.test_close_chat_intentionally();
             key_up(game);
             assert_eq!(
                 calls.take(),

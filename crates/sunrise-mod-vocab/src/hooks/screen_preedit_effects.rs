@@ -9,7 +9,6 @@ pub trait Hooks {
     /// `screen_preedit_post` does not fire. Fires on the window while a
     /// screen is open, even when no text field is focused.
     #[hook(
-        target = "sunrise_client_gameplay::game::native_hooks::screen_preedit_effects::ClientGame<'_>::native_screen_preedit_pre",
         receiver = "read",
         dispatch = "flat",
         side = "client",
@@ -33,7 +32,6 @@ pub trait Hooks {
     /// captured at Pre. A built-in mounted `TextField` can consume preedit; a
     /// custom `ScreenWidget` does not. Same arguments as Pre.
     #[hook(
-        target = "sunrise_client_gameplay::game::native_hooks::screen_preedit_effects::ClientGame<'_>::native_screen_preedit_post",
         receiver = "read",
         dispatch = "flat",
         side = "client",
@@ -62,7 +60,6 @@ pub trait Hooks {
     /// recipe book opening between two layout builds), it is asked again for
     /// the new space. The exclusion areas follow this choice in the same frame.
     #[hook(
-        target = "sunrise_client_gameplay::game::native_hooks::screen_preedit_effects::ClientGame<'_>::native_screen_render_inventory_mob_effects",
         receiver = "read",
         dispatch = "flat",
         side = "client",

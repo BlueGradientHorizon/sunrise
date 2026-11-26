@@ -418,7 +418,7 @@ impl crate::game::ClientGame<'_> {
                 let status = self.client.debug_entries.0.status(entry.path);
                 for ((status_of, _, _), x) in BUTTONS.into_iter().zip(button_xs(left + 2.0)) {
                     if status != status_of && ui::hovered(self.client.cursor, x, cy, BUTTON, 16.0) {
-                        clicked = Some((entry.path, status_of));
+                        clicked = Some((entry.path.to_owned(), status_of));
                     }
                 }
             }
@@ -427,8 +427,8 @@ impl crate::game::ClientGame<'_> {
         self.client.debug_options = Some(s);
         if let Some((path, status)) = clicked {
             // OptionEntry.setValue.
-            self.client.audio.0.play_button_click();
-            self.client.debug_entries.0.set_status(path, status);
+            self.play_audio_button_click();
+            self.client.debug_entries.0.set_status(&path, status);
             return true;
         }
         let (xs, fy) = footer(w, h);
@@ -447,15 +447,15 @@ impl crate::game::ClientGame<'_> {
                 if self.client.debug_entries.0.is_using_profile(profile) {
                     return search;
                 }
-                self.client.audio.0.play_button_click();
+                self.play_audio_button_click();
                 self.client.debug_entries.0.load_profile(profile);
             }
             2 => {
-                self.client.audio.0.play_button_click();
+                self.play_audio_button_click();
                 self.cycle_debug_gui_scale(shift);
             }
             _ => {
-                self.client.audio.0.play_button_click();
+                self.play_audio_button_click();
                 self.close_debug_options();
             }
         }

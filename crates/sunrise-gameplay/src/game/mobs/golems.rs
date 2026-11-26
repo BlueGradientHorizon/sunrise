@@ -4,6 +4,7 @@
 //! golem. Players placing the pumpkin and dispensers share it.
 use crate::game::ServerGame;
 use sunrise_game_data::Result;
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
 use sunrise_sim::block_pattern::{
     IRON_GOLEM_BASE, IRON_GOLEM_FULL, SNOW_GOLEM_BASE, SNOW_GOLEM_FULL,
 };
@@ -13,11 +14,19 @@ impl ServerGame<'_> {
         let state = self.common.world.block(p[0], p[1], p[2]);
         &self.common.res.facts().get(state).name
     }
+    /// `CarvedPumpkinBlock.PUMPKINS_PREDICATE`: a carved pumpkin or jack o'lantern, or a block of
+    /// `sunrise:golem_heads`, which adds to the two and leaves them hard-coded; an empty tag is
+    /// vanilla. The snow, iron and copper patterns, `can_spawn_golem` and the dispenser all ask it.
     pub(in crate::game::server_side) fn is_golem_head(&self, p: [i32; 3]) -> bool {
+        let name = self.golem_block(p);
         matches!(
-            self.golem_block(p),
+            name,
             "minecraft:carved_pumpkin" | "minecraft:jack_o_lantern"
-        )
+        ) || self
+            .items()
+            .block_tags
+            .get("sunrise:golem_heads")
+            .is_some_and(|t| t.contains(name))
     }
     /// The blocks of the golem completed at `head` and its spawn base
     /// (`BlockPattern.find`), snow golems first: the snow column
@@ -234,27 +243,45 @@ impl ServerGame<'_> {
         mob.previous_head_yaw = yaw;
         let id = mob.id;
         self.common.mobs.push(mob);
-        self.native_mobs_joined(self.common.mobs.len() - 1, false);
+        self.admit_new_mobs(self.common.mobs.len() - 1);
         Some(id)
     }
     /// `CarvedPumpkinBlock.clearPatternBlocks`: every cell of the match
     /// becomes air (flags 2) with its destroy event (2001).
     pub(in crate::game) fn clear_pattern_blocks(&mut self, cells: &[[i32; 3]]) -> Result<()> {
         let air = self.common.world.air;
+        let capture = self
+            .captures_placement()
+            .then(|| self.level(self.common.dim.id()).unwrap());
         for &p in cells {
             let state = self.common.world.block(p[0], p[1], p[2]);
             let pos = sunrise_core::position::BlockPos::new(p[0], p[1], p[2]);
-            self.with_level(|b, level, ticks| b.set_block(level, ticks, pos, air, 2));
-            self.common
-                .level_events
-                .push(sunrise_world::level::LevelEvent::LevelEvent {
-                    id: 2001,
-                    pos,
-                    data: state.0 as i32,
-                    source: None,
-                });
+            let event = sunrise_world::level::LevelEvent::LevelEvent {
+                id: 2001,
+                pos,
+                data: state.0 as i32,
+                source: None,
+            };
+            if let Some(level) = capture {
+                use super::journal_level_write::JournalLevelWrite;
+                use sunrise_gameplay_common::game::transactions::After;
+                use sunrise_world::level::ticks::PlacementEffect;
+                if let Some(mut writer) = JournalLevelWrite::new(self, level) {
+                    writer.write_block(p, air, 2);
+                }
+                self.after_commit(After::PlacementEffect(Box::new(
+                    PlacementEffect::LevelEvent(event),
+                )));
+            } else {
+                self.with_level(|b, level, ticks| b.set_block(level, ticks, pos, air, 2));
+                self.common.level_events.push(event);
+            }
         }
-        self.server_process_level_events()
+        if capture.is_some() {
+            Ok(())
+        } else {
+            self.server_process_level_events()
+        }
     }
     /// `CarvedPumpkinBlock.updatePatternBlocks`: neighbours of every cell
     /// hear that air arrived.
@@ -272,6 +299,8 @@ impl ServerGame<'_> {
 
 
 use sunrise_gameplay_common::game::GameGameExt1 as _;
+use sunrise_gameplay_common::game::tables::GameItems as _;
+use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
 
 #[cfg(test)]
 pub(in crate::game) mod tests {
@@ -407,5 +436,110 @@ pub(in crate::game) mod tests {
             find(SNOW_GOLEM_FULL, head, &blocks),
             Some(vec![[0, 0, 0], [0, 0, 1], [0, 0, 2]])
         );
+    }
+}
+
+#[cfg(test)]
+mod golem_heads_tests {
+    use crate::game::{ServerGame, native_entity_refs::tests::with_game};
+    use std::sync::Arc;
+    use sunrise_gameplay_common::game::{GameGameExt1 as _, tables::GameItems as _};
+    use sunrise_level::chunk::Chunk;
+
+    const HEAD: &str = "minecraft:gold_block";
+
+    fn set_tag(game: &mut ServerGame<'_>, members: &[&str]) {
+        Arc::make_mut(game.server_items.as_mut().unwrap())
+            .block_tags
+            .insert(
+                "sunrise:golem_heads".into(),
+                members.iter().map(|m| (*m).to_owned()).collect(),
+            );
+        game.refresh_infiniburn();
+    }
+
+    /// A game with one empty chunk and `members` as the tag.
+    fn with_heads(members: &[&str], test: impl FnOnce(&mut ServerGame<'_>)) {
+        with_game(|game| {
+            game.world
+                .chunks
+                .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+            game.server_items = Some(Arc::new(game.items().clone()));
+            set_tag(game, members);
+            test(game);
+        });
+    }
+
+    fn put(game: &mut ServerGame<'_>, at: [i32; 3], name: &str) {
+        let state = game.pack.assets.registry.default_state(name).unwrap();
+        game.level_set(at, state).unwrap();
+    }
+
+    fn built(game: &ServerGame<'_>, kind: &str) -> bool {
+        game.mobs.iter().any(|m| m.kind.id == kind && !m.removed)
+    }
+
+    fn head_stands(game: &ServerGame<'_>, at: [i32; 3]) -> bool {
+        game.golem_block(at) == HEAD
+    }
+
+    /// The snow column, the iron T and the copper block, each completed by the head at `top`.
+    fn build_all(game: &mut ServerGame<'_>) {
+        put(game, [2, 64, 2], "minecraft:snow_block");
+        put(game, [2, 65, 2], "minecraft:snow_block");
+        put(game, [2, 66, 2], HEAD);
+        for at in [[8, 64, 8], [8, 65, 8], [7, 65, 8], [9, 65, 8]] {
+            put(game, at, "minecraft:iron_block");
+        }
+        put(game, [8, 66, 8], HEAD);
+        put(game, [13, 64, 13], "minecraft:copper_block");
+        put(game, [13, 65, 13], HEAD);
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn a_tagged_block_on_snow_iron_and_copper_builds_each_golem() {
+        with_heads(&[HEAD], |game| {
+            build_all(game);
+            assert!(built(game, "minecraft:snow_golem"));
+            assert!(built(game, "minecraft:iron_golem"));
+            assert!(built(game, "minecraft:copper_golem"));
+            assert!(!head_stands(game, [2, 66, 2]));
+            assert!(!head_stands(game, [8, 66, 8]));
+            assert!(!head_stands(game, [13, 65, 13]));
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn an_empty_tag_builds_nothing() {
+        with_heads(&[], |game| {
+            build_all(game);
+            for kind in ["snow_golem", "iron_golem", "copper_golem"] {
+                assert!(!built(game, &format!("minecraft:{kind}")));
+            }
+            assert!(head_stands(game, [2, 66, 2]));
+            assert!(head_stands(game, [8, 66, 8]));
+            assert!(head_stands(game, [13, 65, 13]));
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn a_reload_that_removes_the_block_from_the_tag_stops_it_building() {
+        with_heads(&[HEAD], |game| {
+            put(game, [2, 64, 2], "minecraft:snow_block");
+            put(game, [2, 65, 2], "minecraft:snow_block");
+            put(game, [2, 66, 2], HEAD);
+            assert!(built(game, "minecraft:snow_golem"));
+            game.mobs.clear();
+
+            set_tag(game, &[]);
+            put(game, [2, 64, 2], "minecraft:snow_block");
+            put(game, [2, 65, 2], "minecraft:snow_block");
+            put(game, [2, 66, 2], HEAD);
+            assert!(!built(game, "minecraft:snow_golem"));
+            assert!(head_stands(game, [2, 66, 2]));
+        });
     }
 }

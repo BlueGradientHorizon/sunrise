@@ -61,18 +61,18 @@ pub(crate) mod tests {
                 )
                 .unwrap();
                 request.save_root = world.to_owned();
-                let mut prepared = game.prepare_world_and_rules(request).unwrap();
+                game.load_world(request).unwrap();
                 assert_eq!(
                     fs::read(&settings_path).unwrap(),
                     b"unreadable generator settings"
                 );
-                let y = prepared.world.shape.min_y + 1;
+                let y = game.common.world.shape.min_y + 1;
                 assert!(
-                    prepared
+                    game.server
                         .streaming
-                        .set_forced_loaded(&mut prepared.world, 32, 32, true)
+                        .set_forced_loaded(&mut game.common.world, 32, 32, true)
                 );
-                let chunk = &prepared.world.chunks[&(32, 32)];
+                let chunk = &game.common.world.chunks[&(32, 32)];
                 assert_eq!(
                     Some(chunk.get(0, y, 0)),
                     game.pack
@@ -83,17 +83,15 @@ pub(crate) mod tests {
                 );
 
                 // The spawn search sees the pack's flat layers before the first save.
-                game.level = prepared.level.clone();
-                game.server.level_shapes = prepared.shapes;
                 assert_eq!(
                     game.spawn_origin().unwrap(),
-                    ((0, 0), prepared.world.shape.min_y + 3)
+                    ((0, 0), game.common.world.shape.min_y + 3)
                 );
 
-                prepared.level.write_without_player(world).unwrap();
+                game.common.level.write_without_player(world).unwrap();
                 assert_eq!(
                     save::world_gen_settings(world).as_ref(),
-                    prepared
+                    game.common
                         .level
                         .generator
                         .as_ref()
@@ -177,7 +175,8 @@ pub(crate) mod tests {
 #[cfg(test)]
 mod unused_feature_startup_tests {
     use super::*;
-    use sunrise_gameplay_common::game::world_preload::worldgen_overrides_of;
+    use sunrise_gameplay::game::world_loading::worldgen_overrides_in_world;
+    use sunrise_gameplay_common::game::condition_reload_state::WorldBiomeRegistry;
 
     #[test]
     #[ignore = "daily"]
@@ -201,7 +200,8 @@ mod unused_feature_startup_tests {
         options.resources = resources;
         options.execution_role = execution_role::ExecutionRole::IntegratedServer;
         for (case, height) in [("valid", 0), ("invalid", -1)] {
-            let root = std::env::current_dir().unwrap().join(case);
+            let scratch = tempfile::tempdir().unwrap();
+            let root = scratch.path().join(case);
             let pack = root.join("datapacks/h259");
             std::fs::create_dir_all(pack.join("data/h259/worldgen/feature")).unwrap();
             std::fs::write(pack.join("pack.mcmeta"), r#"{"pack":{"description":"H259 unused feature","min_format":[121,0],"max_format":[121,0]}}"#).unwrap();
@@ -229,13 +229,14 @@ mod unused_feature_startup_tests {
                 },
             )
             .unwrap();
-            let (overrides, _) = worldgen_overrides_of(
+            let (overrides, _) = worldgen_overrides_in_world(
                 &root,
                 &options.resources,
-                loaded.resources.biomes(),
                 &level.enabled_features,
                 &loaded.pack.additional_data,
-            );
+                &sunrise_world::conditions::LoadConditions::vanilla(),
+            )
+            .unwrap();
             assert_eq!(
                 overrides
                     .entries("features")
@@ -249,31 +250,56 @@ mod unused_feature_startup_tests {
                 sunrise_sim::save::WorldGen::read(&root).unwrap().preset,
                 sunrise_sim::save::WorldPreset::Flat
             );
-            let request = WorldRequest {
-                save_root: root,
-                folder: case.into(),
-                name: None,
-                seed: Some(259),
-                creative: false,
-                create: None,
-                owner: None,
-                chunk_reports: sunrise_sim::chunk_io::PROCESS_REPORTS.clone(),
-                rule_registry: Level::default().rule_registry,
-            };
-            let result = request.prepare(
+            let save_root = root.clone();
+            let mut request = WorldRequest::new(
+                case, None, Some(259), false, None, Level::default().rule_registry,
+            ).unwrap();
+            request.save_root = root;
+            let mut prepared = request
+                .prepare(
+                    &loaded.resources,
+                    &loaded.pack,
+                    &options,
+                    &sunrise_world::datafix::progress::UpgradeProgress::new(),
+                )
+                .unwrap();
+
+
+            let empty =
+                sunrise_assets::resource_source::ResourceSource::indexed(Default::default());
+            let stack = sunrise_gameplay::game::functions::pack_stack(
+                &save_root,
+                &options.resources,
+                &empty,
+                &empty,
+                false,
+                &prepared.level.enabled_features,
+                &loaded.pack.additional_data,
+            );
+            let biomes = WorldBiomeRegistry::load(
+                loaded.resources.biomes(),
+                &save_root,
+                loaded.pack.assets.registry,
+                &stack,
+                &stack.data_packs(Vec::new()),
+                &sunrise_world::loot::PackOverlay::default(),
+                &Default::default(),
+            )
+            .unwrap();
+            let result = prepared.prepare_terrain(
                 &loaded.resources,
                 &loaded.pack,
                 &options,
                 &settings.sim_settings(),
-                &sunrise_world::datafix::progress::UpgradeProgress::new(),
+                &biomes,
             );
             if height == 0 {
-                assert!(result.is_ok(), "valid unused registry entry must prepare");
+                assert!(result.is_ok(), "valid unused registry entry must load");
                 drop(result);
             } else {
                 let error = match result {
                     Ok(_) => panic!(
-                        "unused invalid h259:unused_probe was accepted by actual world preparation"
+                        "unused invalid h259:unused_probe was accepted by actual world loading"
                     ),
                     Err(error) => error.to_string(),
                 };
@@ -286,7 +312,7 @@ mod unused_feature_startup_tests {
 #[cfg(test)]
 mod unused_feature_preservation_tests {
     use super::*;
-    use sunrise_gameplay_common::game::world_preload::worldgen_overrides_of;
+    use sunrise_gameplay::game::world_loading::worldgen_overrides_in_world;
 
     #[test]
     #[ignore = "daily"]
@@ -309,7 +335,8 @@ mod unused_feature_preservation_tests {
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = resources;
         options.execution_role = execution_role::ExecutionRole::IntegratedServer;
-        let root = std::env::current_dir().unwrap().join("preservation");
+        let scratch = tempfile::tempdir().unwrap();
+        let root = scratch.path().join("preservation");
         let pack = root.join("datapacks/h259");
         let entries = pack.join("data/controls/worldgen/feature");
         std::fs::create_dir_all(&entries).unwrap();
@@ -334,13 +361,14 @@ mod unused_feature_preservation_tests {
             },
         )
         .unwrap();
-        let (mut overrides, _) = worldgen_overrides_of(
+        let (mut overrides, _) = worldgen_overrides_in_world(
             &root,
             &options.resources,
-            loaded.resources.biomes(),
             &level.enabled_features,
             &loaded.pack.additional_data,
-        );
+            &sunrise_world::conditions::LoadConditions::vanilla(),
+        )
+        .unwrap();
         assert_eq!(
             overrides.entries("features").collect::<Vec<_>>(),
             vec![
@@ -348,11 +376,11 @@ mod unused_feature_preservation_tests {
                 ("controls:unrelated", unrelated),
             ]
         );
-        // Labeled native preservation controls, not additional Java runtime coverage.
+
         overrides
             .validate_fill_layers(loaded.pack.assets.registry)
             .unwrap();
-        // The existing winning-entry map still owns precedence, not the validation phase.
+
         overrides.set(
             "features",
             "controls:another_id",
@@ -366,24 +394,16 @@ mod unused_feature_preservation_tests {
         overrides
             .validate_fill_layers(loaded.pack.assets.registry)
             .unwrap();
-        let request = WorldRequest {
-            save_root: root,
-            folder: "preservation".into(),
-            name: None,
-            seed: Some(259),
-            creative: false,
-            create: None,
-            owner: None,
-            chunk_reports: sunrise_sim::chunk_io::PROCESS_REPORTS.clone(),
-            rule_registry: Level::default().rule_registry,
-        };
+        let mut request = WorldRequest::new(
+            "preservation", None, Some(259), false, None, Level::default().rule_registry,
+        ).unwrap();
+        request.save_root = root;
         assert!(
             request
                 .prepare(
                     &loaded.resources,
                     &loaded.pack,
                     &options,
-                    &settings.sim_settings(),
                     &sunrise_world::datafix::progress::UpgradeProgress::new(),
                 )
                 .is_ok(),

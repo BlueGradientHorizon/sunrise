@@ -279,6 +279,7 @@ fn piston_push_reaction_parts_cache_reload_and_replay() {
                     game.native_lifecycle.epoch().unwrap(),
                     DimensionKey::OVERWORLD,
                 ),
+                &game.world,
             );
             for facts in [host.block_states(), level.block_states()] {
                 for (state, expected) in [

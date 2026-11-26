@@ -47,7 +47,7 @@ impl ChunkGenerator for Saved {
         chunk.light_loaded = true;
         Some(chunk)
     }
-    fn proto(&self, _: &mut (), _: i32, _: i32) -> Proto {
+    fn proto(&self, _: &mut (), _: i32, _: i32) -> std::result::Result<Proto, String> {
         unreachable!("every column is saved")
     }
     fn finish(&self, _: Proto) -> Chunk {
@@ -274,6 +274,7 @@ fn relit_columns_keep_every_mesh_current() {
             cutout_leaves: true,
             opaque_ice: false,
             translucent_layers: &[],
+            layer_overrides: &[],
             leaf_culling: LeafCullingMode::Off,
             assets: &context.chunk.assets,
             render: &context.mesh.render,

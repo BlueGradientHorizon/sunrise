@@ -101,7 +101,6 @@ pub use sunrise_level::worldborder;
 // --- lowered modules ---
 pub mod advancements;
 pub mod api_text;
-pub mod arrows;
 pub mod attack_strength;
 pub mod attribute_updates;
 pub mod auto_jump;
@@ -115,7 +114,6 @@ pub mod block_pattern;
 pub mod block_sounds;
 pub mod block_transform;
 pub mod breathing;
-pub mod carrier_store;
 pub mod cauldron;
 pub mod chunk_io;
 pub mod clock;
@@ -139,6 +137,8 @@ pub mod entity_solids;
 pub mod falling_block;
 pub mod first_person_sim;
 pub mod flatgen;
+#[cfg(test)]
+pub(crate) mod fresh_process;
 pub mod furnace;
 pub mod gossip;
 pub mod health;

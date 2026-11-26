@@ -98,7 +98,13 @@ fn frame_model_lends_the_drawn_pose_without_changing_geometry() {
         let mut frame = FrameDraw::new(capture_model);
         let mut out = Vec::new();
         if layers_only {
-            let extra = [(&**cow_model, [0.0, 0.0, 1.0, 1.0], 0xFFFF_FFFF, 0, false)];
+            let extra = [(
+                WornModel::Vanilla(cow_model),
+                [0.0, 0.0, 1.0, 1.0],
+                0xFFFF_FFFF,
+                0,
+                false,
+            )];
             render_layers(
                 &cow,
                 0.5,
@@ -341,7 +347,7 @@ fn named_hidden_parts_leave_the_body_and_its_overlays_but_not_armour() {
                 mob_models: &ClientMobModels,
                 names: &[&str],
                 gpu: bool,
-                extra: &[(&Part, [f32; 4], u32, u32, bool)]| {
+                extra: &[WornLayer<'_>]| {
         let mut out = Vec::new();
         let mut skin_models = super::super::skin::SkinModels::default();
         let mut skin_frame = crate::gfx::entity_skin::SkinFrame::default();
@@ -355,6 +361,7 @@ fn named_hidden_parts_leave_the_body_and_its_overlays_but_not_armour() {
         render_visible(
             mob,
             0.5,
+            None,
             [glam::Mat4::IDENTITY],
             &atlas,
             0xf0f0,
@@ -370,7 +377,7 @@ fn named_hidden_parts_leave_the_body_and_its_overlays_but_not_armour() {
             skin_frame.jobs.iter().map(|job| job.count).sum::<u32>(),
         )
     };
-    let armour = [(&*villager_model, [0.0, 0.0, 1.0, 1.0], 0xf0f0, 0, false)];
+    let armour = [(WornModel::Vanilla(&villager_model), [0.0, 0.0, 1.0, 1.0], 0xf0f0, 0, false)];
     let cpu = |mob: &Mob, mob_models: &ClientMobModels, names: &[&str]| {
         draw(mob, mob_models, names, false, &[]).0
     };
@@ -395,7 +402,7 @@ fn named_hidden_parts_leave_the_body_and_its_overlays_but_not_armour() {
         );
     }
     for gpu_path in [false, true] {
-        let draw_armoured = |names: &[&str], extra: &[(&Part, [f32; 4], u32, u32, bool)]| {
+        let draw_armoured = |names: &[&str], extra: &[WornLayer<'_>]| {
             let (cpu, gpu) = draw(&villager, &models, names, gpu_path, extra);
             cpu + gpu
         };
@@ -461,7 +468,7 @@ fn equipment_model_override_draws_with_body_poses_and_inventory_does_not_dispatc
     struct Source {
         models: ClientMobModels,
         data: ClientMobData,
-        model: std::sync::Arc<Part>,
+        model: std::sync::Arc<EquipmentModel>,
         calls: std::cell::Cell<usize>,
     }
     impl RenderDataSource for Source {
@@ -479,7 +486,8 @@ fn equipment_model_override_draws_with_body_poses_and_inventory_does_not_dispatc
                 0xFFFFFFFF,
                 ARMOR_GLINT,
             );
-            layer.equipment_model = Some(self.model.clone());
+            layer.equipment_model = Some((self.model.clone(), ArmorSlot::Chest));
+            layer.equipment_uv = Some([0.25, 0.25, 0.5, 0.5]);
             vec![layer]
         }
         fn equipment_inventory(&self, _: &Mob) -> Vec<Layer> {
@@ -487,20 +495,23 @@ fn equipment_model_override_draws_with_body_poses_and_inventory_does_not_dispatc
         }
     }
     let (mob, models, data) = humanoid_zombie();
-    let model = models.model(&mob.kind.id).unwrap().clone();
+    let mut reference = (**models.model(&mob.kind.id).unwrap()).clone();
+    reference.children.retain(|node| node.name == "body");
+    let reference = std::sync::Arc::new(reference);
+    let baked = EquipmentModel::bake(&crate::mobs::model_layers::from_part(&reference)).unwrap();
     let source = Source {
-        model,
         models,
+        model: std::sync::Arc::new(baked),
         data,
         calls: std::cell::Cell::new(0),
     };
     let uv = [0.25, 0.25, 0.5, 0.5];
     let atlas = |name: &str| {
-        Some(if name == "test:equipment" {
-            uv
-        } else {
-            [0.0, 0.0, 1.0, 1.0]
-        })
+        assert_ne!(
+            name, "test:equipment",
+            "final UVs must not consult the live atlas"
+        );
+        Some([0.0, 0.0, 1.0, 1.0])
     };
     assert!(
         !drawn_textures(&mob, &source)
@@ -532,7 +543,13 @@ fn equipment_model_override_draws_with_body_poses_and_inventory_does_not_dispatc
         &atlas,
         0xF0F0,
         &plain,
-        &[(&source.model, uv, 0xFFFFFFFF, ARMOR_GLINT, false)],
+        &[(
+            WornModel::Vanilla(&reference),
+            uv,
+            0xFFFFFFFF,
+            ARMOR_GLINT,
+            false,
+        )],
         &mut expected,
     );
     assert_eq!(source.calls.get(), 1);

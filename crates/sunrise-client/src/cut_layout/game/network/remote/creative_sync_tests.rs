@@ -65,6 +65,7 @@ mod give_stack {
     use sunrise_command::args::GameMode;
     use sunrise_core::nbt::{Compound, JavaString, Tag};
     use sunrise_gameplay_common::game::api_values::test_snapshot;
+    use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;
     use sunrise_protocol::item::{Component, Stack};
     use sunrise_protocol::packets::play::Serverbound as S;
     use {
@@ -178,23 +179,48 @@ mod give_stack {
             || {
                 with_client_game(|game| {
                     let stone = api("minecraft:stone", 1, &[]);
-                    assert_eq!(game.give_stack(&stone), Err(CreativeGiveError::Unavailable));
+                    let before_login = mod_api::__private::game::player_ref(
+                        mod_api::EntityRef::new(mod_api::WorldEpoch::new(1), 1),
+                        1,
+                    );
+                    assert_eq!(
+                        before_login.give_creative(game, &stone),
+                        Err(CreativeGiveError::Unavailable)
+                    );
                     let mut reader = logged_in(game);
+                    let local = game.local_player().unwrap();
+                    let stale = mod_api::__private::game::player_ref(
+                        mod_api::EntityRef::new(
+                            mod_api::WorldEpoch::new(local.entity().epoch().get().wrapping_add(1)),
+                            local.entity().id(),
+                        ),
+                        local.uuid(),
+                    );
                     let inventory = game.inventory.clone();
-                    assert_eq!(game.give_stack(&stone), Err(CreativeGiveError::NotCreative));
+                    assert_eq!(
+                        stale.give_creative(game, &stone),
+                        Err(CreativeGiveError::Stale)
+                    );
+                    assert_eq!(
+                        local.give_creative(game, &stone),
+                        Err(CreativeGiveError::NotCreative)
+                    );
                     game.set_local_mode(GameMode::Creative);
                     assert_eq!(
-                        game.give_stack(&api("minecraft:stone", 65, &[])),
+                        local.give_creative(game, &api("minecraft:stone", 65, &[])),
                         Err(CreativeGiveError::Stack(
                             mod_api::StackWriteError::CountExceeded { maximum: 64 }
                         ))
                     );
                     assert_eq!(
-                        game.give_stack(&api(
-                            "minecraft:iron_sword",
-                            1,
-                            &[("minecraft:max_stack_size", Tag::Int(16))]
-                        )),
+                        local.give_creative(
+                            game,
+                            &api(
+                                "minecraft:iron_sword",
+                                1,
+                                &[("minecraft:max_stack_size", Tag::Int(16))]
+                            )
+                        ),
                         Err(CreativeGiveError::Stack(
                             mod_api::StackWriteError::StackableDamageable
                         ))
@@ -202,7 +228,7 @@ mod give_stack {
                     let synced = game.client.remote.as_ref().unwrap().synced.clone();
                     game.client.remote.as_mut().unwrap().features = Vec::<String>::new().into();
                     assert_eq!(
-                        game.give_stack(&stone),
+                        local.give_creative(game, &stone),
                         Err(CreativeGiveError::FeatureDisabled)
                     );
                     assert_eq!(game.client.remote.as_ref().unwrap().synced, synced);
@@ -210,7 +236,10 @@ mod give_stack {
                         ["minecraft:vanilla".to_owned()].into();
                     game.options.execution_role =
                         sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
-                    assert_eq!(game.give_stack(&stone), Err(CreativeGiveError::Unavailable));
+                    assert_eq!(
+                        local.give_creative(game, &stone),
+                        Err(CreativeGiveError::Unavailable)
+                    );
                     game.options.execution_role =
                         sunrise_gameplay_common::game::execution_role::ExecutionRole::Client;
                     assert_eq!(game.inventory, inventory);
@@ -244,6 +273,7 @@ mod give_stack {
                         });
                     game.set_local_mode(GameMode::Creative);
                     game.selected = 0;
+                    let local = game.local_player().unwrap();
 
                     let mut sword = api(
                         "minecraft:iron_sword",
@@ -255,7 +285,7 @@ mod give_stack {
                         })],
                     );
                     sword.set_damage(11);
-                    assert_eq!(game.give_stack(&sword), Ok(None));
+                    assert_eq!(local.give_creative(game, &sword), Ok(None));
                     assert_eq!(game.inventory[0].as_ref().map(test_snapshot), Some(sword));
                     let packets = creative_slots(&sent(&mut reader));
                     let (slot, stack) = only_slot(&packets);
@@ -291,7 +321,7 @@ mod give_stack {
                             Tag::Compound(contents)
                         })],
                     );
-                    assert_eq!(game.give_stack(&potion), Ok(None));
+                    assert_eq!(local.give_creative(game, &potion), Ok(None));
                     assert_eq!(game.inventory[1].as_ref().map(test_snapshot), Some(potion));
                     let packets = creative_slots(&sent(&mut reader));
                     let (slot, stack) = only_slot(&packets);
@@ -317,7 +347,7 @@ mod give_stack {
                             &[("minecraft:max_stack_size", Tag::Int(16))],
                         )
                     };
-                    assert_eq!(game.give_stack(&capped()), Ok(None));
+                    assert_eq!(local.give_creative(game, &capped()), Ok(None));
                     let packets = creative_slots(&sent(&mut reader));
                     let (slot, stack) = only_slot(&packets);
                     let stone = net_id(game, "minecraft:item", "minecraft:stone");
@@ -328,7 +358,7 @@ mod give_stack {
                         &Component::Int(16)
                     );
                     // The capped stack is full at 16: the next one goes to an empty slot.
-                    assert_eq!(game.give_stack(&capped()), Ok(None));
+                    assert_eq!(local.give_creative(game, &capped()), Ok(None));
                     assert_eq!(game.inventory[2].as_ref().map(|s| s.count), Some(16));
                     let packets = creative_slots(&sent(&mut reader));
                     let (slot, stack) = only_slot(&packets);
@@ -342,7 +372,7 @@ mod give_stack {
                         .menu
                         .set(Some((1, "minecraft:generic_9x3".into())));
                     let letter = named("minecraft:paper", 2, "letter");
-                    assert_eq!(game.give_stack(&letter), Ok(None));
+                    assert_eq!(local.give_creative(game, &letter), Ok(None));
                     assert_eq!(game.inventory[4].as_ref().map(test_snapshot), Some(letter));
                     let packets = creative_slots(&sent(&mut reader));
                     let (slot, stack) = only_slot(&packets);
@@ -385,10 +415,11 @@ mod give_stack {
                     game.remote_send_state(0);
                     sent(&mut reader);
                     let stone = net_id(game, "minecraft:item", "minecraft:stone");
+                    let local = game.local_player().unwrap();
                     let mut give = |game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
                                     count| {
                         assert_eq!(
-                            game.give_stack(&api("minecraft:stone", count, &[])),
+                            local.give_creative(game, &api("minecraft:stone", count, &[])),
                             Ok(None)
                         );
                         let packets = creative_slots(&sent(&mut reader));
@@ -414,7 +445,7 @@ mod give_stack {
                     sent(&mut reader);
                     let inventory = game.inventory.clone();
                     let gift = named("minecraft:stone", 5, "left over");
-                    assert_eq!(game.give_stack(&gift), Ok(Some(gift)));
+                    assert_eq!(local.give_creative(game, &gift), Ok(Some(gift)));
                     assert_eq!(game.inventory, inventory);
                     assert!(creative_slots(&sent(&mut reader)).is_empty());
                 });

@@ -2,6 +2,7 @@
 
 use super::toast_manager::Toast;
 use sunrise_client::hud::{HudAtlas, HudBatch};
+use sunrise_client::toasts::ToastClock;
 use sunrise_client_gameplay::tutorial::social_hint_progress;
 pub(in crate::game) use sunrise_client_gameplay::tutorial::{Hint, Previous, Step, Tutorial};
 
@@ -101,10 +102,10 @@ impl crate::game::ClientGame<'_> {
             && (!self.has_singleplayer_server() || self.is_published())
         {
             if let Some(toast) = self.tutorial_toast(Hint::SocialInteractions, Some(0.0)) {
-                self.client
-                    .toast_manager
-                    .queued
-                    .push_back(Toast::Tutorial(toast));
+                self.client.toast_manager.post(
+                    ToastClock::of(self.common.clock.still()),
+                    Toast::Tutorial(toast),
+                );
             }
             self.client.settings.file.set(
                 "joinedFirstServer",
@@ -311,6 +312,9 @@ impl crate::game::ClientGame<'_> {
     }
 
     pub(in crate::game::client_side) fn update_tutorial_toasts(&mut self) {
+        if self.common.clock.still() {
+            return;
+        }
         let wanted = self.client.tutorial.hint();
         if wanted.map(|(hint, _)| hint) != self.client.tutorial.cancelled_hint() {
             self.client.tutorial.set_cancelled_hint(None);
@@ -334,8 +338,7 @@ impl crate::game::ClientGame<'_> {
             if let Some(toast) = self.tutorial_toast(hint, progress) {
                 self.client
                     .toast_manager
-                    .queued
-                    .push_back(Toast::Tutorial(toast));
+                    .post(ToastClock::Real, Toast::Tutorial(toast));
             } else {
                 self.client.tutorial.set_cancelled_hint(Some(hint));
             }
@@ -352,8 +355,8 @@ impl HintToast {
         self.slots
     }
 
-    pub(in crate::game::client_side) fn update(&mut self) -> (Option<bool>, bool) {
-        let (sound, finished) = self.slide.update_now(|fully| {
+    pub(in crate::game::client_side) fn update(&mut self, clock: ToastClock) -> (Option<bool>, bool) {
+        let (sound, finished) = self.slide.update_on(clock, |fully| {
             self.wanted && (self.hint != Hint::SocialInteractions || social_hint_progress(fully).0)
         });
         if self.hint == Hint::SocialInteractions {

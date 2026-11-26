@@ -62,7 +62,7 @@ fn spawn_batches_refuse_saves_until_all_rows_are_published() {
                 if planned {
                     game.add_planned(
                         mobs.into_iter()
-                            .map(|m| sunrise_gameplay::game::spawner::Planned::Finalized(m, None))
+                            .map(sunrise_gameplay::game::spawner::Planned::Finalized)
                             .collect(),
                         Vec::new(),
                         Vec::new(),

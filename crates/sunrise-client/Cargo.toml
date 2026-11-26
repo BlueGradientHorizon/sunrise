@@ -77,7 +77,7 @@ sunrise-system = { path = "../sunrise-system" }
 # anonymous "I'm playing" ping is the Sunrise layer's (`sunrise-heartbeat`, in the official executable).
 sunrise-telemetry = { path = "../sunrise-telemetry", default-features = false }
 sunrise-bench = { path = "../sunrise-bench" }
-zip = { version = "9.1.3", default-features = false, features = ["deflate"], optional = true }
+zip = { version = "9.1.3", default-features = false, features = ["deflate-flate2-zlib-rs"], optional = true }
 # Controllers (evdev + libudev on Linux, IOKit on macOS, Windows.Gaming.Input); the `controllers` feature.
 # The DualSense's rumble, adaptive triggers and lights over HID (gilrs only reads it).
 # HTTPS to the Minecraft services (online-mode session join).
@@ -85,8 +85,8 @@ ureq = { version = "2", default-features = false, features = ["tls"], optional =
 # `LevelStorageAccess.estimateDiskSpace`: usable disk space, without unsafe code on Windows.
 fs4 = { version = "1.1.0", default-features = false, features = ["sync"], optional = true }
 # Mod file roots are descriptor-bound: no symlink race can leave a mod's area.
-cap-std = { version = "3", optional = true }
-cap-fs-ext = { version = "3", optional = true }
+cap-std = { version = "3.4.6", optional = true }
+cap-fs-ext = { version = "3.4.6", optional = true }
 
 [target.'cfg(unix)'.dependencies]
 # The server thread's CPU time per tick (`SUNRISE_SPIKES`, spans.rs).
@@ -156,12 +156,16 @@ sunrise-gameplay-common = { path = "../sunrise-gameplay-common", features = ["te
 sunrise-client-gameplay = { path = "../sunrise-client-gameplay", default-features = false, features = ["test-support"] }
 sunrise-gameplay = { path = "../sunrise-gameplay", features = ["test-support"] }
 sunrise-hooks = { path = "../sunrise-hooks", features = ["test-support"] }
-sunrise-game-data = { path = "../sunrise-game-data", features = ["test-language-publication"] }
-sunrise-client-lib = { path = "../sunrise-client-lib", default-features = false, features = ["test-menu-validity", "test-payload-probe", "test-publication-scope", "test-residency-observer", "test-dry-side", "test-tooltip-factories", "test-pack-feedback", "test-resource-cache"] }
+# `runtime_files` tests pack a mod folder.
+sunrise-mod-package = { path = "../sunrise-mod-package", default-features = false, features = ["folder"] }
+sunrise-game-data = { path = "../sunrise-game-data", features = ["test-language-publication", "test-effect-registry"] }
+sunrise-client-lib = { path = "../sunrise-client-lib", default-features = false, features = ["test-menu-validity", "test-payload-probe", "test-publication-scope", "test-residency-observer", "test-dry-side", "test-tooltip-factories", "test-pack-feedback", "test-resource-cache", "test-still-clock"] }
 tempfile = "3"
 bytemuck = { version = "1.24", features = ["derive"] }
 sunrise-mod-runtime = { path = "../sunrise-mod-runtime", features = ["test-work-count"] }
 sunrise-threads = { path = "../sunrise-threads", features = ["test-allocation-count", "test-game-dir"] }
+# The frame tests name pack render layers.
+sunrise-shaders = { path = "../sunrise-shaders" }
 mod_platform = { package = "sunrise-mod-api", path = "../sunrise-mod-api", features = ["engine-test-platform"] }
 mod_api = { package = "sunrise-mod-vocab", path = "../sunrise-mod-vocab", features = ["testing"] }
 sunrise-client-render = { path = "../sunrise-client-render", features = ["test-support"] }

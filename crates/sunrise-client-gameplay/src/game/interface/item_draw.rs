@@ -22,6 +22,7 @@ use sunrise_client::{
     hud::{HudBatch, Rect},
     item_render::{self, ItemRenderState, SpecialHost, WorldSink},
     mesher::Vertex,
+    skins::HeadSkinJournal,
 };
 use sunrise_core::geometry::{Aabb, Vec3};
 use sunrise_gameplay_common::game::api_values::TryIntoApi;
@@ -45,7 +46,7 @@ impl sunrise_client::hud_kit::icon::IconPainter for IconPainter<'_, '_> {
     fn item(&self, batch: &mut HudBatch, id: &str, [x, y, size]: [f32; 3]) -> bool {
         let start = batch.vertices.len();
         self.game
-            .draw_item_model(batch, &ItemStack::new(id, 1), x, y);
+            .draw_item_model(batch, &ItemStack::new(id, 1), x, y, 0);
         let scale = size / sunrise_client::hud_kit::icon::ITEM_SIZE;
         batch.scale_since(start, x, y, scale, scale);
         batch.vertices.len() > start
@@ -73,6 +74,21 @@ impl item_render::ItemDrawEnv for Env<'_, '_> {
         context: &sunrise_assets::item_model::Context<'_>,
     ) -> Option<item_render::SpecialModelInput<'_>> {
         super::native_special_renderers::draw_input(self.game, stack, context)
+    }
+
+    fn render_type(
+        &self,
+        handle: mod_api::RenderTypeRef,
+    ) -> Result<
+        sunrise_client_render::mod_pipelines::ResolvedRenderType<'static>,
+        mod_api::RenderTypeError,
+    > {
+        self.game
+            .client
+            .client_pack
+            .render
+            .mod_pipelines
+            .render_type_slot(handle)
     }
 
     fn special_model_stack(
@@ -379,6 +395,7 @@ pub struct Host<'a> {
     sprites: &'a HashMap<String, Rect>,
     skins: &'a RefCell<sunrise_client::skins::Downloader>,
     profiles: &'a RefCell<sunrise_client::skins::Resolver>,
+    head_skins: Option<&'a HeadSkinJournal>,
 }
 impl SpecialHost for Host<'_> {
     fn banner_texture(&self, pattern: &str) -> Option<String> {
@@ -396,11 +413,12 @@ impl SpecialHost for Host<'_> {
         // accepts a texture property without a signature, unlike the tab list.
         // A `Dynamic` profile (a name or id only) resolves through the
         // services (`PlayerSkinRenderCache.getOrDefault`).
-        Some(sunrise_client::skins::head_skin(
+        Some(sunrise_client::skins::head_skin_with_journal(
             profile,
             &mut self.profiles.borrow_mut(),
             &mut self.skins.borrow_mut(),
             |location| self.sprites.contains_key(location),
+            self.head_skins,
         ))
     }
 }
@@ -483,6 +501,7 @@ impl crate::game::ClientGame<'_> {
             sprites: &self.client.gui.atlas.sprites,
             skins: &self.client.skin_downloads.0,
             profiles: &self.client.skin_profiles,
+            head_skins: None,
         }
     }
     /// The client level as item models read it: worked out once a frame (a
@@ -691,10 +710,36 @@ impl crate::game::ClientGame<'_> {
         }
         state
     }
-    /// `GuiGraphics.renderItem(player, level, stack, x, y, 0)`.
-    pub fn draw_item_model(&self, batch: &mut HudBatch, stack: &ItemStack, x: f32, y: f32) {
+    /// `GuiGraphics.renderItem(player, level, stack, x, y, seed)`.
+    pub fn draw_item_model(
+        &self,
+        batch: &mut HudBatch,
+        stack: &ItemStack,
+        x: f32,
+        y: f32,
+        seed: i32,
+    ) {
+        self.draw_item_model_with_skins(batch, stack, [x, y], seed, None);
+    }
+
+    /// The seeded GUI item draw, with optional deferral for a transactional canvas.
+    pub(in crate::game) fn draw_item_model_with_skins(
+        &self,
+        batch: &mut HudBatch,
+        stack: &ItemStack,
+        [x, y]: [f32; 2],
+        seed: i32,
+        head_skins: Option<&HeadSkinJournal>,
+    ) {
         let owner = self.player_owner(Some(stack));
-        self.draw_item_model_with_owner(batch, stack, x, y, Some(&owner));
+        self.draw_item_model_with_owner_and_skins(
+            batch,
+            stack,
+            [x, y],
+            seed,
+            Some(&owner),
+            head_skins,
+        );
     }
     /// `GuiGraphicsExtractor.item`: `fakeItem` uses the same model draw with no owner.
     pub(in crate::game::client_side) fn draw_item_model_with_owner(
@@ -705,12 +750,27 @@ impl crate::game::ClientGame<'_> {
         y: f32,
         owner: Option<&OwnerState>,
     ) {
-        let state = self.resolve_item(stack, DisplayContext::Gui, owner, 0);
+        self.draw_item_model_with_owner_and_skins(batch, stack, [x, y], 0, owner, None);
+    }
+    fn draw_item_model_with_owner_and_skins(
+        &self,
+        batch: &mut HudBatch,
+        stack: &ItemStack,
+        [x, y]: [f32; 2],
+        seed: i32,
+        owner: Option<&OwnerState>,
+        head_skins: Option<&HeadSkinJournal>,
+    ) {
+        let state = self.resolve_item(stack, DisplayContext::Gui, owner, seed);
+        let host = Host {
+            head_skins,
+            ..self.item_host()
+        };
         item_render::gui::draw_with_frame(
             &state,
             &self.client.client_pack.item_renderer,
             &self.client.gui.atlas.sprites,
-            &self.item_host(),
+            &host,
             batch,
             x,
             y,
@@ -1019,7 +1079,8 @@ impl crate::game::ClientGame<'_> {
             let age = item.age as f32 + partial;
             let (lo, hi) = state.bounding_box();
             let min_offset_y = -lo.y + 0.0625;
-            let bob = (age / 10.0 + item.bob_offset).sin() * 0.1 + 0.1;
+            let motion = self.dropped_stack_motion(&item.stack);
+            let bob = item_render::item_bob(age, item.bob_offset, motion.bob);
             let spin = item_render::item_spin(age, item.bob_offset);
             let pose = glam::Mat4::from_translation(pos.as_vec3())
                 * glam::Mat4::from_translation(glam::Vec3::new(0.0, bob + min_offset_y, 0.0))
@@ -1049,11 +1110,12 @@ impl crate::game::ClientGame<'_> {
             };
             let seed = i64::from(self.common.item_number(&item.stack.item).unwrap_or(0))
                 + i64::from(item.stack.damage);
-            let copies = item_render::cluster_poses_with_depth(
+            let copies = item_render::dropped_copy_poses(
                 pose,
                 item_render::rendered_amount(item.stack.count),
                 seed,
                 hi.z - lo.z,
+                motion.spread,
             );
             // Use the same animated, spun, clustered transforms as the draw.
             // ItemEntity's collision box is only 0.25 blocks and cannot prove
@@ -1953,7 +2015,7 @@ pub(in crate::game) mod tests {
 
                         // GUI draw_item_model must not lose millis precision via `/ 1000.0 * 1000.0`.
                         let mut batch = HudBatch::scratch([64, 64]);
-                        game.draw_item_model(&mut batch, &crystal, 0.0, 0.0);
+                        game.draw_item_model(&mut batch, &crystal, 0.0, 0.0, 0);
                         let want_front = parse_quad(&eid_quads[0]["glint_uv_t123456_bits"]);
                         let mut seen = [false; 4];
                         for v in batch.vertices.iter().filter(|v| v.uv[0] >= 2.0) {

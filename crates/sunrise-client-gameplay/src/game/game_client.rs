@@ -15,7 +15,7 @@ use sunrise_client::{
     },
     gfx::{Frame, Renderer},
     graphics::EntityCullingMode,
-    hud::{HudAtlas, HudBatch},
+    hud::HudBatch,
     hud_layout, hud_overlays,
     mesher::Vertex,
     title::Action,
@@ -122,19 +122,14 @@ impl crate::game::ClientGame<'_> {
     /// `Camera.setRotation`: the camera's orientation, turned round in
     /// third-person front view.
     pub(crate) fn camera_orientation(&self) -> glam::Quat {
-        if self.client.studio.flying() {
-            return camera_rotation(
-                sunrise_level::camera_math::CameraType::FirstPerson,
+        use sunrise_level::camera_math::CameraType::FirstPerson;
+        match self.client.posed_rotation {
+            Some((yaw, pitch, roll)) => camera_rotation_rolled(FirstPerson, yaw, pitch, roll),
+            None if self.client.studio.flying() => camera_rotation_rolled(
+                FirstPerson,
                 self.client.studio.freecam.yaw,
                 self.client.studio.freecam.pitch,
-            ) * glam::Quat::from_rotation_z(self.client.studio.freecam.roll.to_radians());
-        }
-        match self.client.posed_rotation {
-            // The frame's camera, already turned round in front view.
-            Some((yaw, pitch)) => camera_rotation(
-                sunrise_level::camera_math::CameraType::FirstPerson,
-                yaw,
-                pitch,
+                -self.client.studio.freecam.roll,
             ),
             None => camera_rotation(self.client.camera_type, self.common.yaw, self.common.pitch),
         }
@@ -314,8 +309,8 @@ impl crate::game::ClientGame<'_> {
         }
     }
     pub(in crate::game) fn render_frame(&mut self) -> Result<bool> {
-        self.render_with(|renderer, frame| {
-            sunrise_level::spans::time("renderer", || renderer.render(frame))
+        self.render_with_hooks(|renderer, frame, hooks| {
+            sunrise_level::spans::time("renderer", || renderer.render(frame, hooks))
         })
     }
     /// Extract every particle group after the frame's entity, screen and hand callbacks.
@@ -579,7 +574,7 @@ impl crate::game::ClientGame<'_> {
         let fire_yaw = self
             .client
             .posed_rotation
-            .map_or(self.client.view.y_rot, |(y, _)| y);
+            .map_or(self.client.view.y_rot, |(y, _, _)| y);
         // Packs may move vertices or draw from another camera. The guarded
         // billboard frustum covers TAA's jitter without changing model culling.
         let fire_view = billboard_frustum.as_ref().filter(|_| {
@@ -848,7 +843,7 @@ impl crate::game::ClientGame<'_> {
         // Entity shadows (EntityRenderer.extractShadow); a native pack's sun shadows replace them.
         self.mark_translucent_entity(out.len(), "minecraft:entity_shadow");
         let pack_shadows = self.client.renderer.0.as_ref().is_some_and(|r| {
-            r.pack_entity_shadows() || (self.overworld_skybox() && r.native_shadow())
+            r.pack_entity_shadows()
         });
         let shadows = self.client.settings.entity_shadows
             && self.client.client_pack.polytone_colors.entity_shadows();
@@ -1130,13 +1125,14 @@ impl crate::game::ClientGame<'_> {
                         r.block_entity_section_in_eye_view(block.0, camera, view.as_ref(), radius),
                     )
                 });
-                self.mod_block_entity_geometry(
+                let mod_cracks = self.mod_block_entity_geometry(
                     mods.chain(untemplated_eye),
                     camera,
                     alpha as f32,
                     &mut out,
                 );
                 self.mark_stage(out.len(), "DESTROY");
+                out.extend(mod_cracks);
                 for &(pos, stage) in &cracks {
                     let state = self.common.world.block(pos[0], pos[1], pos[2]);
                     self.client_res()
@@ -1389,11 +1385,16 @@ impl crate::game::ClientGame<'_> {
                             // up as vanilla's do; their pending clicks stay.
                             self.client.mod_keys.set_all_up();
                             self.capture(false);
+                        } else if self.client.screen_grab {
+                            self.capture(false);
                         }
                         self.client.regrab_on_refocus = held;
                     }
                 }
                 WindowEvent::CursorMoved { .. } => {
+                    if self.mod_screen_grabs_pointer() {
+                        return Ok(());
+                    }
                     if let (Some(r), Some(sample)) = (&self.client.renderer.0, cursor_sample) {
                         let size = [r.config.width, r.config.height];
                         let projection = self.pointer_projection(size);
@@ -1418,6 +1419,12 @@ impl crate::game::ClientGame<'_> {
                                 .drag_button
                                 .filter(|b| self.client.physical_buttons.contains(b))
                         };
+                        if self.screen_mouse_moved(delta) {
+                            return Ok(());
+                        }
+                        if self.client.screen_state.0.screen_instance != initial_instance {
+                            return Ok(());
+                        }
                         match self.screen_mouse_dragged(delta) {
                             ScreenMousePre::Canceled => return Ok(()),
                             ScreenMousePre::Passed(post) => mouse_post = Some(post),
@@ -1829,7 +1836,6 @@ impl crate::game::ClientGame<'_> {
                         self.client.physical_buttons.remove(&button);
                         return Ok(());
                     }
-                    self.extras_mouse(button, pressed);
                     if pressed && self.client.settings.keys.get("key.smoothCamera") == input {
                         self.smooth_camera_action();
                     }
@@ -1851,6 +1857,15 @@ impl crate::game::ClientGame<'_> {
                     let elapsed = now.duration_since(self.common.previous);
                     self.client.frame_ticks = elapsed.as_secs_f32() * 20.0;
                     self.common.previous = now;
+                    let booked = self.client.profile.unbooked.take();
+                    if let Some(frame) = &booked {
+                        self.record_perf_frame(
+                            elapsed.as_secs_f32() * 1000.0,
+                            frame.cpu_ms,
+                            frame.gpu_ms,
+                            &frame.spans,
+                        );
+                    }
                     self.client.upload_pace.frame(elapsed);
                     self.studio_fly(elapsed);
                     // Arrow-key camera controls belong to gameplay; chat and
@@ -1908,7 +1923,8 @@ impl crate::game::ClientGame<'_> {
                     self.advance_flight();
                     self.tick_world_icon();
                     let ticked = Instant::now();
-                    let rendered = self.render_and_flip(elapsed)?;
+                    let limit = self.framerate_limit();
+                    let rendered = limit != 0 && self.render_and_flip(elapsed)?;
                     self.native_frame_end()?;
                     // Drain once for both the raw flight and the slow-frame/capture route.
                     let frame_spans = if sunrise_level::spans::recording_here() {
@@ -1921,13 +1937,14 @@ impl crate::game::ClientGame<'_> {
                         sunrise_level::spans::FrameRecording::block_entity_work,
                     );
                     drop(flight_spans);
-                    let mut perf_times = None;
+                    let mut own_work = None;
                     if let Some(r) = self.client.renderer.0.as_mut() {
                         let cpu = now.elapsed().saturating_sub(r.last_wait);
                         sunrise_threads::work::tick_end(cpu.as_nanos() as u64);
+                        let ms = |d: Duration| d.as_secs_f32() * 1000.0;
+                        let gpu = if rendered { r.gpu_times.last().copied() } else { None };
+                        own_work = Some((ms(cpu), gpu));
                         if rendered {
-                            let ms = |d: Duration| d.as_secs_f32() * 1000.0;
-                            perf_times = Some((ms(cpu), r.gpu_times.last().copied()));
                             let g = &self.client.settings.sunrise;
                             // The scale while Dynamic Resolution moves it on its own.
                             let dynamic_scale = g
@@ -1978,7 +1995,7 @@ impl crate::game::ClientGame<'_> {
                         self.client.frame_stats.record_gpu(&r.gpu_times);
                         r.gpu_times.clear();
                     }
-                    self.limit_frame();
+                    self.limit_frame(limit);
                     let paused = self.pauses_game();
                     if paused != self.common.pause {
                         let mut cancel = false;
@@ -2045,18 +2062,17 @@ impl crate::game::ClientGame<'_> {
                         log::warn!("Sunrise: couldn't save the world icon: {error}");
                     }
                     self.record_streaming_work(rendered, block_entity_work, &frame_spans);
+                    if let Some((cpu_ms, gpu_ms)) = own_work {
+                        self.client.profile.unbooked = Some(profile_capture::UnbookedFrame {
+                            cpu_ms,
+                            gpu_ms,
+                            spans: frame_spans,
+                        });
+                    }
                     if rendered {
                         self.client
                             .frame_stats
                             .record(elapsed.as_secs_f32() * 1000.0);
-                        if let Some((cpu, gpu)) = perf_times {
-                            self.record_perf_frame(
-                                elapsed.as_secs_f32() * 1000.0,
-                                cpu,
-                                gpu,
-                                &frame_spans,
-                            );
-                        }
                         if sunrise_threads::alloc_count::ON {
                             self.record_frame_allocs();
                         }
@@ -2080,7 +2096,10 @@ impl crate::game::ClientGame<'_> {
                         {
                             self.client
                                 .perf
-                                .frame(elapsed.as_secs_f32() * 1000.0, &frame_spans);
+                                .frame(
+                                    elapsed.as_secs_f32() * 1000.0,
+                                    booked.as_ref().map_or(&[], |frame| frame.spans.as_slice()),
+                                );
                             if startup::filling() {
                                 let mut fill: Vec<(&'static str, usize)> =
                                     self.client.streaming.stages().to_vec();
@@ -2103,6 +2122,7 @@ impl crate::game::ClientGame<'_> {
                         self.client.frames += 1;
                         self.client.fps_frames += 1;
                         sunrise_level::crash::debug_crash_tick();
+                        sunrise_level::crash::relay_worker_panic();
                         if self.client.fps_at.elapsed() >= Duration::from_secs(1) {
                             self.client.fps = self.client.fps_frames as f32
                                 / self.client.fps_at.elapsed().as_secs_f32();
@@ -2143,6 +2163,8 @@ impl crate::game::ClientGame<'_> {
     pub fn hud_layers(&mut self, size: [u32; 2]) -> HudBatch {
         use sunrise_client::gui_layers::VanillaGuiLayer;
 
+        self.client.hud_status_heights = Default::default();
+        self.client.hud_status_heights_set.set(None);
         self.input_hud_begin();
         self.client.subtitles.deferred.set(false);
         let mut batch = HudBatch::new(size, self.client.settings.gui_scale_inputs());
@@ -2239,8 +2261,6 @@ impl crate::game::ClientGame<'_> {
             self.draw_title_screen_with_post_hook(&mut batch);
             return batch;
         }
-        let atlas_ptr: *const HudAtlas = &self.client.gui.atlas;
-        let _ = atlas_ptr;
         // The ToastManager draws over every screen: a server's packs
         // download while the connection screen shows.
         if self.remote_overlay(&mut batch) {
@@ -2331,10 +2351,7 @@ impl crate::game::ClientGame<'_> {
                 if spectator {
                     g.draw_spectator_hotbar(batch, g.own_player_is_spectator());
                 } else if let Some((inputs, source)) = g.camera_hotbar(camera) {
-                    let mut draws = hud_layout::hotbar(wi, hi, &inputs);
-                    // `extractSlot` for each item, in order, on the path `gui_paint` takes.
-                    let mut items = crate::game::gui_paint_items::HotbarItems { game: g, source };
-                    hud_layout::paint_items(batch, &g.client.gui.atlas, &draws, &mut items);
+                    g.draw_item_hotbar(batch, [wi, hi], &inputs, source);
                     if indicator == 2 {
                         // Items and arm follow the camera; the charge belongs to the local player.
                         let mut progress = g
@@ -2346,7 +2363,7 @@ impl crate::game::ClientGame<'_> {
                                 progress: &mut progress,
                             },
                         );
-                        let start = draws.len();
+                        let mut draws = Vec::new();
                         hud_layout::hotbar_attack_indicator(
                             wi,
                             hi,
@@ -2354,7 +2371,7 @@ impl crate::game::ClientGame<'_> {
                             progress,
                             &mut draws,
                         );
-                        hud_layout::paint(batch, &g.client.gui.atlas, &draws[start..]);
+                        hud_layout::paint(batch, &g.client.gui.atlas, &draws);
                     }
                 }
             });
@@ -2369,22 +2386,10 @@ impl crate::game::ClientGame<'_> {
                     g.draw_boss_bars(batch);
                 }
             });
-            let mut corners = sunrise_client::extras_hud::Corners::new(
-                w,
-                h,
-                if show_hud {
-                    self.effect_rows_height()
-                } else {
-                    0.0
-                },
-            );
             if show_hud {
-                self.draw_extras(&mut batch, &mut corners);
+                self.draw_extras(&mut batch);
             }
 
-            // NeoForge's Hud.registerVanillaLayers: each status row owns its own extraction.
-            // The installed vanilla bodies share the column heights and a scratch draw list.
-            let mut status_heights = hud_layout::StatusBarHeights::default();
             let mut status_rows = Vec::new();
             let mount = if !show_hud {
                 None
@@ -2409,7 +2414,7 @@ impl crate::game::ClientGame<'_> {
                         kind,
                         wi,
                         hi,
-                        &mut status_heights,
+                        &mut g.client.hud_status_heights,
                         &mut status_rows,
                     );
                     hud_layout::paint(batch, &g.client.gui.atlas, &status_rows);
@@ -2423,7 +2428,7 @@ impl crate::game::ClientGame<'_> {
                     return;
                 };
                 status_rows.clear();
-                hud_layout::armor_level(armor, wi, hi, &mut status_heights, &mut status_rows);
+                hud_layout::armor_level(armor, wi, hi, &mut g.client.hud_status_heights, &mut status_rows);
                 hud_layout::paint(batch, &g.client.gui.atlas, &status_rows);
             });
             self.gui_layer(VanillaGuiLayer::FoodLevel, &mut batch, &mut |g, batch| {
@@ -2438,7 +2443,7 @@ impl crate::game::ClientGame<'_> {
                     &inputs,
                     wi,
                     hi,
-                    &mut status_heights,
+                    &mut g.client.hud_status_heights,
                     &mut status_rows,
                 );
                 hud_layout::paint(batch, &g.client.gui.atlas, &status_rows);
@@ -2456,7 +2461,7 @@ impl crate::game::ClientGame<'_> {
                         hi,
                         hearts,
                         health,
-                        &mut status_heights,
+                        &mut g.client.hud_status_heights,
                         &mut status_rows,
                     );
                     hud_layout::paint(batch, &g.client.gui.atlas, &status_rows);
@@ -2474,7 +2479,7 @@ impl crate::game::ClientGame<'_> {
                     &inputs,
                     wi,
                     hi,
-                    &mut status_heights,
+                    &mut g.client.hud_status_heights,
                     &mut status_rows,
                 );
                 hud_layout::paint(batch, &g.client.gui.atlas, &status_rows);
@@ -2488,10 +2493,7 @@ impl crate::game::ClientGame<'_> {
                         .position(|s| *s == "player")
                         .unwrap_or(0);
                     let capture = g.client.audio.0.capture.take();
-                    g.client
-                        .audio
-                        .0
-                        .play_on(players, "ui.hud.bubble_pop", Some(at), volume, pitch);
+                    g.play_audio_on(players, "ui.hud.bubble_pop", Some(at), volume, pitch);
                     g.client.audio.0.capture = capture;
                 }
             });
@@ -2615,7 +2617,9 @@ impl crate::game::ClientGame<'_> {
             });
             self.draw_mod_gui_layers(None, &mut batch);
             self.client.hud_layer_next = None;
-            self.native_render_gui_post(&mut batch, &mut corners);
+            self.client.hud_status_heights_set.set(None);
+            self.native_render_gui_post(&mut batch);
+            self.client.hud_layer_bounds.clear();
         }
         // Screen.extractBlurredBackground blurs the world and HUD, while the
         // screen's background, widgets, toasts and debug overlay stay sharp.
@@ -2840,6 +2844,41 @@ impl crate::game::ClientGame<'_> {
     }
     /// Window bookkeeping, shortcuts and overlays before dispatching to the screen. Returns
     /// `true` when an early handler consumed the event.
+    fn screen_mouse_moved(&self, delta: [f32; 2]) -> bool {
+        if self.pad_synthetic_input()
+            || delta == [0.0; 2]
+            || self.client.screen_grab
+            || !mod_api::__private::listened(mod_api::HookId::ScreenMouseMovedPre)
+        {
+            return false;
+        }
+        let Some(receiver) = self.observed_input_screen() else {
+            return false;
+        };
+        let mut canceled = false;
+        self.native_screen_mouse_moved_pre(
+            &receiver.view(),
+            delta,
+            glfw_modifiers(self.client.modifiers),
+            &mut canceled,
+        );
+        canceled
+    }
+    /// The files of the last drop, fired as one list for the open screen (`Screen.onFilesDrop`):
+    /// before the next window event, or when the event-loop pass ends. Nothing is built with no
+    /// listener or no screen.
+    pub(in crate::game) fn fire_dropped_files(&mut self) {
+        if self.client.dropped_files.is_empty() {
+            return;
+        }
+        let paths = std::mem::take(&mut self.client.dropped_files);
+        if !mod_api::__private::listened(mod_api::HookId::ScreenFilesDropped) {
+            return;
+        }
+        if let Some(receiver) = self.observed_input_screen() {
+            self.native_screen_files_dropped(&receiver.view(), &paths);
+        }
+    }
     pub(in crate::game::client_side) fn prepare_window_event(
         &mut self,
         event_loop: &dyn EventLoopCtl,
@@ -2880,6 +2919,9 @@ impl crate::game::ClientGame<'_> {
         // Pack drops on the resource-pack and Create New World screens.
         if let WindowEvent::DroppedFile(path) = event {
             self.drop_pack_file(path);
+            if mod_api::__private::listened(mod_api::HookId::ScreenFilesDropped) {
+                self.client.dropped_files.push(path.clone());
+            }
         }
         // Fullscreen is a window shortcut, before screens consume keyboard input.
         // Not Alt or Super on their own: leaving the window isn't playing with the keyboard.
@@ -2989,8 +3031,8 @@ impl crate::game::ClientGame<'_> {
                     let (w, h) = self.gui_size();
                     let (x, y) = sunrise_client::level_loading::file_fixer_cancel(w, h);
                     if sunrise_client::ui::hovered(self.client.cursor, x, y, 200.0, 20.0) {
-                        self.client.audio.0.play_button_click();
                         upgrade.set_canceled();
+                        self.play_audio_button_click();
                     }
                 }
                 _ => {}
@@ -3131,10 +3173,7 @@ impl crate::game::ClientGame<'_> {
                 } => {
                     self.growth_particles(pos, data);
                     let at = [pos.x, pos.y, pos.z].map(|v| f64::from(v) + 0.5);
-                    self.client
-                        .audio
-                        .0
-                        .play("minecraft:item.bone_meal.use", Some(at), 1.0, 1.0);
+                    self.play_audio("minecraft:item.bone_meal.use", Some(at), 1.0, 1.0);
                 }
                 LevelEvent::LevelEvent {
                     id: 2015,
@@ -3259,25 +3298,25 @@ impl crate::game::ClientGame<'_> {
                         f64::from(pos.z) + 0.5,
                     ];
                     match id {
-                        1000 => self.client.audio.0.play(
+                        1000 => self.play_audio(
                             "minecraft:block.dispenser.dispense",
                             Some(c),
                             1.0,
                             1.0,
                         ),
-                        1001 => self.client.audio.0.play(
+                        1001 => self.play_audio(
                             "minecraft:block.dispenser.fail",
                             Some(c),
                             1.0,
                             1.2,
                         ),
-                        1002 => self.client.audio.0.play(
+                        1002 => self.play_audio(
                             "minecraft:block.dispenser.launch",
                             Some(c),
                             1.0,
                             1.2,
                         ),
-                        1004 => self.client.audio.0.play(
+                        1004 => self.play_audio(
                             "minecraft:entity.firework_rocket.shoot",
                             Some(c),
                             1.0,
@@ -3286,7 +3325,7 @@ impl crate::game::ClientGame<'_> {
                         1018 => {
                             let r = self.client.particles.0.random();
                             let pitch = (r.next_float() - r.next_float()) * 0.2 + 1.0;
-                            self.client.audio.0.play(
+                            self.play_audio(
                                 "minecraft:entity.blaze.shoot",
                                 Some(c),
                                 2.0,
@@ -3296,20 +3335,20 @@ impl crate::game::ClientGame<'_> {
                         1051 => {
                             let pitch =
                                 0.4 / (self.client.particles.0.random().next_float() * 0.4 + 0.8);
-                            self.client.audio.0.play(
+                            self.play_audio(
                                 "minecraft:entity.wind_charge.throw",
                                 Some(c),
                                 0.5,
                                 pitch,
                             );
                         }
-                        1049 => self.client.audio.0.play(
+                        1049 => self.play_audio(
                             "minecraft:block.crafter.craft",
                             Some(c),
                             1.0,
                             1.0,
                         ),
-                        1050 => self.client.audio.0.play(
+                        1050 => self.play_audio(
                             "minecraft:block.crafter.fail",
                             Some(c),
                             1.0,
@@ -3585,6 +3624,7 @@ impl crate::game::ClientGame<'_> {
             f64::from(pos.z) + 0.5,
         ];
         self.client.particles.0.add_with(
+            None,
             &sunrise_level::particle_options::ParticleOptions::simple(
                 sunrise_level::particle_options::ParticleType::ExplosionEmitter,
             ),
@@ -3595,7 +3635,7 @@ impl crate::game::ClientGame<'_> {
         );
         let random = self.client.particles.0.level_random();
         let pitch = (1.0 + (random.next_float() - random.next_float()) * 0.2) * 0.7;
-        self.client.audio.0.play_unshared(
+        self.play_audio_unshared(
             "minecraft:block.end_gateway.spawn",
             Some(at),
             10.0,
@@ -3605,7 +3645,7 @@ impl crate::game::ClientGame<'_> {
     #[inline(always)]
     pub(in crate::game) fn process_level_events_portal_travel_client(&mut self) {
         let pitch = self.client.particles.0.level_random().next_float() * 0.4 + 0.8;
-        self.client.audio.0.play_on(
+        self.play_audio_on(
             sunrise_game_data::sound_source::AMBIENT,
             "minecraft:block.portal.travel",
             None,
@@ -3667,9 +3707,9 @@ impl crate::game::ClientGame<'_> {
         ) {
             // Clients play these sounds from their level events;
             // capturing it also sends a duplicate sound packet.
-            self.client.audio.0.play_unshared(name, c, volume, pitch);
+            self.play_audio_unshared(name, c, volume, pitch);
         } else {
-            self.client.audio.0.play(name, c, volume, pitch);
+            self.play_audio(name, c, volume, pitch);
         }
     }
     pub(in crate::game::client_side) fn project_window_cursor(
@@ -3725,20 +3765,46 @@ impl crate::game::ClientGame<'_> {
         }
         let (screenshot, screenshot_result) = (old.screenshot.take(), old.screenshot_result.take());
         let display = old.display_reading();
+        self.client.mod_gpu = None;
         drop(old);
+        let device = pollster::block_on(sunrise_client::gfx::Opened::for_window(
+            &window,
+            self.common.options.offscreen,
+            self.client.settings.sunrise.api,
+            self.client.client_pack.render.texture_layers,
+        ))?;
+        if self.client.gui.stitch_for_device(
+            &self.common.pack.source,
+            &self.common.vanilla_root(),
+            device.max_atlas_size(),
+        )? {
+            self.client.particles.0.reload(
+                &self.common.pack.source,
+                &self.client.gui.atlas.sprites,
+                &self.client.gui.atlas.translucent,
+            );
+            self.client.standalone_geometry = native_block_entity_draw::StandaloneGeometry::new(
+                &self.common.pack,
+                &self.client.client_pack,
+                &self.client.gui,
+                Some(self.client_res().block_entity_render()),
+            );
+            sunrise_client::ui_theme::reset_atlas();
+            self.native_texture_atlas_stitched(mod_api::TextureAtlas::Gui);
+        }
         let (mut renderer, clouds) = build_renderer(
             window,
             self.common.options.offscreen,
             &self.common.pack,
             &self.client.client_pack,
             &self.client.gui,
-            None,
+            sunrise_client::gfx::RendererDevice::Opened(Box::new(device)),
             None,
             self.client.settings.sunrise.api,
             self.client.settings.sunrise.translucent_batching,
-            self.client.settings.vsync,
+            self.effective_vsync(),
             &self.client.settings.sunrise,
-            shader_packs::picked_pack_shape(&self.client.settings),
+            self.picked_pack_shape(),
             display,
             self.client.settings.texture_atlas_settings(),
         )?;
@@ -3801,7 +3867,19 @@ impl crate::game::ClientGame<'_> {
         &mut self,
         consume: impl FnOnce(&mut Renderer, &Frame<'_>) -> Result<bool>,
     ) -> Result<bool> {
+        self.render_with_hooks(|renderer, frame, _| consume(renderer, frame))
+    }
+
+    fn render_with_hooks(
+        &mut self,
+        consume: impl FnOnce(
+            &mut Renderer,
+            &Frame<'_>,
+            Option<&mut dyn sunrise_client::gfx::world_primitives::FrameHooks>,
+        ) -> Result<bool>,
+    ) -> Result<bool> {
         self.begin_frame_draws();
+        self.extract_arm_poses();
         let prepare = spans::guard("prepare");
         let mut pr = spans::laps();
         // The window's GPU holds the atlas: its copy in memory is kept
@@ -3866,7 +3944,7 @@ impl crate::game::ClientGame<'_> {
                     );
                     pr.lap("pr_loading");
                     drop(prepare);
-                    return renderer.render(&loading_frame(&hud));
+                    return renderer.render(&loading_frame(&hud), None);
                 }
                 return Ok(false);
             }
@@ -3911,7 +3989,7 @@ impl crate::game::ClientGame<'_> {
                 );
                 pr.lap("pr_loading");
                 drop(prepare);
-                return renderer.render(&loading_frame(&hud));
+                return renderer.render(&loading_frame(&hud), None);
             }
             return Ok(false);
         }
@@ -3934,7 +4012,7 @@ impl crate::game::ClientGame<'_> {
                 );
                 pr.lap("pr_loading");
                 drop(prepare);
-                return renderer.render(&loading_frame(&hud));
+                return renderer.render(&loading_frame(&hud), None);
             }
             return Ok(false);
         }
@@ -3963,37 +4041,24 @@ impl crate::game::ClientGame<'_> {
                 .0
                 .as_mut()
                 .expect("renderer sized above")
-                .render(&loading_frame(&hud));
+                .render(&loading_frame(&hud), None);
         }
         pr.lap("pr_setup");
         let alpha = self.frame_world_partial_tick();
         self.refresh_client_pick(alpha as f32);
         // Camera.getCameraEntityPartialTicks: only players and their mounts stay unfrozen.
         let camera_alpha = self.camera_partial_tick();
-        self.apply_requested_camera_type();
-        let vanilla = self.camera_view(camera_alpha as f32);
-        let view = vanilla.map(|view| {
-            if self.shows_panorama() || self.client.studio.flying() {
-                view
-            } else {
-                self.native_camera_pose_now(camera_alpha as f32, view)
-            }
-        });
-        // What faces the camera (particles, item sprites, block entity text) faces a mod's.
-        // A spectated entity's view is not the local player's yaw and pitch
-        // (`Camera.setup` reads the camera entity), so it is kept too.
-        let spectating = self.spectated_camera_snapshot().is_some();
-        self.client.posed_rotation = view
-            .filter(|posed| spectating || Some(*posed) != vanilla)
-            .map(|(_, yaw, pitch)| (yaw, pitch));
+        let view = self.frame_camera(camera_alpha as f32);
+        self.check_screenshot_sequence_camera(view);
+        self.client.posed_rotation = view.map(|(_, yaw, pitch, roll)| (yaw, pitch, roll));
         let eye = view.map(|_| {
             (
                 glam::DVec3::from_array(self.client.view.eye),
                 self.client.view.eye_rotation,
             )
         });
-        let (camera, underwater, view_yaw, view_pitch) = match view {
-            Some((c, yaw, pitch)) => {
+        let (camera, underwater, view_yaw, view_pitch, view_roll) = match view {
+            Some((c, yaw, pitch, roll)) => {
                 let s = self.common.world.block(
                     c.x.floor() as i32,
                     c.y.floor() as i32,
@@ -4004,6 +4069,7 @@ impl crate::game::ClientGame<'_> {
                     self.common.res.facts().get(s).fluid == Fluid::Water,
                     yaw,
                     pitch,
+                    roll,
                 )
             }
             None => (
@@ -4011,13 +4077,17 @@ impl crate::game::ClientGame<'_> {
                 false,
                 self.common.yaw,
                 self.common.pitch,
+                0.0,
             ),
         };
         pr.lap("pr_camera");
-        self.client
-            .audio
-            .0
-            .set_listener([camera.x, camera.y, camera.z], view_yaw, view_pitch);
+        let (forward, up) = if view.is_some() {
+            (self.client.view.forwards, self.client.view.up)
+        } else {
+            let q = sunrise_client::camera::rotation_with_roll(view_yaw, view_pitch, view_roll);
+            (q.transform([0.0, 0.0, -1.0]), q.transform([0.0, 1.0, 0.0]))
+        };
+        self.client.audio.0.set_listener(camera.to_array(), forward, up);
         self.follow_audio_stream_entities();
         pr.lap("pr_listener");
         let block = [
@@ -4167,15 +4237,29 @@ impl crate::game::ClientGame<'_> {
             environment.set_frame(&frame);
             polytone_frame = Some(&frame);
         }
-        let mut sky = environment.sample(&sunrise_level::environment::Sample {
-            day_time: self.view_day_time(),
-            rain,
-            thunder,
-            blend: Some(&blend),
-            biome: Some(attributes_of(biome)),
-            post_blend: Some(&post_blend),
-            post_biome: Some(post_of(biome)),
-        });
+        let fixed_time = self.client.settings.extras.pvp.tweaks.time
+            .filter(|_| self.own_view())
+            .map(|_| self.view_day_time());
+        let sample_clock = |clock: &str| {
+            fixed_time.unwrap_or_else(|| {
+                self.client.remote.as_ref().map_or_else(
+                    || self.common.command_clock_time(clock),
+                    |remote| remote.named_clock_time(clock),
+                )
+            })
+        };
+        let mut sky = environment.sample_with_clock(
+            &sunrise_level::environment::Sample {
+                day_time: self.view_day_time(),
+                rain,
+                thunder,
+                blend: Some(&blend),
+                biome: Some(attributes_of(biome)),
+                post_blend: Some(&post_blend),
+                post_biome: Some(post_of(biome)),
+            },
+            &sample_clock,
+        );
         self.end_flash_sky(&mut sky, alpha);
         if self.common.flash > 0 && !self.client.settings.file.bool("hideLightningFlashes") {
             // ClientLevel's flash layer while skyFlashTime > 0: the sky colour
@@ -4195,28 +4279,15 @@ impl crate::game::ClientGame<'_> {
         let on_top = g.on_top;
         pr.lap("pr_debug");
         let visuals = if self.client.title.0.is_none() {
-            self.native_frame_visuals(alpha, &mut lines)
+            self.native_frame_visuals(&mut lines)
         } else {
             native_visuals::FrameVisuals::default()
         };
-        let emissive_layers = if self.client.title.0.is_none() {
-            let mut requests = Vec::new();
-            self.native_emissive(&mut requests);
-            // Native mods' overlays first, then the packs' OptiFine emissive blocks.
-            sunrise_client::native_emissive::table(
-                &self.client.client_pack.render.sprite_layers,
-                &self.client.client_pack.render.file_layers,
-                requests,
-                &self.client.client_pack.render.emissive,
-            )
-        } else {
-            Vec::new()
-        };
         pr.lap("pr_native_visuals");
-        let view = if self.client.studio.flying() {
-            glam::Mat4::from_quat(self.camera_orientation().conjugate())
-        } else {
+        let view = if view_roll == 0.0 {
             sunrise_client::camera::view_matrix(view_yaw, view_pitch)
+        } else {
+            glam::Mat4::from_quat(self.camera_orientation().conjugate())
         };
         let at = camera.to_array();
         // GameRenderer.render3dHud: the debug crosshair, first person with the HUD shown.
@@ -4268,7 +4339,7 @@ impl crate::game::ClientGame<'_> {
             .unwrap_or_default();
         pr.lap("pr_outline");
         let title = self.shows_panorama();
-        let (yaw, pitch) = if title {
+        let (yaw, pitch, roll) = if title {
             // PanoramaRenderer: the title cube spins at 0.1 degrees per tick, pitched 10 degrees.
             (
                 self.client.panorama_rotation.update(
@@ -4276,9 +4347,15 @@ impl crate::game::ClientGame<'_> {
                     self.client.settings.file.double("panoramaScrollSpeed") as f32,
                 ),
                 10.0,
+                0.0,
             )
         } else {
-            (view_yaw, view_pitch)
+            (view_yaw, view_pitch, view_roll)
+        };
+        let frame_view_matrix = if title {
+            sunrise_client::camera::view_matrix(yaw, pitch)
+        } else {
+            view
         };
         let fov_degrees = if title {
             85.0
@@ -4306,8 +4383,28 @@ impl crate::game::ClientGame<'_> {
         let depth_far =
             sunrise_client::camera::depth_far(terrain_distance, self.client.settings.cloud_range);
         let mods_read_camera = !mod_api::__private::mods().is_empty();
+        let view_transform = if camera_effects
+            && self.common.player.is_some()
+            && mod_api::__private::listened(mod_api::HookId::RenderViewTransform)
+            && let Some(renderer) = &self.client.renderer.0
+        {
+            let usable = renderer.view_transform_validator([yaw, pitch, roll], fov_degrees, depth_far, bob, spin);
+            mod_api::ViewTransform::with_frame(usable, |transform| {
+                self.native_render_view_transform(camera_alpha as f32, transform);
+                glam::Mat4::from_cols_array(&transform.matrix())
+            })
+        } else {
+            glam::Mat4::IDENTITY
+        };
+        let posed_bob = bob * view_transform;
         self.client.screen_blur_requested.set(false);
+        self.client.native_camera_entity_eye =
+            (!title && self.camera_subject().is_some()).then_some(self.client.view.eye);
+        let previous_camera = self.client.native_camera_frame.take();
         self.client.native_camera_frame = (mods_read_camera && !title).then(|| {
+            let mut dimension = previous_camera.map_or_else(String::new, |snapshot| snapshot.dimension);
+            dimension.clear();
+            dimension.push_str(self.common.dim.id());
             let partial = camera_alpha as f32;
             mod_api::Camera {
                 position: camera.to_array(),
@@ -4316,11 +4413,11 @@ impl crate::game::ClientGame<'_> {
                 partial_tick: partial,
                 yaw,
                 pitch,
+                roll,
                 fov_degrees,
                 near: 0.05,
                 far: depth_far,
-                view: (bob * spin * sunrise_client::camera::view_matrix(yaw, pitch))
-                    .to_cols_array(),
+                view: (posed_bob * spin * frame_view_matrix).to_cols_array(),
                 projection: glam::Mat4::perspective_rh(
                     fov_degrees.to_radians(),
                     size[0] as f32 / size[1].max(1) as f32,
@@ -4328,7 +4425,7 @@ impl crate::game::ClientGame<'_> {
                     0.05,
                 )
                 .to_cols_array(),
-                dimension: self.common.dim.id().to_string(),
+                dimension,
             }
         });
         let _projection_frame = (!title).then(|| self.activate_projection_frame());
@@ -4348,11 +4445,7 @@ impl crate::game::ClientGame<'_> {
         });
         if reload_overlay.is_none() {
             self.flush_ime(&mut hud);
-            self.native_gui_render_post(
-                &mut hud,
-                self.client.chat_ui.hide_gui,
-                self.client.focused,
-            );
+
         }
         self.resolve_inline_profiles(&hud.inline_profiles);
         pr.lap("pr_hud");
@@ -4393,7 +4486,7 @@ impl crate::game::ClientGame<'_> {
                 depth_far,
                 0.05,
             ),
-            model_view: bob * spin * sunrise_client::camera::view_matrix(yaw, pitch),
+            model_view: posed_bob * spin * frame_view_matrix,
             sun_angle: sun_angle.to_radians() - std::f32::consts::FRAC_PI_2,
             day_time: day_time.rem_euclid(24000) as f32,
             delta_time: delta_ticks,
@@ -4406,8 +4499,8 @@ impl crate::game::ClientGame<'_> {
         // Camera.createProjectionMatrixForCulling: max(fov, configuredFov), without bob or spin.
         self.client.view_frustum = self.world_view_frustum(
             camera,
-            [cull_fov_degrees, yaw, pitch],
-            glam::Mat4::IDENTITY,
+            [cull_fov_degrees, yaw, pitch, roll],
+            view_transform,
             depth_far,
         );
         let billboard_frustum = if self.client.settings.sunrise.taa {
@@ -4416,7 +4509,8 @@ impl crate::game::ClientGame<'_> {
                     cull_fov_degrees,
                     yaw,
                     pitch,
-                    glam::Mat4::IDENTITY,
+                    roll,
+                    view_transform,
                     depth_far,
                 )
             })
@@ -4444,6 +4538,7 @@ impl crate::game::ClientGame<'_> {
         // the eyes and rays to it without changing their material routing.
         let mut additive = self.client.particles.0.take_additive();
         if !title {
+            self.client.frame_batch_reserved_quads.set(additive.len() / 4);
             let (built, static_sections, visible_static_sections, static_stats) =
                 spans::time("entity_geometry", || {
                     self.entity_geometry(camera, alpha, billboard_frustum, entities, &mut additive)
@@ -4457,6 +4552,7 @@ impl crate::game::ClientGame<'_> {
             // draws are started by `begin_skinning`, which only `entity_geometry`
             // runs, and would otherwise stay those of the last world frame and
             // be drawn over the title (#8192). Its models stay stored.
+            self.client.frame_batch_reserved_quads.set(0);
             self.client.skin_frame.get_mut().clear_draws();
         }
         pr.lap("pr_entities");
@@ -4486,12 +4582,14 @@ impl crate::game::ClientGame<'_> {
         let (mut hand, hand_items) = if title || self.scoping() {
             Default::default()
         } else {
+            self.client.frame_batch_reserved_quads
+                .set((additive.len() / 4).saturating_add(entities.len() / 4));
             self.hand_geometry(camera_alpha)
         };
         // GameRenderer.render3dHud: the screen effects after the hand, in
         // its pass (the hand pass draws with `bob * view`).
         if !title {
-            let view = bob * sunrise_client::camera::view_matrix(yaw, pitch);
+            let view = posed_bob * frame_view_matrix;
             let aspect = size[0] as f32 / size[1].max(1) as f32;
             self.item_activation_geometry(camera_alpha as f32, view, aspect, &mut hand);
         }
@@ -4570,14 +4668,19 @@ impl crate::game::ClientGame<'_> {
             );
             self.polytone_gpu_particles(camera, alpha);
         }
+        if !title {
+            self.follow_debug_selection();
+        }
         let mut world_geometry = self.client.world_geometry.take().expect("view storage");
-        self.fill_world_geometry(
-            title,
+        let white = self.client.gui.atlas.sprites["sunrise/white"];
+        world_geometry.reset(
             camera.to_array(),
             view,
-            alpha,
-            &mut world_geometry,
-            &mut entities,
+            [(white.u0 + white.u1) * 0.5, (white.v0 + white.v1) * 0.5],
+        );
+        world_geometry.set_model_cut(entities.len() as u32);
+        world_geometry.set_time(
+            ((self.common.world.game_time.rem_euclid(72_000) as f64 + alpha) / 20.0) as f32,
         );
         if let Some((skin, slim)) = vanilla_skin
             && let Some(avatar) = self.client.player_model.as_mut()
@@ -4587,7 +4690,7 @@ impl crate::game::ClientGame<'_> {
         // After the mods' world geometry, whose labels add see-through copies.
         let see_through = std::mem::take(&mut self.client.see_through_vertices);
         let colored_lights = if self.client.title.0.is_none() {
-            visuals.finish(self, camera)
+            visuals.finish(camera)
         } else {
             Vec::new()
         };
@@ -4596,13 +4699,18 @@ impl crate::game::ClientGame<'_> {
         // map_patches any earlier leaves them a frame behind.
         hud.patches.append(&mut self.client.map_patches);
         hud.patches.append(self.client.text_patches.get_mut());
-        self.dynamic_texture_patches(&mut hud.image_patches);
+        self.dynamic_texture_commands(&mut hud.dynamic_commands);
         let entity_spans = std::mem::take(self.client.entity_spans.get_mut());
         let entity_motion = std::mem::take(self.client.entity_motion.get_mut());
         let entity_motion_posed = std::mem::take(self.client.entity_motion_posed.get_mut());
         let glowing = std::mem::take(self.client.glowing_vertices.get_mut());
         let shadow_only = std::mem::take(self.client.shadow_only_vertices.get_mut());
         let skin = std::mem::take(self.client.skin_frame.get_mut());
+        use sunrise_world::dimension_type::Skybox;
+        let skybox = self.dimension_type().skybox;
+        let camera_fog = self.camera_fog_type(camera.to_array());
+        let boss_world_fog = self.client.boss_overlay.should_create_world_fog();
+        let fast_clouds = self.effective_clouds() == "fast";
         let frame = Frame {
             weather: &weather,
             weather_time: sunrise_client::weather::Time::new(
@@ -4613,12 +4721,14 @@ impl crate::game::ClientGame<'_> {
             camera,
             yaw,
             pitch,
+            roll,
             fov_degrees,
             cull_fov_degrees,
             eye: eye.filter(|_| !title).map_or(camera, |e| e.0),
             eye_rotation: eye.filter(|_| !title).map_or([yaw, pitch], |e| e.1),
             first_person: eye.is_none() || title || !self.client.view.detached,
             bob,
+            view_transform,
             spin,
             sky,
             shadow_scene_revision: (
@@ -4631,27 +4741,11 @@ impl crate::game::ClientGame<'_> {
             shadow_distance: Some(effective_detail_distance),
             depth_far,
             underwater,
-            water_plane: if title
-                || underwater
-                || !self
-                    .client
-                    .renderer
-                    .0
-                    .as_ref()
-                    .is_some_and(|r| r.wants_water_plane())
-            {
-                None
-            } else {
-                self.water_plane(camera)
-            },
             title,
-            sky_blocked: sunrise_client::fog::sky_pass_skipped(
-                self.camera_fog_type([camera.x, camera.y, camera.z]),
-                sky_effect_blocked,
-                self.client.boss_overlay.should_create_world_fog(),
-            ),
-            skybox: self.overworld_skybox() && self.client.settings.sunrise.sky,
-            end_sky: self.end_skybox() && self.client.settings.sunrise.sky,
+            sky_pass: !title && sunrise_client::fog::sky_pass_present(camera_fog, sky_effect_blocked, skybox),
+            sky_blocked: sunrise_client::fog::sky_pass_skipped(camera_fog, sky_effect_blocked, boss_world_fog),
+            skybox: skybox == Skybox::Overworld && self.client.settings.sunrise.sky,
+            end_sky: skybox == Skybox::End && self.client.settings.sunrise.sky,
             end_sky_sprite: self
                 .client
                 .gui
@@ -4659,7 +4753,7 @@ impl crate::game::ClientGame<'_> {
                 .sprites
                 .get("environment/end_sky")
                 .map(|r| [r.u0, r.v0, r.u1, r.v1]),
-            boss_world_fog: self.client.boss_overlay.should_create_world_fog(),
+            boss_world_fog,
             environment_fog: (self.common.dim == Dim::Nether)
                 .then_some((sky.fog_start, sky.fog_end)),
             cave_culling,
@@ -4685,7 +4779,7 @@ impl crate::game::ClientGame<'_> {
                     time: self.common.world.game_time,
                     partial_tick: alpha,
                     range: self.client.settings.cloud_range,
-                    fast: self.client.settings.clouds == "fast",
+                    fast: fast_clouds,
                     color: sky.cloud_color,
                     height: sky.cloud_height,
                 }),
@@ -4701,15 +4795,18 @@ impl crate::game::ClientGame<'_> {
             glowing: &glowing,
             dynamic_lights: &self.client.dynamic_lights,
             colored_lights: &colored_lights,
-            emissive_layers: &emissive_layers,
+            emissive_layers: if self.client.title.0.is_none() {
+                &self.client.client_pack.render.emissive_layers
+            } else {
+                &[]
+            },
             lightning: sunrise_client::gfx::lightning::Input {
                 bolts: &bolts,
                 uv: sunrise_client::gfx::lightning::white_uv(&self.client.gui.atlas.font.white()),
             },
             additive: &additive,
             see_through: &see_through,
-            world_primitives: world_geometry
-                .batch_with(&self.client.client_pack.render.mod_pipelines),
+            world_primitives: Default::default(),
             shadow_only: &shadow_only,
             celestial: if self.client.settings.sunrise.sky || title {
                 &celestial
@@ -4781,7 +4878,8 @@ impl crate::game::ClientGame<'_> {
         let lightmap_chart = self.debug_shows_lightmap();
         let mut prepared_draws =
             std::mem::take(&mut *self.client.prepared_model_draws.borrow_mut());
-        let result = match self.client.renderer.0.as_mut() {
+        let mut renderer_slot = self.client.renderer.0.take();
+        let result = match renderer_slot.as_mut() {
             Some(renderer) => {
                 use sunrise_client::client_perf::request::GpuSwitch;
                 let capture_gpu = self.client.profile.gpu();
@@ -4799,11 +4897,41 @@ impl crate::game::ClientGame<'_> {
                     sunrise_client::debug_overlay::GPU_TIMING_GAP
                 });
                 renderer.stage_prepared_draws(&prepared_draws);
-                consume(renderer, &frame)
+                self.client.render_snapshot.set(Some(RenderSnapshot {
+                    framebuffer: [renderer.config.width, renderer.config.height],
+                    prepared_generation: renderer.prepared_generation(),
+                    staged_prepared_draws: prepared_draws.len() as u64,
+                }));
+                self.client.pack_frame_state.set(renderer.shader_pack_state(&frame));
+                let mut slots = self.client.pack_frame_slots.borrow_mut();
+                slots.clear();
+                slots.extend_from_slice(renderer.pack_bound_mod_slots());
+                drop(slots);
+                let world_camera = self.client.native_camera_frame.as_ref()
+                    .filter(|_| self.has_world_render_hooks());
+                let mut driver = world_camera.map(|camera| {
+                    native_custom_geometry::GameWorldStageDriver::new(
+                        self, camera, alpha, &mut world_geometry,
+                    )
+                });
+                let rendered = consume(
+                    renderer,
+                    &frame,
+                    driver.as_mut().map(|d| d as &mut dyn sunrise_client::gfx::world_primitives::FrameHooks),
+                );
+                drop(driver);
+                self.client.render_snapshot.set(None);
+                rendered
             }
-            None => Err("renderer".into()),
+            None => {
+                self.client.pack_frame_state.set(None);
+                self.client.pack_frame_slots.borrow_mut().clear();
+                Err("renderer".into())
+            }
         };
         drop(frame);
+        self.client.renderer.0 = renderer_slot;
+        self.apply_pending_present_mode();
         self.client.requested_post_effects_buf = requested_post_effects;
         prepared_draws.clear();
         *self.client.prepared_model_draws.borrow_mut() = prepared_draws;
@@ -4950,7 +5078,7 @@ impl crate::game::ClientGame<'_> {
             let handled = widget || self.preset_editor_mouse_clicked(code, double_click);
             self.save_title_options();
             if sound {
-                self.client.audio.0.play_button_click();
+                self.play_audio_button_click();
             }
             self.title_action(action)?;
             self.reopen_data_packs()?;
@@ -5308,7 +5436,7 @@ impl crate::game::ClientGame<'_> {
             .and_then(|t| t.tab_bar_key(key, ctrl, shift))
         {
             if sound {
-                self.client.audio.0.play_button_click();
+                self.play_audio_button_click();
             }
             return Ok(true);
         }
@@ -5326,7 +5454,7 @@ impl crate::game::ClientGame<'_> {
                 let handled = sound || !matches!(action, Action::None);
                 self.save_title_options();
                 if sound {
-                    self.client.audio.0.play_button_click();
+                    self.play_audio_button_click();
                 }
                 self.title_action(action)?;
                 Ok(handled)

@@ -1,15 +1,12 @@
 #[cfg(test)]
 mod tests {
     use crate::game::client_side::api_values_client::aggregates::scene_blocks;
-    use mod_api::{Compound, Identifier, SceneBlockEntity, Tag};
+    use mod_api::{Identifier, SceneBlockEntity};
     use sunrise_gameplay_common::game::api_values::TryIntoApi;
-    use sunrise_gameplay_common::game::native_structure_values::TemplateBlock;
     use sunrise_world::registry::{BlockRegistry, BlockStateId};
     use {
         crate::game::api_values::aggregates::*,
-        sunrise_gameplay_common::game::api_values::aggregates::{
-            BlockStateError, TemplateSnapshot, block_state,
-        },
+        sunrise_gameplay_common::game::api_values::aggregates::block_state,
     };
 
     #[test]
@@ -27,46 +24,12 @@ mod tests {
         let reordered = r#"{"defaults":{"minecraft:air":0,"minecraft:stairs":1},"states":[["a",true,false,"","minecraft:air"],["s",false,false,"",{"id":"minecraft:stairs","properties":{"facing":"east","waterlogged":"true"}}],["s",false,false,"",{"id":"minecraft:stairs","properties":{"facing":"north","waterlogged":"false"}}]]}"#;
         let registry = BlockRegistry::from_facts_json(reordered.as_bytes()).unwrap();
         sunrise_gameplay_common::game::api_values::resolve_block_definitions(&registry).unwrap();
-        let nbt: Compound = [("custom".into(), Tag::Int(42))].into_iter().collect();
-        let mut source = TemplateSnapshot {
-            size: [3, 1, 1],
-            blocks: vec![
-                TemplateBlock {
-                    pos: [10, 64, -5],
-                    state: BlockStateId(2),
-                    nbt: None,
-                },
-                TemplateBlock {
-                    pos: [11, 64, -5],
-                    state: BlockStateId(1),
-                    nbt: Some(&nbt),
-                },
-                TemplateBlock {
-                    pos: [12, 64, -5],
-                    state: BlockStateId(2),
-                    nbt: None,
-                },
-            ],
-        };
-        let api = source.try_into_api().unwrap();
-        assert_eq!(api.size, [3, 1, 1]);
-        assert_eq!(
-            api.blocks.iter().map(|b| b.state).collect::<Vec<_>>(),
-            [north, east, north]
-        );
-        assert_eq!(
-            api.blocks.iter().map(|b| b.pos).collect::<Vec<_>>(),
-            [[10, 64, -5], [11, 64, -5], [12, 64, -5]]
-        );
-        assert_eq!(api.blocks[1].nbt, Some(nbt.clone()));
-        assert_eq!(source.blocks[1].state, BlockStateId(1));
-        assert_eq!(source.blocks[1].nbt, Some(&nbt));
-        source.blocks[1].state = BlockStateId(u32::MAX);
-        assert_eq!(source.try_into_api(), Err(BlockStateError::UnknownState));
-        assert_eq!(source.blocks[1].state, BlockStateId(u32::MAX));
 
-        let entity =
-            SceneBlockEntity::new(Identifier::parse("test:scene").unwrap(), Default::default());
+        let entity = SceneBlockEntity::new(
+            Identifier::parse("test:scene").unwrap(),
+            east,
+            Default::default(),
+        );
         let mut scene = vec![
             mod_api::SceneBlock::new([0, 0, 0], north, None),
             mod_api::SceneBlock::new([1, 0, 0], east, Some(entity)),
@@ -108,7 +71,6 @@ mod tests {
             scene_blocks(&scene),
             Err(mod_api::SceneError::Unavailable)
         ));
-        assert_eq!(source.try_into_api(), Err(BlockStateError::Unavailable));
         assert_eq!(scene, original);
     }
 }

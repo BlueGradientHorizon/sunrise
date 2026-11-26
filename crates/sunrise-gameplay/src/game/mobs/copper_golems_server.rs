@@ -106,7 +106,9 @@ impl ServerGame<'_> {
         let name = item;
         let is_axe = name.ends_with("_axe");
         let waxed = self.common.mobs[index].extra.vector[0] as i64 == -2;
-        if name == "minecraft:shears" && self.common.golem_shearable(index) {
+        if self.held_shears(sunrise_gameplay_common::game::item_abilities::ability::SHEARS_HARVEST)
+            && self.common.golem_shearable(index)
+        {
             // CopperGolem.shear: the sound, the antenna slot emptied (an
             // unequip) and the flower dropped 1.5 up.
             // level.playSound(null, this, COPPER_GOLEM_SHEAR, PLAYERS, 1, 1).

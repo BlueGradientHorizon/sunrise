@@ -9,7 +9,6 @@ pub trait Hooks {
     /// as vanilla's. Asked for each row in order, before
     /// `prepare_item_enchant`. Server-side.
     #[hook(
-        target = "sunrise_gameplay::game::native_hooks::enchantment_level_set::ServerGame<'_>::native_enchantment_level_set",
         dispatch = "flat",
         side = "server",
         contract = "listen",

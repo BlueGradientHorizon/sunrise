@@ -45,6 +45,7 @@ pub(in crate::game) fn pack_environment(
     name: &str,
     json: &serde_json::Value,
     stacks: Option<&Arc<[Environment; 3]>>,
+    timelines: &sunrise_level::environment::TimelineTable,
 ) -> Option<Arc<Environment>> {
     let base = match name {
         "minecraft:overworld" => &stacks?[0],
@@ -52,7 +53,7 @@ pub(in crate::game) fn pack_environment(
         "minecraft:the_end" => &stacks?[2],
         _ => return None,
     };
-    Environment::with_type(base, json).map(Arc::new)
+    Environment::with_type(base, json, timelines).map(Arc::new)
 }
 
 /// Whether `built` are the packs' current stacks `now`.

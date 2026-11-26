@@ -42,6 +42,7 @@ pub fn breed_pair_credited(
         None,
         None,
         sunrise_sim::mobs::BreedExperience::Deferred,
+        true,
     );
     (base + 1, base + 2, child)
 }

@@ -345,6 +345,11 @@ pub trait SpawnerLevel: NaturalLevel {
     /// `hasNearbyAlivePlayer`: a living non-spectator closer than `range`
     /// (any distance when negative).
     fn alive_player_near(&self, x: f64, y: f64, z: f64, range: f64) -> bool;
+    /// `isNearPlayer` as the level answers it for the spawner it ticks, from vanilla's `near`
+    /// (a mod's `spawner_active` may change it): `near` unless the level overrides it.
+    fn spawner_active(&self, near: bool) -> bool {
+        near
+    }
     /// The `spawner_blocks_work` game rule.
     fn spawner_blocks_work(&self) -> bool;
     /// `EntityType.byString`: registry facts, independent of whether the
@@ -541,12 +546,12 @@ impl SpawnerExt for Spawner {
         }
     }
     fn near_player<L: SpawnerLevel>(&self, l: &L, pos: [i32; 3]) -> bool {
-        l.alive_player_near(
+        l.spawner_active(l.alive_player_near(
             f64::from(pos[0]) + 0.5,
             f64::from(pos[1]) + 0.5,
             f64::from(pos[2]) + 0.5,
             f64::from(self.required_player_range),
-        )
+        ))
     }
     fn delay(&mut self, random: &mut impl RandomSource, events: &mut Vec<SpawnerEvent>) {
         self.spawn_delay = if self.max_spawn_delay <= self.min_spawn_delay {
@@ -679,9 +684,15 @@ impl SpawnerExt for Spawner {
                 mob.width as f32 * scale,
                 mob.height as f32 * scale,
             );
+            // `loadEntityRecursive` comes before the position check: the configured entity is
+            // loaded now, and the check reads it.
+            if !data.unconfigured() && !l.load_configured(&data.entity, &id, placed, yaw) {
+                self.delay(random, events);
+                return;
+            }
             let pending = spawn_selection::Pending {
                 yaw,
-                fresh: data.unconfigured(),
+                configured: (!data.unconfigured()).then_some(&data.entity),
             };
             let position_ok =
                 spawn_selection::position_ok(l, &id, Reason::Spawner, placed, pending, || {

@@ -5,6 +5,9 @@
 use super::Hit;
 use std::sync::Arc;
 use sunrise_core::random::RandomSource;
+use sunrise_gameplay_common::game::{
+    native_ticks::NativeTicksGameExt1 as _, transactions::entities::EntityRemovalGameExt as _,
+};
 use sunrise_items::items::ItemStack;
 use sunrise_level::random_source;
 use sunrise_sim::entities::Painting;
@@ -17,7 +20,7 @@ pub(in crate::game) use sunrise_gameplay_common::painting_variants::{
 /// that `normal` points to.
 impl crate::game::ServerGame<'_> {
     /// `HangingEntityItem.useOn` for a painting against `hit`'s face.
-    pub(in crate::game::server_side) fn place_painting(
+    pub fn place_painting(
         &mut self,
         hit: &Hit,
         stack: &ItemStack,
@@ -51,8 +54,8 @@ impl crate::game::ServerGame<'_> {
         };
         // Painting.create: the largest placeable variants that survive, one at random.
         let mut fitting: Vec<Variant> = Vec::new();
-        for id in self.common.painting_variants.placeable.clone() {
-            let Some(v) = self.common.painting_variants.get(&id).cloned() else {
+        for id in world_paintings!(self).placeable.clone() {
+            let Some(v) = world_paintings!(self).get(&id).cloned() else {
                 continue;
             };
             (candidate.width, candidate.height) = (v.width, v.height);
@@ -75,7 +78,7 @@ impl crate::game::ServerGame<'_> {
         // EntityType.createDefaultStackConfig -> Painting.applyImplicitComponents:
         // the stack's `painting/variant` replaces the random pick, and that
         // painting has to survive where it goes (else the use is CONSUME).
-        if let Some(v) = self.common.painting_variants.of_stack(stack).cloned() {
+        if let Some(v) = world_paintings!(self).of_stack(stack).cloned() {
             (candidate.variant, candidate.width, candidate.height) = (v.id, v.width, v.height);
             if !self.common.painting_survives(&candidate) {
                 self.award_stat("used", &stack.item, 1);
@@ -93,9 +96,7 @@ impl crate::game::ServerGame<'_> {
         );
         if let Some((_, _, Some(variant))) = sunrise_sim::entity_nbt::painting_from_nbt(&raw)
             && *candidate.variant != *variant
-            && let Some(v) = self
-                .common
-                .painting_variants
+            && let Some(v) = world_paintings!(self)
                 .get(&sunrise_world::datafix::dynamic::namespaced(&variant))
                 .cloned()
         {
@@ -243,14 +244,56 @@ impl crate::game::ServerGame<'_> {
     pub fn tick_paintings(&mut self) {
         // ServerLevel.tick: only entities in entity-ticking chunks tick.
         let ticking = self.entity_ticking_area();
+        let mut round = self.native_tick_round();
+        // The painting whose tick just ended: it hears its Post before the next one's Pre.
+        let mut told = None;
+        // EntityTickList copy-on-iterate: while a listener may remove paintings, the round visits
+        // the paintings that were there when it began, each found again by its join.
+        let joins: Option<Vec<_>> = round
+            .told_listening()
+            .then(|| self.common.paintings.iter().map(|p| p.join).collect());
+        let mut turns = joins.iter().flatten();
         let mut i = 0;
-        while i < self.common.paintings.len() {
+        loop {
+            if let Some(id) = told.take() {
+                self.native_tick_post_one(&round, id, "minecraft:painting");
+            }
+            if joins.is_some() {
+                let Some(&join) = turns.next() else { break };
+                let Some(at) = self.common.paintings.locate(join) else {
+                    continue;
+                };
+                i = at;
+            } else if i >= self.common.paintings.len() {
+                break;
+            }
             let (lo, hi) = self.common.paintings[i].bounds();
             let centre = [0, 2].map(|k| ((lo[k] + hi[k]) / 2.0).floor() as i32);
             if !ticking(centre[0], centre[1]) {
                 i += 1;
                 continue;
             }
+            let id = self.common.paintings[i].id;
+            // ServerLevel.tick skips an entity that `isRemoved`, here one whose removal is queued.
+            let target = super::commands::Target::Painting(id);
+            if self.target_removed(&target)
+                || !self.native_tick_pre_one(&mut round, id, "minecraft:painting")
+            {
+                i += 1;
+                continue;
+            }
+            // The Pre's listener may have removed paintings, this one included.
+            if self.target_removed(&target) {
+                i += 1;
+                continue;
+            }
+            if self.common.paintings.get(i).is_none_or(|p| p.id != id) {
+                let Some(now) = self.common.paintings.iter().position(|p| p.id == id) else {
+                    continue;
+                };
+                i = now;
+            }
+            told = Some(id);
             // `Entity.tickCount` is raised before the rest of the tick, and is not saved.
             self.common.paintings[i].ticks = self.common.paintings[i].ticks.saturating_add(1);
             self.common.paintings[i].check_interval += 1;
@@ -262,6 +305,9 @@ impl crate::game::ServerGame<'_> {
                 }
             }
             i += 1;
+        }
+        if let Some(id) = told {
+            self.native_tick_post_one(&round, id, "minecraft:painting");
         }
     }
 }

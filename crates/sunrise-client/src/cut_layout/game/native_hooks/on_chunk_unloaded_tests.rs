@@ -34,6 +34,12 @@ impl BlockPart for Pot {}
 impl BlockEntityPart for Pot {
     fn on_chunk_unloaded(&self, host: HostSide<'_>, event: &mut OnChunkUnloadedEvent<'_>) {
         let HostSide::Server(host) = host else {
+            assert_eq!(
+                event.entity.nbt().get(&"unload_witness".into()),
+                Some(&Tag::Int(event.pos[0]))
+            );
+            assert_eq!(event.entity.item_slot(0).unwrap().count(), 5);
+            assert!(event.entity.copy_item_slot(0).is_none());
             CALLS
                 .lock()
                 .unwrap()
@@ -110,7 +116,11 @@ pub(crate) fn pump_until(game: &mut sunrise_gameplay::game::ServerGame<'_>, resi
 #[ignore = "daily"]
 fn a_client_tells_a_forgotten_column_but_not_its_level_going() {
     use sunrise_gameplay_common::game::execution_role::ExecutionRole;
-    use sunrise_level::{chunk::Chunk, containers::ModBlockEntity};
+    use sunrise_level::{
+        chunk::Chunk,
+        containers::{ModBlockEntity, ModBlockEntityFields},
+        items::ItemStack,
+    };
     use sunrise_protocol::connection::Pipe;
     if run_fresh_cases(
         "game::native_hooks::on_chunk_unloaded_tests::a_client_tells_a_forgotten_column_but_not_its_level_going",

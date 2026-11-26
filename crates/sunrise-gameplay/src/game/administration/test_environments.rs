@@ -3,43 +3,36 @@
 //! all of them), set up when the batch starts and torn down after it. The
 //! definitions are the data pack's `test_environment` entries, or inline.
 use crate::game::ServerGame;
-use serde_json::Value as Json;
 use sunrise_game_data::gamerules::Value;
-pub(in crate::game) use sunrise_gameplay::test_environments::{
-    Activation, Environment, Saved, WeatherType, parse,
+use sunrise_gameplay_common::game::{
+    Dim,
+    native_rain_read::{weather_flags, weather_for_world},
+};
+pub(in crate::game) use sunrise_gameplay_common::test_environments::{
+    Activation, Environment, Saved, WeatherType,
 };
 
 impl ServerGame<'_> {
-    /// The data pack entry `data/<ns>/test_environment/<path>.json`.
-    fn read_test_environment_json(&self, id: &str) -> Option<Json> {
-        let (ns, path) = id.split_once(':').unwrap_or(("minecraft", id));
-        let file = self
-            .common
-            .options
-            .resources
-            .join("data")
-            .join(ns)
-            .join("test_environment")
-            .join(format!("{path}.json"));
-        serde_json::from_slice(&std::fs::read(file).ok()?).ok()
-    }
-
-    /// The definition of a batch's environment (`batch()` of its tests).
-    pub(in crate::game::server_side) fn test_environment(&self, id: &str) -> Option<Environment> {
-        parse(
-            &Json::String(id.to_owned()),
-            &|i| self.read_test_environment_json(i),
-            0,
-            &self.common.ui.rules,
-        )
+    /// Looks up the batch environment in the world's frozen registry.
+    pub fn test_environment(&self, id: &str) -> Option<Environment> {
+        let table = match &self.server.world_tables.0 {
+            Some(tables) => &tables.test_environments,
+            None => self.common.res.test_environments(),
+        };
+        if id.contains(':') {
+            table.get(id).cloned()
+        } else {
+            table.get(&format!("minecraft:{id}")).cloned()
+        }
     }
 
     /// `TestEnvironmentDefinition.activate`.
     pub(in crate::game::server_side) fn activate_test_environment(
         &mut self,
         environment: Environment,
+        dim: Dim,
     ) -> Activation {
-        let saved = self.set_up_environment(&environment);
+        let saved = self.set_up_environment(&environment, dim);
         Activation { environment, saved }
     }
 
@@ -47,15 +40,16 @@ impl ServerGame<'_> {
     pub(in crate::game::server_side) fn tear_down_test_environment(
         &mut self,
         activation: Activation,
+        dim: Dim,
     ) {
-        self.tear_down_environment(&activation.environment, activation.saved);
+        self.tear_down_environment(&activation.environment, activation.saved, dim);
     }
 
-    fn set_up_environment(&mut self, environment: &Environment) -> Saved {
+    fn set_up_environment(&mut self, environment: &Environment, dim: Dim) -> Saved {
         match environment {
             Environment::AllOf(all) => Saved::AllOf(
                 all.iter()
-                    .map(|e| (e.clone(), self.set_up_environment(e)))
+                    .map(|e| (e.clone(), self.set_up_environment(e, dim)))
                     .collect(),
             ),
             Environment::ClockTime { clock, time } => {
@@ -94,25 +88,36 @@ impl ServerGame<'_> {
             }
             Environment::Timelines => Saved::Unit,
             Environment::Weather(kind) => {
-                let w = &self.common.world.weather;
-                let previous = if w.thundering {
-                    WeatherType::Thunder
-                } else if w.raining {
-                    WeatherType::Rain
+                let world = if dim == self.dim {
+                    &self.common.world
+                } else if let Some(world) = self.server.levels.0.parked_world(dim) {
+                    world
                 } else {
-                    WeatherType::Clear
+                    log::warn!(
+                        "cannot set up GameTest weather in {}: level is not resident",
+                        dim.id()
+                    );
+                    return Saved::Unit;
                 };
-                self.set_weather_type(*kind);
-                Saved::Weather(previous)
+                let previous = match weather_flags(weather_for_world(world, dim == Dim::End)) {
+                    (_, true) => WeatherType::Thunder,
+                    (true, false) => WeatherType::Rain,
+                    (false, false) => WeatherType::Clear,
+                };
+                if self.set_weather_type(dim, *kind) {
+                    Saved::Weather(previous)
+                } else {
+                    Saved::Unit
+                }
             }
         }
     }
 
-    fn tear_down_environment(&mut self, environment: &Environment, saved: Saved) {
+    fn tear_down_environment(&mut self, environment: &Environment, saved: Saved, dim: Dim) {
         match (environment, saved) {
             (Environment::AllOf(_), Saved::AllOf(all)) => {
                 for (e, s) in all.into_iter().rev() {
-                    self.tear_down_environment(&e, s);
+                    self.tear_down_environment(&e, s, dim);
                 }
             }
             (Environment::ClockTime { clock, .. }, Saved::Clock(previous)) => {
@@ -136,7 +141,7 @@ impl ServerGame<'_> {
                 w.raining = false;
                 w.thunder_time = 0;
                 w.thundering = false;
-                self.set_weather_type(previous);
+                self.set_weather_type(dim, previous);
             }
             _ => {}
         }
@@ -155,14 +160,9 @@ impl ServerGame<'_> {
     }
 
     /// `Weather.Type.apply`: `ServerLevel.setWeatherParameters`.
-    fn set_weather_type(&mut self, kind: WeatherType) {
+    fn set_weather_type(&mut self, dim: Dim, kind: WeatherType) -> bool {
         let (clear, rain, raining, thundering) = kind.parameters();
-        let w = &mut self.common.world.weather;
-        w.clear_time = clear;
-        w.rain_time = rain;
-        w.thunder_time = rain;
-        w.raining = raining;
-        w.thundering = thundering;
+        self.set_weather_parameters(dim.id(), clear, rain, raining, thundering)
     }
 
     /// `Functions.run`: the function with game master permission and

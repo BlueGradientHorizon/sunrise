@@ -1,7 +1,5 @@
 #[cfg(feature = "client")]
 use super::native_block_entity_draw::BlockEntityDraw;
-#[cfg(test)]
-pub(in crate::game) mod camera_pose_tests;
 pub(in crate::game) mod client_narrator;
 #[cfg(test)]
 pub(in crate::game) mod client_narrator_tests;
@@ -76,7 +74,8 @@ pub(in crate::game) mod render_player_pre;
 
 pub(in crate::game) mod render_player_post;
 
-pub(in crate::game) mod render_name_tag;
+#[cfg(feature = "client")]
+pub mod render_name_tag_can_render;
 
 pub(in crate::game) mod render_living_pre;
 
@@ -131,8 +130,6 @@ pub(in crate::game) mod hotbar_attack_indicator_progress;
 pub(in crate::game) mod highlight_tip;
 
 pub(in crate::game) mod held_item_tint;
-
-pub(in crate::game) mod gui_render_post;
 
 pub(in crate::game) mod get_arm_pose;
 
@@ -237,3 +234,48 @@ mod screen_slot_tests;
 
 #[cfg(all(test, feature = "client"))]
 mod panel_recipes_tests;
+
+#[cfg(feature = "client")]
+pub mod anvil_update_client;
+#[cfg(feature = "client")]
+pub mod camera_position;
+#[cfg(feature = "client")]
+pub mod client_break_progress;
+#[cfg(feature = "client")]
+pub mod client_particle_add;
+#[cfg(feature = "client")]
+pub mod client_take_item_entity;
+#[cfg(all(test, feature = "client"))]
+mod client_take_item_entity_tests;
+#[cfg(feature = "client")]
+pub mod compute_camera_angles;
+#[cfg(feature = "client")]
+pub mod frame_graph_setup;
+#[cfg(all(test, feature = "client"))]
+mod framerate_limit_tests;
+#[cfg(feature = "client")]
+pub(in crate::game) mod gui_status_heights;
+#[cfg(all(test, feature = "client"))]
+mod mod_settings_tests;
+#[cfg(feature = "client")]
+pub mod play_break_sound;
+#[cfg(feature = "client")]
+pub(in crate::game) mod play_sound;
+#[cfg(feature = "client")]
+pub mod player_turn;
+#[cfg(feature = "client")]
+pub mod prepare_render_buffers;
+#[cfg(feature = "client")]
+pub mod register_pipeline_modifiers;
+#[cfg(feature = "client")]
+pub use register_pipeline_modifiers::native_register_pipeline_modifiers;
+#[cfg(feature = "client")]
+pub mod render_name_tag_do_render;
+#[cfg(all(test, feature = "client"))]
+mod render_name_tag_do_render_tests;
+#[cfg(feature = "client")]
+pub mod render_view_transform;
+#[cfg(feature = "client")]
+pub mod tick_weather_effects;
+#[cfg(all(test, feature = "client"))]
+mod tick_weather_effects_tests;

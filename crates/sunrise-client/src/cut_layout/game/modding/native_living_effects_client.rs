@@ -2,6 +2,7 @@
 
 #[cfg(test)]
 pub(crate) mod tests {
+    use crate::game::server_side::native_living_effects::tests::collect_effects;
     use mod_api::{EntityRef, LivingRef, WorldEpoch};
     use sunrise_core::geometry::Vec3;
     use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
@@ -49,7 +50,7 @@ pub(crate) mod tests {
             let darkness = mod_platform::__private::part_tests::effect_key("minecraft:darkness");
             assert!(me.potion_affected(game, darkness));
             assert_eq!(me.effect(game, darkness).map(|e| e.duration), Some(200));
-            assert_eq!(me.effects(game).map(|list| list.len()), Some(1));
+            assert_eq!(collect_effects(game, me).map(|list| list.len()), Ok(1));
             assert!(!me.potion_affected(
                 game,
                 mod_platform::__private::part_tests::effect_key("minecraft:nausea")

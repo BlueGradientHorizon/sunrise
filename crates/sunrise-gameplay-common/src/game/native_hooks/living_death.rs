@@ -1,10 +1,13 @@
 use super::*;
 
 /// `native_living_incoming_damage`'s entity, entity type and source for a hit.
-pub fn hurt_server_args<'a>(
+pub fn hurt_server_args<'a, 'b>(
     hurting: Hurting<'a>,
-    attack: &Attack,
-) -> (i32, &'a str, HurtSource<'a>) {
+    attack: &'b Attack,
+) -> (i32, &'a str, HurtSource<'b>)
+where
+    'a: 'b,
+{
     match hurting {
         Hurting::Player(entity, source) => (entity, "minecraft:player", source),
         Hurting::Mob(mob, damage) => (

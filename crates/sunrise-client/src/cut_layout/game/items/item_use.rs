@@ -351,7 +351,7 @@ pub(crate) mod interact_vibration_tests {
         );
         game.reset_entity_residency();
         game.native_lifecycle
-            .begin_open(mod_api::Authority::IntegratedServer);
+            .begin_open(Some(mod_api::Authority::IntegratedServer));
         super::super::native_entity_refs::tests::bind_local_player(&mut game, 41, 123);
         *game.held_mut() = Some(ItemStack::new(held, 1));
         sunrise_gameplay::game::dispense_fixture::start_recording();
@@ -515,7 +515,7 @@ pub(crate) mod interact_vibration_tests {
                 game.world
                     .chunks
                     .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
-                game.with_level(|b, level, _| {
+                let cake = game.with_level(|b, level, _| {
                     let cake = b
                         .table
                         .default_state(b.table.block_by_name("minecraft:cake").unwrap());
@@ -527,6 +527,7 @@ pub(crate) mod interact_vibration_tests {
                         )
                         .is_some()
                     );
+                    cake
                 });
                 let hit = sunrise_gameplay_common::game::Hit {
                     pos: [0, 64, 0],
@@ -535,9 +536,17 @@ pub(crate) mod interact_vibration_tests {
                     inside: false,
                 };
                 let held = game.held().cloned();
-                let (result, (changes, _)) =
-                    game.remote_block_template(&hit, held.as_ref(), true, true);
-                assert_eq!(result, sunrise_world::level::InteractionResult::Success);
+                let (result, (changes, _)) = game.remote_block_template(
+                    &hit,
+                    cake,
+                    held.as_ref(),
+                    Some(sunrise_world::level::UseBranch::WithoutItem),
+                    true,
+                );
+                assert_eq!(
+                    result,
+                    Some(sunrise_world::level::InteractionResult::Success)
+                );
                 assert_eq!(changes.len(), 1, "the client predicts a bitten cake");
                 let bitten = game.with_level(|b, _, _| {
                     let cake = b
@@ -839,6 +848,101 @@ pub(crate) mod interact_vibration_tests {
         }) else {
             panic!("prepared resources failed to load")
         };
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn admitted_minecraft_and_custom_items_start_and_complete_timed_native_use() {
+        use mod_api::{
+            Hooks, Host, HostSide, ItemPart, ItemsEvent, LivingEntityUseItemFinishEvent, ModEntry,
+            Mods, Registrar, RegistrationContext, UseDurationEvent,
+        };
+        use std::sync::{Arc, Mutex};
+        use sunrise_gameplay::game::native_entity_refs::tests::{run_fresh_cases, with_game_at};
+
+        if run_fresh_cases(
+            "game::server_side::item_use::interact_vibration_tests::admitted_minecraft_and_custom_items_start_and_complete_timed_native_use",
+            "SUNRISE_MINECRAFT_ITEM_USE_CHILD",
+            &["valid"],
+        ) {
+            return;
+        }
+
+        const MC_ITEM: &str = "minecraft:p3_04_wand";
+        const ALT_ITEM: &str = "p3_04_use:wand";
+        const BUILTIN_ITEM: &str = "minecraft:stick";
+
+        #[derive(Clone)]
+        struct TimedUseMod(Arc<Mutex<Vec<String>>>);
+        #[mod_api::__subscriptions]
+        impl Hooks for TimedUseMod {
+            fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
+                for id in [MC_ITEM, ALT_ITEM, BUILTIN_ITEM] {
+                    let key = r.item_key(id);
+                    r.item_part(key, self.clone());
+                }
+            }
+            fn items(&self, _: &RegistrationContext, event: &mut ItemsEvent<'_>) {
+                for id in [MC_ITEM, ALT_ITEM] {
+                    event
+                        .register(mod_api::Item::new(id, BUILTIN_ITEM))
+                        .unwrap();
+                }
+            }
+            fn living_entity_use_item_finish(
+                &self,
+                _: HostSide<'_>,
+                event: &mut LivingEntityUseItemFinishEvent<'_>,
+            ) {
+                if let Some(id) = mod_api::__private::item_key_id(event.stack.item()) {
+                    self.0.lock().unwrap().push(id.to_owned());
+                }
+            }
+        }
+        #[mod_api::sunrise_part]
+        impl ItemPart for TimedUseMod {
+            fn use_duration(&self, _: &dyn Host, event: &mut UseDurationEvent<'_>) {
+                event.duration = 4;
+            }
+        }
+
+        let finished = Arc::new(Mutex::new(Vec::new()));
+        let mods: Mods = vec![ModEntry::new(
+            "p3_04_use",
+            Box::new(TimedUseMod(finished.clone())),
+        )]
+        .into();
+        mod_platform::__private::install(mods.clone());
+        sunrise_gameplay_common::game::api_values::install_parts(&mods).unwrap();
+        let base = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
+        let root =
+            sunrise_gameplay_common::game::mods::content_root(&base, &Default::default()).unwrap();
+        with_game_at(root.prepared().to_path_buf(), |game| {
+            game.options.dedicated = Some(Vec::new());
+            // Built-in vanilla items keep their normal path even when use_duration is non-zero.
+            let stick = ItemStack::new(BUILTIN_ITEM, 1);
+            let selected = game.selected;
+            game.inventory[selected] = Some(stick.clone());
+            assert_eq!(game.use_duration(&stick), 4);
+            assert!(!game.mod_use(&stick));
+            assert!(!game.start_mod_use(&stick));
+            assert!(game.using.is_none());
+
+            for id in [MC_ITEM, ALT_ITEM] {
+                let stack = ItemStack::new(id, 1);
+                let selected = game.selected;
+                game.inventory[selected] = Some(stack.clone());
+                assert!(game.mod_use(&stack), "{id}");
+                assert!(game.start_mod_use(&stack), "{id}");
+                assert_eq!(game.using, Some((selected, 0)), "{id}");
+                assert_eq!(game.use_duration, 4, "{id}");
+                for ticks in 0..4 {
+                    game.tick_mod_use(selected, ticks, &stack);
+                }
+                assert!(game.using.is_none(), "{id} should complete after 4 ticks");
+            }
+            assert_eq!(*finished.lock().unwrap(), [MC_ITEM, ALT_ITEM]);
+        });
     }
 }
 use sunrise_gameplay_common::game::tables::GameItems as _;

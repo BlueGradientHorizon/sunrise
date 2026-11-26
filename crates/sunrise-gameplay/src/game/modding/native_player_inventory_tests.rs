@@ -73,7 +73,7 @@ fn inventory_slots_are_read_and_written_by_vanillas_numbers() {
             assert_ne!(g.menu_slot(menu), g.menu_sent[menu], "menu slot {menu}");
         }
         // Seed extra slots directly, independently of the API's numbered setter.
-        game.side
+        game.server
             .lan
             .as_mut()
             .unwrap()
@@ -145,7 +145,7 @@ fn inventory_slots_are_read_and_written_by_vanillas_numbers() {
 }
 
 /// Each refusal has its own name and writes nothing: a slot past 42 (never a panic), a stack
-/// the item does not allow, a dead player, and a handle whose player has left.
+/// the item does not allow, and a handle whose player has left.
 #[test]
 #[ignore = "daily"]
 fn each_inventory_refusal_has_its_own_name_and_writes_nothing() {
@@ -175,31 +175,23 @@ fn each_inventory_refusal_has_its_own_name_and_writes_nothing() {
             b.with_inventory(game, |view| view.iter().next().is_none()),
             Some(true)
         );
-        game.side
+        game.server
             .lan
             .as_mut()
             .unwrap()
             .hub
             .guests
-            .update_connection(13, |g| g.dead = true);
+            .update_connection(13, |g| {
+                g.dead = true;
+                g.health = 0.0;
+            });
+        assert_eq!(b.set_inventory_slot(game, 40, Some(rock.clone())), Ok(()));
         assert_eq!(
-            b.set_inventory_slot(game, 0, Some(rock.clone())),
-            Err(PlayerDataRefusal::Dead)
+            guest(game, 13).offhand.as_ref().unwrap().item.as_ref(),
+            "minecraft:stone"
         );
-        assert_eq!(
-            b.with_inventory(game, |view| view.iter().next().is_none()),
-            Some(true),
-            "a dead player is read, not written"
-        );
-        game.side
-            .lan
-            .as_mut()
-            .unwrap()
-            .hub
-            .guests
-            .update_connection(13, |g| g.dead = false);
         let index = game
-            .side
+            .server
             .lan
             .as_ref()
             .unwrap()
@@ -207,7 +199,7 @@ fn each_inventory_refusal_has_its_own_name_and_writes_nothing() {
             .guests
             .connection_index(13)
             .unwrap();
-        game.side.lan.as_mut().unwrap().hub.guests.remove(index);
+        game.server.lan.as_mut().unwrap().hub.guests.remove(index);
         assert_eq!(
             b.set_inventory_slot(game, 0, Some(rock)),
             Err(PlayerDataRefusal::Stale)
@@ -378,7 +370,7 @@ fn equipment_effects_wait_for_root() {
             .unwrap();
             Err(())
         });
-        assert!(game.side.pending_sounds.is_empty());
+        assert!(game.server.pending_sounds.is_empty());
         let inner = stack(game, r#"{id:"minecraft:diamond_helmet",count:1}"#);
         let _: Result<(), ()> = game.storage_transaction(|host, _| {
             player
@@ -394,7 +386,7 @@ fn equipment_effects_wait_for_root() {
             Ok(())
         });
         assert_eq!(player.with_inventory(game, snapshot), Some(vec![(36, new)]));
-        assert_eq!(game.side.pending_sounds.len(), 1);
+        assert_eq!(game.server.pending_sounds.len(), 1);
     });
 }
 

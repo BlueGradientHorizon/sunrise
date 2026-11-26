@@ -14,6 +14,7 @@ pub(in crate::game) enum Cancel {
     Drag,
     ScreenWheel,
     GameWheel,
+    Move,
 }
 
 #[derive(Debug, PartialEq)]
@@ -31,11 +32,16 @@ pub(in crate::game) enum Seen {
     ScreenWheelChild([f64; 2]),
     ScreenWheelPost([f64; 2]),
     GameWheel([f64; 2], [i32; 2], [bool; 3], [f32; 2], u32),
+    Moved([f32; 2], [f32; 2]),
+    Motion(String, [f64; 2]),
+    Dropped(String, Vec<std::path::PathBuf>),
 }
 
 #[derive(Default)]
 pub(in crate::game) struct State {
     pub(in crate::game) cancel: Cancel,
+    /// Whether the moved and motion hooks record: the other tests do not look for them.
+    pub(in crate::game) record_pointer: bool,
     pub(in crate::game) seen: Vec<Seen>,
 }
 
@@ -194,6 +200,44 @@ impl Hooks for Observe {
         self.0.lock().unwrap().seen.push(Seen::DragPost);
     }
 
+    fn screen_mouse_moved_pre(
+        &self,
+        _: &dyn ClientHost,
+        event: &mut mod_api::ScreenMouseMovedPreEvent<'_>,
+    ) -> Flow {
+        let mut state = self.0.lock().unwrap();
+        if !state.record_pointer {
+            return Flow::Continue;
+        }
+        state
+            .seen
+            .push(Seen::Moved(event.delta, event.screen.mouse));
+        flow(state.cancel == Cancel::Move)
+    }
+
+    fn screen_pointer_motion(
+        &self,
+        _: &dyn ClientHost,
+        event: &mut mod_api::ScreenPointerMotionEvent<'_>,
+    ) {
+        let mut state = self.0.lock().unwrap();
+        if state.record_pointer {
+            let owner = event.screen.mod_screen.unwrap_or("").to_owned();
+            state.seen.push(Seen::Motion(owner, event.delta));
+        }
+    }
+
+    fn screen_files_dropped(
+        &self,
+        _: &dyn ClientHost,
+        event: &mut mod_api::ScreenFilesDroppedEvent<'_>,
+    ) {
+        self.0.lock().unwrap().seen.push(Seen::Dropped(
+            event.screen.id.to_owned(),
+            event.paths.to_vec(),
+        ));
+    }
+
     fn screen_mouse_scrolled_pre(
         &self,
         _: &dyn ClientHost,
@@ -252,6 +296,18 @@ pub(crate) fn with_input_game(
                 game.error
             );
         });
+    });
+}
+
+/// [`with_input_game`] with `caller` as the calling mod, as a hook's host call has it, so
+/// `set_pointer_grab` answers for that mod.
+pub(crate) fn with_input_game_as(
+    caller: &'static str,
+    test: impl FnOnce(&mut sunrise_client_gameplay::game::ClientGame<'_>, WindowId, &Mutex<State>),
+) {
+    with_input_game(|game, id, state| {
+        let _scope = mod_api::__private::enter(caller, "test");
+        test(game, id, state);
     });
 }
 

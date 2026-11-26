@@ -95,7 +95,7 @@ impl crate::game::ClientGame<'_> {
             r.cart_lerps.remove(&p.id);
             r.lerps.remove(&p.id);
         }
-        if !self.spawn_remote_object(p.id, &kind, p.position, (rotation[0], rotation[1]), p.data) {
+        if !self.spawn_remote_object(p.id, &kind, p.position, rotation, p.data) {
             self.spawn_added_projectile(&p, &kind, (rotation[0], rotation[1]), replace);
         }
         // Entity.recreateFromPacket: objects must exist before applying motion.
@@ -298,6 +298,14 @@ impl crate::game::ClientGame<'_> {
         &mut self,
         p: play::TakeItemEntity,
     ) {
+        // A client mod hears the pickup while what was taken is still whole (#5595): only of an
+        // entity this client tracks, as vanilla acts only on one (`if (from != null)`).
+        if mod_api::__private::listened(mod_api::HookId::ClientTakeItemEntity)
+            && let Some(collected) = u32::try_from(p.item).ok().and_then(|id| self.entity(id))
+        {
+            let collector = u32::try_from(p.player).ok().and_then(|id| self.entity(id));
+            self.native_client_take_item_entity(collected, collector, p.amount);
+        }
         // ClientPacketListener.handleTakeItemEntity: the pickup sound at
         // the orb, item or arrow, whoever collects it (the server sends
         // none); an entity this client doesn't track sounds at this player.
@@ -341,7 +349,7 @@ impl crate::game::ClientGame<'_> {
         if let Some(o) = orb_at {
             let mut r = sunrise_level::random_source::create();
             let pitch = (r.next_float() - r.next_float()) * 0.35 + 0.9;
-            self.client.audio.0.play(
+            self.play_audio(
                 "minecraft:entity.experience_orb.pickup",
                 Some([o.x, o.y, o.z]),
                 0.1,
@@ -350,10 +358,7 @@ impl crate::game::ClientGame<'_> {
         } else if let Some(at) = at {
             let mut r = sunrise_level::random_source::create();
             let pitch = ((r.next_float() - r.next_float()) * 0.7 + 1.0) * 2.0;
-            self.client
-                .audio
-                .0
-                .play("minecraft:entity.item.pickup", Some(at), 0.2, pitch);
+            self.play_audio("minecraft:entity.item.pickup", Some(at), 0.2, pitch);
         }
         // ItemPickupParticle toward the collector (this player, another one or a mob).
         let collector = if self
@@ -411,9 +416,23 @@ impl crate::game::ClientGame<'_> {
                 collector,
             );
         }
-        // An orb stays: the server may still hold merged ones in it.
+        // An orb stays: the server may still hold merged ones in it. An item shrinks by the
+        // amount taken and goes only when its stack is empty, so a survivor stays in view.
         if !orb {
-            self.remove_entity(p.item);
+            let remaining = self
+                .common
+                .dropped
+                .iter_mut()
+                .find(|d| d.id == p.item as u32)
+                .map(|item| {
+                    if item.stack.count > 0 {
+                        item.stack.count = item.stack.count.saturating_sub(p.amount.max(0) as u32);
+                    }
+                    item.stack.count
+                });
+            if remaining.is_none_or(|count| count == 0) {
+                self.remove_entity(p.item);
+            }
         }
     }
     /// `C::TeleportEntity`: its arms of `apply_packet`, guard and order kept.
@@ -633,3 +652,5 @@ use sunrise_gameplay_common::game::entity_sections::EntitySectionsGameExt1 as _;
 use crate::game::client_side::remote_client::minecarts::CartLerpClientExt as _;
 
 use sunrise_gameplay_common::game::minecarts::MinecartRailGameExt as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

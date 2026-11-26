@@ -57,6 +57,17 @@ impl Remote {
             .filter_map(move |(&id, seat)| (seat.vehicle == vehicle).then_some((id, seat.index)))
     }
 
+    /// The lowest packet seat index strictly after `after` (or the first seat).
+    pub(in crate::game) fn next_passenger_seat(
+        &self,
+        vehicle: u32,
+        after: Option<usize>,
+    ) -> Option<(u32, usize)> {
+        self.passenger_seats(vehicle)
+            .filter(|&(_, index)| after.is_none_or(|after| index > after))
+            .min_by_key(|&(_, index)| index)
+    }
+
     pub(in crate::game) fn has_passengers(&self, vehicle: u32) -> bool {
         self.passenger_seats(vehicle).next().is_some()
     }
@@ -421,15 +432,20 @@ impl crate::game::ClientGame<'_> {
         Some(position)
     }
 
-    /// AbstractBoat.getControllingPassenger: only the first player steers a boat.
-    /// A non-remote world retains its existing local movement ownership.
-    pub(in crate::game) fn controls_boat(&self, id: u32) -> bool {
+    fn controls_vehicle(&self, id: u32) -> bool {
         self.common.riding == Some(id)
             && self
                 .client
                 .remote
                 .as_ref()
                 .is_none_or(|r| r.first_passenger)
+    }
+
+    /// AbstractBoat.getControllingPassenger: `id` is a boat this client's player rides as its
+    /// first passenger, the only one who steers it. Another vehicle is never a driven boat. A
+    /// non-remote world retains its existing local movement ownership.
+    pub fn controls_boat(&self, id: u32) -> bool {
+        self.controls_vehicle(id) && self.common.boats.iter().any(|b| b.id == id)
     }
 
     /// Tick the local player's vehicle before the player tick:
@@ -642,7 +658,7 @@ impl crate::game::ClientGame<'_> {
     }
 
     /// The boat this client steers, as an index into `boats`.
-    fn driven_boat(&self) -> Option<usize> {
+    pub fn driven_boat(&self) -> Option<usize> {
         self.common
             .riding
             .filter(|&id| self.controls_boat(id))
@@ -789,7 +805,7 @@ impl crate::game::ClientGame<'_> {
     /// the synched bubble time, followed by the oars on boats this client does not drive.
     pub(in crate::game) fn tick_remote_boat_bubbles(&mut self) {
         for i in 0..self.common.boats.len() {
-            let driven = self.controls_boat(self.common.boats[i].id);
+            let driven = self.controls_vehicle(self.common.boats[i].id);
             if !driven {
                 // `AbstractBoat.tick`: the non-authoritative copy carries no
                 // cached motion into the next time this player drives it.

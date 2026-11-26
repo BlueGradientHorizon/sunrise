@@ -96,8 +96,9 @@ fn collect(
     context: &sunrise_world::native_load_context::LoadContext,
     collecting: bool,
 ) -> std::io::Result<Arc<ResolvedSources>> {
-    let loaded = ResolvedSources::load_collecting(root, items, overlay, context)
+    let mut loaded = ResolvedSources::load_collecting(root, items, overlay, context)
         .map_err(|error| std::io::Error::other(error.to_string()))?;
+    loaded.refuse_unknown_items(items);
     if !collecting {
         loaded
             .check()
@@ -207,6 +208,8 @@ pub struct SyncCache {
     pub data: Option<Synced>,
     pub damage: Option<FrozenDamage>,
     pub world_tags: Option<WorldTags>,
+    // The admitted biome table, and whether a vanilla preload differs from it.
+    pub biomes: Option<(Arc<sunrise_level::biome::Biomes>, bool)>,
     pub packed_registries: Option<Arc<PackRegistryDefinitions>>,
     pub advancements: Option<Arc<Tree>>,
     pub world_packs: bool,
@@ -216,6 +219,7 @@ static SYNC: Mutex<SyncCache> = Mutex::new(SyncCache {
     data: None,
     damage: None,
     world_tags: None,
+    biomes: None,
     packed_registries: None,
     advancements: None,
     world_packs: false,
@@ -256,6 +260,7 @@ pub fn cached_sync_data(
                 root,
                 overlay,
                 damage,
+                sync.biomes.as_ref().map(|(table, _)| table.as_ref()),
                 packed,
                 item_data.defaults(),
                 &sources,
@@ -293,12 +298,14 @@ pub fn prepare_world_sync_data(
     item_data: &ItemData,
     overlay: &sunrise_world::loot::PackOverlay,
     damage: &sunrise_world::damage_source::Catalog,
+    biomes: Option<(Arc<sunrise_level::biome::Biomes>, bool)>,
     items: Arc<Items>,
     packed_registries: Option<Arc<PackRegistryDefinitions>>,
     advancements: Arc<Tree>,
 ) -> std::result::Result<SyncCache, String> {
     let mut staged = SyncCache {
         data: SYNC.lock().unwrap_or_else(|e| e.into_inner()).data.clone(),
+        biomes,
         packed_registries,
         world_tags: Some(WorldTags::new(items.clone(), damage)),
         advancements: Some(advancements),
@@ -320,7 +327,8 @@ pub fn initialize_world_sync_data(
     item_data: &ItemData,
     items: &Items,
 ) -> std::result::Result<(), String> {
-    sync.world_packs = !overlay.files.is_empty();
+    sync.world_packs =
+        !overlay.files.is_empty() || sync.biomes.as_ref().is_some_and(|(_, differs)| *differs);
     if sync.world_packs
         || sync.data.as_ref().is_some_and(|cached| {
             cached.generation != item_data.defaults().generation() || cached.root != root
@@ -405,7 +413,8 @@ pub fn install_wire_reload(
     // Kept pack dialogs count as packs: a world opened without packs after
     // a `/reload` that dropped them must read its own registries again.
     let mut cache = SYNC.lock().unwrap_or_else(|e| e.into_inner());
-    cache.world_packs = !overlay.files.is_empty();
+    cache.world_packs =
+        !overlay.files.is_empty() || cache.biomes.as_ref().is_some_and(|(_, differs)| *differs);
     cache.advancements = Some(advancements);
     cache.world_tags = Some(world_tags);
     cache.data = sync.map(|sync| Synced {
@@ -455,7 +464,11 @@ pub struct SyncPreload {
 
 /// Start reading the server's data beside the world's preparation; `None`
 /// when it is read already, or being read (`preload_world_data`).
-pub fn preload_sync_data(item_data: &Arc<ItemData>, items: Arc<Items>) -> Option<SyncPreload> {
+pub fn preload_sync_data(
+    item_data: &Arc<ItemData>,
+    items: Arc<Items>,
+    biomes: &Arc<sunrise_level::biome::Biomes>,
+) -> Option<SyncPreload> {
     let generation = item_data.defaults().generation();
     if !SYNC.try_lock().is_ok_and(|sync| {
         sync.damage.is_none()
@@ -467,6 +480,18 @@ pub fn preload_sync_data(item_data: &Arc<ItemData>, items: Arc<Items>) -> Option
         return None;
     }
     let root = item_data.root().to_owned();
+    // Only the prepared vanilla table can be sent before world registry admission.
+    if !sunrise_sim::mod_content::biomes::modified(&root).is_empty()
+        || biomes.registry_order().into_iter().any(|name| {
+            biomes.pack_file(name).is_some()
+                || biomes
+                    .builtin_file(name)
+                    .is_some_and(|file| file.get("neoforge:conditions").is_some())
+        })
+    {
+        return None;
+    }
+    let biomes = biomes.clone();
     let item_data = Arc::clone(item_data);
     // Loading recipes asks mods' ingredient and recipe property set hooks.
     std::thread::Builder::new()
@@ -474,9 +499,10 @@ pub fn preload_sync_data(item_data: &Arc<ItemData>, items: Arc<Items>) -> Option
         .name("Server data preload".into())
         .spawn(move || {
             let none = sunrise_world::loot::PackOverlay::NONE;
-            SyncData::load(
+            SyncData::load_with(
                 item_data.root(),
                 &none,
+                Some(&biomes),
                 item_data.defaults(),
                 server_sources(item_data.root(), &item_data, &items, &none)
                     .map_err(|error| error.to_string())?

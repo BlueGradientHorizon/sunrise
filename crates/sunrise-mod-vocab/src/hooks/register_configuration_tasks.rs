@@ -16,12 +16,12 @@ pub trait Hooks {
     /// There is no task timeout: answering keep-alives can hold configuration
     /// indefinitely. A silent or disconnected connection still ends normally.
     #[hook(
-        target = "sunrise_gameplay::game::native_hooks::register_configuration_tasks::ServerGame<'_>::native_register_configuration_tasks",
         dispatch = "flat",
         side = "server",
         contract = "listen",
         version = 3,
-        neoforge = "RegisterConfigurationTasksEvent"
+        neoforge = "RegisterConfigurationTasksEvent",
+        listener_transaction = "always"
     )]
     fn register_configuration_tasks(
         connection: mod_api::ConfigurationConnection,

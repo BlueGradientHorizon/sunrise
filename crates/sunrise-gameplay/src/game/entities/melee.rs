@@ -24,7 +24,7 @@ impl crate::game::ServerGame<'_> {
     pub(in crate::game::server_side) fn charge_attack_fully(&mut self) {
         let delay = sunrise_sim::attack_strength::delay(self.main_hand_attack_speed());
         // The cast saturates: with no attack speed the delay is infinite and no ticker reaches it.
-        self.server.attack_ticks = (delay - 0.5).ceil() as u32;
+        self.server.attack_ticks = (delay - 0.5).ceil() as i32;
     }
 
     /// `Player.isSweepAttack`: a charged, grounded sword hit below the movement
@@ -176,7 +176,7 @@ impl crate::game::ServerGame<'_> {
         // Player.onAttack: the blow starts the attack strength again, hurt or not.
         self.server.attack_ticks = 0;
         if admitted {
-            if self.extra_knockback(kind, scale).1 {
+            if scale > 0.9 && self.common.player.as_ref().is_some_and(|p| p.sprinting) {
                 self.server_play_at_feet("minecraft:entity.player.attack.knockback");
             }
             self.sweep_decision(scale, false, kind);
@@ -205,7 +205,7 @@ impl crate::game::ServerGame<'_> {
             return;
         }
         let sweep = self.sweep_attack_position(scale, crit, &target_kind);
-        let (knockback, knockback_attack) = self.extra_knockback(&target_kind, scale);
+        let knockback_attack = scale > 0.9 && self.common.player.as_ref().is_some_and(|p| p.sprinting);
         let player = self.common.player.as_ref();
         let from = player.map(|p| [p.position.x, p.position.y, p.position.z]);
         if knockback_attack && let Some(at) = from {
@@ -217,14 +217,7 @@ impl crate::game::ServerGame<'_> {
             None => sunrise_sim::mobs::Damage::of(sunrise_sim::mobs::DamageKind::Generic),
         };
         let (id, join) = (self.common.mobs[index].id, self.common.mobs[index].join);
-        let (landed, killed) = self.hurt_by_player(index, amount, source);
-        if killed
-            && let Some(i) = self.common.mob_index.find(&self.common.mobs, id)
-            && self.common.mobs[i].join == join
-            && !self.common.mobs[i].removed
-        {
-            self.native_kill_event(i);
-        }
+        let (landed, _) = self.hurt_by_player(index, amount, source);
         let Some(index) = self
             .common
             .mob_index
@@ -262,11 +255,14 @@ impl crate::game::ServerGame<'_> {
             });
         }
         if landed {
+            let (knockback, _) = self.extra_knockback(&target_kind, id, scale, None);
             if knockback > 0.0 {
                 let (xd, zd) = self.extra_knockback_direction();
+                let aim = self.attacker_aim(source.attacker);
                 let plan =
                     self.prepare_knockback_credit(self.common.mobs[index].id as i32, None, &attack);
                 let mut credit = plan.lend(&mut self.server.last_hurt_by_player);
+                self.common.mobs[index].attacker_aim = aim;
                 let level = crate::game::server_side::entity_server::damage_level_of!(
                     self,
                     &attack,
@@ -282,6 +278,7 @@ impl crate::game::ServerGame<'_> {
                     amount,
                     true,
                 );
+                self.common.mobs[index].attacker_aim = None;
                 self.common.stop_sprint_after_extra_knockback();
             }
             let mob = &self.common.mobs[index];
@@ -387,7 +384,7 @@ impl crate::game::ServerGame<'_> {
                 && self.common.mobs[i].join == join
                 && !self.common.mobs[i].removed
             {
-                self.weapon_hit(i);
+                self.weapon_hit(i, source);
             }
             // Player.attack: causeFoodExhaustion(0.1F) only when the hit hurt
             // (inside `if (wasHurt)`), after damageStatsAndHearts.
@@ -440,12 +437,18 @@ impl crate::game::ServerGame<'_> {
         // enchantment damage: checked before the mace's smash bonus is added.
         let damaging = amount > 0.0 || enchant_bonus * scale > 0.0;
         // Item.getAttackDamageBonus (a mace's smash), before the critical hit.
-        amount += self.smash_damage_bonus(target_kind);
+        amount += self.smash_damage_bonus(target_kind, victim);
         let vanilla_crit = living && self.common.critical_attack(scale);
         let mut crit = vanilla_crit;
         let mut multiplier = if vanilla_crit { 1.5 } else { 1.0 };
         if living && damaging {
-            self.native_critical_hit(target_kind, vanilla_crit, &mut crit, &mut multiplier);
+            sunrise_gameplay_common::game::native_hooks::base::GameHooks::native_critical_hit(
+                self,
+                target_kind,
+                vanilla_crit,
+                &mut crit,
+                &mut multiplier,
+            );
         }
         if crit {
             amount *= multiplier;

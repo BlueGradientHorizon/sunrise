@@ -4,6 +4,7 @@
 //! prepared resources.
 use mod_api::{DamageItemEvent, Flow, Hooks, ItemPart, ModEntry, Registrar, RegistrationContext};
 use std::sync::{Arc, Mutex};
+use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;
 use sunrise_items::items::ItemStack;
 
 /// What the part of an item does to the wear it is asked about.
@@ -296,6 +297,90 @@ fn a_part_breaks_a_mobs_glider_now() {
             mob.item_by_slot(EquipmentSlot::Chest),
             None,
             "the glider broke"
+        );
+    });
+}
+
+/// `ItemStack::hurt_and_break` (#5369) wears a stack nobody holds as `ItemStack.hurtAndBreak`
+/// does: a point of wear, the last point breaking the stack away, nothing for an item that is
+/// not damageable, Unbreaking III saving most points, and nothing for a creative player. A stale
+/// level, a player handle that is not the player's and a client are refused.
+#[test]
+#[ignore = "daily"]
+fn a_mod_wears_a_stack_nobody_holds_as_vanilla_does() {
+    use sunrise_gameplay_common::game::api_values::TryIntoApi;
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+    sunrise_gameplay::game::native_entity_refs::tests::with_game(|game| {
+        game.options.dedicated = Some(Vec::new());
+        game.creative = false;
+        game.world.random = sunrise_core::random::LevelRandom::for_level(
+            sunrise_core::random::LegacyRandom::new(12345),
+        );
+        let level = game.level(game.dim.id()).unwrap();
+        let api = |stack: &ItemStack| -> mod_api::ItemStack { stack.try_into_api().unwrap() };
+        let pickaxe = api(&ItemStack::new("minecraft:iron_pickaxe", 1));
+        let worn = pickaxe
+            .hurt_and_break(game, level, 1, None)
+            .unwrap()
+            .unwrap();
+        assert_eq!(worn.damage(), 1);
+        // An iron pickaxe holds 250 points: its last one breaks it away.
+        let mut nearly = ItemStack::new("minecraft:iron_pickaxe", 1);
+        nearly.damage = 249;
+        assert_eq!(api(&nearly).hurt_and_break(game, level, 1, None), Ok(None));
+        let stone = api(&ItemStack::new("minecraft:stone", 4));
+        assert_eq!(
+            stone.hurt_and_break(game, level, 1, None),
+            Ok(Some(stone.clone()))
+        );
+        let mut tough = ItemStack::new("minecraft:iron_pickaxe", 1);
+        tough.enchant("minecraft:unbreaking", 3);
+        let mut tough = api(&tough);
+        for _ in 0..200 {
+            tough = tough.hurt_and_break(game, level, 1, None).unwrap().unwrap();
+        }
+        // A quarter of 200 points is 50: far from none and from all of them.
+        assert!((20..=90).contains(&tough.damage()), "{}", tough.damage());
+
+        game.player = Some(
+            sunrise_sim::motion::PlayerMotion::new(
+                game.motion,
+                sunrise_core::geometry::Vec3::new(0.0, 64.0, 0.0),
+            )
+            .unwrap(),
+        );
+        sunrise_gameplay::game::native_entity_refs::tests::bind_local_player(game, 20, 123);
+        let player = game.player(123).unwrap();
+        game.creative = true;
+        assert_eq!(
+            pickaxe.hurt_and_break(game, level, 1, Some(player)),
+            Ok(Some(pickaxe.clone()))
+        );
+        game.creative = false;
+        // Refusals: a stale level, a player handle whose uuid is not the player's, a client.
+        let stale = mod_api::LevelRef::new(mod_api::WorldEpoch::new(u64::MAX), game.dim.key());
+        assert_eq!(
+            pickaxe.hurt_and_break(game, stale, 1, None),
+            Err(mod_api::StackWriteError::Unavailable)
+        );
+        let impostor = mod_api::__private::game::player_ref(game.entity(20).unwrap(), 999);
+        assert_eq!(
+            pickaxe.hurt_and_break(game, level, 1, Some(impostor)),
+            Err(mod_api::StackWriteError::Unavailable)
+        );
+        let worn = pickaxe
+            .hurt_and_break(game, level, 1, Some(player))
+            .unwrap()
+            .unwrap();
+        assert_eq!(worn.damage(), 1);
+
+        // A client wears nothing.
+        game.options.dedicated = None;
+        game.options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::Client;
+        assert_eq!(
+            pickaxe.hurt_and_break(game, level, 1, None),
+            Err(mod_api::StackWriteError::Unavailable)
         );
     });
 }

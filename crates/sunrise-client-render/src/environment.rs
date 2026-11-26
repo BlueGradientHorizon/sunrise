@@ -5,7 +5,8 @@ use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use sunrise_assets::resource_source::ResourceSource;
 pub use sunrise_level::environment::{
-    AttributeModifiers, Environment, Frame, Sample, Sky, sky_darken,
+    AttributeModifiers, Environment, Frame, Sample, Sky, TimelineTable, sky_darken,
+    sky_darken_with_clock,
 };
 use sunrise_level::pack_tags::Tags;
 use sunrise_world::environment_attributes::{

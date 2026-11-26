@@ -5,7 +5,7 @@
 //! a server: nothing of them goes over the network.
 use crate::game::ClientGame;
 use mod_api::EntityRef;
-use sunrise_client::particles::ParticleEngine;
+use sunrise_client::particles::{ParticleEngine, ParticleLevel};
 use sunrise_client_gameplay::mob_ambient as ambient;
 use sunrise_core::{geometry::Vec3, random::RandomSource};
 use sunrise_items::blocks::RenderShape;
@@ -63,7 +63,7 @@ impl ClientGame<'_> {
                     );
                 }
                 // Each guest of a LAN host makes its own.
-                MobEvent::LocalSound(name, at, volume, pitch) => self.client.audio.0.play_unshared(
+                MobEvent::LocalSound(name, at, volume, pitch) => self.play_audio_unshared(
                     &format!("minecraft:{name}"),
                     Some(at),
                     volume,
@@ -279,6 +279,11 @@ impl ClientGame<'_> {
         // are kept per type here, and this resolves them once (it returns at
         // once after).
         self.ensure_item_particle_sprites();
+        let level = ParticleLevel::new(
+            &self.common.world,
+            self.common.res.facts(),
+            self.common.collision,
+        );
         if let Some(p) = self.common.player.as_ref() {
             let effects = &self.common.potions.effects.list;
             let list: Vec<_> = effects
@@ -294,7 +299,7 @@ impl ClientGame<'_> {
             );
             swirl(
                 &mut self.client.particles.0,
-                &self.common.world,
+                &level,
                 p.position,
                 size,
                 &list,
@@ -322,7 +327,7 @@ impl ClientGame<'_> {
                     .collect();
                 swirl(
                     &mut self.client.particles.0,
-                    &self.common.world,
+                    &level,
                     m.position,
                     size,
                     &list,
@@ -334,7 +339,7 @@ impl ClientGame<'_> {
                 let ambient = m.extra.effect_ambient;
                 swirl(
                     &mut self.client.particles.0,
-                    &self.common.world,
+                    &level,
                     m.position,
                     size,
                     list,
@@ -351,7 +356,7 @@ impl ClientGame<'_> {
 /// effects are ambient) of one of the particles at a random spot of the box.
 fn swirl(
     particles: &mut ParticleEngine,
-    world: &sunrise_level::world::World,
+    level: &ParticleLevel<'_>,
     feet: Vec3,
     size: (f64, f64),
     list: &[ParticleOptions],
@@ -371,7 +376,7 @@ fn swirl(
     let x = feet.x + size.0 * (2.0 * r.next_double() - 1.0) * 0.5;
     let y = feet.y + size.1 * r.next_double();
     let z = feet.z + size.0 * (2.0 * r.next_double() - 1.0) * 0.5;
-    particles.add_with_world(Some(world), &list[pick], [x, y, z], [1.0; 3], false, false);
+    particles.add_with(Some(level), &list[pick], [x, y, z], [1.0; 3], false, false);
 }
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;

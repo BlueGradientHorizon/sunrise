@@ -36,13 +36,9 @@ impl ClientGame<'_> {
             target,
             body.bounds,
             30,
+            None,
         );
-        self.client.audio.0.play_unshared(
-            "minecraft:item.totem.use",
-            Some(body.bounds.feet),
-            1.0,
-            1.0,
-        );
+        self.play_audio_unshared("minecraft:item.totem.use", Some(body.bounds.feet), 1.0, 1.0);
         if target == TrackingTarget::LocalPlayer {
             self.input_feedback(sunrise_client::input_source::Feedback::Totem);
             // findTotem, then LocalPlayer.displayItemActivation. The offsets

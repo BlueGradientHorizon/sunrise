@@ -1,7 +1,9 @@
 //! Ender dragon handles for native server mods: the `Mob` state the dragon
-//! keeps, its phase and the fight it belongs to.
+//! keeps, its phase and the fight it belongs to, and the End's fight
+//! itself, read and driven through the level.
 use super::{Dim, commands::Target, dragon::Fight, dragon_common::Dragon};
-use mod_api::{DragonPhase, DragonRef, EntityRef, LivingRef, MobRef};
+use mod_api::{DragonFightState, DragonPhase, DragonRef, EntityRef, LevelRef, LivingRef, MobRef};
+use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;
 
 impl crate::game::ServerGame<'_> {
     /// The dragon an entity handle names now.
@@ -70,6 +72,41 @@ impl crate::game::ServerGame<'_> {
     /// `alive_crystals` is.
     pub(in crate::game) fn dragon_previously_killed(&self, dragon: DragonRef) -> Option<bool> {
         Some(self.native_dragon_fight(dragon)?.previously_killed)
+    }
+
+    /// `EnderDragonFight`'s state, read in place or parked: Sunrise keeps the
+    /// End's fight only. None as the host call says.
+    pub(in crate::game) fn level_dragon_fight(&self, level: LevelRef) -> Option<DragonFightState> {
+        self.native_level_world(level)?;
+        (level.dimension_id() == Dim::End.id() && self.server.fight.loaded)
+            .then(|| self.server.fight.api())
+    }
+
+    /// Whether a fight write may run on `level`: the End in place, on the
+    /// server, named by a current handle.
+    fn native_fight_write_allowed(&self, level: LevelRef) -> bool {
+        self.common.is_logical_server()
+            && self.level_handle_current(level)
+            && self.common.dim == Dim::End
+            && self.common.dim.key() == level.dimension()
+    }
+
+    /// `EnderDragonFight.tryRespawn`. True when a respawn started.
+    pub(in crate::game) fn level_dragon_fight_try_respawn(&mut self, level: LevelRef) -> bool {
+        self.native_fight_write_allowed(level) && self.try_respawn()
+    }
+
+    /// `EnderDragonFight.resetSpikeCrystals`.
+    pub(in crate::game) fn level_dragon_fight_reset_spike_crystals(
+        &mut self,
+        level: LevelRef,
+    ) -> bool {
+        if !self.native_fight_write_allowed(level) {
+            return false;
+        }
+        self.load_fight();
+        self.reset_spike_crystals();
+        true
     }
 
     /// `EnderDragon.canAttack` (`canBeSeenAsEnemy`) and `Mob.asValidTarget`

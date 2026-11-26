@@ -86,7 +86,7 @@ pub(crate) mod tests {
                         let selected = game.selected;
                         game.inventory[selected] = tool;
                         place(game, name);
-                        assert!(game.break_block_as_player([7, 64, 4]).unwrap());
+                        assert!(game.break_block_as_player([7, 64, 4], None).unwrap());
                         assert_eq!(count.load(Ordering::Relaxed), serials, "{mode:?}, {name}");
                     }
                     let seen = seen.lock().unwrap();
@@ -175,11 +175,13 @@ pub(crate) mod tests {
                 ];
                 let items_key = "Items".into();
                 for (x, items) in (1..=3).zip(&expected) {
-                    assert_eq!(
-                        game.world
+                    assert!(
+                        !game
+                            .world
                             .block_entities
-                            .ticking(game.world.block(x, 64, 1).0),
-                        sunrise_level::block_entities::Ticking::Yes,
+                            .ticker_slots()
+                            .iter()
+                            .any(|(pos, _)| *pos == (x, 64, 1))
                     );
                     let Some(BlockEntity::Mod(row)) = game.world.block_entities.get(&(x, 64, 1))
                     else {
@@ -190,7 +192,7 @@ pub(crate) mod tests {
                     if x == 3 {
                         assert_eq!(row.nbt.get(&items_key), None);
                         let [Some(stack)] = row.items.as_slice() else {
-                            panic!("expected one modeled stack in slot 0 at {x}");
+                            panic!("expected one modeled stack at {x}");
                         };
                         assert_eq!((stack.item.as_ref(), stack.count), ("minecraft:stone", 1));
                     } else {
@@ -226,7 +228,7 @@ pub(crate) mod tests {
                     if x == 3 {
                         assert_eq!(row.nbt.get(&items_key), None);
                         let [Some(stack)] = row.items.as_slice() else {
-                            panic!("expected one saved stack in slot 0 at {x}");
+                            panic!("expected one saved stack at {x}");
                         };
                         assert_eq!((stack.item.as_ref(), stack.count), ("minecraft:stone", 1));
                     } else {

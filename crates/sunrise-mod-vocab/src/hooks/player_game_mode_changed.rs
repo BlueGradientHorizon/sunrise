@@ -1,5 +1,4 @@
 //! The `player_game_mode_changed` hook: declarations the mod API generator reads (see `hooks/mod.rs`).
-// catalog-order: 0253
 
 pub trait Hooks {
     /// A server player's game mode is about to change (NeoForge's
@@ -17,7 +16,6 @@ pub trait Hooks {
     /// a player's turn their state is swapped in; for the hardcore respawn
     /// it is not.
     #[hook(
-        target = "sunrise_gameplay::game::native_hooks::player_game_mode_changed::ServerGame<'_>::native_player_game_mode_changed",
         dispatch = "flat",
         side = "server",
         contract = "cancel",

@@ -10,10 +10,7 @@ pub fn weather_for_world(world: &World, is_end: bool) -> (f32, f32) {
     weather_for_level(world.shape, is_end, world.weather.levels(1.0))
 }
 
-/// `Level.isRaining` and `isThundering` from the rain and thunder levels.
-pub fn weather_flags((rain, thunder): (f32, f32)) -> (bool, bool) {
-    (rain > 0.2, thunder > 0.9)
-}
+pub use sunrise_level::world::weather_flags;
 
 /// `Level.isRainingAt` over `world`, the column of the level in dimension `dim`.
 pub fn rain_at(
@@ -112,14 +109,23 @@ pub trait NativeRainReadGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 
     /// The level's dimension type with its gameplay attributes, from the facts the game uses.
-    fn level_dimension_type(&self, level: LevelRef) -> Option<LevelDimensionType> {
+    fn level_dimension_type<'a>(&'a self, level: LevelRef) -> Option<LevelDimensionType<'a>>
+    where
+        '__sg: 'a,
+    {
         use sunrise_world::dimension_type::{CardinalLight, Skybox};
         use sunrise_world::worldgen::value_provider::IntProvider;
-        self.native_level_read_world(level)?;
+        use crate::game::side_ops::world::SideOps as _;
+        use sunrise_world::dimension_type::DimensionFacts;
         let key = sunrise_core::LevelKey::parse(level.dimension_id()).ok()?;
-        let facts = self.dimension_facts_for(key);
+        let facts = if let Some(pending) = self.side_state().side_constructing_dimension_facts(level) {
+            pending.unwrap_or_else(|| DimensionFacts::of_builtin_level(key))
+        } else {
+            self.native_level_read_world(level)?;
+            self.dimension_facts_for(key)
+        };
         Some(LevelDimensionType {
-            id: facts.id.clone(),
+            id: &facts.id,
             min_y: facts.height.min_y,
             height: facts.height.height,
             logical_height: facts.height.logical_height,
@@ -129,7 +135,7 @@ pub trait NativeRainReadGameExt1<'__sg>: crate::game::SideGame<'__sg> {
             has_ender_dragon_fight: facts.has_ender_dragon_fight,
             coordinate_scale: facts.coordinate_scale,
             ambient_light: facts.ambient_light,
-            infiniburn: facts.infiniburn.clone(),
+            infiniburn: &facts.infiniburn,
             monster_spawn_light_level: match facts.monster_spawn_light_level {
                 IntProvider::Constant(n) => Some((n, n)),
                 IntProvider::Uniform { min, max } => Some((min, max)),
@@ -137,13 +143,13 @@ pub trait NativeRainReadGameExt1<'__sg>: crate::game::SideGame<'__sg> {
             },
             monster_spawn_block_light_limit: facts.monster_spawn_block_light_limit,
             skybox: match facts.skybox {
-                Skybox::None => "none".to_owned(),
-                Skybox::Overworld => "overworld".to_owned(),
-                Skybox::End => "end".to_owned(),
+                Skybox::None => "none",
+                Skybox::Overworld => "overworld",
+                Skybox::End => "end",
             },
             cardinal_light: match facts.cardinal_light {
-                CardinalLight::Default => "default".to_owned(),
-                CardinalLight::Nether => "nether".to_owned(),
+                CardinalLight::Default => "default",
+                CardinalLight::Nether => "nether",
             },
             water_evaporates: facts.water_evaporates,
             fast_lava: facts.fast_lava,
@@ -153,17 +159,21 @@ pub trait NativeRainReadGameExt1<'__sg>: crate::game::SideGame<'__sg> {
             snow_golem_melts: facts.snow_golem_melts,
             can_start_raid: facts.can_start_raid,
             sky_light_level: facts.sky_light_level,
-            timelines: facts.timelines.clone(),
-            default_clock: facts.default_clock.clone(),
-            bed_can_sleep: facts.bed_rule.can_sleep.name().to_owned(),
-            bed_can_set_spawn: facts.bed_rule.can_set_spawn.name().to_owned(),
+            timelines: &facts.timelines,
+            default_clock: facts.default_clock.as_deref(),
+            bed_can_sleep: facts.bed_rule.can_sleep.name(),
+            bed_can_set_spawn: facts.bed_rule.can_set_spawn.name(),
             bed_destroy_on_use: facts.bed_rule.destroy_on_use,
             bed_destroy_on_leave: facts.bed_rule.destroy_on_leave,
-            straw_bed_can_sleep: facts.straw_bed_rule.can_sleep.name().to_owned(),
-            straw_bed_can_set_spawn: facts.straw_bed_rule.can_set_spawn.name().to_owned(),
+            straw_bed_can_sleep: facts.straw_bed_rule.can_sleep.name(),
+            straw_bed_can_set_spawn: facts.straw_bed_rule.can_set_spawn.name(),
             straw_bed_destroy_on_use: facts.straw_bed_rule.destroy_on_use,
             straw_bed_destroy_on_leave: facts.straw_bed_rule.destroy_on_leave,
         })
+    }
+
+    fn level_read_is_raining(&self, level: LevelRef) -> Option<bool> {
+        Some(weather_flags(self.level_weather(level)?).0)
     }
 
     /// The rain and thunder levels, each 0.0 to 1.0 (`Level.getRainLevel`,

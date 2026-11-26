@@ -25,6 +25,9 @@ pub struct Rocket {
     pub attachment_lifetime: sunrise_mod_runtime::attachments::AttachmentLifetime,
     /// `Entity.yRot` and `xRot` (`/tp`, `/data get ... Rotation`).
     pub rotation: [f32; 2],
+    /// `Entity.yRotO` and `xRotO`: the rotation when its tick began (`setOldPosAndRot`), which
+    /// `Projectile.updateRotation` eases from and a deflection turns with the rotation.
+    pub previous_rotation: [f32; 2],
     /// When it joined its list (`sunrise_client::join_seq`); set by the list.
     pub join: sunrise_sim::join_seq::JoinSeq,
     /// Its entity id: from the entity counter on the server, the server's on
@@ -85,15 +88,16 @@ impl Rocket {
     pub fn motion(&self) -> (Vec3, Vec3) {
         (self.position, self.velocity)
     }
-    /// `Projectile.updateRotation`: a fifth of the way from `old` (yaw,
+    /// `Projectile.updateRotation`: a fifth of the way from the old rotation (yaw,
     /// pitch) toward its motion's direction, the short way round.
-    pub fn update_rotation(&mut self, old: [f32; 2]) {
+    pub fn update_rotation(&mut self) {
         let v = self.velocity;
         let horizontal = (v.x * v.x + v.z * v.z).sqrt();
         let atan2 = sunrise_core::geometry::trig::atan2_degrees;
+        let old = self.previous_rotation;
         self.rotation = [
-            sunrise_sim::arrows::lerp_rotation(old[0], atan2(v.x, v.z)),
-            sunrise_sim::arrows::lerp_rotation(old[1], atan2(v.y, horizontal)),
+            sunrise_sim::entities::arrows::lerp_rotation(old[0], atan2(v.x, v.z)),
+            sunrise_sim::entities::arrows::lerp_rotation(old[1], atan2(v.y, horizontal)),
         ];
     }
 
@@ -105,6 +109,7 @@ impl Rocket {
             size_answer: None,
             attachment_lifetime: Default::default(),
             rotation: [0.0, 0.0],
+            previous_rotation: [0.0, 0.0],
             join: Default::default(),
             id,
             position,
@@ -181,6 +186,7 @@ impl Rocket {
             size_answer: None,
             attachment_lifetime: Default::default(),
             rotation: r.rotation,
+            previous_rotation: r.rotation,
             join: Default::default(),
             id: 0,
             position: r.position,
@@ -214,6 +220,7 @@ impl Rocket {
     pub fn load_nbt(&mut self, r: RocketNbt) {
         let loaded = Self::from_nbt(r);
         self.rotation = loaded.rotation;
+        self.previous_rotation = loaded.rotation;
         self.has_been_shot = loaded.has_been_shot;
         self.silent = loaded.silent;
         self.position = loaded.position;
@@ -233,6 +240,7 @@ impl Rocket {
     /// caller).
     pub fn remote_step(&mut self, motion: sunrise_sim::motion::BodyMotion<'_>) {
         self.previous = self.position;
+        self.previous_rotation = self.rotation;
         if self.attached_to.is_none() {
             let mut scene = SceneCollisions {
                 world: motion.world,
@@ -265,13 +273,13 @@ impl Rocket {
         self.life += 1;
     }
     /// The end of `Projectile.shoot`: yaw and pitch are set straight from the
-    /// shot's motion (the old rotation follows, as `rotation` is the old one
-    /// on the next tick).
+    /// shot's motion, and the old rotation (`yRotO`, `xRotO`) to them.
     pub fn turn_to_shot(&mut self) {
         let v = self.velocity;
         let horizontal = (v.x * v.x + v.z * v.z).sqrt();
         let atan2 = sunrise_core::geometry::trig::atan2_degrees;
         self.rotation = [atan2(v.x, v.z), atan2(v.y, horizontal)];
+        self.previous_rotation = self.rotation;
     }
     /// The move of a rocket attached to no entity: sped up and rising, or an
     /// angled one's own motion.

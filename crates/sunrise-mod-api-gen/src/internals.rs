@@ -222,6 +222,9 @@ struct Pass {
     shadowed: bool,
     /// The first fragment a whole-module pass could not read inside an inline module.
     scope_error: Option<String>,
+    /// Every `macro_rules!` name the game crate defines: an import of one stays as written,
+    /// since only `#[macro_export]` makes such a macro public.
+    game_macros: BTreeMap<String, BTreeSet<String>>,
 }
 
 /// Crates whose types are the mod API's own: their fields stay private in every build.
@@ -904,6 +907,17 @@ impl Shapes {
     }
 }
 
+/// The names a `use` tree imports, before any rename: what each binding refers to.
+fn use_names(tree: &syn::UseTree) -> Vec<String> {
+    match tree {
+        syn::UseTree::Path(path) => use_names(&path.tree),
+        syn::UseTree::Name(name) => vec![name.ident.to_string()],
+        syn::UseTree::Rename(rename) => vec![rename.ident.to_string()],
+        syn::UseTree::Glob(_) => Vec::new(),
+        syn::UseTree::Group(group) => group.items.iter().flat_map(use_names).collect(),
+    }
+}
+
 fn owner(ty: &syn::Type) -> String {
     struct EraseLifetimes;
     impl syn::visit_mut::VisitMut for EraseLifetimes {
@@ -1379,6 +1393,22 @@ impl Pass {
                     self.cfg = outer;
                     self.shadowed = outer_shadowed;
                 }
+            }
+            // A game module's restricted import, such as `pub(super) use lower::Item;` left where
+            // an item moved to a lower crate: the game's code reaches the item through it, and so
+            // do a mixin's copy of that code and the patch crate's repeated imports, so it is
+            // widened with the game's own items.
+            Item::Use(value)
+                if !test_only(&value.attrs)
+                    && self.layout.owns(module)
+                    && matches!(value.vis, Visibility::Restricted(_))
+                    && !use_names(&value.tree).iter().any(|name| {
+                        self.game_macros
+                            .get(module.split("::").next().unwrap_or_default())
+                            .is_some_and(|macros| macros.contains(name))
+                    }) =>
+            {
+                self.sources[file].public(&value.vis, value.use_token.span(), "use");
             }
             // A lower crate's import under one of its own Cargo features: the patch crate is built
             // with the game's features, so its mirror reaches the binding the prebuilt crate chose
@@ -1911,8 +1941,42 @@ fn collect(
             included: false,
         });
     }
-    for source in files {
+    let sources = files;
+    let mut files = Vec::new();
+    for source in sources {
         let file = pass.load(&source.path)?;
+        // Inline modules' macros too: `pub(crate) use` re-exports one from anywhere in the crate.
+        fn macros(items: &[Item], out: &mut BTreeSet<String>) {
+            for item in items {
+                match item {
+                    Item::Macro(value) if value.mac.path.is_ident("macro_rules") => {
+                        out.extend(value.ident.as_ref().map(ToString::to_string));
+                    }
+                    Item::Mod(value) => {
+                        if let Some((_, items)) = &value.content {
+                            macros(items, out);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+        macros(
+            &pass.sources[file].parsed.items,
+            pass.game_macros
+                .entry(
+                    source
+                        .module
+                        .split("::")
+                        .next()
+                        .unwrap_or_default()
+                        .to_owned(),
+                )
+                .or_default(),
+        );
+        files.push((file, source));
+    }
+    for (file, source) in files {
         pass.cfg = source.cfg;
         pass.items(
             file,
@@ -1930,7 +1994,8 @@ fn collect(
             }
         }
     }
-    for (origin, path) in crate::replace::marked(root, layout)? {
+    // Each marked function where its item is: a method under its `impl`'s file module.
+    for (origin, path) in crate::replace::marked_items(root, layout)? {
         pass.lower(root, &path, true)
             .map_err(|e| format!("{origin}: {path}: {e}"))?;
     }
@@ -2779,6 +2844,38 @@ pub struct ItemStack { a: First, b: Second, c: second::Kind }
     }
 
     #[test]
+    fn restricted_game_imports_widen_but_macro_imports_stay() {
+        let fixture = Fixture::new(
+            r#"mod moved {
+    pub(super) use std::collections::HashMap;
+    pub(in crate::game) use std::vec::{Vec as List, IntoIter};
+    use std::fmt;
+    macro_rules! local { () => {} }
+    pub(super) use local;
+}
+mod macros { macro_rules! shared { () => {} } pub(crate) use shared; }
+pub(crate) use macros::shared as reexported;
+"#,
+        );
+        widen_with(&fixture.0, &[]).unwrap();
+        let source = fixture.game();
+        for expected in [
+            "    pub use std::collections::HashMap;",
+            "    pub use std::vec::{Vec as List, IntoIter};",
+            "    use std::fmt;",
+            "    pub(super) use local;",
+            "pub(crate) use shared; }",
+            "pub(crate) use macros::shared as reexported;",
+        ] {
+            assert!(
+                source.contains(expected),
+                "missing {expected:?} in {source}"
+            );
+        }
+        syn::parse_file(&source).unwrap();
+    }
+
+    #[test]
     fn widens_items_without_touching_uses_trait_impls_or_local_items() {
         let fixture = Fixture::new(
             r#"use std::fmt;
@@ -2908,8 +3005,7 @@ const LABEL: &str = "é"; struct AfterUnicode;
     }
 
     /// Only fragments some build compiles are opened, and only the standard `include!` is
-    /// followed; an inline module's fragments are widened with the module, and no file outside
-    /// the staging root is read or edited.
+    /// followed; an inline module's fragments are widened with the module.
     #[test]
     fn lower_scopes_follow_only_compilable_standard_includes_inside_the_root() {
         let fixture = Fixture::new("");
@@ -2946,9 +3042,16 @@ fn on_unix() {}
         pass.finish().unwrap();
         let child = fs::read_to_string(fixture.0.join("crates/lower/src/child.rs")).unwrap();
         assert_eq!(child, "pub fn helper() {}\n");
+    }
 
-        // A module reached from a fragment through a link out of the root is refused, and
-        // the file it names is left as it was.
+    /// A module reached from a fragment through a link out of the root is refused, and the file
+    /// it names is left as it was. Unix only: creating a link on Windows needs Developer Mode or
+    /// an administrator, so the test could not set its fixture up there.
+    #[cfg(unix)]
+    #[test]
+    fn a_module_reached_through_a_link_out_of_the_root_is_refused() {
+        let fixture = Fixture::new("");
+        fixture.lower();
         let outside = tempfile::tempdir().unwrap();
         let target = outside.path().join("elsewhere.rs");
         fs::write(&target, "fn far() {}\n").unwrap();

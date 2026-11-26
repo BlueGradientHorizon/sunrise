@@ -51,12 +51,15 @@ READERS = {
         "crates/sunrise-mod-package/src/sdk/fixture.tar.xz",
         # The page checks read the package crate's screenshot fixtures.
         "crates/sunrise-mod-package/tests/fixtures",
-        "crates/sunrise-mod-package/tests/index", "docs/modding/src/how-to/native-mods.md", "tools/ci/rust-version",
+        "crates/sunrise-mod-package/tests/index", "crates/sunrise-mod-vocab/changes/debt-re-wl-re-wl.toml",
+        "docs/modding/src/how-to/native-mods.md", "tools/ci/rust-version",
         # The installed-client daily builds and installs the fn-replace-check `lower` fixture.
         "tools/ci/fn-replace-check/lower",
     ],
     # The pinned Rust, and the mods library's template its tests render.
     "sunrise-native-build": ["crates/sunrise-client/src/native_mod_entry.rs.template", "tools/ci/rust-version"],
+    # The pipeline bench example links the bench mod's source in.
+    "sunrise-mod-host": ["tools/fixtures/mod-pipeline-bench"],
     "sunrise-client": SUNRISE_CLIENT,
     # Shares sunrise-client's sources, so its unit tests run the same reads.
     "sunrise-client-lib": SUNRISE_CLIENT,
@@ -89,7 +92,12 @@ READERS = {
         "crates/sunrise-client-gameplay/src", "crates/sunrise-mod-vocab/src",
     ],
     "sunrise-mod-api": MOD_API_GEN,
-    "sunrise-mod-api-gen": [*MOD_API_GEN, "crates/sunrise-mod-vocab/extension-tags"],
+    "sunrise-mod-api-gen": [
+        *MOD_API_GEN,
+        "crates/sunrise-mod-surface/tests/fixtures/occultism-0.9.0-alpha.1/uses.json",
+        "crates/sunrise-mod-vocab/changes",
+        "crates/sunrise-mod-vocab/extension-tags",
+    ],
     "sunrise-mod-api-gen-tests": MOD_API_GEN,
     # content_keys' source guard searches these crates' sources for the files that define declaration types.
     "sunrise-mod-package": [
@@ -103,13 +111,14 @@ READERS = {
     "sunrise-prepare": [
         "crates/sunrise-gameplay-common/src/game/runtime/launch_api.rs", "mods/sunrise/src/test/java", "research-lock.json",
     ],
+    # The RSA key tests verify the client's signed-textures fixture.
+    "sunrise-protocol": ["crates/sunrise-client/src/cut_layout/game/network/remote/fixtures/signed_textures.json"],
     "sunrise-release-sign": [
         "tests/install_ps1_signature.ps1", "tools/ci/sign_native_build.sh", "tools/ci/sign_release.sh",
     ],
     "sunrise-server": [
         "crates/sunrise-theme/fonts", "crates/sunrise-theme/icons", "docs/api/server-reference.md",
     ],
-    "sunrise-shader-api": ["docs/api/shaders-reference.md", "docs/api/shaders-reference-0.2.md"],
     # Its daily stable-release test drives the release gate's Python through the real surface differ.
     "sunrise-stage": [
         "tests/stable_mod_api_integration.py", "tests/test_stable_mod_api.py", "tools/ci/nightly.py",
@@ -132,8 +141,10 @@ NOT_READS = {
     "sunrise-gameplay-common": {"crates"}, "sunrise-sim": {"crates"},
     "sunrise-level": {"crates/sunrise-client-render"},
     "sunrise-mod-package": {"crates"},
+    # The retained-SDK test writes a synthetic render.rs into its temporary archive, not this checkout.
+    "cargo-sunrise-mod": {"crates/sunrise-mod-render/src/render.rs"},
     "sunrise-mod-vocab": {"."}, "sunrise-port-pack": {"mods"}, "sunrise-prepare": {"crates"},
-    # A package's source-file names (`package::source_file`), never this checkout's lock.
+    # A package's source-file names (`package::source_files`), never this checkout's lock.
     "sunrise-mod-source": {"Cargo.lock"},
     # shader_fuzz's `..` path parts, in the packs it writes and reads, beside its own seed pack.
     "sunrise-render-shaderpack": {"crates"},

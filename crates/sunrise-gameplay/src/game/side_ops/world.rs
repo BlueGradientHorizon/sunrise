@@ -2,6 +2,15 @@
 impl SideOps for crate::game::server_side::ServerState {
     type Game<'g> = crate::game::ServerGame<'g>;
 
+    fn side_parked_block_ticks<'a>(
+        game: &'a Self::Game<'_>,
+        dimension: &str,
+    ) -> Option<&'a Ticks> {
+        game.server.levels.0.parked_block_ticks_of(dimension)
+    }
+    fn side_parked_border(&self, dim: Dim) -> Option<&sunrise_level::worldborder::WorldBorder> {
+        self.levels.0.parked_border(dim)
+    }
     fn side_parked_world(&self, dimension: &str) -> Option<&World> {
         self.levels.0.parked_world_of(dimension)
     }
@@ -39,6 +48,9 @@ impl SideOps for crate::game::server_side::ServerState {
     }
     fn side_parked_target_visible(&self, dim: Dim, target: &Target) -> Option<bool> {
         self.levels.0.parked_target_visible(dim, target)
+    }
+    fn side_resident_target_id(game: &Self::Game<'_>, target: Target) -> Option<u32> {
+        game.resident_target_id(target)
     }
     fn side_server_resident_entity(game: &Self::Game<'_>, id: u32) -> EntityLookup<Target> {
         game.server_resident_entity(id)

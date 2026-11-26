@@ -5,7 +5,6 @@
 //! vanilla resources (later packs win), so every loader sees one tree.
 mod cache;
 mod import;
-use crate::resource_source::stays_inside;
 use crate::text::{Style, Text};
 pub use import::copy_pack;
 use std::{
@@ -17,9 +16,10 @@ pub use sunrise_level::pack_meta::{
     ALLOWED_SYMLINKS_CONFIG_NAME, BLOCKSTATE_LAYERS, DirectoryValidator, Filter, Format, Merge,
     Position, RESOURCE_FORMAT, Selectable, SelectionModel, Source, VANILLA_LANG_DEPRECATIONS,
     append_atlas_sources, atlas_append, compatibility, compatibility_for, compatible, component,
-    component_root, detected_pack_path, filter_of, first_json, is_downloaded_pack_id, merge_kind,
-    merge_stacks, overlay_applies, parse_meta, pattern, player_pack_ids, read_meta,
-    validate_pack_range,
+    component_root, data_overlays, detected_pack_path, filter_of, first_json,
+    is_downloaded_pack_id, is_overlay_directory, merge_kind, merge_stacks, overlay_applies,
+    overlay_applies_for, overlay_directories, parse_meta, pattern, player_pack_ids, read_meta,
+    validate_overlays, validate_pack_range,
 };
 
 #[derive(Clone, Debug)]
@@ -47,20 +47,9 @@ pub struct Pack {
 }
 
 fn overlays_of(meta: &serde_json::Value, configs: &sunrise_polytone::pack::Configs) -> Vec<String> {
-    meta["overlays"]["entries"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .filter(|e| sunrise_polytone::pack::overlay_active(e, configs, overlay_applies(e)))
-        .filter_map(|e| e["directory"].as_str().map(str::to_owned))
-        // OverlayMetadataSection's DIR_VALIDATOR: one folder of the pack, `[-_a-zA-Z0-9.]+`.
-        .filter(|d| {
-            stays_inside(d)
-                && !d.contains('/')
-                && d.bytes()
-                    .all(|b| b.is_ascii_alphanumeric() || b"-_.".contains(&b))
-        })
-        .collect()
+    overlay_directories(meta, |e| {
+        sunrise_polytone::pack::overlay_active(e, configs, overlay_applies_for(e, RESOURCE_FORMAT))
+    })
 }
 
 impl Pack {
@@ -474,16 +463,31 @@ pub fn resources(
     } = resolve(packs)?;
     let filters: Vec<_> = packs.iter().flat_map(|pack| &pack.filter).collect();
     let merged = merged_resources(&base, packs, &stacks);
-    let mut index: BTreeMap<_, _> = base
-        .list("")
-        .into_iter()
-        .filter(|name| {
-            !hidden.contains(name)
-                && !filters.iter().any(|filter| filter.blocks(name))
-                && name != sunrise_core::prepared_files::FILE_NAME
-        })
-        .map(|name| (name.clone(), Resource::file(base.clone(), name)))
-        .collect();
+    let index_base = |source: &ResourceSource| -> BTreeMap<_, _> {
+        source
+            .list("")
+            .into_iter()
+            .filter(|name| {
+                !filters.iter().any(|filter| filter.blocks(name))
+                    && name != sunrise_core::prepared_files::FILE_NAME
+            })
+            .map(|name| (name.clone(), Resource::file(source.clone(), name)))
+            .collect()
+    };
+    let mut index = index_base(&base);
+    // The same resolver already keeps each pack's original files in order.
+    // Publish those winners before the renderer hides or synthesizes files.
+    let raw_base = base.raw_pack_files();
+    let mut raw = if base.same_generation(raw_base) {
+        index.clone()
+    } else {
+        index_base(raw_base)
+    };
+    raw.extend(layers.iter().filter_map(|(name, provided)| {
+        let (_, (_, source, inner)) = provided.last()?;
+        Some((name.clone(), Resource::file(source.clone(), inner.clone())))
+    }));
+    index.retain(|name, _| !hidden.contains(name));
     for (name, (_, (_, source, inner))) in files {
         index.insert(name, Resource::file(source, inner));
     }
@@ -515,7 +519,11 @@ pub fn resources(
         stacked.insert(name, below.into_iter().chain(copies).collect());
     }
     stacked.retain(|name, _| index.contains_key(name));
-    Ok(ResourceSource::indexed_with_layers(index, stacked))
+    Ok(ResourceSource::indexed_with_layers(
+        index,
+        stacked,
+        Some(ResourceSource::indexed(raw)),
+    ))
 }
 
 fn merged_resources(
@@ -909,6 +917,87 @@ pub fn resource_root(vanilla: &Path, packs: &[Pack], cache: &Path) -> io::Result
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn raw_language_resource_is_the_winner_not_the_render_merge() {
+        use crate::resource_source::{Resource, ResourcePath, ResourceSource};
+        use std::io::Read;
+
+        let name = "assets/demo/lang/en_us.json";
+        let winner = b"{ \"high\": \"winner\" }\n";
+        let base = ResourceSource::indexed(BTreeMap::from([(
+            name.into(),
+            Resource::bytes(br#"{"low":"base"}"#.to_vec()),
+        )]));
+        let upper = ResourceSource::indexed(BTreeMap::from([(
+            name.into(),
+            Resource::bytes(winner.to_vec()),
+        )]));
+        let composed = resources(
+            base,
+            &[Pack::mod_layer("top".into(), Source::Opened(upper))],
+        )
+        .unwrap();
+        // Applying another selection over this view must not flatten its raw files.
+        let selected = resources(
+            composed,
+            &[Pack::mod_layer(
+                "empty".into(),
+                Source::Opened(ResourceSource::default()),
+            )],
+        )
+        .unwrap();
+        let rendered: serde_json::Value =
+            serde_json::from_slice(&selected.read(name).unwrap()).unwrap();
+        assert_eq!(rendered, serde_json::json!({"low":"base", "high":"winner"}));
+        let mut raw = Vec::new();
+        selected
+            .raw_pack_files()
+            .open_resource(ResourcePath::new(name).unwrap())
+            .unwrap()
+            .unwrap()
+            .read_to_end(&mut raw)
+            .unwrap();
+        assert_eq!(raw, winner);
+    }
+
+    #[test]
+    fn raw_language_winner_reports_archive_read_failure_instead_of_lower_bytes() {
+        use crate::resource_source::{Resource, ResourcePath, ResourceSource};
+        use std::io::{Cursor, Read, Write};
+
+        let name = "assets/demo/lang/en_us.json";
+        let base = ResourceSource::indexed(BTreeMap::from([(
+            name.into(),
+            Resource::bytes(br#"{"low":"base"}"#.to_vec()),
+        )]));
+        let mut zip = zip::ZipWriter::new(Cursor::new(Vec::new()));
+        let options = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Deflated);
+        zip.start_file(name, options).unwrap();
+        zip.write_all(br#"{"high":"winner"}"#).unwrap();
+        let mut bytes = zip.finish().unwrap().into_inner();
+        let offset = {
+            let mut zip = zip::ZipArchive::new(Cursor::new(bytes.as_slice())).unwrap();
+            zip.by_index_raw(0).unwrap().data_start().unwrap() as usize
+        };
+        bytes[offset] = 0b0000_0111; // Reserved DEFLATE block type.
+        let archive = ResourceSource::opened_archive(crate::zip::Zip::from_bytes(bytes).unwrap());
+        let selected = resources(
+            base,
+            &[Pack::mod_layer("broken".into(), Source::Opened(archive))],
+        )
+        .unwrap();
+        let rendered: serde_json::Value =
+            serde_json::from_slice(&selected.read(name).unwrap()).unwrap();
+        assert_eq!(rendered, serde_json::json!({"low":"base"}));
+        let mut reader = selected
+            .raw_pack_files()
+            .open_resource(ResourcePath::new(name).unwrap())
+            .unwrap()
+            .unwrap();
+        assert!(reader.read_to_end(&mut Vec::new()).is_err());
+    }
 
     /// A resource manager's `getResourceStack`: every visible copy, lowest first, the packs'
     /// own files (not the merged document the game reads of a stacked kind), with a pack's

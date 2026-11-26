@@ -1,4 +1,4 @@
-use mod_api::{EntityRef, LevelRef};
+use mod_api::{EntityReadError, EntityRef, LevelRef};
 use {
     crate::game::client_side::remote_client::Remote,
     crate::game::client_side::remote_client::general::RemoteGeneral,
@@ -7,14 +7,26 @@ use {
 };
 
 impl crate::game::ClientGame<'_> {
-    /// The logged-in window and network id for an entity handle in its current world.
+    /// The window's live level and network id for a handle in its current world generation.
     pub(in crate::game) fn native_client_entity_context(
         &self,
         entity: EntityRef,
-    ) -> Option<(&Remote, i32)> {
-        let remote = self.client.remote.as_ref().filter(|r| r.logged_in)?;
-        (self.common.native_lifecycle.epoch() == Some(entity.epoch())).then_some(())?;
-        Some((remote, entity.id() as i32))
+    ) -> Result<(&Remote, i32), EntityReadError> {
+        let remote = self
+            .client
+            .remote
+            .as_ref()
+            .filter(|remote| remote.has_level())
+            .ok_or(EntityReadError::Unavailable)?;
+        let epoch = self
+            .common
+            .native_lifecycle
+            .epoch()
+            .ok_or(EntityReadError::Unavailable)?;
+        if epoch != entity.epoch() {
+            return Err(EntityReadError::Stale);
+        }
+        Ok((remote, entity.id() as i32))
     }
 
     /// An entity tracked by the remote client but absent from local entity lists.
@@ -22,7 +34,7 @@ impl crate::game::ClientGame<'_> {
         &self,
         entity: EntityRef,
     ) -> Option<(&str, [f64; 3])> {
-        let (remote, id) = self.native_client_entity_context(entity)?;
+        let (remote, id) = self.native_client_entity_context(entity).ok()?;
         let (kind, position) = remote.tracked_entity(id)?;
         if Shows::from_kind(kind).is_some() {
             return Some((kind, self.side_client_display_position(entity)?));
@@ -41,33 +53,54 @@ impl crate::game::ClientGame<'_> {
         &self,
         entity: EntityRef,
     ) -> Option<&RemoteGeneral> {
-        let (remote, id) = self.native_client_entity_context(entity)?;
+        let (remote, id) = self.native_client_entity_context(entity).ok()?;
         remote.general.rows.get(&id)
     }
 
     /// What a handle names on a client: the local player or an entity tracked by the server.
     pub fn native_client_entity_target(&self, entity: EntityRef) -> Option<Target> {
+        self.native_client_entity_body_target(entity).ok()
+    }
+
+    /// Resolve a projected body without mistaking packet-only tracking for a retired handle.
+    pub(in crate::game) fn native_client_entity_body_target(
+        &self,
+        entity: EntityRef,
+    ) -> Result<Target, EntityReadError> {
         let (remote, id) = self.native_client_entity_context(entity)?;
         if id == remote.entity_id {
-            return self.common.player.as_ref().map(|_| Target::Player);
+            return self
+                .common
+                .player
+                .as_ref()
+                .map(|_| Target::Player)
+                .ok_or(EntityReadError::Unavailable);
         }
         // The server tracks the dragon alone; its parts are the client's own copies of it.
         if self.common.dragon.as_ref().is_some_and(|d| {
             sunrise_gameplay_common::game::dragon_common::dragon_part_index(d.id, entity.id())
                 .is_some()
         }) {
-            return Some(Target::DragonPart(entity.id()));
+            return Ok(Target::DragonPart(entity.id()));
         }
         // General rows are not inserted into `remote.entities`, so check them before `remote.tracked`.
         if remote.general.rows.contains_key(&id) {
-            return Some(Target::General(entity.id()));
+            return Ok(Target::General(entity.id()));
         }
-        let (kind, _) = remote.tracked(id)?;
+        let (kind, _) = remote.tracked_entity(id).ok_or(EntityReadError::Stale)?;
         if Shows::from_kind(kind).is_some() {
             // Displays have their own client bodies; never resolve one through another store.
-            return None;
+            return Err(EntityReadError::Unavailable);
         }
-        self.client_level_entity(id)
+        match self.client_level_entity(id) {
+            Some(Target::Mob(mob))
+                if !self.common.mobs.iter().any(|m| m.id == mob && !m.removed) =>
+            {
+                Err(EntityReadError::Unavailable)
+            }
+            Some(target) => Ok(target),
+            None => Err(EntityReadError::Unavailable),
+        }
     }
 
     /// Resolve a tracked client entity's typed target across every body store a client holds.

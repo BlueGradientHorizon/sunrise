@@ -84,7 +84,7 @@ pub(crate) fn with_command_game(
     game.player = Some(PlayerMotion::new(game.motion, Vec3::new(10.5, 200.0, 0.5)).unwrap());
     game.reset_entity_residency();
     game.native_lifecycle
-        .begin_open(mod_api::Authority::IntegratedServer);
+        .begin_open(Some(mod_api::Authority::IntegratedServer));
     sunrise_gameplay::game::native_entity_refs::tests::bind_local_player(&mut game, 1, 1);
     game.build_registries();
     game.set_allow_commands(true);

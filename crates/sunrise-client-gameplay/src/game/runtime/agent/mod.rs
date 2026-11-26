@@ -731,6 +731,7 @@ impl crate::game::ClientGame<'_> {
             Mode::Optimize { world } => {
                 json!({ "mode": "optimize-world", "folder": world.folder, "name": world.name })
             }
+            Mode::PackValidationFailed { .. } => json!({ "mode": "pack-validation-failed" }),
             Mode::LowDiskSpace { world } => {
                 json!({ "mode": "low-disk-space", "folder": world.folder, "name": world.name })
             }
@@ -1842,14 +1843,21 @@ impl crate::game::ClientGame<'_> {
                 if text.is_empty() {
                     return Err("command TEXT".into());
                 }
-                // A native mod's command first, as typed chat does; the
-                // server's console cannot run a client mod's command.
-                if self.client_mod_command(text) {
-                    return ok(
-                        json!({ "ok": true, "chat": self.client.chat_ui.chat.recent_lines(5) }),
-                    );
-                }
+                use sunrise_gameplay_common::game::native_server::ClientCommandOutcome;
                 let command = format!("/{text}");
+                let remote = self.client.integrated.is_none() && self.client.remote.is_some();
+                let client = if remote {
+                    self.send_signed_chat_input(&command)
+                } else {
+                    self.run_client_native_command(text)
+                };
+                if let Some(client) = client {
+                    let outcome = match client {
+                        ClientCommandOutcome::Failed => None,
+                        ClientCommandOutcome::Success(result) => Some((true, result)),
+                    };
+                    return ok(command_reply(self.client.chat_ui.chat.recent_lines(5), outcome));
+                }
                 // Single player's console is its server thread's.
                 if let Some(server) = &self.client.integrated {
                     let (chat, outcome) = server
@@ -1861,8 +1869,7 @@ impl crate::game::ClientGame<'_> {
                 }
                 // A server we joined answers in the chat, not to this reply:
                 // no `success`, no `result`.
-                if self.client.remote.is_some() {
-                    self.send_signed_chat_input(&command);
+                if remote {
                     return ok(json!({ "ok": true }));
                 }
                 Err("not connected to a world or server".into())

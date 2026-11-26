@@ -14,7 +14,6 @@ pub trait Hooks {
     /// In the ordered body pass, this player's pair finishes at its slot in level join order,
     /// before the next body submits, including bodies drawn by a general entity renderer.
     #[hook(
-        target = "sunrise_client_gameplay::game::native_hooks::render_player_post::ClientGame<'_>::native_render_player_post",
         receiver = "read",
         dispatch = "flat",
         side = "client",

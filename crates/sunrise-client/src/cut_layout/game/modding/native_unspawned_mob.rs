@@ -3,9 +3,7 @@ use sunrise_sim::mobs::Mob;
 #[cfg(test)]
 pub(crate) mod tests {
 
-    use mod_api::{
-        AgeableGroup, EquipmentSlot, Identifier, SpawnGroup, UnspawnedMobError, UnspawnedMobRef,
-    };
+    use mod_api::{AgeableGroup, EquipmentSlot, Identifier, SpawnGroup, UnspawnedMobError};
 
     use sunrise_gameplay_common::game::server_side::native_unspawned_mob::tests::{
         KeptGoalMod, pumpkin,
@@ -63,35 +61,29 @@ pub(crate) mod tests {
         let saw = seen.clone();
         let max_health = id("minecraft:max_health");
         listening(
-            move |host, event| {
-                let (mob, edits) = (event.mob, event.edits);
-                edits
-                    .set_equipment(mob, EquipmentSlot::Head, Some(pumpkin()))
+            move |_, event| {
+                let mob = &mut event.mob;
+                mob.set_equipment(EquipmentSlot::Head, Some(pumpkin()))
                     .unwrap();
                 let mut oversized = pumpkin();
                 oversized.set_count(100).unwrap();
                 assert_eq!(
-                    edits.set_equipment(mob, EquipmentSlot::Head, Some(oversized)),
+                    mob.set_equipment(EquipmentSlot::Head, Some(oversized)),
                     Err(UnspawnedMobError::Invalid)
                 );
-                assert_eq!(
-                    mob.equipment(host, EquipmentSlot::Head),
-                    Ok(Some(pumpkin()))
-                );
-                edits.set_equipment(mob, EquipmentSlot::Head, None).unwrap();
-                assert_eq!(mob.equipment(host, EquipmentSlot::Head), Ok(None));
-                edits
-                    .set_equipment(mob, EquipmentSlot::Head, Some(pumpkin()))
+                assert_eq!(mob.equipment(EquipmentSlot::Head), Ok(Some(pumpkin())));
+                mob.set_equipment(EquipmentSlot::Head, None).unwrap();
+                assert_eq!(mob.equipment(EquipmentSlot::Head), Ok(None));
+                mob.set_equipment(EquipmentSlot::Head, Some(pumpkin()))
                     .unwrap();
-                edits.set_attribute_base(mob, &max_health, 20.0).unwrap();
-                assert_eq!(edits.add_tag(mob, "test:tagged"), Ok(true));
-                edits
-                    .set_custom_name(mob, Some(mod_api::Text::literal("Bacon")))
+                mob.set_attribute_base(&max_health, 20.0).unwrap();
+                assert_eq!(mob.add_tag("test:tagged"), Ok(true));
+                mob.set_custom_name(Some(mod_api::Text::literal("Bacon")))
                     .unwrap();
                 *saw.lock().unwrap() = Some((
-                    mob.kind(host),
-                    mob.attribute_base(host, &max_health),
-                    mob.equipment(host, EquipmentSlot::Head),
+                    mob.kind(),
+                    mob.attribute_base(&max_health),
+                    mob.equipment(EquipmentSlot::Head),
                 ));
                 Flow::Continue
             },
@@ -124,10 +116,10 @@ pub(crate) mod tests {
         let saw = seen.clone();
         let max_health = id("minecraft:max_health");
         listening(
-            move |host, event| {
-                let (mob, edits) = (event.mob, event.edits);
-                edits.set_attribute_base(mob, &max_health, 2000.0).unwrap();
-                *saw.lock().unwrap() = Some(mob.attribute_base(host, &max_health));
+            move |_, event| {
+                let mob = &mut event.mob;
+                mob.set_attribute_base(&max_health, 2000.0).unwrap();
+                *saw.lock().unwrap() = Some(mob.attribute_base(&max_health));
                 Flow::Continue
             },
             || {
@@ -140,41 +132,6 @@ pub(crate) mod tests {
             },
         );
     }
-    /// A handle kept past its hook reads `Expired`, and the next call's
-    /// editor refuses it the same way: it reaches only its own lend.
-    #[test]
-    #[ignore = "daily"]
-    fn a_handle_kept_past_its_hook_is_expired() {
-        let kept: Arc<Mutex<Vec<UnspawnedMobRef>>> = Arc::default();
-        let refused = Arc::new(Mutex::new(Vec::new()));
-        let (keep, refuse) = (kept.clone(), refused.clone());
-        listening(
-            move |_, event| {
-                let earlier = keep.lock().unwrap().last().copied();
-                if let Some(earlier) = earlier {
-                    refuse
-                        .lock()
-                        .unwrap()
-                        .push(event.edits.add_tag(earlier, "test:late"));
-                }
-                keep.lock().unwrap().push(event.mob);
-                Flow::Continue
-            },
-            || {
-                with_game(|game| {
-                    let first = spawn_pig(game).unwrap();
-                    spawn_pig(game).unwrap();
-                    let old = kept.lock().unwrap()[0];
-                    assert_eq!(old.kind(game), Err(UnspawnedMobError::Expired));
-                    assert_eq!(old.position(game), Err(UnspawnedMobError::Expired));
-                    assert!(game.tags_of(Target::Mob(first)).is_empty());
-                });
-            },
-        );
-        assert_eq!(*refused.lock().unwrap(), [Err(UnspawnedMobError::Expired)]);
-        let kept = kept.lock().unwrap();
-        assert_ne!(kept[0], kept[1], "each call lends anew");
-    }
     /// `Flow::Cancel` skips finalization and keeps the listener's edits on
     /// the mob that still joins; `spawn_cancelled` adds no mob at all.
     #[test]
@@ -183,10 +140,7 @@ pub(crate) mod tests {
         let max_health = id("minecraft:max_health");
         listening(
             move |_, event| {
-                event
-                    .edits
-                    .set_attribute_base(event.mob, &max_health, 20.0)
-                    .unwrap();
+                event.mob.set_attribute_base(&max_health, 20.0).unwrap();
                 Flow::Cancel
             },
             || {
@@ -207,7 +161,7 @@ pub(crate) mod tests {
         );
         listening(
             |_, event| {
-                assert_eq!(event.edits.add_tag(event.mob, "test:gone"), Ok(true));
+                assert_eq!(event.mob.add_tag("test:gone"), Ok(true));
                 event.spawn_cancelled = true;
                 Flow::Continue
             },
@@ -251,12 +205,12 @@ pub(crate) mod tests {
         );
         assert_eq!(*given.lock().unwrap(), [None]);
     }
-    /// A listener that panics still ends its lend: the handle is withdrawn
-    /// and the mob in the caller's slot is the one that was lent, mod goal
-    /// and all, not a copy (whose mod goal would have no goal) or a default.
+    /// Unwinding out of an unspawned-mob loan leaves the mob intact in place
+    /// (mod goal and all, never copied or replaced) and leaves no broken state
+    /// for a subsequent `finalize_spawn` call.
     #[test]
     #[ignore = "daily"]
-    fn a_panicking_listener_still_ends_the_lend() {
+    fn an_engine_unwind_still_ends_the_unspawned_mob_lend() {
         let installed = || vec![mod_api::ModEntry::new("kept-goal", Box::new(KeptGoalMod))];
         mod_platform::testing::with_mods(installed().into(), || {
             sunrise_gameplay_common::game::api_values::install_parts(&installed()).unwrap();
@@ -268,6 +222,7 @@ pub(crate) mod tests {
                     .unwrap()
                     .clone();
                 let mut zombie = Mob::new(70, kind, sunrise_core::geometry::Vec3::ZERO, 0.0);
+                game.flush_unjoined_mob_parts(&mut zombie);
                 zombie.custom_name = Some("Lent".to_owned());
                 let goals = |m: &Mob| -> Vec<&'static str> {
                     m.ai.goals.entries().map(|(_, name, _)| name).collect()
@@ -276,20 +231,17 @@ pub(crate) mod tests {
                     goals(&zombie).contains(&"Kept"),
                     "the part attached its goal"
                 );
-                let mut kept = None;
                 let panicked = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    game.lend_unspawned("minecraft:zombie", AT, Some(&mut zombie), |mob, _| {
-                        kept = Some(mob);
-                        panic!("a listener's bug");
-                    })
+                    let mut borrowed =
+                        game.borrowed_unspawned_mob_mut("minecraft:zombie", AT, Some(&mut zombie));
+                    let editor = mod_api::UnspawnedMobEditor::new(&mut borrowed);
+                    assert_eq!(editor.kind(), Ok(id("minecraft:zombie")));
+                    std::panic::resume_unwind(Box::new("unspawned mob fixture fault"));
                 }));
-                assert!(panicked.is_err());
-                assert!(
-                    game.server.lent_mobs.0.borrow().is_empty(),
-                    "the lend is withdrawn"
+                assert_eq!(
+                    panicked.unwrap_err().downcast_ref::<&str>(),
+                    Some(&"unspawned mob fixture fault")
                 );
-                let kept = kept.expect("the call ran");
-                assert_eq!(kept.kind(game), Err(UnspawnedMobError::Expired));
                 assert_eq!(zombie.id, 70);
                 assert_eq!(zombie.custom_name.as_deref(), Some("Lent"));
                 let back = goals(&zombie);
@@ -301,5 +253,17 @@ pub(crate) mod tests {
             });
             sunrise_gameplay_common::game::api_values::install_parts(&[]).unwrap();
         });
+        listening(
+            |_, event| {
+                assert_eq!(event.mob.add_tag("test:after_panic"), Ok(true));
+                Flow::Continue
+            },
+            || {
+                with_game(|game| {
+                    let spawned = spawn_pig(game).unwrap();
+                    assert_eq!(game.tags_of(Target::Mob(spawned)), ["test:after_panic"]);
+                });
+            },
+        );
     }
 }

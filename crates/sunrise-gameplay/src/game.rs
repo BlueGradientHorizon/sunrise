@@ -1,8 +1,12 @@
 #[macro_use]
 #[path = "game/server_side.rs"]
 pub mod server_side;
+#[cfg(test)]
+#[path = "game/entities/entity_tick_families_tests.rs"]
+mod entity_tick_families_tests;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::acting_state;
+pub(in crate::game) use server_side::world_border;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::advancements;
 #[allow(unused_imports)]
@@ -283,8 +287,6 @@ mod native_block_entity_transform_tests;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_book_apply;
 #[allow(unused_imports)]
-pub(in crate::game) use server_side::native_book_backings;
-#[allow(unused_imports)]
 pub(in crate::game) use server_side::native_book_catalogue;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_book_grid;
@@ -293,8 +295,6 @@ pub(in crate::game) use server_side::native_book_invalidation;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_book_net;
 #[allow(unused_imports)]
-pub(in crate::game) use server_side::native_book_scope;
-#[allow(unused_imports)]
 pub(in crate::game) use server_side::native_book_settings;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_book_transport;
@@ -302,8 +302,6 @@ pub(in crate::game) use server_side::native_book_transport;
 pub(in crate::game) use server_side::native_boss_bar_refs;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_bots;
-#[allow(unused_imports)]
-pub(in crate::game) use server_side::native_chat_recipients;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_chunk_areas;
 #[allow(unused_imports)]
@@ -316,8 +314,6 @@ pub(in crate::game) use server_side::native_colliders;
 pub(in crate::game) use server_side::native_collision_exclusions;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_command_reads;
-#[allow(unused_imports)]
-pub(in crate::game) use server_side::native_config_files;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_console;
 #[allow(unused_imports)]
@@ -580,6 +576,8 @@ pub(in crate::game) use server_side::sculk_server;
 pub(in crate::game) use server_side::seats;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::server_lifecycle;
+pub use server_side::server_lifecycle::ServerRunOutcome;
+pub use server_side::creation_packs;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::server_reload;
 #[allow(unused_imports)]
@@ -719,10 +717,6 @@ pub(in crate::game) struct WrappedServerInit {
     random_tick_sections:
         server_side::ServerOnly<sunrise_sim::random_tick_sections::RandomTickSections>,
     spill: server_side::ServerOnly<spill_common::Spill>,
-    lent_mobs: server_side::ServerOnly<RefCell<native_unspawned_mob::LentMobs>>,
-    test_defs: server_side::ServerOnly<
-        std::cell::RefCell<HashMap<String, Option<test_instances::TestDef>>>,
-    >,
     game_tests: server_side::ServerOnly<game_tests::GameTests>,
     native_commands:
         server_side::ServerOnly<sunrise_gameplay_common::game::native_server::NativeCommandState>,
@@ -742,7 +736,6 @@ pub(in crate::game) struct WrappedServerInit {
     exec: server_side::ServerOnly<commands::execute::ExecState>,
 }
 
-use std::cell::RefCell;
 use std::collections::HashMap;
 use sunrise_gameplay_common::game::spill_common;
 use sunrise_gameplay_common::game::{WorldTables, WrappedPrepInit};
@@ -769,8 +762,6 @@ impl<const NO_SLOT: bool> ConstructInit<NO_SLOT> {
             tickets: server_side::ServerShared::new(Default::default()),
             random_tick_sections: server_side::ServerOnly::new(Default::default()),
             spill: server_side::ServerOnly::new(Default::default()),
-            lent_mobs: server_side::ServerOnly::new(Default::default()),
-            test_defs: server_side::ServerOnly::new(std::cell::RefCell::new(HashMap::new())),
             game_tests: server_side::ServerOnly::new(game_tests::GameTests::default()),
             native_commands: server_side::ServerOnly::new(Default::default()),
             lan_building_boxes: server_side::ServerOnly::new(Default::default()),
@@ -923,6 +914,15 @@ impl sunrise_sim::menu::SlotRules for ServerGame<'_> {
 }
 
 impl mod_api::AttachmentHost for ServerGame<'_> {
+    fn validate_attachment_key(
+        &self,
+        write: &mod_api::AttachmentStoreKey<'_>,
+    ) -> std::result::Result<(), mod_api::AttachmentError> {
+        sunrise_gameplay_common::game::mod_api_host_common::GameAttachmentHost::validate_attachment_key(
+            self, write,
+        )
+    }
+
     fn validate_attachment(
         &self,
         namespace: &str,
@@ -945,13 +945,7 @@ impl mod_api::AttachmentHost for ServerGame<'_> {
     }
 }
 
-impl sunrise_gameplay_common::game::item_snapshot::ItemBoundary for ServerGame<'_> {
-    fn boundary_items(&self) -> Option<&sunrise_items::items::Items> {
-        Some(sunrise_gameplay_common::game::tables::GameItems::items(
-            self,
-        ))
-    }
-}
-
 #[cfg(any(test, feature = "test-support"))]
 pub use server_side::native_guest_turn_tests;
+#[cfg(any(test, feature = "test-support"))]
+pub use server_side::fireworks_server::impact::ROCKET_IMPACT_PREPARES;

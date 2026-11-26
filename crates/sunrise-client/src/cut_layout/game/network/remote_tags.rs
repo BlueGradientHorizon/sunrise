@@ -78,7 +78,7 @@ pub(crate) mod tests {
                     scoped(tags.item_tag_names()),
                     [id("always"), id("empty"), id(current)]
                 );
-                let key = |path| tags.key(&id(path)).unwrap();
+                let key = |path| tags.key(&id(path)).unwrap().typed();
                 assert_eq!(tags.is_in_tag(stick, key(current)), Some(true));
                 if reloaded {
                     assert_eq!(tags.is_in_tag(stick, key("old")), Some(false));
@@ -189,13 +189,15 @@ pub(crate) mod tests {
 
                 use mod_api::LoopContext;
                 use sunrise_level::api_context::LoopReader;
-                let tag =
-                    mod_api::__private::tag_key(&Identifier::parse("test:items").unwrap()).unwrap();
+                let tag = mod_api::__private::tag_key(&Identifier::parse("test:items").unwrap())
+                    .unwrap()
+                    .typed();
                 let stick = mod_api::__private::item_key("minecraft:stick").unwrap();
                 let potion = mod_api::__private::item_key("minecraft:potion").unwrap();
                 let empty_tag =
                     mod_api::__private::tag_key(&Identifier::parse("test:empty_items").unwrap())
-                        .unwrap();
+                        .unwrap()
+                        .typed();
                 assert_eq!(mod_api::Tags::items(game, tag), TagMembers::Unavailable);
                 let item_reads = |game: &sunrise_client_gameplay::game::ClientGame<'_>| {
                     let reader = LoopReader(&game.loop_context);
@@ -297,7 +299,8 @@ pub(crate) mod tests {
                     let key = mod_api::__private::tag_key(
                         &Identifier::parse(&format!("binding:{path}")).unwrap(),
                     )
-                    .unwrap();
+                    .unwrap()
+                    .typed();
                     assert_eq!(
                         mod_api::Tags::items(game, key),
                         if is_bound {
@@ -410,7 +413,7 @@ pub(crate) mod tests {
         static ENABLED: AtomicBool = AtomicBool::new(false);
         static CALLS: AtomicUsize = AtomicUsize::new(0);
         static NOTICES: AtomicUsize = AtomicUsize::new(0);
-        struct Provider;
+        struct Provider(mod_api::TagKey<mod_api::BlockKey>);
         #[mod_api::sunrise_part]
         impl mod_api::BlockPart for Provider {
             fn enchant_power_bonus(
@@ -419,8 +422,7 @@ pub(crate) mod tests {
                 event: &mut mod_api::EnchantPowerBonusEvent,
             ) {
                 CALLS.fetch_add(1, Ordering::Relaxed);
-                let received =
-                    host.block_in_tag(event.state.block(), "power_test:providers") == Some(true);
+                let received = event.state.is_in_tag(host.tags(), self.0) == Some(true);
                 event.power = if received && ENABLED.load(Ordering::Relaxed) {
                     2.0
                 } else {
@@ -428,12 +430,17 @@ pub(crate) mod tests {
                 };
             }
         }
-        struct PowerMod;
+        struct PowerMod {
+            glass: std::sync::OnceLock<mod_api::BlockKey>,
+            enabled: std::sync::OnceLock<mod_api::TagKey<mod_api::BlockKey>>,
+        }
         #[mod_api::__subscriptions]
         impl Hooks for PowerMod {
             fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
-                r.block_key("minecraft:glass");
-                r.block_part_tag("power_test:providers", Provider);
+                let _ = self.glass.set(r.block_key("minecraft:glass"));
+                let providers = r.tag_key("power_test:providers").typed();
+                let _ = self.enabled.set(r.tag_key("power_test:enabled").typed());
+                r.block_part_tag("power_test:providers", Provider(providers));
             }
             fn tags_updated(
                 &self,
@@ -444,14 +451,24 @@ pub(crate) mod tests {
                     return;
                 }
                 ENABLED.store(
-                    context.block_in_tag(block_key("minecraft:glass"), "power_test:enabled")
+                    self.glass
+                        .get()
+                        .unwrap()
+                        .is_in_tag(context.tags(), *self.enabled.get().unwrap())
                         == Some(true),
                     Ordering::Relaxed,
                 );
                 NOTICES.fetch_add(1, Ordering::Relaxed);
             }
         }
-        let mods: mod_api::Mods = vec![ModEntry::new("power_test", Box::new(PowerMod))].into();
+        let mods: mod_api::Mods = vec![ModEntry::new(
+            "power_test",
+            Box::new(PowerMod {
+                glass: std::sync::OnceLock::new(),
+                enabled: std::sync::OnceLock::new(),
+            }),
+        )]
+        .into();
         sunrise_gameplay_common::game::api_values::install_parts(&mods).unwrap();
         crate::entry::install_client_hooks();
         mod_platform::testing::with_mods(mods, || {
@@ -545,7 +562,8 @@ pub(crate) mod tests {
         fn reads(tags: &dyn Tags) -> Reads {
             let key = tags
                 .key(&Identifier::parse("minecraft:is_projectile").unwrap())
-                .unwrap();
+                .unwrap()
+                .typed();
             [
                 tags.damage_type_in_tag("minecraft:arrow", key),
                 tags.damage_type_in_tag("minecraft:mob_attack", key),

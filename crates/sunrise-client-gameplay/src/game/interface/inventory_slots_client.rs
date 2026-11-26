@@ -308,7 +308,7 @@ impl crate::game::ClientGame<'_> {
     ) {
         // `GuiGraphics.renderItem`: the resolved item model (tints, foil and
         // special renderers included), then the decorations.
-        self.draw_item_model(batch, stack, x, y);
+        self.draw_item_model(batch, stack, x, y, 0);
         self.draw_item_decorations(batch, stack, x, y, None);
     }
     /// `GuiGraphicsExtractor.itemDecorations`: the count (or `count_text`)
@@ -319,27 +319,34 @@ impl crate::game::ClientGame<'_> {
         stack: &ItemStack,
         x: f32,
         y: f32,
-        count_text: Option<String>,
+        count_text: Option<&str>,
+    ) {
+        self.draw_vanilla_item_decorations(batch, stack, x, y, count_text);
+        let hook = mod_api::HookId::ItemDecorations;
+        if mod_api::__private::has_part_hook(hook) || mod_api::__private::listened(hook) {
+            // The ordinary inventory, hotbar and tooltip paths draw in screen GUI units.
+            self.draw_item_decorator(batch, stack, x, y);
+        }
+    }
+
+    /// Draws the standard suffix before a scoped caller lends its canvas to a decorator.
+    pub(in crate::game) fn draw_vanilla_item_decorations(
+        &self,
+        batch: &mut HudBatch,
+        stack: &ItemStack,
+        x: f32,
+        y: f32,
+        count_text: Option<&str>,
     ) {
         // GuiGraphicsExtractor.itemDecorations, laid out at the origin and
         // moved to (x, y): the damage bar, the cooldown shade and the count.
-        let info = self.items().get(&stack.item);
-        // ItemStack.isBarVisible: isDamaged, which an unbreakable stack never is.
-        let max_damage = if sunrise_sim::stations::is_damageable(self.items(), stack) {
-            stack.max_damage(info)
-        } else {
-            0
-        };
+        let items = self.items();
+        let info = items.get(&stack.item);
         let cooldown =
             sunrise_items::cooldowns::group(stack, info.and_then(|i| i.use_cooldown.as_ref()));
         let partial = self.common.clock.fraction() as f32;
-        // BundleItem overrides the bar with its fullness.
-        let mut bar = if info.is_some_and(|item| item.bundle) {
-            sunrise_items::bundle::Contents::of(self.items(), stack)
-                .and_then(|contents| contents.bar())
-        } else {
-            hud_overlays::damage_bar(stack.effective_damage(info), max_damage)
-        };
+        let mut bar = sunrise_items::properties::stack_bar(items, stack, info)
+            .map(|bar| (bar.width, bar.color));
         // Client-only: a mod may replace or hide the bar vanilla just chose.
         self.native_item_bar(stack, &mut bar);
         let decorations = hud_overlays::ItemDecorations {
@@ -348,18 +355,7 @@ impl crate::game::ClientGame<'_> {
             bar,
             cooldown: self.common.cooldowns.percent(&cooldown, partial),
         };
-        let mut draws = vec![hud_layout::GuiDraw::Push(vec![
-            hud_layout::PoseOp::Translate(x, y),
-        ])];
-        draws.extend(hud_overlays::item_decorations(
-            0,
-            0,
-            &decorations,
-            &self.client.gui.atlas.font,
-        ));
-        draws.push(hud_layout::GuiDraw::Pop);
-        hud_layout::paint(batch, &self.client.gui.atlas, &draws);
-        self.native_item_decorations(stack, x, y, batch);
+        hud_overlays::paint_item_decorations(batch, &self.client.gui.atlas, [x, y], &decorations);
     }
     /// `AbstractContainerScreen.extractSlotHighlightBack` and
     /// `AbstractContainerScreen.extractSlotHighlightFront`: the 24 x 24
@@ -423,8 +419,13 @@ impl crate::game::ClientGame<'_> {
             None => (stack.as_ref(), false),
         };
         if let Some(stack) = stack {
-            self.draw_item_model(batch, stack, x, y);
-            let text = capped.then(|| format!("\u{a7}e{}", stack.count));
+            self.draw_item_model(batch, stack, x, y, 0);
+            let mut count = [0; 13];
+            let text = if capped {
+                Some(hud_overlays::item_count_text(stack.count, true, &mut count))
+            } else {
+                None
+            };
             self.draw_item_decorations(batch, stack, x, y, text);
         } else if let Some(icon) =
             container_slot_index(slot).and_then(|slot| self.native_screen_slot_icon(slot))
@@ -660,6 +661,8 @@ impl crate::game::ClientGame<'_> {
         };
         let inventory_x = self.native_screen_inventory_x().unwrap_or(8.0);
         match i {
+            // A mod screen's committed move of a player slot, else the grid below.
+            0..36 if let Some(p) = self.native_screen_player_slot(i) => p,
             0..9 => (inventory_x + i as f32 * 18.0, 142.0 + shift),
             9..36 => (
                 inventory_x + ((i - 9) % 9) as f32 * 18.0,

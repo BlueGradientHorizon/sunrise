@@ -60,6 +60,26 @@ mod tests {
                     .is_some()
             );
             assert_eq!(game.dropped.last().unwrap().pickup_delay, 32767);
+            // Signed negative and > i16::MAX delays pass straight through in memory;
+            // only NBT save narrows to (short), matching ItemEntity.setPickUpDelay.
+            assert!(
+                game.level_spawn_item(level, 1.5, 70.0, 2.5, stone(), -5)
+                    .is_some()
+            );
+            assert_eq!(game.dropped.last().unwrap().pickup_delay, -5);
+            assert!(
+                game.level_spawn_item_with_motion(
+                    level,
+                    1.5,
+                    70.0,
+                    2.5,
+                    stone(),
+                    [0.0, 0.2, 0.0],
+                    40_000,
+                )
+                .is_some()
+            );
+            assert_eq!(game.dropped.last().unwrap().pickup_delay, 40_000);
             assert!(
                 game.level_spawn_item(level, f64::NAN, 70.0, 2.5, stone(), 0)
                     .is_none()

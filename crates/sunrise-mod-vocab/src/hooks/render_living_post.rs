@@ -21,7 +21,6 @@ pub trait Hooks {
     /// before the next entity's submission begins, including any general entity renderer at its
     /// own level join slot.
     #[hook(
-        target = "sunrise_client_gameplay::game::native_hooks::render_living_post::ClientGame<'_>::native_render_living_post",
         receiver = "read",
         dispatch = "flat",
         side = "client",

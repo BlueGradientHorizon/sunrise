@@ -276,10 +276,12 @@ pub(crate) fn run_a_moved_thrown_item_projectile_saves_its_loaded_item() {
         }
         assert!(confirmed_moved > 0, "at least one projectile must move");
 
-        // Unload the chunk through the real chunk entity unload/save path and confirm removal.
+        let keys = [key].into_iter().collect();
+        let (records, refused) = game.unloading_entity_snapshots(&keys);
+        assert!(refused.is_empty());
+        game.server.save.0.save_entities(records).unwrap();
         let chunk = game.world.chunks.remove(&key).unwrap();
-        game.unload_entities(std::slice::from_ref(&chunk));
-        game.server.save.0.flush().unwrap();
+        game.remove_unloading_entities(&keys);
         assert!(
             game.creatures.projectiles.is_empty(),
             "chunk unload failed to remove resident projectiles"

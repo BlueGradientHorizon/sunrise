@@ -6,6 +6,9 @@ impl SideOps for crate::game::client_side::ClientState {
     fn side_swing_hand(game: &mut Self::Game<'_>, hand: Hand, animation: SwingAnimation) -> bool {
         game.client_swing_hand(hand, animation)
     }
+    fn side_fake_action_unswung(_game: &Self::Game<'_>) -> bool {
+        false
+    }
     fn side_sound_event_names(game: &Self::Game<'_>) -> Vec<String> {
         game.client_sound_event_names()
     }

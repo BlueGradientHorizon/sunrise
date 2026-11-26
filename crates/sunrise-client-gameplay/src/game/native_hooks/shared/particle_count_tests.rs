@@ -81,7 +81,7 @@ impl mod_api::Hooks for FrameMod {
     }
 }
 
-// A real renderer supplies the native pack's rules and the GPU skinning path.
+// A real renderer supplies the GPU skinning path.
 // The test consumer inspects the exact Frame passed to Renderer::render, without
 // comparing pixels or bypassing any GUI, model, hand, fog or extraction callbacks.
 pub(in crate::game) fn with_frame_scene(

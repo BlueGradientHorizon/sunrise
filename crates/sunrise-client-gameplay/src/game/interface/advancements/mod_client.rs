@@ -31,9 +31,9 @@ impl ClientGame<'_> {
             batch.text_styled(atlas, title, x + 30.0, y + 7.0, 0xFF50_0050, false);
             batch.text_styled(atlas, description, x + 30.0, y + 18.0, 0xFF00_0000, false);
             let start = batch.vertices.len();
-            self.draw_item_model(batch, &ItemStack::new(station, 1), x + 3.0, y + 3.0);
+            self.draw_item_model(batch, &ItemStack::new(station, 1), x + 3.0, y + 3.0, 0);
             batch.scale_since(start, x, y, 0.6, 0.6);
-            self.draw_item_model(batch, item, x + 8.0, y + 8.0);
+            self.draw_item_model(batch, item, x + 8.0, y + 8.0, 0);
             return;
         }
         let atlas = &self.client.gui.atlas;
@@ -221,10 +221,10 @@ impl ClientGame<'_> {
             mod_api::ToastKind::Advancement
         };
         if self.admit_toast(kind, &mut toast.title, &mut toast.description) {
+            let clock = sunrise_client::toasts::ToastClock::of(self.common.clock.still());
             self.client
                 .toast_manager
-                .queued
-                .push_back(super::toast_manager::Toast::Advancement(toast));
+                .post(clock, super::toast_manager::Toast::Advancement(toast));
         }
     }
     /// Convert the admitted packet's network icon, components and requirements
@@ -255,6 +255,7 @@ impl ClientGame<'_> {
                     name: name.clone(),
                     trigger: String::new(),
                     conditions: Value::Null.into(),
+                    player: None,
                 });
             }
         }
@@ -371,12 +372,19 @@ pub(in crate::game) mod tests {
                             ));
                         }
                         assert_eq!(
-                            game.client.toast_manager.update(1.0),
+                            game.client
+                                .toast_manager
+                                .update(sunrise_client::toasts::ToastClock::Real, 1.0),
                             (None, true),
                             "both challenges share a promotion sound"
                         );
                         assert_eq!(game.client.toast_manager.visible.len(), 5);
-                        assert_eq!(game.client.toast_manager.update(1.0), (Some(true), false));
+                        assert_eq!(
+                            game.client
+                                .toast_manager
+                                .update(sunrise_client::toasts::ToastClock::Real, 1.0),
+                            (Some(true), false)
+                        );
 
                         game.add_toast(mod_api::ModToast::new(mod_api::Text::literal(
                             "Older mod toast",
@@ -391,7 +399,12 @@ pub(in crate::game) mod tests {
                             .unwrap();
                         fading.slide.origin = Some(Instant::now() - Duration::from_secs(1));
                         fading.force_hide();
-                        assert_eq!(game.client.toast_manager.update(1.0), (Some(false), false));
+                        assert_eq!(
+                            game.client
+                                .toast_manager
+                                .update(sunrise_client::toasts::ToastClock::Real, 1.0),
+                            (Some(false), false)
+                        );
                         assert_eq!(
                             game.client.toast_manager.queued.len(),
                             2,
@@ -403,7 +416,12 @@ pub(in crate::game) mod tests {
                             .unwrap()
                             .slide
                             .origin = Some(Instant::now() - Duration::from_secs(2));
-                        assert_eq!(game.client.toast_manager.update(1.0), (None, false));
+                        assert_eq!(
+                            game.client
+                                .toast_manager
+                                .update(sunrise_client::toasts::ToastClock::Real, 1.0),
+                            (None, false)
+                        );
                         assert!(matches!(
                             game.client
                                 .toast_manager
@@ -425,7 +443,9 @@ pub(in crate::game) mod tests {
                         narrator.slide.origin = Some(Instant::now() - Duration::from_secs(1));
                         narrator.force_hide();
                         assert_eq!(
-                            game.client.toast_manager.update(1.0),
+                            game.client
+                                .toast_manager
+                                .update(sunrise_client::toasts::ToastClock::Real, 1.0),
                             (Some(false), false),
                             "the first visibility change wins, even while another family slides in"
                         );

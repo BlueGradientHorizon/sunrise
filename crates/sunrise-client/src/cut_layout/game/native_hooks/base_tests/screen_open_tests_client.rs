@@ -326,7 +326,10 @@ fn client_gui_state_matches_screen_init_hook() {
                     .unwrap(),
             );
             game.options.offscreen = true;
-            game.client.renderer.0 = Some(game.new_renderer(window).unwrap());
+            {
+                let renderer = game.new_renderer(window).unwrap();
+                game.set_renderer(renderer);
+            }
             game.client.screen = Screen::Playing;
             assert!(mod_api::prelude::ScreensClientHost::observed_screen_id(game).is_none());
             game.set_screen(Screen::Inventory);

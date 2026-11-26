@@ -1,14 +1,17 @@
 //! The old `ServerPlayer` retained across `restoreFrom`, independently of its replacement.
 use super::Dim;
 use mod_api::{
-    ActiveEffect, AttachmentError, AttachmentForm, AttachmentStore, AttachmentValue, Attachments,
-    Holder, InventoryView, LevelRef, OriginalPlayerAccess, PlayerExperience,
+    ActiveEffect, AttachmentError, AttachmentStore, Attachments, Holder, InventoryView, LevelRef,
+    OriginalPlayerAccess, PlayerExperience,
 };
 use std::sync::{Arc, Mutex};
 use sunrise_core::nbt::Compound;
-use sunrise_gameplay_common::game::player_state::OriginalAttachmentSlot;
+use sunrise_gameplay_common::game::player_state::{CloneScope, OriginalAttachmentSlot, ScopedPlayer};
 use sunrise_items::equipment::Equipment;
 use sunrise_items::items::ItemStack;
+use sunrise_mod_runtime::attachments::{
+    AttachmentBinding, AttachmentLoan, AttachmentStoreKey, AttachmentStoreWrite,
+};
 
 struct RetainedOriginalAttachments {
     slot: Arc<Mutex<OriginalAttachmentSlot>>,
@@ -23,85 +26,68 @@ impl RetainedOriginalAttachments {
 }
 
 impl AttachmentStore for RetainedOriginalAttachments {
-    fn validate_attachment(
-        &mut self,
-        namespace: &str,
-        name: &str,
-        sync: bool,
-    ) -> Result<(), AttachmentError> {
-        mod_api::__private::validate_attachment_use(namespace, name, sync)
-    }
-
     fn holds(
         &mut self,
         holder: Holder,
-        namespace: &str,
-        name: &str,
+        key: &AttachmentStoreKey<'_>,
     ) -> Result<bool, AttachmentError> {
-        mod_api::__private::validate_attachment_use(namespace, name, false)?;
+        mod_api::__private::validate_attachment_key(key)?;
         let mut slot = self.slot.lock().unwrap_or_else(|e| e.into_inner());
-        AttachmentStore::holds(&mut slot.map, holder, namespace, name)
+        AttachmentStore::holds(&mut slot.map, holder, key)
     }
 
-    fn decoded(
+    fn lend_decoded(
         &mut self,
         holder: Holder,
-        namespace: &str,
-        name: &str,
-    ) -> Result<Option<AttachmentValue>, AttachmentError> {
-        mod_api::__private::validate_attachment_use(namespace, name, false)?;
+        key: &AttachmentStoreKey<'_>,
+        read: AttachmentLoan<'_>,
+    ) -> Result<(), AttachmentError> {
+        mod_api::__private::validate_attachment_key(key)?;
         let mut slot = self.slot.lock().unwrap_or_else(|e| e.into_inner());
-        AttachmentStore::decoded(&mut slot.map, holder, namespace, name)
+        AttachmentStore::lend_decoded(&mut slot.map, holder, key, read)
     }
 
-    fn saved(
+    fn binding(
         &mut self,
         holder: Holder,
-        namespace: &str,
-        name: &str,
-    ) -> Result<Option<Compound>, AttachmentError> {
-        mod_api::__private::validate_attachment_use(namespace, name, false)?;
+        key: &AttachmentStoreKey<'_>,
+    ) -> Result<Option<AttachmentBinding>, AttachmentError> {
+        mod_api::__private::validate_attachment_key(key)?;
         let mut slot = self.slot.lock().unwrap_or_else(|e| e.into_inner());
-        AttachmentStore::saved(&mut slot.map, holder, namespace, name)
+        AttachmentStore::binding(&mut slot.map, holder, key)
     }
 
     fn store(
         &mut self,
         holder: Holder,
-        namespace: &str,
-        name: &str,
-        value: AttachmentValue,
-        form: AttachmentForm,
+        write: AttachmentStoreWrite<'_>,
     ) -> Result<(), AttachmentError> {
-        mod_api::__private::validate_attachment_use(namespace, name, form.policy.sync)?;
+        mod_api::__private::validate_attachment_key(write.key())?;
         let mut slot = self.slot.lock().unwrap_or_else(|e| e.into_inner());
         slot.journal_current();
-        AttachmentStore::store(&mut slot.map, holder, namespace, name, value, form)
+        AttachmentStore::store(&mut slot.map, holder, write)
     }
 
     fn discard(
         &mut self,
         holder: Holder,
-        namespace: &str,
-        name: &str,
-        sync: bool,
+        key: &AttachmentStoreKey<'_>,
     ) -> Result<(), AttachmentError> {
-        mod_api::__private::validate_attachment_use(namespace, name, sync)?;
+        mod_api::__private::validate_attachment_key(key)?;
         let mut slot = self.slot.lock().unwrap_or_else(|e| e.into_inner());
         slot.journal_current();
-        AttachmentStore::discard(&mut slot.map, holder, namespace, name, sync)
+        AttachmentStore::discard(&mut slot.map, holder, key)
     }
 
     fn queue_sync(
         &mut self,
         holder: Holder,
-        namespace: &str,
-        name: &str,
+        key: &AttachmentStoreKey<'_>,
     ) -> Result<(), AttachmentError> {
-        mod_api::__private::validate_attachment_use(namespace, name, true)?;
+        mod_api::__private::validate_attachment_key(key)?;
         let mut slot = self.slot.lock().unwrap_or_else(|e| e.into_inner());
         slot.journal_current();
-        AttachmentStore::queue_sync(&mut slot.map, holder, namespace, name)
+        AttachmentStore::queue_sync(&mut slot.map, holder, key)
     }
 }
 
@@ -176,10 +162,15 @@ impl crate::game::ServerGame<'_> {
     pub fn with_cloning_player<R>(
         &mut self,
         conn: u32,
+        scope: CloneScope,
         run: impl FnOnce(&mut Self) -> R,
     ) -> Option<R> {
         let guest = self.command_guest(conn)?;
-        let identity = (guest.uuid, conn, guest.entity_id as u32);
+        let identity = ScopedPlayer {
+            uuid: guest.uuid,
+            conn,
+            entity: matches!(scope, CloneScope::LendBody).then_some(guest.entity_id as u32),
+        };
         self.common.player_state.cloning_players.push(identity);
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| run(self)));
         self.common.player_state.cloning_players.pop();
@@ -206,11 +197,7 @@ impl crate::game::ServerGame<'_> {
         restore_replacement: impl FnOnce(&mut sunrise_sim::lan::guest::Guest),
         after_clone: impl FnOnce(&mut Self),
     ) -> bool {
-        let Some((i, uuid, name)) = self.server.lan.as_ref().and_then(|host| {
-            let i = host.hub.guests.iter().position(|g| g.conn == conn)?;
-            let g = &host.hub.guests[i];
-            Some((i, g.uuid, g.name.clone()))
-        }) else {
+        let Some((uuid, name)) = self.command_guest(conn).map(|g| (g.uuid, g.name.clone())) else {
             return false;
         };
         debug_assert!(
@@ -226,21 +213,32 @@ impl crate::game::ServerGame<'_> {
             return false;
         };
         let previous = std::mem::take(&mut **map);
-        let replacement = previous.copy_for_clone(was_death);
+        let _ = self.with_cloning_player(conn, CloneScope::Constructing, |game| {
+            game.reinitialize_server_player(uuid, conn);
+        });
+        let Some(map) = self
+            .server
+            .lan
+            .as_mut()
+            .and_then(|host| host.hub.guests.attachments_mut(conn))
+        else {
+            return false;
+        };
+        map.copy_clone_attachments_from(
+            &previous,
+            was_death,
+            mod_api::__private::registered_clone_attachment_policy,
+        );
         let mut original = self.retain_original_player(conn, previous);
         // NeoForge's clone keeps only the `PlayerPersisted` part of a mod's saved compound.
         self.keep_only_player_persisted(conn);
         if let Some(host) = self.server.lan.as_mut() {
-            host.hub.guests.update(i, |g| {
+            host.hub.update_guest(conn, |g| {
                 g.dimension = destination.id().to_owned();
                 restore_replacement(g);
             });
-            if let Some(map) = host.hub.guests.attachments_mut(conn) {
-                **map = replacement;
-            }
         }
-        self.with_cloning_player(conn, |game| {
-            game.reinitialize_server_player(uuid, conn);
+        self.with_cloning_player(conn, CloneScope::LendBody, |game| {
             if let Some(original) = &mut original {
                 game.transactions
                     .push_retained_original(Arc::clone(&original.attachments.slot));

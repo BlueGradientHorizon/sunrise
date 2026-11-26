@@ -1,10 +1,39 @@
-//! Resource reads for native mods through the game's selected pack stacks.
+//! Resource readers for native mods through the game's selected pack stacks.
 use crate::game::side_ops::modapi_modding::SideOps as ModdingSideOps;
-use mod_api::{Identifier, PackType};
+use mod_api::{Identifier, PackType, ResourceOpenError};
 use std::collections::BTreeSet;
-use sunrise_assets::resource_source::{ResourceSource, read_winning_resource};
+use std::io::Read;
+use sunrise_assets::resource_source::{ResourcePath, ResourceSource};
 
 pub trait NativeResourceReads<'g>: crate::game::SideGame<'g> {
+    fn open_resource<'a>(
+        &'a self,
+        pack_type: PackType,
+        identifier: &Identifier,
+    ) -> Result<Option<Box<dyn Read + 'a>>, ResourceOpenError>
+    where
+        'g: 'a,
+    {
+        match pack_type {
+            PackType::ClientResources if self.options.execution_role.is_client() => {
+                let name = format!("assets/{}/{}", identifier.namespace(), identifier.path());
+                let Some(path) = ResourcePath::new(&name) else {
+                    return Ok(None);
+                };
+                self.pack.source.raw_pack_files().open_resource(path)
+            }
+            PackType::ServerData => ModdingSideOps::side_open_server_data_resource(
+                self.side_state(),
+                self.options.execution_role.is_logical_server(),
+                &self.pack.data_changes,
+                (!self.side_vanilla_data_disabled()).then_some(&self.pack.data_source),
+                identifier,
+            ),
+            _ => return Ok(None),
+        }
+        .map_err(ResourceOpenError::Io)
+    }
+
     /// `pack_type`'s top folder and its stack, lowest priority first. Client
     /// resources are already resolved into `PackResources::source` by
     /// `packs::resources` (filters and overrides included, each pack's copy kept
@@ -37,13 +66,6 @@ pub trait NativeResourceReads<'g>: crate::game::SideGame<'g> {
         })
     }
 
-    /// `ResourceManager.getResource`: the winning bytes of `identifier` in `pack_type`'s stack.
-    fn resource(&self, pack_type: PackType, identifier: &Identifier) -> Option<Vec<u8>> {
-        let (top, sources) = self.resource_stack_sources(pack_type)?;
-        let name = format!("{top}/{}/{}", identifier.namespace(), identifier.path());
-        read_winning_resource(&sources, &name, mod_api::MAX_RESOURCE_BYTES)
-    }
-
     /// `ResourceManager.getResourceStack`: every copy of `identifier`, lowest first.
     fn resource_stack(&self, pack_type: PackType, identifier: &Identifier) -> Vec<Vec<u8>> {
         let Some((top, sources)) = self.resource_stack_sources(pack_type) else {
@@ -53,7 +75,7 @@ pub trait NativeResourceReads<'g>: crate::game::SideGame<'g> {
         sources
             .iter()
             .flat_map(|source| source.stack(&name))
-            .filter_map(|copy| copy.read_limited(mod_api::MAX_RESOURCE_BYTES).ok())
+            .filter_map(|copy| copy.read().ok())
             .collect()
     }
 

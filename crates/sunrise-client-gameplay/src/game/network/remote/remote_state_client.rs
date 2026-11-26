@@ -19,7 +19,7 @@ impl Remote {
         self.listed.len()
     }
     /// The synchronized clock supplying a time-based environment layer.
-    pub(in crate::game::client_side) fn named_clock_time(&self, clock: &str) -> i64 {
+    pub(in crate::game) fn named_clock_time(&self, clock: &str) -> i64 {
         self.clock_time(self.registries.id("minecraft:world_clock", clock))
     }
     /// `ClientPacketListener.initializeChatSession` for `sender`'s entry: a session the services'

@@ -99,7 +99,7 @@ pub(crate) fn run_client_piston_case(root: std::path::PathBuf) {
                 .find(|(p, _)| *p == at)
                 .unwrap()
                 .1;
-            let saved = game.saved_moving_piston(at, &moving);
+            let saved = game.saved_moving_piston(at, &moving).unwrap();
             game.world.block_entities.discard_carried(&to);
             let mut extras = sunrise_sim::save::ChunkExtras::default();
             extras.block_entities.push(saved);

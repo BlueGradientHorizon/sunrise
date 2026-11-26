@@ -13,6 +13,7 @@ pub(in crate::game) fn local_transfer_notice() -> Event {
         reason: sunrise_game_data::lang::get("disconnect.transfer"),
         key: Some("disconnect.transfer".into()),
         from_server: true,
+        after_login: true,
     }
 }
 
@@ -21,6 +22,7 @@ pub(in crate::game) fn packet_error_notice() -> Event {
         reason: sunrise_game_data::lang::get("disconnect.packetError"),
         key: Some("disconnect.packetError".into()),
         from_server: false,
+        after_login: true,
     }
 }
 
@@ -62,11 +64,29 @@ impl crate::game::ClientGame<'_> {
         self.wait_for_test_remote_event(|event| matches!(event, Event::FinishConfiguration(_)));
         self.poll_remote_events(true).unwrap();
     }
+
+    pub fn drain_test_remote_join(&mut self) {
+        self.wait_for_test_remote_event(|event| matches!(event, Event::Joined { .. }));
+        self.poll_remote_events(true).unwrap();
+    }
+
+    pub fn dispatch_test_remote_event(&mut self, event: Event) -> super::Result<()> {
+        let (tx, rx) = sunrise_client_lib::net::ingress::channel(1024, |_| 1).unwrap();
+        tx.send(event).unwrap();
+        let (event, credit) = rx.try_recv_owned().unwrap().into_parts();
+        self.client
+            .remote
+            .as_mut()
+            .unwrap()
+            .backlog
+            .push_back(Received::Event(event, credit));
+        self.poll_remote_events(true)
+    }
 }
 
 /// Protocol error raised while handling a play packet (`ClientCommonPacketListenerImpl.onPacketError`).
 #[derive(Debug)]
-pub struct PacketError(pub &'static str);
+pub struct PacketError(pub(in crate::game) &'static str);
 
 impl std::fmt::Display for PacketError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

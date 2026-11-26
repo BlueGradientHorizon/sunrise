@@ -32,7 +32,8 @@ pub(crate) fn game<'a>(
         &settings,
         std::time::Instant::now(),
         false,
-        sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer,
+        // A window's resources: a headless load parses no models, so it has no particle sprites.
+        crate::game::execution_role::ExecutionRole::Client,
         &Progress::new(),
         &mut |_, _| unreachable!(),
     )

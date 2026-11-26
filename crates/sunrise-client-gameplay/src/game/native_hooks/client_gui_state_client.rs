@@ -1,6 +1,14 @@
 use super::*;
 
 impl crate::game::ClientGame<'_> {
+    pub(in crate::game) fn window_hovered(&self) -> bool {
+        self.client.window_hovered
+    }
+
+    pub(in crate::game) fn window_occluded(&self) -> bool {
+        self.client.window_occluded
+    }
+
     /// The same screen identifier provided to screen hooks.
     pub(in crate::game) fn observed_screen_id(&self) -> Option<ScreenId> {
         self.observed_screen_view().map(|view| ScreenId {

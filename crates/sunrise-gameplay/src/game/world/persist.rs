@@ -4,9 +4,10 @@
 use sunrise_gameplay_common::game::GameGameExt3;
 use crate::game::ServerGame;
 #[path = "persist/display.rs"]
-mod display;
+pub mod display;
 #[path = "persist/loaded_pass.rs"]
 mod loaded_pass;
+pub(in crate::game) use loaded_pass::StagedEntityTree;
 #[path = "persist/object_memory.rs"]
 mod object_memory;
 #[path = "persist/spawn_tree.rs"]
@@ -22,7 +23,6 @@ use {
     crate::game::server_side::potions_server::potion_cloud_to_nbt,
     sunrise_gameplay_common::game::end_state::SummonedEye,
     sunrise_gameplay_common::game::entity_memory::EntityMemory,
-    sunrise_gameplay_common::game::entity_memory::ItemDisplayTransformation,
     sunrise_gameplay_common::game::entity_memory::OffLevel,
     sunrise_gameplay_common::game::interactions_common::InteractionState,
     sunrise_gameplay_common::game::interactions_common::is_interaction,
@@ -288,13 +288,13 @@ pub fn write_attachments(
     tag: &mut Tag,
     id: u32,
     maps: &sunrise_gameplay_common::game::native_collider_state::EntityMaps,
-) {
+) -> std::result::Result<(), sunrise_mod_runtime::attachments::AttachmentEncodeError> {
     if let Tag::Compound(root) = tag {
         maps.write_collider(root, id);
         if let Some(map) = maps.get(&id)
             && attachment_compound(root.get(&ATTACHMENTS_KEY.into())).is_ok()
         {
-            let data = map.to_nbt();
+            let data = map.try_to_nbt()?;
             if data.is_empty() {
                 root.remove(&ATTACHMENTS_KEY.into());
             } else {
@@ -302,6 +302,7 @@ pub fn write_attachments(
             }
         }
     }
+    Ok(())
 }
 
 fn painting_center(p: &sunrise_sim::entities::Painting) -> Vec3 {
@@ -444,9 +445,18 @@ impl crate::game::ServerGame<'_> {
             extras
                 .block_entities
                 .retain(|tag| block_entity_pos(tag) != [p.x, p.y, p.z]);
-            extras
-                .block_entities
-                .push(self.common.saved_moving_piston(*p, piston));
+            match self.common.saved_moving_piston(*p, piston) {
+                Ok(tag) => extras.block_entities.push(tag),
+                Err(_) => {
+                    if let Some(carried) = self.common.world.block_entities.carried(&(p.x, p.y, p.z))
+                        && let Some(attachments) = carried.attachments.as_ref()
+                    {
+                        extras
+                            .block_entity_attachments
+                            .push(((p.x, p.y, p.z), attachments.clone()));
+                    }
+                }
+            }
         }
         // TheEndGatewayBlockEntity saves its Age (the server copy's).
         for tag in &mut extras.block_entities {
@@ -957,10 +967,7 @@ impl crate::game::ServerGame<'_> {
         // Painting.readAdditionalSaveData: a `variant` that does not resolve
         // leaves Painting.defineSynchedData's VariantUtils.getAny in place.
         if let Some((pos, facing, variant)) = entity_nbt::painting_from_nbt(&tag)
-            && let Some(v) = self
-                .common
-                .painting_variants
-                .saved_or_default(variant.as_deref())
+            && let Some(v) = world_paintings!(self).saved_or_default(variant.as_deref())
         {
             self.server.next_entity += 1;
             let id = self.server.next_entity;
@@ -1012,7 +1019,10 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// A saved mob and, under `Passengers`, the mobs riding it.
-    pub fn load_mob(&mut self, tag: Tag, mount: Option<u32>) -> Option<u32> {
+    pub fn load_mob(&mut self, mut tag: Tag, mount: Option<u32>) -> Option<u32> {
+        if !self.retain_feature_eligible_entity_tree(&mut tag) {
+            return None;
+        }
         self.load_mob_transferred(tag, mount, None)
     }
 
@@ -1033,7 +1043,7 @@ impl crate::game::ServerGame<'_> {
         let mut unknown = Vec::new();
         for rider in riders {
             if self.loads_as_mob_passenger(&rider) {
-                if let Some(id) = self.load_mob(rider, Some(vehicle))
+                if let Some(id) = self.load_mob_transferred(rider, Some(vehicle), None)
                     && let Some(mob) = self.mob_object_mut(vehicle)
                 {
                     mob.extra.rider.get_or_insert(id);
@@ -1193,14 +1203,13 @@ impl crate::game::ServerGame<'_> {
     /// Read an unsimulated entity without assigning it a new identity; an eye
     /// of ender's `Item` is normalised in `tag`, which is what it saves.
     pub fn other_from_nbt(
+        &self,
         tag: &mut Tag,
         id: u32,
         kind: &str,
     ) -> Option<sunrise_gameplay_common::game::commands_common::OtherEntity> {
         let mut position = entity_nbt::position(tag)?;
-        let item_transformation = (kind == "minecraft:item_display")
-            .then(|| ItemDisplayTransformation::from_tag(tag.get("transformation")))
-            .flatten();
+        let display = self.read_display_nbt(kind, tag).map(Arc::new);
         let knot_check = (kind == "minecraft:leash_knot").then_some(0);
         if knot_check.is_some() {
             // BlockAttachedEntity.setPos -> LeashFenceKnotEntity.recalculateBoundingBox.
@@ -1219,7 +1228,7 @@ impl crate::game::ServerGame<'_> {
                 position,
                 yaw: rotation[0],
                 pitch: rotation[1],
-                item_transformation,
+                display,
                 interaction,
                 knot_check,
                 eye: (kind == "minecraft:eye_of_ender").then(|| SummonedEye::load(tag)),
@@ -1241,7 +1250,10 @@ impl crate::game::ServerGame<'_> {
         let quarantined = super::general::quarantined_kind(kind).then(|| tag.clone());
         strip_finalize(&mut tag);
         let id = self.server.next_entity + 1;
-        let other = Self::other_from_nbt(&mut tag, id, kind)?;
+        let other = self.other_from_nbt(&mut tag, id, kind)?;
+        if let Some(display) = &other.display {
+            display::strip_display_nbt(display, &mut tag);
+        }
         let riders = if quarantined.is_none() && Self::other_takes_passengers(kind) {
             self.take_passengers(&mut tag)
         } else {
@@ -1336,15 +1348,11 @@ impl crate::game::ServerGame<'_> {
             );
             c.insert("UUID".into(), Tag::IntArray(uuid.to_vec()));
         }
-        let display = matches!(
-            o.kind.as_str(),
-            "minecraft:text_display" | "minecraft:block_display" | "minecraft:item_display"
-        );
-        if display || is_interaction(&o.kind) {
+        if o.display.is_some() || is_interaction(&o.kind) {
             write_static_entity_fields(&mut tag);
         }
-        if display {
-            self.write_display_nbt(o, &mut tag);
+        if let Some(display) = &o.display {
+            self.write_display_nbt(display, &mut tag);
         }
         if let Some(eye) = o.eye
             && let Tag::Compound(c) = &mut tag
@@ -1390,6 +1398,12 @@ impl crate::game::ServerGame<'_> {
         None
     }
 
+    pub(in crate::game) fn write_entity_attachments(&mut self, tag: &mut Tag, id: u32) {
+        if let Err(error) = write_attachments(tag, id, &self.common.entity_attachments) {
+            self.common.persist.attachment_encode_error.get_or_insert(error);
+        }
+    }
+
     /// The root vehicle `root` with its passengers (`Entity.save`).
     pub fn vehicle_tree_nbt(&mut self, root: u32) -> Option<Tag> {
         self.vehicle_tree_nbt_for(root, false)
@@ -1417,7 +1431,7 @@ impl crate::game::ServerGame<'_> {
                 self.common.res.items(),
             );
             self.put_passengers_for(&mut tag, root, transferring);
-            write_attachments(&mut tag, root, &self.common.entity_attachments);
+            self.write_entity_attachments(&mut tag, root);
             return Some(tag);
         }
         if self.common.general_row(root).is_some() {
@@ -1453,7 +1467,7 @@ impl crate::game::ServerGame<'_> {
             self.other_to_nbt(other, uuid)
         };
         self.put_passengers_for(&mut tag, root, transferring);
-        write_attachments(&mut tag, root, &self.common.entity_attachments);
+        self.write_entity_attachments(&mut tag, root);
         Some(tag)
     }
     /// `ServerPlayer.saveParentVehicle`: a player riding `vehicle` saves
@@ -1510,6 +1524,14 @@ impl crate::game::ServerGame<'_> {
 
     /// Drop objects after the caller captured the tree, before forgetting or transferring its state.
     pub(in crate::game::server_side) fn remove_vehicle_rows(&mut self, gone: &[u32]) {
+        use crate::game::natural_spawning::NaturalAdmission;
+        if let Some(NaturalAdmission::Placed { level, id, join }) = &self.server.natural_admission
+            && *level == self.common.dim
+            && gone.contains(id)
+            && let Some(index) = self.common.mobs.locate(*join)
+        {
+            self.detach_natural_candidate(*id, index);
+        }
         self.common.mobs.retain(|m| !gone.contains(&m.id));
         self.common
             .persist
@@ -1852,7 +1874,7 @@ impl crate::game::ServerGame<'_> {
         } else {
             EntitySnapshot::Save
         };
-        self.snapshot_entity_chunks(keys, purpose)
+        self.snapshot_entity_chunks(keys, purpose).0
     }
 
     /// The entity NBT in `keys`, plus any unknown entities kept for them.
@@ -1861,14 +1883,18 @@ impl crate::game::ServerGame<'_> {
         &mut self,
         keys: &HashSet<ChunkKey>,
         purpose: EntitySnapshot,
-    ) -> Vec<(ChunkKey, Vec<Tag>)> {
+    ) -> (Vec<(ChunkKey, Vec<Tag>)>, HashSet<ChunkKey>) {
         use sunrise_sim::join_seq::{JoinSeq, Joined};
         self.eject_player_riders(None);
         let include_transient = matches!(purpose, EntitySnapshot::Structure);
         // Each root with its id and join number, ordered once all are in.
         let mut roots: HashMap<ChunkKey, Vec<(u32, JoinSeq, Tag)>> = HashMap::new();
+        let mut failed_chunks: HashMap<
+            ChunkKey,
+            sunrise_mod_runtime::attachments::AttachmentEncodeError,
+        > = HashMap::new();
         // Every kind in `entity_lists!` saves itself (`Entity::save_nbt`).
-        self.save_every_entity(keys, &mut roots, include_transient);
+        self.save_every_entity(keys, &mut roots, &mut failed_chunks, include_transient);
         // Owned, since saving a passenger tree borrows `self` mutably.
         let transient = self.common.persist.transient.clone();
         let include = |id, at| {
@@ -1885,20 +1911,30 @@ impl crate::game::ServerGame<'_> {
                 d.to_nbt(uuid, raw.as_ref(), self.common.res.items()),
                 self.common.persist.raw.get(&d.id),
             );
-            write_attachments(&mut tag, d.id, &self.common.entity_attachments);
-            roots
-                .entry(chunk_of(d.position))
-                .or_default()
-                .push((d.id, d.join_seq(), tag));
+            let key = chunk_of(d.position);
+            match write_attachments(&mut tag, d.id, &self.common.entity_attachments) {
+                Ok(()) => roots
+                    .entry(key)
+                    .or_default()
+                    .push((d.id, d.join_seq(), tag)),
+                Err(error) => {
+                    failed_chunks.entry(key).or_insert(error);
+                }
+            }
         }
         for c in &self.common.crystals {
             if include(c.id, c.position) {
                 let mut tag = self.crystal_nbt(c);
-                write_attachments(&mut tag, c.id, &self.common.entity_attachments);
-                roots
-                    .entry(chunk_of(c.position))
-                    .or_default()
-                    .push((c.id, c.join_seq(), tag));
+                let key = chunk_of(c.position);
+                match write_attachments(&mut tag, c.id, &self.common.entity_attachments) {
+                    Ok(()) => roots
+                        .entry(key)
+                        .or_default()
+                        .push((c.id, c.join_seq(), tag)),
+                    Err(error) => {
+                        failed_chunks.entry(key).or_insert(error);
+                    }
+                }
             }
         }
         for s in &self.common.ominous_spawners {
@@ -1909,20 +1945,20 @@ impl crate::game::ServerGame<'_> {
                     at,
                     s.spawn_item_after,
                     s.fire_ticks,
-                    self.common
-                        .persist
-                        .uuids
-                        .get(&s.id)
-                        .copied()
-                        .unwrap_or(s.uuid),
+                    self.common.persist.uuids.get(&s.id).copied().unwrap_or(s.uuid),
                     s.raw.as_deref(),
                     self.common.res.items(),
                 );
-                write_attachments(&mut tag, s.id, &self.common.entity_attachments);
-                roots
-                    .entry(chunk_of(at))
-                    .or_default()
-                    .push((s.id, s.join_seq(), tag));
+                let key = chunk_of(at);
+                match write_attachments(&mut tag, s.id, &self.common.entity_attachments) {
+                    Ok(()) => roots
+                        .entry(key)
+                        .or_default()
+                        .push((s.id, s.join_seq(), tag)),
+                    Err(error) => {
+                        failed_chunks.entry(key).or_insert(error);
+                    }
+                }
             }
         }
         for f in &self.common.item_frames {
@@ -1933,8 +1969,7 @@ impl crate::game::ServerGame<'_> {
                 (lo[2] + hi[2]) / 2.0,
             );
             if include(f.id, at) {
-                let uuid = self
-                    .common
+                let uuid = self.common
                     .persist
                     .uuids
                     .get(&f.id)
@@ -1946,66 +1981,81 @@ impl crate::game::ServerGame<'_> {
                     self.common.persist.raw.get(&f.id),
                     self.common.res.items(),
                 );
-                write_attachments(&mut tag, f.id, &self.common.entity_attachments);
-                roots
-                    .entry(chunk_of(at))
-                    .or_default()
-                    .push((f.id, f.join_seq(), tag));
+                let key = chunk_of(at);
+                match write_attachments(&mut tag, f.id, &self.common.entity_attachments) {
+                    Ok(()) => roots
+                        .entry(key)
+                        .or_default()
+                        .push((f.id, f.join_seq(), tag)),
+                    Err(error) => {
+                        failed_chunks.entry(key).or_insert(error);
+                    }
+                }
             }
         }
         for c in &self.common.cushions {
             if include(c.id, c.position) {
-                let uuid = self
-                    .common
+                let uuid = self.common
                     .persist
                     .uuids
                     .get(&c.id)
                     .copied()
                     .unwrap_or_else(random_uuid);
-                let mut tag =
-                    entity_nbt::cushion_to_nbt(c, uuid, self.common.persist.raw.get(&c.id));
-                write_attachments(&mut tag, c.id, &self.common.entity_attachments);
-                roots
-                    .entry(chunk_of(c.position))
-                    .or_default()
-                    .push((c.id, c.join_seq(), tag));
+                let mut tag = entity_nbt::cushion_to_nbt(c, uuid, self.common.persist.raw.get(&c.id));
+                let key = chunk_of(c.position);
+                match write_attachments(&mut tag, c.id, &self.common.entity_attachments) {
+                    Ok(()) => roots
+                        .entry(key)
+                        .or_default()
+                        .push((c.id, c.join_seq(), tag)),
+                    Err(error) => {
+                        failed_chunks.entry(key).or_insert(error);
+                    }
+                }
             }
         }
         for p in &self.common.paintings {
             let at = painting_center(p);
             if include(p.id, at) {
-                let uuid = self
-                    .common
+                let uuid = self.common
                     .persist
                     .uuids
                     .get(&p.id)
                     .copied()
                     .unwrap_or_else(random_uuid);
-                let mut tag =
-                    entity_nbt::painting_to_nbt(p, uuid, self.common.persist.raw.get(&p.id));
-                write_attachments(&mut tag, p.id, &self.common.entity_attachments);
-                roots
-                    .entry(chunk_of(at))
-                    .or_default()
-                    .push((p.id, p.join_seq(), tag));
+                let mut tag = entity_nbt::painting_to_nbt(p, uuid, self.common.persist.raw.get(&p.id));
+                let key = chunk_of(at);
+                match write_attachments(&mut tag, p.id, &self.common.entity_attachments) {
+                    Ok(()) => roots
+                        .entry(key)
+                        .or_default()
+                        .push((p.id, p.join_seq(), tag)),
+                    Err(error) => {
+                        failed_chunks.entry(key).or_insert(error);
+                    }
+                }
             }
         }
         for f in &self.common.fangs.list {
             let at = Vec3::new(f.pos[0], f.pos[1], f.pos[2]);
             if include(f.id, at) {
-                let uuid = self
-                    .common
+                let uuid = self.common
                     .persist
                     .uuids
                     .get(&f.id)
                     .copied()
                     .unwrap_or_else(random_uuid);
                 let mut tag = self.fangs_to_nbt(f, uuid);
-                write_attachments(&mut tag, f.id, &self.common.entity_attachments);
-                roots
-                    .entry(chunk_of(at))
-                    .or_default()
-                    .push((f.id, f.join_seq(), tag));
+                let key = chunk_of(at);
+                match write_attachments(&mut tag, f.id, &self.common.entity_attachments) {
+                    Ok(()) => roots
+                        .entry(key)
+                        .or_default()
+                        .push((f.id, f.join_seq(), tag)),
+                    Err(error) => {
+                        failed_chunks.entry(key).or_insert(error);
+                    }
+                }
             }
         }
         // `AreaEffectCloud.addAdditionalSaveData`: a lingering potion's cloud is
@@ -2016,32 +2066,38 @@ impl crate::game::ServerGame<'_> {
             if c.potion.is_none() || !include(c.id, at) {
                 continue;
             }
-            let uuid = self
-                .common
+            let uuid = self.common
                 .persist
                 .uuids
                 .get(&c.id)
                 .copied()
                 .unwrap_or_else(random_uuid);
-            let mut tag = potion_cloud_to_nbt(c, uuid, self.common.persist.raw.get(&c.id));
-            write_attachments(&mut tag, c.id, &self.common.entity_attachments);
-            roots
-                .entry(chunk_of(at))
-                .or_default()
-                .push((c.id, c.join_seq(), tag));
+            let mut tag =
+                potion_cloud_to_nbt(c, uuid, self.common.persist.raw.get(&c.id));
+            let key = chunk_of(at);
+            match write_attachments(&mut tag, c.id, &self.common.entity_attachments) {
+                Ok(()) => roots
+                    .entry(key)
+                    .or_default()
+                    .push((c.id, c.join_seq(), tag)),
+                Err(error) => {
+                    failed_chunks.entry(key).or_insert(error);
+                }
+            }
         }
         for i in 0..self.server.others.0.len() {
             let o = &self.server.others.0[i];
             // EntityType.noSave: Entity.getEncodeId is null, so the chunk never stores it.
             if include(o.id, o.position) && o.kind.as_str() != "minecraft:leash_knot" {
-                let uuid = self
-                    .common
+                let uuid = self.common
                     .persist
                     .uuids
                     .get(&o.id)
                     .copied()
                     .unwrap_or_else(random_uuid);
                 let (id, position, join) = (o.id, o.position, o.join_seq());
+                let key = chunk_of(position);
+                self.common.persist.attachment_encode_error = None;
                 let tag = if super::general::quarantined_kind(&o.kind)
                     && let Some(raw) = self.common.persist.raw.get(&o.id)
                 {
@@ -2049,13 +2105,14 @@ impl crate::game::ServerGame<'_> {
                 } else {
                     let mut tag = self.other_to_nbt(o, uuid);
                     self.put_passengers(&mut tag, id);
-                    write_attachments(&mut tag, id, &self.common.entity_attachments);
+                    self.write_entity_attachments(&mut tag, id);
                     tag
                 };
-                roots
-                    .entry(chunk_of(position))
-                    .or_default()
-                    .push((id, join, tag));
+                if let Some(error) = self.common.persist.attachment_encode_error.take() {
+                    failed_chunks.entry(key).or_insert(error);
+                } else {
+                    roots.entry(key).or_default().push((id, join, tag));
+                }
             }
         }
         // `PersistentEntitySectionManager.storeChunkSections`: section by
@@ -2063,53 +2120,182 @@ impl crate::game::ServerGame<'_> {
         // yet given an id is not a lookup member: its join stands in.
         let mut out: HashMap<(i32, i32), Vec<Tag>> =
             keys.iter().map(|k| (*k, Vec::new())).collect();
+        let refused: HashSet<ChunkKey> = failed_chunks.keys().copied().collect();
+        for (key, error) in failed_chunks {
+            out.remove(&key);
+            if !matches!(purpose, EntitySnapshot::Structure) {
+                self.server.save.0
+                    .report_entity_record_failure(key, &std::io::Error::other(error));
+            }
+        }
         {
-            let entry = self
-                .common
-                .resident_entities
-                .table
-                .get_mut()
-                .section_entry_order();
+            // A native discard takes effect before the physical removal sweep.
+            let removed: HashSet<_> = self.common
+                .persist
+                .removals
+                .iter()
+                .filter_map(|&target| sunrise_gameplay_common::game::commands_common::target_id(target))
+                .collect();
+            let entry = self.common.resident_entities.table.get_mut().section_entry_order();
             for (key, mut tags) in roots {
+                tags.retain(|(id, _, _)| !removed.contains(id));
+                let Some(dest) = out.get_mut(&key) else {
+                    continue;
+                };
                 tags.sort_by_cached_key(|(id, join, tag)| {
                     (section_order(tag), entry(*id).unwrap_or(*join))
                 });
-                out.entry(key)
-                    .or_default()
-                    .extend(tags.into_iter().map(|(_, _, tag)| tag));
+                dest.extend(tags.into_iter().map(|(_, _, tag)| tag));
             }
         }
-        let unload = matches!(purpose, EntitySnapshot::Unload);
         for key in keys {
-            let unknown = if unload {
-                self.common.persist.unknown.remove(key)
-            } else {
-                self.common.persist.unknown.get(key).cloned()
-            };
-            if let Some(list) = unknown {
-                out.entry(*key).or_default().extend(list);
+            if let Some(dest) = out.get_mut(key)
+                && let Some(list) = self.common.persist.unknown.get(key)
+            {
+                dest.extend(list.iter().cloned());
             }
         }
-        if unload {
-            self.unload_removed_entities(keys);
+        if matches!(purpose, EntitySnapshot::Unload) {
+            let unloading = keys.difference(&refused).copied().collect();
+            self.remove_unloading_entities(&unloading);
         }
-        out.into_iter().collect()
+        (out.into_iter().collect(), refused)
+    }
+
+    /// Every chunk that currently holds an in-memory savable entity or kept
+    /// unknown record (`PersistentEntitySectionManager.getAllChunksToSave`).
+    fn occupied_entity_chunks(&self) -> HashSet<ChunkKey> {
+        use sunrise_gameplay_common::game::entity::{Entity as _, entity_lists_of, for_each_entity};
+        let mut keys = HashSet::new();
+        let mut include = |id: u32, at: Vec3| {
+            if at.x.is_finite() && at.z.is_finite() && !self.common.persist.transient.contains(&id) {
+                keys.insert(chunk_of(at));
+            }
+        };
+        for_each_entity!(entity_lists_of!(self), e => {
+            if !e.is_removed() {
+                include(e.id(), e.position());
+            }
+        });
+        if let Some(d) = self.common.dragon.as_ref() {
+            include(d.id, d.position);
+        }
+        for c in &self.common.crystals {
+            include(c.id, c.position);
+        }
+        for s in &self.common.ominous_spawners {
+            include(s.id, Vec3::new(s.position[0], s.position[1], s.position[2]));
+        }
+        for f in &self.common.item_frames {
+            let (lo, hi) = f.bounds();
+            include(
+                f.id,
+                Vec3::new(
+                    (lo[0] + hi[0]) / 2.0,
+                    (lo[1] + hi[1]) / 2.0,
+                    (lo[2] + hi[2]) / 2.0,
+                ),
+            );
+        }
+        for c in &self.common.cushions {
+            include(c.id, c.position);
+        }
+        for p in &self.common.paintings {
+            include(p.id, painting_center(p));
+        }
+        for f in &self.common.fangs.list {
+            include(f.id, Vec3::new(f.pos[0], f.pos[1], f.pos[2]));
+        }
+        for c in &self.common.breath_clouds {
+            if c.potion.is_some() {
+                include(c.id, Vec3::new(c.at[0], c.at[1], c.at[2]));
+            }
+        }
+        for o in &self.server.others.0 {
+            if o.kind.as_str() != "minecraft:leash_knot" {
+                include(o.id, o.position);
+            }
+        }
+        keys.extend(self.common.persist.unknown.keys().copied());
+        keys
+    }
+
+    /// `PersistentEntitySectionManager.getAllChunksToSave` / `storeChunkSections`:
+    /// a fresh section with entities must read and admit the old records first.
+    /// Its later saves replace only from the live section, even once empty.
+    pub(in crate::game) fn prepare_entity_save(&mut self) -> HashSet<ChunkKey> {
+        self.spawn_loaded_entities();
+        let mut keys: HashSet<_> = self.common.world.chunks.keys().copied().collect();
+        keys.extend(self.common.persist.hidden_entity_sections.iter().copied());
+        let mut failed = HashSet::new();
+        loop {
+            let mut queued = false;
+            for key in self.occupied_entity_chunks() {
+                if keys.contains(&key) || failed.contains(&key) {
+                    continue;
+                }
+                let Ok(tags) = self.server.save.0.load_entities(key.0, key.1) else {
+                    failed.insert(key);
+                    continue;
+                };
+                self.common.persist.hidden_entity_sections.insert(key);
+                keys.insert(key);
+                if !tags.is_empty() {
+                    // Ownership is already set. Queue admission, not a worker
+                    // snapshot which would be ignored for an owned section.
+                    self.common.world.queue_entity_nbt(key, tags);
+                    queued = true;
+                }
+            }
+            if !queued {
+                self.common.persist.unreadable_entity_sections = failed.len();
+                return keys;
+            }
+            // Loading entities can itself add or move them to another column.
+            self.spawn_loaded_entities();
+        }
+    }
+
+    /// Save a generated full chunk that finished outside the kept terrain. If the
+    /// level already owns its entity section, file the new generation records
+    /// there rather than letting the terrain writer replace that section.
+    pub(in crate::game) fn save_late_full_chunk(&mut self, mut chunk: Chunk) {
+        let key = (chunk.x, chunk.z);
+        let additions = if self.common.persist.hidden_entity_sections.contains(&key) {
+            std::mem::take(&mut chunk.entities)
+        } else {
+            Vec::new()
+        };
+        self.server.streaming.save_finished(chunk);
+        if !additions.is_empty() {
+            self.common.world.queue_entity_nbt(key, additions);
+            if let Err(e) = self.save_entities(false) {
+                log::warn!("Sunrise: failed to save entities: {e}");
+            }
+        }
     }
     /// Write the entities of every resident chunk (an autosave or quit).
     /// Without `wait` (the autosave) they are written on the region writer
     /// meanwhile: `PersistentEntitySectionManager.autoSave` stores them
     /// without `saveAll`'s flush.
     pub fn save_entities(&mut self, wait: bool) -> Result<()> {
-        self.spawn_loaded_entities();
-        let keys: HashSet<(i32, i32)> = self.common.world.chunks.keys().copied().collect();
+        let keys = self.prepare_entity_save();
         let chunks = self.entity_chunks(&keys, false);
         self.prune_entity_memory();
         if wait {
-            self.server.save.0.save_entities(chunks)
+            self.server.save.0.save_entities(chunks)?;
         } else {
-            self.server.save.0.save_entities_later(chunks)
+            self.server.save.0.save_entities_later(chunks)?;
+        }
+        self.entity_save_complete()
+    }
+    pub(in crate::game) fn entity_save_complete(&self) -> Result<()> {
+        match self.common.persist.unreadable_entity_sections {
+            0 => Ok(()),
+            n => Err(format!("the old entity records of {n} column(s) could not be read").into()),
         }
     }
+
     /// Complete a removed vehicle's scoreboard callback at logical removal,
     /// even when physical removal waits for the native-removal sweep.
     pub(in crate::game::server_side) fn score_destroyed_vehicle_once(&mut self, id: u32) {
@@ -2267,25 +2453,24 @@ impl crate::game::ServerGame<'_> {
             _ => None,
         };
     }
-    /// Save and remove the entities of chunks that unloaded.
-    pub fn unload_entities(&mut self, unloaded: &[Arc<Chunk>]) {
-        if unloaded.is_empty() {
-            return;
-        }
+
+    /// Capture the entity records before committing a chunk unload
+    /// (`PersistentEntitySectionManager.processChunkUnload`), with the chunks
+    /// whose record was refused: those stay loaded with their entities.
+    pub fn unloading_entity_snapshots(
+        &mut self,
+        keys: &HashSet<ChunkKey>,
+    ) -> (Vec<(ChunkKey, Vec<Tag>)>, HashSet<ChunkKey>) {
         self.spawn_loaded_entities();
-        let keys: HashSet<(i32, i32)> = unloaded.iter().map(|c| (c.x, c.z)).collect();
-        let chunks = self.entity_chunks(&keys, true);
-        let counts: Vec<_> = chunks
-            .iter()
-            .map(|(key, entities)| (*key, entities.len()))
-            .collect();
-        if let Err(e) = self.server.save.0.save_entities_later(chunks) {
-            log::warn!("Sunrise: failed to save entities: {e}");
-        }
-        for (chunk, count) in counts {
-            self.native_entities_unload(self.common.dim.id(), [chunk.0, chunk.1], count);
-        }
+        self.snapshot_entity_chunks(keys, EntitySnapshot::Save)
     }
+    pub fn remove_unloading_entities(&mut self, keys: &HashSet<ChunkKey>) {
+        for key in keys {
+            self.common.persist.unknown.remove(key);
+        }
+        self.unload_removed_entities(keys);
+    }
+
 }
 
 impl crate::game::ServerGame<'_> {
@@ -2409,18 +2594,27 @@ impl crate::game::ServerGame<'_> {
     pub(in crate::game) fn save_who_uuid(&self, who: Who) -> Option<[i32; 4]> {
         entity_nbt::who_uuid(who, &mut |id| self.common.persist.uuid_of(id))
     }
-    pub fn save_falling(&mut self, i: usize, keys: &HashSet<ChunkKey>) -> Option<(ChunkKey, Tag)> {
-        let f = &self.common.falling[i];
-        if !keys.contains(&chunk_of(f.position)) {
+    pub fn save_falling(
+        &mut self,
+        i: usize,
+        keys: &HashSet<ChunkKey>,
+    ) -> Option<(ChunkKey, Tag)> {
+        let (id, pos) = (self.common.falling[i].id, self.common.falling[i].position);
+        if !keys.contains(&chunk_of(pos)) {
             return None;
         }
+        let uuid = if id != 0 {
+            self.uuid_for(id)
+        } else {
+            random_uuid()
+        };
+        let f = &self.common.falling[i];
         let raw = match &f.saved {
             Some(saved) => Some(saved.1.clone()),
             None => anon_raw(&self.common.persist, "minecraft:falling_block", f.position),
         };
-        let uuid = saved_uuid(&self.common.persist, f.id);
         let tag = entity_nbt::falling_block_to_nbt(
-            self.common.state_to_nbt(f.state),
+            self.state_to_nbt(f.state),
             f.position,
             f.velocity,
             f.age,
@@ -2437,7 +2631,7 @@ impl crate::game::ServerGame<'_> {
             // Its simulated fire, not a saved copy's (`with_raw` keeps those).
             fields.insert("Fire".into(), Tag::Short(f.fire_ticks as i16));
         }
-        Some((chunk_of(f.position), tag))
+        Some((chunk_of(pos), tag))
     }
     pub(in crate::game::server_side) fn save_rocket(
         &mut self,

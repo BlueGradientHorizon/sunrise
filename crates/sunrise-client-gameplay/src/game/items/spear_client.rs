@@ -7,7 +7,7 @@ impl ClientGame<'_> {
     pub(in crate::game) fn client_play_at_feet(&mut self, sound: &str) {
         if let Some(p) = &self.common.player {
             let at = [p.position.x, p.position.y, p.position.z];
-            self.client.audio.0.play(sound, Some(at), 1.0, 1.0);
+            self.play_audio(sound, Some(at), 1.0, 1.0);
         }
     }
     /// `getTicksSinceLastKineticHitFeedback` of this window's player.
@@ -48,12 +48,10 @@ impl ClientGame<'_> {
             });
             (item, mob.map(|m| m.position))
         };
-        if let (Some(kinetic), Some(at)) = (item.as_deref().and_then(Kinetic::of), at) {
-            self.common.kinetic_hit_feedback(
-                if own { OWN } else { id },
-                &kinetic,
-                [at.x, at.y, at.z],
-            );
+        if let (Some(kinetic), Some(at)) = (item.as_deref().and_then(Kinetic::of), at)
+            && self.common.kinetic_hit_feedback(if own { OWN } else { id })
+        {
+            self.play_audio_unshared(kinetic.hit_sound, Some(at.components()), 1.0, 1.0);
         }
     }
 }

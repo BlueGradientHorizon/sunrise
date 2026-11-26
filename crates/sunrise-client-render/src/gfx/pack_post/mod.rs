@@ -16,6 +16,7 @@ pub use types::*;
 
 pub use sunrise_render_shaderpack::pack_post::construction::*;
 pub use sunrise_render_shaderpack::pack_post::execution::*;
+pub use sunrise_render_shaderpack::pack_post::mod_pack::*;
 
 use super::pack_entities::PackEntitiesExt as _;
 use crate::gfx::Frame;
@@ -32,6 +33,8 @@ pub(crate) use super::external::ShadowView;
 pub trait PackPostExt: Sized {
     /// The shadow pass this frame wants, when the pack draws one.
     fn shadow_view(&self, frame: &Frame) -> Option<ShadowView>;
+    /// The shadow pass's size, distance and matrices as `frame` reads them, for mods.
+    fn mod_shadow_state(&self, frame: &Frame) -> Option<(u32, f32, [f32; 16], [f32; 16])>;
     /// The entities and block entities the pack draws this frame, into its own buffers.
     fn prepare_entities(
         &mut self,
@@ -45,8 +48,13 @@ pub trait PackPostExt: Sized {
         skin: Option<&SkinFrame>,
         motion: (&[(u32, u64)], &[u32]),
     );
+    /// After `prepare_entities`: the view and revision of each dynamic texture the pack's entity
+    /// draws bind as their texture.
+    fn resolve_entity_textures(&mut self, resolve: impl FnMut(u64) -> (wgpu::TextureView, u64));
     /// Runs the pack over the world drawn into `world` (colour) and `world_depth`, then draws
-    /// the result onto `screen`. Fails once the device is lost (`lost`).
+    /// the result onto `screen`. Notifies after the sky if the frame assigned the stage to this
+    /// pack, and after the last pack world pass, before composition. Fails once the device is lost (`lost`).
+    #[allow(clippy::too_many_arguments)]
     fn run(
         &mut self,
         device: &wgpu::Device,
@@ -61,6 +69,8 @@ pub trait PackPostExt: Sized {
         window: [u32; 2],
         pages: &[TerrainPage],
         terrain: &mut TerrainDraw<'_>,
+        boundaries: WorldBoundaries,
+        boundary: impl FnMut(&mut wgpu::CommandEncoder, WorldBoundary<'_>) -> bool,
         lost: &std::sync::atomic::AtomicBool,
         poll: sunrise_render_shaderpack::PollLive,
     ) -> Result<(), String>;
@@ -77,11 +87,12 @@ fn frame_view<'a>(frame: &'a Frame) -> UniformFrameView<'a> {
         camera: frame.camera,
         yaw: frame.yaw,
         pitch: frame.pitch,
+        roll: frame.roll,
         fov_degrees: frame.fov_degrees,
         eye: frame.eye,
         eye_rotation: frame.eye_rotation,
         first_person: frame.first_person,
-        bob: frame.bob,
+        bob: frame.posed_bob(),
         spin: frame.spin,
         sky: SkyView {
             sun_angle: frame.sky.sun_angle,
@@ -133,6 +144,10 @@ impl PackPostExt for PackPost {
         )
     }
 
+    fn mod_shadow_state(&self, frame: &Frame) -> Option<(u32, f32, [f32; 16], [f32; 16])> {
+        self.shadow_state(&frame_view(frame))
+    }
+
     /// Splits `entities` (`Frame::entities`) between the pack and Sunrise by its runs
     /// (`spans`): the pack's part is uploaded for this frame's draw, Sunrise's goes to `rest`.
     fn prepare_entities(
@@ -170,8 +185,15 @@ impl PackPostExt for PackPost {
         );
     }
 
+    fn resolve_entity_textures(&mut self, resolve: impl FnMut(u64) -> (wgpu::TextureView, u64)) {
+        if let Some(e) = &mut self.entities {
+            e.geometry.resolve_textures(resolve);
+        }
+    }
+
     /// Runs the pack over the world drawn into `world` (colour) and `world_depth`, then draws
     /// the result onto `screen`.
+    #[allow(clippy::too_many_arguments)]
     fn run(
         &mut self,
         device: &wgpu::Device,
@@ -186,6 +208,8 @@ impl PackPostExt for PackPost {
         window: [u32; 2],
         pages: &[TerrainPage],
         terrain: &mut TerrainDraw<'_>,
+        boundaries: WorldBoundaries,
+        boundary: impl FnMut(&mut wgpu::CommandEncoder, WorldBoundary<'_>) -> bool,
         lost: &std::sync::atomic::AtomicBool,
         poll: sunrise_render_shaderpack::PollLive,
     ) -> Result<(), String> {
@@ -214,7 +238,7 @@ impl PackPostExt for PackPost {
             vertices: frame.hand,
             items: frame.hand_items,
             fov_degrees: frame.hand_fov_degrees,
-            bob: frame.bob,
+            bob: frame.posed_bob(),
             spin: frame.spin,
         };
         self.run_frame(
@@ -236,6 +260,8 @@ impl PackPostExt for PackPost {
             frame.shadow_scene_revision,
             frame.ticks,
             frame.pack.day_time,
+            boundaries,
+            boundary,
             lost,
             poll,
         )
@@ -307,6 +333,9 @@ mod work_group_fold_tests;
 mod forced_flip_tests;
 
 #[cfg(test)]
+mod flip_only_tests;
+
+#[cfg(test)]
 mod weather_depth_tests;
 
 #[cfg(test)]
@@ -329,6 +358,9 @@ mod runtime_length_tests;
 
 #[cfg(test)]
 mod translucent_color_tests;
+
+#[cfg(test)]
+mod water_blend_tests;
 
 #[cfg(test)]
 mod noise_resolution_tests;
@@ -406,3 +438,11 @@ mod material_route_tests;
 
 #[cfg(test)]
 mod sign_text_target_tests;
+
+#[cfg(test)]
+mod block_atlas_group_tests;
+#[cfg(test)]
+mod mod_stage_tests;
+
+#[cfg(test)]
+mod mod_pack_binding_tests;

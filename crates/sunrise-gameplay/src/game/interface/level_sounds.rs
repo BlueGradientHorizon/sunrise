@@ -7,7 +7,6 @@ use mod_api::{Identifier, SoundSource};
 use sunrise_gameplay_common::game::level_sounds_common::{HeardSound, LevelSound, listened};
 
 use crate::game::ServerGame;
-use sunrise_gameplay_common::game::native_hooks::level_sound_playable;
 use sunrise_gameplay_common::game::native_hooks::level_sounds::GameHooks as _;
 
 /// A sound bound to an entity (`level.playSound(except, entity, ...)`),
@@ -190,7 +189,7 @@ impl ServerGame<'_> {
             }
         }
         drop(guard);
-        if cancel || !level_sound_playable(at, volume_now, pitch_now) {
+        if cancel {
             return None;
         }
         Some(HeardSound {

@@ -73,7 +73,7 @@ impl crate::game::ClientGame<'_> {
         if let Some(pos) = self.side_client_display_position(entity) {
             return Some([pos; 2]);
         }
-        if let Some((remote, id)) = self.native_client_entity_context(entity)
+        if let Ok((remote, id)) = self.native_client_entity_context(entity)
             && let Some(row) = remote.general.rows.get(&id)
         {
             return Some(corners(row.bounds()));
@@ -122,7 +122,7 @@ impl crate::game::ClientGame<'_> {
         if let Some(target) = self.native_client_entity_target(entity) {
             return Some(self.target_eye_height(target));
         }
-        let (remote, id) = self.native_client_entity_context(entity)?;
+        let (remote, id) = self.native_client_entity_context(entity).ok()?;
         remote.tracked(id)?;
         self.client
             .interactions

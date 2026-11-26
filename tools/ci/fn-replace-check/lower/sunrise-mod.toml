@@ -14,7 +14,7 @@ mixins = "MIXINS"
 
 [[native.mixin]]
 id = "commands"
-target = "sunrise_sim::lan::hub::Hub::set_mod_commands"
+target = "sunrise_sim::lan::hub::Hub::send_permission_level"
 kind = "HEAD"
 helper = "src/mixins/commands.rs"
 
@@ -211,7 +211,7 @@ bindings = [
 
 [[native.mixin]]
 id = "tick_precipitation"
-target = "sunrise_world::level::weather::Behaviours::tick_precipitation"
+target = "sunrise_world::level::Behaviours::tick_precipitation"
 kind = "RETURN"
 helper = "src/mixins/tick_precipitation.rs"
 bindings = [

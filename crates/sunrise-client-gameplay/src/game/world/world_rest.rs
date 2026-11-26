@@ -53,7 +53,7 @@ impl RestPresentation for ClientRestPresentation<'_> {
         &self,
         root: &Path,
         defaults: &ItemDefaults,
-        catalog: &Attributes,
+        catalog: &Arc<Attributes>,
     ) -> Result<MobTypes> {
         MobTypes::load_with_defaults(root, defaults.entries(), catalog)
     }
@@ -113,7 +113,6 @@ impl RestPresentation for ClientRestPresentation<'_> {
                 resource_root,
                 registry,
                 self.visibility.clone(),
-                resources.item_defaults(),
             )?;
             renderer.add_mod_signs(facts, registry);
             Ok(renderer)

@@ -141,7 +141,7 @@ impl crate::game::ServerGame<'_> {
         }
     }
     /// The hand whose use ended the click, if any.
-    pub(in crate::game) fn use_item(&mut self) -> Result<Option<Hand>> {
+    pub fn use_item(&mut self) -> Result<Option<Hand>> {
         self.with_player_actor(|game| game.use_item_as_player())
     }
     /// `Minecraft.startUseItem`: the main hand, then the off hand.

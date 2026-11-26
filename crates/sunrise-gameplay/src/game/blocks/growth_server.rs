@@ -1,7 +1,10 @@
 use crate::game::ServerGame;
 use sunrise_core::{geometry::Direction, position::BlockPos};
 use sunrise_game_data::Result;
-use sunrise_gameplay_common::game::growth_features::install_live_features;
+use sunrise_gameplay_common::game::{
+    growth_features::install_live_features,
+    item_abilities::{ItemAbilitiesGameExt1 as _, ability::SHEARS_TRIM},
+};
 use sunrise_items::items::ItemStack;
 use sunrise_world::level::classes::Class;
 
@@ -25,12 +28,12 @@ impl ServerGame<'_> {
     /// `GrowingPlantHeadBlock.getMaxAgeState` (age 25) with
     /// `block.growing_plant.crop`, the level hears a `block_change`, and the
     /// shears wear by one. True when it cropped (SUCCESS).
-    pub(in crate::game::server_side) fn shears_crop(
+    pub fn shears_crop(
         &mut self,
         pos: [i32; 3],
         stack: &ItemStack,
     ) -> Result<bool> {
-        if &*stack.item != "minecraft:shears" {
+        if !self.stack_shears(stack, SHEARS_TRIM) {
             return Ok(false);
         }
         let state = self.common.world.block(pos[0], pos[1], pos[2]);

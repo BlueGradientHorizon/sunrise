@@ -32,7 +32,8 @@ use sunrise_server_files::{
     },
 };
 use sunrise_sim::lan::{
-    LoginGate, NetConfig, NetLog, OnlineMode, SessionVerifier, hub::HubConfig,
+    LoginGate, NetConfig, NetLog, OnlineMode, SessionVerifier,
+    hub::{HubConfig, effective_view_distance},
     viewed_levels::areas as viewed,
 };
 
@@ -167,32 +168,15 @@ impl Watchdog {
 }
 
 /// What the startup read before the game's resources were loaded.
-struct Setup {
-    props: ServerProperties,
-    universe: PathBuf,
-    level_name: String,
-    port: Option<u16>,
+pub struct Setup {
+    pub props: ServerProperties,
+    pub universe: PathBuf,
+    pub level_name: String,
+    pub port: Option<u16>,
     /// `--allowMissingMods`: open a world whose saved mods are missing (`missing_mods`).
-    allow_missing_mods: bool,
+    pub allow_missing_mods: bool,
 }
 static SETUP: OnceLock<Mutex<Option<Setup>>> = OnceLock::new();
-/// usercache.json (Services.nameToIdCache): used by the server thread only.
-static USER_CACHE: Mutex<Option<UserCache>> = Mutex::new(None);
-
-/// PlayerList.placeNewPlayer: a player who joined is cached (and the file saved).
-pub(in crate::game::server_side) fn player_joined(id: u128, name: &str) {
-    if let Some(cache) = USER_CACHE.lock().unwrap().as_mut() {
-        cache.add(NameAndId {
-            id,
-            name: name.to_owned(),
-        });
-    }
-}
-
-/// A player in the user cache by id, on a dedicated server.
-pub(in crate::game::server_side) fn cached_user_by_id(id: u128) -> Option<NameAndId> {
-    USER_CACHE.lock().unwrap().as_mut()?.get_by_id(id)
-}
 
 /// What the start answers when the server folder still has a `forwarding.secret`.
 pub const FORWARDING_REMOVED: &str = "Velocity forwarding was removed from Sunrise; delete forwarding.secret from the \
@@ -249,6 +233,13 @@ fn idles_out(idle_ticks: u64, minutes: i32, won_game: bool) -> bool {
 /// Log4j's console pattern: `[HH:mm:ss] [thread/LEVEL]: message`.
 pub fn log(level: &str, message: &str) {
     log_from("Server thread", level, message);
+}
+
+/// Public chat goes to the server log, never to the RCON or console command result.
+pub(in crate::game) fn log_public_chat(message: &str) {
+    let held = CAPTURE.take();
+    log("INFO", message);
+    CAPTURE.set(held);
 }
 
 /// A line from another of vanilla's threads (the login's User Authenticator).
@@ -877,25 +868,32 @@ const BROADCAST: &[&str] = &[
 
 impl crate::game::ServerGame<'_> {
     /// DedicatedServer.initServer and MinecraftServer.runServer.
-    // The epoch starts at world open; failures before that send no lifecycle event.
     pub(in crate::game) fn run_dedicated(&mut self) -> Result<()> {
-        self.run_server_lifecycle(true, Self::run_dedicated_inner)
-    }
-
-    fn run_dedicated_inner(&mut self, startup_began: &mut bool) -> Result<()> {
         // This thread ticks the server (MinecraftServer.spin's priority).
         sunrise_threads::favour_current();
         self.common.join_world_rest()?;
+        let setup = SETUP
+            .get()
+            .and_then(|m| m.lock().unwrap().take())
+            .ok_or("dedicated server not prepared")?;
+        self.run_dedicated_with_setup(setup)
+    }
+
+    pub fn run_dedicated_with_setup(&mut self, setup: Setup) -> Result<()> {
+        self.run_server_lifecycle(true, |game| game.run_dedicated_inner(setup))
+    }
+
+    fn run_dedicated_inner(
+        &mut self,
+        setup: Setup,
+    ) -> Result<super::server_lifecycle::ServerRunOutcome> {
         let Setup {
             props,
             universe,
             level_name,
             port,
             allow_missing_mods,
-        } = SETUP
-            .get()
-            .and_then(|m| m.lock().unwrap().take())
-            .ok_or("dedicated server not prepared")?;
+        } = setup;
         let services = self
             .server
             .dedicated_services
@@ -906,7 +904,6 @@ impl crate::game::ServerGame<'_> {
             .online_mode
             .then(|| Arc::clone(&services.verify_session));
         let world_dir = std::env::current_dir()?.join(&universe).join(&level_name);
-        let new_world = self.prepare_world_metadata(&world_dir, &props, allow_missing_mods)?;
         // The console thread starts first, as in initServer.
         let (tx, console) = mpsc::channel();
         std::thread::Builder::new()
@@ -931,7 +928,7 @@ impl crate::game::ServerGame<'_> {
         }
         // DedicatedServer.initServer: names nobody has resolve offline only without authentication.
         cache.resolve_offline_users = !props.online_mode;
-        *USER_CACHE.lock().unwrap() = Some(cache);
+        self.server.user_cache = Some(cache);
         // Services.create: the services' public keys, fetched in the
         // background (they check players' chat keys).
         let secure_chat = Arc::new(sunrise_sim::lan::SecureChat::new(
@@ -976,6 +973,21 @@ impl crate::game::ServerGame<'_> {
                 }
             ),
         );
+        // DedicatedServer.initServer binds the TCP socket before ServerAboutToStartEvent
+        // and before preparing the level; a bind failure returns false so runServer skips
+        // ServerStartedEvent/ServerStoppingEvent and runs only stopServer/ServerStoppedEvent.
+        let bind = (!props.server_ip.is_empty())
+            .then(|| props.server_ip.parse().ok())
+            .flatten();
+        let listener = match sunrise_sim::lan::Lan::bind(bind, port) {
+            Ok(listener) => listener,
+            Err(e) => {
+                log("WARN", "**** FAILED TO BIND TO PORT!");
+                log("WARN", &format!("The exception was: {e}"));
+                log("WARN", "Perhaps a server is already running on that port?");
+                return Ok(super::server_lifecycle::ServerRunOutcome::FailedInit(e));
+            }
+        };
         if online.is_none() {
             log("WARN", "**** SERVER IS RUNNING IN OFFLINE/INSECURE MODE!");
             log(
@@ -1000,6 +1012,7 @@ impl crate::game::ServerGame<'_> {
         self.server.server_lists.0 = Some(lists.clone());
         log("INFO", &format!("Preparing level \"{level_name}\""));
         let level_load_started = Instant::now();
+        let new_world = self.prepare_world_metadata(&world_dir, &props, allow_missing_mods)?;
         let folder = world_dir.to_string_lossy().into_owned();
         // The mods' common and server configs, read before the server starts.
         self.native_configs_server_start(&world_dir, true);
@@ -1011,13 +1024,13 @@ impl crate::game::ServerGame<'_> {
             None,
             Arc::new(sunrise_gameplay_common::game::api_values::game_rule_registry()),
         )?)?;
-        *startup_began = true;
         self.native_server_about_to_start(true);
         self.native_lifecycle_open_started();
         // The registries the server sends are read while the world prepares.
         let sync = super::lan::sync::preload_sync_data(
             &self.common.res.core.item_data,
             self.common.res.shared_items(),
+            self.common.res.biomes(),
         );
         let opened_packs = self.finish_open_world(prepared)?;
         // WorldLoader: the world's packs must load before the server starts. The data store is read
@@ -1071,11 +1084,10 @@ impl crate::game::ServerGame<'_> {
                 self.game_rule_changed("minecraft:show_advancement_messages", value, None);
             }
         }
-        self.server.settings.render_distance = props.view_distance.clamp(2, 32);
+        self.server.settings.render_distance = effective_view_distance(props.view_distance);
         self.server.settings.simulation_distance = props.simulation_distance.clamp(2, 32);
         // Nothing is kept around the spawn while nobody is on.
         self.server.streaming.radius = -1;
-        self.settle_spawn()?;
         self.prepare_levels()?;
         let level_load_time = level_load_started.elapsed();
         let gate_lists = lists.clone();
@@ -1116,11 +1128,8 @@ impl crate::game::ServerGame<'_> {
                  (Sunrise has no Velocity forwarding any more): turn [transfer] off"
                 .into());
         }
-        self.start_loaded_dedicated_world(&opened_packs);
         let net = NetConfig {
-            bind: (!props.server_ip.is_empty())
-                .then(|| props.server_ip.parse().ok())
-                .flatten(),
+            bind,
             port,
             motd: props.motd.clone(),
             max_players: props.max_players.max(0) as usize,
@@ -1132,7 +1141,7 @@ impl crate::game::ServerGame<'_> {
             secure_chat: Some(secure_chat),
             accepts_transfers: props.accepts_transfers,
             announce: false,
-            listen: true,
+            listen: false,
             bypasses_limit: Some(Arc::new(move |uuid| {
                 bypass_lists
                     .lock()
@@ -1156,7 +1165,7 @@ impl crate::game::ServerGame<'_> {
             code_of_conducts,
             // DedicatedServer.serverLinks: `bug-report-link` as the only link
             // (ServerLinks.KnownLinkType.BUG_REPORT is id 0).
-            levels: self.server.level_shapes,
+            levels: self.server.level_shapes.clone(),
             sunrise_clients_only: props
                 .raw
                 .get(sunrise_sim::lan::SUNRISE_CLIENTS_ONLY)
@@ -1189,10 +1198,10 @@ impl crate::game::ServerGame<'_> {
             guest_commands: true,
             force_game_mode: props.force_game_mode,
             hardcore: self.common.level.hardcore,
-            view_distance: props.view_distance.clamp(2, 32),
+            view_distance: props.view_distance,
             simulation_distance: props.simulation_distance.clamp(2, 32),
             dimension: self.common.dim.id().to_owned(),
-            levels: self.server.level_shapes,
+            levels: self.server.level_shapes.clone(),
             level_seeds: self.server.levels.0.runtime.seeds(),
             seed: self.common.level.seed,
             max_players: props.max_players.max(0) as usize,
@@ -1206,11 +1215,9 @@ impl crate::game::ServerGame<'_> {
         if let Some(sync) = sync {
             sync.adopt(&self.pack_files());
         }
-        if let Err(e) = self.lan_host(settings, net, config) {
-            log("WARN", "**** FAILED TO BIND TO PORT!");
-            log("WARN", &format!("The exception was: {e}"));
-            log("WARN", "Perhaps a server is already running on that port?");
-            return Ok(());
+        self.lan_host(settings, net, config)?;
+        if let Some(host) = self.server.lan.as_mut() {
+            host.settings.port = host.hub.lan.listen_on(listener, false)?;
         }
         if let Some(transfers) = transfers
             && let Some(host) = self.server.lan.as_mut()
@@ -1230,7 +1237,6 @@ impl crate::game::ServerGame<'_> {
             host.hub.transfers = Some(transfers);
         }
         self.sync_ops(&lists);
-        self.read_runtime_level_cap(|key| props.raw.get(key));
         if let Some(host) = self.server.lan.as_mut() {
             // The viewed areas' chunk caps (#3716): server.toml's `max_viewed_*` settings.
             let (caps, clamped) = viewed::ViewedCaps::from_properties(|key| props.raw.get(key));
@@ -1255,13 +1261,15 @@ impl crate::game::ServerGame<'_> {
                 .is_none_or(|v| v.trim() != "false");
         }
         log("INFO", &startup_done(level_load_time));
-        // DedicatedServer.initServer ends with saveEverything(false, true, true).
+        // DedicatedServer.initServer ends with saveEverything(false, true, true)
+        // followed by handleServerStarting(this), then runServer fires ServerStartedEvent.
         if self.save_dedicated_checkpoint("server startup")? == 0 {
             self.log_saved_levels();
         }
         if let Some(host) = self.server.lan.as_mut() {
             host.hub.entity_range_percent = props.entity_broadcast_range_percentage;
         }
+        self.start_loaded_dedicated_world(&opened_packs);
         // The dedicated server's open is complete before its first tick.
         self.native_lifecycle_world_ready();
         let mut state = ServerState {
@@ -1290,7 +1298,7 @@ impl crate::game::ServerGame<'_> {
             ),
             compression: props.network_compression_threshold,
             view: (
-                props.view_distance.clamp(2, 32) as u32,
+                props.view_distance.max(0) as u32,
                 props.simulation_distance.clamp(2, 32) as u32,
             ),
             max_players: props.max_players.max(0) as usize,
@@ -1326,6 +1334,8 @@ impl crate::game::ServerGame<'_> {
         // `/stop`, or a stop signal (the shutdown hook's `halt`): either way the players and levels are
         // saved below, after the wait `[transfer]` may make (transfer.rs).
         while !self.stop_now(&state) {
+            // `BlockableEventLoop.relayDelayCrash`: a worker's panic is reported on this thread.
+            sunrise_level::crash::relay_worker_panic();
             self.server.server_tick_deadline = Some(next + self.common.clock.tick_duration());
             let tick_start = Instant::now();
             if let Some(watchdog) = &watchdog {
@@ -1494,39 +1504,13 @@ impl crate::game::ServerGame<'_> {
         self.perf_captures_done(done);
         match crashed {
             Some(message) => std::panic::resume_unwind(Box::new(message)),
-            None => Ok(()),
+            None => Ok(super::server_lifecycle::ServerRunOutcome::Orderly),
         }
     }
 
-    /// Load the spawn area and find the world spawn as single player does,
-    /// without keeping a player there. A dedicated server only finds the world
-    /// spawn (MinecraftServer.setInitialSpawn): a player's spawn is found as
-    /// one joins.
-    pub(in crate::game::server_side) fn settle_spawn(&mut self) -> Result<()> {
+    /// Prepare the integrated owner's player separately from setInitialSpawn.
+    pub(in crate::game::server_side) fn settle_player_spawn(&mut self) -> Result<()> {
         let deadline = Instant::now() + Duration::from_secs(600);
-        if self.common.is_dedicated_server() {
-            if self.common.level.spawn.is_none() {
-                let [x, y, z] = loop {
-                    self.server_update_world();
-                    if let Some(pos) = self.find_world_spawn()? {
-                        break pos;
-                    }
-                    if Instant::now() > deadline {
-                        return Err("the spawn area did not load".into());
-                    }
-                    std::thread::sleep(Duration::from_millis(2));
-                };
-                self.common.level.spawn = Some([f64::from(x), f64::from(y), f64::from(z)]);
-                self.common.level.world_spawn.get_or_insert([x, y, z]);
-                self.server.streaming.extra.clear();
-            }
-            self.common.spawn = self
-                .common
-                .level
-                .spawn
-                .map(|s| sunrise_core::geometry::Vec3::new(s[0] + 0.5, s[1], s[2] + 0.5));
-            return Ok(());
-        }
         while self.common.player.is_none() {
             self.server_update_world();
             self.spawn_player()?;
@@ -1555,6 +1539,8 @@ impl crate::game::ServerGame<'_> {
                 .loading_chunks(|g| super::game_mode::loads_chunks(rule, g.spectator()))
                 .next()
         });
+        // The live setter and startup put the effective ChunkMap radius in settings;
+        // the PlayerList keeps the raw value separately for its packets.
         if self.common.is_dedicated_server()
             || self.common.dim != super::Dim::Overworld
             || guest.is_some()
@@ -1564,6 +1550,8 @@ impl crate::game::ServerGame<'_> {
             } else {
                 -1
             };
+        } else if self.server.serving.is_some() {
+            self.server.streaming.radius = self.server.settings.render_distance;
         }
         let spawn = self
             .common
@@ -1687,7 +1675,7 @@ impl crate::game::ServerGame<'_> {
     /// GameProfileArgument for a name: the user cache, else the profile
     /// service, else (offline) the offline player. None, told to the console:
     /// no such player.
-    fn resolve(&self, name: &str) -> Option<NameAndId> {
+    fn resolve(&mut self, name: &str) -> Option<NameAndId> {
         let found = self.resolve_name(name);
         if found.is_none() {
             let unknown = Text::translate("argument.player.unknown", &[]);
@@ -1698,19 +1686,18 @@ impl crate::game::ServerGame<'_> {
 
     /// `Services.nameToIdCache().get(name)`: the user cache, else the profile
     /// service, else (offline) the offline player.
-    pub(in crate::game) fn resolve_name(&self, name: &str) -> Option<NameAndId> {
-        USER_CACHE.lock().unwrap().as_mut().and_then(|cache| {
-            cache.get_by_name(name, |lower| {
-                let found = self
-                    .server
-                    .dedicated_services
-                    .as_ref()
-                    .and_then(|services| (services.find_name)(lower));
-                if found.is_none() {
-                    log("WARN", &format!("Couldn't find profile with name: {lower}"));
-                }
-                found
-            })
+    pub(in crate::game) fn resolve_name(&mut self, name: &str) -> Option<NameAndId> {
+        let find_name = self
+            .server
+            .dedicated_services
+            .as_ref()
+            .map(|services| services.find_name);
+        self.server.user_cache.as_mut()?.get_by_name(name, |lower| {
+            let found = find_name.and_then(|f| f(lower));
+            if found.is_none() {
+                log("WARN", &format!("Couldn't find profile with name: {lower}"));
+            }
+            found
         })
     }
 
@@ -1784,26 +1771,6 @@ impl crate::game::ServerGame<'_> {
             self.enter_command_level(back);
         }
         out
-    }
-
-    /// A console or RCON announcement, logged without adding to the source's command output.
-    pub fn dedicated_console_say(&mut self, message: String) {
-        let name = if self.server.rcon_source {
-            "Rcon"
-        } else {
-            "Server"
-        };
-        let Some(hidden) = self.chat_hidden_from(|_| (0, name, message.as_str())) else {
-            return;
-        };
-        let held = self.server.rcon_source.then(|| CAPTURE.take());
-        log("INFO", &format!("[Not Secure] [{name}] {message}"));
-        if let Some(held) = held {
-            CAPTURE.set(held);
-        }
-        if let Some(host) = &self.server.lan {
-            host.hub.console_say(name, &message, &hidden);
-        }
     }
 
     /// DedicatedServer.handleConsoleInputs: one console line, run as the
@@ -2155,7 +2122,6 @@ impl crate::game::ServerGame<'_> {
                     ],
                 ));
             }
-            "say" if !rest.is_empty() => self.dedicated_console_say(rest.join(" ")),
             _ => self.console_dispatch(line),
         }
     }
@@ -2409,58 +2375,26 @@ impl crate::game::ServerGame<'_> {
     /// MinecraftServer.stopServer: players saved and sent away, worlds saved.
     /// MinecraftServer.saveAllChunks, not silent: one line per level, in
     /// the server's level order.
-    fn log_saved_levels(&self) {
-        for dimension in [
-            "minecraft:overworld",
-            "minecraft:the_nether",
-            "minecraft:the_end",
-        ] {
+    pub(in crate::game) fn log_saved_levels(&self) {
+        for dim in self.loaded_level_order() {
             log(
                 "INFO",
                 &format!(
-                    "Saving chunks for level 'ServerLevel[{}]'/{dimension}",
-                    self.level.name
+                    "Saving chunks for level 'ServerLevel[{}]'/{}",
+                    self.level.name,
+                    dim.id()
                 ),
             );
         }
     }
 
-    pub(in crate::game::server_side) fn stop_dedicated(
-        &mut self,
-        crashed: bool,
-        run_error: Option<&str>,
-    ) -> Result<()> {
+    pub(in crate::game) fn stop_dedicated(&mut self, crashed: bool) -> Result<()> {
         self.server.streaming.abort_generation();
         self.server.levels.0.abort_parked_generation();
-        // A failed open keeps its opening phase until the final save attempts finish.
-        if run_error.is_none() || !self.common.native_lifecycle.is_opening() {
-            self.common.native_lifecycle.begin_close();
-        }
-        self.native_configs_server_stop();
+        // The close request starts before player and world saves.
+        self.common.native_lifecycle.begin_close();
         log("INFO", "Stopping server");
-        self.native_players_leaving();
-        log("INFO", "Saving players");
-        // PlayerList.removeAll: each player's file, with the vehicle it
-        // alone rides, then its records.
-        if !crashed {
-            self.save_leaving_guests();
-        }
-        if let Some(h) = self.server.lan.as_mut() {
-            let conns: Vec<u32> = h.hub.guests.iter().map(|g| g.conn).collect();
-            for conn in conns {
-                h.hub.kick(
-                    conn,
-                    translatable("multiplayer.disconnect.server_shutdown", &[]),
-                );
-            }
-        }
-        std::thread::sleep(Duration::from_millis(100));
-        log("INFO", "Saving worlds");
-        let result = self.finish_server_save(crashed, run_error);
-        if result.is_ok() {
-            self.log_saved_levels();
-        }
-        result
+        self.finish_server_save(true, crashed)
     }
 }
 
@@ -2514,41 +2448,6 @@ impl crate::game::ServerGame<'_> {
             log::warn!("Partial save during {phase}: {failed} chunk records could not be saved");
         }
         Ok(failed)
-    }
-
-    pub fn stop_after_crash(&mut self, message: &str) -> Result<()> {
-        // Single player's server thread (`integrated.rs`) has no console: it logs to the game's log.
-        let integrated = self.server.serving.is_some();
-        let warn = |message: &str| {
-            if integrated {
-                log::warn!("Sunrise: {message}");
-            } else {
-                log("WARN", message);
-            }
-        };
-        let cause = if integrated {
-            // `message` already says whether the tick panicked or failed.
-            log::error!("Sunrise: {message}");
-            message.to_owned()
-        } else {
-            log("ERROR", &format!("The server thread panicked: {message}"));
-            format!("the server thread panicked: {message}")
-        };
-        self.exclude_interrupted_players(true, warn);
-        if integrated {
-            // `IntegratedServer.stopServer`'s steps; `save_guest` skips the guest unplaced above.
-            return self.stop_integrated(true, Some(&cause));
-        }
-        log("INFO", "Saving worlds");
-        match self.save_dedicated_checkpoint("crash shutdown") {
-            Ok(0) => self.log_saved_levels(),
-            Ok(_) => (),
-            Err(error) => log::error!("Exception saving during crash shutdown: {error}"),
-        }
-        self.lan_close(false);
-        // The crash, not any record failure during its checkpoint, fails this close.
-        self.native_lifecycle_close_failed(&cause);
-        Err(cause.into())
     }
 }
 

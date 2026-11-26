@@ -22,7 +22,7 @@ fn every_level_ticks_before_the_connection_phase() {
     let dims = [Dim::Overworld, Dim::Nether];
     let mut dig = [0; 2];
     let mut heard = Vec::new();
-    for phase in server_tick_phases(&dims) {
+    for phase in server_tick_phases(&dims, &dims) {
         match phase {
             ServerTickPhase::Level(i, dim) => {
                 assert_eq!(dim, dims[i]);
@@ -31,6 +31,7 @@ fn every_level_ticks_before_the_connection_phase() {
                     heard.push(("dig", dim, dig[i]));
                 }
             }
+            ServerTickPhase::IdleLevel(dim) => panic!("unexpected idle level {dim:?}"),
             ServerTickPhase::Connections => {
                 for (dim, progress) in dims.into_iter().zip(dig) {
                     heard.push(("pre", dim, progress));
@@ -87,31 +88,33 @@ impl Observe {
 
 #[mod_api::__subscriptions]
 impl mod_api::Hooks for Observe {
-    fn register(&self, registrar: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
-        registrar.entity_tick_each("minecraft:player");
-    }
-    fn entity_tick_listened(&self, _: HostSide<'_>, event: &mut mod_api::EntityTickListenedEvent) {
-        event.listened = true;
-    }
-    fn entity_tick_pre(&self, host: HostSide<'_>, event: &mut mod_api::EntityTickPreEvent<'_>) {
-        let HostSide::Server(host) = host else { return };
-        for &id in event.entities {
-            let immunity = host
-                .entity(id)
-                .and_then(|entity| entity.invulnerable_time(host));
-            self.events
-                .lock()
-                .unwrap()
-                .push(Event::EntityPre(id, immunity));
-            if id == self.cancel {
-                event.canceled.push(id);
-            }
+    fn entity_tick_pre(
+        &self,
+        host: HostSide<'_>,
+        event: &mut mod_api::EntityTickPreEvent<'_>,
+    ) -> mod_api::Flow {
+        let HostSide::Server(host) = host else {
+            return mod_api::Flow::Continue;
+        };
+        let id = event.entity;
+        let immunity = host
+            .entity(id)
+            .and_then(|entity| entity.invulnerable_time(host));
+        self.events
+            .lock()
+            .unwrap()
+            .push(Event::EntityPre(id, immunity));
+        if id == self.cancel {
+            mod_api::Flow::Cancel
+        } else {
+            mod_api::Flow::Continue
         }
     }
     fn entity_tick_post(&self, _: HostSide<'_>, event: &mut mod_api::EntityTickPostEvent<'_>) {
-        for &id in event.entities {
-            self.events.lock().unwrap().push(Event::EntityPost(id));
-        }
+        self.events
+            .lock()
+            .unwrap()
+            .push(Event::EntityPost(event.entity));
     }
     fn block_break_progress_update(
         &self,

@@ -5,11 +5,11 @@ use crate::game::living_attributes::AttributeWrite;
 use sunrise_core::random::RandomSource;
 use sunrise_world::attribute_map::ValueKind;
 use sunrise_world::damage_source::Catalog as DamageCatalog;
-use {
-    sunrise_game_data::text::Text, sunrise_level::sim_settings::SOUND_SOURCES,
-    sunrise_sim::mobs::DamageKind, sunrise_sim::mobs::MobEvent, sunrise_sim::mobs::NamedDamage,
-    sunrise_sim::mobs::Who, sunrise_sim::mobs::finalize, sunrise_sim::scoreboard_cmd::Holder,
-    sunrise_sim::scoreboard_cmd::Tracker,
+use sunrise_game_data::text::Text;
+use sunrise_level::sim_settings::SOUND_SOURCES;
+use sunrise_sim::{
+    mobs::{DamageKind, MobEvent, Who, finalize},
+    scoreboard_cmd::{Holder, Tracker},
 };
 
 /// Queue bookkeeping for synchronous command damage, preserving prior requests
@@ -117,9 +117,7 @@ impl crate::game::ServerGame<'_> {
     /// factory chooses the type based on the attacker; an explicit registry
     /// type must not. Other registered types keep their id and tags as `Named`.
     pub fn damage_kind(catalog: &DamageCatalog, ty: &str) -> DamageKind {
-        Self::builtin_damage_kind(ty)
-            .or_else(|| NamedDamage::registered(catalog, ty).map(DamageKind::Named))
-            .unwrap_or(DamageKind::Generic)
+        sunrise_sim::health::resolve_damage_kind(Some(catalog), ty).unwrap_or(DamageKind::Generic)
     }
 
     /// Resolve a mod-supplied source against the world's registry, with no default on a miss.
@@ -127,57 +125,10 @@ impl crate::game::ServerGame<'_> {
         catalog: &DamageCatalog,
         ty: &str,
     ) -> Option<DamageKind> {
-        match Self::builtin_damage_kind(ty) {
-            Some(kind) => catalog.id(ty).map(|_| kind),
-            None => NamedDamage::registered(catalog, ty).map(DamageKind::Named),
-        }
+        catalog.id(ty)?;
+        sunrise_sim::health::resolve_damage_kind(Some(catalog), ty)
     }
 
-    pub(in crate::game::server_side) fn builtin_damage_kind(ty: &str) -> Option<DamageKind> {
-        Some(match ty.strip_prefix("minecraft:").unwrap_or(ty) {
-            "player_attack" => DamageKind::PlayerAttack,
-            "mace_smash" => DamageKind::MaceSmash,
-            "spear" => DamageKind::Spear,
-            "mob_attack" => DamageKind::MobAttack,
-            "mob_attack_no_aggro" => DamageKind::MobAttackNoAggro,
-            "arrow" => DamageKind::Arrow,
-            "thrown" => DamageKind::Thrown,
-            "fireball" => DamageKind::Fireball,
-            "wither_skull" => DamageKind::WitherSkull,
-            "fall" => DamageKind::Fall,
-            "on_fire" => DamageKind::OnFire,
-            "in_fire" => DamageKind::InFire,
-            "hot_floor" => DamageKind::HotFloor,
-            "campfire" => DamageKind::Campfire,
-            "lava" => DamageKind::Lava,
-            "drown" => DamageKind::Drown,
-            "dry_out" => DamageKind::DryOut,
-            "magic" => DamageKind::Magic,
-            "sting" => DamageKind::Sting,
-            "cactus" => DamageKind::Cactus,
-            "sweet_berry_bush" => DamageKind::SweetBerryBush,
-            "freeze" => DamageKind::Freeze,
-            "in_wall" => DamageKind::InWall,
-            "thorns" => DamageKind::Thorns,
-            "cramming" => DamageKind::Cramming,
-            "falling_anvil" => DamageKind::FallingAnvil,
-            "falling_block" => DamageKind::FallingBlock,
-            "fireworks" => DamageKind::Fireworks,
-            "generic_kill" => DamageKind::GenericKill,
-            "lightning_bolt" => DamageKind::LightningBolt,
-            "out_of_world" => DamageKind::OutOfWorld,
-            "outside_border" => DamageKind::OutsideBorder,
-            "sonic_boom" => DamageKind::SonicBoom,
-            "spit" => DamageKind::Spit,
-            "stalagmite" => DamageKind::Stalagmite,
-            "starve" => DamageKind::Starve,
-            "sulfur_cube_hot" => DamageKind::SulfurCubeHot,
-            "wind_charge" => DamageKind::WindCharge,
-            "wither" => DamageKind::Wither,
-            "generic" => DamageKind::Generic,
-            _ => return None,
-        })
-    }
     /// `DamageCommand.damage`: apply its source and report an accepted hit.
     pub(in crate::game::server_side) fn cmd_damage(&mut self, ctx: &Context) -> R<i32> {
         let targets = self.entities(ctx, "target", false)?;
@@ -207,7 +158,7 @@ impl crate::game::ServerGame<'_> {
         // Destruction can remove the target before its success message is built.
         let discarded_name = matches!(target, Target::Item(_) | Target::Boat(_) | Target::Cart(_))
             .then(|| self.target_name(target));
-        let hurt = self.hurt_target(target, amount, &ty, by, cause, from);
+        let hurt = self.hurt_target(target, amount, &ty, by, cause.or(by), from);
         if !hurt {
             return Err(err("commands.damage.invulnerable", &[]));
         }
@@ -239,10 +190,10 @@ impl crate::game::ServerGame<'_> {
     ) -> bool {
         // Resolve the damage registry at the shared command/API boundary before
         // any target-specific path can mutate state or map it to a DamageKind.
-        if self.common.health_resources.damage.id(ty).is_none() {
+        if !amount.is_finite() || amount < 0.0 || self.common.health_resources.damage.id(ty).is_none() {
             return false;
         }
-        let attacker = cause.or(by).and_then(|t| self.network_entity_id(t));
+        let attacker = cause.and_then(|t| self.network_entity_id(t));
         let attack = self.command_attack(attacker.unwrap_or(0), by);
         self.with_attack(attack, |g| {
             g.hurt_target_from_source(target, amount, ty, by, cause, from)
@@ -263,6 +214,13 @@ impl crate::game::ServerGame<'_> {
                 .unwrap_or(0),
         );
         attack.direct_type = direct.map(|target| self.target_type(target));
+        attack.enchantment_direct = direct.zip(attack.direct).map(|(target, id)| {
+            sunrise_sim::health::EnchantmentActor {
+                id,
+                kind: self.target_type(target).into(),
+                motion: None,
+            }
+        });
         match direct {
             Some(Target::Projectile(id)) => {
                 if let Some(shot) = self
@@ -272,10 +230,7 @@ impl crate::game::ServerGame<'_> {
                     .iter()
                     .find(|shot| shot.id == id)
                 {
-                    sunrise_gameplay_common::game::CommonGame::set_projectile_attack(
-                        &mut attack,
-                        shot,
-                    );
+                    self.set_projectile_attack(&mut attack, shot);
                 }
             }
             Some(Target::Trident(id)) => {
@@ -283,10 +238,7 @@ impl crate::game::ServerGame<'_> {
                     attack.projectile = Some(id as i32);
                     attack.projectile_kind = DirectEntity::Arrow;
                     attack.projectile_type = Some("minecraft:trident");
-                    sunrise_gameplay_common::game::CommonGame::set_projectile_weapon(
-                        &mut attack,
-                        Some(&shot.stack),
-                    );
+                    self.set_projectile_weapon(&mut attack, Some(&shot.stack));
                 }
             }
             _ => {}
@@ -920,9 +872,7 @@ impl crate::game::ServerGame<'_> {
         };
         let catalog = self.common.motion.attributes.clone();
         let key = catalog.id(attribute).ok_or_else(no_attribute)?;
-        let map = self
-            .generic_attributes(target, attribute)
-            .ok_or_else(no_attribute)?;
+        let map = self.generic_attributes(target).ok_or_else(no_attribute)?;
         if !map.has(key) {
             return Err(no_attribute());
         }
@@ -961,7 +911,7 @@ impl crate::game::ServerGame<'_> {
                 self.write_attribute(target, attribute, AttributeWrite::ResetBase)
                     .ok_or_else(no_attribute)?;
                 let v = self
-                    .generic_attributes(target, attribute)
+                    .generic_attributes(target)
                     .and_then(|map| map.base_value(key).ok())
                     .unwrap_or(0.0);
                 (

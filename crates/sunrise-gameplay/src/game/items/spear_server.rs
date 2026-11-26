@@ -119,17 +119,16 @@ impl crate::game::ServerGame<'_> {
     /// What follows a charge tick that affected an entity:
     /// `Level.broadcastEntityEvent(player, 2)`, felt by the player too, and
     /// SPEAR_MOBS_TRIGGER with the living entities stabbed in this use.
-    pub(in crate::game::server_side) fn spear_hit_feedback(&mut self, kinetic: &Kinetic) {
-        let Some(feet) = self.common.player.as_ref().map(|p| p.position) else {
+    pub(in crate::game::server_side) fn spear_hit_feedback(&mut self) {
+        if self.common.player.is_none() {
             return;
-        };
+        }
         let actor = self.server.lan_acting;
         if self.server.audio_capture_active {
             self.server.lan_kinetic_hits.push(actor);
         }
         let who = actor.map_or(OWN, |conn| conn as i32);
-        self.common
-            .kinetic_hit_feedback(who, kinetic, [feet.x, feet.y, feet.z]);
+        self.common.kinetic_hit_feedback(who);
         let stabbed = self
             .server
             .stabbed
@@ -209,7 +208,7 @@ impl crate::game::ServerGame<'_> {
             }
         }
         if affected {
-            self.spear_hit_feedback(&kinetic);
+            self.spear_hit_feedback();
         }
         self.keep_player_stabs(kinetic, true, last_mob, on_players);
     }
@@ -224,7 +223,10 @@ impl crate::game::ServerGame<'_> {
     ) -> bool {
         let kind = format!(
             "minecraft:{}",
-            self.mobs[index].kind.id.trim_start_matches("minecraft:")
+            self.common.mobs[index]
+                .kind
+                .id
+                .trim_start_matches("minecraft:")
         );
         let id = self.common.mobs[index].id;
         let Some(p) = self.common.player.as_ref() else {
@@ -250,18 +252,11 @@ impl crate::game::ServerGame<'_> {
             0.0
         };
         let (old_health, join) = (self.common.mobs[index].health, self.common.mobs[index].join);
-        let (hurt, killed) = if deals_damage {
+        let (hurt, _) = if deals_damage {
             self.hurt_by_player(index, total, Damage::spear(from))
         } else {
             (false, false)
         };
-        if killed
-            && let Some(i) = self.common.mob_index.find(&self.common.mobs, id)
-            && self.common.mobs[i].join == join
-            && !self.common.mobs[i].removed
-        {
-            self.native_kill_event(i);
-        }
         let Some(index) = self
             .common
             .mob_index
@@ -277,8 +272,10 @@ impl crate::game::ServerGame<'_> {
         if deals_knockback {
             let (xd, zd) = self.extra_knockback_direction();
             let source = Damage::spear(from);
+            let aim = self.attacker_aim(source.attacker);
             let plan = self.prepare_knockback_credit(id as i32, None, &attack);
             let mut credit = plan.lend(&mut self.server.last_hurt_by_player);
+            self.common.mobs[index].attacker_aim = aim;
             let level = crate::game::server_side::entity_server::damage_level_of!(
                 self,
                 &attack,
@@ -286,10 +283,12 @@ impl crate::game::ServerGame<'_> {
                 None
             );
             self.common.mobs[index].knockback_full(level, 0.4, xd, zd, &source, total, false);
-            let (strength, _) = self.extra_knockback(&kind, 0.0);
+            self.common.mobs[index].attacker_aim = None;
+            let (strength, _) = self.extra_knockback(&kind, id, 0.0, Some("minecraft:spear"));
             if strength > 0.0 {
                 let plan = self.prepare_knockback_credit(id as i32, None, &attack);
                 let mut credit = plan.lend(&mut self.server.last_hurt_by_player);
+                self.common.mobs[index].attacker_aim = aim;
                 let level = crate::game::server_side::entity_server::damage_level_of!(
                     self,
                     &attack,
@@ -305,6 +304,7 @@ impl crate::game::ServerGame<'_> {
                     total,
                     true,
                 );
+                self.common.mobs[index].attacker_aim = None;
             }
             // ...and the attacker stops sprinting.
             self.common.stop_sprint_after_extra_knockback();
@@ -339,7 +339,7 @@ impl crate::game::ServerGame<'_> {
         if let Some(stack) = self.common.held().cloned() {
             self.award_stat("used", &stack.item, 1);
             if hurt {
-                self.post_attack(index);
+                self.post_player_melee(id, &kind, "minecraft:spear", Some(&stack));
             }
             self.weapon_wear(&stack);
         }

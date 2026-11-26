@@ -551,6 +551,8 @@ pub(crate) mod tests {
     #[ignore = "daily"]
     fn client_fluid_reads_use_cached_local_and_tracked_bodies() {
         use super::super::native_entity_refs::tests::with_client_game;
+        use mod_api::EntityReadError;
+        use std::ops::ControlFlow;
         use sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client;
         use sunrise_core::geometry::Vec3;
         use sunrise_protocol::packets::play;
@@ -560,7 +562,10 @@ pub(crate) mod tests {
             game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
             let local = game.entity(7).unwrap();
             let host = &*game as &dyn mod_api::ClientHost;
-            assert_eq!(local.fluid_heights(host), Some(Vec::new()));
+            assert_eq!(
+                local.visit_fluid_heights(host, &mut |_, _| panic!("dry player visited")),
+                Ok(ControlFlow::Continue(()))
+            );
             assert_eq!(local.eye_fluid(host), Some(None));
 
             game.spawn_entity(15, "minecraft:zombie", [2.0, 0.0, 0.0], [0.0; 3]);
@@ -605,30 +610,48 @@ pub(crate) mod tests {
                 fluids.eye_in_water = eye_water;
                 fluids.eye_in_lava = eye_lava;
                 let host = &*game as &dyn mod_api::ClientHost;
-                assert_eq!(zombie.fluid_heights(host), Some(expected));
-                assert_eq!(zombie.eye_fluid(host), Some(eye.map(str::to_owned)));
+                let mut fluids = Vec::new();
+                assert_eq!(
+                    zombie.visit_fluid_heights(host, &mut |id, depth| {
+                        fluids.push((id.to_owned(), depth));
+                        ControlFlow::Continue(())
+                    }),
+                    Ok(ControlFlow::Continue(()))
+                );
+                assert_eq!(fluids, expected);
+                assert_eq!(zombie.eye_fluid(host), Some(eye));
             }
             game.spawn_entity(16, "minecraft:armor_stand", [2.0, 0.0, 0.0], [0.0; 3]);
             let stand = game.entity(16).unwrap();
             let host = &*game as &dyn mod_api::ClientHost;
-            assert_eq!(stand.fluid_heights(host), None);
+            assert_eq!(
+                stand.visit_fluid_heights(host, &mut |_, _| panic!("absent fluid visit")),
+                Err(EntityReadError::Unavailable)
+            );
             assert_eq!(stand.eye_fluid(host), None);
             let stale = EntityRef::new(mod_api::WorldEpoch::new(0), 15);
-            assert_eq!(stale.fluid_heights(host), None);
+            assert_eq!(
+                stale.visit_fluid_heights(host, &mut |_, _| panic!("absent fluid visit")),
+                Err(EntityReadError::Stale)
+            );
             assert_eq!(stale.eye_fluid(host), None);
             game.handle_packet(play::Clientbound::RemoveEntities(play::RemoveEntities {
                 ids: vec![15],
             }))
             .unwrap();
             assert_eq!(
-                zombie.fluid_heights(&*game as &dyn mod_api::ClientHost),
-                None
+                zombie.visit_fluid_heights(&*game as &dyn mod_api::ClientHost, &mut |_, _| panic!(
+                    "absent fluid visit"
+                )),
+                Err(EntityReadError::Stale)
             );
             assert_eq!(zombie.eye_fluid(&*game as &dyn mod_api::ClientHost), None);
             game.client.remote.as_mut().unwrap().logged_in = false;
             assert_eq!(
-                local.fluid_heights(&*game as &dyn mod_api::ClientHost),
-                None
+                local.visit_fluid_heights(&*game as &dyn mod_api::ClientHost, &mut |_, _| panic!(
+                    "absent fluid visit"
+                )),
+                Err(EntityReadError::Unavailable)
             );
             assert_eq!(local.eye_fluid(&*game as &dyn mod_api::ClientHost), None);
         });

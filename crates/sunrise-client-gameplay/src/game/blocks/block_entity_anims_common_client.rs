@@ -34,13 +34,9 @@ impl ClientGame<'_> {
             return BlockAnim::default();
         }
         let sherds = if &*self.common.res.facts().get(state).name == "minecraft:decorated_pot" {
-            let sherds = self.common.saved_tag(pos).and_then(|t| t.get("sherds"));
-            ["back", "left", "right", "front"].map(|side| match sherds.and_then(|s| s.get(side)) {
-                // An item id, or the item stack the processed templates hold.
-                Some(Tag::String(id)) => Some(id.to_string_lossy()),
-                Some(stack) => sunrise_sim::save::item_from_nbt(stack).map(|s| s.item.to_string()),
-                None => None,
-            })
+            sunrise_gameplay_common::game::block_entity_anims_common::pot_sherds(
+                self.common.saved_tag(pos),
+            )
         } else {
             Default::default()
         };

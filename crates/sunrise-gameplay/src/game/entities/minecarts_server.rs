@@ -203,7 +203,7 @@ impl crate::game::ServerGame<'_> {
         ) else {
             return vanilla;
         };
-        let read = ReadLevel::new(self, level);
+        let read = ReadLevel::new(self, level, &self.common.world);
         let side = mod_api::LevelSide::Server(&read);
         let cart = cart.map(|id| mod_api::EntityRef::new(epoch, id));
         dispatch_cart_rail_direction(side, self.common.dim.level(), api_state, pos, cart, text)
@@ -353,6 +353,7 @@ impl crate::game::ServerGame<'_> {
             &c.ground,
             &mut c.velocity,
         );
+        let (writes, hurts) = crate::game::entity_server::split_contact_hurts(writes);
         super::entity::apply_contact_writes(
             writes,
             &mut c.velocity,
@@ -360,6 +361,7 @@ impl crate::game::ServerGame<'_> {
             Some(&mut c.stuck),
             None,
         );
+        self.queue_vehicle_contact_hurts(super::commands::Target::Cart(c.id), hurts);
         if c.push_by_bubble_column(
             &self.common.world,
             self.common.pack.assets.registry,
@@ -1596,6 +1598,20 @@ impl crate::game::ServerGame<'_> {
                 }
             }
             CartKind::Spawner => {
+                if c.spawner.as_ref().is_some_and(|s| s.spawn_delay <= 0)
+                    && (mod_api::__private::listened(mod_api::HookId::MobSpawnPositionCheck)
+                        || mod_api::__private::listened(mod_api::HookId::FinalizeSpawn))
+                    && let Some(i) = cart_at(&self.carts, c.id, slot)
+                {
+                    // push_from_ticked_cart stored the moved cart. Bring its stored
+                    // fluid state up to date for the shared spawner hooks; mutable
+                    // hooks cannot touch it until the tick finishes.
+                    self.carts.update(i, |stored| {
+                        stored.velocity = c.velocity;
+                        stored.in_water = c.in_water;
+                        stored.fall_distance = c.fall_distance;
+                    });
+                }
                 if let Some(mut spawner) = c.spawner.take() {
                     let key = (
                         c.position.x.floor() as i32,
@@ -1633,6 +1649,14 @@ impl crate::game::ServerGame<'_> {
         let id = self.common.carts[i].id;
         let result =
             self.with_entity_held_out(id, |game| section_steps::tick_riding(game, id, i, intent));
+        // A contact hurt lands on the stored row, not the ticked copy; a
+        // breaking hit removes the cart and releases its seat.
+        if self.apply_vehicle_contact_hurts(super::commands::Target::Cart(id)) {
+            if self.common.riding == Some(id) && !self.persist.removed_vehicles.contains_key(&id) {
+                self.common.riding = None;
+            }
+            return true;
+        }
         let Some((_, alive, cart_step, player_step)) = result else {
             return true;
         };
@@ -1692,7 +1716,15 @@ impl crate::game::ServerGame<'_> {
             // stored cart keeps its slots for whatever reads them meanwhile.
             let (due, section_step) =
                 self.with_entity_held_out(id, |game| section_steps::tick(game, id, i, &mut index));
+            // A contact hurt lands on the stored row, not the ticked copy.
+            if self.apply_vehicle_contact_hurts(super::commands::Target::Cart(id)) {
+                continue;
+            }
             section_steps::tell(self, id, section_step);
+            // A hook may have removed the cart during its tick: the cart's tick stops here.
+            if cart_at(&self.common.carts, id, i).is_none() {
+                continue;
+            }
             if due {
                 self.perform_cart_command(id);
                 index.forget_carts();

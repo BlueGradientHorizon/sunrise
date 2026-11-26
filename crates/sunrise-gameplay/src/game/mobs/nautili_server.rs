@@ -1,7 +1,7 @@
 use crate::game::ServerGame;
 use sunrise_core::random::RandomSource;
 use sunrise_items::items::ItemStack;
-use sunrise_sim::mobs::nautilus;
+use sunrise_sim::mobs::{equip::equippable_in_slot, nautilus};
 
 impl ServerGame<'_> {
     /// `AbstractNautilus.mobInteract`. Returns whether the click was used.
@@ -93,13 +93,27 @@ impl ServerGame<'_> {
                     .and_then(|i| i.food.as_ref())
                     .map(|f| f.0 as i32);
                 let m = &mut self.common.mobs[index];
-                m.heal(&self.common.loop_context, nautilus::feed_heal(nutrition));
+                m.heal(
+                    &self.common.loop_context,
+                    &|| crate::game::entity_server::hit_reads_of!(self),
+                    nautilus::feed_heal(nutrition),
+                );
                 self.use_nautilus_food(item);
                 self.nautilus_sound(index, sound);
                 return true;
             }
             // Equippable.equipOnInteract: a saddle or nautilus armour on a
             // tame adult.
+            let wears_body = self.common.inventory[self.common.selected]
+                .as_ref()
+                .is_some_and(|stack| {
+                    equippable_in_slot(
+                        self.items(),
+                        stack,
+                        "body",
+                        sunrise_sim::mobs::species::vanilla_id(self.common.mobs[index].species()),
+                    )
+                });
             let m = &mut self.common.mobs[index];
             if item == "minecraft:saddle" && tame && !m.extra.saddled() {
                 let held = self.common.inventory[self.common.selected].clone();
@@ -112,7 +126,7 @@ impl ServerGame<'_> {
                 self.mob_equip_event(id, [pos.x, pos.y, pos.z], true);
                 return true;
             }
-            if item.ends_with("_nautilus_armor") && tame && m.extra.body_id().is_none() {
+            if wears_body && tame && m.extra.body_id().is_none() {
                 let held = self.common.inventory[self.common.selected].clone();
                 m.extra
                     .set_body_stack(held.map(|s| ItemStack { count: 1, ..s }));
@@ -206,3 +220,5 @@ use sunrise_gameplay_common::game::item_use_stacks::ItemUseStacksGameExt1 as _;
 use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;
 
 use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;
+
+use sunrise_gameplay_common::game::tables::GameItems as _;

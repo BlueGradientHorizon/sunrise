@@ -9,7 +9,7 @@ use crate::fast_hash::FxHashMap;
 use crate::mesher::Vertex;
 use crate::mobs::{Mob, anim};
 use serde_json::Value;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::f32::consts::PI;
 use std::fs;
 use std::path::Path;
@@ -71,26 +71,23 @@ impl ClientMobModels {
         let mut out = HashMap::new();
         for (id, def, t) in crate::mobs::species_entries(&types) {
             let model_key = format!("minecraft:{}", def.model);
-            let Some(model) = document.value().get(&model_key) else {
+            let Some(mut part) = document.model(&model_key) else {
                 continue;
             };
             let mut layers = FxHashMap::default();
-            if let Some(all) = document.value().as_object() {
-                for prefix in def.layer_prefixes() {
-                    let start = format!("minecraft:{prefix}#");
-                    for (k, v) in all.iter().filter(|(k, _)| k.starts_with(&start)) {
-                        let mut part = Part::parse_layer(k, v);
-                        if culls_back_faces(k) {
-                            part.set_cull_back();
-                        }
-                        layers.insert(
-                            k.trim_start_matches("minecraft:").to_owned(),
-                            Arc::new(part),
-                        );
+            for prefix in def.layer_prefixes() {
+                let start = format!("minecraft:{prefix}#");
+                for (k, v) in document.0.iter().filter(|(k, _)| k.starts_with(&start)) {
+                    let mut layer = v.clone();
+                    if culls_back_faces(k) {
+                        layer.set_cull_back();
                     }
+                    layers.insert(
+                        k.trim_start_matches("minecraft:").to_owned(),
+                        Arc::new(layer),
+                    );
                 }
             }
-            let mut part = Part::parse_layer(&model_key, model);
             if culls_back_faces(&model_key) {
                 part.set_cull_back();
             }
@@ -248,29 +245,38 @@ pub fn render_single_mob(
 /// A parsed `entity-models.json` document, shared while loading model batches.
 /// Each lookup still constructs an independent part tree for the caller.
 #[derive(Clone)]
-pub struct EntityModelDocument(Arc<Value>);
+pub struct EntityModelDocument(Arc<BTreeMap<String, Part>>);
 
 impl EntityModelDocument {
     pub fn load(root: &Path) -> crate::Result<Self> {
-        Ok(Self(Arc::new(serde_json::from_slice(&fs::read(
-            root.join("entity-models.json"),
-        )?)?)))
+        let path = root.join("entity-models.json");
+        let layers: Value = serde_json::from_slice(&fs::read(&path)?)?;
+        let Value::Object(layers) = layers else {
+            return Err(format!("{}: expected a top-level JSON object", path.display()).into());
+        };
+        // EntityModelSet.vanilla builds a populated set from LayerDefinitions.createRoots.
+        if layers.is_empty() {
+            return Err(format!("{}: no entity model definitions", path.display()).into());
+        }
+        let mut models = BTreeMap::new();
+        for (key, model) in layers {
+            if !model_layers::is_layer_id(&key) {
+                return Err(format!("{}: invalid model layer key {key:?}", path.display()).into());
+            }
+            let mut part = Part::decode("root", model)
+                .map_err(|error| format!("{}: layer {key}: {error}", path.display()))?;
+            part.layer = Some(key.as_str().into());
+            models.insert(key, part);
+        }
+        Ok(Self(Arc::new(models)))
     }
 
     pub fn model(&self, key: &str) -> Option<Part> {
-        self.0.get(key).map(|m| Part::parse_layer(key, m))
+        self.0.get(key).cloned()
     }
 
     pub fn keys(&self) -> impl Iterator<Item = &str> {
-        self.0
-            .as_object()
-            .into_iter()
-            .flat_map(|all| all.keys().map(String::as_str))
-    }
-
-    /// The parsed document, for loaders that read several keys from it.
-    pub fn value(&self) -> &Value {
-        &self.0
+        self.0.keys().map(String::as_str)
     }
 }
 

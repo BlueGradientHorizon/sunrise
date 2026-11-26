@@ -20,6 +20,7 @@ pub fn start_dedicated_game(
     services: dedicated::Services,
     profile_resolver: ProfileResolverFactory,
     keep_benchmark: fn(&std::path::Path, &sunrise_bench::Report),
+    ticket_activation: &'static mod_api::__private::game::TicketActivation,
 ) -> Result<()> {
     if let Some(d) = options.distance_override {
         settings.render_distance = d;
@@ -36,6 +37,7 @@ pub fn start_dedicated_game(
     };
     let mut game =
         crate::game::ServerGame::new(res, pack, options, settings, prepared, profile_resolver)?;
+    game.server.ticket_activation = Some(ticket_activation);
     game.server.dedicated_services = Some(services);
     if game.options.benchmark.is_some() {
         game.options.no_pause = true;

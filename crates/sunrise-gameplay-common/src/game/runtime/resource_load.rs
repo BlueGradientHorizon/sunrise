@@ -24,6 +24,7 @@ pub trait CorePresentation {
         resources: &ResourceRoot,
         assets: &Assets,
         early: &mut Self::Early,
+        emissive_sprites: &[mod_api::Answered<mod_api::EmissiveSpriteRegistration>],
     ) -> std::result::Result<Self::Visual, String>;
     fn visibility(
         root: &Path,
@@ -53,7 +54,12 @@ impl CorePresentation for ServerCorePresentation {
     fn alongside_assets<A>(_: &ResourceRoot, _: bool, load_assets: impl FnOnce() -> A) -> (A, ()) {
         (load_assets(), ())
     }
-    fn render(_: &ResourceRoot, _: &Assets, _: &mut ()) -> std::result::Result<(), String> {
+    fn render(
+        _: &ResourceRoot,
+        _: &Assets,
+        _: &mut (),
+        _: &[mod_api::Answered<mod_api::EmissiveSpriteRegistration>],
+    ) -> std::result::Result<(), String> {
         Ok(())
     }
     fn visibility(
@@ -307,7 +313,9 @@ pub fn load_core<P: CorePresentation>(
     resources: &sunrise_assets::resource_source::ResourceRoot,
     additional_data: &[Arc<sunrise_level::datapack::DataPack>],
     conditions: &sunrise_world::conditions::LoadConditions,
+    emissive_sprites: &[mod_api::Answered<mod_api::EmissiveSpriteRegistration>],
     load_role: mods::LoadRole,
+    captured: sunrise_world::native_load_context::SettingsCapture,
     parallel: bool,
     progress: &Progress,
     launch_world: Option<&str>,
@@ -323,14 +331,14 @@ pub fn load_core<P: CorePresentation>(
     };
     progress.set(1);
     let item_data =
-        Arc::new(mods::load_item_data(root, role, load_role.owning).map_err(|e| e.to_string())?);
+        Arc::new(mods::load_item_data(root, role, captured).map_err(|e| e.to_string())?);
     let registry = assets.registry;
     let (render, gameplay, visibility, biomes, environment, collision) =
         std::thread::scope(|scope| {
             let assets = &assets;
             let item_data = &item_data;
             let render = Step::spawn(scope, parallel, "render", move || {
-                let visual = P::render(resources, assets, &mut early)?;
+                let visual = P::render(resources, assets, &mut early, emissive_sprites)?;
                 let item_defaults = startup::time("core.item_defaults", || {
                     sunrise_world::item_defaults::shared(root)
                 })
@@ -352,10 +360,11 @@ pub fn load_core<P: CorePresentation>(
                     crate::game::world_preload::preload_launch_world(
                         folder,
                         root,
+                        resources.data(),
                         resources.data_changes(),
                         registry,
-                        biomes.clone(),
                         additional_data,
+                        conditions.clone(),
                     );
                 }
                 Ok::<_, String>(biomes)
@@ -491,6 +500,12 @@ pub(in crate::game) fn gameplay_tables(
                     modifications,
                 )?);
             }
+            // #4473: then the attributes the content mods' effects declare
+            // modifiers on, which the complete catalog knows.
+            check_effect_modifier_attributes(
+                &motion.attributes,
+                sunrise_game_data::potions::mod_effects(),
+            )?;
             Ok::<_, Box<dyn std::error::Error>>(motion)
         })
         .map_err(|e| e.to_string());
@@ -616,6 +631,26 @@ pub fn with_mod_attribute_additions(
     Ok(catalog)
 }
 
+/// Refuses the load when a content mod's effect declares a modifier on an
+/// attribute the catalog does not have, vanilla's and the mods' declared ones
+/// included (#4473), naming the effect and the attribute.
+pub fn check_effect_modifier_attributes(
+    catalog: &sunrise_world::attributes::entity::Catalog,
+    effects: &[sunrise_game_data::potions::EffectDef],
+) -> std::result::Result<(), String> {
+    for effect in effects {
+        for &(attribute, ..) in effect.modifiers {
+            if catalog.id(attribute).is_none() {
+                return Err(format!(
+                    "mob effect {}: attribute_modifiers: unknown attribute {attribute}",
+                    effect.id
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Each mob type mods added attributes to takes its grown catalog row
 /// (`with_mod_attribute_additions`) as its attribute map and spawn fields, as
 /// a declared set's type does (#845), so a new mob of the type spawns with
@@ -623,7 +658,7 @@ pub fn with_mod_attribute_additions(
 /// its map from the catalog alone.
 pub fn take_modified_attribute_rows(
     types: &mut HashMap<String, sunrise_sim::mobs::MobType>,
-    catalog: &sunrise_world::attributes::entity::Catalog,
+    catalog: &Arc<sunrise_world::attributes::entity::Catalog>,
     modifications: &[mod_api::__private::EntityAttributeModification],
 ) {
     let modified: std::collections::BTreeSet<&str> = modifications
@@ -690,6 +725,8 @@ pub fn prepare_core(
     root: &Path,
     resolved: &ResourceRoot,
     additional_data: &[Arc<sunrise_level::datapack::DataPack>],
+    conditions: &sunrise_world::conditions::LoadConditions,
+    role: crate::game::execution_role::ExecutionRole,
     launch_world: Option<&str>,
     started: Instant,
 ) -> Result<(PreparedCore, Option<sunrise_level::spans::startup::Step>)> {
@@ -735,13 +772,14 @@ pub fn prepare_core(
         crate::game::world_preload::preload_launch_world(
             folder,
             root,
+            resolved.data(),
             resolved.data_changes(),
             assets.registry,
-            biomes.clone(),
             additional_data,
+            conditions.clone(),
         );
     }
-    api_values::resolve_block_definitions(assets.registry)?;
+    api_values::resolve_block_definitions_for_role(assets.registry, role)?;
     mods::extend_poi_types(assets.registry);
     mods::register_cauldron_fluid_contents(assets.registry);
     let pack_step = startup::step("pack.assemble");
@@ -796,7 +834,9 @@ pub fn finish_core(
             collision,
             motion,
             suffocation,
-            spawn_registries: sunrise_sim::mobs::finalize::SpawnRegistries::load(root),
+            variants: Arc::new(sunrise_sim::mobs::variants::VariantTables::load_prepared(
+                root,
+            )),
             threads,
         },
         rest: std::sync::OnceLock::new(),

@@ -9,7 +9,6 @@ pub trait Hooks {
     /// still reports success. `entity_teleport` and `player_teleported` hear it after.
     /// Server-side. Diverges from upstream: new hook.
     #[hook(
-        target = "sunrise_gameplay::game::native_hooks::teleport_command::ServerGame<'_>::native_teleport_command",
         dispatch = "flat",
         side = "server",
         contract = "cancel",

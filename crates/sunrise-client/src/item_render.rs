@@ -94,6 +94,15 @@ pub struct ItemQuad {
     pub oit: bool,
     /// `RenderTypes.bannerPattern`: translucent blend without depth writes or alpha cutout.
     pub banner_pattern: bool,
+    /// Optional explicit packed light coordinates in vanilla `LightCoordsUtil` layout
+    /// (block byte in bits `0..8`, sky byte in bits `16..24`). `None` inherits draw light and
+    /// `light_emission`.
+    pub packed_light: Option<u32>,
+    /// Skip directional diffuse face shading while still sampling both lightmap channels.
+    pub lightmap_only: bool,
+    /// Explicit item render type override (`ItemCutout` / `ItemTranslucent`), using vanilla's
+    /// `0.1` alpha cutoff in GUI draws and sorting cutout quads before translucent ones.
+    pub explicit_alpha_cutoff: bool,
 }
 /// `TextureTransform.setupGlintTexturing`'s inputs.
 #[derive(Clone, Copy, Debug)]
@@ -220,6 +229,17 @@ pub trait ItemDrawEnv: ItemEnv {
         None
     }
 
+    /// Resolve a mod-submitted render type against the current resource load.
+    fn render_type(
+        &self,
+        _handle: mod_api::RenderTypeRef,
+    ) -> Result<
+        sunrise_client_render::mod_pipelines::ResolvedRenderType<'static>,
+        mod_api::RenderTypeError,
+    > {
+        Err(mod_api::RenderTypeError::Unknown)
+    }
+
     /// Resolve a mod-submitted stack and its display context at the engine boundary.
     fn special_model_stack(
         &self,
@@ -308,6 +328,12 @@ pub struct LayerRender {
     /// The display context the layer was resolved for, which its submission follows (a GUI
     /// glint's atlas coordinates): the state's own, except for the layers of a nested stack.
     pub display: DisplayContext,
+    /// Per-submission packed light, render type, and lighting mode from
+    /// `SpecialModelCollector::submit_model` (defaults for ordinary item layers).
+    pub submit_options: mod_api::SpecialModelSubmitOptions,
+    /// The render type `submit_options` named through `SpecialModelRenderType::Custom`,
+    /// resolved when the layer was submitted.
+    pub render_type: Option<sunrise_client_render::mod_pipelines::ResolvedRenderType<'static>>,
 }
 /// `ItemStackRenderState`.
 #[derive(Clone, Debug)]
@@ -1036,7 +1062,31 @@ fn submit_quads_with(
         // calibrated sculk sensor's tendrils and amethyst planes, #4856; big
         // dripleaf, #4855; the inside of a held hay block, #4801) and stacks a
         // jelly shell's partial alpha until it looks opaque (#4508).
-        let translucent = translucent || q.material.force_translucent;
+        let (translucent, explicit_alpha_cutoff) = match layer.submit_options.render_type {
+            mod_api::SpecialModelRenderType::Baked => {
+                (translucent || q.material.force_translucent, false)
+            }
+            mod_api::SpecialModelRenderType::ItemCutout => (false, true),
+            mod_api::SpecialModelRenderType::ItemTranslucent => (true, true),
+            mod_api::SpecialModelRenderType::Custom(_) => (
+                layer
+                    .render_type
+                    .is_some_and(|resolved| resolved.is_translucent()),
+                true,
+            ),
+            _ => (translucent || q.material.force_translucent, false),
+        };
+        let uv = match layer
+            .render_type
+            .map(|resolved| resolved.texture_transform())
+        {
+            Some(mod_api::TextureTransform::Offset([u, v])) => uv.map(|[x, y]| [x + u, y + v]),
+            _ => uv,
+        };
+        let lightmap_only = matches!(
+            layer.submit_options.lighting,
+            mod_api::SpecialModelLighting::LightmapOnly
+        );
         let gui_glint_uv = match foil {
             Foil::None | Foil::GlintOnly => None,
             Foil::Standard => {
@@ -1075,6 +1125,9 @@ fn submit_quads_with(
             translucent,
             oit: false,
             banner_pattern: false,
+            packed_light: layer.submit_options.packed_light,
+            lightmap_only,
+            explicit_alpha_cutoff,
         });
     }
 }
@@ -1756,6 +1809,8 @@ impl ItemRenderer {
                 particle: Arc::from(sprite_name(&baked.particle.sprite)),
                 extents,
                 display,
+                submit_options: mod_api::SpecialModelSubmitOptions::default(),
+                render_type: None,
             });
             ControlFlow::Continue(())
         };
@@ -1851,13 +1906,24 @@ fn shaded(color: u32, normal: Vec3, lights: Option<(Vec3, Vec3)>) -> u32 {
 }
 impl ItemSink for WorldSink<'_> {
     fn quad(&mut self, q: ItemQuad) {
-        let color = shaded(q.color, q.normal, self.lights);
-        // `LightCoordsUtil.lightCoordsWithEmission`: block light at least the emission.
-        let emission = u32::from(q.light_emission) * 16;
-        let light = if (self.light >> 8 & 0xFF) < emission {
-            (self.light & 0xFF) | emission << 8
+        let lights = if q.lightmap_only { None } else { self.lights };
+        let color = shaded(q.color, q.normal, lights);
+        let light = if let Some(packed) = q.packed_light {
+            // Vanilla `LightCoordsUtil` layout: block byte in bits 0..8, sky byte in bits 16..24.
+            // Convert to entity vertex order (sky in bits 0..8, block in bits 8..16) and set
+            // `light.z = 1` (bit 16) so `entity.wgsl` bypasses dynamic block light boosts and
+            // uses both submitted coordinates verbatim with no baked emission floor.
+            let block_byte = packed & 0xFF;
+            let sky_byte = (packed >> 16) & 0xFF;
+            sky_byte | (block_byte << 8) | (1 << 16)
         } else {
-            self.light
+            // `LightCoordsUtil.lightCoordsWithEmission`: block light at least the emission.
+            let emission = u32::from(q.light_emission) * 16;
+            if (self.light >> 8 & 0xFF) < emission {
+                (self.light & 0xFF) | emission << 8
+            } else {
+                self.light
+            }
         };
         let glint = (q.foil != Foil::None)
             .then_some(self.glint)
@@ -1917,6 +1983,15 @@ impl ItemSink for WorldSink<'_> {
 pub fn item_spin(age_in_ticks: f32, bob_offset: f32) -> f32 {
     age_in_ticks / 20.0 + bob_offset
 }
+/// `ItemEntityRenderer`'s bob: how far a dropped stack rises as it spins, or
+/// nothing when its item does not bob (NeoForge's `shouldBobAsEntity`).
+pub fn item_bob(age_in_ticks: f32, bob_offset: f32, bobs: bool) -> f32 {
+    if bobs {
+        sunrise_core::geometry::trig::sin(f64::from(age_in_ticks / 10.0 + bob_offset)) * 0.1 + 0.1
+    } else {
+        0.0
+    }
+}
 /// `ItemClusterRenderState.getRenderedAmount`.
 pub fn rendered_amount(count: u32) -> u32 {
     match count {
@@ -1937,6 +2012,25 @@ pub fn cluster_poses(state: &ItemRenderState, pose: Mat4, amount: u32, seed: i64
     // `AABB.getZsize`, in doubles, then narrowed.
     let depth = (f64::from(hi.z) - f64::from(lo.z)) as f32;
     cluster_poses_with_depth(pose, amount, seed, depth)
+}
+
+/// The poses of a dropped stack's copies: spread apart as [`cluster_poses_with_depth`]
+/// places them, or one pose for the whole stack when its item's copies do not spread
+/// (NeoForge's `shouldSpreadAsEntity`).
+pub fn dropped_copy_poses(
+    pose: Mat4,
+    amount: u32,
+    seed: i64,
+    depth: f32,
+    spreads: bool,
+) -> Vec<Mat4> {
+    if amount == 0 {
+        Vec::new()
+    } else if spreads {
+        cluster_poses_with_depth(pose, amount, seed, depth)
+    } else {
+        vec![pose]
+    }
 }
 
 /// [`cluster_poses`] with the depth of the resolved model's bounding box
@@ -2339,6 +2433,8 @@ mod tests {
                     Vec3::new(-1.0, -0.5, -0.25),
                     Vec3::new(0.5, 1.0, 0.25),
                 ]),
+                submit_options: mod_api::SpecialModelSubmitOptions::default(),
+                render_type: None,
             }],
             oversized_in_gui: false,
             animated: false,
@@ -2557,6 +2653,28 @@ mod tests {
         Ok(())
     }
 
+    #[test]
+    fn a_dropped_stack_that_does_not_bob_keeps_its_height() {
+        assert_eq!(item_bob(17.5, 0.3, false), 0.0);
+        // A quarter turn lands on `Mth.SIN`'s entry 16384, which is exactly 1.
+        assert_eq!(item_bob(15.0, 0.070_796_37, true), 0.2);
+        // Below one table step the sine is entry 0, exactly 0, where `f32::sin` is not.
+        assert_eq!(item_bob(0.0, 0.000_09, true), 0.1);
+    }
+    #[test]
+    fn a_stack_whose_copies_do_not_spread_draws_once_in_its_pose() {
+        let pose =
+            Mat4::from_translation(glam::Vec3::new(1.0, 2.0, 3.0)) * Mat4::from_rotation_y(0.7);
+        let amount = rendered_amount(8);
+        for depth in [0.0625, 0.5] {
+            assert_eq!(dropped_copy_poses(pose, amount, 42, depth, false), [pose]);
+            assert!(dropped_copy_poses(pose, 0, 42, depth, false).is_empty());
+            assert_eq!(
+                dropped_copy_poses(pose, amount, 42, depth, true),
+                cluster_poses_with_depth(pose, amount, 42, depth)
+            );
+        }
+    }
     #[test]
     fn rendered_amounts_follow_the_count_bands() {
         let bands: Vec<u32> = [0, 1, 2, 16, 17, 32, 33, 48, 49, 64]

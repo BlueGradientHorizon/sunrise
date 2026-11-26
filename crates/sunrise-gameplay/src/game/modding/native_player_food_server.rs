@@ -91,10 +91,12 @@ impl ServerGame<'_> {
         self.native_player_write(player, |game| {
             let limit = Experience::needed(game.experience.level) as f32;
             let max = (limit - 1.0) / limit;
-            // Mth.clamp; `limit` is at least 7, so nothing here is NaN.
+            // Mth.clamp delegates to Math.min for the upper bound, preserving NaN.
             let progress = points as f32 / limit;
             game.experience.progress = if progress < 0.0 {
                 0.0
+            } else if progress.is_nan() {
+                progress
             } else {
                 progress.min(max)
             };
@@ -103,29 +105,26 @@ impl ServerGame<'_> {
 
     /// `ServerPlayer.setExperienceLevels`.
     pub fn player_set_experience_levels(&mut self, player: PlayerRef, levels: i32) -> bool {
-        self.native_player_write(player, |game| game.experience.level = levels)
+        self.native_player_write(player, |game| game.set_experience_levels(levels))
     }
 
     /// `Player.totalExperience`.
     pub fn player_set_total_experience(&mut self, player: PlayerRef, total: i32) -> bool {
-        total >= 0 && self.native_player_write(player, |game| game.experience.total = total)
+        self.native_player_write(player, |game| game.experience.total = total)
     }
 
-    /// `ExperienceOrb.playerTouch`: Mending first, then `Player.giveExperiencePoints`.
-    pub fn player_give_experience_points(&mut self, player: PlayerRef, points: u32) -> bool {
-        let Ok(points) = i32::try_from(points) else {
-            return false;
-        };
-        self.native_player_write(player, |game| {
-            let rest = if points > 0 {
-                game.mending(points as u32)
-            } else {
-                0
-            };
-            if rest > 0 {
-                game.give_experience_points(rest as i32);
-            }
-        })
+    /// `ServerPlayer.giveExperiencePoints`: adds or takes signed points. Mending is part of
+    /// `ExperienceOrb.playerTouch`, not this write.
+    pub fn player_give_experience_points(&mut self, player: PlayerRef, points: i32) -> bool {
+        self.native_player_write(player, |game| game.give_experience_points(points))
+    }
+
+    /// `ExperienceOrb.repairPlayerItems` for `player` (#5593): the orb pickup's Mending, the
+    /// points left over.
+    pub fn player_repair_items_with_xp(&mut self, player: PlayerRef, points: i32) -> Option<i32> {
+        let mut rest = None;
+        self.native_player_write(player, |game| rest = Some(game.mending(points)));
+        rest
     }
 
     /// `Player.giveExperienceLevels`.

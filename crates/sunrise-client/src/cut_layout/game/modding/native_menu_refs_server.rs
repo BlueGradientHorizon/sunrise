@@ -36,7 +36,7 @@ pub(crate) mod tests {
                 seed: 0,
                 max_players: 10,
                 integrated: true,
-                levels: game.server.level_shapes,
+                levels: game.server.level_shapes.clone(),
                 level_seeds: game.server.levels.0.runtime.seeds(),
             };
             let mut net = NetConfig::lan(0, "test".into(), 10);
@@ -94,7 +94,24 @@ pub(crate) mod tests {
             assert_eq!(hub.guests[0].carried.as_ref(), Some(&stone));
             hub.guests
                 .update(0, |guest| guest.disconnect_pending = false);
-            assert!(menu.close_container(game));
+            game.as_guest(1, |game| {
+                assert_eq!(player.container_menu(game), Some(menu));
+                assert!(menu.close_container(game));
+                assert!(
+                    !menu.close_container(game),
+                    "the generation retired in the turn"
+                );
+                assert!(game.carried.is_none(), "close returned the live cursor");
+                assert_eq!(
+                    game.inventory
+                        .iter()
+                        .flatten()
+                        .map(|s| s.count)
+                        .sum::<u32>(),
+                    4
+                );
+            })
+            .unwrap();
             let guest = &game.server.lan.as_ref().unwrap().hub.guests[0];
             assert!(guest.menu.is_none(), "the menu is gone");
             assert!(guest.carried.is_none(), "the cursor stack went back");
@@ -132,7 +149,7 @@ pub(crate) mod tests {
                 seed: 0,
                 max_players: 10,
                 integrated: true,
-                levels: game.server.level_shapes,
+                levels: game.server.level_shapes.clone(),
                 level_seeds: game.server.levels.0.runtime.seeds(),
             };
             let mut net = NetConfig::lan(0, "test".into(), 10);

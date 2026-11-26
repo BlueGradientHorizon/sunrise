@@ -13,6 +13,7 @@ pub mod argument_kinds;
 pub mod registered_commands;
 
 use super::api_values::TryIntoEngine;
+use argument_kinds::resource_or_tag_parser;
 #[allow(unused_imports)]
 pub use argument_kinds::{CommandArguments, command_arguments};
 #[allow(unused_imports)]
@@ -93,17 +94,37 @@ pub(in crate::game) fn usage_nodes(
         let Some((name, kind)) = inner.and_then(|w| w.split_once(':')) else {
             return Err(format!("`{usage}`: `{word}` is not `<name:kind>`"));
         };
+        if client
+            && matches!(
+                kind,
+                "player" | "players" | "entity" | "entities" | "dimension"
+            )
+        {
+            return Err(format!(
+                "`{usage}`: `{kind}` is a server-only argument kind and cannot be used in a client command"
+            ));
+        }
         if optional_seen && !optional {
             return Err(format!("`{usage}`: `{word}` follows an optional argument"));
+        }
+        if client && kind == "game_profile" {
+            return Err(format!(
+                "`{usage}`: `game_profile` requires a server command"
+            ));
         }
         let resource = kind
             .strip_prefix("resource:")
             .map(|registry| resource_parser(registry).map_err(|e| format!("`{usage}`: {e}")))
             .transpose()?;
+        let resource_or_tag = kind
+            .strip_prefix("resource_or_tag:")
+            .map(|registry| resource_or_tag_parser(registry).map_err(|e| format!("`{usage}`: {e}")))
+            .transpose()?;
         let bounded = bounded_parser(kind)
             .transpose()
             .map_err(|e| format!("`{usage}`: {e}"))?;
         let builtin = resource
+            .or(resource_or_tag)
             .or(bounded)
             .or_else(|| parser(kind).map(|(parser, properties, _)| (parser, properties)));
         let (parser, properties, greedy, custom) = match builtin {
@@ -112,15 +133,6 @@ pub(in crate::game) fn usage_nodes(
                 let Some(argument) = custom.get(kind) else {
                     return Err(format!("`{usage}`: unknown kind `{kind}`"));
                 };
-                // A declared provider answers on the server alone: whoever types the argument asks
-                // the server, and no mod code runs in a client. A client tree has no server behind
-                // it, so it refuses the usage by name rather than run the provider locally.
-                if client && declares_provider(kind, argument) {
-                    return Err(format!(
-                        "`{usage}`: argument type `{kind}` declares a suggestion provider, which \
-                         only a server command can offer; a client command completes without one"
-                    ));
-                }
                 let declared =
                     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| argument.kind()))
                         .map_err(|_| format!("`{usage}`: argument type `{kind}` panicked"))?;
@@ -139,12 +151,12 @@ pub(in crate::game) fn usage_nodes(
         if !properties.is_null() {
             node["properties"] = properties;
         }
-        if kind == "vec3_uncentered" {
+        if matches!(kind, "vec3_uncentered" | "vec2_uncentered") {
             node[UNCENTERED] = true.into();
         }
-        // A registered type goes out as the Brigadier type its kind names, which an unmodded
-        // client can read; it and the free `id`, which has no list of its own, ask the server
-        // (the mods' `tab_complete`).
+        // A registered type goes out as the Brigadier or vanilla parser its kind names, which an
+        // unmodded client can read; it and the free `id`, which has no list of its own, ask the
+        // server (the mods' `tab_complete`).
         if custom.is_some() || kind == "id" {
             if let Some(id) = custom {
                 node["custom_argument"] = id.into();
@@ -190,16 +202,21 @@ pub fn command_tree(
     command_tree_for(commands, BaseTree::Merged(vanilla), custom, false, None)
 }
 
-/// Build the display tree for the client's own commands. An argument type that declares a
-/// suggestion provider is refused by name because a client command has no server to answer it.
-/// A root the chat tree already has (`vanilla` answers) is left out. Every other argument kind
-/// builds exactly as on the server.
+/// Build the client's local tree and its executor slots. Server handle kinds are unavailable
+/// to client commands. No root is left out: the chat tree takes each one's missing children
+/// (`register_command_nodes`).
 pub fn client_command_tree(
     commands: &[mod_api::Command],
-    vanilla: impl Fn(&str) -> bool,
     custom: &CommandArguments,
+    executors: Option<&mut CommandExecutorSlots>,
 ) -> (Value, HashMap<String, u8>, Vec<String>) {
-    command_tree_for(commands, BaseTree::Reserved(&vanilla), custom, true, None)
+    command_tree_for(
+        commands,
+        BaseTree::Reserved(&|_| false),
+        custom,
+        true,
+        executors,
+    )
 }
 
 /// Whether a usage merges into a vanilla root of `base`, or why it cannot go into the tree. Each
@@ -246,26 +263,6 @@ pub(in crate::game) fn base_root(
         at = child;
     }
     Ok(true)
-}
-
-/// Whether `argument` declares a suggestion provider, read once per tree. A panic is logged and
-/// counts as no provider, as `argument_type` reads it when it builds the node.
-pub(in crate::game) fn declares_provider(
-    kind: &str,
-    argument: &Arc<dyn mod_api::CommandArgumentType>,
-) -> bool {
-    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        argument.suggestion_provider()
-    })) {
-        Ok(provider) => provider.is_some(),
-        Err(_) => {
-            eprintln!(
-                "mod command argument type {kind} panicked declaring its suggestion provider; \
-                 its arguments complete by `suggest`"
-            );
-            false
-        }
-    }
 }
 
 // Executable paths (including argument names) mapped to the input registration slot.
@@ -398,6 +395,13 @@ pub(in crate::game) fn finish(children: &mut Value) {
             finish(c);
         }
     }
+}
+
+/// The result of a command handled by the client's dispatcher, never sent to the server.
+#[derive(Debug, PartialEq, Eq)]
+pub enum ClientCommandOutcome {
+    Failed,
+    Success(i32),
 }
 
 /// Add a validated native report for descriptor-only consumers.
@@ -851,12 +855,41 @@ impl ScopedPlayerState {
     }
 }
 
+thread_local! {
+    static LEVEL_TICK_LISTENERS: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Marks a server level tick's listeners while they run, with nothing open around the one
+/// transaction their dispatch opens for each (#5750): a fake player's action may run inside
+/// that one (`player_perform_action`), not inside one the listener opened itself. Dropping it
+/// puts back the mark it replaced, also when the listeners unwind.
+pub struct LevelTickListeners(bool);
+
+impl LevelTickListeners {
+    /// Sets the mark to `on` until the returned guard drops.
+    pub fn mark(on: bool) -> Self {
+        Self(LEVEL_TICK_LISTENERS.with(|mark| mark.replace(on)))
+    }
+    /// Whether a level tick's listeners are running, marked.
+    pub fn marked() -> bool {
+        LEVEL_TICK_LISTENERS.with(std::cell::Cell::get)
+    }
+}
+
+impl Drop for LevelTickListeners {
+    fn drop(&mut self) {
+        LEVEL_TICK_LISTENERS.with(|mark| mark.set(self.0));
+    }
+}
+
 /// A fake player's `perform_action` in progress: set for its length by [`Acting`], whose drop
 /// clears it on every exit, an early return or a panic unwinding through a mod's hook, and the
 /// effect it stopped, cleared as each action starts.
 #[derive(Default)]
 pub struct FakeAction {
     pub(in crate::game) acting: AtomicBool,
+    /// The action is `PlayerRef::attack`: `Player.attack` alone, without its packet's swing.
+    unswung: AtomicBool,
     /// The first effect stopped since the action started.
     pub(in crate::game) blocked: Mutex<Option<FakeEffect>>,
 }
@@ -864,6 +897,11 @@ impl FakeAction {
     /// Whether a fake player's action is running.
     pub fn acting(&self) -> bool {
         self.acting.load(Ordering::Relaxed)
+    }
+    /// Whether the action running is a mod's `PlayerRef::attack`, which `swing_arm` leaves
+    /// without a swing: vanilla's `Player.attack` has none, the swing is its packet's.
+    pub fn unswung(&self) -> bool {
+        self.unswung.load(Ordering::Relaxed)
     }
     pub fn block(&self, effect: FakeEffect) {
         // The first effect stopped is the one the action answers.
@@ -884,6 +922,11 @@ impl Acting {
         action.acting.store(true, Ordering::Relaxed);
         Self(Arc::clone(action))
     }
+    /// [`Self::start`] for a mod's `PlayerRef::attack`, which runs without a swing.
+    pub fn start_unswung(action: &Arc<FakeAction>) -> Self {
+        action.unswung.store(true, Ordering::Relaxed);
+        Self::start(action)
+    }
     /// The effect this action stopped, if any.
     pub fn blocked(&self) -> Option<FakeEffect> {
         *self
@@ -896,6 +939,7 @@ impl Acting {
 impl Drop for Acting {
     fn drop(&mut self) {
         self.0.acting.store(false, Ordering::Relaxed);
+        self.0.unswung.store(false, Ordering::Relaxed);
     }
 }
 
@@ -1375,8 +1419,8 @@ pub mod tests {
     }
 
     #[cfg(test)]
-    pub(in crate::game) const POSITIONED: &str = "kinds <at:vec3> <by:vec3_uncentered> <column:column_pos> \
-         <look:rotation> <level:dimension> <tag:nbt>";
+    pub(in crate::game) const POSITIONED: &str = "kinds <at:vec3> <by:vec3_uncentered> <flat:vec2> \
+         <flat_raw:vec2_uncentered> <column:column_pos> <look:rotation> <level:dimension> <tag:nbt>";
 
     #[cfg(test)]
     #[test]
@@ -1387,6 +1431,8 @@ pub mod tests {
         for (name, parser) in [
             ("at", "minecraft:vec3"),
             ("by", "minecraft:vec3"),
+            ("flat", "minecraft:vec2"),
+            ("flat_raw", "minecraft:vec2"),
             ("column", "minecraft:column_pos"),
             ("look", "minecraft:rotation"),
             ("level", "minecraft:dimension"),
@@ -1394,7 +1440,11 @@ pub mod tests {
         ] {
             node = &node["children"][name];
             assert_eq!(node["parser"], parser, "{name}");
-            assert_eq!(node["uncentered"] == true, name == "by", "{name}");
+            assert_eq!(
+                node["uncentered"] == true,
+                matches!(name, "by" | "flat_raw"),
+                "{name}"
+            );
         }
     }
 
@@ -1437,16 +1487,25 @@ pub mod tests {
                 "{name}: the type comes from the parsed node"
             );
             positional_value(
-                ty.as_ref(),
+                ty,
                 coordinates,
                 coordinates.position(origin, rotation),
                 rotation,
             )
         };
-        let relative = "kinds ~1 ~ ~-1 ~1 ~ ~-1 ~3 ~-4 ~10 ~-5 minecraft:the_nether {}";
+        let relative =
+            "kinds ~1 ~ ~-1 ~1 ~ ~-1 ~1 ~-2 ~1 ~-2 ~3 ~-4 ~10 ~-5 minecraft:the_nether {}";
         assert_eq!(
             value(relative, "at", "vec3"),
             mod_api::CommandArgumentValue::Vec3([11.0, 70.0, -3.0])
+        );
+        assert_eq!(
+            value(relative, "flat", "vec2"),
+            mod_api::CommandArgumentValue::Vec2([11.0, -4.0])
+        );
+        assert_eq!(
+            value(relative, "flat_raw", "vec2_uncentered"),
+            mod_api::CommandArgumentValue::Vec2([11.0, -4.0])
         );
         assert_eq!(
             value(relative, "column", "column_pos"),
@@ -1456,8 +1515,8 @@ pub mod tests {
             value(relative, "look", "rotation"),
             mod_api::CommandArgumentValue::Rotation([55.0, 25.0])
         );
-        // A whole `x` and `z` is centred by `vec3` and kept by `vec3_uncentered`.
-        let absolute = "kinds 5 64 -7 5 64 -7 0 0 0 0 minecraft:overworld {}";
+        // A whole `x` and `z` is centred by `vec3`/`vec2` and kept by `*_uncentered`.
+        let absolute = "kinds 5 64 -7 5 64 -7 5 7 5 7 0 0 0 0 minecraft:overworld {}";
         assert_eq!(
             value(absolute, "at", "vec3"),
             mod_api::CommandArgumentValue::Vec3([5.5, 64.0, -6.5])
@@ -1466,6 +1525,17 @@ pub mod tests {
             value(absolute, "by", "vec3_uncentered"),
             mod_api::CommandArgumentValue::Vec3([5.0, 64.0, -7.0])
         );
+        assert_eq!(
+            value(absolute, "flat", "vec2"),
+            mod_api::CommandArgumentValue::Vec2([5.5, 7.5])
+        );
+        assert_eq!(
+            value(absolute, "flat_raw", "vec2_uncentered"),
+            mod_api::CommandArgumentValue::Vec2([5.0, 7.0])
+        );
+        // `vec2` refuses local `^` coordinates, matching `Vec2Argument.parse`.
+        let local = "kinds 0 0 0 0 0 0 ^1 ^2 0 0 0 0 0 0 minecraft:overworld {}";
+        assert!(dispatcher.parse(local, &registries).executable().is_err());
     }
 
     #[cfg(test)]
@@ -1513,15 +1583,11 @@ pub mod tests {
             }
         }
 
-        fn suggest(
-            &self,
-            _: Option<&mod_api::CommandSender>,
-            prefix: &str,
-        ) -> Vec<mod_api::CommandSuggestion> {
+        fn suggest(&self, request: &mod_api::SuggestionRequest) -> Vec<mod_api::Suggestion> {
             ["press", "furnace"]
                 .into_iter()
-                .filter(|machine| machine.starts_with(prefix))
-                .map(mod_api::CommandSuggestion::new)
+                .filter(|machine| machine.starts_with(request.prefix.as_str()))
+                .map(|machine| request.suggest(machine))
                 .collect()
         }
     }
@@ -1540,26 +1606,13 @@ pub mod tests {
             }
             Ok(input.into())
         }
-        fn suggest(
-            &self,
-            _: Option<&mod_api::CommandSender>,
-            prefix: &str,
-        ) -> Vec<mod_api::CommandSuggestion> {
-            match prefix {
+        fn suggest(&self, request: &mod_api::SuggestionRequest) -> Vec<mod_api::Suggestion> {
+            match request.prefix.as_str() {
                 "panic" => panic!("completer"),
-                "text" => vec![mod_api::CommandSuggestion::new("a".repeat(32768))],
-                "tip" => vec![mod_api::CommandSuggestion::with_tooltip(
-                    "ok",
-                    "a".repeat(65536),
-                )],
-                "unicode" => vec![mod_api::CommandSuggestion::with_tooltip(
-                    "ok",
-                    "\0".repeat(32768),
-                )],
-                _ => vec![mod_api::CommandSuggestion::with_tooltip(
-                    "a".repeat(32767),
-                    "a".repeat(65535),
-                )],
+                "text" => vec![request.suggest("a".repeat(32768))],
+                "tip" => vec![request.suggest_with_tooltip("ok", "a".repeat(65536))],
+                "unicode" => vec![request.suggest_with_tooltip("ok", "\0".repeat(32768))],
+                _ => vec![request.suggest_with_tooltip("a".repeat(32767), "a".repeat(65535))],
             }
         }
     }
@@ -1605,11 +1658,7 @@ pub mod tests {
             fn parse(&self, _: &str) -> Result<String, mod_api::CommandArgumentError> {
                 unreachable!()
             }
-            fn suggest(
-                &self,
-                _: Option<&mod_api::CommandSender>,
-                _: &str,
-            ) -> Vec<mod_api::CommandSuggestion> {
+            fn suggest(&self, _: &mod_api::SuggestionRequest) -> Vec<mod_api::Suggestion> {
                 unreachable!()
             }
         }
@@ -1752,16 +1801,13 @@ pub mod tests {
             Ok(input.trim().to_owned())
         }
 
-        fn suggest(
-            &self,
-            _: Option<&mod_api::CommandSender>,
-            prefix: &str,
-        ) -> Vec<mod_api::CommandSuggestion> {
+        fn suggest(&self, request: &mod_api::SuggestionRequest) -> Vec<mod_api::Suggestion> {
+            let prefix = request.prefix.as_str();
             let start = prefix.rfind(' ').map_or(0, |space| space + 1);
             ["stone", "dirt"]
                 .into_iter()
                 .filter(|block| block.starts_with(&prefix[start..]))
-                .map(|block| mod_api::CommandSuggestion::new(block).replacing_from(start))
+                .map(|block| request.suggest_from(start, block))
                 .collect()
         }
     }
@@ -1819,14 +1865,10 @@ pub mod tests {
             Ok(input.to_owned())
         }
 
-        fn suggest(
-            &self,
-            _: Option<&mod_api::CommandSender>,
-            prefix: &str,
-        ) -> Vec<mod_api::CommandSuggestion> {
+        fn suggest(&self, request: &mod_api::SuggestionRequest) -> Vec<mod_api::Suggestion> {
             vec![
-                mod_api::CommandSuggestion::new("stone").replacing_from(0),
-                mod_api::CommandSuggestion::new("dirt").replacing_from(prefix.len() + 1),
+                request.suggest_from(0, "stone"),
+                request.suggest_from(request.prefix.len() + 1, "dirt"),
             ]
         }
     }
@@ -2318,11 +2360,7 @@ pub mod tests {
             fn parse(&self, input: &str) -> Result<String, mod_api::CommandArgumentError> {
                 Ok(format!("{input} items"))
             }
-            fn suggest(
-                &self,
-                _: Option<&mod_api::CommandSender>,
-                _: &str,
-            ) -> Vec<mod_api::CommandSuggestion> {
+            fn suggest(&self, _: &mod_api::SuggestionRequest) -> Vec<mod_api::Suggestion> {
                 Vec::new()
             }
         }
@@ -2373,11 +2411,7 @@ pub mod tests {
             fn parse(&self, input: &str) -> Result<String, mod_api::CommandArgumentError> {
                 Ok(input.to_lowercase())
             }
-            fn suggest(
-                &self,
-                _: Option<&mod_api::CommandSender>,
-                _: &str,
-            ) -> Vec<mod_api::CommandSuggestion> {
+            fn suggest(&self, _: &mod_api::SuggestionRequest) -> Vec<mod_api::Suggestion> {
                 Vec::new()
             }
         }

@@ -170,7 +170,7 @@ impl AllayLevel for ServerGame<'_> {
         stack: ItemStack,
         position: [f64; 3],
         velocity: [f64; 3],
-        pickup_delay: u32,
+        pickup_delay: i32,
     ) {
         crate::game::ServerGame::spawn_item(self, stack, position, velocity, pickup_delay);
     }

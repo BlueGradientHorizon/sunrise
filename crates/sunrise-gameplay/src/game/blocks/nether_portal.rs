@@ -199,7 +199,7 @@ pub(in crate::game::server_side) fn projectile_box(
     p: &sunrise_sim::projectiles::Projectile,
 ) -> (f32, f32) {
     if is_arrow(p) {
-        (sunrise_sim::arrows::WIDTH, sunrise_sim::arrows::HEIGHT)
+        (sunrise_sim::entities::arrows::WIDTH, sunrise_sim::entities::arrows::HEIGHT)
     } else {
         let size = p.kind.size() as f32;
         (size, size)
@@ -1408,7 +1408,11 @@ impl crate::game::ServerGame<'_> {
                 | Target::Bolt(_)
         ) {
             let mut tag = self.command_target_nbt(target)?;
-            super::persist::write_attachments(&mut tag, id, &self.common.entity_attachments);
+            if let Err(error) =
+            super::persist::write_attachments(&mut tag, id, &self.common.entity_attachments)
+        {
+            log::error!("Sunrise: portal transfer attachment encode failed for entity {id}: {error}");
+        }
             let state = self.take_transferred_entity_state(id);
             // Remove only the resident body: no death, drops, or discard effects.
             match target {
@@ -1514,7 +1518,11 @@ impl crate::game::ServerGame<'_> {
                 })?;
                 (tag, List::Projectile, i)
             };
-        super::persist::write_attachments(&mut tag, id, &self.common.entity_attachments);
+        if let Err(error) =
+            super::persist::write_attachments(&mut tag, id, &self.common.entity_attachments)
+        {
+            log::error!("Sunrise: portal transfer attachment encode failed for entity {id}: {error}");
+        }
         let state = self.take_transferred_entity_state(id);
         match list {
             List::Item => {
@@ -1658,6 +1666,11 @@ impl crate::game::ServerGame<'_> {
             }
             self.native_entity_portal(self.common.dim.id(), id, [entry.x, entry.y, entry.z]);
         }
+    }
+
+    /// Whether a portal arrival still needs this level, without collecting its chunks.
+    pub(in crate::game) fn has_portal_arrivals(&self, dim: Dim) -> bool {
+        self.server.portals.arrivals.iter().any(|a| a.plan.dim == dim)
     }
     /// The chunks of the arrivals still waiting to land in `dim`, for the
     /// streaming `extra` areas that light them: vanilla's portal ticket
@@ -1925,7 +1938,14 @@ impl crate::game::ServerGame<'_> {
             }
         }
         let transferred = if f.id != 0 {
-            super::persist::write_attachments(&mut tag, f.id, &self.common.entity_attachments);
+            if let Err(error) =
+                super::persist::write_attachments(&mut tag, f.id, &self.common.entity_attachments)
+            {
+                log::error!(
+                    "Sunrise: portal transfer attachment encode failed for entity {}: {error}",
+                    f.id
+                );
+            }
             let state = self.take_transferred_entity_state(f.id);
             self.forget_entity(f.id);
             Some(TransferredArrivalState::Entity(state))

@@ -18,21 +18,21 @@ impl crate::game::ServerGame<'_> {
             self.as_guest(conn, |g| g.destroy_progress(pos))
                 .map(|p| p * (ticks - start + 1) as f32)
         };
-        match progress {
-            Some(p) if p < 1.0 => {}
-            done => {
-                if let Some(play) = self
-                    .server
-                    .lan
-                    .as_mut()
-                    .and_then(|host| host.play.get_mut(&conn))
-                {
-                    play.delayed = None;
-                }
-                if done.is_some() {
-                    self.guest_destroy(conn, pos);
-                }
-            }
+        let done = match progress {
+            None => false,
+            Some(p) if p >= 1.0 => true,
+            Some(_) => return,
+        };
+        if let Some(play) = self
+            .server
+            .lan
+            .as_mut()
+            .and_then(|host| host.play.get_mut(&conn))
+        {
+            play.delayed = None;
+        }
+        if done {
+            self.guest_destroy(conn, pos);
         }
     }
     /// ServerPlayerGameMode.destroyBlock for a guest, its crack cleared for the others

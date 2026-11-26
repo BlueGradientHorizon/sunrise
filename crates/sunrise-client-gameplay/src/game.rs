@@ -7,6 +7,8 @@ use client_side::{
     resource_tables_client::{ClientPackResources, ClientResources},
 };
 #[cfg(feature = "client")]
+pub use client_side::resource_load_client::load_resources_for_mods_with_limit;
+#[cfg(feature = "client")]
 #[allow(unused_imports)]
 use loading_screen::{App, Loading, leave_fullscreen_after, run_event_loop};
 #[cfg(feature = "client")]
@@ -57,6 +59,9 @@ macro_rules! client_game_side {
 #[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::activity;
+pub(in crate::game) use client_side::stock_layer_mask;
+#[cfg(feature = "client")]
+pub(in crate::game) use client_side::hotbar_items;
 #[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::advancements_screen;
@@ -117,6 +122,9 @@ pub use client_side::client_item_extensions;
 pub use client_side::client_reload;
 #[path = "game/client_side.rs"]
 pub mod client_side;
+#[cfg(all(test, feature = "client"))]
+#[path = "game/interface/furnace_take_tests_client.rs"]
+mod furnace_take_tests_client;
 #[allow(unused_imports)]
 pub(in crate::game) use client_side as client_state;
 #[cfg(feature = "client")]
@@ -173,9 +181,6 @@ pub(in crate::game) use client_side::demo_intro;
 pub(in crate::game) use client_side::dialogs;
 #[cfg(feature = "client")]
 #[allow(unused_imports)]
-pub(in crate::game) use client_side::draw_boundary;
-#[cfg(feature = "client")]
-#[allow(unused_imports)]
 pub(in crate::game) use client_side::dynamic_lights;
 #[cfg(feature = "client")]
 #[allow(unused_imports)]
@@ -195,6 +200,69 @@ pub(in crate::game) use client_side::events;
 #[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub use client_side::game_client::WindowKeyInput;
+#[cfg(feature = "client")]
+/// Video options a mod set for this session only, over the player's saved ones.
+#[derive(Default)]
+pub(in crate::game) struct SessionVideo {
+    pub(in crate::game) vsync: Option<bool>,
+    /// As `options.txt` names it: `false`, `fast` or `true`.
+    pub(in crate::game) clouds: Option<&'static str>,
+    pub(in crate::game) view_bobbing: Option<bool>,
+}
+
+#[cfg(feature = "client")]
+/// Read-only renderer state cached while `Game::renderer` is temporarily taken for `Renderer::render` so `ClientHost` queries keep working inside stage callbacks.
+#[derive(Clone, Copy)]
+pub(in crate::game) struct RenderSnapshot {
+    pub(in crate::game) framebuffer: [u32; 2],
+    pub(in crate::game) prepared_generation: Option<u64>,
+    pub(in crate::game) staged_prepared_draws: u64,
+}
+
+#[cfg(feature = "client")]
+impl ClientGame<'_> {
+    pub(in crate::game) fn has_renderer(&self) -> bool {
+        self.client.renderer.0.is_some() || self.client.render_snapshot.get().is_some()
+    }
+
+    pub(in crate::game) fn renderer_framebuffer(&self) -> Option<[u32; 2]> {
+        self.client.renderer.0.as_ref()
+            .map(|renderer| [renderer.config.width, renderer.config.height])
+            .or_else(|| self.client.render_snapshot.get().map(|snapshot| snapshot.framebuffer))
+    }
+
+    pub(in crate::game) fn renderer_prepared_generation(&self) -> Option<u64> {
+        self.client.renderer.0.as_ref().map_or_else(
+            || self.client.render_snapshot.get().and_then(|snapshot| snapshot.prepared_generation),
+            |renderer| renderer.prepared_generation(),
+        )
+    }
+
+    pub(in crate::game) fn renderer_prepared_room_info(&self) -> Option<(u64, u64)> {
+        let max_buffer_size = self.client.mod_gpu.as_ref()?.max_buffer_size();
+        let staged = if self.client.renderer.0.is_some() {
+            0
+        } else {
+            self.client.render_snapshot.get().map_or(0, |snapshot| snapshot.staged_prepared_draws)
+        };
+        Some((max_buffer_size, staged))
+    }
+
+    pub(in crate::game) fn mod_gpu(&self) -> Option<&sunrise_client_render::gfx::ModGpuResources> {
+        self.client.mod_gpu.as_ref()
+    }
+
+    pub fn set_renderer(&mut self, renderer: Box<Renderer>) {
+        self.client.mod_gpu = Some(renderer.mod_gpu().clone());
+        self.client.renderer.0 = Some(renderer);
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn test_set_renderer(&mut self, renderer: Box<Renderer>) {
+        self.set_renderer(renderer);
+    }
+}
+
 #[allow(dead_code)]
 #[cfg(feature = "client")]
 pub struct ClientGame<'a> {
@@ -258,12 +326,6 @@ pub(in crate::game) use client_side::gui_clips;
 #[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::gui_entity;
-#[cfg(feature = "client")]
-#[allow(unused_imports)]
-pub(in crate::game) use client_side::gui_paint_items;
-#[cfg(feature = "client")]
-#[allow(unused_imports)]
-pub(in crate::game) use client_side::gui_pose;
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::hand;
 #[cfg(feature = "client")]
@@ -348,9 +410,6 @@ pub(in crate::game) use client_side::mob_light;
 #[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::mob_sounds;
-#[cfg(feature = "client")]
-#[allow(unused_imports)]
-pub(in crate::game) use client_side::mod_browser;
 #[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::mod_toasts;
@@ -698,6 +757,10 @@ pub(in crate::game) use client_side::remote_chat;
 pub(in crate::game) use client_side::remote_chunks;
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::remote_mob_data;
+#[cfg(all(feature = "client", any(test, feature = "test-support")))]
+pub mod remote_mob_data_test_support {
+    pub use super::remote_mob_data::{apply_registry_data, tests::fixture_mob};
+}
 #[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::remote_mob_particles;
@@ -1081,8 +1144,6 @@ pub(in crate::game) struct WrappedClientInit {
     debug_renderers:
         client_side::ClientOnly<Vec<sunrise_client::debug_entries::ActiveDebugRenderer>>,
     pickups: client_side::ClientOnly<pickups::Pickups>,
-    creation_job:
-        client_side::ClientOnly<Option<std::thread::JoinHandle<std::result::Result<(), String>>>>,
     title: client_side::ClientShared<Option<Title>>,
     text_displays:
         client_side::ClientOnly<indexmap::IndexMap<i32, text_displays::RemoteTextDisplay>>,
@@ -1102,7 +1163,6 @@ pub(in crate::game) struct WrappedClientInit {
     async_particle_culler: client_side::ClientOnly<RefCell<particle_culling::ParticleAsyncState>>,
     pending_uploads: client_side::ClientOnly<Vec<sunrise_client::streaming::MeshUpload>>,
     pending_uploads_merge: client_side::ClientOnly<Vec<sunrise_client::streaming::MeshUpload>>,
-    mod_jobs: client_side::ClientOnly<mod_browser::Jobs>,
     client_item_use: client_side::ClientShared<Option<native_claimed_items::ActiveClientItemUse>>,
     client_tasks: client_side::ClientOnly<sunrise_client::net::ClientTasks>,
     pending_client_tasks:
@@ -1147,7 +1207,6 @@ impl<const NO_SLOT: bool> ConstructInit<NO_SLOT> {
             live_scenes: client_side::ClientOnly::new(Default::default()),
             debug_renderers: client_side::ClientOnly::new(Vec::new()),
             pickups: client_side::ClientOnly::new(Default::default()),
-            creation_job: client_side::ClientOnly::new(None),
             title: client_side::ClientShared::new(None),
             text_displays: client_side::ClientOnly::new(Default::default()),
             recipe_ui: client_side::ClientOnly::new(Default::default()),
@@ -1165,7 +1224,6 @@ impl<const NO_SLOT: bool> ConstructInit<NO_SLOT> {
             async_particle_culler: client_side::ClientOnly::new(RefCell::new(Default::default())),
             pending_uploads: client_side::ClientOnly::new(Vec::new()),
             pending_uploads_merge: client_side::ClientOnly::new(Vec::new()),
-            mod_jobs: client_side::ClientOnly::new(Default::default()),
             client_item_use: client_side::ClientShared::new(None),
             client_tasks: client_side::ClientOnly::new(Default::default()),
             pending_client_tasks: client_side::ClientOnly::new(Default::default()),
@@ -1228,6 +1286,7 @@ impl<const NO_SLOT: bool> ConstructInit<NO_SLOT> {
             effects.profile,
             prep.now,
             music_toast,
+            prep.options.execution_role.is_client(),
             prep.tutorial,
             prep.standalone_geometry,
             prep.client_prepared,
@@ -1391,6 +1450,15 @@ impl sunrise_sim::menu::SlotRules for ClientGame<'_> {
 }
 
 impl mod_api::AttachmentHost for ClientGame<'_> {
+    fn validate_attachment_key(
+        &self,
+        write: &mod_api::AttachmentStoreKey<'_>,
+    ) -> std::result::Result<(), mod_api::AttachmentError> {
+        sunrise_gameplay_common::game::mod_api_host_common::GameAttachmentHost::validate_attachment_key(
+            self, write,
+        )
+    }
+
     fn validate_attachment(
         &self,
         namespace: &str,
@@ -1410,14 +1478,6 @@ impl mod_api::AttachmentHost for ClientGame<'_> {
         sunrise_gameplay_common::game::mod_api_host_common::GameAttachmentHost::attachments(
             self, holder, access,
         )
-    }
-}
-
-impl sunrise_gameplay_common::game::item_snapshot::ItemBoundary for ClientGame<'_> {
-    fn boundary_items(&self) -> Option<&sunrise_items::items::Items> {
-        Some(sunrise_gameplay_common::game::tables::GameItems::items(
-            self,
-        ))
     }
 }
 

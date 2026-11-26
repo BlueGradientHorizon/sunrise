@@ -42,7 +42,7 @@ impl mod_api::Hooks for Tuner {
         (e.volume, e.pitch) = (0.5, 2.0);
         Flow::Continue
     }
-    fn play_sound(&self, _: &dyn mod_api::LoopContext, e: &mut mod_api::PlaySoundEvent<'_>) {
+    fn play_sound(&self, _: &mut dyn mod_api::ClientHost, e: &mut mod_api::PlaySoundEvent<'_>) {
         // Active sounds also refresh their playback parameters on ticks.
         if e.starting {
             self.0.lock().unwrap().played.push(e.original.clone());

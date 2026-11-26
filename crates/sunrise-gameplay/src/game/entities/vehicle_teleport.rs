@@ -53,6 +53,7 @@ pub(in crate::game::server_side) fn transfer_general_tree(
         if let Some(rotation) = transition.rotation_for(row.rotation) {
             row.rotation = rotation;
         }
+        row.previous_rotation = row.rotation;
         work.extend(riders);
     }
 }
@@ -780,6 +781,7 @@ impl ServerGame<'_> {
             if let Some(rotation) = transition.rotation_for(row.rotation) {
                 row.rotation = rotation;
             }
+            row.previous_rotation = row.rotation;
             carried = Some((from, row.position));
         }
         if let Some((from, to)) = carried {
@@ -959,9 +961,9 @@ impl ServerGame<'_> {
                     });
                 }
             }
-            Target::Stand(id) if yaw.is_finite() => {
+            Target::Stand(id) => {
                 if let Some(a) = self.common.armor_stands.iter_mut().find(|a| a.id == id) {
-                    a.yaw = yaw;
+                    a.set_rotation([yaw, pitch.unwrap_or(a.pitch)]);
                 }
             }
             Target::Boat(id) if yaw.is_finite() => {
@@ -971,6 +973,8 @@ impl ServerGame<'_> {
                         if let Some(pitch) = pitch {
                             b.pitch = pitch;
                         }
+                        // forceSetRotation ends with setOldRot.
+                        b.previous_yaw = b.yaw;
                     });
                 }
             }
@@ -981,6 +985,9 @@ impl ServerGame<'_> {
                         if let Some(pitch) = pitch {
                             c.pitch = pitch;
                         }
+                        // forceSetRotation ends with setOldRot.
+                        c.previous_yaw = c.yaw;
+                        c.previous_pitch = c.pitch;
                     });
                 }
             }

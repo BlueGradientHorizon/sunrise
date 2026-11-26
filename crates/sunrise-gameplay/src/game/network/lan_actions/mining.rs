@@ -15,7 +15,12 @@ impl crate::game::ServerGame<'_> {
         let Some(host) = self.server.lan.as_mut() else {
             return Err(ActionRefused::Stale);
         };
-        if !host.hub.guests.update(gi, |g| g.may_reach_block(pos)) {
+        let context = &host.hub.loop_context;
+        if !host
+            .hub
+            .guests
+            .update(gi, |g| g.reaches_block(context, pos))
+        {
             return Err(ActionRefused::OutOfReach);
         }
         let (min_y, max_y) = (

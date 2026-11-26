@@ -166,6 +166,25 @@ class ParityRunnerTests(unittest.TestCase):
             source.write_text("two!")
             self.assertTrue(parity.stale("x", state, hasher, "env"))
 
+    def test_an_unreadable_trace_is_an_error_and_a_missing_one_is_an_unkeyed_pass(self):
+        with tempfile.TemporaryDirectory() as temp, mock.patch.object(parity, "ROOT", Path(temp)):
+            script = Path(temp, "tools", "test_x_parity.py")
+            missing = parity.outcome("x", script, True, 1.0, Path(temp, "none.json"))
+            self.assertEqual((missing["status"], missing["dependencies"], missing["artifacts"]), ("pass", [], []))
+            cut = Path(temp, "cut.json")
+            cut.write_text('{"modules": [', encoding="utf-8")
+            with self.assertRaises(ValueError):
+                parity.outcome("x", script, True, 1.0, cut)
+
+    def test_a_damaged_reach_cache_is_an_error(self):
+        with tempfile.TemporaryDirectory() as temp, mock.patch.object(parity, "ROOT", Path(temp)), \
+                mock.patch.object(parity, "SHARED", Path(temp, "shared")):
+            Path(temp, "shared").mkdir()
+            Path(temp, "shared", "reach-cache.json").write_text("{not json", encoding="utf-8")
+            found = {"food": Path(temp, "tools", "test_food_parity.py")}
+            with self.assertRaises(ValueError):
+                parity.affected_harnesses(found, {"food": {"dependencies": ["crates/a.rs"]}}, {"crates/a.rs"})
+
     def test_a_change_affects_the_harnesses_that_depend_on_it(self):
         with tempfile.TemporaryDirectory() as temp, mock.patch.object(parity, "ROOT", Path(temp)), \
                 mock.patch.object(parity, "SHARED", Path(temp, "shared")):
@@ -879,10 +898,15 @@ class OracleKeepTests(unittest.TestCase):
             (keep / "fresh-only.json").write_text(json.dumps({"peer": lately}))
             parity.remember_fresh_only(keep, {"light": {"status": "pass", "oracle_reuse": True}})
             self.assertEqual(parity.fresh_only(keep), {"peer": lately})
-            (keep / "fresh-only.json").write_text("[1, 2]")
-            self.assertEqual(parity.fresh_only(keep), {})
-            (keep / "fresh-only.json").write_text(json.dumps({"loot": 3, "light": lately}))
-            self.assertEqual(parity.fresh_only(keep), {"light": lately})
+
+    def test_a_fresh_only_list_of_the_wrong_shape_is_an_error(self):
+        import json
+        with tempfile.TemporaryDirectory() as tmp:
+            keep = Path(tmp)
+            for text in ("[1, 2]", json.dumps({"loot": 3, "light": "2026-11-20"})):
+                (keep / "fresh-only.json").write_text(text)
+                with self.assertRaises(ValueError):
+                    parity.fresh_only(keep)
 
     def kept_run(self, root, outputs):
         import json

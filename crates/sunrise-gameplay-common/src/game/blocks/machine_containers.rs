@@ -1,7 +1,11 @@
 use crate::game::{
-    GameLevel, composter_data::is_composter, decorated_pot::DECORATED_POT, spill_common as spill,
+    GameLevel,
+    api_values::{project_stack, stack_read_metadata},
+    composter_data::is_composter,
+    decorated_pot::DECORATED_POT,
+    spill_common as spill,
 };
-use mod_api::{BlockCapabilitySite, BlockSide};
+use mod_api::{BlockCapabilitySite, BlockSide, ItemStackView, StorageSlot};
 use std::{borrow::Cow, sync::Arc};
 use sunrise_core::{geometry::Direction, nbt::Tag, position::BlockPos};
 use sunrise_gameplay_common::{
@@ -47,21 +51,26 @@ pub enum Kind {
 /// A container: one block entity, or a double chest (`CompoundContainer`).
 #[derive(Clone, Debug)]
 pub struct View {
-    pub parts: Vec<(Pos, usize)>,
+    pub first: (Pos, usize),
+    /// The second half of vanilla's `CompoundContainer`, if this is a double chest.
+    pub second: Option<(Pos, usize)>,
     pub kind: Kind,
     /// A mod block's container rules (`Kind::Mod`).
     pub container: Option<Arc<ModContainer>>,
 }
 impl View {
+    pub fn parts(&self) -> impl Iterator<Item = (Pos, usize)> {
+        std::iter::once(self.first).chain(self.second)
+    }
     pub fn len(&self) -> usize {
-        self.parts.iter().map(|p| p.1).sum()
+        self.parts().map(|(_, size)| size).sum()
     }
     pub fn is_empty(&self) -> bool {
-        self.parts.iter().all(|&(_, size)| size == 0)
+        self.parts().all(|(_, size)| size == 0)
     }
 
     pub fn locate(&self, mut slot: usize) -> Option<(Pos, usize)> {
-        for &(pos, size) in &self.parts {
+        for (pos, size) in self.parts() {
             if slot < size {
                 return Some((pos, slot));
             }
@@ -157,7 +166,19 @@ pub struct Containers<'a> {
 #[derive(Default)]
 pub struct PlacementAttempt {
     pub(in crate::game) stack: Option<Option<mod_api::ItemStack>>,
-    pub(in crate::game) entity: Option<PlacementEntity>,
+    pub(in crate::game) entity: Option<EntitySnapshot>,
+}
+
+/// Server-side `can_take_item_through_face` query passed into portable container rules.
+pub trait TakeThroughFace {
+    fn ask_take(
+        self,
+        pos: Pos,
+        entity: &sunrise_level::containers::ModBlockEntity,
+        slot: usize,
+        stack: &ItemStack,
+        face: Direction,
+    ) -> Option<bool>;
 }
 
 pub enum PlacementQuery<'a> {
@@ -165,13 +186,15 @@ pub enum PlacementQuery<'a> {
     Planning,
 }
 
-pub(in crate::game) struct PlacementEntity {
-    pub(in crate::game) pos: Pos,
-    pub(in crate::game) revision: sunrise_level::chunk::block_entity::ModRevision,
-    pub(in crate::game) snapshot: PlacementSnapshot,
+/// One mod block entity's API snapshot for a part hook, kept while its position and revision
+/// stay.
+pub struct EntitySnapshot {
+    pos: Pos,
+    revision: sunrise_level::chunk::block_entity::ModRevision,
+    snapshot: PartSnapshot,
 }
 
-pub(in crate::game) enum PlacementSnapshot {
+pub enum PartSnapshot {
     Unsubscribed,
     Unrepresentable,
     Ready(mod_api::ModBlockEntity),
@@ -191,39 +214,15 @@ impl PlacementAttempt {
         if stack.count == 0 || !mod_api::__private::has_part_hook(mod_api::HookId::CanPlaceItem) {
             return None;
         }
-        let revision = entity.revision();
-        if self
-            .entity
-            .as_ref()
-            .is_none_or(|seen| seen.pos != pos || seen.revision != revision)
-        {
-            let snapshot = if mod_api::__private::block_entity_type_listens(
-                mod_api::HookId::CanPlaceItem,
-                entity.id(),
-            ) {
-                match entity.try_into_api() {
-                    Ok(snapshot) => PlacementSnapshot::Ready(snapshot),
-                    Err(error) => {
-                        log::debug!(
-                            "Sunrise: can_place_item could not read {} at {pos:?}: {error:?}",
-                            entity.id()
-                        );
-                        PlacementSnapshot::Unrepresentable
-                    }
-                }
-            } else {
-                PlacementSnapshot::Unsubscribed
-            };
-            self.entity = Some(PlacementEntity {
-                pos,
-                revision,
-                snapshot,
-            });
-        }
-        let snapshot = match &self.entity.as_ref()?.snapshot {
-            PlacementSnapshot::Unsubscribed => return None,
-            PlacementSnapshot::Unrepresentable => return Some(false),
-            PlacementSnapshot::Ready(snapshot) => snapshot,
+        let snapshot = match EntitySnapshot::current(
+            &mut self.entity,
+            mod_api::HookId::CanPlaceItem,
+            pos,
+            entity,
+        ) {
+            PartSnapshot::Unsubscribed => return None,
+            PartSnapshot::Unrepresentable => return Some(false),
+            PartSnapshot::Ready(snapshot) => snapshot,
         };
         let Some(offered) = self.stack.get_or_insert_with(|| {
             stack
@@ -266,6 +265,48 @@ impl PlacementAttempt {
 
     pub fn wrote_entity(&mut self) {
         self.entity = None;
+    }
+}
+
+impl EntitySnapshot {
+    /// The snapshot `cached` keeps of `entity` at `pos` for `hook`, read again when the
+    /// position or the entity's revision changed.
+    pub fn current<'s>(
+        cached: &'s mut Option<Self>,
+        hook: mod_api::HookId,
+        pos: Pos,
+        entity: &sunrise_level::containers::ModBlockEntity,
+    ) -> &'s PartSnapshot {
+        use super::api_values::TryIntoApi;
+
+        let revision = entity.revision();
+        let stale = cached
+            .as_ref()
+            .is_none_or(|seen| seen.pos != pos || seen.revision != revision);
+        let seen = if stale {
+            let snapshot = if mod_api::__private::block_entity_type_listens(hook, entity.id()) {
+                match entity.try_into_api() {
+                    Ok(snapshot) => PartSnapshot::Ready(snapshot),
+                    Err(error) => {
+                        log::debug!(
+                            "Sunrise: a part hook could not read {} at {pos:?}: {error:?}",
+                            entity.id()
+                        );
+                        PartSnapshot::Unrepresentable
+                    }
+                }
+            } else {
+                PartSnapshot::Unsubscribed
+            };
+            cached.insert(EntitySnapshot {
+                pos,
+                revision,
+                snapshot,
+            })
+        } else {
+            cached.as_mut().expect("a kept snapshot")
+        };
+        &seen.snapshot
     }
 }
 
@@ -312,7 +353,8 @@ impl Containers<'_> {
         if is_composter(name) {
             let level = self.prop(state, "level").and_then(|l| l.parse().ok())?;
             return Some(View {
-                parts: vec![(pos, usize::from(level != 7))],
+                first: (pos, usize::from(level != 7)),
+                second: None,
                 kind: Kind::Composter(level),
                 container: None,
             });
@@ -322,7 +364,8 @@ impl Containers<'_> {
         if matches!(entity, BlockEntity::Mod(_)) {
             let container = Arc::clone(self.world.block_entities.mod_container(state.0)?);
             return Some(View {
-                parts: vec![(pos, container.slots)],
+                first: (pos, container.slots),
+                second: None,
                 kind: Kind::Mod,
                 container: Some(container),
             });
@@ -378,13 +421,14 @@ impl Containers<'_> {
                     if blocked_chests && is_blocked(other) {
                         return None;
                     }
-                    let parts = if own.kind == "right" {
-                        vec![(pos, size), (other, 27)]
+                    let (first, second) = if own.kind == "right" {
+                        ((pos, size), (other, 27))
                     } else {
-                        vec![(other, 27), (pos, size)]
+                        ((other, 27), (pos, size))
                     };
                     return Some(View {
-                        parts,
+                        first,
+                        second: Some(second),
                         kind,
                         container: None,
                     });
@@ -392,7 +436,8 @@ impl Containers<'_> {
             }
         }
         Some(View {
-            parts: vec![(pos, size)],
+            first: (pos, size),
+            second: None,
             kind,
             container: None,
         })
@@ -409,7 +454,8 @@ impl Containers<'_> {
             return None;
         }
         Some(View {
-            parts: vec![(pos, 1)],
+            first: (pos, 1),
+            second: None,
             kind: Kind::Pot,
             container: None,
         })
@@ -469,7 +515,7 @@ impl Containers<'_> {
             }
             // ShulkerBoxBlockEntity.canPlaceItemThroughFace
             Kind::Shulker => !is_shulker_box(&stack.item),
-            Kind::Crafter => match self.world.block_entities.get(&view.parts[0].0) {
+            Kind::Crafter => match self.world.block_entities.get(&view.first.0) {
                 Some(BlockEntity::Crafter(c)) => slot < 9 && !c.disabled[slot],
                 _ => false,
             },
@@ -563,7 +609,7 @@ impl Containers<'_> {
                     || !held.is_some_and(is_bucket)
                     || cooking_fuel::for_stack(self.items, stack).is_some()
             }
-            Kind::Crafter => match self.world.block_entities.get(&view.parts[0].0) {
+            Kind::Crafter => match self.world.block_entities.get(&view.first.0) {
                 Some(BlockEntity::Crafter(c)) => {
                     // The slot's own stack sets the limit (`slotStack.getMaxStackSize`).
                     let max = c.items.get(slot).and_then(Option::as_ref).unwrap_or(stack);
@@ -608,13 +654,14 @@ impl Containers<'_> {
     /// `canTakeItemThroughFace` (furnaces and brewing stands restrict it).
     /// `Container.canTakeItem` for a hopper's slot of `source`: the vanilla
     /// shelf rule needs to know where the item is going.
-    pub fn can_take_into(
+    pub fn can_take_into<A: TakeThroughFace>(
         &self,
         view: &View,
         slot: usize,
         stack: &ItemStack,
         face: Direction,
         target: &View,
+        ask: A,
     ) -> bool {
         if view.kind == Kind::Bookshelf {
             // `ChiseledBookShelfBlockEntity.canTakeItem`: the target must have
@@ -627,9 +674,16 @@ impl Containers<'_> {
                 }
             });
         }
-        self.can_take(view, slot, stack, face)
+        self.can_take(view, slot, stack, face, ask)
     }
-    pub fn can_take(&self, view: &View, slot: usize, stack: &ItemStack, face: Direction) -> bool {
+    pub fn can_take<A: TakeThroughFace>(
+        &self,
+        view: &View,
+        slot: usize,
+        stack: &ItemStack,
+        face: Direction,
+        ask: A,
+    ) -> bool {
         if let Kind::Composter(level) = view.kind {
             // OutputContainer.canTakeItemThroughFace.
             return level == 8 && face == Direction::Down && &*stack.item == "minecraft:bone_meal";
@@ -638,12 +692,33 @@ impl Containers<'_> {
             return slot != 3 || &*stack.item == "minecraft:glass_bottle";
         }
         if let Some(c) = &view.container {
-            return c.outputs.contains(&slot);
+            return self
+                .ask_take_through_face(view, slot, stack, face, ask)
+                .unwrap_or_else(|| c.outputs.contains(&slot));
         }
         view.kind != Kind::Furnace
             || face != Direction::Down
             || slot != 1
             || matches!(&*stack.item, "minecraft:water_bucket" | "minecraft:bucket")
+    }
+    /// A mod container's `can_take_item_through_face` answer for `slot` of `view`, asked
+    /// only when some part subscribes.
+    fn ask_take_through_face<A: TakeThroughFace>(
+        &self,
+        view: &View,
+        slot: usize,
+        stack: &ItemStack,
+        face: Direction,
+        ask: A,
+    ) -> Option<bool> {
+        if !mod_api::__private::has_part_hook(mod_api::HookId::CanTakeItemThroughFace) {
+            return None;
+        }
+        let (pos, index) = view.locate(slot)?;
+        let Some(BlockEntity::Mod(entity)) = self.world.block_entities.get(&pos) else {
+            return None;
+        };
+        ask.ask_take(pos, entity, index, stack, face)
     }
     pub(in crate::game) fn comparator_view(&self, pos: Pos) -> Option<View> {
         self.view(pos, true)
@@ -659,7 +734,7 @@ impl Containers<'_> {
     pub(in crate::game) fn signal(&self, view: &View) -> i32 {
         if view.kind == Kind::Crafter {
             // CrafterBlockEntity.getRedstoneSignal: filled or disabled slots.
-            return match self.world.block_entities.get(&view.parts[0].0) {
+            return match self.world.block_entities.get(&view.first.0) {
                 Some(BlockEntity::Crafter(c)) => c.redstone_signal(),
                 _ => 0,
             };
@@ -694,7 +769,7 @@ pub fn bone_meal_stack() -> &'static ItemStack {
 pub(in crate::game) fn container_signal(level: &mut GameLevel<'_>, pos: BlockPos) -> i32 {
     let view = level.containers().comparator_view((pos.x, pos.y, pos.z));
     if let Some(view) = &view {
-        for &(key, _) in &view.parts {
+        for (key, _) in view.parts() {
             level.unpack_loot(
                 crate::game::container_loot_level::LootTarget::Block(key),
                 None,
@@ -727,6 +802,20 @@ impl View {
         } else {
             self.slots_for_face_iter(face)
         }
+    }
+
+    /// [`Containers::capability_slot_backing`] over a built view.
+    pub fn slot_backing(&self, at: BlockSide, slot: usize) -> Option<StorageSlot> {
+        if matches!(self.kind, Kind::Composter(_)) {
+            return None;
+        }
+        let backing_index = self.capability_slots(at.side).nth(slot)?;
+        let (pos, own_slot) = self.locate(backing_index)?;
+        Some(StorageSlot {
+            level: at.level,
+            pos: [pos.0, pos.1, pos.2],
+            slot: own_slot,
+        })
     }
 }
 
@@ -818,12 +907,14 @@ impl Containers<'_> {
         let entity = self.world.block_entities.get(&pos);
         match self.item_target(state, at.side, entity)? {
             ItemTarget::Composter(level) => Some(View {
-                parts: vec![(pos, 1)],
+                first: (pos, 1),
+                second: None,
                 kind: Kind::Composter(level),
                 container: None,
             }),
             ItemTarget::Pot => Some(View {
-                parts: vec![(pos, 1)],
+                first: (pos, 1),
+                second: None,
                 kind: Kind::Pot,
                 container: None,
             }),
@@ -833,10 +924,33 @@ impl Containers<'_> {
     pub fn capability_size(&self, at: BlockSide) -> Option<usize> {
         Some(self.capability_view(at)?.capability_slots(at.side).count())
     }
-    pub fn capability_stack(&self, at: BlockSide, slot: usize) -> Option<ItemStack> {
+    pub fn lend_capability_stack(
+        &self,
+        at: BlockSide,
+        slot: usize,
+        read: &mut dyn for<'a> FnMut(ItemStackView<'a>),
+    ) {
+        let Some(view) = self.capability_view(at) else {
+            return;
+        };
+        let Some(slot) = view.capability_slots(at.side).nth(slot) else {
+            return;
+        };
+        let Some(stack) = self.insertion_item(&view, slot) else {
+            return;
+        };
+        let Ok(metadata) = stack_read_metadata(&stack) else {
+            return;
+        };
+        let project = |metadata| project_stack(&stack, metadata).ok();
+        read(ItemStackView::resident(metadata, &project));
+    }
+    /// The block entity slot that slot `slot` of `at`'s side reaches (`WorldlyContainer.
+    /// getSlotsForFace`), owned by the half that holds it in a double chest (`ChestBlock.
+    /// getContainer`, `CompoundContainer`). A composter has no block entity: vanilla builds its
+    /// container per access (`ComposterBlock.getContainer`), so it has no backing.
+    pub fn capability_slot_backing(&self, at: BlockSide, slot: usize) -> Option<StorageSlot> {
         let view = self.capability_view(at)?;
-        let slot = view.capability_slots(at.side).nth(slot)?;
-        self.insertion_item(&view, slot)
-            .map(std::borrow::Cow::into_owned)
+        view.slot_backing(at, slot)
     }
 }

@@ -48,31 +48,22 @@ impl crate::game::ServerGame<'_> {
         Some(())
     }
 
-    /// Writes a nonempty complete stack using `ItemEntity.setItem`.
+    /// Writes a stack using `ItemEntity.setItem`; None clears it.
     pub(in crate::game) fn item_entity_set_stack(
         &mut self,
         item: ItemEntityRef,
-        stack: ItemStack,
+        stack: Option<ItemStack>,
     ) -> bool {
-        if stack.count == 0 || &*stack.item == "minecraft:air" {
+        let Some(index) = self.native_item_entity_index(item, None) else {
             return false;
-        }
-        self.native_item_entity_index(item, None)
-            .is_some_and(|index| self.journal_set_item_entity_at(index, stack))
+        };
+        self.journal_set_item_entity_at(index, stack);
+        true
     }
 
-    /// The signed pickup delay; the legacy infinite sentinel reads as vanilla's 32767.
+    /// The signed pickup delay; the infinite sentinel reads as vanilla's 32767.
     pub(in crate::game) fn item_entity_pickup_delay(&self, item: ItemEntityRef) -> Option<i32> {
-        let delay = self
-            .common
-            .dropped
-            .get(self.native_item_entity_index(item, None)?)?
-            .pickup_delay;
-        if delay == i64::from(u32::MAX) {
-            Some(i32::from(i16::MAX))
-        } else {
-            i32::try_from(delay).ok()
-        }
+        Some(self.common.dropped[self.native_item_entity_index(item, None)?].pickup_delay)
     }
 
     /// `ItemEntity.setPickUpDelay`.
@@ -103,7 +94,7 @@ impl crate::game::ServerGame<'_> {
 
     /// `ItemEntity.setNeverPickUp`: the infinite-delay sentinel 32767.
     pub(in crate::game) fn item_entity_set_never_pickup(&mut self, item: ItemEntityRef) -> bool {
-        self.item_entity_set_pickup_delay(item, i32::from(i16::MAX))
+        self.item_entity_set_pickup_delay(item, sunrise_sim::entities::ItemEntity::INFINITE_PICKUP_DELAY)
     }
 
     /// `ItemEntity.getAge`, including negative lifetime sentinels.

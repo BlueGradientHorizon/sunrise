@@ -22,21 +22,32 @@ pub mod camera_type_tests {
 
     #[derive(Default)]
     pub struct Calls {
-        pub poses: std::sync::atomic::AtomicUsize,
+        pub angles: std::sync::atomic::AtomicUsize,
+        pub positions: std::sync::atomic::AtomicUsize,
         pub cycles: std::sync::atomic::AtomicUsize,
     }
     pub struct SharedCamera(pub Arc<Calls>);
     #[mod_api::__subscriptions]
     impl Hooks for SharedCamera {
-        fn camera_pose(&self, host: &dyn ClientHost, event: &mut mod_api::CameraPoseEvent<'_>) {
+        fn compute_camera_angles(
+            &self,
+            host: &dyn ClientHost,
+            event: &mut mod_api::ComputeCameraAnglesEvent,
+        ) {
             self.0
-                .poses
+                .angles
                 .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             host.set_camera_type(CameraType::ThirdPersonFront);
             assert_eq!(host.camera_type(), CameraType::ThirdPersonFront);
             host.set_camera_type(CameraType::ThirdPersonBack);
             assert_eq!(host.camera_type(), CameraType::ThirdPersonBack);
-            event.yaw += 15.0;
+            event.yaw += 180.0;
+            event.roll = 180.0;
+        }
+        fn camera_position(&self, _: &dyn ClientHost, _: &mut mod_api::CameraPositionEvent<'_>) {
+            self.0
+                .positions
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         }
         fn camera_type_cycle(&self, _: &mut dyn ClientHost, _: &mut CameraTypeCycleEvent<'_>) {
             self.0

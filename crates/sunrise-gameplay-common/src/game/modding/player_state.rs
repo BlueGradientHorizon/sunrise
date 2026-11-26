@@ -1,10 +1,26 @@
 use mod_api::{__private::TransactionFrame, Attachments};
 
+/// A player record temporarily lent during clone/respawn lifecycle hooks.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ScopedPlayer {
+    pub uuid: u128,
+    pub conn: u32,
+    /// No whole body is lent while the replacement's attachments are being constructed.
+    pub entity: Option<u32>,
+}
+
+/// Which phase of player cloning is lending the replacement record.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CloneScope {
+    Constructing,
+    LendBody,
+}
+
 /// Per-player attachment state and active replacement player UUIDs during clone hooks.
 #[derive(Default)]
 pub struct PlayerState {
     pub attachments: sunrise_mod_runtime::attachments::ResidentAttachments,
-    pub cloning_players: Vec<(u128, u32, u32)>,
+    pub cloning_players: Vec<ScopedPlayer>,
 }
 
 /// Retained original-player attachment storage tied to `Game::transactions` so mutations,

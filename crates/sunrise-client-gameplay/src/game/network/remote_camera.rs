@@ -748,14 +748,22 @@ impl ClientGame<'_> {
     }
 
     /// `mainCamera().position()` once aligned, or the camera entity's position before first align.
+    /// This is the placement before a mod's `camera_position` overrides, which are render-only:
+    /// streaming and the level-entry readiness never follow them.
     pub(in crate::game::client_side) fn visual_camera_position(&self) -> Option<[f64; 3]> {
         if self.client.view.initialized {
-            Some(self.client.view.position)
+            Some(self.client.view.placed_position)
         } else if self.client.remote.is_some() {
             self.camera_eye_position()
         } else {
             self.camera_entity_position()
         }
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    #[inline(always)]
+    pub fn test_visual_camera_position(&self) -> Option<[f64; 3]> {
+        self.visual_camera_position()
     }
 
     /// Camera entity feet position (`cameraEntity.position()`).
@@ -814,9 +822,9 @@ impl ClientGame<'_> {
             } else {
                 MAINHAND
             };
-            let item = match m.extra.slot_stack(slot).map(|s| &*s.item) {
-                Some("minecraft:bow") => UseItem::Bow,
-                Some("minecraft:spyglass") => UseItem::Spyglass,
+            let item = match m.extra.slot_stack(slot) {
+                Some(s) if &*s.item == "minecraft:bow" => UseItem::Bow,
+                Some(s) if self.stack_scopes(s) => UseItem::Spyglass,
                 _ => UseItem::Other,
             };
             (item, (m.extra.using_item - 1).max(0))

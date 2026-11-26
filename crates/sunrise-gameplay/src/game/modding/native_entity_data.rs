@@ -117,6 +117,12 @@ impl crate::game::ServerGame<'_> {
             a.custom_name = name;
         } else if let Some(f) = self.common.item_frames.iter_mut().find(|f| f.id == id) {
             f.custom_name = saved.clone();
+        } else if let Some(i) = self.bolts.iter().position(|b| b.id == id) {
+            self.bolts.update(i, |b| b.custom_name = saved.clone());
+        } else if let Some(row) = self.resident_entities.general.row_mut(id) {
+            // A general row's name is saved from the row, and synced as entry 2.
+            row.custom_name = name;
+            return true;
         }
         self.put_saved(id, "CustomName", saved);
         true
@@ -139,6 +145,12 @@ impl crate::game::ServerGame<'_> {
                 .armor_stands
                 .iter()
                 .any(|a| a.id == id && a.name_visible),
+            Target::General(_) => self
+                .common
+                .resident_entities
+                .general
+                .row(id)
+                .is_some_and(|row| row.custom_name_visible),
             _ => self
                 .common
                 .persist_raw(id)
@@ -160,6 +172,9 @@ impl crate::game::ServerGame<'_> {
             m.name_visible = visible;
         } else if let Some(a) = self.common.armor_stands.iter_mut().find(|a| a.id == id) {
             a.name_visible = visible;
+        } else if let Some(row) = self.resident_entities.general.row_mut(id) {
+            row.custom_name_visible = visible;
+            return true;
         }
         // `Entity.saveWithoutId` writes the flag only when set.
         let flag = visible.then_some(Tag::Byte(1));
@@ -170,18 +185,27 @@ impl crate::game::ServerGame<'_> {
     /// from its type, `Monster` for the dragon, `Misc` for every other kind.
     pub(in crate::game) fn entity_classification(&self, entity: EntityRef) -> Option<MobCategory> {
         Some(match self.native_entity_target(entity)? {
-            Target::Mob(id) => match self.common.mobs.iter().find(|m| m.id == id)?.category() {
-                "monster" => MobCategory::Monster,
-                "creature" => MobCategory::Creature,
-                "ambient" => MobCategory::Ambient,
-                "axolotls" => MobCategory::Axolotls,
-                "underground_water_creature" => MobCategory::UndergroundWaterCreature,
-                "water_creature" => MobCategory::WaterCreature,
-                "water_ambient" => MobCategory::WaterAmbient,
-                _ => MobCategory::Misc,
-            },
+            Target::Mob(id) => mob_category(self.common.mobs.iter().find(|m| m.id == id)?.category()),
             Target::Dragon(_) => MobCategory::Monster,
             _ => MobCategory::Misc,
+        })
+    }
+    /// `EntityType.getCategory()` of a registered type with no entity: a mob type's declared
+    /// category (the mob table holds vanilla's and the mods' mob types), `Monster` for the
+    /// dragon, `Misc` for every other registered type.
+    pub(in crate::game) fn entity_type_category(
+        &self,
+        key: mod_api::EntityTypeKey,
+    ) -> Option<MobCategory> {
+        let name = mod_api::__private::entity_type_key_id(key)?;
+        Some(match &*name {
+            "minecraft:ender_dragon" => MobCategory::Monster,
+            name => self
+                .common
+                .res
+                .mob_types()
+                .get(name)
+                .map_or(MobCategory::Misc, |kind| mob_category(&kind.category)),
         })
     }
     /// Whether the entity is in its level: from when `entity_join_level` let
@@ -238,9 +262,16 @@ impl crate::game::ServerGame<'_> {
     }
 }
 
+/// A mob's `Entity.getCustomName`: its styled name, else the plain name a spawn gave it.
+pub(in crate::game) fn mob_custom_name(mob: &sunrise_sim::mobs::Mob) -> Option<Text> {
+    mob.custom_name_text
+        .clone()
+        .or_else(|| mob.custom_name.as_deref().map(Text::literal))
+}
+
 /// The id of an entity whose custom name the game keeps and saves
-/// (`target_name` reads it): the struct's own for mobs, armor stands and
-/// item frames, the saved compound's for the rest.
+/// (`target_name` reads it): the struct's own for mobs, armor stands,
+/// item frames and general rows, the saved compound's for the rest.
 fn named_id(t: Target) -> Option<u32> {
     match t {
         Target::Mob(id)
@@ -253,8 +284,23 @@ fn named_id(t: Target) -> Option<u32> {
         | Target::Other(id)
         | Target::Fangs(id)
         | Target::Cloud(id)
-        | Target::Bolt(id) => Some(id),
+        | Target::Bolt(id)
+        | Target::General(id) => Some(id),
         _ => None,
+    }
+}
+
+/// A mob type's `MobCategory` from its table name (`monster`); an unknown name is `Misc`.
+fn mob_category(name: &str) -> MobCategory {
+    match name {
+        "monster" => MobCategory::Monster,
+        "creature" => MobCategory::Creature,
+        "ambient" => MobCategory::Ambient,
+        "axolotls" => MobCategory::Axolotls,
+        "underground_water_creature" => MobCategory::UndergroundWaterCreature,
+        "water_creature" => MobCategory::WaterCreature,
+        "water_ambient" => MobCategory::WaterAmbient,
+        _ => MobCategory::Misc,
     }
 }
 

@@ -4,8 +4,9 @@
 //! shading, the dithered edge), the player marker, `data/minecraft/maps/<id>.dat` and
 //! `maps/last_id.dat`, the 128x128 texture in an atlas slot, the two-handed
 //! first-person view and maps in item frames.
+mod part_color;
 use crate::game::ServerGame;
-use sunrise_core::nbt::Tag;
+use sunrise_core::{nbt::Tag, position::BlockPos};
 use sunrise_gameplay_common::game::maps::{
     Framed, Key, MapData, PLAYER, StaticDecoration, decoration_sprite, map_id,
 };
@@ -712,46 +713,46 @@ impl ServerGame<'_> {
                         .wrapping_add(noise.wrapping_mul(11));
                     // Dirt (10) or stone (11) noise under a ceiling.
                     if noise >> 20 & 1 == 0 {
-                        add(10, 10);
+                        add(
+                            self.default_map_color("minecraft:dirt", 10, BlockPos::new(0, 0, 0)),
+                            10,
+                        );
                     } else {
-                        add(11, 100);
+                        add(
+                            self.default_map_color("minecraft:stone", 11, BlockPos::new(0, 0, 0)),
+                            100,
+                        );
                     }
                     height = 100.0;
                 } else {
                     for dx in 0..scale {
                         for dz in 0..scale {
                             let (x, z) = (min_x + dx, min_z + dz);
-                            let mut y = self.common.world_surface(x, z);
+                            let mut y = self.world_surface(x, z);
                             let min_y = self.common.world.bottom_y();
-                            let mut color;
-                            if y <= min_y {
-                                color = 11;
+                            let color = if y <= min_y {
+                                self.default_map_color(
+                                    "minecraft:bedrock",
+                                    11,
+                                    BlockPos::new(x, 0, z),
+                                )
                             } else {
+                                let mut state;
                                 loop {
                                     y -= 1;
-                                    color = self
-                                        .common
-                                        .res
-                                        .facts()
-                                        .get(self.common.world.block(x, y, z))
-                                        .map_color;
-                                    if color != 0 || y <= min_y {
+                                    state = self.common.world.block(x, y, z);
+                                    if self.map_color_at(BlockPos::new(x, y, z), state) != 0
+                                        || y <= min_y
+                                    {
                                         break;
                                     }
                                 }
-                                let f = self
-                                    .common
-                                    .res
-                                    .facts()
-                                    .get(self.common.world.block(x, y, z));
+                                let f = self.common.res.facts().get(state);
                                 if y > min_y && f.fluid != Fluid::None {
                                     let mut solid = y - 1;
                                     loop {
-                                        let below = self
-                                            .common
-                                            .res
-                                            .facts()
-                                            .get(self.common.world.block(x, solid, z));
+                                        let below =
+                                            self.common.res.facts().get(self.common.world.block(x, solid, z));
                                         solid -= 1;
                                         water_depth += 1;
                                         if solid <= min_y || below.fluid == Fluid::None {
@@ -760,10 +761,12 @@ impl ServerGame<'_> {
                                     }
                                     // getCorrectStateForFluidBlock: the fluid unless sturdy on top.
                                     if f.sturdy_full >> 1 & 1 == 0 {
-                                        color = if f.fluid == Fluid::Lava { 4 } else { 12 };
+                                        let b = self.common.res.behaviours();
+                                        state = b.legacy_block(b.fluid(state));
                                     }
                                 }
-                            }
+                                self.map_color_at(BlockPos::new(x, y, z), state)
+                            };
                             self.check_banners(id, x, z);
                             height += f64::from(y) / f64::from(scale * scale);
                             add(color, 1);

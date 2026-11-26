@@ -63,7 +63,8 @@ mod resize_state_tests {
                 super::super::native_entity_refs::tests::with_client_game(|game| {
                     game.options.offscreen = true;
                     game.client.window.0 = Some(window.clone());
-                    game.client.renderer.0 = Some(game.new_renderer(window.clone()).unwrap());
+                    let renderer = game.new_renderer(window.clone()).unwrap();
+                    game.test_set_renderer(renderer);
                     game.client.renderer.0.as_mut().unwrap().resize(960, 1080);
                     game.client.settings.gui_scale = scale;
                     game.client.settings.force_unicode = false;

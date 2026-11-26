@@ -673,7 +673,13 @@ impl crate::game::ServerGame<'_> {
     }
 
     pub(in crate::game) fn server_entity_position(&self, entity: EntityRef) -> Option<[f64; 3]> {
-        self.target_position(self.native_entity_target(entity)?)
+        match self.native_entity_target(entity) {
+            Some(target) => self.target_position(target),
+            None => self
+                .native_orb_ref(entity)
+                .ok()
+                .map(|orb| orb.position.components()),
+        }
     }
 
     pub(in crate::game) fn server_client_copy_box(
@@ -694,7 +700,9 @@ impl crate::game::ServerGame<'_> {
 
     pub(in crate::game) fn server_level(&self, dimension: &str) -> Option<LevelRef> {
         let epoch = self.common.native_lifecycle.epoch()?;
-        let dim = std::iter::once(self.common.dim)
+        let dim = (!self.server.levels.0.active_closed)
+            .then_some(self.common.dim)
+            .into_iter()
             .chain(self.server.levels.0.parked_dims())
             .find(|d| d.id() == dimension)?;
         Some(self.level_ref(epoch, dim.key()))

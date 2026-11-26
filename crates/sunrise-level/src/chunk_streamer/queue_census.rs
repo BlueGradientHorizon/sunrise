@@ -31,10 +31,7 @@ impl<A: AuxiliaryJobs> ChunkStreamer<A> {
                 self.state.lighting.len(),
                 table(
                     self.state.lighting.capacity(),
-                    size_of::<((i32, i32), u64)>(),
-                ) + table(
-                    self.state.light_snapshots.capacity(),
-                    size_of::<((i32, i32), u64)>(),
+                    size_of::<((i32, i32), super::LightJob)>(),
                 ) + self.state.light_log.capacity() * size_of::<(u64, (i32, i32, i32))>()
                     + self.state.light_scratch.capacity() * size_of::<(i64, i32, i32)>(),
             ),

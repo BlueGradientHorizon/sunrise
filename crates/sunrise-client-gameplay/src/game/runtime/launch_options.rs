@@ -29,4 +29,21 @@ pub(in crate::game) mod tests {
             secs(30)
         );
     }
+
+    /// #5304: a world `--world` creates without `--seed` gets a random seed, not seed 0;
+    /// a given seed reads as a number or, as `WorldOptions.parseSeed`, as text's hash.
+    #[test]
+    fn world_seed_is_left_to_the_new_world_unless_given() {
+        let seed = |args: &[&str]| {
+            Options::parse(args.iter().map(|arg| arg.to_string()))
+                .unwrap()
+                .unwrap()
+                .seed
+        };
+        assert_eq!(seed(&["--world", "W"]), None);
+        assert_eq!(seed(&["--world", "W", "--seed", "0"]), Some(0));
+        assert_eq!(seed(&["--world", "W", "--seed", "-12345"]), Some(-12345));
+        // "abc".hashCode() in Java.
+        assert_eq!(seed(&["--world", "W", "--seed", "abc"]), Some(96354));
+    }
 }

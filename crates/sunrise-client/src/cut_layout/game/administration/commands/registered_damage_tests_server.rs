@@ -218,13 +218,14 @@ fn live_damage_and_blast_warden_reactions_follow_source_entities_and_cooldown() 
         guest_server(game, true, false);
         let (first, _first_out) = guest(game, 22);
         let (second, _second_out) = guest(game, 23);
+        // DamageCommand defaults the cause to the direct entity, which the warden uses for attribution.
         let hurt = |game: &mut sunrise_gameplay::game::ServerGame<'_>, amount, direct| {
             game.hurt_target(
                 Target::Mob(warden_id),
                 amount,
                 "minecraft:generic",
                 direct,
-                None,
+                direct,
                 None,
             )
         };

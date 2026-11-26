@@ -31,9 +31,8 @@ pub(crate) mod tests {
             &mut |_, _| unreachable!(),
         )
         .unwrap();
-        let fixture = std::env::current_dir()
-            .unwrap()
-            .join("compute-owner-providers");
+        let scratch = tempfile::tempdir().unwrap();
+        let fixture = scratch.path().join("compute-owner-providers");
         for (registry, value) in [
             ("context_int_provider", json!(17)),
             ("context_float_provider", json!(2.5)),

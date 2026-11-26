@@ -6,13 +6,65 @@ use crate::game::{
 };
 use core::ops::ControlFlow;
 use mod_api::{
-    BlockFace, BlockShapeKind, DimensionKey, EntityRayHit, EntityRef, EntityTypeKey,
+    BlockFace, BlockShapeKind, ClipBlock, ClipError, ClipFluid, ClipHit, ClipOutcome,
+    CollisionContext, DimensionKey, EntityRayHit, EntityReadError, EntityRef, EntityTypeKey,
     LevelReadError, LevelRef, MobRef, PushReaction,
 };
 use sunrise_core::geometry::{Aabb, Vec3};
 use sunrise_items::items::ItemStack;
 use sunrise_sim::join_seq::residency::table::{EntityLookup, Location};
 use sunrise_world::registry::BlockStateId;
+
+/// The mod API face of an engine direction.
+fn api_face(direction: sunrise_core::geometry::Direction) -> BlockFace {
+    use sunrise_core::geometry::Direction;
+    match direction {
+        Direction::Down => BlockFace::Down,
+        Direction::Up => BlockFace::Up,
+        Direction::North => BlockFace::North,
+        Direction::South => BlockFace::South,
+        Direction::West => BlockFace::West,
+        Direction::East => BlockFace::East,
+    }
+}
+
+/// Vanilla's miss result of a ray from `from` to `to` (`BlockHitResult.miss`): the end point, its
+/// floored block and the face nearest the way back to `from`.
+pub fn miss_hit(from: [f64; 3], to: [f64; 3]) -> ClipHit {
+    let [fx, fy, fz] = from;
+    let [x, y, z] = to;
+    ClipHit {
+        miss: true,
+        block: [x.floor() as i32, y.floor() as i32, z.floor() as i32],
+        face: api_face(sunrise_core::geometry::Direction::approximate_nearest(
+            Vec3::new(fx - x, fy - y, fz - z),
+        )),
+        location: to,
+        inside: false,
+        world_border: false,
+    }
+}
+
+/// Where a level ray ended.
+pub enum ClipRay {
+    /// A hit, or vanilla's miss result when `miss` is set.
+    Reached(ClipHit),
+    /// The first cell the ray entered inside a column that is not loaded.
+    Unloaded([i32; 3]),
+}
+
+/// Whether a world position sits in a loaded chunk column of `chunks`.
+pub fn entity_section_accessible(
+    chunks: &sunrise_level::chunk_map::ChunkMap,
+    [x, _, z]: [f64; 3],
+) -> bool {
+    x.is_finite()
+        && z.is_finite()
+        && chunks.contains_key(&(
+            sunrise_core::mth::floor(x) >> 4,
+            sunrise_core::mth::floor(z) >> 4,
+        ))
+}
 
 impl crate::game::CommonGame<'_> {
     /// The name of a dimension's key.
@@ -24,15 +76,20 @@ impl crate::game::CommonGame<'_> {
 pub trait NativeEntityRefsCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// What a handle names for a read that works on both sides.
     fn native_entity_read_target(&self, entity: EntityRef) -> Option<Target> {
-        self.side_native_entity_read_target(entity)
+        self.native_entity_visit_target(entity).ok()
     }
 
     /// The entity `id` as a handle for the `entity_*` methods.
     fn entity(&self, id: u32) -> Option<EntityRef> {
         let entity = EntityRef::new(self.native_lifecycle.epoch()?, id);
-        (self.native_entity_read_target(entity).is_some()
-            || self.side_native_client_tracked(entity).is_some())
-        .then_some(entity)
+        let found = if self.is_logical_server() {
+            self.native_entity_target(entity)
+                .is_some_and(|target| self.entity_target_accessible(target))
+        } else {
+            self.native_entity_read_target(entity).is_some()
+                || self.side_native_client_tracked(entity).is_some()
+        };
+        found.then_some(entity)
     }
 
     /// Whether the entity is made of parts that are entities of their own (`Entity.isMultipartEntity`).
@@ -43,14 +100,30 @@ pub trait NativeEntityRefsCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
         ))
     }
 
-    /// The entities a multipart entity is made of (`Entity.getParts`), in `getSubEntities` order.
-    fn entity_parts(&self, entity: EntityRef) -> Option<Vec<EntityRef>> {
-        let Target::Dragon(id) = self.native_entity_read_target(entity)? else {
-            return Some(Vec::new());
+    /// `Entity.getPickResult` of the entity, on the side that holds it.
+    fn entity_pick_result(&self, entity: EntityRef) -> Option<ItemStack> {
+        self.native_entity_read_target(entity)?;
+        self.pick_result_of(i32::try_from(entity.id()).ok()?)
+    }
+
+    /// `IEntityExtension.getParts` in `EnderDragon.getSubEntities` order.
+    fn entity_visit_parts(
+        &self,
+        entity: EntityRef,
+        visit: &mut dyn FnMut(EntityRef) -> ControlFlow<()>,
+    ) -> Result<ControlFlow<()>, EntityReadError> {
+        let Target::Dragon(id) = self.native_entity_visit_target(entity)? else {
+            return Ok(ControlFlow::Continue(()));
         };
-        (1..=8)
-            .map(|offset| self.entity(id.checked_add(offset)?))
-            .collect()
+        // Project the eight part handles together before calling the visitor on any of them.
+        let mut parts = [entity; 8];
+        for (offset, part) in (1..).zip(&mut parts) {
+            *part = id
+                .checked_add(offset)
+                .and_then(|id| self.entity(id))
+                .ok_or(EntityReadError::Unavailable)?;
+        }
+        Ok(parts.into_iter().try_for_each(visit))
     }
 
     /// The level `dimension` (`minecraft:the_nether`) as a handle.
@@ -166,71 +239,186 @@ pub trait NativeEntityRefsCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
         .ok_or(LevelReadError::Unavailable)
     }
 
-    /// Clip an empty-context ray against collider or outline shapes, without fluids.
+    /// `LevelRef::clip`: a ray against collider, outline or visual shapes and fluids
+    /// (`BlockGetter.clip` / `BlockGetter.clipWithInteractionOverride`) in the resident world
+    /// `native_level_view_world` reads. See [`Self::level_clip_ray`].
     fn level_clip(
         &self,
         level: LevelRef,
         from: [f64; 3],
         to: [f64; 3],
-        blocks: mod_api::ClipBlock,
-        fluids: mod_api::ClipFluid,
-    ) -> Option<mod_api::ClipHit> {
-        use mod_api::{BlockFace, ClipBlock, ClipFluid, ClipHit};
-        use sunrise_core::geometry::Direction;
+        blocks: ClipBlock,
+        fluids: ClipFluid,
+        context: CollisionContext,
+    ) -> Result<ClipOutcome, ClipError> {
+        Ok(
+            match self.level_clip_ray(level, from, to, blocks, fluids, context)? {
+                ClipRay::Reached(hit) if hit.miss => ClipOutcome::Miss,
+                ClipRay::Reached(hit) => ClipOutcome::Hit(hit),
+                ClipRay::Unloaded(at) => ClipOutcome::Unloaded { at },
+            },
+        )
+    }
+
+    /// Run a ray with no traversal cell cap or length limit against shapes and fluids.
+    fn level_clip_ray(
+        &self,
+        level: LevelRef,
+        from: [f64; 3],
+        to: [f64; 3],
+        blocks: ClipBlock,
+        fluids: ClipFluid,
+        context: CollisionContext,
+    ) -> Result<ClipRay, ClipError> {
+        use sunrise_world::collision_context::CollisionContext as ShapeContext;
+        if !from.iter().chain(&to).all(|v| v.is_finite()) {
+            return Err(ClipError::NonFiniteRay);
+        }
+        let world = self
+            .native_level_view_world(level)
+            .ok_or(ClipError::StaleLevel)?;
+        match context {
+            CollisionContext::Empty => self.clip_in_world(
+                world,
+                (from, to),
+                (blocks, fluids),
+                ShapeContext::empty(false),
+                None,
+            ),
+            CollisionContext::Entity(entity) => self
+                .with_clip_entity(entity, |shape_context, subject| {
+                    self.clip_in_world(world, (from, to), (blocks, fluids), shape_context, subject)
+                })
+                .ok_or(ClipError::StaleLevel)?,
+            _ => Err(ClipError::StaleLevel),
+        }
+    }
+
+    /// Hand `f` the collision context and powder-snow facts of the entity a handle names.
+    fn with_clip_entity<R>(
+        &self,
+        entity: EntityRef,
+        f: impl FnOnce(
+            sunrise_world::collision_context::CollisionContext<'_>,
+            Option<sunrise_level::collisions::PowderSnowSubject<'_>>,
+        ) -> R,
+    ) -> Option<R> {
+        use super::entity::with_entity;
+        let target = self.native_entity_read_target(entity)?;
+        if let Some(body) = self.side_native_player_body(target) {
+            let context = sunrise_sim::motion::player_context(
+                entity.id(),
+                body.position.y,
+                body.shift_key_down,
+                body.main_hand.as_deref(),
+            );
+            return Some(f(context, Some(body.powder_snow_subject())));
+        }
+        if let Some(handle) = self.native_walk_entity(entity.id()) {
+            let tags = &self.items().entity_type_tags;
+            return Some(with_entity!(self, handle, e => {
+                let (context, subject) =
+                    super::entity::Entity::support_collision(e, tags);
+                f(context, subject)
+            }));
+        }
+        let [x, y, z] = self.entity_position(entity)?;
+        Some(f(
+            sunrise_sim::motion::BodyMotion::entity_context(entity.id(), Vec3::new(x, y, z)),
+            None,
+        ))
+    }
+
+    /// The ray itself, over `world` with `context` and the colliding entity's `subject`.
+    fn clip_in_world(
+        &self,
+        world: &sunrise_level::world::World,
+        (from, to): ([f64; 3], [f64; 3]),
+        (blocks, fluids): (ClipBlock, ClipFluid),
+        context: sunrise_world::collision_context::CollisionContext<'_>,
+        subject: Option<sunrise_level::collisions::PowderSnowSubject<'_>>,
+    ) -> Result<ClipRay, ClipError> {
         use sunrise_level::collisions::SceneCollisions;
-        use sunrise_world::{
-            collision_context::CollisionContext,
-            world_ray::{RayBlockMode, RayFluidMode, clip_world},
-        };
-        let world = self.native_level_view_world(level)?;
-        let mut rays = ColliderRays {
+        use sunrise_sim::motion::clip_world_with_fluids;
+        use sunrise_world::world_ray::{RayBlockMode, RayError, RayFluidMode};
+        let tables = crate::game::native_block_tables::BlockTables::of(self.common());
+        let rays = ColliderRays {
             scene: SceneCollisions {
                 world,
                 binding: self.collision,
-                subject: None,
+                subject,
             },
-            context: CollisionContext::empty(false),
+            context,
             clip_data: Some(ClipData {
                 facts: self.res.facts(),
                 behaviours: self.res.behaviours(),
+                tables: &tables,
                 registry: self.pack.assets.registry,
             }),
+            report_unloaded: true,
         };
         let mode = match blocks {
             ClipBlock::Collider => RayBlockMode::Collider,
             ClipBlock::Outline => RayBlockMode::Outline,
+            ClipBlock::Visual => RayBlockMode::Visual,
             _ => unreachable!("ClipBlock: unhandled variant"),
         };
         let fluid = match fluids {
             ClipFluid::None => RayFluidMode::None,
+            ClipFluid::SourceOnly => RayFluidMode::SourceOnly,
+            ClipFluid::Any => RayFluidMode::Any,
+            ClipFluid::Water => RayFluidMode::Water,
             _ => unreachable!("ClipFluid: unhandled variant"),
         };
-        let result = clip_world(
-            &mut rays,
+        let tags = if fluid == RayFluidMode::None {
+            None
+        } else {
+            Some(self.native_tag_items().ok_or(ClipError::StaleLevel)?)
+        };
+        let result = clip_world_with_fluids(
+            rays,
+            world,
             Vec3::new(from[0], from[1], from[2]),
             Vec3::new(to[0], to[1], to[2]),
             mode,
             fluid,
-            4096,
-        )
-        .ok()?;
-        let h = result.hit;
-        let face = match h.direction {
-            Direction::Down => BlockFace::Down,
-            Direction::Up => BlockFace::Up,
-            Direction::North => BlockFace::North,
-            Direction::South => BlockFace::South,
-            Direction::West => BlockFace::West,
-            Direction::East => BlockFace::East,
+            usize::MAX,
+            || {
+                let fluid_resources = &self.res.motion().fluids;
+                sunrise_sim::motion::FluidClip {
+                    states: fluid_resources.states(),
+                    items: tags.expect("fluid clip closure only runs for non-None fluid mode"),
+                    shapes: &fluid_resources.shapes,
+                }
+            },
+        );
+        let result = match result {
+            Ok(result) => result,
+            Err(RayError::World(error)) => {
+                return match error
+                    .get_ref()
+                    .and_then(|source| source.downcast_ref::<crate::game::collider_rays::UnloadedColumn>())
+                {
+                    Some(crate::game::collider_rays::UnloadedColumn(at)) => {
+                        Ok(ClipRay::Unloaded([at.x, at.y, at.z]))
+                    }
+                    None => Err(ClipError::StaleLevel),
+                };
+            }
+            Err(RayError::Traversal(_)) => return Err(ClipError::NonFiniteRay),
         };
-        Some(ClipHit {
-            miss: result.miss,
+        if result.miss {
+            return Ok(ClipRay::Reached(miss_hit(from, to)));
+        }
+        let h = result.hit;
+        Ok(ClipRay::Reached(ClipHit {
+            miss: false,
             block: [h.block.x, h.block.y, h.block.z],
-            face,
+            face: api_face(h.direction),
             location: [h.location.x, h.location.y, h.location.z],
             inside: h.inside,
             world_border: false,
-        })
+        }))
     }
 
     /// Visit intersecting, readable entities in `Level.getEntities` query order.
@@ -511,26 +699,28 @@ pub trait NativeEntityRefsCommonGameExt5<'__sg>: crate::game::SideGame<'__sg> {
             .map(|(target, _)| target)
     }
 
-    /// Resolve the handle and return its resident location, if admitted to the level.
-    fn native_entity_target_with_location(
+    /// The server entity read boundary, distinguishing absent handles from parked bodies.
+    fn native_server_entity_target(
         &self,
         entity: EntityRef,
-    ) -> Option<(Target, Option<Location>)> {
-        self.native_entity_target_in(entity, self.dim.key())
+    ) -> Result<Target, EntityReadError> {
+        self.resolve_server_entity_in(entity, self.dim.key())
+            .map(|(target, _)| target)
     }
 
-    /// [`Self::native_entity_target_with_location`] for an entity resident in the open server
-    /// level `dimension`, the one in place or a parked one.
-    fn native_entity_target_in(
+    /// Resolve a server handle in `dimension`, distinguishing stale handles from unavailable ones.
+    fn resolve_server_entity_in(
         &self,
         entity: EntityRef,
         dimension: DimensionKey,
-    ) -> Option<(Target, Option<Location>)> {
-        if crate::game::Side::held_out(self.side_state()).contains(&entity.id())
-            || !self.is_logical_server()
-            || self.native_lifecycle.epoch() != Some(entity.epoch())
+    ) -> Result<(Target, Option<Location>), EntityReadError> {
+        if !self.is_logical_server() {
+            return Err(EntityReadError::Unavailable);
+        }
+        if self.native_lifecycle.epoch() != Some(entity.epoch())
+            || crate::game::Side::held_out(self.side_state()).contains(&entity.id())
         {
-            return None;
+            return Err(EntityReadError::Stale);
         }
         let EntityLookup::Found { location, value } =
             <Self::State as crate::game::side_ops::world::SideOps>::side_server_resident_entity(
@@ -539,25 +729,68 @@ pub trait NativeEntityRefsCommonGameExt5<'__sg>: crate::game::SideGame<'__sg> {
             )
         else {
             // A lifecycle event lends the body without admitting it to the level.
-            let &(_, conn, _) = self
+            let conn = self
                 .player_state
                 .cloning_players
                 .iter()
                 .rev()
-                .find(|&&(_, _, id)| id == entity.id())?;
+                .find(|player| player.entity == Some(entity.id()))
+                .ok_or(EntityReadError::Stale)?
+                .conn;
             return if crate::game::Side::lan_acting(self.side_state()) == Some(conn) {
-                Some((Target::Player, None))
+                Ok((Target::Player, None))
             } else if crate::game::Side::lan_guest_swaps(self.side_state()).contains(&conn) {
-                None
+                Err(EntityReadError::Unavailable)
             } else {
-                Some((Target::Guest(conn), None))
+                Ok((Target::Guest(conn), None))
             };
         };
         // Players are server-wide records. Ordinary body operations retain
         // their existing current-level domain; source membership is global.
-        (matches!(value, Target::Player | Target::Guest(_))
-            || location.owner.dimension == dimension)
-            .then_some((value, Some(location)))
+        if !matches!(value, Target::Player | Target::Guest(_))
+            && location.owner.dimension != dimension
+        {
+            return Err(EntityReadError::Unavailable);
+        }
+        Ok((value, Some(location)))
+    }
+
+    /// Resolve the handle and return its resident location, if admitted to the level.
+    fn native_entity_target_with_location(
+        &self,
+        entity: EntityRef,
+    ) -> Option<(Target, Option<Location>)> {
+        self.resolve_server_entity_in(entity, self.dim.key()).ok()
+    }
+
+    /// Resolve an entity handle for a visitor query on either side.
+    fn native_entity_visit_target(
+        &self,
+        entity: EntityRef,
+    ) -> Result<Target, EntityReadError> {
+        if self.is_logical_server() {
+            self.native_server_entity_target(entity)
+        } else {
+            self.side_native_client_entity_body_target(entity)
+        }
+    }
+
+    /// Whether a world position sits in an accessible entity section.
+    fn entity_position_accessible(&self, pos: [f64; 3]) -> bool {
+        entity_section_accessible(&self.world.chunks, pos)
+    }
+
+    /// Whether `target` is discoverable through `LevelEntityGetter`.
+    fn entity_target_accessible(&self, target: Target) -> bool {
+        match target {
+            Target::Player | Target::Guest(_) => true,
+            Target::DragonPart(_) => self.dragon.as_ref().is_some_and(|d| {
+                self.entity_position_accessible([d.position.x, d.position.y, d.position.z])
+            }),
+            _ => self
+                .side_server_target_position(target)
+                .is_some_and(|pos| self.entity_position_accessible(pos)),
+        }
     }
 
     fn level_ray_trace_nearest_entity(
@@ -638,42 +871,6 @@ pub trait NativeEntityRefsCommonGameExt5<'__sg>: crate::game::SideGame<'__sg> {
         let state = world.block(pos[0], pos[1], pos[2]);
         let name = &self.res.facts().get(state).name;
         Some(self.items().mining_speed(tool, name))
-    }
-
-    /// The supplied state's block-local outline or collision boxes at a level
-    /// position with an empty context. The world is never modified. Returns None
-    /// for a stale or unavailable level. Unloaded neighbors
-    /// read as air; collision errors return no boxes, like `block_collision`.
-    fn level_block_shape(
-        &self,
-        level: LevelRef,
-        state: BlockStateId,
-        pos: [i32; 3],
-        kind: BlockShapeKind,
-    ) -> Option<Vec<[f64; 6]>> {
-        if !self.is_logical_server() {
-            return (self.native_client_level() == Some(level)).then(|| {
-                self.state_shape_boxes(
-                    &self.world,
-                    crate::game::Side::shulkers(self.side_state()),
-                    state,
-                    pos,
-                    kind,
-                )
-            });
-        }
-        if !self.level_handle_current(level) {
-            return None;
-        }
-        let (world, shulkers) = if self.dim.key() == level.dimension() {
-            (&self.world, crate::game::Side::shulkers(self.side_state()))
-        } else {
-            <Self::State as crate::game::side_ops::world::SideOps>::side_parked_block_shapes(
-                self.side_state(),
-                level.dimension(),
-            )?
-        };
-        Some(self.state_shape_boxes(world, shulkers, state, pos, kind))
     }
 
     /// The local face support in an open server level or the current client level,
@@ -777,6 +974,66 @@ pub trait NativeEntityRefsCommonGameExt7<'__sg>: crate::game::SideGame<'__sg> {
         }
         Some(self.target_name(t).plain())
     }
+
+    /// `Entity.getCustomName`: the name `setCustomName` gave the entity, as stored (no click
+    /// events removed), or None.
+    fn entity_custom_name(&self, entity: EntityRef) -> Option<sunrise_game_data::text::Text> {
+        let decode = sunrise_sim::entity_nbt::decode_custom_name_text;
+        if let Some(name) = self.side_client_entity_custom_name(entity) {
+            return name;
+        }
+        match self.native_entity_read_target(entity)? {
+            Target::Player | Target::Guest(_) => None,
+            Target::Mob(id) => {
+                let mob = self.mobs.iter().find(|m| m.id == id)?;
+                mob.custom_name_text.clone().or_else(|| {
+                    mob.custom_name
+                        .as_deref()
+                        .map(sunrise_game_data::text::Text::literal)
+                })
+            }
+            Target::General(id) => self.resident_entities.general.row(id)?.custom_name.clone(),
+            Target::Stand(id) => self
+                .armor_stands
+                .iter()
+                .find(|a| a.id == id)?
+                .custom_name
+                .clone(),
+            Target::Frame(id) => decode(
+                self.item_frames
+                    .iter()
+                    .find(|f| f.id == id)?
+                    .custom_name
+                    .as_ref()?,
+            ),
+            Target::Bolt(id) => decode(
+                self.bolts
+                    .iter()
+                    .find(|b| b.id == id)?
+                    .custom_name
+                    .as_ref()?,
+            ),
+            Target::Cushion(id) => decode(
+                self.cushions
+                    .iter()
+                    .find(|c| c.id == id)?
+                    .custom_name
+                    .as_ref()?,
+            ),
+            Target::Falling(id) => self
+                .falling
+                .iter()
+                .find(|f| f.id == id)
+                .and_then(|f| f.saved.as_ref())
+                .and_then(|saved| saved.1.get("CustomName"))
+                .or_else(|| self.persist_raw(id)?.get("CustomName"))
+                .and_then(decode),
+            t => decode(
+                self.persist_raw(crate::game::commands_common::target_id(t)?)?
+                    .get("CustomName")?,
+            ),
+        }
+    }
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> NativeEntityRefsCommonGameExt7<'__sg> for G {}
 
@@ -787,7 +1044,7 @@ use crate::game::side_ops::player::PlayerSideGameExt as _;
 #[cfg(test)]
 use crate::game::side_ops::world::WorldSideGameExt as _;
 
-use crate::game::tables::GameItems as _;
+use crate::game::tables::{GameItems as _, WorldTablesExt as _};
 
 use crate::game::block_props::BlockPropsGameExt2 as _;
 
@@ -800,3 +1057,4 @@ use crate::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;
 use crate::game::native_state_shapes::NativeStateShapesGameExt1 as _;
 
 use crate::game::remote::general::GeneralGameExt1 as _;
+use crate::game::pick_entity_common::PickEntityCommonGameExt1 as _;

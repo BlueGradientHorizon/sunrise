@@ -55,9 +55,6 @@ pub(in crate::game) mod native_entity_riding;
 #[path = "modding/native_entity_motion.rs"]
 pub mod native_entity_motion;
 
-#[path = "modding/native_config_files.rs"]
-pub mod native_config_files;
-
 #[path = "modding/native_command_reads.rs"]
 pub mod native_command_reads;
 
@@ -96,9 +93,6 @@ pub mod advancements;
 
 #[path = "entities/tnt.rs"]
 pub mod tnt;
-
-#[path = "entities/passengers.rs"]
-pub mod passengers;
 
 #[path = "entities/explosion.rs"]
 pub mod explosion;

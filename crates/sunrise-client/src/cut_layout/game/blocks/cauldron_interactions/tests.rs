@@ -362,7 +362,11 @@ pub(crate) fn setup_common<'g, G: sunrise_gameplay_common::game::SideGame<'g>>(
 ) {
     game.world
         .chunks
-        .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
+        .insert((0, 0), Arc::new({
+            let mut chunk = sunrise_level::chunk::Chunk::empty(0, 0);
+            chunk.lit = true;
+            chunk
+        }));
     let state = sunrise_world::chunk::BlockState {
         name: block.into(),
         properties: level
@@ -709,7 +713,7 @@ fn cauldron_world_close_discards_callbacks_before_failed_preparation() {
         );
         game.native_lifecycle_world_closed();
         game.native_lifecycle
-            .begin_open(mod_api::Authority::IntegratedServer);
+            .begin_open(Some(mod_api::Authority::IntegratedServer));
         assert!(
             game.resolve_parts()
                 .unwrap_err()
@@ -1723,8 +1727,17 @@ fn cauldron_packet_pass_resumes_item_use_once_without_client_prediction() {
         };
         client.set_test_forced_hit(Some(hit));
         let client_swings = client.swings_started;
-        let hold = matches!(case.as_str(), "hold-drop" | "hold-release")
-            .then(|| client.hold_packets().unwrap());
+        let hold_call = || {
+            mod_platform::content::crash::enter_native_mod(mod_api::content::crash::ModCall {
+                id: "packet_cauldron",
+                hook: "client_tick",
+                part: None,
+            })
+        };
+        let hold = matches!(case.as_str(), "hold-drop" | "hold-release").then(|| {
+            let _owner = hold_call();
+            client.hold_packets().unwrap()
+        });
         client.remote_use(mod_api::InteractionAttempt::Press);
         // In the vanilla transport control, paper's air use passes, so the
         // off hand still gets its ordinary block turn even though it's empty.
@@ -1750,8 +1763,10 @@ fn cauldron_packet_pass_resumes_item_use_once_without_client_prediction() {
                 "held block use must not reach the peer"
             );
             if case == "hold-drop" {
+                let _owner = hold_call();
                 client.drop_held(hold).unwrap();
             } else {
+                let _owner = hold_call();
                 assert!(client.release_held(hold).unwrap() > 0);
             }
         }

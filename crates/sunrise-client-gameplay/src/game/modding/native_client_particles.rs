@@ -3,13 +3,9 @@ use crate::game::ClientGame;
 use mod_api::{
     Direction, FireworksRequest, LevelRef, LevelWriteError, client::particles::PositionSource,
 };
-use sunrise_client::particles::Particle;
+use sunrise_client::particles::{Particle, ParticleLevel};
 use sunrise_level::particle_options::ParticleOptions;
 use sunrise_world::registry::BlockStateId;
-
-/// The most explosions one `create_fireworks` request draws (a crafted rocket holds at
-/// most 7 stars; a mod's show can be larger).
-const MAX_FIREWORK_EXPLOSIONS: usize = 256;
 
 fn finite_options(options: &ParticleOptions) -> bool {
     options.color.into_iter().all(f32::is_finite)
@@ -56,8 +52,13 @@ impl ClientGame<'_> {
         // The limiter's roll draws the level random: inside a part's `animate_tick`, the one
         // the part holds as `event.random`.
         self.with_lent_level_random(|game| {
-            game.client.particles.0.add_with_world(
-                Some(&game.common.world),
+            let level = ParticleLevel::new(
+                &game.common.world,
+                game.common.res.facts(),
+                game.common.collision,
+            );
+            game.client.particles.0.add_with(
+                Some(&level),
                 options,
                 at,
                 velocity,
@@ -106,8 +107,8 @@ impl ClientGame<'_> {
     /// `ClientLevel.createFireworks`: queue a firework's explosions in this client's loaded
     /// world through the starter a bursting rocket uses, its blast and twinkle sounds gated by
     /// `audible` as a rocket's by its silence. No entity, no damage, nothing on the server.
-    /// True means queued; false on a server, without a client player/level, for non-finite
-    /// input or for more than [`MAX_FIREWORK_EXPLOSIONS`] explosions. API @API:client_fireworks@.
+    /// True means queued; false on a server, without a client player/level or for non-finite
+    /// input. API @API:client_fireworks@.
     pub(in crate::game) fn create_fireworks(&mut self, request: &FireworksRequest) -> bool {
         use sunrise_gameplay_common::game::api_values::TryIntoEngine;
         if !self.common.native_window()
@@ -117,7 +118,6 @@ impl ClientGame<'_> {
                 .into_iter()
                 .chain(request.velocity)
                 .all(f64::is_finite)
-            || request.explosions.len() > MAX_FIREWORK_EXPLOSIONS
         {
             return false;
         }
@@ -152,10 +152,6 @@ use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCo
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[cfg(test)]
-    use mod_api::{ClientHost, FireworkExplosion, FireworkShape};
-    #[cfg(test)]
-    use sunrise_client::particles::ParticleLevel;
     use sunrise_level::particle_options::ParticleType;
 
     #[test]

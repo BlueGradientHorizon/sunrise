@@ -10,8 +10,6 @@ pub mod wind_burst;
 
 pub mod vanilla_game_event;
 
-pub mod validate_tickets;
-
 pub mod teleport_command;
 
 pub mod spread_players_teleport;
@@ -65,13 +63,9 @@ pub mod player_flyable_fall;
 
 pub mod player_enchant_item;
 
-pub mod player_destroyed_block;
-
 pub mod player_brewed_potion;
 
 pub mod permissions_changed;
-
-pub mod on_item_use_first;
 
 pub mod on_dropped_by_player;
 
@@ -127,8 +121,6 @@ pub mod level_save;
 
 #[path = "cut_merged_item_toss.rs"]
 pub mod item_toss;
-
-pub mod item_smelted;
 
 #[path = "cut_merged_item_picked_up.rs"]
 pub mod item_picked_up;
@@ -227,8 +219,6 @@ pub mod can_continue_sleeping;
 
 pub mod block_use_without_item;
 
-pub mod block_use_item_on;
-
 pub mod baby_entity_spawn;
 
 pub mod arrow_nock;
@@ -242,5 +232,17 @@ pub mod animal_tame;
 pub mod adjacent_block_path_type;
 
 pub mod add_server_reload_listeners;
+
+pub mod anvil_update_server;
+pub mod dragon_fight;
+pub mod gaze_disguise;
+pub mod map_color;
+pub mod menu_removed;
+pub mod server_level_event;
+#[cfg(test)]
+mod server_level_event_tests;
+pub mod sleep_status_announce;
+pub mod sleepers_needed;
+pub mod spawn_cluster_size;
 
 include!("mod_server.rs");

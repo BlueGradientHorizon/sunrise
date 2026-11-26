@@ -15,7 +15,6 @@ use sunrise_gameplay_common::game::lan_actions::MenuOpen;
 use sunrise_gameplay_common::game::lan_actions::RECIPE_CHECK_LIMIT;
 use sunrise_gameplay_common::game::lan_actions::TurnRefused;
 use sunrise_gameplay_common::game::lan_actions::bundle_inventory_slot;
-use sunrise_gameplay_common::game::lan_actions::equipment_changed;
 use sunrise_gameplay_common::game::lan_actions::eye_columns;
 use sunrise_gameplay_common::game::lan_actions::first_spin_target;
 use sunrise_gameplay_common::game::lan_actions::guest_within_entity_range;
@@ -93,6 +92,7 @@ pub mod tick;
 pub mod turn_state;
 #[path = "turns_server.rs"]
 pub(in crate::game) mod turns;
+pub(in crate::game) use interaction::Struck;
 pub(in crate::game) use turn_state::{CombatPlayer, DisplacedPlayer};
 
 include!("shared_server.rs");

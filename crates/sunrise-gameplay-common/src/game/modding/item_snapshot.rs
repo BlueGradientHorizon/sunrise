@@ -48,21 +48,4 @@ impl<'a> super::GameLevel<'a> {
     }
 }
 
-/// Registry access for the remaining generated value conversions.
-pub trait ItemBoundary {
-    fn boundary_items(&self) -> Option<&Items>;
-}
-
-impl ItemBoundary for super::GameLevel<'_> {
-    fn boundary_items(&self) -> Option<&Items> {
-        Some(self.items)
-    }
-}
-
-impl ItemBoundary for super::native_hooks::HitLevel<'_> {
-    fn boundary_items(&self) -> Option<&Items> {
-        self.0.tags()
-    }
-}
-
 use crate::game::side_ops::modapi_modding::ModapiModdingSideGameExt as _;

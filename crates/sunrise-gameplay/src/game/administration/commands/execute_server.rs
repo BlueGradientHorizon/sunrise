@@ -49,6 +49,7 @@ impl crate::game::ServerGame<'_> {
             let dimension = self
                 .server
                 .command_source
+                .as_ref()
                 .map_or(self.common.dim, |s| s.dimension);
             return Ok(flag(
                 dimension == self.common.dim
@@ -59,6 +60,7 @@ impl crate::game::ServerGame<'_> {
             let dimension = self
                 .server
                 .command_source
+                .as_ref()
                 .map_or(self.common.dim, |s| s.dimension);
             return Ok(flag(matches!(c.get("dimension"), Some(Arg::Resource(d))
                 if d.as_str() == dimension.id())));
@@ -367,7 +369,7 @@ impl crate::game::ServerGame<'_> {
             .filter(|t| self.target_position(*t).is_some())
             .map(|t| Source {
                 entity: Some(t),
-                ..s
+                ..s.clone()
             })
             .collect()
     }
@@ -411,7 +413,7 @@ impl crate::game::ServerGame<'_> {
         let mut failure: Option<CommandError> = None;
         for s in sources {
             self.server.exec.0.callback = None;
-            let (keep, count) = match self.with_source(s, |g| g.condition(c, want)) {
+            let (keep, count) = match self.with_source(s.clone(), |g| g.condition(c, want)) {
                 Ok(v) => v,
                 Err(e) => {
                     self.deliver(s.store, false, 0);
@@ -435,8 +437,9 @@ impl crate::game::ServerGame<'_> {
                 } else {
                     Text::translate("commands.execute.conditional.pass", &[])
                 };
+                let store = s.store;
                 self.with_source(s, |g| g.feedback(message));
-                self.deliver(s.store, true, n);
+                self.deliver(store, true, n);
                 total += n;
             } else {
                 self.deliver(s.store, false, 0);
@@ -471,6 +474,7 @@ impl crate::game::ServerGame<'_> {
         let mut sources = vec![
             self.server
                 .command_source
+                .clone()
                 .unwrap_or_else(|| self.player_source()),
         ];
         let mut c = ctx;
@@ -558,7 +562,7 @@ impl crate::game::ServerGame<'_> {
                         // silent and drops its source (`handleError` with
                         // `forked`); one that is not a `CommandSyntaxException`
                         // still reaches `Commands.performCommand`.
-                        let (keep, _) = match self.with_source(s, |g| g.condition(c, want)) {
+                        let (keep, _) = match self.with_source(s.clone(), |g| g.condition(c, want)) {
                             Ok(v) => v,
                             Err(e) if !e.unexpected => continue,
                             Err(e) => return Err(e),
@@ -587,7 +591,7 @@ impl crate::game::ServerGame<'_> {
                     };
                     let mut next = Vec::new();
                     for s in sources {
-                        let new = self.with_source(s, |g| g.modify(word, c, s))?;
+                        let new = self.with_source(s.clone(), |g| g.modify(word, c, s))?;
                         if next.len() + new.len() >= fork_limit {
                             return fork_limit_reached(forked, fork_limit);
                         }
@@ -605,7 +609,7 @@ impl crate::game::ServerGame<'_> {
     /// Run a leaf command and report its outcome to the `store` callbacks.
     pub(in crate::game::server_side) fn run_leaf(&mut self, id: &str, ctx: &Context) -> R<i32> {
         self.server.exec.0.callback = None;
-        let store = self.server.command_source.and_then(|s| s.store);
+        let store = self.server.command_source.as_ref().and_then(|s| s.store);
         let result = self.execute_command(id, ctx);
         let custom = self.server.exec.0.callback.take();
         let outcome = match (&result, custom) {
@@ -703,8 +707,9 @@ impl crate::game::ServerGame<'_> {
     /// level (`CommandSourceStack.getLevel`): a server puts that level in
     /// place for it.
     pub fn with_source<T>(&mut self, source: Source, f: impl FnOnce(&mut Self) -> T) -> T {
+        let dim = source.dimension;
         let previous = self.server.command_source.replace(source);
-        let back = self.enter_command_level(source.dimension);
+        let back = self.enter_command_level(dim);
         let out = f(self);
         if let Some(back) = back {
             self.enter_command_level(back);

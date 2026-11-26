@@ -1,17 +1,13 @@
 //! Pure common block-state, bed, respawn-anchor, and portal-eligibility helpers.
 
-use sunrise_core::{
-    geometry::{Vec3, VoxelShape},
-    position::BlockPos,
-};
+use sunrise_core::geometry::{Vec3, VoxelShape};
 use sunrise_items::items::ItemStack;
-use sunrise_level::collisions::SceneCollisions;
 use sunrise_sim::{
     bed_geometry::{SleepOn, pos_to_bed, shape_top, slept_on},
     motion::PlayerMotion,
     stand_up::bed_forward,
 };
-use sunrise_world::{collision_context::CollisionContext, registry::BlockStateId};
+use sunrise_world::registry::BlockStateId;
 
 impl crate::game::CommonGame<'_> {
     pub fn prop(&self, state: BlockStateId, key: &str) -> Option<String> {
@@ -179,21 +175,12 @@ impl crate::game::CommonGame<'_> {
         world: &sunrise_level::world::World,
         p: [i32; 3],
     ) -> VoxelShape {
-        let state = world.block(p[0], p[1], p[2]);
-        let binding = self.collision;
-        let mut scene = SceneCollisions {
+        crate::game::native_state_shapes::collision_shape(
+            self.collision,
             world,
-            binding,
-            subject: None,
-        };
-        binding
-            .collision_shape_with_context(
-                &mut scene,
-                state,
-                BlockPos::new(p[0], p[1], p[2]),
-                &CollisionContext::empty(false),
-            )
-            .unwrap_or_else(|_| VoxelShape::empty())
+            world.block(p[0], p[1], p[2]),
+            p,
+        )
     }
 }
 

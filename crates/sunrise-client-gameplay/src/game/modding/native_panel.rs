@@ -1115,10 +1115,7 @@ impl crate::game::ClientGame<'_> {
         };
         if let Some(to) = step {
             self.client.panel.page = to;
-            self.client
-                .audio
-                .0
-                .play("minecraft:ui.button.click", None, 0.25, 1.0);
+            self.play_audio("minecraft:ui.button.click", None, 0.25, 1.0);
             return true;
         }
         if let Some((index, stack)) = self.browser_hovered(&layout) {

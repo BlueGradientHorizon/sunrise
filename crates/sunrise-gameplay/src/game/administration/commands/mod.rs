@@ -7,7 +7,7 @@ pub mod data;
 pub(in crate::game) mod difficulty;
 pub(in crate::game) mod display_names;
 #[allow(unused_imports)]
-pub(in crate::game) use data::{place_summoned, strip_finalize_tree};
+pub(in crate::game) use data::place_summoned;
 pub(in crate::game) mod effects;
 pub mod execute;
 pub(in crate::game) mod extra;
@@ -43,6 +43,7 @@ use sunrise_game_data::{
     text::Text,
 };
 use sunrise_protocol::packets::play::{self, Clientbound as C};
+use sunrise_gameplay_common::game::api_values::block_edit::block_predicate_matches_state;
 use sunrise_world::registry::BlockStateId;
 
 #[allow(unused_imports)]
@@ -283,14 +284,7 @@ impl crate::game::ServerGame<'_> {
     /// level back afterwards. `f` does not run when no level holds the
     /// entity.
     pub fn in_target_level<R>(&mut self, t: Target, f: impl FnOnce(&mut Self) -> R) -> Option<R> {
-        let dim = self.resident_target_dimension(t)?;
-        if dim == self.common.dim {
-            return Some(f(self));
-        }
-        let back = self.enter_command_level(dim)?;
-        let result = f(self);
-        self.enter_command_level(back);
-        Some(result)
+        self.with_level_in_place(self.resident_target_dimension(t)?, f)
     }
     /// EntityArgument.getEntities / getPlayers / getEntity / getPlayer.
     pub(in crate::game) fn entities(
@@ -506,6 +500,8 @@ impl crate::game::ServerGame<'_> {
                             row.rotation[1] = entity_pitch(pitch);
                         }
                     }
+                    // Entity.teleportSetPosition ends with setOldPosAndRot.
+                    row.previous_rotation = row.rotation;
                 }
             }
             Target::Guest(_) => {
@@ -619,9 +615,10 @@ impl crate::game::ServerGame<'_> {
                     // Entity.teleport's stopRiding(), as for a mob: a stand a
                     // server seats on a vehicle (a name tag hologram) leaves it.
                     a.vehicle = None;
-                    if let Some(r) = rotation {
-                        Entity::set_rotation(a, r);
-                    }
+                    // TeleportCommand uses the current view angles when rotation
+                    // is omitted; teleportSetPosition still updates head yaw.
+                    let angles = rotation.unwrap_or_else(|| a.rotation());
+                    Entity::set_rotation(a, angles);
                 }
             }
             Target::Boat(id) => {
@@ -674,6 +671,7 @@ impl crate::game::ServerGame<'_> {
             Target::Crystal(id) => {
                 if let Some(c) = self.common.crystals.iter_mut().find(|c| c.id == id) {
                     (c.position, c.fall.0) = (v, true); // performTeleport: setOnGround(true)
+                    c.previous = v;
                 }
             }
             Target::Dragon(id) => {
@@ -851,9 +849,11 @@ impl crate::game::ServerGame<'_> {
                 let Some(Arg::Resource(marker)) = ctx.get("timemarker").cloned() else {
                     return Ok(0);
                 };
-                let Some((m, target)) = (clock == "minecraft:overworld")
-                    .then(|| self.common.ui.markers.get(&marker).copied())
-                    .flatten()
+                let Some((m, target)) = self
+                    .ui
+                    .markers
+                    .get(&(clock.clone(), marker.clone()))
+                    .copied()
                     .and_then(|m| Some((m, m.resolve(total)?)))
                 else {
                     return Err(err(
@@ -943,9 +943,12 @@ impl crate::game::ServerGame<'_> {
                 let Some(Arg::Resource(timeline)) = ctx.get("timeline").cloned() else {
                     return Ok(0);
                 };
-                let Some(period) = (clock == "minecraft:overworld")
-                    .then(|| self.common.ui.timelines.get(&timeline).copied())
-                    .flatten()
+                let Some(period) = self
+                    .ui
+                    .timelines
+                    .get(&timeline)
+                    .filter(|(c, _)| c == &clock)
+                    .map(|(_, period)| *period)
                 else {
                     return Err(err(
                         "commands.time.wrong_timeline_for_clock",
@@ -1001,13 +1004,16 @@ impl crate::game::ServerGame<'_> {
                 true,
             )
         };
-        self.set_weather_parameters(clear, time, raining, thundering);
+        if !self.set_weather_parameters(self.dim.id(), clear, time, raining, thundering) {
+            return Err(err("command.failed", &[]));
+        }
         self.feedback(Text::translate(key, &[]));
         Ok(duration.unwrap_or(-1))
     }
-    pub fn kill_target(&mut self, t: Target) {
+    pub fn kill_target(&mut self, t: Target) -> bool {
         // An entity in another level is killed in the level that holds it.
-        let _ = self.in_target_level(t, |g| g.kill_target_in_level(t));
+        self.in_target_level(t, |g| g.kill_target_in_level(t))
+            .unwrap_or(false)
     }
     pub(in crate::game::server_side) fn cmd_kill(&mut self, ctx: &Context) -> R<i32> {
         let targets = if ctx.get("targets").is_some() {
@@ -1081,13 +1087,15 @@ impl crate::game::ServerGame<'_> {
         b: &BlockInput,
         state: BlockStateId,
     ) -> bool {
-        block_input_matches(
+        block_predicate_matches_state(
             self.common.pack.assets.registry,
             [
                 &self.common.res.items().block_tags,
                 &self.items().block_tags,
             ],
-            b,
+            &b.id,
+            b.tag,
+            b.properties.iter().map(|(k, v)| (k.as_str(), v.as_str())),
             state,
         )
     }
@@ -1265,7 +1273,8 @@ impl crate::game::ServerGame<'_> {
         tag: &sunrise_core::nbt::Tag,
         entity: &mut sunrise_level::containers::BlockEntity,
     ) -> bool {
-        let pending = matches!(entity, sunrise_level::containers::BlockEntity::Chest(_))
+        let block = self.data_block_name([key.0, key.1, key.2]);
+        let pending = sunrise_sim::save::randomizable_container(entity, &block)
             .then(|| sunrise_sim::save::PendingContainerLoot::from_tag(tag))
             .flatten();
         let mut changed = false;
@@ -1276,16 +1285,20 @@ impl crate::game::ServerGame<'_> {
         });
         changed
     }
-    /// Raw NBT inspection overlays metadata without unpacking the inventory.
-    pub(in crate::game::server_side) fn write_pending_loot(
+    /// Raw NBT inspection overlays metadata without unpacking the inventory: a container's
+    /// table, which a slotless mod block entity at `block` never has (its `LootTable` field is
+    /// its own).
+    pub fn write_pending_loot(
         world: &sunrise_level::world::World,
         key: (i32, i32, i32),
+        block: &str,
         tag: &mut sunrise_core::nbt::Tag,
     ) {
-        if !matches!(
-            world.block_entities.get(&key),
-            Some(sunrise_level::containers::BlockEntity::Chest(_))
-        ) {
+        if !world
+            .block_entities
+            .get(&key)
+            .is_some_and(|entity| sunrise_sim::save::randomizable_container(entity, block))
+        {
             return;
         }
         if let sunrise_core::nbt::Tag::Compound(map) = tag {
@@ -1593,9 +1606,8 @@ impl crate::game::ServerGame<'_> {
             }
             return true;
         }
-        let old_level = self.common.experience.level;
         if levels {
-            self.common.experience.level = amount;
+            self.set_experience_levels(amount);
         } else {
             let needed = sunrise_sim::entities::Experience::needed(self.common.experience.level);
             if amount > needed - 1 {
@@ -1603,9 +1615,15 @@ impl crate::game::ServerGame<'_> {
             }
             self.common.experience.progress = amount as f32 / needed as f32;
         }
-        self.native_player_level_changed(old_level);
         true
     }
+    /// `ServerPlayer.setExperienceLevels` writes an absolute level without granting experience.
+    pub(in crate::game::server_side) fn set_experience_levels(&mut self, level: i32) {
+        let old_level = self.common.experience.level;
+        self.common.experience.level = level;
+        self.native_player_level_changed(old_level);
+    }
+
     /// `GameRules.set` as the `/gamerule` command and the management protocol call it: the rule changes, the
     /// world follows it, and a dedicated server tells the event stream (`MinecraftServer.onGameRuleChanged`
     /// tells the management protocol's clients).
@@ -1613,7 +1631,7 @@ impl crate::game::ServerGame<'_> {
         &mut self,
         rule: &gamerules::Rule,
         value: Value,
-        actor: Option<&mod_api::GameRuleActor<'_>>,
+        actor: Option<mod_api::PlayerRef>,
     ) {
         if self.common.ui.rules.set(&rule.name, value) {
             self.game_rule_changed(&rule.name, value, actor);
@@ -2199,10 +2217,12 @@ impl crate::game::ServerGame<'_> {
     }
     /// MessageArgument: `@p`-style selectors in a message become names.
     pub(in crate::game) fn expand_selectors(&mut self, raw: &str) -> Text {
-        let mut out = Text::empty();
+        // MessageArgument uses the literal before the first selector as the component root.
+        let mut out: Option<Text> = None;
+        let mut pending = String::new();
         let mut rest = raw;
         while let Some(at) = rest.find('@') {
-            out.push(&rest[..at]);
+            pending.push_str(&rest[..at]);
             let mut reader = Reader::new(&rest[at..]);
             match (sunrise_command::ArgType::Entity {
                 single: false,
@@ -2212,22 +2232,35 @@ impl crate::game::ServerGame<'_> {
             {
                 Ok(Arg::Entity(s)) if reader.cursor > 1 => {
                     let found = self.select(&s);
+                    let text =
+                        out.get_or_insert_with(|| Text::literal(std::mem::take(&mut pending)));
+                    if !pending.is_empty() {
+                        text.push(std::mem::take(&mut pending));
+                    }
                     for (i, t) in found.iter().enumerate() {
                         if i > 0 {
-                            out.push(", ");
+                            text.push(", ");
                         }
-                        out.push(self.target_name(*t));
+                        text.push(self.target_name(*t));
                     }
                     rest = &rest[at + reader.cursor..];
                 }
                 _ => {
-                    out.push("@");
+                    pending.push('@');
                     rest = &rest[at + 1..];
                 }
             }
         }
-        out.push(rest);
-        out
+        pending.push_str(rest);
+        match out {
+            None => Text::literal(pending),
+            Some(mut text) => {
+                if !pending.is_empty() {
+                    text.push(pending);
+                }
+                text
+            }
+        }
     }
 }
 
@@ -2259,35 +2292,6 @@ pub(in crate::game) fn split_top_level(s: &str, sep: char) -> Vec<&str> {
     }
     out.push(&s[start..]);
     out
-}
-
-/// BlockPredicateArgument test, against the registry and the block tags:
-/// a `#tag` is looked up by its path in `tags[0]`, then by its whole id in
-/// `tags[1]` (as `Game::block_matches` reads them).
-pub(in crate::game) fn block_input_matches(
-    registry: &sunrise_world::registry::BlockRegistry,
-    tags: [&std::collections::HashMap<String, std::collections::HashSet<String>>; 2],
-    b: &BlockInput,
-    state: BlockStateId,
-) -> bool {
-    let Some(s) = registry.state(state) else {
-        return false;
-    };
-    let name_ok = if b.tag {
-        let tag = b.id.trim_start_matches("minecraft:");
-        tags[0]
-            .get(tag)
-            .or_else(|| tags[1].get(&b.id))
-            .is_some_and(|set| {
-                set.contains(&s.name) || set.contains(s.name.trim_start_matches("minecraft:"))
-            })
-    } else {
-        s.name == b.id
-    };
-    name_ok
-        && b.properties
-            .iter()
-            .all(|(k, v)| s.properties.get(k) == Some(v))
 }
 
 /// The names `native_difficulty_changed` hears for a change from `from` to

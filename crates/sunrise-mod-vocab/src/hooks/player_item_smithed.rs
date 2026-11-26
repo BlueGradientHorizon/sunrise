@@ -9,7 +9,6 @@ pub trait Hooks {
     /// menu already holds the used inputs, but before the table sounds.
     /// Server-side.
     #[hook(
-        target = "sunrise_gameplay::game::native_hooks::player_item_smithed::ServerGame<'_>::native_player_item_smithed",
         dispatch = "flat",
         side = "server",
         contract = "listen",

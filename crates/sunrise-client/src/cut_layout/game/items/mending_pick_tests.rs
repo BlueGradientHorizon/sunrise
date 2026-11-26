@@ -23,7 +23,11 @@ fn table(id: &str, slots: &[&str], effect: bool) -> Enchantments {
         .unwrap()
 }
 
-fn repair(id: &str, chest: bool, table: &Enchantments) -> (u32, u32) {
+fn repair(id: &str, chest: bool, table: &Enchantments) -> (u32, i32) {
+    repair_orb(id, chest, table, 7)
+}
+
+fn repair_orb(id: &str, chest: bool, table: &Enchantments, orb: i32) -> (u32, i32) {
     mod_platform::testing::with_mods(Default::default(), || {
         let mut result = None;
         sunrise_gameplay::game::native_entity_refs::tests::with_game(|game| {
@@ -72,7 +76,7 @@ fn repair(id: &str, chest: bool, table: &Enchantments) -> (u32, u32) {
             } else {
                 game.common.inventory[game.common.selected] = Some(stack);
             }
-            let remaining = game.mending(7);
+            let remaining = game.mending(orb);
             let damage = if chest {
                 game.armor[1].as_ref()
             } else {
@@ -93,6 +97,22 @@ fn mending_pick_data_pack_effect() {
         repair("test:patch", false, &table("test:patch", &["any"], true)),
         (6, 0)
     );
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_zero_or_negative_orb_spends_itself_on_a_picked_piece_and_repairs_nothing() {
+    let patch = table("test:patch", &["any"], true);
+    for orb in [0, -5] {
+        assert_eq!(repair_orb("test:patch", false, &patch, orb), (20, 0));
+    }
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_negative_orb_with_no_piece_to_mend_is_handed_back_unchanged() {
+    let head = table("test:patch", &["head"], true);
+    assert_eq!(repair_orb("test:patch", true, &head, -5), (20, -5));
 }
 
 #[test]

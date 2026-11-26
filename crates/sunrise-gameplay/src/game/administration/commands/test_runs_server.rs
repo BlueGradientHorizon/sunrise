@@ -65,10 +65,13 @@ impl crate::game::ServerGame<'_> {
     }
     /// `CommandSourceStack.sendFailure`.
     pub(in crate::game::server_side) fn test_failure(&mut self, message: Text) {
-        if self.server.command_source.is_some_and(|s| s.silent) {
+        if self.server.command_source.as_ref().is_some_and(|s| s.silent) {
             return;
         }
-        self.server_system_message(message.with_color(text::RED));
+        self.send_command_output(
+            mod_api::CommandFeedback::Failure,
+            message.with_color(text::RED),
+        );
     }
     /// `createGameTestInfo`: the test of a test instance block.
     pub(in crate::game::server_side) fn test_info_at(

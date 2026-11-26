@@ -50,7 +50,6 @@ impl Hooks for Registrant {
         let yes = match self.mode.load(Ordering::SeqCst) {
             1 => json!({"type":"testmod:nope"}),
             2 => json!({"type":"testmod:flag","value":"bad"}),
-            3 => json!({"type":"testmod:flag","value":"panic"}),
             _ => json!({"type":"testmod:flag","value":true}),
         };
         if self.mode.load(Ordering::SeqCst) == 5 {
@@ -254,7 +253,6 @@ fn load_conditions_recipe_reload_counts_and_failed_candidates_keep_old_recipes()
                 for (bad, expected) in [
                     (1, "testmod:nope"),
                     (2, "value must be a boolean"),
-                    (3, "handler panicked"),
                     (6, "invalid result"),
                     (7, "ingredient kind testmod:unregistered"),
                     (8, "invalid ingredient: 42"),
@@ -274,11 +272,11 @@ fn load_conditions_recipe_reload_counts_and_failed_candidates_keep_old_recipes()
                         "{error}"
                     );
                     assert!(error.contains(expected), "{error}");
-                    if bad == 2 || bad == 3 {
-                        assert!(error.contains("testmod:flag"), "{error}");
-                    }
-                    if bad == 3 {
-                        assert!(error.contains("mod testmod"), "{error}");
+                    if bad == 2 {
+                        assert!(
+                            error.contains("condition testmod:flag: mod testmod"),
+                            "{error}"
+                        );
                     }
                     assert_eq!(
                         game.recipes()
@@ -378,7 +376,7 @@ fn load_conditions_registration_allows_shared_namespaces() {
             for (name, owner, value) in [("a:y", "a", true), ("a:x", "b", false)] {
                 let (registered_owner, handler) =
                     entries.get(&Identifier::parse(name).unwrap()).unwrap();
-                assert_eq!(registered_owner, owner);
+                assert_eq!(*registered_owner, owner);
                 assert_eq!(handler.test(&json!({"value": value})), Ok(value));
             }
         },
@@ -461,7 +459,7 @@ fn a_panicking_load_condition_registrar_leaves_neither_handlers_nor_errors() {
             let entries = registrar.finish().unwrap();
             assert_eq!(entries.len(), 1);
             let (owner, handler) = &entries[&Identifier::parse("a:shared").unwrap()];
-            assert_eq!(owner, "b");
+            assert_eq!(*owner, "b");
             assert_eq!(handler.test(&json!({"value": false})), Ok(false));
         },
     );
@@ -569,70 +567,553 @@ fn load_conditions_disabled_owner_does_not_execute_registered_handler() {
     );
 }
 
+#[test]
+fn load_condition_panic_disables_only_that_handler_across_generations() {
+    use mod_api::__private::{HookPanicReport, take_hook_panics};
+
+    struct Pair(Arc<AtomicUsize>);
+    #[mod_api::__subscriptions]
+    impl Hooks for Pair {
+        fn register_load_conditions(
+            &self,
+            _: &RegistrationContext,
+            event: &mut RegisterLoadConditionsEvent<'_>,
+        ) {
+            for (id, count) in [
+                ("foreign:faulty", self.0.clone()),
+                ("foreign:healthy", Arc::default()),
+            ] {
+                event
+                    .conditions
+                    .register(Identifier::parse(id).unwrap(), Flag(count, Arc::default()))
+                    .unwrap();
+            }
+        }
+    }
+
+    let count = Arc::new(AtomicUsize::new(0));
+    mod_platform::testing::with_mods(
+        vec![ModEntry::new(
+            "condition_pair",
+            Box::new(Pair(count.clone())),
+        )]
+        .into(),
+        || {
+            let sources = sunrise_gameplay_common::game::mods::ModsState::default();
+            let inventory = sunrise_mod_package::enabled::EnabledMods::default();
+            let load = sunrise_gameplay_common::game::load_conditions::conditions_for_mods(
+                &sources, &inventory,
+            )
+            .unwrap();
+            let faulty = json!({"neoforge:conditions":[{"type":"foreign:faulty","value":"panic"}]});
+            let path = "data/foreign/recipe/faulty.json";
+            assert!(!load.allows_file(&faulty, path));
+            let error = load.check_errors().unwrap_err();
+            assert!(
+                error.contains("data/foreign/recipe/faulty.json: condition foreign:faulty: mod condition_pair: load condition callback panicked")
+                    && error.contains("fixture panic"),
+                "{error}"
+            );
+            assert_eq!(
+                take_hook_panics(),
+                [HookPanicReport {
+                    mod_id: "condition_pair",
+                    hook: "test_load_condition",
+                }]
+            );
+
+            let next = sunrise_gameplay_common::game::load_conditions::conditions_for_mods(
+                &sources, &inventory,
+            )
+            .unwrap();
+            let error = next.allows_file_isolated(&faulty, path).unwrap_err();
+            assert_eq!(
+                error,
+                "condition foreign:faulty: mod condition_pair: load condition owner is disabled"
+            );
+            assert_eq!(count.load(Ordering::SeqCst), 1);
+            assert!(take_hook_panics().is_empty());
+
+            let healthy = json!({"neoforge:conditions":[{"type":"foreign:healthy","value":true}]});
+            assert_eq!(
+                next.allows_file_isolated(&healthy, "healthy.json"),
+                Ok(true)
+            );
+        },
+    );
+}
+
 /// `neoforge:registered` reads the candidate's registries: the built-in entries the prepared root
 /// exports and what this load's packs add, so a new pack entry counts on its first load and one
 /// a pack dropped stops counting, whatever an earlier load put in the game's registries.
 #[test]
 fn registered_reads_the_candidate_packs_not_the_last_load() {
+    use mod_api::{
+        DatapackField, DatapackFieldKind, DatapackRegistryDeclaration, DatapackRegistrySync,
+    };
+    use sunrise_assets::resource_source::ResourceSource;
+    use sunrise_gameplay_common::game::load_conditions::{
+        RegistryView, admit_datapack_registries_for_test as admit_datapack_registries,
+    };
+    use sunrise_level::datapack::{DataPack, DataPacks, DataStore, RegistryFiles, registry_files};
+    use sunrise_world::{conditions::LoadConditions, loot::PackOverlay};
+
     let root = tempfile::tempdir().unwrap();
-    std::fs::write(
-        root.path().join("command-registries.json"),
-        json!({"by_registry": {
-            "minecraft:item": {"ids": ["minecraft:stone"]},
-            "minecraft:worldgen/biome": {"ids": ["minecraft:plains"]}
-        }})
-        .to_string(),
+    let keys = [
+        "test:a_downstream",
+        "test:b_right",
+        "test:c_left",
+        "test:d_first",
+        "test:e_later",
+    ];
+    let declarations = keys.map(|key| DatapackRegistryDeclaration {
+        mod_id: "test".into(),
+        key: key.into(),
+        fields: vec![DatapackField::required("enabled", DatapackFieldKind::Bool)],
+        sync: DatapackRegistrySync::ServerOnly,
+    });
+    let registered = |registry: &str, value: &str| json!({"type": "neoforge:registered", "registry": registry, "value": value});
+    let bound = json!({"type":"neoforge:tag_empty","registry":"test:b_right","tag":"test:bound"});
+    let write = |layer: &str, file: &str, json: Value| {
+        let path = root.path().join(layer).join("data/test").join(file);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, json.to_string()).unwrap();
+    };
+    write(
+        "base",
+        "test/a_downstream/off.json",
+        json!({"enabled":true}),
+    );
+    write(
+        "top",
+        "test/a_downstream/off.json",
+        json!({
+            "enabled":true, "neoforge:conditions":[{"type":"neoforge:never"}]
+        }),
+    );
+    write(
+        "top",
+        "test/a_downstream/answer.json",
+        json!({
+            "enabled":true, "neoforge:conditions":[
+                registered("test:c_left", "test:seed"),
+                {"type":"neoforge:not","value":bound.clone()},
+                registered("minecraft:item", "minecraft:stone")
+            ]
+        }),
+    );
+    write(
+        "top",
+        "test/c_left/seed.json",
+        json!({
+            "enabled":true, "neoforge:conditions":[bound]
+        }),
+    );
+    write(
+        "top",
+        "test/c_left/self.json",
+        json!({
+            "enabled":true, "neoforge:conditions":[registered("test:c_left", "test:seed")]
+        }),
+    );
+    write(
+        "top",
+        "test/b_right/edge.json",
+        json!({
+            "enabled":true, "neoforge:conditions":[registered("test:c_left", "test:seed")]
+        }),
+    );
+    write("top", "test/b_right/holder.json", json!({"enabled":true}));
+    write(
+        "top",
+        "tags/test/b_right/bound.json",
+        json!({"values":["test:holder"]}),
+    );
+    write(
+        "top",
+        "test/d_first/first.json",
+        json!({
+            "enabled":true, "neoforge:conditions":[{"type":"neoforge:or", "values":[
+                {"type":"neoforge:always"}, registered("test:e_later", "test:later")
+            ]}]
+        }),
+    );
+    write(
+        "top",
+        "test/e_later/later.json",
+        json!({
+            "enabled":true, "neoforge:conditions":[
+                {"type":"test:counter"}, registered("test:d_first", "test:first")
+            ]
+        }),
+    );
+    let packs = ["base", "top"].map(|layer| {
+        DataPack::from_source(
+            format!("file/{layer}"),
+            ResourceSource::directory(root.path().join(layer)),
+        )
+    });
+    let calls = Arc::new(AtomicUsize::new(0));
+    let counter = calls.clone();
+    let base = LoadConditions::new([])
+        .with_features(["minecraft:vanilla"])
+        .with_lookup([("test:counter", move |_: &Value| {
+            counter.fetch_add(1, Ordering::SeqCst);
+            Ok(true)
+        })]);
+    let tags: Vec<_> = DataStore::load(&DataPacks::new(&[&packs[0], &packs[1]]))
+        .files
+        .into_iter()
+        .collect();
+    let overlay = PackOverlay {
+        conditions: &base,
+        files: &tags,
+        ..PackOverlay::default()
+    };
+    let view = || RegistryView {
+        ids: [("minecraft:item".into(), ["minecraft:stone".into()].into())].into(),
+        ..RegistryView::default()
+    };
+    let mut first = view();
+    let winners = registry_files(&[&packs[0], &packs[1]], &keys).unwrap();
+    let admitted = admit_datapack_registries(
+        root.path(),
+        &overlay,
+        &mut first,
+        &declarations,
+        &winners,
+        &mut mod_api::__private::NoVanillaValueDecoder,
     )
     .unwrap();
-    let pack = |keys: &[&str]| -> Vec<(String, Vec<Vec<u8>>)> {
-        keys.iter()
-            .map(|key| ((*key).to_owned(), vec![b"{}".to_vec()]))
-            .collect()
-    };
-    let registered = |registry: &str, value: &str| {
-        json!({"neoforge:conditions": [
-            {"type": "neoforge:registered", "registry": registry, "value": value}
-        ]})
-    };
-    let dunes = registered("minecraft:worldgen/biome", "test:dunes");
-    let admission = sunrise_world::conditions::LoadConditions::new([]);
-    let mut files = pack(&["worldgen/biome/test:dunes", "recipe/test:a/b"]);
-    // An entry its own conditions turn off is not in the registry.
-    files.push((
-        "worldgen/biome/test:off".into(),
-        vec![br#"{"neoforge:conditions":[{"type":"neoforge:never"}]}"#.to_vec()],
-    ));
-    let first = sunrise_gameplay_common::game::load_conditions::candidate_registries(
-        root.path(),
-        &files,
-        &admission,
+    assert_eq!(admitted.entries("test:c_left").unwrap(), ["test:seed"]);
+    assert_eq!(admitted.entries("test:b_right").unwrap(), ["test:holder"]);
+    assert_eq!(admitted.entries("test:d_first").unwrap(), ["test:first"]);
+    assert_eq!(admitted.entries("test:e_later").unwrap(), ["test:later"]);
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+    assert_eq!(
+        admitted.entries("test:a_downstream").unwrap(),
+        ["test:answer"]
     );
-    let first = sunrise_world::conditions::LoadConditions::new([]).with_registries(
+
+    let test = |registry, value| json!({"neoforge:conditions":[registered(registry, value)]});
+    assert!(
         first
-            .iter()
-            .map(|(registry, ids)| (registry.as_str(), ids.iter().map(String::as_str))),
+            .conditions(&base)
+            .allows(&test("test:a_downstream", "test:answer"))
     );
-    assert!(
-        first.allows(&dunes),
-        "a pack's new biome counts on its first load"
-    );
-    assert!(first.allows(&registered("minecraft:worldgen/biome", "minecraft:plains")));
-    assert!(!first.allows(&registered("minecraft:worldgen/biome", "test:off")));
-    assert!(first.allows(&registered("minecraft:item", "minecraft:stone")));
-    let next = sunrise_gameplay_common::game::load_conditions::candidate_registries(
+    let mut next = view();
+    admit_datapack_registries(
         root.path(),
-        &pack(&[]),
-        &admission,
+        &overlay,
+        &mut next,
+        &declarations,
+        &RegistryFiles::new(),
+        &mut mod_api::__private::NoVanillaValueDecoder,
+    )
+    .unwrap();
+    let next = next.conditions(&base);
+    assert!(!next.allows(&test("test:a_downstream", "test:answer")));
+    assert!(next.allows(&test("minecraft:item", "minecraft:stone")));
+
+    // Changing only the top file to an unknown condition is an owning-loader
+    // error, never permission to restore the valid lower file.
+    write(
+        "top",
+        "test/a_downstream/off.json",
+        json!({
+            "enabled":true, "neoforge:conditions":[{"type":"test:unknown"}]
+        }),
     );
-    let next = sunrise_world::conditions::LoadConditions::new([]).with_registries(
-        next.iter()
-            .map(|(registry, ids)| (registry.as_str(), ids.iter().map(String::as_str))),
-    );
+    let winners = registry_files(&[&packs[0], &packs[1]], &keys).unwrap();
+    let mut refused = view();
+    let error = admit_datapack_registries(
+        root.path(),
+        &overlay,
+        &mut refused,
+        &declarations,
+        &winners,
+        &mut mod_api::__private::NoVanillaValueDecoder,
+    )
+    .unwrap_err();
     assert!(
-        !next.allows(&dunes),
-        "the pack no longer has it: not registered"
+        error.contains("pack file/top, file data/test/test/a_downstream/off.json"),
+        "{error}"
     );
-    assert!(next.allows(&registered("minecraft:worldgen/biome", "minecraft:plains")));
+    assert!(error.contains("test:unknown"), "{error}");
+    assert!(
+        !refused
+            .conditions(&base)
+            .allows(&test("test:a_downstream", "test:off"))
+    );
+}
+
+#[test]
+fn unsynced_registry_admits_conditional_payloads_and_tags_without_worldgen_limit() {
+    use mod_api::{
+        DatapackField, DatapackFieldKind, DatapackRegistryDeclaration, DatapackRegistrySet,
+        DatapackRegistrySync, DatapackValue,
+    };
+    use sunrise_gameplay_common::game::load_conditions::{
+        RegistryView, admit_datapack_registries_for_test as admit_datapack_registries,
+    };
+    use sunrise_world::loot::PackOverlay;
+    let root = tempfile::tempdir().unwrap();
+    let declaration = DatapackRegistryDeclaration {
+        mod_id: "test".into(),
+        key: "test:spell".into(),
+        sync: DatapackRegistrySync::ServerOnly,
+        fields: vec![
+            DatapackField::required("enabled", DatapackFieldKind::Bool),
+            DatapackField::with_default(
+                "neoforge:conditions",
+                DatapackFieldKind::Bool,
+                DatapackValue::Bool(true),
+            ),
+        ],
+    };
+    assert!(
+        declaration
+            .decode_entry(r#"{"neoforge:value":{"enabled":true}}"#)
+            .is_err()
+    );
+    let winners = [
+        (
+            "inline",
+            br#"{"enabled":true,"neoforge:conditions":[{"type":"neoforge:always"}]}"#.as_slice(),
+        ),
+        (
+            "wrapped",
+            br#"{"neoforge:value":{"enabled":false,"neoforge:conditions":false},"neoforge:conditions":[]}"#
+                .as_slice(),
+        ),
+    ]
+    .into_iter()
+    .map(|(id, bytes)| {
+        (
+            format!("data/test/test/spell/{id}.json"),
+            ("top".to_owned(), bytes.to_vec()),
+        )
+    })
+    .collect();
+    let tagged = (0..8193)
+        .map(|index| {
+            (
+                format!("tags/test:test/spell/t{index}"),
+                vec![br#"{"values":["test:inline"]}"#.to_vec()],
+            )
+        })
+        .collect::<Vec<_>>();
+    let mut view = RegistryView::default();
+    let admitted = admit_datapack_registries(
+        root.path(),
+        &PackOverlay::new(&tagged),
+        &mut view,
+        &[declaration],
+        &winners,
+        &mut mod_api::__private::NoVanillaValueDecoder,
+    )
+    .unwrap();
+    let set = DatapackRegistrySet::from_candidate(admitted);
+    assert_eq!(
+        set.get("test:spell", "test:inline")
+            .unwrap()
+            .get("neoforge:conditions"),
+        Some(&DatapackValue::Bool(true))
+    );
+    assert_eq!(
+        set.get("test:spell", "test:wrapped").unwrap().values,
+        [
+            ("enabled".into(), DatapackValue::Bool(false)),
+            ("neoforge:conditions".into(), DatapackValue::Bool(false)),
+        ]
+    );
+    assert_eq!(view.tags["test:spell"].len(), 8193);
+    assert!(view.tags["test:spell"].contains("test:t8192"));
+}
+
+#[test]
+#[ignore = "daily"]
+fn first_open_conditions_see_static_tags_and_admitted_biomes() {
+    use std::fs;
+    use sunrise_gameplay::game::native_entity_refs::tests::with_game;
+    use sunrise_sim::lan::data::BIOME_REGISTRY;
+
+    // World opening installs part/entity/particle registries and the LAN sync cache.
+    if run_fresh_cases(
+        "game::load_conditions::tests::first_open_conditions_see_static_tags_and_admitted_biomes",
+        "SUNRISE_BIOME_ADMISSION_CHILD",
+        &["world"],
+    ) {
+        return;
+    }
+    let scratch = tempfile::tempdir().unwrap();
+    let pack = scratch.path().join("datapacks/conditions");
+    fs::create_dir_all(&pack).unwrap();
+    fs::write(
+        pack.join("pack.mcmeta"),
+        r#"{"pack":{"description":"conditions","min_format":[121,0],"max_format":[121,0]}}"#,
+    )
+    .unwrap();
+    fs::write(
+        scratch.path().join("datapacks.json"),
+        r#"{"enabled":["vanilla","file/conditions"],"disabled":[]}"#,
+    )
+    .unwrap();
+    let write = |file: &str, value: Value| {
+        let path = pack.join("data/demo").join(file);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, value.to_string()).unwrap();
+    };
+    let registered =
+        |id| json!({"type":"neoforge:registered","registry":"minecraft:worldgen/biome","value":id});
+    let registered_in =
+        |registry, id| json!({"type":"neoforge:registered","registry":registry,"value":id});
+    let tag_empty =
+        |registry, tag| json!({"type":"neoforge:tag_empty","registry":registry,"tag":tag});
+    let not = |condition| json!({"type":"neoforge:not","value":condition});
+    with_game(|game| {
+        write(
+            "worldgen/biome/disabled.json",
+            json!({
+                "neoforge:conditions":[{"type":"neoforge:never"}],
+                "neoforge:value":{}
+            }),
+        );
+        let mut enabled = game
+            .common
+            .res
+            .biomes()
+            .builtin_file("minecraft:plains")
+            .unwrap()
+            .clone();
+        enabled["effects"]["water_color"] = json!([1.0, 0.5, 0.0]);
+        enabled["attributes"]["minecraft:visual/cloud_height"] = json!(123.25);
+        enabled["attributes"]["minecraft:gameplay/increased_fire_burnout"] = json!(true);
+        write(
+            "worldgen/biome/enabled.json",
+            json!({
+                "neoforge:conditions":[not(registered("minecraft:plains"))],
+                "neoforge:value":enabled
+            }),
+        );
+        write(
+            "tags/worldgen/biome/disabled.json",
+            json!({"values":["demo:disabled"]}),
+        );
+        // A pack-added placed feature and its tag, read by downstream conditions.
+        write(
+            "worldgen/placed_feature/added.json",
+            json!({"feature":{"type":"minecraft:no_op","config":{}},"placement":[]}),
+        );
+        write(
+            "tags/worldgen/placed_feature/added_tag.json",
+            json!({"values":["demo:added"]}),
+        );
+        for (id, condition) in [
+            (
+                "placed_feature",
+                registered_in("minecraft:worldgen/placed_feature", "demo:added"),
+            ),
+            (
+                "placed_feature_tag",
+                not(tag_empty(
+                    "minecraft:worldgen/placed_feature",
+                    "demo:added_tag",
+                )),
+            ),
+            (
+                "static_tag",
+                not(tag_empty(
+                    "minecraft:point_of_interest_type",
+                    "minecraft:acquirable_job_site",
+                )),
+            ),
+            ("known_biome", registered("demo:enabled")),
+            ("unknown_biome", registered("demo:disabled")),
+            (
+                "empty_biome_tag",
+                tag_empty("minecraft:worldgen/biome", "demo:disabled"),
+            ),
+        ] {
+            write(
+                &format!("recipe/{id}.json"),
+                json!({
+                    "type":"minecraft:crafting_shapeless", "ingredients":["minecraft:flint"],
+                    "result":{"id":"minecraft:stick"}, "neoforge:conditions":[condition]
+                }),
+            );
+        }
+        let mut request = sunrise_gameplay::game::world_loading::WorldRequest::new(
+            "condition-winners",
+            Some("test"),
+            Some(1),
+            true,
+            None,
+            Arc::new(sunrise_game_data::gamerules::RuleRegistry::vanilla()),
+        )
+        .unwrap();
+        request.save_root = scratch.path().to_owned();
+        game.load_world(request).unwrap();
+        let biomes = game.common.world_biomes_base.as_ref().unwrap();
+        assert!(biomes.contains("demo:enabled"));
+        assert_eq!(biomes.get(biomes.id("demo:enabled")).water, 0xff7f00);
+        let local = biomes.pack_file("demo:enabled").unwrap();
+        assert!(local["features"].is_array());
+        assert_eq!(
+            local["attributes"]["minecraft:gameplay/increased_fire_burnout"],
+            true
+        );
+        assert!(!biomes.contains("demo:disabled"));
+        for id in [
+            "demo:static_tag",
+            "demo:known_biome",
+            "demo:empty_biome_tag",
+            "demo:placed_feature",
+            "demo:placed_feature_tag",
+        ] {
+            assert!(
+                game.recipes().recipe(id).is_some(),
+                "missing admitted recipe {id}"
+            );
+        }
+        assert!(game.recipes().recipe("demo:unknown_biome").is_none());
+        let sync = sunrise_gameplay_common::game::lan_common::sync::sync_data(
+            &game.common.options.resources,
+            &game.common.res.core.item_data,
+            game.items(),
+            &sunrise_gameplay_common::game::pack_files(&game.server.world_tables.0),
+        )
+        .unwrap();
+        let packet = sync
+            .registry_packets(true, &game.server.level_shapes)
+            .into_iter()
+            .find(|packet| packet.registry == BIOME_REGISTRY)
+            .unwrap();
+        assert!(
+            packet
+                .entries
+                .iter()
+                .all(|entry| entry.id != "demo:disabled")
+        );
+        let wire = packet
+            .entries
+            .into_iter()
+            .find(|entry| entry.id == "demo:enabled")
+            .unwrap()
+            .data
+            .unwrap();
+        let wire = sunrise_game_data::scoreboard::tag_to_json(&wire);
+        assert_eq!(wire["effects"]["water_color"], "#ff7f00");
+        assert!(wire.get("neoforge:value").is_none());
+        assert!(wire.get("carvers").is_none());
+        assert!(wire.get("features").is_none());
+        assert_eq!(wire["attributes"]["minecraft:visual/cloud_height"], 123.25);
+        assert!(
+            wire["attributes"]
+                .get("minecraft:gameplay/increased_fire_burnout")
+                .is_none()
+        );
+    });
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;

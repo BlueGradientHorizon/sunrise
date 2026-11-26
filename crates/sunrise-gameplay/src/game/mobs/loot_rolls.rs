@@ -260,7 +260,18 @@ impl ServerGame<'_> {
                 .mobs
                 .iter()
                 .find(|mob| mob.id == id)
-                .map(|mob| sunrise_sim::mobs::drops::loot_entity(mob, None))
+                .map(|mob| {
+                    let vehicle = mob
+                        .extra
+                        .mount
+                        .and_then(|mount| self.common.mobs.iter().find(|other| other.id == mount))
+                        .map(|other| sunrise_world::loot::LootEntity::new(&other.kind.id));
+                    sunrise_sim::mobs::drops::loot_entity_with_variants(
+                        mob,
+                        vehicle,
+                        Some(self.world_variants()),
+                    )
+                })
                 .unwrap_or_else(|| sunrise_world::loot::LootEntity::new(&self.target_type(target))),
             Target::Player => self.killer_loot_entity(None),
             Target::Guest(conn) => self.killer_loot_entity(Some(conn)),
@@ -303,17 +314,26 @@ impl ServerGame<'_> {
             )
         });
         self.caller_loot(origin, None).with(|| {
-            let items = server_world_items!(self);
-            match items.loot_sequence(table) {
-                Some(sequence) => {
-                    let random = self
-                        .server
-                        .rand_sequences
-                        .get(&sequence, self.common.level.seed);
-                    items.roll_loot_table(table, held, this, random)
+            let mut random = self.common.world.random.clone();
+            let mut sequences = std::mem::take(&mut self.server.rand_sequences);
+            let drops = {
+                let level = crate::game::advancements::View(&*self);
+                let read = |predicate: &serde_json::Value, at: [f64; 3]| {
+                    sunrise_sim::advancements::location(predicate, at, &level)
+                };
+                let location = origin.map(|at| sunrise_sim::advancements::loot_location(at, &read));
+                let items = server_world_items!(self);
+                match items.loot_sequence(table) {
+                    Some(sequence) => {
+                        let random = sequences.get(&sequence, self.common.level.seed);
+                        items.roll_loot_table(table, held, this, location, random)
+                    }
+                    None => items.roll_loot_table(table, held, this, location, &mut random),
                 }
-                None => items.roll_loot_table(table, held, this, &mut self.common.world.random),
-            }
+            };
+            self.common.world.random = random;
+            self.server.rand_sequences = sequences;
+            drops
         })
     }
 }

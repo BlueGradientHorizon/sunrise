@@ -4,7 +4,7 @@
 #[cfg(test)]
 mod tests {
     use super::super::native_guest_turn_tests::{place_host, with_guests};
-    use mod_api::{ChunkRef, LevelReadError, LevelRef, PlayerRef, WorldEpoch};
+    use mod_api::{ChunkRef, EntityReadError, LevelReadError, LevelRef, PlayerRef, WorldEpoch};
     use sunrise_gameplay::game::server_side::native_level_players::ControlFlow;
     use sunrise_gameplay_common::game::Dim;
     use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
@@ -16,8 +16,20 @@ mod tests {
         game.enter_level(Dim::Overworld).unwrap();
     }
 
-    fn uuids(players: Option<Vec<PlayerRef>>) -> Option<Vec<u128>> {
-        players.map(|players| players.into_iter().map(PlayerRef::uuid).collect())
+    fn uuids<E>(
+        enumerate: impl FnOnce(
+            &mut dyn FnMut(PlayerRef) -> ControlFlow<()>,
+        ) -> Result<ControlFlow<()>, E>,
+    ) -> Result<Vec<u128>, E> {
+        let mut uuids = Vec::new();
+        assert_eq!(
+            enumerate(&mut |player| {
+                uuids.push(player.uuid());
+                ControlFlow::Continue(())
+            })?,
+            ControlFlow::Continue(())
+        );
+        Ok(uuids)
     }
 
     fn collect_online_players(
@@ -140,9 +152,19 @@ mod tests {
     #[ignore = "daily"]
     fn entity_trackers_are_the_guests_that_hold_the_entity() {
         with_guests(|game| {
-            let _serving = sunrise_gameplay::game::server_side::integrated::tests::install_serving(
-                game, false,
+            use sunrise_client_gameplay::game::client_side::integrated_client::Integrated;
+            use sunrise_gameplay::game::server_side::integrated::Serving;
+
+            let serving = Serving::fixture(0);
+            let mut window = Integrated::stopped_for_test();
+            window.flags = serving.flags.clone();
+            // The tracking pass reads the owner's Entity Distance from the server handle.
+            window.set_distances(
+                game.server.settings.render_distance,
+                game.server.settings.simulation_distance,
+                game.server.settings.entity_distance,
             );
+            game.server.serving = Some(serving);
             place_host(game);
             game.server.next_entity = 100;
             let level = game.level(game.dim.id()).unwrap();
@@ -158,7 +180,11 @@ mod tests {
             }
             let hub = &mut game.server.lan.as_mut().unwrap().hub;
             hub.ticks = 10;
-            hub.guests.update_all(|g| g.max_unacknowledged = 64);
+            hub.guests.update_all(|g| {
+                g.max_unacknowledged = 64;
+                // These fixtures start in play with the origin chunk already sent.
+                g.sent_chunks.insert((0, 0));
+            });
             let id = game
                 .spawn_mob(
                     "minecraft:pig",
@@ -174,14 +200,26 @@ mod tests {
             for _ in 0..10 {
                 game.tick_lan(false);
             }
-            assert_eq!(uuids(game.entity_trackers(pig)), Some(vec![12, 13]));
             assert_eq!(
-                uuids(game.entity_trackers(own)),
-                Some(vec![13]),
+                uuids(|visit| pig.visit_trackers(game, visit)),
+                Ok(vec![12, 13])
+            );
+            let mut first = Vec::new();
+            assert_eq!(
+                pig.visit_trackers(game, &mut |player| {
+                    first.push(player.uuid());
+                    ControlFlow::Break(())
+                }),
+                Ok(ControlFlow::Break(()))
+            );
+            assert_eq!(first, [12]);
+            assert_eq!(
+                uuids(|visit| own.visit_trackers(game, visit)),
+                Ok(vec![13]),
                 "not its own player"
             );
             assert!(
-                !uuids(game.entity_trackers(pig))
+                !uuids(|visit| pig.visit_trackers(game, visit))
                     .unwrap()
                     .contains(&fake.uuid())
             );
@@ -194,10 +232,25 @@ mod tests {
             for _ in 0..10 {
                 game.tick_lan(false);
             }
-            assert_eq!(uuids(game.entity_trackers(pig)), Some(vec![12]));
+            assert_eq!(uuids(|visit| pig.visit_trackers(game, visit)), Ok(vec![12]));
+            let host = game.server.lan.as_mut().unwrap();
+            let last = host.hub.guests.connection_index(12).unwrap();
+            host.hub
+                .guests
+                .update(last, |g| g.position = [900.0, 64.0, 0.0]);
+            for _ in 0..10 {
+                game.tick_lan(false);
+            }
+            assert_eq!(
+                pig.visit_trackers(game, &mut |_| panic!("no tracker should be visited")),
+                Ok(ControlFlow::Continue(()))
+            );
 
             let stale = mod_api::EntityRef::new(WorldEpoch::new(pig.epoch().get() + 1), pig.id());
-            assert_eq!(game.entity_trackers(stale), None);
+            assert_eq!(
+                stale.visit_trackers(game, &mut |_| panic!("stale tracker visit")),
+                Err(EntityReadError::Stale)
+            );
 
             // A live guest in a parked level is not in the level in place: no trackers.
             let host = game.server.lan.as_mut().unwrap();
@@ -206,7 +259,10 @@ mod tests {
                 g.dimension = "minecraft:the_nether".to_owned();
             });
             let parked = game.player(13).unwrap().entity();
-            assert_eq!(game.entity_trackers(parked), None);
+            assert_eq!(
+                parked.visit_trackers(game, &mut |_| panic!("parked tracker visit")),
+                Err(EntityReadError::Unavailable)
+            );
         });
     }
 
@@ -223,8 +279,8 @@ mod tests {
             let level = game.level(game.dim.id()).unwrap();
             let chunk = ChunkRef::new(level, [0, 0]);
             assert_eq!(
-                uuids(chunk.watchers(game)),
-                Some(vec![]),
+                uuids(|visit| chunk.visit_watchers(game, visit)),
+                Ok(vec![]),
                 "nothing sent yet"
             );
             let host = game.server.lan.as_mut().unwrap();
@@ -235,11 +291,23 @@ mod tests {
                     g.sent_chunks.insert((0, 0));
                 });
             }
-            assert_eq!(uuids(chunk.watchers(game)), Some(vec![12, 13]));
+            assert_eq!(
+                uuids(|visit| chunk.visit_watchers(game, visit)),
+                Ok(vec![12, 13])
+            );
+            let mut first = Vec::new();
+            assert_eq!(
+                chunk.visit_watchers(game, &mut |player| {
+                    first.push(player.uuid());
+                    ControlFlow::Break(())
+                }),
+                Ok(ControlFlow::Break(()))
+            );
+            assert_eq!(first, [12]);
             game.as_guest(12, |game| {
                 assert_eq!(
-                    uuids(chunk.watchers(game)),
-                    Some(vec![12, 13]),
+                    uuids(|visit| chunk.visit_watchers(game, visit)),
+                    Ok(vec![12, 13]),
                     "the acting guest is named once, by its own UUID"
                 );
             })
@@ -252,15 +320,15 @@ mod tests {
             assert_eq!(host.hub.guests[far].view_distance, 8);
             host.hub.guests.update(far, |g| g.center = Some((9, 0)));
             assert_eq!(
-                uuids(chunk.watchers(game)),
-                Some(vec![12, 13]),
+                uuids(|visit| chunk.visit_watchers(game, visit)),
+                Ok(vec![12, 13]),
                 "7 past the buffer"
             );
             let host = game.server.lan.as_mut().unwrap();
             host.hub.guests.update(far, |g| g.center = Some((10, 0)));
             assert_eq!(
-                uuids(chunk.watchers(game)),
-                Some(vec![12]),
+                uuids(|visit| chunk.visit_watchers(game, visit)),
+                Ok(vec![12]),
                 "8 past the buffer"
             );
 
@@ -270,24 +338,29 @@ mod tests {
                 g.dimension = "minecraft:the_nether".to_owned();
             });
             assert_eq!(
-                uuids(chunk.watchers(game)),
-                Some(vec![]),
+                uuids(|visit| chunk.visit_watchers(game, visit)),
+                Ok(vec![]),
                 "another level's chunk"
             );
             let nether = game.level("minecraft:the_nether").unwrap();
             assert_eq!(
-                uuids(ChunkRef::new(nether, [0, 0]).watchers(game)),
-                Some(vec![12])
+                uuids(|visit| ChunkRef::new(nether, [0, 0]).visit_watchers(game, visit)),
+                Ok(vec![12])
             );
 
             let stale = ChunkRef::new(
                 LevelRef::new(WorldEpoch::new(level.epoch().get() + 1), level.dimension()),
                 [0, 0],
             );
-            assert_eq!(stale.watchers(game), None);
             assert_eq!(
-                uuids(ChunkRef::new(level, [i32::MIN, i32::MAX]).watchers(game)),
-                Some(vec![])
+                stale.visit_watchers(game, &mut |_| panic!("stale watcher visit")),
+                Err(LevelReadError::Stale)
+            );
+            assert_eq!(
+                uuids(
+                    |visit| ChunkRef::new(level, [i32::MIN, i32::MAX]).visit_watchers(game, visit)
+                ),
+                Ok(vec![])
             );
         });
     }

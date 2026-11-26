@@ -610,4 +610,60 @@ mod tests {
         let map = &maps["minecraft:block"]["mymod:hardness"];
         assert_eq!(map.get("minecraft:oak_log"), Some(&json!(2)));
     }
+
+    #[test]
+    fn empty_loaded_biome_registry_rejects_data_map_targets() {
+        let biome_registry = sunrise_sim::lan::data::BIOME_REGISTRY;
+        let command_biomes = [String::from("minecraft:plains")];
+        let items = sunrise_items::items::Items::empty();
+        let f = files(&[(
+            "data_maps/mymod:worldgen/biome/climate",
+            &[json!({"values": {
+                "minecraft:plains": 1,
+                "test:marsh": 2
+            }})],
+        )]);
+        let overlay = sunrise_world::loot::PackOverlay {
+            files: &f,
+            ..sunrise_world::loot::PackOverlay::default()
+        };
+
+        // An explicitly empty loaded biome table must reject every target even when
+        // the command registry still lists biome ids.
+        let empty = WorldRegistries::new(
+            [(biome_registry, command_biomes.as_slice())],
+            None,
+            &items,
+            std::path::Path::new("unused"),
+            &overlay,
+        )
+        .with_biome_keys(&[]);
+        assert!(!empty.contains(biome_registry, "minecraft:plains"));
+        let maps = DataMaps::load(&[ty("mymod:climate", biome_registry)], &overlay, &empty);
+        assert_eq!(
+            maps.value(biome_registry, "mymod:climate", "minecraft:plains"),
+            Ok(None)
+        );
+        assert_eq!(maps.entries(biome_registry, "mymod:climate"), Ok(&[][..]));
+
+        // Authoritative loaded biome keys override the command registry for populated tables too.
+        let loaded_keys = [mod_api::BiomeKey::parse("test:marsh").unwrap()];
+        let loaded = WorldRegistries::new(
+            [(biome_registry, command_biomes.as_slice())],
+            None,
+            &items,
+            std::path::Path::new("unused"),
+            &overlay,
+        )
+        .with_biome_keys(&loaded_keys);
+        let maps = DataMaps::load(&[ty("mymod:climate", biome_registry)], &overlay, &loaded);
+        assert_eq!(
+            maps.value(biome_registry, "mymod:climate", "minecraft:plains"),
+            Ok(None)
+        );
+        assert_eq!(
+            maps.value(biome_registry, "mymod:climate", "test:marsh"),
+            Ok(Some(&Tag::Int(2)))
+        );
+    }
 }

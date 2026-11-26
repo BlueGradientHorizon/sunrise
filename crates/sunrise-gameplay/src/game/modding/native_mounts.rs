@@ -3,6 +3,7 @@
 //! `native_may_leave` first, and does nothing when a mod says no.
 use super::commands::Target;
 use crate::game::native_hooks::mob_kind;
+use sunrise_gameplay_common::game::transactions::entities::EntityRemovalGameExt as _;
 
 impl crate::game::ServerGame<'_> {
     pub(in crate::game::server_side) fn retire_vehicle_registration(&self, target: Target) {
@@ -28,7 +29,7 @@ impl crate::game::ServerGame<'_> {
         target: Target,
         effects: impl FnOnce(&mut Self),
     ) -> Option<()> {
-        if self.common.target_removed(&target)
+        if self.target_removed(&target)
             || !self
                 .common
                 .persist

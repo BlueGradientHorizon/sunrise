@@ -17,7 +17,6 @@ pub trait Hooks {
     /// listener writes. A panicking listener is caught and completes the take with the
     /// initial experience and cleared inputs. Server-side.
     #[hook(
-        target = "sunrise_gameplay::game::native_hooks::grindstone_take::ServerGame<'_>::native_grindstone_take",
         dispatch = "flat",
         side = "server",
         contract = "cancel",

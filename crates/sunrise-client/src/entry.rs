@@ -7,7 +7,17 @@ mod crash_retention;
 mod sunrise_look;
 use crate::{crash, game, logging};
 use sunrise_level::runtime_env::runtime_environment;
+use mod_api::__private::game::TicketActivation;
+use std::sync::OnceLock;
 use sunrise_mod_package::selection::{Argument, LaunchArguments};
+
+static TICKET_ACTIVATION: OnceLock<TicketActivation> = OnceLock::new();
+
+pub(crate) fn ticket_activation() -> &'static TicketActivation {
+    TICKET_ACTIVATION
+        .get()
+        .expect("startup prepared ticket activation")
+}
 
 /// Validated startup state. No native hooks or workers may run before prepare returns.
 pub struct Startup {
@@ -43,6 +53,13 @@ pub fn prepare() -> Startup {
         std::process::exit(0);
     };
     let capture = sunrise_mod_package::holder::acquire(&launch);
+    // Native libraries (including their initializers and hook factories) have not run yet.
+    TICKET_ACTIVATION.get_or_init(|| {
+        TicketActivation::take_for_startup().unwrap_or_else(|| {
+            eprintln!("Sunrise: refusing startup because ticket activation is already owned");
+            std::process::exit(game::exit_code::ERROR);
+        })
+    });
     Startup {
         launch,
         options,
@@ -187,6 +204,7 @@ pub fn start(
         sunrise_world::native_worldgen_hooks::NativeWorldgenHooks {
             alter_ground: sunrise_gameplay_common::game::native_ground::alter_ground,
             on_tree_grow: crate::game::native_tree_grow::on_tree_grow,
+            mirror: sunrise_gameplay_common::game::native_rotate::mirror,
             rotate: sunrise_gameplay_common::game::native_rotate::rotate,
             feature: crate::game::native_worldgen_parts::feature,
         },
@@ -204,7 +222,17 @@ pub fn start(
     }
     install_client_hooks();
     raise_open_file_limit();
-    if let Err(error) = game::run_with(options, native) {
+    // `Minecraft.run` catches the throwable and then calls `crash`: the panic hook only records,
+    // and the report is built here, after the unwind has released the panicking code's locks.
+    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        game::run_with(options, native)
+    }))
+    .unwrap_or_else(|payload| {
+        crash::report_main_panic(&*payload);
+        logging::flush();
+        std::process::exit(101)
+    });
+    if let Err(error) = outcome {
         // A bad command line is the caller's mistake, not a crash: no report.
         let missing_mods = game::dedicated::is_missing_mods_refusal(error.as_ref());
         let usage = error.is::<game::UsageError>() || missing_mods;

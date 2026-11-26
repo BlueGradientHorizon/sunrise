@@ -21,6 +21,7 @@ pub(crate) mod tests {
     use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
     use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt6;
     use sunrise_gameplay_common::game::native_living_body::NativeLivingBodyGameExt4;
+    use sunrise_gameplay_common::game::test_fixtures::fixture_resident_column;
     use sunrise_gameplay_common::game_side;
     use sunrise_sim::entities::ArmorStand;
     use sunrise_sim::mobs::{Mob, villager};
@@ -28,6 +29,7 @@ pub(crate) mod tests {
 
     /// A live cow `id` at `(5.5, 64, 5.5)`, with its handle.
     fn cow(game: &mut sunrise_gameplay::game::ServerGame<'_>, id: u32) -> LivingRef {
+        fixture_resident_column(&mut game.world, (0, 0));
         let kind = game.res.mob_types().get("minecraft:cow").unwrap().clone();
         game.mobs
             .push(Mob::new(id, kind, Vec3::new(5.5, 64.0, 5.5), 0.0));
@@ -174,7 +176,8 @@ pub(crate) mod tests {
                 event: &mut EntityJoinLevelEvent<'_>,
             ) -> Flow {
                 if event.kind == "minecraft:zombie"
-                    && let Some(er) = mod_api::prelude::EntitiesHost::entity(&*host, event.entity)
+                    && let Some(er) =
+                        mod_api::prelude::EntitiesHost::entity(&*host, event.subject.id())
                     && let Some(m) = mod_api::prelude::MobsHost::mob(&*host, er)
                 {
                     let _ = m.set_persistence_required(&mut *host);
@@ -188,6 +191,7 @@ pub(crate) mod tests {
             vec![ModEntry::new("join_persist", Box::new(Joiner))].into(),
             || {
                 with_game(|game| {
+                    fixture_resident_column(&mut game.world, (0, 0));
                     let before = game.mobs.len();
                     game.spawn_mob_spawned(
                         "zombie",
@@ -258,7 +262,7 @@ pub(crate) mod tests {
             seed: 0,
             max_players: 2,
             integrated: !dedicated,
-            levels: game.server.level_shapes,
+            levels: game.server.level_shapes.clone(),
             level_seeds: game.server.levels.0.runtime.seeds(),
         };
         game.lan_host(settings, net, config).unwrap();
@@ -642,7 +646,7 @@ pub(crate) mod tests {
         sleeping: bool,
         jumping: Option<bool>,
         bed: Option<[i32; 3]>,
-        timer: u32,
+        timer: i32,
         spawn: Option<Vec3>,
         woke_from: Option<[i32; 3]>,
         awaiting_teleport: Option<(i32, [f64; 3])>,
@@ -993,6 +997,70 @@ pub(crate) mod tests {
                 (true, Some(BlockPos::new(5, 64, 5)))
             );
         });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn a_block_part_decides_whether_a_block_is_scaffolding_to_a_sneaking_player() {
+        // The fixture's parts: a ladder is scaffolding, and scaffolding is not.
+        mod_platform::__private::part_tests::scaffolding_game_thread();
+        crate::entry::install_client_hooks();
+        with_game(|game| {
+            game.world.chunks.insert(
+                (0, 0),
+                std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
+            );
+            let registry = game.pack.assets.registry;
+            let state = |name: &str| registry.default_state(name).unwrap();
+            let (ladder, vine, scaffolding) = (
+                state("minecraft:ladder"),
+                state("minecraft:vine"),
+                state("minecraft:scaffolding"),
+            );
+            // A sneaking player moving down at -0.3 in the block at (5, 64, 5): the climb
+            // limits it to -0.15, and the slide stops (0.0) unless the block is scaffolding.
+            // A ladder with the part keeps sliding, as in real scaffolding.
+            game.world.set(5, 64, 5, ladder).unwrap();
+            assert_eq!(sneaking_slide(game), -0.15f32 as f64);
+            // A vine with no part stops the slide as before.
+            game.world.set(5, 64, 5, vine).unwrap();
+            assert_eq!(sneaking_slide(game), 0.0);
+            // Scaffolding whose part answers false stops it too.
+            game.world.set(5, 64, 5, scaffolding).unwrap();
+            assert_eq!(sneaking_slide(game), 0.0);
+        });
+    }
+
+    /// The vertical velocity left to a sneaking player at `(5.5, 64, 5.5)` falling at -0.3
+    /// after `handle_on_climbable`.
+    fn sneaking_slide(game: &mut sunrise_gameplay::game::ServerGame<'_>) -> f64 {
+        let mut player = PlayerMotion::new(game.motion, Vec3::new(5.5, 64.0, 5.5)).unwrap();
+        player.shift_key_down = true;
+        use sunrise_gameplay_common::game::side_ops::world::WorldSideGameExt as _;
+        let meta = game.side_game_side_meta();
+        let side = game_side!(
+            game.common,
+            meta,
+            game.common.level.enabled_features.as_arc(),
+            meta.2.then(|| game.common.res.items())
+        );
+        let mut world = MotionWorld {
+            side: &side,
+            entities: &[],
+            player: &mut player,
+            scene: &mut game.common.world,
+            assets: &game.common.pack.assets,
+            collision_binding: game.common.collision,
+            resources: game.common.motion,
+            health: &game.common.health_resources,
+            tag_items: Some(game.common.res.items()),
+            loop_context: &game.common.loop_context,
+            damage_hooks: &game.common.damage_hooks,
+            block_registries: Some(&game.common.ui.registries),
+        };
+        sunrise_world::living_air::handle_on_climbable(&mut world, Vec3::new(0.0, -0.3, 0.0))
+            .unwrap()
+            .y
     }
 
     /// Whether the player, as entity `id` at `(5.5, 64, 5.5)`, climbs by its own motion, and the

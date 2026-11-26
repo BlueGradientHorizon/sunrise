@@ -342,7 +342,7 @@ impl crate::game::ClientGame<'_> {
             .find(|(_, x, y, bw)| ui::hovered(self.client.cursor, *x, *y, *bw, 20.0))
             .map(|b| b.0);
         if hit.is_some() {
-            self.client.audio.0.play_button_click();
+            self.play_audio_button_click();
         }
         match hit {
             Some(Button::Output) => {

@@ -12,7 +12,6 @@ pub trait Hooks {
     /// of the way down the screen; not under F1. Client-side. A bar the API can't carry (a
     /// server's name text the API refuses) isn't heard and is drawn as vanilla draws it.
     #[hook(
-        target = "sunrise_client_gameplay::game::native_hooks::customize_boss_event_progress::ClientGame<'_>::native_customize_boss_event_progress",
         receiver = "read",
         dispatch = "flat",
         side = "client",

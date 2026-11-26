@@ -11,7 +11,6 @@ pub trait Hooks {
     /// as in vanilla, only when vanilla found no problem. After it,
     /// `player_bed_enter` still fires and may cancel. Server-side.
     #[hook(
-        target = "sunrise_gameplay::game::native_hooks::can_player_sleep::ServerGame<'_>::native_can_player_sleep",
         dispatch = "flat",
         side = "server",
         contract = "listen",

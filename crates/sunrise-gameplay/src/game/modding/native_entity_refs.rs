@@ -9,6 +9,8 @@
 //! it shows. The entities are those of the level in place (the one a hook runs
 //! in) and the server's players, whatever their level.
 use sunrise_gameplay_common::game::GameGameExt3;
+#[path = "native_entity_refs/death_loot.rs"]
+pub(in crate::game) mod death_loot;
 #[path = "native_entity_refs/dragon_query.rs"]
 pub(in crate::game) mod dragon_query;
 #[path = "native_entity_refs/save_lending.rs"]
@@ -20,10 +22,11 @@ use core::ops::ControlFlow;
 #[allow(unused_imports)]
 use mod_api::{
     BlockFace, BlockShapeKind, BlockUpdateFlags, ClipBlock, ClipFluid, ClipHit, DimensionKey,
-    EntityRayHit, EntityRef, LevelReadError, LevelRef, NeighbourUpdate,
+    EntityRayHit, EntityRef, LevelReadError, LevelRef, LevelWriteError, NeighbourUpdate,
 };
 #[allow(unused_imports)]
 use sunrise_core::geometry::{Aabb, Vec3};
+use sunrise_gameplay_common::game::commands_common::target_id;
 #[allow(unused_imports)]
 use sunrise_gameplay_common::game::transactions::After;
 #[allow(unused_imports)]
@@ -35,6 +38,18 @@ use sunrise_sim::join_seq::{
 };
 #[allow(unused_imports)]
 use sunrise_world::registry::BlockStateId;
+
+pub(in crate::game) fn entity_section_accessible(
+    chunks: &sunrise_level::chunk_map::ChunkMap,
+    [x, _, z]: [f64; 3],
+) -> bool {
+    x.is_finite()
+        && z.is_finite()
+        && chunks.contains_key(&(
+            sunrise_core::mth::floor(x) >> 4,
+            sunrise_core::mth::floor(z) >> 4,
+        ))
+}
 
 pub(in crate::game::server_side) fn list_query_body<T: Entity + Joined, const DIRECT: bool>(
     list: &JoinList<T, DIRECT>,
@@ -64,25 +79,17 @@ impl crate::game::ServerGame<'_> {
                 .borrow_mut()
                 .level_uuid_candidate(dimension, uuid, after)?;
             let entity = EntityRef::new(level.epoch(), id.get());
-            if self
-                .native_entity_target_in(entity, dimension)
-                .is_some_and(|(target, _)| self.resident_source_target_visible(dimension, target))
+            // The level in place asks that the entity's section is accessible, as `entity` does;
+            // a parked level's sections are not read here.
+            if let Ok((target, _)) = self.resolve_server_entity_in(entity, dimension)
+                && self.resident_source_target_visible(dimension, target)
+                && (dimension != self.dim.key() || self.entity_target_accessible(target))
             {
                 return Some(entity);
             }
             // A queued departure can overlap a replacement with the same UUID.
             after = Some(id);
         }
-    }
-    /// Loaded server levels, in vanilla dimension order. Empty without a server world.
-    pub fn native_list_levels(&self) -> Vec<LevelRef> {
-        if !self.common.is_logical_server() || self.common.native_lifecycle.epoch().is_none() {
-            return Vec::new();
-        }
-        self.loaded_dims()
-            .into_iter()
-            .filter_map(|dim| self.level(dim.id()))
-            .collect()
     }
     pub(in crate::game::server_side) fn level_entity_candidates(
         &self,
@@ -107,7 +114,7 @@ impl crate::game::ServerGame<'_> {
                 .removals
                 .iter()
                 .chain(self.common.persist.destroying_vehicles.iter())
-                .any(|target| matches!(*target, Target::Boat(n) | Target::Cart(n) if n == *id))
+                .any(|target| target_id(*target) == Some(*id))
         })
         .map(move |id| EntityRef::new(level.epoch(), id))
     }
@@ -129,7 +136,11 @@ impl crate::game::ServerGame<'_> {
         }
 
         for entity in self.level_entity_candidates(level) {
-            if self.native_entity_target(entity).is_some() && visit(entity).is_break() {
+            if self
+                .native_entity_target(entity)
+                .is_some_and(|target| self.entity_target_accessible(target))
+                && visit(entity).is_break()
+            {
                 return Ok(ControlFlow::Break(()));
             }
         }
@@ -174,6 +185,27 @@ impl crate::game::ServerGame<'_> {
         }
     }
 
+    pub(in crate::game) fn entity_position_accessible(&self, pos: [f64; 3]) -> bool {
+        entity_section_accessible(&self.common.world.chunks, pos)
+    }
+
+    /// Whether `target` is discoverable through `LevelEntityGetter`
+    /// (`PersistentEntitySectionManager.visibleEntityStorage` /
+    /// `EntitySectionStorage.getEntities`): players are always ticking
+    /// (`Player.isAlwaysTicking`), while other entities require an accessible
+    /// section.
+    pub(in crate::game) fn entity_target_accessible(&self, target: Target) -> bool {
+        match target {
+            Target::Player | Target::Guest(_) => true,
+            Target::DragonPart(_) => self.common.dragon.as_ref().is_some_and(|d| {
+                self.entity_position_accessible([d.position.x, d.position.y, d.position.z])
+            }),
+            _ => self
+                .target_position(target)
+                .is_some_and(|pos| self.entity_position_accessible(pos)),
+        }
+    }
+
     /// Visit intersecting, readable entities in `ServerLevel.getEntities` query order.
     pub(in crate::game) fn server_level_visit_entities_in(
         &self,
@@ -209,6 +241,7 @@ impl crate::game::ServerGame<'_> {
             let (_, (_, id)) = key;
             let entity = EntityRef::new(level.epoch(), id.get());
             if let Some((target, Some(at))) = self.native_entity_target_with_location(entity)
+                && self.entity_target_accessible(target)
                 && self
                     .query_body(target, at.join, true)
                     .is_some_and(|body| bounds.intersects(body))
@@ -219,7 +252,10 @@ impl crate::game::ServerGame<'_> {
         }
         Ok(self.visit_dragon_query_parts(bounds, &mut |id| {
             let entity = EntityRef::new(level.epoch(), id);
-            if self.native_entity_target(entity).is_some() {
+            if self
+                .native_entity_target(entity)
+                .is_some_and(|target| self.entity_target_accessible(target))
+            {
                 visit(entity)
             } else {
                 ControlFlow::Continue(())
@@ -436,6 +472,38 @@ impl crate::game::ServerGame<'_> {
         }
         Ok(self.journal_set_connection_group(pos, group))
     }
+
+    pub(in crate::game) fn level_set_block_property(
+        &mut self,
+        level: LevelRef,
+        pos: [i32; 3],
+        key: &str,
+        value: &str,
+        flags: BlockUpdateFlags,
+    ) -> Result<bool, LevelWriteError> {
+        self.with_server_level_mut(
+            level,
+            LevelWriteError::Unavailable,
+            LevelWriteError::Stale,
+            Some(LevelWriteError::InTransaction),
+            |game| {
+                if !game.native_level_write_position(level, pos)? {
+                    return Ok(false);
+                }
+                let [x, y, z] = pos;
+                let state = game.world.block(x, y, z);
+                let Some(id) = sunrise_gameplay_common::game::native_hooks::property_change(
+                    game.pack.assets.registry,
+                    state,
+                    key,
+                    value,
+                ) else {
+                    return Ok(false);
+                };
+                game.level_set_block(level, pos, id, flags)
+            },
+        )
+    }
     /// `Block.updateFromNeighbourShapes` for `state` at `pos`, nothing written: the state
     /// fitted to the loaded blocks around it. A position that is not loaded or outside the
     /// world gives `state` back.
@@ -512,6 +580,25 @@ impl crate::game::ServerGame<'_> {
         let _ = self.server_process_level_events();
         Ok(true)
     }
+    /// Loaded server levels in `MinecraftServer.getAllLevels` dimension order.
+    pub(in crate::game) fn native_visit_levels(
+        &self,
+        visit: &mut dyn FnMut(LevelRef) -> ControlFlow<()>,
+    ) -> ControlFlow<()> {
+        let Some(epoch) = self
+            .common
+            .native_lifecycle
+            .epoch()
+            .filter(|_| self.common.is_logical_server())
+        else {
+            return ControlFlow::Continue(());
+        };
+        self.loaded_level_order()
+            .into_iter()
+            .map(|dim| self.level_ref(epoch, dim.key()))
+            .try_for_each(visit)
+    }
+
     /// Destroy a block in the level in place (`Level.destroyBlock`), optionally dropping
     /// resources with `tool` (None is an empty hand). With `collect`, return the dropped
     /// stacks without spawning their item entities; otherwise return an empty list after
@@ -525,24 +612,115 @@ impl crate::game::ServerGame<'_> {
         pos: [i32; 3],
         drop: bool,
         tool: Option<&ItemStack>,
+        breaker: Option<EntityRef>,
         collect: bool,
     ) -> Option<Vec<ItemStack>> {
-        // Loot and break effects cannot be rolled back by the level journal.
-        if self.has_open_transaction()
-            || !self.native_level_write_allowed(level, pos)
-            || self.common.dim.key() != level.dimension()
+        if !self.native_level_write_position(level, pos).ok()? {
+            return None;
+        }
+        if let Some(entity) = breaker
+            && (self.native_entity_target(entity).is_none() || !self.native_entity_here(entity))
         {
             return None;
         }
-        let at = sunrise_core::position::BlockPos::new(pos[0], pos[1], pos[2]);
+        let [x, y, z] = pos;
+        let at = sunrise_core::position::BlockPos::new(x, y, z);
+        if let Some(mut write) = super::journal_level_write::JournalLevelWrite::new(self, level) {
+            return write.destroy_block(pos, drop, tool, breaker, collect);
+        }
         let (changed, drops) = self.with_level(|b, level, ticks| {
             level.drop_tool = Some(((pos[0], pos[1], pos[2]), tool.cloned()));
+            level.drop_entity = breaker;
+            level.drop_breaker_at = breaker.map(|_| at);
             level.drop_into = collect.then(Vec::new);
             let changed = b.destroy_block(level, ticks, at, drop);
             (changed, level.drop_into.take().unwrap_or_default())
         });
+        let destroyed_state = if changed
+            && let Some(&sunrise_world::level::LevelEvent::GameEvent {
+                pos: event_pos,
+                event: "minecraft:block_destroy",
+                state: Some(state),
+            }) = self.common.level_events.last()
+            && event_pos == at
+        {
+            self.common.level_events.pop();
+            Some(state)
+        } else {
+            None
+        };
         let _ = self.server_process_level_events();
+        if let Some(state) = destroyed_state {
+            self.post_destroy_block_game_event(pos, state, breaker);
+        }
         changed.then_some(drops)
+    }
+
+    /// `Block.dropResources` of the block at `pos`, the block left in place: the loot with
+    /// `tool` and `breaker`, the block entity's contribution, the `block_drops` hook and the
+    /// experience, under `doTileDrops`, as `level_destroy_block` drops them, without the break
+    /// particles, the removal or the `block_destroy` game event. With `collect`, the stacks
+    /// come back instead of spawning. None for air and where `level_destroy_block` refuses.
+    pub fn level_drop_resources(
+        &mut self,
+        level: LevelRef,
+        pos: [i32; 3],
+        tool: Option<&ItemStack>,
+        breaker: Option<EntityRef>,
+        collect: bool,
+    ) -> Option<Vec<ItemStack>> {
+        if !self.native_level_write_position(level, pos).ok()? {
+            return None;
+        }
+        if let Some(entity) = breaker
+            && (self.native_entity_target(entity).is_none() || !self.native_entity_here(entity))
+        {
+            return None;
+        }
+        let [x, y, z] = pos;
+        let state = self.common.world.block(x, y, z);
+        if self.common.res.behaviours().is_air(state) {
+            return None;
+        }
+        if let Some(mut write) = super::journal_level_write::JournalLevelWrite::new(self, level) {
+            return Some(write.drop_resources(pos, state, tool, breaker, collect));
+        }
+        let at = sunrise_core::position::BlockPos::new(x, y, z);
+        let drops = self.with_level(|b, level, ticks| {
+            level.drop_tool = Some(((x, y, z), tool.cloned()));
+            level.drop_entity = breaker;
+            level.drop_breaker_at = breaker.map(|_| at);
+            level.drop_into = collect.then(Vec::new);
+            b.drop_resources(level, ticks, at, state);
+            level.drop_into.take().unwrap_or_default()
+        });
+        let _ = self.server_process_level_events();
+        Some(drops)
+    }
+
+    pub(in crate::game) fn post_destroy_block_game_event(
+        &mut self,
+        pos: [i32; 3],
+        state: BlockStateId,
+        breaker: Option<EntityRef>,
+    ) {
+        use sunrise_gameplay_common::game::api_values::TryIntoApi as _;
+        let at = [
+            f64::from(pos[0]) + 0.5,
+            f64::from(pos[1]) + 0.5,
+            f64::from(pos[2]) + 0.5,
+        ];
+        if let Ok(api_state) = state.try_into_api() {
+            let context = mod_api::GameEventContext {
+                source_entity: breaker,
+                affected_state: Some(api_state),
+            };
+            if self.post_contextual_game_event("minecraft:block_destroy", at, context) {
+                return;
+            }
+        }
+        // If a deferred transaction's breaker left before commit, still emit block_destroy without a source.
+        self.post_block_game_event("minecraft:block_destroy", pos, None, Some(state));
     }
 
     /// Send `ServerLevel.destroyBlockProgress` in this level: stages 0..9 show a crack,

@@ -2,23 +2,19 @@ use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
 impl crate::game::ServerGame<'_> {
-    /// Sends clients the block at `pos` and its block entity's update tag
-    /// (`native_block_entity_update_tag`) again, as `Level.sendBlockUpdated`
-    /// does: with the level's other block changes, to the players who see its
-    /// chunk, once however often it is called before then. Changes made in a
-    /// block entity's tick go out at the start of the next tick, as vanilla's
-    /// do (`ServerLevel.tick` broadcasts chunks before it ticks block
-    /// entities). Call it when what clients show changed (a machine started),
-    /// not for every tick's progress: a menu's data slots carry that. Nothing
-    /// happens for an unloaded block. It also sends the one-shot fields of
-    /// `BlockEntityView::set_client_update_fields`.
-    pub fn block_entity_sync(&mut self, pos: [i32; 3]) {
-        if !self.common.world.loaded(pos[0], pos[2]) {
-            return;
-        }
-        if let Some(log) = self.common.world.block_log.as_mut() {
-            log.push((pos[0], pos[1], pos[2]));
-        }
+    /// `WorldlyContainer.canTakeItemThroughFace` for a block entity's subscribed part: whether
+    /// `stack` in `slot` may leave through `face`, replacing the declared output slots.
+    pub(in crate::game) fn native_can_take_item_through_face(
+        &self,
+        entity: &mod_api::ModBlockEntity,
+        pos: BlockPos,
+        state: mod_api::BlockState,
+        slot: usize,
+        stack: &mod_api::ItemStack,
+        face: Direction,
+        allowed: &mut Option<bool>,
+    ) {
+        self.fire_can_take_item_through_face(entity, pos, state, slot, stack, face, allowed);
     }
     /// A player took an anvil's result at `pos` and the levels, inputs and anvil wear are done (`AnvilCraftEvent.Post`); a broken anvil is already air. `inputs` borrows the input stacks and result from before the take. Not called when `native_anvil_craft_pre` cancelled.
     pub(in crate::game) fn native_anvil_craft_post(
@@ -205,11 +201,6 @@ impl crate::game::ServerGame<'_> {
         self.fire_break_block(pos, state, canceled, exp_to_drop);
         *exp_to_drop = exp_to_drop.or(initial);
     }
-    /// A brewing stand finished brewing at `pos`, after its bottle contents
-    /// were changed. Server-side.
-    pub(crate) fn native_brewing_complete(&mut self, pos: [i32; 3]) {
-        self.fire_brewing_complete(pos);
-    }
     /// A brewing stand at `pos` consumed `fuel` and gained brewing fuel. Server-side.
     pub(crate) fn native_brewing_fuel(&mut self, pos: [i32; 3], fuel: &str) {
         self.fire_brewing_fuel(pos, fuel);
@@ -295,44 +286,6 @@ impl crate::game::ServerGame<'_> {
     /// Lightning charged a creeper.
     pub(in crate::game) fn native_creeper_power(&mut self, entity: u32, lightning: [f64; 3]) {
         self.fire_creeper_power(entity, lightning);
-    }
-    /// NeoForge's `CriticalHitEvent`: a player's melee hit on a living
-    /// `target_kind` (`minecraft:zombie`, `minecraft:armor_stand`) that deals
-    /// damage, where `Player.attack` decides whether it is critical.
-    /// `vanilla_critical` is vanilla's answer; `critical` starts as it and may
-    /// be forced or denied (as in vanilla a critical hit prevents the sweep, so
-    /// a forced crit loses it; a denied crit loses the crit sound and
-    /// particles); `damage_multiplier` starts at 1.5 for vanilla's critical and
-    /// 1.0 otherwise, and scales the damage only while `critical` ends true. Not fired for a
-    /// target that is no living entity (a dragon part) or when the hit does
-    /// no damage. Fires on the Game that runs the attack.
-    pub(in crate::game) fn native_critical_hit(
-        &mut self,
-        target_kind: &str,
-        vanilla_critical: bool,
-        critical: &mut bool,
-        damage_multiplier: &mut f32,
-    ) {
-        self.fire_critical_hit(target_kind, vanilla_critical, critical, damage_multiplier);
-    }
-    /// A `minecraft:post_attack` effect of a mod's own kind, on a mob a
-    /// player's weapon hit: the entry says `enchanted` attacker and `affected`
-    /// victim, its `requirements` passed, and its `effect` names a `type` in a
-    /// namespace outside `minecraft:`. Told the enchantment id, the kind, the
-    /// `effect` payload as a borrowed `Tag`, the level and the mob's id (it may have just died). The
-    /// acting player is the one whose weapon carries the enchantment. Each
-    /// such entry is told once a hit, and once for each mob a sweep lands on.
-    /// A hit on a player, and an entry inside `minecraft:all_of`, aren't told
-    /// yet. An unclaimed kind does nothing.
-    pub(crate) fn native_enchant_effect(
-        &mut self,
-        enchantment: &str,
-        kind: &str,
-        data: &sunrise_core::nbt::Tag,
-        level: u32,
-        victim: u32,
-    ) {
-        self.fire_enchant_effect(enchantment, kind, data, level, victim);
     }
     /// A server player applied an enchantment at `pos`; `item` is the finished item and `levels` the levels charged. The player's state is not swapped in.
     pub(in crate::game) fn native_enchant_item(
@@ -454,13 +407,13 @@ impl crate::game::ServerGame<'_> {
     pub(crate) fn native_entity_join_level(
         &mut self,
         dimension: &str,
-        entity: u32,
         kind: &str,
         pos: [f64; 3],
         loaded_from_disk: bool,
+        subject: mod_api::EntityRef,
         canceled: &mut bool,
     ) {
-        self.fire_entity_join_level(dimension, entity, kind, pos, loaded_from_disk, canceled);
+        self.fire_entity_join_level(dimension, kind, pos, loaded_from_disk, subject, canceled);
     }
     /// A server entity finished its portal wait and is beginning to leave
     /// `dimension` through `pos`. The destination follows the portal rules.
@@ -481,17 +434,6 @@ impl crate::game::ServerGame<'_> {
         to: &str,
     ) {
         self.fire_entity_pose_change(player, name, from, to);
-    }
-    /// A player bow or crossbow launched an arrow with `force`, after the
-    /// projectile entered the level.
-    pub(crate) fn native_entity_shoot_bow(
-        &mut self,
-        player: u128,
-        name: &str,
-        projectile: u32,
-        force: f32,
-    ) {
-        self.fire_entity_shoot_bow(player, name, projectile, force);
     }
     /// A mob became tamed after its owner and persistent state were set.
     pub(in crate::game) fn native_entity_tame(
@@ -561,18 +503,6 @@ impl crate::game::ServerGame<'_> {
     pub(crate) fn native_furnace_burn(&mut self, pos: [i32; 3], fuel: &str) {
         self.fire_furnace_burn(pos, fuel);
     }
-    /// A server player took an output from a furnace at `pos`; `item` is the output item id and
-    /// `count` is how many were taken. The player's state is not swapped in.
-    pub(crate) fn native_furnace_extract(
-        &mut self,
-        player: u128,
-        name: &str,
-        pos: [i32; 3],
-        item: &str,
-        count: u32,
-    ) {
-        self.fire_furnace_extract(player, name, pos, item, count);
-    }
     /// A furnace finished smelting `item` into `result` at `pos`. Server-side.
     pub(crate) fn native_furnace_smelt(&mut self, pos: [i32; 3], item: &str, result: &str) {
         self.fire_furnace_smelt(pos, item, result);
@@ -620,7 +550,7 @@ impl crate::game::ServerGame<'_> {
     /// every player of the world (the helpers read the acting one).
     pub(in crate::game) fn native_hurt_enemy(
         &mut self,
-        stack: &ItemStack,
+        stack: mod_api::ItemStackView<'_>,
         entity: u32,
         kind: &str,
     ) {
@@ -638,11 +568,12 @@ impl crate::game::ServerGame<'_> {
     /// (the helpers read the acting one).
     pub(in crate::game) fn native_inventory_tick(
         &mut self,
-        stack: &ItemStack,
+        item: mod_api::ItemKey,
+        place: &mod_api::ItemPlace,
         slot: i32,
         selected: bool,
     ) {
-        self.fire_inventory_tick(stack, slot, selected);
+        self.fire_inventory_tick(item, place, slot, selected);
     }
     /// A server player or fox that ate chorus fruit (or another item with the
     /// `teleport_randomly` consume effect) is about to try a random spot
@@ -666,17 +597,6 @@ impl crate::game::ServerGame<'_> {
     ) {
         self.fire_item_consumption_teleport(consumer, consumed, from, target, cancel);
     }
-    /// A dropped item entity reached its 6000-tick lifetime and is about to be
-    /// removed (Bukkit's `ItemDespawnEvent`).
-    pub(crate) fn native_item_despawn(
-        &mut self,
-        entity: u32,
-        item: &str,
-        count: i32,
-        pos: [f64; 3],
-    ) {
-        self.fire_item_despawn(entity, item, count, pos);
-    }
     /// A dropped item reaches its lifetime on the server (`ItemEntity.tick`,
     /// NeoForge's `ItemExpireEvent`). Every mod may set or add to `extra_life`,
     /// in ticks, which starts at zero; a positive total keeps the item that much
@@ -684,11 +604,10 @@ impl crate::game::ServerGame<'_> {
     /// ticks.
     pub(crate) fn native_item_expire(
         &mut self,
-        entity: u32,
-        stack: &ItemStack,
+        item: mod_api::ItemEntityRef,
         extra_life: &mut i32,
     ) {
-        self.fire_item_expire(entity, stack, extra_life);
+        self.fire_item_expire(item, extra_life);
     }
     /// A player left-clicks the block `state` at `pos`, `face` the face hit
     /// (`[0, 1, 0]` is the top): where `ServerPlayerGameMode.handleBlockBreakAction`
@@ -743,21 +662,9 @@ impl crate::game::ServerGame<'_> {
     /// It only hears. Server-side.
     pub(crate) fn native_living_equipment_change(
         &mut self,
-        entity: u32,
-        kind: &str,
-        slot: &str,
-        from: Option<&ItemStack>,
-        to: Option<&ItemStack>,
+        call: mod_api::__private::LivingEquipmentChangeCall<'_>,
     ) {
-        self.fire_living_equipment_change(entity, kind, slot, from, to);
-    }
-    /// Whether a mod listens to `native_living_equipment_change` for mobs and
-    /// connected players: a mod that hooks it hooks this one too and sets
-    /// `listened` (HEAD, `*listened = true`). Without it the game does not read
-    /// their equipment each tick and only armor stands are told. A mob or player
-    /// counts from empty once it is set. Asked once a tick. Server-side.
-    pub(crate) fn native_living_equipment_listened(&mut self, listened: &mut bool) {
-        self.fire_living_equipment_listened(listened);
+        self.fire_living_equipment_change(call);
     }
     /// A server click in a mod menu before the default slot action. A listener sets
     /// `handled` after doing the click itself.
@@ -767,49 +674,6 @@ impl crate::game::ServerGame<'_> {
     ) {
         self.fire_menu_clicked(call);
     }
-    /// A menu a mod opened closed: the player closed it, the server or a mod
-    /// opened another, or the player left.
-    pub(crate) fn native_menu_closed(
-        &mut self,
-        uuid: u128,
-        window: i32,
-        opening_hand: Option<mod_api::Hand>,
-        owned_slots: &[Option<mod_api::ItemStack>],
-    ) {
-        self.fire_menu_closed(uuid, window, opening_hand, owned_slots);
-    }
-    /// NeoForge's `MobEffectEvent.Added`, vanilla's `MobEffect.onEffectStarted`:
-    /// every `LivingEntity.addEffect` of the content mod's effect `effect`,
-    /// new or not, changed or not, after `native_on_effect_added`.
-    /// Server-side.
-    pub(in crate::game) fn native_mob_effect_added(
-        &mut self,
-        effect: EffectKey,
-        entity: Option<i32>,
-        amplifier: i32,
-    ) {
-        self.fire_mob_effect_added(effect, entity, amplifier);
-    }
-    /// `MobEffect.onEffectAdded`: `LivingEntity.addEffect` gave `entity`
-    /// the content mod's effect `effect`,
-    /// which it didn't have. Server-side.
-    pub(in crate::game) fn native_on_effect_added(
-        &mut self,
-        effect: EffectKey,
-        entity: Option<i32>,
-        amplifier: i32,
-    ) {
-        self.fire_on_effect_added(effect, entity, amplifier);
-    }
-    /// A player's equipment slot `slot` (`head`, `chest`, `legs`, `feet`,
-    /// `offhand`, and `mainhand` on a swap of the hands or `/item`) took a different
-    /// item, `new` (none when it was emptied): `LivingEntity.onEquipItem`,
-    /// before the equip sound. It only hears. Never for a spectator.
-    /// Server-side, for every player of the world (the helpers read the
-    /// acting one).
-    pub(in crate::game) fn native_on_equip(&mut self, slot: &str, new: Option<&ItemStack>) {
-        self.fire_on_equip(slot, new);
-    }
     /// Before `player` picks up orb `orb` in `dimension`. Mutations to `value`
     /// and `count` take effect only when not canceled. Value keeps vanilla
     /// signed integer semantics; count is kept at least one.
@@ -818,12 +682,10 @@ impl crate::game::ServerGame<'_> {
         &mut self,
         player: u128,
         dimension: &str,
-        orb: u32,
-        value: &mut i32,
-        count: &mut u32,
+        orb: ExperienceOrbRef,
         canceled: &mut bool,
     ) {
-        self.fire_pickup_xp(player, dimension, orb, value, count, canceled);
+        self.fire_pickup_xp(player, dimension, orb, canceled);
     }
     /// A guest's arm swing was handled by the server. `hand` is `mainhand`. Server-side.
     pub(crate) fn native_player_arm_swing(&mut self, player: u128, name: &str, hand: &str) {
@@ -1058,10 +920,6 @@ impl crate::game::ServerGame<'_> {
     ) {
         self.fire_player_item_mend(player, name, item, repair, experience);
     }
-    /// A guest's accepted movement made the server jump them from the ground. Server-side.
-    pub(crate) fn native_player_jump(&mut self, player: u128, name: &str) {
-        self.fire_player_jump(player, name);
-    }
     /// A network or fake guest was kicked, after the hub recorded the rendered `reason`. The guest's state is
     /// swapped in unless they were already removed in the same poll.
     pub(in crate::game) fn native_player_kicked(&mut self, player: u128, name: &str, reason: &str) {
@@ -1182,11 +1040,6 @@ impl crate::game::ServerGame<'_> {
         item: &str,
     ) {
         self.fire_player_pickup_arrow(player, name, entity_id, item);
-    }
-    /// A server player released a drawn bow with `arrow` selected, by the use-item
-    /// key or a mod's `LivingRef::release_using_item`. The player's state is swapped in.
-    pub(crate) fn native_player_ready_arrow(&mut self, player: u128, name: &str, arrow: &str) {
-        self.fire_player_ready_arrow(player, name, arrow);
     }
     /// A server player's recipe book requested a known recipe be placed in
     /// their crafting grid. `recipe` is the recipe id; `all` is the shift
@@ -1327,11 +1180,6 @@ impl crate::game::ServerGame<'_> {
     ) {
         self.fire_player_stop_tracking(player, name, entity, uuid, kind);
     }
-    /// A server player released the use-item key, or a mod's `LivingRef::release_using_item` did,
-    /// before the item finished being used. The player's state is swapped in.
-    pub(crate) fn native_player_stop_using_item(&mut self, player: u128, name: &str) {
-        self.fire_player_stop_using_item(player, name);
-    }
     /// A server player swapped their main and off hands, after both inventory slots changed.
     /// Server-side.
     pub(crate) fn native_player_swap_with_equipment_slot(
@@ -1435,11 +1283,6 @@ impl crate::game::ServerGame<'_> {
         sneaking: bool,
     ) {
         self.fire_player_toggle_sneak(player, name, sneaking);
-    }
-    /// A server player completed a villager or wandering trader trade. `entity_id` is the merchant
-    /// network id. Server-side.
-    pub(crate) fn native_player_trade(&mut self, player: u128, name: &str, entity_id: u32) {
-        self.fire_player_trade(player, name, entity_id);
     }
     /// A server applied `velocity` to a player, when syncing changed motion to that player's client.
     pub(crate) fn native_player_velocity(&mut self, player: u128, name: &str, velocity: [f64; 3]) {
@@ -1629,6 +1472,20 @@ impl crate::game::ServerGame<'_> {
     ) {
         self.fire_sleep_finished_time(dimension, current, new_time, adjustment, canceled);
     }
+
+    /// Enough players sleep in level `dimension` to skip the night (`ServerLevel.tick`), before
+    /// the clock moves, the sleepers wake and the rain ends. Set `canceled` and none of it
+    /// happens this tick.
+    pub(in crate::game) fn native_sleep_skip_night(
+        &mut self,
+        dimension: &str,
+        percentage: i32,
+        sleeping: i64,
+        active: i64,
+        canceled: &mut bool,
+    ) {
+        self.fire_sleep_skip_night(dimension, percentage, sleeping, active, canceled);
+    }
     /// A guest asked to complete `command`; `suggestions` may be added to or
     /// filtered. `range` is the replaced byte range.
     pub(crate) fn native_tab_complete(
@@ -1694,41 +1551,8 @@ impl crate::game::ServerGame<'_> {
     /// A timed world-border size change finished on the server, after its
     /// final size was applied. Server-side, including the single-player
     /// server.
-    pub(crate) fn native_world_border_bounds_change_finish(&mut self) {
-        self.fire_world_border_bounds_change_finish();
-    }
-    /// Sets property `key` of the block at `pos` to `value`, as a furnace's
-    /// tick sets its `lit` (`Level.setBlock` with `UPDATE_ALL`: neighbours
-    /// and clients are told); true when the block changed, false when the
-    /// block has no such property or value, or the property already has
-    /// `value` (as `Level.setBlock` for an unchanged state). The block
-    /// entity stays.
-    pub(in crate::game) fn set_block_property(
-        &mut self,
-        pos: [i32; 3],
-        key: &str,
-        value: &str,
-    ) -> bool {
-        self.set_block_property_with(pos, key, value, flags::UPDATE_ALL)
-    }
-    /// `native_set_block_property` with `Level.setBlock`'s `flags`, as a
-    /// brewing stand's tick sets its bottles with `flags::UPDATE_CLIENTS`.
-    /// Players get the write when `UPDATE_CLIENTS` is set; false when this
-    /// window isn't a server, and in each case `native_set_block_property`
-    /// returns false.
-    pub(in crate::game) fn set_block_property_with(
-        &mut self,
-        pos: [i32; 3],
-        key: &str,
-        value: &str,
-        flags: i32,
-    ) -> bool {
-        let state = self.common.world.block(pos[0], pos[1], pos[2]);
-        let Some(id) = property_change(self.common.pack.assets.registry, state, key, value) else {
-            return false;
-        };
-        let at = BlockPos::new(pos[0], pos[1], pos[2]);
-        self.with_level(|b, level, ticks| b.set_block(level, ticks, at, id, flags))
+    pub(crate) fn native_world_border_bounds_change_finish(&mut self, level: LevelRef) {
+        self.fire_world_border_bounds_change_finish(level);
     }
 
     /// An anvil at `pos` took damage, changing its block from `from` to `to`.
@@ -1788,14 +1612,26 @@ impl crate::game::ServerGame<'_> {
     }
     /// A custom entry of the effective consumable, with its pre-shrink stack
     /// and the living entity consuming it. Unclaimed kinds do nothing.
-    pub(in crate::game) fn native_consume_effect(
+    pub fn native_consume_effect(
         &mut self,
-        kind: &str,
-        data: &sunrise_core::nbt::Tag,
+        effect: &sunrise_items::items::NativeConsumeEffect,
         stack: &ItemStack,
         user: mod_api::EntityRef,
-    ) {
-        self.fire_consume_effect(kind, data, stack, user);
+    ) -> bool {
+        use sunrise_gameplay_common::game::api_values::TryIntoApi;
+
+        let Some(binding) = effect.binding else {
+            log::warn!("consume effect {} has no registered callback", effect.kind);
+            return false;
+        };
+        let stack = match stack.try_into_api() {
+            Ok(stack) => stack,
+            Err(error) => {
+                log::warn!("consume effect {}: stack refused: {error:?}", effect.kind);
+                return false;
+            }
+        };
+        mod_api::dispatch_consume_effect(self, &effect.kind, &effect.data, &stack, user, binding)
     }
     /// A player opens one of the game's own menus (`ServerPlayer.openMenu`; the
     /// job of NeoForge's `PlayerContainerEvent.Open`, which comes after the
@@ -2070,27 +1906,6 @@ impl crate::game::ServerGame<'_> {
     ) {
         self.fire_loot_drops(context, drops);
     }
-    /// `player`'s melee blow killed the mob `entity` of `kind` (other deaths
-    /// aren't told yet). It only hears, after the blow landed. Server-side.
-    pub(in crate::game) fn native_mob_killed(&mut self, player: u128, entity: u32, kind: &str) {
-        self.fire_mob_killed(player, entity, kind);
-    }
-    /// A new mob of `kind` joined `dimension` at `pos`: `natural` when the
-    /// world's spawning made it, false when something else did (a breed, a
-    /// raid, a spawner, a conversion, `/summon`, and the second mob of a
-    /// jockey the world spawned). One call a mob: a `/summon` with passengers
-    /// tells each. Not told of a mob loaded with its chunk, leaving a hive or
-    /// changing level. It only hears; the mob is already among the game's
-    /// mobs. Server-side.
-    pub(in crate::game) fn native_mob_spawned(
-        &mut self,
-        dimension: &str,
-        kind: &str,
-        pos: [f64; 3],
-        natural: bool,
-    ) {
-        self.fire_mob_spawned(dimension, kind, pos, natural);
-    }
     /// The number of players with the mod container at `pos` of `dimension`
     /// open went from `previous` to `viewers` (vanilla's
     /// `ContainerOpenersCounter`, as a barrel keeps it): 0 to more than 0 is
@@ -2153,12 +1968,10 @@ impl crate::game::ServerGame<'_> {
     /// and does not ask again; the integrated server's owner is not asked
     /// when the world's cheats are switched.
     pub(in crate::game) fn native_player_commands_sent(
-        &mut self,
-        player: u128,
-        name: &str,
-        names: &mut Vec<String>,
+        &self,
+        call: mod_api::__private::PlayerCommandsSentCall<'_>,
     ) {
-        self.fire_player_commands_sent(player, name, names);
+        self.fire_player_commands_sent(call);
     }
     /// `player` (`name`) closed the menu `native_player_container_open` told
     /// of (NeoForge's `PlayerContainerEvent.Close`, posted in
@@ -2172,13 +1985,12 @@ impl crate::game::ServerGame<'_> {
     /// Server-side.
     pub(in crate::game) fn native_player_container_close(
         &mut self,
-        player: u128,
-        name: &str,
-        dimension: &str,
+        player: PlayerRef,
         menu_type: &str,
         pos: Option<[i32; 3]>,
+        menu: Option<mod_api::MenuRef>,
     ) {
-        self.fire_player_container_close(player, name, dimension, menu_type, pos);
+        self.fire_player_container_close(player, menu_type, pos, menu);
     }
     /// `player` (`name`) opened a menu (NeoForge's `PlayerContainerEvent.Open`,
     /// posted when `ServerPlayer.openMenu` sets the new `containerMenu`): any
@@ -2203,13 +2015,6 @@ impl crate::game::ServerGame<'_> {
     ) {
         self.fire_player_container_open(player, name, dimension, menu_type, pos, menu);
     }
-    /// `player` died: where `ServerPlayer.die` starts, with the death
-    /// message's key when the game knows it (`death.attack.lava`; none for a
-    /// message it builds from the combat). It only hears. Server-side, for
-    /// every player of the world, whether death messages are shown or not.
-    pub(in crate::game) fn native_player_died(&mut self, player: u128, cause: Option<&str>) {
-        self.fire_player_died(player, cause);
-    }
     /// An item cooldown is about to start for a server player. `item` is the item id and `ticks` its
     /// duration. The player's state is not swapped in. Set `cancel` to skip starting the cooldown.
     /// Server-side.
@@ -2222,16 +2027,6 @@ impl crate::game::ServerGame<'_> {
         cancel: &mut bool,
     ) {
         self.fire_player_item_cooldown(player, name, item, ticks, cancel);
-    }
-    /// A server player launched a projectile item, after it was created.
-    /// `item` is the projectile's held item.
-    pub(in crate::game) fn native_player_launch_projectile(
-        &mut self,
-        player: u128,
-        name: &str,
-        item: &str,
-    ) {
-        self.fire_player_launch_projectile(player, name, item);
     }
     /// A server player's experience level changed, after the new level was applied.
     pub(in crate::game) fn native_player_level_change(
@@ -2345,19 +2140,6 @@ impl crate::game::ServerGame<'_> {
     ) {
         self.fire_player_teleported(player, name, from, to, dimension);
     }
-    /// A totem of undying saved the server player `player` (`name`): their
-    /// hurt would have killed them and the totem held in either hand fired
-    /// (`LivingEntity.checkTotemDeathProtection`; Bukkit's
-    /// `EntityResurrectEvent`), heard just before it is used up and its
-    /// effects apply. Listen only: whether the totem saves is decided inside
-    /// the health state machine, before a mod is asked, so a mod cannot veto
-    /// it from here. The player's state is swapped in, so
-    /// `native_acting_player`, `native_tell` and the item helpers reach them.
-    /// Once for each totem, on a server; the host of a LAN world's totem is
-    /// not heard.
-    pub(in crate::game) fn native_player_totem(&mut self, player: u128, name: &str) {
-        self.fire_player_totem(player, name);
-    }
     /// A server player removed an entity's leash, after it was cleared.
     pub(in crate::game) fn native_player_unleash_entity(
         &mut self,
@@ -2366,17 +2148,6 @@ impl crate::game::ServerGame<'_> {
         entity_id: u32,
     ) {
         self.fire_player_unleash_entity(player, name, entity_id);
-    }
-    /// A server projectile was added to the level. `player` is set only for
-    /// a player launch; other sources have an empty `name`.
-    pub(in crate::game) fn native_projectile_launch(
-        &mut self,
-        player: Option<u128>,
-        name: &str,
-        entity: u32,
-        kind: &str,
-    ) {
-        self.fire_projectile_launch(player, name, entity, kind);
     }
     /// A raid at `pos` changed to `state` (`triggered`, `victory`, `loss` or
     /// `stopped`). The handle identifies its owning level, even if parked.
@@ -2407,17 +2178,6 @@ impl crate::game::ServerGame<'_> {
         angle: [f32; 2],
     ) {
         self.fire_spawn_change(dimension, pos, angle);
-    }
-    /// The server changed its thunder state through `/weather`. Set `cancel`
-    /// to keep the previous thunder state and timer. Server-side.
-    pub(in crate::game) fn native_thunder_change(
-        &mut self,
-        dimension: &str,
-        thundering: bool,
-        cancel: &mut bool,
-    ) {
-        sunrise_gameplay_common::game::level_control_hooks::LevelControl::Weather
-            .hear(|| self.fire_thunder_change(dimension, thundering, cancel));
     }
     /// The overworld clock is about to jump, from sleep or `/time`. Set
     /// `cancel` to keep `from`.
@@ -2510,12 +2270,20 @@ impl crate::game::ServerGame<'_> {
     pub(in crate::game) fn native_weather_change(
         &mut self,
         dimension: &str,
+        clear_ticks: i32,
+        weather_ticks: i32,
         raining: bool,
         thundering: bool,
         cancel: &mut bool,
     ) {
-        sunrise_gameplay_common::game::level_control_hooks::LevelControl::Weather
-            .hear(|| self.fire_weather_change(dimension, raining, thundering, cancel));
+        self.fire_weather_change(
+            dimension,
+            clear_ticks,
+            weather_ticks,
+            raining,
+            thundering,
+            cancel,
+        );
     }
     /// The dedicated server's whitelist changed to `enabled`. 305.
     pub(in crate::game) fn native_whitelist_state_update(&mut self, enabled: bool) {
@@ -2523,27 +2291,16 @@ impl crate::game::ServerGame<'_> {
     }
     /// The server world's border bounds changed, either immediately or when
     /// its timed size change was requested.
-    pub(in crate::game) fn native_world_border_bounds_changed(&mut self) {
-        sunrise_gameplay_common::game::level_control_hooks::LevelControl::BorderBounds
-            .hear(|| self.fire_world_border_bounds_changed());
+    pub(in crate::game) fn native_world_border_bounds_changed(
+        &mut self,
+        level: LevelRef,
+        lerp_ticks: Option<i64>,
+    ) {
+        self.fire_world_border_bounds_changed(level, lerp_ticks);
     }
     /// The server world's border center changed.
-    pub(in crate::game) fn native_world_border_center_changed(&mut self) {
-        sunrise_gameplay_common::game::level_control_hooks::LevelControl::BorderCenter
-            .hear(|| self.fire_world_border_center_changed());
-    }
-    /// The world's phases, read-only; `error_text` carries the engine's
-    /// error text for `WorldOpenFailed` and `WorldCloseFailed`, empty otherwise.
-    /// Server-side. A server loop or final save failure fires `WorldCloseFailed`.
-    /// A normal stop with only individually reported record failures still fires
-    /// `WorldCloseFinal`.
-    pub(in crate::game) fn native_world_lifecycle(
-        &mut self,
-        context: &LifecycleContext,
-        phase: WorldPhase,
-        error_text: &str,
-    ) {
-        self.fire_world_lifecycle(context, phase, error_text);
+    pub(in crate::game) fn native_world_border_center_changed(&mut self, level: LevelRef) {
+        self.fire_world_border_center_changed(level);
     }
     /// The server completed a world save cycle. `wait` says chunk writes were
     /// flushed before returning.
@@ -2560,13 +2317,6 @@ impl crate::game::ServerGame<'_> {
         _kind: &str,
     ) -> Option<mod_api::item::recipe_book::RecipeBookCategory> {
         None
-    }
-    /// Whether block `block`'s block entity ticks (`EntityBlock.getTicker`):
-    /// set `ticks` when it is yours. Asked for each of the block's states
-    /// when a world opens.
-    /// Set `ticks` to true to make it tick, and never clear a value an earlier mod or mixin set.
-    pub(in crate::game) fn native_block_entity_ticks(&self, block: &str, ticks: &mut bool) {
-        self.fire_block_entity_ticks(block, ticks);
     }
     /// Whether the owner of this menu accepts button `id`. The active menu's owner
     /// decides its own IDs; the game does not impose a shared numeric range.
@@ -2595,11 +2345,6 @@ impl crate::game::ServerGame<'_> {
         cancel: &mut bool,
     ) {
         self.fire_inventory_move_item(source, destination, item, cancel);
-    }
-    /// Whether a mod hears projectiles' impacts (`native_projectile_impact`):
-    /// set `hears`. Asked once a server tick before the projectiles fly.
-    pub(in crate::game) fn native_hears_projectile_impacts(&self, hears: &mut bool) {
-        self.fire_hears_projectile_impacts(hears);
     }
 }
 

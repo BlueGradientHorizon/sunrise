@@ -562,9 +562,8 @@ mod tests {
             assert!(game.world.block_log.as_ref().unwrap().is_empty());
             assert!(game.world.connection_group_log.as_ref().unwrap().is_empty());
 
-            // Bulk `ServerHost::edit_blocks` inside `HostTransaction::transaction` is journaled
-            // like `set_block`: a commit keeps the replacement and its cleared group, and an
-            // abort restores both the block and the group it replaced.
+            // Strict replacements clear the tentative group at the call. On commit they replay
+            // in order with explicit group writes; on abort, both block and group come back.
             let single_replace = |pos: [i32; 3], to: mod_api::BlockState| BlockEdit {
                 palette: vec![to],
                 filters: Vec::new(),
@@ -607,7 +606,7 @@ mod tests {
                             level.set_connection_group(host, [8, 64, 8], Some(2)),
                             Ok(true)
                         );
-                        assert_eq!(host.edit_blocks("minecraft:overworld", &edit_commit), Ok(1));
+                        assert_eq!(level.edit_blocks(host, &edit_commit), Ok(1));
                         assert_eq!(level.connection_group(host, [8, 64, 8]), Ok(None));
                         Ok(())
                     });
@@ -639,7 +638,7 @@ mod tests {
                             level.set_connection_group(host, [9, 64, 9], Some(2)),
                             Ok(true)
                         );
-                        assert_eq!(host.edit_blocks("minecraft:overworld", &edit_abort), Ok(1));
+                        assert_eq!(level.edit_blocks(host, &edit_abort), Ok(1));
                         Err(())
                     });
                 assert_eq!(res, Err(mod_api::TransactionError::Aborted(())));
@@ -667,10 +666,7 @@ mod tests {
                             level.set_connection_group(host, [10, 64, 10], None),
                             Ok(true)
                         );
-                        assert_eq!(
-                            host.edit_blocks("minecraft:overworld", &edit_tentative_none),
-                            Ok(1)
-                        );
+                        assert_eq!(level.edit_blocks(host, &edit_tentative_none), Ok(1));
                         Err(())
                     });
                 assert_eq!(res, Err(mod_api::TransactionError::Aborted(())));
@@ -699,10 +695,7 @@ mod tests {
                             level.set_connection_group(host, [11, 64, 11], Some(2)),
                             Ok(true)
                         );
-                        assert_eq!(
-                            host.edit_blocks("minecraft:overworld", &edit_after_commit),
-                            Ok(1)
-                        );
+                        assert_eq!(level.edit_blocks(host, &edit_after_commit), Ok(1));
                         assert_eq!(
                             level.set_connection_group(host, [11, 64, 11], Some(3)),
                             Ok(true)
@@ -736,10 +729,7 @@ mod tests {
                             level.set_connection_group(host, [12, 64, 12], Some(2)),
                             Ok(true)
                         );
-                        assert_eq!(
-                            host.edit_blocks("minecraft:overworld", &edit_after_abort),
-                            Ok(1)
-                        );
+                        assert_eq!(level.edit_blocks(host, &edit_after_abort), Ok(1));
                         assert_eq!(
                             level.set_connection_group(host, [12, 64, 12], Some(3)),
                             Ok(true)
@@ -771,7 +761,7 @@ mod tests {
                 assert_eq!(level.set_connection_group(game, pos, Some(2)), Ok(true));
                 game.storage_scope(|game, _| {
                     let host: &mut dyn ServerHost = game;
-                    assert_eq!(host.edit_blocks("minecraft:overworld", &round_trip), Ok(2));
+                    assert_eq!(level.edit_blocks(host, &round_trip), Ok(2));
                     assert_eq!(level.connection_group(game, pos), Ok(None));
                     ((), false)
                 });
@@ -815,10 +805,7 @@ mod tests {
                 let nether = game.level("minecraft:the_nether").unwrap();
                 assert_eq!(nether.set_connection_group(game, pos, Some(20)), Ok(true));
                 let host: &mut dyn ServerHost = game;
-                assert_eq!(
-                    host.edit_blocks("minecraft:the_nether", &single_replace(pos, glass)),
-                    Ok(1)
-                );
+                assert_eq!(nether.edit_blocks(host, &single_replace(pos, glass)), Ok(1));
                 assert_eq!(nether.connection_group(game, pos), Ok(None));
                 assert_eq!(nether.set_connection_group(game, pos, Some(21)), Ok(true));
                 assert_eq!(game.enter_command_level(Dim::Overworld), Some(Dim::Nether));
@@ -834,10 +821,7 @@ mod tests {
                 assert_eq!(game.enter_command_level(Dim::Nether), Some(Dim::Overworld));
                 game.storage_scope(|game, _| {
                     let host: &mut dyn ServerHost = game;
-                    assert_eq!(
-                        host.edit_blocks("minecraft:the_nether", &single_replace(pos, stone)),
-                        Ok(1)
-                    );
+                    assert_eq!(nether.edit_blocks(host, &single_replace(pos, stone)), Ok(1));
                     ((), true)
                 });
                 assert_eq!(nether.block_state(game, pos), Some(stone));
@@ -935,7 +919,7 @@ mod tests {
                                 ),
                                 Ok(true)
                             );
-                            assert_eq!(host.edit_blocks("minecraft:overworld", &edit), Ok(1));
+                            assert_eq!(level.edit_blocks(host, &edit), Ok(1));
                             Ok(())
                         });
                     assert_eq!(res, Ok(()));
@@ -1219,6 +1203,7 @@ mod tests {
             cutout_leaves: false,
             opaque_ice: false,
             translucent_layers: &[],
+            layer_overrides: &[],
             leaf_culling: LeafCullingMode::Off,
             hidden_states: &[],
             part_tables: Default::default(),

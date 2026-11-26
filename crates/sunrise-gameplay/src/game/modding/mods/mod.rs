@@ -1,3 +1,15 @@
+use mod_api::__private::game::RegistrationContextNew as _;
+
+/// Install the frozen type registries before selected enchantment definitions are loaded.
+pub fn register_enchantment_effects() {
+    let mut effects = mod_api::__private::EnchantmentEffectRegistry::default();
+    crate::game::native_hooks::register_enchantment_effects::native_register_enchantment_effects(
+        &mod_api::RegistrationContext::new(),
+        &mut effects,
+    );
+    sunrise_items::enchant::install_effect_types(effects);
+}
+
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
     #[test]
@@ -87,7 +99,7 @@ pub mod tests {
         #[mod_api::__subscriptions]
         impl mod_api::Hooks for DeclaresBadContent {
             fn blocks(&self, _: &RegistrationContext, event: &mut mod_api::BlocksEvent<'_>) {
-                let _ = event.register(mod_api::Block::new("foreign:lamp", "minecraft:stone"));
+                let _ = event.register(mod_api::Block::new("foreign:Bad Lamp", "minecraft:stone"));
             }
             fn items(&self, _: &RegistrationContext, event: &mut mod_api::ItemsEvent<'_>) {
                 let _ = event.register(mod_api::Item::new("Bad Key", "minecraft:stick"));
@@ -114,9 +126,8 @@ pub mod tests {
                         DeclarationRefusal::new(
                             "maker",
                             DeclarationKind::Block,
-                            DeclarationError::UnownedNamespace {
-                                id: "foreign:lamp".into(),
-                                namespace: "foreign".into(),
+                            DeclarationError::InvalidId {
+                                id: "foreign:Bad Lamp".into(),
                             }
                         ),
                         DeclarationRefusal::new(
@@ -181,14 +192,13 @@ pub mod tests {
         #[mod_api::__subscriptions]
         impl mod_api::Hooks for Declares {
             fn blocks(&self, _: &RegistrationContext, event: &mut mod_api::BlocksEvent<'_>) {
-                let _ = event.register(mod_api::Block::new("foreign:lamp", "minecraft:stone"));
                 event
-                    .register(mod_api::Block::new("tool", "minecraft:stone"))
+                    .register(mod_api::Block::new("foreign:tool", "minecraft:stone"))
                     .unwrap();
             }
             fn items(&self, _: &RegistrationContext, event: &mut mod_api::ItemsEvent<'_>) {
                 event
-                    .register(mod_api::Item::new("tool", "minecraft:stick"))
+                    .register(mod_api::Item::new("foreign:tool", "minecraft:stick"))
                     .unwrap();
                 let mut item = mod_api::Item::new("bad_component", "minecraft:stick");
                 item.components
@@ -203,21 +213,10 @@ pub mod tests {
                     .err()
                     .expect("invalid native batch must refuse startup");
                 let report = error.downcast_ref::<DeclarationFailures>().unwrap();
-                assert_eq!(report.0.len(), 3, "{:?}", report.0);
-                assert_eq!(
-                    report.0[0],
-                    DeclarationRefusal::new(
-                        "maker",
-                        DeclarationKind::Block,
-                        DeclarationError::UnownedNamespace {
-                            id: "foreign:lamp".into(),
-                            namespace: "foreign".into()
-                        }
-                    )
-                );
+                assert_eq!(report.0.len(), 2, "{:?}", report.0);
                 for (record, id, detail) in [
-                    (&report.0[1], "maker:tool", "block's item"),
-                    (&report.0[2], "maker:bad_component", "maker:unknown"),
+                    (&report.0[0], "foreign:tool", "block's item"),
+                    (&report.0[1], "maker:bad_component", "maker:unknown"),
                 ] {
                     assert_eq!(
                         (&*record.mod_id, record.kind),
@@ -230,6 +229,38 @@ pub mod tests {
                     );
                 }
             },
+        );
+    }
+
+    #[test]
+    fn native_component_registration_refuses_a_builtin_key() {
+        struct DeclaresDamage;
+        #[mod_api::__subscriptions]
+        impl mod_api::Hooks for DeclaresDamage {
+            fn component_types(
+                &self,
+                _: &RegistrationContext,
+                event: &mut mod_api::ComponentTypesEvent<'_>,
+            ) {
+                event.register("minecraft:damage".into());
+            }
+        }
+        let root =
+            std::env::temp_dir().join(format!("sunrise-component-builtin-{}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(
+            root.join("registries.json"),
+            r#"{"minecraft:data_component_type":{"entries":{"minecraft:damage":{"protocol_id":0}}}}"#,
+        )
+        .unwrap();
+        let result = mod_platform::testing::with_mods(
+            vec![mod_api::ModEntry::new("maker", Box::new(DeclaresDamage))].into(),
+            || sunrise_gameplay_common::game::mods::register_components(&root),
+        );
+        std::fs::remove_dir_all(root).unwrap();
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "mod maker: native component minecraft:damage conflicts with a built-in data component type"
         );
     }
 
@@ -312,7 +343,7 @@ pub mod tests {
         impl mod_api::Hooks for DeclaresBlock {
             fn blocks(&self, _: &RegistrationContext, event: &mut mod_api::BlocksEvent<'_>) {
                 event
-                    .register(mod_api::Block::new("test:blastproof", "minecraft:stone"))
+                    .register(mod_api::Block::new("foreign:blastproof", "minecraft:stone"))
                     .unwrap();
             }
         }
@@ -325,7 +356,7 @@ pub mod tests {
                 native_declared().batches["test"]
                     .blocks
                     .iter()
-                    .any(|b| b.get().id == "test:blastproof")
+                    .any(|b| b.get().id == "foreign:blastproof")
             );
         });
         mod_platform::testing::with_mods(Vec::new().into(), || {
@@ -349,7 +380,7 @@ pub mod tests {
             DeclarationError, DeclarationFailures, DeclarationKind, DeclarationRefusal,
             DisabledServingHost, ExecutionRole, Installed, MissingJar, ModsState,
             RegistrationContext, ServedContentLoadError, ServedContentStage, collect_key_mappings,
-            content_overlay, content_owner_pairs, content_root, freeze_declarations, lang,
+            content_layer_owner, content_overlay, content_root, freeze_declarations, lang,
             live_switch_of, living_mod_types, mob_effect_entries, mod_list, native_declared,
             native_mods_detail, not_built, refuse_primary_namespace_claims,
             register_iterated_registries, register_mob_effects, validate_entity_type_families,
@@ -524,36 +555,11 @@ pub mod tests {
         assert!(!live_ids.contains("runes"));
         assert!(live_ids.contains("plain"));
 
-        // content_owner_pairs maps served namespaces to the host and disables with the host.
-        let mut runes_content = sunrise_mod_package::Content::declared("runes");
-        runes_content.namespaces.push("runes_extra".into());
-        let layers = vec![
-            sunrise_sim::mod_content::ContentMod {
-                id: "horizon_java".into(),
-                content: sunrise_mod_package::Content::declared("horizon_java"),
-                jars: Vec::new(),
-            },
-            sunrise_sim::mod_content::ContentMod {
-                id: "runes".into(),
-                content: runes_content,
-                jars: Vec::new(),
-            },
-            sunrise_sim::mod_content::ContentMod {
-                id: "plain".into(),
-                content: sunrise_mod_package::Content::declared("plain"),
-                jars: Vec::new(),
-            },
-        ];
-        let owners = content_owner_pairs(&layers, &valid_state.selected);
-        assert_eq!(
-            owners,
-            [
-                ("horizon_java", "horizon_java"),
-                ("runes", "horizon_java"),
-                ("runes_extra", "horizon_java"),
-                ("plain", "plain"),
-            ]
-        );
+        // Installed served content belongs to its host, not to the spelling of a registry key.
+        let hosted = content_layer_owner("runes", &valid_state.selected);
+        let plain = content_layer_owner("plain", &valid_state.selected);
+        assert_eq!(hosted, "horizon_java");
+        assert_eq!(plain, "plain");
         struct Quiet;
         #[mod_api::__subscriptions]
         impl mod_api::Hooks for Quiet {}
@@ -562,12 +568,25 @@ pub mod tests {
             vec![mod_api::ModEntry::new("horizon_java", Box::new(Quiet))].into(),
             || {
                 assert!(mod_api::__private::set_mod_enabled("horizon_java", false));
-                mod_api::__private::install_content_owners(owners.iter().copied());
-                assert!(mod_api::__private::content_owner_disabled("runes:altar"));
-                assert!(mod_api::__private::content_owner_disabled(
+                mod_api::__private::install_content_owners(
+                    [],
+                    [],
+                    [
+                        ("runes:altar", hosted),
+                        ("runes_extra:rune", hosted),
+                        ("plain:block", plain),
+                    ],
+                    [],
+                );
+                assert!(mod_api::__private::block_entity_owner_disabled(
+                    "runes:altar"
+                ));
+                assert!(mod_api::__private::block_entity_owner_disabled(
                     "runes_extra:rune"
                 ));
-                assert!(!mod_api::__private::content_owner_disabled("plain:block"));
+                assert!(!mod_api::__private::block_entity_owner_disabled(
+                    "plain:block"
+                ));
             },
         );
 
@@ -922,7 +941,7 @@ pub mod tests {
                     1,
                     &[],
                 );
-                *self.outcome.lock().unwrap() = Some(result);
+                *self.outcome.lock().unwrap() = Some(result.map(|_| ()));
             }
         }
 
@@ -1220,8 +1239,11 @@ pub mod tests {
         #[mod_api::__subscriptions]
         impl mod_api::Hooks for DeclaresUnsynced {
             fn register(&self, r: &mut dyn mod_api::Registrar, _: &RegistrationContext) {
-                r.register_attachment_type("srv_runes:internal", false)
-                    .unwrap();
+                r.register_attachment_type(mod_api::AttachmentDescriptor::new(
+                    "srv_runes:internal",
+                    || (),
+                ))
+                .unwrap();
             }
         }
         let unsynced_mods: mod_api::Mods = vec![mod_api::ModEntry::new(
@@ -1255,7 +1277,15 @@ pub mod tests {
                 )
                 .unwrap();
                 r.register_custom_stat("runes:casts").unwrap();
-                r.register_attachment_type("runes:charge", true).unwrap();
+                r.register_attachment_type(
+                    mod_api::AttachmentDescriptor::new("runes:charge", || ()).sync(
+                        mod_api::AttachmentCodec {
+                            encode: |_| Ok(Default::default()),
+                            decode: |_| Ok(()),
+                        },
+                    ),
+                )
+                .unwrap();
                 r.declare_datapack_registry(
                     "runes:spell",
                     mod_api::DatapackRegistrySync::Required,
@@ -1525,7 +1555,12 @@ pub mod tests {
             ]
             .into(),
             || {
-                mod_api::__private::install_content_owners([("runes", "horizon_java")]);
+                mod_api::__private::install_content_owners(
+                    [],
+                    [],
+                    [("runes:altar", "horizon_java")],
+                    [],
+                );
                 active.apply_code_switches(&wanted_disabled);
                 assert!(mod_api::__private::mod_index_on(
                     mod_api::__private::mod_index("horizon_java").unwrap()
@@ -1533,7 +1568,9 @@ pub mod tests {
                 assert!(!mod_api::__private::mod_index_on(
                     mod_api::__private::mod_index("plain_native").unwrap()
                 ));
-                assert!(!mod_api::__private::content_owner_disabled("runes:altar"));
+                assert!(!mod_api::__private::block_entity_owner_disabled(
+                    "runes:altar"
+                ));
             },
         );
 
@@ -1745,12 +1782,14 @@ pub mod tests {
             || {
                 mod_platform::testing::with_mods(mods.clone(), || {
                     mod_platform::__private::part_tests::install_parts_fixture(&mods).unwrap();
-                    mod_api::__private::resolve_effects(["runes:ward"], |id| {
-                        (id == "runes:ward").then_some(0)
-                    })
+                    mod_api::__private::resolve_effects(
+                        ["runes:ward"],
+                        |id| (id == "runes:ward").then_some(0),
+                        |_| true,
+                    )
                     .unwrap();
                     let effect = mod_api::__private::effect_key("runes:ward").unwrap();
-                    mod_api::__private::validate_effect_part_owners(owner_of).expect(
+                    mod_api::__private::validate_effect_part_owners(owner_of, |_| true).expect(
                         "the serving host and its dependent may attach to the served effect",
                     );
 
@@ -1802,7 +1841,7 @@ pub mod tests {
         let unrelated: mod_api::Mods = vec![WardTick::<2>::entry("third", &trace)].into();
         mod_platform::testing::with_mods(unrelated.clone(), || {
             mod_platform::__private::part_tests::install_parts_fixture(&unrelated).unwrap();
-            let refused = mod_api::__private::validate_effect_part_owners(owner_of)
+            let refused = mod_api::__private::validate_effect_part_owners(owner_of, |_| true)
                 .expect_err("unrelated mod without dependency on serving host must be refused");
             assert_eq!(refused.len(), 1, "{refused:?}");
             assert!(
@@ -2063,8 +2102,10 @@ pub mod tests {
         // attribute map and fields (`take_attribute_row`).
         let mut types = living_mod_types();
         let ghoul = types.get_mut("ruby:ghoul").unwrap();
-        Arc::make_mut(ghoul)
-            .take_attribute_row(Arc::new(merged.entity_row("ruby:ghoul").unwrap()), &merged);
+        Arc::make_mut(ghoul).take_attribute_row(
+            Arc::new(merged.entity_row("ruby:ghoul").unwrap()),
+            &Arc::new(merged.clone()),
+        );
         let ghoul = Mob::new(7, types["ruby:ghoul"].clone(), Vec3::ZERO, 0.0);
         assert_eq!(ghoul.health, 55.0, "the spawn's health");
         assert_eq!(ghoul.attrs.max_health, 55.0);
@@ -2249,8 +2290,10 @@ pub mod tests {
         let mut types = living_mod_types();
         let ghoul = types.get_mut("ruby:ghoul").unwrap();
         assert_eq!(ghoul.max_health, 40.0, "the content row's own value");
-        Arc::make_mut(ghoul)
-            .take_attribute_row(Arc::new(merged.entity_row("ruby:ghoul").unwrap()), &merged);
+        Arc::make_mut(ghoul).take_attribute_row(
+            Arc::new(merged.entity_row("ruby:ghoul").unwrap()),
+            &Arc::new(merged.clone()),
+        );
         let ghoul = Mob::new(7, types["ruby:ghoul"].clone(), Vec3::ZERO, 0.0);
         assert_eq!(
             ghoul.health, 20.0,
@@ -2413,6 +2456,46 @@ pub mod tests {
         .err()
         .unwrap();
         assert!(error.contains("ruby:ghoul"), "{error}");
+    }
+
+    /// #4473: a content mod's effect may declare modifiers on the attributes
+    /// the complete catalog has, vanilla's or a mod's; another refuses the
+    /// load, naming the effect and the attribute.
+    #[test]
+    fn a_declared_effect_modifier_on_an_unknown_attribute_refuses_the_load() {
+        use sunrise_level::brewing::{self, EffectDef};
+        use sunrise_world::attributes::{Operation, entity::Catalog};
+
+        let catalog = Catalog::from_json(&serde_json::json!({
+            "data_version": sunrise_world::DATA_VERSION,
+            "attributes": [
+                {"id": "minecraft:luck", "default": "0000000000000000", "min": "c090000000000000", "max": "4090000000000000", "syncable": true},
+                {"id": "ruby:mana", "default": "0000000000000000", "min": "0000000000000000", "max": "4090000000000000", "syncable": true}
+            ],
+            "entities": {"minecraft:player": {}}
+        }))
+        .unwrap();
+        let effect = |modifiers| EffectDef {
+            id: "ruby:stun",
+            modifiers,
+            ..*brewing::effect("slowness").unwrap()
+        };
+        let check = |effects: &[EffectDef]| {
+            sunrise_gameplay_common::game::resource_load::check_effect_modifier_attributes(
+                &catalog, effects,
+            )
+        };
+        const KNOWN: &[brewing::EffectModifier] = &[
+            ("minecraft:luck", "ruby:a", 1.0, Operation::AddValue),
+            ("ruby:mana", "ruby:b", 1.0, Operation::AddValue),
+        ];
+        const UNKNOWN: &[brewing::EffectModifier] =
+            &[("ruby:stamina", "ruby:c", 1.0, Operation::AddValue)];
+        assert_eq!(check(&[effect(KNOWN), effect(&[])]), Ok(()));
+        assert_eq!(
+            check(&[effect(KNOWN), effect(UNKNOWN)]),
+            Err("mob effect ruby:stun: attribute_modifiers: unknown attribute ruby:stamina".into())
+        );
     }
 
     /// A content mod's type from the wandering trader, the neutral template
@@ -2674,6 +2757,65 @@ pub mod tests {
         std::env::set_current_dir(std::env::temp_dir()).unwrap();
     }
 
+    /// A built native package whose own content declares a remainder that is not an item is
+    /// refused with the package: its code and Parts never start without the content it declared.
+    #[test]
+    #[ignore = "daily"]
+    fn a_built_native_package_with_a_missing_remainder_is_refused_whole() {
+        const MODE: &str = "SUNRISE_NATIVE_REMAINDER_TEST";
+        if std::env::var_os(MODE).is_none() {
+            run_in_child(
+                "game::mods::tests::a_built_native_package_with_a_missing_remainder_is_refused_whole",
+                MODE,
+            );
+            return;
+        }
+        let f = Fixture::new("native-missing-remainder");
+        let text = format!(
+            "id='machine_sample'\nname='machine_sample'\nversion='0.3.0'\napi='0.2'\nside='both'\ncapabilities=['registries']\n[native]\ngame='26.3'\nsunrise='{}'\nmixins='{}'\n",
+            "a".repeat(40),
+            "b".repeat(40)
+        );
+        let code: &[(&str, &[u8])] = &[
+            ("Cargo.toml", b"[package]\nname='example'\nversion='1'\n"),
+            ("src/lib.rs", b"pub fn hooks() {}"),
+            (
+                "data/machine_sample/sunrise/item/stew.json",
+                br#"{"template":"minecraft:mushroom_stew","crafting_remainder":"machine_sample:missing_bowl"}"#,
+            ),
+        ];
+        let path = f.0.join("machine_sample.smod");
+        std::fs::write(
+            &path,
+            sunrise_mod_package::Package::write_files(&text, code).unwrap(),
+        )
+        .unwrap();
+        let selected: Arc<[sunrise_mod_package::selection::SelectedPackage]> =
+            vec![sunrise_mod_package::selection::SelectedPackage {
+                package: sunrise_mod_package::Package::read(&path).unwrap(),
+                path,
+            }]
+            .into();
+        let sources = ModsState {
+            native: Arc::new(f.runtime()),
+            selected,
+            ..Default::default()
+        };
+        let base = f.0.join("vanilla");
+        std::fs::create_dir_all(&base).unwrap();
+        std::fs::write(base.join("sunrise-resources.json"), "{}").unwrap();
+        std::fs::write(base.join("facts.json"), r#"{"states":[],"defaults":{}}"#).unwrap();
+        std::fs::write(base.join("gameplay-facts.json"), r#"{"states":[]}"#).unwrap();
+        std::fs::write(base.join("items.json"), r#"{"minecraft:mushroom_stew":{}}"#).unwrap();
+        let error = content_overlay(&base, &sources, &f.0.join("jars"))
+            .err()
+            .unwrap();
+        assert_eq!(
+            error.to_string(),
+            r#"machine_sample: native content refused at admission: machine_sample:stew: crafting_remainder "machine_sample:missing_bowl" is not an item"#
+        );
+    }
+
     #[test]
     #[ignore = "daily"]
     fn a_shared_missing_jar_stops_native_load_and_refuses_each_content_mod_row() {
@@ -2840,10 +2982,7 @@ pub mod tests {
     fn a_root_without_mob_effects_does_not_freeze_the_registry() {
         use sunrise_level::brewing;
         use sunrise_sim::mod_content::ContentMod;
-        // Another test may have set the process-wide list already.
-        if !brewing::mod_effects().is_empty() {
-            return;
-        }
+        let _scope = sunrise_game_data::potions::isolate_mod_effects();
         let f = Fixture::new("no-effects");
         std::fs::write(
             f.0.join("sunrise-mod.toml"),
@@ -2858,13 +2997,70 @@ pub mod tests {
         };
         register_mob_effects(&[plain], &[]);
         // The list `potions::tests` registers, so it holds whichever test runs first.
-        assert!(brewing::register_mod_effects([(
-            "test:effect".to_owned(),
+        assert!(brewing::register_mod_effects([brewing::ModEffect::new(
+            "test:effect",
             0,
             brewing::Category::Neutral,
-            None,
-            "test-potions".into()
+            "test-potions",
         )]));
+    }
+
+    /// #4473: a content mod's declared `attribute_modifiers` register onto its
+    /// effect definition in declaration order.
+    #[test]
+    fn a_declared_effect_registers_its_attribute_modifiers() {
+        use sunrise_world::attributes::Operation;
+        let _scope = sunrise_game_data::potions::isolate_mod_effects();
+        let f = Fixture::new("effect-modifiers");
+        let stun = r#"{"category": "harmful", "color": 1, "attribute_modifiers": [
+            {"attribute": "minecraft:movement_speed", "id": "plain:stun_speed", "amount": -1.0, "operation": "add_multiplied_total"},
+            {"attribute": "minecraft:armor", "id": "plain:stun_armor", "amount": 2.5, "operation": "add_value"},
+            {"attribute": "minecraft:scale", "id": "plain:stun_scale", "amount": 0.5, "operation": "add_multiplied_base"}]}"#;
+        register_mob_effects(&[plain_mod(&f, Some(stun))], &[]);
+        let stun = sunrise_level::brewing::effect("plain:stun").unwrap();
+        assert_eq!(
+            stun.modifiers,
+            [
+                (
+                    "minecraft:movement_speed",
+                    "plain:stun_speed",
+                    -1.0,
+                    Operation::AddMultipliedTotal
+                ),
+                (
+                    "minecraft:armor",
+                    "plain:stun_armor",
+                    2.5,
+                    Operation::AddValue
+                ),
+                (
+                    "minecraft:scale",
+                    "plain:stun_scale",
+                    0.5,
+                    Operation::AddMultipliedBase
+                ),
+            ]
+        );
+    }
+
+    /// A content mod `plain` in `f`, declaring the effect `plain:stun` when given.
+    fn plain_mod(f: &Fixture, stun: Option<&str>) -> sunrise_sim::mod_content::ContentMod {
+        std::fs::write(
+            f.0.join("sunrise-mod.toml"),
+            "id = 'plain'\nname = 'plain'\nversion = '1.0'\napi = '0.2'\ncapabilities = ['registries']\n",
+        )
+        .unwrap();
+        if let Some(stun) = stun {
+            let dir = f.0.join("data/plain/sunrise/mob_effect");
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(dir.join("stun.json"), stun).unwrap();
+        }
+        let package = sunrise_mod_package::Package::read(&f.0).unwrap();
+        sunrise_sim::mod_content::ContentMod {
+            id: "plain".into(),
+            content: sunrise_mod_package::content::Content::read(&f.0, &package.manifest).unwrap(),
+            jars: Vec::new(),
+        }
     }
 }
 

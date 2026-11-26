@@ -53,7 +53,7 @@ impl crate::game::ClientGame<'_> {
         let chat_tree = self.chat_tree_for(Some(&tree));
         if let Some(r) = self.client.remote.as_mut() {
             r.chat_tree = chat_tree;
-            r.chat_tree_received = true;
+            r.server_chat_tree = Some(tree);
         }
     }
     /// `ClientPacketListener.handleContainerContent` initializes only the addressed menu.
@@ -179,6 +179,7 @@ impl crate::game::ClientGame<'_> {
         }
         // Configuration's tags, over the block ids the parts just bound.
         self.install_remote_tags();
+        self.refresh_face_visibility_tags();
         self.refresh_render_visibility();
         self.client.test_highlights.clear();
         // handleLogin: `debugSubscriber.clear()`.
@@ -201,6 +202,7 @@ impl crate::game::ClientGame<'_> {
         // new LocalPlayer (slot 0, no effects, riding nothing: the server
         // pairs a vehicle again with ClientboundSetPassengersPacket).
         self.common.selected = 0;
+        self.player_score = 0;
         self.common.potions.effects.clear();
         // handleLogin creates a fresh LocalPlayer only when none exists yet.
         if self.client.remote.as_ref().is_none_or(|r| !r.logged_in) {
@@ -471,9 +473,9 @@ impl crate::game::ClientGame<'_> {
                             .or_insert_with(|| Arc::new(std::sync::atomic::AtomicI32::new(0)));
                         if let Some(t) = e.properties.iter().find(|p| p.name == "textures") {
                             // Keep the raw property until the services keys settle.
-                            r.skin_textures
-                                .entry(e.uuid)
-                                .or_insert_with(|| Arc::new(PlayerTextures::new(t.clone())));
+                            r.skin_textures.entry(e.uuid).or_insert_with(|| {
+                                Arc::new(PlayerTextures::new(e.uuid, t.clone()))
+                            });
                         }
                     }
                 }
@@ -610,6 +612,7 @@ impl crate::game::ClientGame<'_> {
         }
         if p.keep & 2 == 0 {
             self.reset_remote_player_riding();
+            self.player_score = 0;
             // KEEP_ENTITY_DATA copies the old player's synched data
             // (its shared flags) to the new one; without it they reset.
             if let Some(r) = self.client.remote.as_mut() {

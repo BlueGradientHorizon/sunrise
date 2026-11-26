@@ -1,5 +1,4 @@
 //! The `item_crafted` hook: declarations the mod API generator reads (see `hooks/mod.rs`).
-// catalog-order: 0229
 
 pub trait Hooks {
     /// A player took a crafting grid's result (`ResultSlot.onTake`, NeoForge's
@@ -15,7 +14,6 @@ pub trait Hooks {
     /// included, and not for a stonecutter's, a smithing table's or a
     /// furnace's result. Server-side.
     #[hook(
-        target = "sunrise_gameplay::game::native_hooks::item_crafted::ServerGame<'_>::native_item_crafted",
         dispatch = "flat",
         side = "server",
         contract = "listen",

@@ -15,24 +15,31 @@ impl crate::game::ClientGame<'_> {
         let Some((slot, ticks)) = self.common.using else {
             return;
         };
-        // ItemStack.isSameItem compares the item in the active hand, even when
-        // that hand is now holding a different hotbar slot.
+        // The may-still-use check (`ItemStack.isSameItem`, then a part's
+        // `canContinueUsing`) reads the active hand, even when that hand is now
+        // holding a different hotbar slot.
         let offhand = slot == sunrise_gameplay_common::game::held_items::OFFHAND_SLOT;
-        let hand_slot = if offhand { slot } else { self.common.selected };
-        let Some(stack) = self
-            .common
-            .stack_in(hand_slot)
-            .filter(|stack| {
-                self.common
-                    .use_start
-                    .item
-                    .as_ref()
-                    .is_some_and(|active| stack.item == active.item)
-            })
-            .cloned()
-        else {
+        let (hand_slot, hand) = if offhand {
+            (slot, Hand::Off)
+        } else {
+            (self.common.selected, Hand::Main)
+        };
+        let held = self.common.stack_in(hand_slot).cloned();
+        let began = self.common.use_start.item.clone();
+        let goes_on = began
+            .as_ref()
+            .zip(held.as_ref())
+            .is_some_and(|(began, held)| {
+                self.can_continue_using(began, held, Some(self.own_entity_id()), hand)
+            });
+        let Some(stack) = held.filter(|_| goes_on) else {
             self.common.using = None;
             self.common.use_start = Default::default();
+            // Another item stops the use (`stopUsingItem`); an emptied hand is used up.
+            if let Some(began) = began.filter(|_| self.common.stack_in(hand_slot).is_some()) {
+                let time_left = ticks_left(self.common.use_duration, ticks);
+                self.stopped_using(&began, Some(self.own_entity_id()), hand, time_left);
+            }
             return;
         };
         self.common.use_start.item = Some(stack.clone());
@@ -73,7 +80,7 @@ impl crate::game::ClientGame<'_> {
             return;
         }
         // A goat horn is held up for its instrument's use duration.
-        if self.common.res.items().instrument(&stack).is_some() {
+        if self.items().instrument(&stack).is_some() {
             self.common.using = Some((hand_slot, ticks + 1));
             return;
         }
@@ -248,6 +255,8 @@ impl crate::game::ClientGame<'_> {
         ends
     }
 }
+
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;
 
 use sunrise_gameplay_common::game::side_ops::player::PlayerSideGameExt as _;
 

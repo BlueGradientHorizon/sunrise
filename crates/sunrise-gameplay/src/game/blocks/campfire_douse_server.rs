@@ -7,8 +7,7 @@ impl crate::game::ServerGame<'_> {
     /// at `pos` clicked: true when it doused a lit campfire (SUCCESS).
     pub fn use_campfire_douse(&mut self, hit: &Hit, held: Option<&ItemStack>) -> Result<bool> {
         let pos = hit.pos;
-        let (Some(used), Some(mut state)) =
-            (held.cloned(), self.common.campfire_to_douse(pos, held))
+        let (Some(used), Some(mut state)) = (held.cloned(), self.campfire_to_douse(pos, held))
         else {
             return Ok(false);
         };

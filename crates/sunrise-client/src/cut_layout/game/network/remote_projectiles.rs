@@ -9,10 +9,11 @@ pub(crate) mod entity_tick_tests {
     type Event = (bool, &'static str, Vec<u32>, Vec<String>, Vec<[f64; 3]>);
     type Heard = Arc<Mutex<Vec<Event>>>;
 
-    /// A server's `AddEntity` of an arrow, through the packet path that tracks it: a listener's
-    /// handle for a client entity resolves only for one the server told this client of.
-    fn add_arrow(
+    /// A server's `AddEntity` of an entity type, through the packet path that tracks it: a
+    /// listener's handle for a client entity resolves only for one the server told this client of.
+    fn add_entity(
         game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
+        entity_type: &str,
         id: i32,
         position: [f64; 3],
     ) {
@@ -24,7 +25,7 @@ pub(crate) mod entity_tick_tests {
             .builtin
             .get("minecraft:entity_type")
             .unwrap()
-            .id("minecraft:arrow")
+            .id(entity_type)
             .unwrap();
         game.handle_packet(sunrise_protocol::packets::play::Clientbound::AddEntity(
             sunrise_protocol::packets::play::AddEntity {
@@ -40,6 +41,14 @@ pub(crate) mod entity_tick_tests {
             },
         ))
         .unwrap();
+    }
+
+    fn add_arrow(
+        game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
+        id: i32,
+        position: [f64; 3],
+    ) {
+        add_entity(game, "minecraft:arrow", id, position);
     }
 
     struct Listener(Heard);
@@ -70,57 +79,62 @@ pub(crate) mod entity_tick_tests {
 
     #[mod_api::__subscriptions]
     impl mod_api::Hooks for Listener {
-        fn entity_tick_listened(
-            &self,
-            _: mod_api::HostSide<'_>,
-            event: &mut mod_api::EntityTickListenedEvent,
-        ) {
-            event.listened = true;
-        }
         fn entity_tick_pre(
             &self,
             host: mod_api::HostSide<'_>,
             event: &mut mod_api::EntityTickPreEvent<'_>,
-        ) {
-            self.record(&host, "pre", event.entities, event.kinds);
+        ) -> mod_api::Flow {
+            self.record(
+                &host,
+                "pre",
+                std::slice::from_ref(&event.entity),
+                std::slice::from_ref(&event.kind),
+            );
+            mod_api::Flow::Continue
         }
         fn entity_tick_post(
             &self,
             host: mod_api::HostSide<'_>,
             event: &mut mod_api::EntityTickPostEvent<'_>,
         ) {
-            self.record(&host, "post", event.entities, event.kinds);
+            self.record(
+                &host,
+                "post",
+                std::slice::from_ref(&event.entity),
+                std::slice::from_ref(&event.kind),
+            );
         }
     }
 
-    /// The same listener, naming arrows to `entity_tick_each`.
+    /// Listener recording each entity's Pre and Post calls.
     struct Named(Heard);
 
     #[mod_api::__subscriptions]
     impl mod_api::Hooks for Named {
-        fn entity_tick_listened(
-            &self,
-            _: mod_api::HostSide<'_>,
-            event: &mut mod_api::EntityTickListenedEvent,
-        ) {
-            event.listened = true;
-        }
         fn entity_tick_pre(
             &self,
             host: mod_api::HostSide<'_>,
             event: &mut mod_api::EntityTickPreEvent<'_>,
-        ) {
-            Listener(self.0.clone()).record(&host, "pre", event.entities, event.kinds);
+        ) -> mod_api::Flow {
+            Listener(self.0.clone()).record(
+                &host,
+                "pre",
+                std::slice::from_ref(&event.entity),
+                std::slice::from_ref(&event.kind),
+            );
+            mod_api::Flow::Continue
         }
         fn entity_tick_post(
             &self,
             host: mod_api::HostSide<'_>,
             event: &mut mod_api::EntityTickPostEvent<'_>,
         ) {
-            Listener(self.0.clone()).record(&host, "post", event.entities, event.kinds);
-        }
-        fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
-            r.entity_tick_each("minecraft:arrow");
+            Listener(self.0.clone()).record(
+                &host,
+                "post",
+                std::slice::from_ref(&event.entity),
+                std::slice::from_ref(&event.kind),
+            );
         }
     }
 
@@ -218,5 +232,98 @@ pub(crate) mod entity_tick_tests {
                 (true, "post", arrow().0, arrow().1, vec![after])
             ]
         );
+    }
+
+    /// A client mod naming projectiles and tridents with only `entity_tick_pre` or only
+    /// `entity_tick_post` hands the projectile lists back only for the subscribed phase.
+    #[test]
+    #[ignore = "daily"]
+    fn named_remote_projectiles_hand_back_only_for_subscribed_phase() {
+        struct PreOnly(Heard);
+        #[mod_api::__subscriptions]
+        impl mod_api::Hooks for PreOnly {
+            fn entity_tick_pre(
+                &self,
+                host: mod_api::HostSide<'_>,
+                event: &mut mod_api::EntityTickPreEvent<'_>,
+            ) -> mod_api::Flow {
+                Listener(self.0.clone()).record(
+                    &host,
+                    "pre",
+                    std::slice::from_ref(&event.entity),
+                    std::slice::from_ref(&event.kind),
+                );
+                mod_api::Flow::Continue
+            }
+        }
+
+        struct PostOnly(Heard);
+        #[mod_api::__subscriptions]
+        impl mod_api::Hooks for PostOnly {
+            fn entity_tick_post(
+                &self,
+                host: mod_api::HostSide<'_>,
+                event: &mut mod_api::EntityTickPostEvent<'_>,
+            ) {
+                Listener(self.0.clone()).record(
+                    &host,
+                    "post",
+                    std::slice::from_ref(&event.entity),
+                    std::slice::from_ref(&event.kind),
+                );
+            }
+        }
+
+        for pre_only in [true, false] {
+            let heard: Heard = Arc::default();
+            let entry = if pre_only {
+                mod_api::ModEntry::new("client-pre-only", Box::new(PreOnly(heard.clone())))
+            } else {
+                mod_api::ModEntry::new("client-post-only", Box::new(PostOnly(heard.clone())))
+            };
+            let mods: mod_api::Mods = vec![entry].into();
+            let mut arrow_x = 0.0;
+            let mut trident_x = 0.0;
+            let mut handbacks = 0;
+            mod_platform::testing::with_mods(mods, || {
+                crate::game::native_entity_refs::tests::with_client_game(|game| {
+                    game.world.chunks.insert(
+                        (0, 0),
+                        std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
+                    );
+                    game.block_ticks
+                        .add_empty_chunk(sunrise_core::position::ChunkPos::new(0, 0))
+                        .unwrap();
+                    let _server = sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client(game);
+                    add_arrow(game, 71, [3.5, 80.0, 3.5]);
+                    add_entity(game, "minecraft:trident", 72, [3.5, 80.0, 5.5]);
+                    sunrise_client_gameplay::game::ClientGame::reset_remote_projectile_handbacks();
+                    game.tick_remote_projectiles(|_, at| at);
+                    handbacks =
+                        sunrise_client_gameplay::game::ClientGame::remote_projectile_handbacks();
+                    arrow_x = game.creatures.projectiles[0].position.x;
+                    trident_x = game.tridents[0].position.x;
+                });
+            });
+            assert_eq!(
+                handbacks, 2,
+                "one handback per named entity, none for the absent phase"
+            );
+            assert!(arrow_x > 3.5 && trident_x > 3.5);
+            let heard = heard.lock().unwrap();
+            let phase = if pre_only { "pre" } else { "post" };
+            let phases: Vec<_> = heard
+                .iter()
+                .map(|(client, p, entities, _, _)| (*client, *p, entities.clone()))
+                .collect();
+            assert_eq!(phases, [(true, phase, vec![71]), (true, phase, vec![72])]);
+            if pre_only {
+                assert_eq!(heard[0].4, [[3.5, 80.0, 3.5]]);
+                assert_eq!(heard[1].4, [[3.5, 80.0, 5.5]]);
+            } else {
+                assert!(heard[0].4[0][0] > 3.5);
+                assert!(heard[1].4[0][0] > 3.5);
+            }
+        }
     }
 }

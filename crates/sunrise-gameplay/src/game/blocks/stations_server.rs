@@ -2,6 +2,7 @@
 //! side effects, experience levels, and brewing stand server ticking).
 use crate::game::ServerGame;
 use sunrise_core::random::RandomSource;
+use sunrise_gameplay_common::game::native_block_states::NativeBlockStatesGameExt1 as _;
 use sunrise_gameplay_common::game::stations_common::{Kind, Station};
 use sunrise_items::items::ItemStack;
 use sunrise_level::{brewing, containers::BlockEntity};
@@ -176,7 +177,6 @@ impl ServerGame<'_> {
     /// or cancel the levels, and every fifth level gained plays the level-up sound
     /// (at most every 100 ticks).
     pub(in crate::game) fn add_experience_levels(&mut self, mut levels: i32) {
-        // ServerPlayer.giveExperienceLevels
         if levels == 0 {
             return;
         }
@@ -225,10 +225,8 @@ impl ServerGame<'_> {
 
     /// `Player.onEnchantmentPerformed`: the cost leaves the level directly, not
     /// through `giveExperienceLevels`, and the mods hear of the level change.
-    pub(in crate::game) fn enchantment_performed(&mut self, cost: i32) {
-        let old_level = self.common.experience.level;
-        self.common.experience.add_levels(-cost);
-        self.native_player_level_changed(old_level);
+    pub fn enchantment_performed(&mut self, cost: i32) {
+        self.give_levels(-cost);
     }
 
     /// Opens a workstation menu for the block; false when it is not one.
@@ -281,15 +279,31 @@ impl ServerGame<'_> {
 
     /// `Player.giveExperienceLevels`: all players near its feet hear the sound.
     pub(in crate::game::server_side) fn play_level_up(&mut self, amount: i32, level: i32) {
-        if let Some(volume) = self.server.level_up_sound.give_levels(amount, level) {
-            let at = self
-                .common
-                .player
-                .as_ref()
-                .map(|p| [p.position.x, p.position.y, p.position.z]);
-            if let Some(at) = at {
-                self.server_play_sound("minecraft:entity.player.levelup", at, volume, 1.0);
-            }
+        let Some(volume) = self.server.level_up_sound.give_levels(amount, level) else {
+            return;
+        };
+        let event = "minecraft:entity.player.levelup";
+        let at = self
+            .common
+            .player
+            .as_ref()
+            .map(|p| [p.position.x, p.position.y, p.position.z]);
+        if let (Some(host), Some(at)) = (self.server.lan.as_ref(), at) {
+            // A native write can borrow a guest's body without swapping in their level.
+            let dimension = self
+                .server
+                .lan_acting
+                .and_then(|conn| host.hub.guest(conn))
+                .map_or(self.common.dim, |guest| {
+                    sunrise_gameplay_common::game::Dim::from_id(&guest.dimension)
+                });
+            let sound = sunrise_gameplay_common::game::level_sounds_common::LevelSound::new(
+                event, at, volume, 1.0,
+            )
+            .in_source(mod_api::SoundSource::Players);
+            let _ = self.queue_level_sound(dimension.id(), sound, None);
+        } else if let Some(at) = at {
+            self.server_play_sound(event, at, volume, 1.0);
         }
     }
 
@@ -307,33 +321,55 @@ impl ServerGame<'_> {
         let (mut out, due) = b.tick_to_brew(
             &server_world_stations!(self).brewing,
             server_world_items!(self),
-            self.common.res.providers(),
+            match self.server.world_tables.0.as_ref() {
+                Some(t) => &t.providers,
+                None => self.common.res.providers(),
+            },
             &|s| fuel.resolve(server_world_items!(self), s),
         );
         let started = was_idle && b.brew_time > 0;
         let ingredient = started.then(|| b.ingredient.clone()).flatten();
-        let hooked = !mod_api::__private::mods().is_empty();
-        let stacks = (due && hooked).then(|| b.items.clone());
         let at = [pos.0, pos.1, pos.2];
-        let mut post = false;
         if due {
-            // `doBrew`, with PotionBrewEvent.Pre before it and .Post after.
-            let asked = stacks.map(|mut stacks| {
+            let pre = mod_api::__private::listened(mod_api::HookId::PotionBrewPre)
+                .then(|| b.items.clone());
+            let replacement = pre.and_then(|mut stacks| {
                 let mut cancel = false;
                 self.native_potion_brew_pre(at, &mut stacks, &mut cancel);
-                (stacks, cancel)
+                cancel.then_some(stacks)
             });
-            // A cancelled Pre fires Post itself, with the slots the mods left.
-            let cancelled = matches!(asked, Some((_, true)));
-            let rest = self.brewing_ingredient_remainder(pos, cancelled);
             let Some(BlockEntity::Brewing(b)) = self.common.world.block_entities.get_mut(&pos)
             else {
                 return Ok(());
             };
-            let brewing = &server_world_stations!(self).brewing;
-            b.brew_after_pre(asked, brewing, &|_| rest.clone(), &mut out);
+            // `EventHooks.onPotionAttemptBrew` still posts after cancellation
+            // if any slot matches its prior value. Otherwise `doBrew` posts
+            // after replacing the bottles, with the captured ingredient intact.
+            let (ingredient, post) = if let Some(stacks) = replacement {
+                let post = b.items.iter().zip(&stacks).any(|(old, new)| old == new);
+                b.items = stacks;
+                (None, post)
+            } else {
+                let ingredient = b.brew_bottles(&server_world_stations!(self).brewing);
+                let post = ingredient.is_some();
+                (ingredient, post)
+            };
+            if post && mod_api::__private::listened(mod_api::HookId::PotionBrewPost) {
+                let mut stacks = b.items.clone();
+                self.native_potion_brew_post(at, &mut stacks);
+                if let Some(BlockEntity::Brewing(b)) = self.common.world.block_entities.get_mut(&pos)
+                {
+                    b.items = stacks;
+                }
+            }
+            if let Some(ingredient) = ingredient {
+                let rest = self.crafting_remainder(&ingredient);
+                if let Some(BlockEntity::Brewing(b)) = self.common.world.block_entities.get_mut(&pos)
+                {
+                    b.finish_brew(ingredient, rest, &mut out);
+                }
+            }
             self.common.world.modified.insert((pos.0 >> 4, pos.2 >> 4));
-            post = hooked && (out.brewed || cancelled);
         }
         if out.fuel_taken
             && let Some(item) = fuel_item
@@ -354,17 +390,7 @@ impl ServerGame<'_> {
             self.drop_item_stack_containers(at, d);
         }
         if out.brewed {
-            self.native_brewing_complete(at);
             self.play_at("minecraft:block.brewing_stand.brew", at, 1.0, 1.0);
-        }
-        // PotionBrewEvent.Post ends `doBrew`, after its sound and the
-        // ingredient's remainder; the bottles' block state follows it.
-        if post && let Some(BlockEntity::Brewing(b)) = self.common.world.block_entities.get(&pos) {
-            let mut stacks = b.items.clone();
-            self.native_potion_brew_post(at, &mut stacks);
-            if let Some(BlockEntity::Brewing(b)) = self.common.world.block_entities.get_mut(&pos) {
-                b.items = stacks;
-            }
         }
         let Some(BlockEntity::Brewing(b)) = self.common.world.block_entities.get_mut(&pos) else {
             return Ok(());
@@ -410,3 +436,7 @@ use sunrise_gameplay_common::game::bookshelves_common::BookshelvesCommonGameExt1
 use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
 
 use sunrise_gameplay_common::game::stations_common::StationsCommonGameExt1 as _;
+
+#[cfg(test)]
+#[path = "stations/anvil_update_tests.rs"]
+mod anvil_update_tests;

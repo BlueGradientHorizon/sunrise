@@ -9,7 +9,6 @@ impl ServerGame<'_> {
         holder: mod_api::Holder,
         access: AttachmentAccess,
     ) -> Result<&mut mod_api::Attachments, mod_api::AttachmentError> {
-        self.common.world.attachment_syncs.insert(holder);
         self.attachment_map_quiet(holder, access)
     }
 

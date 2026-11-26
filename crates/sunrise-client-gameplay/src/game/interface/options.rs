@@ -15,6 +15,9 @@ use sunrise_client::{
 use sunrise_game_data::{Result, lang, text::Text};
 use winit::{event::MouseButton, keyboard::KeyCode, window::Fullscreen};
 
+const UNLIMITED_FRAMERATE: i32 = 260;
+const SKIPPED_FRAME_RATE: i32 = 10;
+
 /// `CommonLinks.ACCESSIBILITY_HELP`, the Accessibility page's footer link.
 pub(in crate::game) const ACCESSIBILITY_HELP_LINK: &str =
     "https://aka.ms/MinecraftJavaAccessibility";
@@ -166,6 +169,9 @@ impl crate::game::ClientGame<'_> {
         ui.minecart_improvements = minecart_improvements;
         ui.languages = lang::available(&[&self.common.pack.source]);
         self.refresh_pack_lists();
+        if let Page::NativeMod(index) = page {
+            self.native_settings_refresh(index);
+        }
     }
     /// While the resource pack screen is open, `resourcepacks/` is looked at once a second
     /// and the list found again when its packs changed (`PackSelectionScreen.tick`'s
@@ -466,7 +472,7 @@ impl crate::game::ClientGame<'_> {
     pub fn handle_option_events(&mut self, events: Vec<Event>) -> Result<()> {
         for e in events {
             match e {
-                Event::ButtonClick => self.client.audio.0.play_button_click(),
+                Event::ButtonClick => self.play_audio_button_click(),
                 Event::DebugEntriesChanged => self.client.debug_entries.0.invalidate(),
                 Event::Changed => {
                     self.client
@@ -583,38 +589,10 @@ impl crate::game::ClientGame<'_> {
                     use sunrise_client::clipboard::Clipboard;
                     self.client.clipboard.0.set(&text);
                 }
-                Event::BrowseMods => {
-                    let ui = &mut self.client.chat_ui.options.mod_browser;
-                    self.client
-                        .mod_jobs
-                        .0
-                        .browse(ui, sunrise_gameplay_common::game::game_dir());
-                }
-                Event::InstallMod(id) => {
-                    if self.common.player.is_none() {
-                        let ui = &mut self.client.chat_ui.options.mod_browser;
-                        self.client.mod_jobs.0.install(
-                            ui,
-                            sunrise_gameplay_common::game::game_dir(),
-                            id,
-                        );
-                    }
-                }
-                // The website, through ConfirmLinkScreen as other links.
-                Event::OpenModPage(url) => self.confirm_trusted_link(&url, Screen::Options),
                 Event::ListShaderPacks => {
-                    let (key, _) = sunrise_client::shader_pack_list::resolve(
-                        &Self::shader_packs_dir(),
-                        &self.client.settings.sunrise.shader_pack,
-                    );
-                    if key != self.client.settings.sunrise.shader_pack {
-                        self.client.settings.sunrise.shader_pack = key;
-                        self.client
-                            .settings
-                            .save(&sunrise_gameplay_common::game::options_path());
-                    }
                     self.client.settings.shader_packs =
                         sunrise_client::shader_pack_list::scan(&Self::shader_packs_dir());
+                    self.client.native_shaders.pick_hdr.get_mut().forget();
                 }
                 // Saved; the next frame's `shader_pack_inputs` loads the pick.
                 Event::ShaderPack => self
@@ -623,17 +601,24 @@ impl crate::game::ClientGame<'_> {
                     .save(&sunrise_gameplay_common::game::options_path()),
                 Event::OpenShaderOptions => self.open_shader_options(),
                 Event::ShaderOptions => self.save_shader_options(),
-                Event::NativePackOptions(i) => {
-                    if let Some(pack) = self.client.settings.shader_packs.get(i) {
-                        pack.save_values(&Self::shader_packs_dir());
-                    }
-                }
                 Event::OpenShaderPackFolder => {
                     let dir = Self::shader_packs_dir();
                     let _ = std::fs::create_dir_all(&dir);
                     super::packs::open_folder(&dir);
                 }
                 Event::NativeSettings(i) => self.native_settings_refresh(i),
+                Event::ModConfigScreen(i) => {
+                    let Some(id) = self.client.settings.mods.installed.get(i).map(|m| m.id.clone()) else {
+                        continue;
+                    };
+                    match mod_api::__private::create_config_screen(self, &id) {
+                        Some(Ok(true)) => {
+                            self.client.native_mod_screen_parent = self.mod_screen_open(&id);
+                        }
+                        Some(Err(reason)) => log::error!("mod {id}: {reason}"),
+                        Some(Ok(false)) | None => {}
+                    }
+                }
                 Event::NativeSetting(i, j) => self.native_setting_event(i, j),
                 Event::Credits => self.open_win_screen(false, super::win::Finish::Options),
                 Event::HudEditor => self.open_hud_editor(true),
@@ -713,11 +698,12 @@ impl crate::game::ClientGame<'_> {
             self.client.settings.sunrise.save(dir);
         }
         self.hold_fullbright();
+        let vsync = self.effective_vsync();
         let s = &self.client.settings;
         if let Some(r) = self.client.renderer.0.as_mut() {
             r.gamma = s.gamma as f32;
             r.improved_transparency = s.improved_transparency;
-            r.set_present_mode(s.vsync, s.sunrise.present_mode);
+            r.set_present_mode(vsync, s.sunrise.present_mode);
             r.animated_textures = s.sunrise.animated_textures;
             r.screenshot_quality = s.sunrise.screenshot_quality;
             r.set_mipmap_levels(s.mipmap_levels.max(0) as u32);
@@ -846,17 +832,11 @@ impl crate::game::ClientGame<'_> {
             .save(&sunrise_gameplay_common::game::options_path());
         self.apply_ui_settings();
     }
-    /// The Extras page's shader pack key: turns the picked pack off, or asks for the last
-    /// pick again. The same persistent pick the Shader Packs screen writes: turning off keeps
-    /// the last non-empty pick, resuming restores it, and the off state survives a restart.
-    /// With `SUNRISE_SHADER_PACK` set the developer override wins and the key does nothing.
-    /// Invalidation stays with the normal selection path: the next frame's `shader_pack_inputs`
-    /// sees the changed pick and drops or loads the pack itself, for either pack kind.
+    /// Toggle the persisted Shaders-page pick, leaving reload to the normal selection path.
     pub(in crate::game::client_side) fn toggle_shader_pack(&mut self) {
         let present = |key: &str| {
-            sunrise_client::shader_pack_list::resolve(&Self::shader_packs_dir(), key)
-                .1
-                .exists()
+            let dir = Self::shader_packs_dir();
+            !sunrise_client::shader_pack_list::unsupported(&dir, key) && dir.join(key).exists()
         };
         let plan = plan_shader_toggle(
             &self.client.settings.sunrise.shader_pack,
@@ -896,9 +876,8 @@ impl crate::game::ClientGame<'_> {
             }
         }
     }
-    /// `FramerateLimitTracker.getFramerateLimit`: the Max Framerate option,
-    /// throttled when minimised, idle, or in a menu without a world.
-    pub(in crate::game::client_side) fn framerate_limit(&self) -> i32 {
+    /// `FramerateLimitTracker.getFramerateLimit` plus the mod override, where zero skips this render.
+    pub(in crate::game) fn framerate_limit(&self) -> i32 {
         let context = FrameContext {
             inactivity: if self.client.settings.inactivity_fps_limit == "minimized" {
                 InactivityFpsLimit::Minimized
@@ -936,7 +915,6 @@ impl crate::game::ClientGame<'_> {
             self.client.title.0.is_none(),
             self.client.focused,
         );
-        // A native mod may only lower it (`native_framerate_limit`).
         let mut hooked = limit;
         self.native_framerate_limit(
             self.client.focused,
@@ -944,8 +922,8 @@ impl crate::game::ClientGame<'_> {
             self.client.title.0.is_none(),
             &mut hooked,
         );
-        if hooked >= 1 {
-            hooked.min(limit)
+        if hooked >= 0 {
+            hooked.min(UNLIMITED_FRAMERATE)
         } else {
             limit
         }
@@ -953,11 +931,11 @@ impl crate::game::ClientGame<'_> {
     /// `Minecraft.runTick`'s frame limiter: `FramerateLimiter.limitDisplayFPS`
     /// below 260 frames per second, sleeping then spin-waiting until the
     /// frame's slot ends (not in scripted frame-count runs).
-    pub(in crate::game::client_side) fn limit_frame(&mut self) {
+    pub(in crate::game) fn limit_frame(&mut self, limit: i32) {
         if self.common.options.frames.is_some() {
             return;
         }
-        let limit = self.framerate_limit();
+        let limit = if limit == 0 { SKIPPED_FRAME_RATE } else { limit };
         match self.client.settings.sunrise.pacing {
             sunrise_client::graphics::Pacing::Precise => sunrise_client::window::end_frame(
                 &mut self.client.limiter,

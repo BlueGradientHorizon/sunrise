@@ -226,7 +226,7 @@ impl crate::game::ServerGame<'_> {
                     this: Some(&me),
                     origin: me.position,
                     tool: None,
-                    block_pos: None,
+                    event_block: None,
                     target: None,
                     interacting: None,
                 };
@@ -351,6 +351,8 @@ pub(in crate::game) mod tests {
             links: vec![],
             asks_still_valid: false,
             opening_item: None,
+            opener_block: Some("minecraft:crafter".into()),
+            removed: false,
             slot_changed_seen: None,
         });
         game.server.lan.as_mut().unwrap().hub.guests.push(player);

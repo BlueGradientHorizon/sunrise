@@ -1,6 +1,10 @@
 //! A bucket's aim and target: `getPlayerPOVHitResult(..., SOURCE_ONLY)` for an empty bucket (the block outline or a source fluid, whichever is nearer) and `BucketItem.use`'s place position.
 use super::*;
 
+#[cfg(test)]
+#[path = "tests/bucket_hook_moment_tests.rs"]
+mod bucket_hook_moment_tests;
+
 impl crate::game::ServerGame<'_> {
     /// The tail of `BucketItem.use` once `emptyContents` succeeded, after the
     /// criteria: `player.awardStat(Stats.ITEM_USED.get(this))`, then

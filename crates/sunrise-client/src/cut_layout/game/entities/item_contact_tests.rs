@@ -65,7 +65,7 @@ fn the_active_stack_survives_a_partial_contact_and_consumption_removes_the_entit
     let prepare = |game: &mut sunrise_gameplay::game::ServerGame<'_>| {
         game.options.dedicated = Some(Vec::new());
         game.native_lifecycle
-            .begin_open(mod_api::Authority::IntegratedServer);
+            .begin_open(Some(mod_api::Authority::IntegratedServer));
         game.world = World::new(game.res.facts().air, 1);
         game.world
             .chunks
@@ -199,7 +199,7 @@ fn client_item(
     stack: ItemStack,
     position: [f64; 3],
     velocity: [f64; 3],
-    pickup_delay: i64,
+    pickup_delay: i32,
 ) -> ItemEntity {
     let at = Vec3::new(position[0], position[1], position[2]);
     ItemEntity {
@@ -219,7 +219,9 @@ fn client_item(
         ground: Default::default(),
         fall_distance: 0.0,
         age: 0,
+        lifespan: ItemEntity::LIFETIME,
         pickup_delay,
+        stack_revision: 0,
         bob_offset: 0.0,
         ticks: 0,
         needs_sync: false,
@@ -349,6 +351,7 @@ fn item_restitution_uses_the_legacy_contact_on_both_simulating_sides() {
                                     None,
                                     &[],
                                     client,
+                                    None,
                                     &mut |_| {},
                                 )
                             });
@@ -551,7 +554,7 @@ fn item_support_survives_idle_then_clears_on_an_airborne_move() {
                 let mut item = game.dropped[0].clone();
                 let tick = |game: &mut sunrise_gameplay::game::ServerGame<'_>,
                             item: &mut ItemEntity| {
-                    game.tick_item_with_block_contacts(item, None, &[], false, &mut |_| {})
+                    game.tick_item_with_block_contacts(item, None, &[], false, None, &mut |_| {})
                 };
                 assert_eq!(tick(game, &mut item), (true, false));
                 assert_eq!(item.position, Vec3::new(5.5, 64.0, 4.5));
@@ -619,10 +622,9 @@ impl BlockPart for StepProbe {
         event: &mut mod_api::EntityInsideEvent<'_>,
     ) {
         // A later inside write wins over the step; settle then drags this movement.
-        event.run_after(
-            mod_api::InsideEffect::Freeze,
-            mod_api::EntityWrite::SetMovement([0.5, 0.0, 0.0]),
-        );
+        event.run_after(mod_api::InsideEffect::Freeze, |view| {
+            view.set_velocity([0.5, 0.0, 0.0]);
+        });
     }
 
     fn item_after_vertical_collision(
@@ -695,6 +697,7 @@ fn step_on_edits_grounded_bodies_before_inside_effects_and_settle() {
                                     escape,
                                     &[],
                                     client,
+                                    None,
                                     &mut |_| {},
                                 )
                             },
@@ -948,6 +951,7 @@ fn step_on_hurts_the_stepping_body_and_guards_its_block_writes() {
                                 None,
                                 &[],
                                 client,
+                                None,
                                 &mut |_| {}
                             ),
                             (true, false)
@@ -997,6 +1001,7 @@ fn step_on_hurts_the_stepping_body_and_guards_its_block_writes() {
                                         None,
                                         &[],
                                         false,
+                                        None,
                                         &mut |_| {}
                                     ),
                                     (false, true),
@@ -1042,6 +1047,7 @@ fn step_on_hurts_the_stepping_body_and_guards_its_block_writes() {
                                 None,
                                 &[],
                                 true,
+                                None,
                                 &mut |_| {}
                             ),
                             (true, false)
@@ -1143,6 +1149,7 @@ fn step_on_can_hurt_only_living_bodies_on_the_same_block() {
                                 None,
                                 &[],
                                 false,
+                                None,
                                 &mut |_| {}
                             ),
                             (true, false)
@@ -1278,6 +1285,7 @@ fn step_on_refuses_only_the_invalid_part_outputs() {
                                         None,
                                         &[],
                                         false,
+                                        None,
                                         &mut |_| {}
                                     ),
                                     (true, false),

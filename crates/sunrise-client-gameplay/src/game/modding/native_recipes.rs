@@ -1,45 +1,12 @@
-//! Every item and recipe the game knows, made once for the mods that read
-//! them through `native_recipes`, and the recipe book's known displays; placing a
-//! recipe and creative gives. The recipes are the window's own data — the
-//! content root's — with the server's recipes of the types its native mods
-//! had it send (`sunrise:recipe_content`) in their place, while the known
-//! displays follow the server's book as the recipe book does.
+//! Recipe lookup, placement, creative gives, and client synchronization. The client uses its
+//! own recipes, with server-synced types taking precedence, and follows the server's book for
+//! known displays.
 use mod_api::CreativeGiveError;
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc;
 use sunrise_gameplay_common::game::api_values::{TryIntoApi, TryIntoEngine};
-use sunrise_gameplay_common::game::native_hooks::{
-    NativeItem as RecipeItem, NativeRecipe as Recipe, NativeRecipeKind as RecipeKind,
-    NativeRecipeStack as RecipeStack, NativeRecipes as Recipes,
-};
 #[cfg(feature = "client")]
 use sunrise_gameplay_common::game::native_recipe_tables::IncomingRecipes;
 use sunrise_items::items::ItemStack;
-use sunrise_sim::{
-    crafting::{Ingredient, qualified},
-    recipe_book::{Category, Display},
-    stations::Smithing,
-};
-
-/// Item id -> its index in [`Recipes::items`].
-pub struct Index(HashMap<Arc<str>, u32>);
-impl Index {
-    fn stack(&self, item: &str, count: u32, components: String) -> Option<RecipeStack> {
-        Some(RecipeStack {
-            item: *self.0.get(item)?,
-            count,
-            components,
-        })
-    }
-    fn of(&self, s: &ItemStack) -> Option<RecipeStack> {
-        self.stack(&s.item, s.count, components(s))
-    }
-    fn any(&self, i: &Ingredient) -> Vec<RecipeStack> {
-        i.order
-            .iter()
-            .filter_map(|id| self.stack(id, 1, String::new()))
-            .collect()
-    }
-}
 
 /// A stack's components beyond its item's, as vanilla's item syntax writes
 /// them (`[minecraft:potion_contents={potion:"minecraft:swiftness"}]`), or "".
@@ -59,22 +26,6 @@ pub(in crate::game::client_side) fn components(s: &ItemStack) -> String {
         })
         .collect();
     format!("[{}]", parts.join(","))
-}
-
-fn recipe(id: String, kind: RecipeKind) -> Recipe {
-    Recipe {
-        id,
-        kind,
-        category: String::new(),
-        group: String::new(),
-        width: 0,
-        height: 0,
-        slots: Vec::new(),
-        results: Vec::new(),
-        cooking_time: 0,
-        experience: 0.0,
-        book_id: -1,
-    }
 }
 
 #[cfg(feature = "client")]
@@ -107,7 +58,7 @@ impl crate::game::ClientGame<'_> {
         self.mod_place_recipe(book_id, all);
         Ok(())
     }
-    /// `give_stack`: `Inventory.add` of `stack` for a creative player, components kept and up
+    /// `give_creative`: `Inventory.add` of `stack` for a creative player, components kept and up
     /// to the stack's own maximum, then `MultiPlayerGameMode.handleCreativeModeItemAdd` for
     /// every slot it changed, sent now: the end of the tick's sync skips creative slots while
     /// a server menu is open. What did not fit comes back and is not dropped.
@@ -155,15 +106,6 @@ impl crate::game::ClientGame<'_> {
             .map(Some)
             .map_err(|error| error.into_write_error().into())
     }
-    /// The tables, made on the first call; none while the world resources
-    /// they come from are still loading behind the title on a slow start.
-    pub(in crate::game) fn made_recipes(&mut self) -> Option<Arc<Recipes>> {
-        self.common.res.rest.get()?;
-        if self.common.recipe_tables.tables.is_none() {
-            self.common.recipe_tables.tables = Some(Arc::new(self.make_mod_recipes()));
-        }
-        self.common.recipe_tables.tables.clone()
-    }
     /// The `book_id`s the player's recipe book holds now.
     pub(in crate::game) fn known_displays(&mut self) -> Arc<[i32]> {
         if self.common.res.rest.get().is_none() {
@@ -184,175 +126,6 @@ impl crate::game::ClientGame<'_> {
         }
         self.viewer_book_ids(recipe_id)
     }
-
-    fn make_mod_recipes(&mut self) -> Recipes {
-        let names = &self.common.pack.names;
-        let items = self.items();
-        let mut tags: HashMap<&str, Vec<String>> = HashMap::new();
-        for (tag, members) in &items.item_tags {
-            for m in members {
-                tags.entry(m).or_default().push(tag.clone());
-            }
-        }
-        let table: Vec<RecipeItem> = items
-            .registry_order
-            .iter()
-            .map(|id| RecipeItem {
-                id: id.to_string(),
-                name: names.display_item(id),
-                tags: tags.remove(&**id).map_or_else(Vec::new, |mut t| {
-                    t.sort();
-                    t
-                }),
-            })
-            .collect();
-        let index = Index(
-            items
-                .registry_order
-                .iter()
-                .enumerate()
-                .map(|(i, id)| (id.clone(), i as u32))
-                .collect(),
-        );
-        let mut out = Vec::new();
-        let cooking: HashMap<String, (u32, f32)> = self
-            .recipes()
-            .cooking
-            .iter()
-            .map(|c| (qualified(&c.id), (c.time, c.experience)))
-            .collect();
-        for e in self.recipe_book_entries() {
-            let furnace = |c: Category| match c.name().split('_').next() {
-                Some("blast") => RecipeKind::Blasting,
-                Some("smoker") => RecipeKind::Smoking,
-                _ => RecipeKind::Smelting,
-            };
-            let kind = match &e.display {
-                Display::Shaped { .. } => RecipeKind::CraftingShaped,
-                Display::Shapeless(_) => RecipeKind::CraftingShapeless,
-                Display::Furnace(_) => furnace(e.category),
-            };
-            let mut r = recipe(e.id.clone(), kind);
-            r.category = e.category.name().to_owned();
-            r.group = e.group.clone().unwrap_or_default();
-            r.book_id = e.display_id;
-            r.slots = match &e.display {
-                Display::Shaped {
-                    width,
-                    height,
-                    cells,
-                } => {
-                    (r.width, r.height) = (*width as u32, *height as u32);
-                    cells
-                        .iter()
-                        .map(|c| c.as_ref().map_or_else(Vec::new, |i| index.any(i)))
-                        .collect()
-                }
-                Display::Shapeless(list) => list.iter().map(|i| index.any(i)).collect(),
-                Display::Furnace(i) => vec![index.any(i)],
-            };
-            // Requirements shown as other stacks (an arrow's potions): the
-            // requirement's index counts the filled slots only.
-            let filled: Vec<usize> = (0..r.slots.len())
-                .filter(
-                    |&k| !matches!(&e.display, Display::Shaped { cells, .. } if cells[k].is_none()),
-                )
-                .collect();
-            for (req, stacks) in &e.stacks {
-                if let Some(&k) = filled.get(*req) {
-                    r.slots[k] = stacks.iter().filter_map(|s| index.of(s)).collect();
-                }
-            }
-            r.results = e.results().iter().filter_map(|s| index.of(s)).collect();
-            if let Some(&(time, xp)) = cooking.get(&e.id) {
-                (r.cooking_time, r.experience) = (time, xp);
-            }
-            out.push(r);
-        }
-        for c in &self.recipes().cooking {
-            if c.kind == "minecraft:campfire_cooking" {
-                let mut r = recipe(qualified(&c.id), RecipeKind::Campfire);
-                r.group = c.group.clone();
-                r.slots = vec![index.any(&c.ingredient)];
-                r.results = index.of(&c.result).into_iter().collect();
-                (r.cooking_time, r.experience) = (c.time, c.experience);
-                out.push(r);
-            }
-        }
-        let stations = self.stations();
-        for s in &stations.recipes.stonecutting {
-            let mut r = recipe(s.id.clone(), RecipeKind::Stonecutting);
-            r.slots = vec![index.any(&s.input)];
-            r.results = index.of(&s.result).into_iter().collect();
-            out.push(r);
-        }
-        for s in &stations.recipes.smithing {
-            let (id, slots, results) = match s {
-                Smithing::Transform {
-                    id,
-                    template,
-                    base,
-                    addition,
-                    result,
-                } => (
-                    id,
-                    vec![
-                        template.as_ref().map(|i| index.any(i)).unwrap_or_default(),
-                        index.any(base),
-                        addition.as_ref().map(|i| index.any(i)).unwrap_or_default(),
-                    ],
-                    index.of(&result.create()).into_iter().collect(),
-                ),
-                Smithing::Trim {
-                    id,
-                    template,
-                    base,
-                    addition,
-                    ..
-                } => (
-                    id,
-                    vec![index.any(template), index.any(base), index.any(addition)],
-                    index.any(base),
-                ),
-            };
-            let mut r = recipe(id.clone(), RecipeKind::Smithing);
-            r.slots = slots;
-            r.results = results;
-            out.push(r);
-        }
-        for b in &stations.brewing.recipes {
-            let potion = |p: &sunrise_level::brewing::PotionIngredient| -> Vec<RecipeStack> {
-                let mut item_ids: Vec<&String> = p.items.iter().collect();
-                item_ids.sort();
-                let mut potions: Vec<&String> = p.potions.iter().flatten().collect();
-                potions.sort();
-                item_ids
-                    .into_iter()
-                    .flat_map(|item| {
-                        let one = |c: String| index.stack(item, 1, c);
-                        if potions.is_empty() {
-                            one(String::new()).into_iter().collect::<Vec<_>>()
-                        } else {
-                            potions
-                                .iter()
-                                .filter_map(|p| {
-                                    one(format!("[minecraft:potion_contents={{potion:\"{p}\"}}]"))
-                                })
-                                .collect()
-                        }
-                    })
-                    .collect()
-            };
-            let mut r = recipe(b.id.clone(), RecipeKind::Brewing);
-            r.slots = vec![potion(&b.input), potion(&b.reagent)];
-            r.results = index.of(&b.output).into_iter().collect();
-            out.push(r);
-        }
-        Recipes {
-            items: table,
-            recipes: out,
-        }
-    }
 }
 
 #[cfg(feature = "client")]
@@ -363,7 +136,6 @@ impl crate::game::ClientGame<'_> {
         self.common.recipe_tables.synced_index = None;
         self.common.recipe_tables.incoming = IncomingRecipes::default();
         self.common.recipe_tables.received = None;
-        self.common.recipe_tables.tables = None;
         self.forget_book();
     }
     /// `native_recipes_received` for the types that came, once the window
@@ -400,7 +172,6 @@ impl crate::game::ClientGame<'_> {
         if types.is_empty() {
             self.common.recipe_tables.synced_index = None;
             if self.common.recipe_tables.synced.take().is_some() {
-                self.common.recipe_tables.tables = None;
                 self.forget_book();
                 self.common.recipe_tables.received = Some(types);
                 self.recipes_received_now();
@@ -416,8 +187,6 @@ impl crate::game::ClientGame<'_> {
             Ok((recipes, index)) => {
                 self.common.recipe_tables.synced = Some(recipes);
                 self.common.recipe_tables.synced_index = Some(index);
-                // What was made of the window's own recipes is made again.
-                self.common.recipe_tables.tables = None;
                 self.forget_book();
                 self.common.recipe_tables.received = Some(types);
                 self.recipes_received_now();

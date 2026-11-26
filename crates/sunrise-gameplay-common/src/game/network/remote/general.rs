@@ -17,19 +17,12 @@ pub mod tests {
     use sunrise_protocol::general_entity::{self, Message};
     use sunrise_protocol::packets::play::Clientbound as C;
 
-    pub static FUEL: mod_api::AttachmentType<i32> = mod_api::AttachmentType {
-        namespace: "mymod",
-        name: "fuel",
-        default: || 0,
-        codec: Some(mod_api::AttachmentCodec {
-            encode: |n| Ok([("n".into(), sunrise_core::nbt::Tag::Int(*n))].into()),
-            decode: |c| match c.get(&"n".into()) {
-                Some(sunrise_core::nbt::Tag::Int(n)) => Ok(*n),
-                _ => Err(mod_api::AttachmentError::Decode),
-            },
-        }),
-        copy_on_death: false,
-        sync: true,
+    pub const FUEL_CODEC: mod_api::AttachmentCodec<i32> = mod_api::AttachmentCodec {
+        encode: |n| Ok([("n".into(), sunrise_core::nbt::Tag::Int(*n))].into()),
+        decode: |c| match c.get(&"n".into()) {
+            Some(sunrise_core::nbt::Tag::Int(n)) => Ok(*n),
+            _ => Err(mod_api::AttachmentError::Decode),
+        },
     };
 
     #[cfg(any(test, feature = "test-support"))]
@@ -38,6 +31,10 @@ pub mod tests {
     #[mod_api::__subscriptions]
     impl mod_api::Hooks for Declare {
         fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
+            r.register_attachment_type(
+                mod_api::AttachmentDescriptor::new("mymod:fuel", || 0i32).sync(FUEL_CODEC),
+            )
+            .unwrap();
             let types = [
                 ("missile", 0.5, Some([1.0, 1.25, 0.0]), false),
                 ("package", 2.0, None, true),

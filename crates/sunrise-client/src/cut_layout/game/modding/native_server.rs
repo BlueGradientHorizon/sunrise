@@ -34,17 +34,19 @@ pub(crate) mod tests {
     #[test]
     #[ignore = "daily"]
     fn experience_orbs_refuse_bounds_that_are_not_finite_and_swap_an_inverted_box() {
+        use mod_api::{ExperienceOrbWriteError, LevelReadError, LevelRef};
+        use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
         let mut resources = None;
         let mut game = sunrise_gameplay::game::game_tests::tests::server_game(&mut resources);
         game.options.dedicated = Some(Vec::new());
         let at = sunrise_core::geometry::Vec3::new(1.0, 70.0, 1.0);
-        game.orbs.push(sunrise_sim::entities::ExperienceOrb {
+        let mk_orb = |id| sunrise_sim::entities::ExperienceOrb {
             size_answer: None,
             attachment_lifetime: Default::default(),
             fall_distance: 0.0,
             rotation: [0.0, 0.0],
             join: Default::default(),
-            id: 40,
+            id,
             position: at,
             previous: at,
             velocity: sunrise_core::geometry::Vec3::ZERO,
@@ -58,15 +60,38 @@ pub(crate) mod tests {
             air: 300,
             no_gravity: true,
             following: None,
-        });
-        let dimension = game.dim.id().to_owned();
-        let ids = |game: &sunrise_gameplay::game::ServerGame<'_>, min, max| -> Vec<u32> {
-            game.experience_orbs(&dimension, min, max)
-                .into_iter()
-                .map(|orb| orb.id)
-                .collect()
         };
-        assert_eq!(ids(&game, [0.0, 69.0, 0.0], [2.0, 71.0, 2.0]), [40]);
+        game.orbs.push(mk_orb(40));
+        game.orbs.push(mk_orb(41));
+        let overworld = game.level(game.dim.id()).expect("active overworld handle");
+        let visit_ids = |game: &sunrise_gameplay::game::ServerGame<'_>, level: LevelRef, min, max| {
+            let mut ids = Vec::new();
+            let flow = level.visit_experience_orbs(game, min, max, &mut |orb| {
+                ids.push(orb.entity().id());
+                core::ops::ControlFlow::Continue(())
+            })?;
+            Ok::<_, LevelReadError>((flow, ids))
+        };
+        assert_eq!(
+            visit_ids(&game, overworld, [0.0, 69.0, 0.0], [2.0, 71.0, 2.0]),
+            Ok((core::ops::ControlFlow::Continue(()), vec![40, 41]))
+        );
+        // Early stop on ControlFlow::Break(()).
+        let mut stopped = Vec::new();
+        assert_eq!(
+            overworld.visit_experience_orbs(
+                &game,
+                [0.0, 69.0, 0.0],
+                [2.0, 71.0, 2.0],
+                &mut |orb| {
+                    stopped.push(orb.entity().id());
+                    core::ops::ControlFlow::Break(())
+                }
+            ),
+            Ok(core::ops::ControlFlow::Break(()))
+        );
+        assert_eq!(stopped, [40]);
+
         for (min, max) in [
             ([f64::NAN, 69.0, 0.0], [2.0, 71.0, 2.0]),
             ([0.0, 69.0, 0.0], [2.0, f64::NAN, 2.0]),
@@ -74,10 +99,83 @@ pub(crate) mod tests {
             ([0.0, 69.0, 0.0], [2.0, 71.0, f64::INFINITY]),
             ([f64::NEG_INFINITY; 3], [f64::INFINITY; 3]),
         ] {
-            assert_eq!(ids(&game, min, max), Vec::<u32>::new(), "{min:?} {max:?}");
+            let mut called = false;
+            assert_eq!(
+                overworld.visit_experience_orbs(&game, min, max, &mut |_| {
+                    called = true;
+                    core::ops::ControlFlow::Continue(())
+                }),
+                Err(LevelReadError::Unavailable),
+                "{min:?} {max:?}"
+            );
+            assert!(!called, "refused visit must not invoke callback");
         }
-        assert_eq!(ids(&game, [2.0, 69.0, 0.0], [0.0, 71.0, 2.0]), [40]);
-        assert_eq!(ids(&game, [2.0, 71.0, 2.0], [0.0, 69.0, 0.0]), [40]);
+        assert_eq!(
+            visit_ids(&game, overworld, [2.0, 69.0, 0.0], [0.0, 71.0, 2.0]),
+            Ok((core::ops::ControlFlow::Continue(()), vec![40, 41]))
+        );
+        assert_eq!(
+            visit_ids(&game, overworld, [2.0, 71.0, 2.0], [0.0, 69.0, 0.0]),
+            Ok((core::ops::ControlFlow::Continue(()), vec![40, 41]))
+        );
+
+        // Park the overworld by switching to the Nether: the overworld handle still visits,
+        // narrows, reads and mutates its parked orbs.
+        game.enter_command_level(sunrise_gameplay_common::game::Dim::Nether)
+            .unwrap();
+        let mut parked_orbs = Vec::new();
+        assert_eq!(
+            overworld.visit_experience_orbs(
+                &game,
+                [0.0, 69.0, 0.0],
+                [2.0, 71.0, 2.0],
+                &mut |orb| {
+                    parked_orbs.push(orb);
+                    core::ops::ControlFlow::Continue(())
+                }
+            ),
+            Ok(core::ops::ControlFlow::Continue(()))
+        );
+        assert_eq!(
+            parked_orbs
+                .iter()
+                .map(|orb| orb.entity().id())
+                .collect::<Vec<_>>(),
+            vec![40, 41]
+        );
+        let orb = parked_orbs[0];
+        assert_eq!(game.experience_orb(orb.entity()), Ok(Some(orb)));
+        assert_eq!(orb.entity().position(&game), Some([1.0, 70.0, 1.0]));
+        assert_eq!(orb.value(&game), Ok(3));
+        assert_eq!(orb.count(&game), Ok(1));
+        assert_eq!(orb.age(&game), Ok(0));
+        assert_eq!(orb.set_value(&mut game, 50_000), Ok(()));
+        assert_eq!(orb.set_count(&mut game, 4), Ok(()));
+        assert_eq!(orb.set_age(&mut game, -12), Ok(()));
+        assert_eq!(orb.value(&game), Ok(50_000));
+        assert_eq!(orb.count(&game), Ok(4));
+        assert_eq!(orb.age(&game), Ok(-12));
+
+        // Client side refuses with Unavailable.
+        let role = game.options.execution_role;
+        game.options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::Client;
+        assert_eq!(
+            overworld.visit_experience_orbs(&game, [0.0, 69.0, 0.0], [2.0, 71.0, 2.0], &mut |_| {
+                core::ops::ControlFlow::Continue(())
+            }),
+            Err(LevelReadError::Unavailable)
+        );
+        assert_eq!(
+            game.experience_orb(orb.entity()),
+            Err(LevelReadError::Unavailable)
+        );
+        assert_eq!(orb.value(&game), Err(LevelReadError::Unavailable));
+        assert_eq!(
+            orb.set_value(&mut game, 1),
+            Err(ExperienceOrbWriteError::Unavailable)
+        );
+        game.options.execution_role = role;
     }
     /// A mod's `announce` reaches the dedicated server's event stream and nothing else's.
     /// The integrated server thread keeps the launch configuration (`options.dedicated`) too,
@@ -1335,10 +1433,11 @@ pub(crate) mod player_rule_tests {
                 100
             );
             assert_eq!(game.sleep_counts(), (active, sleeping + 1, deep + 1));
-            // The wake-up fade's last value is allowed; one past it is not, and changes nothing.
-            assert!(a.set_sleep_timer(game, 109));
-            assert!(!a.set_sleep_timer(game, 110));
-            assert_eq!(a.sleep_timer(&*game), Some(109));
+            assert!(a.set_sleep_timer(game, -1));
+            assert_eq!(a.sleep_timer(&*game), Some(-1));
+            assert_eq!(game.sleep_counts(), (active, sleeping + 1, deep));
+            assert!(a.set_sleep_timer(game, 110));
+            assert_eq!(a.sleep_timer(&*game), Some(110));
 
             // Ignoring leaves an out-of-bed player out of the count, and an in-bed one in.
             assert!(b.set_sleep_ignored(game, true));
@@ -1371,7 +1470,7 @@ pub(crate) mod player_rule_tests {
                     (a.sleep_timer(&*game), a.counts_for_sleep(&*game))
                 })
                 .unwrap();
-            assert_eq!(seen, (Some(109), Some(true)));
+            assert_eq!(seen, (Some(110), Some(true)));
         });
     }
 }

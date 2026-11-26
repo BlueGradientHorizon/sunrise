@@ -15,7 +15,6 @@ pub trait Hooks {
     /// The Host is read-only. No frame deduplication: layers that actually animate
     /// again get another invocation; copying parent poses does not dispatch.
     #[hook(
-        target = "sunrise_client_gameplay::game::native_hooks::humanoid_setup_anim::ClientGame<'_>::native_humanoid_setup_anim",
         receiver = "read",
         dispatch = "api_carrier",
         side = "client",

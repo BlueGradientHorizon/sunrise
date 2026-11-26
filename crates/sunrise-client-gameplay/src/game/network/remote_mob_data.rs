@@ -5,7 +5,7 @@
 use crate::game::ClientGame;
 use sunrise_level::particle_options::{ParticleOptions, ParticleType};
 use sunrise_protocol::entity_data::{ParticleData, Particles, Value};
-use sunrise_protocol::registry::{Builtin, Dynamic};
+use sunrise_protocol::registry::Builtin;
 #[cfg(test)]
 use sunrise_sim::mobs::villager::VILLAGER_TYPES;
 use sunrise_sim::mobs::{
@@ -408,33 +408,60 @@ fn tropical_fish(m: &mut Mob, packed: i32) {
 /// synchronized registry (the variants of the cat, wolf, frog, pig, cow,
 /// chicken and zombie nautilus) or count game time (a wolf's anger).
 /// `game_time` is the client level's.
-fn apply_registry_data(
-    m: &mut Mob,
-    values: &[(u8, i32, Value)],
-    registries: &Dynamic,
-    game_time: i64,
-) {
+pub fn apply_registry_data(m: &mut Mob, values: &[(u8, i32, Value)], game_time: i64) {
     let species = m.species();
     for (index, _, value) in values {
-        let registry = match (species, *index, value) {
-            (Species::Cat, 20, Value::Id(_)) => "minecraft:cat_variant",
-            (Species::Wolf, 23, Value::Id(_)) => "minecraft:wolf_variant",
-            (Species::Frog, 18, Value::Id(_)) => "minecraft:frog_variant",
-            (Species::Pig, 19, Value::Id(_)) => "minecraft:pig_variant",
-            (Species::Cow, 18, Value::Id(_)) => "minecraft:cow_variant",
-            (Species::Chicken, 18, Value::Id(_)) => "minecraft:chicken_variant",
-            (Species::ZombieNautilus, 21, Value::Id(_)) => "minecraft:zombie_nautilus_variant",
+        match (species, *index, value) {
+            (Species::Cat, 20, Value::Id(id)) => {
+                m.extra.cat_variant = Some(sunrise_sim::lan::data::RegistryRef::new(*id as u32));
+            }
+            (Species::Cat, 24, Value::Id(id)) => {
+                m.extra.cat_sound_variant =
+                    Some(sunrise_sim::lan::data::RegistryRef::new(*id as u32));
+            }
+            (Species::Wolf, 23, Value::Id(id)) => {
+                m.extra.wolf_variant =
+                    Some(sunrise_sim::lan::data::RegistryRef::new(*id as u32));
+            }
+            (Species::Wolf, 24, Value::Id(id)) => {
+                m.extra.wolf_sound_variant =
+                    Some(sunrise_sim::lan::data::RegistryRef::new(*id as u32));
+            }
+            (Species::Frog, 18, Value::Id(id)) => {
+                m.extra.frog_variant =
+                    Some(sunrise_sim::lan::data::RegistryRef::new(*id as u32));
+            }
+            (Species::Pig, 19, Value::Id(id)) => {
+                m.extra.pig_variant = Some(sunrise_sim::lan::data::RegistryRef::new(*id as u32));
+            }
+            (Species::Pig, 20, Value::Id(id)) => {
+                m.extra.pig_sound_variant =
+                    Some(sunrise_sim::lan::data::RegistryRef::new(*id as u32));
+            }
+            (Species::Cow, 18, Value::Id(id)) => {
+                m.extra.cow_variant = Some(sunrise_sim::lan::data::RegistryRef::new(*id as u32));
+            }
+            (Species::Cow, 19, Value::Id(id)) => {
+                m.extra.cow_sound_variant =
+                    Some(sunrise_sim::lan::data::RegistryRef::new(*id as u32));
+            }
+            (Species::Chicken, 18, Value::Id(id)) => {
+                m.extra.chicken_variant =
+                    Some(sunrise_sim::lan::data::RegistryRef::new(*id as u32));
+            }
+            (Species::Chicken, 19, Value::Id(id)) => {
+                m.extra.chicken_sound_variant =
+                    Some(sunrise_sim::lan::data::RegistryRef::new(*id as u32));
+            }
+            (Species::ZombieNautilus, 21, Value::Id(id)) => {
+                m.extra.zombie_nautilus_variant =
+                    Some(sunrise_sim::lan::data::RegistryRef::new(*id as u32));
+            }
             // Wolf.DATA_ANGER_END_TIME: the angry texture while it lies ahead.
             (Species::Wolf, 22, Value::Long(end)) => {
                 m.extra.anger = (end - game_time).clamp(0, i64::from(i32::MAX)) as i32;
-                continue;
             }
-            _ => continue,
-        };
-        if let Value::Id(id) = value
-            && let Some(name) = registries.name(registry, *id)
-        {
-            m.extra.variant = finalize::variant_index(species, name);
+            _ => {}
         }
     }
 }
@@ -526,7 +553,7 @@ impl ClientGame<'_> {
                 r.entity_id,
                 &professions,
             );
-            apply_registry_data(m, values, &r.registries, self.common.world.game_time);
+            apply_registry_data(m, values, self.common.world.game_time);
             if let Some(pos) = sleeping_pos {
                 m.extra.sleeping_pos = pos;
                 if pos.is_some()
@@ -542,12 +569,7 @@ impl ClientGame<'_> {
                 m.extra.ints[1] = code;
             }
             if let Some(at) = stare_sound {
-                self.client.audio.0.play_unshared(
-                    "minecraft:entity.enderman.stare",
-                    Some(at),
-                    2.5,
-                    1.0,
-                );
+                self.play_audio_unshared("minecraft:entity.enderman.stare", Some(at), 2.5, 1.0);
             }
         }
     }
@@ -572,74 +594,89 @@ pub(in crate::game) fn client_defaults(m: &mut Mob) {
 }
 
 #[cfg(feature = "client")]
+#[cfg(any(test, feature = "test-support"))]
+fn fixture_mob_impl(kind: &str) -> Mob {
+    use std::sync::Arc;
+    use sunrise_sim::mobs::{Anim, Brain, Flags, MobType};
+    let species = match kind {
+        "minecraft:cow" => Species::Cow,
+        "minecraft:frog" => Species::Frog,
+        "minecraft:axolotl" => Species::Axolotl,
+        "minecraft:dolphin" => Species::Dolphin,
+        "minecraft:cod" => Species::Cod,
+        "minecraft:pillager" => Species::Pillager,
+        "minecraft:vindicator" => Species::Vindicator,
+        "minecraft:evoker" => Species::Evoker,
+        "minecraft:illusioner" => Species::Illusioner,
+        "minecraft:witch" => Species::Witch,
+        "minecraft:ravager" => Species::Ravager,
+        "minecraft:zombie" => Species::Zombie,
+        "minecraft:enderman" => Species::Enderman,
+        "minecraft:piglin" => Species::Piglin,
+        _ => panic!("unknown fixture species"),
+    };
+    // Metadata needs no AI or model. Avoid the resource loader, which also
+    // initializes process-wide item tags used by unrelated mob tests.
+    let kind = Arc::new(MobType {
+        type_key: Default::default(),
+        id: kind.into(),
+        species,
+        width: 0.6,
+        height: 1.95,
+        eye_height: 1.5,
+        category: "monster".into(),
+        max_health: 20.0,
+        speed: 0.25,
+        flying_speed: 0.0,
+        attack_damage: 0.0,
+        attack_knockback: 0.0,
+        follow_range: 16.0,
+        step_height: 0.6,
+        armor: 0.0,
+        armor_toughness: 0.0,
+        knockback_resistance: 0.0,
+        jump_strength: 0.42,
+        attributes: Arc::default(),
+        item_stack_limits: Arc::default(),
+        attribute_bounds: Default::default(),
+        gravity: 0.08,
+        safe_fall_distance: 3.0,
+        fall_damage_multiplier: 1.0,
+        water_efficiency: 0.0,
+        water_slowdown: 0.8,
+        air_speed: 0.02,
+        baby_scale: 0.5,
+        head_rot_speed: 10.0,
+        max_head_x_rot: 40.0,
+        max_head_y_rot: 75.0,
+        ambient_interval: 120,
+        flags: Flags::default(),
+        brain: Brain::Passive,
+        anim: Anim::Zombie,
+        sounds: [""; 3],
+        sound_overrides: Default::default(),
+        food: Arc::default(),
+        tempt: Arc::default(),
+        passenger_attachments: Vec::new(),
+    });
+    Mob::new(1, kind, sunrise_core::geometry::Vec3::ZERO, 0.0)
+}
+
+#[cfg(all(feature = "client", feature = "test-support", not(test)))]
+pub mod tests {
+    pub fn fixture_mob(kind: &str) -> super::Mob {
+        super::fixture_mob_impl(kind)
+    }
+}
+
+#[cfg(feature = "client")]
 #[cfg(test)]
-pub(in crate::game) mod tests {
+pub mod tests {
     use super::*;
     use sunrise_protocol::entity_data::serializer as s;
 
-    pub(super) fn fixture_mob(kind: &str) -> Mob {
-        use std::sync::Arc;
-        use sunrise_sim::mobs::{Anim, Brain, Flags, MobType};
-        let species = match kind {
-            "minecraft:cow" => Species::Cow,
-            "minecraft:axolotl" => Species::Axolotl,
-            "minecraft:dolphin" => Species::Dolphin,
-            "minecraft:cod" => Species::Cod,
-            "minecraft:pillager" => Species::Pillager,
-            "minecraft:vindicator" => Species::Vindicator,
-            "minecraft:evoker" => Species::Evoker,
-            "minecraft:illusioner" => Species::Illusioner,
-            "minecraft:witch" => Species::Witch,
-            "minecraft:ravager" => Species::Ravager,
-            "minecraft:zombie" => Species::Zombie,
-            "minecraft:enderman" => Species::Enderman,
-            _ => panic!("unknown fixture species"),
-        };
-        // Metadata needs no AI or model. Avoid the resource loader, which also
-        // initializes process-wide item tags used by unrelated mob tests.
-        let kind = Arc::new(MobType {
-            type_key: Default::default(),
-            id: kind.into(),
-            species,
-            width: 0.6,
-            height: 1.95,
-            eye_height: 1.5,
-            category: "monster".into(),
-            max_health: 20.0,
-            speed: 0.25,
-            flying_speed: 0.0,
-            attack_damage: 0.0,
-            attack_knockback: 0.0,
-            follow_range: 16.0,
-            step_height: 0.6,
-            armor: 0.0,
-            armor_toughness: 0.0,
-            knockback_resistance: 0.0,
-            jump_strength: 0.42,
-            attributes: Arc::default(),
-            item_stack_limits: Arc::default(),
-            attribute_bounds: Default::default(),
-            gravity: 0.08,
-            safe_fall_distance: 3.0,
-            fall_damage_multiplier: 1.0,
-            water_efficiency: 0.0,
-            water_slowdown: 0.8,
-            air_speed: 0.02,
-            baby_scale: 0.5,
-            head_rot_speed: 10.0,
-            max_head_x_rot: 40.0,
-            max_head_y_rot: 75.0,
-            ambient_interval: 120,
-            flags: Flags::default(),
-            brain: Brain::Passive,
-            anim: Anim::Zombie,
-            sounds: [""; 3],
-            sound_overrides: Default::default(),
-            food: Arc::default(),
-            tempt: Arc::default(),
-            passenger_attachments: Vec::new(),
-        });
-        Mob::new(1, kind, sunrise_core::geometry::Vec3::ZERO, 0.0)
+    pub fn fixture_mob(kind: &str) -> Mob {
+        super::fixture_mob_impl(kind)
     }
 
     #[test]
@@ -766,6 +803,7 @@ pub(in crate::game) mod tests {
                     view_distance: 10,
                     chunks: &chunks,
                     sources: None,
+                    far: &[],
                     tracker: &mut tracker,
                     out: &mut packets,
                 }],
@@ -957,6 +995,7 @@ pub(in crate::game) mod tests {
                     view_distance: 10,
                     chunks: &chunks,
                     sources: None,
+                    far: &[],
                     tracker: &mut tracker,
                     out: &mut packets,
                 }],
@@ -1659,13 +1698,14 @@ pub(in crate::game) mod tests {
             r#"{"minecraft:sulfur_cube":{"width":0.52,"height":0.52,"eye_height":0.325,"category":"monster","fire_immune":false,"attributes":{"minecraft:max_health":4.0}}}"#,
         )
         .unwrap();
-        let attributes =
-            &sunrise_world::attributes::entity::Catalog::from_json(&serde_json::json!({
+        let attributes = &std::sync::Arc::new(
+            sunrise_world::attributes::entity::Catalog::from_json(&serde_json::json!({
                 "data_version": sunrise_world::DATA_VERSION,
                 "attributes": [],
                 "entities": {},
             }))
-            .unwrap();
+            .unwrap(),
+        );
         let types = sunrise_sim::mobs::MobTypes::load_for_server(&root, attributes).unwrap();
         let _ = std::fs::remove_dir_all(&root);
         let kind = std::sync::Arc::new(types.types["minecraft:sulfur_cube"].clone());

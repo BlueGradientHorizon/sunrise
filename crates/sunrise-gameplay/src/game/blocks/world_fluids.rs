@@ -215,13 +215,21 @@ impl crate::game::ServerGame<'_> {
         if !self.current_transaction_is_here() || !self.level_in_place(level) {
             return Ok(false);
         }
-        let Some(id) = mod_api::__private::fluid_id(fluid) else {
+        if mod_api::__private::fluid_id(fluid).is_none() {
             return Ok(false);
-        };
+        }
+        let tables = sunrise_gameplay_common::game::native_block_tables::BlockTables::of(&self.common);
+        let sound = match pickup {
+            true => tables.fluid_pickup_sound(fluid),
+            false => tables.fluid_empty_sound(fluid),
+        }
+        .ok()
+        .flatten();
         self.after_commit(After::FluidEffects(Box::new(FluidEffects {
             level,
             pos,
-            fluid: FluidKind::from_name(id),
+            // A tank-only fluid that names a bucket has its sounds too.
+            sound,
             pickup,
             player,
         })));
@@ -253,7 +261,10 @@ impl crate::game::ServerGame<'_> {
             self.commit_fluid_effects(FluidEffects {
                 level,
                 pos,
-                fluid: Some(write.fluid),
+                sound: match pickup {
+                    true => fluid_pickup_sound(write.fluid),
+                    false => fluid_empty_sound(write.fluid),
+                },
                 pickup,
                 player,
             });
@@ -265,14 +276,14 @@ impl crate::game::ServerGame<'_> {
         let FluidEffects {
             level,
             pos,
-            fluid,
+            sound,
             pickup,
             player,
         } = effects;
         let at = pos.map(|c| f64::from(c) + 0.5);
-        let (sound, event) = match pickup {
-            true => (fluid.and_then(fluid_pickup_sound), "minecraft:fluid_pickup"),
-            false => (fluid.and_then(fluid_empty_sound), "minecraft:fluid_place"),
+        let event = match pickup {
+            true => "minecraft:fluid_pickup",
+            false => "minecraft:fluid_place",
         };
         if let Some(sound) = sound {
             self.level_play_sound(level, sound, at, SoundSource::Blocks, 1.0, 1.0, None);

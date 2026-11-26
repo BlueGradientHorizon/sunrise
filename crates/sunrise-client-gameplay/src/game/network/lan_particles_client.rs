@@ -1,5 +1,5 @@
 use crate::game::ClientGame;
-use sunrise_client::particles::ExplosionParticle;
+use sunrise_client::particles::{ExplosionParticle, ParticleLevel};
 use sunrise_core::{geometry::Vec3, random::RandomSource};
 use sunrise_gameplay_common::game::lan_particle_data::decode_mod_particle;
 use sunrise_gameplay_common::game::lan_particle_data::particle_position_source;
@@ -47,6 +47,7 @@ impl ClientGame<'_> {
                 [0.0; 3],
                 speed,
                 count as u32,
+                None,
             );
         }
     }
@@ -65,11 +66,16 @@ impl ClientGame<'_> {
             let sound = self
                 .remote_sound_name(&p.sound)
                 .unwrap_or_else(|| "minecraft:entity.generic.explode".to_owned());
-            self.client.audio.0.play(&sound, Some(p.center), 4.0, pitch);
+            self.play_audio(&sound, Some(p.center), 4.0, pitch);
         }
         if let Some(options) = self.received_particle(&p.particle, p.center) {
-            self.client.particles.0.add_with_world(
-                Some(&self.common.world),
+            let level = ParticleLevel::new(
+                &self.common.world,
+                self.common.res.facts(),
+                self.common.collision,
+            );
+            self.client.particles.0.add_with(
+                Some(&level),
                 &options,
                 p.center,
                 [1.0, 0.0, 0.0],
@@ -128,9 +134,14 @@ impl ClientGame<'_> {
         let Some(remote) = &mut self.client.remote else {
             return;
         };
+        let level = ParticleLevel::new(
+            &self.common.world,
+            self.common.res.facts(),
+            self.common.collision,
+        );
         self.client.particles.0.handle_level_particles(
             &mut remote.particle_packet_random,
-            &self.common.world,
+            Some(&level),
             p,
             &options,
         );

@@ -735,6 +735,7 @@ impl crate::game::ServerGame<'_> {
             kind: DamageKind::Generic,
             attacker: None,
             from: Some(at),
+            direct: None,
             attacker_species: None,
         };
         let mut struck = Vec::new();
@@ -886,6 +887,7 @@ impl crate::game::ServerGame<'_> {
                         causing: bolt as i32,
                         direct: bolt as i32,
                         position: Some(at),
+                        direct_type: None,
                     };
                     let vanilla = self.saved_refuses_damage(id, "minecraft:lightning_bolt", false);
                     if !self.native_nonliving_invulnerable(id, &kind, source, vanilla) {
@@ -899,6 +901,7 @@ impl crate::game::ServerGame<'_> {
                         causing: bolt as i32,
                         direct: bolt as i32,
                         position: Some(at),
+                        direct_type: None,
                     };
                     let vanilla = self.saved_refuses_damage(id, "minecraft:lightning_bolt", false);
                     if !self.native_nonliving_invulnerable(id, kind, source, vanilla) {
@@ -912,6 +915,7 @@ impl crate::game::ServerGame<'_> {
                         causing: bolt as i32,
                         direct: bolt as i32,
                         position: Some(at),
+                        direct_type: None,
                     };
                     let vanilla = self.saved_refuses_damage(id, "minecraft:lightning_bolt", false);
                     if !self.native_nonliving_invulnerable(

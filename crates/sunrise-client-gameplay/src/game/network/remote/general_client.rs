@@ -10,6 +10,7 @@ use super::{Lerp, Remote};
 use indexmap::IndexMap;
 use std::collections::HashMap;
 use sunrise_core::geometry::{Aabb, Vec3};
+use sunrise_game_data::text::Text;
 use sunrise_gameplay_common::game::general::general_type_catalog;
 use sunrise_mod_runtime::attachments::{Attachments, Holder};
 use sunrise_protocol::general_entity::{self, Message};
@@ -32,6 +33,12 @@ pub struct RemoteGeneral {
     /// Client ticks since the spawn: `Entity.tickCount`, which wraps as Java's `int` does
     /// (read as `i32`).
     pub age: u32,
+    /// `Entity.DATA_CUSTOM_NAME`, as `SetEntityData` entry 2 last set it.
+    pub custom_name: Option<Text>,
+    /// `Entity.DATA_CUSTOM_NAME_VISIBLE`, as `SetEntityData` entry 3 last set it.
+    pub custom_name_visible: bool,
+    /// `Entity.DATA_NO_GRAVITY`, as `SetEntityData` entry 5 last set it.
+    pub no_gravity: bool,
     /// Frozen synced fields, initialized on spawn and rebuilt at each attachment sync boundary.
     pub render_attachments: mod_api::EntityRenderAttachments,
 }
@@ -216,6 +223,9 @@ impl RemoteGeneral {
             rotation,
             previous_rotation: rotation,
             age: 0,
+            custom_name: None,
+            custom_name_visible: false,
+            no_gravity: false,
             render_attachments,
         }
     }

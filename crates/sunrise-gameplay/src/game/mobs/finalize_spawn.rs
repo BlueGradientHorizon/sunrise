@@ -46,11 +46,37 @@ impl finalize::FinalizeLevel for FinalizeGame<'_, '_> {
         biome_or_plains(self.biome_name(pos))
     }
     fn biome_tag(&self, tag: &str, pos: [i32; 3]) -> bool {
-        self.biome_name(pos)
-            .is_some_and(|b| self.game.res.mob_data().biome_has(tag, &b))
+        self.biome_name(pos).is_some_and(|b| {
+            if let Some(tags) = self
+                .game
+                .server
+                .world_tables
+                .0
+                .as_ref()
+                .and_then(|t| t.pack_tags.get("worldgen/biome"))
+            {
+                return tags.get(tag).is_some_and(|members| members.contains(&b));
+            }
+            self.game.res.mob_data().biome_has(tag, &b)
+        })
     }
     fn structures_with_piece_at(&self, pos: [i32; 3]) -> Vec<String> {
         self.game.structures_at(pos)
+    }
+    fn structure_tag(&self, tag: &str, structure: &str) -> bool {
+        if let Some(tags) = self
+            .game
+            .server
+            .world_tables
+            .0
+            .as_ref()
+            .and_then(|t| t.pack_tags.get("worldgen/structure"))
+        {
+            return tags
+                .get(tag)
+                .is_some_and(|members| members.contains(structure));
+        }
+        self.game.structure_tag(tag).iter().any(|m| m == structure)
     }
     fn moon_phase(&self, _: [i32; 3]) -> usize {
         self.game.finalize_moon_phase()
@@ -126,13 +152,22 @@ impl ServerGame<'_> {
     pub(in crate::game::server_side) fn finalize_halloween(&self) -> bool {
         finalize::is_halloween()
     }
+
+    /// The active variant tables: the server's frozen world tables (or prepared defaults).
+    pub fn world_variants(&self) -> &sunrise_sim::mobs::variants::VariantTables {
+        self.server
+            .world_tables
+            .0
+            .as_ref()
+            .map_or_else(|| self.common.res.variants(), |t| &t.variants)
+    }
     /// The tables a finalizeSpawn `Ctx` borrows: the variant registries, the
     /// enchantments and items its gear rolls need, and `EntityTypes.CAMEL_HUSK`'s
     /// dimensions if the table has the type.
     pub(in crate::game::server_side) fn finalize_spawn_data(&self) -> finalize::SpawnData<'_> {
         let game = self;
         finalize::SpawnData {
-            registries: game.res.spawn_registries(),
+            variants: game.world_variants(),
             enchantments: &world_stations!(game).enchantments,
             items: world_items!(game),
             camel_husk_size: game
@@ -152,18 +187,7 @@ impl ServerGame<'_> {
     ) -> finalize::SpawnEvent {
         // A mob finalization makes starts without group data, and the
         // finalization that follows reads none.
-        let (outcome, _) = self.finalize_spawn_event(mob, reason, None, &mut None);
-        match outcome {
-            sunrise_gameplay_common::game::creatures::Finalized::Cancelled => {
-                finalize::SpawnEvent::Cancelled
-            }
-            sunrise_gameplay_common::game::creatures::Finalized::Skipped => {
-                finalize::SpawnEvent::Skip
-            }
-            sunrise_gameplay_common::game::creatures::Finalized::Done => {
-                finalize::SpawnEvent::Finalize
-            }
-        }
+        self.finalize_spawn_event(mob, reason, None, &mut None).0
     }
     /// The game's own finalization of a mob, with no event: the same
     /// `finalize::Ctx` world generation runs, over the live level, with the
@@ -202,7 +226,7 @@ impl ServerGame<'_> {
         game.world.random = random;
         for m in created {
             game.mobs.push(m);
-            game.native_mobs_joined(game.mobs.len() - 1, false);
+            game.admit_new_mobs(game.mobs.len() - 1);
         }
     }
 }

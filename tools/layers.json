@@ -34,6 +34,7 @@
     "sunrise-connected": "engine",
     "sunrise-core": "engine",
     "sunrise-gameplay-common": "engine",
+    "sunrise-glsl": "engine",
     "sunrise-gameplay": "engine",
     "sunrise-items": "engine",
     "sunrise-narrator": "engine",
@@ -59,7 +60,7 @@
     "sunrise-platform": "platform",
     "sunrise-polytone": "platform",
     "sunrise-port-pack": "platform",
-    "sunrise-shader-api": "platform",
+    "sunrise-jar-fetch": "platform",
     "sunrise-render-shaderpack": "engine",
     "sunrise-shaders": "platform",
     "sunrise-theme": "platform",
@@ -89,8 +90,10 @@
     "sunrise-mod-surface": "engine",
     "sunrise-mod-source": "engine",
     "sunrise-mod-render": "platform",
+    "sunrise-mod-pipeline": "engine",
     "sunrise-server-launch": "platform",
     "sunrise-mod-package": "engine",
+    "sunrise-dependency-rule": "engine",
     "sunrise-mod-runtime": "engine",
     "sunrise-mod-dimension-game": "tool",
     "sunrise-hot-paths-game": "tool",
@@ -157,10 +160,6 @@
   },
   "optional": [
     {
-      "edge": "sunrise-mod-package -> sunrise-shader-api",
-      "reason": "The optional `index` feature validates shader packages in the registry index; the portable crates take sunrise-mod-package without it."
-    },
-    {
       "edge": "sunrise-client-gameplay -> sunrise-optifine",
       "reason": "OptiFine entity models and random textures are client-only behind the `client` feature; server-only builds omit them."
     },
@@ -173,13 +172,11 @@
     "sunrise-client-lib -> sunrise-dualsense",
     "sunrise-client-lib -> sunrise-mcp",
     "sunrise-client-lib -> sunrise-optifine",
-    "sunrise-client-lib -> sunrise-shader-api",
     "sunrise-client-lib -> sunrise-shaders",
     "sunrise-client-lib -> sunrise-telemetry",
     "sunrise-client-render -> sunrise-hdr",
     "sunrise-client-render -> sunrise-optifine",
     "sunrise-client-render -> sunrise-polytone",
-    "sunrise-client-render -> sunrise-shader-api",
     "sunrise-client-render -> sunrise-shaders",
     "sunrise-render-shaderpack -> sunrise-shaders",
     "sunrise-native-build -> sunrise-mod-package",
@@ -187,7 +184,6 @@
     "sunrise-client -> sunrise-telemetry",
     "sunrise-client-gameplay -> sunrise-dualsense",
     "sunrise-client-gameplay -> sunrise-friends",
-    "sunrise-client-gameplay -> sunrise-shader-api",
     "sunrise-client-gameplay -> sunrise-shaders",
     "sunrise-client-gameplay -> sunrise-telemetry"
   ],

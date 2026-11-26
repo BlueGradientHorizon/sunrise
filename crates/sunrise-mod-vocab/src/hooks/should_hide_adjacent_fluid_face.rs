@@ -12,7 +12,6 @@ pub trait Hooks {
     /// meshing workers read the table. The level and position are not arguments. With no part answering, nothing
     /// is asked and meshes are unchanged. Diverges from upstream: new hook.
     #[hook(
-        target = "sunrise_client_gameplay::game::native_hooks::should_hide_adjacent_fluid_face::ClientGame<'_>::native_should_hide_adjacent_fluid_face",
         receiver = "read",
         dispatch = "flat",
         side = "client",

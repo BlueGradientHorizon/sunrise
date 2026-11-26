@@ -1,4 +1,7 @@
-use sunrise_client::{hud::rgba, toasts::Slide};
+use sunrise_client::{
+    hud::rgba,
+    toasts::{Slide, ToastClock},
+};
 use sunrise_game_data::text::Text;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::advancements::Frame;
@@ -41,9 +44,13 @@ impl Toast {
     pub(in crate::game) fn is_challenge(&self) -> bool {
         !self.is_recipe() && self.frame == Frame::Challenge
     }
-    pub(in crate::game) fn update(&mut self, multiplier: f64) -> (Option<bool>, bool) {
+    pub(in crate::game) fn update(
+        &mut self,
+        clock: ToastClock,
+        multiplier: f64,
+    ) -> (Option<bool>, bool) {
         let mut slide = std::mem::take(&mut self.slide);
-        let result = slide.update_now(|fully| self.wants_show(fully, multiplier));
+        let result = slide.update_on(clock, |fully| self.wants_show(fully, multiplier));
         self.slide = slide;
         result
     }

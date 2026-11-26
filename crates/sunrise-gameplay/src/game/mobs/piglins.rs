@@ -474,7 +474,11 @@ impl ServerGame<'_> {
         }
         // `LootContextParamSets.PIGLIN_BARTER`: the piglin is THIS_ENTITY, and
         // nothing else is supplied.
-        let piglin = sunrise_sim::mobs::drops::loot_entity(&self.common.mobs[i], None);
+        let piglin = sunrise_sim::mobs::drops::loot_entity_with_variants(
+            &self.common.mobs[i],
+            None,
+            Some(self.world_variants()),
+        );
         let items = self
             .roll_table_at(
                 "minecraft:gameplay/piglin_bartering",

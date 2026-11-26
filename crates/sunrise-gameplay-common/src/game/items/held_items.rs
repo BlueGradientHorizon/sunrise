@@ -578,15 +578,7 @@ pub trait HeldItemsGameExt1<'__sg>: crate::game::SideGame<'__sg> {
                 let total: f32 = armor
                     .iter()
                     .flatten()
-                    .map(|s| {
-                        e.modify_value(
-                            Some(s),
-                            "minecraft:damage_protection",
-                            &ctx,
-                            &mut random,
-                            0.0,
-                        )
-                    })
+                    .map(|s| e.preview_value(s, "minecraft:damage_protection", &ctx, &mut random))
                     .sum();
                 if total > 0.0 {
                     table.push((def.name.clone(), total));
@@ -723,12 +715,31 @@ pub trait HeldItemsGameExt1<'__sg>: crate::game::SideGame<'__sg> {
         self.destroy_progress_for(pos, state)
     }
 
-    /// `BlockBehaviour.getDestroyProgress` for a supplied state at `pos`.
+    /// `BlockBehaviour.getDestroyProgress` for a supplied state at `pos`: a block Part's
+    /// `destroy_progress` answer, or the game's own dig math, including the
+    /// `player_break_speed` hook. The caller checks that `state` is a known state when it
+    /// comes from a mod.
     fn destroy_progress_for(
         &mut self,
         pos: [i32; 3],
         state: sunrise_world::registry::BlockStateId,
     ) -> f32 {
+        // The block's own `getDestroyProgress`, which a Part's answer overrides whole. Inside
+        // that answer a query gives the game's math, as the default method below would.
+        if !DestroyProgressDispatch::running()
+            && crate::game::api_values::block_state::block_listens(
+                mod_api::HookId::DestroyProgress,
+                state,
+            )
+            && let Some(player) = self.side_acting_player_ref()
+        {
+            let mut answer = None;
+            let _dispatching = DestroyProgressDispatch::enter();
+            self.native_destroy_progress(player, pos, state, &mut answer);
+            if let Some(progress) = answer {
+                return progress;
+            }
+        }
         let facts = self.res.facts().get(state);
         if facts.hardness == -1.0 {
             return 0.0;
@@ -771,8 +782,11 @@ pub trait HeldItemsGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 
     /// `stack.get(DataComponents.CONSUMABLE)`: item prototype, data patch or wire patch.
-    fn consumable(&self, stack: &ItemStack) -> Option<super::item_use_common::ItemConsumable> {
-        sunrise_sim::item_sync::consumable(stack, self.items())
+    fn consumable(
+        &self,
+        stack: &ItemStack,
+    ) -> Option<std::sync::Arc<super::item_use_common::ItemConsumable>> {
+        stack.consumable(self.items().get(&stack.item)).cloned()
     }
 
     /// `Consumable.emitParticlesAndSounds(user.getRandom(), user, stack, count)`.
@@ -853,7 +867,13 @@ pub trait HeldItemsGameExt1<'__sg>: crate::game::SideGame<'__sg> {
         let own = self.use_duration(&stack);
         let (mut duration, mut canceled) = (own, false);
         let hand = self.hand;
-        self.native_living_entity_use_item_start(&stack, None, hand, &mut duration, &mut canceled);
+        self.native_living_entity_use_item_start(
+            &stack,
+            Some(self.own_entity_id()),
+            hand,
+            &mut duration,
+            &mut canceled,
+        );
         let Some(ticks_set) = super::item_use_common::start_of(own, duration, canceled) else {
             return false;
         };
@@ -900,7 +920,7 @@ pub trait HeldItemsGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// Whether `stack` is a mod's item that only a mod uses over time.
     fn mod_use(&self, stack: &ItemStack) -> bool {
         let info = self.items().get(&stack.item);
-        !stack.item.starts_with("minecraft:")
+        mod_api::__private::is_content_item(&stack.item)
             && info.is_some()
             && self.consumable(stack).is_none()
             && !self.stack_carries_blocks_attacks(stack, info)
@@ -922,7 +942,13 @@ pub trait HeldItemsGameExt1<'__sg>: crate::game::SideGame<'__sg> {
         let before = super::item_use_common::ticks_left(self.use_duration, ticks);
         let (mut remaining, mut canceled) = (before, false);
         let hand = self.used_hand().unwrap_or(self.hand);
-        self.native_living_entity_use_item_tick(stack, None, hand, &mut remaining, &mut canceled);
+        self.native_living_entity_use_item_tick(
+            stack,
+            Some(self.own_entity_id()),
+            hand,
+            &mut remaining,
+            &mut canceled,
+        );
         let (left, set) = super::item_use_common::tick_left(
             before,
             remaining,
@@ -939,7 +965,7 @@ pub trait HeldItemsGameExt1<'__sg>: crate::game::SideGame<'__sg> {
         let using = self.using;
         let remaining = super::item_use_common::ticks_left(self.use_duration, ticks);
         if remaining > 0 {
-            self.native_on_use_tick(stack, None, remaining);
+            self.native_on_use_tick(stack, Some(self.own_entity_id()), remaining);
         }
         self.using == using
     }
@@ -957,7 +983,13 @@ pub trait HeldItemsGameExt1<'__sg>: crate::game::SideGame<'__sg> {
         let mut canceled = false;
         let remaining = super::item_use_common::ticks_left(self.use_duration, ticks);
         let hand = self.hand;
-        self.native_living_entity_use_item_stop(stack, None, hand, remaining, &mut canceled);
+        self.native_living_entity_use_item_stop(
+            stack,
+            Some(self.own_entity_id()),
+            hand,
+            remaining,
+            &mut canceled,
+        );
         !canceled
     }
 
@@ -965,7 +997,7 @@ pub trait HeldItemsGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     fn mod_release_using(&mut self, stack: &ItemStack, ticks: u32) {
         let mut used = false;
         let remaining = super::item_use_common::ticks_left(self.use_duration, ticks);
-        self.native_release_using(stack, None, remaining, &mut used);
+        self.native_release_using(stack, Some(self.own_entity_id()), remaining, &mut used);
         if used {
             self.side_apply_use_cooldown(stack);
         }
@@ -1087,8 +1119,12 @@ pub trait HeldItemsGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 
     /// `TridentItem.use`: start the throw unless one more use would break it.
+    /// Returns false for `InteractionResult.FAIL` (about to break, or Riptide
+    /// while dry, or a part denied `trident_throw`) so callers neither dip the
+    /// hand nor consume the click.
     fn use_trident(&mut self, stack: &ItemStack) -> bool {
-        if &*stack.item != "minecraft:trident" {
+        let throw = super::item_abilities::ability::TRIDENT_THROW;
+        if &*stack.item != "minecraft:trident" || !self.stack_can_perform(stack, throw, true) {
             return false;
         }
         let max = self.trident_max_damage(stack);
@@ -1134,7 +1170,13 @@ pub trait HeldItemsGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 
     fn main_hand_rod(&self) -> bool {
-        self.held().is_some_and(|s| self.is_rod(s))
+        self.held().is_some_and(|s| {
+            self.stack_can_perform(
+                s,
+                super::item_abilities::ability::FISHING_ROD_CAST,
+                self.is_rod(s),
+            )
+        })
     }
 
     /// The fishing medium a mod says the hook `id` at `position` floats in.
@@ -1489,6 +1531,36 @@ std::thread_local! {
     static BREAK_SPEED_DISPATCH: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
+/// A block Part's `destroy_progress` answer running, given back when dropped (a panic unwinding
+/// included). A Part that mines as another block asks the destroy-progress query meanwhile;
+/// asking Parts again could run without bound, so the dig math skips them while this is held
+/// ([`DestroyProgressDispatch::running`]).
+struct DestroyProgressDispatch {
+    outer: bool,
+}
+
+impl DestroyProgressDispatch {
+    fn enter() -> Self {
+        Self {
+            outer: DESTROY_PROGRESS_DISPATCH.replace(true),
+        }
+    }
+    fn running() -> bool {
+        DESTROY_PROGRESS_DISPATCH.get()
+    }
+}
+
+impl Drop for DestroyProgressDispatch {
+    fn drop(&mut self) {
+        DESTROY_PROGRESS_DISPATCH.set(self.outer);
+    }
+}
+
+std::thread_local! {
+    /// Whether a block Part's destroy-progress answer is running on this thread.
+    static DESTROY_PROGRESS_DISPATCH: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
 /// The harvest hooks of one `mod_harvest_check` running, given back when dropped.
 pub(in crate::game) struct HarvestDispatch {
     pub(in crate::game) outer: bool,
@@ -1547,6 +1619,8 @@ use crate::game::item_abilities::ItemAbilitiesGameExt1 as _;
 use crate::game::native_components::NativeComponentsGameExt1 as _;
 
 use crate::game::native_hooks::can_harvest_block::GameHooks as _;
+
+use crate::game::native_hooks::destroy_progress::GameHooks as _;
 
 use crate::game::native_hooks::fishing_medium::GameHooks as _;
 

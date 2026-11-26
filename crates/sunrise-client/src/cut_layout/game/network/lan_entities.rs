@@ -1,6 +1,4 @@
 #![cfg(test)]
-use sunrise_core::nbt::Tag;
-use sunrise_sim::lan::entity::EntityState;
 #[cfg(test)]
 pub(crate) mod tests {
     macro_rules! pending {
@@ -227,55 +225,74 @@ pub(crate) mod tests {
     }
     #[test]
     #[ignore = "daily"]
-    fn kept_display_data_is_what_a_build_gives() {
+    fn resident_display_metadata_matches_the_loaded_fields() {
+        use sunrise_protocol::{
+            entity_data::{Value, serializer},
+            item::Stack,
+        };
+
         sunrise_gameplay::game::native_entity_refs::tests::with_game(|game| {
-            let snbt = |s: &str| sunrise_command::snbt::parse_fully(s).unwrap();
-            let displays: [(&str, Tag, Tag); 3] = [
+            let stairs = game
+                .block_state_id("minecraft:oak_stairs[facing=east]")
+                .unwrap();
+            let glass = game.block_state_id("minecraft:glass").unwrap();
+            let cases = [
                 (
                     "minecraft:text_display",
-                    snbt(r#"{text:{text:"Shop",color:"gold"},billboard:"center",line_width:120}"#),
-                    snbt(r#"{text:{text:"Sold out",bold:1b},billboard:"center",background:0}"#),
+                    r#"{text:{text:"Shop",color:"gold"},billboard:"center",line_width:120}"#,
+                    (24, serializer::INT, Value::Int(120)),
+                    r#"{text:{text:"Sold out",bold:1b},billboard:"center",background:0}"#,
+                    (25, serializer::INT, Value::Int(0)),
                 ),
                 (
                     "minecraft:block_display",
-                    snbt(
-                        r#"{block_state:{Name:"minecraft:oak_stairs",Properties:{facing:"east"}}}"#,
-                    ),
-                    snbt(r#"{block_state:{Name:"minecraft:glass"},brightness:{sky:15,block:3}}"#),
+                    r#"{block_state:{Name:"minecraft:oak_stairs",Properties:{facing:"east"}}}"#,
+                    (23, serializer::BLOCK_STATE, Value::Id(stairs.0 as i32)),
+                    r#"{block_state:{Name:"minecraft:glass"},brightness:{sky:15,block:3}}"#,
+                    (23, serializer::BLOCK_STATE, Value::Id(glass.0 as i32)),
                 ),
                 (
                     "minecraft:item_display",
-                    snbt(r#"{item:{id:"minecraft:diamond",count:3},item_display:"gui"}"#),
-                    snbt(
-                        r#"{item:{id:"minecraft:apple",count:1},item_display:"head",glow_color_override:255}"#,
+                    r#"{item:{id:"minecraft:diamond",count:3},item_display:"gui"}"#,
+                    (
+                        23,
+                        serializer::ITEM_STACK,
+                        Value::Item(Some(Stack::new(1, 3))),
+                    ),
+                    r#"{item:{id:"minecraft:apple",count:1},item_display:"head",glow_color_override:255}"#,
+                    (
+                        23,
+                        serializer::ITEM_STACK,
+                        Value::Item(Some(Stack::new(2, 1))),
                     ),
                 ),
             ];
-            let state = |kind: &str| EntityState {
-                kind: kind.into(),
-                ..Default::default()
-            };
-            for (id, (kind, first, second)) in displays.iter().enumerate() {
-                let id = 900 + id as u32;
-                // Ticks with the first compound, then the second, then the first
-                // again: each answer is a fresh build's.
-                for tag in [first, first, first, second, second, first] {
-                    let mut built = state(kind);
-                    let built_item = game.lan_display_data(tag, &mut built);
-                    assert!(!built.meta.is_empty(), "{kind}");
-                    let mut kept = state(kind);
-                    let kept_item = game.lan_display_data_kept(id, tag, &mut kept);
-                    assert_eq!(format!("{kept_item:?}"), format!("{built_item:?}"));
-                    assert_eq!(
-                        format!("{:?}", kept.meta),
-                        format!("{:?}", built.meta),
-                        "{kind}"
-                    );
-                    assert_eq!(
-                        format!("{:?}", kept.defaults),
-                        format!("{:?}", built.defaults),
-                        "{kind}"
-                    );
+            for (kind, first, first_meta, second, second_meta) in cases {
+                for (nbt, expected) in [
+                    (first, &first_meta),
+                    (second, &second_meta),
+                    (first, &first_meta),
+                ] {
+                    let tag = sunrise_command::snbt::parse_fully(nbt).unwrap();
+                    let display = game.read_display_nbt(kind, &tag).unwrap();
+                    // Each new viewer gets the live fields, even when pairing is repeated.
+                    for _ in 0..2 {
+                        let mut metadata = Vec::new();
+                        display.append_metadata(
+                            None,
+                            false,
+                            |stack| {
+                                let id = match &*stack.item {
+                                    "minecraft:diamond" => 1,
+                                    "minecraft:apple" => 2,
+                                    item => panic!("unexpected stack {item}"),
+                                };
+                                Some(Stack::new(id, stack.count as i32))
+                            },
+                            &mut metadata,
+                        );
+                        assert!(metadata.contains(expected), "{kind}: {metadata:?}");
+                    }
                 }
             }
         });

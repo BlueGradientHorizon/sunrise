@@ -22,7 +22,7 @@ mod tests {
     use sunrise_core::{geometry::Vec3, position::BlockPos};
     use sunrise_gameplay::game::commands::Target;
     use sunrise_gameplay::game::entity_residency::SlotAccess;
-    use sunrise_gameplay::game::native_entity_refs::tests::with_game;
+    use sunrise_gameplay::game::native_entity_refs::tests::{fixture_resident_column, with_game};
     use sunrise_sim::{
         join_seq::{RestoreOrder, residency::table::EntityLookup},
         mobs::Mob,
@@ -227,11 +227,40 @@ mod tests {
     #[ignore = "daily"]
     fn parked_owners_rebind_and_route_without_trial_dimension_swaps() {
         use sunrise_gameplay_common::game::Dim;
+        use mod_api::EntityReadError;
         with_game(|game| {
+            fixture_resident_column(&mut game.common.world, (0, 0));
             game.reset_entity_residency();
             let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
             game.mobs.push(Mob::new(410, kind.clone(), Vec3::ZERO, 0.0));
+            let entity = game.entity(410).unwrap();
+            let living = game.living(entity).unwrap();
+            let assert_refused_visits = |game: &sunrise_gameplay::game::ServerGame<'_>, error| {
+                assert_eq!(
+                    entity.visit_parts(game, &mut |_| panic!("visited parts")),
+                    Err(error)
+                );
+                assert_eq!(
+                    entity.visit_passengers(game, &mut |_| panic!("visited passengers")),
+                    Err(error)
+                );
+                assert_eq!(
+                    entity.visit_indirect_passengers(game, &mut |_| panic!(
+                        "visited indirect passengers"
+                    )),
+                    Err(error)
+                );
+                assert_eq!(
+                    entity.visit_fluid_heights(game, &mut |_, _| panic!("visited fluids")),
+                    Err(error)
+                );
+                assert_eq!(
+                    living.visit_effects(game, &mut |_| panic!("visited effects")),
+                    Err(error)
+                );
+            };
             game.enter_level(Dim::Nether).unwrap();
+            assert_refused_visits(game, EntityReadError::Unavailable);
             game.mobs.push(Mob::new(411, kind, Vec3::ZERO, 0.0));
             assert!(
                 matches!(game.server_resident_entity(410), EntityLookup::Found { location, .. } if location.owner.dimension == DimensionKey::OVERWORLD)
@@ -252,6 +281,7 @@ mod tests {
             );
             assert_eq!(game.dim, Dim::Nether);
             game.server.levels.0.clear();
+            assert_refused_visits(game, EntityReadError::Stale);
             assert_eq!(game.server_resident_entity(410), EntityLookup::Missing);
             assert!(matches!(
                 game.server_resident_entity(411),

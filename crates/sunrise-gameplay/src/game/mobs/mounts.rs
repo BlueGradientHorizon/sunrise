@@ -7,7 +7,7 @@ use sunrise_core::{
     geometry::{Aabb, Vec3, VoxelShape},
     random::RandomSource,
 };
-use sunrise_gameplay_common::game::mounts_common::steering_item;
+use sunrise_gameplay_common::game::{item_abilities::ability, mounts_common::steering_item};
 use sunrise_world::living_air::escape_vector;
 use {
     sunrise_items::blocks::Fluid, sunrise_items::items::EntityTypeTags,
@@ -329,7 +329,7 @@ impl ServerGame<'_> {
     /// / `Mob.shearItem`: the saddle of a `#can_equip_saddle` mob comes off
     /// before its mobInteract can ride it, with the saddle's shearing sound.
     /// An occupied mount is not sheared: its mobInteract runs instead.
-    pub(in crate::game) fn shear_saddle(&mut self, index: usize, item: &str) -> Option<bool> {
+    pub(in crate::game) fn shear_saddle(&mut self, index: usize) -> Option<bool> {
         let m = &self.common.mobs[index];
         // EntityTypeTags.CAN_EQUIP_SADDLE.
         let saddleable = matches!(
@@ -346,7 +346,7 @@ impl ServerGame<'_> {
                 | Species::Nautilus
                 | Species::ZombieNautilus
         );
-        if item != "minecraft:shears" || !saddleable || m.is_baby() || !m.alive() {
+        if !self.held_shears(ability::SHEARS_REMOVE_ARMOR) || !saddleable || m.is_baby() || !m.alive() {
             return None;
         }
         let id = m.id;
@@ -369,9 +369,14 @@ impl ServerGame<'_> {
         }
         // attemptToShearEquipment takes the body slot before the saddle: horse
         // and nautilus armor come off first (not modelled here).
-        if m.extra
-            .body_id()
-            .is_some_and(|b| b.ends_with("_horse_armor") || b.ends_with("_nautilus_armor"))
+        if m.extra.body_stack().is_some_and(|body| {
+            sunrise_sim::mobs::equip::equippable_in_slot(
+                self.items(),
+                body,
+                "body",
+                sunrise_sim::mobs::species::vanilla_id(m.species()),
+            )
+        })
         {
             return None;
         }
@@ -417,7 +422,11 @@ impl ServerGame<'_> {
             loved = true;
         }
         if m.health < m.attrs.max_health && heal > 0.0 {
-            m.heal(&self.common.loop_context, heal);
+            m.heal(
+                &self.common.loop_context,
+                &|| crate::game::entity_server::hit_reads_of!(self),
+                heal,
+            );
             used = true;
         }
         if m.is_baby() && age_up > 0 && !m.extra.age_locked {

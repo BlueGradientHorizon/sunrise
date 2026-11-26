@@ -37,17 +37,16 @@ impl mod_api::CommandArgumentType for WarpNames {
         Ok(input.to_owned())
     }
 
-    fn suggest(
-        &self,
-        sender: Option<&mod_api::CommandSender>,
-        prefix: &str,
-    ) -> Vec<mod_api::CommandSuggestion> {
-        let permission = sender.map_or(0, |sender| sender.permission().level());
+    fn suggest(&self, request: &mod_api::SuggestionRequest) -> Vec<mod_api::Suggestion> {
+        let permission = request
+            .sender
+            .as_ref()
+            .map_or(0, |sender| sender.permission().level());
         WARPS
             .into_iter()
             .filter(|(_, level)| *level <= permission)
-            .filter(|(name, _)| name.starts_with(prefix))
-            .map(|(name, _)| mod_api::CommandSuggestion::new(name))
+            .filter(|(name, _)| name.starts_with(request.prefix.as_str()))
+            .map(|(name, _)| request.suggest(name))
             .collect()
     }
 }
@@ -135,6 +134,7 @@ fn install_warps(game: &mut sunrise_gameplay::game::ServerGame<'_>) {
     game.ui.dispatcher.0 = Arc::new(dispatcher);
     let host = game.server.lan.as_mut().unwrap();
     host.hub.set_mod_commands(0, tree);
+    game.send_player_command_tree(2);
 }
 
 /// The last command tree the guest was sent.
@@ -155,6 +155,107 @@ fn last_tree(rx: &mpsc::Receiver<Out>) -> play::Commands {
         }
     }
     last.expect("no command tree")
+}
+
+struct ModifierId;
+
+impl mod_api::CommandArgumentType for ModifierId {
+    fn kind(&self) -> mod_api::CommandArgumentKind {
+        mod_api::CommandArgumentKind::Id
+    }
+
+    fn parse(&self, input: &str) -> Result<String, mod_api::CommandArgumentError> {
+        Ok(format!("parsed {input}"))
+    }
+
+    fn suggest(&self, request: &mod_api::SuggestionRequest) -> Vec<mod_api::Suggestion> {
+        assert_eq!(request.prefix, "tconstruct:ha");
+        vec![request.suggest("tconstruct:haste")]
+    }
+}
+
+#[test]
+#[ignore = "daily"]
+fn custom_id_reads_a_mid_command_identifier_and_sends_its_vanilla_parser() {
+    sunrise_gameplay_common::game::in_own_process(
+        concat!(
+            module_path!(),
+            "::custom_id_reads_a_mid_command_identifier_and_sends_its_vanilla_parser"
+        )
+        .split_once("::")
+        .unwrap()
+        .1,
+        || {
+            use sunrise_command::{Arg, Dispatcher, network};
+            let arguments = CommandArguments::from([(
+                "test:modifier".to_owned(),
+                Arc::new(ModifierId) as Arc<dyn mod_api::CommandArgumentType>,
+            )]);
+            let (tree, _, problems) = command_tree(
+                &[mod_api::Command::new(
+                    "modprobe <modifier:test:modifier> <amount:integer>",
+                )],
+                &Dispatcher::new(),
+                &arguments,
+            );
+            assert!(problems.is_empty(), "{problems:?}");
+            let mut dispatcher = Dispatcher::new();
+            register_dispatcher(&mut dispatcher, &tree, MOD_COMMAND, &arguments);
+            let registries = Registries::default();
+            for raw in ["tconstruct:haste", "group/haste"] {
+                let line = format!("modprobe {raw} 2");
+                let parsed = dispatcher.parse(&line, &registries);
+                let (context, _) = parsed.executable().unwrap();
+                assert_eq!(
+                    context.get("modifier"),
+                    Some(&Arg::Custom {
+                        kind: "test:modifier".into(),
+                        value: format!("parsed {raw}"),
+                    })
+                );
+                assert_eq!(context.get("amount"), Some(&Arg::Int(2)));
+            }
+            for raw in ["tconstruct:haste#tag", "tconstruct:haste:extra"] {
+                let line = format!("modprobe {raw} 2");
+                assert!(dispatcher.parse(&line, &registries).executable().is_err());
+            }
+
+            let mut resources = None;
+            let (mut game, rx) = game_with_guest(&mut resources, "IdTester");
+            game.ui.dispatcher.0 = Arc::new(dispatcher);
+            game.server
+                .lan
+                .as_mut()
+                .unwrap()
+                .hub
+                .set_mod_commands(0, tree);
+            game.send_player_command_tree(2);
+            let packet = last_tree(&rx);
+            let root = packet
+                .nodes
+                .iter()
+                .find(|node| node.name == "modprobe")
+                .unwrap();
+            let modifier = &packet.nodes[root.children[0] as usize];
+            // 26.3 ArgumentTypeInfos: resource_location is parser 36 and has no properties.
+            assert_eq!(modifier.parser, Some((36, Vec::new())));
+            assert_eq!(
+                modifier.suggestions.as_deref(),
+                Some("minecraft:ask_server")
+            );
+            let vanilla_client = network::from_packet(&packet, &Dispatcher::new());
+            assert!(
+                vanilla_client
+                    .parse("modprobe tconstruct:haste 2", &registries)
+                    .executable()
+                    .is_ok()
+            );
+            assert_eq!(
+                suggestions(&mut game, &rx, "/modprobe tconstruct:ha"),
+                ["tconstruct:haste"]
+            );
+        },
+    );
 }
 
 /// The children of the node named `name`, in the tree's order.
@@ -208,10 +309,11 @@ fn suggestions(
     panic!("no command suggestions packet for `{command}`");
 }
 
-/// A type whose arguments declare a suggestion provider: its own `suggest` must never answer.
-struct ProviderWarps;
+struct OversizedAndMany {
+    mixed: bool,
+}
 
-impl mod_api::CommandArgumentType for ProviderWarps {
+impl mod_api::CommandArgumentType for OversizedAndMany {
     fn kind(&self) -> mod_api::CommandArgumentKind {
         mod_api::CommandArgumentKind::Word
     }
@@ -220,94 +322,70 @@ impl mod_api::CommandArgumentType for ProviderWarps {
         Ok(input.to_owned())
     }
 
-    fn suggest(
-        &self,
-        _: Option<&mod_api::CommandSender>,
-        _: &str,
-    ) -> Vec<mod_api::CommandSuggestion> {
-        panic!("`suggest` is not called for an argument that declares a provider")
-    }
-
-    fn suggestion_provider(&self) -> Option<Arc<dyn mod_api::SuggestionProvider>> {
-        Some(Arc::new(Warps))
-    }
-}
-
-/// The provider that owns its argument's completions: two candidates, one of which the typed text
-/// does not match.
-struct Warps;
-
-impl mod_api::SuggestionProvider for Warps {
-    fn suggest(&self, _: &mod_api::SuggestionRequest) -> mod_api::SuggestionReply {
-        mod_api::SuggestionReply::new([
-            mod_api::CommandSuggestion::with_tooltip("press", "the press"),
-            mod_api::CommandSuggestion::new("furnace"),
-        ])
+    fn suggest(&self, request: &mod_api::SuggestionRequest) -> Vec<mod_api::Suggestion> {
+        if self.mixed {
+            return vec![
+                request.suggest("a".repeat(32768)),
+                request.suggest_with_tooltip("bad_tip", "b".repeat(65536)),
+                request.suggest_with_tooltip("bad_nul", "\0".repeat(32768)),
+                request.suggest_with_tooltip("ok_sibling", "valid tooltip"),
+                request.suggest_with_tooltip("z".repeat(32767), "y".repeat(65535)),
+            ];
+        }
+        // The whole result sorts before the server's packet cap.
+        (0..1050)
+            .rev()
+            .map(|i| request.suggest(format!("cand_{i:04}")))
+            .collect()
     }
 }
 
-/// A listener that would erase the answer of the argument being completed and put its own there:
-/// it must never see a provider's answer.
-struct ErasingCompletion;
-
-#[mod_api::__subscriptions]
-impl mod_api::Hooks for ErasingCompletion {
-    fn tab_complete(
-        &self,
-        _: &mut dyn mod_api::ServerHost,
-        event: &mut mod_api::TabCompleteEvent<'_>,
-    ) {
-        event.suggestions.clear();
-        event.suggestions.push(mod_api::Suggestion::new(
-            (event.range[0], event.range[1]),
-            "erased",
-        ));
-    }
-}
-
-/// The provider's answer reaches the player as the provider gave it, and the request never offers
-/// it to `tab_complete`; an ordinary argument still reaches the listener.
 #[test]
 #[ignore = "daily"]
-fn a_providers_answer_reaches_the_player_without_passing_through_the_completion_listener() {
-    let mods = vec![mod_api::ModEntry::new(
-        "erasing_completion",
-        Box::new(ErasingCompletion),
-    )]
-    .into();
-    mod_platform::testing::with_mods(mods, || {
-        let mut resources = None;
-        let (mut game, rx) = game_with_guest(&mut resources, "Alex");
-        let arguments: CommandArguments = std::collections::HashMap::from([(
-            "test:warp".to_owned(),
-            Arc::new(ProviderWarps) as Arc<dyn mod_api::CommandArgumentType>,
-        )]);
-        let (tree, _, problems) = command_tree(
-            &[
-                mod_api::Command::new("warp go <name:test:warp>"),
-                mod_api::Command::new("probe <value:word>"),
-            ],
-            &sunrise_command::Dispatcher::new(),
-            &arguments,
-        );
-        assert!(problems.is_empty(), "{problems:?}");
-        let mut dispatcher = (*game.ui.dispatcher.0).clone();
-        register_dispatcher(&mut dispatcher, &tree, MOD_COMMAND, &arguments);
-        game.ui.dispatcher.0 = Arc::new(dispatcher);
-        game.server
-            .lan
-            .as_mut()
-            .unwrap()
-            .hub
-            .set_mod_commands(0, tree);
-        last_tree(&rx);
+fn oversized_entries_drop_individually_and_large_regular_replies_sort_before_truncation() {
+    let mut resources = None;
+    let (mut game, rx) = game_with_guest(&mut resources, "Alex");
+    let arguments: CommandArguments = std::collections::HashMap::from([
+        (
+            "test:mixed".to_owned(),
+            Arc::new(OversizedAndMany { mixed: true }) as Arc<dyn mod_api::CommandArgumentType>,
+        ),
+        (
+            "test:many".to_owned(),
+            Arc::new(OversizedAndMany { mixed: false }) as Arc<dyn mod_api::CommandArgumentType>,
+        ),
+    ]);
+    let (tree, _, problems) = command_tree(
+        &[
+            mod_api::Command::new("mixed <value:test:mixed>"),
+            mod_api::Command::new("probe <value:test:many>"),
+        ],
+        &sunrise_command::Dispatcher::new(),
+        &arguments,
+    );
+    assert!(problems.is_empty(), "{problems:?}");
+    let mut dispatcher = (*game.ui.dispatcher.0).clone();
+    register_dispatcher(&mut dispatcher, &tree, MOD_COMMAND, &arguments);
+    game.ui.dispatcher.0 = Arc::new(dispatcher);
+    game.server
+        .lan
+        .as_mut()
+        .unwrap()
+        .hub
+        .set_mod_commands(0, tree);
+    game.send_player_command_tree(2);
+    let packet = last_tree(&rx);
+    assert_eq!(children(&packet, "mixed"), ["value"]);
+    assert_eq!(children(&packet, "probe"), ["value"]);
 
-        // The provider's argument: its matching candidate, its tooltip, and nothing the listener
-        // would have put there.
-        assert_eq!(suggestions(&mut game, &rx, "warp go pr"), ["press"]);
-        // A plain `word` argument: the listener still answers, so the hook is not gone.
-        assert_eq!(suggestions(&mut game, &rx, "probe "), ["erased"]);
-    });
+    assert_eq!(
+        suggestions(&mut game, &rx, "mixed "),
+        ["ok_sibling".to_owned(), "z".repeat(32767)]
+    );
+    let truncated = suggestions(&mut game, &rx, "probe ");
+    assert_eq!(truncated.len(), 1000);
+    assert_eq!(truncated[0], "cand_0000");
+    assert_eq!(truncated[999], "cand_0999");
 }
 
 struct IdentifierCompletion;
@@ -317,13 +395,14 @@ impl mod_api::Hooks for IdentifierCompletion {
     fn tab_complete(
         &self,
         _: &mut dyn mod_api::ServerHost,
-        event: &mut mod_api::TabCompleteEvent<'_>,
+        event: &mut mod_api::TabCompleteEvent<'_, '_>,
     ) {
         if event.command == "probe ex" {
             assert_eq!(event.range, [6, 8]);
             event
                 .suggestions
-                .push(mod_api::Suggestion::new((6, 8), "example:stone"));
+                .push(mod_api::Suggestion::new((6, 8), "example:stone"))
+                .unwrap();
         }
     }
 }
@@ -355,6 +434,7 @@ fn an_identifier_listener_replies_on_the_wire_and_leaves_room_for_the_next_argum
             .unwrap()
             .hub
             .set_mod_commands(0, tree);
+        game.send_player_command_tree(2);
         last_tree(&rx);
 
         let typed = "probe ex";
@@ -414,18 +494,14 @@ impl mod_api::CommandArgumentType for QuestObject {
         Ok(format!("object {input}"))
     }
 
-    fn suggest(
-        &self,
-        _: Option<&mod_api::CommandSender>,
-        prefix: &str,
-    ) -> Vec<mod_api::CommandSuggestion> {
+    fn suggest(&self, request: &mod_api::SuggestionRequest) -> Vec<mod_api::Suggestion> {
         // Brigadier hands the typed suffix, opening quote included.
-        assert_eq!(prefix, "\"Getting St");
-        let typed = prefix.trim_start_matches('"');
+        assert_eq!(request.prefix, "\"Getting St");
+        let typed = request.prefix.trim_start_matches('"');
         QUEST_TITLES
             .into_iter()
             .filter(|title| title.starts_with(typed))
-            .map(|title| mod_api::CommandSuggestion::new(format!("\"{title}\"")))
+            .map(|title| request.suggest(format!("\"{title}\"")))
             .collect()
     }
 }
@@ -617,7 +693,7 @@ fn a_plain_players_tree_and_completions_leave_out_the_paths_they_may_not_run() {
     {
         let host = game.server.lan.as_mut().unwrap();
         host.hub.ops.insert(uuid, 4);
-        host.hub.resend_commands();
+        game.resend_commands_filtered();
     }
     assert_eq!(
         game.server.lan.as_ref().unwrap().hub.guests[0].permission,

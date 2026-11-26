@@ -6,7 +6,7 @@
 #[allow(unused_imports)]
 use super::{Dim, item_abilities::ability};
 #[allow(unused_imports)]
-use mod_api::SoundSource;
+use mod_api::{LevelRef, LevelWriteError, SoundSource};
 #[allow(unused_imports)]
 use std::ops::ControlFlow;
 #[allow(unused_imports)]
@@ -30,6 +30,7 @@ use sunrise_gameplay_common::game::api_values::{TryIntoApi, TryIntoEnginePreserv
 #[allow(unused_imports)]
 use sunrise_gameplay_common::game::level_sounds_common::LevelSound;
 use sunrise_gameplay_common::game::spill_common;
+use sunrise_gameplay_common::game::tool_modification::ToolModificationGameExt1 as _;
 #[allow(unused_imports)]
 use sunrise_world::{
     fluid::FluidKind,
@@ -127,7 +128,16 @@ impl crate::game::ServerGame<'_> {
         BlockPos::new(p.0, p.1, p.2)
     }
 
-    // ---- level events (LevelEventHandler) ----
+    /// Publish dispenser feedback after commit so the client plays its sound and smoke once.
+    pub(in crate::game) fn dispenser_event(&mut self, id: i32, pos: Pos, data: i32) {
+        if self.has_level_transaction() {
+            self.after_commit(
+                sunrise_gameplay_common::game::transactions::After::DispenseEvent(id, pos, data),
+            );
+            return;
+        }
+        self.server_level_event_at(id, [pos.0, pos.1, pos.2], data);
+    }
 
     // ---- DefaultDispenseItemBehavior ----
 
@@ -235,8 +245,8 @@ impl crate::game::ServerGame<'_> {
         facing: Direction,
         event: i32,
     ) {
-        self.server_level_event_at(event, [pos.0, pos.1, pos.2], 0);
-        self.server_level_event_at(2000, [pos.0, pos.1, pos.2], data_value(facing));
+        self.dispenser_event(event, pos, 0);
+        self.dispenser_event(2000, pos, data_value(facing));
     }
 
     /// `DefaultDispenseItemBehavior.execute`: drop one item.
@@ -254,55 +264,76 @@ impl crate::game::ServerGame<'_> {
         self.stage_dispensed(pos, facing, one, false);
         (stack.count > 0).then_some(stack)
     }
-    /// Drop one item as DefaultDispenseItemBehavior does. For a dispenser hook:
-    /// return this remainder in its answer with `CLICK`; the caller plays the
-    /// answer's event and smoke once. A client, another dimension or an unloaded
-    /// chunk keeps the input stack unchanged.
-    pub(in crate::game) fn dispense_default(
+
+    /// Sunrise represents a DispenserBlockEntity as the dispenser state and a slot holder.
+    pub(super) fn dispenser_source(&self, pos: Pos) -> Option<u64> {
+        if !self.world.loaded(pos.0, pos.2)
+            || self.dispenser_block_name(pos).as_ref() != "minecraft:dispenser"
+            || !matches!(self.world.block_entities.get(&pos), Some(holder @ BlockEntity::Chest(_)) if holder.fits("minecraft:dispenser"))
+        {
+            return None;
+        }
+        self.world.block_entities.generation(&pos)
+    }
+    pub(in crate::game) fn level_dispense_default(
         &mut self,
-        dimension: &str,
-        pos: [i32; 3],
+        level: LevelRef,
+        [x, y, z]: [i32; 3],
         facing: Direction,
         stack: mod_api::ItemStack,
-    ) -> std::result::Result<Option<mod_api::ItemStack>, mod_api::StackWriteError> {
-        let stack = stack.try_into_engine_preserving_count(self.items())?;
-        let left = if !(self.server.serving.is_some() || self.common.options.dedicated.is_some())
-            || dimension != self.common.dim.id()
-            || !self
-                .common
-                .world
-                .chunks
-                .contains_key(&(pos[0] >> 4, pos[2] >> 4))
-        {
-            Some(stack)
-        } else {
-            self.default_execute((pos[0], pos[1], pos[2]), facing, stack)
-        };
+    ) -> std::result::Result<Option<mod_api::ItemStack>, LevelWriteError> {
+        let stack = stack
+            .try_into_engine_preserving_count(self.items())
+            .map_err(LevelWriteError::InvalidStack)?;
+        let left = self.with_server_level_mut(
+            level,
+            LevelWriteError::Unavailable,
+            LevelWriteError::Stale,
+            Some(LevelWriteError::InTransaction),
+            |game| {
+                let pos = (x, y, z);
+                game.dispenser_source(pos)
+                    .ok_or(LevelWriteError::InvalidDispenser)?;
+                Ok((stack.count != 0)
+                    .then(|| game.default_execute(pos, facing, stack))
+                    .flatten())
+            },
+        )?;
         left.try_into_api()
-            .map_err(|error| error.into_write_error())
+            .map_err(|error| LevelWriteError::InvalidStack(error.into_write_error()))
     }
-    /// `dispense_with_remainder`: `consume_with_remainder` for a mod's dispense answer, in the
-    /// level in place; `stack` unchanged off it, as `dispense_default` keeps it.
-    pub(in crate::game) fn dispense_with_remainder(
+
+    pub(in crate::game) fn level_dispense_with_remainder(
         &mut self,
-        dimension: &str,
-        pos: [i32; 3],
+        level: LevelRef,
+        [x, y, z]: [i32; 3],
         facing: Direction,
-        stack: ItemStack,
-        remainder: ItemStack,
-    ) -> Option<ItemStack> {
-        if !(self.server.serving.is_some() || self.common.options.dedicated.is_some())
-            || dimension != self.common.dim.id()
-            || !self
-                .common
-                .world
-                .chunks
-                .contains_key(&(pos[0] >> 4, pos[2] >> 4))
-            || stack.count == 0
-        {
-            return Some(stack).filter(|stack| stack.count > 0);
-        }
-        self.consume_with_remainder((pos[0], pos[1], pos[2]), facing, stack, remainder)
+        stack: mod_api::ItemStack,
+        remainder: mod_api::ItemStack,
+    ) -> std::result::Result<Option<mod_api::ItemStack>, LevelWriteError> {
+        let stack = stack
+            .try_into_engine_preserving_count(self.items())
+            .map_err(LevelWriteError::InvalidStack)?;
+        let remainder = remainder
+            .try_into_engine_preserving_count(self.items())
+            .map_err(LevelWriteError::InvalidStack)?;
+        let left = self.with_server_level_mut(
+            level,
+            LevelWriteError::Unavailable,
+            LevelWriteError::Stale,
+            Some(LevelWriteError::InTransaction),
+            |game| {
+                let pos = (x, y, z);
+                game.dispenser_source(pos)
+                    .ok_or(LevelWriteError::InvalidDispenser)?;
+                if stack.count == 0 {
+                    return Ok(None);
+                }
+                Ok(game.consume_with_remainder(pos, facing, stack, remainder))
+            },
+        )?;
+        left.try_into_api()
+            .map_err(|error| LevelWriteError::InvalidStack(error.into_write_error()))
     }
     /// `DefaultDispenseItemBehavior.addToInventoryOrDispense` for a mod's dispense helper, in the
     /// level in place: refuses a client, another dimension or an unloaded chunk.
@@ -476,7 +507,9 @@ impl crate::game::ServerGame<'_> {
         stack: ItemStack,
     ) -> Result<ControlFlow<(), Option<ItemStack>>> {
         let mut answer = None;
-        if self.server.serving.is_some() || self.common.options.dedicated.is_some() {
+        let block_hooks_active =
+            self.server.serving.is_some() || self.common.options.dedicated.is_some();
+        let block_reply_state = if block_hooks_active {
             // The block the dispenser faces has the first say (`dispense_method`), then the
             // item's own part (`dispense_item`); the first answer wins.
             let front = self.block_at(offset(pos, facing));
@@ -502,7 +535,10 @@ impl crate::game::ServerGame<'_> {
                     &mut answer,
                 );
             }
-        }
+            Some(front)
+        } else {
+            None
+        };
         if let Some(answer) = answer {
             let (left, event) = match mod_dispensed(answer, self.items()) {
                 Ok(dispensed) => dispensed,
@@ -532,6 +568,15 @@ impl crate::game::ServerGame<'_> {
                 );
             }
             return Ok(ControlFlow::Continue(left));
+        }
+        // A refused reply may have stopped dispatch before the disabled block owner.
+        if let Some(front) = block_reply_state
+            && mod_api::__private::any_mod_disabled()
+            && front.try_into_api().is_ok_and(|state| {
+                mod_api::__private::block_hook_inert(mod_api::HookId::DispenseMethod, state)
+            })
+        {
+            return Ok(ControlFlow::Break(()));
         }
         let item = stack.item.to_string();
         // A stack able to `shears_harvest` is dispensed as shears are, whatever its item.
@@ -841,9 +886,11 @@ impl crate::game::ServerGame<'_> {
     /// persistent mob. A tadpole's setter does nothing: its `fromBucket` is
     /// always true.
     pub fn mob_placed(&mut self, id: u32, stack: &ItemStack) -> Result<()> {
+        let variants = world_variants!(self);
         if let Some(m) = self.common.mobs.iter_mut().find(|m| m.id == id) {
             m.persistent = false;
             sunrise_sim::entity_nbt::apply_item_components(m, stack);
+            sunrise_sim::entity_nbt::apply_item_variant_components(m, stack, variants);
             match m.species() {
                 Species::Cod
                 | Species::Salmon
@@ -887,12 +934,14 @@ impl crate::game::ServerGame<'_> {
             return Ok((Some(stack), CLICK));
         };
         // EntityType.create: `finalizeSpawn` first, the egg's components after.
+        let variants = world_variants!(self);
         if let Some(m) = self.common.mobs.iter_mut().find(|m| m.id == id) {
             // SpawnEggItemBehavior's `EntityType.spawn` never calls
             // `setPersistenceRequired`, as a spawn egg used by hand doesn't;
             // only the elder guardian's and copper golem's constructors do.
             m.persistent = matches!(m.species(), Species::ElderGuardian | Species::CopperGolem);
             sunrise_sim::entity_nbt::apply_item_components(m, &stack);
+            sunrise_sim::entity_nbt::apply_item_variant_components(m, &stack, variants);
         }
         // EntityType.updateCustomEntityTag: a configured egg
         // (`/give @s pig_spawn_egg[minecraft:entity_data={…}]`) spawns the mob
@@ -987,7 +1036,7 @@ impl crate::game::ServerGame<'_> {
                 let mut shot =
                     crate::game::server_side::potions_server::thrown_projectile(one, at, false);
                 shot.shoot_own(dir, power, uncertainty);
-                self.add_projectile(shot);
+                self.add_fresh_projectile(shot);
             }
             _ => {
                 let kind = match item.as_str() {
@@ -1032,7 +1081,7 @@ impl crate::game::ServerGame<'_> {
                 // may be picked up.
                 if let Some(a) = shot.arrow.as_mut() {
                     a.set_item(&one);
-                    a.pickup = sunrise_sim::arrows::Pickup::Allowed;
+                    a.pickup = sunrise_sim::entities::arrows::Pickup::Allowed;
                 }
                 shot.shoot_own(dir, power, uncertainty);
                 self.spawn_projectile(shot, &one);
@@ -1057,13 +1106,12 @@ impl crate::game::ServerGame<'_> {
         // EntityType.create rolls a yaw from the level random before the stack config turns it.
         let _ = self.common.world.random.next_float();
         self.server.next_entity += 1;
-        let (_, uuid) = sunrise_sim::mobs::living_random();
-        self.common
-            .persist
-            .uuids
-            .insert(self.server.next_entity, uuid);
-        let stand =
-            sunrise_sim::entities::ArmorStand::new(self.server.next_entity, foot, y_rot(facing));
+        let (stand, uuid) = sunrise_sim::entities::ArmorStand::new_with_uuid(
+            self.server.next_entity,
+            foot,
+            y_rot(facing),
+        );
+        self.common.persist.uuids.insert(self.server.next_entity, uuid);
         self.common
             .world
             .modified
@@ -1266,7 +1314,6 @@ impl crate::game::ServerGame<'_> {
     ) -> Result<Dispensed> {
         let target = offset(pos, facing);
         let target_pos = Self::pos_of(target);
-        let state = self.block_at(target);
         let name = self.dispenser_block_name(target);
         let mut success = true;
         // tryIgniteExplosiveEntities: the first sulfur cube that can explode is primed.
@@ -1301,6 +1348,18 @@ impl crate::game::ServerGame<'_> {
             }
             return Ok((self.hurt_and_break(stack, 1), CLICK));
         }
+        // getToolModifiedState(FIRESTARTER_LIGHT) on a hit at the target's centre, from the
+        // dispenser's side, with no player, asked only where no fire can be placed.
+        let hit = super::Hit {
+            pos: [target.0, target.1, target.2],
+            face: facing.opposite().normal(),
+            point: [
+                f64::from(target.0) + 0.5,
+                f64::from(target.1) + 0.5,
+                f64::from(target.2) + 0.5,
+            ],
+            inside: false,
+        };
         if self
             .with_level(|b, level, ticks| b.fire_can_be_placed_at(level, ticks, target_pos, facing))
         {
@@ -1316,10 +1375,8 @@ impl crate::game::ServerGame<'_> {
                 None,
                 None,
             );
-        } else if self.can_light(state, &name) {
-            if let Some(lit) = self.common.with_props(state, &[("lit", "true")]) {
-                self.level_set([target.0, target.1, target.2], lit)?;
-            }
+        } else if let Some(lit) = self.fire_starter_lit(&hit, &stack, false)? {
+            self.level_set([target.0, target.1, target.2], lit)?;
             self.post_block_game_event(
                 "minecraft:block_change",
                 [target.0, target.1, target.2],
@@ -1579,7 +1636,7 @@ impl crate::game::ServerGame<'_> {
         stack: ItemStack,
     ) -> Result<Dispensed> {
         let target = offset(pos, facing);
-        let sheared = self.shear_beehive(target)? || self.shear_entity(target)?;
+        let sheared = self.shear_beehive(target, &stack)? || self.shear_entity(target, &stack)?;
         if sheared {
             return Ok((self.hurt_and_break(stack, 1), CLICK));
         }
@@ -2197,7 +2254,11 @@ impl crate::game::ServerGame<'_> {
         (shrink(stack), CLICK)
     }
 
-    pub(in crate::game::server_side) fn shear_beehive(&mut self, target: Pos) -> Result<bool> {
+    pub(in crate::game::server_side) fn shear_beehive(
+        &mut self,
+        target: Pos,
+        tool: &ItemStack,
+    ) -> Result<bool> {
         let state = self.block_at(target);
         let name = self.dispenser_block_name(target);
         let level = self
@@ -2216,11 +2277,8 @@ impl crate::game::ServerGame<'_> {
         // BeehiveBlock.dropHoneycomb (harvest/beehive), then
         // releaseBeesAndResetHoneyLevel and the shear event.
         let p = [target.0, target.1, target.2];
-        for stack in self.sequence_loot(
-            "minecraft:harvest/beehive",
-            "minecraft:harvest/beehive",
-            None,
-        ) {
+        for stack in self.interact_loot_at("minecraft:harvest/beehive", p, state, None, Some(tool))
+        {
             self.pop_resource(p, stack);
         }
         if let Some(reset) = self.common.with_props(state, &[("honey_level", "0")]) {
@@ -2232,15 +2290,14 @@ impl crate::game::ServerGame<'_> {
     }
     /// `ShearsDispenseItemBehavior.tryShearEntity`: the first live, ready
     /// `Shearable` in the block is sheared (an entity part's `IShearable` answer comes first).
-    pub fn shear_entity(&mut self, target: Pos) -> Result<bool> {
-        let shears = ItemStack::new("minecraft:shears", 1);
+    pub fn shear_entity(&mut self, target: Pos, shears: &ItemStack) -> Result<bool> {
         for t in self.targets_at(target) {
             // Entity.shearOffAllLeashConnections comes first, for any entity.
             if self.shear_off_leashes(t) {
                 return Ok(true);
             }
             let Target::Mob(i) = t else { continue };
-            let part = self.part_shearable(i, None, &shears);
+            let part = self.part_shearable(i, None, shears);
             let m = &self.common.mobs[i];
             if !m.alive() || part.is_some_and(|(_, shearable)| !shearable) {
                 continue;
@@ -2252,7 +2309,9 @@ impl crate::game::ServerGame<'_> {
             };
             match m.species() {
                 _ if let Some((part, _)) = part => {
-                    self.part_shear(i, part, None, &shears);
+                    if self.part_shear(i, part, None, shears).is_err() {
+                        continue;
+                    }
                 }
                 Species::SulfurCube if sulfur_cube::has_body(m) => {
                     // SulfurCube.shear: the swallowed block comes out at the
@@ -2283,7 +2342,7 @@ impl crate::game::ServerGame<'_> {
                     let drops = self.sequence_loot(
                         "minecraft:shearing/sheep",
                         &format!("minecraft:shearing/sheep/{color}"),
-                        Some(&shears),
+                        Some(shears),
                     );
                     for stack in drops {
                         for _ in 0..stack.count {
@@ -2320,7 +2379,7 @@ impl crate::game::ServerGame<'_> {
                     let drops = self.sequence_loot(
                         "minecraft:shearing/bogged",
                         "minecraft:shearing/bogged",
-                        Some(&shears),
+                        Some(shears),
                     );
                     for stack in drops {
                         self.spawn_at_location(at, height, stack);
@@ -2338,7 +2397,7 @@ impl crate::game::ServerGame<'_> {
                     let drops = self.sequence_loot(
                         "minecraft:shearing/snow_golem",
                         "minecraft:shearing/snow_golem",
-                        Some(&shears),
+                        Some(shears),
                     );
                     for stack in drops {
                         self.spawn_at_location(at, eye, stack);
@@ -2362,7 +2421,7 @@ impl crate::game::ServerGame<'_> {
                     }
                 }
                 Species::Mooshroom if !m.is_baby() => {
-                    self.shear_mooshroom(i, None, &shears);
+                    self.shear_mooshroom(i, None, shears);
                 }
                 _ => continue,
             }

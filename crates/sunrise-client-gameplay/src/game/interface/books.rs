@@ -804,10 +804,7 @@ impl ClientGame<'_> {
             self.lectern_button(key, if forward { 2 } else { 1 });
             return;
         }
-        self.client
-            .audio
-            .0
-            .play("minecraft:item.book.page_turn", None, 1.0, 1.0);
+        self.play_audio("minecraft:item.book.page_turn", None, 1.0, 1.0);
     }
     /// `LecternBlock.openScreen`: reading the lectern's book.
     #[allow(dead_code)]
@@ -959,12 +956,7 @@ impl ClientGame<'_> {
         self.client.book_last_click = Some(now);
         let inside =
             |x: f32, y: f32, bw: f32, bh: f32| mx >= x && my >= y && mx < x + bw && my < y + bh;
-        let click = |game: &mut Self| {
-            game.client
-                .audio
-                .0
-                .play("minecraft:ui.button.click", None, 0.25, 1.0)
-        };
+        let click = |game: &mut Self| game.play_audio("minecraft:ui.button.click", None, 0.25, 1.0);
         match &self.client.book {
             Some(BookScreen::Edit {
                 signing: true,

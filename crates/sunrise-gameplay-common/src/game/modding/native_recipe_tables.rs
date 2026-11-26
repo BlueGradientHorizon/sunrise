@@ -1,8 +1,5 @@
-use crate::game::native_hooks::NativeRecipes as Recipes;
 use std::sync::Arc;
 
-/// The tables, made once, and the recipe book's known displays with the
-/// book's version they are of.
 /// The most recipes a server's recipe content may carry.
 const MAX_SYNCED_RECIPES: usize = 1_000_000;
 
@@ -47,7 +44,6 @@ impl IncomingRecipes {
 
 #[derive(Default)]
 pub struct RecipeTables {
-    pub tables: Option<Arc<Recipes>>,
     pub books: Option<
         Result<sunrise_sim::recipe_book::ModBookIndex, sunrise_sim::recipe_book::DisplayLoadError>,
     >,
@@ -74,7 +70,6 @@ pub struct RecipeTables {
 impl RecipeTables {
     /// Drop all per-session synced recipe and book-display state on disconnect.
     pub fn clear_session(&mut self) {
-        self.tables = None;
         self.books = None;
         self.known = Default::default();
         self.synced = None;
