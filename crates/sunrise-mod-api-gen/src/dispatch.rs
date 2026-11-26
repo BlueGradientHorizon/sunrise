@@ -2297,8 +2297,8 @@ mod stack_crossing_tests {
     fn level_block_read_refusal_runtime_and_mutants() {
         let mut implementations = String::new();
         for source in [
-            include_str!("../../sunrise-client/src/game/modding/mod_api_host.rs"),
-            include_str!("../../sunrise-client/src/game/modding/native_level_signals.rs"),
+            include_str!("../../sunrise-gameplay-common/src/game/modding/mod_api_host.rs"),
+            include_str!("../../sunrise-gameplay-common/src/game/modding/native_level_signals.rs"),
         ] {
             for item in syn::parse_file(source).unwrap().items {
                 let syn::Item::Impl(item) = item else {
@@ -2351,7 +2351,9 @@ mod level { pub trait LevelAccess { fn block_state(&self,pos:crate::BlockPos)->c
         let index = directory.join("index.rs");
         std::fs::write(
             &index,
-            include_str!("../../sunrise-client/src/game/modding/api_values/block_state.rs"),
+            include_str!(
+                "../../sunrise-gameplay-common/src/game/modding/api_values/block_state.rs"
+            ),
         )
         .unwrap();
         for (name, methods, success) in [
@@ -2430,7 +2432,7 @@ mod level { pub trait LevelAccess { fn block_state(&self,pos:crate::BlockPos)->c
         let directory = root.join("target/hook-index-proof");
         std::fs::create_dir_all(&directory).unwrap();
         let production = std::fs::read_to_string(
-            root.join("crates/sunrise-client/src/game/modding/api_values/block_state.rs"),
+            root.join("crates/sunrise-gameplay-common/src/game/modding/api_values/block_state.rs"),
         )
         .unwrap();
         let fixture = include_str!("../tests/fixtures/hook_index.rs");
@@ -2543,9 +2545,9 @@ mod level { pub trait LevelAccess { fn block_state(&self,pos:crate::BlockPos)->c
             &index,
             // Count actual scalar crossings as well as collection conversions. The
             // routing helper itself must not trigger this conversion observer.
-            include_str!("../../sunrise-client/src/game/modding/api_values/block_state.rs").replace(
-                "pub(crate) fn to_api(&self, state: BlockStateId) -> Result<BlockState, BlockStateError> {",
-                "pub(crate) fn to_api(&self, state: BlockStateId) -> Result<BlockState, BlockStateError> { crate::CONVERSIONS.fetch_add(1, crate::Ordering::Relaxed);",
+            include_str!("../../sunrise-gameplay-common/src/game/modding/api_values/block_state.rs").replace(
+                "pub fn to_api(&self, state: BlockStateId) -> Result<BlockState, BlockStateError> {",
+                "pub fn to_api(&self, state: BlockStateId) -> Result<BlockState, BlockStateError> { crate::CONVERSIONS.fetch_add(1, crate::Ordering::Relaxed);",
             ),
         )
         .unwrap();
@@ -3133,33 +3135,33 @@ fn main() {{ generated::dispatch_setting_changed(&mut (), "a", "toggle"); assert
     #[ignore = "daily"]
     fn settings_boundary_owns_and_caches_values() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-        let mut methods = String::new();
+        let mut common_methods = String::new();
+        let mut client_method = String::new();
         let mut ownership_check = String::new();
-        for path in ["base.rs", "mod_client.rs"] {
-            let source = std::fs::read_to_string(
-                root.join("crates/sunrise-client/src/game/native_hooks")
-                    .join(path),
-            )
-            .unwrap();
-            for item in syn::parse_file(&source).unwrap().items {
+        for source in [
+            include_str!("../../sunrise-gameplay-common/src/game/native_hooks/base.rs"),
+            include_str!("../../sunrise-client-gameplay/src/game/native_hooks/mod_client.rs"),
+        ] {
+            for item in syn::parse_file(source).unwrap().items {
                 match item {
                     syn::Item::Fn(f) if f.sig.ident == "another_mods" => {
                         ownership_check = f.to_token_stream().to_string();
                     }
                     syn::Item::Impl(i) => {
                         for item in i.items {
-                            if let syn::ImplItem::Fn(f) = item
-                                && matches!(
-                                    f.sig.ident.to_string().as_str(),
-                                    "setting"
-                                        | "stored_setting"
-                                        | "set_setting"
-                                        | "store_setting"
-                                        | "native_setting_event"
-                                )
-                            {
-                                let syn::ImplItemFn { sig, block, .. } = f;
-                                methods.push_str(&quote::quote!(#sig #block).to_string());
+                            let syn::ImplItem::Fn(f) = item else {
+                                continue;
+                            };
+                            let syn::ImplItemFn { sig, block, .. } = f;
+                            match sig.ident.to_string().as_str() {
+                                "setting" | "stored_setting" | "set_setting" | "store_setting" => {
+                                    common_methods
+                                        .push_str(&quote::quote!(#sig #block).to_string());
+                                }
+                                "native_setting_event" => {
+                                    client_method = quote::quote!(#sig #block).to_string();
+                                }
+                                _ => {}
                             }
                         }
                     }
@@ -3167,11 +3169,10 @@ fn main() {{ generated::dispatch_setting_changed(&mut (), "a", "toggle"); assert
                 }
             }
         }
-        let settings_source = std::fs::read_to_string(
-            root.join("crates/sunrise-client/src/game/native_hooks/mod_settings.rs"),
-        )
+        let settings_file = syn::parse_file(include_str!(
+            "../../sunrise-gameplay-common/src/game/native_hooks/mod_settings.rs"
+        ))
         .unwrap();
-        let settings_file = syn::parse_file(&settings_source).unwrap();
         let settings: String = settings_file
             .items
             .into_iter()
@@ -3211,39 +3212,43 @@ struct Row {{ id: String, native: Option<Page> }}
 struct Mods {{ installed: Vec<Row> }}
 struct Settings {{ mods: Mods }}
 struct ClientState {{ settings: Settings }}
-struct Game {{ side: ClientState, notifications: usize, root: PathBuf }}
+struct Game {{ client: ClientState, common: CommonGame, notifications: usize }}
+struct CommonGame {{ root: PathBuf }}
+impl CommonGame {{
+    fn native_data_dir(&self, id: &str) -> PathBuf {{ self.root.join(id) }}
+    {common_methods}
+}}
 impl Game {{
     fn native_setting_changed(&mut self, _: &str, _: &str) {{ self.notifications += 1; }}
-    fn native_data_dir(&self, id: &str) -> PathBuf {{ self.root.join(id) }}
-    {methods}
+    {client_method}
 }}
 pub fn run(root: PathBuf) {{
-    let mut game = Game {{ side: ClientState {{ settings: Settings {{ mods: Mods {{ installed: vec![Row {{ id: "a".into(), native: Some(Page {{ settings: vec![Setting {{ key: "toggle".into(), value: NativeSettingValue::Toggle(true) }}] }}) }}] }} }} }}, notifications: 0, root }};
-    assert_eq!(game.setting("a", "toggle"), None);
-    assert_eq!(game.setting("b", "toggle"), None);
-    game.set_setting("b", "toggle", "stolen");
-    assert!(!game.native_data_dir("b").exists());
-    game.set_setting("a", "toggle", "edited");
-    assert_eq!(game.setting("a", "toggle").as_deref(), Some("edited"));
+    let mut game = Game {{ client: ClientState {{ settings: Settings {{ mods: Mods {{ installed: vec![Row {{ id: "a".into(), native: Some(Page {{ settings: vec![Setting {{ key: "toggle".into(), value: NativeSettingValue::Toggle(true) }}] }}) }}] }} }} }}, notifications: 0, common: CommonGame {{ root }} }};
+    assert_eq!(game.common.setting("a", "toggle"), None);
+    assert_eq!(game.common.setting("b", "toggle"), None);
+    game.common.set_setting("b", "toggle", "stolen");
+    assert!(!game.common.native_data_dir("b").exists());
+    game.common.set_setting("a", "toggle", "edited");
+    assert_eq!(game.common.setting("a", "toggle").as_deref(), Some("edited"));
     game.native_setting_event(0, 0);
     assert_eq!(game.notifications, 1);
-    game.set_setting("a", "toggle", "true");
-    assert_eq!(mod_settings::typed(&game.native_data_dir("a"), "toggle"), Some(mod_api::SettingValue::Toggle(true)));
-    fs::write(game.native_data_dir("a").join("toggle"), "false").unwrap();
-    assert_eq!(mod_settings::typed(&game.native_data_dir("a"), "toggle"), Some(mod_api::SettingValue::Toggle(true)));
-    assert_eq!(mod_settings::typed(&game.root.join("other"), "toggle"), Some(mod_api::SettingValue::Toggle(false)));
-    game.set_setting("a", "toggle", "false");
-    assert_eq!(mod_settings::typed(&game.native_data_dir("a"), "toggle"), Some(mod_api::SettingValue::Toggle(false)));
-    fs::remove_file(game.native_data_dir("a").join("toggle")).unwrap();
-    fs::create_dir(game.native_data_dir("a").join("toggle")).unwrap();
-    assert!(!game.store_setting("a", "toggle", "true"));
+    game.common.set_setting("a", "toggle", "true");
+    assert_eq!(mod_settings::typed(&game.common.native_data_dir("a"), "toggle"), Some(mod_api::SettingValue::Toggle(true)));
+    fs::write(game.common.native_data_dir("a").join("toggle"), "false").unwrap();
+    assert_eq!(mod_settings::typed(&game.common.native_data_dir("a"), "toggle"), Some(mod_api::SettingValue::Toggle(true)));
+    assert_eq!(mod_settings::typed(&game.common.root.join("other"), "toggle"), Some(mod_api::SettingValue::Toggle(false)));
+    game.common.set_setting("a", "toggle", "false");
+    assert_eq!(mod_settings::typed(&game.common.native_data_dir("a"), "toggle"), Some(mod_api::SettingValue::Toggle(false)));
+    fs::remove_file(game.common.native_data_dir("a").join("toggle")).unwrap();
+    fs::create_dir(game.common.native_data_dir("a").join("toggle")).unwrap();
+    assert!(!game.common.store_setting("a", "toggle", "true"));
     game.native_setting_event(0, 0);
     assert_eq!(game.notifications, 1, "failed persistence must not notify");
-    fs::create_dir_all(game.root.join("b")).unwrap();
-    fs::write(game.root.join("b/secret"), "secret").unwrap();
-    game.set_setting("a", "../b/secret", "bad");
-    assert_eq!(fs::read_to_string(game.root.join("b/secret")).unwrap(), "secret");
-    assert_eq!(game.setting("a", "../b/secret"), None);
+    fs::create_dir_all(game.common.root.join("b")).unwrap();
+    fs::write(game.common.root.join("b/secret"), "secret").unwrap();
+    game.common.set_setting("a", "../b/secret", "bad");
+    assert_eq!(fs::read_to_string(game.common.root.join("b/secret")).unwrap(), "secret");
+    assert_eq!(game.common.setting("a", "../b/secret"), None);
 }}
 }}
 fn main() {{ game::run(std::env::args_os().nth(1).unwrap().into()); }}

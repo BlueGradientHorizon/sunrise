@@ -638,7 +638,7 @@ mod tests {
         assert_eq!(post.version, 2);
         assert_eq!(
             frame.target,
-            "sunrise_client::game::native_hooks::render_frame_pre::ClientGame<'_>::native_render_frame_pre"
+            "sunrise_client_gameplay::game::native_hooks::render_frame_pre::ClientGame<'_>::native_render_frame_pre"
         );
         assert!(frame.scope.is_none());
         let scoped = points
@@ -987,18 +987,35 @@ mod tests {
         .unwrap();
         assert_eq!(super::sources(&root).unwrap().hooks, without_counterparts);
         std::fs::write(&first, original).unwrap();
-        let hook_dir = "crates/sunrise-client/src/game/native_hooks";
-        copy(&real.join(hook_dir), &root.join(hook_dir));
+        let hook_dir = root.join("crates/sunrise-client/src/game/native_hooks");
+        for (package, file) in [
+            ("sunrise-gameplay", "item_picked_up.rs"),
+            ("sunrise-client-gameplay", "client_tick_pre.rs"),
+        ] {
+            copy(
+                &real.join(format!("crates/{package}/src/game/native_hooks/{file}")),
+                &hook_dir.join(file),
+            );
+        }
+        std::fs::write(
+            hook_dir.join("mod.rs"),
+            "mod item_picked_up; mod client_tick_pre;",
+        )
+        .unwrap();
         let client = root.join("crates/sunrise-client");
         std::fs::write(client.join("Cargo.toml"), "").unwrap();
         std::fs::write(client.join("src/lib.rs"), "mod game;").unwrap();
         std::fs::write(client.join("src/game.rs"), "mod native_hooks;").unwrap();
-        let hooks = root.join(hook_dir).join("item_picked_up.rs");
-        let pickup = catalog
+        let hooks = hook_dir.join("item_picked_up.rs");
+        let mut pickup = catalog
             .hooks
             .iter()
             .find(|hook| hook.name == "item_picked_up")
-            .unwrap();
+            .unwrap()
+            .clone();
+        pickup.target = pickup
+            .target
+            .replacen("sunrise_gameplay::", "sunrise_client::", 1);
         let shipped = std::fs::read_to_string(&hooks).unwrap();
         let call = "self.fire_item_picked_up(player, item, can_pickup);";
         assert_eq!(shipped.matches(call).count(), 1);
@@ -1013,7 +1030,7 @@ mod tests {
         let placeholder = shipped.replace(call, "let _ = (player, item, can_pickup);");
         std::fs::write(&hooks, &placeholder).unwrap();
         assert_eq!(
-            super::hook_wiring::check(&root, std::slice::from_ref(pickup)).unwrap_err(),
+            super::hook_wiring::check(&root, std::slice::from_ref(&pickup)).unwrap_err(),
             concat!(
                 "item_picked_up (sunrise_client::game::native_hooks::item_picked_up::ServerGame<'_>::native_item_picked_up): ",
                 "target does not call fire_item_picked_up or Self::fire_item_picked_up or ",
@@ -1044,7 +1061,7 @@ mod tests {
                 .contains("item_picked_up: needs a #[hook(...)] attribute")
         );
         std::fs::write(&declared, shipped_declarations).unwrap();
-        let second = root.join("crates/sunrise-client/src/game/native_hooks/client_tick_pre.rs");
+        let second = hook_dir.join("client_tick_pre.rs");
         let second_shipped = std::fs::read_to_string(&second).unwrap();
         std::fs::write(
             &second,
@@ -1055,7 +1072,7 @@ mod tests {
         let decoy_source = "impl Game<'_> { /// mentions fn native_item_picked_up(\n fn unrelated(&self) { let _ = self; } }\n";
         std::fs::write(&decoy, decoy_source).unwrap();
         super::fill_hooks(&root).unwrap();
-        super::hook_wiring::check(&root, std::slice::from_ref(pickup)).unwrap();
+        super::hook_wiring::check(&root, std::slice::from_ref(&pickup)).unwrap();
         // The generator writes LF; a Windows checkout (core.autocrlf) has CRLF.
         let lf = |s: &str| s.replace("\r\n", "\n");
         assert_eq!(

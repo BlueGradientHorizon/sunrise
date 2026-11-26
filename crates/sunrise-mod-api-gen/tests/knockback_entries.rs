@@ -12,11 +12,11 @@ fn retained_knockback_entries_apply_hook_edits_cancel_and_delegate_once() {
         ("entries", "crates/sunrise-sim/src/mobs/knockback.rs"),
         (
             "player_entries",
-            "crates/sunrise-client/src/game/mobs/creatures/knockback.rs",
+            "crates/sunrise-gameplay-common/src/game/mobs/creatures/knockback.rs",
         ),
         (
             "server_entries",
-            "crates/sunrise-client/src/game/mobs/creatures/knockback_server.rs",
+            "crates/sunrise-gameplay/src/game/mobs/creatures/knockback_server.rs",
         ),
     ] {
         let source = fs::read_to_string(root.join(path)).unwrap();

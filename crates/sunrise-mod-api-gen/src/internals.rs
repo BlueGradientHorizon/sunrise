@@ -2483,7 +2483,7 @@ union Value { #[cfg(windows)] windows: u32, #[cfg(test)] test_field: u32 }
         assert!(staged.contains("pub enum Hidden"), "{staged}");
         assert!(staged.contains("pub struct Restricted"), "{staged}");
         assert!(staged.contains("pub struct Public"), "{staged}");
-        assert!(!staged.contains("pub"), "{staged}");
+        assert!(!staged.contains("pub pub"), "{staged}");
         syn::parse_file(&staged).unwrap();
     }
 
