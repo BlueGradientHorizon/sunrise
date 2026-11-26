@@ -6,9 +6,14 @@
   partner's server, and a checks runner keeps what a fork's job left behind.
 """
 import json
+import os
+import shutil
+import subprocess
+import tempfile
 import unittest
 from pathlib import Path
 
+from tests.os_support import needs_runner_shell
 from tests.test_ci_concurrency import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -205,11 +210,34 @@ class OwnRunnerTests(unittest.TestCase):
         # Never skipped where its parts ran: GitHub counts a skipped required check as passed.
         self.assertTrue(ci["verify"]["if"].startswith("always()"))
 
+    @needs_runner_shell
+    @unittest.skipUnless(shutil.which("jq"), "the hook reads the event with jq")
     def test_the_light_runners_refuse_forks_themselves(self):
-        script = (ROOT / "tools/ci/checks-runners.sh").read_text()
-        self.assertIn("ACTIONS_RUNNER_HOOK_JOB_STARTED=$shared/job-started.sh", script)
-        self.assertIn('.pull_request.head.repo.full_name // "unknown"', script)
-        self.assertIn('if [ "$head" != "${GITHUB_REPOSITORY:-}" ]', script)
+        with tempfile.TemporaryDirectory() as folder:
+            home = Path(folder)
+            python = home / ".local/bin/python3.13"
+            python.parent.mkdir(parents=True)
+            python.write_text("#!/bin/sh\n")
+            python.chmod(0o755)
+            # Sourced with an unknown command the script defines its functions, prints its usage and exits;
+            # the trap then writes the job-started hook the way `install` does, into this home.
+            subprocess.run(["bash", "-c", 'trap shared_files EXIT; source "$0" none', str(ROOT / "tools/ci/checks-runners.sh")],
+                           env={**os.environ, "HOME": str(home)}, capture_output=True, check=False)
+            hook = home / ".actions-runners/ci-shared/job-started.sh"
+
+            def job(event, head=None):
+                path = home / "event.json"
+                path.write_text(json.dumps({"pull_request": {"head": {"repo": {"full_name": head}}}}))
+                return subprocess.run(["bash", str(hook)], capture_output=True, text=True, env={
+                    "PATH": os.environ["PATH"], "GITHUB_EVENT_NAME": event, "GITHUB_EVENT_PATH": str(path),
+                    "GITHUB_REPOSITORY": "sunrise-org/sunrise"})
+
+            fork = job("pull_request", "someone/sunrise")
+            self.assertEqual(fork.returncode, 1, fork.stderr)
+            self.assertIn("someone/sunrise", fork.stdout)
+            self.assertEqual(job("pull_request", "sunrise-org/sunrise").returncode, 0)
+            # Events that carry no fork's code are not refused.
+            self.assertEqual(job("push", "someone/sunrise").returncode, 0)
 
 
 if __name__ == "__main__":
