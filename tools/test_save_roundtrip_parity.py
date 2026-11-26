@@ -307,7 +307,6 @@ def build_world(directory, *, fixed_spawn=False, sunrise_binary=None):
     server.run('time set 6000')
     server.run('gamerule advance_time false')
     server.run('gamerule advance_weather false')
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
     from tools import vanilla_login
     threading.Thread(target=lambda: vanilla_login.join('127.0.0.1', server.port, 'RoundTrip', 25), daemon=True).start()
     time.sleep(6)

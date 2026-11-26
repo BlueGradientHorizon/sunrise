@@ -142,7 +142,6 @@ def main():
             time.sleep(float(command.split()[1]))
             continue
         if command.startswith('login '):
-            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
             from tools import vanilla_login
             _, name, seconds = command.split()
 

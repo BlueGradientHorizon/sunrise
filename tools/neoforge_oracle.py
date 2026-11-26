@@ -74,7 +74,6 @@ def install():
 def client():
     """The NeoForge client (tools/perf_bench.py --game neoforge), installed once per version: the installer's
     own files, then the vanilla libraries its version inherits, fetched as the launcher does (sha1-checked)."""
-    sys.path.insert(0, str(ROOT / 'tools'))
     import hashlib
     from tools import lab
     home = LOCAL / f'client-{NEOFORGE}'
