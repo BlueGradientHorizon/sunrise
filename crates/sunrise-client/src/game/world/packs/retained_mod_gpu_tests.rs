@@ -1,7 +1,9 @@
 //! Retained mod GPU resources across the real staged pack apply and a new device's adoption.
 use super::clouds_reload_tests::{INNER, write_pack};
 use crate::game::model_baking_completed_tests::reload;
-use crate::game::native_entity_refs::tests::{run_fresh_cases, test_window, with_client_game};
+use crate::game::native_entity_refs::tests::{
+    run_fresh_cases_with_env, test_window, with_client_game,
+};
 use crate::game::{Game, Screen};
 use mod_api::content::crash::ModCall;
 use mod_api::{
@@ -137,10 +139,12 @@ fn assert_pixel(game: &Game<'_>, target: RenderTargetRef, expected: [u8; 4]) {
 #[test]
 #[ignore = "daily"]
 fn retained_mod_gpu_handles_follow_the_device_lifetime() {
-    if run_fresh_cases(
+    if run_fresh_cases_with_env(
         "game::packs::retained_mod_gpu_tests::retained_mod_gpu_handles_follow_the_device_lifetime",
         CASE,
         &["reuse", "replace"],
+        1,
+        &[("WGPU_BACKEND", "vulkan")],
     ) {
         return;
     }
@@ -150,7 +154,9 @@ fn retained_mod_gpu_handles_follow_the_device_lifetime() {
         game.settings.sunrise.api = GraphicsApi::Vulkan;
         game.title = None;
         game.screen = Screen::Playing;
-        game.set_renderer(game.new_renderer(window.clone()).unwrap());
+        let renderer = game.new_renderer(window.clone()).unwrap();
+        assert_eq!(renderer.info.backend, wgpu::Backend::Vulkan);
+        game.set_renderer(renderer);
         game.window = Some(window.clone());
         let device = game.renderer.as_ref().unwrap().device.clone();
         let _owner = enter_native_mod(ModCall {
@@ -221,6 +227,7 @@ fn retained_mod_gpu_handles_follow_the_device_lifetime() {
             let replacement = game
                 .renderer_for(window, &game.pack, &game.gui, Some(opened))
                 .unwrap();
+            assert_eq!(replacement.info.backend, wgpu::Backend::Vulkan);
             game.adopt_renderer(replacement);
             assert_ne!(game.renderer.as_ref().unwrap().device, device);
 
