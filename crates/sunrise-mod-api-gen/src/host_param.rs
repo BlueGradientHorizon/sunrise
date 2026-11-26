@@ -20,9 +20,10 @@ pub(super) enum HostArgument {
 }
 
 impl HostArgument {
-    pub(super) fn render(
+    pub(super) fn render_for(
         &self,
         receiver: &str,
+        split: bool,
         scoped_read: bool,
         without_container_loot: bool,
         mutable: Option<bool>,
@@ -37,6 +38,8 @@ impl HostArgument {
                 receiver.into()
             }
             Self::SharedReborrow => format!("&*{receiver}"),
+            Self::SharedGame if split => format!("{receiver}.as_host()"),
+            Self::GameSide if split => format!("{receiver}.host_side()"),
             Self::SharedGame => format!("crate::game::Side::as_host({receiver})"),
             Self::GameSide => format!("super::execution_role::host_side({receiver})"),
             Self::LevelSide => format!("super::mod_api_host::level_side({receiver})"),
@@ -63,7 +66,10 @@ pub(super) fn is_level(hook: &Hook) -> bool {
 }
 
 fn game_level(hook: &Hook) -> bool {
-    hook.target.contains("::GameLevel<") || hook.target.contains("::LevelView<")
+    hook.gameplay_binding()
+        .is_ok_and(|binding| binding.is_some_and(|binding| binding.kind.level()))
+        || hook.target.contains("::GameLevel<")
+        || hook.target.contains("::LevelView<")
 }
 
 /// Validate catalog access restrictions against the hook's receiver.

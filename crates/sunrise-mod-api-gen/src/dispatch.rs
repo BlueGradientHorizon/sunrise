@@ -6,7 +6,9 @@
 //! running) and reports it once via an error log line and error toast naming the mod and hook;
 //! any other failure or refusal is reported each time and never latched.
 use super::*;
-use crate::catalog::{DispatchStyle, EFFECT_TICK_TARGET, Receiver, RegistrationAppend};
+use crate::catalog::{
+    BindingKind, DispatchStyle, EFFECT_TICK_TARGET, Receiver, RegistrationAppend,
+};
 
 pub(super) struct HookSources {
     pub traits: String,
@@ -29,6 +31,7 @@ pub(super) struct HookSources {
 pub(super) struct FireUnit {
     name: String,
     owner: FireOwner,
+    package: Option<crate::GameplayPackage>,
     side: Side,
     carrier: Option<FireCarrier>,
     receiver: Receiver,
@@ -40,6 +43,7 @@ pub(super) struct FireUnit {
 
 enum FireOwner {
     Free,
+    Shared,
     Game,
     Scoped(syn::PathSegment),
 }
@@ -53,6 +57,7 @@ struct FireCarrier {
 pub(super) fn render_fire(units: &[FireUnit]) -> String {
     use std::fmt::Write as _;
     let mut code = String::new();
+    let mut shared = String::new();
     for unit in units {
         if let Some(FireCarrier {
             name,
@@ -60,11 +65,8 @@ pub(super) fn render_fire(units: &[FireUnit]) -> String {
             fields,
         }) = &unit.carrier
         {
-            writeln!(
-                code,
-                "pub(in crate::game) struct {name}{generics} {{ {fields} }}"
-            )
-            .unwrap();
+            let visibility = fire_visibility(unit.package);
+            writeln!(code, "{visibility} struct {name}{generics} {{ {fields} }}").unwrap();
         }
         let receiver = match unit.receiver {
             Receiver::Read => Some("&self"),
@@ -83,14 +85,32 @@ pub(super) fn render_fire(units: &[FireUnit]) -> String {
             after,
             ..
         } = unit;
+        let visibility = if matches!(unit.owner, FireOwner::Shared) {
+            ""
+        } else {
+            fire_visibility(unit.package)
+        };
+        let visibility = if visibility.is_empty() {
+            String::new()
+        } else {
+            format!("{visibility} ")
+        };
         let function = format!(
-            "#[inline] pub(in crate::game) fn fire_{name}({signature}) {{ {before} {dispatch} {after} }}"
+            "#[inline] {visibility}fn fire_{name}({signature}) {{ {before} {dispatch} {after} }}"
         );
         let header = match &unit.owner {
             FireOwner::Free => {
                 writeln!(code, "{function}").unwrap();
                 continue;
             }
+            FireOwner::Shared => {
+                writeln!(shared, "{function}").unwrap();
+                continue;
+            }
+            FireOwner::Game if unit.package.is_some() => format!(
+                "impl crate::game::{}<'_>",
+                unit.package.unwrap().game_type()
+            ),
             FireOwner::Game => match unit.side {
                 Side::Server => "impl crate::game::ServerGame<'_>".into(),
                 Side::Client => {
@@ -98,6 +118,9 @@ pub(super) fn render_fire(units: &[FireUnit]) -> String {
                 }
                 Side::Both => "impl<S: crate::game::Side> crate::game::Game<'_, S>".into(),
             },
+            FireOwner::Scoped(owner) if owner.ident == "ReadLevel" && unit.package.is_some() => {
+                "impl<'g, G: crate::game::SideGame<'g> + ?Sized> ReadLevel<'_, 'g, G>".into()
+            }
             FireOwner::Scoped(owner) if owner.ident == "ReadLevel" => {
                 "impl<S: crate::game::Side> ReadLevel<'_, '_, S>".into()
             }
@@ -105,7 +128,20 @@ pub(super) fn render_fire(units: &[FireUnit]) -> String {
         };
         writeln!(code, "{header} {{ {function} }}").unwrap();
     }
+    if !shared.is_empty() {
+        code.push_str(&format!(
+            "pub trait FireHooks<'g>: crate::game::SideGame<'g> {{\n{shared}}}\nimpl<'g, T: crate::game::SideGame<'g> + ?Sized> FireHooks<'g> for T {{}}\n"
+        ));
+    }
     code
+}
+
+fn fire_visibility(package: Option<crate::GameplayPackage>) -> &'static str {
+    if package == Some(crate::GameplayPackage::Common) {
+        "pub"
+    } else {
+        "pub(in crate::game)"
+    }
 }
 
 /// Whether a mutable-reference field can be saved and restored by copying its pointee.
@@ -136,7 +172,11 @@ pub(super) fn is_render(hook: &Hook) -> bool {
 fn receiver_mut(hook: &Hook) -> Option<bool> {
     if hook.target == EFFECT_TICK_TARGET {
         Some(false)
-    } else if hook.target.starts_with("sunrise_client::game::") {
+    } else if hook.target.starts_with("sunrise_client::game::")
+        || hook
+            .gameplay_binding()
+            .is_ok_and(|binding| binding.is_some())
+    {
         hook.receiver.mutability()
     } else {
         None
@@ -184,7 +224,13 @@ pub(super) fn emit<'a>(
         let native = format!("native_{name}");
         let target = hook.target.as_str();
         let is_render = is_render(hook);
-        let in_game = target.starts_with("sunrise_client::game::");
+        let binding = hook.gameplay_binding()?;
+        crate::gameplay::validate_shared_hook(
+            hook,
+            binding.as_ref().map(|binding| binding.package),
+            contexts,
+        )?;
+        let in_game = target.starts_with("sunrise_client::game::") || binding.is_some();
         let declaration_only = target == EFFECT_TICK_TARGET;
         let expected = if is_render { name } else { &native };
         if !declaration_only
@@ -850,25 +896,56 @@ pub(super) fn emit<'a>(
         // Direct game targets and free functions own their crossing. Everywhere else the
         // native method calls this typed adapter: rustc checks that call, not a source scan.
         if emit_fire && in_game && hook.dispatch != DispatchStyle::Direct {
-            let target_path: syn::Path = syn::parse_str(target)
-                .map_err(|error| format!("invalid target for {name}: {error}"))?;
-            let receiver = &target_path.segments[target_path.segments.len() - 2];
-            let is_game_receiver = matches!(
-                receiver.ident.to_string().as_str(),
-                "Game" | "ServerGame" | "ClientGame"
-            );
-            let is_game_assoc = hook.receiver == Receiver::Associated
-                && (is_game_receiver
-                    || (target.starts_with("sunrise_client::game::native_hooks::")
-                        && target_path.segments.len() == 5));
-            let owner = if is_game_assoc {
-                FireOwner::Free
-            } else if is_game_receiver {
-                FireOwner::Game
+            let (owner, is_game_assoc, scoped_read_host, borrowed) = if let Some(binding) =
+                binding.as_ref()
+            {
+                match &binding.kind {
+                    BindingKind::Shared => (FireOwner::Shared, false, false, None),
+                    BindingKind::Nominal => (FireOwner::Game, false, false, None),
+                    BindingKind::Free => (FireOwner::Free, true, false, None),
+                    BindingKind::Borrowed(ty) => {
+                        let scoped = matches!(ty, Type::Path(ty) if ty.path.segments.last().is_some_and(|segment| segment.ident == "NativeHookHost"));
+                        (FireOwner::Free, true, scoped, Some(ty))
+                    }
+                    BindingKind::Scoped(owner) => (
+                        FireOwner::Scoped(owner.clone()),
+                        false,
+                        owner.ident == "NativeHookHost",
+                        None,
+                    ),
+                }
             } else {
-                FireOwner::Scoped(receiver.clone())
+                let target_path: syn::Path = syn::parse_str(target)
+                    .map_err(|error| format!("invalid target for {name}: {error}"))?;
+                let receiver = &target_path.segments[target_path.segments.len() - 2];
+                let is_game_receiver = matches!(
+                    receiver.ident.to_string().as_str(),
+                    "Game" | "ServerGame" | "ClientGame"
+                );
+                let is_game_assoc = hook.receiver == Receiver::Associated
+                    && (is_game_receiver
+                        || (target.starts_with("sunrise_client::game::native_hooks::")
+                            && target_path.segments.len() == 5));
+                let owner = if is_game_assoc {
+                    FireOwner::Free
+                } else if is_game_receiver {
+                    FireOwner::Game
+                } else {
+                    FireOwner::Scoped(receiver.clone())
+                };
+                let scoped_read_host = receiver.ident == "NativeHookHost";
+                (owner, is_game_assoc, scoped_read_host, None)
             };
-            let scoped_read_host = receiver.ident == "NativeHookHost";
+            let package = binding.as_ref().map(|binding| binding.package);
+            let engine_receiver = EngineReceiver {
+                package,
+                expression: if borrowed.is_some() {
+                    "__fire_receiver"
+                } else {
+                    "self"
+                },
+            };
+            let receiver = engine_receiver.expression;
             if scoped_read_host
                 && (hook.host != Some(HostAccess::Read) || receiver_mut != Some(false))
             {
@@ -877,8 +954,9 @@ pub(super) fn emit<'a>(
                 ));
             }
             let native_host = host.as_ref().map(|(_, param)| {
-                param.argument.render(
-                    "self",
+                param.argument.render_for(
+                    receiver,
+                    package.is_some(),
                     scoped_read_host,
                     name == "place_liquid",
                     receiver_mut,
@@ -891,6 +969,14 @@ pub(super) fn emit<'a>(
                 parameters.push(format!("{name}: {ty}"));
                 forwarded.push(name.to_owned());
             };
+            if let Some(ty) = borrowed {
+                let mutability = if receiver_mut == Some(true) {
+                    "mut "
+                } else {
+                    ""
+                };
+                parameter(receiver, &format!("&{mutability}{}", ty.to_token_stream()));
+            }
             if let Some(ctx) = hook.context {
                 parameter("context", host_param::phase_engine_type(ctx));
             }
@@ -922,10 +1008,10 @@ pub(super) fn emit<'a>(
                             surfaces.insert(
                                 arg.as_str(),
                                 if staged_draw {
-                                    format!("|listen| crate::game::host::draw::GameDrawContext::stage(self, {arg}, listen)")
+                                    format!("|listen| crate::game::host::draw::GameDrawContext::stage({receiver}, {arg}, listen)")
                                 } else {
                                     format!(
-                                        "&mut crate::game::host::draw::{}::new(self, {arg})",
+                                        "&mut crate::game::host::draw::{}::new({receiver}, {arg})",
                                         draw.game_struct()
                                     )
                                 },
@@ -974,7 +1060,8 @@ pub(super) fn emit<'a>(
                         }
                     }
                 }
-                let crossing = stack_crossing_routed(
+                let crossing = stack_crossing_for(
+                    engine_receiver,
                     &args,
                     output.as_ref(),
                     contract == Contract::Collect,
@@ -991,6 +1078,15 @@ pub(super) fn emit<'a>(
                         None => None,
                     },
                 );
+                if package.is_some()
+                    && matches!(owner, FireOwner::Free)
+                    && borrowed.is_none()
+                    && crossing
+                        .as_ref()
+                        .is_some_and(|crossing| crossing.needs_receiver)
+                {
+                    return Err(format!("{name}: conversion requires a receiver context"));
+                }
                 let (values, validators) = if let Some(crossing) = crossing {
                     before.push_str(&crossing.before);
                     after = crossing.after;
@@ -1040,10 +1136,15 @@ pub(super) fn emit<'a>(
             };
             fire.push(FireUnit {
                 name: name.to_owned(),
+                package,
                 owner,
                 side: hook.side,
                 carrier: fire_carrier,
-                receiver: hook.receiver,
+                receiver: if borrowed.is_some() {
+                    Receiver::Associated
+                } else {
+                    hook.receiver
+                },
                 parameters,
                 before,
                 dispatch: dispatch_call,
@@ -1910,6 +2011,7 @@ fn engine_types(ty: &mut Type, carrier: bool) {
 
 /// A carrier's fields, each type with its elided lifetimes named `'a`, and its generics.
 struct StackCrossing {
+    needs_receiver: bool,
     before: String,
     arguments: Vec<String>,
     validators: Vec<String>,
@@ -1931,7 +2033,43 @@ fn stack_crossing(
     )
 }
 
+#[derive(Clone, Copy)]
+struct EngineReceiver<'a> {
+    package: Option<crate::GameplayPackage>,
+    expression: &'a str,
+}
+
+#[cfg(test)]
 fn stack_crossing_routed(
+    args: &[(String, &Type)],
+    output: Option<&(String, &Type)>,
+    listener_output: bool,
+    hook_id: &str,
+    scoped: bool,
+    block_scope: Option<&str>,
+    observer_routed: bool,
+    surfaces: &std::collections::HashMap<&str, String>,
+    trim_count_output: Option<&str>,
+) -> Option<StackCrossing> {
+    stack_crossing_for(
+        EngineReceiver {
+            package: None,
+            expression: "self",
+        },
+        args,
+        output,
+        listener_output,
+        hook_id,
+        scoped,
+        block_scope,
+        observer_routed,
+        surfaces,
+        trim_count_output,
+    )
+}
+
+fn stack_crossing_for(
+    receiver: EngineReceiver<'_>,
     args: &[(String, &Type)],
     output: Option<&(String, &Type)>,
     listener_output: bool,
@@ -1955,6 +2093,11 @@ fn stack_crossing_routed(
     ];
     const BLOCK_VALUES: &[&str] = &["BlockState", "LandingWrite", "InsideWrite"];
     const INFALLIBLE_VALUES: &[&str] = &["Text"];
+    let common = receiver
+        .package
+        .map_or("crate", crate::GameplayPackage::common);
+    let receiver = receiver.expression;
+    let mut needs_receiver = false;
     let parameters = args.iter().chain(output).collect::<Vec<_>>();
     if !parameters.iter().any(|(_, ty)| {
         contains_boundary(ty, STACK_VALUES)
@@ -1972,9 +2115,9 @@ fn stack_crossing_routed(
         } else {
             ""
         };
-        before.push_str(&format!("if {source_route}!crate::game::api_values::block_state::block_listens(mod_api::HookId::{hook_id}, {key}) {{ return; }} "));
+        before.push_str(&format!("if {source_route}!{common}::game::api_values::block_state::block_listens(mod_api::HookId::{hook_id}, {key}) {{ return; }} "));
     }
-    before.push_str("use crate::game::api_values::TryIntoApi; ");
+    before.push_str(&format!("use {common}::game::api_values::TryIntoApi; "));
     if parameters.iter().any(|(name, ty)| {
         trim_count_output != Some(name.as_str())
             && (contains_boundary(ty, STACK_VALUES)
@@ -1982,10 +2125,12 @@ fn stack_crossing_routed(
                 || contains_boundary(ty, BLOCK_VALUES))
             && matches!(ty, Type::Reference(r) if r.mutability.is_some())
     }) {
-        before.push_str("use crate::game::api_values::TryIntoEngine; ");
+        before.push_str(&format!("use {common}::game::api_values::TryIntoEngine; "));
     }
     if trim_count_output.is_some() {
-        before.push_str("use crate::game::api_values::TryIntoEnginePreservingCount; ");
+        before.push_str(&format!(
+            "use {common}::game::api_values::TryIntoEnginePreservingCount; "
+        ));
     }
     if parameters.iter().any(|(name, ty)| {
         contains_boundary(ty, STACK_VALUES)
@@ -1994,7 +2139,7 @@ fn stack_crossing_routed(
                 || (!listener_output && output.is_some_and(|(output, _)| output == name)))
             && matches!(ty, Type::Reference(r) if r.mutability.is_some())
     }) {
-        before.push_str("use crate::game::api_values::ItemBoundary; ");
+        before.push_str(&format!("use {common}::game::api_values::ItemBoundary; "));
     }
     if args
         .iter()
@@ -2004,7 +2149,10 @@ fn stack_crossing_routed(
                 && matches!(ty, Type::Reference(reference) if reference.mutability.is_some())
         })
     {
-        before.push_str("let __boundary_items = self.stack_boundary_items(); ");
+        needs_receiver = true;
+        before.push_str(&format!(
+            "let __boundary_items = {receiver}.stack_boundary_items(); "
+        ));
     }
     let mut arguments = Vec::new();
     let mut stack_validators = Vec::new();
@@ -2086,15 +2234,17 @@ fn stack_crossing_routed(
                     "match {local}.try_into_engine(&()) {{ Ok(value) => value, Err(_) => return }}"
                 )
             } else if block {
+                needs_receiver = true;
                 format!(
-                    "match {local}.try_into_engine(&*self) {{ Ok(value) => value, Err(error) => {{ log::warn!(\"mod block state write refused: {{error:?}}\"); return; }} }}"
+                    "match {local}.try_into_engine(&*{receiver}) {{ Ok(value) => value, Err(error) => {{ log::warn!(\"mod block state write refused: {{error:?}}\"); return; }} }}"
                 )
             } else if stack {
                 let result = format!("__checked_{name}");
                 if contains_boundary(ty, &["LootStack", "ParticleOptions"]) {
                     validations.push_str(&format!("let {result} = {local}.try_into_engine(&()); "));
                 } else {
-                    validations.push_str(&format!("let {result}: Result<_, mod_api::StackWriteError> = self.boundary_items().ok_or(mod_api::StackWriteError::Unavailable).and_then(|items| {local}.try_into_engine(items)); "));
+                    needs_receiver = true;
+                    validations.push_str(&format!("let {result}: Result<_, mod_api::StackWriteError> = {receiver}.boundary_items().ok_or(mod_api::StackWriteError::Unavailable).and_then(|items| {local}.try_into_engine(items)); "));
                 }
                 format!(
                     "match {result} {{ Ok(value) => value, Err(error) => {{ log::warn!(\"mod {} write refused: {{error:?}}\"); return; }} }}",
@@ -2115,6 +2265,7 @@ fn stack_crossing_routed(
         }
     }
     Some(StackCrossing {
+        needs_receiver,
         before,
         arguments,
         validators: stack_validators,

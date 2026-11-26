@@ -7,6 +7,9 @@
 #[cfg(test)]
 mod collect_validation_tests;
 
+mod gameplay;
+pub(crate) use gameplay::{Binding as GameplayBinding, BindingKind};
+
 use quote::ToTokens;
 use serde::Deserialize;
 use std::{collections::HashSet, fmt, fs, path::Path};
@@ -173,6 +176,8 @@ pub struct Hook {
     pub side: Side,
     /// The game function that fires it.
     pub target: String,
+    pub receiver_type: Option<String>,
+    pub(crate) default_module: Option<String>,
     pub contract: Contract,
     /// The event field a cancel, collect or replace hook writes; `None` for a listener.
     pub out: Option<String>,
@@ -333,6 +338,8 @@ struct HookEntry {
     notes: Option<String>,
     side: Side,
     target: String,
+    receiver_type: Option<String>,
+    default_module: Option<String>,
     mod_api: ModApiEntry,
     version: Option<u64>,
     cancellable: Option<bool>,
@@ -584,6 +591,8 @@ impl Hook {
             notes: entry.notes,
             side: entry.side,
             target: entry.target,
+            receiver_type: entry.receiver_type,
+            default_module: entry.default_module,
             contract: api.contract,
             out: api.out,
             answered_by_mod,
@@ -838,6 +847,9 @@ impl Declared {
                     .get("side")
                     .and_then(|v| v.as_str())
                     .map(str::to_owned);
+                if !entry.contains_key("target") {
+                    entry.insert("default_module".into(), area.into());
+                }
                 entry.entry("target").or_insert_with(|| {
                     if is_free_assoc {
                         format!("sunrise_client::game::native_hooks::{area}::native_{name}").into()
@@ -919,6 +931,7 @@ impl Declared {
                     }
                     _ => {
                         entry.remove("target");
+                        entry.remove("default_module");
                         if let Some(trait_name) = entry.remove("name") {
                             entry.insert("trait".into(), trait_name);
                         }
@@ -1063,6 +1076,8 @@ impl Hook {
             notes: None,
             side,
             target: target.into(),
+            receiver_type: None,
+            default_module: None,
             contract: Contract::Listen,
             out: None,
             answered_by_mod: false,

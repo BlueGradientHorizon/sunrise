@@ -3,7 +3,9 @@
 //! that name them (`Host`, `ServerHost`, `ClientHost` and the hidden backends), the handles'
 //! forwarding methods and the mob tick's goal view.
 use super::*;
+use crate::gameplay::{Borrow, GameplayAudit, GameplayPackage, HostRoute, RouteKind, Routing};
 use heck::ToUpperCamelCase;
+use std::borrow::Cow;
 use std::fmt::Write as _;
 use syn::visit::Visit;
 
@@ -604,12 +606,14 @@ enum ForwarderCall<'a> {
     Refusal,
     Service,
     Table(&'a str),
+    Routed(&'a HostRoute),
     Inherent {
         owner: &'a str,
         receiver: Option<ForwarderBorrow>,
     },
 }
 
+#[derive(Clone, Copy)]
 enum ForwarderBorrow {
     Shared,
     Mutable,
@@ -697,23 +701,34 @@ fn forwarder_plan(areas: &[Area]) -> Result<Vec<ForwarderImpl<'_>>, String> {
 /// refuse a missing inherent implementation instead of inheriting a trait default.
 pub(super) fn game_forwarders(root: &Path) -> Result<String, String> {
     let areas = load(root)?;
-    render_forwarders(&forwarder_plan(&areas)?)
+    render_forwarders(&forwarder_plan(&areas)?, None)
 }
 
-fn render_forwarders(plan: &[ForwarderImpl<'_>]) -> Result<String, String> {
+fn render_forwarders(
+    plan: &[ForwarderImpl<'_>],
+    split: Option<(&Routing, GameplayPackage)>,
+) -> Result<String, String> {
     let mut code = String::from(
         "#[cfg(feature = \"client\")]\nuse crate::game::ClientGame;\nuse crate::game::ServerGame;\nuse crate::game::api_values::{call_stack_write, call_state_write, call_write, TryIntoApi, TryIntoEngine};\nuse mod_api::*;\n",
     );
+    if split.is_some() {
+        code.clear();
+    }
     for ForwarderImpl {
         trait_name,
         target,
         methods,
     } in plan
     {
-        if matches!(target, ForwarderTarget::Client) {
+        if split.is_none() && matches!(target, ForwarderTarget::Client) {
             code.push_str("#[cfg(feature = \"client\")]\n");
         }
-        let target = target.type_name();
+        let target = match (split, target) {
+            (Some(_), ForwarderTarget::Server | ForwarderTarget::Client) => {
+                Cow::Owned(format!("crate::game::{}", target.type_name()))
+            }
+            _ => Cow::Borrowed(target.type_name()),
+        };
         writeln!(code, "#[deny(unconditional_recursion)]\nimpl mod_api::prelude::{trait_name} for {target}<'_> {{").unwrap();
         for (entry, route) in methods {
             let name = &entry.name;
@@ -753,12 +768,52 @@ fn render_forwarders(plan: &[ForwarderImpl<'_>]) -> Result<String, String> {
                     .attrs
                     .iter()
                     .any(|a| a.path().is_ident("serialize_text"));
-                boundary_arguments(&entry.sig, name, read_stack, serialize_text)?
+                let items = if let Some((routing, package)) = split
+                    && package != GameplayPackage::Common
+                {
+                    routing
+                        .items
+                        .get(&package)
+                        .map(|route| route.call(package, "items", ""))
+                        .transpose()?
+                        .map(Cow::Owned)
+                } else {
+                    Some(Cow::Borrowed("Self::items(self)"))
+                };
+                let common = split.map_or("crate", |(_, package)| package.common());
+                boundary_arguments_with(
+                    &entry.sig,
+                    name,
+                    read_stack,
+                    serialize_text,
+                    common,
+                    items.as_deref(),
+                )?
             };
             let call = match route {
                 ForwarderCall::Service => "self".into(),
-                ForwarderCall::Table(table) => format!("{table}::of(self).{name}({args})"),
+                ForwarderCall::Table(table) => {
+                    if let Some((_, package)) = split {
+                        let table = split_table(package, table)?;
+                        let args = if args.is_empty() {
+                            String::new()
+                        } else {
+                            format!(", {args}")
+                        };
+                        format!("{table}::{name}(&{table}::of(&self.common){args})")
+                    } else {
+                        format!("{table}::of(self).{name}({args})")
+                    }
+                }
+                ForwarderCall::Routed(route) => {
+                    route.call(split.expect("routed layout").1, name, &args)?
+                }
                 ForwarderCall::Inherent { owner, receiver } => {
+                    let owner = if split.is_some() && !owner.contains("::") {
+                        Cow::Owned(format!("crate::game::{owner}"))
+                    } else {
+                        Cow::Borrowed(*owner)
+                    };
                     let args = if receiver.is_none() {
                         args
                     } else if args.is_empty() {
@@ -843,9 +898,204 @@ fn render_forwarders(plan: &[ForwarderImpl<'_>]) -> Result<String, String> {
         code.push_str("}\n");
     }
     let parsed = syn::parse_file(&code).map_err(|e| e.to_string())?;
-    let imports = standard_imports(&parsed);
+    let mut imports = standard_imports(&parsed);
+    if let Some((_, package)) = split {
+        let names = [
+            "call_stack_write",
+            "call_state_write",
+            "call_write",
+            "TryIntoApi",
+            "TryIntoEngine",
+        ];
+        let mut tokens = std::collections::BTreeSet::new();
+        fn identifiers(
+            stream: proc_macro2::TokenStream,
+            tokens: &mut std::collections::BTreeSet<String>,
+        ) {
+            for token in stream {
+                match token {
+                    proc_macro2::TokenTree::Group(group) => identifiers(group.stream(), tokens),
+                    proc_macro2::TokenTree::Ident(ident) => {
+                        tokens.insert(ident.to_string());
+                    }
+                    _ => {}
+                }
+            }
+        }
+        identifiers(parsed.to_token_stream(), &mut tokens);
+        let imports_used = names
+            .into_iter()
+            .filter(|name| {
+                let expression = match *name {
+                    "TryIntoApi" => "try_into_api",
+                    "TryIntoEngine" => "try_into_engine",
+                    name => name,
+                };
+                tokens.contains(expression)
+            })
+            .collect::<Vec<_>>();
+        if !imports_used.is_empty() {
+            writeln!(
+                imports,
+                "use {}::game::api_values::{{{}}};",
+                package.common(),
+                imports_used.join(", ")
+            )
+            .unwrap();
+        }
+        if uses_vocab(&parsed) {
+            imports.push_str("use mod_api::*;\n");
+        }
+    }
     let parsed = syn::parse_file(&(imports + &code)).map_err(|e| e.to_string())?;
     Ok(prettyplease::unparse(&parsed))
+}
+
+fn uses_vocab(file: &syn::File) -> bool {
+    struct Types(bool);
+    impl<'ast> Visit<'ast> for Types {
+        fn visit_type_path(&mut self, node: &'ast syn::TypePath) {
+            if let Some(ident) = node.path.get_ident() {
+                self.0 |= !matches!(
+                    ident.to_string().as_str(),
+                    "Self"
+                        | "bool"
+                        | "char"
+                        | "str"
+                        | "String"
+                        | "Vec"
+                        | "Option"
+                        | "Result"
+                        | "Arc"
+                        | "PathBuf"
+                ) && !crate::PRIMITIVE_SCALARS.contains(&ident.to_string().as_str());
+            }
+            syn::visit::visit_type_path(self, node);
+        }
+
+        fn visit_expr_path(&mut self, node: &'ast syn::ExprPath) {
+            self.0 |= node
+                .path
+                .segments
+                .first()
+                .is_some_and(|segment| segment.ident == "NoBackend");
+        }
+    }
+    let mut types = Types(false);
+    types.visit_file(file);
+    types.0
+}
+
+fn split_table(package: GameplayPackage, table: &str) -> Result<String, String> {
+    let relative = table
+        .strip_prefix("crate::")
+        .ok_or_else(|| format!("table path is not relative to common gameplay: {table}"))?;
+    Ok(format!("{}::{relative}", package.common()))
+}
+
+pub(crate) fn gameplay_forwarders(
+    areas: &[Area],
+    package: GameplayPackage,
+    routing: &Routing,
+    audit: &mut GameplayAudit,
+) -> Result<String, String> {
+    let mut plan = forwarder_plan(areas)?;
+    plan.retain(|implementation| match implementation.target {
+        ForwarderTarget::Table(_) => package == GameplayPackage::Common,
+        ForwarderTarget::Server => package == GameplayPackage::Server,
+        ForwarderTarget::Client => package == GameplayPackage::Client,
+    });
+    for implementation in &mut plan {
+        let trait_name = &implementation.trait_name;
+        let target = implementation.target;
+        let mut methods = Vec::new();
+        for (entry, call) in std::mem::take(&mut implementation.methods) {
+            let key = format!("{trait_name}::{}", entry.name);
+            let selected = (|| {
+                let (call, kind) = match call {
+                    ForwarderCall::Published(_) => (call, "published"),
+                    ForwarderCall::Refusal => (call, "refusal"),
+                    ForwarderCall::Service => (call, "service"),
+                    ForwarderCall::Table(table) => {
+                        split_table(package, table)?;
+                        (call, "table")
+                    }
+                    ForwarderCall::Inherent { receiver, .. } => {
+                        if let ForwarderTarget::Table(table) = target {
+                            split_table(package, table)?;
+                            (call, "table")
+                        } else if let Some(route) = routing.host_route(package, &key) {
+                            let borrow = match receiver {
+                                None => Borrow::None,
+                                Some(ForwarderBorrow::Shared) => Borrow::Shared,
+                                Some(ForwarderBorrow::Mutable) => Borrow::Mutable,
+                            };
+                            if route.borrow != borrow {
+                                return Err(
+                                    "declared callee borrows differently from the host signature"
+                                        .into(),
+                                );
+                            }
+                            route.call(package, &entry.name, "")?;
+                            let kind = match route.kind {
+                                RouteKind::Local => "local",
+                                RouteKind::Common => "common_inherent",
+                                RouteKind::SharedTrait => "shared_trait",
+                                RouteKind::SideOperation => "side_operation",
+                                RouteKind::Static => "static",
+                            };
+                            (ForwarderCall::Routed(route), kind)
+                        } else if receiver.is_some() {
+                            (call, "local_default")
+                        } else {
+                            return Err("static call requires an explicit owner".into());
+                        }
+                    }
+                    ForwarderCall::Routed(_) => unreachable!(),
+                };
+                if !matches!(call, ForwarderCall::Published(_) | ForwarderCall::Refusal)
+                    && !entry
+                        .attrs
+                        .iter()
+                        .any(|attr| attr.path().is_ident("forward_api_inputs"))
+                {
+                    let context = routing
+                        .items
+                        .get(&package)
+                        .map(|route| route.call(package, "items", ""))
+                        .transpose()?;
+                    boundary_arguments_with(
+                        &entry.sig,
+                        &entry.name,
+                        entry
+                            .attrs
+                            .iter()
+                            .any(|attr| attr.path().is_ident("read_stack")),
+                        entry
+                            .attrs
+                            .iter()
+                            .any(|attr| attr.path().is_ident("serialize_text")),
+                        package.common(),
+                        if package == GameplayPackage::Common {
+                            Some("Self::items(self)")
+                        } else {
+                            context.as_deref()
+                        },
+                    )?;
+                }
+                Ok((call, kind))
+            })();
+            match selected {
+                Ok((call, kind)) => {
+                    audit.count(package, &key, kind);
+                    methods.push((entry, call));
+                }
+                Err(reason) => audit.issue(package, &key, "host", reason),
+            }
+        }
+        implementation.methods = methods;
+    }
+    render_forwarders(&plan, Some((routing, package)))
 }
 
 /// API records whose game representation is owned by another crate. Conversions are
@@ -928,11 +1178,30 @@ fn outer_type(ty: &Type, expected: &str) -> bool {
 /// whether it is a checked write (`&mut self`, a `Result`, a converted value). A checked write
 /// refuses an invalid value with its error; a read or comparison converts a borrowed stack
 /// without write limits, and any other refused value makes the method return its default.
+#[cfg(test)]
 fn boundary_arguments(
     sig: &syn::Signature,
     method: &str,
     read_stack: bool,
     serialize_text: bool,
+) -> Result<(String, String, bool), String> {
+    boundary_arguments_with(
+        sig,
+        method,
+        read_stack,
+        serialize_text,
+        "crate",
+        Some("Self::items(self)"),
+    )
+}
+
+fn boundary_arguments_with(
+    sig: &syn::Signature,
+    method: &str,
+    read_stack: bool,
+    serialize_text: bool,
+    common: &str,
+    items: Option<&str>,
 ) -> Result<(String, String, bool), String> {
     let mutable = sig
         .receiver()
@@ -968,6 +1237,11 @@ fn boundary_arguments(
             if outer_type(&arg.ty, "Option") && path.path.segments.last().is_some_and(|segment|
                 matches!(&segment.arguments, syn::PathArguments::AngleBracketed(args)
                     if matches!(args.args.first(), Some(syn::GenericArgument::Type(ty)) if is_borrowed_stack(ty)))));
+        let item_context = || {
+            items.ok_or_else(|| {
+                format!("{method}: boundary conversion needs an explicit items receiver route")
+            })
+        };
         let conversion = if text && serialize_text {
             let reference = if matches!(&*arg.ty, Type::Reference(_)) {
                 ""
@@ -978,20 +1252,21 @@ fn boundary_arguments(
         } else if text {
             format!("{name}.try_into_engine(&())")
         } else if optional_read_stack {
-            format!("{name}.map(crate::game::api_values::stack_value).transpose()")
+            format!("{name}.map({common}::game::api_values::stack_value).transpose()")
         } else if (!checked_write || read_stack) && is_borrowed_stack(&arg.ty) {
             // A detached stack used as input need not fit a resident slot.
-            format!("crate::game::api_values::stack_value({name})")
+            format!("{common}::game::api_values::stack_value({name})")
         } else if read_stack
             && matches!(&*arg.ty, Type::Reference(reference) if outer_type(&reference.elem, "ItemResource"))
         {
-            format!("crate::game::api_values::stack_value({name}.as_stack())")
+            format!("{common}::game::api_values::stack_value({name}.as_stack())")
         } else {
-            format!("{name}.try_into_engine(Self::items(self))")
+            format!("{name}.try_into_engine({})", item_context()?)
         };
         let value = if contains_value(&arg.ty, &["ParticleOptions"]) {
             format!(
-                "match {name}.try_into_engine(Self::items(self)) {{ Ok(value) => value, Err(_) => return Default::default() }}"
+                "match {name}.try_into_engine({}) {{ Ok(value) => value, Err(_) => return Default::default() }}",
+                item_context()?
             )
         } else if text || checked_write {
             format!("{conversion}?")
@@ -1315,9 +1590,17 @@ pub(super) fn generate(root: &Path) -> Result<String, String> {
 
 pub(super) fn generate_goal_view(root: &Path) -> Result<String, String> {
     let areas = load(root)?;
+    goal_view_for(&areas, false)
+}
+
+pub(crate) fn generate_gameplay_goal_view(areas: &[Area]) -> Result<String, String> {
+    goal_view_for(areas, true)
+}
+
+fn goal_view_for(areas: &[Area], split: bool) -> Result<String, String> {
     let mut reads = Vec::new();
     let mut host_methods = Vec::new();
-    for area in &areas {
+    for area in areas {
         for (tier, entries) in &area.tiers {
             if matches!(tier, Tier::Backend | Tier::ClientBackend) {
                 reads.extend(entries.iter().map(|entry| (area, *tier, entry)));
@@ -1326,7 +1609,7 @@ pub(super) fn generate_goal_view(root: &Path) -> Result<String, String> {
             }
         }
     }
-    goal_view(&areas, &reads, &host_methods)
+    goal_view(areas, &reads, &host_methods, split)
 }
 
 /// The goal view's generated impls (#1077): the backend ones forward the snapshot-backed
@@ -1340,10 +1623,11 @@ fn goal_view(
     areas: &[Area],
     reads: &[(&Area, Tier, &Entry)],
     host_methods: &[(&Area, &Entry)],
+    split: bool,
 ) -> Result<String, String> {
     let mut impls = Impls::default();
     let mut code = String::from(
-        "// @generated by cargo run -p xtask -- mod-api; do not edit.\nuse mod_api::{prelude::*, *};\nuse std::path::PathBuf;\nuse std::sync::Arc;\n/// The mob tick's read view (#1077), as the game generates it: the snapshot-backed\n/// reads forward to the engine context's own methods, entity data the view does\n/// not carry answers its typed refusal, and every other backend read forwards\n/// to the real backend of the game host the view carries.\nimpl Backend for super::GoalCx<'_, '_> {}\n",
+        "// @generated by cargo run -p xtask -- mod-api; do not edit.\nuse mod_api::{prelude::*, *};\n/// The mob tick's read view (#1077), as the game generates it: the snapshot-backed\n/// reads forward to the engine context's own methods, entity data the view does\n/// not carry answers its typed refusal, and every other backend read forwards\n/// to the real backend of the game host the view carries.\nimpl Backend for super::GoalCx<'_, '_> {}\n",
     );
     for (area, tier, entry) in reads {
         let (name, args) = (
@@ -1469,6 +1753,15 @@ fn goal_view(
         );
     }
     code.push_str(&impls.take());
+    let standard = if split {
+        standard_imports(&syn::parse_file(&code).map_err(|e| e.to_string())?)
+    } else {
+        "use std::path::PathBuf;\nuse std::sync::Arc;\n".into()
+    };
+    let index = code
+        .find("/// The mob")
+        .expect("generated goal documentation");
+    code.insert_str(index, &standard);
     Ok(code)
 }
 
@@ -1634,7 +1927,7 @@ mod tests {
             server_only_tiers: std::collections::BTreeSet::new(),
         };
         assert_eq!(
-            goal_view(&[], &[(&area, Tier::Backend, &method)], &[]),
+            goal_view(&[], &[(&area, Tier::Backend, &method)], &[], false),
             Err("block_key_id: cannot refuse its backend return type".into())
         );
     }
@@ -1768,7 +2061,7 @@ mod tests {
             tables: BTreeMap::from([(Tier::Backend, "crate::game::Tables".into())]),
             server_only_tiers: Default::default(),
         };
-        let forwards = render_forwarders(&forwarder_plan(&[area]).unwrap()).unwrap();
+        let forwards = render_forwarders(&forwarder_plan(&[area]).unwrap(), None).unwrap();
         let fixture = tempfile::tempdir().unwrap();
         let input = fixture.path().join("forwarders.rs");
         fs::write(

@@ -9,9 +9,10 @@ use crate::{
 };
 pub(super) use calls::{Callee, has_call_matching};
 use calls::{Routes, Target, path_is};
+use quote::ToTokens;
 use sources::{Build, Sources};
 use std::path::Path;
-use syn::{Block, Expr, Item};
+use syn::{Block, Expr, Item, Type};
 
 /// Check that each declared hook target reaches its adapter or dispatcher. Never writes sources.
 /// Each entry in `target_cfgs` is one supported build's `rustc --print cfg` output.
@@ -21,6 +22,11 @@ pub fn check_hook_wiring(root: &Path, target_cfgs: &[String]) -> Result<(), Stri
         &Catalog::load(root)?.hooks,
         Build::from_targets(target_cfgs)?,
     )
+}
+
+pub fn check_gameplay_hook_wiring(root: &Path, target_cfgs: &[String]) -> Result<(), String> {
+    let catalog = crate::gameplay::Routing::load(root)?.catalog(root)?;
+    check_with_builds(root, &catalog.hooks, Build::from_targets(target_cfgs)?)
 }
 
 #[cfg(test)]
@@ -132,7 +138,127 @@ fn owner_matches(item: &syn::ItemImpl, expected: &str) -> bool {
     }
 }
 
+fn check_gameplay_target(
+    sources: &mut Sources<'_>,
+    hook: &Hook,
+    build: &Build,
+    binding: &crate::catalog::GameplayBinding,
+) -> Result<bool, String> {
+    use crate::catalog::BindingKind;
+    if binding.package == crate::GameplayPackage::Client
+        && build.is_disabled("feature = \"client\"")
+    {
+        return Ok(false);
+    }
+    let package = binding.package.domain().key;
+    let items = sources
+        .items(build, package, &binding.module)?
+        .ok_or("binding module is absent")?;
+    let mut bodies = Vec::new();
+    let receiver_ok = |sig: &syn::Signature| {
+        sig.receiver().is_some_and(|receiver| {
+            receiver.reference.is_some()
+                && Some(receiver.mutability.is_some()) == hook.receiver.mutability()
+        })
+    };
+    for item in items {
+        match (item, &binding.kind) {
+            (Item::Trait(item), BindingKind::Shared)
+                if item.ident == "GameHooks" && build.enabled(&item.attrs) =>
+            {
+                for member in &item.items {
+                    if let syn::TraitItem::Fn(method) = member
+                        && method.sig.ident == binding.function
+                        && build.enabled(&method.attrs)
+                        && receiver_ok(&method.sig)
+                        && let Some(body) = &method.default
+                    {
+                        bodies.push(body.clone());
+                    }
+                }
+            }
+            (Item::Impl(item), BindingKind::Nominal | BindingKind::Scoped(_))
+                if item.trait_.is_none() && build.enabled(&item.attrs) =>
+            {
+                let Type::Path(ty) = &*item.self_ty else {
+                    continue;
+                };
+                let expected = match &binding.kind {
+                    BindingKind::Scoped(owner) => owner.ident.to_string(),
+                    _ => binding.package.game_type().to_owned(),
+                };
+                if ty
+                    .path
+                    .segments
+                    .last()
+                    .is_none_or(|segment| segment.ident != expected)
+                {
+                    continue;
+                }
+                for member in &item.items {
+                    if let syn::ImplItem::Fn(method) = member
+                        && method.sig.ident == binding.function
+                        && build.enabled(&method.attrs)
+                        && receiver_ok(&method.sig)
+                    {
+                        bodies.push(method.block.clone());
+                    }
+                }
+            }
+            (Item::Fn(function), BindingKind::Borrowed(expected))
+                if function.sig.ident == binding.function && build.enabled(&function.attrs) =>
+            {
+                if let Some(syn::FnArg::Typed(arg)) = function.sig.inputs.first()
+                    && let Type::Reference(reference) = &*arg.ty
+                    && Some(reference.mutability.is_some()) == hook.receiver.mutability()
+                    && reference.elem.to_token_stream().to_string()
+                        == expected.to_token_stream().to_string()
+                {
+                    bodies.push((*function.block).clone());
+                }
+            }
+            (Item::Fn(function), BindingKind::Free)
+                if function.sig.ident == binding.function && build.enabled(&function.attrs) =>
+            {
+                bodies.push((*function.block).clone())
+            }
+            _ => {}
+        }
+    }
+    if bodies.is_empty() {
+        return Err("target definition with the declared receiver form not found".into());
+    }
+    let mut index = sources.index(build);
+    let mut routes = Routes::new(&mut index, build);
+    let scope = routes.module(package, &binding.module)?;
+    let bodies = bodies
+        .iter()
+        .map(|body| routes.calls(scope).in_block(body))
+        .collect::<Vec<_>>();
+    let name = &hook.name;
+    if hook.dispatch == DispatchStyle::Direct {
+        require_calls(&bodies, None, &[&format!("mod_api::dispatch_{name}")])?;
+    } else {
+        let fire = format!("fire_{name}");
+        require_calls(
+            &bodies,
+            Some(&fire),
+            &[
+                &format!("Self::{fire}"),
+                &format!("FireHooks::{fire}"),
+                &format!("crate::game::native_hooks::fire::{fire}"),
+                &format!("super::fire::{fire}"),
+                &format!("fire::{fire}"),
+            ],
+        )?;
+    }
+    Ok(true)
+}
+
 fn check_target(sources: &mut Sources<'_>, hook: &Hook, build: &Build) -> Result<bool, String> {
+    if let Some(binding) = hook.gameplay_binding()? {
+        return check_gameplay_target(sources, hook, build, &binding);
+    }
     let in_native_hooks = hook.target.starts_with(NATIVE_HOOKS);
     let (package, candidate_modules, owner, target) = if let Some(path) =
         hook.target.strip_prefix(NATIVE_HOOKS)

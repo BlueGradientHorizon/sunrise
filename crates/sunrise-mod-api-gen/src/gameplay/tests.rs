@@ -1,0 +1,364 @@
+use super::*;
+use crate::{Target, generate as generate_files};
+use std::process::Command;
+
+fn put(root: &Path, relative: &str, source: &str) {
+    let path = root.join(relative);
+    fs::create_dir_all(path.parent().unwrap()).unwrap();
+    fs::write(path, source).unwrap();
+}
+
+#[test]
+fn nominal_packages_compile_and_dispatch_without_a_peer_edge() {
+    let directory = tempfile::tempdir().unwrap();
+    let root = directory.path();
+    let host = "crates/sunrise-mod-vocab/src/host/";
+    put(
+        root,
+        &format!("{host}fixture.rs"),
+        r#"
+pub trait FixtureHost {
+    fn local(&self) -> u32;
+    fn shared(&self) -> u32;
+    fn operation(&self) -> u32;
+    fn common_read(&self) -> u32;
+    #[static_call] fn fixed(&self) -> u32;
+    #[published(published)] fn fixed_data(&self) -> u32;
+}
+pub trait FixtureServerHost {
+    #[service] fn service(&self) -> &dyn FixtureService;
+}
+pub trait FixtureBackendMut {
+    fn update(&mut self, value: u32) -> u32;
+    fn consume(&mut self, value: ItemStack) -> u32;
+}
+pub trait FixtureClientBackend { fn desktop(&self) -> Option<u32>; }
+"#,
+    );
+    put(
+        root,
+        &format!("{host}tables.rs"),
+        r#"
+#[table_backend("crate::game::BlockTables")]
+pub trait TablesBackend { fn table(&self) -> u32; }
+"#,
+    );
+    for dir in ["parts", "exports"] {
+        fs::create_dir_all(root.join("crates/sunrise-mod-vocab/src").join(dir)).unwrap();
+    }
+    put(
+        root,
+        "crates/sunrise-mod-vocab/src/hooks/fixture.rs",
+        r#"
+pub trait Hooks {
+    /// Shared hook.
+    #[hook(side = "both", contract = "listen", dispatch = "flat", receiver = "read", host = "read", target = "sunrise_gameplay_common::game::native_hooks::GameHooks::native_shared")]
+    fn shared();
+    /// Server hook.
+    #[hook(side = "server", contract = "listen", dispatch = "flat", receiver = "write")]
+    fn server();
+    /// Client hook.
+    #[hook(side = "client", contract = "listen", dispatch = "flat", receiver = "read")]
+    fn client();
+    /// Side wrapper that borrows a portable view.
+    #[hook(side = "server", contract = "listen", dispatch = "flat", receiver = "read", host = "read", receiver_type = "sunrise_gameplay_common::game::Borrowed<'_>", target = "sunrise_gameplay::game::native_hooks::fixture::native_borrowed")]
+    fn borrowed();
+}
+"#,
+    );
+    let mut declarations = String::new();
+    for (key, ty) in [("server", "ServerGame"), ("client", "ClientGame")] {
+        declarations.push_str(&format!(r#"
+[host.{key}]
+"FixtureHost::shared" = {{ kind = "shared_trait", owner = "::sunrise_gameplay_common::game::SharedRead", borrow = "shared" }}
+"FixtureHost::common_read" = {{ kind = "common", owner = "::sunrise_gameplay_common::game::CommonGame", borrow = "shared" }}
+"FixtureHost::operation" = {{ kind = "side_operation", owner = "::sunrise_gameplay_common::game::SideOperation", borrow = "shared" }}
+"FixtureHost::fixed" = {{ kind = "static", owner = "::sunrise_gameplay_common::game::CommonGame", borrow = "none" }}
+"FixtureHost::local" = {{ kind = "local", owner = "crate::game::{ty}", borrow = "shared" }}
+
+[items.{key}]
+kind = "shared_trait"
+owner = "::sunrise_gameplay_common::game::SharedRead"
+borrow = "shared"
+"#));
+    }
+    declarations.push_str(
+        r#"
+[host.server."FixtureBackendMut::update"]
+kind = "common"
+owner = "::sunrise_gameplay_common::game::CommonGame"
+borrow = "mutable"
+"#,
+    );
+    put(root, ROUTING, &declarations);
+    let output = root.join("out");
+    for (package, target) in [
+        (GameplayPackage::Common, Target::GameplayCommon),
+        (GameplayPackage::Server, Target::GameplayServer),
+        (GameplayPackage::Client, Target::GameplayClient),
+    ] {
+        let dir = output.join(package.domain().package);
+        fs::create_dir_all(&dir).unwrap();
+        generate_files(root, &dir, target).unwrap();
+        let goal = dir.join(GOAL);
+        assert_eq!(goal.is_file(), package == GameplayPackage::Server);
+        for name in [FIRE, crate::build::HOST_OUTPUT] {
+            let rust = fs::read_to_string(dir.join(name)).unwrap();
+            syn::parse_file(&rust).unwrap();
+            assert!(!rust.contains("cfg(feature = \"client\")"));
+        }
+    }
+
+    let compile = |name: &str, src: &str, deps: &[(&str, &Path)], library: bool| {
+        let input = root.join(format!("{name}.rs"));
+        fs::write(&input, src).unwrap();
+        let file = root.join(if library {
+            format!("lib{name}.rlib")
+        } else {
+            format!("{name}{}", std::env::consts::EXE_SUFFIX)
+        });
+        let mut rustc = Command::new("rustc");
+        rustc
+            .args([
+                "--edition=2024",
+                "--crate-name",
+                name,
+                "-Dwarnings",
+                "--crate-type",
+                if library { "rlib" } else { "bin" },
+            ])
+            .arg("-L")
+            .arg(format!("dependency={}", root.display()))
+            .arg(&input)
+            .arg("-o")
+            .arg(&file);
+        for (name, path) in deps {
+            rustc
+                .arg("--extern")
+                .arg(format!("{name}={}", path.display()));
+        }
+        let result = rustc.output().unwrap();
+        assert!(
+            result.status.success(),
+            "{name}: {}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+        file
+    };
+    let includes = |p: GameplayPackage, name| {
+        format!(
+            "include!({:?});",
+            output.join(p.domain().package).join(name)
+        )
+    };
+    let api = compile(
+        "mod_api",
+        r#"
+pub trait FixtureService {}
+pub struct ItemStack(pub u32);
+pub struct BackendRef<'a>(pub &'a dyn Backend);
+pub trait Host: prelude::FixtureHost { fn backend(&self) -> Option<BackendRef<'_>> { None } }
+pub trait Backend: prelude::TablesBackend + prelude::FixtureClientBackend {}
+pub trait ServerHost {}
+pub trait ClientHost {}
+pub mod prelude {
+    pub trait FixtureHost {
+        fn local(&self) -> u32;
+        fn shared(&self) -> u32;
+        fn operation(&self) -> u32;
+    fn common_read(&self) -> u32;
+        fn fixed(&self) -> u32;
+        fn fixed_data(&self) -> u32;
+    }
+    pub trait FixtureServerHost { fn service(&self) -> &dyn crate::FixtureService; }
+    pub trait FixtureBackendMut {
+        fn update(&mut self, value: u32) -> u32;
+        fn consume(&mut self, value: crate::ItemStack) -> u32;
+    }
+    pub trait FixtureClientBackend { fn desktop(&self) -> Option<u32>; }
+    pub trait TablesBackend { fn table(&self) -> u32; }
+}
+pub mod __private {
+    pub fn published() -> u32 { 99 }
+    pub fn backend_ref(v: &dyn crate::Backend) -> crate::BackendRef<'_> { crate::BackendRef(v) }
+    pub fn backend_read<T>(host: &dyn crate::Host, f: impl FnOnce(&dyn crate::Backend) -> T) -> Option<T> {
+        host.backend().map(|value| f(value.0))
+    }
+}
+use std::sync::atomic::{AtomicU32, Ordering::Relaxed};
+pub static CALLS: AtomicU32 = AtomicU32::new(0);
+pub fn dispatch_shared(_: &dyn Host) { CALLS.fetch_add(1, Relaxed); }
+pub fn dispatch_server(_: &mut dyn ServerHost) { CALLS.fetch_add(10, Relaxed); }
+pub fn dispatch_client(_: &dyn ClientHost) { CALLS.fetch_add(100, Relaxed); }
+pub fn dispatch_borrowed(_: &dyn Host) { CALLS.fetch_add(1000, Relaxed); }
+"#,
+        &[],
+        true,
+    );
+    let common = compile(
+        "sunrise_gameplay_common",
+        &format!(
+            r#"
+pub mod game {{
+    use mod_api::prelude::TablesBackend;
+    pub trait SideGame<'g>: SharedRead {{ fn as_host(&self) -> &dyn mod_api::Host; }}
+    pub trait SharedRead {{
+        fn shared(&self) -> u32 {{ self.items() + 2 }}
+        fn items(&self) -> u32;
+    }}
+    pub trait SideOperation {{ fn operation(&self) -> u32; }}
+    pub struct CommonGame<'g>(pub &'g u32);
+    impl CommonGame<'_> {{
+        pub fn fixed() -> u32 {{ 3 }}
+        pub fn common_read(&self) -> u32 {{ *self.0 }}
+        pub fn update(&mut self, value: u32) -> u32 {{ *self.0 + value }}
+    }}
+    pub struct BlockTables<'a>(&'a u32);
+    impl<'a> BlockTables<'a> {{
+        pub fn of(game: &'a CommonGame<'_>) -> Self {{ Self(game.0) }}
+        pub fn table(&self) -> u32 {{ *self.0 }}
+    }}
+    pub struct Borrowed<'a>(pub &'a u32);
+    impl mod_api::Host for Borrowed<'_> {{}}
+    impl mod_api::prelude::FixtureHost for Borrowed<'_> {{
+        fn local(&self) -> u32 {{ *self.0 }}
+        fn shared(&self) -> u32 {{ self.local() }}
+        fn operation(&self) -> u32 {{ self.local() }}
+        fn common_read(&self) -> u32 {{ self.local() }}
+        fn fixed(&self) -> u32 {{ self.local() }}
+        fn fixed_data(&self) -> u32 {{ self.local() }}
+    }}
+    pub mod api_values {{
+        pub trait TryIntoEngine {{
+            fn try_into_engine(&self, original_items: u32) -> Result<u32, ()>;
+        }}
+        impl TryIntoEngine for mod_api::ItemStack {{
+            fn try_into_engine(&self, original_items: u32) -> Result<u32, ()> {{ Ok(self.0 + original_items) }}
+        }}
+    }}
+    pub mod native_hooks {{
+        pub mod fire {{ {} }}
+        use fire::FireHooks;
+        pub trait GameHooks<'g>: FireHooks<'g> {{
+            fn native_shared(&self) {{ FireHooks::fire_shared(self); }}
+        }}
+        impl<'g, T: FireHooks<'g> + ?Sized> GameHooks<'g> for T {{}}
+    }}
+    mod host {{ {} }}
+    pub fn table(game: &CommonGame<'_>) -> u32 {{ TablesBackend::table(&BlockTables::of(game)) }}
+}}
+"#,
+            includes(GameplayPackage::Common, FIRE),
+            includes(GameplayPackage::Common, crate::build::HOST_OUTPUT)
+        ),
+        &[("mod_api", &api)],
+        true,
+    );
+    let mut sides = Vec::new();
+    for (package, ty, name, value) in [
+        (GameplayPackage::Server, "ServerGame", "server", 5),
+        (GameplayPackage::Client, "ClientGame", "client", 6),
+    ] {
+        let server = package == GameplayPackage::Server;
+        let special = if server {
+            r#"
+impl mod_api::ServerHost for ServerGame<'_> {}
+impl mod_api::FixtureService for ServerGame<'_> {}
+impl ServerGame<'_> { fn consume(&mut self, value: u32) -> u32 { value } }
+pub mod goal {
+    pub struct GoalCx<'read, 'game> {
+        pub host: &'read dyn mod_api::Host,
+        pub marker: core::marker::PhantomData<&'game ()>,
+    }
+    mod generated { GOAL }
+}
+"#
+            .replace("GOAL", &includes(package, GOAL))
+        } else {
+            "impl mod_api::ClientHost for ClientGame<'_> {} impl ClientGame<'_> { fn desktop(&self) -> Option<u32> { Some(self.client) } }".into()
+        };
+        let extra = if server {
+            "assert_eq!(FixtureBackendMut::consume(&mut game, mod_api::ItemStack(7)), 12); assert_eq!(FixtureBackendMut::update(&mut game, 2), 6); let _ = FixtureServerHost::service(&game); assert_eq!(FixtureClientBackend::desktop(&game), None); native_hooks::borrowed(&common::Borrowed(&4));"
+        } else {
+            "assert_eq!(FixtureClientBackend::desktop(&game), Some(6));"
+        };
+        let borrowed = if server {
+            "pub fn borrowed(view: &common::Borrowed<'_>) { fire::fire_borrowed(view); }"
+        } else {
+            ""
+        };
+        let mutable = if server { "mut " } else { "" };
+        let source = format!(
+            r#"
+pub mod game {{
+    use sunrise_gameplay_common::game as common;
+    use common::native_hooks::GameHooks;
+    use mod_api::prelude::*;
+    pub struct {ty}<'g> {{ pub common: common::CommonGame<'g>, pub {name}: u32 }}
+    impl mod_api::Host for {ty}<'_> {{}}
+    impl<'g> common::SideGame<'g> for {ty}<'g> {{ fn as_host(&self) -> &dyn mod_api::Host {{ self }} }}
+    impl common::SharedRead for {ty}<'_> {{ fn items(&self) -> u32 {{ self.{name} }} }}
+    impl common::SideOperation for {ty}<'_> {{ fn operation(&self) -> u32 {{ self.{name} + 1 }} }}
+    impl {ty}<'_> {{ fn local(&self) -> u32 {{ self.{name} }} }}
+    {special}
+    mod host {{ {} }}
+    mod native_hooks {{
+        mod fire {{ {} }}
+        use super::common;
+        {borrowed}
+    }}
+    pub fn run() {{
+        let {mutable}game = {ty} {{ common: common::CommonGame(&4), {name}: {value} }};
+        game.native_shared();
+        game.fire_{name}();
+        assert_eq!(FixtureHost::local(&game), {value});
+        assert_eq!(FixtureHost::shared(&game), {value} + 2);
+        assert_eq!(FixtureHost::operation(&game), {value} + 1);
+        assert_eq!(FixtureHost::common_read(&game), 4);
+        assert_eq!(FixtureHost::fixed(&game), 3);
+        assert_eq!(FixtureHost::fixed_data(&game), 99);
+        assert_eq!(TablesBackend::table(&game), 4);
+        {extra}
+    }}
+}}
+"#,
+            includes(package, crate::build::HOST_OUTPUT),
+            includes(package, FIRE)
+        );
+        let source = if server {
+            source
+        } else {
+            source.replace("        use super::common;", "")
+        };
+        sides.push(compile(
+            package.domain().key,
+            &source,
+            &[("mod_api", &api), ("sunrise_gameplay_common", &common)],
+            true,
+        ));
+    }
+    let runner = compile(
+        "desktop",
+        r#"
+fn main() {
+    sunrise_gameplay::game::run();
+    sunrise_client_gameplay::game::run();
+    assert_eq!(mod_api::CALLS.load(std::sync::atomic::Ordering::Relaxed), 1112);
+}
+"#,
+        &[
+            ("mod_api", &api),
+            ("sunrise_gameplay", &sides[0]),
+            ("sunrise_client_gameplay", &sides[1]),
+        ],
+        false,
+    );
+    assert!(Command::new(runner).status().unwrap().success());
+    let dedicated = compile(
+        "dedicated",
+        "fn main() { sunrise_gameplay::game::run(); }",
+        &[("sunrise_gameplay", &sides[0])],
+        false,
+    );
+    assert!(Command::new(dedicated).status().unwrap().success());
+}

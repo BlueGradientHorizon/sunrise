@@ -298,20 +298,32 @@ pub fn export(root: &Path) -> Result<Export, String> {
 
 /// Exports the source tree at `root` with the requested options.
 pub fn export_with(root: &Path, options: ExportOptions) -> Result<Export, String> {
+    export_layout(root, options, false)
+}
+
+pub fn export_gameplay(root: &Path, options: ExportOptions) -> Result<Export, String> {
+    export_layout(root, options, true)
+}
+
+fn export_layout(root: &Path, options: ExportOptions, gameplay: bool) -> Result<Export, String> {
     // The wire index's resolver recurses through the API's types: give it a deep stack.
     std::thread::scope(|scope| {
         std::thread::Builder::new()
             .stack_size(64 << 20)
-            .spawn_scoped(scope, || export_here(root, options))
+            .spawn_scoped(scope, || export_here(root, options, gameplay))
             .map_err(|e| e.to_string())?
             .join()
             .map_err(|_| "the surface export panicked".to_string())?
     })
 }
 
-fn export_here(root: &Path, options: ExportOptions) -> Result<Export, String> {
-    let catalog = Catalog::load(root).map_err(|e| e.to_string())?;
-    let generated = crate::sources(root)?;
+fn export_here(root: &Path, options: ExportOptions, gameplay: bool) -> Result<Export, String> {
+    let catalog = if gameplay {
+        crate::gameplay::Routing::load(root)?.catalog(root)?
+    } else {
+        Catalog::load(root).map_err(|e| e.to_string())?
+    };
+    let generated = crate::sources_from_catalog(root, &catalog)?;
     let included = [
         (crate::host::AREAS_OUTPUT, generated.areas.as_str()),
         ("mod_api_generated.rs", generated.hooks.as_str()),
@@ -323,7 +335,15 @@ fn export_here(root: &Path, options: ExportOptions) -> Result<Export, String> {
     let mut index = crate::index::game(root, &with_providers);
     let boundary = Boundary::read(root, &mut index)?;
     let engine = if options.with_loops || options.with_internals {
-        Some(engine_catalogs(root, options.with_internals)?)
+        Some(if gameplay {
+            engine::collect_with_layout(
+                root,
+                crate::gameplay::GAMEPLAY_LAYOUT,
+                options.with_internals,
+            )?
+        } else {
+            engine_catalogs(root, options.with_internals)?
+        })
     } else {
         None
     };

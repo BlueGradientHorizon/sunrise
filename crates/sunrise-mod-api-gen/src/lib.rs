@@ -3,6 +3,8 @@ mod catalog;
 mod dispatch_fixtures;
 mod exports;
 mod game_modules;
+mod gameplay;
+pub use gameplay::{GameplayAudit, GameplayPackage, RoutingIssue, audit_gameplay};
 mod hook_wiring;
 #[doc(hidden)]
 pub use dispatch_fixtures::layout as dispatch_fixture_layout;
@@ -13,7 +15,7 @@ mod parts;
 pub use catalog::DECLARATIONS;
 use catalog::{Catalog, Contract, DrawContext, Hook, HostAccess, PartKind, PhaseContext, Side};
 use heck::ToSnakeCase;
-pub use hook_wiring::check_hook_wiring;
+pub use hook_wiring::{check_gameplay_hook_wiring, check_hook_wiring};
 pub use layout::native_hook_layout;
 use quote::ToTokens;
 use std::{
@@ -415,6 +417,9 @@ pub enum Target {
     Vocab,
     /// The game: the host traits' implementation on `Game`.
     Client,
+    GameplayCommon,
+    GameplayServer,
+    GameplayClient,
 }
 
 /// Fill new hooks' placeholders in `game/native_hooks/`. This explicit authoring command
@@ -480,6 +485,10 @@ struct Sources {
 /// Generate the vocabulary from declarations without consulting their engine implementations.
 fn sources(root: &Path) -> Result<Sources, String> {
     let catalog = Catalog::load(root)?;
+    sources_from_catalog(root, &catalog)
+}
+
+fn sources_from_catalog(root: &Path, catalog: &Catalog) -> Result<Sources, String> {
     let dispatch::HookSources {
         traits,
         dispatch,
@@ -587,7 +596,9 @@ pub(crate) mod source;
 pub mod staging;
 pub mod surface;
 pub use api_reference::generate as generate_api_reference;
-pub use build::{generate, generate_api_parts, generate_render, write_if_changed};
+pub use build::{
+    generate, generate_api_parts, generate_gameplay_vocab, generate_render, write_if_changed,
+};
 pub use counterparts::generate as generate_counterparts;
 pub use notes::generate as generate_hook_notes;
 

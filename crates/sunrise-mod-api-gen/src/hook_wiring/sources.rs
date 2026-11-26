@@ -112,6 +112,9 @@ type ModuleItems = Vec<(Vec<String>, Vec<Item>)>;
 
 const CRATES: &[(&str, &str)] = &[
     ("sunrise_client", ""),
+    ("sunrise_client_gameplay", ""),
+    ("sunrise_gameplay", ""),
+    ("sunrise_gameplay_common", ""),
     ("sunrise_client_lib", ""),
     ("sunrise_client_render", ""),
     ("sunrise_mod_render", ""),

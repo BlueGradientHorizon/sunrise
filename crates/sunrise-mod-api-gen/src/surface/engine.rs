@@ -8,7 +8,7 @@ pub fn collect(root: &Path, with_internals: bool) -> Result<Vec<EngineItem>, Str
     collect_with_layout(root, LEGACY_LAYOUT, with_internals)
 }
 
-fn collect_with_layout(
+pub(super) fn collect_with_layout(
     root: &Path,
     layout: SourceLayout,
     with_internals: bool,

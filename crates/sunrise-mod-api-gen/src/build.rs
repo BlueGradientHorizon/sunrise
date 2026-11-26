@@ -31,7 +31,30 @@ pub fn write_if_changed(path: impl AsRef<Path>, bytes: impl AsRef<[u8]>) -> std:
 /// Generate only this crate's files, tracking every source read by the generator.
 /// `root` is supplied at run time by the consuming crate's build script.
 pub fn generate(root: &Path, out_dir: &Path, target: Target) -> Result<(), String> {
+    generate_with_vocab(root, out_dir, target, None)
+}
+
+pub fn generate_gameplay_vocab(root: &Path, out_dir: &Path) -> Result<(), String> {
+    let catalog = super::gameplay::Routing::load(root)?.catalog(root)?;
+    generate_with_vocab(root, out_dir, Target::Vocab, Some(catalog))
+}
+
+fn generate_with_vocab(
+    root: &Path,
+    out_dir: &Path,
+    target: Target,
+    catalog: Option<Catalog>,
+) -> Result<(), String> {
     track(root)?;
+    if let Some(package) = gameplay_package(&target) {
+        crate::rerun_if_staged(root);
+        for (name, code) in super::gameplay::generate(root, package)? {
+            let code = generated_source(root, &target, name, code)?;
+            syn::parse_file(&code).map_err(|e| format!("generated Rust: {name}: {e}"))?;
+            write_if_changed(out_dir.join(name), code).map_err(|e| e.to_string())?;
+        }
+        return Ok(());
+    }
     let inventory = if matches!(target, Target::Vocab) {
         let path = root.join("tools/layering/mod_vocab_state.json");
         crate::rerun_if_changed(&path.display());
@@ -58,8 +81,12 @@ pub fn generate(root: &Path, out_dir: &Path, target: Target) -> Result<(), Strin
                 host::generate_goal_view(root)?,
             ),
         ],
+        Target::GameplayCommon | Target::GameplayServer | Target::GameplayClient => unreachable!(),
         Target::Vocab => {
-            let generated = sources(root)?;
+            let generated = match catalog {
+                Some(catalog) => super::sources_from_catalog(root, &catalog)?,
+                None => sources(root)?,
+            };
             write_vocab_output(
                 out_dir,
                 super::parts::OUTPUT,
@@ -109,13 +136,23 @@ pub fn generate_api_parts(root: &Path, out_dir: &Path) -> Result<(), String> {
     .map_err(|e| e.to_string())
 }
 
+fn gameplay_package(target: &Target) -> Option<super::GameplayPackage> {
+    use super::GameplayPackage::*;
+    match target {
+        Target::GameplayCommon => Some(Common),
+        Target::GameplayServer => Some(Server),
+        Target::GameplayClient => Some(Client),
+        Target::Client | Target::Vocab => None,
+    }
+}
+
 fn generated_source(
     root: &Path,
     target: &Target,
     name: &str,
     code: String,
 ) -> Result<String, String> {
-    if matches!(target, Target::Client)
+    if (matches!(target, Target::Client) || gameplay_package(target).is_some())
         && matches!(
             name,
             "mod_api_fire_generated.rs" | "mod_api_goal_view_generated.rs"
