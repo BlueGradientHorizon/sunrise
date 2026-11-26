@@ -87,6 +87,15 @@ pub trait ItemsHost {
     #[published(entity_type_default_attribute)]
     fn entity_type_default_attribute(&self, entity_type: &str, attribute: &str) -> Option<f64>;
     /// Side: both.
+    /// An entity type's registered size, with no entity spawned (`EntityType.getDimensions()`:
+    /// `EntityDimensions.width()`, `height()` and `eyeHeight()`), for vanilla's types and mods'
+    /// (a mod type has its template's row). The type's default before any `entity_size` answer
+    /// for a live entity, a baby's or a `minecraft:scale` attribute's change, a pose's size.
+    /// The box a spawn at `(x, y, z)` tests is `EntityType.getSpawnAABB`: `width / 2` either side
+    /// of x and z, `height` up from y. `entity_type` is read as `Identifier.parse` reads it.
+    /// `None` for an unregistered type or one whose row has no size.
+    fn entity_type_dimensions(&self, entity_type: &str) -> Option<EntityTypeDimensions>;
+    /// Side: both.
     /// Parse one complete SNBT compound as a saved `ItemStack.CODEC` item:
     /// `{id:"minecraft:diamond_sword",count:1,components:{"minecraft:damage":5}}`
     /// (`stone` is `minecraft:stone`). `count` defaults to 1; a present number must be in
