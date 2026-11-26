@@ -1035,11 +1035,11 @@ pub fn translate_compute(compute: &Preprocessed) -> Result<ComputeProgram, Vec<E
     let mut sizes = |name: &str, counts: &[usize]| {
         let v = constant(&c, name)?;
         if !counts.contains(&v.len()) {
-            errors.push(Error {
-                file: compute.files.first().cloned().unwrap_or_default(),
-                line: 0,
-                message: format!("`{name}` must have {counts:?} numbers, not {}", v.len()),
-            });
+            errors.push(Error::new(
+                compute.file(),
+                0,
+                format!("`{name}` must have {counts:?} numbers, not {}", v.len()),
+            ));
             return None;
         }
         Some(v)
@@ -1057,21 +1057,13 @@ pub fn translate_compute(compute: &Preprocessed) -> Result<ComputeProgram, Vec<E
             code
         }
         Some(Err(message)) => {
-            errors.push(Error {
-                file: compute.files.first().cloned().unwrap_or_default(),
-                line: 0,
-                message,
-            });
+            errors.push(Error::new(compute.file(), 0, message));
             code
         }
         _ => code,
     };
     let code = work_group_size(&code).unwrap_or_else(|message| {
-        errors.push(Error {
-            file: compute.files.first().cloned().unwrap_or_default(),
-            line: 0,
-            message,
-        });
+        errors.push(Error::new(compute.file(), 0, message));
         code
     });
     let code = ordering::barriers_after_atomics(&code).unwrap_or(code);
@@ -1450,13 +1442,8 @@ fn compile(
     limits: InterfaceLimits,
 ) -> Result<naga::Module, Vec<Error>> {
     let header_lines = header.lines().count();
-    let specialized = image_parameters::rewrite(&format!("{header}{code}")).map_err(|message| {
-        vec![Error {
-            file: stage.pp.files.first().cloned().unwrap_or_default(),
-            line: 1,
-            message,
-        }]
-    })?;
+    let specialized = image_parameters::rewrite(&format!("{header}{code}"))
+        .map_err(|message| vec![Error::new(stage.pp.file(), 1, message)])?;
     let text = integer_bounds::rewrite(&array_constructors::rewrite(&specialized));
     // The rewrites keep every line where it is: the header is the text's first `header_lines`.
     let code_start = match header_lines.checked_sub(1) {

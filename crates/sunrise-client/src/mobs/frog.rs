@@ -183,9 +183,16 @@ pub(super) fn travel(
     pause: bool,
 ) -> ControlFlow<super::living::TravelPause> {
     m.move_relative(m.ai.speed, input);
-    m.travel_move(w, level, events, pause, |m, _, _, _| {
-        m.set_velocity(m.velocity.scale(0.9));
-    })
+    m.travel_move(
+        w,
+        level,
+        events,
+        pause,
+        sunrise_world::travel::TravelMode::Water,
+        |m, _, _, _| {
+            m.set_velocity(m.velocity.scale(0.9));
+        },
+    )
 }
 
 /// `Frog.canEat`: a slime or magma cube of size 1.

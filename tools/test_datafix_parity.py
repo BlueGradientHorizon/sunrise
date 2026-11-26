@@ -35,14 +35,20 @@ import sys
 import tempfile
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-import anvil_dump  # noqa: E402
-import parity_shard  # noqa: E402
+if __package__:
+    from . import anvil_dump, datafix_paths, datafix_seeds, datafix_worlds, file_lock, parity_shard
+else:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import anvil_dump
+    import datafix_paths
+    import datafix_seeds
+    import datafix_worlds
+    import file_lock
+    import parity_shard
 
 ROOT = Path(__file__).resolve().parent.parent
-from datafix_paths import writable_root
 
-LOCAL = writable_root()
+LOCAL = datafix_paths.writable_root()
 WORLDS = LOCAL / 'worlds'
 RUN = LOCAL / 'run'
 
@@ -260,14 +266,11 @@ def main():
         return
     if os.environ.get('SUNRISE_DATAFIX_SEEDS_OUTCOME') == 'failure':
         sys.exit('seed preparation failed, see datafix-seeds.log')
-    import datafix_worlds
-    import file_lock
     WORLDS.parent.mkdir(parents=True, exist_ok=True)
     with open(WORLDS.parent / 'generate.lock', 'a') as handle:
         file_lock.lock(handle)  # another process may be generating them
         seed_keep = os.environ.get('SUNRISE_DATAFIX_SEED_KEEP')
         if seed_keep:
-            import datafix_seeds
             if not datafix_seeds.snapshot_complete(LOCAL):
                 datafix_seeds.prepare(LOCAL, seed_keep)
         else:

@@ -86,6 +86,8 @@ by area. A pull request never adds one, and isn't held back by one it didn't add
 - **Three layers: engine, platform, Sunrise.** Vanilla code never depends on the platform (mods, shader packs,
   Sunrise-only settings) or on Sunrise (Discord, Play with Friends, telemetry), and the platform never
   depends on Sunrise. [docs/layers.md](docs/layers.md) says where a new feature goes; CI checks the dependencies.
+- **A file an open pull request touches waits.** Before moving or splitting one, run
+  `python3 tools/hotspots/open_prs.py --from-gh <paths>` and leave the held files out of this change.
 - **Everything players run is Rust.** Python and Java are fine for dev tools and harness drivers in `tools/`, never
   for player-facing code.
 - **No game files in the repo.** Never commit game files, decompiled source or prepared resources (`.local/`):

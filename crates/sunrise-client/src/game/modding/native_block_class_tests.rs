@@ -1,16 +1,19 @@
 //! `BlockStates::block_class`: vanilla's class of a block, subclasses included, not a tag.
 use super::native_block_tables::BlockTables;
 use mod_api::BlockClass::{
-    self, Bonemealable, Entity, IronBars, StainedGlassPane, Stair, TrapDoor,
+    self, Bonemealable, Entity, Fence, IronBars, Slab, StainedGlassPane, Stair, TrapDoor, Wall,
 };
 
-const ALL: [BlockClass; 6] = [
+const ALL: [BlockClass; 9] = [
     Stair,
     Entity,
     IronBars,
     StainedGlassPane,
     TrapDoor,
     Bonemealable,
+    Slab,
+    Wall,
+    Fence,
 ];
 
 #[test]
@@ -40,6 +43,14 @@ fn a_block_is_of_the_vanilla_classes_its_chain_names() {
             ("minecraft:oak_sapling", &[Bonemealable][..]),
             ("minecraft:grass_block", &[Bonemealable][..]),
             ("minecraft:rooted_dirt", &[Bonemealable][..]),
+            ("minecraft:oak_slab", &[Slab][..]),
+            // WeatheringCopperSlabBlock extends SlabBlock.
+            ("minecraft:cut_copper_slab", &[Slab][..]),
+            ("minecraft:cobblestone_wall", &[Wall][..]),
+            ("minecraft:oak_fence", &[Fence][..]),
+            ("minecraft:nether_brick_fence", &[Fence][..]),
+            // FenceGateBlock is not a FenceBlock.
+            ("minecraft:oak_fence_gate", &[][..]),
             ("minecraft:stone", &[][..]),
             ("minecraft:oak_planks", &[][..]),
         ] {

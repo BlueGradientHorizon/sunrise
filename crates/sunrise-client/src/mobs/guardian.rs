@@ -228,12 +228,19 @@ pub(super) fn travel(
     pause: bool,
 ) -> ControlFlow<super::living::TravelPause> {
     m.move_relative(0.1, input);
-    m.travel_move(w, level, events, pause, |m, _, _, _| {
-        m.set_velocity(m.velocity.scale(0.9));
-        if !m.extra.flag2 && m.ai.target.is_none() {
-            m.set_velocity(m.velocity.with_component(Axis::Y, m.velocity.y - 0.005));
-        }
-    })
+    m.travel_move(
+        w,
+        level,
+        events,
+        pause,
+        sunrise_world::travel::TravelMode::Water,
+        |m, _, _, _| {
+            m.set_velocity(m.velocity.scale(0.9));
+            if !m.extra.flag2 && m.ai.target.is_none() {
+                m.set_velocity(m.velocity.with_component(Axis::Y, m.velocity.y - 0.005));
+            }
+        },
+    )
 }
 /// `Guardian.aiStep`'s client-only tail and spikes animation update.
 pub fn tail_and_spikes(m: &mut Mob) {

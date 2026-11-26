@@ -6,9 +6,14 @@
   partner's server, and a checks runner keeps what a fork's job left behind.
 """
 import json
+import os
+import shutil
+import subprocess
+import tempfile
 import unittest
 from pathlib import Path
 
+from tests.os_support import needs_runner_shell
 from tests.test_ci_concurrency import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -26,6 +31,32 @@ CANCELS_RUNS = {"cancel-on-close.yml cancel"}
 def workflow(path):
     """The parsed workflow, every scalar a string (BaseLoader keeps `on` a key, not True)."""
     return yaml.load(path.read_text(), Loader=yaml.BaseLoader)
+
+
+def fork_flag_expressions(document):
+    """Every `if`, `runs-on` and `env` value of a parsed workflow (the places a job is routed or classified)."""
+    def strings(node):
+        if isinstance(node, dict):
+            for value in node.values():
+                yield from strings(value)
+        elif isinstance(node, list):
+            for value in node:
+                yield from strings(value)
+        else:
+            yield str(node)
+
+    def walk(node):
+        if isinstance(node, dict):
+            for key, value in node.items():
+                if key in ("if", "runs-on", "env"):
+                    yield from strings(value)
+                else:
+                    yield from walk(value)
+        elif isinstance(node, list):
+            for value in node:
+                yield from walk(value)
+
+    return list(walk(document))
 
 
 def jobs(document):
@@ -64,7 +95,18 @@ class OwnRunnerTests(unittest.TestCase):
     def test_workflows_do_not_classify_pull_requests_by_fork_flag(self):
         for path in sorted(WORKFLOWS.glob("*.y*ml")):
             with self.subTest(workflow=path.name):
-                self.assertNotIn("head.repo.fork", path.read_text())
+                for expression in fork_flag_expressions(yaml.safe_load(path.read_text())):
+                    self.assertNotIn("head.repo.fork", expression)
+
+    def test_the_fork_flag_is_found_in_an_if_a_runs_on_and_an_env_value_only(self):
+        flagged = "${{ github.event.pull_request.head.repo.fork }}"
+        document = yaml.safe_load(
+            "jobs:\n  a:\n    if: " + flagged + "\n    runs-on: x\n"
+            "  b:\n    runs-on: ${{ " + flagged[3:-3] + " && 'p' || 'q' }}\n"
+            "  c:\n    runs-on: x\n    steps:\n      - env:\n          FORK: " + flagged + "\n"
+            "        run: echo head.repo.fork\n")
+        found = [e for e in fork_flag_expressions(document) if "head.repo.fork" in e]
+        self.assertEqual(len(found), 3)
 
     def test_every_job_on_our_runners_can_go_back_to_github(self):
         count = 0
@@ -115,16 +157,6 @@ class OwnRunnerTests(unittest.TestCase):
                 self.assertNotIn("write", granted.values(), where)
 
     def test_no_deployment_environment_on_our_runners(self):
-        import hashlib
-        import sys
-        from unittest.mock import patch
-
-        # Reuse the repository's pinned offline parser, including YAML merge semantics.
-        archive = ROOT / "tools/ci/vendor/pyyaml-6.0.3.zip"
-        self.assertEqual(hashlib.sha256(archive.read_bytes()).hexdigest(),
-                         "94ac21b4343e15647b3b5b5bd594aab5b7d3cd8d2ce17db15acb7260d489b6fc")
-        with patch.object(sys, "path", [str(archive), *sys.path]):
-            import yaml
         for path in sorted(WORKFLOWS.glob("*.y*ml")):
             document = yaml.safe_load(path.read_text())
             for name, job in document["jobs"].items():
@@ -178,11 +210,34 @@ class OwnRunnerTests(unittest.TestCase):
         # Never skipped where its parts ran: GitHub counts a skipped required check as passed.
         self.assertTrue(ci["verify"]["if"].startswith("always()"))
 
+    @needs_runner_shell
+    @unittest.skipUnless(shutil.which("jq"), "the hook reads the event with jq")
     def test_the_light_runners_refuse_forks_themselves(self):
-        script = (ROOT / "tools/ci/checks-runners.sh").read_text()
-        self.assertIn("ACTIONS_RUNNER_HOOK_JOB_STARTED=$shared/job-started.sh", script)
-        self.assertIn('.pull_request.head.repo.full_name // "unknown"', script)
-        self.assertIn('if [ "$head" != "${GITHUB_REPOSITORY:-}" ]', script)
+        with tempfile.TemporaryDirectory() as folder:
+            home = Path(folder)
+            python = home / ".local/bin/python3.13"
+            python.parent.mkdir(parents=True)
+            python.write_text("#!/bin/sh\n")
+            python.chmod(0o755)
+            # Sourced with an unknown command the script defines its functions, prints its usage and exits;
+            # the trap then writes the job-started hook the way `install` does, into this home.
+            subprocess.run(["bash", "-c", 'trap shared_files EXIT; source "$0" none', str(ROOT / "tools/ci/checks-runners.sh")],
+                           env={**os.environ, "HOME": str(home)}, capture_output=True, check=False)
+            hook = home / ".actions-runners/ci-shared/job-started.sh"
+
+            def job(event, head=None):
+                path = home / "event.json"
+                path.write_text(json.dumps({"pull_request": {"head": {"repo": {"full_name": head}}}}))
+                return subprocess.run(["bash", str(hook)], capture_output=True, text=True, env={
+                    "PATH": os.environ["PATH"], "GITHUB_EVENT_NAME": event, "GITHUB_EVENT_PATH": str(path),
+                    "GITHUB_REPOSITORY": "sunrise-org/sunrise"})
+
+            fork = job("pull_request", "someone/sunrise")
+            self.assertEqual(fork.returncode, 1, fork.stderr)
+            self.assertIn("someone/sunrise", fork.stdout)
+            self.assertEqual(job("pull_request", "sunrise-org/sunrise").returncode, 0)
+            # Events that carry no fork's code are not refused.
+            self.assertEqual(job("push", "someone/sunrise").returncode, 0)
 
 
 if __name__ == "__main__":

@@ -90,6 +90,21 @@ fn strict_block_predicates_refuse_unknown_properties_even_if_custom_metadata_acc
         ) -> Result<(), BlockStateError> {
             Ok(())
         }
+
+        fn key(&self, _: &str) -> Option<BlockKey> {
+            Some(self.0.block())
+        }
+
+        fn default_state(&self, _: BlockKey) -> Result<BlockState, BlockStateError> {
+            Ok(self.0)
+        }
+
+        fn state_definition(
+            &self,
+            _: BlockKey,
+        ) -> Result<crate::StateProperties<'_>, BlockStateError> {
+            Ok(crate::StateProperties::of(&[]))
+        }
     }
 
     let key = register_block();
