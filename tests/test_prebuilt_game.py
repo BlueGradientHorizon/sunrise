@@ -5,10 +5,12 @@ import os
 import shutil
 import sys
 import struct
+import stat
 import subprocess
 import tarfile
 import tempfile
 import tomllib
+import types
 import unittest
 from unittest.mock import patch
 from pathlib import Path
@@ -348,6 +350,13 @@ class RegistryPatchTests(unittest.TestCase):
                 prebuilt_game.check(sdk)
 
 
+LINK_PROBLEM = "is a symlink or reparse point, which is never followed"
+
+
+class CargoBuildReached(Exception):
+    """The run got as far as the game's own `cargo build`."""
+
+
 class GitRegistryPatchTests(unittest.TestCase):
     FORK = "https://github.com/sunrise-org/sunrise-wgpu"
     MEMBERS = ("naga", "naga-types", "wgpu-hal", "wgpu-naga-bridge", "wgpu-types")
@@ -393,6 +402,8 @@ class GitRegistryPatchTests(unittest.TestCase):
             file.write_bytes(data)
         self.git("add", "--all", "--force")
         self.git("update-index", "--chmod=+x", "naga/src/lib.rs")
+        if os.name == "posix":
+            (self.checkout / "naga/src/lib.rs").chmod(0o755)  # as a checkout of the commit has it
         self.git("commit", "-qm", "fixture checkout")
         self.rev = self.git("rev-parse", "HEAD")
         self.source = f"git+{self.FORK}?rev={self.rev}#{self.rev}"
@@ -416,10 +427,123 @@ class GitRegistryPatchTests(unittest.TestCase):
         committed = self.game_lock.replace("\n", "\r\n").encode()
         return prebuilt_game.carry_cargo_inputs(self.staged, self.sdk, self.metadata, committed)
 
-    def test_sdk_localizes_both_locks_and_carries_only_the_pinned_wgpu_payload(self):
+    def dirty_checkout(self) -> Path:
+        """A modified tracked file and an untracked one beside it in the member that sorts after it."""
         dirty = self.checkout / "naga/src/lib.rs"
         dirty.write_bytes(b"// dirty checkout\r\n")
         (self.checkout / "naga/untracked").write_bytes(b"not committed")
+        return dirty
+
+    def build_locked(self, commands: list[list[str]]) -> None:
+        """`_build_locked` on the fixture: the locked metadata names its checkout, and the game's own `cargo build`
+        is where the run stops."""
+        def run(command, **kwargs):
+            commands.append(command[:2])
+            if command[:2] == ["cargo", "metadata"]:
+                return json.dumps(self.metadata | {"resolve": {"nodes": []}})
+            raise CargoBuildReached
+
+        with patch.object(prebuilt_game, "stage", return_value=self.staged), \
+             patch.object(prebuilt_game, "head", return_value=self.rev), \
+             patch.object(prebuilt_game, "rustc_host", return_value="fixture-host"), \
+             patch.object(prebuilt_game, "run", side_effect=run):
+            prebuilt_game._build_locked(self.sdk / "out", False, self.sdk / "target")
+
+    def assert_build_refused(self, name: str, problem: str) -> None:
+        """The build side refuses naming `name` first, and `cargo build` never starts."""
+        commands = []
+        with self.assertRaises(ValueError) as refused:
+            self.build_locked(commands)
+        self.assertIn(f"{name!r} {problem}", str(refused.exception))
+        self.assertIn(f"Remove Cargo's checkout {self.checkout}", str(refused.exception))
+        self.assertEqual(commands, [["cargo", "metadata"]])
+
+    def test_a_clean_checkout_reaches_the_locked_game_build(self):
+        commands = []
+        with self.assertRaises(CargoBuildReached):
+            self.build_locked(commands)
+        self.assertEqual(commands, [["cargo", "metadata"], ["cargo", "build"]])
+
+    def test_the_build_refuses_a_modified_tracked_file_naming_the_first_differing_path(self):
+        self.dirty_checkout()
+        self.assert_build_refused("naga/src/lib.rs", "has other bytes than the pinned file")
+
+    def test_the_build_refuses_an_untracked_file(self):
+        (self.checkout / "naga/untracked").write_bytes(b"not committed")
+        self.assert_build_refused("naga/untracked", "is not in the pinned tree")
+
+    def test_the_build_refuses_a_missing_file_and_a_changed_root_file(self):
+        (self.checkout / "wgpu-types/src/lib.rs").unlink()
+        self.assert_build_refused("wgpu-types/src/lib.rs", "is missing")
+        (self.checkout / "wgpu-types/src/lib.rs").write_bytes(self.payload["wgpu-types/src/lib.rs"])
+        (self.checkout / "LICENSE.MIT").write_bytes(b"other notice\n")
+        self.assert_build_refused("LICENSE.MIT", "has other bytes than the pinned file")
+
+    def test_an_ignored_file_is_refused_though_git_does_not_show_it(self):
+        (self.checkout / ".git/info").mkdir(exist_ok=True)
+        (self.checkout / ".git/info/exclude").write_text("ignored.rs\n")
+        (self.checkout / "naga-types/ignored.rs").write_bytes(b"// compiled but ignored by Git\n")
+        self.assertEqual(self.git("status", "--porcelain"), "")
+        self.assert_build_refused("naga-types/ignored.rs", "is not in the pinned tree")
+
+    def test_index_flags_and_filemode_cannot_hide_a_change(self):
+        self.git("update-index", "--assume-unchanged", "naga/src/lib.rs", "naga-types/src/lib.rs")
+        self.git("config", "core.filemode", "false")
+        (self.checkout / "naga/src/lib.rs").write_bytes(b"// hidden by the index\n")
+        self.assertEqual(self.git("status", "--porcelain"), "")
+        self.assert_build_refused("naga/src/lib.rs", "has other bytes than the pinned file")
+        (self.checkout / "naga/src/lib.rs").write_bytes(self.payload["naga/src/lib.rs"])
+        if os.name == "posix":
+            (self.checkout / "naga-types/src/lib.rs").chmod(0o755)
+            self.assertEqual(self.git("status", "--porcelain"), "")
+            self.assert_build_refused("naga-types/src/lib.rs", "has another executable mode than the pinned file")
+            (self.checkout / "naga-types/src/lib.rs").chmod(0o644)
+            (self.checkout / "naga/src/lib.rs").chmod(0o644)
+            self.assert_build_refused("naga/src/lib.rs", "has another executable mode than the pinned file")
+
+    @needs_symlinks
+    def test_the_build_reports_links_without_following_them(self):
+        outside = self.checkout.with_name("outside")
+        outside.mkdir()
+        (outside / "leaked.rs").write_bytes(b"// outside the checkout\n")
+        (self.checkout / "naga/linked").symlink_to(outside, target_is_directory=True)
+        self.assert_build_refused("naga/linked", LINK_PROBLEM)
+        (self.checkout / "naga/linked").unlink()
+        member = self.checkout / "wgpu-types/src/lib.rs"
+        member.unlink()
+        member.symlink_to(outside / "leaked.rs")
+        self.assert_build_refused("wgpu-types/src/lib.rs", LINK_PROBLEM)
+
+    def test_a_reparse_point_is_refused_whatever_its_mode_says(self):
+        """`st_file_attributes` only exists on Windows, so a stand-in `lstat` result carries it on any system: a
+        regular-looking file and a directory (as a junction reads), neither followed."""
+        real_lstat = Path.lstat
+        for name, mode in ("naga-types/src/lib.rs", stat.S_IFREG | 0o644), ("naga/src", stat.S_IFDIR | 0o755):
+            def lstat(path, name=name, mode=mode):
+                if path != self.checkout / name:
+                    return real_lstat(path)
+                return types.SimpleNamespace(st_mode=mode, st_file_attributes=stat.FILE_ATTRIBUTE_REPARSE_POINT)
+
+            with self.subTest(name=name), patch.object(Path, "lstat", lstat):
+                self.assert_build_refused(name, LINK_PROBLEM)
+
+    @unittest.skipUnless(os.name == "nt", "directory junctions, reparse points that are not symlinks, exist only on Windows")
+    def test_the_build_refuses_a_junction_without_following_it(self):
+        outside = self.checkout.with_name("outside")
+        outside.mkdir()
+        (outside / "leaked.rs").write_bytes(b"// outside the checkout\n")
+        junction = self.checkout / "naga/linked"
+        subprocess.run(["cmd", "/c", "mklink", "/J", str(junction), str(outside)], check=True, capture_output=True)
+        self.assert_build_refused("naga/linked", LINK_PROBLEM)
+        os.rmdir(junction)
+        shutil.copytree(self.checkout / "wgpu-types/src", outside / "src")
+        shutil.rmtree(self.checkout / "wgpu-types/src")
+        subprocess.run(["cmd", "/c", "mklink", "/J", str(self.checkout / "wgpu-types/src"), str(outside / "src")],
+                       check=True, capture_output=True)
+        self.assert_build_refused("wgpu-types/src", LINK_PROBLEM)
+
+    def test_sdk_localizes_both_locks_and_carries_only_the_pinned_wgpu_payload(self):
+        dirty = self.dirty_checkout()
         patches, registry_lock = self.carry()
         expected_paths = {name: {"path": f"patches/wgpu/{name}"} for name in self.MEMBERS}
         expected_paths["allocator-sys"] = {"path": "patches/allocator-sys"}
