@@ -14,7 +14,7 @@ use sunrise_shader_api::Api;
 use sunrise_shaders::{BlockIds, Macros, Pack, Properties, dimension_folder_named, load_post};
 
 use super::native_shaders::{fingerprint, outcome, refused, remember};
-use super::{Dim, Game, Screen};
+use super::{Dim, Screen};
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};
 use sunrise_client_render::render_geometry::EntitySpan;

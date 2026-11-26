@@ -266,7 +266,7 @@ impl crate::game::ServerGame<'_> {
         match direct {
             Some(Target::Projectile(id)) => {
                 if let Some(shot) = self.common.creatures.projectiles.iter().find(|shot| shot.id == id) {
-                    Self::set_projectile_attack(&mut attack, shot);
+                    sunrise_gameplay_common::game::CommonGame::set_projectile_attack(&mut attack, shot);
                 }
             }
             Some(Target::Trident(id)) => {
@@ -274,7 +274,7 @@ impl crate::game::ServerGame<'_> {
                     attack.projectile = Some(id as i32);
                     attack.projectile_kind = DirectEntity::Arrow;
                     attack.projectile_type = Some("minecraft:trident");
-                    Self::set_projectile_weapon(&mut attack, Some(&shot.stack));
+                    sunrise_gameplay_common::game::CommonGame::set_projectile_weapon(&mut attack, Some(&shot.stack));
                 }
             }
             _ => {}
@@ -303,7 +303,7 @@ impl crate::game::ServerGame<'_> {
                 .iter()
                 .find(|shot| shot.id == id)
                 .map_or(DirectEntity::Projectile, |shot| {
-                    Self::projectile_direct_entity(&shot.kind)
+                    sunrise_gameplay_common::game::CommonGame::projectile_direct_entity(&shot.kind)
                 }),
             Some(Target::Trident(_)) => DirectEntity::Arrow,
             Some(Target::Rocket(_) | Target::Hook(_)) => DirectEntity::Projectile,

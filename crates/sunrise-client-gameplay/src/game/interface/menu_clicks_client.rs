@@ -388,7 +388,7 @@ impl crate::game::ClientGame<'_> {
         impl Map {
             fn main(&self) -> usize {
                 match (self.plain, self.table) {
-                    (false, _) => self.common.container,
+                    (false, _) => self.container,
                     (true, true) => 10,
                     (true, false) => 9,
                 }
@@ -407,7 +407,7 @@ impl crate::game::ClientGame<'_> {
                     }
                 } else {
                     match g {
-                        g if g >= self.base && g < self.base + self.common.container => {
+                        g if g >= self.base && g < self.base + self.container => {
                             Some(g - self.base)
                         }
                         9..36 => Some(main + g - 9),
@@ -428,12 +428,12 @@ impl crate::game::ClientGame<'_> {
                         _ if i >= main + 27 && i < main + 36 => Some(i - main - 27),
                         _ => None,
                     }
-                } else if i < self.common.container {
+                } else if i < self.container {
                     Some(self.base + i)
-                } else if i < self.common.container + 27 {
-                    Some(9 + i - self.common.container)
+                } else if i < self.container + 27 {
+                    Some(9 + i - self.container)
                 } else {
-                    Some(i - self.common.container - 27)
+                    Some(i - self.container - 27)
                 }
             }
         }

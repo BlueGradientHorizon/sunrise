@@ -1,4 +1,5 @@
 use super::*;
+use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameExt as _;
 
 impl crate::game::ClientGame<'_> {
     /// `Player.interactOn`: Fail skips this interaction, not the hand loop.
@@ -23,7 +24,7 @@ impl crate::game::ClientGame<'_> {
     ) -> Option<bool> {
         if let Some(answer) = self.right_click_item(hand, stack) {
             if answer == mod_api::InteractionResult::Success {
-                self.with_hand(hand, crate::game::ClientGame::swing_arm);
+                self.with_hand(hand, |game| game.swing_arm());
             }
             return Some(answer.consumes_action());
         }

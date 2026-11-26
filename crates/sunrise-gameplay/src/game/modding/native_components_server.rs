@@ -38,7 +38,7 @@ impl ServerGame<'_> {
         if level.dimension() != self.common.dim.key() || self.native_level_world(level).is_none() {
             return Ok(None);
         }
-        let items = world_items!(self);
+        let items = server_world_items!(self);
         let enchantments = std::sync::Arc::clone(self.item_enchantments());
         let pool = enchantments.tag(&pool.to_string());
         if pool.is_empty() {

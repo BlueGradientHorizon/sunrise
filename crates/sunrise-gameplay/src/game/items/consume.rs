@@ -188,7 +188,7 @@ impl crate::game::ServerGame<'_> {
                 return Ok(false);
             };
             let position = m.position;
-            let info = game.res.items().get(&decision.stack.item);
+            let info = game.common.res.items().get(&decision.stack.item);
             Ok(decision.finish(m, position, info))
         });
         result.unwrap_or(false)

@@ -2,7 +2,7 @@
 #[path = "pick_sections.rs"]
 pub(in crate::game) mod pick_sections;
 
-use crate::game::ClientGame;
+use crate::game::{ClientGame, pick_accumulator::PickDispatchExt as _};
 use super::pick_ray::{PickAccumulator, PickCandidate, pick_ray_segment};
 use mod_api::{BlockPos, CrosshairTarget, EntityRef};
 use sunrise_core::geometry::{Aabb, Vec3};

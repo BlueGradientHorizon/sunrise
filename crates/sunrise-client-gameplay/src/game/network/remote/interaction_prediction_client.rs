@@ -1,5 +1,7 @@
 use super::*;
 
+use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameExt;
+
 #[cfg(feature = "client")]
 impl crate::game::ClientGame<'_> {
     pub(in crate::game::client_side) fn finish_remote_item_on(
@@ -9,7 +11,7 @@ impl crate::game::ClientGame<'_> {
     ) -> bool {
         use mod_api::InteractionResult as Answer;
         if answer == Answer::Success {
-            self.with_hand(hand, crate::game::ClientGame::swing_arm);
+            self.with_hand(hand, PresentationSideGameExt::swing_arm);
         }
         answer.consumes_action() || answer == Answer::Fail
     }
@@ -345,7 +347,7 @@ impl crate::game::ClientGame<'_> {
             // answers SUCCESS there, which swings. Cushion.interact answers
             // CONSUME there too.
             if remote_object_swings(response, is_rideable_cart || is_cushion) {
-                self.with_hand(hand, crate::game::ClientGame::swing_arm);
+                self.with_hand(hand, PresentationSideGameExt::swing_arm);
             }
             return true;
         }
@@ -369,7 +371,7 @@ impl crate::game::ClientGame<'_> {
                 // As for the objects above, only SUCCESS swings the hand: a
                 // CONSUME ends the click without one.
                 if self.remote_mob_swings(i, hand) {
-                    self.with_hand(hand, crate::game::ClientGame::swing_arm);
+                    self.with_hand(hand, PresentationSideGameExt::swing_arm);
                 }
                 return true;
             }
@@ -658,7 +660,7 @@ impl crate::game::ClientGame<'_> {
                 // MultiPlayerGameMode.useItemOn: SUCCESS SwingSource.CLIENT
                 // (a chest, barrel, furnace, …). CONSUME does not swing.
                 if result.should_swing() && block_answer != Some(Answer::SuccessServer) {
-                    self.with_hand(hand, crate::game::ClientGame::swing_arm);
+                    self.with_hand(hand, PresentationSideGameExt::swing_arm);
                 }
                 return true;
             }
@@ -684,33 +686,33 @@ impl crate::game::ClientGame<'_> {
         match &*stack.item {
             "minecraft:debug_stick" => {
                 // The client answers SUCCESS and swings; only the server changes the block.
-                self.with_hand(hand, crate::game::ClientGame::swing_arm);
+                self.with_hand(hand, PresentationSideGameExt::swing_arm);
                 return true;
             }
             "minecraft:end_crystal" => {
                 // EndCrystalItem.useOn: SUCCESS where the crystal fits (the
                 // server spawns it), FAIL elsewhere. Either ends the click.
                 if self.end_crystal_fits(hit.pos) {
-                    self.with_hand(hand, crate::game::ClientGame::swing_arm);
+                    self.with_hand(hand, PresentationSideGameExt::swing_arm);
                 }
                 return true;
             }
             "minecraft:brush" => {
                 // BrushItem.useOn starts brushing (CONSUME, no swing); the
                 // server brushes and the dust is this client's own.
-                self.with_hand(hand, crate::game::ClientGame::start_using_item);
+                self.with_hand(hand, HeldItemsGameExt1::start_using_item);
                 return true;
             }
             "minecraft:bone_meal"
                 if self.with_hand(hand, |g| g.remote_bone_meal_succeeds(hit, stack)) =>
             {
                 // BoneMealItem.useOn succeeds here; the server grows the plant.
-                self.with_hand(hand, crate::game::ClientGame::swing_arm);
+                self.with_hand(hand, PresentationSideGameExt::swing_arm);
                 return true;
             }
             "minecraft:armor_stand" if stand_fits => {
                 // ArmorStandItem.useOn succeeds once the stand fits.
-                self.with_hand(hand, crate::game::ClientGame::swing_arm);
+                self.with_hand(hand, PresentationSideGameExt::swing_arm);
                 return true;
             }
             item if item.ends_with("_spawn_egg") => {
@@ -719,13 +721,13 @@ impl crate::game::ClientGame<'_> {
                 if sunrise_sim::block_entity_item::item_entity_data(stack, self.common.res.items())
                     .is_some_and(|data| self.common.spawn_egg_allowed(&data.kind))
                 {
-                    self.with_hand(hand, crate::game::ClientGame::swing_arm);
+                    self.with_hand(hand, PresentationSideGameExt::swing_arm);
                 }
                 return true;
             }
             "minecraft:flint_and_steel" | "minecraft:fire_charge" => {
                 if self.predict_fire_starter(stack, hit, hand, seq) {
-                    self.with_hand(hand, crate::game::ClientGame::swing_arm);
+                    self.with_hand(hand, PresentationSideGameExt::swing_arm);
                 }
                 return true;
             }
@@ -749,7 +751,7 @@ impl crate::game::ClientGame<'_> {
                 self.with_hand(hand, |g| {
                     g.filled_result(ItemStack::new("minecraft:glass_bottle", 1))
                 });
-                self.with_hand(hand, crate::game::ClientGame::swing_arm);
+                self.with_hand(hand, PresentationSideGameExt::swing_arm);
                 return true;
             }
             _ => {}
@@ -757,7 +759,7 @@ impl crate::game::ClientGame<'_> {
         if self.with_hand(hand, |g| g.predict_item_on_block(stack, hit))
             || self.predict_map_on_banner(stack, hit)
         {
-            self.with_hand(hand, crate::game::ClientGame::swing_arm);
+            self.with_hand(hand, PresentationSideGameExt::swing_arm);
             return true;
         }
         if let Some(info) = self
@@ -779,7 +781,7 @@ impl crate::game::ClientGame<'_> {
             if let Some(placed) = placed {
                 self.predict_place(&placed, stack, seq);
                 self.with_hand(hand, |g| g.consume_placed(stack));
-                self.with_hand(hand, crate::game::ClientGame::swing_arm);
+                self.with_hand(hand, PresentationSideGameExt::swing_arm);
             }
             // BlockItem.place's FAIL also ends the click.
             return true;
@@ -831,7 +833,7 @@ use sunrise_gameplay_common::game::entity_common::EntityCommonGameExt1 as _;
 
 use sunrise_gameplay_common::game::game_mode_common::GameModeCommonGameExt1 as _;
 
-use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1;
 
 use sunrise_gameplay_common::game::item_use_stacks::ItemUseStacksGameExt1 as _;
 

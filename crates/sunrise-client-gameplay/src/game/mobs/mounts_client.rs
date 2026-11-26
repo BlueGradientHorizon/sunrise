@@ -9,7 +9,7 @@ impl ClientGame<'_> {
             return None;
         }
         let mount = &self.common.mobs[self.common.mount_index()?];
-        let can_jump = Self::jumps(mount.species())
+        let can_jump = sunrise_gameplay_common::game::CommonGame::jumps(mount.species())
             && mount.extra.saddled()
             && !(matches!(mount.species(), Species::Camel | Species::CamelHusk)
                 && sunrise_sim::mobs::camel::refuse_to_move(mount));

@@ -2289,7 +2289,7 @@ impl crate::game::CommonGame<'_> {
     /// `AbstractCandleBlock.getParticleOffsets`, in sixteenths of a block:
     /// `CandleBlock.PARTICLE_OFFSETS` by its `candles` (one to four wicks),
     /// then `CandleCakeBlock.PARTICLE_OFFSETS`, whose one wick sits a block up.
-    fn candle_offsets(name: &str, candles: Option<usize>) -> &'static [[u8; 3]] {
+    pub fn candle_offsets(name: &str, candles: Option<usize>) -> &'static [[u8; 3]] {
         const OFFSETS: [&[[u8; 3]]; 5] = [
             &[[8, 8, 8]],
             &[[6, 7, 8], [10, 8, 7]],

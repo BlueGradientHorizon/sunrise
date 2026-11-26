@@ -980,12 +980,12 @@ impl crate::game::ServerGame<'_> {
                 Some(Some(inner)) => host.hub.guests.swap_loaned_inventory(gi, inner),
                 Some(None) => host.hub.guests.update(gi, |g| {
                     // The fields `guest_turn` swaps.
-                    std::mem::swap(&mut game.inventory, &mut g.inventory);
-                    std::mem::swap(&mut game.armor, &mut g.armor);
+                    std::mem::swap(&mut game.common.inventory, &mut g.inventory);
+                    std::mem::swap(&mut game.common.armor, &mut g.armor);
                     std::mem::swap(&mut game.server.location_armor, &mut g.location_armor);
-                    std::mem::swap(&mut game.offhand, &mut g.offhand);
-                    std::mem::swap(&mut game.equipment, &mut g.equipment);
-                    std::mem::swap(&mut game.carried, &mut g.carried);
+                    std::mem::swap(&mut game.common.offhand, &mut g.offhand);
+                    std::mem::swap(&mut game.common.equipment, &mut g.equipment);
+                    std::mem::swap(&mut game.common.carried, &mut g.carried);
                 }),
                 None => {}
             }

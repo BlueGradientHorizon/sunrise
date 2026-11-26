@@ -46,8 +46,8 @@ impl EntityServerAccess for GeneralTickAccess<'_, '_, '_> {
         {
             return;
         }
-        let Some(row) = self
-            .game
+        let common = &mut self.game.common;
+        let Some(row) = common
             .resident_entities
             .general
             .row_mut(self.subject.id())
@@ -56,7 +56,7 @@ impl EntityServerAccess for GeneralTickAccess<'_, '_, '_> {
         };
         let mut data = ResidentGeneralRow {
             row,
-            journal: &mut self.game.transactions,
+            journal: &mut common.transactions,
             kind: self.kind,
         };
         call(EntitySubjectView::new(self.subject, &mut data));

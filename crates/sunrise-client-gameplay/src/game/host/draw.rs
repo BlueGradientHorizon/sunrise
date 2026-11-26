@@ -1,4 +1,6 @@
 use mod_api::{prelude::*, *};
+#[cfg(feature = "client")]
+use sunrise_gameplay_common::game::api_values::TryIntoEngine;
 use sunrise_gameplay_common::game::host::draw::{
     EngineTooltipFont, font_id_str, label_layout_with,
 };

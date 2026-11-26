@@ -238,7 +238,7 @@ impl ServerGame<'_> {
             let Some(m) = self.common.mob_object(id) else {
                 continue;
             };
-            let attachment = Self::mob_passenger_attachment(
+            let attachment = sunrise_gameplay_common::game::CommonGame::mob_passenger_attachment(
                 self.common.mob_object(root).unwrap(),
                 sunrise_sim::mobs::drops::is_animal(m.species()),
                 seat,

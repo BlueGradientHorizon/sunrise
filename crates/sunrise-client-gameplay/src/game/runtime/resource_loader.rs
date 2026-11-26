@@ -461,7 +461,7 @@ pub fn run_loading(
     let result = EventLoop::new()?.run_app(&mut app);
     narrator::stop();
     match &mut app {
-        App::Ready(game) => leave_fullscreen_after(&result, &mut game.side.settings),
+        App::Ready(game) => leave_fullscreen_after(&result, &mut game.client.settings),
         App::Loading(loading) => leave_fullscreen_after(&result, &mut loading.settings),
     }
     result?;

@@ -83,8 +83,8 @@ impl crate::game::ServerGame<'_> {
                             "advancement selector model raw: {}",
                             serde_json::json!({"conn":g.conn,"name":g.name,
                                 "uuid":sunrise_protocol::crypto::uuid_string(g.uuid),
-                                "game_time":self.world.game_time,
-                                "progress":g.advancements.to_json(&self.adv.tree, sunrise_world::DATA_VERSION)})
+                                "game_time":self.common.world.game_time,
+                                "progress":g.advancements.to_json(&self.common.adv.tree, sunrise_world::DATA_VERSION)})
                         );
                     }
                     self.server.player_autosaves.0.enqueue(g, &self.server.world_root, self.common.res.items());

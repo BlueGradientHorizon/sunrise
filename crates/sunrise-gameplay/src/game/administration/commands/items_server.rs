@@ -316,7 +316,10 @@ impl crate::game::ServerGame<'_> {
                 .get("minecraft:bookshelf_books")
                 .is_some_and(|m| m.contains(&*s.item))
         });
-        let recipes = world_recipes!(self);
+        let recipes = match self.server.world_tables.0.as_ref() {
+            Some(tables) => &tables.recipes,
+            None => self.common.res.recipes(),
+        };
         // `ChiseledBookShelfBlockEntity.setItem`: the slot written is the one
         // `updateState` takes, even when its occupancy does not change.
         let mut shelf_slot = None;

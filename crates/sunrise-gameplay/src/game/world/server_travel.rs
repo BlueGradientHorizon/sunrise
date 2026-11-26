@@ -10,7 +10,7 @@
 use super::nether_portal::Plan;
 use super::respawn_anchor::RespawnConfig;
 use super::respawn_position::Respawn;
-use super::{Dim, Game, Mob, lan::LanHost, minecarts};
+use super::{Dim, Mob, lan::LanHost, minecarts};
 use sunrise_gameplay_common::game::end_state::GatewayJob;
 use sunrise_gameplay_common::game::entity_memory::OffLevel;
 use sunrise_core::{geometry::Vec3, position::BlockPos};
@@ -173,22 +173,22 @@ macro_rules! server_ctx {
         let spawn = $s.world_spawn_position();
         let clock_rate = $s.network_clock_rate();
         TickCtx {
-            world: &mut $s.world,
+            world: &mut $s.common.world,
             entities: &[],
-            next_entity: &mut $s.side.next_entity,
+            next_entity: &mut $s.server.next_entity,
             spawn,
-            spawn_angle: $s.level.world_spawn_angle,
-            spawn_dimension: crate::game::Dim::of_world_spawn(&$s.level).id(),
-            sea_level: $s.end.locator().map_or(63, |terrain| terrain.sea_level()),
-            difficulty: i32::from($s.ui.difficulty),
-            difficulty_locked: $s.level.difficulty_locked,
+            spawn_angle: $s.common.level.world_spawn_angle,
+            spawn_dimension: crate::game::Dim::of_world_spawn(&$s.common.level).id(),
+            sea_level: $s.common.end.locator().map_or(63, |terrain| terrain.sea_level()),
+            difficulty: i32::from($s.common.ui.difficulty),
+            difficulty_locked: $s.common.level.difficulty_locked,
             clock_rate,
-            tick_rate: $s.clock.rate(),
-            tick_frozen: $s.clock.frozen(),
-            tick_steps: $s.clock.step_state(),
-            collision: Some($s.collision),
-            border: &$s.border,
-            streaming: Some(&$s.side.streaming),
+            tick_rate: $s.common.clock.rate(),
+            tick_frozen: $s.common.clock.frozen(),
+            tick_steps: $s.common.clock.step_state(),
+            collision: Some($s.common.collision),
+            border: &$s.common.border,
+            streaming: Some(&$s.server.streaming),
         }
     }};
 }

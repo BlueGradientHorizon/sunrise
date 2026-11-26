@@ -1,10 +1,9 @@
-use super::Game;
 use sunrise_gameplay_common::game::native_config_file_services::{FileRoot, list, read, remove, stat, write};
 use mod_api::{ConfigEntry, ConfigFileError, ConfigFiles, ConfigPath, ConfigStat};
 #[cfg(test)]
 use std::fs;
 
-impl<__Side: sunrise_gameplay_common::game::Side> Game<'_, __Side> {
+impl crate::game::ServerGame<'_> {
     #[inline(always)]
     pub(in crate::game) fn config_files() -> &'static dyn ConfigFiles {
         sunrise_gameplay_common::game::native_config_file_services::config_files()
@@ -454,7 +453,7 @@ use sunrise_gameplay_common::game::server_side::native_config_files::tests::path
             game.side.world_root.clear();
             as_mod("fd", || {
                 assert_eq!(
-                    Game::world_data_files(game).read(&path("tiles/nether/0.bin")),
+                    crate::game::ServerGame::world_data_files(game).read(&path("tiles/nether/0.bin")),
                     Err(ConfigFileError::NoWorld)
                 );
             });

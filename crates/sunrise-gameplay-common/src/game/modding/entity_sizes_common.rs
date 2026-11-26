@@ -16,7 +16,7 @@ pub fn synced_pose(m: &Mob) -> Pose {
 
 impl crate::game::CommonGame<'_> {
 
-    pub(in crate::game) fn apply_body_size(
+    pub fn apply_body_size(
         body: &mut sunrise_sim::motion::PlayerMotion,
         answer: SizeAnswer,
     ) {

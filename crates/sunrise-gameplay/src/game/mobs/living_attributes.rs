@@ -117,7 +117,7 @@ impl ServerGame<'_> {
             return;
         }
         let catalog = self.common.motion.attributes.clone();
-        let items = world_items!(self);
+        let items = server_world_items!(self);
         for m in self.common.mobs.iter_mut().filter(|m| !m.removed) {
             if m.extra.equipment.is_empty() && !m.extra.live.has_worn() {
                 continue;
@@ -175,7 +175,7 @@ impl ServerGame<'_> {
             return;
         }
         let catalog = self.common.motion.attributes.clone();
-        let items = world_items!(self);
+        let items = server_world_items!(self);
         let Some(m) = self.common.mobs.iter_mut().find(|m| m.id == id && !m.removed) else {
             return;
         };

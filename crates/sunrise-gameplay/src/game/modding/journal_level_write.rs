@@ -3,9 +3,9 @@
 use crate::game::ServerGame;
 use super::api_values::{TryIntoApi, TryIntoEngine};
 use super::creatures::NativeSound;
-use super::native_level_signals::ReadLevel;
 use super::transactions::After;
 use sunrise_gameplay_common::game::journal_level_effects::PendingWrite;
+use sunrise_gameplay_common::game::native_level_signals::ReadLevel;
 use mod_api::{
     AttachmentBatch, AttachmentStore, BlockEntityRef, BlockKey, BlockPos, BlockSide, BlockState,
     BlockUpdateFlags, Compound, Direction, FeatureFlags, FluidState, ItemStack, LevelHost,
@@ -33,8 +33,8 @@ impl<'g, 'a> JournalLevelWrite<'g, 'a> {
         (game.level_in_place(level) && game.has_level_transaction()).then_some(Self { game, level })
     }
 
-    fn read(&self) -> ReadLevel<'_, 'a, crate::game::server_side::ServerState> {
-        ReadLevel::new(self.game, self.level)
+    fn read(&self) -> ReadLevel<'_, 'a, ServerGame<'a>> {
+        ReadLevel::new(&*self.game, self.level)
     }
 
     pub(in crate::game::server_side) fn write_block(
@@ -392,8 +392,8 @@ impl ServerGame<'_> {
         match write {
             PendingWrite::BlockTick(level, pos, block, delay) => {
                 let _ = self.with_effect_level(level, |game| {
-                    game.block_ticks.schedule_block(
-                        game.world.game_time,
+                    game.common.block_ticks.schedule_block(
+                        game.common.world.game_time,
                         pos,
                         block,
                         delay,
@@ -403,8 +403,8 @@ impl ServerGame<'_> {
             }
             PendingWrite::FluidTick(level, pos, fluid, delay) => {
                 let _ = self.with_effect_level(level, |game| {
-                    game.block_ticks
-                        .schedule_fluid(game.world.game_time, pos, fluid, delay);
+                    game.common.block_ticks
+                        .schedule_fluid(game.common.world.game_time, pos, fluid, delay);
                 });
             }
             PendingWrite::Sound { mut sound, seed } => {

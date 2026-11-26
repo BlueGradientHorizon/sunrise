@@ -4,6 +4,7 @@
 //! A handle of an earlier open or an unloaded block reads `None` (or `false`).
 use crate::game::ServerGame;
 use sunrise_gameplay_common::game::native_level_refs_common::{block_pos, horizontal_in_bounds};
+use sunrise_gameplay_common::game::native_level_signals::ReadLevel;
 use mod_api::world::mod_chunk_tickets::ModTicket;
 use mod_api::{
     BlockHit, BlockTransformPreview, ChunkRef, ChunkStatus, ClipBlock, ClipFluid, GlobalPos, Hand,
@@ -58,7 +59,7 @@ pub fn biome_search_within_budget(parameters: mod_api::BiomeSearch, height: i32)
         .is_some_and(|samples| samples <= mod_api::BiomeSearch::MAX_SAMPLES)
 }
 
-impl ServerGame<'_> {
+impl<'g> ServerGame<'g> {
     pub(in crate::game) fn level_add_water_ticket(
         &mut self,
         level: LevelRef,
@@ -484,20 +485,13 @@ impl ServerGame<'_> {
         &self,
         level: LevelRef,
         f: impl FnOnce(
-            &sunrise_world::level::Signals<
-                '_,
-                super::native_level_signals::ReadLevel<
-                    '_,
-                    '_,
-                    crate::game::server_side::ServerState,
-                >,
-            >,
+            &sunrise_world::level::Signals<'_, ReadLevel<'_, 'g, ServerGame<'g>>>,
         ) -> R,
     ) -> Option<R> {
         if !self.level_in_place(level) {
             return None;
         }
-        let view = super::native_level_signals::ReadLevel::new(self, level);
+        let view = ReadLevel::new(self, level);
         Some(f(&self.common.res.behaviours().signals(&view, &self.common.block_ticks)))
     }
     /// How strongly the block at `pos` powers the block on its `direction` side, power it

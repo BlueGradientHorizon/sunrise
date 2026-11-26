@@ -2154,7 +2154,7 @@ impl crate::game::ServerGame<'_> {
     /// individual record failed and was reported. A failed awaited flush ends the pass with
     /// an error and no hook. Reopen levels as needed, then restore the active one.
     pub(in crate::game::server_side) fn run_requested_saves(&mut self) {
-        if Self::admit_entity_save().is_err() {
+        if sunrise_gameplay_common::game::CommonGame::admit_entity_save().is_err() {
             return;
         }
         let requested = std::mem::take(&mut self.server.levels.0.requested_saves);

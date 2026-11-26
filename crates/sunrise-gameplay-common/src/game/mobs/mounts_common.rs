@@ -54,7 +54,7 @@ impl crate::game::CommonGame<'_> {
     }
 
     /// `PlayerRideableJumping`: horses, camels and nautili (the dash).
-    pub(in crate::game) fn jumps(species: Species) -> bool {
+    pub fn jumps(species: Species) -> bool {
         equine::is_equine(species) || sunrise_sim::mobs::nautilus::is_nautilus(species)
     }
 

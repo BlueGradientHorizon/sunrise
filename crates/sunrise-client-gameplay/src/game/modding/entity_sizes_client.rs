@@ -155,7 +155,7 @@ impl ClientGame<'_> {
             return;
         };
         if let Some(body) = self.common.player.as_mut() {
-            Self::apply_body_size(body, answer);
+            sunrise_gameplay_common::game::CommonGame::apply_body_size(body, answer);
         }
     }
 

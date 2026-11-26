@@ -1719,7 +1719,7 @@ impl crate::game::ClientGame<'_> {
         let start = draw.vertices.len();
         self.block_model_vertices(
             id,
-            Self::BLOCK_MODEL_SEED,
+            sunrise_gameplay_common::game::CommonGame::BLOCK_MODEL_SEED,
             pose,
             draw.element_ambient(),
             true,
@@ -1747,7 +1747,7 @@ impl crate::game::ClientGame<'_> {
                     .client_pack
                     .render
                     .model_catalog
-                    .collect_seeded(id, Self::BLOCK_MODEL_SEED)
+                    .collect_seeded(id, sunrise_gameplay_common::game::CommonGame::BLOCK_MODEL_SEED)
                 else {
                     return Vec::new();
                 };

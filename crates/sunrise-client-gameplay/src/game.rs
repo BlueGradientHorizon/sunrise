@@ -28,7 +28,7 @@ use sunrise_gameplay_common::game::saving;
 macro_rules! client_game_side {
     ($s:expr, $meta:expr) => {
         sunrise_gameplay_common::game_side!(
-            $s,
+            $s.common,
             $meta,
             match &$s.client.remote {
                 Some(remote) => &remote.features,

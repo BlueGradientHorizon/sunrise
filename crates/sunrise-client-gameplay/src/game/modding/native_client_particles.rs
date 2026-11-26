@@ -57,7 +57,7 @@ impl ClientGame<'_> {
         // the part holds as `event.random`.
         self.with_lent_level_random(|game| {
             game.client.particles.0.add_with_world(
-                Some(&game.world),
+                Some(&game.common.world),
                 options,
                 at,
                 velocity,

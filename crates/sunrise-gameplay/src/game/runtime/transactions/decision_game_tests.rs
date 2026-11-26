@@ -190,7 +190,7 @@ fn real_save_gate_and_save_all_refuse_action_savepoint() {
                     &menu,
                     |_, s| tests::placement(s),
                     |host| {
-                        assert!(crate::game::ServerGame::admit_entity_save().is_err());
+                        assert!(sunrise_gameplay_common::game::CommonGame::admit_entity_save().is_err());
                         assert_eq!(
                             host.game.save_all_reply().translation_key(),
                             Some("commands.save.failed")
@@ -280,7 +280,7 @@ fn abandoned_token_releases_real_save_gate_and_publishes_nothing() {
         let identity = identity(game);
         let menu = Menu::new(tests::state());
         let drops = game.dropped.len();
-        assert!(crate::game::ServerGame::admit_entity_save().is_ok());
+        assert!(sunrise_gameplay_common::game::CommonGame::admit_entity_save().is_ok());
         game.storage_scope(|game, _| {
             let mut host = GameHost::new(game, identity);
             assert_eq!(
@@ -289,7 +289,7 @@ fn abandoned_token_releases_real_save_gate_and_publishes_nothing() {
                     &menu,
                     |_, view| tests::placement(view),
                     |host| {
-                        assert!(crate::game::ServerGame::admit_entity_save().is_err());
+                        assert!(sunrise_gameplay_common::game::CommonGame::admit_entity_save().is_err());
                         host.game
                             .drop_after_commit(1, ItemStack::new("minecraft:dirt", 2));
                         panic!("listener trap with a live decision");
@@ -297,7 +297,7 @@ fn abandoned_token_releases_real_save_gate_and_publishes_nothing() {
                 ),
                 Ok(Outcome::ListenerFailed)
             );
-            assert!(crate::game::ServerGame::admit_entity_save().is_ok());
+            assert!(sunrise_gameplay_common::game::CommonGame::admit_entity_save().is_ok());
             assert!(!host.menu_busy(menu.id));
             assert_eq!(host.game.transactions.len(), 1);
             assert_eq!(menu.read(Clone::clone), tests::state());

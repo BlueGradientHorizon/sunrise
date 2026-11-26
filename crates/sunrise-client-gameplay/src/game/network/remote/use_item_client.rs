@@ -1,5 +1,9 @@
 use super::*;
 
+use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameExt;
+
+use sunrise_gameplay_common::game::item_use_stacks::ItemUseStacksGameExt1;
+
 #[cfg(feature = "client")]
 impl crate::game::ClientGame<'_> {
     /// `LivingEntity.updatingUsingItem` on a server client: an item held in
@@ -132,7 +136,7 @@ impl crate::game::ClientGame<'_> {
         // the armor slot and the hand change at once (the server confirms).
         if info.equip_slot.is_some() && self.with_hand(hand, |g| g.client_equip_from_hand(&held)) {
             // Equippable.swapWithEquipmentSlot's SUCCESS (SwingSource.CLIENT).
-            self.with_hand(hand, crate::game::ClientGame::swing_arm);
+            self.with_hand(hand, PresentationSideGameExt::swing_arm);
             return true;
         }
         // `ItemStack.use` runs on this client too: a bucket's own ray and its
@@ -151,7 +155,7 @@ impl crate::game::ClientGame<'_> {
             self.play_predicted_sounds(&sounds);
             // BucketItem.use's SUCCESS (SwingSource.CLIENT) on this client.
             if succeeded {
-                self.with_hand(hand, crate::game::ClientGame::swing_arm);
+                self.with_hand(hand, PresentationSideGameExt::swing_arm);
             }
             return succeeded;
         }
@@ -162,7 +166,7 @@ impl crate::game::ClientGame<'_> {
                 && sunrise_sim::block_entity_item::item_entity_data(&held, self.common.res.items())
                     .is_some_and(|data| self.common.spawn_egg_allowed(&data.kind));
             if succeeded {
-                self.with_hand(hand, crate::game::ClientGame::swing_arm);
+                self.with_hand(hand, PresentationSideGameExt::swing_arm);
             }
             return succeeded;
         }
@@ -181,10 +185,10 @@ impl crate::game::ClientGame<'_> {
                     .data()
                     .and_then(|d| d.other("minecraft:recipes"))
                     .is_some_and(|t| matches!(t, Tag::List(l) if !l.is_empty()));
-            self.with_hand(hand, crate::game::ClientGame::consume_held);
+            self.with_hand(hand, ItemUseStacksGameExt1::consume_held);
             if has_recipes {
                 self.client_apply_use_cooldown(&held);
-                self.with_hand(hand, crate::game::ClientGame::swing_arm);
+                self.with_hand(hand, PresentationSideGameExt::swing_arm);
             }
             return has_recipes;
         }
@@ -208,7 +212,7 @@ impl crate::game::ClientGame<'_> {
                 self.client_apply_use_cooldown(&held);
             }
             // WritableBookItem.use's SUCCESS (SwingSource.CLIENT).
-            self.with_hand(hand, crate::game::ClientGame::swing_arm);
+            self.with_hand(hand, PresentationSideGameExt::swing_arm);
             return true;
         }
         // BowItem.use and CrossbowItem.use FAIL with nothing to shoot: no
@@ -226,7 +230,7 @@ impl crate::game::ClientGame<'_> {
         // so startUseItem swings this hand itself; a vanilla server swings it
         // for the other players only.
         if gliding && &*held.item == "minecraft:firework_rocket" {
-            self.with_hand(hand, crate::game::ClientGame::swing_arm);
+            self.with_hand(hand, PresentationSideGameExt::swing_arm);
         }
         // A stack's own `blocks_attacks` raises it as a shield's does; a
         // use the server's patch gives it is CONSUME too (no swing).
@@ -237,7 +241,7 @@ impl crate::game::ClientGame<'_> {
         // or spear starting its charge, and `ItemUtils.startUsingInstantly`'s
         // food, drink, spyglass, shield and goat horn.
         if ends && !blocks && remote_use_swings(&held, info.consumable.is_some()) {
-            self.with_hand(hand, crate::game::ClientGame::swing_arm);
+            self.with_hand(hand, PresentationSideGameExt::swing_arm);
         }
         ends
     }

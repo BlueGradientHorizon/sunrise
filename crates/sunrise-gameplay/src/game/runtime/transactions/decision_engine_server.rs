@@ -113,7 +113,7 @@ pub(in crate::game) fn rollback_in(mut journal: Journal, game: &mut ServerGame<'
     journal.rollback();
 }
 
-impl ActionTarget<GameHost<'_, '_, crate::game::ServerGame<'_>>> for ServerDecisionTarget {
+impl<'a, 'g> ActionTarget<GameHost<'a, 'g, ServerGame<'g>>> for ServerDecisionTarget {
     type Reads = EngineReads;
     type View = EngineMenu;
     type Plan = EnginePlan;
@@ -123,11 +123,11 @@ impl ActionTarget<GameHost<'_, '_, crate::game::ServerGame<'_>>> for ServerDecis
         self.owner_id()
     }
 
-    fn keep(&self, host: &mut GameHost<'_, '_, crate::game::ServerGame<'_>>) {
+    fn keep(&self, host: &mut GameHost<'a, 'g, ServerGame<'g>>) {
         self.keep_in(host.game);
     }
 
-    fn capture(&self, host: &GameHost<'_, '_, crate::game::ServerGame<'_>>) -> Result<EngineReads, Outcome> {
+    fn capture(&self, host: &GameHost<'a, 'g, ServerGame<'g>>) -> Result<EngineReads, Outcome> {
         let (owner, menu) = self
             .read(host.game)
             .ok_or(Outcome::Stale(StaleReason::MenuInstance))?;
@@ -155,7 +155,7 @@ impl ActionTarget<GameHost<'_, '_, crate::game::ServerGame<'_>>> for ServerDecis
 
     fn validate(
         &self,
-        host: &GameHost<'_, '_, crate::game::ServerGame<'_>>,
+        host: &GameHost<'a, 'g, ServerGame<'g>>,
         reads: &EngineReads,
     ) -> Result<(), Outcome> {
         let (owner, menu) = self
@@ -170,7 +170,7 @@ impl ActionTarget<GameHost<'_, '_, crate::game::ServerGame<'_>>> for ServerDecis
         Ok(())
     }
 
-    fn apply(&self, host: &mut GameHost<'_, '_, crate::game::ServerGame<'_>>, plan: EnginePlan) {
+    fn apply(&self, host: &mut GameHost<'a, 'g, ServerGame<'g>>, plan: EnginePlan) {
         if let Some(snapshot) = plan.0 {
             self.edit(host.game, |menu| menu.restore(snapshot))
                 .expect("validated live menu owner");

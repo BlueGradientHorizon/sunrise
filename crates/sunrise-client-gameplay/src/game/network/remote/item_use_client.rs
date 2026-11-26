@@ -1,7 +1,8 @@
 
-use super::super::Game;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::first_person_sim::Hand;
+
+use sunrise_gameplay_common::game::item_use_stacks::ItemUseStacksGameExt1;
 
 #[cfg(feature = "client")]
 impl crate::game::ClientGame<'_> {
@@ -51,7 +52,7 @@ impl crate::game::ClientGame<'_> {
                 sunrise_items::items::fire_starter_pitch(is_fire_charge, &mut self.common.world.random);
             self.client.audio.0.play(sound, Some(at), 1.0, pitch);
             if is_fire_charge && !self.common.creative {
-                self.with_hand(hand, crate::game::ClientGame::consume_held);
+                self.with_hand(hand, ItemUseStacksGameExt1::consume_held);
             }
             return true;
         }
@@ -74,7 +75,7 @@ impl crate::game::ClientGame<'_> {
             ];
             self.client.audio.0.play(sound, Some(target_at), 1.0, pitch);
             if is_fire_charge && !self.common.creative {
-                self.with_hand(hand, crate::game::ClientGame::consume_held);
+                self.with_hand(hand, ItemUseStacksGameExt1::consume_held);
             }
             return true;
         }

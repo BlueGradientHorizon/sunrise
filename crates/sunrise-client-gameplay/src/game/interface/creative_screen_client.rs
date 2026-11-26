@@ -2,6 +2,11 @@ use super::*;
 use sunrise_items::creative_catalog::{item_group_key, mod_item_group_key};
 
 impl crate::game::ClientGame<'_> {
+    pub(in crate::game) fn creative_origin(batch: &HudBatch) -> (f32, f32) {
+        batch.centered_origin(Creative::WIDTH, Creative::HEIGHT)
+    }
+
+
     pub(in crate::game) fn click_creative(&mut self, right: bool) -> bool {
         if self.mod_browser_press(right) {
             return true;

@@ -46,6 +46,8 @@ pub(in crate::game) struct WindowKeyInput<'a> {
 }
 
 impl crate::game::ClientGame<'_> {
+    const MOTION_OWN_PLAYER_FIRE: u64 = sunrise_gameplay_common::game::MOTION_OWN_PLAYER | 1;
+
     /// Client-side water splash particles for a dropped item (`side_apply_item_splash`).
     pub(in crate::game) fn client_apply_item_splash(
         &mut self,
@@ -151,7 +153,7 @@ impl crate::game::ClientGame<'_> {
             .registry
             .state(state)
             .and_then(|s| s.properties.get("candles")?.parse::<usize>().ok());
-        let offsets = Self::candle_offsets(&self.common.res.facts().get(state).name, candles);
+        let offsets = sunrise_gameplay_common::game::CommonGame::candle_offsets(&self.common.res.facts().get(state).name, candles);
         for o in offsets {
             self.client.particles.0.add(
                 &ParticleOptions::simple(ParticleType::Smoke),
@@ -2298,7 +2300,7 @@ impl crate::game::ClientGame<'_> {
                 // F3's 3D crosshair takes the 2D one's place. A spectator only sees it over
                 // something to open (`Hud.extractCrosshair`). These guards only gate vanilla paint.
                 if show_hud
-                    && g.side.camera_type.is_first_person()
+                    && g.client.camera_type.is_first_person()
                     && (!spectator || g.spectator_crosshair())
                     && !g.debug_crosshair()
                     && !g.overlay_holds_view()
@@ -2316,9 +2318,9 @@ impl crate::game::ClientGame<'_> {
                     // attack indicator stays.
                     if g.custom_crosshair() {
                         g.draw_custom_crosshair(batch, wi, hi);
-                        hud_layout::paint(batch, &g.side.gui.atlas, &draws[1..]);
+                        hud_layout::paint(batch, &g.client.gui.atlas, &draws[1..]);
                     } else {
-                        hud_layout::paint(batch, &g.side.gui.atlas, &draws);
+                        hud_layout::paint(batch, &g.client.gui.atlas, &draws);
                     }
                 }
             });
@@ -2332,11 +2334,11 @@ impl crate::game::ClientGame<'_> {
                     let mut draws = hud_layout::hotbar(wi, hi, &inputs);
                     // `extractSlot` for each item, in order, on the path `gui_paint` takes.
                     let mut items = crate::game::gui_paint_items::HotbarItems { game: g, source };
-                    hud_layout::paint_items(batch, &g.side.gui.atlas, &draws, &mut items);
+                    hud_layout::paint_items(batch, &g.client.gui.atlas, &draws, &mut items);
                     if indicator == 2 {
                         // Items and arm follow the camera; the charge belongs to the local player.
                         let mut progress =
-                            g.side.hand_strength.scale(0.0, g.main_hand_attack_speed());
+                            g.client.hand_strength.scale(0.0, g.main_hand_attack_speed());
                         g.native_hotbar_attack_indicator_progress(
                             native_hooks::HotbarAttackIndicatorProgressCall {
                                 progress: &mut progress,
@@ -2350,7 +2352,7 @@ impl crate::game::ClientGame<'_> {
                             progress,
                             &mut draws,
                         );
-                        hud_layout::paint(batch, &g.side.gui.atlas, &draws[start..]);
+                        hud_layout::paint(batch, &g.client.gui.atlas, &draws[start..]);
                     }
                 }
             });
@@ -2400,7 +2402,7 @@ impl crate::game::ClientGame<'_> {
                         return;
                     };
                     status_rows.clear();
-                    g.side.health_hud.health_level(
+                    g.client.health_hud.health_level(
                         &inputs,
                         kind,
                         wi,
@@ -2408,7 +2410,7 @@ impl crate::game::ClientGame<'_> {
                         &mut status_heights,
                         &mut status_rows,
                     );
-                    hud_layout::paint(batch, &g.side.gui.atlas, &status_rows);
+                    hud_layout::paint(batch, &g.client.gui.atlas, &status_rows);
                 },
             );
             self.gui_layer(VanillaGuiLayer::ArmorLevel, &mut batch, &mut |g, batch| {
@@ -2420,7 +2422,7 @@ impl crate::game::ClientGame<'_> {
                 };
                 status_rows.clear();
                 hud_layout::armor_level(armor, wi, hi, &mut status_heights, &mut status_rows);
-                hud_layout::paint(batch, &g.side.gui.atlas, &status_rows);
+                hud_layout::paint(batch, &g.client.gui.atlas, &status_rows);
             });
             self.gui_layer(VanillaGuiLayer::FoodLevel, &mut batch, &mut |g, batch| {
                 if !show_survival_status || mount.is_some_and(|(hearts, _)| hearts != 0) {
@@ -2430,14 +2432,14 @@ impl crate::game::ClientGame<'_> {
                     return;
                 };
                 status_rows.clear();
-                g.side.health_hud.food_level(
+                g.client.health_hud.food_level(
                     &inputs,
                     wi,
                     hi,
                     &mut status_heights,
                     &mut status_rows,
                 );
-                hud_layout::paint(batch, &g.side.gui.atlas, &status_rows);
+                hud_layout::paint(batch, &g.client.gui.atlas, &status_rows);
             });
             self.gui_layer(
                 VanillaGuiLayer::VehicleHealth,
@@ -2455,7 +2457,7 @@ impl crate::game::ClientGame<'_> {
                         &mut status_heights,
                         &mut status_rows,
                     );
-                    hud_layout::paint(batch, &g.side.gui.atlas, &status_rows);
+                    hud_layout::paint(batch, &g.client.gui.atlas, &status_rows);
                 },
             );
             self.gui_layer(VanillaGuiLayer::AirLevel, &mut batch, &mut |g, batch| {
@@ -2466,14 +2468,14 @@ impl crate::game::ClientGame<'_> {
                     return;
                 };
                 status_rows.clear();
-                let pop_sound = g.side.health_hud.air_level(
+                let pop_sound = g.client.health_hud.air_level(
                     &inputs,
                     wi,
                     hi,
                     &mut status_heights,
                     &mut status_rows,
                 );
-                hud_layout::paint(batch, &g.side.gui.atlas, &status_rows);
+                hud_layout::paint(batch, &g.client.gui.atlas, &status_rows);
                 // Hud.playAirBubblePoppedSound: Player.playSound (PLAYERS), heard by this
                 // client only, so another player's bubbles pop silently.
                 if let Some((volume, pitch)) = pop_sound
@@ -2483,12 +2485,12 @@ impl crate::game::ClientGame<'_> {
                         .iter()
                         .position(|s| *s == "player")
                         .unwrap_or(0);
-                    let capture = g.side.audio.0.capture.take();
-                    g.side
+                    let capture = g.client.audio.0.capture.take();
+                    g.client
                         .audio
                         .0
                         .play_on(players, "ui.hud.bubble_pop", Some(at), volume, pitch);
-                    g.side.audio.0.capture = capture;
+                    g.client.audio.0.capture = capture;
                 }
             });
             use sunrise_client::locator_bar::ContextualBar;
@@ -2510,7 +2512,7 @@ impl crate::game::ClientGame<'_> {
                             sunrise_client::locator_bar::background(wi, hi);
                         sunrise_client::ui::nine_slice(
                             batch,
-                            &g.side.gui.atlas,
+                            &g.client.gui.atlas,
                             sprite,
                             x as f32,
                             y as f32,
@@ -2520,10 +2522,10 @@ impl crate::game::ClientGame<'_> {
                         );
                     }
                     if has_experience && g.player.is_some() {
-                        let atlas = &g.side.gui.atlas;
+                        let atlas = &g.client.gui.atlas;
                         let width = |s: &str| HudBatch::text_width(atlas, s) as i32;
                         let draws = hud_layout::experience_colored(
-                            g.side.client_pack.polytone_colors.xp_bar,
+                            g.client.client_pack.polytone_colors.xp_bar,
                             wi,
                             hi,
                             g.experience.progress,
@@ -2535,7 +2537,7 @@ impl crate::game::ClientGame<'_> {
                     }
                     if contextual == ContextualBar::Locator {
                         let draws = g.locator_bar_draws(wi, hi);
-                        hud_layout::paint(batch, &g.side.gui.atlas, &draws);
+                        hud_layout::paint(batch, &g.client.gui.atlas, &draws);
                     }
                 },
             );
@@ -2554,7 +2556,7 @@ impl crate::game::ClientGame<'_> {
                 &mut batch,
                 &mut |g, batch| {
                     let draws = hud_overlays::sleep_overlay(wi, hi, g.sleep_timer as i32);
-                    hud_layout::paint(batch, &g.side.gui.atlas, &draws);
+                    hud_layout::paint(batch, &g.client.gui.atlas, &draws);
                 },
             );
             self.gui_layer(
@@ -2586,7 +2588,7 @@ impl crate::game::ClientGame<'_> {
                 &mut |g, batch| match subtitles {
                     Subtitles::Hidden => {}
                     Subtitles::Now => g.draw_subtitles(batch),
-                    Subtitles::Deferred => g.side.subtitles.deferred.set(true),
+                    Subtitles::Deferred => g.client.subtitles.deferred.set(true),
                 },
             );
             let atlas = &self.client.gui.atlas;
@@ -2599,13 +2601,13 @@ impl crate::game::ClientGame<'_> {
             }
             self.gui_layer(VanillaGuiLayer::Chat, &mut batch, &mut |g, batch| {
                 // The chat screen has its own paint site for focused chat.
-                if show_hud && g.side.screen != Screen::Chat && !g.overlay_holds_view() {
+                if show_hud && g.client.screen != Screen::Chat && !g.overlay_holds_view() {
                     g.draw_chat(batch);
                 }
             });
             self.gui_layer(VanillaGuiLayer::TabList, &mut batch, &mut |g, batch| {
                 // Options polls world skins separately, even if the HUD is hidden.
-                if show_hud && !matches!(g.side.screen, Screen::Chat | Screen::Options) {
+                if show_hud && !matches!(g.client.screen, Screen::Chat | Screen::Options) {
                     g.draw_tab_list(batch);
                 }
             });

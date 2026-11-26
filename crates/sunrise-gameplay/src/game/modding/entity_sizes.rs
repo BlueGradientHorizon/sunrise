@@ -118,7 +118,7 @@ impl ServerGame<'_> {
                 .and_then(|host| host.hub.guests.motion_mut(conn))
             {
                 if let Some(answer) = answer {
-                    Self::apply_body_size(body, answer);
+                    sunrise_gameplay_common::game::CommonGame::apply_body_size(body, answer);
                 }
                 body.pose_fit_sizes = fit_sizes;
             }

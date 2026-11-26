@@ -426,7 +426,7 @@ mod omen_tests {
                 player.loaded = true;
                 player.dimension = game.dim.id().to_owned();
             }
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()

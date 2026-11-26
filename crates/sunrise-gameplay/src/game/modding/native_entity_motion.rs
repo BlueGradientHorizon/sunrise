@@ -188,8 +188,8 @@ impl crate::game::ServerGame<'_> {
                 let Some(handle) = self.common.native_walk_entity(entity.id()) else {
                     return Ok(false);
                 };
-                with_entity_mut!(self, handle, e => {
-                    e.update_retained_ground(&self.world, self.collision, &world_items!(self).entity_type_tags, on_ground, None)
+                with_entity_mut!(self.common, handle, e => {
+                    e.update_retained_ground(&self.common.world, self.common.collision, &server_world_items!(self).entity_type_tags, on_ground, None)
                         .map_err(|_| LevelWriteError::Unavailable)
                 })
             }

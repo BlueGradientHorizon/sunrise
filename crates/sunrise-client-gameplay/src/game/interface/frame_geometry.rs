@@ -498,7 +498,7 @@ impl crate::game::ClientGame<'_> {
         let eye = camera.to_array();
         let sea_level = self.weather_sea_level();
         let biome_zoom = self.client.streaming.biome_zoom;
-        let biomes = world_biomes!(self);
+        let biomes = world_biomes!(self.common);
         let mut rain = Vec::new();
         let mut snow_vertices = Vec::new();
         // Saturation keeps extreme camera coordinates from overflowing the loop.

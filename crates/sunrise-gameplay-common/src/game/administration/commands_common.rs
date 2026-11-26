@@ -663,7 +663,7 @@ impl Component {
 
 impl crate::game::CommonGame<'_> {
 
-    pub(in crate::game) fn decorate_entity_display_name_with_uuid(
+    pub fn decorate_entity_display_name_with_uuid(
         kind: &str,
         uuid: Option<[i32; 4]>,
         team: Option<&sunrise_game_data::scoreboard::Team>,

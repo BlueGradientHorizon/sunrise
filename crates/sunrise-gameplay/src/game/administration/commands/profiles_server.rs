@@ -8,7 +8,7 @@ impl crate::game::ServerGame<'_> {
     pub(in crate::game::server_side) fn cmd_save_all(&mut self) -> R<i32> {
         self.dedicated_lists()?;
         self.feedback(Text::translate("commands.save.saving", &[]));
-        Self::admit_entity_save().map_err(|_| err("commands.save.failed", &[]))?;
+        sunrise_gameplay_common::game::CommonGame::admit_entity_save().map_err(|_| err("commands.save.failed", &[]))?;
         if self.server.lan_acting.is_some() {
             // The acting guest's record holds the game's state until their
             // turn ends: saving now would write it to their file.

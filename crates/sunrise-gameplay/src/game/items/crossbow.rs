@@ -192,7 +192,7 @@ impl crate::game::ServerGame<'_> {
         // getUseDuration - the ticks left, as a mod's Start or Tick left them.
         let held = self.ticks_held(stack, ticks);
         self.common.using = Some((slot, ticks + 1));
-        let charge = Self::charge_ticks(stack).max(1) as f32;
+        let charge = sunrise_gameplay_common::game::CommonGame::charge_ticks(stack).max(1) as f32;
         let now = (held + 1) as f32 / charge;
         let sounds = Self::charging_sounds(stack);
         let at = self

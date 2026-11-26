@@ -577,7 +577,7 @@ impl crate::game::CommonGame<'_> {
     }
     /// The seed vanilla picks a block state model's weighted alternatives with outside the
     /// world (`BlockModelResolver.MODEL_SEED`).
-    pub(in crate::game) const BLOCK_MODEL_SEED: i64 = 42;
+    pub const BLOCK_MODEL_SEED: i64 = 42;
 }
 /// Saving and loading.
 impl Minecart {

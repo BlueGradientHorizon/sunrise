@@ -210,7 +210,8 @@ impl PatrolLevel for PatrolCx<'_, '_, '_> {
             .bool_at(sunrise_game_data::gamerules::vanilla::SPAWN_PATROLS)
     }
     fn bright_outside(&self) -> bool {
-        !self.level.game.dimension_type().has_fixed_time && self.level.game.sky_darken() < 4
+        !self.level.game.dimension_type().has_fixed_time
+            && WeatherGameExt::sky_darken(self.level.game) < 4
     }
     /// `PatrolSpawner.tick` picks from `level.players()`: the local player
     /// and every guest in the level.
@@ -1512,7 +1513,7 @@ impl crate::game::ServerGame<'_> {
 
 impl SiegeLevel for crate::game::ServerGame<'_> {
     fn sky_darken(&self) -> i32 {
-        crate::game::ServerGame::sky_darken(self)
+        WeatherGameExt::sky_darken(self)
     }
     fn surface_height(&self, x: i32, z: i32) -> i32 {
         crate::game::ServerGame::surface_height(self, x, z)
@@ -1667,7 +1668,7 @@ use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
-use sunrise_gameplay_common::game::weather::WeatherGameExt as _;
+use sunrise_gameplay_common::game::weather::WeatherGameExt;
 
 use sunrise_gameplay_common::game::GameGameExt1 as _;
 

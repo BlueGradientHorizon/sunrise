@@ -1,3 +1,4 @@
+use crate::game::client_side::screens::ClientScreenExt as _;
 use super::*;
 use crate::game::host::draw::GameDrawContext;
 

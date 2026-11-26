@@ -97,7 +97,7 @@ impl crate::game::ServerGame<'_> {
         let id = sunrise_command::args::normalized(id);
         match registry {
             "minecraft:predicate" => self.server.fns.0.store.predicates.get(id.as_ref()),
-            _ => self.context_registry(registry)?.get(id.as_ref()),
+            _ => self.active_providers().registry(registry)?.get(id.as_ref()),
         }
         .cloned()
     }

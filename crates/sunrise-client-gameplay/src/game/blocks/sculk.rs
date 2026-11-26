@@ -1,5 +1,6 @@
 //! Client-side sculk visuals and darkness effect fade blending.
 use crate::game::ClientGame;
+use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 use sunrise_core::{geometry::Direction, position::BlockPos, random::RandomSource};
 use sunrise_level::particle_options::{ParticleOptions, ParticleType};
 use sunrise_level::{

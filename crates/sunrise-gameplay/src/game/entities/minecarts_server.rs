@@ -223,7 +223,7 @@ impl crate::game::ServerGame<'_> {
         self.common.store_cart_items(key);
         let guest_viewers =
             self.server.lan.as_ref().is_some_and(|host| {
-                Self::vehicle_has_other_viewers(None, &host.hub.guests, None, key)
+                sunrise_gameplay_common::game::CommonGame::vehicle_has_other_viewers(None, &host.hub.guests, None, key)
             });
         if !guest_viewers {
             self.common.world.block_entities.remove(&key);

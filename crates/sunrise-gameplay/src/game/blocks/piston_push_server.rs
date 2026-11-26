@@ -1187,29 +1187,29 @@ impl crate::game::ServerGame<'_> {
         );
         macro_rules! motion_phase {
             ($world:ident, $body:expr) => {{
-                if self.side.lan_acting != conn || self.dim != dim {
+                if self.server.lan_acting != conn || self.common.dim != dim {
                     return Ok(None);
                 }
                 let entities = self.entity_collisions(Mover::Player);
                 let section_scope = self.player_section_scope();
-                let Some(player) = self.player.as_mut().filter(|p| p.entity_id == id) else {
+                let Some(player) = self.common.player.as_mut().filter(|p| p.entity_id == id) else {
                     return Ok(None);
                 };
-                let side = game_side!(self);
-                let _sections = section_scope.map(|scope| scope.begin(&mut self.native_lifecycle));
+                let side = server_game_side!(self);
+                let _sections = section_scope.map(|scope| scope.begin(&mut self.common.native_lifecycle));
                 let mut $world = MotionWorld {
                     side: &side,
                     entities: &entities,
                     player,
-                    scene: &mut self.world,
-                    assets: &self.pack.assets,
-                    collision_binding: self.collision,
-                    resources: self.motion,
-                    health: &self.health_resources,
-                    loop_context: &self.loop_context,
-                    damage_hooks: &self.damage_hooks,
-                    tag_items: Some(world_items!(self)),
-                    block_registries: Some(&self.pack.block_registries),
+                    scene: &mut self.common.world,
+                    assets: &self.common.pack.assets,
+                    collision_binding: self.common.collision,
+                    resources: self.common.motion,
+                    health: &self.common.health_resources,
+                    loop_context: &self.common.loop_context,
+                    damage_hooks: &self.common.damage_hooks,
+                    tag_items: Some(server_world_items!(self)),
+                    block_registries: Some(&self.common.pack.block_registries),
                 };
                 $body
             }};
@@ -1444,10 +1444,15 @@ impl crate::game::ServerGame<'_> {
             stand.ground.horizontal_collision =
                 different(wanted.x, moved.x) || different(wanted.z, moved.z);
             if authoritative || wanted.y.abs() > 0.0 {
+                let items = match (&self.common.server_items, self.server.world_tables.0.as_ref()) {
+                    (Some(items), _) => &**items,
+                    (None, Some(tables)) => &tables.items,
+                    (None, None) => self.common.res.items(),
+                };
                 let _ = stand.update_retained_ground(
                     &self.common.world,
                     self.common.collision,
-                    &world_items!(self).entity_type_tags,
+                    &items.entity_type_tags,
                     wanted.y < 0.0 && wanted.y != moved.y,
                     Some(moved),
                 );
@@ -1462,7 +1467,7 @@ impl crate::game::ServerGame<'_> {
             context: &self.common.loop_context,
             side: None,
         };
-        with_entity_mut!(self, handle, entity => {
+        with_entity_mut!(self.common, handle, entity => {
             let (at, bounds, id) = (entity.position(), entity.bounds(), entity.id());
             let (subject, context) = tnt.map_or_else(
                 || {
@@ -1511,6 +1516,7 @@ use sunrise_gameplay_common::game::collision_source::CollisionSourceGameExt1 as 
 use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
 
 use sunrise_gameplay_common::game::entity_sections::EntitySectionsGameExt1 as _;
+use sunrise_gameplay_common::game::entity_sections::player::PlayerGameExt1 as _;
 
 use sunrise_gameplay_common::game::move_gate::MoveGateGameExt1 as _;
 

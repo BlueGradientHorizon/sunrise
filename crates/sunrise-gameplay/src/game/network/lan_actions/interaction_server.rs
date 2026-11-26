@@ -384,7 +384,7 @@ impl crate::game::ServerGame<'_> {
                 .as_guest_at(gi, conn, |g| {
                     let swings = g.swings_started;
                     let consumed = g.with_hand(hand, |g| g.use_knot(knot, true));
-                    reset_use_attack_strength(&mut g.server.attack_ticks, swings, g.swings_started);
+                    reset_use_attack_strength(&mut g.server.attack_ticks, swings, g.common.swings_started);
                     (g.swings_started != swings, consumed)
                 })
                 .ok();
@@ -408,7 +408,7 @@ impl crate::game::ServerGame<'_> {
                 let consumed = matches!(g.use_item(), Ok(Some(_))) && !g.server.use_failed;
                 g.server.guest_use = saved;
                 g.server.use_failed = failed;
-                reset_use_attack_strength(&mut g.server.attack_ticks, swings, g.swings_started);
+                reset_use_attack_strength(&mut g.server.attack_ticks, swings, g.common.swings_started);
                 (g.swings_started != swings, consumed)
             })
             .ok();
@@ -580,7 +580,7 @@ impl crate::game::ServerGame<'_> {
                 let swings = g.swings_started;
                 let consumed = matches!(g.use_item(), Ok(Some(_)));
                 g.server.guest_use = saved;
-                reset_use_attack_strength(&mut g.server.attack_ticks, swings, g.swings_started);
+                reset_use_attack_strength(&mut g.server.attack_ticks, swings, g.common.swings_started);
                 (g.swings_started != swings, horn, consumed)
             })
             .ok();
@@ -697,7 +697,7 @@ impl crate::game::ServerGame<'_> {
                     })
                 );
                 (g.server.forced_hit, g.server.guest_use) = saved;
-                reset_use_attack_strength(&mut g.server.attack_ticks, swings, g.swings_started);
+                reset_use_attack_strength(&mut g.server.attack_ticks, swings, g.common.swings_started);
                 (
                     g.swings_started != swings && g.server.predicted_swings == predicted,
                     result.map(|used| used.is_some()),

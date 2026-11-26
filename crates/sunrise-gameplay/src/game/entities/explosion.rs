@@ -1096,7 +1096,7 @@ impl crate::game::ServerGame<'_> {
                 let vanilla = self.saved_refuses_damage($id as u32, damage_type, creative);
                 crate::game::entity_server::damage_level_of!(
                     self,
-                    self.side.combat.0.attack(),
+                    self.server.combat.0.attack(),
                     no_push,
                     None
                 )

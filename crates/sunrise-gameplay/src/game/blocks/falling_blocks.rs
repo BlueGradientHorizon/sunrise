@@ -95,7 +95,8 @@ impl crate::game::ServerGame<'_> {
                 // Entity.scale(getAirDrag()) ends the tick of a block that stays.
                 kept.velocity = sunrise_sim::entity_rules::scale_air_drag(kept.velocity);
                 let state = kept.state;
-                game.falling.put_back(i.min(game.falling.len()), kept);
+                let falling = &mut game.common.falling;
+                falling.put_back(i.min(falling.len()), kept);
                 game.note_falling_tick(id, join, state);
                 return Ok(());
             }

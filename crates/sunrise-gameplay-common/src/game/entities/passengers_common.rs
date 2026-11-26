@@ -10,7 +10,7 @@ use {
 
 impl crate::game::CommonGame<'_> {
     /// The vehicle's attachment for this passenger's actual place in `getPassengers`.
-    pub(in crate::game) fn mob_passenger_attachment(
+    pub fn mob_passenger_attachment(
         vehicle: &sunrise_sim::mobs::Mob,
         rider_is_animal: bool,
         seat: usize,

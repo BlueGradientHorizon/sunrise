@@ -1096,7 +1096,7 @@ impl crate::game::ClientGame<'_> {
 #[cfg(test)]
 mod tests {
     use super::{
-        ADDED_PAGES, Screen, death_buttons, pause_buttons, pause_icon_focus_ids, pause_icons,
+        ADDED_PAGES, ClientScreenExt as _, Screen, death_buttons, pause_buttons, pause_icon_focus_ids, pause_icons,
     };
 
     #[test]

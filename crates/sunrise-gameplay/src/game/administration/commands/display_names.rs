@@ -50,7 +50,7 @@ impl ServerGame<'_> {
                 let team = holder
                     .as_deref()
                     .and_then(|holder| self.common.score.board.players_team(holder));
-                Self::decorate_entity_display_name_with_uuid(&kind, uuid, team, name)
+                sunrise_gameplay_common::game::CommonGame::decorate_entity_display_name_with_uuid(&kind, uuid, team, name)
             }
         }
     }

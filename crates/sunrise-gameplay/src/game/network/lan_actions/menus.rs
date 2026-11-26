@@ -532,7 +532,7 @@ impl crate::game::ServerGame<'_> {
             return;
         };
         let other_viewers =
-            Self::vehicle_has_other_viewers(self.common.container, &host.hub.guests, Some(conn), key);
+            sunrise_gameplay_common::game::CommonGame::vehicle_has_other_viewers(self.common.container, &host.hub.guests, Some(conn), key);
         self.common.store_cart_items(key);
         if !other_viewers {
             self.common.world.block_entities.remove(&key);

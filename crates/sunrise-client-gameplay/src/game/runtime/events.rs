@@ -259,13 +259,13 @@ impl ClientGame<'_> {
         for wait in waits {
             let done = match &wait.condition {
                 Condition::Screen(name) => self.screen_label() == name,
-                Condition::Widget(id) => self.ui_nodes().iter().any(|n| &n.id == id),
+                Condition::Widget(id) => self.ui_nodes().iter().any(|n| n.id.as_str() == id.as_str()),
                 Condition::Loaded => self.loaded(),
                 Condition::Chat(text) => since(&self.common.events, wait.since).any(|e| {
-                    e["event"] == "chat" && e["text"].as_str().is_some_and(|t| t.contains(text))
+                    e["event"] == "chat" && e["text"].as_str().is_some_and(|t| t.contains(text.as_str()))
                 }),
                 Condition::Event(kind) => {
-                    since(&self.common.events, wait.since).any(|e| e["event"] == **kind)
+                    since(&self.common.events, wait.since).any(|e| e["event"] == kind.as_str())
                 }
             };
             let waited = wait.started.elapsed();

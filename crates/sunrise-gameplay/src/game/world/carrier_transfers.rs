@@ -1150,10 +1150,10 @@ mod tests {
         use sunrise_sim::join_seq::visibility::{PassLease, passes_settled};
         let _lease = PassLease::enter();
         assert!(!passes_settled());
-        assert!(crate::game::ServerGame::admit_entity_save().is_err());
+        assert!(sunrise_gameplay_common::game::CommonGame::admit_entity_save().is_err());
         drop(_lease);
         assert!(passes_settled());
-        assert!(crate::game::ServerGame::admit_entity_save().is_ok());
+        assert!(sunrise_gameplay_common::game::CommonGame::admit_entity_save().is_ok());
     }
 
     

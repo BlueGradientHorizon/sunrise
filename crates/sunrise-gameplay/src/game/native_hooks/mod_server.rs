@@ -41,9 +41,15 @@ use {
     sunrise_sim::health::HurtSource, sunrise_sim::merchant::MerchantOffer, sunrise_sim::mobs::Who,
 };
 
-crate::game::native_hooks::add_pack_finders::impl_pack_discovery_context!(
-    crate::game::ServerGame<'_>
-);
+impl mod_api::PackDiscoveryContext for crate::game::ServerGame<'_> {
+    fn live_host(&mut self) -> Option<mod_api::HostSide<'_>> {
+        Some(mod_api::HostSide::Server(self))
+    }
+
+    fn client_text(&self) -> Option<&dyn mod_api::prelude::ClientTextClientHost> {
+        None
+    }
+}
 
 #[path = "base_server.rs"]
 pub(in crate::game) mod base;

@@ -88,7 +88,7 @@ impl crate::game::ServerGame<'_> {
         {
             return false;
         }
-        Self::admit_entity_save().is_err()
+        sunrise_gameplay_common::game::CommonGame::admit_entity_save().is_err()
     }
 
     /// `ChunkMap.saveChunksEagerly`: snapshot only while the tick and writer

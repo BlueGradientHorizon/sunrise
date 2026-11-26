@@ -721,7 +721,7 @@ impl crate::game::ServerGame<'_> {
                     child.extra.owner = p.extra.owner;
                     let mixed = dye_mix(
                         &self.common.loop_context,
-                        world_recipes!(self),
+                        server_world_recipes!(self),
                         &mut self.common.world.random,
                         p.extra.color,
                         other.extra.color,
@@ -744,7 +744,7 @@ impl crate::game::ServerGame<'_> {
                     child.extra.owner = p.extra.owner;
                     let mixed = dye_mix(
                         &self.common.loop_context,
-                        world_recipes!(self),
+                        server_world_recipes!(self),
                         &mut self.common.world.random,
                         p.extra.color,
                         other.extra.color,
@@ -792,7 +792,7 @@ impl crate::game::ServerGame<'_> {
                 let other = q.as_ref().unwrap_or(&p);
                 let mixed = dye_mix(
                     &self.common.loop_context,
-                    world_recipes!(self),
+                    server_world_recipes!(self),
                     &mut self.common.world.random,
                     p.extra.color,
                     other.extra.color,

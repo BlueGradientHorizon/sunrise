@@ -79,7 +79,7 @@ impl crate::game::ClientGame<'_> {
             let context = game.worker_context();
             game.client
                 .streaming
-                .reload_resources(&mut game.world, context);
+                .reload_resources(&mut game.common.world, context);
             game.install_model_upload(upload);
             game.client.armor_stand_assets.0.extensions = item_extensions;
             game.resolve_entity_renderers();

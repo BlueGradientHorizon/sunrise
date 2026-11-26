@@ -611,7 +611,7 @@ impl ServerGame<'_> {
     pub(in crate::game::server_side) fn thorns(&mut self, attacker: u32) {
         self.player_thorns(|g, min, max| {
             // DamageEntity: Mth.randomBetween from the hurt entity's own random.
-            let Some(index) = g.mob_index.find(&g.mobs, attacker) else {
+            let Some(index) = g.common.mob_index.find(&g.common.mobs, attacker) else {
                 g.dragon_thorns(attacker, min, max);
                 return;
             };
@@ -626,7 +626,7 @@ impl ServerGame<'_> {
             let join = g.mobs[index].join;
             let (_, killed) = g.hurt_by_player(index, damage, source);
             if killed
-                && let Some(i) = g.mob_index.find(&g.mobs, attacker)
+                && let Some(i) = g.common.mob_index.find(&g.common.mobs, attacker)
                 && g.mobs[i].join == join
                 && !g.mobs[i].removed
             {

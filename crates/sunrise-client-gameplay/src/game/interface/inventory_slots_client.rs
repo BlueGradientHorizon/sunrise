@@ -629,7 +629,7 @@ impl crate::game::ClientGame<'_> {
         if let Some(p) = self
             .station_slot_position(i)
             .or_else(|| {
-                Self::stock_machine_slot(self.machine_slot_position(i), self.native_screen_shown())
+                sunrise_gameplay_common::game::CommonGame::stock_machine_slot(self.machine_slot_position(i), self.native_screen_shown())
             })
             .or_else(|| self.crafter_slot_position(i))
             .or_else(|| self.mount_slot_position(i))

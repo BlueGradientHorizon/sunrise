@@ -194,7 +194,7 @@ impl ClientGame<'_> {
             max[0] - min[0],
             |game| {
                 let random = match mob {
-                    Some(id) => &mut game.mob_index.get_mut(&mut game.mobs, id)?.random,
+                    Some(id) => &mut game.common.mob_index.get_mut(&mut game.common.mobs, id)?.random,
                     None => game.client.particles.0.random(),
                 };
                 Some((random.next_double(), random.next_double()))

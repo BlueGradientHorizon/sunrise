@@ -716,7 +716,10 @@ impl crate::game::ServerGame<'_> {
                         attack.projectile = Some(t.id as i32);
                         attack.projectile_kind = sunrise_sim::health::DirectEntity::Arrow;
                         attack.projectile_type = Some("minecraft:trident");
-                        Self::set_projectile_weapon(&mut attack, Some(&t.stack));
+                        sunrise_gameplay_common::game::CommonGame::set_projectile_weapon(
+                            &mut attack,
+                            Some(&t.stack),
+                        );
                         let trident_source = DamageKind::Named(
                             sunrise_sim::mobs::NamedDamage::registered(
                                 &self.common.health_resources.damage,

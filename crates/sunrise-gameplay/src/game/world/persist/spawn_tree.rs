@@ -1,5 +1,5 @@
 //! Configured spawner NBT, decoded once and held until the spawn pass finishes.
-use super::{Game, Mob, Tag, entity_nbt};
+use super::{Mob, Tag, entity_nbt};
 use sunrise_gameplay_common::game::general::GeneralEntityRecord;
 use sunrise_core::fast_hash::FxHashSet;
 

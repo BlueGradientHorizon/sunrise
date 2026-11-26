@@ -1127,7 +1127,11 @@ impl crate::game::ServerGame<'_> {
     ) {
         let used = match self.common.world.block_entities.get_mut(&pos) {
             Some(BlockEntity::Furnace(f)) => {
-                let used = f.recipe_experience(world_recipes!(self));
+                let recipes = match self.server.world_tables.0.as_ref() {
+                    Some(tables) => &tables.recipes,
+                    None => self.common.res.recipes(),
+                };
+                let used = f.recipe_experience(recipes);
                 f.recipes_used.clear();
                 used
             }

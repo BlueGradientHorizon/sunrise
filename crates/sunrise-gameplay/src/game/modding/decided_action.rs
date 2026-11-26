@@ -41,8 +41,8 @@ thread_local! {
     pub(in crate::game) static DECIDED: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
 
-type Fresh<'p, S> = Box<dyn Fn(&Game<'_, S>) -> bool + 'p>;
-type Perform<'p, S> = Box<dyn FnOnce(&mut Game<'_, S>) + 'p>;
+type Fresh<'p, G> = Box<dyn Fn(&G) -> bool + 'p>;
+type Perform<'p, G> = Box<dyn FnOnce(&mut G) + 'p>;
 
 struct Shared<'p, S> {
     epoch: Epoch<'p>,
@@ -70,7 +70,9 @@ struct Reads {
 
 struct Plan;
 
-impl<'a, 'g, S: sunrise_gameplay_common::game::Side> ActionTarget<GameHost<'a, 'g, S>> for Action<'_, S> {
+impl<'a, 'g, G: sunrise_gameplay_common::game::SideGame<'g>> ActionTarget<GameHost<'a, 'g, G>>
+    for Action<'_, G>
+{
     type Reads = Reads;
     type View = Reads;
     type Plan = Plan;
@@ -79,7 +81,7 @@ impl<'a, 'g, S: sunrise_gameplay_common::game::Side> ActionTarget<GameHost<'a, '
     fn id(&self) -> MenuId {
         self.id
     }
-    fn capture(&self, host: &GameHost<'a, 'g, S>) -> std::result::Result<Reads, Outcome> {
+    fn capture(&self, host: &GameHost<'a, 'g, G>) -> std::result::Result<Reads, Outcome> {
         Ok(Reads {
             player_writes: host.game.transactions.player_writes(),
         })
@@ -95,7 +97,7 @@ impl<'a, 'g, S: sunrise_gameplay_common::game::Side> ActionTarget<GameHost<'a, '
     }
     fn validate(
         &self,
-        host: &GameHost<'a, 'g, S>,
+        host: &GameHost<'a, 'g, G>,
         reads: &Reads,
     ) -> std::result::Result<(), Outcome> {
         let check_player_writes = match self.shared.epoch {
@@ -111,7 +113,7 @@ impl<'a, 'g, S: sunrise_gameplay_common::game::Side> ActionTarget<GameHost<'a, '
             Err(Outcome::Stale(StaleReason::Snapshot))
         }
     }
-    fn apply(&self, host: &mut GameHost<'a, 'g, S>, _: Plan) {
+    fn apply(&self, host: &mut GameHost<'a, 'g, G>, _: Plan) {
         let perform = self.shared.perform.take().expect("an action runs once");
         perform(host.game);
     }

@@ -259,7 +259,7 @@ impl ServerGame<'_> {
         }
         if let Some(v) = self.common.mobs.iter().find(|m| m.id == vehicle && !m.removed) {
             let (index, count) = self.passenger_place(vehicle, rider);
-            let attachment = Self::mob_passenger_attachment(v, false, index, count);
+            let attachment = sunrise_gameplay_common::game::CommonGame::mob_passenger_attachment(v, false, index, count);
             return Some(riders::seat(attachment, 0.0, v.position, v.yaw));
         }
         let at = self.server_passenger_riding_position(vehicle, None, None, &HashMap::new())?;
@@ -402,7 +402,7 @@ impl ServerGame<'_> {
                 } else {
                     (0, 1)
                 };
-                let attach = Self::mob_passenger_attachment(
+                let attach = sunrise_gameplay_common::game::CommonGame::mob_passenger_attachment(
                     vehicle,
                     sunrise_sim::mobs::drops::is_animal(self.common.mobs[i].species()),
                     place.0,

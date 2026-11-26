@@ -30,7 +30,7 @@ impl crate::game::CommonGame<'_> {
     /// on a hopper or a dispenser on the stock grid (#5141). The rest of those
     /// menus is already the mod's: `draw_native_screen` owns the background and
     /// `screen_height` its height.
-    pub(in crate::game) fn stock_machine_slot(
+    pub fn stock_machine_slot(
         stock: Option<(f32, f32)>,
         mod_screen_shown: bool,
     ) -> Option<(f32, f32)> {

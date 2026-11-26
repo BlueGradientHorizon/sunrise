@@ -561,7 +561,7 @@ impl crate::game::ClientGame<'_> {
             // getUseItemRemainingTicks: the duration the use started with,
             // as LivingEntityUseItemEvent.Start and .Tick left it (`game/items/item_use.rs`).
             owner.use_item_remaining_ticks = self.common.use_duration - ticks as i32;
-            owner.crossbow_charge_duration = Self::charge_ticks(stack).max(1) as i32;
+            owner.crossbow_charge_duration = sunrise_gameplay_common::game::CommonGame::charge_ticks(stack).max(1) as i32;
         }
         owner.fishing_cast_with_this_item = stack
             .zip(self.cast_rod())

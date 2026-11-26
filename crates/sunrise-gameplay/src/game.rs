@@ -1243,8 +1243,6 @@ impl mod_api::AttachmentHost for ServerGame<'_> {
     }
 }
 
-impl_shared_phase_contexts!(ServerGame<'_>);
-
 impl sunrise_gameplay_common::game::item_snapshot::ItemBoundary for ServerGame<'_> {
     fn boundary_items(&self) -> Option<&sunrise_items::items::Items> {
         Some(sunrise_gameplay_common::game::tables::GameItems::items(self))

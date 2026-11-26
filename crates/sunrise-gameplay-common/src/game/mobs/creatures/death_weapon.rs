@@ -20,7 +20,7 @@ impl crate::game::CommonGame<'_> {
         }
     }
     /// The actual direct projectile's family and saved weapon, also for explicit damage sources.
-    pub(in crate::game) fn set_projectile_attack(attack: &mut Attack, shot: &Projectile) {
+    pub fn set_projectile_attack(attack: &mut Attack, shot: &Projectile) {
         attack.projectile = Some(shot.id as i32);
         attack.projectile_kind = Self::projectile_direct_entity(&shot.kind);
         attack.projectile_type = Some(shot.entity_type());
@@ -48,7 +48,7 @@ impl crate::game::CommonGame<'_> {
         }
     }
     /// Only listeners need a saved weapon copy; physical family classification never does.
-    pub(in crate::game) fn set_projectile_weapon(attack: &mut Attack, weapon: Option<&ItemStack>) {
+    pub fn set_projectile_weapon(attack: &mut Attack, weapon: Option<&ItemStack>) {
         if mod_api::__private::listened(mod_api::HookId::LivingIncomingDamage)
             || mod_api::__private::listened(mod_api::HookId::LivingDeath)
             || mod_api::__private::listened(mod_api::HookId::LootDrops)

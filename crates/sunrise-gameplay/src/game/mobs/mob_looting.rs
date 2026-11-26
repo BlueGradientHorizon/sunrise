@@ -5,7 +5,7 @@
 //! else keep their own loops (`pandas.rs`, `piglins.rs`, `villagers.rs`,
 //! `allays.rs`, `sulfur_cubes.rs`).
 
-use super::Game;
+use sunrise_gameplay_common::game::equip_answers::EquipAnswersGameExt1;
 use sunrise_gameplay::mob_looting::LootingLevel;
 use sunrise_items::items::ItemStack;
 #[cfg(test)]
@@ -34,7 +34,7 @@ impl LootingLevel for crate::game::ServerGame<'_> {
         data: bool,
     ) -> bool {
         let prepared = sunrise_gameplay_common::game::CommonGame::equip_stack(self, stack);
-        crate::game::ServerGame::can_equip(self, &prepared, slot, entity, kind, data)
+        EquipAnswersGameExt1::can_equip(self, &prepared, slot, entity, kind, data)
     }
     fn mob_equip_event(&mut self, id: u32, at: [f64; 3], equip: bool) {
         crate::game::ServerGame::mob_equip_event(self, id, at, equip);
@@ -122,6 +122,5 @@ impl crate::game::ServerGame<'_> {
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
-use sunrise_gameplay_common::game::equip_answers::EquipAnswersGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_hooks::enchantments::EnchantmentsGameExt1 as _;

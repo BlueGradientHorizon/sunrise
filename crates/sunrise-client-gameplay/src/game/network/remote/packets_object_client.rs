@@ -103,7 +103,7 @@ impl crate::game::ClientGame<'_> {
             && self.common.carts.iter().any(|c| c.id == p.id as u32)
             && let Some(r) = self.client.remote.as_mut()
         {
-            r.cart_lerps.insert(p.id, super::minecarts::new_cart_lerp());
+            r.cart_lerps.insert(p.id, CartLerp::new());
         }
         self.move_remote_text_display(p.id, p.position, Some((rotation[0], rotation[1])));
         self.move_remote_interaction(p.id, p.position);

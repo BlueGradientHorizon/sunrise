@@ -39,10 +39,10 @@ pub(in crate::game) fn tick_riding(
     let mut player_step = None;
     if alive
         && game.riding == Some(cart.id)
-        && let Some(player) = game.player.as_mut()
+        && let Some(player) = game.common.player.as_mut()
     {
         let player_from = player.position;
-        game.previous_position = player.position;
+        game.common.previous_position = player.position;
         player.position = Vec3::new(cart.position.x, cart.position.y + SEAT, cart.position.z);
         player.velocity = Vec3::ZERO;
         player.fall_distance = 0.0;

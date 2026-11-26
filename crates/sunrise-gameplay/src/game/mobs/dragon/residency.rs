@@ -56,7 +56,7 @@ impl crate::game::ServerGame<'_> {
 
     pub(in crate::game::server_side) fn assign_resident_crystal_ids(&mut self) {
         crate::game::entity_residency::assign_resident_ids!(
-            self.crystals,
+            self.common.crystals,
             c,
             &mut self.server.next_entity,
             None

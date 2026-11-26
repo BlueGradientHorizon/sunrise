@@ -3,7 +3,7 @@
 use super::*;
 
 impl crate::game::CommonGame<'_> {
-    pub(in crate::game) fn admit_entity_save() -> Result<()> {
+    pub fn admit_entity_save() -> Result<()> {
         if !sunrise_sim::join_seq::visibility::passes_settled() {
             return Err("entity pass is lifted".into());
         }

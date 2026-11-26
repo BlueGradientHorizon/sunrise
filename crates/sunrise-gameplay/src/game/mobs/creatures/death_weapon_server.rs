@@ -9,7 +9,7 @@ impl crate::game::ServerGame<'_> {
             Some(Who::Mob(entity)) => self.attack_of(entity as i32),
             None => Attack::default(),
         };
-        Self::set_projectile_attack(&mut attack, shot);
+        sunrise_gameplay_common::game::CommonGame::set_projectile_attack(&mut attack, shot);
         attack
     }
     pub(in crate::game) fn shot_damage(

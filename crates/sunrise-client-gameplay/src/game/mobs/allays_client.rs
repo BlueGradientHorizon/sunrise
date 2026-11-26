@@ -1,5 +1,6 @@
 //! Client-side allay interaction prediction.
-use super::{Game, level_sounds_common::LevelSound};
+use super::level_sounds_common::LevelSound;
+use sunrise_gameplay_common::game::item_use_stacks::ItemUseStacksGameExt1 as _;
 use mod_api::SoundSource;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::first_person_sim::Hand;

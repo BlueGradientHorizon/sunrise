@@ -42,9 +42,15 @@ use sunrise_sim::first_person_sim::Hand;
 use sunrise_world::registry::BlockStateId;
 use winit::{event::MouseButton, keyboard::KeyCode};
 
-crate::game::native_hooks::add_pack_finders::impl_pack_discovery_context!(
-    crate::game::ClientGame<'_>
-);
+impl mod_api::PackDiscoveryContext for crate::game::ClientGame<'_> {
+    fn live_host(&mut self) -> Option<mod_api::HostSide<'_>> {
+        Some(mod_api::HostSide::Client(self))
+    }
+
+    fn client_text(&self) -> Option<&dyn mod_api::prelude::ClientTextClientHost> {
+        Some(self)
+    }
+}
 
 
 

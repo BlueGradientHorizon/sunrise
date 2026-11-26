@@ -77,7 +77,7 @@ pub fn guest_within_entity_range(
 }
 /// Kept at LAN action scope to preserve its published internals target path.
 impl crate::game::CommonGame<'_> {
-    pub(in crate::game) fn vehicle_has_other_viewers(
+    pub fn vehicle_has_other_viewers(
         container: Option<(i32, i32, i32)>,
         guests: &[sunrise_sim::lan::guest::Guest],
         closing_conn: Option<u32>,

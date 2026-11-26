@@ -1,6 +1,7 @@
 use super::{Game, Screen};
 use sunrise_core::random::RandomSource;
 use sunrise_sim::nether_portal::PLAYER_DELAY;
+use crate::game::client_side::screens::ScreenClientExt as _;
 
 #[path = "nether_portal/respawn_attributes_client.rs"]
 pub(in crate::game) mod respawn_attributes;

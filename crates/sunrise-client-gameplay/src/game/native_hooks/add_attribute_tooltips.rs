@@ -2,6 +2,8 @@ use sunrise_client::item_tooltip::{
     AttributeFilter, AttributeTooltipContext, AttributeTooltipListener,
 };
 use sunrise_game_data::text::Text;
+#[cfg(feature = "client")]
+use sunrise_gameplay_common::game::api_values::{TryIntoApi, TryIntoEngine};
 use sunrise_items::items::ItemStack;
 
 /// The hook points. Each does nothing in Sunrise.

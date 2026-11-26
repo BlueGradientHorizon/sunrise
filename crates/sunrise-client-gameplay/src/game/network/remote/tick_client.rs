@@ -1520,7 +1520,7 @@ impl crate::game::ClientGame<'_> {
                 |c| {
                     cart_lerps
                         .get_mut(&(c.id as i32))
-                        .is_some_and(|l| super::minecarts::tick_cart_lerp(l, c))
+                        .is_some_and(|l| l.tick(c))
                 },
             );
             self.tick_remote_projectiles(&mut step);

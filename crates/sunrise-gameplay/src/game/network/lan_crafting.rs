@@ -536,7 +536,7 @@ impl crate::game::ServerGame<'_> {
                 Some(&prepare),
                 |game, menu, stacked| {
                     let gi = game.guest_index(conn)?;
-                    game.side
+                    game.server
                         .lan
                         .as_ref()?
                         .hub
@@ -553,7 +553,7 @@ impl crate::game::ServerGame<'_> {
                     loop {
                         let gi = game.guest_index(conn)?;
                         let after = menu.container_items();
-                        game.side.lan.as_mut()?.hub.guests.update(gi, |g| {
+                        game.server.lan.as_mut()?.hub.guests.update(gi, |g| {
                             g.native_menu = after.clone();
                         });
                         if let Some(target) = &slot_changed {
@@ -590,7 +590,7 @@ impl crate::game::ServerGame<'_> {
                                 live_now
                             }
                         } else {
-                            game.side
+                            game.server
                                 .lan
                                 .as_ref()
                                 .and_then(|host| host.hub.guest(conn))
@@ -865,13 +865,13 @@ impl crate::game::ServerGame<'_> {
                 }
             }
             let mut linked_after = Vec::new();
-            match game.world.block_entities.get_mut(&pos) {
+            match game.common.world.block_entities.get_mut(&pos) {
                 Some(BlockEntity::Furnace(f)) => {
                     for k in 0..3 {
                         f.items[k] = menu.slot(k).cloned();
                     }
                     // AbstractFurnaceBlockEntity.setItem: only a new input restarts cooking.
-                    f.input_clicked(&game.loop_context, world_recipes!(game), items[0].clone());
+                    f.input_clicked(&game.common.loop_context, server_world_recipes!(game), items[0].clone());
                 }
                 // BrewingStandBlockEntity.serverTick notices a new ingredient itself.
                 Some(BlockEntity::Brewing(b)) => {
@@ -1253,7 +1253,7 @@ impl crate::game::ServerGame<'_> {
         // The server menu uses the world's active data-pack tables, the same
         // tables used by the guest menu below. The base resources can have a
         // different display registry or placement for an overridden recipe.
-        let Some(id) = world_stations!(self)
+        let Some(id) = server_world_stations!(self)
             .recipe_index
             .recipe_of_display(p.recipe)
             .map(str::to_owned)
@@ -1262,7 +1262,7 @@ impl crate::game::ServerGame<'_> {
         };
         // An unknown or impossible recipe is refused outright.
         if !g.recipe_book.knows(&id)
-            || world_recipes!(self)
+            || server_world_recipes!(self)
                 .placement(&id)
                 .is_none_or(|placement| placement.impossible())
         {
@@ -1334,7 +1334,7 @@ impl crate::game::ServerGame<'_> {
                 }
                 f.input_clicked(
                     &self.common.loop_context,
-                    world_recipes!(self),
+                    server_world_recipes!(self),
                     items[0].clone(),
                 );
             }

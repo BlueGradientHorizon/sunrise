@@ -1,9 +1,10 @@
 use super::*;
+use sunrise_gameplay_common::game::side_ops::modapi_modding::ModapiModdingSideGameExt as _;
 use sunrise_items::creative_catalog::{Catalog, Holders};
 
 impl crate::game::ServerGame<'_> {
     pub(in crate::game) fn server_creative_holders(&self) -> Option<Holders> {
-        self.registry_sync().map(|sync| sync.creative_holders())
+        self.side_registry_sync().map(|sync| sync.creative_holders())
     }
 
     pub(in crate::game) fn server_creative_catalog(&self) -> &Arc<Catalog> {

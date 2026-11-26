@@ -495,7 +495,7 @@ impl crate::game::ClientGame<'_> {
             .is_some_and(|s| s.data().is_some_and(|d| !d.charged.is_empty()));
         let charge_duration = self.common.inventory[self.common.selected]
             .as_ref()
-            .map_or(25, |s| Self::charge_ticks(s).max(1)) as i32;
+            .map_or(25, |s| sunrise_gameplay_common::game::CommonGame::charge_ticks(s).max(1)) as i32;
         let attack = (self.common.swing.old_animation, self.common.swing.animation);
         let swinging = self.common.swing.swinging();
         // currentSwing.hand().asArm(mainArm).

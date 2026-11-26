@@ -4,12 +4,12 @@ use sunrise_gameplay_common::game::native_book_displays::Resources;
 use std::collections::{BTreeMap, BTreeSet};
 use std::result::Result;
 use sunrise_sim::recipe_book::{DisplayResources, ModBookIndex, placement_sync as sync};
-struct RemoteResources<'a, 'w, S: sunrise_gameplay_common::game::Side> {
-    inner: Resources<'a, 'w, S>,
+struct RemoteResources<'a, 'w> {
+    inner: Resources<'a, 'w, crate::game::ClientGame<'w>>,
     recipes: BTreeMap<String, String>,
     types: BTreeSet<String>,
 }
-impl<S: sunrise_gameplay_common::game::Side> DisplayResources for RemoteResources<'_, '_, S> {
+impl DisplayResources for RemoteResources<'_, '_> {
     fn book(&self, key: &mod_api::RecipeBookTypeKey) -> bool {
         self.inner.book(key)
     }

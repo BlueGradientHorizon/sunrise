@@ -1880,9 +1880,16 @@ impl crate::game::ServerGame<'_> {
                     return;
                 }
             }
-            target_entity_mut!(g, t, e => {
+            let common = &mut g.common;
+            let server = &g.server;
+            target_entity_mut!(common, t, e => {
                 e.velocity_mut().y = 0.0;
-                if matches!(e.update_retained_ground(&g.world, g.collision, &world_items!(g).entity_type_tags, true, None), Ok(false)) {
+                let items = match (&common.server_items, server.world_tables.0.as_ref()) {
+                    (Some(items), _) => &**items,
+                    (None, Some(tables)) => &tables.items,
+                    (None, None) => common.res.items(),
+                };
+                if matches!(e.update_retained_ground(&common.world, common.collision, &items.entity_type_tags, true, None), Ok(false)) {
                     e.set_on_ground(true);
                 }
             });

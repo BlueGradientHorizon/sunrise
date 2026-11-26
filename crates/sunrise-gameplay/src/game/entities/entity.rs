@@ -351,7 +351,7 @@ impl crate::game::ServerGame<'_> {
             &mut sunrise_sim::health::DamageLevel::of(
                 &mut self.common.world,
                 self.common.pack.assets.registry,
-                Some(world_items!(self)),
+                Some(server_world_items!(self)),
                 Some(&self.common.pack.block_registries),
                 &self.common.damage_hooks,
             )
@@ -419,7 +419,7 @@ impl crate::game::ServerGame<'_> {
         let mut level = sunrise_sim::health::DamageLevel::of(
             &mut self.common.world,
             self.common.pack.assets.registry,
-            Some(world_items!(self)),
+            Some(server_world_items!(self)),
             Some(&self.common.pack.block_registries),
             &self.common.damage_hooks,
         );
@@ -688,21 +688,21 @@ macro_rules! define_server_entity_handles {
             /// Moves every list out; give it back with `restore_entities`.
             pub(in crate::game::server_side) fn take_entities(&mut self) -> TakenEntities {
                 TakenEntities {
-                    $($field: self$(.$list)+.lift(),)*
+                    $($field: self.common$(.$list)+.lift(),)*
                 }
             }
             pub(in crate::game::server_side) fn restore_entities(&mut self, taken: TakenEntities) {
                 $({
-                    let expected = self$(.$list)+.len() + taken.$field.len();
-                    self$(.$list)+.restore(taken.$field, sunrise_sim::join_seq::RestoreOrder::SurvivorsFirst);
-                    debug_assert_eq!(self$(.$list)+.len(), expected);
+                    let expected = self.common$(.$list)+.len() + taken.$field.len();
+                    self.common$(.$list)+.restore(taken.$field, sunrise_sim::join_seq::RestoreOrder::SurvivorsFirst);
+                    debug_assert_eq!(self.common$(.$list)+.len(), expected);
                 })*
             }
 
             pub(in crate::game::server_side) fn entity_id_cursor(&self) -> EntityIdCursor {
                 EntityIdCursor {
                     before: JoinSeq::upcoming(),
-                    $($field: (self$(.$list)+.first().map(|e| (e.id(), e.join_seq())), 0, self$(.$list)+.len()),)*
+                    $($field: (self.common$(.$list)+.first().map(|e| (e.id(), e.join_seq())), 0, self.common$(.$list)+.len()),)*
                 }
             }
 
@@ -714,18 +714,18 @@ macro_rules! define_server_entity_handles {
                     let (next, hint, remaining) = &mut cursor.$field;
                     if *remaining > 0 {
                         if let Some((id, join)) = *next {
-                            let index = if self$(.$list)+.get(*hint).is_some_and(|e| e.id() == id && e.join_seq() == join) {
+                            let index = if self.common$(.$list)+.get(*hint).is_some_and(|e| e.id() == id && e.join_seq() == join) {
                                 Some(*hint)
                             } else {
-                                self$(.$list)+.iter().position(|e| e.id() == id && e.join_seq() == join).or_else(|| {
-                                    self$(.$list)+.iter().position(|e| e.join_seq() > join && e.join_seq() < cursor.before)
+                                self.common$(.$list)+.iter().position(|e| e.id() == id && e.join_seq() == join).or_else(|| {
+                                    self.common$(.$list)+.iter().position(|e| e.join_seq() > join && e.join_seq() < cursor.before)
                                 })
                             };
                             if let Some(i) = index {
                                 *remaining -= 1;
                                 *hint = i + 1;
-                                *next = self$(.$list)+.get(i + 1).filter(|e| e.join_seq() < cursor.before).map(|e| (e.id(), e.join_seq()));
-                                return Some((self$(.$list)+[i].id(), EntityHandle::$kind(i)));
+                                *next = self.common$(.$list)+.get(i + 1).filter(|e| e.join_seq() < cursor.before).map(|e| (e.id(), e.join_seq()));
+                                return Some((self.common$(.$list)+[i].id(), EntityHandle::$kind(i)));
                             }
                         }
                         *remaining = 0;
@@ -738,8 +738,8 @@ macro_rules! define_server_entity_handles {
             pub(in crate::game) fn refresh_entity_handle(&self, id: u32, hint: EntityHandle) -> Option<EntityHandle> {
                 match hint {
                     $(EntityHandle::$kind(i) => {
-                        if self$(.$list)+.get(i).is_some_and(|e| e.id() == id) { Some(hint) }
-                        else { self$(.$list)+.iter().position(|e| e.id() == id).map(EntityHandle::$kind) }
+                        if self.common$(.$list)+.get(i).is_some_and(|e| e.id() == id) { Some(hint) }
+                        else { self.common$(.$list)+.iter().position(|e| e.id() == id).map(EntityHandle::$kind) }
                     })*
                 }
             }
@@ -748,7 +748,7 @@ macro_rules! define_server_entity_handles {
             pub(in crate::game::server_side) fn discard_entity(&mut self, handle: EntityHandle) {
                 match handle {
                     $(EntityHandle::$kind(i) => {
-                        self$(.$list)+.remove(i);
+                        self.common$(.$list)+.remove(i);
                     })*
                 }
             }
@@ -757,7 +757,7 @@ macro_rules! define_server_entity_handles {
             /// caller can remove the entity it is on.
             pub(in crate::game::server_side) fn entity_handles_rev(&self) -> impl Iterator<Item = EntityHandle> + use<> {
                 std::iter::empty()
-                    $(.chain((0..self$(.$list)+.len()).rev().map(EntityHandle::$kind)))*
+                    $(.chain((0..self.common$(.$list)+.len()).rev().map(EntityHandle::$kind)))*
             }
         }
 
@@ -777,8 +777,8 @@ macro_rules! hit_effects_of {
         sunrise_sim::health::HitEffects::new(
             &mut $sounds,
             $game.server.lan.as_ref().map(|lan| &lan.hub),
-            $game.dim.id(),
-            $game.native_lifecycle.epoch(),
+            $game.common.dim.id(),
+            $game.common.native_lifecycle.epoch(),
             $lend,
         )
     };
@@ -786,8 +786,8 @@ macro_rules! hit_effects_of {
         sunrise_sim::health::HitEffects::new(
             &mut $game.server.pending_native_sounds,
             $game.server.lan.as_ref().map(|lan| &lan.hub),
-            $game.dim.id(),
-            $game.native_lifecycle.epoch(),
+            $game.common.dim.id(),
+            $game.common.native_lifecycle.epoch(),
             $lend,
         )
     };
@@ -799,17 +799,18 @@ macro_rules! hit_effects_of {
 macro_rules! hit_reads_of {
     ($game:expr) => {
         $game
+            .common
             .native_lifecycle
             .epoch()
             .map(|epoch| sunrise_sim::health::HitReads {
                 epoch,
-                living_types: $game.res.living_type_keys(),
-                attributes: &$game.motion.attributes,
-                player_effects: Some(&$game.potions.effects),
-                player_equipment: acting_equipment!($game),
+                living_types: $game.common.res.living_type_keys(),
+                attributes: &$game.common.motion.attributes,
+                player_effects: Some(&$game.common.potions.effects),
+                player_equipment: acting_equipment!($game.common),
                 player_uuid: $game.server.lan_acting_uuid,
-                player_attachments: Some(&$game.player_state.attachments),
-                entity_attachments: Some(&*$game.entity_attachments),
+                player_attachments: Some(&$game.common.player_state.attachments),
+                entity_attachments: Some(&*$game.common.entity_attachments),
             })
     };
 }
@@ -826,9 +827,10 @@ macro_rules! causer_decision {
         let causing: i32 = $causing;
         let listened = causing != 0 && sunrise_sim::health::hit_host_listened();
         let mob = listened
-            .then(|| $game.mobs.iter().position(|m| m.id as i32 == causing))
+            .then(|| $game.common.mobs.iter().position(|m| m.id as i32 == causing))
             .flatten();
         let in_place = $game
+            .common
             .player
             .as_ref()
             .is_some_and(|p| p.entity_id == causing);
@@ -852,20 +854,21 @@ macro_rules! victim_and_causer {
         match mob {
             Some(other) if other != index => {
                 let [victim, causer] = $game
+                    .common
                     .mobs
                     .get_disjoint_mut([index, other])
                     .expect("the victim and its causer are two mobs");
                 (victim, sunrise_sim::health::HitLend::mob(causer))
             }
-            Some(_) => (&mut $game.mobs[index], None),
+            Some(_) => (&mut $game.common.mobs[index], None),
             None => (
-                &mut $game.mobs[index],
+                &mut $game.common.mobs[index],
                 if listened {
                     sunrise_sim::health::HitLend::attacking_player(
-                        $game.player.as_mut(),
+                        $game.common.player.as_mut(),
                         causing,
-                        &$game.potions.effects,
-                        acting_equipment!($game),
+                        &$game.common.potions.effects,
+                        acting_equipment!($game.common),
                     )
                     .or_else(|| {
                         sunrise_sim::health::HitLend::parked_guest(
@@ -892,6 +895,7 @@ macro_rules! player_victim_causer {
             // The decision may be older than this level (the player's hurt builds three): the
             // row must still be the causer.
             Some(index) => $game
+                .common
                 .mobs
                 .get_mut(index)
                 .filter(|m| m.id as i32 == causing)
@@ -918,11 +922,11 @@ pub(in crate::game) use player_victim_causer;
 macro_rules! damage_level_of {
     ($game:ident, $attack:expr, no_push, $lend:expr $(, $equipment:expr)?) => {
         &mut sunrise_sim::health::DamageLevel::of(
-            &mut $game.world,
-            $game.pack.assets.registry,
+            &mut $game.common.world,
+            $game.common.pack.assets.registry,
             Some(server_world_items!($game)),
-            Some(&$game.pack.block_registries),
-            &$game.damage_hooks,
+            Some(&$game.common.pack.block_registries),
+            &$game.common.damage_hooks,
         )
         .attacked_by($attack)
         .no_push()
@@ -933,11 +937,11 @@ macro_rules! damage_level_of {
     };
     ($game:ident, $attack:expr, $credit:expr, $lend:expr) => {
         &mut sunrise_sim::health::DamageLevel::of(
-            &mut $game.world,
-            $game.pack.assets.registry,
+            &mut $game.common.world,
+            $game.common.pack.assets.registry,
             Some(server_world_items!($game)),
-            Some(&$game.pack.block_registries),
-            &$game.damage_hooks,
+            Some(&$game.common.pack.block_registries),
+            &$game.common.damage_hooks,
         )
         .attacked_by($attack)
         .with_knockback_credit($credit)
@@ -953,12 +957,12 @@ pub(in crate::game) use damage_level_of;
 macro_rules! player_resolver {
     ($game:ident) => {
         sunrise_sim::health::PlayerResolver {
-            in_place: $game.player.is_some().then(|| {
+            in_place: $game.common.player.is_some().then(|| {
                 $game
                     .server
                     .lan_acting_uuid
                     .map(sunrise_sim::lan::playerdata::uuid_ints)
-                    .or($game.level.player_uuid)
+                    .or($game.common.level.player_uuid)
                     .unwrap_or_default()
             }),
             hub: $game.server.lan.as_ref().map(|lan| &lan.hub),

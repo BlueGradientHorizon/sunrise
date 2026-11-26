@@ -25,7 +25,7 @@ impl MobLevel for crate::game::ServerGame<'_> {
             dropped: &mut self.common.dropped,
             next_entity: self.server.next_entity,
             ticked: &self.common.creatures.ticked,
-            items: world_items!(self),
+            items: server_world_items!(self),
             facts: self.common.res.facts(),
             world: &mut self.common.world,
         }

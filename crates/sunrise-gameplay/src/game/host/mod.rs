@@ -1,6 +1,10 @@
 use super::ServerGame;
 use mod_api::__private::game::*;
 use mod_api::*;
+use sunrise_gameplay_common::game::api_values::{TryIntoApi, TryIntoEnginePreservingCount};
+use sunrise_gameplay_common::game::item_snapshot::ItemBoundary;
+
+sunrise_gameplay_common::impl_shared_phase_contexts!(ServerGame<'_>);
 
 impl Host for ServerGame<'_> {
     fn backend(&self) -> Option<BackendRef<'_>> {

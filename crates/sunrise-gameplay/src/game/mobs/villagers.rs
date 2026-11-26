@@ -154,7 +154,7 @@ impl ServerGame<'_> {
             return;
         };
         let now = self.common.world.game_time;
-        let items = world_items!(self);
+        let items = server_world_items!(self);
         let professions = self.stations().professions.clone();
         let meeting = villager::meet(&mut self.common.mobs, ia, ib, now, items, &professions);
         for stack in meeting.thrown {
@@ -227,7 +227,7 @@ impl ServerGame<'_> {
         else {
             return;
         };
-        villager::ext_mut(&mut self.common.mobs[ib]).eat_and_digest(world_items!(self));
+        villager::ext_mut(&mut self.common.mobs[ib]).eat_and_digest(server_world_items!(self));
         let from = self.common.mobs[ia].position;
         let Some((bed, variant)) = child else {
             // VillagerMakeLove: entity event 13 for the partner, then the parent.
