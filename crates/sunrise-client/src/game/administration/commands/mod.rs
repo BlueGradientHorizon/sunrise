@@ -904,9 +904,16 @@ impl Game<'_> {
                 .filter(|b| b.id != 0)
                 .map(|b| Target::Bolt(b.id)),
         );
-        // `FishingHook`: every cast bobber here, the player's and each guest's (#6100).
+        // `FishingHook`: every cast bobber of this level (#6100). A guest's is here with its
+        // guest (`fishing_hooks_here` keeps those); the player in place's hook is not swapped
+        // with the level, so it counts only in the level that player is in, as vanilla's
+        // `EntitySelector.findEntities` finds a bobber only in its own level.
+        let player_here = self
+            .current_player_resident_location()
+            .is_some_and(|location| location.owner.dimension == self.dim.key());
         candidates.extend(
             self.fishing_hooks_here()
+                .filter(|(_, caster)| player_here || *caster != Target::Player)
                 .map(|(hook, _)| Target::Hook(hook.id())),
         );
         candidates.extend(self.natural_knot_ids().into_iter().map(Target::Knot));

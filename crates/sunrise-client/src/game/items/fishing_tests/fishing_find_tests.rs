@@ -49,3 +49,42 @@ fn a_cast_bobber_is_found_by_selectors_and_entities_in() {
         });
     });
 }
+
+/// #6100 review: the in-place player's bobber is a candidate of that player's level only. With
+/// the Nether loaded and put in place for a command, the Overworld player's bobber is no
+/// candidate there, so an unbounded selector walking both levels finds it once.
+#[test]
+#[ignore = "daily"]
+fn a_bobber_is_a_candidate_of_its_casters_level_only() {
+    mod_platform::testing::with_mods(Default::default(), || {
+        with_game(|game| {
+            game.world
+                .chunks
+                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+            game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 0.5)).unwrap());
+            game.inventory[game.selected] = Some(ItemStack::new("minecraft:fishing_rod", 1));
+            crate::game::native_entity_refs::tests::bind_local_player(game, 20, 7);
+            game.set_allow_commands(true);
+            game.build_registries();
+            let id = game.take_entity_id();
+            let mut bobber = Hook::remote(id, Vec3::new(5.5, 66.0, 0.5), [0; 4]);
+            bobber.random = LegacyRandom::new(1);
+            game.install_fishing_hook(bobber);
+            game.tick_fishing();
+            let hook = super::super::commands::Target::Hook(id);
+            let home = game.dim;
+            assert!(
+                game.level_candidates(false).contains(&hook),
+                "its own level"
+            );
+            game.enter_command_level(crate::game::Dim::Nether);
+            assert_ne!(game.dim, home);
+            assert!(
+                !game.level_candidates(false).contains(&hook),
+                "another loaded level"
+            );
+            game.enter_command_level(home);
+            assert!(game.level_candidates(false).contains(&hook), "back home");
+        });
+    });
+}
