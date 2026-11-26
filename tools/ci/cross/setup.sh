@@ -39,7 +39,7 @@ path "${CARGO_HOME:-$HOME/.cargo}/bin"
 mkdir -p "$tools/python-shim"
 ln -sf "$(command -v python3)" "$tools/python-shim/python"
 path "$tools/python-shim"
-rustup toolchain install "$(cat "$shims/../rust-version")" --profile minimal --component llvm-tools --target "$target"
+rustup toolchain install "$(cat "$shims/../rust-version")" --profile minimal --component llvm-tools --component clippy --target "$target"
 rustup default "$(cat "$shims/../rust-version")"
 
 # Cargo relinks when the linker's path changes, not its content, and the runner's target persists: the wrappers are
