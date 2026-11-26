@@ -196,8 +196,8 @@ owner = "::sunrise_gameplay_common::game::CommonGame"
 
 [host.client."ConfigHost::on"]
 borrow = "shared"
-kind = "common"
-owner = "::sunrise_gameplay_common::game::CommonGame"
+kind = "shared_trait"
+owner = "::sunrise_gameplay_common::game::native_hooks::base::BaseGameExt1<'_>"
 
 [host.client."ConfigHost::server_data_version"]
 borrow = "shared"
@@ -436,8 +436,8 @@ owner = "::sunrise_gameplay_common::game::native_item_bundle::NativeItemBundleGa
 
 [host.client."ItemsBackend::creative_stack_key"]
 borrow = "shared"
-kind = "common"
-owner = "::sunrise_gameplay_common::game::CommonGame"
+kind = "shared_trait"
+owner = "::sunrise_gameplay_common::game::native_hooks::build_creative_mode_tab_contents::GameHooks<'_>"
 
 [host.client."ItemsBackend::creative_tab_change"]
 borrow = "shared"
@@ -541,8 +541,8 @@ owner = "::sunrise_gameplay_common::game::held_items::HeldItemsGameExt1<'_>"
 
 [host.client."ItemsClientHost::creative_search_items"]
 borrow = "mutable"
-kind = "common"
-owner = "::sunrise_gameplay_common::game::CommonGame"
+kind = "shared_trait"
+owner = "::sunrise_gameplay_common::game::native_hooks::build_creative_mode_tab_contents::GameHooks<'_>"
 
 [host.client."ItemsClientHost::enchantment_min_cost"]
 borrow = "shared"
@@ -566,13 +566,13 @@ owner = "::sunrise_gameplay_common::game::CommonGame"
 
 [host.client."ItemsHost::built_creative_tabs"]
 borrow = "shared"
-kind = "common"
-owner = "::sunrise_gameplay_common::game::CommonGame"
+kind = "shared_trait"
+owner = "::sunrise_gameplay_common::game::native_hooks::build_creative_mode_tab_contents::GameHooks<'_>"
 
 [host.client."ItemsHost::creative_tabs"]
 borrow = "mutable"
-kind = "common"
-owner = "::sunrise_gameplay_common::game::CommonGame"
+kind = "shared_trait"
+owner = "::sunrise_gameplay_common::game::native_hooks::build_creative_mode_tab_contents::GameHooks<'_>"
 
 [host.client."ItemsHost::enchantments_compatible"]
 borrow = "shared"
@@ -1121,8 +1121,8 @@ owner = "::sunrise_gameplay_common::game::CommonGame"
 
 [host.client."ModStateHost::attachments"]
 borrow = "mutable"
-kind = "common"
-owner = "::sunrise_gameplay_common::game::CommonGame"
+kind = "shared_trait"
+owner = "::sunrise_gameplay_common::game::native_hooks::base::BaseGameExt1<'_>"
 
 [host.client."PayloadDropsHost::payload_drop_counts"]
 borrow = "shared"
@@ -1286,18 +1286,18 @@ owner = "::sunrise_gameplay_common::game::CommonGame"
 
 [host.client."RecipesHost::recipe_ingredient"]
 borrow = "shared"
-kind = "common"
-owner = "::sunrise_gameplay_common::game::CommonGame"
+kind = "shared_trait"
+owner = "::sunrise_gameplay_common::game::native_hooks::base::BaseGameExt1<'_>"
 
 [host.client."RecipesHost::recipe_result"]
 borrow = "shared"
-kind = "common"
-owner = "::sunrise_gameplay_common::game::CommonGame"
+kind = "shared_trait"
+owner = "::sunrise_gameplay_common::game::native_hooks::base::BaseGameExt1<'_>"
 
 [host.client."RecipesHost::recipes_of_type"]
 borrow = "shared"
-kind = "common"
-owner = "::sunrise_gameplay_common::game::CommonGame"
+kind = "shared_trait"
+owner = "::sunrise_gameplay_common::game::native_hooks::base::BaseGameExt1<'_>"
 
 [host.client."TagsHost::block_in_tag"]
 borrow = "shared"
@@ -1476,8 +1476,8 @@ owner = "::sunrise_gameplay_common::game::CommonGame"
 
 [host.server."ConfigHost::on"]
 borrow = "shared"
-kind = "common"
-owner = "::sunrise_gameplay_common::game::CommonGame"
+kind = "shared_trait"
+owner = "::sunrise_gameplay_common::game::native_hooks::base::BaseGameExt1<'_>"
 
 [host.server."ConfigHost::server_data_version"]
 borrow = "shared"
@@ -1746,8 +1746,8 @@ owner = "::sunrise_gameplay_common::game::native_item_bundle::NativeItemBundleGa
 
 [host.server."ItemsBackend::creative_stack_key"]
 borrow = "shared"
-kind = "common"
-owner = "::sunrise_gameplay_common::game::CommonGame"
+kind = "shared_trait"
+owner = "::sunrise_gameplay_common::game::native_hooks::build_creative_mode_tab_contents::GameHooks<'_>"
 
 [host.server."ItemsBackend::creative_tab_change"]
 borrow = "shared"
@@ -1851,13 +1851,13 @@ owner = "::sunrise_gameplay_common::game::held_items::HeldItemsGameExt1<'_>"
 
 [host.server."ItemsHost::built_creative_tabs"]
 borrow = "shared"
-kind = "common"
-owner = "::sunrise_gameplay_common::game::CommonGame"
+kind = "shared_trait"
+owner = "::sunrise_gameplay_common::game::native_hooks::build_creative_mode_tab_contents::GameHooks<'_>"
 
 [host.server."ItemsHost::creative_tabs"]
 borrow = "mutable"
-kind = "common"
-owner = "::sunrise_gameplay_common::game::CommonGame"
+kind = "shared_trait"
+owner = "::sunrise_gameplay_common::game::native_hooks::build_creative_mode_tab_contents::GameHooks<'_>"
 
 [host.server."ItemsHost::enchantments_compatible"]
 borrow = "shared"
@@ -2411,8 +2411,8 @@ owner = "::sunrise_gameplay_common::game::CommonGame"
 
 [host.server."ModStateHost::attachments"]
 borrow = "mutable"
-kind = "common"
-owner = "::sunrise_gameplay_common::game::CommonGame"
+kind = "shared_trait"
+owner = "::sunrise_gameplay_common::game::native_hooks::base::BaseGameExt1<'_>"
 
 [host.server."ModStateServerHost::transaction_lifecycle"]
 borrow = "shared"
@@ -2596,18 +2596,18 @@ owner = "::sunrise_gameplay_common::game::CommonGame"
 
 [host.server."RecipesHost::recipe_ingredient"]
 borrow = "shared"
-kind = "common"
-owner = "::sunrise_gameplay_common::game::CommonGame"
+kind = "shared_trait"
+owner = "::sunrise_gameplay_common::game::native_hooks::base::BaseGameExt1<'_>"
 
 [host.server."RecipesHost::recipe_result"]
 borrow = "shared"
-kind = "common"
-owner = "::sunrise_gameplay_common::game::CommonGame"
+kind = "shared_trait"
+owner = "::sunrise_gameplay_common::game::native_hooks::base::BaseGameExt1<'_>"
 
 [host.server."RecipesHost::recipes_of_type"]
 borrow = "shared"
-kind = "common"
-owner = "::sunrise_gameplay_common::game::CommonGame"
+kind = "shared_trait"
+owner = "::sunrise_gameplay_common::game::native_hooks::base::BaseGameExt1<'_>"
 
 [host.server."TagsHost::block_in_tag"]
 borrow = "shared"
@@ -2678,3 +2678,73 @@ owner = "::sunrise_gameplay_common::game::CommonGame"
 borrow = "shared"
 kind = "common"
 owner = "::sunrise_gameplay_common::game::CommonGame"
+
+[host.client."KeysBackend::registry_entry_key_slot"]
+borrow = "shared"
+kind = "shared_trait"
+owner = "::sunrise_gameplay_common::game::native_registry_entries::NativeRegistryReads<'_>"
+
+[host.client."KeysHost::registry_entries"]
+borrow = "shared"
+kind = "shared_trait"
+owner = "::sunrise_gameplay_common::game::native_registry_entries::NativeRegistryReads<'_>"
+
+[host.client."KeysHost::registry_entry"]
+borrow = "shared"
+kind = "shared_trait"
+owner = "::sunrise_gameplay_common::game::native_registry_entries::NativeRegistryReads<'_>"
+
+[host.client."KeysHost::registry_entry_in_tag"]
+borrow = "shared"
+kind = "shared_trait"
+owner = "::sunrise_gameplay_common::game::native_registry_entries::NativeRegistryReads<'_>"
+
+[host.client."ResourcesHost::list_resources"]
+borrow = "shared"
+kind = "shared_trait"
+owner = "::sunrise_gameplay_common::game::native_resources::NativeResourceReads<'_>"
+
+[host.client."ResourcesHost::resource"]
+borrow = "shared"
+kind = "shared_trait"
+owner = "::sunrise_gameplay_common::game::native_resources::NativeResourceReads<'_>"
+
+[host.client."ResourcesHost::resource_stack"]
+borrow = "shared"
+kind = "shared_trait"
+owner = "::sunrise_gameplay_common::game::native_resources::NativeResourceReads<'_>"
+
+[host.server."KeysBackend::registry_entry_key_slot"]
+borrow = "shared"
+kind = "shared_trait"
+owner = "::sunrise_gameplay_common::game::native_registry_entries::NativeRegistryReads<'_>"
+
+[host.server."KeysHost::registry_entries"]
+borrow = "shared"
+kind = "shared_trait"
+owner = "::sunrise_gameplay_common::game::native_registry_entries::NativeRegistryReads<'_>"
+
+[host.server."KeysHost::registry_entry"]
+borrow = "shared"
+kind = "shared_trait"
+owner = "::sunrise_gameplay_common::game::native_registry_entries::NativeRegistryReads<'_>"
+
+[host.server."KeysHost::registry_entry_in_tag"]
+borrow = "shared"
+kind = "shared_trait"
+owner = "::sunrise_gameplay_common::game::native_registry_entries::NativeRegistryReads<'_>"
+
+[host.server."ResourcesHost::list_resources"]
+borrow = "shared"
+kind = "shared_trait"
+owner = "::sunrise_gameplay_common::game::native_resources::NativeResourceReads<'_>"
+
+[host.server."ResourcesHost::resource"]
+borrow = "shared"
+kind = "shared_trait"
+owner = "::sunrise_gameplay_common::game::native_resources::NativeResourceReads<'_>"
+
+[host.server."ResourcesHost::resource_stack"]
+borrow = "shared"
+kind = "shared_trait"
+owner = "::sunrise_gameplay_common::game::native_resources::NativeResourceReads<'_>"
