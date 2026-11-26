@@ -313,8 +313,12 @@ impl SidebarContents {
             let bytes = nbt::write_network(&tag, limits).map_err(|_| TextFormError::Malformed)?;
             let (decoded, _) =
                 nbt::read_network(&bytes, limits).map_err(|_| TextFormError::Malformed)?;
-            sunrise_world::component_value::source::text_from_tag(&decoded, has_item)
-                .map_err(|_| TextFormError::Malformed)?;
+            sunrise_world::component_value::source::text_from_tag(
+                &decoded,
+                &|id| sunrise_protocol::item::custom::id(id).is_some(),
+                has_item,
+            )
+            .map_err(|_| TextFormError::Malformed)?;
             Ok(tag)
         }
 

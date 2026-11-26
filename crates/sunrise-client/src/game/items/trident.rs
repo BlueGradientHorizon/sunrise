@@ -910,13 +910,16 @@ impl Game<'_> {
                             }
                             Who::Mob(id) if self.is_special_target(id) => {
                                 let guest = t.guest;
-                                let direct = super::dragon::DirectHit {
-                                    id: t.id,
-                                    position: t.position,
-                                    kind: Some(
-                                        &sunrise_client::projectiles::ProjectileKind::Trident,
-                                    ),
-                                };
+                                let direct = super::dragon::DirectHit::trident(
+                                    t.id,
+                                    t.position,
+                                    (id >= super::dragon::SPECIAL
+                                        && !mod_api::__private::mods().is_empty()
+                                        && mod_api::__private::enabled_listened(
+                                            mod_api::HookId::LivingDeath,
+                                        ))
+                                    .then_some(&attack),
+                                );
                                 let hurt = |game: &mut Self| {
                                     game.hit_special_full(
                                         id,

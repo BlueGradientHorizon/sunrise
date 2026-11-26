@@ -266,6 +266,11 @@ pub struct EntityMemory {
     /// First attachment persistence error raised while building the current entity record.
     pub(super) attachment_encode_error:
         Option<sunrise_mod_runtime::attachments::AttachmentEncodeError>,
+    /// Dragon UUIDs whose `living_death` was vetoed (`data/sunrise/entity_metadata.dat`),
+    /// loaded lazily from disk when a dragon loads from a chunk or saves a veto.
+    pub(super) dragon_death_canceled: Option<HashSet<[i32; 4]>>,
+    /// Whether `data/sunrise/entity_metadata.dat` currently exists on disk for this level.
+    pub(super) entity_metadata_on_disk: bool,
 }
 
 impl EntityMemory {
@@ -868,7 +873,7 @@ impl Game<'_> {
             }
             "minecraft:ender_dragon" => {
                 if let Some(state) = transferred.take() {
-                    self.load_dragon_transferred(tag, uuid, Some(state));
+                    self.load_dragon_transferred(tag, uuid, Some(state), false);
                 } else {
                     self.load_dragon(tag, uuid);
                 }
@@ -1033,13 +1038,14 @@ impl Game<'_> {
 
     /// The saved ender dragon.
     pub(super) fn load_dragon(&mut self, tag: Tag, uuid: Option<[i32; 4]>) {
-        self.load_dragon_transferred(tag, uuid, None)
+        self.load_dragon_transferred(tag, uuid, None, true)
     }
     pub(super) fn load_dragon_transferred(
         &mut self,
         tag: Tag,
         uuid: Option<[i32; 4]>,
         transferred: Option<super::entity_initialization::TransferredEntityState>,
+        from_disk: bool,
     ) {
         // The loaded dragon's own random (`Entity.random`): loading draws
         // nothing from the level's.
@@ -1057,6 +1063,21 @@ impl Game<'_> {
                 self.adopt_transferred_entity_state(d.id, state);
             }
             let uuid = with_constructor_uuid(uuid);
+            if from_disk && let Some(saved_uuid) = uuid.or_else(|| entity_nbt::uuid(&tag)) {
+                if self.persist.dragon_death_canceled.is_none() {
+                    let (set, on_disk) = self.save.load_dragon_death_canceled();
+                    self.persist.dragon_death_canceled = Some(set);
+                    self.persist.entity_metadata_on_disk = on_disk;
+                }
+                if self
+                    .persist
+                    .dragon_death_canceled
+                    .as_mut()
+                    .is_some_and(|set| set.remove(&saved_uuid))
+                {
+                    d.death_canceled = true;
+                }
+            }
             self.remember_tags(d.id, &tag);
             self.remember_uuid(d.id, uuid, &tag);
             d.join = sunrise_client::join_seq::JoinSeq::next();
@@ -2400,10 +2421,54 @@ impl Game<'_> {
         }
     }
 
+    /// Sync live dragon death-veto state into versioned engine metadata (`data/sunrise/entity_metadata.dat`),
+    /// doing zero I/O when no veto exists in memory or on disk.
+    #[inline(always)]
+    pub(super) fn save_entity_metadata(&mut self) -> Result<()> {
+        if let Some(d) = self.dragon.as_ref() {
+            if d.death_canceled {
+                if self.persist.dragon_death_canceled.is_none() {
+                    let (set, on_disk) = self.save.load_dragon_death_canceled();
+                    self.persist.dragon_death_canceled = Some(set);
+                    self.persist.entity_metadata_on_disk = on_disk;
+                }
+                let id = d.id;
+                let uuid = self.uuid_for(id);
+                self.persist
+                    .dragon_death_canceled
+                    .get_or_insert_with(HashSet::new)
+                    .insert(uuid);
+            } else if let Some(&uuid) = self.persist.uuids.get(&d.id)
+                && let Some(set) = self.persist.dragon_death_canceled.as_mut()
+            {
+                set.remove(&uuid);
+            }
+        }
+        if !self.persist.entity_metadata_on_disk
+            && self
+                .persist
+                .dragon_death_canceled
+                .as_ref()
+                .is_none_or(HashSet::is_empty)
+        {
+            return Ok(());
+        }
+        let empty = HashSet::new();
+        let set = self
+            .persist
+            .dragon_death_canceled
+            .as_ref()
+            .unwrap_or(&empty);
+        self.save.save_dragon_death_canceled(set)?;
+        self.persist.entity_metadata_on_disk = !set.is_empty();
+        Ok(())
+    }
+
     /// Write the authoritative sections, asynchronously without `wait`.
     pub(super) fn save_entities(&mut self, wait: bool) -> Result<()> {
         let keys = self.prepare_entity_save();
         let chunks = self.entity_chunks(&keys, false);
+        self.save_entity_metadata()?;
         self.prune_entity_memory();
         if wait {
             self.save.save_entities(chunks)?;
@@ -2564,6 +2629,13 @@ impl Game<'_> {
         keys: &HashSet<ChunkKey>,
     ) -> (Vec<(ChunkKey, Vec<Tag>)>, HashSet<ChunkKey>) {
         self.spawn_loaded_entities();
+        if self
+            .dragon
+            .as_ref()
+            .is_some_and(|d| d.death_canceled && keys.contains(&chunk_of(d.position)))
+        {
+            let _ = self.save_entity_metadata();
+        }
         self.snapshot_entity_chunks(keys, EntitySnapshot::Save)
     }
 

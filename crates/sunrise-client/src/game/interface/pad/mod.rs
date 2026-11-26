@@ -527,6 +527,9 @@ impl Game<'_> {
             // Like a click into the window: take the pointer.
             self.capture(true);
         }
+        if !down && playing {
+            let _ = self.screen_state.context_menu_input.take_pad(button);
+        }
         if !playing {
             self.pad_menu_button(event_loop, button, down)?;
             if down {
@@ -678,6 +681,9 @@ impl Game<'_> {
 
     /// B and Start: what Escape does where the pad is.
     pub(in crate::game) fn pad_back(&mut self) -> Result<()> {
+        if self.context_menu_key(KeyCode::Escape) {
+            return Ok(());
+        }
         // The death confirm's buttons wait a second, as its Escape does.
         if self
             .ui
