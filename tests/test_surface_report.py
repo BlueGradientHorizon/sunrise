@@ -5,6 +5,8 @@ import io
 import json
 import os
 from pathlib import Path
+import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -409,6 +411,16 @@ class SummaryTests(unittest.TestCase):
         self.assertTrue(out.endswith("a\n… cut here; 1 more line in the step log\n```\n"))
 
 
+def artifacts(normal=(), harness=()):
+    """The compiler's JSON lines: one sunrise-stage artifact per normal path and per test-harness path, then the
+    end of the build."""
+    def artifact(path, test):
+        return {"reason": "compiler-artifact", "target": {"name": "sunrise-stage", "kind": ["bin"]},
+                "profile": {"test": test}, "executable": str(path)}
+    lines = [artifact(path, False) for path in normal] + [artifact(path, True) for path in harness]
+    return "".join(json.dumps(line) + "\n" for line in [*lines, {"reason": "build-finished", "success": True}])
+
+
 class ScopedOs:
     """`os` for the module under test, with its own environment."""
 
@@ -422,18 +434,22 @@ class ScopedOs:
 class MainTests(unittest.TestCase):
     """main(): the base it fetches, what it prints, what it writes to the job summary."""
 
-    def run_main(self, event="pull_request", pr="", argv=(), tool="/no/tool", **patches):
+    def run_main(self, event="pull_request", pr="", argv=(), tool="/no/tool", env=None, **patches):
+        """main() with its own environment; `tool` None leaves SUNRISE_STAGE_TOOL unset, `env` adds variables."""
         with tempfile.TemporaryDirectory() as directory:
             summary_file = Path(directory) / "summary.md"
-            env = {"SUNRISE_STAGE_TOOL": tool, "EVENT": event, "PR": pr,
-                   "GITHUB_STEP_SUMMARY": str(summary_file), "RUNNER_TEMP": directory}
+            own = {"EVENT": event, "PR": pr, "GITHUB_STEP_SUMMARY": str(summary_file), "RUNNER_TEMP": directory,
+                   **(env or {})}
+            environ = {key: value for key, value in os.environ.items() if key not in ("SUNRISE_STAGE_TOOL", "JOBS")}
+            if tool is not None:
+                own["SUNRISE_STAGE_TOOL"] = tool
             # The module reads its own environment: the fixture never writes the process's.
-            with mock.patch.object(surface_report, "os", ScopedOs({**os.environ, **env})), \
+            with mock.patch.object(surface_report, "os", ScopedOs({**environ, **own})), \
                     contextlib.redirect_stdout(io.StringIO()) as out, contextlib.ExitStack() as stack:
                 for name, value in patches.items():
                     stack.enter_context(mock.patch.object(surface_report, name, value))
                 code = surface_report.main(argv)
-            return code, out.getvalue(), summary_file.read_text()
+            return code, out.getvalue(), summary_file.read_text() if summary_file.exists() else ""
 
     def test_an_unfetchable_base_reports_and_passes(self):
         def git(*args):
@@ -471,6 +487,81 @@ class MainTests(unittest.TestCase):
         self.assertEqual(report.call_args.args[1:3], (Path("before"), Path("after")))
         self.assertTrue(report.call_args.kwargs["with_internals"])
         find_base.assert_not_called()
+
+    def test_a_given_base_replaces_the_event_based_one(self):
+        fetched, built = [], []
+        git = mock.Mock(side_effect=AssertionError("the event's merge commit is not read"))
+
+        def report(tool, base, head, work, gate_on, *, own_base_tool, **_):
+            own_base_tool()
+            return 0, "Surface: identical\n"
+
+        code, out, _ = self.run_main(
+            "push", argv=["--base", "cafe"], git=git, report=report,
+            unpack=lambda sha, into: fetched.append(sha),
+            base_tool=lambda sha, work: built.append(sha) or "base-stage",
+            landed_notes=lambda head, base: {})
+        self.assertEqual((code, fetched, built), (0, ["cafe"], ["cafe"]))
+        self.assertRegex(out, r"^Surface: identical\nBase cafe; fetch \d+\.\ds, total \d+\.\ds\n$")
+
+    def test_a_given_base_that_cannot_be_fetched_fails(self):
+        def unpack(sha, into):
+            raise subprocess.CalledProcessError(128, ["git", "archive", sha])
+
+        code, out, summary = self.run_main("push", argv=["--base", "cafe"], unpack=unpack)
+        self.assertEqual(code, 1)
+        self.assertTrue(out.startswith("No surface report: the base could not be fetched"), out)
+        self.assertIn("No surface report: the base could not be fetched", summary)
+
+    def test_a_given_base_and_trees_are_refused(self):
+        with self.assertRaises(SystemExit) as refused, contextlib.redirect_stderr(io.StringIO()) as error:
+            self.run_main(argv=["--base", "cafe", "--trees", "before", "after"])
+        self.assertEqual(refused.exception.code, 2)
+        self.assertIn("--base and --trees", error.getvalue())
+
+    def test_the_report_builds_the_tool_only_when_none_is_given(self):
+        built = mock.Mock(return_value="/built/sunrise-stage")
+        tools = []
+
+        def report(tool, *rest, **_):
+            tools.append(tool)
+            return 0, "Surface: identical\n"
+
+        shared = dict(base_commit=lambda *a: ("abcd", ""), unpack=lambda sha, into: None, report=report,
+                      landed_notes=lambda head, base: {}, build_tool=built)
+        self.run_main(tool="/given/stage", **shared)
+        built.assert_not_called()
+        self.run_main(tool=None, env={"JOBS": "-j3"}, **shared)
+        built.assert_called_once_with(["-j3"])
+        self.assertEqual(tools, ["/given/stage", "/built/sunrise-stage"])
+
+    def test_build_tool_mode_appends_the_tool_to_the_github_environment(self):
+        with tempfile.TemporaryDirectory() as directory:
+            normal = Path(directory, "sunrise-stage")
+            normal.touch()
+            environment = Path(directory, "github-env")
+            environment.write_text("JOBS=-j3\n")
+            built = subprocess.CompletedProcess([], 0, artifacts([normal]))
+            with mock.patch.object(surface_report.subprocess, "run", return_value=built) as cargo:
+                code, out, summary = self.run_main(argv=["--build-tool"], tool=None,
+                                                   env={"GITHUB_ENV": str(environment), "JOBS": "-j3"})
+                self.assertEqual(code, 0)
+                self.assertEqual(environment.read_text(), f"JOBS=-j3\nSUNRISE_STAGE_TOOL={normal.resolve()}\n")
+                self.assertRegex(out, rf"^Stage generator build: \d+s\n{re.escape(str(normal.resolve()))}\n$")
+                self.assertEqual(summary, "")
+                self.assertEqual(cargo.call_args.args[0][:3], ["cargo", "build", "-j3"])
+                # Without $GITHUB_ENV the path is only printed, and an empty $JOBS adds no argument.
+                code, out, _ = self.run_main(argv=["--build-tool"], tool=None, env={"JOBS": ""})
+                self.assertEqual(out.splitlines()[-1], str(normal.resolve()))
+                self.assertEqual(cargo.call_args.args[0][:3], ["cargo", "build", "--locked"])
+
+    def test_build_tool_mode_goes_with_neither_a_base_nor_trees(self):
+        for argv in (["--build-tool", "--base", "cafe"], ["--build-tool", "--trees", "before", "after"]):
+            with self.subTest(argv=argv), self.assertRaises(SystemExit) as refused, \
+                    contextlib.redirect_stderr(io.StringIO()) as error:
+                self.run_main(argv=argv, tool=None)
+            self.assertEqual(refused.exception.code, 2)
+            self.assertIn("--build-tool", error.getvalue())
 
     def local_audit(self, *flags, readable=True):
         compared = []
@@ -601,6 +692,41 @@ Path(sys.argv[3]).write_text('{"schema": 3, "by": "' + marker + '"}\n')
             self.assertEqual((Path(first[0]).read_text(), Path(second[0]).read_text()), ("one", "two"))
 
 
+class BuildToolTests(unittest.TestCase):
+    """build_tool(): the one place that picks the head's sunrise-stage among the compiler's artifacts."""
+
+    def pick(self, normal=("sunrise-stage",), harness=("sunrise-stage-harness",), returncode=0, jobs=()):
+        with tempfile.TemporaryDirectory() as directory:
+            paths = {name: Path(directory, name) for name in (*normal, *harness)}
+            for path in paths.values():
+                path.touch()
+            output = artifacts([paths[name] for name in normal], [paths[name] for name in harness])
+            built = subprocess.CompletedProcess([], returncode, output)
+            with mock.patch.object(surface_report.subprocess, "run", return_value=built) as cargo:
+                tool = surface_report.build_tool(list(jobs))
+            return tool, paths, cargo
+
+    def test_the_normal_executable_is_picked_over_the_test_harness(self):
+        tool, paths, cargo = self.pick(jobs=["-j3"])
+        self.assertEqual(tool, str(paths["sunrise-stage"].resolve()))
+        self.assertEqual(cargo.call_args.args[0], [
+            "cargo", "build", "-j3", "--locked", "--profile", "test", "-p", "sunrise-stage", "--bin", "sunrise-stage",
+            "--message-format=json-render-diagnostics"])
+        self.assertEqual(cargo.call_args.kwargs["cwd"], surface_report.ROOT)
+
+    def test_not_exactly_one_normal_executable_is_refused(self):
+        for normal in (("first", "second"), ()):
+            with self.subTest(normal=normal), self.assertRaises(SystemExit) as refused:
+                self.pick(normal=normal)
+            self.assertIn("expected one normal sunrise-stage executable", str(refused.exception))
+
+    def test_a_failed_build_is_refused(self):
+        with self.assertRaises(SystemExit) as refused:
+            self.pick(returncode=101)
+        self.assertEqual(str(refused.exception), "building the head's sunrise-stage failed")
+
+
+@unittest.skipUnless(shutil.which("bash"), "needs bash for the stub tool")
 class LandedTests(unittest.TestCase):
     SHA = "6" * 40
 
