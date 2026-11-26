@@ -3727,6 +3727,37 @@ impl Game<'_> {
         out: &mut Vec<Vertex>,
         additive: &mut Vec<Vertex>,
     ) {
+        self.dragon_geometry_as(d, camera, alpha, None, out, additive);
+    }
+
+    /// The dragon as a screen draws it (`DrawContext::entity`): posed still, facing `yaw`
+    /// (its whole flight history at its own height and that yaw, so the neck and tail lie
+    /// straight), full bright, its eyes in `out` after the body, and none of the world's
+    /// marks, death rays or crystal beam.
+    pub(in crate::game) fn gui_dragon_geometry(&self, d: &Dragon, yaw: f32, out: &mut Vec<Vertex>) {
+        let p = d.position;
+        let mut eyes = Vec::new();
+        self.dragon_geometry_as(
+            d,
+            glam::DVec3::new(p.x, p.y, p.z),
+            1.0,
+            Some(yaw),
+            out,
+            &mut eyes,
+        );
+        out.append(&mut eyes);
+    }
+
+    /// `dragon_geometry`, or with `gui` (a yaw) the still, full-bright screen form.
+    fn dragon_geometry_as(
+        &self,
+        d: &Dragon,
+        camera: glam::DVec3,
+        alpha: f64,
+        gui: Option<f32>,
+        out: &mut Vec<Vertex>,
+        additive: &mut Vec<Vertex>,
+    ) {
         let Some(model) = self.dragon_model.as_ref() else {
             return;
         };
@@ -3746,7 +3777,10 @@ impl Game<'_> {
         };
         let p = d.previous.lerp(d.position, alpha);
         let pos = glam::DVec3::new(p.x, p.y, p.z);
-        let h = |delay: usize| d.sample_lerp(delay, a);
+        let h = |delay: usize| match gui {
+            Some(yaw) => (d.position.y, yaw),
+            None => d.sample_lerp(delay, a),
+        };
         let yr = h(7).1;
         let rot2 = (h(5).0 - h(10).0) as f32;
         let mut base = glam::Mat4::from_translation((pos - camera).as_vec3())
@@ -3765,9 +3799,12 @@ impl Game<'_> {
                 * glam::Mat4::from_rotation_x((bounce * 2.0).to_radians());
         let mut poses = sunrise_client::mobs::anim::Poses::new(model);
         poses.get("jaw")[3] = (flap.sin() + 1.0) * 0.2;
-        let sitting = d.phase.sitting();
-        let landing = matches!(d.phase, Phase::Landing { .. } | Phase::Takeoff { .. });
-        let egg_dist = {
+        let sitting = gui.is_none() && d.phase.sitting();
+        let landing =
+            gui.is_none() && matches!(d.phase, Phase::Landing { .. } | Phase::Takeoff { .. });
+        let egg_dist = if gui.is_some() {
+            0.0
+        } else {
             let p = self.podium_top();
             ((p.x - d.position.x).powi(2)
                 + (p.y - d.position.y).powi(2)
@@ -3852,13 +3889,18 @@ impl Game<'_> {
             zz -= yrr.cos() * xr.cos() * 10.0;
             xx -= yrr.sin() * xr.cos() * 10.0;
         }
-        let l = self.world.light(
-            d.position.x.floor() as i32,
-            d.position.y.floor() as i32,
-            d.position.z.floor() as i32,
-        );
-        let light = (u32::from(l >> 4) * 16) | ((u32::from(l & 15) * 16) << 8);
-        let death = if d.death_time > 0 {
+        let light = if gui.is_some() {
+            // `renderEntityInInventory`: LightTexture.FULL_BRIGHT.
+            sunrise_client::mobs::render::FULL_BRIGHT
+        } else {
+            let l = self.world.light(
+                d.position.x.floor() as i32,
+                d.position.y.floor() as i32,
+                d.position.z.floor() as i32,
+            );
+            (u32::from(l >> 4) * 16) | ((u32::from(l & 15) * 16) << 8)
+        };
+        let death = if d.death_time > 0 && gui.is_none() {
             d.death_time as f32 + a
         } else {
             0.0
@@ -3872,8 +3914,10 @@ impl Game<'_> {
             (0xFFFF_FFFF, u32::from(d.hurt_time > 0))
         };
         let first = out.len();
-        self.mark_entity(first, "minecraft:ender_dragon");
-        self.mark_motion(first, 0);
+        if gui.is_none() {
+            self.mark_entity(first, "minecraft:ender_dragon");
+            self.mark_motion(first, 0);
+        }
         sunrise_client::mobs::render::draw(model, base, &poses, skin, color, light, overlay, out);
         if let Some(mask) = mask {
             dissolve_mask(&mut out[first..], skin, mask);
@@ -3892,7 +3936,9 @@ impl Game<'_> {
             sunrise_client::mobs::render::draw(model, base, &poses, glow, color, full, 0, out);
         }
         #[cfg(test)]
-        super::native_render_pair_tests::witness_body(d.id, first, out.len());
+        if gui.is_none() {
+            super::native_render_pair_tests::witness_body(d.id, first, out.len());
+        }
         // RenderTypes.eyes: the glowing eyes, added on top.
         let first_eye = additive.len();
         sunrise_client::mobs::render::draw(
@@ -3908,6 +3954,9 @@ impl Game<'_> {
         // `RenderTypes.eyes` has an `OitPipelineSet`: improved transparency
         // moves the tagged quads into its stages (the HDR tier is the eyes'
         // shine, `mobs::render::EYES_TIER`).
+        if gui.is_some() {
+            return;
+        }
         for v in &mut additive[first_eye..] {
             v.layer = 2
                 | sunrise_client::gfx::OIT_ENTITY
