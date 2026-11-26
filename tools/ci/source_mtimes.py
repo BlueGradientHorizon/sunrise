@@ -44,9 +44,11 @@ def restore_tree_mtimes(repo: Path, tree: str, root: Path, snapshot: Path) -> tu
     except (FileNotFoundError, ValueError, RecursionError):
         previous = {}
     # Treat a malformed record as a lost snapshot, not a partially trusted cache.
+    # Fresh mtimes come from time.time_ns(), a signed 64-bit clock in CPython.
     if not isinstance(previous, dict) or any(
         not isinstance(record, list) or len(record) != 2
         or not isinstance(record[0], str) or type(record[1]) is not int
+        or not -(2**63) <= record[1] < 2**63
         for record in previous.values()
     ):
         previous = {}

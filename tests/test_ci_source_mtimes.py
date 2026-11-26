@@ -72,23 +72,27 @@ class SourceMtimesTests(unittest.TestCase):
 
     def test_missing_or_malformed_snapshot_refreshes_source_and_directory_mtimes(self):
         restore_and_snapshot(self.root, self.snapshot)
-        malformed = json.loads(self.snapshot.read_text(encoding="utf-8"))
+        records = json.loads(self.snapshot.read_text(encoding="utf-8"))
         stale = 1_000_000_000
-        malformed["src"][1] = stale
-        malformed["src/value.txt"][1] = "not a timestamp"
+        for record in records.values():
+            record[1] = stale
+        records["src/value.txt"][1] = "not a timestamp"
+        invalid_record = json.dumps(records).encode("utf-8")
+        records["src/value.txt"][1] = 10**100
         for label, data in (("missing", None), ("truncated", b'{"src": ['),
                             ("invalid UTF-8", b"\xff"), ("invalid root", b"[]"),
-                            ("invalid record", json.dumps(malformed).encode("utf-8"))):
+                            ("invalid record", invalid_record),
+                            ("out-of-range timestamp", json.dumps(records).encode("utf-8"))):
             with self.subTest(label=label):
                 if data is None:
                     self.snapshot.unlink()
                 else:
                     self.snapshot.write_bytes(data)
-                for name in ("src", "src/value.txt"):
+                for name in records:
                     os.utime(self.root / name, ns=(stale, stale))
                 restore_and_snapshot(self.root, self.snapshot)
                 updated = json.loads(self.snapshot.read_text(encoding="utf-8"))
-                for name in ("src", "src/value.txt"):
+                for name in records:
                     mtime = (self.root / name).stat().st_mtime_ns
                     self.assertGreater(mtime, stale)
                     self.assertEqual(updated[name][1], mtime)
