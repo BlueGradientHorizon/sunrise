@@ -154,10 +154,11 @@ fn typed(value: &mut Value, function: bool, tags: &Tags, types: &Types) {
             }
         }
     }
-    if function && conditional {
-        if let Some(condition) = value.get_mut("condition").filter(|value| !value.is_null()) {
-            typed(condition, false, tags, types);
-        }
+    if function
+        && conditional
+        && let Some(condition) = value.get_mut("condition").filter(|value| !value.is_null())
+    {
+        typed(condition, false, tags, types);
     }
 }
 
