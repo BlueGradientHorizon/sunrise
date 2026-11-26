@@ -732,4 +732,18 @@ mod tests {
         };
         assert_eq!(p.diagnostics, [refused]);
     }
+
+    #[test]
+    fn a_stage_is_built_only_with_one_origin_per_line_inside_its_files() {
+        let at = |file, line| Origin { file, line };
+        let files = || vec!["a.fsh".to_owned()];
+        let built = Preprocessed::new("x\ny".into(), vec![at(0, 1), at(0, 2)], files()).unwrap();
+        assert_eq!((built.code(), built.lines().len()), ("x\ny", 2));
+        assert!(Preprocessed::new("x\ny".into(), vec![at(0, 1)], files()).is_err());
+        assert!(Preprocessed::new("x".into(), vec![at(0, 1), at(0, 2)], files()).is_err());
+        assert!(Preprocessed::new("x".into(), vec![at(1, 1)], files()).is_err());
+        let read = Preprocessed::from_source("b.fsh", "x\ny\n");
+        assert_eq!(read.lines(), [at(0, 1), at(0, 2), at(0, 3)]);
+        assert_eq!(read.files(), ["b.fsh"]);
+    }
 }
