@@ -465,6 +465,10 @@ fn game_hook_sources(root: &Path) -> Result<dispatch::HookSources, String> {
     )
 }
 
+fn game_fire_source(root: &Path) -> Result<String, String> {
+    Ok(dispatch::render_fire(&game_hook_sources(root)?.fire))
+}
+
 #[derive(Debug)]
 struct Sources {
     hooks: String,
@@ -687,29 +691,28 @@ mod tests {
             Side::Server,
         );
         let game = Hook::sample("sunrise_client::game::Game<'_>::native_test", Side::Both);
-        use super::host_param::{HostParam, host_param};
-        let param = |ty: &str, call| {
+        use super::host_param::{HostArgument::*, HostParam, host_param};
+        let param = |ty: &str, argument| {
             Some(HostParam {
                 ty: ty.into(),
-                call,
+                argument,
             })
         };
         assert_eq!(
             host_param(&level, Some(false), false),
-            param("&dyn LevelHost", "self")
+            param("&dyn LevelHost", Receiver)
         );
         assert_eq!(
             host_param(&level, Some(true), false),
-            param("&mut dyn LevelRandomHost", "self")
+            param("&mut dyn LevelRandomHost", Receiver)
         );
-        let ticks = "&mut super::mod_api_host::LevelTicks::new(self, ticks)";
         assert_eq!(
             host_param(&level, Some(false), true),
-            param("&mut dyn LevelTicksHost", ticks)
+            param("&mut dyn LevelTicksHost", LevelTicks)
         );
         assert_eq!(
             host_param(&level, Some(true), true),
-            param("&mut dyn LevelWriteHost", ticks)
+            param("&mut dyn LevelWriteHost", LevelTicks)
         );
         assert_eq!(host_param(&level, None, false), None);
         let level_both = Hook {
@@ -718,7 +721,7 @@ mod tests {
         };
         assert_eq!(
             host_param(&level_both, Some(false), false),
-            param("LevelSide", "super::mod_api_host::level_side(self)")
+            param("LevelSide", LevelSide)
         );
         for (mutable, ticks) in [(Some(true), false), (Some(false), true)] {
             assert_eq!(
@@ -728,7 +731,7 @@ mod tests {
         }
         assert_eq!(
             host_param(&game, Some(true), false),
-            param("HostSide", "super::execution_role::host_side(self)")
+            param("HostSide", GameSide)
         );
         assert_eq!(
             super::host_param::validate(&game, "test", false, Some(false), false).unwrap_err(),
@@ -740,7 +743,7 @@ mod tests {
         };
         assert_eq!(
             host_param(&read, Some(false), false),
-            param("&dyn Host", "crate::game::Side::as_host(self)")
+            param("&dyn Host", SharedGame)
         );
         let client = Hook {
             side: Side::Client,
@@ -748,11 +751,11 @@ mod tests {
         };
         assert_eq!(
             host_param(&client, Some(false), false),
-            param("&dyn ClientHost", "&*self")
+            param("&dyn ClientHost", SharedReborrow)
         );
         assert_eq!(
             host_param(&client, Some(true), false),
-            param("&mut dyn ClientHost", "self")
+            param("&mut dyn ClientHost", Receiver)
         );
         let client_read = Hook {
             side: Side::Client,
@@ -778,7 +781,7 @@ mod tests {
         assert!(super::host_param::is_level(&hit));
         assert_eq!(
             host_param(&hit, Some(true), false),
-            param("&mut dyn LevelRandomHost", "self")
+            param("&mut dyn LevelRandomHost", Receiver)
         );
         super::host_param::validate(&hit, "test", true, Some(true), false).unwrap();
         // A read-only level view that is neither `GameLevel` nor a hit: a server `&self`
@@ -793,7 +796,7 @@ mod tests {
         assert!(super::host_param::is_level(&read_level));
         assert_eq!(
             host_param(&read_level, Some(false), false),
-            param("&dyn LevelHost", "self")
+            param("&dyn LevelHost", Receiver)
         );
         super::host_param::validate(&read_level, "test", true, Some(false), false).unwrap();
         // The hit capability: a server hit with a `&mut self` receiver only.
@@ -804,7 +807,7 @@ mod tests {
         assert!(super::host_param::is_level(&capable));
         assert_eq!(
             host_param(&capable, Some(true), false),
-            param("&mut dyn HitHost", "self")
+            param("&mut dyn HitHost", Receiver)
         );
         super::host_param::validate(&capable, "test", true, Some(true), false).unwrap();
         for (hook, mutable, ticks) in [
@@ -832,7 +835,7 @@ mod tests {
         super::host_param::validate(&hit_both, "test", true, Some(false), false).unwrap();
         assert_eq!(
             host_param(&hit_both, Some(false), false),
-            param("LevelSide", "super::mod_api_host::level_side(self)")
+            param("LevelSide", LevelSide)
         );
         assert_eq!(
             super::host_param::validate(&hit_both, "test", true, Some(false), true).unwrap_err(),
@@ -842,7 +845,7 @@ mod tests {
         // non-`GameLevel` level may take it.
         assert_eq!(
             host_param(&hit, Some(false), false),
-            param("&dyn LevelHost", "self")
+            param("&dyn LevelHost", Receiver)
         );
         super::host_param::validate(&hit, "test", true, Some(false), false).unwrap();
         for (hook, mutable) in [

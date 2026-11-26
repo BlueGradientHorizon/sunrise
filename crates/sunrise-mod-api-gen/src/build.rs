@@ -1,5 +1,5 @@
 //! Cargo-facing generation: the mod API's and the game's generated files.
-use super::{Catalog, Target, game_hook_sources, host, sources};
+use super::{Catalog, Target, game_fire_source, host, sources};
 use std::{fs, path::Path};
 mod vocab_boundary;
 
@@ -50,7 +50,7 @@ pub fn generate(root: &Path, out_dir: &Path, target: Target) -> Result<(), Strin
     let outputs = match target {
         Target::Client => vec![
             (HOST_OUTPUT, game_host_generated(root)?),
-            ("mod_api_fire_generated.rs", game_hook_sources(root)?.fire),
+            ("mod_api_fire_generated.rs", game_fire_source(root)?),
             // The mob tick's goal read view (#1077), included beside the
             // engine's `GoalCx` in `mobs/part_goals.rs`.
             (
@@ -208,7 +208,7 @@ pub fn generate_render(root: &Path, out_dir: &Path) -> Result<(), String> {
         .and_then(|()| {
             write_if_changed(
                 out_dir.join("native_render_fire_generated.rs"),
-                generated.fire,
+                generated.render_fire,
             )
         })
         .map_err(|error| error.to_string())

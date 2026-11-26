@@ -14,7 +14,8 @@ pub(super) struct HookSources {
     pub render_dispatch: String,
     pub part_traits: BTreeMap<&'static str, String>,
     pub fills: Vec<Fill>,
-    pub fire: String,
+    pub fire: Vec<FireUnit>,
+    pub render_fire: String,
     pub hook_ids: String,
     pub hook_constants: String,
     /// A `()` constant named after each hook a mod may cancel, which `#[listener(receive_cancelled)]`
@@ -23,6 +24,88 @@ pub(super) struct HookSources {
     /// `(HookId::X, "x"),` for each client-side hook: what a `side = "server"` mod may not hear.
     pub client_hooks: String,
     pub hook_count: usize,
+}
+
+pub(super) struct FireUnit {
+    name: String,
+    owner: FireOwner,
+    side: Side,
+    carrier: Option<FireCarrier>,
+    receiver: Receiver,
+    parameters: Vec<String>,
+    before: String,
+    dispatch: String,
+    after: String,
+}
+
+enum FireOwner {
+    Free,
+    Game,
+    Scoped(syn::PathSegment),
+}
+
+struct FireCarrier {
+    name: String,
+    generics: &'static str,
+    fields: String,
+}
+
+pub(super) fn render_fire(units: &[FireUnit]) -> String {
+    use std::fmt::Write as _;
+    let mut code = String::new();
+    for unit in units {
+        if let Some(FireCarrier {
+            name,
+            generics,
+            fields,
+        }) = &unit.carrier
+        {
+            writeln!(
+                code,
+                "pub(in crate::game) struct {name}{generics} {{ {fields} }}"
+            )
+            .unwrap();
+        }
+        let receiver = match unit.receiver {
+            Receiver::Read => Some("&self"),
+            Receiver::Write => Some("&mut self"),
+            Receiver::Associated => None,
+        };
+        let signature = receiver
+            .into_iter()
+            .chain(unit.parameters.iter().map(String::as_str))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let FireUnit {
+            name,
+            before,
+            dispatch,
+            after,
+            ..
+        } = unit;
+        let function = format!(
+            "#[inline] pub(in crate::game) fn fire_{name}({signature}) {{ {before} {dispatch} {after} }}"
+        );
+        let header = match &unit.owner {
+            FireOwner::Free => {
+                writeln!(code, "{function}").unwrap();
+                continue;
+            }
+            FireOwner::Game => match unit.side {
+                Side::Server => "impl crate::game::ServerGame<'_>".into(),
+                Side::Client => {
+                    "#[cfg(feature = \"client\")] impl crate::game::ClientGame<'_>".into()
+                }
+                Side::Both => "impl<S: crate::game::Side> crate::game::Game<'_, S>".into(),
+            },
+            FireOwner::Scoped(owner) if owner.ident == "ReadLevel" => {
+                "impl<S: crate::game::Side> ReadLevel<'_, '_, S>".into()
+            }
+            FireOwner::Scoped(owner) => format!("impl {}", owner.to_token_stream()),
+        };
+        writeln!(code, "{header} {{ {function} }}").unwrap();
+    }
+    code
 }
 
 /// Whether a mutable-reference field can be saved and restored by copying its pointee.
@@ -50,7 +133,7 @@ pub(super) fn is_render(hook: &Hook) -> bool {
     hook.target.starts_with("mod_render::render::")
 }
 
-pub(super) fn receiver_mut(hook: &Hook) -> Option<bool> {
+fn receiver_mut(hook: &Hook) -> Option<bool> {
     if hook.target == EFFECT_TICK_TARGET {
         Some(false)
     } else if hook.target.starts_with("sunrise_client::game::") {
@@ -61,8 +144,7 @@ pub(super) fn receiver_mut(hook: &Hook) -> Option<bool> {
 }
 
 pub(super) fn listener_host_or_context(hook: &Hook) -> Option<host_param::HostParam> {
-    host_param::context_param(hook)
-        .or_else(|| host_param::host_param(hook, receiver_mut(hook), hook.engine_ticks))
+    host_param::select(hook, receiver_mut(hook))
 }
 
 /// Render records only, without game binding or listener dispatch.
@@ -94,7 +176,8 @@ pub(super) fn emit<'a>(
     let mut render_dispatch = String::new();
     let mut part_traits: BTreeMap<&str, String> = BTreeMap::new();
     let mut fills = Vec::new();
-    let mut fire = String::new();
+    let mut fire = Vec::new();
+    let mut render_fire = String::new();
     let mut calls = String::new();
     for hook in hooks {
         let name = hook.name.as_str();
@@ -217,7 +300,7 @@ pub(super) fn emit<'a>(
         } else {
             String::new()
         };
-        let host = listener_host_or_context(hook).map(|param| {
+        let host = host_param::select(hook, receiver_mut).map(|param| {
             (
                 fresh_name(
                     if hook.context.is_some() {
@@ -745,7 +828,7 @@ pub(super) fn emit<'a>(
                 .map(|(name, _)| name.as_str())
                 .collect::<Vec<_>>()
                 .join(", ");
-            fire.push_str(&format!(
+            render_fire.push_str(&format!(
                 "#[inline] pub(super) fn fire_{name}({}) {{ super::{name}({forwarded}); }}\n",
                 dispatch_params.join(", ")
             ));
@@ -778,18 +861,12 @@ pub(super) fn emit<'a>(
                 && (is_game_receiver
                     || (target.starts_with("sunrise_client::game::native_hooks::")
                         && target_path.segments.len() == 5));
-            let impl_header = if is_game_receiver {
-                match hook.side {
-                    Side::Server => "impl crate::game::ServerGame<'_>".to_owned(),
-                    Side::Client => {
-                        "#[cfg(feature = \"client\")] impl crate::game::ClientGame<'_>".to_owned()
-                    }
-                    Side::Both => "impl<S: crate::game::Side> crate::game::Game<'_, S>".to_owned(),
-                }
-            } else if receiver.ident == "ReadLevel" {
-                "impl<S: crate::game::Side> ReadLevel<'_, '_, S>".to_owned()
+            let owner = if is_game_assoc {
+                FireOwner::Free
+            } else if is_game_receiver {
+                FireOwner::Game
             } else {
-                format!("impl {}", receiver.to_token_stream())
+                FireOwner::Scoped(receiver.clone())
             };
             let scoped_read_host = receiver.ident == "NativeHookHost";
             if scoped_read_host
@@ -800,16 +877,14 @@ pub(super) fn emit<'a>(
                 ));
             }
             let native_host = host.as_ref().map(|(_, param)| {
-                if scoped_read_host {
-                    "self.host".to_owned()
-                } else if name == "place_liquid" {
-                    format!("{}.without_container_loot()", param.call)
-                } else if param.call == "&*self" && receiver_mut == Some(false) {
-                    "self".to_owned()
-                } else {
-                    param.call.to_owned()
-                }
+                param.argument.render(
+                    "self",
+                    scoped_read_host,
+                    name == "place_liquid",
+                    receiver_mut,
+                )
             });
+            let mut fire_carrier = None;
             let mut parameters = Vec::new();
             let mut forwarded = Vec::new();
             let mut parameter = |name: &str, ty: &str| {
@@ -866,9 +941,11 @@ pub(super) fn emit<'a>(
                 if uses_carrier {
                     let refs: Vec<_> = engine.iter().map(|(arg, ty)| (arg.clone(), ty)).collect();
                     let (fields, generics) = carrier_fields(&refs);
-                    fire.push_str(&format!(
-                        "pub(in crate::game) struct {carrier}{generics} {{ {fields} }}\n"
-                    ));
+                    fire_carrier = Some(FireCarrier {
+                        name: carrier.clone(),
+                        generics,
+                        fields,
+                    });
                     parameter("call", &format!("{carrier}{}", elide(generics)));
                     before.push_str(&format!(
                         "let {carrier} {{ {} }} = call; ",
@@ -955,35 +1032,26 @@ pub(super) fn emit<'a>(
             if name == "add_pack_finders" {
                 parameter("allow", "impl FnMut(&str) -> bool");
             }
-            let receiver = match hook.receiver {
-                Receiver::Read => "&self",
-                Receiver::Write => "&mut self",
-                Receiver::Associated => "",
-            };
-            let signature = (!receiver.is_empty())
-                .then_some(receiver)
-                .into_iter()
-                .chain(parameters.iter().map(String::as_str))
-                .collect::<Vec<_>>()
-                .join(", ");
             let passed = passed.join(", ");
             let dispatch_call = if name == "add_pack_finders" {
                 format!("mod_api::dispatch_{name}_for({passed}, allow);")
             } else {
                 format!("mod_api::dispatch_{name}({passed});")
             };
-            if is_game_assoc {
-                fire.push_str(&format!(
-                    "#[inline] pub(in crate::game) fn fire_{name}({signature}) {{ {before} {dispatch_call} {after} }}\n"
-                ));
-            } else {
-                fire.push_str(&format!(
-                    "{impl_header} {{ #[inline] pub(in crate::game) fn fire_{name}({signature}) {{ {before} {dispatch_call} {after} }} }}\n"
-                ));
-            }
+            fire.push(FireUnit {
+                name: name.to_owned(),
+                owner,
+                side: hook.side,
+                carrier: fire_carrier,
+                receiver: hook.receiver,
+                parameters,
+                before,
+                dispatch: dispatch_call,
+                after,
+            });
             let receiver = if is_game_assoc {
                 "super::fire::"
-            } else if receiver.is_empty() {
+            } else if hook.receiver == Receiver::Associated {
                 "Self::"
             } else {
                 "self."
@@ -1800,6 +1868,7 @@ pub(super) fn emit<'a>(
         part_traits,
         fills,
         fire,
+        render_fire,
         hook_ids,
         hook_constants,
         cancel_hooks,
@@ -3281,10 +3350,132 @@ fn main() {{
     }
 
     #[test]
+    fn fire_units_keep_side_and_owner_with_their_adapter() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let catalog = Catalog::load(&root).unwrap();
+        let names = [
+            "can_start_swimming",
+            "block_entity_on_load",
+            "tick_block",
+            "gui_render_post",
+            "living_drown",
+        ];
+        let hooks: Vec<_> = names
+            .iter()
+            .map(|name| {
+                catalog
+                    .hooks
+                    .iter()
+                    .find(|hook| hook.name == *name)
+                    .unwrap()
+            })
+            .collect();
+        let mut direct = hooks[0].clone();
+        direct.dispatch = DispatchStyle::Direct;
+        let output = emit(hooks.iter().copied(), &catalog.draw_contexts, true).unwrap();
+        let units = &output.fire;
+        assert_eq!(units.len(), 4);
+        assert_eq!(units[0].side, Side::Both);
+        assert_eq!(units[0].receiver, Receiver::Read);
+        assert!(matches!(units[0].owner, FireOwner::Game));
+        assert!(matches!(units[1].owner, FireOwner::Free));
+        assert!(units[1].carrier.is_none());
+        assert!(render_fire(&units[1..2]).contains("mod_api::__private::BlockEntityOnLoadCall"));
+        assert_eq!(units[2].side, Side::Server);
+        assert!(matches!(&units[2].owner, FireOwner::Scoped(owner) if owner.ident == "GameLevel"));
+        let server = render_fire(&units[2..3]);
+        assert!(server.contains("LevelTicks::new(self, ticks)"));
+        assert!(!server.contains("DrawContext"));
+        assert_eq!(units[3].side, Side::Client);
+        let client = render_fire(&units[3..]);
+        assert!(client.contains("GameDrawContext::stage"));
+        assert!(!client.contains("LevelTicks"));
+        assert!(
+            emit(std::iter::once(&direct), &catalog.draw_contexts, true)
+                .unwrap()
+                .fire
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn one_borrowed_game_adapter_compiles_for_both_concrete_callers() {
+        let hook = Hook {
+            receiver: Receiver::Read,
+            host: Some(HostAccess::Read),
+            dispatch: DispatchStyle::Flat,
+            ..Hook::sample(
+                "sunrise_client::game::native_hooks::Game<'_>::native_test",
+                Side::Both,
+            )
+        };
+        let fire = render_fire(&emit(std::iter::once(&hook), &[], true).unwrap().fire);
+        let fixture = tempfile::tempdir().unwrap();
+        let path = fixture.path().join("fire.rs");
+        fs::write(
+            &path,
+            format!(
+                r#"
+extern crate self as mod_api;
+fn dispatch_test(_: &dyn game::Host) {{}}
+mod game {{
+    pub trait Host {{}}
+    pub trait Side: Sized {{
+        fn as_host<'a>(game: &'a Game<'_, Self>) -> &'a dyn Host;
+    }}
+    pub struct Client;
+    pub struct Server;
+    pub struct Game<'g, S>(&'g S);
+    impl<S> Host for Game<'_, S> {{}}
+    impl Side for Client {{
+        fn as_host<'a>(game: &'a Game<'_, Self>) -> &'a dyn Host {{ game }}
+    }}
+    impl Side for Server {{
+        fn as_host<'a>(game: &'a Game<'_, Self>) -> &'a dyn Host {{ game }}
+    }}
+    mod fire {{ {fire} }}
+    pub fn run() {{
+        let client = Game(&Client);
+        let server = Game(&Server);
+        let _ = (client.0, server.0);
+        client.fire_test();
+        server.fire_test();
+    }}
+}}
+fn main() {{ game::run(); }}
+"#
+            ),
+        )
+        .unwrap();
+        let compile = Command::new("rustc")
+            .args(["--edition=2024", "-Dwarnings"])
+            .arg(&path)
+            .arg("--out-dir")
+            .arg(fixture.path())
+            .output()
+            .unwrap();
+        assert!(
+            compile.status.success(),
+            "{}",
+            String::from_utf8_lossy(&compile.stderr)
+        );
+        assert!(
+            Command::new(
+                fixture
+                    .path()
+                    .join(format!("fire{}", std::env::consts::EXE_SUFFIX))
+            )
+            .status()
+            .unwrap()
+            .success()
+        );
+    }
+
+    #[test]
     #[ignore = "daily"]
     fn scoped_native_hook_uses_selected_host_and_game_hooks_keep_their_receiver() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-        let fire = super::super::game_hook_sources(&root).unwrap().fire;
+        let fire = super::super::game_fire_source(&root).unwrap();
         let compact: String = fire.chars().filter(|c| !c.is_whitespace()).collect();
         assert!(compact.contains("mod_api::dispatch_living_change_target(self.host,call)"));
         assert!(

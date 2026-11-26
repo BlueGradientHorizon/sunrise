@@ -4,7 +4,53 @@ use super::{Hook, HostAccess, PhaseContext, Side};
 #[derive(Debug, PartialEq, Eq)]
 pub(super) struct HostParam {
     pub ty: String,
-    pub call: &'static str,
+    pub argument: HostArgument,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub(super) enum HostArgument {
+    Context,
+    Receiver,
+    SharedReborrow,
+    SharedGame,
+    GameSide,
+    LevelSide,
+    LevelRandomSide,
+    LevelTicks,
+}
+
+impl HostArgument {
+    pub(super) fn render(
+        &self,
+        receiver: &str,
+        scoped_read: bool,
+        without_container_loot: bool,
+        mutable: Option<bool>,
+    ) -> String {
+        if scoped_read {
+            return format!("{receiver}.host");
+        }
+        let argument = match self {
+            Self::Context => "context".into(),
+            Self::Receiver => receiver.into(),
+            Self::SharedReborrow if !without_container_loot && mutable == Some(false) => {
+                receiver.into()
+            }
+            Self::SharedReborrow => format!("&*{receiver}"),
+            Self::SharedGame => format!("crate::game::Side::as_host({receiver})"),
+            Self::GameSide => format!("super::execution_role::host_side({receiver})"),
+            Self::LevelSide => format!("super::mod_api_host::level_side({receiver})"),
+            Self::LevelRandomSide => format!("{receiver}.level_random_side()"),
+            Self::LevelTicks => {
+                format!("&mut super::mod_api_host::LevelTicks::new({receiver}, ticks)")
+            }
+        };
+        if without_container_loot {
+            format!("{argument}.without_container_loot()")
+        } else {
+            argument
+        }
+    }
 }
 
 /// Whether the hook's host is a level host: a `GameLevel` method, or a hook marked
@@ -104,7 +150,7 @@ pub(super) fn context_param(hook: &Hook) -> Option<HostParam> {
             PhaseContext::PackDiscovery => "&mut dyn PackDiscoveryContext",
         }
         .into(),
-        call: "context",
+        argument: HostArgument::Context,
     })
 }
 
@@ -126,41 +172,46 @@ pub(super) fn phase_engine_type(phase: PhaseContext) -> &'static str {
 }
 
 /// Select the host once for both generated signatures and the native call.
+pub(super) fn select(hook: &Hook, mutable: Option<bool>) -> Option<HostParam> {
+    context_param(hook).or_else(|| host_param(hook, mutable, hook.engine_ticks))
+}
+
 pub(super) fn host_param(hook: &Hook, mutable: Option<bool>, ticks: bool) -> Option<HostParam> {
+    use HostArgument::*;
     let is_level = is_level(hook);
     mutable.map(|mutable| {
         if !is_level {
-            let (ty, call) = match hook.side {
-                Side::Server if hook.host == Some(HostAccess::Read) => ("&dyn Host", "&*self"),
-                Side::Both if hook.host == Some(HostAccess::Read) => {
-                    ("&dyn Host", "crate::game::Side::as_host(self)")
+            let (ty, argument) = match hook.side {
+                Side::Server if hook.host == Some(HostAccess::Read) => {
+                    ("&dyn Host", SharedReborrow)
                 }
-                Side::Server => ("&mut dyn ServerHost", "self"),
-                Side::Client if mutable => ("&mut dyn ClientHost", "self"),
-                Side::Client => ("&dyn ClientHost", "&*self"),
-                Side::Both => ("HostSide", "super::execution_role::host_side(self)"),
+                Side::Both if hook.host == Some(HostAccess::Read) => ("&dyn Host", SharedGame),
+                Side::Server => ("&mut dyn ServerHost", Receiver),
+                Side::Client if mutable => ("&mut dyn ClientHost", Receiver),
+                Side::Client => ("&dyn ClientHost", SharedReborrow),
+                Side::Both => ("HostSide", GameSide),
             };
             return HostParam {
                 ty: ty.into(),
-                call,
+                argument,
             };
         }
         if hook.host == Some(HostAccess::LevelRandomSide) {
             return HostParam {
                 ty: "LevelRandomSide".into(),
-                call: "self.level_random_side()",
+                argument: LevelRandomSide,
             };
         }
         if hook.side == Side::Both {
             return HostParam {
                 ty: "LevelSide".into(),
-                call: "super::mod_api_host::level_side(self)",
+                argument: LevelSide,
             };
         }
         if hook.host == Some(HostAccess::Hit) {
             return HostParam {
                 ty: "&mut dyn HitHost".into(),
-                call: "self",
+                argument: Receiver,
             };
         }
         let kind = if is_level {
@@ -180,11 +231,7 @@ pub(super) fn host_param(hook: &Hook, mutable: Option<bool>, ticks: bool) -> Opt
         };
         HostParam {
             ty: format!("&{mutable}dyn {kind}"),
-            call: if ticks {
-                "&mut super::mod_api_host::LevelTicks::new(self, ticks)"
-            } else {
-                "self"
-            },
+            argument: if ticks { LevelTicks } else { Receiver },
         }
     })
 }
