@@ -1,6 +1,6 @@
 //! Read-only client session and local-player status.
 
-use crate::{BlockPos, GameMode, Identifier, Text, TextFormError};
+use crate::{BlockPos, GameMode, Identifier, Text, TextFormError, Vec3};
 use core::ops::ControlFlow;
 
 /// Why a client-session read could not run.
@@ -313,5 +313,24 @@ impl ClientPlayerSkin {
     /// A player's skin from its parts.
     pub fn new(uuid: u128, skin: String, slim: bool) -> Self {
         Self { uuid, skin, slim }
+    }
+}
+
+/// The local player's fishing hook, read with `ClientSession::client_fishing_hook`:
+/// its position and whether a fish is biting.
+#[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
+#[derive(sunrise_mod_api_macros::Wire)]
+pub struct ClientFishingHook {
+    /// The bobber's position, as the client tracks it.
+    pub position: Vec3,
+    /// A fish is biting (`FishingHook.biting`): the server's DATA_BITING.
+    pub biting: bool,
+}
+
+impl ClientFishingHook {
+    /// A fishing hook from its parts.
+    pub fn new(position: Vec3, biting: bool) -> Self {
+        Self { position, biting }
     }
 }
