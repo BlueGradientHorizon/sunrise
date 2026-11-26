@@ -742,7 +742,8 @@ impl Game<'_> {
     ) {
         let mut lines = self.stack_tooltip_lines(stack, false, creative);
         if lines.is_empty()
-            && !sunrise_client::item_tooltip::tooltip_display(stack).name_visible(creative)
+            && !sunrise_client::item_tooltip::tooltip_display(stack, self.items().get(&stack.item))
+                .name_visible(creative)
         {
             return;
         }

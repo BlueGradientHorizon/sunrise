@@ -3204,7 +3204,8 @@ mod tests {
             Some(&name)
         );
         assert!(
-            !crate::item_tooltip::tooltip_display(&received).shows("minecraft:banner_patterns")
+            !crate::item_tooltip::tooltip_display(&received, None)
+                .shows("minecraft:banner_patterns")
         );
         assert!(received.matches(&edited));
 
@@ -3233,7 +3234,8 @@ mod tests {
             })
         );
         assert!(
-            !crate::item_tooltip::tooltip_display(&received).shows("minecraft:banner_patterns")
+            !crate::item_tooltip::tooltip_display(&received, None)
+                .shows("minecraft:banner_patterns")
         );
     }
 
