@@ -973,7 +973,30 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn malformed_stderr_does_not_hide_later_diagnostics() {
-        let _guard = log_lock();
+        const ACTOR: &str = "SUNRISE_MALFORMED_STDERR_TEST_ACTOR";
+        if std::env::var_os(ACTOR).is_none() {
+            let scratch = tempfile::tempdir().unwrap();
+            let output = Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--exact",
+                    "tests::malformed_stderr_does_not_hide_later_diagnostics",
+                    "--include-ignored",
+                    "--nocapture",
+                ])
+                .env(ACTOR, "1")
+                // The unhosted build log lives under the child's temp dir and PID.
+                .env("TMPDIR", scratch.path())
+                .output()
+                .unwrap();
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            assert!(output.status.success(), "{stdout}\n{stderr}");
+            assert!(
+                stdout.contains("test result: ok. 1 passed;"),
+                "exact-name child did not run one test:\n{stdout}\n{stderr}"
+            );
+            return;
+        }
         clear_log().unwrap();
         let mut cmd = Command::new("sh");
         cmd.args([
