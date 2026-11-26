@@ -40,7 +40,6 @@ impl mod_api::Hooks for Declare {
                 },
                 true,
                 false,
-                false,
                 path == "blaze",
                 save.then_some(mod_api::PushReaction::IgnoreEntity),
                 8,
@@ -2030,10 +2029,20 @@ fn a_general_entitys_base_state_round_trips_through_its_handle_and_record() {
         let Tag::Compound(saved) = game.general_row_record(ids[0], false).unwrap().to_tag() else {
             panic!("a record saves as a compound");
         };
-        assert_eq!(saved.get("Fire"), Some(&Tag::Short(40)));
-        assert_eq!(saved.get("Invulnerable"), Some(&Tag::Byte(1)));
+        assert_eq!(
+            saved.get(&mod_api::JavaString::from("Fire")),
+            Some(&Tag::Short(40))
+        );
+        assert_eq!(
+            saved.get(&mod_api::JavaString::from("Invulnerable")),
+            Some(&Tag::Byte(1))
+        );
         for key in ["Silent", "Glowing", "NoGravity"] {
-            assert_eq!(saved.get(key), Some(&Tag::Byte(1)), "{key}");
+            assert_eq!(
+                saved.get(&mod_api::JavaString::from(key)),
+                Some(&Tag::Byte(1)),
+                "{key}"
+            );
         }
         assert!(handle.clear_fire(game));
         assert_eq!(handle.fire_ticks(game), Some(0));

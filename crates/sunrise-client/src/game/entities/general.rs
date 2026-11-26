@@ -1535,7 +1535,6 @@ mod tests {
             custom_name: None,
             custom_name_visible: false,
             base: Default::default(),
-            base: Default::default(),
             uuid,
             envelope: GeneralTypeEnvelope {
                 type_key: type_key.to_owned(),
