@@ -386,9 +386,10 @@ fn translate(
             if old { "varying" } else { dir }
         )
     };
+    let patches = gbuffers.is_some_and(|g| g.water_patches);
     let mut vertex_declarations: Vec<String> = Vec::new();
     let mut fragment_declarations: Vec<String> = Vec::new();
-    if gbuffers.is_some_and(|g| g.water_patches) {
+    if patches {
         vertex_declarations.push(varying(vertex, "out"));
         fragment_declarations.push(varying(fragment, "in"));
         fragment_declarations.push("uniform int sunriseWaterPatchCount;".to_owned());
