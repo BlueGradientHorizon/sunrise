@@ -188,7 +188,7 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
         definitions.apply_json(name, "vanilla", text.as_str().unwrap())?;
     }
     let built =
-        definitions.build(|name, _| registry.default_state(name).map(|_| name.to_owned()))?;
+        definitions.bind(|name, _| registry.default_state(name).map(|_| name.to_owned()));
     assert!(built.missing.is_empty());
     let bindings = FeatureBlockBindings::with_tags(&registry, integers, &built.tags)?;
     let blocks: Vec<_> = [

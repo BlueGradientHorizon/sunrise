@@ -273,7 +273,7 @@ mod tests {
         );
         assert!(definitions.apply_json("empty", "bad", "{}").is_err());
         assert!(definitions.apply_json("syntax", "bad", "{").is_err());
-        let built = definitions.build(|id, _| Some(id.to_owned())).unwrap();
+        let built = definitions.bind(|id, _| Some(id.to_owned()));
         assert_eq!(
             built.tags["minecraft:a"],
             vec!["minecraft:one", "minecraft:two"]
@@ -287,7 +287,7 @@ mod tests {
                 r##"{"replace":true,"values":["three"]}"##,
             )
             .unwrap();
-        let built = definitions.build(|id, _| Some(id.to_owned())).unwrap();
+        let built = definitions.bind(|id, _| Some(id.to_owned()));
         assert_eq!(built.tags["minecraft:a"], vec!["minecraft:three"]);
     }
     #[test]
@@ -305,8 +305,7 @@ mod tests {
             definitions.apply_json(name, source, json).unwrap();
         }
         let built = definitions
-            .build(|id, _| (!id.ends_with("absent")).then(|| id.to_owned()))
-            .unwrap();
+            .bind(|id, _| (!id.ends_with("absent")).then(|| id.to_owned()));
         assert_eq!(built.tags["minecraft:things"], vec!["minecraft:stone"]);
         assert!(built.missing.is_empty());
     }
@@ -315,8 +314,7 @@ mod tests {
         let mut definitions = TagDefinitions::default();
         definitions.apply_json("things", "fixture", r##"{"values":["stone", {"id":"stone","remove":true}, "stone", {"id":"stone","remove":true}, {"id":"absent","remove":true}]}"##).unwrap();
         let built = definitions
-            .build(|id, _| (!id.ends_with("absent")).then(|| id.to_owned()))
-            .unwrap();
+            .bind(|id, _| (!id.ends_with("absent")).then(|| id.to_owned()));
         assert!(built.tags["minecraft:things"].is_empty());
         assert!(built.missing.is_empty());
     }
@@ -336,8 +334,7 @@ mod tests {
             definitions.apply_json(name, "fixture", json).unwrap();
         }
         let built = definitions
-            .build(|id, _| (!id.ends_with("absent")).then(|| id.to_owned()))
-            .unwrap();
+            .bind(|id, _| (!id.ends_with("absent")).then(|| id.to_owned()));
         assert_eq!(built.tags["minecraft:a"], vec!["minecraft:one"]);
         assert_eq!(
             built.tags["minecraft:b"],
