@@ -203,6 +203,11 @@ impl Input {
     }
 }
 
+/// The key the player's own `InventoryMenu` answers to in `menu_slot_rules`, `menu_clicked` and
+/// `recipe_book_place`. Vanilla 26.3's `InventoryMenu` has no `MenuType`: its constructor passes
+/// `null` to `AbstractCraftingMenu` (`javap -c` on the 26.3 jar), so the name is Sunrise's.
+pub const INVENTORY_MENU: &str = "minecraft:inventory";
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Kind {
     Inventory,
@@ -299,7 +304,8 @@ impl Kind {
         }
     }
 
-    pub(crate) fn slot_count(self) -> usize {
+    /// How many slots this kind of menu has: its own, then the player's it shows.
+    pub fn slot_count(self) -> usize {
         self.player_slot_start()
             + match self {
                 Self::Lectern => 0,
@@ -749,6 +755,7 @@ impl Menu {
                 kind,
                 registry_id: match kind {
                     Kind::Mod(kind) => Some(kind.id.into()),
+                    Kind::Inventory => Some(INVENTORY_MENU.into()),
                     _ => None,
                 },
                 block_pos: None,
@@ -1723,9 +1730,11 @@ impl Menu {
             }
     }
 
-    /// The parts answer `mayPickup` on a mod menu type's slots that its screen shows.
+    /// The parts answer `mayPickup` on a mod menu type's slots that its screen shows, and on the
+    /// player's own inventory menu ([`INVENTORY_MENU`]).
     fn asks_pickup(&self, s: usize) -> bool {
-        matches!(self.state.kind, Kind::Mod(_)) && self.state.slots[s].role != Role::Hidden
+        matches!(self.state.kind, Kind::Mod(_) | Kind::Inventory)
+            && self.state.slots[s].role != Role::Hidden
     }
 
     fn vanilla_may_pickup(&self, env: &Env, s: usize) -> bool {
