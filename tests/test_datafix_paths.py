@@ -178,11 +178,10 @@ class DatafixPaths(unittest.TestCase):
             fetched.append(url)
             return io.BytesIO(answers[url])
 
-        # What a full disk left behind: an empty jar and a version.json cut mid-write.
+        # What a full disk left behind: an empty jar.
         folder = self.checkout / '.local/datafix/servers/1.19'
         folder.mkdir(parents=True)
         (folder / 'server.jar').write_bytes(b'')
-        (folder / 'version.json').write_bytes(metadata[:10])
         with mock.patch.object(worlds.urllib.request, 'urlopen', urlopen):
             path, _, _ = worlds.server_jar('1.19')
             self.assertEqual(path.read_bytes(), body)
@@ -192,6 +191,15 @@ class DatafixPaths(unittest.TestCase):
             worlds.server_jar('1.19')
         self.assertEqual(len(fetched), 3)
         self.assertEqual(sorted(p.name for p in folder.iterdir()), ['server.jar', 'version.json'])
+
+    def test_a_version_json_that_does_not_parse_is_an_error(self):
+        worlds, _ = self.consumers()
+        folder = self.checkout / '.local/datafix/servers/1.19'
+        folder.mkdir(parents=True)
+        (folder / 'version.json').write_bytes(b'{"downloads": {"ser')
+        with (mock.patch.object(worlds.urllib.request, 'urlopen', side_effect=AssertionError('must not fetch')),
+              self.assertRaises(ValueError)):
+            worlds.version_meta('1.19')
 
     def test_failed_download_replace_keeps_destination_and_removes_temp(self):
         worlds, _ = self.consumers()
