@@ -500,26 +500,15 @@ impl Assets<'_> {
     }
 }
 
-/// The vertex inputs a program is checked against: the program's own when one is not among
-/// [`sunrise_mod_pipeline::DEFAULT_VERTEX_INPUTS`] (`PipelineVertexFormat::PositionTexColor`, the
-/// whole format), the default format otherwise.
-fn vertex_inputs_to_check(declared: &[(String, String)]) -> Vec<(&str, &str)> {
-    let defaults = &sunrise_mod_pipeline::DEFAULT_VERTEX_INPUTS;
-    if declared
-        .iter()
-        .all(|(n, t)| defaults.iter().any(|(dn, dt)| dn == n && dt == t))
-    {
-        defaults.to_vec()
-    } else {
-        declared
-            .iter()
-            .map(|(n, t)| (n.as_str(), t.as_str()))
-            .collect()
-    }
-}
-
 /// Reads, translates and validates one program, as [`pipeline_shaders`] documents: every refusal
 /// as `<file>[:<line>:<column>]: <message>`.
+///
+/// The check has no `RenderPipeline`, so it cannot know which format the mod registers; the
+/// game's registration decides that. The vertex `in`s it takes are those the vanilla formats
+/// provide ([`sunrise_mod_pipeline::vanilla_vertex_inputs`]): a program is checked against the
+/// inputs it declares, not against a whole format, and an `in` that no vanilla format provides by
+/// that name and type is refused, naming it. What the game binds to the inputs that pass, and
+/// from which vertex bindings, the pipeline's registered format decides at registration.
 fn check_program(program: &Program, assets: &Assets<'_>) -> Result<(), Vec<String>> {
     let fragment = if program.stand_in {
         STAND_IN_FRAGMENT.to_owned()
@@ -548,7 +537,19 @@ fn check_program(program: &Program, assets: &Assets<'_>) -> Result<(), Vec<Strin
             kind: *kind,
         })
         .collect();
-    let vertex_inputs = vertex_inputs_to_check(&bindings.vertex_inputs);
+    // A declared name the vanilla formats know is checked at the vanilla type, so a different
+    // type is refused; a name they do not know is left out, so the translator refuses it.
+    let vanilla = sunrise_mod_pipeline::vanilla_vertex_inputs();
+    let vertex_inputs: Vec<(&str, &str)> = bindings
+        .vertex_inputs
+        .iter()
+        .filter_map(|(name, _)| {
+            vanilla
+                .iter()
+                .find(|(vanilla_name, _)| vanilla_name == name)
+                .map(|(vanilla_name, ty)| (vanilla_name.as_str(), *ty))
+        })
+        .collect();
     let options = sunrise_mod_pipeline::Options {
         textured: bindings.textured,
         vertex_inputs: &vertex_inputs,
@@ -799,27 +800,106 @@ mod tests {
     }
 
     /// The vertex inputs are those of the stage with its includes inlined, as the translator
-    /// validates them: a vertex shader whose extra `in` comes from its own include is checked
-    /// against that input, not refused as undeclared.
+    /// validates them: an `in` that an include declares and no vanilla format provides is
+    /// refused in the include's own file, at its line.
     #[test]
-    fn a_vertex_input_an_include_declares_is_the_programs() {
+    fn a_vertex_input_an_include_declares_is_checked_in_its_file() {
         let vsh = "#version 330\n#include <minecraft:dynamictransforms.glsl>\n\
-            #include <minecraft:projection.glsl>\n#include <m:offset.glsl>\n\
-            in vec3 Position;\nin vec2 UV0;\nin vec4 Color;\n\
+            #include <minecraft:projection.glsl>\n#include <m:extra.glsl>\n\
+            in vec3 Position;\n\
             out vec2 texCoord0;\nout vec4 vertexColor;\n\
-            void main() { gl_Position = ProjMat * ModelViewMat * vec4(Position + Offset, 1.0); texCoord0 = UV0; vertexColor = Color; }\n";
+            void main() { gl_Position = ProjMat * ModelViewMat * vec4(Position + Extra, 1.0); }\n";
         let fsh = "#version 330\n\
             in vec2 texCoord0;\nin vec4 vertexColor;\nout vec4 fragColor;\n\
             void main() { fragColor = vertexColor; }\n";
         let files: BTreeMap<String, Vec<u8>> = [
-            ("assets/m/shaders/include/offset.glsl", "in vec3 Offset;\n"),
+            ("assets/m/shaders/include/extra.glsl", "in vec3 Extra;\n"),
             ("assets/m/shaders/core/blur.vsh", vsh),
             ("assets/m/shaders/core/blur.fsh", fsh),
         ]
         .map(|(name, text)| (name.to_owned(), text.as_bytes().to_vec()))
         .into();
         let (count, refused) = pipeline_shaders(&files, None);
+        assert_eq!(count, 1);
+        assert_eq!(refused.len(), 1, "{refused:?}");
+        assert!(
+            refused[0].starts_with("assets/m/shaders/include/extra.glsl:1:")
+                && refused[0].contains("`Extra`"),
+            "{refused:?}"
+        );
+    }
+
+    /// A vertex shader with `vsh_in` as its inputs and `main_body` as its body, with
+    /// `blur.fsh` of the default format's outputs.
+    fn vertex_program(vsh_in: &str, main_body: &str) -> BTreeMap<String, Vec<u8>> {
+        let vsh = format!(
+            "#version 330\n#include <minecraft:dynamictransforms.glsl>\n\
+            #include <minecraft:projection.glsl>\n{vsh_in}\
+            out vec2 texCoord0;\nout vec4 vertexColor;\n\
+            void main() {{ {main_body} }}\n"
+        );
+        let fsh = "#version 330\nin vec2 texCoord0;\nin vec4 vertexColor;\nout vec4 fragColor;\n\
+            void main() { fragColor = vertexColor; }\n";
+        [
+            ("assets/m/shaders/core/blur.vsh", vsh.as_str()),
+            ("assets/m/shaders/core/blur.fsh", fsh),
+        ]
+        .map(|(name, text)| (name.to_owned(), text.as_bytes().to_vec()))
+        .into()
+    }
+
+    /// A program that declares only `Position` is checked against that input alone: it passes,
+    /// and reading `UV0` it never declared is refused, as the game (which builds the inputs from
+    /// the format's declared ones) would; checked as if it declared all three defaults, the
+    /// undeclared read compiled.
+    #[test]
+    fn a_program_declaring_one_default_input_is_checked_against_that_input() {
+        let body = "gl_Position = ProjMat * ModelViewMat * vec4(Position, 1.0);";
+        let (count, refused) =
+            pipeline_shaders(&vertex_program("in vec3 Position;\n", body), None);
         assert_eq!((count, refused), (1, Vec::<String>::new()));
+
+        let reads_uv0 = format!("{body} texCoord0 = UV0;");
+        let (count, refused) =
+            pipeline_shaders(&vertex_program("in vec3 Position;\n", &reads_uv0), None);
+        assert_eq!(count, 1);
+        assert!(
+            refused
+                .iter()
+                .any(|r| r.starts_with("assets/m/shaders/core/blur.vsh")),
+            "{refused:?}"
+        );
+    }
+
+    /// A vertex `in` that no vanilla format provides is refused by its name, at its line.
+    #[test]
+    fn a_vertex_input_no_vanilla_format_provides_is_refused_by_name() {
+        let body = "gl_Position = ProjMat * ModelViewMat * vec4(Position + Normal, 1.0);";
+        let inputs = "in vec3 Position;\nin vec3 Normal;\n";
+        let (count, refused) = pipeline_shaders(&vertex_program(inputs, body), None);
+        assert_eq!(count, 1);
+        assert_eq!(refused.len(), 1, "{refused:?}");
+        assert!(
+            refused[0].starts_with("assets/m/shaders/core/blur.vsh:5:")
+                && refused[0].contains("`Normal`"),
+            "{refused:?}"
+        );
+    }
+
+    /// A vanilla input name declared with a type its attribute does not have is refused.
+    #[test]
+    fn a_vanilla_vertex_input_of_the_wrong_type_is_refused() {
+        let body = "gl_Position = ProjMat * ModelViewMat * vec4(Position, 0.0, 1.0);";
+        let (count, refused) =
+            pipeline_shaders(&vertex_program("in vec2 Position;\n", body), None);
+        assert_eq!(count, 1);
+        assert_eq!(refused.len(), 1, "{refused:?}");
+        assert!(
+            refused[0].starts_with("assets/m/shaders/core/blur.vsh:4:")
+                && refused[0].contains("`Position`")
+                && refused[0].contains("`vec3`"),
+            "{refused:?}"
+        );
     }
 
     /// A fragment shader that includes `oit.glsl` only through an include of its own is checked
