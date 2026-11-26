@@ -915,6 +915,9 @@ impl Game<'_> {
         // Keeps the build on the frame's window size and drops it once nothing
         // shows; an unchanged frame compares and builds nothing.
         self.build_screen();
+        if self.screen_state.context_menu.is_some() {
+            let _ = self.live_context_menu();
+        }
         // Free with no native mod: the snapshot clones the title and menu.
         if mod_api::__private::mods().is_empty() {
             return;
@@ -2367,7 +2370,12 @@ impl Game<'_> {
         use sunrise_client::health::{HitLend, LivingBody, PlayerBody, PlayerHealthRead};
         let (source, state, original_lend) = post.view();
         // The victim as the death or protection callback left it, beside the lent attacker:
-        // the player in place, or a mob split from the attacker in the same list.
+        // the player in place, a mob split from the attacker in the same list, or the dragon.
+        let dragon_victim = self
+            .dragon
+            .as_ref()
+            .filter(|d| d.id as i32 == entity)
+            .is_some_and(|d| !self.target_removed(&crate::game::commands::Target::Dragon(d.id)));
         let victim_mob = self.mobs.iter().position(|m| m.id as i32 == entity);
         // The Post record exists only for a Post subscriber, and names an attacker only if the hit
         // lent one: it carries the setup's decision.
@@ -2419,7 +2427,13 @@ impl Game<'_> {
                     })
                     .or_else(parked),
             };
-            (victim_mob.map(LivingBody::Mob), lend)
+            let victim = victim_mob.map(LivingBody::Mob).or_else(|| {
+                dragon_victim
+                    .then(|| self.dragon.as_ref())
+                    .flatten()
+                    .map(crate::game::native_living_body::dragon_body)
+            });
+            (victim, lend)
         };
         let level = crate::game::entity::damage_level_of!(
             self,

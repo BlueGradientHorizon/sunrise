@@ -307,6 +307,7 @@ impl Game<'_> {
                             return Err(error);
                         }
                         self.save_chunk_tickets()?;
+                        self.save_entity_metadata()?;
                         self.save_game_metadata()?;
                         save.stage = Stage::Writes(Some(self.save.flush_later()?));
                     }
