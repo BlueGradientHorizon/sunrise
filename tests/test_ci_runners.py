@@ -7,6 +7,7 @@
 """
 import json
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -78,6 +79,16 @@ def checkouts(job):
     return [step for step in job.get("steps", []) if step.get("uses", "").startswith("actions/checkout")]
 
 
+def labels_of(runs_on):
+    """The labels a parsed runs-on can select: a list's or mapping's own, or the lists in an expression's
+    fromJSON('[...]') literals, whichever branch picks them (other values name hosted runners)."""
+    if isinstance(runs_on, dict):
+        runs_on = runs_on.get("labels", [])
+    if isinstance(runs_on, list):
+        return set(runs_on)
+    return {label for literal in re.findall(r"fromJSON\('(\[[^']*\])'\)", runs_on) for label in json.loads(literal)}
+
+
 def routed():
     """(where, triggers, workflow, job, runs-on, pools) for every job that can run on our runners."""
     for path in sorted(WORKFLOWS.glob("*.yml")):
@@ -85,8 +96,8 @@ def routed():
         on = triggers(document)
         for name, job in jobs(document):
             value = job.get("runs-on", "")
-            pools = {pool for pool, labels in (("light", LIGHT), ("checks", CHECKS))
-                     if any(f'"{label}"' in value for label in labels)}
+            reached = labels_of(value)
+            pools = {pool for pool, labels in (("light", LIGHT), ("checks", CHECKS)) if reached & set(labels)}
             if pools:
                 yield f"{path.name} {name}", on, document, job, value, pools
 
@@ -213,17 +224,9 @@ class OwnRunnerTests(unittest.TestCase):
     @needs_runner_shell
     @unittest.skipUnless(shutil.which("jq"), "the hook reads the event with jq")
     def test_the_light_runners_refuse_forks_themselves(self):
+        hook = ROOT / "tools/ci/job-started.sh"
         with tempfile.TemporaryDirectory() as folder:
             home = Path(folder)
-            python = home / ".local/bin/python3.13"
-            python.parent.mkdir(parents=True)
-            python.write_text("#!/bin/sh\n")
-            python.chmod(0o755)
-            # Sourced with an unknown command the script defines its functions, prints its usage and exits;
-            # the trap then writes the job-started hook the way `install` does, into this home.
-            subprocess.run(["bash", "-c", 'trap shared_files EXIT; source "$0" none', str(ROOT / "tools/ci/checks-runners.sh")],
-                           env={**os.environ, "HOME": str(home)}, capture_output=True, check=False)
-            hook = home / ".actions-runners/ci-shared/job-started.sh"
 
             def job(event, head=None):
                 path = home / "event.json"
