@@ -147,10 +147,14 @@ pub(in crate::game) fn particle_block_states() -> Option<sunrise_client::particl
         .map(|states| -> sunrise_client::particles::BlockStates { states })
 }
 
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(test)]
     use mod_api::{ClientHost, FireworkExplosion, FireworkShape};
+    #[cfg(test)]
     use sunrise_client::particles::ParticleLevel;
     use sunrise_level::particle_options::ParticleType;
 
@@ -181,5 +185,3 @@ mod tests {
         assert!(!finite_options(&bad));
     }
 }
-
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

@@ -11,7 +11,7 @@ pub(crate) mod tests {
     };
 
     use sunrise_gameplay_common::game::TryIntoApi;
-    use sunrise_gameplay_common::game::in_own_process;
+    
     use sunrise_gameplay_common::game::transactions::TransactionsGameExt;
 
     use sunrise_gameplay_common::game::server_side::native_item_places::tests::guest;
@@ -32,7 +32,7 @@ pub(crate) mod tests {
 
     use sunrise_gameplay::game::server_side::native_item_places::tests::saved_mob_attribute;
 
-    use sunrise_gameplay::game::server_side::native_item_places::tests::trade;
+    use sunrise_gameplay::game::server_side::native_item_places::tests::{TradeRefused, trade};
 
     use sunrise_gameplay::game::server_side::native_item_places::tests::traders;
 
@@ -50,16 +50,16 @@ pub(crate) mod tests {
 
     use mod_api::{
         CraftedByError, ENTITY_AUTOMATION, ENTITY_ITEMS, ItemPlace, ItemPlaceEditError,
-        ItemResource, MenuRef, TransactionError,
+        ItemResource, TransactionError,
     };
 
-    use std::sync::{Arc, atomic::AtomicI32, mpsc};
+    use std::sync::{Arc, mpsc};
 
     use sunrise_core::geometry::Direction;
 
     use sunrise_items::items::ItemStack;
 
-    use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
+    use sunrise_sim::lan::PlayerSender;
 
     #[test]
     #[ignore = "daily"]
@@ -3227,7 +3227,7 @@ pub(crate) mod tests {
             traders(game, Some(ItemStack::new("minecraft:stone", 64)));
             let before = inventories(game);
             let (diamonds, emeralds) = offers();
-            assert_eq!(trade(game, &diamonds, &emeralds), Err(()));
+            assert_eq!(trade(game, &diamonds, &emeralds), Err(TradeRefused));
             assert_eq!(inventories(game), before);
         });
     }
@@ -3244,7 +3244,7 @@ pub(crate) mod tests {
                 g.inventory[0] = Some(ItemStack::new("minecraft:diamond", 2))
             });
             let before = inventories(game);
-            assert_eq!(trade(game, &diamonds, &emeralds), Err(()));
+            assert_eq!(trade(game, &diamonds, &emeralds), Err(TradeRefused));
             assert_eq!(inventories(game), before);
             let guests = &mut game.server.lan.as_mut().unwrap().hub.guests;
             guests.update(0, |g| {
@@ -3252,7 +3252,7 @@ pub(crate) mod tests {
             });
             guests.update(1, |g| g.inventory[4] = g.inventory[0].take());
             let before = inventories(game);
-            assert_eq!(trade(game, &diamonds, &emeralds), Err(()));
+            assert_eq!(trade(game, &diamonds, &emeralds), Err(TradeRefused));
             assert_eq!(inventories(game), before);
         });
     }

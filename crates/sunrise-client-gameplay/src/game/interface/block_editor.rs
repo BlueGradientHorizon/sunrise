@@ -858,5 +858,3 @@ mod tests {
         assert_eq!(cycle(&[1, 2, 3], 9, -1), 2);
     }
 }
-
-use sunrise_gameplay_common::game::tables::GameItems as _;

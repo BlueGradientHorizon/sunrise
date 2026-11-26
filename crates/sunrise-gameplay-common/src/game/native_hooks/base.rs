@@ -741,7 +741,7 @@ pub trait GameHooks<'g>: crate::game::native_hooks::fire::FireHooks<'g> {
         );
     }
 }
-impl<'g, T: crate::game::native_hooks::fire::FireHooks<'g> + ?Sized> GameHooks<'g> for T {}
+impl<'g, T: crate::game::native_hooks::fire::FireHooks<'g>> GameHooks<'g> for T {}
 
 /// Register namespaced NBT component types before content loads.
 pub fn native_component_types(context: &mod_api::RegistrationContext, types: &mut Vec<String>) {
@@ -1206,7 +1206,7 @@ impl LevelView<'_> {
 /// The hook points. Each does nothing in Sunrise.
 impl crate::game::CommonGame<'_> {}
 
+use crate::game::tables::GameItems as _;
+
 #[cfg(test)]
 pub(in crate::game) mod held_break_slot_tests {}
-
-use crate::game::tables::GameItems as _;

@@ -344,6 +344,10 @@ impl crate::game::ServerGame<'_> {
     }
 }
 
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5 as _;
+
+use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -412,11 +416,3 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
-
-use sunrise_gameplay_common::game::tables::GameItems as _;
-
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
-
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5 as _;
-
-use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;

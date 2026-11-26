@@ -609,6 +609,8 @@ impl crate::game::ClientGame<'_> {
     }
 }
 
+use sunrise_gameplay_common::game::tables::GameItems as _;
+
 #[cfg(feature = "client")]
 #[cfg(test)]
 mod tests {
@@ -739,5 +741,3 @@ mod tests {
         assert!(!ui.turn_page(false));
     }
 }
-
-use sunrise_gameplay_common::game::tables::GameItems as _;

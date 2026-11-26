@@ -1,25 +1,10 @@
+use crate::game::ServerGame;
 use mod_api::{ConfigEntry, ConfigFileError, ConfigFiles, ConfigPath, ConfigStat};
 #[cfg(test)]
 use std::fs;
 use sunrise_gameplay_common::game::native_config_file_services::{
     FileRoot, list, read, remove, stat, write,
 };
-
-impl crate::game::ServerGame<'_> {
-    #[inline(always)]
-    pub(in crate::game) fn config_files() -> &'static dyn ConfigFiles {
-        sunrise_gameplay_common::game::native_config_file_services::config_files()
-    }
-    #[inline(always)]
-    pub(in crate::game) fn data_files() -> &'static dyn ConfigFiles {
-        sunrise_gameplay_common::game::native_config_file_services::data_files()
-    }
-
-    #[inline(always)]
-    pub(in crate::game) fn is_loaded(id: &str) -> bool {
-        sunrise_gameplay_common::game::native_config_file_services::is_loaded(id)
-    }
-}
 
 impl crate::game::ServerGame<'_> {
     pub(in crate::game) fn world_data_files(&self) -> &dyn ConfigFiles {
@@ -37,7 +22,7 @@ fn world_root(game: &crate::game::ServerGame<'_>) -> Result<FileRoot, ConfigFile
     })
 }
 
-impl ConfigFiles for crate::game::ServerGame<'_> {
+impl ConfigFiles for ServerGame<'_> {
     fn read(&self, file: &ConfigPath) -> Result<Vec<u8>, ConfigFileError> {
         read(&world_root(self)?, file)
     }

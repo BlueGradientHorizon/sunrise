@@ -1,5 +1,4 @@
 //! Real rocket tick coverage for impact payloads and canceled explosions.
-use crate::game::fireworks::impact::*;
 use crate::game::server_side::native_projectiles::impact_probe::{Action, point, with_probe};
 use sunrise_core::geometry::Vec3;
 use sunrise_gameplay_common::game::fireworks::Rocket;

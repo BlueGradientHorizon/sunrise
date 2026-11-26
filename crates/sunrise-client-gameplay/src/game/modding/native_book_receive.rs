@@ -1,5 +1,4 @@
 //! A remote catalogue supplies recipe membership, never the client's local recipe JSON.
-use super::*;
 use std::collections::{BTreeMap, BTreeSet};
 use std::result::Result;
 use sunrise_gameplay_common::game::native_book_displays::Resources;
@@ -233,5 +232,3 @@ impl crate::game::ClientGame<'_> {
         }
     }
 }
-
-use crate::game::client_side::remote_client::chat::ChatTrustClientExt as _;

@@ -6,8 +6,7 @@ use sunrise_sim::mobs::Mob;
 use {
     crate::game::*,
     sunrise_gameplay_common::game::{
-        Arc, HashMap, Instant, Options, PathBuf, PlayerMotion, Progress, Vec3, World, api_values,
-        entity, execution_role, general, mods,
+        Arc, HashMap, Instant, Options, PathBuf, PlayerMotion, Progress, Vec3, World, execution_role,
     },
 };
 
@@ -284,7 +283,6 @@ fn dead_guest_leaves_at_e_but_reaches_a_registered_selector() {
     });
 }
 
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
 use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
 

@@ -1,5 +1,4 @@
 //! End-to-end registration and root publication, with unique resource and save roots.
-use super::*;
 use mod_api::{
     DataPackFilesEvent, Hooks, Identifier, ModEntry, PoiKey, ProfessionDefinition, ProfessionKey,
     ProfessionWorkstation, RegisterVillagerProfessionsEvent, RegistrationContext, ServerHost,
@@ -659,4 +658,5 @@ fn villager_native_slots_ignore_declaring_mod_order() {
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
+#[cfg(test)]
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

@@ -625,5 +625,3 @@ mod material_tests {
         );
     }
 }
-
-use sunrise_gameplay_common::game::tables::GameItems as _;

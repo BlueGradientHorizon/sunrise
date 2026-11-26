@@ -1,6 +1,5 @@
 //! What a converted mob carries over that lives outside `Mob`: its tags, its team and its mods'
 //! attachments (`Mob.convertTo`).
-use super::*;
 
 impl crate::game::ServerGame<'_> {
     /// Transfer the entity-owned state that is stored outside `Mob`.

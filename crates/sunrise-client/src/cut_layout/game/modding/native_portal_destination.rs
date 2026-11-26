@@ -3,6 +3,12 @@ use mod_api::PortalAngle;
 use mod_api::PortalError;
 use mod_api::PortalRotation;
 use sunrise_gameplay_common::game::Dim;
+use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -210,8 +216,3 @@ mod tests {
         });
     }
 }
-use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
-
-use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
-
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

@@ -57,4 +57,3 @@ fn remote_player_use_animation_dispatches_once() {
     });
 }
 
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;

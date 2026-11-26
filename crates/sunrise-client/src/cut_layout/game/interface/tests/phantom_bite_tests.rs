@@ -1,9 +1,6 @@
 //! `LevelEventHandler` 1039 (`LevelEvent.SOUND_PHANTOM_BITE`): the server
 //! queues level event 1039 for guests.
-use {
-    crate::game::*,
-    sunrise_gameplay_common::game::{Level, LevelEvent, QueuedLevelEvent, World},
-};
+use sunrise_gameplay_common::game::{QueuedLevelEvent, World};
 
 fn with_server_game(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
     let mut resources = None;

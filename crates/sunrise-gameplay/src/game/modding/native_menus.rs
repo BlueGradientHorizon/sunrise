@@ -555,16 +555,10 @@ pub mod tests {
 
     use sunrise_gameplay_common::game::server_side::native_menus::tests::MOD_MENU;
 
-    use super::super::native_entity_refs::tests::with_game;
     use super::*;
     use crate::game::server_side::native_item_places::tests::open_to_lan;
-    use mod_api::{HostTransaction, ItemPlace, ItemResource, ServerHost, TransactionError};
+    use mod_api::ServerHost;
     use std::sync::{Arc, mpsc};
-    use sunrise_gameplay_common::game::api_values::TryIntoApi;
-    use sunrise_protocol::{
-        buf::Reader,
-        packets::play::{self, Clientbound as C, Serverbound as S},
-    };
     use sunrise_sim::lan::{Out, PlayerSender};
 
     /// Guest 1 (UUID 123) on a world open to LAN, and what their client is sent.

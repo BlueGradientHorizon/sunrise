@@ -24,7 +24,7 @@ pub(crate) mod tests {
 
     use std::sync::Arc;
 
-    use sunrise_level::{chunk::Chunk, containers::ModBlockEntityFields};
+    use sunrise_level::chunk::Chunk;
 
     use sunrise_sim::lan::menu::Slots;
 
@@ -601,6 +601,112 @@ pub(crate) mod tests {
             assert_eq!(chest.merge_data(game, compound(stick)), stale);
             assert_eq!(chest.set_name(game, Some("x")), stale);
             assert_eq!(chest.name(game), None);
+        });
+    }
+
+    /// `LevelWriteHost::set_block` in a level hook: the block entity goes with
+    /// its block and comes with the new one, as the Host's write does.
+    #[cfg(feature = "client")]
+    #[test]
+    #[ignore = "daily"]
+    fn a_level_hook_set_block_replaces_whole_states_and_their_block_entities() {
+        use super::super::native_entity_refs::tests::{with_client_game, with_game};
+        use sunrise_gameplay_common::game::{GameGameExt1 as _, SideGame, mod_api_host::LevelTicks};
+        use mod_api::{BlockUpdateFlags, LevelWriteHost};
+        use sunrise_world::chunk::BlockState;
+
+        fn write<'g>(
+            game: &mut impl SideGame<'g>,
+            pos: [i32; 3],
+            state: mod_api::BlockState,
+            flags: BlockUpdateFlags,
+        ) -> bool {
+            game.with_level(|_, level, ticks| {
+                LevelWriteHost::set_block(&mut LevelTicks::new(level, ticks), pos, state, flags)
+            })
+        }
+        let flags = BlockUpdateFlags::NEIGHBORS | BlockUpdateFlags::KNOWN_SHAPE;
+        use sunrise_gameplay_common::game::api_values::TryIntoApi;
+        with_game(|game| {
+            game.options.dedicated = Some(Vec::new());
+            game.world
+                .chunks
+                .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+            let registry = game.pack.assets.registry;
+            let state = |name: &str, age: Option<&str>| {
+                registry
+                    .resolve(&BlockState {
+                        name: name.into(),
+                        properties: age
+                            .map(|age| ("age".into(), age.into()))
+                            .into_iter()
+                            .collect(),
+                    })
+                    .unwrap()
+            };
+            let stone = state("minecraft:stone", None);
+            let chest = state("minecraft:chest", None);
+            let young = state("minecraft:wheat", Some("0"));
+            let grown = state("minecraft:wheat", Some("7"));
+            let api_stone = stone.try_into_api().unwrap();
+            let api_chest = chest.try_into_api().unwrap();
+            let api_young = young.try_into_api().unwrap();
+            let api_grown = grown.try_into_api().unwrap();
+            let key = (0, 64, 0);
+
+            assert!(write(game, [0, 64, 0], api_stone, flags));
+            assert!(game.world.block_entities.get(&key).is_none());
+            assert!(write(game, [0, 64, 0], api_chest, flags));
+            assert!(matches!(
+                game.world.block_entities.get(&key),
+                Some(BlockEntity::Chest(_))
+            ));
+            assert!(write(game, [0, 64, 0], api_stone, flags));
+            assert_eq!(game.world.block(0, 64, 0), stone);
+            assert!(game.world.block_entities.get(&key).is_none());
+
+            // A crop's whole-state growth: no block entity, and a repeat changes nothing.
+            assert!(write(game, [0, 64, 0], api_young, flags));
+            assert!(write(game, [0, 64, 0], api_grown, flags));
+            assert_eq!(game.world.block(0, 64, 0), grown);
+            assert!(game.world.block_entities.get(&key).is_none());
+            assert!(!write(game, [0, 64, 0], api_grown, flags));
+
+            // Unloaded, outside the build height and invalid: refused, nothing loaded.
+            let chunks = game.world.chunks.len();
+            assert!(!write(game, [16, 64, 0], api_stone, flags));
+            assert!(!write(game, [0, 10000, 0], api_stone, flags));
+            assert!(!write(
+                game,
+                [0, 64, 0],
+                mod_api::__private::block_state_from_ordinal(api_stone.block(), u16::MAX),
+                flags
+            ));
+            assert_eq!(game.world.chunks.len(), chunks);
+            assert_eq!(game.world.block(0, 64, 0), grown);
+
+            // The same Host write still creates the block entity.
+            assert!(game.native_set_block("minecraft:overworld", [1, 64, 0], chest, flags.bits()));
+            assert!(matches!(
+                game.world.block_entities.get(&(1, 64, 0)),
+                Some(BlockEntity::Chest(_))
+            ));
+
+        });
+
+        with_client_game(|game| {
+            game.world.chunks.insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+            let registry = game.pack.assets.registry;
+            let grown = registry
+                .resolve(&BlockState {
+                    name: "minecraft:wheat".into(),
+                    properties: [("age".into(), "7".into())].into(),
+                })
+                .unwrap();
+            game.world.set(0, 64, 0, grown).unwrap();
+            let api_stone = registry.default_state("minecraft:stone").unwrap().try_into_api().unwrap();
+            assert!(!write(game, [0, 64, 0], api_stone, flags));
+            assert_eq!(game.world.block(0, 64, 0), grown);
         });
     }
 }

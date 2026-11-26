@@ -16,7 +16,7 @@ impl DragonSlot {
 }
 
 #[cfg(test)]
-mod tests {
+mod probe_order_tests {
     use super::*;
     // Literal orders were independently calculated from the specified mix/probe
     // algorithm, not obtained from DragonPartsTable. The removal calculation

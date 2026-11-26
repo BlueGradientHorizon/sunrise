@@ -128,6 +128,8 @@ impl ServerGame<'_> {
     }
 }
 
+use sunrise_gameplay_common::game::entity_sizes_common::EntitySizesCommonGameExt1 as _;
+
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use crate::game::native_entity_refs::tests::with_game;
@@ -1109,5 +1111,3 @@ pub(in crate::game) mod tests {
         });
     }
 }
-
-use sunrise_gameplay_common::game::entity_sizes_common::EntitySizesCommonGameExt1 as _;

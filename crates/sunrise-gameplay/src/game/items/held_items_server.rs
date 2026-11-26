@@ -18,5 +18,3 @@ impl crate::game::ServerGame<'_> {
         self.side_wear_glider(points);
     }
 }
-
-use sunrise_gameplay_common::game::side_ops::player::PlayerSideGameExt as _;

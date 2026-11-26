@@ -33,16 +33,15 @@ pub mod world_cmds;
 
 use super::Dim;
 use sunrise_command::{
-    Arg, CommandError, Context, Reader,
+    Arg, Context, Reader,
     args::{BlockInput, Coordinates, ItemInput, Selector},
     vanilla::DIFFICULTIES,
 };
-use sunrise_core::{geometry::Vec3, java_number::float_to_string, random::RandomSource};
+use sunrise_core::{java_number::float_to_string, random::RandomSource};
 use sunrise_game_data::{
     gamerules::{self, Value},
-    text::{self, Text},
+    text::Text,
 };
-use sunrise_items::items::ItemStack;
 use sunrise_protocol::packets::play::{self, Clientbound as C};
 use sunrise_world::registry::BlockStateId;
 
@@ -2471,8 +2470,6 @@ pub(in crate::game) mod forced_respawn_tests {
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::GameGameExt1 as _;
-
-use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
 
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
 

@@ -10,6 +10,7 @@
 //! (`nav_move_to`, `ai.target`), behind the same input boundaries the mob
 //! handles take, and the write handles a `ServerHost` takes do not exist here.
 
+use crate::game::ServerGame;
 use mod_api::{
     BehaviorCxBackend, EntityRef, EntityTags, GoalCxBackend, Host, LivingRef, MobRef, PlayerRef,
     RandomSource,
@@ -610,7 +611,7 @@ impl BehaviorCxBackend for GoalCx<'_, '_> {
     }
 }
 
-impl mobs::part_goals::GoalHost for crate::game::ServerGame<'_> {
+impl mobs::part_goals::GoalHost for ServerGame<'_> {
     fn epoch(&self) -> Option<mod_api::WorldEpoch> {
         self.common.native_lifecycle.epoch()
     }
@@ -1022,18 +1023,10 @@ pub(in crate::game) mod generated {
     include!(concat!(env!("OUT_DIR"), "/mod_api_goal_view_generated.rs"));
 }
 
-use sunrise_gameplay_common::game::GameGameExt1 as _;
-
 use sunrise_gameplay_common::game::block_props::BlockPropsGameExt2 as _;
-
-use sunrise_gameplay_common::game::native_block_entity_read::NativeBlockEntityReadGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5;
-
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt6 as _;
-
-use sunrise_gameplay_common::game::native_item_entity_refs::NativeItemEntityRefsGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;

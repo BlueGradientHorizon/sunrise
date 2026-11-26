@@ -1275,8 +1275,6 @@ pub(in crate::game) mod kill_credit_tests {
 #[path = "combat/bee_sting_tests.rs"]
 pub mod bee_sting_tests;
 
-use sunrise_gameplay_common::game::tables::GameItems as _;
-
 use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt1 as _;
 
 use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;

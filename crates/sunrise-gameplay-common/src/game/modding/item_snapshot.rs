@@ -53,8 +53,6 @@ pub trait ItemBoundary {
     fn boundary_items(&self) -> Option<&Items>;
 }
 
-use crate::game::tables::GameItems as _;
-
 impl ItemBoundary for super::GameLevel<'_> {
     fn boundary_items(&self) -> Option<&Items> {
         Some(self.items)
@@ -68,5 +66,3 @@ impl ItemBoundary for super::native_hooks::HitLevel<'_> {
 }
 
 use crate::game::side_ops::modapi_modding::ModapiModdingSideGameExt as _;
-
-use crate::game::tables::GameItems as _;

@@ -208,7 +208,7 @@ impl Drop for LoopStates {
     }
 }
 
-/// [`Game::run_published_loop`] on any owner of a [`LoopStates`] (`states` finds it).
+/// Run with the slots of an owner whose state is accessed by `states`.
 fn run_with_slots<G, T: LoopSlots>(
     game: &mut G,
     states: fn(&mut G) -> &mut LoopStates,
@@ -244,20 +244,23 @@ fn run_with_slots<G, T: LoopSlots>(
     }
 }
 
-impl crate::game::CommonGame<'_> {
-    /// Runs the published loop `name` with the slots `T`: `run` with this game's slots for it
-    /// (made on the first run), or `vanilla` (the loop with no slots) while the slots are out for
-    /// an enclosing run or after a panic. A panic while making the slots or in `run` marks the
-    /// loop poisoned, drops the slots made (each mod's inside its guard) and goes on unwinding to
-    /// the crash path, which names the mod.
-    pub(crate) fn run_published_loop<T: LoopSlots>(
-        &mut self,
-        name: &'static str,
-        run: impl FnOnce(&mut Self, &mut T) -> Result<()>,
-        vanilla: impl FnOnce(&mut Self) -> Result<()>,
-    ) -> Result<()> {
-        run_with_slots(self, |game| &mut game.loop_states, name, run, vanilla)
-    }
+/// Run a published loop with its concrete receiver and retain its slots in common game state.
+#[doc(hidden)]
+pub fn run_published_loop<'g, G: crate::game::SideGame<'g>, T: LoopSlots>(
+    game: &mut G,
+    name: &'static str,
+    run: impl FnOnce(&mut G, &mut T) -> Result<()>,
+    vanilla: impl FnOnce(&mut G) -> Result<()>,
+) -> Result<()> {
+    // Carry the game lifetime through the state accessor's generic owner type.
+    let mut owner = (game, std::marker::PhantomData::<&'g ()>);
+    run_with_slots(
+        &mut owner,
+        |(game, _)| &mut game.common_mut().loop_states,
+        name,
+        |(game, _), slots| run(game, slots),
+        |(game, _)| vanilla(game),
+    )
 }
 
 #[cfg(test)]

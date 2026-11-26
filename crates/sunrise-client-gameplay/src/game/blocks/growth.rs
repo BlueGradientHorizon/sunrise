@@ -25,11 +25,14 @@ impl crate::game::ClientGame<'_> {
     }
 }
 
+use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;
+
 #[cfg(feature = "client")]
 #[cfg(test)]
 pub(in crate::game) mod tests {
 
     use mod_api::{self, BonemealEvent, BonemealSource, Flow, Hooks, HostSide};
+    #[cfg(test)]
     use std::sync::Arc;
     use std::sync::{Mutex, MutexGuard, PoisonError};
     use sunrise_core::{geometry::Direction, position::BlockPos};
@@ -185,5 +188,3 @@ pub(in crate::game) mod tests {
         );
     }
 }
-
-use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;

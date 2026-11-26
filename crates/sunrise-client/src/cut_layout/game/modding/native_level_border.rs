@@ -1,4 +1,5 @@
 #![cfg(test)]
+
 #[cfg(test)]
 mod tests {
     use mod_api::{LevelRef, WorldEpoch};
@@ -49,4 +50,3 @@ mod tests {
         });
     }
 }
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

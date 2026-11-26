@@ -113,6 +113,8 @@ fn an_answer_of_the_same_level_leaves_the_drops_alone() {
     assert_eq!(seen.lock().unwrap().len(), 8);
 }
 
+#[cfg(test)]
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
 
+#[cfg(test)]
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt6 as _;

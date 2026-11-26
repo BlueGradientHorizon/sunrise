@@ -1,4 +1,3 @@
-use super::*;
 use std::time::Instant;
 use sunrise_client::hud::HudBatch;
 use sunrise_client_gameplay::game::client_side::advancements_screen::{TabBounds, window};

@@ -12,6 +12,7 @@
 //! game rules, the scoreboard, the maps and the entities waiting to arrive
 //! through a portal.
 
+use sunrise_gameplay_common::game::GameGameExt3;
 use super::entity_residency::{define_resident_access, resident_owners};
 use super::{
     Dim, ExperienceOrb, FallingBlock, ItemEntity, Mob,
@@ -2338,8 +2339,114 @@ impl crate::game::ServerGame<'_> {
     }
 }
 
+impl crate::game::ServerGame<'_> {
+    /// `Game::tick` as a server runs it for its first level: no window lead, which only the window's `Game` has.
+    pub(in crate::game) fn tick_server_first(&mut self) -> Result<()> {
+        if !self.common.is_logical_server() {
+            return Err("client-role game cannot tick a server level".into());
+        }
+        if self.server.hold_server {
+            return Ok(());
+        }
+        self.abort_open_transactions();
+        self.common.update_interaction_ranges();
+        self.tick_first_level()
+    }
+
+    /// A server's tick of its first level: the clock, functions, autosave and weather it owns, then the level.
+    pub(in crate::game) fn tick_first_level(&mut self) -> Result<()> {
+        if !self.common.is_logical_server() {
+            return Err("client-role game cannot tick a server level".into());
+        }
+        // Only a server ticks its own world from here: its players are guests, swapped in for
+        // their turns (`as_guest`), and the window's player is a client of it.
+        self.common.ticks += 1;
+        // `/tick freeze` stops the world but not the player.
+        let running = match self.server.level_pass.running {
+            Some(running) => running,
+            None => self.common.clock.world_runs(),
+        };
+        span("mods_inventory_ticks", || self.native_inventory_ticks());
+        if running {
+            // `MinecraftServer.tickChildren`: `commandFunctions` runs before
+            // any level ticks, so a tick function reads the game time and the
+            // day clock from before this tick. Vanilla's SavedData is loaded
+            // long before this point; the lazy scoreboard/storage read has to
+            // be done by then too, or a load tag writes over what it restores.
+            self.load_scoreboard();
+            span("tick_functions", || self.tick_functions());
+            self.common.world.game_time += 1;
+            if self
+                .common
+                .ui
+                .rules
+                .bool_at(sunrise_game_data::gamerules::vanilla::ADVANCE_WEATHER)
+            {
+                self.common
+                    .world
+                    .weather
+                    .tick_timers(&mut self.common.world.random);
+            }
+            self.common.world.weather.tick_levels();
+        } else if self.common.clock.still() {
+            // Under `SUNRISE_STILL` a frozen world's rain and thunder sit at their levels, as a
+            // shader pack's smoothed values do, so `/weather rain` shows full rain without
+            // stepping the world (and its mobs) through the fade.
+            self.common.world.weather.settle_levels();
+        }
+        // ClientLevel.tick: the sky flash fades in a frozen level too.
+        self.tick_weather_effects();
+        let _ = span("player_autosaves", || self.finish_player_autosaves(false));
+        // MinecraftServer.tickServer's countdown, then autoSave: three
+        // hundred seconds of ticks at the rate the server runs at now.
+        self.server.ticks_until_autosave -= 1;
+        self.common.autosaving = self.server.ticks_until_autosave <= 0;
+        if let Some(serving) = &self.server.serving {
+            serving.set_saving(self.common.autosaving);
+        }
+        if self.common.autosaving {
+            span("autosave", || self.save_game_with(false))?;
+            self.server.ticks_until_autosave = self.next_autosave_interval();
+            if let Some(serving) = &self.server.serving {
+                serving.set_saving(false);
+            }
+        }
+        if running {
+            self.advance_clock();
+            // `ServerLevel.tickTime`, once the clock has moved on.
+            span("scheduled_functions", || self.run_scheduled_functions());
+        }
+        self.update_totem_ready();
+        span("tick_command_extras", || self.tick_command_extras());
+        self.tick_world(running)
+    }
+}
+
+use sunrise_gameplay_common::game::native_hooks::base::GameHooks as _;
+
+use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
+
+use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;
+
+use sunrise_gameplay_common::game::clocks::ClocksGameExt1 as _;
+
+use sunrise_gameplay_common::game::light_emission::LightEmissionGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_configs::NativeConfigsGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_hooks::SharedGameExt1 as _;
+
+use sunrise_gameplay_common::game::piston_push::carrying::CarryingGameExt1 as _;
+
 #[cfg(test)]
 mod tests {
+    #[cfg(test)]
     use sunrise_gameplay_common::game::in_own_process;
 
     use sunrise_gameplay_common::game::server_side::levels::tests::queue_unencodable_entity_record;
@@ -2636,111 +2743,3 @@ mod tests {
         );
     }
 }
-
-impl crate::game::ServerGame<'_> {
-    /// `Game::tick` as a server runs it for its first level: no window lead, which only the window's `Game` has.
-    pub(in crate::game) fn tick_server_first(&mut self) -> Result<()> {
-        if !self.common.is_logical_server() {
-            return Err("client-role game cannot tick a server level".into());
-        }
-        if self.server.hold_server {
-            return Ok(());
-        }
-        self.abort_open_transactions();
-        self.common.update_interaction_ranges();
-        self.tick_first_level()
-    }
-
-    /// A server's tick of its first level: the clock, functions, autosave and weather it owns, then the level.
-    pub(in crate::game) fn tick_first_level(&mut self) -> Result<()> {
-        if !self.common.is_logical_server() {
-            return Err("client-role game cannot tick a server level".into());
-        }
-        // Only a server ticks its own world from here: its players are guests, swapped in for
-        // their turns (`as_guest`), and the window's player is a client of it.
-        self.common.ticks += 1;
-        // `/tick freeze` stops the world but not the player.
-        let running = match self.server.level_pass.running {
-            Some(running) => running,
-            None => self.common.clock.world_runs(),
-        };
-        span("mods_inventory_ticks", || self.native_inventory_ticks());
-        if running {
-            // `MinecraftServer.tickChildren`: `commandFunctions` runs before
-            // any level ticks, so a tick function reads the game time and the
-            // day clock from before this tick. Vanilla's SavedData is loaded
-            // long before this point; the lazy scoreboard/storage read has to
-            // be done by then too, or a load tag writes over what it restores.
-            self.load_scoreboard();
-            span("tick_functions", || self.tick_functions());
-            self.common.world.game_time += 1;
-            if self
-                .common
-                .ui
-                .rules
-                .bool_at(sunrise_game_data::gamerules::vanilla::ADVANCE_WEATHER)
-            {
-                self.common
-                    .world
-                    .weather
-                    .tick_timers(&mut self.common.world.random);
-            }
-            self.common.world.weather.tick_levels();
-        } else if self.common.clock.still() {
-            // Under `SUNRISE_STILL` a frozen world's rain and thunder sit at their levels, as a
-            // shader pack's smoothed values do, so `/weather rain` shows full rain without
-            // stepping the world (and its mobs) through the fade.
-            self.common.world.weather.settle_levels();
-        }
-        // ClientLevel.tick: the sky flash fades in a frozen level too.
-        self.tick_weather_effects();
-        let _ = span("player_autosaves", || self.finish_player_autosaves(false));
-        // MinecraftServer.tickServer's countdown, then autoSave: three
-        // hundred seconds of ticks at the rate the server runs at now.
-        self.server.ticks_until_autosave -= 1;
-        self.common.autosaving = self.server.ticks_until_autosave <= 0;
-        if let Some(serving) = &self.server.serving {
-            serving.set_saving(self.common.autosaving);
-        }
-        if self.common.autosaving {
-            span("autosave", || self.save_game_with(false))?;
-            self.server.ticks_until_autosave = self.next_autosave_interval();
-            if let Some(serving) = &self.server.serving {
-                serving.set_saving(false);
-            }
-        }
-        if running {
-            self.advance_clock();
-            // `ServerLevel.tickTime`, once the clock has moved on.
-            span("scheduled_functions", || self.run_scheduled_functions());
-        }
-        self.update_totem_ready();
-        span("tick_command_extras", || self.tick_command_extras());
-        self.tick_world(running)
-    }
-}
-
-use sunrise_gameplay_common::game::native_hooks::base::GameHooks as _;
-
-use sunrise_gameplay_common::game::tables::GameItems as _;
-
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
-
-use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
-
-use sunrise_gameplay_common::game::GameGameExt1 as _;
-
-use sunrise_gameplay_common::game::GameGameExt3 as _;
-use sunrise_gameplay_common::game::GameGameExt3 as _;
-
-use sunrise_gameplay_common::game::clocks::ClocksGameExt1 as _;
-
-use sunrise_gameplay_common::game::light_emission::LightEmissionGameExt1 as _;
-
-use sunrise_gameplay_common::game::native_configs::NativeConfigsGameExt1 as _;
-
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
-
-use sunrise_gameplay_common::game::native_hooks::SharedGameExt1 as _;
-
-use sunrise_gameplay_common::game::piston_push::carrying::CarryingGameExt1 as _;

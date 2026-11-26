@@ -198,6 +198,8 @@ fn cell_count(cells: &ResistanceCells) -> Result<usize, ResistanceCellsError> {
     Ok(count as usize)
 }
 
+use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -228,5 +230,3 @@ mod tests {
         assert_eq!(cell_count(&columns), Ok(1152));
     }
 }
-
-use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;

@@ -152,6 +152,6 @@ fn failed_reload_preparation_keeps_secondary_tag_entries() {
     });
 }
 
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
+#[cfg(test)]
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

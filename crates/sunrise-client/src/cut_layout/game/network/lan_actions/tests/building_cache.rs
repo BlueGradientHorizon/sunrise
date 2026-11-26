@@ -12,9 +12,7 @@ use sunrise_sim::{
 };
 use {
     crate::game::*,
-    sunrise_gameplay_common::game::{
-        Dim, Instant, Options, PathBuf, Progress, Resources, Vec3, execution_role,
-    },
+    sunrise_gameplay_common::game::{Dim, Options, Progress, Vec3},
 };
 
 pub(crate) type Boxes = Vec<([f64; 3], [f64; 3])>;

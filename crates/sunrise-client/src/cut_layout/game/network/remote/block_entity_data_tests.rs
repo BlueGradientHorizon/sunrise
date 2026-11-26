@@ -1,10 +1,7 @@
 //! End-to-end client receive notices with independent tag values.
 use mod_api::{BlockEntityPart, BlockPart, Hooks, Registrar};
 use std::sync::{Arc, Mutex};
-use {
-    crate::game::remote::*,
-    sunrise_gameplay_common::game::remote::{Chunk, Tag, play},
-};
+use sunrise_gameplay_common::game::remote::Tag;
 use {
     crate::game::server_side::native_entity_refs::tests::with_client_game,
     sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
@@ -227,4 +224,3 @@ fn block_entity_data_received_after_merge() {
     });
 }
 
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;

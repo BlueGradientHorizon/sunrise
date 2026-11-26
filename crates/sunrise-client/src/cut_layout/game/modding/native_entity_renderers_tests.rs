@@ -193,7 +193,7 @@ fn in_scene(
         let status = std::process::Command::new(std::env::current_exe().unwrap())
             .args([
                 "--exact",
-                &format!("game::native_entity_renderers_tests::{test}"),
+                &format!("cut_layout::game::native_entity_renderers_tests::{test}"),
                 "--include-ignored",
                 "--nocapture",
             ])

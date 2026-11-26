@@ -1,8 +1,5 @@
 use sunrise_sim::motion::PlayerMotion;
-use {
-    crate::game::remote::*,
-    sunrise_gameplay_common::game::remote::{Vec3, motion},
-};
+use sunrise_gameplay_common::game::remote::Vec3;
 
 /// ClientLevel ticks entities in the order they joined: a boat added after the
 /// player pushes it after its move, one the level held when the player respawned

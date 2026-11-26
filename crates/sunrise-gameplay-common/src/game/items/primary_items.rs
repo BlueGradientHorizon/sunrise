@@ -1,5 +1,4 @@
 //! Item/enchantment answers resolved when parts install, read from registry snapshots.
-use super::*;
 
 pub trait PrimaryItemsGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// Preserve installed answers when publishing a fresh world-loot snapshot,

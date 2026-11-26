@@ -3,7 +3,7 @@ pub mod loot_mine_component_tests {
 
     use sunrise_items::items::ItemStack;
 
-    use sunrise_core::nbt::{Compound, Tag};
+    use sunrise_core::nbt::Tag;
 
     use sunrise_sim::save;
 

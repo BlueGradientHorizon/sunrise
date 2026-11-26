@@ -100,4 +100,3 @@ pub(in crate::game) mod tests {
         });
     }
 }
-use sunrise_gameplay_common::game::creatures::ModGameExt1 as _;

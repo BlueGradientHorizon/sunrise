@@ -4,14 +4,17 @@
 //! follows a changed answer install one on their thread for one closure ([`replaced`]),
 //! never process-wide.
 use std::{cell::Cell, thread::LocalKey};
+#[cfg(test)]
 use sunrise_items::items::ItemStack;
 
 pub(in crate::game) type Harm = fn(i32, i32) -> bool;
+#[cfg(test)]
 pub(in crate::game) type AddSlot =
     fn(&[Option<ItemStack>], Option<&ItemStack>, usize, &ItemStack, u32) -> Option<usize>;
 
 thread_local! {
     pub static HARM: Cell<Option<Harm>> = const { Cell::new(None) };
+    #[cfg(test)]
     pub(in crate::game) static ADD_SLOT: Cell<Option<AddSlot>> = const { Cell::new(None) };
 }
 
@@ -38,6 +41,7 @@ pub fn harm(attacker: i32, victim: i32) -> Option<bool> {
 }
 
 /// The replacement's slot for `inventory_add`, when one is installed.
+#[cfg(test)]
 pub(in crate::game) fn add_slot(
     items: &[Option<ItemStack>],
     offhand: Option<&ItemStack>,

@@ -407,8 +407,7 @@ pub(crate) mod transfer_lifetime_tests {
     use super::*;
 
     use sunrise_mod_runtime::attachments::{
-        AttachmentLifetime, AttachmentType, Attachments, HasAttachmentLifetime, Holder,
-        index::AttachmentIndex,
+        AttachmentLifetime, Attachments, HasAttachmentLifetime, Holder,
     };
 
     #[test]
@@ -556,21 +555,15 @@ pub(crate) mod credits_respawn_tests {
 
     use sunrise_gameplay_common::game::Dim;
 
-    use std::sync::{Arc, atomic::AtomicI32, mpsc};
+    use std::sync::{Arc, mpsc};
 
     use sunrise_level::chunk::Chunk;
 
-    use sunrise_protocol::{
-        buf::Reader,
-        packets::{
-            configuration::ClientInformation,
-            play::{self, Clientbound as C, Serverbound as S},
-        },
-    };
+    use sunrise_protocol::packets::play::{self, Clientbound as C, Serverbound as S};
 
     use sunrise_sim::lan::{
-        Joined, NetConfig, Out, PlayerSender,
-        guest::{Guest, InboxItem, SPECTATOR},
+        NetConfig, Out,
+        guest::{InboxItem, SPECTATOR},
         hub::HubConfig,
     };
 

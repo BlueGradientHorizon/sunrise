@@ -144,14 +144,14 @@ impl DragonSlot {
     pub fn next_part(&self, cursor: &mut Option<usize>) -> Option<u32> {
         self.table.borrow().next_part(cursor)
     }
-    pub(in crate::game) fn replace(&mut self, dragon: crate::game::dragon_common::Dragon) {
+    pub fn replace(&mut self, dragon: crate::game::dragon_common::Dragon) {
         self.register(0);
         self.register(dragon.id);
         self.slot.replace(dragon);
     }
     // Preserve ResidentSlot's ownership-returning refusal contract without allocating.
     #[allow(clippy::result_large_err)]
-    pub(in crate::game) fn install(
+    pub fn install(
         &mut self,
         dragon: crate::game::dragon_common::Dragon,
     ) -> Result<(), crate::game::dragon_common::Dragon> {
@@ -165,11 +165,11 @@ impl DragonSlot {
         self.register(0);
         self.slot.discard();
     }
-    pub(in crate::game) fn id_assigned(&self) {
+    pub fn id_assigned(&self) {
         self.register(self.slot.as_ref().map_or(0, |d| d.id));
         self.slot.id_assigned();
     }
-    pub(in crate::game) fn retire_extracted(&self, id: u32, join: sunrise_sim::join_seq::JoinSeq) {
+    pub fn retire_extracted(&self, id: u32, join: sunrise_sim::join_seq::JoinSeq) {
         if self.registered.get() == id {
             self.register(0);
         }

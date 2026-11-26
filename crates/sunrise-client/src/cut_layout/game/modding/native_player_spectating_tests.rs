@@ -162,4 +162,5 @@ fn the_start_is_heard_once_the_camera_has_moved() {
     });
 }
 
+#[cfg(test)]
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

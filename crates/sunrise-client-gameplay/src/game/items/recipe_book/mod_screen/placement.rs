@@ -165,6 +165,8 @@ impl crate::game::ClientGame<'_> {
     }
 }
 
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
 #[cfg(feature = "client")]
 #[cfg(test)]
 mod tests {
@@ -216,5 +218,3 @@ mod tests {
         assert_eq!(shown.len(), 256);
     }
 }
-
-use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;

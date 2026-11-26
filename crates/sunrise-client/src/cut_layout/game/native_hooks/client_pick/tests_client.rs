@@ -1,4 +1,3 @@
-use super::*;
 use crate::game::native_hooks::client_pick::tests::First;
 use crate::game::native_hooks::client_pick::tests::Last;
 use crate::game::native_hooks::client_pick::tests::Policy;

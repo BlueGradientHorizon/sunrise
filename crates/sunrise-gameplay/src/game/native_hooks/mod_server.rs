@@ -1,45 +1,19 @@
+use crate::game::ServerGame;
 use self::block_entity_tick::ResidentBlockEntityAccess;
-use mod_api::EffectKey;
-use mod_api::{
-    self, BlockPlacement, EntityRef, GameRuleActor, LifecycleContext, Placement, PlayerRef,
-    ServerTickPhase, WorldPhase,
-};
-use mod_api::{BlockEntityRef, ClockAdjustment};
-use mod_api::{BlockUpdateFlags, LevelRef, LogicalSide, TriState, UsePhase};
-use mod_api::{ExplosionStart, LootDrops};
-use std::sync::Arc;
-use sunrise_core::{geometry::Direction, position::BlockPos};
-use sunrise_game_data::gamerules::Value as GameRuleValue;
-use sunrise_game_data::suggestion::Suggestion;
-use sunrise_gameplay_common::game::api_values::TryIntoApi;
-use sunrise_gameplay_common::game::native_data_maps_common::DataMapType;
-#[cfg(test)]
-use sunrise_gameplay_common::game::native_hooks::BLOCK_CONTACT_HOOKS;
-use sunrise_gameplay_common::game::native_hooks::HitLevel;
-use sunrise_gameplay_common::game::native_hooks::LiveDamageRead;
-use sunrise_gameplay_common::game::native_hooks::apply_menu_button_cursor;
+use mod_api::BlockPlacement;
 pub use sunrise_gameplay_common::game::native_hooks::mob_kind;
-use sunrise_gameplay_common::game::native_hooks::mod_menu;
-use sunrise_gameplay_common::game::native_hooks::property_change;
 pub use sunrise_gameplay_common::game::native_hooks::*;
 use sunrise_level::containers::ModBlockEntity as EngineBlockEntity;
 use sunrise_sim::block_contact::Pending;
-use sunrise_sim::health::mob_source;
 #[cfg(test)]
 use sunrise_sim::mobs::Damage;
 use sunrise_world::level::PlaceContext;
-use sunrise_world::level::flags;
-use {sunrise_core::nbt::Compound, sunrise_world::registry::BlockStateId};
 use {
-    sunrise_game_data::text::Text, sunrise_items::items::ItemStack,
-    sunrise_level::block_entities::Pos, sunrise_level::containers::BlockEntity,
     sunrise_level::containers::ModContainer, sunrise_level::containers::ModEnergyBuffer,
-    sunrise_level::containers::ModFluidTanks, sunrise_level::fast_hash::FxHashMap,
-    sunrise_sim::first_person_sim::Hand, sunrise_sim::health::Attack,
-    sunrise_sim::health::HurtSource, sunrise_sim::merchant::MerchantOffer, sunrise_sim::mobs::Who,
+    sunrise_level::containers::ModFluidTanks, sunrise_sim::merchant::MerchantOffer,
 };
 
-impl mod_api::PackDiscoveryContext for crate::game::ServerGame<'_> {
+impl mod_api::PackDiscoveryContext for ServerGame<'_> {
     fn live_host(&mut self) -> Option<mod_api::HostSide<'_>> {
         Some(mod_api::HostSide::Server(self))
     }
@@ -50,79 +24,79 @@ impl mod_api::PackDiscoveryContext for crate::game::ServerGame<'_> {
 }
 
 #[path = "base_server.rs"]
-pub(in crate::game) mod base;
+pub mod base;
 
 #[path = "block_entity_on_load_server.rs"]
-pub(in crate::game) mod block_entity_on_load;
+pub mod block_entity_on_load;
 
 #[path = "block_entity_save_additional_tests_server.rs"]
-pub(in crate::game) mod block_entity_save_additional_tests;
+pub mod block_entity_save_additional_tests;
 
 #[path = "block_entity_tick_server.rs"]
 pub mod block_entity_tick;
 
 #[path = "build_creative_mode_tab_contents_server.rs"]
-pub(in crate::game) mod build_creative_mode_tab_contents;
+pub mod build_creative_mode_tab_contents;
 
 #[path = "can_start_swimming_server.rs"]
-pub(in crate::game) mod can_start_swimming;
+pub mod can_start_swimming;
 
 #[path = "contents_changed_server.rs"]
 pub(in crate::game) mod contents_changed;
 
 #[path = "enchanted_block_loot_server.rs"]
-pub(in crate::game) mod enchanted_block_loot;
+pub mod enchanted_block_loot;
 
 #[path = "exp_drop_server.rs"]
-pub(in crate::game) mod exp_drop;
+pub mod exp_drop;
 
 #[path = "explosion_notice_containment_server.rs"]
-pub(in crate::game) mod explosion_notice_containment;
+pub mod explosion_notice_containment;
 
 #[path = "general_entity_tick_server.rs"]
 pub mod general_entity_tick;
 
 #[path = "incoming_tests_server.rs"]
-pub(in crate::game) mod incoming_tests;
+pub mod incoming_tests;
 
 #[path = "item_attack_server.rs"]
-pub(in crate::game) mod item_attack;
+pub mod item_attack;
 
 #[path = "level_world_server.rs"]
-pub(in crate::game) mod level_world;
+pub mod level_world;
 
 #[path = "living_death_server.rs"]
-pub(in crate::game) mod living_death;
+pub mod living_death;
 
 #[path = "mod_configs_server.rs"]
-pub(in crate::game) mod mod_configs;
+pub mod mod_configs;
 
 #[path = "mod_mismatch_server.rs"]
-pub(in crate::game) mod mod_mismatch;
+pub mod mod_mismatch;
 
 #[path = "on_chunk_unloaded_server.rs"]
-pub(in crate::game) mod on_chunk_unloaded;
+pub mod on_chunk_unloaded;
 
 #[path = "on_entity_item_update_server.rs"]
 pub mod on_entity_item_update;
 
 #[path = "player_bed_leave_server.rs"]
-pub(in crate::game) mod player_bed_leave;
+pub mod player_bed_leave;
 
 #[path = "player_leave_server.rs"]
-pub(in crate::game) mod player_leave;
+pub mod player_leave;
 
 #[path = "register_enchantment_damage_effects_server.rs"]
-pub(in crate::game) mod register_enchantment_damage_effects;
+pub mod register_enchantment_damage_effects;
 
 #[path = "shared/item_fallthrough_server.rs"]
-pub(in crate::game) mod item_fallthrough;
+pub mod item_fallthrough;
 
 #[path = "shared/loot_server.rs"]
-pub(in crate::game) mod loot;
+pub mod loot;
 
 #[path = "shared/world_helpers_server.rs"]
-pub(in crate::game) mod world_helpers;
+pub mod world_helpers;
 
 /// The hook points. Each does nothing in Sunrise.
 impl crate::game::ServerGame<'_> {
@@ -918,7 +892,7 @@ impl crate::game::ServerGame<'_> {
 
 #[cfg(test)]
 #[path = "shared/item_fall_on_tests_server.rs"]
-pub(in crate::game) mod item_fall_on_tests;
+pub mod item_fall_on_tests;
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
@@ -927,12 +901,6 @@ use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
 use sunrise_gameplay_common::game::GameGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
-
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt6 as _;
-
-use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;
-
-use sunrise_gameplay_common::game::native_hooks::SharedGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_hooks::block_entity_load_additional::BlockEntityLoadAdditionalGameExt1 as _;
 

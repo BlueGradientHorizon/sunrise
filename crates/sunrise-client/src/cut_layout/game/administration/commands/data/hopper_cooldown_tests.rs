@@ -1,6 +1,7 @@
 //! `/data` on a hopper reads `HopperBlockEntity.saveAdditional`, which always
 //! writes `TransferCooldown` (#2356).
 
+#[cfg(test)]
 use super::*;
 use sunrise_core::nbt::Tag;
 use sunrise_core::position::BlockPos;
@@ -72,4 +73,5 @@ fn data_reads_a_hoppers_live_transfer_cooldown() {
 
 use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
 
+#[cfg(test)]
 use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;

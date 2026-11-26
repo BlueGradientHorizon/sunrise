@@ -170,4 +170,3 @@ fn a_falling_block_gone_before_delivery_is_skipped() {
     });
 }
 
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;

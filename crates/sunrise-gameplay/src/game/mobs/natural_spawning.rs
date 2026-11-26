@@ -1574,6 +1574,16 @@ impl<'a> crate::game::ServerGame<'a> {
     }
 }
 
+use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
+
+#[cfg(test)]
+use sunrise_gameplay_common::game::weather::WeatherGameExt as _;
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
+
+#[cfg(test)]
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
 #[cfg(test)]
 mod tests {
     #[cfg(test)]
@@ -1647,7 +1657,7 @@ mod tests {
     }
     /// Runs `go` with no mod (`None`), or with a position-check listener answering `answer`
     /// beside `extra` mods, and what that listener heard.
-    pub fn with_checks<R>(
+    fn with_checks<R>(
         answer: Option<SpawnCheck>,
         extra: impl Fn() -> Vec<mod_api::ModEntry>,
         go: impl FnOnce() -> R,
@@ -2717,13 +2727,3 @@ mod tests {
         });
     }
 }
-
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
-
-use sunrise_gameplay_common::game::weather::WeatherGameExt as _;
-
-use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
-
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
-
-use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;

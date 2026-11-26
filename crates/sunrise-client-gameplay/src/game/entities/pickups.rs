@@ -40,7 +40,7 @@ pub(in crate::game) enum Collector {
 }
 
 pub struct Pickup {
-    pub taken: Taken,
+    pub(in crate::game) taken: Taken,
     collector: Collector,
     life: u32,
     target: [f64; 3],
@@ -101,7 +101,7 @@ impl ClientGame<'_> {
         }
     }
     /// [`Self::add_pickup`] with the collector's first target given.
-    pub fn add_pickup_toward(&mut self, taken: Taken, collector: Collector, target: [f64; 3]) {
+    pub(in crate::game) fn add_pickup_toward(&mut self, taken: Taken, collector: Collector, target: [f64; 3]) {
         let kind = match taken {
             Taken::Item(_) => "item",
             Taken::Orb(_) => "orb",

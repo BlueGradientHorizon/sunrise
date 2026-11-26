@@ -1013,12 +1013,6 @@ impl crate::game::ServerGame<'_> {
 #[path = "tests/scaffolding_inside_tests.rs"]
 pub mod scaffolding_inside_tests;
 
-use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameExt as _;
-
-use sunrise_gameplay_common::game::tables::GameItems as _;
-
-use sunrise_gameplay_common::game::GameGameExt1 as _;
-
 use sunrise_gameplay_common::game::cake_eligibility::CakeEligibilityGameExt1 as _;
 
 use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;

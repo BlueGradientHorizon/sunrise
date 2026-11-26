@@ -9,7 +9,6 @@ use sunrise_level::chunk::Chunk;
 use sunrise_protocol::packets::play::{self, Clientbound};
 use sunrise_sim::mobs::Mob;
 use {
-    crate::game::piston_push::*,
     sunrise_gameplay_common::game::piston_push::{Aabb, Direction, Lid, Vec3},
 };
 use {
@@ -295,6 +294,5 @@ fn an_observing_boat_keeps_the_lid_push_through_its_last_lerp_step() {
     );
 }
 
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

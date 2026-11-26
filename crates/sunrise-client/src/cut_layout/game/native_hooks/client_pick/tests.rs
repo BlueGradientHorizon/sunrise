@@ -1,4 +1,3 @@
-use super::*;
 use mod_api::{ClientHost, ClientPickEvent, CrosshairTarget, Hooks};
 use std::sync::{Arc, Mutex};
 

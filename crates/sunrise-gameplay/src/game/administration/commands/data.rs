@@ -1006,11 +1006,11 @@ pub(in crate::game) fn strip_finalize_tree(tag: &mut Tag) {
     }
 }
 
-#[cfg(test)]
-pub(in crate::game) mod modern_literal_tests {}
-
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
 
 use sunrise_gameplay_common::game::native_hooks::block_entity_save_additional::BlockEntitySaveAdditionalGameExt1 as _;
+
+#[cfg(test)]
+pub(in crate::game) mod modern_literal_tests {}

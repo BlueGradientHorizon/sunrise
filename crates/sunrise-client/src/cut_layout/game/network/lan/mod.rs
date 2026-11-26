@@ -16,7 +16,7 @@ pub(crate) mod world_spawn_sync_tests {
 
     use super::*;
 
-    use std::sync::{Arc, atomic::AtomicI32, mpsc};
+    use std::sync::Arc;
 
     #[test]
     #[ignore = "daily"]

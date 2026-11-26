@@ -428,6 +428,10 @@ fn replace_block_entities(
     replaced
 }
 
+use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
+
+use sunrise_gameplay_common::game::native_hooks::SharedGameExt1 as _;
+
 #[cfg(test)]
 mod tests {
     use sunrise_gameplay_common::game::server_side::block_edits::tests::columns_world;
@@ -441,8 +445,11 @@ mod tests {
     use sunrise_gameplay_common::game::server_side::block_edits::tests::world;
 
     use super::*;
+    #[cfg(test)]
     use mod_api::BlockRun;
+    #[cfg(test)]
     use sunrise_level::chunk::Chunk;
+    #[cfg(test)]
     use sunrise_world::heightmap::HeightmapType;
 
     #[test]
@@ -797,9 +804,3 @@ mod tests {
         assert!(made[1].is_some() && made[3].is_some());
     }
 }
-
-use sunrise_gameplay_common::game::tables::GameItems as _;
-
-use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
-
-use sunrise_gameplay_common::game::native_hooks::SharedGameExt1 as _;

@@ -1,8 +1,14 @@
+#[cfg(test)]
 use sunrise_core::geometry::Direction;
+#[cfg(test)]
 use sunrise_core::position::BlockPos;
+#[cfg(test)]
 use sunrise_gameplay_common::hoppers::Pos;
+#[cfg(test)]
 use sunrise_items::items::ItemStack;
+#[cfg(test)]
 use sunrise_level::containers::{BlockEntity, HOPPER_SLOTS};
+#[cfg(test)]
 use sunrise_world::registry::BlockStateId;
 #[cfg(test)]
 pub(crate) mod can_place_item_tests;
@@ -1234,10 +1240,13 @@ pub(crate) mod can_take_tests {
         );
     }
 }
+#[cfg(test)]
 use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
 
+#[cfg(test)]
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
 
+#[cfg(test)]
 use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;
 
 pub(crate) mod native_items;

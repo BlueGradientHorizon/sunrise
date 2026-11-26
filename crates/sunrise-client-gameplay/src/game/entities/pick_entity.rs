@@ -264,6 +264,12 @@ impl ClientGame<'_> {
     }
 }
 
+use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
+
+use sunrise_gameplay_common::game::dragon_common::DragonCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::pick_ray::PickRayGameExt1 as _;
+
 #[cfg(feature = "client")]
 #[cfg(test)]
 pub(in crate::game) mod tests {
@@ -280,9 +286,3 @@ pub(in crate::game) mod tests {
         assert!(has_pick_result(Some(Target::Mob(60))));
     }
 }
-
-use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
-
-use sunrise_gameplay_common::game::dragon_common::DragonCommonGameExt1 as _;
-
-use sunrise_gameplay_common::game::pick_ray::PickRayGameExt1 as _;

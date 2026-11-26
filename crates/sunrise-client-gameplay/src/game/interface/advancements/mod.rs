@@ -1,6 +1,7 @@
 #[cfg(test)]
 pub(crate) mod tests {
 
+    #[cfg(test)]
     use super::*;
     use sunrise_sim::advancements::Frame;
 

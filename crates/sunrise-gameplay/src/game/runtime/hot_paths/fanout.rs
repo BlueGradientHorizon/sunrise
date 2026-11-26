@@ -134,6 +134,8 @@ fn verified_calls(name: &str, calls: &[Cell<u64>], expected: u64) -> Result<u64>
     Ok(total)
 }
 
+use sunrise_gameplay_common::game::native_hooks::base::GameHooks as _;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -153,5 +155,3 @@ mod tests {
         });
     }
 }
-
-use sunrise_gameplay_common::game::native_hooks::base::GameHooks as _;

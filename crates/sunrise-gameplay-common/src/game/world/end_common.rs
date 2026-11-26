@@ -4,7 +4,7 @@ use sunrise_level::environment::Environment;
 
 pub trait EndGameExt<'__sg>: crate::game::SideGame<'__sg> {
     /// The environment attributes of the current dimension.
-    fn dim_environment<'__loan>(&'__loan self) -> &Environment
+    fn dim_environment<'__loan>(&'__loan self) -> &'__loan Environment
     where
         '__sg: '__loan,
     {

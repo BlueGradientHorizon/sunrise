@@ -6,7 +6,6 @@ use sunrise_mod_runtime::attachments::{
 };
 use sunrise_sim::join_seq::JoinSeq;
 use {
-    crate::game::creatures::*,
     sunrise_gameplay_common::game::creatures::{Arc, Projectile, ProjectileKind, Vec3},
 };
 use {

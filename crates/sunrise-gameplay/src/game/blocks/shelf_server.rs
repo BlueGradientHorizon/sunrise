@@ -187,5 +187,3 @@ mod stack_limit_tests {
         assert!(super::accepts(Some(10), Some(&stack)));
     }
 }
-
-use sunrise_gameplay_common::game::tables::GameItems as _;

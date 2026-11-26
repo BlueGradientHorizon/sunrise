@@ -316,4 +316,5 @@ fn registry() -> &'static BlockRegistry {
     registry
 }
 
+#[cfg(test)]
 use crate::game::native_block_entity_read::NativeBlockEntityReadGameExt1 as _;

@@ -1,5 +1,3 @@
-use super::*;
-
 impl crate::game::ServerGame<'_> {
     /// `BlockTransformer.TransformParticle.send`: its level event.
     pub(in crate::game) fn transform_particle(&mut self, particle: &str, pos: [i32; 3]) {

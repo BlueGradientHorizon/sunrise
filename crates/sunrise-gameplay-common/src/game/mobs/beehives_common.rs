@@ -22,5 +22,3 @@ impl crate::game::CommonGame<'_> {
         Some((honey, facing))
     }
 }
-
-use crate::game::tables::GameItems as _;

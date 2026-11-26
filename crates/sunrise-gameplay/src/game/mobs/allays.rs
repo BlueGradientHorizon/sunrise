@@ -2,6 +2,7 @@
 //! throwing their load to the player or note block, dancing to jukeboxes,
 //! and the hand-over interaction (`Allay.mobInteract`).
 
+use crate::game::ServerGame;
 use super::level_sounds_common::LevelSound;
 use mod_api::SoundSource;
 use sunrise_gameplay::allays::{AllayLevel, AllayPlayer, SightView};
@@ -102,7 +103,7 @@ impl crate::game::ServerGame<'_> {
     }
 }
 
-impl AllayLevel for crate::game::ServerGame<'_> {
+impl AllayLevel for ServerGame<'_> {
     fn level_player_uuid(&self) -> Option<[i32; 4]> {
         self.common.level.player_uuid
     }

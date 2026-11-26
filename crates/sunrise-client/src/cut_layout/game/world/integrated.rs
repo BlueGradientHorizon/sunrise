@@ -8,7 +8,7 @@ use sunrise_client_gameplay::game::client_side::integrated_client::Integrated;
 use sunrise_gameplay::game::server_side::integrated::{LoadPhase, Serving, server_game};
 use sunrise_gameplay::game::world_loading::WorldRequest;
 use sunrise_gameplay_common::game::execution_role::ExecutionRole;
-use sunrise_gameplay_common::game::integrated_link::{Flags, server_thread_stack};
+use sunrise_gameplay_common::game::integrated_link::Flags;
 use sunrise_gameplay_common::game::owner_link::OwnerRequest;
 #[cfg(test)]
 pub(crate) mod tests {

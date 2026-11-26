@@ -1830,6 +1830,7 @@ pub mod tests {
         include!("mod_inventory_tests.rs");
     }
 
+    #[cfg(test)]
     pub(in crate::game) mod recipe_priorities {
         include!("recipe_priorities_tests.rs");
     }
@@ -1869,20 +1870,28 @@ pub mod tests {
     /// empty folder: the overlay's `.sunrise-cache` lives under the home, set here to
     /// the working directory, so children sharing one (the temp dir) race on that cache.
     pub fn run_in_child(test: &str, mode: &str) {
+        use sunrise_gameplay_common::game::test_fixtures::{
+            child_test_name, output_within, ran_one_test,
+        };
+
+        let test = child_test_name(test);
         let cwd = std::env::temp_dir().join(format!(
             "sunrise-game-mods-cwd-{}-{mode}",
             std::process::id()
         ));
         std::fs::create_dir_all(&cwd).unwrap();
-        let status = std::process::Command::new(std::env::current_exe().unwrap())
+        let mut command = std::process::Command::new(std::env::current_exe().unwrap());
+        command
             .current_dir(&cwd)
-            .args(["--include-ignored", "--exact", test, "--nocapture"])
+            .args(["--include-ignored", "--exact", test.as_ref(), "--nocapture"])
             .env("SUNRISE_HOME", &cwd)
-            .env(mode, "1")
-            .status()
-            .unwrap();
+            .env(mode, "1");
+        let output = output_within(&mut command, &test, mode);
         std::fs::remove_dir_all(&cwd).unwrap();
-        assert!(status.success());
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        print!("{stdout}");
+        eprint!("{}", String::from_utf8_lossy(&output.stderr));
+        assert!(output.status.success() && ran_one_test(&stdout));
     }
 
     #[test]

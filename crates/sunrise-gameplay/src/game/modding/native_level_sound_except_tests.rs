@@ -1,12 +1,17 @@
 //! `LevelRef::play_sound` leaving one player out: the player handle is translated to the
 //! connection inside the game.
 
+#[cfg(test)]
 use crate::game::native_guest_turn_tests::with_guests;
+#[cfg(test)]
 use mod_api::{HostTransaction, SoundSource};
-use std::sync::{Arc, mpsc};
-use sunrise_gameplay_common::game::api_values::TryIntoApi;
+use std::sync::mpsc;
+#[cfg(test)]
+use std::sync::Arc;
 use sunrise_protocol::{buf::Reader, packets::play::Clientbound as C};
-use sunrise_sim::lan::{Out, PlayerSender};
+use sunrise_sim::lan::Out;
+#[cfg(test)]
+use sunrise_sim::lan::PlayerSender;
 
 pub fn decode_packets(rx: &mpsc::Receiver<Out>) -> Vec<C> {
     rx.try_iter()
@@ -23,6 +28,7 @@ pub fn decode_packets(rx: &mpsc::Receiver<Out>) -> Vec<C> {
         .collect()
 }
 
+#[cfg(test)]
 pub(in crate::game::server_side) fn sound_packets(
     rx: &mpsc::Receiver<Out>,
 ) -> Vec<sunrise_protocol::packets::play::Sound> {
@@ -2810,14 +2816,20 @@ fn same_uuid_fake_players_across_levels_rollback_attachment_health_and_inventory
     );
 }
 
+#[cfg(test)]
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
+#[cfg(test)]
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
 
+#[cfg(test)]
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
 
+#[cfg(test)]
 use sunrise_gameplay_common::game::native_item_entity_refs::NativeItemEntityRefsGameExt1 as _;
 
+#[cfg(test)]
 use sunrise_gameplay_common::game::native_living_body::NativeLivingBodyGameExt6 as _;
 
+#[cfg(test)]
 use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;

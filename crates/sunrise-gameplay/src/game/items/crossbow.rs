@@ -375,6 +375,14 @@ impl crate::game::ServerGame<'_> {
     }
 }
 
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::item_use_stacks::ItemUseStacksGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_hooks::living_get_projectile::GameHooks as _;
+
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use super::*;
@@ -475,13 +483,3 @@ pub(in crate::game) mod tests {
         assert_eq!(slot("minecraft:bow", &None, &inventory), None);
     }
 }
-
-use sunrise_gameplay_common::game::tables::GameItems as _;
-
-use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
-
-use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
-
-use sunrise_gameplay_common::game::item_use_stacks::ItemUseStacksGameExt1 as _;
-
-use sunrise_gameplay_common::game::native_hooks::living_get_projectile::GameHooks as _;

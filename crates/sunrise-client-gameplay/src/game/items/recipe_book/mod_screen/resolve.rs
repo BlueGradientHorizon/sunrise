@@ -98,6 +98,8 @@ impl sunrise_sim::recipe_book::mod_presentation::DisplayResolver for Resolver<'_
     }
 }
 
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
 #[cfg(feature = "client")]
 #[cfg(test)]
 mod tests {
@@ -137,5 +139,3 @@ mod tests {
         ));
     }
 }
-
-use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;

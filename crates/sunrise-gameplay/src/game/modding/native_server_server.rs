@@ -1847,21 +1847,46 @@ impl crate::game::ServerGame<'_> {
     }
 }
 
+use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::native_block_entity_read::NativeBlockEntityReadGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5 as _;
+
+use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;
+
 #[cfg(test)]
 pub(in crate::game) mod fake_action_tests {
+    #[cfg(test)]
     use sunrise_gameplay_common::game::api_values::test_snapshot;
 
+    #[cfg(test)]
     use super::super::respawn_anchor::RespawnConfig;
     use super::{Acting, ActionOutcome, ActionRefused, FakeEffect, PlayerAction};
     use crate::game::native_server::fake_action_tests::fake;
     use crate::game::native_server::fake_action_tests::health;
+    #[cfg(test)]
     use crate::game::native_server::fake_action_tests::held;
+    #[cfg(test)]
     use crate::game::native_server::fake_action_tests::place;
     use crate::game::native_server::fake_action_tests::zombie;
+    #[cfg(test)]
     use mod_api::{BlockHit, Hand};
     use sunrise_gameplay_common::game::native_server::fake_action_tests::AttackWatcher;
     use sunrise_gameplay_common::game::native_server::fake_action_tests::ChargeWatcher;
+    #[cfg(test)]
     use sunrise_gameplay_common::game::native_server::fake_action_tests::on_top;
+    #[cfg(test)]
     use sunrise_gameplay_common::game::stations_common::{Kind, Station};
     use sunrise_items::items::ItemStack;
 
@@ -2123,21 +2148,3 @@ pub(in crate::game) mod fake_action_tests {
         });
     }
 }
-
-use sunrise_gameplay_common::game::tables::GameItems as _;
-
-use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
-
-use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
-
-use sunrise_gameplay_common::game::native_block_entity_read::NativeBlockEntityReadGameExt1 as _;
-
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
-
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5 as _;
-
-use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;
-
-use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;
-
-use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;

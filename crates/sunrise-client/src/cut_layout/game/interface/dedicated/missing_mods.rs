@@ -2,7 +2,7 @@
 #[cfg(test)]
 pub(crate) mod tests {
 
-    use super::*;
+    
     use sunrise_sim::save::level_mods;
 
     /// Without the switch the server refuses, naming the switch, and changes nothing in the

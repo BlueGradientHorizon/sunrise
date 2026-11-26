@@ -410,8 +410,6 @@ impl<'g, 'w> ResidentBlockEntityAccess<'g, 'w> {
     }
 }
 
-use sunrise_gameplay_common::game::tables::GameItems as _;
-
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
 
 use sunrise_gameplay_common::game::native_block_entity_read::NativeBlockEntityReadGameExt1 as _;

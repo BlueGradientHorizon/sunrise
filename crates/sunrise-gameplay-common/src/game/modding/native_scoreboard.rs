@@ -1,7 +1,6 @@
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
 
-    use super::*;
 
     use std::sync::{
         Arc,
@@ -10,7 +9,7 @@ pub mod tests {
 
     use sunrise_protocol::packets::configuration::ClientInformation;
 
-    use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
+    use sunrise_sim::lan::{Joined, PlayerSender, guest::Guest};
 
     pub fn guest(uuid: u128, conn: u32) -> Guest {
         let (tx, _) = std::sync::mpsc::channel();

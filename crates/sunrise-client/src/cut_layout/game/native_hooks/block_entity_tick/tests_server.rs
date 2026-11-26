@@ -1,5 +1,4 @@
 use super::tick_tests::*;
-use super::*;
 use mod_api::BlockEntityScope;
 use mod_api::BlockUpdateFlags;
 use std::sync::Arc;

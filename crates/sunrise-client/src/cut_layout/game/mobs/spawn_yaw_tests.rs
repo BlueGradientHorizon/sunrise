@@ -10,9 +10,7 @@ use sunrise_gameplay_common::game::creatures::SpawnSite;
 use sunrise_level::chunk::Chunk;
 use {
     crate::game::*,
-    sunrise_gameplay_common::game::{
-        Instant, Options, PathBuf, Progress, Resources, creatures, execution_role,
-    },
+    sunrise_gameplay_common::game::{Options, Progress},
 };
 
 fn game<'a>(

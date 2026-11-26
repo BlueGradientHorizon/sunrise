@@ -219,4 +219,3 @@ fn a_part_keeps_the_swing_from_starting() {
 
 use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameExt as _;
 
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;

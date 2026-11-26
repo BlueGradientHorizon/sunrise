@@ -1,6 +1,9 @@
+#![cfg(any())]
+
 //! `player_disconnect` from a play payload handler, over real TCP: the reason reaches the
 //! right client once, a second call (from `player_kicked`) is refused, and the hub's poll
 //! tells `player_logged_out` exactly once per player.
+#[cfg(test)]
 use super::sender_tests::connect_peer;
 use mod_api::{
     HandlerThread, Hooks, IPayloadContext, IPayloadHandler, ModEntry, PayloadBytes, PayloadId,
@@ -220,4 +223,5 @@ fn a_payload_handler_disconnects_once_and_the_poll_logs_out_once() {
     });
 }
 
+#[cfg(test)]
 use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;

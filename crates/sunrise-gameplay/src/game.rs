@@ -590,7 +590,7 @@ pub use server_side::shield;
 pub use server_side::shoulders;
 #[allow(unused_imports)]
 pub use server_side::slot_changes;
-#[cfg(any(test, feature = "test-support"))]
+#[cfg(test)]
 #[path = "game/modding/slot_rules_tests.rs"]
 pub mod slot_rules_tests;
 #[allow(unused_imports)]

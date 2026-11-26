@@ -1,4 +1,3 @@
-use crate::game::lan_actions::guest_body::*;
 use std::sync::{Arc, atomic::AtomicI32, mpsc};
 use sunrise_core::geometry::Vec3;
 use sunrise_core::random::RandomSource;
@@ -418,4 +417,5 @@ fn a_guest_whose_air_the_listener_changed_keeps_it_and_loses_the_transactional_w
     );
 }
 
+#[cfg(test)]
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

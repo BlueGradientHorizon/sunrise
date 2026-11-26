@@ -3,7 +3,6 @@
 //! `setScreen(null)`, and `OptionsScreen.onClose` from `TitleScreen` returns to
 //! the title). The fixture's game has no window, so `capture(true)`'s trace is
 //! that the real pointer takes over from an agent's: `agent_pointer` clears.
-use super::*;
 use sunrise_gameplay_common::game::Screen;
 
 /// The title's Options page, closed: back under the title, which is still

@@ -468,6 +468,9 @@ pub(in crate::game::server_side) fn skull_source(
         },
     }
 }
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -496,7 +499,3 @@ mod tests {
         assert!(!killed(false, true, false));
     }
 }
-
-use sunrise_gameplay_common::game::tables::GameItems as _;
-
-use sunrise_gameplay_common::game::GameGameExt1 as _;

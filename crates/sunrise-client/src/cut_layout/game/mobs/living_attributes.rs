@@ -27,9 +27,9 @@ pub(crate) mod tests {
 
     use sunrise_items::items::ItemStack;
 
-    use sunrise_sim::{entities::ArmorStand, mobs::Mob};
+    use sunrise_sim::mobs::Mob;
 
-    use mod_api::{AttributeModifier, AttributeOperation, Identifier, ModifierLifetime};
+    use mod_api::{AttributeOperation, Identifier, ModifierLifetime};
 
     /// A held stack with its own `attribute_modifiers` hits by them, not by
     /// its item type's defaults (#941).

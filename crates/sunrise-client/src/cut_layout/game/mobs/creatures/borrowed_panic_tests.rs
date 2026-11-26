@@ -4,12 +4,8 @@ use std::sync::{
     atomic::{AtomicUsize, Ordering},
 };
 use sunrise_mod_runtime::attachments::{AttachmentType, Holder};
-use {
-    crate::game::creatures::*,
-    sunrise_gameplay_common::game::creatures::{
-        Arc, Damage, Dim, ItemStack, Mob, MobEvent, MobOutputBatch, NormalMobActions, Result, Vec3,
-        knockback,
-    },
+use sunrise_gameplay_common::game::creatures::{
+    Arc, Dim, Mob, MobEvent, MobOutputBatch, NormalMobActions, Result, Vec3,
 };
 use {
     sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
@@ -1050,6 +1046,8 @@ fn player_living_breathe_panic_rolls_back_transactional_writes() {
     });
 }
 
+#[cfg(test)]
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
 
+#[cfg(test)]
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt6 as _;

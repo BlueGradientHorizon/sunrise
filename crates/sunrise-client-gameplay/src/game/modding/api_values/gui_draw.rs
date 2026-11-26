@@ -1,4 +1,5 @@
 //! Mod API GUI commands to and from the engine's: every variant, field for field.
+#[cfg(test)]
 use sunrise_gameplay_common::game::api_values::TryIntoApi;
 
 macro_rules! gui_draw_value {
@@ -140,6 +141,7 @@ macro_rules! gui_draw_value {
     };
 }
 
+#[cfg(test)]
 pub(in crate::game) fn gui_draw_to_api(
     draw: &sunrise_client_render::hud_layout::GuiDraw,
 ) -> Result<mod_api::client::hud_layout::GuiDraw, mod_api::text::TextFormError> {

@@ -5429,12 +5429,6 @@ impl crate::game::ClientGame<'_> {
     }
 }
 
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
-
-use sunrise_gameplay_common::game::weather::WeatherGameExt as _;
-
-use sunrise_gameplay_common::game::GameGameExt1 as _;
-
 use sunrise_gameplay_common::game::game_mode_common::GameModeCommonGameExt1 as _;
 
 use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;

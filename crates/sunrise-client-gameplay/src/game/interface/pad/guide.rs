@@ -732,6 +732,24 @@ impl crate::game::ClientGame<'_> {
     }
 }
 
+use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::weather::WeatherGameExt as _;
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;
+
+use sunrise_gameplay_common::game::block_items::BlockItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::boats_common::BoatsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::game_mode_common::GameModeCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::pick_entity_common::PickEntityCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::pick_ray::PickRayGameExt1 as _;
+
 #[cfg(test)]
 mod guide_equippable_tests {
     use super::guide_equippable;
@@ -766,21 +784,3 @@ mod guide_equippable_tests {
         assert_eq!(guide_equippable(&helmet, default, true), None);
     }
 }
-
-use sunrise_gameplay_common::game::tables::GameItems as _;
-
-use sunrise_gameplay_common::game::weather::WeatherGameExt as _;
-
-use sunrise_gameplay_common::game::GameGameExt1 as _;
-
-use sunrise_gameplay_common::game::block_items::BlockItemsGameExt1 as _;
-
-use sunrise_gameplay_common::game::boats_common::BoatsCommonGameExt1 as _;
-
-use sunrise_gameplay_common::game::game_mode_common::GameModeCommonGameExt1 as _;
-
-use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
-
-use sunrise_gameplay_common::game::pick_entity_common::PickEntityCommonGameExt1 as _;
-
-use sunrise_gameplay_common::game::pick_ray::PickRayGameExt1 as _;

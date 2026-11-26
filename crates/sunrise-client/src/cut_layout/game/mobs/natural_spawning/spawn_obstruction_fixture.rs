@@ -1,4 +1,3 @@
-use super::*;
 use std::fmt::Write;
 use sunrise_client_lib::mobs::spawn_selection::NaturalLevel;
 use sunrise_core::geometry::Aabb;

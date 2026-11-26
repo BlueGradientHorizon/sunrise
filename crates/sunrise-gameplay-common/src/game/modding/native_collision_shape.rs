@@ -240,6 +240,7 @@ mod tests {
 
     /// `minecraft:air` (state 0) and `minecraft:stone` (state 1, a full cube) as the registry and
     /// the collision tables have them.
+    #[cfg(any())]
     fn stone_tables() -> (
         sunrise_world::registry::BlockRegistry,
         sunrise_core::nbt::Tag,

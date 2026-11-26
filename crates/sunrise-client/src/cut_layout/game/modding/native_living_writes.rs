@@ -15,12 +15,10 @@ pub(crate) mod tests {
     use mod_api::client::first_person::Hand;
 
     use mod_api::{
-        EntityRef, Flow, Hooks, HostSide, Identifier, ItemPart, LivingEntityUseItemFinishEvent,
-        LivingEntityUseItemStartEvent, LivingEntityUseItemStopEvent, LivingEntityUseItemTickEvent,
-        LivingRef, OnUseTickEvent, Registrar, ReleaseUsingEvent, WorldEpoch,
+        EntityRef, Identifier, ItemPart, WorldEpoch,
     };
 
-    use std::sync::{Arc, Mutex};
+    
 
     use sunrise_core::geometry::Vec3;
 

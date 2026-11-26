@@ -98,4 +98,3 @@ fn a_gate_asks_its_neighbours_parts_for_wall_height() {
     });
 }
 
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;

@@ -1,4 +1,6 @@
 #![cfg(test)]
+
+
 #[cfg(test)]
 pub(crate) mod item_resource_property_tests {
     use crate::game::native_components::item_resource_property_tests::engine;
@@ -83,6 +85,3 @@ pub(crate) mod item_resource_property_tests {
         });
     }
 }
-use sunrise_gameplay_common::game::tables::GameItems as _;
-
-use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;

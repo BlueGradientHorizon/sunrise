@@ -1,6 +1,9 @@
 #![cfg(test)]
 use sunrise_items::items::ItemStack;
 #[cfg(test)]
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+#[cfg(test)]
 pub(crate) mod item_toss_tests {
     use crate::game::native_hooks::item_toss::*;
     use mod_api::{Flow, Hooks, ItemTossEvent, ModEntry, ServerHost};
@@ -179,4 +182,3 @@ pub(crate) mod item_toss_tests {
         });
     }
 }
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

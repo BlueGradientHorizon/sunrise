@@ -1,4 +1,6 @@
 #![cfg(test)]
+
+
 #[cfg(test)]
 pub(crate) mod player_leave_tests {
     use mod_api::{Hooks, PlayerBedLeaveEvent, PlayerLoggedOutEvent, Registrar, ServerHost};
@@ -32,7 +34,7 @@ pub(crate) mod player_leave_tests {
 
     /// What a listener heard, in order.
     #[derive(Debug, PartialEq)]
-    pub(in crate::game) enum Heard {
+    pub(crate) enum Heard {
         /// `player_bed_leave`'s two flags.
         BedLeave(bool, bool),
         /// `player_logged_out`: the online players in their order, whether the player was found
@@ -129,6 +131,3 @@ pub(crate) use crate::game::server_side::native_hooks_server::player_leave::play
         );
     }
 }
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
-
-use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;

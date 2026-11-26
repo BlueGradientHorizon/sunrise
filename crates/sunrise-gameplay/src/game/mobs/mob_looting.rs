@@ -5,6 +5,7 @@
 //! else keep their own loops (`pandas.rs`, `piglins.rs`, `villagers.rs`,
 //! `allays.rs`, `sulfur_cubes.rs`).
 
+use crate::game::ServerGame;
 use sunrise_gameplay::mob_looting::LootingLevel;
 use sunrise_gameplay_common::game::equip_answers::EquipAnswersGameExt1;
 use sunrise_items::items::ItemStack;
@@ -18,7 +19,7 @@ use sunrise_sim::{
     },
 };
 
-impl LootingLevel for crate::game::ServerGame<'_> {
+impl LootingLevel for ServerGame<'_> {
     fn grief_hooked(&self) -> bool {
         crate::game::ServerGame::grief_hooked(self)
     }
@@ -121,5 +122,3 @@ impl crate::game::ServerGame<'_> {
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
-
-use sunrise_gameplay_common::game::native_hooks::enchantments::EnchantmentsGameExt1 as _;

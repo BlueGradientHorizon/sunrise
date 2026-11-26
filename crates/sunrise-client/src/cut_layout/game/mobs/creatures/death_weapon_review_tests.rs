@@ -1,5 +1,4 @@
 use super::tests::isolated;
-use crate::game::creatures::death_weapon::*;
 use sunrise_core::geometry::Vec3;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::mobs::Damage;
@@ -322,4 +321,5 @@ fn death_weapon_same_tick_stronger_arrow_replaces_weapon() {
     });
 }
 
+#[cfg(test)]
 use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;

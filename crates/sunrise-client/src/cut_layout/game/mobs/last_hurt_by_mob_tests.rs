@@ -8,12 +8,7 @@ use crate::settings::Settings;
 use std::sync::Arc;
 use sunrise_core::position::ChunkPos;
 use sunrise_level::chunk::Chunk;
-use {
-    crate::game::*,
-    sunrise_gameplay_common::game::{
-        Instant, Mob, Options, PathBuf, Progress, Resources, entity, execution_role, hit,
-    },
-};
+use sunrise_gameplay_common::game::{Options, Progress, execution_role};
 
 const VICTIM: &str = "00006094-0000-0000-0000-000000000001";
 const A: &str = "00006094-0000-0000-0000-000000000002";

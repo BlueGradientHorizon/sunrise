@@ -393,6 +393,8 @@ fn update_bound_entities(
     }
 }
 
+use sunrise_gameplay_common::game::game_mode_common::GameModeCommonGameExt1 as _;
+
 #[cfg(test)]
 mod bound_lookup_tests {
     use super::update_bound_entities;
@@ -447,5 +449,3 @@ mod bound_lookup_tests {
         assert!(!replacement.state().removed);
     }
 }
-
-use sunrise_gameplay_common::game::game_mode_common::GameModeCommonGameExt1 as _;

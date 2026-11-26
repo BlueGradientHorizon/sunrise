@@ -1,4 +1,3 @@
-use super::*;
 use crate::game::native_hooks::build_creative_mode_tab_contents::tests::Edit;
 use crate::game::native_hooks::build_creative_mode_tab_contents::tests::Observe;
 use crate::game::native_hooks::build_creative_mode_tab_contents::tests::Seen;
@@ -54,7 +53,7 @@ fn creative_catalog_builds_lazily_and_edits_before_filtering_on_both_sides() {
     ]
     .into();
     let check_catalog = Creative::from_json(&catalog).unwrap().catalog().clone();
-    fn check<'g, G: sunrise_gameplay_common::game::SideGame<'g>>(
+    fn check<'g, G>(
         game: &mut G,
         side: LogicalSide,
         seen: &Arc<Mutex<Seen>>,
@@ -63,7 +62,7 @@ fn creative_catalog_builds_lazily_and_edits_before_filtering_on_both_sides() {
         mut after_build: impl FnMut(&mut G),
     ) -> Arc<CreativeModeTabs>
     where
-        G: mod_api::Host + ItemsHost,
+        G: sunrise_gameplay_common::game::SideGame<'g> + mod_api::Host + ItemsHost,
     {
         let flags = |game: &mut G, ids: [&str; 2]| {
             set_features(game, ids.map(str::to_owned));
@@ -178,12 +177,12 @@ fn creative_catalog_builds_lazily_and_edits_before_filtering_on_both_sides() {
         assert_eq!(book_level(&normal), 2);
         normal
     }
-    fn check_replacement<'g, G: sunrise_gameplay_common::game::SideGame<'g>>(
+    fn check_replacement<'g, G>(
         game: &mut G,
         old: &CreativeModeTabs,
         seen: &Arc<Mutex<Seen>>,
     ) where
-        G: ItemsHost,
+        G: sunrise_gameplay_common::game::SideGame<'g> + ItemsHost,
     {
         // Registry installation must not dispatch; the next demand uses the changed definition.
         assert!(seen.lock().unwrap().events.is_empty());

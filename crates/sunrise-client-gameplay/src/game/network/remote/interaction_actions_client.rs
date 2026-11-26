@@ -640,8 +640,6 @@ use sunrise_gameplay_common::game::side_ops::player::PlayerSideGameExt as _;
 
 use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameExt as _;
 
-use sunrise_gameplay_common::game::tables::GameItems as _;
-
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
 use sunrise_gameplay_common::game::GameGameExt1 as _;

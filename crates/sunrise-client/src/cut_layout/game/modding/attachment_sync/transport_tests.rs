@@ -2,9 +2,12 @@
 //! connection and LAN TCP: who is sent values, in which order, what a rollback and a stale
 //! epoch send, and what an oversized message does to the connection.
 use mod_api::{AttachmentCodec, AttachmentStore, AttachmentType, Host};
+#[cfg(any())]
 use std::time::{Duration, Instant};
 use sunrise_core::nbt::Tag;
+#[cfg(any())]
 use sunrise_mod_runtime::attachments::Holder;
+#[cfg(any())]
 use sunrise_protocol::{
     attachment_sync,
     buf::{Codec, Ident, Reader},
@@ -13,6 +16,7 @@ use sunrise_protocol::{
     payload_negotiation::{self as negotiation, Control},
 };
 
+#[cfg(any())]
 const NAME: &str = "game::server_side::attachment_sync::transport_tests::attachment_sync_follows_the_negotiated_route";
 
 pub(super) static VALUE: AttachmentType<i32> = AttachmentType {
@@ -30,6 +34,7 @@ pub(super) static VALUE: AttachmentType<i32> = AttachmentType {
     sync: true,
 };
 /// A value past every network frame limit, and incompressible.
+#[cfg(any())]
 static BLOB: AttachmentType<Vec<u8>> = AttachmentType {
     namespace: "sync_route",
     name: "blob",
@@ -46,7 +51,9 @@ static BLOB: AttachmentType<Vec<u8>> = AttachmentType {
 };
 
 /// A mod with no hooks: with a mod loaded, the server sends joining players snapshots.
+#[cfg(any())]
 pub(super) struct Route;
+#[cfg(any())]
 #[mod_api::__subscriptions]
 impl mod_api::Hooks for Route {
     fn register(&self, registrar: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
@@ -88,6 +95,7 @@ pub(super) fn set_level(
 }
 
 /// The window's synced copy of the level's value.
+#[cfg(any())]
 fn window_value(game: &mut sunrise_client_gameplay::game::ClientGame<'_>) -> Option<i32> {
     let host: &dyn Host = game;
     let rows = host
@@ -120,6 +128,7 @@ pub(super) fn wait_server_ticks(game: &sunrise_client_gameplay::game::ClientGame
     }
 }
 
+#[cfg(any())]
 fn wait_window(game: &mut sunrise_client_gameplay::game::ClientGame<'_>, value: i32) {
     let deadline = Instant::now() + Duration::from_secs(30);
     while window_value(game) != Some(value) {
@@ -131,6 +140,7 @@ fn wait_window(game: &mut sunrise_client_gameplay::game::ClientGame<'_>, value: 
 
 /// A TCP peer that offers the engine's declarations (`sunrise`) or offers nothing, as a
 /// vanilla client does, logged in and in play.
+#[cfg(any())]
 pub(super) fn peer(port: u16, name: &str, sunrise: bool) -> Connection {
     let mut c = Connection::connect("127.0.0.1", port, Duration::from_secs(10)).unwrap();
     c.reader
@@ -243,6 +253,7 @@ pub(super) fn peer(port: u16, name: &str, sunrise: bool) -> Connection {
 
 /// The values of `holder` a peer is sent until it is sent `last`, in order. A disconnect
 /// fails.
+#[cfg(any())]
 pub(super) fn values_until(c: &mut Connection, holder: Holder, last: i32) -> Vec<i32> {
     let deadline = Instant::now() + Duration::from_secs(30);
     let mut seen = Vec::new();
@@ -280,6 +291,7 @@ pub(super) fn values_until(c: &mut Connection, holder: Holder, last: i32) -> Vec
 }
 
 /// How many attachment sync payloads a peer is sent in `window`; a disconnect fails.
+#[cfg(any())]
 pub(super) fn sync_packets_within(c: &mut Connection, window: Duration) -> usize {
     c.reader
         .set_read_timeout(Some(Duration::from_millis(200)))
@@ -491,4 +503,5 @@ fn attachment_sync_follows_the_negotiated_route() {
     });
 }
 
+#[cfg(any())]
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;

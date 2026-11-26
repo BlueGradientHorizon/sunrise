@@ -2,7 +2,7 @@
 #[cfg(feature = "client")]
 #[cfg(test)]
 pub(crate) mod hotbar_slot_tests {
-    use super::*;
+    
     use crate::game::remote::tests::connect_menu_test;
     use crate::game::server_side::native_entity_refs::tests::with_client_game;
     use mod_api::HotbarSlotError;

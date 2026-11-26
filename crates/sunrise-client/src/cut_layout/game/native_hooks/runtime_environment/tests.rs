@@ -3,10 +3,11 @@ use mod_api::{Dist, Hooks, Host, ModEntry, PackageInfo, RegistrationContext, Run
 use std::sync::{Arc, Mutex};
 use sunrise_mod_package::selection::LaunchArguments;
 use {
-    sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::api_values,
     sunrise_gameplay_common::game::execution_role::ExecutionRole,
     sunrise_gameplay_common::game::mods,
 };
+#[cfg(test)]
+use sunrise_gameplay_common::game::Options;
 
 #[derive(Default)]
 struct Observed {
@@ -96,7 +97,7 @@ fn native_process_environment_in_registration_and_game_hosts() {
                 .args([
                     "--ignored",
                     "--exact",
-                    "game::native_hooks::runtime_environment::tests::native_process_environment_in_registration_and_game_hosts",
+                    "cut_layout::game::native_hooks::runtime_environment::tests::native_process_environment_in_registration_and_game_hosts",
                     "--nocapture",
                 ])
                 .current_dir(&scratch)

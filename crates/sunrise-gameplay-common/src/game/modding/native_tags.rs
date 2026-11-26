@@ -288,6 +288,7 @@ mod tests {
         );
     }
     /// A damage catalog of `in_fire` and `arrow`, with `tags` as its damage type tag files.
+    #[cfg(any())]
     fn bind_damage(table: &mut Items, tags: serde_json::Value) {
         let types: Vec<_> = ["in_fire", "arrow"]
             .into_iter()

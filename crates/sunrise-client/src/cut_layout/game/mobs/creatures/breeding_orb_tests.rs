@@ -1,6 +1,5 @@
 use sunrise_core::random::RandomSource;
 use {
-    crate::game::creatures::*,
     sunrise_gameplay_common::game::creatures::{Mob, Vec3},
 };
 

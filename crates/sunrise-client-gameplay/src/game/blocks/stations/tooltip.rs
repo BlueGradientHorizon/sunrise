@@ -792,6 +792,8 @@ impl crate::game::ClientGame<'_> {
     }
 }
 
+use sunrise_gameplay_common::game::tables::GameItems as _;
+
 #[cfg(feature = "client")]
 #[cfg(test)]
 mod tests {
@@ -825,5 +827,3 @@ mod tests {
         let _ = wrap_tooltip_width(i32::MIN, i32::MIN, i32::MIN, i32::MIN);
     }
 }
-
-use sunrise_gameplay_common::game::tables::GameItems as _;

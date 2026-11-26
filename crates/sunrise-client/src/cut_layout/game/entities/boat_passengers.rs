@@ -333,6 +333,7 @@ mod boat_callback_review_tests {
         });
     }
 }
+#[cfg(test)]
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
 
 use sunrise_gameplay_common::game::passengers_common::PassengersCommonGameExt1 as _;

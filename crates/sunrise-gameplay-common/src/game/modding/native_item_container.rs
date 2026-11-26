@@ -280,6 +280,8 @@ pub trait NativeItemContainerGameExt1<'__sg>: crate::game::SideGame<'__sg> {
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> NativeItemContainerGameExt1<'__sg> for G {}
 
+use crate::game::native_hooks::item_container::ItemContainerGameExt1 as _;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -495,7 +497,3 @@ mod tests {
         assert_eq!(emptied, stack);
     }
 }
-
-use crate::game::tables::GameItems as _;
-
-use crate::game::native_hooks::item_container::ItemContainerGameExt1 as _;

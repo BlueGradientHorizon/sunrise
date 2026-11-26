@@ -17,7 +17,7 @@ use {
 #[ignore = "daily"]
 fn client_host_hashes_plain_stacks_with_added_and_removed_components() {
     if run_fresh_cases(
-        "game::native_packet_builders::tests::client_host_hashes_plain_stacks_with_added_and_removed_components",
+        "cut_layout::game::client_side::native_packet_builders::tests::client_host_hashes_plain_stacks_with_added_and_removed_components",
         "SUNRISE_CONTAINER_BUILDER_CHILD",
         &["build"],
     ) {

@@ -204,6 +204,4 @@ pub fn text_of(v: &Value) -> Text {
     sunrise_game_data::scoreboard::comp_text(v)
 }
 
-use crate::game::tables::WorldTablesExt as _;
 
-use crate::game::native_world_read_common::NativeWorldReadGameExt1 as _;

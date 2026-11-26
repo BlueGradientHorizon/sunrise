@@ -5,13 +5,7 @@ use serde_json::Value as JsonValue;
 use sunrise_command::args::GameMode;
 use sunrise_gameplay_common::game_modes::mode_from_id;
 use sunrise_protocol::connection::ConnReader;
-use {
-    crate::game::remote::*,
-    sunrise_gameplay_common::game::remote::{
-        C, Chunk, Empty, ItemStack, Path, S, Screen, Tag, Vec3, abilities, inventory, motion,
-        movement, passengers, play, status, tick,
-    },
-};
+use sunrise_gameplay_common::game::remote::{C, Chunk, Empty, S, Screen, Vec3, play};
 
 pub(crate) const SELF_UUID: u128 = 0xdf71_dcc7_da3b_3506_b229_6d1f_589e_2569;
 pub(crate) const SELF_NAME: &str = "BX0W";
@@ -1428,6 +1422,7 @@ use sunrise_gameplay_common::game::game_mode_common::GameModeCommonGameExt1 as _
 
 use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
 
+#[cfg(test)]
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;

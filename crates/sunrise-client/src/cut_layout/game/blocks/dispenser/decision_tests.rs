@@ -1,4 +1,3 @@
-use super::*;
 use std::sync::{Arc, Mutex};
 use sunrise_core::geometry::Direction;
 use sunrise_gameplay::dispense_rules::{Slot, mob_slot_item};
@@ -79,6 +78,6 @@ fn crown_is_prepared_once_for_three_and_eight_dispenser_candidates() {
     }
 }
 
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
+#[cfg(test)]
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

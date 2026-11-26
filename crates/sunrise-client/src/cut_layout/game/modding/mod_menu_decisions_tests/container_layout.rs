@@ -185,4 +185,3 @@ fn six_slot_menu_shift_click_uses_hotbar_zero_before_any_container_write() {
     });
 }
 
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;

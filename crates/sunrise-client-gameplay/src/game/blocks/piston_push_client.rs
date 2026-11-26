@@ -898,8 +898,6 @@ impl crate::game::ClientGame<'_> {
     }
 }
 
-use sunrise_gameplay_common::game::tables::GameItems as _;
-
 use sunrise_gameplay_common::game::collision_source::CollisionSourceGameExt1 as _;
 
 use sunrise_gameplay_common::game::entity_sections::player::PlayerGameExt1 as _;

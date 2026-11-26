@@ -1,4 +1,6 @@
+#[cfg(test)]
 use sunrise_level::block_entities::Ticking;
+#[cfg(test)]
 use sunrise_level::containers::BlockEntity;
 #[cfg(test)]
 pub(crate) mod jukebox_stop_tests {
@@ -190,7 +192,7 @@ pub(crate) mod add_blocks_tests {
                     .join(format!("sunrise-add-blocks-{}-{case}", std::process::id()));
                 std::fs::create_dir_all(&scratch).unwrap();
                 let mut child = std::process::Command::new(std::env::current_exe().unwrap());
-                child.args(["--ignored", "--exact", "game::server_side::block_entity_ticks::add_blocks_tests::vanilla_template_membership_creates_ticks_and_saves", "--nocapture"])
+                child.args(["--ignored", "--exact", "cut_layout::game::server_side::block_entity_ticks::add_blocks_tests::vanilla_template_membership_creates_ticks_and_saves", "--nocapture"])
                     .current_dir(&scratch).env(FLAG, case).env("SUNRISE_NO_AUDIO", "1").env("SUNRISE_LAUNCHER_NO_SELF_UPDATE", "1");
                 for key in [
                     "SUNRISE_HOME",
@@ -1281,4 +1283,5 @@ pub(crate) mod own_block_entity_tests {
     }
 }
 
+#[cfg(test)]
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

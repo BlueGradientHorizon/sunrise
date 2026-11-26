@@ -16,7 +16,7 @@ type Action = Box<dyn Fn(&mut dyn ServerHost) + Send + Sync>;
 /// Whether the meddler acts at the next hook it hears (`armed`), and whether it has (`fired`). A
 /// test sets its scene up unarmed: the commands that do it fire hooks too.
 #[derive(Default)]
-pub(in crate::game) struct Gate {
+pub(crate) struct Gate {
     armed: AtomicBool,
     fired: AtomicBool,
 }

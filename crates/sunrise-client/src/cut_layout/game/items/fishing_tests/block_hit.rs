@@ -7,8 +7,7 @@ use sunrise_level::chunk::Chunk;
 use {
     crate::game::*,
     sunrise_gameplay_common::game::{
-        Arc, Instant, ItemStack, Options, PathBuf, PlayerMotion, Progress, Resources, Vec3,
-        execution_role, hit, remote,
+        Arc, Instant, ItemStack, Options, PathBuf, PlayerMotion, Progress, Vec3,
     },
 };
 

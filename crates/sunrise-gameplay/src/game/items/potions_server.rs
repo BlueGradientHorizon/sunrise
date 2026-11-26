@@ -1,3 +1,4 @@
+use crate::game::ServerGame;
 use super::{commands::Target, dragon::FightPlayer, living_attributes::AttributeWrite};
 use mod_api::{EffectApplicable, EffectTickChange, EntityRef, LivingRef, PlayerFood};
 use sunrise_core::nbt::Tag;
@@ -1780,7 +1781,7 @@ impl crate::game::ServerGame<'_> {
             .filter(|p| p.alive)
             .collect();
         let mut clouds = self.common.breath_clouds.lift();
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         crate::game::server_side::entity_server::taken_pass_tests::after_take(self);
         let ticking = self.entity_ticking_area();
         let mut expired: Vec<u32> = Vec::new();
@@ -1986,7 +1987,7 @@ impl crate::game::ServerGame<'_> {
 }
 
 /// A mob's content mod effects tick in its own tick (`ai::tick_effects_hurting`).
-impl sunrise_sim::mobs::ModEffectTicks for crate::game::ServerGame<'_> {
+impl sunrise_sim::mobs::ModEffectTicks for ServerGame<'_> {
     fn tick_mod_effect(
         &self,
         effect: usize,

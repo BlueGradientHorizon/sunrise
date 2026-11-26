@@ -2,6 +2,12 @@
 use mod_api::EntityRef;
 use mod_api::MenuSlotBacking;
 use sunrise_items::items::ItemStack;
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_menu_refs_common::NativeMenuRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;
+
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
@@ -389,8 +395,3 @@ pub(crate) mod tests {
         });
     }
 }
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
-
-use sunrise_gameplay_common::game::native_menu_refs_common::NativeMenuRefsCommonGameExt1 as _;
-
-use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;

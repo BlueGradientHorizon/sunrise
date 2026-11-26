@@ -1,4 +1,3 @@
-use super::*;
 use sunrise_gameplay_common::game::Screen;
 
 #[path = "local_rotation_tests_client.rs"]

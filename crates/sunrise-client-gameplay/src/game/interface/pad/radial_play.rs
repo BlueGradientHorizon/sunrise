@@ -581,6 +581,8 @@ impl crate::game::ClientGame<'_> {
 const WHY_QUICK_ACTIONS: &str = "sunrise.radial.why.quick_actions";
 const WHY_SOCIAL: &str = "sunrise.radial.why.social";
 
+use sunrise_gameplay_common::game::integrated_common::IntegratedCommonGameExt1 as _;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -608,5 +610,3 @@ mod tests {
         );
     }
 }
-
-use sunrise_gameplay_common::game::integrated_common::IntegratedCommonGameExt1 as _;

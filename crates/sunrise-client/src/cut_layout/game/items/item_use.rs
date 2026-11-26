@@ -4,7 +4,7 @@ use sunrise_items::items::ItemStack;
 pub(crate) mod tests {
 
     use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1;
-    use sunrise_gameplay_common::game::in_own_process;
+    
 
     use sunrise_core::use_animation::UseAnimation;
 
@@ -847,4 +847,5 @@ use sunrise_gameplay_common::game::cake_eligibility::CakeEligibilityGameExt1 as 
 
 use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
 
+#[cfg(test)]
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

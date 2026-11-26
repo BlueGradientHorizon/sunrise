@@ -54,7 +54,7 @@ thread_local! {
     pub(in crate::game) static USES: RefCell<Vec<i32>> = const { RefCell::new(Vec::new()) };
     pub(in crate::game) static IN_ACTION: RefCell<Vec<bool>> = const { RefCell::new(Vec::new()) };
 }
-pub(crate) fn script(value: Script) {
+fn script(value: Script) {
     SCRIPT.with(|s| *s.borrow_mut() = value);
     CALLS.set(0);
     STACKED.set(0);
@@ -459,46 +459,6 @@ fn a_restock_while_a_guest_trades_reaches_the_screen_the_save_and_the_mob() {
             })
         },
     );
-}
-
-/// A guest trading with the villager loses Hero of the Village in its named Pre or Post.
-pub(crate) struct RemoveHero {
-    pub(crate) before_work: bool,
-}
-
-impl RemoveHero {
-    pub(crate) fn remove(host: HostSide<'_>, entities: &[u32]) {
-        assert_eq!(entities, [40]);
-        let HostSide::Server(host) = host else {
-            panic!("server fixture");
-        };
-        let guest = host.living(host.entity(12).unwrap()).unwrap();
-        let hero = host.effect_key("minecraft:hero_of_the_village").unwrap();
-        assert!(guest.remove_effect(host, hero));
-    }
-}
-
-#[mod_api::__subscriptions]
-impl Hooks for RemoveHero {
-    fn register(&self, registrar: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
-        registrar.entity_tick_each("minecraft:villager");
-    }
-
-    fn entity_tick_listened(&self, _: HostSide<'_>, event: &mut mod_api::EntityTickListenedEvent) {
-        event.listened = true;
-    }
-
-    fn entity_tick_pre(&self, host: HostSide<'_>, event: &mut mod_api::EntityTickPreEvent<'_>) {
-        if self.before_work {
-            Self::remove(host, event.entities);
-        }
-    }
-
-    fn entity_tick_post(&self, host: HostSide<'_>, event: &mut mod_api::EntityTickPostEvent<'_>) {
-        if !self.before_work {
-            Self::remove(host, event.entities);
-        }
-    }
 }
 
 /// The result and the yes sound use the Hero discount seen during the work step, not after Post.

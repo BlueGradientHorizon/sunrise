@@ -1,4 +1,3 @@
-use super::*;
 use std::sync::{Arc, atomic::AtomicI32, mpsc};
 use sunrise_core::geometry::Vec3;
 use sunrise_core::nbt::Tag;

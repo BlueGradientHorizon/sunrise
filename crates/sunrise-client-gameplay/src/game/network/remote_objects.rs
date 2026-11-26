@@ -656,6 +656,12 @@ fn painting_facing(direction: i32) -> Option<u8> {
     }
 }
 
+use sunrise_gameplay_common::game::cart_rails::CartRailsGameExt1 as _;
+
+use sunrise_gameplay_common::game::entity_sections::EntitySectionsGameExt1 as _;
+
+use sunrise_gameplay_common::game::minecarts::MinecartRailGameExt as _;
+
 #[cfg(feature = "client")]
 #[cfg(test)]
 mod tests {
@@ -692,11 +698,3 @@ mod tests {
         assert_eq!(lerp_yaw_step(5.0, 90.0, 0), 5.0);
     }
 }
-
-use sunrise_gameplay_common::game::cart_rails::CartRailsGameExt1 as _;
-
-use sunrise_gameplay_common::game::entity_sections::EntitySectionsGameExt1 as _;
-
-use crate::game::client_side::remote_client::minecarts::CartLerpClientExt as _;
-
-use sunrise_gameplay_common::game::minecarts::MinecartRailGameExt as _;

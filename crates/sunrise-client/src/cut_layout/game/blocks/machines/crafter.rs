@@ -2,6 +2,7 @@
 use sunrise_core::position::BlockPos;
 use sunrise_items::items::ItemStack;
 use sunrise_level::containers::BlockEntity;
+
 #[cfg(test)]
 pub(crate) mod part_remainder_tests {
     use super::*;
@@ -71,4 +72,3 @@ pub(crate) mod part_remainder_tests {
         });
     }
 }
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;

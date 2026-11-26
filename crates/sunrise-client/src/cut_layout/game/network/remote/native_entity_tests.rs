@@ -1,7 +1,6 @@
 //! A window joined to a server through memory, fed the server's packets as
 //! it would receive them: what its native mods read of the entities and the
 //! menu the server showed it.
-use std::sync::Arc;
 use sunrise_protocol::packets::play::{self};
 
 pub(crate) fn spawn(dimension: &str) -> play::SpawnInfo {

@@ -1,8 +1,16 @@
 #![cfg(test)]
 use mod_api::DimensionKey;
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_lifecycle_common::NativeLifecycleCommonGameExt1 as _;
+
 #[cfg(test)]
 #[path = "entity_residency/all_family_binding_tests.rs"]
 mod all_family_binding_tests;
+
 #[cfg(test)]
 #[path = "entity_residency/lifetime_tests.rs"]
 mod lifetime_tests;
@@ -307,8 +315,3 @@ mod tests {
         });
     }
 }
-use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
-
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
-
-use sunrise_gameplay_common::game::native_lifecycle_common::NativeLifecycleCommonGameExt1 as _;

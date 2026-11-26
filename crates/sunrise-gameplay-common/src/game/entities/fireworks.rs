@@ -3,7 +3,6 @@
 //! acceleration and 0.04 lift, the flight-duration lifetime, explosion
 //! damage with line of sight, and the client explosion (`createFireworks`).
 use super::view_vector;
-use crate::game::Side;
 use std::sync::Arc;
 use sunrise_core::{
     geometry::{Aabb, Vec3},

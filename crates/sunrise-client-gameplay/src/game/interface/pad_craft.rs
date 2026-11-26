@@ -456,6 +456,8 @@ impl ClientGame<'_> {
     }
 }
 
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt1 as _;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -910,5 +912,3 @@ mod tests {
         assert_eq!(seen.room_for(&damaged), 64);
     }
 }
-
-use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt1 as _;

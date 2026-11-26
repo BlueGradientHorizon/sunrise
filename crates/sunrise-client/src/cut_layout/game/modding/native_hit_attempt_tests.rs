@@ -1,17 +1,9 @@
 //! The actual player wrappers, damage continuations, effects and explosions reach one listener.
-use super::native_entity_refs::tests::{bind_local_player, with_game};
+use super::native_entity_refs::tests::with_game;
 use mod_api::{EntityInvulnerabilityCheckEvent, Hooks, LevelSide};
 use std::sync::{Arc, Mutex};
-use sunrise_command::args::GameMode;
-use sunrise_core::geometry::Vec3;
 #[cfg(any())]
 use sunrise_gameplay::game::server_side::entity_server::damage_level_of;
-use sunrise_level::effects::EffectAction;
-use sunrise_sim::{
-    mobs::{Damage, DamageKind, Mob, Who},
-    motion::PlayerMotion,
-    projectiles::{Hit, Projectile, ProjectileKind},
-};
 
 struct Probe(Arc<Mutex<Vec<bool>>>, Arc<Mutex<Option<bool>>>);
 #[mod_api::__subscriptions]
@@ -90,6 +82,7 @@ fn base_allow_does_not_override_worn_immunity() {
     });
 }
 
+#[cfg(any())]
 fn fresh_player(game: &mut sunrise_gameplay::game::ServerGame<'_>, mode: GameMode) {
     game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
     bind_local_player(game, 7, 7);

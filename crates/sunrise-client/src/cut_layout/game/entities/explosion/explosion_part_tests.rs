@@ -1,3 +1,4 @@
+#[cfg(test)]
 use super::*;
 use mod_api::ExplosionStart;
 use mod_api::{
@@ -689,7 +690,6 @@ fn a_block_part_keeps_its_block_from_a_dangerous_skull_cap() {
     });
 }
 
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
 use sunrise_gameplay_common::game::native_block_entity_read::NativeBlockEntityReadGameExt1 as _;
 

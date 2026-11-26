@@ -1,6 +1,8 @@
 #![cfg(test)]
 use mod_api::Identifier;
 use mod_api::PackType;
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -125,7 +127,7 @@ mod tests {
     fn resource_stacks_and_listings_cover_every_pack_and_namespace() {
         use std::collections::BTreeMap;
         use sunrise_assets::resource_source::{Resource, ResourceSource};
-        let name = "game::server_side::native_resources::tests::resource_stacks_and_listings_cover_every_pack_and_namespace";
+        let name = "cut_layout::game::native_resources::tests::resource_stacks_and_listings_cover_every_pack_and_namespace";
         let flag = "SUNRISE_RESOURCE_STACK_CASE";
         if sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases(
             name,
@@ -254,4 +256,3 @@ mod tests {
         });
     }
 }
-use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

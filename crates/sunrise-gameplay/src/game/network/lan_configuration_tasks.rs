@@ -411,6 +411,10 @@ fn spawn_area_full(world: &sunrise_level::world::World, (cx, cz): (i32, i32), ra
     })
 }
 
+use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
+
+use sunrise_gameplay_common::game::payload_transport::PayloadTransportGameExt1 as _;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -440,9 +444,3 @@ mod tests {
         assert!(spawn_area_full(&world, center, PLAYER_SPAWN_RADIUS));
     }
 }
-
-use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
-
-use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;
-
-use sunrise_gameplay_common::game::payload_transport::PayloadTransportGameExt1 as _;

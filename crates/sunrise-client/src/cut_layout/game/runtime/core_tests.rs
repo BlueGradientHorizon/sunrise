@@ -99,12 +99,12 @@ use sunrise_client_gameplay::game::select_creative_tab;
 use {
     crate::game::*,
     sunrise_gameplay_common::game::{
-        Aabb, Arc, BlockPos, BlockStateId, CollisionContext, CollisionEntity, Duration,
-        EntityIdentity, FallingBlock, HashSet, Hit, Instant, Level, Mob, Options, PackResources,
+        Aabb, BlockPos, BlockStateId, CollisionContext, CollisionEntity, Duration,
+        EntityIdentity, FallingBlock, HashSet, Instant, Level, Options, PackResources,
         PathBuf, PlayerMotion, Progress, Resources, Screen, Vec3, WorldRestLoader,
-        clip_start_source, creatures, entity, execution_role, falling_block_visible, game_dir, hit,
-        host, in_own_process, interact_location, item_actions, level_can_have_weather, mods,
-        outline_stop, ray_box, tick_sleep_timer, vanilla_tool_state, write_level_for_role,
+        clip_start_source, execution_role, falling_block_visible, in_own_process,
+        interact_location, outline_stop, ray_box, tick_sleep_timer, vanilla_tool_state,
+        write_level_for_role,
     },
 };
 

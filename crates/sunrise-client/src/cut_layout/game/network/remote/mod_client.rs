@@ -411,8 +411,5 @@ pub(crate) mod fall_sound;
 #[path = "client_level_tick_client.rs"]
 pub(crate) mod client_level_tick;
 
-#[path = "attack_target_client.rs"]
-pub(crate) mod attack_target;
-
 #[path = "abilities_client.rs"]
 pub(crate) mod abilities;

@@ -1,7 +1,6 @@
 //! `/clone` counts what it wrote and needs every column of both boxes loaded
 //! (`CloneCommands.clone`: `Level.setBlock`'s result is the count, and
 //! `Level.hasChunksAt` covers the whole box, not just its corners).
-use super::super::*;
 use crate::game::load_resources;
 use crate::settings::Settings;
 use std::sync::Arc;

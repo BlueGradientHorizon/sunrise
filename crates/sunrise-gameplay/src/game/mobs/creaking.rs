@@ -112,7 +112,7 @@ impl crate::game::ServerGame<'_> {
         ),
     ) -> Result<()> {
         let mut mobs = self.common.mobs.lift();
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         crate::game::server_side::entity_server::taken_pass_tests::after_take(self);
         let mut uuids = std::mem::take(&mut self.common.persist.uuids);
         let mut next_entity = self.server.next_entity;
@@ -539,6 +539,10 @@ impl crate::game::ServerGame<'_> {
     }
 }
 
+use sunrise_gameplay_common::game::GameGameExt1 as _;
+
+use sunrise_gameplay_common::game::creatures::ModGameExt1 as _;
+
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use super::CreakingState;
@@ -591,9 +595,3 @@ pub(in crate::game) mod tests {
         assert!(state.scanned.is_empty());
     }
 }
-
-use sunrise_gameplay_common::game::GameGameExt1 as _;
-
-use sunrise_gameplay_common::game::creatures::ModGameExt1 as _;
-
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt6 as _;

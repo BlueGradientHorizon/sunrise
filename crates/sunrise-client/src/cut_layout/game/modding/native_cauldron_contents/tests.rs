@@ -1,7 +1,6 @@
 use mod_api::{Hooks, Host};
 use sunrise_gameplay_common::game::api_values::TryIntoApi;
 use {
-    crate::game::native_cauldron_contents::*,
     sunrise_gameplay_common::game::native_cauldron_contents::cauldron_contents,
 };
 
@@ -133,4 +132,3 @@ fn registered_contents_and_rebuilt_tables_are_read_through_public_host() {
     });
 }
 
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;

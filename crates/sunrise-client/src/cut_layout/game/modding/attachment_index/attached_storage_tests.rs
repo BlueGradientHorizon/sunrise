@@ -1,6 +1,5 @@
 //! Stock attached storage (`AttachedItems`, `AttachedEnergy`) through real holder writes and
 //! the transaction journal.
-use super::*;
 use mod_api::{
     AttachedEnergy, AttachedItems, AttachmentType, EnergyHandler, HostTransaction, ITEM_STACKS,
     ItemResource, ResourceHandler, ServerHost, StackList,

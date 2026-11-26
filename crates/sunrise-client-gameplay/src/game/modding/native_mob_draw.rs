@@ -346,6 +346,8 @@ impl crate::game::ClientGame<'_> {
     }
 }
 
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -395,5 +397,3 @@ mod tests {
         assert!(close(pose.transform_point3(Vec3::ZERO), at.as_vec3()));
     }
 }
-
-use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

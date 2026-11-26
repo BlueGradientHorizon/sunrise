@@ -17,9 +17,9 @@ pub(crate) mod tests {
 
     use sunrise_core::geometry::Vec3;
 
-    use sunrise_protocol::packets::{configuration::ClientInformation, play::Clientbound};
+    use sunrise_protocol::packets::play::Clientbound;
 
-    use sunrise_sim::lan::{Joined, NetConfig, Out, PlayerSender, guest::Guest, hub::HubConfig};
+    use sunrise_sim::lan::{NetConfig, hub::HubConfig};
 
     use sunrise_sim::mobs::Mob;
 

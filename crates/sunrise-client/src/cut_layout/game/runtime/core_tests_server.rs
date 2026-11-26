@@ -1,4 +1,3 @@
-use super::*;
 use mod_api::ServerHost;
 use std::sync::Arc;
 use sunrise_gameplay_common::game::GuestUse;
@@ -321,7 +320,6 @@ fn right_click_block_controls_cauldron_use() {
     });
 }
 
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
 use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
 

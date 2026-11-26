@@ -18,6 +18,10 @@ pub struct ObserverCache {
 #[cfg(all(test, feature = "alloc-count", not(feature = "system-allocator")))]
 pub(in crate::game) mod tests {
     use super::*;
+    use sunrise_threads::alloc_count::CountingAllocator;
+
+    #[global_allocator]
+    static ALLOCATOR: CountingAllocator = CountingAllocator;
 
     #[test]
     fn subscribed_observer_pass_allocates_only_on_first_use() {

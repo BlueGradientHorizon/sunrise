@@ -2,7 +2,6 @@
 //! the guest, and its own `pick` (eyes and view) finds the block, while the
 //! message goes to the command's issuer
 //! (tools/test_test_pos_guest_parity.py measures the same on vanilla 26.3).
-use super::*;
 use crate::game::load_resources;
 use crate::settings::Settings;
 use std::sync::{Arc, atomic::AtomicI32, mpsc};

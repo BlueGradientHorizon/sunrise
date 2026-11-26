@@ -1,5 +1,8 @@
+#[cfg(test)]
 use sunrise_core::nbt::Tag;
+#[cfg(test)]
 use sunrise_core::nbt::parse_snbt;
+#[cfg(test)]
 use sunrise_gameplay_common::game::commands_common::Target;
 #[cfg(test)]
 pub(crate) mod tests {
@@ -1028,4 +1031,5 @@ pub(crate) mod vehicle_container_tests {
 #[cfg(test)]
 #[path = "finalize_marker_tests.rs"]
 pub(crate) mod finalize_marker_tests;
+#[cfg(test)]
 use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

@@ -1,16 +1,6 @@
 //! Bridge the generated game Host implementation to the standalone data fixer.
 use mod_api::{Compound, NbtDataType, NbtUpgradeError};
 
-impl crate::game::CommonGame<'_> {
-    pub(in crate::game) fn upgrade_nbt(
-        kind: NbtDataType,
-        data_version: i32,
-        nbt: Compound,
-    ) -> Result<Compound, NbtUpgradeError> {
-        upgrade_nbt(kind, data_version, nbt)
-    }
-}
-
 pub fn upgrade_nbt(
     kind: NbtDataType,
     data_version: i32,

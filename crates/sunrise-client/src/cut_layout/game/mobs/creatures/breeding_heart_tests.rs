@@ -1,5 +1,4 @@
 use {
-    crate::game::creatures::*,
     sunrise_gameplay_common::game::creatures::{Mob, Vec3},
 };
 /// `Turtle.TurtleBreedGoal.breed` overrides `Animal.breed`, so a bred turtle

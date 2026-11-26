@@ -11,12 +11,12 @@ use sunrise_world::{level::signal_access::SignalAccess, registry::BlockStateId};
 /// Created for the game's current level (`self.level(self.dim.id())` or after
 /// `level_in_place` confirms the level matches `self.world`). No mutable world,
 /// random source, entity snapshots or transaction is needed by a signal read.
-pub struct ReadLevel<'v, 'g, G: crate::game::SideGame<'g> + ?Sized> {
+pub struct ReadLevel<'v, 'g, G: crate::game::SideGame<'g>> {
     pub game: &'v G,
     pub level: mod_api::LevelRef,
     resource: std::marker::PhantomData<&'g ()>,
 }
-impl<'v, 'g, G: crate::game::SideGame<'g> + ?Sized> ReadLevel<'v, 'g, G> {
+impl<'v, 'g, G: crate::game::SideGame<'g>> ReadLevel<'v, 'g, G> {
     pub fn new(game: &'v G, level: mod_api::LevelRef) -> Self {
         Self {
             game,
@@ -26,7 +26,7 @@ impl<'v, 'g, G: crate::game::SideGame<'g> + ?Sized> ReadLevel<'v, 'g, G> {
     }
 }
 
-super::native_tags::impl_tags!(ReadLevel<'_, 'g, G>, level, level.game.native_tag_items(); generics('g, G: crate::game::SideGame<'g> + ?Sized));
+super::native_tags::impl_tags!(ReadLevel<'_, 'g, G>, level, level.game.native_tag_items(); generics('g, G: crate::game::SideGame<'g>));
 
 /// The output side passed to Parts is opposite SignalGetter's input direction.
 /// Both the shared view and the write context apply the same output bound.
@@ -60,7 +60,7 @@ pub(in crate::game) fn block_entity_signal(
     crate::game::jukebox_common::jukebox_signals(world, items, pos).map_or(0, |(signal, _)| signal)
 }
 
-impl<'g, G: crate::game::SideGame<'g> + ?Sized> SignalAccess for ReadLevel<'_, 'g, G> {
+impl<'g, G: crate::game::SideGame<'g>> SignalAccess for ReadLevel<'_, 'g, G> {
     fn block_state(&self, pos: BlockPos) -> BlockStateId {
         self.game.world.block(pos.x, pos.y, pos.z)
     }
@@ -203,7 +203,7 @@ impl<'g, G: crate::game::SideGame<'g> + ?Sized> SignalAccess for ReadLevel<'_, '
     }
 }
 
-impl<'g, G: crate::game::SideGame<'g> + ?Sized> ReadLevel<'_, 'g, G> {
+impl<'g, G: crate::game::SideGame<'g>> ReadLevel<'_, 'g, G> {
     pub(in crate::game) fn capability_site(
         &self,
         at: mod_api::BlockSide,
@@ -212,7 +212,7 @@ impl<'g, G: crate::game::SideGame<'g> + ?Sized> ReadLevel<'_, 'g, G> {
     }
 }
 
-impl<'g, G: crate::game::SideGame<'g> + ?Sized> LevelHost for ReadLevel<'_, 'g, G> {
+impl<'g, G: crate::game::SideGame<'g>> LevelHost for ReadLevel<'_, 'g, G> {
     fn block_states(&self) -> mod_api::BlockStates<'_> {
         mod_api::BlockStates::of(<G::State as crate::game::Side>::as_block_states_backend(
             self.game,
@@ -397,5 +397,3 @@ use crate::game::side_ops::modapi_modding::ModapiModdingSideGameExt as _;
 use crate::game::tables::GameItems as _;
 
 use crate::game::tables::WorldTablesExt as _;
-
-use crate::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

@@ -1,4 +1,3 @@
-use super::super::*;
 use super::{connect_play_test, spawn_menu_test};
 use mod_api::{ClientHost, ClientPacketSendEvent, Flow, Hooks, MenuClick, ModEntry};
 use mod_platform::testing::with_mods;

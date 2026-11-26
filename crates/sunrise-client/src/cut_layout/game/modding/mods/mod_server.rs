@@ -1,7 +1,7 @@
 #![cfg(test)]
 #[cfg(test)]
 pub(crate) mod tests {
-    use super::*;
+    
     use sunrise_gameplay::game::mods::tests::Fixture;
     use sunrise_gameplay::game::mods::tests::smod;
 

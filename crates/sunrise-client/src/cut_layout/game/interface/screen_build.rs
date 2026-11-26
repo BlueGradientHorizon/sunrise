@@ -3,13 +3,11 @@
 #[cfg(feature = "client")]
 pub(crate) mod tests {
 
-    use sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client;
+    
 
-    use sunrise_client_gameplay::game::client_side::screen_build::{
-        BuildLayout, ContainerLayout, PauseInputs, PauseLayout, ScreenBuildState, ScreenLayout,
-    };
+    use sunrise_client_gameplay::game::client_side::screen_build::BuildLayout;
 
-    use sunrise_client::inventory_effects::EffectsLayout;
+    
 
     use crate::game::Screen;
 

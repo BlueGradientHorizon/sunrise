@@ -2,10 +2,7 @@ use sunrise_core::nbt::Tag;
 use sunrise_core::position::BlockPos;
 use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use sunrise_sim::{entity_nbt, save};
-use {
-    crate::game::creatures::*,
-    sunrise_gameplay_common::game::creatures::{Arc, Mob, ProjectileKind, Vec3, Who},
-};
+use sunrise_gameplay_common::game::creatures::{ProjectileKind, Vec3, Who};
 
 fn parse(text: &str) -> Tag {
     let (tag, used) = sunrise_core::nbt::parse_snbt(text).unwrap();
@@ -191,4 +188,5 @@ fn loaded_mob_arrow_predicate_survives_model_and_controls_actual_block_hit() {
 
 use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
 
+#[cfg(test)]
 use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;

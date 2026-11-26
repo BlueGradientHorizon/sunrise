@@ -81,7 +81,7 @@ pub(crate) fn wait_for_pong(
 #[ignore = "daily"]
 fn post_effects_cleared_on_login_respawn_and_reconfigure_26_3() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::remote::raw_ingress::post_effects_parity_tests::post_effects_cleared_on_login_respawn_and_reconfigure_26_3",
+        "cut_layout::game::client_side::remote_client::ingress_state::post_effects_parity_tests::post_effects_cleared_on_login_respawn_and_reconfigure_26_3",
         post_effects_cleared_on_login_respawn_and_reconfigure_body,
     );
 }

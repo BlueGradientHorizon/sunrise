@@ -1265,8 +1265,6 @@ use crate::game::side_ops::mobs_rest::MobsRestSideGameExt as _;
 
 use crate::game::side_ops::modapi_hooks::ModapiHooksSideGameExt as _;
 
-use crate::game::tables::GameItems as _;
-
 use crate::game::GameGameExt1 as _;
 
 use crate::game::collision_source::CollisionSourceGameExt1 as _;
@@ -1274,8 +1272,6 @@ use crate::game::collision_source::CollisionSourceGameExt1 as _;
 use crate::game::entity_common::EntityCommonGameExt1 as _;
 
 use crate::game::entity_sections::EntitySectionsGameExt1 as _;
-
-use crate::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
 
 pub trait BoatItemHitGameExt<'g>: crate::game::SideGame<'g> {
     /// `Item.getPlayerPOVHitResult`: float view vector, OUTLINE and Fluid.ANY.

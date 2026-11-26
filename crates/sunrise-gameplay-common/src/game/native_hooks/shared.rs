@@ -963,13 +963,11 @@ pub fn packet_view(
 
 use crate::game::side_ops::events::EventsSideGameExt as _;
 
-use crate::game::side_ops::modapi_hooks::ModapiHooksSideGameExt as _;
 
 use crate::game::GameGameExt1 as _;
 
 use crate::game::held_items::HeldItemsGameExt1 as _;
 
-use crate::game::native_hooks::ModGameExt1 as _;
 
 use crate::game::native_hooks::stateful_block_entity::GameHooks as _;
 

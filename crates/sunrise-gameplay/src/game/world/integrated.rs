@@ -1016,7 +1016,6 @@ impl Integrated {
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
     use super::*;
-    use mod_api::prelude::*;
     use std::sync::mpsc::channel;
 
     #[cfg(test)]
@@ -1109,18 +1108,19 @@ pub mod tests {
     }
 }
 
+#[cfg(test)]
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
+#[cfg(test)]
 use sunrise_gameplay_common::game::entity_sections::EntitySectionsGameExt1 as _;
 
 use sunrise_gameplay_common::game::mods::ModGameExt1 as _;
 
+#[cfg(test)]
 use sunrise_gameplay_common::game::native_block_entity_read::NativeBlockEntityReadGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_configs::NativeConfigsGameExt1 as _;
-
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_lifecycle_common::NativeLifecycleCommonGameExt1 as _;

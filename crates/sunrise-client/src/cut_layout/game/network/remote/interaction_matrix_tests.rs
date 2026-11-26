@@ -248,6 +248,4 @@ fn native_interaction_shared_matrix() {
     );
 }
 
-use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;
 
-use sunrise_gameplay_common::game::native_hooks::SharedGameExt1 as _;

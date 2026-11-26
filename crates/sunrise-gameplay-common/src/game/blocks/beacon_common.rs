@@ -189,6 +189,5 @@ pub trait BeaconCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> BeaconCommonGameExt1<'__sg> for G {}
 
-use crate::game::tables::GameItems as _;
 
 use crate::game::native_hooks::beacon_color_multiplier::GameHooks as _;

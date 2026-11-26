@@ -1,8 +1,9 @@
 //! ServerPlayer.tick precedes the connection phase, including across levels.
-use crate::game::lan_actions::tick::*;
 use mod_api::{HostSide, ServerHost};
 use std::sync::{Arc, Mutex};
+#[cfg(test)]
 use sunrise_world::registry::BlockRegistry;
+#[cfg(test)]
 use {
     crate::game::levels::ServerTickPhase, crate::game::levels::server_tick_phases,
     sunrise_gameplay_common::game::Dim,
@@ -162,5 +163,3 @@ impl mod_api::Hooks for Observe {
             .push(Event::PlayerPost(event.player.uuid()));
     }
 }
-
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

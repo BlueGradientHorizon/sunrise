@@ -1,4 +1,3 @@
-use super::*;
 use std::sync::Arc;
 use std::sync::Mutex;
 use sunrise_core::geometry::Vec3;
@@ -176,4 +175,5 @@ fn bound_boat_client_case(tick: impl Fn(&mut sunrise_client_gameplay::game::Clie
     });
 }
 
+#[cfg(test)]
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

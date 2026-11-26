@@ -12,9 +12,7 @@ use sunrise_sim::{
 };
 use {
     crate::game::*,
-    sunrise_gameplay_common::game::{
-        Dim, Instant, Options, PathBuf, Progress, Resources, Vec3, entity, execution_role, host,
-    },
+    sunrise_gameplay_common::game::{Dim, Options, Progress, Vec3, execution_role},
 };
 
 const GUEST: &str = "CamelGuest";

@@ -1,6 +1,7 @@
 //! Real menu storage and Game journal integration, before hook-route migration.
 //! These exercise Menu::click, not the synthetic MenuState planner. They do not
 //! assert public hook dispatch.
+#[cfg(test)]
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::menu::{Input, Kind, Menu as EngineMenu};
@@ -232,6 +233,7 @@ use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
 
+#[cfg(test)]
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;

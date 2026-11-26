@@ -4,7 +4,7 @@ pub mod tests {
     use sunrise_gameplay_common::game::native_player_death::tests::new_guest;
     use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;
 
-    use mod_api::{GlobalPos, Identifier, PlayerRef};
+    use mod_api::PlayerRef;
 
     /// Opens the game to a LAN host with one placed guest (UUID 123, conn 1).
     pub fn add_guest(game: &mut crate::game::ServerGame<'_>) -> PlayerRef {

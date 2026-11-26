@@ -107,7 +107,7 @@ impl ServerGame<'_> {
         let ticking = self.entity_ticking_area();
         let through = self.server.ticked_entities_through;
         let mut spawners = self.common.ominous_spawners.lift();
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         crate::game::server_side::entity_server::taken_pass_tests::after_take(self);
         spawners.retain_mut(|s| {
             if s.id > through

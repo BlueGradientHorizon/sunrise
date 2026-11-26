@@ -1,4 +1,3 @@
-use super::*;
 pub(crate) use crate::game::creatures::death_weapon::tests::WeaponProbe;
 pub(crate) use crate::game::creatures::death_weapon::tests::isolated;
 use std::sync::{Arc, Mutex};

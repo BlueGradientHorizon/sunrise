@@ -11,8 +11,7 @@ use sunrise_level::light::{LightTables, apply_lighting, light_chunk};
 use {
     crate::game::*,
     sunrise_gameplay_common::game::{
-        Instant, Level, Options, PathBuf, PlayerMotion, Progress, Resources, Vec3, entity,
-        execution_role, tables,
+        Options, PlayerMotion, Progress, Resources, Vec3, execution_role,
     },
 };
 

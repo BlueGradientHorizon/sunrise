@@ -374,6 +374,10 @@ fn swirl(
     particles.add_with_world(Some(world), &list[pick], [x, y, z], [1.0; 3], false, false);
 }
 
+use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
 #[cfg(test)]
 mod sprint_handle_tests {
     use mod_api::{ClientHost, EntityRef, WorldEpoch};
@@ -425,7 +429,3 @@ mod sprint_handle_tests {
         });
     }
 }
-
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
-
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

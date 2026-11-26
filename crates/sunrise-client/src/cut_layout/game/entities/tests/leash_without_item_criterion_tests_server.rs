@@ -1,4 +1,3 @@
-use super::*;
 use sunrise_core::{geometry::Vec3, position::BlockPos};
 use sunrise_gameplay::game::game_tests::tests::server_game;
 use sunrise_gameplay_common::game::InteractTarget;
@@ -92,4 +91,5 @@ fn actual_holder_detach_does_not_reaward_the_held_lead_criterion() {
 
 use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
 
+#[cfg(test)]
 use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;

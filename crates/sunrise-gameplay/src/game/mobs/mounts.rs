@@ -1245,7 +1245,6 @@ pub(in crate::game) fn start_riding_jump(
 
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
-    use sunrise_gameplay_common::game::test_server_load;
 
     #[cfg(test)]
     /// A lava sea up to y 30 with full blocks placed in it; air above.
@@ -1305,11 +1304,14 @@ pub mod tests {
         pub events: Vec<(&'static str, [f64; 3], Option<Who>)>,
     }
 
+    #[cfg(test)]
     use sunrise_gameplay_common::game::server_side::mounts::tests::block_of;
 
+    #[cfg(test)]
     use sunrise_gameplay_common::game::server_side::mounts::tests::mob;
 
     use super::*;
+    #[cfg(test)]
     use std::collections::HashMap;
 
     #[cfg(test)]

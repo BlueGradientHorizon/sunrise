@@ -3,7 +3,6 @@
 //! parse, so the command never runs and an `execute store` around it stores
 //! nothing (tools/test_inline_feature_parse_parity.py measures the same on
 //! vanilla 26.3).
-use super::*;
 use crate::game::load_resources;
 use crate::settings::Settings;
 use std::sync::Arc;

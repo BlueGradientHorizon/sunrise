@@ -1,4 +1,3 @@
-use super::*;
 use crate::game::creatures::chorus_projectile_drop_tests::source;
 use crate::game::creatures::chorus_projectile_drop_tests::with_game;
 use sunrise_core::position::BlockPos;

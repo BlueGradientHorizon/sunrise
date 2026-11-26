@@ -221,4 +221,3 @@ pub(crate) mod gateway_age_tests {
         );
     }
 }
-use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

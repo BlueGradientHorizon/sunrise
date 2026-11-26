@@ -580,4 +580,3 @@ pub(crate) fn framed(
     seen.expect("no frame was built")
 }
 
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;

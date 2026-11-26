@@ -591,7 +591,3 @@ pub fn installed_structure_types()
         })
         .collect()
 }
-
-use crate::game::native_block_entity_read::NativeBlockEntityReadGameExt1 as _;
-
-use crate::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

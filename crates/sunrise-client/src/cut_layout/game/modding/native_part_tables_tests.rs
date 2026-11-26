@@ -77,4 +77,3 @@ fn a_fluid_face_part_answers_per_state_fluid_and_direction() {
     });
 }
 
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;

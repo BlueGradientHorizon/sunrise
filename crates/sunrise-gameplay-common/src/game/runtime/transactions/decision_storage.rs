@@ -104,13 +104,13 @@ pub trait ActionHost {
 /// Stage-2 adapter. No real menu route constructs this yet. Identity is supplied
 /// by the action's game-side caller and checked against the live lifecycle on
 /// each validation, not recovered from mod-controlled output.
-pub struct GameHost<'a, 'g, S: crate::game::SideGame<'g> + ?Sized> {
+pub struct GameHost<'a, 'g, S: crate::game::SideGame<'g>> {
     pub game: &'a mut S,
     pub identity: Identity,
     resource: std::marker::PhantomData<fn(&'g ()) -> &'g ()>,
 }
 
-impl<'a, 'g, S: crate::game::SideGame<'g> + ?Sized> GameHost<'a, 'g, S> {
+impl<'a, 'g, S: crate::game::SideGame<'g>> GameHost<'a, 'g, S> {
     #[inline(always)]
     pub fn new(game: &'a mut S, identity: Identity) -> Self {
         Self {
@@ -121,7 +121,7 @@ impl<'a, 'g, S: crate::game::SideGame<'g> + ?Sized> GameHost<'a, 'g, S> {
     }
 }
 
-impl<'g, S: crate::game::SideGame<'g> + ?Sized> ActionHost for GameHost<'_, 'g, S> {
+impl<'g, S: crate::game::SideGame<'g>> ActionHost for GameHost<'_, 'g, S> {
     fn identity(&self) -> Identity {
         let mut identity = self.identity;
         if let Some(world) = self.game.native_lifecycle.epoch() {

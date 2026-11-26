@@ -396,5 +396,3 @@ fn apply_size(mob: &mut Mob, size: u32) {
         _ => unreachable!("species size checked before mutation"),
     }
 }
-
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt6 as _;

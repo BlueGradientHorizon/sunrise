@@ -80,7 +80,7 @@ pub struct LanHost {
     /// a command can reach every player (game/network/lan_actions/commands.rs).
     pub commands: Vec<sunrise_gameplay_common::game::lan_actions::GuestCommand>,
     /// Mods' quiet commands waiting to run a few a tick (game/network/lan_quiet.rs).
-    pub quiet: std::collections::VecDeque<super::lan_quiet::QuietBatch>,
+    pub(in crate::game) quiet: std::collections::VecDeque<super::lan_quiet::QuietBatch>,
     /// Far terrain sampled for Sunrise clients (game/network/lan_far.rs); None when
     /// `sunrise-lod-distance` is 0.
     pub far: Option<sunrise_sim::lod_net::Service>,
@@ -5024,7 +5024,6 @@ pub(in crate::game) mod sources_tests {
 pub mod world_spawn_sync_tests {
     use super::*;
     use std::sync::{Arc, atomic::AtomicI32, mpsc};
-    use sunrise_protocol::packets::play::{self, Clientbound as C};
     use sunrise_sim::lan::{Joined, Out, PlayerSender, guest::Guest};
 
     pub fn host(game: &mut crate::game::ServerGame<'_>) -> mpsc::Receiver<Out> {
@@ -5819,10 +5818,6 @@ use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
-
 use sunrise_gameplay_common::game::native_hooks::block_entity_on_load::BlockEntityOnLoadGameExt1 as _;
-
-use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;
 
 use sunrise_gameplay_common::game::payload_transport::PayloadTransportGameExt1 as _;

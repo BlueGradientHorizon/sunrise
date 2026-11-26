@@ -331,6 +331,8 @@ pub(crate) fn zombie(game: &mut sunrise_gameplay::game::ServerGame<'_>, damage: 
     mob
 }
 
+#[cfg(test)]
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
 
+#[cfg(test)]
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt6 as _;

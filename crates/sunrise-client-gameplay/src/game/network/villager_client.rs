@@ -1,3 +1,3 @@
-#[cfg(any(test, feature = "test-support"))]
+#[cfg(test)]
 #[path = "villager_client/tests.rs"]
-pub mod tests;
+mod tests;

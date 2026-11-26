@@ -1,5 +1,4 @@
 //! A target listener can choose a different real guest within a mob tick.
-use super::*;
 use mod_api::EntityRef;
 use mod_api::LivingRef;
 use std::sync::{Arc, Mutex};

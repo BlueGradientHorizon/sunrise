@@ -1415,6 +1415,4 @@ use sunrise_gameplay_common::game::game_mode_common::GameModeCommonGameExt1 as _
 
 use sunrise_gameplay_common::game::pick_ray::PickRayGameExt1 as _;
 
-use crate::game::client_side::remote_client::chat::ChatTrustClientExt as _;
-
 use crate::game::client_side::remote_client::minecarts::CartLerpClientExt as _;

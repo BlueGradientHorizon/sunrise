@@ -92,10 +92,10 @@ pub fn with_game_role_and_facts_client(
     use mod_api::Authority;
     use sunrise_gameplay_common::game::{Options, resource_load::Progress};
 
-    sunrise_gameplay_common::game::mods::resolve_particle_providers(
-        &sunrise_assets::resource_source::ResourceSource::directory(root.clone()),
-    )
-    .unwrap();
+    sunrise_gameplay_common::game::test_fixtures::prepare_game_boot(
+        &root,
+        mod_platform::__private::part_tests::register_game_keys,
+    );
     let saves = tempfile::tempdir().unwrap();
     let mut settings = Settings::default();
     let mut loaded = {
@@ -103,7 +103,7 @@ pub fn with_game_role_and_facts_client(
             StartupLoadContext, load_resources_sync,
         };
         let _permit = acquire_in_process_load_permit();
-        load_resources_sync(
+        let mut loaded = load_resources_sync(
             sunrise_assets::resource_source::ResourceRoot::directory(root.clone()).into(),
             Vec::new(),
             StartupLoadContext {
@@ -116,7 +116,14 @@ pub fn with_game_role_and_facts_client(
             &Progress::new(),
             &Default::default(),
         )
-        .unwrap()
+        .unwrap();
+        if let Some(gui) = loaded.gui.as_mut() {
+            gui.atlas.pack_pixels_sync();
+        }
+        if let Some(client_pack) = &loaded.client_pack {
+            client_pack.render.pixels.pack_sync();
+        }
+        loaded
     };
     if let Some(configure) = configure {
         configure(

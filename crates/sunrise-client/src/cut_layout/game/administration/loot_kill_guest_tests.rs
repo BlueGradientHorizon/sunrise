@@ -3,7 +3,6 @@
 //! (`killed_by_player` holds) and its own weapon counts for looting, while
 //! the message goes to the issuer (tools/test_loot_kill_guest_parity.py
 //! measures the same on vanilla 26.3).
-use super::*;
 use crate::game::load_resources;
 use crate::settings::Settings;
 use std::sync::{Arc, atomic::AtomicI32, mpsc};

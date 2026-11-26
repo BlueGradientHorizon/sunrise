@@ -6,7 +6,7 @@ pub(crate) mod tests {
 
     use sunrise_gameplay_common::game::server_side::wake_time::tests::marker;
 
-    use mod_api::{ClockAdjustment, Identifier};
+    use mod_api::ClockAdjustment;
 
     use sunrise_gameplay::world_clock::TimeMarker;
 

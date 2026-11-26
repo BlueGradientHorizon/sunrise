@@ -84,5 +84,3 @@ impl<'__sg, G: crate::game::SideGame<'__sg>> UseItemHandGameExt1<'__sg> for G {}
 use crate::game::native_hooks::base::GameHooks as _;
 
 use crate::game::side_ops::presentation::PresentationSideGameExt as _;
-
-use crate::game::native_hooks::ModGameExt1 as _;

@@ -404,13 +404,17 @@ pub(in crate::game) fn remove_remote_thrown(potions: &mut PotionState, id: u32) 
     potions.thrown.retain(|t| t.id != id);
 }
 
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
 #[cfg(feature = "client")]
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use super::super::sculk::darkness_blend_added;
     use super::*;
     use sunrise_client::screen_effects::nausea_blend_added;
+    #[cfg(test)]
     use sunrise_gameplay_common::game::dragon_common::Breath;
+    #[cfg(test)]
     use sunrise_gameplay_common::game::potions_common::{CloudSettings, PotionCloud};
 
     /// #5876: a potion thrown straight up from inside its thrower's box does
@@ -741,5 +745,3 @@ pub(in crate::game) mod tests {
         });
     }
 }
-
-use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;

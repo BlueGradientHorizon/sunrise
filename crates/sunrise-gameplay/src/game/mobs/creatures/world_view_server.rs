@@ -10,7 +10,7 @@ use sunrise_sim::motion::SideLevel;
 use sunrise_world::registry::BlockRegistry;
 
 /// The game's own side, for a tick that only reads it: each query builds the borrowed tables.
-impl SideLevel for crate::game::ServerGame<'_> {
+impl SideLevel for ServerGame<'_> {
     fn is_raining_at(&self, world: &World, pos: BlockPos) -> bool {
         sunrise_gameplay_common::game_side!(self, self.side_game_side_meta())
             .is_raining_at(world, pos)
@@ -104,5 +104,3 @@ impl crate::game::ServerGame<'_> {
         )
     }
 }
-
-use sunrise_gameplay_common::game::creatures::world_view::WorldViewExt as _;

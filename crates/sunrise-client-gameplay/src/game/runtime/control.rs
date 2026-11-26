@@ -1971,6 +1971,12 @@ pub(in crate::game::client_side) fn title_owns_text(screen: &Screen, title_up: b
     title_up && *screen == Screen::Playing
 }
 
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::memory_common::MemoryCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::pick_ray::PickRayGameExt1 as _;
+
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use super::*;
@@ -2097,11 +2103,3 @@ pub(in crate::game) mod tests {
         }
     }
 }
-
-use sunrise_gameplay_common::game::tables::GameItems as _;
-
-use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
-
-use sunrise_gameplay_common::game::memory_common::MemoryCommonGameExt1 as _;
-
-use sunrise_gameplay_common::game::pick_ray::PickRayGameExt1 as _;

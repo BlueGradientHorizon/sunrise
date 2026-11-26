@@ -286,6 +286,14 @@ impl crate::game::ServerGame<'_> {
     }
 }
 
+use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameExt as _;
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;
+
 #[cfg(test)]
 #[path = "native_living_writes_observer_tests.rs"]
 mod observer_tests;
@@ -296,6 +304,7 @@ mod use_fixture_tests;
 
 #[cfg(test)]
 pub(in crate::game) mod tests {
+    #[cfg(test)]
     use super::super::native_entity_refs::tests::with_game;
     use super::Stuck;
     use super::observer_tests::tests::Uses;
@@ -305,6 +314,7 @@ pub(in crate::game) mod tests {
         LivingEntityUseItemStartEvent, LivingEntityUseItemStopEvent, LivingEntityUseItemTickEvent,
         LivingRef, OnUseTickEvent, Registrar, ReleaseUsingEvent, WorldEpoch,
     };
+    #[cfg(test)]
     use std::sync::{Arc, Mutex};
     use sunrise_core::geometry::Vec3;
     use sunrise_gameplay_common::game::{
@@ -312,6 +322,7 @@ pub(in crate::game) mod tests {
         native_living_body::NativeLivingBodyGameExt3 as _,
     };
     use sunrise_items::items::ItemStack;
+    #[cfg(test)]
     use sunrise_sim::lan::waypoints::Icon;
     use sunrise_sim::mobs::Mob;
 
@@ -710,11 +721,3 @@ pub(in crate::game) mod tests {
         assert!(stuck.arrows >= i32::MAX - 1);
     }
 }
-
-use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameExt as _;
-
-use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
-
-use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
-
-use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;

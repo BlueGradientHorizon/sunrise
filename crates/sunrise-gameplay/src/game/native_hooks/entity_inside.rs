@@ -1,6 +1,7 @@
 #[cfg(any(test, feature = "test-support"))]
 pub mod sweep_tests {
 
+    #[cfg(test)]
     use super::*;
 
     /// The game's player sweeps its move through two stone blocks, over the game's

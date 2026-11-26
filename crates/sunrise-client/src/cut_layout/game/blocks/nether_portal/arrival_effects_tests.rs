@@ -1,5 +1,4 @@
 //! Actual departure/recreation and TNT blasts, not calls to the arrival-effects helper.
-use super::*;
 use sunrise_core::geometry::Vec3;
 use sunrise_core::nbt::Tag;
 use sunrise_core::position::BlockPos;

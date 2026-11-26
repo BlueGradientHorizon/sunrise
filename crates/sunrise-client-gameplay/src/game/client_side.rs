@@ -1184,7 +1184,7 @@ pub struct ClientState {
     /// The link a chat click asks to open (`ConfirmLinkScreen`).
     pub link_prompt: Option<String>,
     /// A server's Code of Conduct to accept (game/interface/code_of_conduct.rs).
-    pub code_of_conduct: Option<code_of_conduct::Prompt>,
+    pub(in crate::game) code_of_conduct: Option<code_of_conduct::Prompt>,
     pub(in crate::game::client_side) world_renderer_ready: bool,
     pub(in crate::game::client_side) instance_groups:
         std::cell::RefCell<native_instance_groups::InstanceGroupStorage>,
@@ -1552,7 +1552,7 @@ pub struct ClientState {
     /// The horse inventory (game/interface/mount_menu.rs).
     pub mount_menu: mount_menu::MountMenu,
     /// The other players' hooks a server tracks to this client.
-    pub remote_hooks: Vec<fishing_client::RemoteHook>,
+    pub(in crate::game) remote_hooks: Vec<fishing_client::RemoteHook>,
     pub remote_clouds: Vec<sunrise_client_gameplay::remote::projectiles::RemoteCloud>,
     pub(in crate::game::client_side) tick_hit: std::cell::Cell<Option<Option<Hit>>>,
     pub(in crate::game::client_side) tick_mob: Option<Option<(usize, f64, [f64; 3])>>,
@@ -1576,7 +1576,7 @@ pub struct ClientState {
         sunrise_threads::alloc_count::Counts,
     )>,
     /// Settings and HUD state: `game/interface/extras.rs`.
-    pub extras: extras::ExtrasState,
+    pub(in crate::game) extras: extras::ExtrasState,
     /// The PvP & HUD options' state (`game/entities/pvp.rs`).
     pub(in crate::game::client_side) pvp: pvp::PvpState,
     /// The item panel beside container screens (`game/modding/native_panel.rs`).
@@ -1697,7 +1697,7 @@ pub struct ClientState {
     pub client_reports: ClientOnly<Arc<sunrise_sim::chunk_io::Reports>>,
     /// A command the player didn't type, waiting for their answer
     /// (game/network/remote_chat.rs).
-    pub command_prompt: ClientOnly<Option<remote_chat::CommandPrompt>>,
+    pub(in crate::game) command_prompt: ClientOnly<Option<remote_chat::CommandPrompt>>,
     pub(in crate::game::client_side) dialogs: ClientOnly<dialogs::DialogState>,
     /// This game's resource packs (`reload_packs` replaces them).
     pub pending_initial_models: ClientOnly<Option<Box<initial_client_models::PendingClientStart>>>,

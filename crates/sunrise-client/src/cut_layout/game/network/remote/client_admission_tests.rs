@@ -6,9 +6,7 @@ pub(in crate::game) fn with_isolated_client(
     name: &str,
     body: impl FnOnce(&mut sunrise_client_gameplay::game::ClientGame<'_>),
 ) {
-    let (_, module) = module_path!().split_once("::").unwrap();
-    let test = format!("{module}::{name}");
-    sunrise_gameplay_common::game::in_own_process(&test, || with_client_game(body));
+    sunrise_gameplay_common::game::in_own_process(name, || with_client_game(body));
 }
 
 pub(in crate::game) fn registry_id(

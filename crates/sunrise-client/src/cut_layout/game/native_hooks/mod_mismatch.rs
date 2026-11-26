@@ -5,10 +5,7 @@ pub(crate) mod tests {
     use std::sync::{Arc, Mutex};
     use sunrise_client_gameplay::game::native_hooks::mod_mismatch::GameHooks;
     use sunrise_gameplay_common::game::execution_role;
-    use {
-        crate::game::native_hooks::mod_mismatch::*,
-        sunrise_gameplay_common::game::native_hooks::mod_mismatch::level_mods,
-    };
+    use sunrise_gameplay_common::game::native_hooks::mod_mismatch::level_mods;
 
     #[test]
     #[ignore = "daily"]

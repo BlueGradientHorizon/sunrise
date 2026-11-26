@@ -1,14 +1,18 @@
 use super::*;
-use mod_api::{Hooks, ModEntry};
+use mod_api::Hooks;
+#[cfg(test)]
+use mod_api::ModEntry;
 #[cfg(test)]
 use mod_platform::testing::with_mods;
 use std::sync::atomic::{AtomicBool, Ordering};
+#[cfg(test)]
 use sunrise_mod_package::selection::SelectedPackage;
 
 pub struct EmptyCode;
 #[mod_api::__subscriptions]
 impl Hooks for EmptyCode {}
 
+#[cfg(test)]
 pub(in crate::game) fn selected(fixture: &Fixture, id: &str, side: &str) -> SelectedPackage {
     let manifest = format!(
         "id='{id}'\nname='{id}'\nversion='1'\napi='0.2'\nside='{side}'\nnamespaces=['shared_space']\n"

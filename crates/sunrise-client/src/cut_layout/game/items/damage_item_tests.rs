@@ -2,14 +2,13 @@
 //! `ItemPart::damage_item` on the wear of a player's held tool, and the part the tests of the other wear
 //! paths (the dispenser, the shield, the mace) share. Each installs process-wide parts: run alone with the
 //! prepared resources.
-use super::*;
 use mod_api::{DamageItemEvent, Flow, Hooks, ItemPart, ModEntry, Registrar, RegistrationContext};
 use std::sync::{Arc, Mutex};
 use sunrise_items::items::ItemStack;
 
 /// What the part of an item does to the wear it is asked about.
 #[derive(Clone, Copy)]
-pub(in crate::game) enum Rule {
+pub(crate) enum Rule {
     /// Half the points, rounded down.
     Halve,
     /// This many times the points.
@@ -24,7 +23,7 @@ pub(in crate::game) enum Rule {
 
 /// The part of one item: it applies its `rule` and records the points it was asked about.
 #[derive(Clone)]
-pub(in crate::game) struct Wear {
+pub(crate) struct Wear {
     item: &'static str,
     pub(in crate::game) rule: Arc<Mutex<Rule>>,
     pub(in crate::game) asked: Arc<Mutex<Vec<i32>>>,
@@ -301,6 +300,5 @@ fn a_part_breaks_a_mobs_glider_now() {
     });
 }
 
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
 use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

@@ -1,4 +1,3 @@
-use super::*;
 use mod_api::__private::game::Fields;
 use mod_api::{Hand, HostTransaction, ItemPlace, ItemResource, MenuSlotPlace, ServerHost};
 use sunrise_gameplay::game::server_side::native_book_backings::Backings;
@@ -424,6 +423,5 @@ fn a_listening_part_places_the_recipe_through_the_real_stage() {
     });
 }
 
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;

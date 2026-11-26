@@ -761,7 +761,7 @@ impl ServerGame<'_> {
     ) -> Result<(), TransferError> {
         self.save_affected(cells)
             .map_err(|e| TransferError::Io(e.to_string()))?;
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         if self.common.world.carrier_fences.fail_flush {
             return Err(TransferError::Io(
                 "injected: the flush barrier failed after prepared".into(),
@@ -829,7 +829,7 @@ impl ServerGame<'_> {
         let _ = (uuid, generation);
         self.save_affected(cells)
             .map_err(|e| TransferError::Io(e.to_string()))?;
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         if self.common.world.carrier_fences.fail_flush {
             return Err(TransferError::Io(
                 "injected: the flush barrier failed after prepared".into(),
@@ -1078,13 +1078,21 @@ fn carrier_stop_session(game: &mut crate::game::ServerGame<'_>, error: &Transfer
     }
 }
 
+use sunrise_gameplay_common::game::GameGameExt1 as _;
+
 #[cfg(test)]
 mod tests {
+    #[cfg(test)]
     use super::*;
+    #[cfg(test)]
     use crate::game::native_entity_refs::tests::with_game;
+    #[cfg(test)]
     use std::sync::Arc;
+    #[cfg(test)]
     use sunrise_core::geometry::Direction as CoreDirection;
+    #[cfg(test)]
     use sunrise_core::position::BlockPos;
+    #[cfg(test)]
     use sunrise_gameplay_common::game::spill_common;
 
     /// The store's default capacity is the contract's 4,096.
@@ -1123,9 +1131,3 @@ mod tests {
         assert!(sunrise_gameplay_common::game::CommonGame::admit_entity_save().is_ok());
     }
 }
-
-use sunrise_gameplay_common::game::tables::GameItems as _;
-
-use sunrise_gameplay_common::game::GameGameExt1 as _;
-
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

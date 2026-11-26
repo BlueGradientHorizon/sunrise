@@ -1,4 +1,3 @@
-use super::*;
 use sunrise_client_gameplay::game::toast_manager::Toast;
 use sunrise_client_gameplay::tutorial::Hint;
 use {

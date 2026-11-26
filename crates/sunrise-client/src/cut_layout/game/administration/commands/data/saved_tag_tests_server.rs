@@ -1,3 +1,4 @@
+#[cfg(test)]
 use super::*;
 use sunrise_core::geometry::Vec3;
 use sunrise_game_data::text::Text;

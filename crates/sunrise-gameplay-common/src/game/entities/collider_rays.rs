@@ -128,5 +128,3 @@ impl RayWorld for ColliderRays<'_, '_> {
         Ok(VoxelShape::empty())
     }
 }
-
-use crate::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

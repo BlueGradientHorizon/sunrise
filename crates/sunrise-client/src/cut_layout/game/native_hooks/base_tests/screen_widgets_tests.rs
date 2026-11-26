@@ -2,7 +2,6 @@
 //! synchronous transitions from widget callbacks, text field editing & IME integration, custom
 //! `ScreenWidget` dispatch & panic isolation, and separated screen input Pre/Post hooks.
 
-use crate::game::native_hooks::base::*;
 use crate::game::server_side::native_entity_refs::tests::with_client_game;
 use mod_api::client::widgets::Button;
 use mod_api::{

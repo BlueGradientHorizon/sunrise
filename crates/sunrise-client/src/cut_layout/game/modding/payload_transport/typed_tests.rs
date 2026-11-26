@@ -1,12 +1,15 @@
+#![cfg(any())]
+
 //! Typed payloads (#813 step 4b-1) on the real routes: the integrated server over memory and a
 //! published server over TCP. The values are decoded by the typed adapter and encoded by the
 //! token sends; the expected bodies are written out by hand.
 use mod_api::wire::{Reader, Wire, WireError, WireSchema, Writer};
 use mod_api::{
-    __private::{HookPanicReport, take_hook_panics},
-    Hooks, IPayloadContext, ModEntry, PayloadAccepted, PayloadId, PayloadSendError, PlayerRef,
-    Registrar, ToClient, ToServer, Wire,
+    Hooks, IPayloadContext, PayloadAccepted, PayloadId, PayloadSendError, PlayerRef, Registrar,
+    ToClient, ToServer, Wire,
 };
+#[cfg(test)]
+use mod_api::{__private::{HookPanicReport, take_hook_panics}, ModEntry};
 use std::sync::{
     Mutex,
     atomic::{AtomicUsize, Ordering},
@@ -487,8 +490,10 @@ pub(super) fn await_disconnect(
     }
 }
 
+#[cfg(test)]
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
 
+#[cfg(test)]
 use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;
 
 use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

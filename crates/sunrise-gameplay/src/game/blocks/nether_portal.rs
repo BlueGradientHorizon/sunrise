@@ -1995,7 +1995,6 @@ impl crate::game::ServerGame<'_> {}
 
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
-    use super::super::server_travel::TravelCause;
     use super::*;
 
     /// `Entity.setPortalCooldown` sets only the cooldown; the restart and

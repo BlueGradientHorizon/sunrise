@@ -183,7 +183,9 @@ fn tab_list(
 
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
+    #[cfg(test)]
     use super::super::native_entity_refs::tests::with_client_game;
+    #[cfg(test)]
     use super::*;
     #[cfg(test)]
     use mod_api::prelude::*;
@@ -546,6 +548,7 @@ pub mod tests {
     }
 }
 
+#[cfg(test)]
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
 
 use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

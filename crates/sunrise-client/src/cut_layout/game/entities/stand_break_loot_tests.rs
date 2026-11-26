@@ -3,7 +3,6 @@
 //! rolls `minecraft:entities/armor_stand` (a stand that is not small, with
 //! `mob_drops` on) before the equipment pops
 //! (tools/test_stand_break_loot_parity.py measures the same on vanilla 26.3).
-use super::*;
 use crate::game::load_resources;
 use crate::settings::Settings;
 use std::sync::Arc;

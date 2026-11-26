@@ -38,9 +38,8 @@ pub(crate) mod tests {
     use std::time::{Duration, Instant};
 
     use sunrise_protocol::{
-        buf::Reader,
         packets::play::Clientbound as C,
-        viewed_levels::{CHANNEL, Level::Index, Message, REVISION_3, ScopedPacket},
+        viewed_levels::Level::Index,
     };
 
     /// A server game on a scratch world, as `levels.rs`'s tests open one.

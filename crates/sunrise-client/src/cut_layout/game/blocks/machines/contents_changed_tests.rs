@@ -1108,7 +1108,6 @@ fn bookshelf_abort_restores_items_flags_and_last_slot_but_keeps_issued_effects()
     );
 }
 
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
 

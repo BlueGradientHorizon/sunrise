@@ -427,6 +427,16 @@ impl crate::game::ClientGame<'_> {
     }
 }
 
+use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_book_displays::NativeBookDisplaysGameExt1 as _;
+
 #[cfg(feature = "client")]
 #[cfg(test)]
 mod tests {
@@ -597,13 +607,3 @@ mod tests {
         let _ = std::fs::remove_dir_all(&scratch);
     }
 }
-
-use sunrise_gameplay_common::game::tables::GameItems as _;
-
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
-
-use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt1 as _;
-
-use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
-
-use sunrise_gameplay_common::game::native_book_displays::NativeBookDisplaysGameExt1 as _;

@@ -1165,4 +1165,5 @@ fn unordered_beardifier_bounds_add_no_terrain_adjustment() {
     assert_eq!(engine_beardifier(ordered).unwrap().ground_level_delta, 2);
 }
 
+#[cfg(test)]
 use crate::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;

@@ -1,4 +1,3 @@
-use super::*;
 use mod_api::{
     Flow, HearsProjectileImpactsEvent, Hooks, HostTransaction, ProjectileImpactEvent, ServerHost,
 };
@@ -286,4 +285,5 @@ fn normal_dispatch_returns_the_owned_pass_for_explicit_restore() {
     }
 }
 
+#[cfg(test)]
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

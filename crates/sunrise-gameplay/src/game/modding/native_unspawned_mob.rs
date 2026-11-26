@@ -638,15 +638,12 @@ impl Edits<'_, '_> {
 pub mod tests {
     use sunrise_gameplay_common::game::server_side::native_unspawned_mob::tests::AT;
 
+    #[cfg(test)]
     use sunrise_gameplay_common::game::server_side::native_unspawned_mob::tests::id;
 
-    use super::super::commands::Target;
-    use super::super::native_entity_refs::tests::with_game;
+    #[cfg(test)]
     use super::*;
-    use mod_api::{FinalizeSpawnEvent, Flow, Host};
-    use std::sync::{Arc, Mutex};
     use sunrise_gameplay_common::game::creatures::SpawnSite;
-    use sunrise_sim::mobs::finalize::{self, Attr};
     use sunrise_sim::mobs::spawn_rules::Reason;
 
     pub fn spawn_pig(game: &mut crate::game::ServerGame<'_>) -> Option<u32> {

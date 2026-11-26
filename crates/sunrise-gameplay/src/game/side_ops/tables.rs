@@ -84,5 +84,3 @@ use sunrise_items::enchant::Enchantments;
 use sunrise_items::items::Items;
 use sunrise_protocol::registry::Ids;
 use sunrise_world::native_load_context::LoopContext;
-
-use sunrise_gameplay_common::game::tables::GameItems as _;

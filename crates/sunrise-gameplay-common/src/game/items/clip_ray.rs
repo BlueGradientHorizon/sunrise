@@ -187,5 +187,3 @@ fn inside_hit(nudged: Vec3, sweep: Vec3, boxes: &[[f64; 6]], pos: [i32; 3]) -> O
         inside: true,
     })
 }
-
-use crate::game::GameGameExt1 as _;

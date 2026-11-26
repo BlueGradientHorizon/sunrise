@@ -892,14 +892,11 @@ impl TeleportConsumeWorld for MobTeleporter<'_, '_> {
 #[cfg(any(test, feature = "test-support"))]
 pub mod teleport_hook_tests {
     use super::*;
-    use crate::game::native_entity_refs::tests::with_game;
     use mod_api::{Flow, Hooks, ItemConsumptionTeleportEvent, ModEntry, ServerHost};
     use std::sync::{
         Arc, Mutex,
         atomic::{AtomicBool, Ordering},
     };
-    use sunrise_gameplay_common::game::api_values::test_snapshot;
-    use sunrise_sim::motion::PlayerMotion;
 
     pub struct ConsumptionProbe(pub Arc<Mutex<Vec<mod_api::ItemStack>>>, pub Arc<AtomicBool>);
     #[mod_api::__subscriptions]

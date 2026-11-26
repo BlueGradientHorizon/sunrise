@@ -469,7 +469,6 @@ fn an_aborted_publish_restores_the_shape_and_notifies_the_neighbours() {
     });
 }
 
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
 

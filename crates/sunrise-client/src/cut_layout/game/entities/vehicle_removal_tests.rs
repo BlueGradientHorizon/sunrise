@@ -156,7 +156,7 @@ fn stand_equipment_and_below_world_spills_are_visible_at_dismount() {
 }
 
 #[derive(Default)]
-pub(in crate::game) struct Observation {
+pub(crate) struct Observation {
     pub(in crate::game) veto_dismount: AtomicBool,
     pub(in crate::game) veto_rider_tick: AtomicBool,
     pub(in crate::game) trace: Mutex<Vec<String>>,

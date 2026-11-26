@@ -6,7 +6,6 @@ use std::sync::{
 use sunrise_core::random::RandomSource;
 use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use {
-    crate::game::creatures::*,
     sunrise_gameplay_common::game::creatures::{
         Arc, Hit, Mob, Projectile, ProjectileKind, Species, Vec3, Who,
     },
@@ -182,4 +181,5 @@ pub(crate) fn run_mob_pearls_use_the_hook_and_recheck_listener_writes_without_pl
     });
 }
 
+#[cfg(test)]
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

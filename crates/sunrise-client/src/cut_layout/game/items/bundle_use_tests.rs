@@ -6,10 +6,9 @@ use {
     crate::game::server_side::item_use::interact_vibration_tests::with_game,
     sunrise_gameplay::game::server_side::sculk_server::item_use_event_fixture::EVENTS,
 };
-use {
-    crate::game::*,
-    sunrise_gameplay_common::game::{ItemStack, mods},
-};
+use {sunrise_gameplay_common::game::ItemStack};
+#[cfg(test)]
+use crate::game::*;
 
 #[test]
 #[ignore = "daily"]

@@ -103,7 +103,7 @@ pub(in crate::game) fn read_contents(
 }
 
 #[derive(Default)]
-pub(in crate::game) struct CodeSwitches {
+pub struct CodeSwitches {
     pub(in crate::game) disabled: std::collections::BTreeSet<String>,
     pub(in crate::game) applied: std::sync::atomic::AtomicBool,
 }
@@ -1741,16 +1741,6 @@ pub struct ModsReload {
 }
 
 impl crate::game::CommonGame<'_> {
-    #[cfg(test)]
-    pub(in crate::game) fn initialize_mod_runtime_for_tests() {
-        static INITIALIZED: std::sync::Once = std::sync::Once::new();
-        INITIALIZED.call_once(|| {
-            crate::game::api_values::install_test_platform();
-            mod_platform::__private::initialize()
-                .expect("engine test runtime initializes before mod dispatch");
-        });
-    }
-
     pub fn prepare_loop_context(
         &self,
         resources: &std::path::Path,

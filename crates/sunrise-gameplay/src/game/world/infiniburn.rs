@@ -37,7 +37,3 @@ impl crate::game::ServerGame<'_> {
         self.refresh_infiniburn();
     }
 }
-
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
-
-use sunrise_gameplay_common::game::GameGameExt1 as _;

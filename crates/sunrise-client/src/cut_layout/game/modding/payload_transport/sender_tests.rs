@@ -1,8 +1,9 @@
+#![cfg(any())]
+
 //! Physical sender identity and action ordering through the real server main inbox.
-use mod_api::{
-    HandlerThread, Hooks, IPayloadContext, IPayloadHandler, ModEntry, PayloadBytes,
-    PayloadDirection, PayloadId, PayloadProtocol, Registrar,
-};
+use mod_api::{PayloadDirection, PayloadId, PayloadProtocol, Registrar};
+#[cfg(test)]
+use mod_api::{HandlerThread, Hooks, IPayloadContext, IPayloadHandler, ModEntry, PayloadBytes};
 use std::{
     sync::{Arc, Mutex},
     time::{Duration, Instant},
@@ -363,4 +364,5 @@ pub(super) fn connect_peer(port: u16, name: &str) -> Connection {
     c
 }
 
+#[cfg(test)]
 use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;

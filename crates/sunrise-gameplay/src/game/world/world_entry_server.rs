@@ -710,10 +710,6 @@ impl crate::game::ServerGame<'_> {
     }
 }
 
-use sunrise_gameplay_common::game::tables::GameItems as _;
-
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
-
 use sunrise_gameplay_common::game::native_data_bound::NativeDataBoundGameExt1 as _;
 
 use sunrise_gameplay_common::game::primary_items::PrimaryItemsGameExt1 as _;

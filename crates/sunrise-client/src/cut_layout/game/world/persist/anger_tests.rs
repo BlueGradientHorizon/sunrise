@@ -2,7 +2,6 @@
 //! and tick paths.
 
 use super::h262_enderman_absolute_anger_tests::with_game;
-use super::*;
 use sunrise_core::nbt::Tag;
 use sunrise_gameplay_common::game::GameGameExt1;
 

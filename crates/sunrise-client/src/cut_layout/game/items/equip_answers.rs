@@ -1,12 +1,23 @@
 #![cfg(test)]
 use sunrise_items::items::ItemStack;
+use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
+
+use sunrise_gameplay_common::game::equip_answers::EquipAnswersGameExt1 as _;
+
+#[cfg(test)]
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;
+
 #[cfg(test)]
 mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
     use sunrise_client_lib::mobs::equip::CanEquip;
     use {
         crate::game::equip_answers::*,
-        sunrise_gameplay_common::game::equip_answers::{MenuEquip, take_equip_conversions},
+        sunrise_gameplay_common::game::equip_answers::take_equip_conversions,
     };
 
     /// The part of an iron helmet: it lets the helmet on the feet only, and counts the asks.
@@ -278,12 +289,3 @@ mod tests {
         });
     }
 }
-use sunrise_gameplay_common::game::tables::GameItems as _;
-
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
-
-use sunrise_gameplay_common::game::equip_answers::EquipAnswersGameExt1 as _;
-
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
-
-use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

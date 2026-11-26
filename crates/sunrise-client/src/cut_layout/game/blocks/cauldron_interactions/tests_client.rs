@@ -1,4 +1,3 @@
-use super::*;
 use crate::game::cauldron_interactions::tests::{
     POS, Seen, TestMod, events, fixture, fixture_mods_client, setup_common, unchanged,
 };

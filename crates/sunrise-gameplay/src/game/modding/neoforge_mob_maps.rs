@@ -186,6 +186,8 @@ impl ServerGame<'_> {
     }
 }
 
+use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -330,5 +332,3 @@ mod tests {
         );
     }
 }
-
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;

@@ -1,4 +1,6 @@
+#[cfg(test)]
 use sunrise_core::geometry::Vec3;
+#[cfg(test)]
 use sunrise_gameplay_common::game::boats_common::Boat;
 #[cfg(test)]
 pub(crate) mod friction_tests;
@@ -12,9 +14,7 @@ pub(crate) mod tests {
 
     use super::*;
 
-    use crate::game::boats_common::{
-        Status, powder_snow_stuck, registered_boat, saved_ticks_frozen,
-    };
+    use crate::game::boats_common::Status;
 
     /// A boat the client takes over while it eases toward the server's position goes on
     /// easing there and reports that spot (the handler is the entity's, not the driver's).
@@ -241,6 +241,7 @@ pub(crate) mod cobweb_tests {
         );
     }
 }
+#[cfg(test)]
 use sunrise_gameplay_common::game::boats_common::BoatsCommonGameExt1 as _;
 
 pub(crate) mod below_world;

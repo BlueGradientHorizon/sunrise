@@ -6,8 +6,8 @@ use mod_api::{
 };
 use sunrise_core::{geometry::Direction, position::BlockPos};
 use sunrise_gameplay::game::native_entity_refs::tests::with_game;
-use sunrise_gameplay_common::game::GameGameExt1;
-use sunrise_world::level::LevelAccess;
+use sunrise_gameplay_common::game::{GameGameExt1, SideGame};
+use sunrise_world::{level::LevelAccess, registry::BlockStateId};
 
 /// Wool that, burned from its west face, leaves its old state on the cell above.
 struct Ember(std::sync::Arc<std::sync::atomic::AtomicUsize>);
@@ -41,12 +41,22 @@ impl Hooks for EmberMod {
 }
 
 #[test]
+#[cfg(feature = "client")]
 #[ignore = "daily"]
 fn a_block_part_hears_it_burned_and_writes_the_level() {
     use std::sync::Arc;
     use sunrise_level::chunk::Chunk;
 
+    use crate::game::server_side::native_entity_refs::tests::with_client_game;
     use std::sync::atomic::{AtomicUsize, Ordering};
+
+    fn burn<'g>(game: &mut impl SideGame<'g>, wool: BlockStateId, face: Direction) -> BlockStateId {
+        game.with_level(|_, level, ticks| {
+            level.on_caught_fire(ticks, wool, BlockPos::new(1, 64, 0), face);
+        });
+        game.world.block(1, 65, 0)
+    }
+
     let calls = Arc::new(AtomicUsize::new(0));
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
         "ember",
@@ -68,15 +78,13 @@ fn a_block_part_hears_it_burned_and_writes_the_level() {
             let air = registry.default_state("minecraft:air").unwrap();
             game.world.set(1, 64, 0, wool).unwrap();
             // The wool is still present when the notice is dispatched.
-            let burn = |game: &mut sunrise_gameplay::game::ServerGame<'_>, face: Direction| {
-                game.with_level(|_, level, ticks| {
-                    level.on_caught_fire(ticks, wool, BlockPos::new(1, 64, 0), face);
-                });
-                game.world.block(1, 65, 0)
-            };
-            assert_eq!(burn(game, Direction::North), air, "the Part writes nothing");
             assert_eq!(
-                burn(game, Direction::West),
+                burn(game, wool, Direction::North),
+                air,
+                "the Part writes nothing"
+            );
+            assert_eq!(
+                burn(game, wool, Direction::West),
                 wool,
                 "its write is in the level"
             );
@@ -94,18 +102,25 @@ fn a_block_part_hears_it_burned_and_writes_the_level() {
             assert_ne!(game.world.block(1, 64, 0), wool);
             assert_eq!(game.world.block(1, 65, 0), wool);
             assert_eq!(calls.load(Ordering::SeqCst), 1);
+        });
+        with_client_game(|game| {
+            game.world
+                .chunks
+                .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+            game.block_ticks
+                .add_empty_chunk(sunrise_core::position::ChunkPos::new(0, 0))
+                .unwrap();
+            let registry = game.pack.assets.registry;
+            let wool = registry.default_state("minecraft:white_wool").unwrap();
+            let air = registry.default_state("minecraft:air").unwrap();
             game.world.set(1, 64, 0, wool).unwrap();
             game.world.set(1, 65, 0, air).unwrap();
-            game.options.execution_role =
-                sunrise_gameplay_common::game::execution_role::ExecutionRole::Client;
-            game.options.dedicated = None;
             assert_eq!(
-                burn(game, Direction::West),
+                burn(game, wool, Direction::West),
                 air,
                 "a client dispatches no notice"
             );
-        })
+        });
     });
 }
 
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;

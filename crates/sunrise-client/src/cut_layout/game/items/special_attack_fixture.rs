@@ -1,4 +1,5 @@
 #![cfg(test)]
+
 #[cfg(test)]
 pub(crate) mod tests {
     use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
@@ -18,4 +19,3 @@ pub(crate) mod tests {
         game.dispense_fixture(&spec).unwrap();
     }
 }
-use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

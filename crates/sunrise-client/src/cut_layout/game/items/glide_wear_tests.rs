@@ -1,7 +1,4 @@
-use {
-    crate::game::*,
-    sunrise_gameplay_common::game::{ItemStack, PlayerMotion, Vec3},
-};
+use sunrise_gameplay_common::game::ItemStack;
 
 /// Glides a survival or creative guest for 20 ticks with `components` on a stick in `hand`
 /// (4 main, 5 off), or an elytra in the chest slot when `components` is `None`, and returns

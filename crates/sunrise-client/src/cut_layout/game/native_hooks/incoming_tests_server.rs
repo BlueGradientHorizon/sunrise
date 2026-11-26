@@ -74,4 +74,5 @@ fn held_durability_retains_the_stack_hand_and_explicit_break_slot() {
     game.damage_held_in_slot(1, EquipmentSlot::OffHand);
     assert_eq!(game.offhand.as_ref().unwrap().damage, 0);
 }
+#[cfg(test)]
 use sunrise_gameplay_common::game::tables::GameItems as _;

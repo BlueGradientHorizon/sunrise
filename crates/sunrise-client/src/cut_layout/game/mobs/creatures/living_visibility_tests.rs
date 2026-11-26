@@ -45,4 +45,5 @@ fn a_mod_halves_a_guests_visibility() {
     });
 }
 
+#[cfg(test)]
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

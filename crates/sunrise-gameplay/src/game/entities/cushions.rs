@@ -473,6 +473,22 @@ impl crate::game::ServerGame<'_> {
     }
 }
 
+use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameExt as _;
+
+use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::entity_common::EntityCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::game_mode_common::GameModeCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::item_use_stacks::ItemUseStacksGameExt1 as _;
+
+use sunrise_gameplay_common::game::pick_ray::PickRayGameExt1 as _;
+
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use super::*;
@@ -525,21 +541,3 @@ pub(in crate::game) mod tests {
         assert!(c.item_stack_with_data().data().is_none());
     }
 }
-
-use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameExt as _;
-
-use sunrise_gameplay_common::game::tables::GameItems as _;
-
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
-
-use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
-
-use sunrise_gameplay_common::game::entity_common::EntityCommonGameExt1 as _;
-
-use sunrise_gameplay_common::game::game_mode_common::GameModeCommonGameExt1 as _;
-
-use sunrise_gameplay_common::game::item_use_stacks::ItemUseStacksGameExt1 as _;
-
-use sunrise_gameplay_common::game::native_world_read_common::NativeWorldReadGameExt1 as _;
-
-use sunrise_gameplay_common::game::pick_ray::PickRayGameExt1 as _;

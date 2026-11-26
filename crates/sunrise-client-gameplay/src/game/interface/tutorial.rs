@@ -437,8 +437,6 @@ impl HintToast {
     }
 }
 
-use sunrise_gameplay_common::game::tables::GameItems as _;
-
 use sunrise_gameplay_common::game::integrated_common::IntegratedCommonGameExt1 as _;
 
 use sunrise_gameplay_common::game::pick_ray::PickRayGameExt1 as _;

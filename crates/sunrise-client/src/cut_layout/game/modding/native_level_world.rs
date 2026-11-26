@@ -2,6 +2,10 @@
 use sunrise_gameplay_common::game::Dim;
 use sunrise_gameplay_common::game::native_rain_read::weather_flags;
 
+
+
+
+
 #[cfg(test)]
 mod tests {
     use super::super::native_entity_refs::tests::with_game;
@@ -618,10 +622,3 @@ mod tests {
         assert_eq!(super::weather_flags((1.0, 0.95)), (true, true));
     }
 }
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
-
-use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
-
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
-
-use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;

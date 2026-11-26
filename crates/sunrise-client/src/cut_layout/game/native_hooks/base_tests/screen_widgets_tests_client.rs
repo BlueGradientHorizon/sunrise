@@ -1,4 +1,3 @@
-use super::*;
 use crate::game::native_hooks::base::screen_widgets_tests::DropCounter;
 use crate::game::native_hooks::base::screen_widgets_tests::NoLoop;
 use crate::game::native_hooks::base::screen_widgets_tests::move_mouse;

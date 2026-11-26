@@ -8,6 +8,7 @@ use mod_api::{
 use std::{ops::ControlFlow, sync::Arc};
 use sunrise_core::nbt::Tag;
 use sunrise_gameplay_common::game::api_values::{StackReadError, TryIntoApi};
+#[cfg(test)]
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
 use sunrise_items::items::ItemStack;
 use sunrise_level::containers::{BlockEntity, ModBlockEntity, ModContainer};
@@ -1197,8 +1198,10 @@ fn timing_storage_against_items_across_barrel_cells() {
     });
 }
 
+#[cfg(test)]
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
 
 use sunrise_gameplay_common::game::native_block_entity_read::NativeBlockEntityReadGameExt1 as _;
 
+#[cfg(test)]
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

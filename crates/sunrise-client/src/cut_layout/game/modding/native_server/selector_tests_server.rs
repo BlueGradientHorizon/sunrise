@@ -1,3 +1,4 @@
+#[cfg(test)]
 use super::*;
 use crate::game::native_server::selector_tests::SelectorCommands;
 use mod_api::CommandArgumentValue as Value;

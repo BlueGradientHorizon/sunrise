@@ -340,5 +340,3 @@ impl<'__carrier, S: crate::game::SideGame<'__carrier>, E: ClientEvent> IPayloadC
 use crate::game::side_ops::modapi_modding::ModapiModdingSideGameExt as _;
 
 use crate::game::transactions::TransactionsGameExt as _;
-
-use crate::game::native_server::NativeServerGameExt1 as _;

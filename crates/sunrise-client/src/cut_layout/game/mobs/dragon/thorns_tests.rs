@@ -1,13 +1,11 @@
 //! Exercise the server's attack entry points with real enchantment data.
-use super::*;
 use sunrise_sim::{
     mobs::{Damage, Mob, MobEvent, Who, finalize as f},
     projectiles::{Hit, Projectile, ProjectileKind},
 };
-use {
-    crate::game::*,
-    sunrise_gameplay_common::game::{Arc, ItemStack, Vec3, entity, hit},
-};
+use sunrise_gameplay_common::game::{Arc, ItemStack, Vec3};
+#[cfg(test)]
+use crate::game::*;
 
 #[allow(unused_imports)]
 pub(crate) use crate::game::client_side::dragon_client::thorns_tests::with_game;

@@ -1730,6 +1730,20 @@ fn track(hook: &Hook, owner: i32, out: &mut States) {
     }
 }
 
+use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameExt as _;
+
+use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;
+
+use sunrise_gameplay_common::game::entity_common::EntityCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::entity_sections::EntitySectionsGameExt1 as _;
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;
+
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use super::{Hook, cast_direction, entity_hit_margin, first_entity_hit, pull_item, rebound};
@@ -2141,21 +2155,3 @@ pub(in crate::game) mod tests {
         assert_eq!(pulled, Vec3::new(1.5, 0.2, 0.0));
     }
 }
-
-use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameExt as _;
-
-use sunrise_gameplay_common::game::tables::GameItems as _;
-
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
-
-use sunrise_gameplay_common::game::GameGameExt1 as _;
-
-use sunrise_gameplay_common::game::entity_common::EntityCommonGameExt1 as _;
-
-use sunrise_gameplay_common::game::entity_sections::EntitySectionsGameExt1 as _;
-
-use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
-
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
-
-use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

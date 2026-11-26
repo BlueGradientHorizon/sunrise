@@ -15,7 +15,7 @@ impl<'__sg, G: crate::game::SideGame<'__sg>> GeneralGameExt1<'__sg> for G {}
 pub mod tests {
     use sunrise_mod_runtime::attachments::Holder;
     use sunrise_protocol::general_entity::{self, Message};
-    use sunrise_protocol::packets::play::{self, Clientbound as C};
+    use sunrise_protocol::packets::play::Clientbound as C;
 
     pub static FUEL: mod_api::AttachmentType<i32> = mod_api::AttachmentType {
         namespace: "mymod",

@@ -1,7 +1,6 @@
 //! Breaking blocks: a held tool mining a block, `break_block` and the player's break with its drops
 //! (`Block.popResource` for a broken block), the destroy-progress cracks shown to everyone, and a
 //! bundle dropping its content.
-use super::*;
 
 impl crate::game::ClientGame<'_> {
     /// `LevelRenderer.destroyBlockProgress`: any stage outside 0..10 clears the breaker.

@@ -40,15 +40,19 @@ pub fn sources(mods: &ModsState) -> BTreeMap<String, Arc<dyn mod_api::RuntimeFil
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(any())]
     use crate::game::api_values;
     #[cfg(any())]
     use crate::game::native_entity_refs::tests::run_fresh_cases;
+    #[cfg(any())]
     use mod_api::{
         Hooks, ModEntry, PackageInfo, PackageKind, Registrar, RegistrationContext, Side,
     };
+    #[cfg(any())]
     use std::sync::Mutex;
     use sunrise_mod_package::manifest::Package;
 
+    #[cfg(any())]
     const NAME: &str =
         "game::mods::runtime_files::tests::a_mod_reads_runtime_files_by_mod_id_during_registration";
     const BYTES: &[u8] = b"baked lookup table";
@@ -130,7 +134,9 @@ mod tests {
     }
 
     /// What each mod's registration saw when looking up runtime files by mod id.
+    #[cfg(any())]
     struct Reader(&'static str, &'static str, Arc<Mutex<Vec<String>>>);
+    #[cfg(any())]
     #[mod_api::__subscriptions]
     impl Hooks for Reader {
         fn register(&self, _: &mut dyn Registrar, cx: &RegistrationContext) {

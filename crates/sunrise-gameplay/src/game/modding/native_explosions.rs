@@ -426,6 +426,8 @@ pub(in crate::game) struct BlastState {
     settings: BlastSettings,
 }
 
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5 as _;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -462,7 +464,3 @@ mod tests {
         }
     }
 }
-
-use sunrise_gameplay_common::game::tables::GameItems as _;
-
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5 as _;

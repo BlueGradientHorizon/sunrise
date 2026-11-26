@@ -28,7 +28,7 @@ pub(crate) mod tests {
     #[cfg(test)]
     /// What a dispense probe part heard: which part, and the dispenser it was for.
     #[derive(Clone, Default)]
-    pub(in crate::game) struct Heard(
+    pub(crate) struct Heard(
         pub(in crate::game) std::sync::Arc<std::sync::Mutex<Vec<(&'static str, [i32; 3], u32)>>>,
     );
     #[cfg(test)]
@@ -99,7 +99,7 @@ pub(crate) mod tests {
     /// `can_equip`, and what it was asked as `(slot, entity, kind, position)`, the position read
     /// from the entity's handle through the read-only `Host`.
     #[derive(Clone)]
-    pub(in crate::game) struct Fits {
+    pub(crate) struct Fits {
         pub(in crate::game) accepts: Arc<std::sync::Mutex<&'static str>>,
         pub(in crate::game) asked:
             Arc<std::sync::Mutex<Vec<(String, u32, String, Option<[f64; 3]>)>>>,

@@ -1,7 +1,9 @@
 //! `menu_slot_rules` through a real `MenuPart` on the read-only `Host`: what a click asks, in
 //! what order, how often, and what a click does without a listener, with a failing one and with
 //! one that answers out of range. The fixtures need prepared resources.
+#[cfg(test)]
 use crate::game::native_entity_refs::tests::with_game;
+#[cfg(test)]
 use crate::game::native_guest_turn_tests::with_guests;
 use mod_api::{Hooks, MenuPart, MenuSlotRulesEvent, ModEntry, Mods, Registrar};
 use std::cell::RefCell;
@@ -488,4 +490,5 @@ fn nested_menu_reads_use_base_slot_rules() {
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
+#[cfg(test)]
 use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;

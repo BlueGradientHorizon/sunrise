@@ -457,4 +457,3 @@ fn a_mod_rebinds_and_resets_its_own_mapping() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;

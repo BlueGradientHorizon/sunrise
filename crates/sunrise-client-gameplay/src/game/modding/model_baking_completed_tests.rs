@@ -1,8 +1,10 @@
 //! `model_baking_completed` heard by a trait mod through the game's own hooks: once per
 //! successful model load, after both atlases and before `client_setup` or
 //! `client_resources_reloaded`, with the new store's standalone models resolvable inside it.
+#[cfg(test)]
 use super::native_entity_refs::tests::{run_fresh_cases, with_client_game};
 use super::packs::ReloadKind;
+#[cfg(test)]
 use mod_api::{
     __private::game::RegistrationContextNew, ClientHost, ClientReloadHost,
     ClientResourcesReloadedEvent, ClientSetupContext, ClientSetupEvent, Hooks, Identifier,
@@ -11,16 +13,20 @@ use mod_api::{
 };
 #[cfg(test)]
 use mod_platform::testing::with_mods;
+#[cfg(test)]
 use std::sync::{Arc, Mutex};
 
 /// The standalone model the mod asked for, installed by the fixture as `standalone_models`
 /// would register it.
+#[cfg(test)]
 const PART: &str = "minecraft:block/grass_block";
 /// A model nobody registered.
+#[cfg(test)]
 const NOBODY: &str = "keeper:block/nobody";
 
 /// What the mod kept: the order of what it heard, and the lookups of each
 /// `model_baking_completed`.
+#[cfg(test)]
 #[derive(Default)]
 struct Kept {
     heard: Vec<String>,
@@ -29,7 +35,9 @@ struct Kept {
     baked: Vec<[Result<ModelRef, ModelError>; 3]>,
     during_stitch: Vec<Result<ModelRef, ModelError>>,
 }
+#[cfg(test)]
 struct Keeper(Arc<Mutex<Kept>>);
+#[cfg(test)]
 #[mod_api::__subscriptions]
 impl Hooks for Keeper {
     fn standalone_models(&self, _: &RegistrationContext, event: &mut StandaloneModelsEvent<'_>) {
@@ -84,10 +92,12 @@ impl Hooks for Keeper {
     }
 }
 
+#[cfg(test)]
 fn id(text: &str) -> Identifier {
     Identifier::parse(text).unwrap()
 }
 
+#[cfg(test)]
 fn keeper() -> (Arc<Mutex<Kept>>, mod_api::Mods) {
     let kept = Arc::new(Mutex::new(Kept::default()));
     let mods = vec![ModEntry::new("keeper", Box::new(Keeper(Arc::clone(&kept))))].into();

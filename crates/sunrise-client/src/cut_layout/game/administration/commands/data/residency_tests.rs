@@ -1,3 +1,4 @@
+#[cfg(test)]
 use super::*;
 use sunrise_core::nbt::Tag;
 use sunrise_gameplay::game::commands::data::set_key;

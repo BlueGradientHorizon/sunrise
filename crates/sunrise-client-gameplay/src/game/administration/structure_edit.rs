@@ -489,6 +489,8 @@ impl crate::game::ClientGame<'_> {
     }
 }
 
+use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameExt as _;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -575,5 +577,3 @@ mod tests {
         }
     }
 }
-
-use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameExt as _;

@@ -10,5 +10,3 @@ impl ServerGame<'_> {
             .is_some_and(|stack| self.stack_shears(stack, ability::SHEARS_HARVEST))
     }
 }
-
-use sunrise_gameplay_common::game::item_abilities::ItemAbilitiesGameExt1 as _;

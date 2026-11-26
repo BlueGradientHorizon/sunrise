@@ -667,17 +667,21 @@ pub(in crate::game::server_side) fn explosion_packet(
 
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
+    #[cfg(test)]
     use super::*;
+    #[cfg(test)]
     use mod_api::client::particles::PositionSource;
+    #[cfg(test)]
     use sunrise_core::random::LegacyRandom;
+    #[cfg(test)]
     use sunrise_gameplay_common::game::lan_particle_data::{
         decode_mod_particle, particle_position_source, server_particle_from_options,
     };
+    #[cfg(test)]
     use sunrise_level::particle_options::{ParticleOptions, ParticleType};
-    use sunrise_protocol::{
-        entity_data::{ParticleData, PositionSource as NetworkPositionSource},
-        packets::play,
-    };
+    #[cfg(test)]
+    use sunrise_protocol::entity_data::{ParticleData, PositionSource as NetworkPositionSource};
+    use sunrise_protocol::packets::play;
     use sunrise_sim::lan::{
         Joined, Lan, NetConfig, Out, PlayerSender,
         chunks::ChunkEncoder,
@@ -846,6 +850,7 @@ pub mod tests {
     }
 
     /// The one `ClientboundLevelParticlesPacket` a guest receives.
+    #[cfg(test)]
     fn level_particles(rx: &std::sync::mpsc::Receiver<Out>) -> play::LevelParticles {
         let out = rx
             .try_recv()

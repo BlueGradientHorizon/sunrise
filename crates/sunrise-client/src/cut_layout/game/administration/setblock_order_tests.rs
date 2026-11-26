@@ -10,7 +10,7 @@ use sunrise_level::chunk::Chunk;
 use {
     crate::game::*,
     sunrise_gameplay_common::game::{
-        BlockPos, Direction, Instant, Options, PathBuf, Progress, Resources, entity, execution_role,
+        BlockPos, Direction, Options, Progress, Resources, execution_role,
     },
 };
 

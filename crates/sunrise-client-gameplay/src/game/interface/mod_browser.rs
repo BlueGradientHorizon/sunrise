@@ -204,6 +204,8 @@ impl ClientGame<'_> {
     }
 }
 
+use sunrise_gameplay_common::game::mods::ModGameExt1 as _;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -283,5 +285,3 @@ mod tests {
         assert!(jobs.running.is_none());
     }
 }
-
-use sunrise_gameplay_common::game::mods::ModGameExt1 as _;

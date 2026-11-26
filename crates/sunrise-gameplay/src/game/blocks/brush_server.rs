@@ -256,8 +256,6 @@ impl crate::game::ServerGame<'_> {
     }
 }
 
-use sunrise_gameplay_common::game::tables::GameItems as _;
-
 use sunrise_gameplay_common::game::GameGameExt1 as _;
 
 use sunrise_gameplay_common::game::brush::BrushGameExt1 as _;

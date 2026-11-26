@@ -1,5 +1,4 @@
 //! A real idle server tick must not sweep or read the attachment index.
-use super::*;
 use std::sync::Arc;
 use sunrise_core::nbt::Tag;
 use sunrise_gameplay::game::native_entity_refs::tests::with_game;

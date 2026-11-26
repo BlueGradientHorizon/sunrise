@@ -464,6 +464,13 @@ impl ServerGame<'_> {
     }
 }
 
+use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
+
+#[cfg(test)]
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;
+
 #[cfg(test)]
 mod tests {
     use sunrise_gameplay_common::game::server_side::machines::native_fluids::tests::tanks;
@@ -498,7 +505,7 @@ mod tests {
             level,
         )
     }
-    #[cfg(test)]
+    #[cfg(any())]
     impl mod_api::ResourceHandler<mod_api::FluidResource> for WaterTank {
         fn size(&self, _: &mut dyn ServerHost) -> usize {
             self.reached.len()
@@ -750,11 +757,13 @@ mod tests {
     /// A scoped provider using the block entity's saved tanks. Capacity describes the
     /// storage; validity independently limits new contents to plain water. Old contents
     /// remain drainable even when they would no longer be accepted.
+    #[cfg(any())]
     struct WaterTank {
         entity: mod_api::BlockEntityRef,
         reached: Vec<usize>,
     }
 
+    #[cfg(any())]
     impl WaterTank {
         fn state(&self, host: &dyn mod_api::Host) -> Vec<Tank> {
             read_tanks(&self.entity.data(host).unwrap(), 2)
@@ -817,9 +826,3 @@ mod tests {
         );
     }
 }
-
-use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
-
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
-
-use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;

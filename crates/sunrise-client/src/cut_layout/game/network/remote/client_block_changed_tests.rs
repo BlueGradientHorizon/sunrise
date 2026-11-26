@@ -5,7 +5,6 @@ use std::sync::{Arc, Mutex};
 use sunrise_client_gameplay::game::client_side::remote_client::session_state::RemoteDimensionEntry;
 use sunrise_core::position::BlockPos;
 use {
-    crate::game::remote::*,
     sunrise_gameplay_common::game::remote::{BlockStateId, C, Chunk, play},
 };
 use {
@@ -174,4 +173,5 @@ fn predictions_and_their_reconciliation_are_told() {
     );
 }
 
+#[cfg(test)]
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

@@ -1,4 +1,3 @@
-use super::*;
 use mod_api::EntityRef;
 use mod_api::LivingRef;
 use mod_api::MobRef;

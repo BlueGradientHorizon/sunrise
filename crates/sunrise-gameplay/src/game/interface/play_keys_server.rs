@@ -1,5 +1,3 @@
-use super::*;
-
 impl crate::game::ServerGame<'_> {
     /// handlePlayerAction SWAP_ITEM_WITH_OFFHAND for the window's own player
     /// with no server: the mods hear it as a server's players

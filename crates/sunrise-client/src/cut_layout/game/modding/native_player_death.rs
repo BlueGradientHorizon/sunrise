@@ -11,7 +11,7 @@ pub(crate) mod tests {
 
     use super::super::native_entity_refs::tests::with_game;
 
-    use mod_api::{GlobalPos, Identifier, PlayerRef};
+    use mod_api::{GlobalPos, Identifier};
 
     use sunrise_core::position::BlockPos;
 

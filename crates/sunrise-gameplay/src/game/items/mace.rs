@@ -791,6 +791,8 @@ impl ServerGame<'_> {
     }
 }
 
+use sunrise_gameplay_common::game::creatures::ModGameExt1 as _;
+
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use super::*;
@@ -806,9 +808,3 @@ pub(in crate::game) mod tests {
         assert!((scaled - (1.0 + 0.5 * 8.0 * (0.2 + 0.95 * 0.95 * 0.8))).abs() < 1e-6);
     }
 }
-
-use sunrise_gameplay_common::game::tables::GameItems as _;
-
-use sunrise_gameplay_common::game::creatures::ModGameExt1 as _;
-
-use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;

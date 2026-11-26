@@ -342,6 +342,8 @@ pub trait BlockItemsGameExt1<'__sg>: crate::game::SideGame<'__sg> {
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> BlockItemsGameExt1<'__sg> for G {}
 
+use crate::game::side_ops::blocks::BlocksSideGameExt as _;
+
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use super::{clone_item, picked_item};
@@ -434,7 +436,3 @@ pub(in crate::game) mod tests {
         );
     }
 }
-
-use crate::game::side_ops::blocks::BlocksSideGameExt as _;
-
-use crate::game::tables::GameItems as _;

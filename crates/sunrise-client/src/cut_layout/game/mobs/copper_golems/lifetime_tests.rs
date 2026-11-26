@@ -1,4 +1,3 @@
-use super::*;
 use std::sync::{Arc, Mutex};
 use sunrise_core::geometry::Vec3;
 use sunrise_mod_runtime::attachments::{

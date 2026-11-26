@@ -517,10 +517,16 @@ impl crate::game::ServerGame<'_> {
     }
 }
 
+use sunrise_gameplay_common::game::entity_initialization_common::EntityInitializationCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::entity_sections::EntitySectionsGameExt1 as _;
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(test)]
     use crate::game::native_entity_refs::tests::collect_entities_in;
+    #[cfg(test)]
     use mod_api::ServerHost;
 
     // NBT loads assign ids; reinstall an unbound payload as a pending owner.
@@ -568,7 +574,3 @@ mod tests {
         assert!(!position_ok([0.5, f64::NAN, 0.5]));
     }
 }
-
-use sunrise_gameplay_common::game::entity_initialization_common::EntityInitializationCommonGameExt1 as _;
-
-use sunrise_gameplay_common::game::entity_sections::EntitySectionsGameExt1 as _;

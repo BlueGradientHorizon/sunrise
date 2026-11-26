@@ -5,7 +5,9 @@ use mod_api::{
     self, Hand, HitHost, Hooks, LivingDamagePostEvent, LivingShieldBlockEvent, LivingUseTotemEvent,
 };
 use std::sync::{Arc, Mutex};
-use sunrise_core::{geometry::Vec3, random::RandomSource};
+use sunrise_core::{geometry::Vec3};
+#[cfg(test)]
+use sunrise_core::random::RandomSource;
 use sunrise_sim::mobs::{Damage, DamageKind, Mob};
 
 #[derive(Default)]

@@ -101,7 +101,7 @@ pub fn default_client_features() -> &'static Arc<[String]> {
 
 /// Kinds of contextual block provider dispatched by the game.
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub(in crate::game) enum BlockProviderQuery {
+pub enum BlockProviderQuery {
     EnchantPower,
     LightEmission,
 }

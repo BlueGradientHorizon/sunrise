@@ -108,11 +108,9 @@ pub(crate) mod general_handle_tests {
 
 #[cfg(test)]
 pub(crate) mod tests {
-    #[cfg(feature = "client")]
-    pub use sunrise_client_gameplay::game::native_entity_refs::tests::test_window;
+    
     pub use sunrise_gameplay::game::native_entity_refs::tests::{
-        bind_acting_guest, bind_local_player, collect_all_entities, collect_entities_in,
-        collect_game_all_entities, collect_game_entities_in, lever_on, piston_pulls_above,
+        bind_local_player, collect_all_entities, collect_entities_in, collect_game_entities_in, lever_on, piston_pulls_above,
         prepare_entity_ticking_neighborhood,
     };
     use sunrise_gameplay_common::game::GameGameExt1;
@@ -129,9 +127,7 @@ pub(crate) mod tests {
     use sunrise_gameplay_common::game::native_server::NativeServerGameExt3;
     use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1;
     pub use sunrise_gameplay_common::game::test_fixtures::{
-        FRESH_CASE_LIMIT, fixture_block_names, fixture_facts_mut, fixture_root, output_within,
-        ran_one_test, record_key, resolve_parts, run_fresh_cases, run_fresh_cases_at_once,
-        run_with_game_stack,
+        fixture_facts_mut, fixture_root, record_key, resolve_parts, run_fresh_cases,
     };
     use sunrise_gameplay_common::{game_side, world_biomes};
 
@@ -209,18 +205,6 @@ pub(crate) mod tests {
         );
     }
 
-    pub(crate) fn with_uncached_game(
-        test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>),
-    ) {
-        with_game_role_and_facts_with(
-            fixture_root(),
-            sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer,
-            None,
-            false,
-            test,
-        );
-    }
-
     pub(crate) fn with_uncached_client_game(
         test: impl FnOnce(&mut sunrise_client_gameplay::game::ClientGame<'_>),
     ) {
@@ -286,16 +270,10 @@ pub(crate) mod tests {
         use mod_api::Authority;
         use sunrise_gameplay_common::game::{Options, Progress};
 
-        // Parts registration replaces its metadata snapshot. Finish registration before
-        // loading the resource graph, whose registry retains one immutable worker snapshot.
-        let ids = fixture_block_names(&root);
-        crate::game::api_values::register_game_keys(ids.iter().cloned());
-        // Parts registration also clears particle keys. Restore the load-owned
-        // providers as content_root does, rather than relying on a prior test.
-        sunrise_gameplay_common::game::mods::resolve_particle_providers(
-            &sunrise_assets::resource_source::ResourceSource::directory(root.clone()),
-        )
-        .unwrap();
+        sunrise_gameplay_common::game::test_fixtures::prepare_game_boot(
+            &root,
+            mod_platform::__private::part_tests::register_game_keys,
+        );
         let saves = tempfile::tempdir().unwrap();
         let settings = Settings::default();
         let mut loaded = if cached {
@@ -378,16 +356,10 @@ pub(crate) mod tests {
         use mod_api::Authority;
         use sunrise_gameplay_common::game::{Options, Progress};
 
-        // Parts registration replaces its metadata snapshot. Finish registration before
-        // loading the resource graph, whose registry retains one immutable worker snapshot.
-        let ids = fixture_block_names(&root);
-        crate::game::api_values::register_game_keys(ids.iter().cloned());
-        // Parts registration also clears particle keys. Restore the load-owned
-        // providers as content_root does, rather than relying on a prior test.
-        sunrise_gameplay_common::game::mods::resolve_particle_providers(
-            &sunrise_assets::resource_source::ResourceSource::directory(root.clone()),
-        )
-        .unwrap();
+        sunrise_gameplay_common::game::test_fixtures::prepare_game_boot(
+            &root,
+            mod_platform::__private::part_tests::register_game_keys,
+        );
         let saves = tempfile::tempdir().unwrap();
         let settings = Settings::default();
         let mut loaded = if cached {

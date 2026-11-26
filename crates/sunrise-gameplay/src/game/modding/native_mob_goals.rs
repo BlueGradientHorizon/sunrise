@@ -194,7 +194,7 @@ impl crate::game::ServerGame<'_> {
             })
             .collect();
         let mut mobs = self.common.mobs.lift();
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         crate::game::server_side::entity_server::taken_pass_tests::after_take(self);
         let mut lent = sunrise_sim::health::LentLevel::take(&mut self.common.world);
         let mut w = self.mob_world_base(&snapshot);
@@ -472,6 +472,5 @@ use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::creatures::ModGameExt1 as _;
 
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5 as _;

@@ -9,6 +9,8 @@ use sunrise_game_data::scoreboard::tag_to_json;
 use sunrise_items::items::ItemStack;
 use sunrise_protocol::entity_data::Value;
 use sunrise_sim::text_display_data::{display_data, text_display_data};
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
 #[cfg(test)]
 mod tests {
     use super::super::native_entity_refs::tests::with_game;
@@ -301,4 +303,3 @@ mod tests {
         });
     }
 }
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

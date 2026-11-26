@@ -23,10 +23,7 @@ pub(crate) mod tests {
         event::{DeviceId, ElementState, MouseButton, WindowEvent},
         keyboard::{KeyCode, PhysicalKey},
     };
-    use {
-        crate::game::native_hooks::register_preset_editors::*,
-        sunrise_gameplay_common::game::native_hooks::register_preset_editors::native_register_preset_editors,
-    };
+    use crate::game::native_hooks::register_preset_editors::*;
 
     #[derive(Debug, PartialEq, Eq)]
     enum MouseStep {

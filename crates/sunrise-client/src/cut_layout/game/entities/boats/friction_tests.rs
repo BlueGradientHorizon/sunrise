@@ -1,4 +1,3 @@
-use super::*;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use sunrise_core::geometry::Aabb;

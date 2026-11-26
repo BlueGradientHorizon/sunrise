@@ -3,7 +3,6 @@
 //! player takes the seat after the player (`Entity.addPassenger` puts a player
 //! first), and getting off follows the vehicle's own
 //! `getDismountLocationForPassenger`.
-use super::*;
 use sunrise_core::geometry::Aabb;
 use sunrise_core::geometry::Vec3;
 use sunrise_gameplay::game::server_side::mounts::{

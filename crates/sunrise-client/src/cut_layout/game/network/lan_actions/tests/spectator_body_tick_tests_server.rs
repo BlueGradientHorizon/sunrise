@@ -1,4 +1,3 @@
-use super::*;
 use crate::game::lan_actions::tick::spectator_body_tick_tests::luck_left;
 use crate::game::lan_actions::tick::spectator_body_tick_tests::pearl_left;
 use crate::game::lan_actions::tick::spectator_body_tick_tests::placed;

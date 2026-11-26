@@ -1,5 +1,6 @@
 //! Differential witness for tools/test_server_player_packets_parity.py. Packet bodies enter
 //! the server's ordinary inbox and run through the real Hub and Game dispatch.
+#[cfg(test)]
 use super::*;
 use serde_json::{Map, Value, json};
 use std::sync::Arc;
@@ -874,4 +875,5 @@ use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
 
 use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
 
+#[cfg(test)]
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

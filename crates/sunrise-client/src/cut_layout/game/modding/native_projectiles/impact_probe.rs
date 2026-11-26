@@ -15,7 +15,7 @@ use {
 
 /// The listener action exercised by a tick.
 #[derive(Clone, Copy)]
-pub(in crate::game) enum Action {
+pub(crate) enum Action {
     Allow,
     SaveOnImpact,
     ReadSectionPosition,
@@ -49,7 +49,7 @@ pub(crate) type SectionCrossing = (u32, [i32; 3], [i32; 3]);
 
 /// Listener observations, including any incorrectly triggered catch.
 #[derive(Default)]
-pub(in crate::game) struct Observed {
+pub(crate) struct Observed {
     pub hits: Mutex<Vec<Seen>>,
     pub catches: AtomicUsize,
     pub lands: AtomicUsize,
@@ -277,4 +277,5 @@ pub(crate) fn point(actual: [f64; 3], expected: [f64; 3]) {
 
 use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
 
+#[cfg(test)]
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

@@ -390,6 +390,8 @@ fn transform_bad_omen(effects: &mut sunrise_level::effects::PlayerEffects) -> bo
     new
 }
 
+use sunrise_gameplay_common::game::GameGameExt1 as _;
+
 #[cfg(test)]
 mod omen_tests {
     use super::*;
@@ -473,5 +475,3 @@ mod omen_tests {
         });
     }
 }
-
-use sunrise_gameplay_common::game::GameGameExt1 as _;

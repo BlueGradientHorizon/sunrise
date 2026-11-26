@@ -20,7 +20,7 @@ pub(crate) mod loot_mine_component_tests {
 
     use sunrise_core::nbt::{Compound, Tag};
 
-    use sunrise_level::{chunk::Chunk, containers::BlockEntity};
+    use sunrise_level::chunk::Chunk;
 
     #[test]
     #[ignore = "daily"]

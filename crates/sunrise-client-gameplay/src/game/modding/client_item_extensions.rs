@@ -34,10 +34,10 @@ pub(in crate::game) struct ArmorModel {
 
 pub struct ArmorExtensions {
     pub generation: u64,
-    pub models: Vec<ArmorModel>,
+    pub(in crate::game) models: Vec<ArmorModel>,
     pub textures: Vec<String>,
     pub texture_keys: FxHashMap<String, u32>,
-    pub items: FxHashMap<ItemKey, ItemExtensionsPart>,
+    pub(in crate::game) items: FxHashMap<ItemKey, ItemExtensionsPart>,
 }
 impl Default for ArmorExtensions {
     fn default() -> Self {

@@ -2,7 +2,6 @@
 //! (`EntitySelectorOptions.java:103`, `getPlainTextName`), the player's real
 //! `GameType` (`:229`) and `Entity.getTeam` (`:247`), which a tamed pet answers
 //! with its owner's team (`TamableAnimal.java:190-203`).
-use super::*;
 use std::collections::HashSet;
 use sunrise_core::geometry::Vec3;
 use sunrise_gameplay_common::game::commands_common::Target;

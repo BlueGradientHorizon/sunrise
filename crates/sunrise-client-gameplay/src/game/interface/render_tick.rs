@@ -1316,6 +1316,16 @@ impl crate::game::ClientGame<'_> {
     }
 }
 
+use sunrise_gameplay_common::game::end_common::EndGameExt as _;
+
+use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::weather::WeatherGameExt as _;
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;
+
+use sunrise_gameplay_common::game::game_mode_common::GameModeCommonGameExt1 as _;
+
 #[cfg(feature = "client")]
 #[cfg(test)]
 mod tests {
@@ -1453,15 +1463,3 @@ mod tests {
         });
     }
 }
-
-use sunrise_gameplay_common::game::end_common::EndGameExt as _;
-
-use sunrise_gameplay_common::game::tables::GameItems as _;
-
-use sunrise_gameplay_common::game::weather::WeatherGameExt as _;
-
-use sunrise_gameplay_common::game::GameGameExt1 as _;
-
-use sunrise_gameplay_common::game::game_mode_common::GameModeCommonGameExt1 as _;
-
-use crate::game::client_side::remote_client::minecarts::CartLerpClientExt as _;

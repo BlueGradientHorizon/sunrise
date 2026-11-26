@@ -2,15 +2,12 @@
 //! writes `profile`, `hidden_layers`, `main_hand` and `pose`, and, as an
 //! `Avatar` and not a `Mob`, none of `Mob.addAdditionalSaveData`'s fields
 //! (tools/test_mannequin_save_parity.py measures the same on vanilla 26.3).
-use crate::game::server_side::commands;
 use crate::settings::Settings;
 use std::sync::Arc;
 use sunrise_core::nbt::{Tag, parse_snbt};
 use {
     crate::game::*,
-    sunrise_gameplay_common::game::{
-        Instant, Mob, Options, PathBuf, Progress, Resources, entity, execution_role,
-    },
+    sunrise_gameplay_common::game::{Options, Progress, Resources, execution_role},
 };
 
 fn game(

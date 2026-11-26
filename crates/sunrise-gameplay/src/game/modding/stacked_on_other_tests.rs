@@ -5,6 +5,7 @@
 //! This hook's cancellation is an override result, not an abort: a cancelled, handled click
 //! sets the stacks the listener names and is Applied. The abort outcomes are a stale read, an
 //! invalid answer and a failing listener; each undoes every write the listener made.
+#[cfg(test)]
 use crate::game::native_guest_turn_tests::with_guests;
 use mod_api::item::menu::{ClickedStackResult, StackResult};
 use mod_api::{
@@ -13,6 +14,7 @@ use mod_api::{
 };
 use std::cell::RefCell;
 use sunrise_items::items::ItemStack;
+#[cfg(test)]
 use sunrise_sim::menu::Input;
 
 /// What the listener does.
@@ -149,6 +151,7 @@ pub fn with_mod(test: impl FnOnce()) {
 
 /// A local game with a player, stone 3 on the cursor and nothing in slot 9 (the first slot of
 /// the main inventory, menu slot 9).
+#[cfg(test)]
 pub(in crate::game) fn with_local(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
     with_guests(|game| {
         PLAYER.set(12);
@@ -156,6 +159,7 @@ pub(in crate::game) fn with_local(test: impl FnOnce(&mut crate::game::ServerGame
         test(game);
     });
 }
+#[cfg(test)]
 pub(in crate::game) fn reset_local(game: &mut crate::game::ServerGame<'_>) {
     game.common.inventory = vec![None; game.inventory.len()];
     game.common.carried = Some(ItemStack::new("minecraft:stone", 3));
@@ -175,6 +179,7 @@ pub fn count(stack: &Option<ItemStack>) -> u32 {
     stack.as_ref().map_or(0, |s| s.count)
 }
 /// The click: pickup on the first main-inventory slot. What is left: (slot 9, cursor, slot 20).
+#[cfg(test)]
 pub(in crate::game) fn click(game: &mut crate::game::ServerGame<'_>) -> (u32, u32, u32) {
     use sunrise_protocol::packets::play::{ContainerClick, Serverbound};
     game.lan_guest_packet(
@@ -196,6 +201,7 @@ pub(in crate::game) fn click(game: &mut crate::game::ServerGame<'_>) -> (u32, u3
         count(&guest.inventory[20]),
     )
 }
+#[cfg(test)]
 pub(in crate::game) fn local_menu_ops(
     game: &mut crate::game::ServerGame<'_>,
     ops: &[(Option<usize>, i32, Input)],
@@ -498,9 +504,9 @@ fn a_lan_inventory_click_is_decided_the_same_way() {
 /// The LAN menus the game runs for a guest: the hook fires on each, with the frozen stacks, and a
 /// cancelled, handled answer that sets the cursor applies. Plain, the stone on the cursor would
 /// have gone into the slot; set, the cursor ends as dirt 2.
+#[cfg(test)]
 pub(in crate::game) mod families {
     use super::*;
-    use crate::game::ServerGame as Game;
     use sunrise_protocol::packets::play::{ContainerClick, Serverbound};
 
     fn dirt_on_the_cursor() -> Script {
@@ -1293,10 +1299,12 @@ pub mod item_part_tests {
         PART_SCRIPT.with(|s| *s.borrow_mut() = script);
     }
 
+    #[cfg(test)]
     pub(in crate::game) fn smelted_events() -> Vec<(Option<(String, u32)>, u32)> {
         SMELTED.with(|s| s.borrow().clone())
     }
 
+    #[cfg(test)]
     pub(in crate::game) fn extracted_events() -> Vec<(String, u32)> {
         EXTRACTED.with(|e| e.borrow().clone())
     }
@@ -1428,7 +1436,9 @@ pub mod item_part_tests {
         }
     }
 
+    #[cfg(test)]
     pub(in crate::game) struct PartOnlyMod;
+    #[cfg(test)]
     #[mod_api::__subscriptions]
     impl Hooks for PartOnlyMod {
         fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
@@ -1439,7 +1449,9 @@ pub mod item_part_tests {
         }
     }
 
+    #[cfg(test)]
     pub(in crate::game) struct PartWithFurnaceHooksMod;
+    #[cfg(test)]
     #[mod_api::__subscriptions]
     impl Hooks for PartWithFurnaceHooksMod {
         fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
@@ -1474,6 +1486,7 @@ pub mod item_part_tests {
         }
     }
 
+    #[cfg(test)]
     pub(in crate::game) fn with_part_and_furnace_hooks_mod(test: impl FnOnce()) {
         let mods: Mods = vec![ModEntry::new(
             "part_furnace",
@@ -1507,6 +1520,7 @@ pub mod item_part_tests {
         }
     }
 
+    #[cfg(test)]
     pub(in crate::game) fn with_part_only_mod(test: impl FnOnce()) {
         let mods: Mods = vec![ModEntry::new("part_stacked", Box::new(PartOnlyMod))].into();
         sunrise_gameplay_common::game::api_values::install_parts(&mods).unwrap();
@@ -2631,6 +2645,13 @@ pub mod item_part_tests {
                     (0, 0),
                     std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
                 );
+                let furnace_state = game
+                    .pack
+                    .assets
+                    .registry
+                    .default_state("minecraft:furnace")
+                    .unwrap();
+                game.world.set(pos.0, pos.1, pos.2, furnace_state).unwrap();
                 let furnace = Furnace {
                     kind: FurnaceKind::Furnace,
                     items: [None, None, Some(ItemStack::new("minecraft:flint", 4))],
@@ -3549,8 +3570,9 @@ pub mod item_part_tests {
     }
 }
 
+#[cfg(test)]
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
+#[cfg(test)]
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;

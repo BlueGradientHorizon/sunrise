@@ -1,8 +1,9 @@
 //! Lectern placement and the `block_change` game event of a book going on or
 //! off (`LecternBlock.getStateForPlacement`, `LecternBlock.placeBook` and
 //! `LecternBlockEntity.onBookItemRemove`).
-use super::super::game_tests::tests::server_game;
-use crate::game::{Hit, sculk::TEST_POSTED_EVENTS};
+use crate::game::sculk_server::TEST_POSTED_EVENTS;
+use crate::game::server_side::game_tests::tests::server_game;
+use sunrise_gameplay_common::game::Hit;
 use sunrise_items::items::ItemStack;
 use sunrise_level::containers::{BlockEntity, Lectern};
 use sunrise_sim::mobs::Who;

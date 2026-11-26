@@ -48,7 +48,7 @@ pub(crate) mod tests {
 
     use sunrise_level::chunk::Chunk;
 
-    use sunrise_sim::join_seq::{JoinList, JoinSeq, Joined as _};
+    
 
     #[test]
     #[ignore = "daily"]

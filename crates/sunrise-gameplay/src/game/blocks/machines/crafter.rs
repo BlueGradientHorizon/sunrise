@@ -279,6 +279,12 @@ impl crate::game::ServerGame<'_> {
     // ---- the menu ----
 }
 
+use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_block_states::NativeBlockStatesGameExt1 as _;
+
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use super::*;
@@ -469,9 +475,3 @@ pub(in crate::game) mod tests {
         assert_eq!(dropped, [("minecraft:pumpkin_pie".to_owned(), 8)]);
     }
 }
-
-use sunrise_gameplay_common::game::tables::GameItems as _;
-
-use sunrise_gameplay_common::game::GameGameExt1 as _;
-
-use sunrise_gameplay_common::game::native_block_states::NativeBlockStatesGameExt1 as _;

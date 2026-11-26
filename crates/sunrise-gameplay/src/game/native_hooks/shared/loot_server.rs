@@ -84,5 +84,3 @@ impl crate::game::ServerGame<'_> {
         drops.retain(|stack| stack.count > 0 && &*stack.item != "minecraft:air");
     }
 }
-
-use sunrise_gameplay_common::game::tables::GameItems as _;

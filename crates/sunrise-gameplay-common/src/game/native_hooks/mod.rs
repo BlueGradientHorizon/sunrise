@@ -731,6 +731,7 @@ use crate::game::native_hooks::base::GameHooks as _;
 
 use crate::game::side_ops::modapi_hooks::ModapiHooksSideGameExt as _;
 
-use crate::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
-
 use crate::game::player_identity::PlayerIdentityGameExt1 as _;
+
+mod client_callbacks;
+pub use client_callbacks::install_client_hooks;

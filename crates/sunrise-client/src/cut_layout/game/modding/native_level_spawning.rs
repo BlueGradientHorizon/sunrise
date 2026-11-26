@@ -1,4 +1,5 @@
 #![cfg(test)]
+
 #[cfg(test)]
 mod tests {
 
@@ -387,4 +388,3 @@ mod tests {
         // Client refusal is enforced at compile time (`ClientGame` lacks server spawn-limit ops).
     }
 }
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

@@ -40,7 +40,7 @@ impl Hit {
     }
 }
 #[derive(Default)]
-pub(in crate::game) struct Seen {
+pub(crate) struct Seen {
     pub(in crate::game) incoming: Vec<Hit>,
     pub(in crate::game) deaths: Vec<Hit>,
 }

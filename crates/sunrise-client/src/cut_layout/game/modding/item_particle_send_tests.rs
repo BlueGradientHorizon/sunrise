@@ -2,7 +2,7 @@
 //! Prepared-resource proof of the API request, server queue and client model resolution.
 use {
     crate::game::*,
-    sunrise_gameplay_common::game::{Arc, ItemStack, PathBuf, api_values},
+    sunrise_gameplay_common::game::ItemStack,
 };
 use {
     sunrise_gameplay_common::game::api_values::TryIntoApi,

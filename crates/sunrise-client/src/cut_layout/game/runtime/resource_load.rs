@@ -13,8 +13,6 @@ use sunrise_gameplay_common::game::resource_load::{Progress, with_skip_facts_mem
 #[cfg(test)]
 #[path = "resource_load/test_cache.rs"]
 pub(crate) mod test_cache;
-#[cfg(test)]
-pub(crate) use test_cache::{acquire_fresh_child_permit, cached_structure_spawns};
 
 /// Fixture helper for tests without a launch mod state.
 #[allow(clippy::too_many_arguments)]

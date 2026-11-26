@@ -1,7 +1,12 @@
+#[cfg(test)]
 use sunrise_command::args::ItemInput;
+#[cfg(test)]
 use sunrise_command::args::Selector;
+#[cfg(test)]
 use sunrise_core::geometry::Vec3;
+#[cfg(test)]
 use sunrise_gameplay_common::game::commands_common::Target;
+#[cfg(test)]
 use sunrise_items::items::ItemStack;
 #[cfg(test)]
 pub(crate) mod enchant_tests;
@@ -25,83 +30,16 @@ pub(crate) mod summon_bolt_tests;
 #[cfg(test)]
 pub(crate) mod peaceful_tests {
 
-    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
+    
     use sunrise_gameplay_common::game::server_side::commands::peaceful_tests::TRADER;
 
     use sunrise_command::{Arg, Context};
 
-    use crate::game::{execution_role::ExecutionRole, native_entity_refs::tests as fixture};
-
-    use std::sync::{Arc, OnceLock};
+    use crate::game::execution_role::ExecutionRole;
 
     use sunrise_command::ParsedArg;
 
-    use sunrise_level::chunk::Chunk;
-
-    use sunrise_mod_package::{Content, Package, enabled::EnabledMods};
-
-    use sunrise_sim::mod_content::{self, ContentMod};
-
     pub(crate) use sunrise_gameplay::game::server_side::creatures_server::peaceful_fixture::with_types;
-    pub(crate) fn with_types_client(
-        role: ExecutionRole,
-        test: impl FnOnce(&mut sunrise_client_gameplay::game::ClientGame<'_>),
-    ) {
-        // All cases use the same data-only fixture. Build its overlay once; never edit the base.
-        static PACKAGE: OnceLock<(tempfile::TempDir, std::path::PathBuf)> = OnceLock::new();
-        let (_, root) = PACKAGE.get_or_init(|| {
-            let scratch = tempfile::tempdir().unwrap();
-            let path = scratch.path().join("peaceful.smod");
-            let manifest = r#"id = "peaceful_test"
-name = "Peaceful test"
-version = "1.0"
-api = "0.2"
-side = "both"
-capabilities = ["registries"]
-"#;
-            let rows: [(&str, &[u8]); 3] = [
-                (
-                    "data/peaceful_test/sunrise/entity_type/trader.json",
-                    br#"{"template":"minecraft:wandering_trader","allowed_in_peaceful":false}"#,
-                ),
-                (
-                    "data/peaceful_test/sunrise/entity_type/zombie.json",
-                    br#"{"template":"minecraft:zombie","allowed_in_peaceful":true}"#,
-                ),
-                (
-                    "data/peaceful_test/sunrise/entity_type/inherited_zombie.json",
-                    br#"{"template":"minecraft:zombie"}"#,
-                ),
-            ];
-            std::fs::write(&path, Package::write_files(manifest, &rows).unwrap()).unwrap();
-            let package = Package::read(&path).unwrap();
-            let mods = [ContentMod {
-                id: "peaceful_test".into(),
-                content: Content::read(&path, &package.manifest).unwrap(),
-                jars: Vec::new(),
-            }];
-            let inventory = EnabledMods::new([("peaceful_test".into(), mod_api::Side::Both)]);
-            let root = mod_content::resource_root(
-                &fixture::fixture_root(),
-                scratch.path(),
-                &mods,
-                scratch.path(),
-                &inventory,
-            )
-            .unwrap();
-            (scratch, root)
-        });
-        mod_platform::testing::with_mods(Arc::from([]), || {
-            fixture::with_game_role_client(root.clone(), role, |game| {
-                game.world
-                    .chunks
-                    .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-                game.build_registries();
-                game.ui.difficulty = 0;
-                test(game);
-            });
-        });
-    }
     #[test]
     #[ignore = "daily"]
     fn summon_checks_the_mod_type_instead_of_its_template() {
@@ -896,8 +834,10 @@ pub(crate) mod mob_display_name_tests;
 #[path = "item_count_predicate_tests.rs"]
 pub(crate) mod item_count_predicate_tests;
 
+#[cfg(test)]
 use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
 
+#[cfg(test)]
 use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;
 
 pub(crate) mod world_cmds;

@@ -1,3 +1,4 @@
+#[cfg(test)]
 use super::*;
 use std::collections::HashMap;
 use std::collections::HashSet;

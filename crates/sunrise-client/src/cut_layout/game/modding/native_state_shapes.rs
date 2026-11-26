@@ -1,10 +1,12 @@
 #![cfg(test)]
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
 #[cfg(test)]
 pub(crate) mod tests {
     use sunrise_gameplay_common::game::api_values::TryIntoApi;
     use {
         crate::game::native_state_shapes::*,
-        sunrise_gameplay_common::game::native_state_shapes::{BlockShapeKind, Outline},
+        sunrise_gameplay_common::game::native_state_shapes::BlockShapeKind,
     };
 
     #[test]
@@ -45,4 +47,3 @@ pub(crate) mod tests {
         });
     }
 }
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

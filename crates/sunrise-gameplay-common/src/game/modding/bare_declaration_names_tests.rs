@@ -117,4 +117,5 @@ fn a_bare_block_name_binds_the_type_to_the_mods_own_block() {
     fs::remove_dir_all(scratch).unwrap();
 }
 
+#[cfg(test)]
 use crate::game::tables::WorldTablesExt as _;

@@ -1,6 +1,8 @@
 #![cfg(test)]
 use sunrise_core::geometry::Aabb;
 use sunrise_sim::mobs::Mob;
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
 #[cfg(test)]
 pub(crate) mod pass_tests {
     use super::*;
@@ -165,4 +167,3 @@ pub(crate) mod pass_tests {
         });
     }
 }
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

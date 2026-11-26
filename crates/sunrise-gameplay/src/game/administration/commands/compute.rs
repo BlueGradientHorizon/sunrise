@@ -224,6 +224,8 @@ impl crate::game::ServerGame<'_> {
     }
 }
 
+use sunrise_gameplay_common::game::tables::GameItems as _;
+
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use super::*;
@@ -345,5 +347,3 @@ pub(in crate::game) mod tests {
         assert!(!holds(&near, &from_source));
     }
 }
-
-use sunrise_gameplay_common::game::tables::GameItems as _;

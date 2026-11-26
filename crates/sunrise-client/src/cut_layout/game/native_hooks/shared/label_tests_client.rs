@@ -1,4 +1,3 @@
-use super::*;
 use sunrise_client::hud::HudBatch;
 use sunrise_client::hud::rgba;
 use sunrise_client_gameplay::game::native_hooks::{

@@ -511,5 +511,3 @@ use crate::game::tables::GameItems as _;
 use crate::game::GameGameExt1 as _;
 
 use crate::game::native_hooks::item_after_vertical_collision::GameHooks as _;
-
-use crate::game::native_world_read_common::NativeWorldReadGameExt1 as _;

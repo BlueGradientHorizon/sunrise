@@ -294,6 +294,8 @@ impl ClientGame<'_> {
     }
 }
 
+use sunrise_gameplay_common::game::tables::GameItems as _;
+
 #[cfg(test)]
 pub(in crate::game) mod bell_ownership_tests {
     use sunrise_client::block_entity_anim::{Bell, BlockEntityAnims};
@@ -314,5 +316,3 @@ pub(in crate::game) mod bell_ownership_tests {
         assert!(anims.bells.is_empty());
     }
 }
-
-use sunrise_gameplay_common::game::tables::GameItems as _;

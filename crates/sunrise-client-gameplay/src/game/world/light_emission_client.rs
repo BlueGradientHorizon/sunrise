@@ -1,5 +1,3 @@
-use super::*;
-
 impl crate::game::ClientGame<'_> {
     /// Re-query dynamic-light cells in sections touched by a server light update.
     pub fn ask_updated_light_emission(&mut self, key: (i32, i32), sections: &[usize]) {

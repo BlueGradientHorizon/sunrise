@@ -223,4 +223,3 @@ pub(crate) fn place(
     assert!(game.use_hand(Some(&hit)).unwrap());
 }
 
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;

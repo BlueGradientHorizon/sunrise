@@ -1,14 +1,22 @@
 #[cfg(test)]
-#[cfg(feature = "client")]
 pub(crate) mod tests {
 
     use sunrise_gameplay_common::game::client_side::potions::tests::flt;
 
-    use super::*;
+    use sunrise_core::{
+        geometry::{Aabb, Vec3},
+        nbt::Tag,
+    };
+    use sunrise_game_data::text::Text;
+    use sunrise_level::particle_options::ParticleType;
+    use sunrise_sim::{
+        health::source_damage_type,
+        mobs::{Damage, NamedDamage},
+    };
 
-    use crate::game::dragon_common::Breath;
+    use sunrise_gameplay_common::game::dragon_common::Breath;
 
-    use crate::game::potions_common::{CloudSettings, PotionCloud};
+    use sunrise_gameplay_common::game::potions_common::{CloudSettings, PotionCloud};
 
     use crate::game::server_side::potions_server::{
         collect_dragon_breath, mob_can_be_affected, potion_cloud_from_nbt, potion_cloud_to_nbt,
@@ -101,7 +109,7 @@ pub(crate) mod tests {
             assert_eq!((named.name, named.tags), (id, tags));
             let kind = crate::game::ServerGame::damage_kind(&catalog, id);
             assert_eq!(
-                super::super::creatures::source_damage_type(Damage::of(kind)),
+                source_damage_type(Damage::of(kind)),
                 id
             );
         }

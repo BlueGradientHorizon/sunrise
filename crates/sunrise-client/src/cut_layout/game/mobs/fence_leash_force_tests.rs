@@ -9,7 +9,6 @@
 //! `Holder::Knot([8,201,0])`, the hosted server gives that knot its entity
 //! (`knot_ids`, as it tracks it to a guest), the fence is there, and the knot
 //! the leash tick reads (`leash::knot_state`) is at (8.5, 201.375, 0.5).
-use super::*;
 use crate::game::load_resources;
 use crate::settings::Settings;
 use std::sync::{Arc, atomic::AtomicI32, mpsc};

@@ -183,4 +183,5 @@ fn unknown_slot_icon_opens_screen_and_draws_missing_sprite() {
     });
 }
 
+#[cfg(test)]
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;

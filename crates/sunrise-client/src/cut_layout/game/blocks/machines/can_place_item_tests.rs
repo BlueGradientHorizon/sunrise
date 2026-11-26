@@ -1,3 +1,4 @@
+#[cfg(test)]
 use super::*;
 use mod_api::ItemResource;
 use mod_api::{
@@ -590,7 +591,6 @@ fn native_admission_allocates_only_when_preparing_subscribed_snapshots() {
     });
 }
 
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
 

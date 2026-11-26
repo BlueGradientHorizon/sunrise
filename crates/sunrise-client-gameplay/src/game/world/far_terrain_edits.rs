@@ -1,5 +1,3 @@
-use super::*;
-
 impl crate::game::ClientGame<'_> {
     /// The columns this update's block edits touch, summarized again by far terrain when
     /// it is on.

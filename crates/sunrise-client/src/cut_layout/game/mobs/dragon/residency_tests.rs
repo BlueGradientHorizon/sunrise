@@ -1,5 +1,4 @@
 //! Production singleton installation/removal and id-allocation contracts.
-use super::*;
 use sunrise_core::geometry::Vec3;
 use sunrise_core::nbt::Tag;
 use sunrise_gameplay_common::game::creatures::SpawnSite;

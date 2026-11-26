@@ -4,7 +4,6 @@
 //! the gossips about that player's UUID), and a player at -100 or below
 //! becomes the target (tools/test_golem_defense_guest_parity.py measures the
 //! same on vanilla 26.3 with two real players).
-use super::*;
 use crate::game::load_resources;
 use crate::settings::Settings;
 use std::sync::{Arc, atomic::AtomicI32, mpsc};

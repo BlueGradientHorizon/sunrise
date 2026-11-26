@@ -50,7 +50,7 @@ pub struct ArmorStandAssets {
     /// The player's armour models by slot (helmet, chestplate, leggings, boots).
     pub player: HashMap<&'static str, Part>,
     /// Asset id -> layer kind -> ordered textures with dyeability and optional undyed colour.
-    pub equipment: super::equipment_piece::EquipmentAssets,
+    pub(in crate::game) equipment: super::equipment_piece::EquipmentAssets,
     pub extensions: super::client_item_extensions::ArmorExtensions,
     /// asset id -> `trim_overrides`.
     pub trim_overrides: HashMap<String, Vec<TrimOverride>>,
@@ -949,6 +949,14 @@ impl ClientGame<'_> {
     }
 }
 
+use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameExt as _;
+
+use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::player_equip::PlayerEquipGameExt2 as _;
+
 #[cfg(test)]
 pub(in crate::game) mod setup_anim_tests {
     use super::*;
@@ -1009,11 +1017,3 @@ pub(in crate::game) mod setup_anim_tests {
         assert_eq!(HEARD.load(Ordering::Relaxed), 2);
     }
 }
-
-use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameExt as _;
-
-use sunrise_gameplay_common::game::tables::GameItems as _;
-
-use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
-
-use sunrise_gameplay_common::game::player_equip::PlayerEquipGameExt2 as _;

@@ -9,7 +9,7 @@ use {
 };
 
 #[derive(Deserialize)]
-pub(in crate::game) struct FishingWitness {
+pub(crate) struct FishingWitness {
     pub(in crate::game) game_version: String,
     pub(in crate::game) hook_seed: i64,
     pub(in crate::game) level_seed: i64,
@@ -18,7 +18,7 @@ pub(in crate::game) struct FishingWitness {
 }
 
 #[derive(Deserialize)]
-pub(in crate::game) struct FishingCase {
+pub(crate) struct FishingCase {
     pub(in crate::game) target: String,
     pub(in crate::game) spawn_y: f64,
     pub(in crate::game) target_id_mod4: u32,
@@ -29,7 +29,7 @@ pub(in crate::game) struct FishingCase {
 }
 
 #[derive(Deserialize)]
-pub(in crate::game) struct FishingTick {
+pub(crate) struct FishingTick {
     pub(in crate::game) tick: usize,
     pub(in crate::game) hook_state: String,
     pub(in crate::game) hook_pos_bits: [String; 3],
@@ -50,7 +50,7 @@ pub(in crate::game) struct GameEventSnap {
 }
 
 #[derive(Deserialize)]
-pub(in crate::game) struct FishingExtraCase {
+pub(crate) struct FishingExtraCase {
     pub(in crate::game) case: String,
     pub(in crate::game) target_id_mod4: Option<u32>,
     pub(in crate::game) retrieve_on_tick: Option<usize>,
@@ -155,7 +155,7 @@ pub(crate) fn clear_entities(game: &mut sunrise_gameplay::game::ServerGame<'_>) 
 }
 
 #[derive(Clone, Copy)]
-pub(in crate::game) enum TrackedTarget {
+pub(crate) enum TrackedTarget {
     Frame(u32),
     Painting(u32),
     Falling(u32),

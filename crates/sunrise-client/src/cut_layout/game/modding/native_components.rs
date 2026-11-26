@@ -348,7 +348,7 @@ pub(crate) mod combat_query_tests {
     use {
         crate::game::native_components::*,
         sunrise_gameplay_common::game::native_components::{
-            ItemStack, stack_attack_bonus_preview, stack_can_be_hurt_by,
+            ItemStack, stack_attack_bonus_preview,
         },
     };
 
@@ -695,9 +695,7 @@ pub(crate) mod combat_query_tests {
         });
     }
 }
-use sunrise_gameplay_common::game::tables::GameItems as _;
 
-use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_components::NativeComponentsGameExt1 as _;
 

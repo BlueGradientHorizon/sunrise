@@ -1,7 +1,6 @@
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
 
-    use super::*;
 
     /// The UUID the transfer tests give their attacker, as `summon` takes it.
     pub const ZOMBIE_UUID: [i32; 4] = [7, 8, 9, 10];

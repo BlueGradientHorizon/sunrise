@@ -259,6 +259,12 @@ impl ClientGame<'_> {
     }
 }
 
+use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::creatures::ModGameExt1 as _;
+
+use sunrise_gameplay_common::game::piglins_common::PiglinsCommonGameExt1 as _;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -442,9 +448,3 @@ mod tests {
         assert!(!ages_on_food(&tadpole, "minecraft:slime_ball"), "locked");
     }
 }
-
-use sunrise_gameplay_common::game::tables::GameItems as _;
-
-use sunrise_gameplay_common::game::creatures::ModGameExt1 as _;
-
-use sunrise_gameplay_common::game::piglins_common::PiglinsCommonGameExt1 as _;

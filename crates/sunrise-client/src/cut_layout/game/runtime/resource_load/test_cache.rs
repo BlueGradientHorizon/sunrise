@@ -24,7 +24,7 @@ use sunrise_level::assets::Assets;
 use {
     crate::game::resource_load::*,
     sunrise_gameplay_common::game::resource_load::{
-        Progress, ResourceRoot, launch_world, publish_entity_type_defaults, with_skip_facts_memo,
+        Progress, publish_entity_type_defaults, with_skip_facts_memo,
     },
 };
 
@@ -337,41 +337,6 @@ fn cached_language(
         Arc::new(language)
     })
     .clone()
-}
-
-pub(crate) fn cached_structure_spawns(
-    root: &Path,
-) -> sunrise_sim::mobs::spawn_selection::StructureSpawns {
-    type SpawnKey = (PathBuf, FileStamp, FileStamp);
-    type SpawnSlot = Arc<OnceLock<sunrise_sim::mobs::spawn_selection::StructureSpawns>>;
-    static SPAWNS: Mutex<Vec<(SpawnKey, SpawnSlot)>> = Mutex::new(Vec::new());
-
-    let Ok(canon) = std::fs::canonicalize(root) else {
-        return sunrise_sim::mobs::spawn_selection::StructureSpawns::load(root);
-    };
-    let key = (
-        canon.clone(),
-        file_stamp(&canon.join("data/minecraft/worldgen/structure")),
-        file_stamp(&canon.join("worldgen")),
-    );
-    let slot = {
-        let mut entries = SPAWNS.lock().unwrap_or_else(|e| e.into_inner());
-        if let Some(pos) = entries.iter().position(|(k, _)| *k == key) {
-            let entry = entries.remove(pos);
-            let slot = entry.1.clone();
-            entries.push(entry);
-            slot
-        } else {
-            if entries.len() >= 4 {
-                entries.remove(0);
-            }
-            let slot = Arc::new(OnceLock::new());
-            entries.push((key, slot.clone()));
-            slot
-        }
-    };
-    slot.get_or_init(|| sunrise_sim::mobs::spawn_selection::StructureSpawns::load(&canon))
-        .clone()
 }
 
 fn replay_iterated_registries(iterated: &IteratedRegistries) -> std::result::Result<(), String> {
@@ -693,6 +658,10 @@ pub(crate) fn load(
 }
 
 #[cfg(test)]
+use sunrise_gameplay_common::game::tables::GameItems as _;
+
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
@@ -864,7 +833,3 @@ mod tests {
         assert_eq!(plain_directory_root(&overlaid), None);
     }
 }
-
-use sunrise_gameplay_common::game::tables::GameItems as _;
-
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;

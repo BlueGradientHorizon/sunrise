@@ -1,4 +1,6 @@
 #![cfg(test)]
+
+
 #[cfg(test)]
 mod tests {
     use super::super::native_entity_refs::tests::{bind_local_player, with_game};
@@ -8,7 +10,7 @@ mod tests {
     use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
     use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt6;
     use sunrise_level::chunk::Chunk;
-    use sunrise_sim::mobs::{Damage, DamageKind, Mob, Who};
+    use sunrise_sim::mobs::{Mob, Who};
     use sunrise_sim::motion::PlayerMotion;
 
     /// A server level with a stone floor at y 64 over chunk (0, 0) and a
@@ -476,6 +478,3 @@ mod tests {
         });
     }
 }
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
-
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt6 as _;

@@ -1300,8 +1300,6 @@ pub mod tests {
     use sunrise_gameplay_common::game::server_side::native_living_refs::tests::ZOMBIE_NBT;
 
     use super::*;
-    use sunrise_core::geometry::Vec3;
-    use sunrise_gameplay_common::game::api_values::TryIntoApi;
 
     pub fn summon_mob(game: &mut crate::game::ServerGame<'_>, kind: &str, nbt: &str) -> u32 {
         match game
@@ -1413,8 +1411,6 @@ pub mod tests {
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
-
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
 
 use sunrise_gameplay_common::game::block_props::BlockPropsGameExt2 as _;
@@ -1431,8 +1427,6 @@ use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCo
 
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5 as _;
 
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt6 as _;
-
 use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_living_body::NativeLivingBodyGameExt1 as _;
@@ -1442,7 +1436,5 @@ use sunrise_gameplay_common::game::native_living_body::NativeLivingBodyGameExt3 
 use sunrise_gameplay_common::game::native_living_body::NativeLivingBodyGameExt4 as _;
 
 use sunrise_gameplay_common::game::native_living_body::NativeLivingBodyGameExt6 as _;
-
-use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;
 
 use sunrise_gameplay_common::game::resident_state::ResidentStateGameExt1 as _;

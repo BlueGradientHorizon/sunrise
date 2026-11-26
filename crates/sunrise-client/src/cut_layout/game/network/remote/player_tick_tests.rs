@@ -337,4 +337,5 @@ fn a_mod_that_does_not_listen_is_never_asked_for_the_name_tag() {
 
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
 
+#[cfg(test)]
 use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

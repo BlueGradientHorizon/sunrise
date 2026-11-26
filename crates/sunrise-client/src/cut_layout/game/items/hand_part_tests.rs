@@ -294,6 +294,5 @@ fn remote_mining_component_update_restarts_unless_the_part_refuses() {
     );
 }
 
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
 use sunrise_gameplay_common::game::pick_ray::PickRayGameExt1 as _;

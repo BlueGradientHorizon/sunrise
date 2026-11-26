@@ -1,5 +1,6 @@
 //! Actual command execution with prepared resources. Canonical membership is
 //! installed only in a fresh process; no native mod bundle or trait hooks are used.
+#[cfg(test)]
 use super::*;
 use std::{path::PathBuf, sync::Arc};
 use sunrise_core::nbt::Tag;

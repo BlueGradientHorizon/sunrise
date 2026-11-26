@@ -1,4 +1,10 @@
 #[cfg(test)]
+use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
+
+#[cfg(test)]
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+#[cfg(test)]
 pub(in crate::game) mod tests {
     use super::super::observer_tests::tests::{Shared, UseMod};
     use crate::game::native_entity_refs::tests::with_game;
@@ -27,6 +33,3 @@ pub(in crate::game) mod tests {
         });
     }
 }
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
-
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

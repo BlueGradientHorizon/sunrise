@@ -894,6 +894,12 @@ pub(in crate::game) struct NameTag {
     pub(in crate::game) discrete: bool,
 }
 
+use sunrise_gameplay_common::game::game_mode_common::GameModeCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::pick_ray::PickRayGameExt1 as _;
+
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;
+
 #[cfg(feature = "client")]
 #[cfg(test)]
 pub(in crate::game) mod tests {
@@ -1281,9 +1287,3 @@ pub(in crate::game) mod tests {
         );
     }
 }
-
-use sunrise_gameplay_common::game::game_mode_common::GameModeCommonGameExt1 as _;
-
-use sunrise_gameplay_common::game::pick_ray::PickRayGameExt1 as _;
-
-use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

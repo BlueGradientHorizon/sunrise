@@ -4,12 +4,9 @@ pub(crate) mod tests {
     use mod_api::ConfigKind::{Client, Common, Server};
     use sunrise_client_gameplay::game::native_hooks::mod_configs::GameHooks;
     use sunrise_gameplay_common::game::native_configs::NativeConfigsGameExt1;
-    use {
-        crate::game::native_configs::*,
-        sunrise_gameplay_common::game::native_configs::{
+    use sunrise_gameplay_common::game::native_configs::{
             CHECK_EVERY, ConfigFile, Duration, Instant, NativeConfigs, Path, PathBuf, Tracked, fs,
-        },
-    };
+        };
 
     #[test]
     #[ignore = "daily"]

@@ -8,6 +8,7 @@
 //! copy: the local player and the entities the server told it of, in the level
 //! it shows. The entities are those of the level in place (the one a hook runs
 //! in) and the server's players, whatever their level.
+use sunrise_gameplay_common::game::GameGameExt3;
 #[path = "native_entity_refs/dragon_query.rs"]
 pub(in crate::game) mod dragon_query;
 #[path = "native_entity_refs/save_lending.rs"]
@@ -790,9 +791,6 @@ pub(in crate::game) mod ray_tests {
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
 
 use sunrise_gameplay_common::game::GameGameExt1 as _;
-
-use sunrise_gameplay_common::game::GameGameExt3 as _;
-use sunrise_gameplay_common::game::GameGameExt3 as _;
 
 use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
 

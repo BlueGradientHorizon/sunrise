@@ -428,6 +428,12 @@ impl crate::game::ServerGame<'_> {
     }
 }
 
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5 as _;
+
+use sunrise_gameplay_common::game::payload_transport::PayloadTransportGameExt1 as _;
+
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use super::*;
@@ -509,9 +515,3 @@ pub(in crate::game) mod tests {
         assert!(meets(30), "a stranger meets it");
     }
 }
-
-use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
-
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5 as _;
-
-use sunrise_gameplay_common::game::payload_transport::PayloadTransportGameExt1 as _;

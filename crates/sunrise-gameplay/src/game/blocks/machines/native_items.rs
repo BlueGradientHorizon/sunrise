@@ -484,6 +484,10 @@ impl crate::game::ServerGame<'_> {
     }
 }
 
+use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
+
+use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;
+
 #[cfg(test)]
 mod tests {
     use super::super::ViewTestSlots as _;
@@ -522,9 +526,3 @@ mod tests {
         assert_eq!(view(Kind::Furnace, 3).slots_to_add(None), [0, 1, 2]);
     }
 }
-
-use sunrise_gameplay_common::game::tables::GameItems as _;
-
-use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
-
-use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;

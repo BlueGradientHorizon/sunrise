@@ -152,5 +152,3 @@ mod tests {
         assert_eq!(ASKED.load(Ordering::Relaxed), 1);
     }
 }
-
-use crate::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

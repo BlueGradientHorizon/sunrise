@@ -1,5 +1,4 @@
 //! Direct production handlers over an empty in-memory world; no server or renderer.
-use super::*;
 use crate::game::{Settings, load_resources};
 use std::sync::Arc;
 use sunrise_core::nbt::Tag;

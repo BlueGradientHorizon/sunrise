@@ -299,7 +299,7 @@ fn in_scene(
         let status = std::process::Command::new(std::env::current_exe().unwrap())
             .args([
                 "--exact",
-                &format!("game::native_tnt_renderers_tests::{test}"),
+                &format!("cut_layout::game::native_tnt_renderers_tests::{test}"),
                 "--include-ignored",
                 "--nocapture",
             ])
@@ -435,7 +435,7 @@ fn an_unregistered_tnt_is_byte_identical_to_the_vanilla_route() {
         let status = std::process::Command::new(std::env::current_exe().unwrap())
             .args([
                 "--exact",
-                "game::native_tnt_renderers_tests::an_unregistered_tnt_is_byte_identical_to_the_vanilla_route",
+                "cut_layout::game::native_tnt_renderers_tests::an_unregistered_tnt_is_byte_identical_to_the_vanilla_route",
                 "--include-ignored",
                 "--nocapture",
             ])

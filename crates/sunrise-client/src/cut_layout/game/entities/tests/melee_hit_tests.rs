@@ -1,7 +1,6 @@
 //! `Player.attack`'s admission of a hit (`baseDamage > 0.0F || magicBoost > 0.0F`), the
 //! attacker's `ATTACK_KNOCKBACK` in `LivingEntity.getKnockback`, and a creative player's
 //! blow through `Entity.isInvulnerableToBase`'s `!source.isCreativePlayer()`.
-use super::super::*;
 use crate::game::load_resources;
 use crate::settings::Settings;
 use std::sync::Arc;

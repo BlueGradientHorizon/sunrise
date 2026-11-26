@@ -4,9 +4,8 @@ use sunrise_client::mobs::render;
 use sunrise_gameplay_common::game::lan_meta_fixture::profession_hub;
 use sunrise_sim::mobs::MobTypes;
 use {
-    crate::game::villager_client::*,
     sunrise_gameplay_common::game::villager_client::{
-        Builtin, Mob, ResolvedProfessions, Value, server_meta, villager_data,
+        Builtin, Mob, ResolvedProfessions, Value, server_meta,
     },
 };
 fn table() -> ResolvedProfessions {

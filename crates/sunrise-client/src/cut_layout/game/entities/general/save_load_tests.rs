@@ -9,12 +9,13 @@ use std::collections::{HashMap, HashSet};
 use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use sunrise_gameplay::game::server_side::persist::ChunkKey;
 use {
-    crate::game::general::*,
     sunrise_gameplay_common::game::general::{
-        Aabb, Entity, GeneralEntityRecord, GeneralRow, GeneralTypeEnvelope, JoinSeq, Tag, Target,
+        GeneralEntityRecord, GeneralRow, GeneralTypeEnvelope, Tag, Target,
         Vec3, format, limits, nbt_size,
     },
 };
+#[cfg(test)]
+use sunrise_gameplay_common::game::general::Entity;
 
 /// Declares the fixture's two types: `mymod:robot`, which saves, and
 /// `mymod:ghost`, which never does.

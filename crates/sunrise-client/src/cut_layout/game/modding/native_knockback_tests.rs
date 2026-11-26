@@ -6,18 +6,18 @@ use mod_api::{
     LivingKnockbackEvent,
 };
 use std::sync::{Arc, Mutex};
-use sunrise_core::{geometry::Vec3, random::RandomSource};
+use sunrise_core::geometry::Vec3;
 #[cfg(any())]
 use sunrise_gameplay::game::server_side::entity_server::damage_level_of;
 use sunrise_items::items::ItemStack;
-use sunrise_sim::health::{Attack, Hurting, Knock, NO_ATTACK};
-use sunrise_sim::mobs::{Damage, DamageKind, Mob, Who};
+use sunrise_sim::health::{Attack, NO_ATTACK};
+use sunrise_sim::mobs::{Mob, Who};
 
 /// What a knockback heard: the attacker and the stacks it holds (by item id).
 type Held = (i32, Option<String>, Option<String>);
 
 #[derive(Default)]
-pub(in crate::game) struct Heard {
+pub(crate) struct Heard {
     knocks: Vec<Held>,
     pub(in crate::game) credits: Vec<(i32, Option<String>)>,
     /// The entry of `LivingEntity.knockback` each push came through, as the hook named it.
@@ -95,6 +95,7 @@ pub(crate) fn heard(
     hear(|log| with_game(|game| test(game, log)))
 }
 
+#[cfg(any())]
 fn guest_heard(
     test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>, &Mutex<Heard>),
 ) -> Heard {
@@ -121,6 +122,7 @@ fn source(causing: i32) -> HurtSource<'static> {
     }
 }
 
+#[cfg(any())]
 const PUSH: Knock = Knock {
     strength: 0.4,
     x: 1.0,

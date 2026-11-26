@@ -1,4 +1,3 @@
-use super::*;
 use std::sync::Arc;
 use sunrise_gameplay::game::remote::recipe_properties::tests::cut_pack;
 use sunrise_gameplay::game::remote::recipe_properties::tests::place_stonecutter;

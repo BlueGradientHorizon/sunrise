@@ -314,5 +314,3 @@ impl ServerGame<'_> {
 }
 
 use sunrise_gameplay_common::game::GameGameExt1 as _;
-
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

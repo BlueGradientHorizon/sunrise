@@ -137,4 +137,3 @@ fn block_parts_answer_what_the_dragon_and_the_wither_may_destroy() {
     });
 }
 
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;

@@ -1,4 +1,3 @@
-use super::*;
 use crate::game::{Audio, Settings, load_resources};
 use mod_api::{self, ChatSuggestionAppliedEvent, ClientHost, Hooks};
 use std::{

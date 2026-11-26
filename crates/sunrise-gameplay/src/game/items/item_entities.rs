@@ -777,7 +777,7 @@ impl crate::game::ServerGame<'_> {
             )
         });
         let mut orbs = self.common.orbs.lift();
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         crate::game::server_side::entity_server::taken_pass_tests::after_take(self);
         let mut gained = 0;
         let mut taken = Vec::new();
@@ -1141,10 +1141,6 @@ impl crate::game::ServerGame<'_> {
     }
 }
 
-use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
-
-use sunrise_gameplay_common::game::GameGameExt1 as _;
-
 use sunrise_gameplay_common::game::collision_source::CollisionSourceGameExt1 as _;
 
 use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt1 as _;
@@ -1154,7 +1150,5 @@ use sunrise_gameplay_common::game::entity_common::EntityCommonGameExt1 as _;
 use sunrise_gameplay_common::game::entity_sections::EntitySectionsGameExt1 as _;
 
 use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
-
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_ticks::NativeTicksGameExt1 as _;

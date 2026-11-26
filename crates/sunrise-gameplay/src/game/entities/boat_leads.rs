@@ -11,6 +11,7 @@
 //! that client's position back (`handleMoveVehicle`), so vanilla never moves
 //! it by the rope either. Here the pull lands on the server's copy and the
 //! rider's client overwrites it the same way (`tick_boats`).
+use sunrise_gameplay_common::game::GameGameExt3;
 use crate::game::ServerGame;
 use sunrise_core::geometry::Vec3;
 use sunrise_core::nbt::Tag;
@@ -599,6 +600,10 @@ impl ServerGame<'_> {
     }
 }
 
+use sunrise_gameplay_common::game::item_use_stacks::ItemUseStacksGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_surface::BoatFrictionGameExt as _;
+
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use super::*;
@@ -631,12 +636,3 @@ pub(in crate::game) mod tests {
         assert!((d - 5.0).abs() < 1e-12);
     }
 }
-
-use sunrise_gameplay_common::game::tables::GameItems as _;
-
-use sunrise_gameplay_common::game::GameGameExt3 as _;
-use sunrise_gameplay_common::game::GameGameExt3 as _;
-
-use sunrise_gameplay_common::game::item_use_stacks::ItemUseStacksGameExt1 as _;
-
-use sunrise_gameplay_common::game::native_surface::BoatFrictionGameExt as _;

@@ -1,4 +1,3 @@
-use super::*;
 use crate::game::creatures::projectile_batch_tests::shoot_arrow_at_wall;
 use std::sync::atomic::Ordering;
 use sunrise_core::geometry::Vec3;

@@ -1,10 +1,7 @@
 use crate::game::server_side::native_entity_refs::tests::with_game_role_client;
 use mod_api::{BlockPart, Hooks, LevelSide, Registrar, SmokeSourceEvent};
 use std::sync::Arc;
-use {
-    crate::game::remote::*,
-    sunrise_gameplay_common::game::remote::{Chunk, Hit, ItemStack, Path, inventory},
-};
+use sunrise_gameplay_common::game::remote::ItemStack;
 
 struct Bale;
 #[mod_api::sunrise_part]
@@ -159,4 +156,3 @@ fn client_placement_predicts_signal_fire_from_a_block_part() {
     });
 }
 
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;

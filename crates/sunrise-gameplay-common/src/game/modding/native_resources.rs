@@ -15,7 +15,7 @@ pub trait NativeResourceReads<'g>: crate::game::SideGame<'g> {
     fn resource_stack_sources<'__loan>(
         &'__loan self,
         pack_type: PackType,
-    ) -> Option<(&'static str, Vec<&ResourceSource>)>
+    ) -> Option<(&'static str, Vec<&'__loan ResourceSource>)>
     where
         'g: '__loan,
     {

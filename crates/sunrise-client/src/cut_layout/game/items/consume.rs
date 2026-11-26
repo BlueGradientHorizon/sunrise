@@ -14,7 +14,7 @@ pub(crate) mod teleport_hook_tests {
 
     use crate::game::native_entity_refs::tests::with_game;
 
-    use mod_api::{Flow, Hooks, ItemConsumptionTeleportEvent, ModEntry, ServerHost};
+    use mod_api::{Hooks, ModEntry};
 
     use std::sync::{
         Arc, Mutex,
@@ -461,4 +461,5 @@ pub(crate) mod fox_consumption_hook_tests {
         });
     }
 }
+#[cfg(test)]
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

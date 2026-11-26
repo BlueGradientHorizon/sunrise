@@ -66,5 +66,3 @@ impl ClientGame<'_> {
         }
     }
 }
-
-use sunrise_gameplay_common::game::tables::GameItems as _;

@@ -1063,10 +1063,6 @@ mod controller_context_tests {
 
 use sunrise_gameplay_common::game::mods::ModGameExt1 as _;
 
-use sunrise_gameplay_common::game::native_hooks::base::BaseGameExt1 as _;
-
 use sunrise_gameplay_common::game::pack_finders_common::CommonGameExt1 as _;
-
-use crate::game::client_side::remote_client::minecarts::CartLerpClientExt as _;
 
 use sunrise_gameplay_common::game::minecarts::MinecartRailGameExt as _;

@@ -1,4 +1,5 @@
 #![cfg(test)]
+
 #[cfg(test)]
 mod tests {
     use mod_api::{Hooks, Identifier, Item, ItemsEvent, ModEntry, RegistrationContext};
@@ -67,4 +68,3 @@ mod tests {
         });
     }
 }
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;

@@ -32,10 +32,9 @@ use sunrise_world::{
         },
     },
 };
-use {
-    crate::game::native_rotate::*,
-    sunrise_gameplay_common::game::native_rotate::{EngineState, native_worldgen_parts, rotate},
-};
+use sunrise_gameplay_common::game::native_rotate::{EngineState, native_worldgen_parts};
+#[cfg(test)]
+use crate::game::native_rotate::*;
 
 /// The child faces down only at its actual placed height, never at its sampled local Y=2.
 struct AtHeight {

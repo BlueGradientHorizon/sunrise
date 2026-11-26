@@ -1138,6 +1138,14 @@ fn item_hdr_light(state: &ItemRenderState, light: u32) -> u32 {
     (light & !0xff00) | block << 8
 }
 
+use sunrise_gameplay_common::game::end_common::EndGameExt as _;
+
+use sunrise_gameplay_common::game::native_hooks::base::GameHooks as _;
+
+use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
 #[cfg(feature = "client")]
 #[cfg(test)]
 pub(in crate::game) mod tests {
@@ -2005,11 +2013,3 @@ pub(in crate::game) mod tests {
         );
     }
 }
-
-use sunrise_gameplay_common::game::end_common::EndGameExt as _;
-
-use sunrise_gameplay_common::game::native_hooks::base::GameHooks as _;
-
-use sunrise_gameplay_common::game::tables::GameItems as _;
-
-use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;

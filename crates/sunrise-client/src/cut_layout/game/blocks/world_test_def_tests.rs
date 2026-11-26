@@ -2,7 +2,6 @@
 //! (`Registries.TEST_INSTANCE` is loaded from them), not only from the
 //! game's own data: a definition only a world pack has is found and runs
 //! (tools/test_world_test_def_parity.py measures the same on vanilla 26.3).
-use super::*;
 use crate::game::load_resources;
 use std::sync::Arc;
 use sunrise_client::settings::Settings;

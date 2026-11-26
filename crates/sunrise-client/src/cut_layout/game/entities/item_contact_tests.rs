@@ -1,4 +1,3 @@
-use super::*;
 use mod_api::{
     self, BlockPart, Flow, Hooks, HostSide, ItemAfterVerticalCollisionEvent, Registrar,
     RegistrationContext,
@@ -7,7 +6,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use sunrise_core::geometry::Vec3;
 use sunrise_core::position::BlockPos;
-use sunrise_gameplay_common::{game_side, world_items};
+use sunrise_gameplay_common::world_items;
 use sunrise_items::items::ItemStack;
 use sunrise_level::chunk::Chunk;
 use sunrise_level::world::World;
@@ -1601,7 +1600,6 @@ fn contact_hurt_uses_the_orbs_level_fall_immunity_tag() {
     );
 }
 
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
 use sunrise_gameplay_common::game::entity_common::EntityCommonGameExt1 as _;
 

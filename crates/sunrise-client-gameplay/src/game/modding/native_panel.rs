@@ -2089,5 +2089,3 @@ pub mod tests {
         std::mem::take(&mut *HEARD.lock().unwrap())
     }
 }
-
-use sunrise_gameplay_common::game::tables::GameItems as _;

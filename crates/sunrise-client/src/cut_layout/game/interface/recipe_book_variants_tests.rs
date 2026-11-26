@@ -4,7 +4,6 @@
 //! `minecraft:map_cloning`, a transmute recipe with a material count of 1 to 8,
 //! sends eight (tools/test_recipe_book_variants_parity.py measures the same on
 //! vanilla 26.3 with a real client).
-use super::*;
 use crate::game::load_resources;
 use crate::settings::Settings;
 use std::sync::{Arc, atomic::AtomicI32, mpsc};

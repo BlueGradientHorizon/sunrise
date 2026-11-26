@@ -1,5 +1,4 @@
 //! Authoritative custom displays, with slot examples resolved in the server's context.
-use super::*;
 use mod_api::{RecipeBookDisplay as Display, RecipeSlotDisplay as Slot};
 use std::result::Result;
 use sunrise_gameplay_common::game::api_values::TryIntoApi;

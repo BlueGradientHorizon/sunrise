@@ -1,4 +1,3 @@
-use super::super::*;
 use crate::game::remote::abilities::gamemode_split_tests::SELF_NAME;
 use crate::game::remote::abilities::gamemode_split_tests::SELF_UUID;
 use crate::game::remote::abilities::gamemode_split_tests::abilities_packet;

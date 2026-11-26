@@ -195,6 +195,11 @@ impl crate::game::ServerGame<'_> {
     }
 }
 
+use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;
+
+#[cfg(test)]
+use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -419,7 +424,3 @@ mod tests {
         assert!(aabb_of([0.0, f64::NAN, 0.0, 1.0, 1.0, 1.0]).is_none());
     }
 }
-
-use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;
-
-use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;

@@ -8,6 +8,7 @@ use std::sync::{
     Arc, Mutex,
     atomic::{AtomicU8, Ordering},
 };
+#[cfg(test)]
 use sunrise_gameplay_common::game::light_emission::LightEmissionGameExt1 as _;
 use sunrise_level::chunk::Chunk;
 use {
@@ -554,7 +555,6 @@ fn a_light_update_asks_the_part_again_on_the_client() {
     );
 }
 
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
 use sunrise_gameplay_common::game::light_emission::LightEmissionGameExt1 as _;
 

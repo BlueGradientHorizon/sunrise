@@ -1,10 +1,12 @@
 #![cfg(test)]
+use sunrise_gameplay_common::game::transactions::scratch::ScratchGameExt1 as _;
+
 #[cfg(test)]
 mod tests {
     use sunrise_core::nbt::Tag;
     use {
         crate::game::transactions::scratch::*,
-        sunrise_gameplay_common::game::transactions::scratch::{ItemPlace, ItemStack, Scratch},
+        sunrise_gameplay_common::game::transactions::scratch::{ItemPlace, ItemStack},
     };
     use {
         sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
@@ -43,4 +45,3 @@ mod tests {
         });
     }
 }
-use sunrise_gameplay_common::game::transactions::scratch::ScratchGameExt1 as _;

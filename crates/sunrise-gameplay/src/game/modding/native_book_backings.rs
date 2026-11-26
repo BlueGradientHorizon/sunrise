@@ -13,7 +13,7 @@ use sunrise_sim::{
 };
 type Pos = (i32, i32, i32);
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub(in crate::game) struct Key {
+pub struct Key {
     pub dimension: &'static str,
     pub pos: Pos,
     pub slot: usize,
@@ -38,7 +38,7 @@ pub(in crate::game) struct NativeChange {
     pub(in crate::game) before: Option<mod_api::ItemStack>,
     pub(in crate::game) after: Option<ItemStack>,
 }
-pub(in crate::game) struct Changes {
+pub struct Changes {
     pub(in crate::game) blocks: BTreeMap<Key, Option<ItemStack>>,
     pub(in crate::game) native: Vec<NativeChange>,
 }

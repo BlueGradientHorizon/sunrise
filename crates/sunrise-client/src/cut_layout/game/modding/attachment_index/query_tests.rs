@@ -1,4 +1,5 @@
 //! Observable host query semantics through real holder writes and transaction journals.
+#[cfg(test)]
 use super::*;
 use mod_api::{AttachmentQueries, AttachmentQueriesMut, AttachmentType};
 use std::sync::Arc;

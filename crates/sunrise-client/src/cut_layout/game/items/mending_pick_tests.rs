@@ -1,5 +1,4 @@
 #![cfg(test)]
-use super::*;
 use sunrise_items::enchant::Enchantments;
 use sunrise_items::items::ItemStack;
 

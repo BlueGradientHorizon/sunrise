@@ -262,7 +262,7 @@ pub fn mob_effect(m: &Mob, e: &sunrise_sim::mobs::StoredEffect) -> ActiveEffect 
 pub trait NativeLivingBodyGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// The body a living target names now, where its reads are: the player in place's own
     /// fields, a guest's hub record, a mob that is not removed, an armor stand or the dragon.
-    fn native_living_body<'__loan>(&'__loan self, target: Target) -> Option<LivingBody<'_>>
+    fn native_living_body<'__loan>(&'__loan self, target: Target) -> Option<LivingBody<'__loan>>
     where
         '__sg: '__loan,
     {
@@ -313,7 +313,7 @@ pub trait NativeLivingBodyGameExt2<'__sg>: crate::game::SideGame<'__sg> {
     /// the acting player, and a game without a hub keeps its single
     /// player's the same way), any other guest's are their hub record's.
     /// None for another kind.
-    fn native_living_player_effects<'__loan>(&'__loan self, t: Target) -> Option<&PlayerEffects>
+    fn native_living_player_effects<'__loan>(&'__loan self, t: Target) -> Option<&'__loan PlayerEffects>
     where
         '__sg: '__loan,
     {
@@ -742,7 +742,7 @@ pub trait NativeLivingBodyGameExt6<'__sg>: crate::game::SideGame<'__sg> {
     /// The entity's type key, for the catalog's attribute defaults: the same
     /// set the value and base reads answer for. On a client only the local
     /// player resolves (`native_living_read_target`).
-    fn native_living_attribute_entity<'__loan>(&'__loan self, living: LivingRef) -> Option<&str>
+    fn native_living_attribute_entity<'__loan>(&'__loan self, living: LivingRef) -> Option<&'__loan str>
     where
         '__sg: '__loan,
     {

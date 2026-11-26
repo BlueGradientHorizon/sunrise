@@ -20,7 +20,7 @@ pub(crate) mod tests {
 
     use sunrise_mod_runtime::attachments::Holder;
 
-    use sunrise_protocol::general_entity::{self, Message};
+    
 
     use sunrise_protocol::packets::play::{self, Clientbound as C};
 

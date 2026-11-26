@@ -397,8 +397,5 @@ pub(crate) mod vehicle_damage_command_tests {
 #[cfg(test)]
 #[path = "effect_attribute_tests_server.rs"]
 pub(crate) mod effect_attribute_tests;
-use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
 
-use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
 
-use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;

@@ -2,7 +2,6 @@
 //! empty bucket picks up an adult, unprimed sulfur cube, and the held stack
 //! becomes `ItemUtils.createFilledResult(held, player, sulfur_cube_bucket)`
 //! (tools/test_sulfur_bucket_parity.py measures the same on vanilla 26.3).
-use super::*;
 use crate::settings::Settings;
 use std::sync::Arc;
 use sunrise_core::geometry::Vec3;

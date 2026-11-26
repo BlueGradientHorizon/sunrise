@@ -40,8 +40,8 @@ impl crate::game::ClientGame<'_> {
         }
     }
 
-    #[cfg(test)]
-    pub(in crate::game) fn movement_dispatch_fixture(&self, fire: bool) -> f32 {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn movement_dispatch_fixture(&self, fire: bool) -> f32 {
         let mut input = MovementInput {
             move_vector: [0.0, 1.0],
             ..MovementInput::default()

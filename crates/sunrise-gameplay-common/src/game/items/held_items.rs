@@ -624,7 +624,7 @@ pub trait HeldItemsGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     fn blocks_attacks<'__loan>(
         &'__loan self,
         stack: &ItemStack,
-    ) -> Option<std::borrow::Cow<'_, sunrise_items::items::BlocksAttacks>>
+    ) -> Option<std::borrow::Cow<'__loan, sunrise_items::items::BlocksAttacks>>
     where
         '__sg: '__loan,
     {
@@ -1121,7 +1121,7 @@ pub trait HeldItemsGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 
     /// `FishingRodCast`: the stack in the arm holding the rod while the hook is out.
-    fn cast_rod<'__loan>(&'__loan self) -> Option<&ItemStack>
+    fn cast_rod<'__loan>(&'__loan self) -> Option<&'__loan ItemStack>
     where
         '__sg: '__loan,
     {
@@ -1530,6 +1530,36 @@ pub fn interact_location(point: Vec3, feet: Vec3) -> [f64; 3] {
     [point.x - feet.x, point.y - feet.y, point.z - feet.z]
 }
 
+use crate::game::native_hooks::base::GameHooks as _;
+
+use crate::game::side_ops::items::ItemsSideGameExt as _;
+
+use crate::game::side_ops::player::PlayerSideGameExt as _;
+
+use crate::game::tables::GameItems as _;
+
+
+
+use crate::game::game_mode_common::GameModeCommonGameExt1 as _;
+
+use crate::game::item_abilities::ItemAbilitiesGameExt1 as _;
+
+use crate::game::native_components::NativeComponentsGameExt1 as _;
+
+use crate::game::native_hooks::can_harvest_block::GameHooks as _;
+
+use crate::game::native_hooks::fishing_medium::GameHooks as _;
+
+use crate::game::native_hooks::living_get_projectile::GameHooks as _;
+
+use crate::game::native_hooks::player_break_speed::GameHooks as _;
+
+use crate::game::native_hooks::player_harvest_check::GameHooks as _;
+
+use crate::game::pick_ray::PickRayGameExt1 as _;
+
+use crate::game::player_identity::PlayerIdentityGameExt1 as _;
+
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use super::*;
@@ -1556,35 +1586,3 @@ pub(in crate::game) mod tests {
         assert_eq!(held_attack_item(&[], 0), None);
     }
 }
-
-use crate::game::native_hooks::base::GameHooks as _;
-
-use crate::game::side_ops::items::ItemsSideGameExt as _;
-
-use crate::game::side_ops::player::PlayerSideGameExt as _;
-
-use crate::game::tables::GameItems as _;
-
-use crate::game::tables::WorldTablesExt as _;
-
-use crate::game::GameGameExt1 as _;
-
-use crate::game::game_mode_common::GameModeCommonGameExt1 as _;
-
-use crate::game::item_abilities::ItemAbilitiesGameExt1 as _;
-
-use crate::game::native_components::NativeComponentsGameExt1 as _;
-
-use crate::game::native_hooks::can_harvest_block::GameHooks as _;
-
-use crate::game::native_hooks::fishing_medium::GameHooks as _;
-
-use crate::game::native_hooks::living_get_projectile::GameHooks as _;
-
-use crate::game::native_hooks::player_break_speed::GameHooks as _;
-
-use crate::game::native_hooks::player_harvest_check::GameHooks as _;
-
-use crate::game::pick_ray::PickRayGameExt1 as _;
-
-use crate::game::player_identity::PlayerIdentityGameExt1 as _;

@@ -94,5 +94,3 @@ macro_rules! bind_resident_list {
     };
 }
 pub use crate::bind_resident_list;
-
-use crate::game::GameGameExt1 as _;

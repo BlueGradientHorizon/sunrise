@@ -117,6 +117,5 @@ fn item_part_results_control_real_server_and_client_use() {
     });
 }
 
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
 use sunrise_gameplay_common::game::pick_ray::PickRayGameExt1 as _;

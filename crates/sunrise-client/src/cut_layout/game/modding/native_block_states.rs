@@ -2,14 +2,11 @@
 #[cfg(test)]
 mod tests {
     use mod_api::{FluidDefinition, FluidStateError, FluidTypeProperties};
-    use {
-        crate::game::native_block_states::*,
-        sunrise_gameplay_common::game::native_block_states::{
+    use sunrise_gameplay_common::game::native_block_states::{
             Arc, BlockRegistry, BlockStateId, FluidState, ItemStack, Registries, StateConstraint,
-            StateMatchError, block, block_registries, description_id, match_state_properties,
+            StateMatchError, block_registries, description_id, match_state_properties,
             parse, serialize,
-        },
-    };
+        };
 
     /// Air, a stair with two properties (its default `facing=north,half=bottom`)
     /// and wheat with an integer `age`, as `parse` reads them.
@@ -876,7 +873,7 @@ mod facts_tests {
 mod crafting_remainder_tests {
     use {
         crate::game::native_block_states::*,
-        sunrise_gameplay_common::game::native_block_states::{Arc, ItemStack},
+        sunrise_gameplay_common::game::native_block_states::ItemStack,
     };
     static CALLS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
     struct Worn;
@@ -1095,6 +1092,5 @@ mod crafting_remainder_tests {
 }
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
 use sunrise_gameplay_common::game::native_block_states::NativeBlockStatesGameExt1 as _;

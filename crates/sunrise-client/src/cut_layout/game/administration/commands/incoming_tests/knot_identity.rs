@@ -9,9 +9,7 @@ use sunrise_level::chunk::Chunk;
 use sunrise_sim::{mobs::leash::Holder, motion::PlayerMotion};
 use {
     crate::game::*,
-    sunrise_gameplay_common::game::{
-        Dim, Instant, Mob, Options, PathBuf, Progress, Resources, Vec3, entity, execution_role,
-    },
+    sunrise_gameplay_common::game::{Dim, Options, Progress, Vec3},
 };
 
 pub(crate) const PIG: &str = "0000609a-0000-0000-0000-000000000001";

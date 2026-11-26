@@ -198,7 +198,9 @@ fn registered_loot_function_reads_only_tags_bound_by_the_pack_loader() {
 
 /// A loot function reading damage type tags through its context, recording what it read:
 /// a pack type in and out of a pack tag, an absent tag and an unknown type.
+#[cfg(any())]
 struct DamageTagReader(std::sync::Arc<std::sync::Mutex<Vec<[Option<bool>; 4]>>>);
+#[cfg(any())]
 #[mod_api::__subscriptions]
 impl Hooks for DamageTagReader {
     fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
@@ -208,6 +210,7 @@ impl Hooks for DamageTagReader {
         );
     }
 }
+#[cfg(any())]
 impl ModLootFunction for DamageTagReader {
     fn validate(&self, _: &LootEntryData) -> Result<(), String> {
         Ok(())
@@ -297,11 +300,14 @@ fn a_loot_function_reads_the_bound_damage_type_tags() {
 
 /// A loot function listing item tags through its context: the item tags an item is in and
 /// every bound item tag's name, as the loot evaluator's own tag source binds them.
+#[cfg(any())]
 struct ItemTagLister(std::sync::Arc<std::sync::Mutex<Vec<ItemTagLists>>>);
+#[cfg(any())]
 type ItemTagLists = (
     Option<Vec<mod_api::Identifier>>,
     Option<Vec<mod_api::Identifier>>,
 );
+#[cfg(any())]
 #[mod_api::__subscriptions]
 impl Hooks for ItemTagLister {
     fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
@@ -311,6 +317,7 @@ impl Hooks for ItemTagLister {
         );
     }
 }
+#[cfg(any())]
 impl ModLootFunction for ItemTagLister {
     fn validate(&self, _: &LootEntryData) -> Result<(), String> {
         Ok(())
@@ -409,4 +416,5 @@ fn a_loot_function_lists_the_loot_datas_item_tags() {
     );
 }
 
+#[cfg(test)]
 use crate::game::tables::GameItems as _;

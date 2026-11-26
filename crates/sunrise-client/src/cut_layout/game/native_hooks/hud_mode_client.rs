@@ -1,7 +1,9 @@
 #![cfg(test)]
-#[cfg(test)]
 pub(crate) mod tests {
-    use mod_api::{ClientHost, ClientTickPreEvent, Hooks, HudMode, ModEntry};
+    use mod_api::{ClientHost, ClientTickPreEvent, Hooks, HudMode};
+    #[cfg(test)]
+    use mod_api::ModEntry;
+    #[cfg(test)]
     use mod_platform::testing::with_mods;
 
     struct ThreeState;
@@ -18,16 +20,15 @@ pub(crate) mod tests {
 
     #[test]
     #[ignore = "daily"]
-    #[cfg(any())]
     fn hud_mode_game_bridge_respects_client_and_guest_guards() {
         let mods: mod_api::Mods = vec![ModEntry::new("three-state", Box::new(ThreeState))].into();
         with_mods(mods, || {
             crate::game::native_entity_refs::tests::with_client_game(|game| {
                 for mode in [HudMode::NoHud, HudMode::AllHidden, HudMode::AllVisible] {
-                    game.fire_client_tick_pre();
+                    game.test_fire_client_tick_pre();
                     assert_eq!(game.hud_mode(), mode);
                 }
-                game.fire_client_tick_pre();
+                game.test_fire_client_tick_pre();
                 assert_eq!(game.hud_mode(), HudMode::NoHud);
                 assert!(
                     game.client

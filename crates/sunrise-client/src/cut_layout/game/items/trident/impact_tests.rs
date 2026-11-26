@@ -1,4 +1,3 @@
-use super::*;
 use std::sync::atomic::Ordering;
 use sunrise_core::geometry::Vec3;
 use sunrise_sim::thrown_trident::ThrownTrident;

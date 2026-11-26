@@ -261,39 +261,6 @@ impl crate::game::ClientGame<'_> {
     }
 }
 
-#[cfg(test)]
-pub(in crate::game) mod swap_hands_tests {
-    use mod_api::{Flow, Hooks, PlayerSwapHandsEvent, ServerHost};
-    use std::sync::{
-        Arc,
-        atomic::{AtomicBool, AtomicUsize, Ordering},
-    };
-
-    /// Puts a torch in the off hand instead of the sword, or cancels; counts the calls.
-    pub(in crate::game) struct Torch(
-        pub(in crate::game) Arc<AtomicBool>,
-        pub(in crate::game) Arc<AtomicUsize>,
-    );
-    #[mod_api::__subscriptions]
-    impl Hooks for Torch {
-        fn player_swap_hands(
-            &self,
-            _: &mut dyn ServerHost,
-            event: &mut PlayerSwapHandsEvent<'_>,
-        ) -> Flow {
-            self.1.fetch_add(1, Ordering::SeqCst);
-            if self.0.load(Ordering::SeqCst) {
-                return Flow::Cancel;
-            }
-            assert!(event.to_main_hand.is_none());
-            assert_eq!(event.to_off_hand.as_ref().map(|s| s.count()), Some(1));
-            let torch = mod_api::__private::item_key("minecraft:torch").unwrap();
-            *event.to_off_hand = Some(mod_api::ItemStack::new(torch, 1).unwrap());
-            Flow::Continue
-        }
-    }
-}
-
 use sunrise_gameplay_common::game::game_mode_common::GameModeCommonGameExt1 as _;
 
 use sunrise_gameplay_common::game::integrated_common::IntegratedCommonGameExt1 as _;

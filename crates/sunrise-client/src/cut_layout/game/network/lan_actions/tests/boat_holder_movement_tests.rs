@@ -1,7 +1,6 @@
 #![cfg(test)]
 use {
-    crate::game::lan_actions::*,
-    sunrise_gameplay_common::game::lan_actions::{S, movement, packets, play, tick},
+    sunrise_gameplay_common::game::lan_actions::{S, play},
     sunrise_items::items::ItemStack,
 };
 

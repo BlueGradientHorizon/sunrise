@@ -1,4 +1,3 @@
-use super::*;
 use mod_api::{HoldError, HoldId, SendPacketError, ServerboundPlayPacket};
 use sunrise_client_gameplay::game::client_side::native_net::packet_hold::Holds;
 use sunrise_protocol::packets::play::Serverbound as S;

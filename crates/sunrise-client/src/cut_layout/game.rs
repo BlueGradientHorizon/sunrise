@@ -14,12 +14,8 @@ pub(crate) mod benchmark_retention;
 mod server_startup_settings;
 #[cfg(feature = "client")]
 use crate::settings::Settings;
-use std::sync::Arc;
-use std::time::Instant;
 #[cfg(feature = "client")]
 use sunrise_client_gameplay::game::client_side::activity;
-#[cfg(feature = "client")]
-use sunrise_client_gameplay::game::client_side::launch_options_client::is_client_start;
 #[cfg(feature = "client")]
 use sunrise_client_gameplay::game::client_side::launch_options_client::read_client_auth;
 #[cfg(feature = "client")]
@@ -42,7 +38,6 @@ use sunrise_client_gameplay::game::client_side::resource_loader::run_loading;
 use sunrise_client_gameplay::game::client_side::{mods_client, packs::startup_root};
 #[cfg(feature = "client")]
 use sunrise_client_lib::audio::Audio;
-use sunrise_game_data::Result;
 #[cfg(feature = "client")]
 use sunrise_gameplay::game::server_side::integrated::{run_component_harness_on_server, serve};
 use sunrise_gameplay::game::server_side::{
@@ -50,23 +45,8 @@ use sunrise_gameplay::game::server_side::{
     resource_load_server::load_resources_server,
 };
 use sunrise_gameplay_common::game::api_values::package_snapshot;
-use sunrise_gameplay_common::game::execution_role;
-use sunrise_gameplay_common::game::mods;
-use sunrise_gameplay_common::game::native_biome_source;
-use sunrise_gameplay_common::game::native_chunk_generator;
-use sunrise_gameplay_common::game::native_dimensions;
-use sunrise_gameplay_common::game::native_feature_types;
 use sunrise_gameplay_common::game::native_hooks::bounce_restitution::install_block_contact_hooks;
-use sunrise_gameplay_common::game::native_pool_elements;
-use sunrise_gameplay_common::game::native_structure_types;
-use sunrise_gameplay_common::game::options_path;
 use sunrise_gameplay_common::game::pack_discovery::data_packs;
-use sunrise_gameplay_common::game::preflight_resources;
-use sunrise_gameplay_common::game::resource_load::Progress;
-#[cfg(feature = "client")]
-use sunrise_gameplay_common::game::resource_load::launch_world;
-use sunrise_gameplay_common::game::resource_load::synchronous_startup;
-use sunrise_world::level::Behaviours;
 
 #[cfg(test)]
 #[path = "game/mobs/allay_jukebox_source_tests.rs"]
@@ -790,7 +770,8 @@ pub(crate) fn run_with(
 }
 
 #[path = "game/server_side.rs"]
-pub(crate) mod server_side;
+#[doc(hidden)]
+pub mod server_side;
 #[cfg(test)]
 #[path = "game/interface/tests/sign_use_tests.rs"]
 mod sign_use_tests;
@@ -801,143 +782,191 @@ pub(crate) use server_side::{
 };
 
 #[path = "game/runtime/transactions.rs"]
-pub(crate) mod transactions;
+#[doc(hidden)]
+pub mod transactions;
 
 #[path = "game/runtime/resource_load.rs"]
-mod resource_load;
+#[doc(hidden)]
+pub mod resource_load;
 
 #[path = "game/network/remote/mod.rs"]
-mod remote;
+#[doc(hidden)]
+pub mod remote;
 
 #[path = "game/network/lan_actions/mod.rs"]
-mod lan_actions;
+#[doc(hidden)]
+pub mod lan_actions;
 
-mod native_hooks;
+#[doc(hidden)]
+pub mod native_hooks;
 
 #[path = "game/modding/payload_transport.rs"]
-pub(crate) mod payload_transport;
+#[doc(hidden)]
+pub mod payload_transport;
 
 #[path = "game/modding/pack_finders/mod.rs"]
-pub(crate) mod pack_discovery;
+#[doc(hidden)]
+pub mod pack_discovery;
 
 #[path = "game/modding/native_world_read.rs"]
-pub(crate) mod native_world_read_common;
+#[doc(hidden)]
+pub mod native_world_read_common;
 
 #[path = "game/modding/native_tags.rs"]
-mod native_tags;
+#[doc(hidden)]
+pub mod native_tags;
 
 #[path = "game/modding/native_surface.rs"]
-pub(crate) mod native_surface;
+#[doc(hidden)]
+pub mod native_surface;
 
 #[path = "game/modding/native_state_shapes.rs"]
-mod native_state_shapes;
+#[doc(hidden)]
+pub mod native_state_shapes;
 
 #[path = "game/modding/native_server.rs"]
-mod native_server;
+#[doc(hidden)]
+pub mod native_server;
 
 #[path = "game/modding/native_rotate.rs"]
-pub(crate) mod native_rotate;
+#[doc(hidden)]
+pub mod native_rotate;
 
 #[path = "game/modding/native_resources.rs"]
-pub(crate) mod native_resources;
+#[doc(hidden)]
+pub mod native_resources;
 
 #[path = "game/modding/native_player_reach.rs"]
-mod native_player_reach;
+#[doc(hidden)]
+pub mod native_player_reach;
 
 #[path = "game/modding/native_player_death.rs"]
-mod native_player_death;
+#[doc(hidden)]
+pub mod native_player_death;
 
 #[path = "game/modding/native_passages.rs"]
-pub(crate) mod native_passages;
+#[doc(hidden)]
+pub mod native_passages;
 
 #[path = "game/modding/native_living_blocking.rs"]
-pub(crate) mod native_living_blocking;
+#[doc(hidden)]
+pub mod native_living_blocking;
 
 #[path = "game/modding/native_item_registry.rs"]
-mod native_item_registry;
+#[doc(hidden)]
+pub mod native_item_registry;
 
 #[path = "game/modding/native_entity_selectors.rs"]
-pub(crate) mod native_entity_selectors;
+#[doc(hidden)]
+pub mod native_entity_selectors;
 
 #[path = "game/modding/native_effect_category.rs"]
-mod native_effect_category;
+#[doc(hidden)]
+pub mod native_effect_category;
 
 #[path = "game/modding/native_datapack_refs.rs"]
-mod native_datapack_refs;
+#[doc(hidden)]
+pub mod native_datapack_refs;
 
 #[path = "game/modding/native_data_bound.rs"]
-mod native_data_bound;
+#[doc(hidden)]
+pub mod native_data_bound;
 
 #[path = "game/modding/native_configs.rs"]
-mod native_configs;
+#[doc(hidden)]
+pub mod native_configs;
 
 #[path = "game/modding/native_components.rs"]
-pub(crate) mod native_components;
+#[doc(hidden)]
+pub mod native_components;
 
 #[path = "game/modding/native_cauldron_contents.rs"]
-mod native_cauldron_contents;
+#[doc(hidden)]
+pub mod native_cauldron_contents;
 
 #[path = "game/modding/native_block_states.rs"]
-mod native_block_states;
+#[doc(hidden)]
+pub mod native_block_states;
 
 #[path = "game/modding/native_block_sounds.rs"]
-pub(crate) mod native_block_sounds;
+#[doc(hidden)]
+pub mod native_block_sounds;
 
 #[path = "game/modding/native_block_extra_models.rs"]
-mod native_block_extra_models;
+#[doc(hidden)]
+pub mod native_block_extra_models;
 
 #[path = "game/modding/mod_api_host.rs"]
-pub(crate) mod mod_api_host;
+#[doc(hidden)]
+pub mod mod_api_host;
 
 #[path = "game/modding/load_conditions.rs"]
-pub(crate) mod load_conditions;
+#[doc(hidden)]
+pub mod load_conditions;
 
 #[path = "game/modding/entity_sections.rs"]
-mod entity_sections;
+#[doc(hidden)]
+pub mod entity_sections;
 
 #[path = "game/modding/api_values.rs"]
-pub(crate) mod api_values;
+#[doc(hidden)]
+pub mod api_values;
 
 #[path = "game/mobs/creatures/mod.rs"]
-mod creatures;
+#[doc(hidden)]
+pub mod creatures;
 
 #[path = "game/mobs/breezes.rs"]
-mod breezes;
+#[doc(hidden)]
+pub mod breezes;
 
 #[path = "game/items/equip_answers.rs"]
-mod equip_answers;
+#[doc(hidden)]
+pub mod equip_answers;
 
 #[path = "game/interface/chat_common.rs"]
-pub(crate) mod chat_common;
+#[doc(hidden)]
+pub mod chat_common;
 
-mod host;
+#[doc(hidden)]
+pub mod host;
 
 #[path = "game/entities/residency_tick.rs"]
-mod residency_tick;
+#[doc(hidden)]
+pub mod residency_tick;
 
 #[path = "game/entities/minecarts.rs"]
-mod minecarts;
+#[doc(hidden)]
+pub mod minecarts;
 
 #[path = "game/entities/general.rs"]
-pub(crate) mod general;
+#[doc(hidden)]
+pub mod general;
 
 #[path = "game/entities/fireworks.rs"]
-mod fireworks;
+#[doc(hidden)]
+pub mod fireworks;
 
 #[path = "game/entities/closest_space.rs"]
-mod closest_space;
+#[doc(hidden)]
+pub mod closest_space;
 
 #[path = "game/client_side.rs"]
-pub(crate) mod client_side;
+#[doc(hidden)]
+pub mod client_side;
 
 #[path = "game/blocks/piston_push.rs"]
-mod piston_push;
+#[doc(hidden)]
+pub mod piston_push;
 
 #[path = "game/blocks/piston_carry.rs"]
-mod piston_carry;
+#[doc(hidden)]
+pub mod piston_carry;
 
 #[path = "game/blocks/cauldron_interactions.rs"]
-pub(crate) mod cauldron_interactions;
+#[doc(hidden)]
+pub mod cauldron_interactions;
 
 #[path = "game/blocks/block_items.rs"]
-mod block_items;
+#[doc(hidden)]
+pub mod block_items;

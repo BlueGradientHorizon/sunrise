@@ -1734,6 +1734,7 @@ impl crate::game::ServerGame<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(test)]
     use mod_api::ServerHost;
     use std::sync::Arc;
 
@@ -1804,6 +1805,7 @@ mod transfer_lifetime_tests {
         AttachmentLifetime, AttachmentType, Attachments, HasAttachmentLifetime, Holder,
         index::AttachmentIndex,
     };
+    #[cfg(test)]
     use sunrise_sim::join_seq::Joined;
 
     fn removal<T: Rideable + sunrise_sim::join_seq::Joined + HasAttachmentLifetime>(mut owner: T) {
@@ -1844,19 +1846,15 @@ mod transfer_lifetime_tests {
 pub mod credits_respawn_tests {
     use sunrise_gameplay_common::game::server_side::server_travel::credits_respawn_tests::ANCHOR;
 
-    use super::Dim;
 
-    use std::sync::{Arc, atomic::AtomicI32, mpsc};
     use sunrise_level::chunk::Chunk;
     use sunrise_protocol::{
-        buf::Reader,
         packets::{
             configuration::ClientInformation,
             play::{self, Clientbound as C, Serverbound as S},
         },
     };
     use sunrise_sim::lan::{
-        Joined, NetConfig, Out, PlayerSender,
         guest::{Guest, InboxItem, SPECTATOR},
         hub::HubConfig,
     };
@@ -1887,7 +1885,5 @@ pub mod credits_respawn_tests {
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
 use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
-
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5 as _;

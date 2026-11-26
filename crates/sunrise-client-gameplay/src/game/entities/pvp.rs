@@ -852,5 +852,3 @@ use sunrise_gameplay_common::game::integrated_common::IntegratedCommonGameExt1 a
 use sunrise_gameplay_common::game::native_state_shapes::NativeStateShapesGameExt1 as _;
 
 use sunrise_gameplay_common::game::pick_ray::PickRayGameExt1 as _;
-
-use crate::game::client_side::remote_client::minecarts::CartLerpClientExt as _;

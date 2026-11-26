@@ -11,11 +11,6 @@ extern crate self as sunrise_client;
 pub use sunrise_client_lib::carrier_store;
 #[cfg(feature = "client")]
 pub use sunrise_client_lib::*;
-// The parity fixtures' build compiles the lib test's helpers without the tests that use most of them.
-#[cfg_attr(
-    sunrise_parity_fixtures,
-    allow(dead_code, unused_imports, unused_macros)
-)]
 #[doc(hidden)]
 pub mod entry;
 

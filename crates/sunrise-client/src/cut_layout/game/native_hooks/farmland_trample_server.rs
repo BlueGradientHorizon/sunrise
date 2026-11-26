@@ -1,5 +1,8 @@
 #![cfg(test)]
 #[cfg(test)]
+use sunrise_gameplay_common::game::tables::GameItems as _;
+
+#[cfg(test)]
 pub(crate) mod tests {
     use super::*;
     use crate::game::native_hooks::farmland_trample::tests::Choice;
@@ -155,4 +158,3 @@ pub(crate) mod tests {
         );
     }
 }
-use sunrise_gameplay_common::game::tables::GameItems as _;

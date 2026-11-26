@@ -573,11 +573,22 @@ impl crate::game::ServerGame<'_> {
     }
 }
 
+use sunrise_gameplay_common::game::collision_source::CollisionSourceGameExt1 as _;
+
+use sunrise_gameplay_common::game::entity_common::EntityCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::entity_sections::EntitySectionsGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_ticks::NativeTicksGameExt1 as _;
+
 #[cfg(test)]
 mod tests {
     use super::first_join;
+    #[cfg(test)]
     use std::sync::Arc;
+    #[cfg(test)]
     use sunrise_core::position::ChunkPos;
+    #[cfg(test)]
     use sunrise_level::chunk::Chunk;
     use sunrise_sim::join_seq::{JoinList, JoinSeq, Joined as _};
 
@@ -605,11 +616,3 @@ mod tests {
         assert_eq!(first_join(&list), Some(first));
     }
 }
-
-use sunrise_gameplay_common::game::collision_source::CollisionSourceGameExt1 as _;
-
-use sunrise_gameplay_common::game::entity_common::EntityCommonGameExt1 as _;
-
-use sunrise_gameplay_common::game::entity_sections::EntitySectionsGameExt1 as _;
-
-use sunrise_gameplay_common::game::native_ticks::NativeTicksGameExt1 as _;

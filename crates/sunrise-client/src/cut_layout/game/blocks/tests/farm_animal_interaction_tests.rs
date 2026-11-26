@@ -10,8 +10,7 @@ use sunrise_sim::motion::PlayerMotion;
 use {
     crate::game::*,
     sunrise_gameplay_common::game::{
-        Instant, InteractTarget, ItemStack, Options, PathBuf, Progress, Resources, Side,
-        api_values, entity, execution_role,
+        InteractTarget, ItemStack, Options, Progress, Resources, execution_role,
     },
 };
 

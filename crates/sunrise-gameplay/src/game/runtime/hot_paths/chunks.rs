@@ -121,5 +121,3 @@ impl crate::game::ServerGame<'_> {
         Ok(())
     }
 }
-
-use sunrise_gameplay_common::game::tables::GameItems as _;

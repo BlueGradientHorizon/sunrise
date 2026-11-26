@@ -1,8 +1,13 @@
 //! A real LAN join: the virtual host a player reports is its accepted handshake's host,
 //! after `player_handshake` listeners rewrite it.
-use mod_api::{Flow, Hooks, ModEntry, PlayerHandshakeEvent, ServerHost, VirtualHost};
+#![cfg(any())]
+use mod_api::{Flow, Hooks, PlayerHandshakeEvent, ServerHost, VirtualHost};
+#[cfg(test)]
+use mod_api::ModEntry;
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::Duration;
+#[cfg(test)]
+use std::time::Instant;
 
 const NAME: &str =
     "game::payload_transport::virtual_host_tests::virtual_host_is_the_rewritten_handshake_host";
@@ -185,4 +190,5 @@ fn join(port: u16, host: &str, name: &str) -> sunrise_protocol::connection::Conn
     }
 }
 
+#[cfg(test)]
 use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;

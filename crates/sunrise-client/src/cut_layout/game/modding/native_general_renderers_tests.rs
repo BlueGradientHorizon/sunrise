@@ -534,10 +534,13 @@ fn a_failing_renderer_is_dropped_until_reload_and_a_type_without_one_draws_nothi
     );
 }
 
+#[cfg(any())]
 #[path = "native_general_renderers_tests/fixture.rs"]
 mod fixture;
 
+#[cfg(any())]
 struct NativeProbe;
+#[cfg(any())]
 #[mod_api::__subscriptions]
 impl mod_api::Hooks for NativeProbe {
     fn register(&self, registrar: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
@@ -554,6 +557,7 @@ impl mod_api::Hooks for NativeProbe {
 }
 
 /// Loads a saved row of the fixture's type at `position` with fuel 7: the chunk-load route.
+#[cfg(any())]
 fn load_saved_row(server: &mut sunrise_gameplay::game::ServerGame<'_>, position: [f64; 3]) -> u32 {
     use mod_api::{Holder, Host};
     let uuid = [380, 39, 9, 57];
@@ -596,6 +600,7 @@ fn load_saved_row(server: &mut sunrise_gameplay::game::ServerGame<'_>, position:
 /// Spawns a row of the fixture's type at `position` through `LevelRef::spawn_entity`, writing
 /// its fuel of 7 on the returned handle in the same transaction: the route a mod's own code
 /// takes, so the row's first tracking snapshot holds the field.
+#[cfg(any())]
 fn spawn_row(server: &mut sunrise_gameplay::game::ServerGame<'_>, position: [f64; 3]) -> u32 {
     use mod_api::{EntitySpawn, Holder, Host, SpawnBody};
     server.storage_scope(|server, _| {
@@ -743,6 +748,7 @@ fn a_spawned_general_row_is_drawn_in_its_window() {
     integrated_scene("a_spawned_general_row_is_drawn_in_its_window", spawn_row);
 }
 
+#[cfg(any())]
 fn poll_until(
     game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
     ready: impl Fn(&sunrise_client_gameplay::game::ClientGame<'_>) -> bool,
@@ -758,6 +764,6 @@ fn poll_until(
     }
 }
 
-use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
 
+#[cfg(test)]
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

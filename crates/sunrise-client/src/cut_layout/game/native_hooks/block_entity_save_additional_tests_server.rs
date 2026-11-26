@@ -1,4 +1,5 @@
 #![cfg(test)]
+
 #[cfg(test)]
 pub(crate) mod tests {
     use crate::game::native_hooks::block_entity_save_additional_tests::tests::BreakObserver;
@@ -311,4 +312,3 @@ pub(crate) mod tests {
         });
     }
 }
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;

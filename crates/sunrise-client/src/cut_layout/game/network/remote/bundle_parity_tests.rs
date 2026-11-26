@@ -48,7 +48,7 @@ pub(crate) fn json_strings(v: &serde_json::Value) -> Vec<String> {
 #[ignore = "daily"]
 fn genpvp_ping_rotation_and_keepalive_bundle_apply_atomically_in_order_26_3() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::remote::raw_ingress::bundle_parity_tests::genpvp_ping_rotation_and_keepalive_bundle_apply_atomically_in_order_26_3",
+        "cut_layout::game::client_side::remote_client::ingress_state::bundle_parity_tests::genpvp_ping_rotation_and_keepalive_bundle_apply_atomically_in_order_26_3",
         genpvp_ping_rotation_and_keepalive_bundle_body,
     );
 }
@@ -165,7 +165,7 @@ pub(crate) fn genpvp_ping_rotation_and_keepalive_bundle_body() {
 #[ignore = "daily"]
 fn dependent_entity_bundle_never_splits_across_poll_or_tick_26_3() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::remote::raw_ingress::bundle_parity_tests::dependent_entity_bundle_never_splits_across_poll_or_tick_26_3",
+        "cut_layout::game::client_side::remote_client::ingress_state::bundle_parity_tests::dependent_entity_bundle_never_splits_across_poll_or_tick_26_3",
         dependent_entity_bundle_body,
     );
 }

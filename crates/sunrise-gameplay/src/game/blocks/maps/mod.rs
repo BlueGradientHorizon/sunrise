@@ -903,8 +903,20 @@ impl ServerGame<'_> {
         true
     }
 }
+
+use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameExt as _;
+
+use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
+
+use sunrise_gameplay_common::game::game_mode_common::GameModeCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::item_use_stacks::ItemUseStacksGameExt1 as _;
+
 #[cfg(test)]
 pub(in crate::game) mod native_read_tests;
+
 #[cfg(test)]
 pub(in crate::game) mod save_tests;
 
@@ -1055,15 +1067,3 @@ pub(in crate::game) mod tests {
         assert_eq!(map.decorations.len(), 2);
     }
 }
-
-use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameExt as _;
-
-use sunrise_gameplay_common::game::tables::GameItems as _;
-
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
-
-use sunrise_gameplay_common::game::game_mode_common::GameModeCommonGameExt1 as _;
-
-use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
-
-use sunrise_gameplay_common::game::item_use_stacks::ItemUseStacksGameExt1 as _;

@@ -60,6 +60,8 @@ impl ClientGame<'_> {
     }
 }
 
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -80,5 +82,3 @@ mod tests {
         assert_eq!(calling_mod(), Ok("mod_b"));
     }
 }
-
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

@@ -4,6 +4,9 @@ use mod_api::MenuRef;
 use mod_api::MenuSlotPlace;
 use mod_api::ServerHost;
 use sunrise_sim::lan::menu::NativeMenuEvent;
+
+use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;
+
 #[cfg(test)]
 mod tests {
     use super::super::native_entity_refs::tests::with_game as with_base_game;
@@ -668,6 +671,3 @@ mod tests {
         }
     }
 }
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
-
-use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;

@@ -451,8 +451,16 @@ impl ClientGame<'_> {
         draw.clear_copies();
     }
 }
+
+#[cfg(test)]
+use sunrise_gameplay_common::game::mods::ModGameExt1 as _;
+
+#[cfg(test)]
+use sunrise_gameplay_common::game::native_lifecycle_common::NativeLifecycleCommonGameExt1 as _;
+
 #[cfg(test)]
 mod tests {
+    #[cfg(test)]
     use sunrise_gameplay_common::game::in_own_process;
 
     use super::*;
@@ -1632,7 +1640,3 @@ mod tests {
         });
     }
 }
-
-use sunrise_gameplay_common::game::mods::ModGameExt1 as _;
-
-use sunrise_gameplay_common::game::native_lifecycle_common::NativeLifecycleCommonGameExt1 as _;

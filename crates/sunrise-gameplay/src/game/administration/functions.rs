@@ -1600,6 +1600,7 @@ impl crate::game::ServerGame<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(test)]
     use sunrise_gameplay_common::game::tables::GameItems as _;
 
     #[test]
@@ -2471,8 +2472,6 @@ include!("functions/typed_state_range_tests.rs");
 #[cfg(test)]
 #[path = "functions/pack_tag_tests.rs"]
 mod pack_tag_tests;
-
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
 use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
 

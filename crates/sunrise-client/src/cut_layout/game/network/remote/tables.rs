@@ -1,4 +1,5 @@
 #![cfg(test)]
+
 #[cfg(test)]
 pub(crate) mod tests {
     use std::{collections::HashSet, sync::Arc};
@@ -162,4 +163,3 @@ pub(crate) mod tests {
         assert!(items.item_tags["minecraft:planks"].contains("minecraft:stick"));
     }
 }
-use sunrise_gameplay_common::game::tables::GameItems as _;

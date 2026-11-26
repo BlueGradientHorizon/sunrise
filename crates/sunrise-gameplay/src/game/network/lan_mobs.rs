@@ -294,6 +294,8 @@ impl ServerGame<'_> {
     }
 }
 
+use sunrise_gameplay_common::game::creatures::ModGameExt1 as _;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -512,5 +514,3 @@ mod tests {
         assert_eq!(player_for(&golem, None, &guests, Some(7)), Some(8));
     }
 }
-
-use sunrise_gameplay_common::game::creatures::ModGameExt1 as _;

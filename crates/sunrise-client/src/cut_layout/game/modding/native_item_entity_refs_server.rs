@@ -3,6 +3,10 @@ use mod_api::EntityRef;
 use mod_api::ItemEntityRef;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::lan::playerdata::uuid_ints;
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_item_entity_refs::NativeItemEntityRefsGameExt1 as _;
+
 #[cfg(test)]
 pub(crate) mod tests {
     use super::super::native_entity_refs::tests::with_game;
@@ -100,6 +104,3 @@ pub(crate) mod tests {
         });
     }
 }
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
-
-use sunrise_gameplay_common::game::native_item_entity_refs::NativeItemEntityRefsGameExt1 as _;

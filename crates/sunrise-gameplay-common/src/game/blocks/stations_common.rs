@@ -209,5 +209,3 @@ pub trait StationsCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
 impl<'__sg, G: crate::game::SideGame<'__sg>> StationsCommonGameExt1<'__sg> for G {}
 
 use crate::game::side_ops::blocks::BlocksSideGameExt as _;
-
-use crate::game::tables::GameItems as _;

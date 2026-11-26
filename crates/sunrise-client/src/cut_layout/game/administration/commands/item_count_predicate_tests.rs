@@ -1,3 +1,4 @@
+#[cfg(test)]
 use crate::game::server_side::commands::*;
 use sunrise_command::args::ItemInput;
 use sunrise_core::position::BlockPos;
@@ -101,4 +102,5 @@ fn count_equality_uses_live_stack_bounds_and_command_flow() {
 
 use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
 
+#[cfg(test)]
 use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;

@@ -1,4 +1,3 @@
-use super::*;
 use crate::game::minecarts::lifetime_tests::CancelCartDismount;
 use crate::game::minecarts::lifetime_tests::VALUE;
 use crate::game::minecarts::lifetime_tests::assert_vehicle_residency_retired;

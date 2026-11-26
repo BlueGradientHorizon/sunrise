@@ -1557,6 +1557,12 @@ impl DensityCache {
     }
 }
 
+use sunrise_gameplay_common::game::game_mode_common::GameModeCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::integrated_common::IntegratedCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::pick_ray::PickRayGameExt1 as _;
+
 #[cfg(feature = "client")]
 #[cfg(test)]
 mod tests {
@@ -1629,9 +1635,3 @@ mod tests {
         );
     }
 }
-
-use sunrise_gameplay_common::game::game_mode_common::GameModeCommonGameExt1 as _;
-
-use sunrise_gameplay_common::game::integrated_common::IntegratedCommonGameExt1 as _;
-
-use sunrise_gameplay_common::game::pick_ray::PickRayGameExt1 as _;

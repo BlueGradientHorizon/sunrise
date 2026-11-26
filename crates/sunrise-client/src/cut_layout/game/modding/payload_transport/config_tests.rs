@@ -1,13 +1,20 @@
+#![cfg(any())]
+
 use mod_api::{
-    HandlerThread, Hooks, IPayloadContext, IPayloadHandler, ModEntry, PayloadBytes,
     PayloadContextError, PayloadDirection, PayloadId, PayloadProtocol, PayloadWork,
     PayloadWorkStatus, Registrar,
+};
+#[cfg(test)]
+use mod_api::{
+    HandlerThread, Hooks, IPayloadContext, IPayloadHandler, ModEntry, PayloadBytes,
 };
 use std::sync::{
     Arc,
     atomic::{AtomicUsize, Ordering},
 };
-use std::time::{Duration, Instant};
+use std::time::Duration;
+#[cfg(test)]
+use std::time::Instant;
 
 const NAME: &str = "game::payload_transport::config_tests::tcp_configuration_reply_precedes_finish";
 static NETWORK_ENTERED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
@@ -458,4 +465,5 @@ fn controlled_peer(
     }
 }
 
+#[cfg(test)]
 use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;

@@ -239,8 +239,6 @@ pub mod on_entity_item_update_tests {
     }
 }
 
-use sunrise_gameplay_common::game::tables::GameItems as _;
-
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
 
 use sunrise_gameplay_common::game::native_ticks::NativeTicksGameExt1 as _;

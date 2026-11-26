@@ -1,3 +1,4 @@
+use crate::game::ServerGame;
 use super::piston_push::Lid;
 #[allow(unused_imports)]
 use super::{Dim, InteractTarget, view_vector};
@@ -5594,7 +5595,7 @@ impl crate::game::ServerGame<'_> {
             .unwrap_or_default();
         let primable = self.sulfur_cubes_adopted_explosive();
         let mut mobs = self.common.mobs.lift();
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         crate::game::server_side::entity_server::taken_pass_tests::after_take(self);
         let mut dead = Vec::new();
         let mut corpses = Vec::new();
@@ -6238,7 +6239,7 @@ impl crate::game::ServerGame<'_> {
         .inflate(Vec3::new(1.0, 0.5, 1.0));
         let creative = self.common.creative;
         let mut projectiles = self.common.creatures.projectiles.lift();
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         crate::game::server_side::entity_server::taken_pass_tests::after_take(self);
         projectiles.retain(|shot| {
             let Some(a) = shot.arrow.as_ref().filter(|a| !a.removed) else {
@@ -8544,7 +8545,7 @@ impl crate::game::ServerGame<'_> {
     }
 }
 
-impl sunrise_sim::arrows::OwnerLookup for crate::game::ServerGame<'_> {
+impl sunrise_sim::arrows::OwnerLookup for ServerGame<'_> {
     fn non_player_entity(&self, uuid: [i32; 4]) -> bool {
         let found = self.target_by_uuid(sunrise_sim::lan::playerdata::ints_uuid(uuid));
         !matches!(
@@ -8580,8 +8581,6 @@ use sunrise_gameplay_common::game::GameGameExt1 as _;
 
 use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
 
-use sunrise_gameplay_common::game::creatures::ModGameExt1 as _;
-
 use sunrise_gameplay_common::game::entity_initialization_common::EntityInitializationCommonGameExt1 as _;
 
 use sunrise_gameplay_common::game::entity_sections::EntitySectionsGameExt1 as _;
@@ -8595,8 +8594,6 @@ use sunrise_gameplay_common::game::item_use_stacks::ItemUseStacksGameExt1 as _;
 use sunrise_gameplay_common::game::native_components::NativeComponentsGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
-
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt6 as _;
 
 use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;
 

@@ -1,4 +1,3 @@
-use super::*;
 use crate::game::core_tests::pet_order_tests::WOLF;
 use crate::game::load_resources;
 use crate::settings::Settings;

@@ -16,7 +16,7 @@ use sunrise_gameplay_common::game::api_values::TryIntoApi;
 use winit::keyboard::KeyCode;
 
 pub(in crate::game) trait ScreenClientExt: Sized {
-    fn is_pause_screen(self) -> bool;
+    fn is_pause_screen(&self) -> bool;
     fn allowed_in_portal(self) -> bool;
     fn blurs_background(self, pause_menu: bool) -> bool;
 }
@@ -31,7 +31,7 @@ impl ScreenClientExt for Screen {
     /// (`WinScreen`, `!poem`) and a dialog (`DialogScreen`, its `pause`)
     /// answer from their own state, so `Game::pauses_game` reads those where
     /// they live and `Win` is not decided here.
-    fn is_pause_screen(self) -> bool {
+    fn is_pause_screen(&self) -> bool {
         match self {
             // AbstractContainerScreen.isPauseScreen.
             Self::Creative | Self::Inventory
@@ -1327,5 +1327,3 @@ mod tests {
         assert_eq!(at(215.0, 84.0), None);
     }
 }
-
-use crate::game::client_side::remote_client::chat::ChatTrustClientExt as _;

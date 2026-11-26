@@ -1,4 +1,3 @@
-use super::*;
 use mod_api::Holder;
 use mod_api::{AttachmentType, EntityConstructingEvent, Hooks, HostSide};
 use std::collections::HashSet;

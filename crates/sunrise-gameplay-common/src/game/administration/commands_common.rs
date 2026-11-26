@@ -717,7 +717,7 @@ impl crate::game::CommonGame<'_> {
 
 pub trait CommandsCommonGameExt2<'__sg>: crate::game::SideGame<'__sg> {
     /// The guest `conn` of the server’s LAN hub.
-    fn command_guest<'__loan>(&'__loan self, conn: u32) -> Option<&Guest>
+    fn command_guest<'__loan>(&'__loan self, conn: u32) -> Option<&'__loan Guest>
     where
         '__sg: '__loan,
     {
@@ -922,7 +922,7 @@ pub trait CommandsCommonGameExt2<'__sg>: crate::game::SideGame<'__sg> {
 
     /// The name of the player the game acts for: a guest's own while their
     /// command or action runs (`Player.getName`).
-    fn acting_player_name<'__loan>(&'__loan self) -> &str
+    fn acting_player_name<'__loan>(&'__loan self) -> &'__loan str
     where
         '__sg: '__loan,
     {
@@ -954,7 +954,7 @@ pub trait CommandsCommonGameExt2<'__sg>: crate::game::SideGame<'__sg> {
 
     /// `PlayerList.getPlayers` but the player in place: the guests who
     /// joined the world.
-    fn command_players<'__loan>(&'__loan self) -> impl Iterator<Item = &Guest>
+    fn command_players<'__loan>(&'__loan self) -> impl Iterator<Item = &'__loan Guest>
     where
         '__sg: '__loan,
     {

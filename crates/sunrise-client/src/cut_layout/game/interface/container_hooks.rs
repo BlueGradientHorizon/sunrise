@@ -7,7 +7,7 @@ use winit::keyboard::KeyCode;
 #[cfg(test)]
 pub(crate) mod tests {
 
-    use sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client;
+    
 
     use super::*;
 

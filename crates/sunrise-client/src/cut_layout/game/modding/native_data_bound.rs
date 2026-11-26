@@ -13,7 +13,7 @@ pub(crate) mod tests {
     use crate::game::native_entity_refs::tests::with_game;
 
     use mod_api::{
-        DataLoadContext, DefaultComponentsBoundEvent, Hooks, Identifier, ModEntry,
+        DataLoadContext, DefaultComponentsBoundEvent, Hooks, ModEntry,
         ModifyDefaultComponentsEvent, ReloadContext, TagsUpdateCause, TagsUpdatedEvent,
     };
 
@@ -21,7 +21,7 @@ pub(crate) mod tests {
 
     use sunrise_protocol::packets::{
         configuration::{RegistryTags, TagEntry, UpdateTags},
-        play::{self, Clientbound as C},
+        play::Clientbound as C,
     };
 
     #[test]

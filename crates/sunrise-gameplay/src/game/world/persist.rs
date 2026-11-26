@@ -1,6 +1,8 @@
 //! Saving and loading the game state that lives outside chunk blocks:
 //! entities (`entities/*.mca`, per chunk like vanilla's `EntityStorage`) and
 //! scheduled block/fluid ticks (chunk `block_ticks`/`fluid_ticks`).
+use sunrise_gameplay_common::game::GameGameExt3;
+use crate::game::ServerGame;
 #[path = "persist/display.rs"]
 mod display;
 #[path = "persist/loaded_pass.rs"]
@@ -2553,7 +2555,7 @@ impl crate::game::ServerGame<'_> {
 /// The mob layer's [`sunrise_client::mobs::WhoLookup`]: a warden's anger keeps
 /// the suspects that left by UUID, and resolves the ones that are back through
 /// the same map a save writes them from (`mob_to_nbt`'s `uuid_of`).
-impl sunrise_sim::mobs::WhoLookup for crate::game::ServerGame<'_> {
+impl sunrise_sim::mobs::WhoLookup for ServerGame<'_> {
     fn who_by_uuid(&self, uuid: [i32; 4]) -> Option<Who> {
         crate::game::ServerGame::who_by_uuid(self, uuid)
     }
@@ -2674,15 +2676,11 @@ pub fn join_saved_team(board: &mut Scoreboard, name: &str, tag: &Tag) -> bool {
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
-use sunrise_gameplay_common::game::GameGameExt3 as _;
-use sunrise_gameplay_common::game::GameGameExt3 as _;
 
 use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
 
 use sunrise_gameplay_common::game::entity_initialization_common::EntityInitializationCommonGameExt1 as _;
 
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5 as _;
 
-use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;

@@ -55,9 +55,6 @@ pub(in crate::game) mod native_entity_riding;
 #[path = "modding/native_entity_motion.rs"]
 pub mod native_entity_motion;
 
-#[path = "modding/native_entities.rs"]
-pub(in crate::game) mod native_entities;
-
 #[path = "modding/native_config_files.rs"]
 pub mod native_config_files;
 

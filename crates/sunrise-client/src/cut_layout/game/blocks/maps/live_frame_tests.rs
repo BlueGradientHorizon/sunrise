@@ -1,4 +1,3 @@
-use super::*;
 use sunrise_core::nbt::Tag;
 use sunrise_gameplay_common::game::maps::{Framed, Key, map_id};
 use sunrise_items::items::ItemStack;

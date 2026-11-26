@@ -2655,7 +2655,7 @@ impl crate::game::ServerGame<'_> {
         let ticking = self.entity_ticking_area();
         let through = self.server.ticked_entities_through;
         let mut clouds = self.common.breath_clouds.lift();
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         crate::game::server_side::entity_server::taken_pass_tests::after_take(self);
         clouds.retain_mut(|c| {
             // Lingering potions' clouds tick with the potions.
@@ -3726,6 +3726,80 @@ pub(in crate::game::server_side) fn scanning_turn(
     }
 }
 
+impl crate::game::ServerGame<'_> {
+    /// `Mob.playAmbientSound` when EntityType.spawn places a dragon.
+    pub(in crate::game::server_side) fn dragon_spawn_ambient(&mut self, id: u32) -> bool {
+        let Some(d) = self.common.dragon.as_mut().filter(|d| d.id == id) else {
+            return false;
+        };
+        let at = [d.position.x, d.position.y, d.position.z];
+        let pitch = (d.random.next_float() - d.random.next_float()) * 0.2 + 1.0;
+        self.server_play_sound("minecraft:entity.ender_dragon.ambient", at, 5.0, pitch);
+        true
+    }
+    /// `LevelEvent 3001`: the dragon's growl over the island.
+    pub(in crate::game) fn respawn_growl(&mut self) {
+        let pitch = 0.8 + self.common.world.random.next_float() * 0.3;
+        self.server_play_sound(
+            "minecraft:entity.ender_dragon.growl",
+            [0.5, 128.5, 0.5],
+            64.0,
+            pitch,
+        );
+    }
+    /// `DragonStrafePlayerPhase`'s shot: `new DragonFireball(level, dragon,
+    /// direction.normalize())`, whose `AbstractHurtingProjectile` constructor
+    /// takes the dragon as its owner and `assignDirectionalMovement`s the
+    /// direction normalized again times `accelerationPower` (0.1), then
+    /// `snapTo` the start. It joins the level's other projectiles.
+    pub fn spawn_dragon_fireball(&mut self, at: Vec3, dir: Vec3) {
+        // Vec3.normalize: a vector shorter than 1e-5 is zero.
+        let normalize = |v: Vec3| {
+            let l = (v.x * v.x + v.y * v.y + v.z * v.z).sqrt();
+            if l < 1.0e-5 {
+                Vec3::new(0.0, 0.0, 0.0)
+            } else {
+                Vec3::new(v.x / l, v.y / l, v.z / l)
+            }
+        };
+        let n = normalize(normalize(dir));
+        self.server_play_sound(
+            "minecraft:entity.ender_dragon.shoot",
+            [at.x, at.y, at.z],
+            10.0,
+            1.0,
+        );
+        let owner = self.common.dragon.as_ref().map(|d| Who::Mob(d.id));
+        let mut p = sunrise_sim::projectiles::Projectile::new(
+            sunrise_sim::projectiles::ProjectileKind::DragonFireball,
+            at,
+            owner,
+        );
+        p.acceleration = 0.1;
+        p.velocity = Vec3::new(n.x * 0.1, n.y * 0.1, n.z * 0.1);
+        self.add_projectile(p);
+    }
+}
+
+use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameExt as _;
+
+use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;
+
+#[cfg(test)]
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::dragon_common::DragonCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::item_use_stacks::ItemUseStacksGameExt1 as _;
+
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;
+
+use sunrise_gameplay_common::game::scoreboard_common::CommonGameExt1 as _;
+
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use sunrise_gameplay_common::game::server_side::dragon::tests::HIT;
@@ -4779,78 +4853,3 @@ pub(in crate::game) mod tests {
         assert!(strafe_angle(f32::NAN).is_nan());
     }
 }
-
-impl crate::game::ServerGame<'_> {
-    /// `Mob.playAmbientSound` when EntityType.spawn places a dragon.
-    pub(in crate::game::server_side) fn dragon_spawn_ambient(&mut self, id: u32) -> bool {
-        let Some(d) = self.common.dragon.as_mut().filter(|d| d.id == id) else {
-            return false;
-        };
-        let at = [d.position.x, d.position.y, d.position.z];
-        let pitch = (d.random.next_float() - d.random.next_float()) * 0.2 + 1.0;
-        self.server_play_sound("minecraft:entity.ender_dragon.ambient", at, 5.0, pitch);
-        true
-    }
-    /// `LevelEvent 3001`: the dragon's growl over the island.
-    pub(in crate::game) fn respawn_growl(&mut self) {
-        let pitch = 0.8 + self.common.world.random.next_float() * 0.3;
-        self.server_play_sound(
-            "minecraft:entity.ender_dragon.growl",
-            [0.5, 128.5, 0.5],
-            64.0,
-            pitch,
-        );
-    }
-    /// `DragonStrafePlayerPhase`'s shot: `new DragonFireball(level, dragon,
-    /// direction.normalize())`, whose `AbstractHurtingProjectile` constructor
-    /// takes the dragon as its owner and `assignDirectionalMovement`s the
-    /// direction normalized again times `accelerationPower` (0.1), then
-    /// `snapTo` the start. It joins the level's other projectiles.
-    pub fn spawn_dragon_fireball(&mut self, at: Vec3, dir: Vec3) {
-        // Vec3.normalize: a vector shorter than 1e-5 is zero.
-        let normalize = |v: Vec3| {
-            let l = (v.x * v.x + v.y * v.y + v.z * v.z).sqrt();
-            if l < 1.0e-5 {
-                Vec3::new(0.0, 0.0, 0.0)
-            } else {
-                Vec3::new(v.x / l, v.y / l, v.z / l)
-            }
-        };
-        let n = normalize(normalize(dir));
-        self.server_play_sound(
-            "minecraft:entity.ender_dragon.shoot",
-            [at.x, at.y, at.z],
-            10.0,
-            1.0,
-        );
-        let owner = self.common.dragon.as_ref().map(|d| Who::Mob(d.id));
-        let mut p = sunrise_sim::projectiles::Projectile::new(
-            sunrise_sim::projectiles::ProjectileKind::DragonFireball,
-            at,
-            owner,
-        );
-        p.acceleration = 0.1;
-        p.velocity = Vec3::new(n.x * 0.1, n.y * 0.1, n.z * 0.1);
-        self.add_projectile(p);
-    }
-}
-
-use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameExt as _;
-
-use sunrise_gameplay_common::game::tables::GameItems as _;
-
-use sunrise_gameplay_common::game::GameGameExt1 as _;
-
-use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
-
-use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
-
-use sunrise_gameplay_common::game::dragon_common::DragonCommonGameExt1 as _;
-
-use sunrise_gameplay_common::game::item_use_stacks::ItemUseStacksGameExt1 as _;
-
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
-
-use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;
-
-use sunrise_gameplay_common::game::scoreboard_common::CommonGameExt1 as _;

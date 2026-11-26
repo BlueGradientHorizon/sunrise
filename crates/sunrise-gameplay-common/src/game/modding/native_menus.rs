@@ -1,16 +1,15 @@
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
 
-    use super::*;
 
-    use std::sync::{Arc, mpsc};
+    use std::sync::mpsc;
 
     use sunrise_protocol::{
         buf::Reader,
-        packets::play::{self, Clientbound as C, Serverbound as S},
+        packets::play::{Clientbound as C},
     };
 
-    use sunrise_sim::lan::{Out, PlayerSender};
+    use sunrise_sim::lan::{Out};
 
     /// The packets sent since the last call.
     pub fn sent(rx: &mpsc::Receiver<Out>) -> Vec<C> {

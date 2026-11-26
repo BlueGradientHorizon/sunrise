@@ -1,10 +1,7 @@
 //! `LevelEventHandler` 1039 (`LevelEvent.SOUND_PHANTOM_BITE`): the sound a
 //! phantom's bite posts on the client.
 use sunrise_core::random::{LegacyRandom, RandomSource};
-use {
-    crate::game::*,
-    sunrise_gameplay_common::game::{Level, LevelEvent, World, entity},
-};
+use sunrise_gameplay_common::game::World;
 
 pub(crate) fn with_game(test: impl FnOnce(&mut sunrise_client_gameplay::game::ClientGame<'_>)) {
     sunrise_client_gameplay::game::native_entity_refs::tests::with_client_game(|g| {

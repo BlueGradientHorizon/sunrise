@@ -146,7 +146,7 @@ impl crate::game::ServerGame<'_> {
                     return false;
                 };
                 let mut mobs = self.common.mobs.lift();
-                #[cfg(test)]
+                #[cfg(any(test, feature = "test-support"))]
                 crate::game::server_side::entity_server::taken_pass_tests::after_take(self);
                 let w = self.mob_world_base(&[]);
                 let mut events = Vec::new();
@@ -190,7 +190,7 @@ impl crate::game::ServerGame<'_> {
                     return false;
                 }
                 let mut mobs = self.common.mobs.lift();
-                #[cfg(test)]
+                #[cfg(any(test, feature = "test-support"))]
                 crate::game::server_side::entity_server::taken_pass_tests::after_take(self);
                 let w = self.mob_world_base(&[]);
                 let mut events = Vec::new();

@@ -4,7 +4,6 @@
 //! stand's `noPhysics` enter nothing), and `LocalPlayer.handlePortalTransitionEffect`
 //! closes only the screens whose `Screen.isAllowedInPortal` is false.
 
-use super::*;
 use sunrise_core::geometry::Vec3;
 use sunrise_gameplay::game::game_tests::tests::server_game;
 use sunrise_gameplay_common::game::GameGameExt1;

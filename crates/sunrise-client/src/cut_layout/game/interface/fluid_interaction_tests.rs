@@ -221,4 +221,3 @@ fn a_declared_interaction_runs_after_vanillas_and_a_veto_stops_it() {
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;

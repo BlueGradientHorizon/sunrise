@@ -615,9 +615,7 @@ pub(in crate::game) mod tests {
 pub mod loot_mine_component_tests {
     use super::*;
     use std::sync::Arc;
-    use sunrise_core::nbt::{Compound, Tag};
-    use sunrise_level::{chunk::Chunk, containers::BlockEntity};
-    use sunrise_sim::save;
+    use sunrise_level::containers::BlockEntity;
 
     pub fn slot(game: &crate::game::ServerGame<'_>, index: usize) -> ItemStack {
         let Some(BlockEntity::Chest(items)) = game.world.block_entities.get(&(12, 200, 4)) else {

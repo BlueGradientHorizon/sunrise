@@ -4,7 +4,6 @@
 //! before the level's next world tick, keeps its flow tick
 //! (tools/test_frozen_first_tick_water_parity.py measures the same on
 //! vanilla 26.3: it flows 5 ticks after placement).
-use super::*;
 use crate::game::load_resources;
 use crate::settings::Settings;
 use std::sync::Arc;
@@ -295,4 +294,5 @@ fn an_unloaded_chunk_saves_its_ticks_and_a_reloaded_one_gets_them_back() {
 
 use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
 
+#[cfg(test)]
 use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;

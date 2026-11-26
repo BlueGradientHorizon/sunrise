@@ -4,6 +4,9 @@ use sunrise_gameplay_common::game::stations_common::Station;
 use sunrise_items::items::ItemStack;
 use sunrise_protocol::packets::play;
 #[cfg(test)]
+use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;
+
+#[cfg(test)]
 pub(crate) mod anvil_tests {
     use super::*;
     use mod_api::item::menu::AnvilCraftInputs;
@@ -151,4 +154,3 @@ pub(crate) mod anvil_tests {
         });
     }
 }
-use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;

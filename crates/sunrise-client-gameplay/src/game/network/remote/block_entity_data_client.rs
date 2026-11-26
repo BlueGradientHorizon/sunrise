@@ -180,5 +180,3 @@ impl crate::game::ClientGame<'_> {
 use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameExt as _;
 
 use sunrise_gameplay_common::game::native_hooks::SharedGameExt1 as _;
-
-use crate::game::client_side::remote_client::chat::ChatTrustClientExt as _;

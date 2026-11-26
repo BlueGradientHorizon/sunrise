@@ -68,6 +68,8 @@ impl ClientGame<'_> {
     }
 }
 
+use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
+
 #[cfg(feature = "client")]
 #[cfg(test)]
 mod tests {
@@ -116,5 +118,3 @@ mod tests {
         });
     }
 }
-
-use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;

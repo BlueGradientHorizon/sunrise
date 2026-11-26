@@ -9,7 +9,7 @@ pub use sunrise_items::items::ItemStack;
 
 /// Failure to access a native item component.
 #[derive(Debug)]
-pub(crate) enum NativeComponentError {
+pub enum NativeComponentError {
     UnknownType,
     InvalidValue(sunrise_protocol::Error),
 }

@@ -36,7 +36,7 @@ pub(crate) mod tests {
 
     use super::super::native_entity_refs::tests::with_game;
 
-    use sunrise_gameplay::game::server_side::native_item_places::tests::open_to_lan;
+    
 
     use super::*;
 
@@ -48,12 +48,9 @@ pub(crate) mod tests {
 
     use std::sync::{Arc, mpsc};
 
-    use sunrise_protocol::{
-        buf::Reader,
-        packets::play::{self, Clientbound as C, Serverbound as S},
-    };
+    use sunrise_protocol::packets::play::{self, Clientbound as C, Serverbound as S};
 
-    use sunrise_sim::lan::{Out, PlayerSender};
+    use sunrise_sim::lan::Out;
 
     #[test]
     #[ignore = "daily"]

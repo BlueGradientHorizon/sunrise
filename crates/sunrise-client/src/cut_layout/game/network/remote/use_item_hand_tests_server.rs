@@ -99,4 +99,3 @@ fn the_item_event_names_the_host_player_on_its_own_click() {
     });
 }
 
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;

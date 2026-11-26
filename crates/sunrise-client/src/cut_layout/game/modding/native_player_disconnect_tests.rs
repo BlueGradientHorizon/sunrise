@@ -166,4 +166,5 @@ fn disconnect_refuses_the_owner_stale_and_offline_players() {
     });
 }
 
+#[cfg(test)]
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

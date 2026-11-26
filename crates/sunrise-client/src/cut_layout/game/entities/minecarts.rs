@@ -547,12 +547,9 @@ pub(crate) mod container_drop_tests {
 #[cfg(test)]
 pub(crate) mod rejected_passenger_tests {
     use sunrise_core::nbt::Tag;
-    use {
-        crate::game::minecarts::*,
-        sunrise_gameplay_common::game::minecarts::{
-            Arc, CartKind, HEIGHT, InteractTarget, Minecart, Vec3,
-        },
-    };
+    use sunrise_gameplay_common::game::minecarts::{
+            CartKind, HEIGHT, InteractTarget, Minecart, Vec3,
+        };
     use {
         sunrise_gameplay::game::native_entity_refs::tests::with_game,
         sunrise_gameplay_common::game::commands_common::Target,

@@ -1492,6 +1492,10 @@ pub(in crate::game::client_side) fn has_special_model(block: &str) -> bool {
         || block.contains("copper_golem_statue")
 }
 
+use sunrise_gameplay_common::game::native_ticks::NativeTicksGameExt1 as _;
+
+use sunrise_gameplay_common::game::passengers_common::PassengersCommonGameExt1 as _;
+
 #[cfg(feature = "client")]
 #[cfg(test)]
 pub(in crate::game) mod tests {
@@ -1779,7 +1783,3 @@ pub(in crate::game) mod tests {
         assert_eq!(order, vec![2, 3, 1]);
     }
 }
-
-use sunrise_gameplay_common::game::native_ticks::NativeTicksGameExt1 as _;
-
-use sunrise_gameplay_common::game::passengers_common::PassengersCommonGameExt1 as _;

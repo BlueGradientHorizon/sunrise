@@ -4,7 +4,7 @@ use mod_api::{BlockPart, CanBeHydratedEvent, Hooks, IsFertileEvent, LevelHost, R
 use sunrise_world::level::LevelAccess;
 use {
     crate::game::*,
-    sunrise_gameplay_common::game::{BlockPos, api_values, execution_role, mods},
+    sunrise_gameplay_common::game::BlockPos,
 };
 
 #[derive(Clone)]
@@ -81,4 +81,3 @@ fn a_farmland_part_answers_fertility_and_hydration() {
     });
 }
 
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;

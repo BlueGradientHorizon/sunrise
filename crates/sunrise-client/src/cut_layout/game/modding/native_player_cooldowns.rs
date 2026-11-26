@@ -1,4 +1,7 @@
 #![cfg(test)]
+
+
+
 #[cfg(test)]
 mod tests {
     use super::super::native_entity_refs::tests::with_game;
@@ -152,8 +155,3 @@ mod tests {
         });
     }
 }
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
-
-use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;
-
-use sunrise_gameplay_common::game::native_server::NativeServerGameExt2 as _;

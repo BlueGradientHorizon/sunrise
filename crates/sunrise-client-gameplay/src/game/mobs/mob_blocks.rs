@@ -780,6 +780,12 @@ fn worn_head_animation(wearer: &Mob, mount: Option<u32>, mobs: &[Mob], alpha: f3
         )
 }
 
+use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -979,9 +985,3 @@ mod tests {
         assert_eq!(block_light(0x0070, 0), 0x0070);
     }
 }
-
-use sunrise_gameplay_common::game::tables::GameItems as _;
-
-use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
-
-use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

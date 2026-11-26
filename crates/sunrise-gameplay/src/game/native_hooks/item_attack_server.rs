@@ -42,5 +42,3 @@ impl crate::game::ServerGame<'_> {
         self.fire_on_left_click_entity(player, stack, entity, kind, canceled);
     }
 }
-
-use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;

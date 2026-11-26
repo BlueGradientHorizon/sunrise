@@ -1,4 +1,6 @@
 #![cfg(test)]
+
+
 #[cfg(test)]
 mod tests {
     use mod_api::{Hooks, HostSide, LevelRef, LevelTickPostEvent, LevelTickPreEvent, ModEntry};
@@ -192,6 +194,3 @@ mod tests {
         });
     }
 }
-use sunrise_gameplay_common::game::native_hooks::base::GameHooks as _;
-
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

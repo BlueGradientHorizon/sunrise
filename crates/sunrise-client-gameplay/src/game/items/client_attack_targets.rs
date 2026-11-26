@@ -133,6 +133,7 @@ pub mod tests {
         }
     }
 
+    #[cfg(test)]
     use super::*;
 
     #[cfg(test)]
@@ -153,13 +154,6 @@ pub mod tests {
         }
         assert_eq!(target_point([f64::NAN; 3], bounds, 3.0), None);
         assert_eq!(target_point([0.0; 3], [bounds[1], bounds[0]], 3.0), None);
-    }
-
-    #[cfg(test)]
-    #[derive(Default)]
-    struct AttackBatch {
-        targets: std::sync::Mutex<Vec<EntityRef>>,
-        cancel: std::sync::atomic::AtomicBool,
     }
 
     pub fn finish_login(

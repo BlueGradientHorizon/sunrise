@@ -538,9 +538,6 @@ pub mod native_worldgen_parts;
 pub mod ominous_item_spawner_common;
 #[path = "game/modding/pack_finders/common.rs"]
 pub mod pack_finders_common;
-#[cfg(sunrise_parity_fixtures)]
-#[path = "game/parity_fixtures.rs"]
-pub mod parity_fixtures;
 #[path = "game/modding/part_admission.rs"]
 pub mod part_admission;
 #[cfg(test)]
@@ -595,9 +592,6 @@ pub mod rule_replacements;
 pub mod saving;
 #[path = "game/modding/scheduled_tasks.rs"]
 pub mod scheduled_tasks;
-#[cfg(feature = "client")]
-#[path = "game/interface/screen_backgrounds.rs"]
-pub mod screen_backgrounds;
 #[path = "game/blocks/shelf_common.rs"]
 pub mod shelf_common;
 #[path = "game/side_ops/mod.rs"]
@@ -627,19 +621,12 @@ pub mod storage_common;
 pub mod structures;
 #[path = "game/administration/test_entities.rs"]
 pub mod test_entities;
-#[cfg(feature = "client")]
-#[path = "game/interface/toast_manager.rs"]
-pub mod toast_manager;
 #[path = "game/blocks/tool_modification.rs"]
 pub mod tool_modification;
 #[path = "game/runtime/transactions.rs"]
 pub mod transactions;
 #[path = "game/modding/typed_payloads.rs"]
 pub mod typed_payloads;
-#[cfg(feature = "client")]
-#[cfg(test)]
-#[path = "game/runtime/ui_core_shader_tests.rs"]
-pub mod ui_core_shader_tests;
 #[path = "game/network/villager_client.rs"]
 pub mod villager_client;
 #[path = "game/blocks/waxing.rs"]
@@ -2362,7 +2349,7 @@ impl crate::game::CommonGame<'_> {
 pub trait GameGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// The level's dimension type: a mod's or a data pack's own when it has one, else the
     /// built-in level's.
-    fn dimension_type<'__loan>(&'__loan self) -> &sunrise_world::dimension_type::DimensionFacts
+    fn dimension_type<'__loan>(&'__loan self) -> &'__loan sunrise_world::dimension_type::DimensionFacts
     where
         '__sg: '__loan,
     {
@@ -2386,7 +2373,7 @@ pub trait GameGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     fn dimension_facts_for<'__loan>(
         &'__loan self,
         key: sunrise_core::LevelKey,
-    ) -> &sunrise_world::dimension_type::DimensionFacts
+    ) -> &'__loan sunrise_world::dimension_type::DimensionFacts
     where
         '__sg: '__loan,
     {
@@ -3548,7 +3535,6 @@ pub use sunrise_gameplay_common::game_master_blocks::is_game_master_block;
 #[cfg(any(test, feature = "test-support"))]
 pub mod test_neighbourhood {
     //! Shared fixture step for tests that tick entities on prepared data.
-    use super::*;
 
     impl crate::game::CommonGame<'_> {
         /// Loads the chunks within 2 columns of `(cx, cz)` that are not loaded yet.
@@ -3607,14 +3593,15 @@ pub mod nested_orb_spawn_tests {}
 #[cfg(any(test, feature = "test-support"))]
 pub fn in_own_process(name: &str, body: impl FnOnce()) {
     const OWN_PROCESS: &str = "SUNRISE_TEST_OWN_PROCESS";
-    if std::env::var_os(OWN_PROCESS).is_some_and(|v| v == name) {
+    let name = test_fixtures::child_test_name(name);
+    if std::env::var_os(OWN_PROCESS).is_some_and(|v| v == name.as_ref()) {
         return body();
     }
-    let out = std::process::Command::new(std::env::current_exe().unwrap())
-        .args([name, "--exact", "--include-ignored", "--test-threads=1"])
-        .env(OWN_PROCESS, name)
-        .output()
-        .unwrap();
+    let mut command = std::process::Command::new(std::env::current_exe().unwrap());
+    command
+        .args([name.as_ref(), "--exact", "--include-ignored", "--test-threads=1"])
+        .env(OWN_PROCESS, name.as_ref());
+    let out = test_fixtures::output_within(&mut command, &name, "isolated");
     let report = format!(
         "{}{}",
         String::from_utf8_lossy(&out.stdout),
@@ -3990,14 +3977,6 @@ pub trait SideGame<'g>:
     fn common_and_state_mut(&mut self) -> (&mut CommonGame<'g>, &mut Self::State);
 }
 
-use crate::game::side_ops::events::EventsSideGameExt as _;
-
-use crate::game::side_ops::presentation::PresentationSideGameExt as _;
-
-use crate::game::side_ops::world::WorldSideGameExt as _;
-
-use crate::game::tables::GameItems as _;
-
 use crate::game::clip_ray::ClipRayGameExt1 as _;
 
 use crate::game::commands_common::CommandsCommonGameExt2 as _;
@@ -4039,6 +4018,7 @@ pub mod test_fixtures;
 
 #[cfg(test)]
 mod native_entity_refs {
+    #[cfg(test)]
     pub use super::test_fixtures as tests;
 }
 

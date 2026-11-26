@@ -4,7 +4,6 @@
 //! `BLOCK_PLACE` from the heart's own state (`creakingHurt`), and shearing a
 //! copper golem posts `SHEAR` at the golem from the player
 //! (`CopperGolem.mobInteract`).
-use super::super::*;
 use std::sync::Arc;
 use sunrise_core::geometry::Vec3;
 use sunrise_core::position::ChunkPos;

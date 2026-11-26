@@ -4,7 +4,7 @@
 //! each frame).
 use sunrise_client::debug_keys::KeyAction;
 use winit::keyboard::KeyCode;
-use {crate::game::*, sunrise_gameplay_common::game::Screen};
+use sunrise_gameplay_common::game::Screen;
 
 /// F3+4 pressed: F3 held, 4 pressed and released, F3 released.
 fn f3_and_4(game: &mut sunrise_client_gameplay::game::ClientGame<'_>) {

@@ -1,5 +1,4 @@
 //! Tick-level bobber impact payload, cancellation, gate and removal coverage.
-use super::*;
 use crate::game::server_side::native_projectiles::impact_probe::{Action, point, with_probe};
 use std::sync::atomic::Ordering;
 use sunrise_core::geometry::Vec3;

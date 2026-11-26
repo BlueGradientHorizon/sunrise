@@ -92,11 +92,14 @@ fn advancement_info(advancement: &Advancement) -> Option<AdvancementInfo> {
     ))
 }
 
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
 #[cfg(test)]
 mod tests {
     use sunrise_gameplay_common::game::server_side::native_command_reads::tests::mine_stone;
 
     use super::*;
+    #[cfg(test)]
     use sunrise_sim::advancements::{Criterion, Display, Rewards};
 
     #[test]
@@ -157,5 +160,3 @@ mod tests {
         }
     }
 }
-
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

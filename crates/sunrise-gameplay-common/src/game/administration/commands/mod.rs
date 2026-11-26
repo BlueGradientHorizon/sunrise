@@ -1,12 +1,7 @@
 #[cfg(any(test, feature = "test-support"))]
 pub mod peaceful_tests {
-    use std::sync::{Arc, OnceLock};
-    use sunrise_command::ParsedArg;
     use sunrise_core::nbt::Tag;
     use sunrise_items::items::ItemStack;
-    use sunrise_level::chunk::Chunk;
-    use sunrise_mod_package::{Content, Package, enabled::EnabledMods};
-    use sunrise_sim::mod_content::{self, ContentMod};
 
     pub const TRADER: &str = "peaceful_test:trader";
 

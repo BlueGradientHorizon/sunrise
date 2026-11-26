@@ -4,11 +4,8 @@ use mod_api::{EntityEnteringSectionEvent, Hooks, HostSide};
 use mod_api::{EntityRef, WorldEpoch};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
-use {
-    crate::game::entity_sections::*,
-    sunrise_gameplay_common::game::entity_sections::{
-        Crossing, EntitySections, LiveSectionHost, Scope, player, section_coord, section_of,
-    },
+use sunrise_gameplay_common::game::entity_sections::{
+    Crossing, EntitySections, LiveSectionHost, Scope, section_coord, section_of,
 };
 use {
     crate::game::server_side::native_entity_refs::tests::with_client_game,
@@ -1013,7 +1010,6 @@ fn section_host_and_game_read_the_same_entity_type_defaults() {
     });
 }
 
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
 

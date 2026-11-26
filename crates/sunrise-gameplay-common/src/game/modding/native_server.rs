@@ -9,9 +9,6 @@
 //! server thread's), never on a client's.
 #[path = "native_server/argument_kinds.rs"]
 pub mod argument_kinds;
-#[cfg(test)]
-#[path = "native_server/provider_tests.rs"]
-pub(in crate::game) mod provider_tests;
 #[path = "native_server/registered_commands.rs"]
 pub mod registered_commands;
 
@@ -901,6 +898,118 @@ impl Drop for Acting {
         self.0.acting.store(false, Ordering::Relaxed);
     }
 }
+
+/// The online mode a dedicated server's network config carries: it has an
+/// `OnlineMode` key (and so signs its logins) only in online mode.
+pub fn online_mode_of(config: &sunrise_sim::lan::NetConfig) -> bool {
+    config.online.is_some()
+}
+
+/// `Inventory`'s slot numbers past the 36 main slots (`EQUIPMENT_SLOT_MAPPING`).
+pub const SLOTS: u32 = 43;
+
+/// 0..35 main (0..8 hotbar), 36..39 feet to head, 40 offhand, 41 body, 42 saddle.
+/// ItemPlace uses 100..103 for armour and -106 for offhand; InventoryMenu has no 41/42.
+/// The slot the game keeps `Inventory` slot `slot` in.
+pub fn inventory_slot(slot: u32) -> Option<Slot> {
+    Some(match slot {
+        0..36 => Slot::Inv(slot as usize),
+        // `armor` is head first: 36 feet is its last.
+        36..40 => Slot::Armor((39 - slot) as usize),
+        40 => Slot::Offhand,
+        41 => Slot::Equipment(BODY),
+        42 => Slot::Equipment(SADDLE),
+        _ => return None,
+    })
+}
+
+/// Lend `Inventory.getItem` over a player's 43 vanilla inventory slots.
+pub fn lend_inventory_view(
+    inventory: &[Option<ItemStack>],
+    armor: &[Option<ItemStack>; 4],
+    offhand: &Option<ItemStack>,
+    equipment: &sunrise_items::equipment::Equipment,
+    read: &mut dyn for<'a> FnMut(InventoryView<'a>),
+) {
+    let stack_at = |slot| match inventory_slot(slot)? {
+        Slot::Inv(i) => inventory.get(i)?.as_ref(),
+        Slot::Armor(i) => armor[i].as_ref(),
+        Slot::Offhand => offhand.as_ref(),
+        Slot::Equipment(i) => equipment.get(i),
+        _ => None,
+    };
+    read(InventoryView::new(
+        0..SLOTS,
+        &|slot| stack_read_metadata(stack_at(slot)?).ok(),
+        &|slot, metadata| project_stack(stack_at(slot)?, metadata).ok(),
+    ));
+}
+
+pub trait NativeServerGameExt2<'__sg>: crate::game::SideGame<'__sg> {
+    /// `ItemCooldowns.getCooldownGroup(stack)`: the group `stack`'s
+    /// cooldown is filed under, the group its `use_cooldown` component names
+    /// (its own, else its item's default), else its item id.
+    fn item_cooldown_group(&self, stack: &ItemStack) -> String {
+        let default = self
+            .items()
+            .get(&stack.item)
+            .and_then(|info| info.use_cooldown.as_ref());
+        sunrise_items::cooldowns::group(stack, default).to_string()
+    }
+}
+impl<'__sg, G: crate::game::SideGame<'__sg>> NativeServerGameExt2<'__sg> for G {}
+
+pub trait NativeServerGameExt3<'__sg>: crate::game::SideGame<'__sg> {
+    /// `Player.isSecondaryUseActive`: whether the player uses items and
+    /// blocks as with sneak held, as vanilla reads it from the shift-key
+    /// flag (the same read as `EntityRef::is_shift_key_down`). None for a
+    /// stale or unavailable player.
+    fn player_is_secondary_use_active(&self, player: PlayerRef) -> Option<bool> {
+        self.entity_is_shift_key_down(player.entity())
+    }
+}
+impl<'__sg, G: crate::game::SideGame<'__sg>> NativeServerGameExt3<'__sg> for G {}
+
+pub trait NativeServerGameExt4<'__sg>: crate::game::SideGame<'__sg> {
+    /// `MinecraftServer.haveTime`: the current server tick has not reached the
+    /// moment the next one is due. A client, and a server outside a scheduled
+    /// tick, always has time, as NeoForge's client `LevelTickEvent.hasTime` does.
+    fn server_has_time(&self) -> bool {
+        !self.is_logical_server()
+            || crate::game::Side::server_tick_deadline(self.side_state())
+                .is_none_or(|end| Instant::now() < end)
+    }
+}
+impl<'__sg, G: crate::game::SideGame<'__sg>> NativeServerGameExt4<'__sg> for G {}
+
+pub trait NativeServerGameExt5<'__sg>: crate::game::SideGame<'__sg> {
+    /// Lend `Inventory.getItem` over the resident slots.
+    fn player_inventory_slots(
+        &self,
+        player: PlayerRef,
+        read: &mut dyn for<'a> FnMut(InventoryView<'a>),
+    ) -> Option<()> {
+        let (inventory, armor, offhand, equipment) = match self.player_read_both(player)? {
+            PlayerRead::Acting { .. } => {
+                (&self.inventory, &self.armor, &self.offhand, &self.equipment)
+            }
+            PlayerRead::Guest(g) => (&g.inventory, &g.armor, &g.offhand, &g.equipment),
+        };
+        lend_inventory_view(inventory, armor, offhand, equipment, read);
+        Some(())
+    }
+}
+impl<'__sg, G: crate::game::SideGame<'__sg>> NativeServerGameExt5<'__sg> for G {}
+
+use crate::game::side_ops::modapi_modding::ModapiModdingSideGameExt as _;
+
+use crate::game::tables::GameItems as _;
+
+use crate::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+#[cfg(test)]
+#[path = "native_server/provider_tests.rs"]
+pub(in crate::game) mod provider_tests;
 
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
@@ -2559,12 +2668,6 @@ pub mod fake_action_tests {
     }
 }
 
-/// The online mode a dedicated server's network config carries: it has an
-/// `OnlineMode` key (and so signs its logins) only in online mode.
-pub fn online_mode_of(config: &sunrise_sim::lan::NetConfig) -> bool {
-    config.online.is_some()
-}
-
 #[cfg(test)]
 pub(in crate::game) mod network_settings_tests {
     use super::*;
@@ -2582,109 +2685,3 @@ pub(in crate::game) mod network_settings_tests {
         assert!(online_mode_of(&config));
     }
 }
-
-/// `Inventory`'s slot numbers past the 36 main slots (`EQUIPMENT_SLOT_MAPPING`).
-pub const SLOTS: u32 = 43;
-
-/// 0..35 main (0..8 hotbar), 36..39 feet to head, 40 offhand, 41 body, 42 saddle.
-/// ItemPlace uses 100..103 for armour and -106 for offhand; InventoryMenu has no 41/42.
-/// The slot the game keeps `Inventory` slot `slot` in.
-pub fn inventory_slot(slot: u32) -> Option<Slot> {
-    Some(match slot {
-        0..36 => Slot::Inv(slot as usize),
-        // `armor` is head first: 36 feet is its last.
-        36..40 => Slot::Armor((39 - slot) as usize),
-        40 => Slot::Offhand,
-        41 => Slot::Equipment(BODY),
-        42 => Slot::Equipment(SADDLE),
-        _ => return None,
-    })
-}
-
-/// Lend `Inventory.getItem` over a player's 43 vanilla inventory slots.
-pub fn lend_inventory_view(
-    inventory: &[Option<ItemStack>],
-    armor: &[Option<ItemStack>; 4],
-    offhand: &Option<ItemStack>,
-    equipment: &sunrise_items::equipment::Equipment,
-    read: &mut dyn for<'a> FnMut(InventoryView<'a>),
-) {
-    let stack_at = |slot| match inventory_slot(slot)? {
-        Slot::Inv(i) => inventory.get(i)?.as_ref(),
-        Slot::Armor(i) => armor[i].as_ref(),
-        Slot::Offhand => offhand.as_ref(),
-        Slot::Equipment(i) => equipment.get(i),
-        _ => None,
-    };
-    read(InventoryView::new(
-        0..SLOTS,
-        &|slot| stack_read_metadata(stack_at(slot)?).ok(),
-        &|slot, metadata| project_stack(stack_at(slot)?, metadata).ok(),
-    ));
-}
-
-pub trait NativeServerGameExt2<'__sg>: crate::game::SideGame<'__sg> {
-    /// `ItemCooldowns.getCooldownGroup(stack)`: the group `stack`'s
-    /// cooldown is filed under, the group its `use_cooldown` component names
-    /// (its own, else its item's default), else its item id.
-    fn item_cooldown_group(&self, stack: &ItemStack) -> String {
-        let default = self
-            .items()
-            .get(&stack.item)
-            .and_then(|info| info.use_cooldown.as_ref());
-        sunrise_items::cooldowns::group(stack, default).to_string()
-    }
-}
-impl<'__sg, G: crate::game::SideGame<'__sg>> NativeServerGameExt2<'__sg> for G {}
-
-pub trait NativeServerGameExt3<'__sg>: crate::game::SideGame<'__sg> {
-    /// `Player.isSecondaryUseActive`: whether the player uses items and
-    /// blocks as with sneak held, as vanilla reads it from the shift-key
-    /// flag (the same read as `EntityRef::is_shift_key_down`). None for a
-    /// stale or unavailable player.
-    fn player_is_secondary_use_active(&self, player: PlayerRef) -> Option<bool> {
-        self.entity_is_shift_key_down(player.entity())
-    }
-}
-impl<'__sg, G: crate::game::SideGame<'__sg>> NativeServerGameExt3<'__sg> for G {}
-
-pub trait NativeServerGameExt4<'__sg>: crate::game::SideGame<'__sg> {
-    /// `MinecraftServer.haveTime`: the current server tick has not reached the
-    /// moment the next one is due. A client, and a server outside a scheduled
-    /// tick, always has time, as NeoForge's client `LevelTickEvent.hasTime` does.
-    fn server_has_time(&self) -> bool {
-        !self.is_logical_server()
-            || crate::game::Side::server_tick_deadline(self.side_state())
-                .is_none_or(|end| Instant::now() < end)
-    }
-}
-impl<'__sg, G: crate::game::SideGame<'__sg>> NativeServerGameExt4<'__sg> for G {}
-
-pub trait NativeServerGameExt5<'__sg>: crate::game::SideGame<'__sg> {
-    /// Lend `Inventory.getItem` over the resident slots.
-    fn player_inventory_slots(
-        &self,
-        player: PlayerRef,
-        read: &mut dyn for<'a> FnMut(InventoryView<'a>),
-    ) -> Option<()> {
-        let (inventory, armor, offhand, equipment) = match self.player_read_both(player)? {
-            PlayerRead::Acting { .. } => {
-                (&self.inventory, &self.armor, &self.offhand, &self.equipment)
-            }
-            PlayerRead::Guest(g) => (&g.inventory, &g.armor, &g.offhand, &g.equipment),
-        };
-        lend_inventory_view(inventory, armor, offhand, equipment, read);
-        Some(())
-    }
-}
-impl<'__sg, G: crate::game::SideGame<'__sg>> NativeServerGameExt5<'__sg> for G {}
-
-use crate::game::side_ops::modapi_modding::ModapiModdingSideGameExt as _;
-
-use crate::game::tables::GameItems as _;
-
-use crate::game::game_mode_common::GameModeCommonGameExt1 as _;
-
-use crate::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
-
-use crate::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;

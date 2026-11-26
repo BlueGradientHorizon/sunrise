@@ -507,9 +507,12 @@ fn phantom_group_size(random: &mut impl RandomSource, difficulty_id: i32) -> i32
     1 + random.next_int_bound(difficulty_id + 1).unwrap_or(0)
 }
 
+use sunrise_gameplay_common::game::weather::WeatherGameExt as _;
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(test)]
     use std::path::Path;
 
     #[test]
@@ -528,5 +531,3 @@ mod tests {
         }
     }
 }
-
-use sunrise_gameplay_common::game::weather::WeatherGameExt as _;

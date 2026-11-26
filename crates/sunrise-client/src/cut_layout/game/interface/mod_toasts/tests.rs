@@ -1,4 +1,3 @@
-use super::*;
 use mod_api::{AddToastError, Identifier, ModToast, ToastIcon, ToastKind};
 use mod_api::{ClientHost, Flow, Hooks, ModEntry, ScreenRenderPostEvent, Text, ToastAddEvent};
 use std::{

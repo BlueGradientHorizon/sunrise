@@ -204,7 +204,6 @@ impl crate::game::ServerGame<'_> {
             return vanilla;
         };
         let read = ReadLevel::new(self, level);
-        let read = ReadLevel::new(self, level);
         let side = mod_api::LevelSide::Server(&read);
         let cart = cart.map(|id| mod_api::EntityRef::new(epoch, id));
         dispatch_cart_rail_direction(side, self.common.dim.level(), api_state, pos, cart, text)

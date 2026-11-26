@@ -1,4 +1,5 @@
 #![cfg(test)]
+
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
@@ -201,4 +202,3 @@ mod tests {
         );
     }
 }
-use sunrise_gameplay_common::game::collision_source::CollisionSourceGameExt1 as _;

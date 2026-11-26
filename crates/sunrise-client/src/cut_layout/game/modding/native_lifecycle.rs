@@ -1,5 +1,8 @@
 #![cfg(test)]
 use mod_api::Authority;
+
+use sunrise_gameplay_common::game::native_lifecycle_common::NativeLifecycleCommonGameExt1 as _;
+
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
@@ -619,5 +622,3 @@ pub(crate) mod tests {
         assert!(lifecycle.world_close_final().is_none());
     }
 }
-
-use sunrise_gameplay_common::game::native_lifecycle_common::NativeLifecycleCommonGameExt1 as _;

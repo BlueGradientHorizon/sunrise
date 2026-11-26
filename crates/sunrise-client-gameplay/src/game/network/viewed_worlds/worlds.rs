@@ -666,5 +666,3 @@ mod tests {
         );
     }
 }
-
-use sunrise_gameplay_common::game::native_block_entity_read::NativeBlockEntityReadGameExt1 as _;

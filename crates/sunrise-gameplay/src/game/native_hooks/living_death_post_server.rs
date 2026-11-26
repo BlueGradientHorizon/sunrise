@@ -1,9 +1,9 @@
 #[cfg(test)]
+#[cfg(test)]
 use super::*;
 
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
-    use super::*;
     use sunrise_core::geometry::Vec3;
     use sunrise_sim::mobs::{Damage, Mob};
 

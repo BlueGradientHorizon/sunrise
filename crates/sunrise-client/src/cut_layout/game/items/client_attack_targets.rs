@@ -7,7 +7,7 @@ pub(crate) mod tests {
 
     use sunrise_client_gameplay::game::client_side::client_attack_targets::tests::sent_attacks;
 
-    use super::*;
+    
 
     #[derive(Default)]
     struct AttackBatch {

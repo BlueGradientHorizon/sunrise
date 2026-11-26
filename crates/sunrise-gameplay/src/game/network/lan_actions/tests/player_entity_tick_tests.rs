@@ -231,4 +231,5 @@ fn a_player_riding_a_pig_is_told_its_own_tick_as_the_pig_is() {
     });
 }
 
+#[cfg(test)]
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

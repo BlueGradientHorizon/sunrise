@@ -120,8 +120,6 @@ impl crate::game::ClientGame<'_> {
     }
 }
 
-use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
-
 use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;
 
 use sunrise_gameplay_common::game::stacked_on_other::StackedOnOtherGameExt1 as _;

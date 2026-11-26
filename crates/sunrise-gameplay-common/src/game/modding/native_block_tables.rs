@@ -412,5 +412,3 @@ fn fluid_measures(id: &str, kind: Option<FluidKind>) -> FluidMeasures {
         }
     }
 }
-
-use crate::game::tables::GameItems as _;

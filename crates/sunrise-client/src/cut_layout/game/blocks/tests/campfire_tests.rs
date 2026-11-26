@@ -11,10 +11,9 @@ use sunrise_sim::{
     motion::PlayerMotion,
 };
 use sunrise_world::lazy_json::LazyJson;
-use {
-    crate::game::*,
-    sunrise_gameplay_common::game::{BlockEntity, Hit, Resources, entity, hit},
-};
+use sunrise_gameplay_common::game::{BlockEntity, Hit, Resources};
+#[cfg(test)]
+use crate::game::*;
 
 /// A server game with a campfire at `pos` (its block entity too) and beef in
 /// the main hand, the click forced onto that block.

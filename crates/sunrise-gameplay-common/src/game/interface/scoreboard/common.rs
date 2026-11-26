@@ -87,7 +87,7 @@ pub trait CommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 
     /// `Entity.getTeam`: the team holding this entity's scoreboard name (its UUID).
-    fn entity_team<'__loan>(&'__loan self, id: u32) -> Option<&sb::Team>
+    fn entity_team<'__loan>(&'__loan self, id: u32) -> Option<&'__loan sb::Team>
     where
         '__sg: '__loan,
     {
@@ -115,7 +115,7 @@ pub trait CommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
         &'__loan self,
         id: u32,
         owner: impl FnOnce() -> Option<[i32; 4]>,
-    ) -> Option<&sb::Team>
+    ) -> Option<&'__loan sb::Team>
     where
         '__sg: '__loan,
     {

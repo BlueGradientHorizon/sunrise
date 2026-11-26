@@ -1,4 +1,3 @@
-use super::*;
 use std::sync::Arc;
 use sunrise_gameplay::game::lan_actions::tick::dig_tick_order_tests::DELAYED;
 use sunrise_gameplay::game::lan_actions::tick::dig_tick_order_tests::Event;

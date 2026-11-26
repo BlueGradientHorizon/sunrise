@@ -2538,7 +2538,6 @@ fn processing_owned_menu_close_on_death_drops_inputs_unlike_live_close() {
     });
 }
 
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
 

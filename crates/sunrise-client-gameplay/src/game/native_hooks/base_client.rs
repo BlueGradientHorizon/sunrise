@@ -908,5 +908,3 @@ impl crate::game::ClientGame<'_> {
         self.transfer_viewer_recipe(book_id);
     }
 }
-
-use sunrise_gameplay_common::game::tables::GameItems as _;

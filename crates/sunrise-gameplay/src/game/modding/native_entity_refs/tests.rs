@@ -196,10 +196,10 @@ pub fn with_game_role_and_facts(
     use sunrise_gameplay_common::game::Options;
     use sunrise_level::sim_settings::SimSettings;
 
-    sunrise_gameplay_common::game::mods::resolve_particle_providers(
-        &sunrise_assets::resource_source::ResourceSource::directory(root.clone()),
-    )
-    .unwrap();
+    sunrise_gameplay_common::game::test_fixtures::prepare_game_boot(
+        &root,
+        mod_platform::__private::part_tests::register_game_keys,
+    );
     let saves = tempfile::tempdir().unwrap();
     let settings = SimSettings::default();
     let (mut resources, pack) = load_fixture_server_resources(&root, role);

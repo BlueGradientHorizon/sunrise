@@ -403,6 +403,4 @@ impl crate::game::ServerGame<'_> {
     }
 }
 
-use sunrise_gameplay_common::game::GameGameExt1 as _;
-
 use sunrise_gameplay_common::game::piston_push::PistonPushGameExt1 as _;

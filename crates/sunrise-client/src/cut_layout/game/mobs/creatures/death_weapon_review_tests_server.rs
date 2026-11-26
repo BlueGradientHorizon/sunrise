@@ -1,5 +1,4 @@
 use super::tests::WeaponProbe;
-use super::*;
 use std::sync::{Arc, Mutex};
 use sunrise_gameplay_common::game::TryIntoApi;
 use sunrise_items::items::ItemStack;

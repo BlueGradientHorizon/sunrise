@@ -1,6 +1,5 @@
 //! `/random`'s roll line: who hears it and who it names, and the names
 //! `/random reset` completes (RandomCommand).
-use super::*;
 use std::sync::{Arc, atomic::AtomicI32, mpsc};
 use sunrise_game_data::text::Text;
 use sunrise_protocol::packets::{configuration::ClientInformation, play::Clientbound};

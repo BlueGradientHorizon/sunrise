@@ -65,7 +65,7 @@ pub struct ExecState {
     pub returned: Option<Option<i32>>,
     /// Function IDs in execution order, with the active frame last.
     pub functions: Vec<String>,
-    pub prepared_function: Option<super::super::functions::PreparedFunctionCall>,
+    pub(in crate::game) prepared_function: Option<super::super::functions::PreparedFunctionCall>,
 }
 
 /// A modifier that brings the sources to `max_command_forks` ends the chain
@@ -674,8 +674,6 @@ pub mod passenger_relation_tests {
         assert_eq!(game.score.board.score("#s", "h150u").unwrap().value, 1);
     }
 }
-
-use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
 

@@ -4,6 +4,12 @@ use mod_api::DimensionKey;
 use mod_api::LevelReadError;
 use mod_api::LevelRef;
 use sunrise_core::geometry::Vec3;
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_living_body::NativeLivingBodyGameExt6 as _;
+
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -472,8 +478,3 @@ mod tests {
         });
     }
 }
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
-
-use sunrise_gameplay_common::game::native_living_body::NativeLivingBodyGameExt6 as _;
-
-use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

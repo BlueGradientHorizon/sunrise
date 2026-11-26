@@ -676,6 +676,24 @@ impl VehicleMobs {
     }
 }
 
+use sunrise_gameplay_common::game::tables::GameItems as _;
+
+#[cfg(test)]
+use sunrise_gameplay_common::game::boats_common::BoatsCommonGameExt1 as _;
+
+#[cfg(test)]
+use sunrise_gameplay_common::game::collision_source::CollisionSourceGameExt1 as _;
+
+#[cfg(test)]
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+#[cfg(test)]
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt6 as _;
+
+use sunrise_gameplay_common::game::passengers_common::PassengersCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -738,17 +756,3 @@ mod tests {
         assert!(!boat_pushes(boat, at(64.5625), true));
     }
 }
-
-use sunrise_gameplay_common::game::tables::GameItems as _;
-
-use sunrise_gameplay_common::game::boats_common::BoatsCommonGameExt1 as _;
-
-use sunrise_gameplay_common::game::collision_source::CollisionSourceGameExt1 as _;
-
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
-
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt6 as _;
-
-use sunrise_gameplay_common::game::passengers_common::PassengersCommonGameExt1 as _;
-
-use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

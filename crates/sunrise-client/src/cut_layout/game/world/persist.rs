@@ -1,9 +1,16 @@
+#[cfg(test)]
 use std::collections::HashSet;
+#[cfg(test)]
 use std::sync::Arc;
+#[cfg(test)]
 use sunrise_core::geometry::Vec3;
+#[cfg(test)]
 use sunrise_core::nbt::Tag;
+#[cfg(test)]
 use sunrise_core::position::ChunkPos;
+#[cfg(test)]
 use sunrise_level::chunk::Chunk;
+#[cfg(test)]
 use sunrise_sim::save::text;
 #[cfg(test)]
 #[path = "persist/anger_tests.rs"]
@@ -3009,10 +3016,13 @@ mod trader_llama_discard_tests {
         });
     }
 }
+#[cfg(test)]
 use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
 
+#[cfg(test)]
 use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
 
+#[cfg(test)]
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
 
 #[path = "persist/object_memory.rs"]

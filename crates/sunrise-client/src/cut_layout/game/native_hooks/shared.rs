@@ -468,7 +468,6 @@ pub(in crate::game) mod tests {
     #[cfg(feature = "client")]
     #[test]
     #[ignore = "daily"]
-    #[cfg(any())]
     fn generated_fire_matches_dispatch() {
         use mod_api::{ClientHost, Flow, Hooks, ModEntry};
         use std::sync::{Arc, Mutex};
@@ -556,7 +555,7 @@ pub(in crate::game) mod tests {
                 trace.lock().unwrap().clear();
                 let mut canceled = false;
                 if fire {
-                    game.fire_block_highlight(
+                    game.test_fire_block_highlight(
                         [1, 2, 3],
                         sunrise_gameplay_common::game::native_hooks::BlockStateId(7),
                         0.5,
@@ -594,7 +593,7 @@ pub(in crate::game) mod tests {
                     };
                 let mut areas = Vec::new();
                 if fire {
-                    game.fire_screen_exclusion_areas(&view.view(), &mut areas);
+                    game.test_fire_screen_exclusion_areas(&view.view(), &mut areas);
                 } else {
                     mod_api::dispatch_screen_exclusion_areas(&game, &view.view(), &mut areas);
                 }
@@ -675,4 +674,5 @@ pub(in crate::game) mod tests {
     }
 }
 
+#[cfg(test)]
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

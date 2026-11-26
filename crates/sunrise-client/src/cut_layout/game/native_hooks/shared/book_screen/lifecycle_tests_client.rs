@@ -1,4 +1,3 @@
-use super::*;
 use std::sync::Arc;
 use sunrise_client::hud::HudBatch;
 use sunrise_client_gameplay::game::native_hooks::book_screen::lifecycle_tests_shared::BookMod;

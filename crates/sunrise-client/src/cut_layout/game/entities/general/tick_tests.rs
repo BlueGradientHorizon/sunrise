@@ -12,13 +12,11 @@ use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
 use sunrise_core::nbt::{Compound, Tag};
 use sunrise_gameplay::game::native_entity_refs::tests::with_game;
-use {
-    crate::game::general::*,
-    sunrise_gameplay_common::game::general::{
-        Entity, GeneralEntityRecord, GeneralTypeEnvelope, Target, Vec3, format,
-        record_from_compound,
-    },
-};
+use sunrise_gameplay_common::game::general::record_from_compound;
+#[cfg(test)]
+use sunrise_gameplay_common::game::general::{
+        Entity, GeneralEntityRecord, GeneralTypeEnvelope, Vec3, format,
+    };
 
 /// The fixture counter: an attachment with a codec, so a saved row resumes
 /// its count and a quarantined record keeps it in its bytes.
@@ -696,7 +694,7 @@ fn a_parked_level_holds_the_counter_until_it_returns() {
 #[ignore = "daily"]
 fn a_panicking_row_rolls_back_and_the_next_tick_proceeds() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::server_side::general::tick_tests::a_panicking_row_rolls_back_and_the_next_tick_proceeds",
+        "cut_layout::game::general::tick_tests::a_panicking_row_rolls_back_and_the_next_tick_proceeds",
         || {
             with_counter(|game, l| {
                 let first = seeded_row(game, [1, 2, 3, 4], 41);

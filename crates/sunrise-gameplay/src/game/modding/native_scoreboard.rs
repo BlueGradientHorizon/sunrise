@@ -508,15 +508,11 @@ impl ServerGame<'_> {
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
     use super::super::lan::LanSettings;
+    #[cfg(test)]
     use super::*;
-    use crate::game::native_entity_refs::tests::with_game;
+    #[cfg(test)]
     use mod_api::{TeamColor, prelude::ScoreboardServerHost, text::TextStyle};
-    use std::sync::{
-        Arc,
-        atomic::{AtomicI32, AtomicUsize},
-    };
-    use sunrise_protocol::packets::configuration::ClientInformation;
-    use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
+    use sunrise_sim::lan::{NetConfig, hub::HubConfig};
 
     #[cfg(test)]
     /// The API's slot and color names are the board's, in the board's order.
@@ -613,7 +609,5 @@ pub mod tests {
 }
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
-
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5 as _;

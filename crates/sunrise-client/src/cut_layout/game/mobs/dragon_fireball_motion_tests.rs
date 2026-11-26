@@ -2,7 +2,6 @@
 //! `AbstractHurtingProjectile` that moves by its motion and accelerates by its
 //! `acceleration_power` every tick, as a summoned `fireball` does
 //! (tools/test_dragon_fireball_motion_parity.py measures the same on vanilla 26.3).
-use super::*;
 #[cfg(test)]
 use crate::game::load_resources;
 use crate::settings::Settings;

@@ -1,5 +1,4 @@
 #![cfg(test)]
-use super::*;
 use mod_api::{Flow, Hooks, ItemPickedUpEvent, ModEntry, ServerHost};
 use mod_platform::testing::with_mods;
 use std::sync::{Arc, Mutex};

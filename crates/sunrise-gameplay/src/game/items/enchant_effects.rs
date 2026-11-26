@@ -1818,7 +1818,9 @@ impl ServerGame<'_> {
 
 #[cfg(test)]
 pub(in crate::game) mod tests {
+    #[cfg(test)]
     use sunrise_core::geometry::Vec3;
+    #[cfg(test)]
     use sunrise_sim::mobs::{Mob, finalize};
 
     use super::{
@@ -2138,7 +2140,5 @@ use sunrise_gameplay_common::game::tables::GameItems as _;
 use sunrise_gameplay_common::game::GameGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;
-
-use sunrise_gameplay_common::game::native_hooks::enchantments::EnchantmentsGameExt1 as _;
 
 use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

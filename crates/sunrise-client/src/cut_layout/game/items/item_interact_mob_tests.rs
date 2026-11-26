@@ -17,7 +17,7 @@ use {
     crate::game::*,
     sunrise_gameplay_common::game::{
         Hand, Instant, InteractTarget, ItemStack, Options, PathBuf, PlayerMotion, Progress, Vec3,
-        World, api_values, entity, execution_role, host, in_own_process, mods,
+        World, execution_role,
     },
 };
 
@@ -120,6 +120,10 @@ fn actual_item_interact_mob_fallback_priority_and_filters_isolated() {
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new("item", Box::new(probe.clone()))].into();
     mod_platform::testing::with_mods(mods.clone(), || {
         sunrise_gameplay_common::game::api_values::install_parts(&mods).unwrap();
+        sunrise_gameplay_common::game::test_fixtures::prepare_game_boot(
+            &root,
+            mod_platform::__private::part_tests::register_game_keys,
+        );
         let settings = Settings::default();
         let loaded = load_resources(
             sunrise_assets::resource_source::ResourceRoot::directory(root.clone()),
@@ -304,8 +308,8 @@ fn actual_item_interact_mob_fallback_priority_and_filters_isolated() {
 
 use sunrise_gameplay_common::game::side_ops::player::PlayerSideGameExt as _;
 
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
 use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
 
+#[cfg(test)]
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

@@ -1,4 +1,5 @@
 #![cfg(test)]
+
 #[cfg(test)]
 pub(crate) mod conduit_target_tests {
     use std::sync::Arc;
@@ -182,4 +183,3 @@ pub(crate) mod conduit_target_tests {
         );
     }
 }
-use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

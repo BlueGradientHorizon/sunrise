@@ -5,11 +5,12 @@ use sunrise_mod_runtime::attachments::{
     AttachmentType, Attachments, HasAttachmentLifetime, Holder, index::AttachmentIndex,
 };
 use {
-    crate::game::minecarts::*,
     sunrise_gameplay_common::game::minecarts::{
         Arc, CartKind, InteractTarget, Keys, Minecart, SEAT, Vec3,
     },
 };
+#[cfg(test)]
+use crate::game::minecarts::*;
 
 #[test]
 #[ignore = "daily"]
@@ -410,4 +411,5 @@ pub(crate) fn assert_vehicle_residency_retired(
     assert_eq!(game.resident_entities.table.get_mut().end_tick(), Ok(()));
 }
 
+#[cfg(test)]
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

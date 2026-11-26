@@ -528,6 +528,10 @@ impl GeneralTypeCatalog {
         self.entries.len()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+
     /// The type key a slot belongs to.
     pub fn key(&self, slot: usize) -> &str {
         &self.entries[slot].id

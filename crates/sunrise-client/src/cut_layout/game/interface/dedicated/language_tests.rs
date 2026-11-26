@@ -1,4 +1,3 @@
-use super::*;
 use mod_api::{Hooks, ModEntry, ServerHost};
 use std::sync::Arc;
 use std::sync::Mutex;

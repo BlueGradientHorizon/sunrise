@@ -43,7 +43,7 @@ impl ServerGame<'_> {
         let ticking = self.entity_ticking_area();
         let through = self.server.ticked_entities_through;
         let mut list = self.common.fangs.list.lift();
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         crate::game::server_side::entity_server::taken_pass_tests::after_take(self);
         list.retain_mut(|f| {
             if f.id > through || !ticking(f.pos[0].floor() as i32, f.pos[2].floor() as i32) {

@@ -810,6 +810,8 @@ pub(in crate::game) struct Offer {
     pub(in crate::game) scope: Scope,
 }
 
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
+
 #[cfg(any(test, feature = "test-support"))]
 pub mod audience_tests {
     use std::sync::Arc;
@@ -937,5 +939,3 @@ pub(in crate::game) mod listing_tests {
         assert_eq!(ids(&state), ["audit:second", "audit:test"]);
     }
 }
-
-use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;

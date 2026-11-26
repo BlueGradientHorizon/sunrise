@@ -4,7 +4,6 @@
 //! (`SignText.hasEditableText`). See `SignBlock.openTextEdit`,
 //! `SignBlock.otherPlayerIsEditingSign`, `SignBlockEntity.tick` and
 //! `SignBlockEntity.updateSignText`.
-use super::*;
 use crate::game::{Settings, load_resources};
 use std::sync::{Arc, atomic::AtomicI32, mpsc};
 use sunrise_core::position::ChunkPos;

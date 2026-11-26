@@ -532,6 +532,10 @@ impl crate::game::ClientGame<'_> {
     }
 }
 
+use sunrise_gameplay_common::game::light_emission::LightEmissionGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_hooks::SharedGameExt1 as _;
+
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use super::{order_uploads, section_distance_sq};
@@ -572,7 +576,3 @@ pub(in crate::game) mod tests {
         assert_eq!(waiting.pop(), Some((20, "far")));
     }
 }
-
-use sunrise_gameplay_common::game::light_emission::LightEmissionGameExt1 as _;
-
-use sunrise_gameplay_common::game::native_hooks::SharedGameExt1 as _;

@@ -45,5 +45,3 @@ impl ClientGame<'_> {
         self.common.server_items = Some(Arc::new(items));
     }
 }
-
-use sunrise_gameplay_common::game::tables::GameItems as _;

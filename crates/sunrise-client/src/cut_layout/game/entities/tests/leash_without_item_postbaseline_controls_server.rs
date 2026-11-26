@@ -1,4 +1,3 @@
-use super::*;
 use sunrise_core::{geometry::Vec3, position::BlockPos};
 use sunrise_gameplay::game::game_tests::tests::server_game;
 use sunrise_gameplay_common::game::InteractTarget;
@@ -94,4 +93,5 @@ fn holder_detach_still_dispatches_the_actual_interaction_criterion() {
 
 use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
 
+#[cfg(test)]
 use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;

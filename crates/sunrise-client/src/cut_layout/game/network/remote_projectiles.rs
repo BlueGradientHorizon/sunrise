@@ -1,4 +1,5 @@
 #![cfg(test)]
+
 #[cfg(feature = "client")]
 #[cfg(test)]
 pub(crate) mod entity_tick_tests {
@@ -219,4 +220,3 @@ pub(crate) mod entity_tick_tests {
         );
     }
 }
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

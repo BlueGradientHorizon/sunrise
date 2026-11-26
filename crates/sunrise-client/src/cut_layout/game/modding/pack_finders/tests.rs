@@ -9,7 +9,6 @@ use sunrise_gameplay_common::game::pack_finders_common::CommonGameExt1;
 use sunrise_level::datapack::{DataStore, FunctionLine};
 use sunrise_level::pack_meta::{RESOURCE_FORMAT, SelectionModel};
 use {
-    crate::game::pack_discovery::*,
     sunrise_gameplay_common::game::pack_discovery::{
         HookId, ModsState, PackDiscoveryContext, PackFinderError, PackPosition, PackRegistration,
         PackSource, PackType, Registry, ResourceSource, Source, StartupDiscovery, data_packs,

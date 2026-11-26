@@ -937,6 +937,24 @@ impl crate::game::ServerGame<'_> {
     }
 }
 
+use sunrise_gameplay_common::game::side_ops::lan::LanSideGameExt as _;
+
+use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameExt as _;
+
+use sunrise_gameplay_common::game::boats_common::BoatsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::entity_sections::EntitySectionsGameExt1 as _;
+
+use sunrise_gameplay_common::game::item_use_stacks::ItemUseStacksGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_ticks::NativeTicksGameExt1 as _;
+
+use sunrise_gameplay_common::game::pick_ray::PickRayGameExt1 as _;
+
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;
+
+use sunrise_gameplay_common::game::boats_common::BoatStatusGameExt as _;
+
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use sunrise_gameplay_common::game::server_side::boats::tests::boat;
@@ -1153,21 +1171,3 @@ pub(in crate::game) mod tests {
         );
     }
 }
-
-use sunrise_gameplay_common::game::side_ops::lan::LanSideGameExt as _;
-
-use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameExt as _;
-
-use sunrise_gameplay_common::game::boats_common::BoatsCommonGameExt1 as _;
-
-use sunrise_gameplay_common::game::entity_sections::EntitySectionsGameExt1 as _;
-
-use sunrise_gameplay_common::game::item_use_stacks::ItemUseStacksGameExt1 as _;
-
-use sunrise_gameplay_common::game::native_ticks::NativeTicksGameExt1 as _;
-
-use sunrise_gameplay_common::game::pick_ray::PickRayGameExt1 as _;
-
-use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;
-
-use sunrise_gameplay_common::game::boats_common::BoatStatusGameExt as _;

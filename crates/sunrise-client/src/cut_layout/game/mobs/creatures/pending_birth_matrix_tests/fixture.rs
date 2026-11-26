@@ -169,4 +169,5 @@ fn pig_again(dim: &str) -> PendingMobSpec {
     spec("minecraft:pig", dim, [0.5, 64.0, 0.0], 0.0, None, true)
 }
 
+#[cfg(test)]
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt6 as _;

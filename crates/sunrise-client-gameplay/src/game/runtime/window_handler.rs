@@ -610,6 +610,7 @@ impl ApplicationHandler for crate::game::ClientGame<'_> {
 #[cfg(all(test, feature = "client"))]
 mod tests {
     use super::*;
+    #[cfg(test)]
     use crate::game::client_side::launch_options_client::{is_client_start, time_limit};
     use input_trace::InputOrigin;
     use winit::dpi::{PhysicalPosition, PhysicalSize};

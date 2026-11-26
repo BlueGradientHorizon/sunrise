@@ -1065,5 +1065,3 @@ mod tests {
         assert_eq!(ui.scroll.amount, 0.0);
     }
 }
-
-use sunrise_gameplay_common::game::tables::GameItems as _;

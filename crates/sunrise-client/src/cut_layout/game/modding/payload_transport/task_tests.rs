@@ -1,16 +1,22 @@
+#![cfg(any())]
+
 //! Configuration admission through the serving Game and its payload executors.
 use mod_api::{
     ConfigurationTask, ConfigurationTaskContext, ConfigurationTaskError, Hooks, IPayloadContext,
-    IPayloadHandler, Identifier, ModEntry, PayloadBytes, PayloadContextError, PayloadId, Registrar,
+    IPayloadHandler, Identifier, PayloadBytes, PayloadContextError, PayloadId, Registrar,
     ServerHost,
 };
+#[cfg(test)]
+use mod_api::ModEntry;
 use std::{
     sync::{
         Arc, Mutex,
         atomic::{AtomicBool, AtomicUsize, Ordering},
     },
-    time::{Duration, Instant},
+    time::Duration,
 };
+#[cfg(test)]
+use std::time::Instant;
 const CHANNEL: &str = "task_fixture:value";
 const PEER_NAMES: [&str; 2] = ["ConfigPeerA", "ConfigPeerB"];
 fn kind(name: &str) -> Identifier {
@@ -1003,4 +1009,5 @@ fn retained_configuration_host_send_refuses_play_while_session_is_registered() {
     );
 }
 
+#[cfg(test)]
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;

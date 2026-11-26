@@ -3,7 +3,6 @@
 //! `in_fire` has set it on fire and after `on_fire` has burnt 4 health off a
 //! burning one, so the command fails while the stand changes
 //! (tools/test_stand_command_hurt_parity.py measures the same on vanilla 26.3).
-use super::*;
 use crate::game::load_resources;
 use crate::settings::Settings;
 use std::sync::Arc;

@@ -1,4 +1,3 @@
-use super::*;
 use crate::game::creatures::borrowed_panic_tests::BreathPanic;
 use crate::game::creatures::borrowed_panic_tests::Breather;
 use crate::game::creatures::borrowed_panic_tests::Consumer;
@@ -647,4 +646,3 @@ pub(crate) fn with_consumer_game(
     });
 }
 
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;

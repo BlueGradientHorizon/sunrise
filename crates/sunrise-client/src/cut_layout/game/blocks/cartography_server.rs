@@ -1,4 +1,5 @@
 #![cfg(test)]
+
 #[cfg(test)]
 mod tests {
     use sunrise_gameplay_common::game::maps::MapData;
@@ -48,4 +49,3 @@ mod tests {
         });
     }
 }
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;

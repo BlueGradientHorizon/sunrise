@@ -32,6 +32,10 @@ impl ClientGame<'_> {
         let retire = !self.has_level_transaction()
             && !entities::is_committing(&self.common.transactions.committing, self.common.dim);
         let guard = ClosingPhase::new(self, outer);
+        #[cfg(any(test, feature = "test-support"))]
+        guard
+            .game
+            .trace_storage_attempt(if commit { "commit" } else { "abort" }.into());
         if let Some(scope) = level.packets.take()
             && commit
             && let Some(packets) = scope.finish()

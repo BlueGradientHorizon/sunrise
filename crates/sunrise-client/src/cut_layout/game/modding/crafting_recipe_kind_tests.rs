@@ -4,10 +4,9 @@ use std::sync::{
     Arc,
     atomic::{AtomicBool, AtomicUsize, Ordering},
 };
-use {
-    crate::game::*,
-    sunrise_gameplay_common::game::{ItemStack, Recipes, api_values, host, mods},
-};
+use sunrise_gameplay_common::game::ItemStack;
+#[cfg(test)]
+use crate::game::*;
 pub(crate) struct Probe {
     pub tosses: Arc<AtomicUsize>,
     pub(crate) bad_recipe: Arc<AtomicBool>,
@@ -228,6 +227,5 @@ fn registered_crafting_remainder_drops_through_server_item_toss() {
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

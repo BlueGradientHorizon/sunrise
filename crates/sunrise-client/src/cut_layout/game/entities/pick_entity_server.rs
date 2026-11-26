@@ -1,4 +1,5 @@
 #![cfg(test)]
+
 #[cfg(test)]
 pub(crate) mod tests {
     use sunrise_core::geometry::Vec3;
@@ -116,4 +117,3 @@ pub(crate) mod tests {
         );
     }
 }
-use sunrise_gameplay_common::game::pick_entity_common::PickEntityCommonGameExt1 as _;

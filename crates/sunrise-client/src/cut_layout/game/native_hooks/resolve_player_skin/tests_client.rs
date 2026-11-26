@@ -1,4 +1,3 @@
-use super::*;
 use mod_api::PlayerModel;
 use mod_api::PlayerSkinOverride;
 use mod_api::{Identifier, ModEntry};

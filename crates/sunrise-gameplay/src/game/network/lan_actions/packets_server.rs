@@ -1481,10 +1481,6 @@ use sunrise_gameplay_common::game::game_mode_common::GameModeCommonGameExt1 as _
 
 use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
 
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
-
-use sunrise_gameplay_common::game::native_menu_refs_common::NativeMenuRefsCommonGameExt1 as _;
-
 use sunrise_gameplay_common::game::pick_entity_common::PickEntityCommonGameExt1 as _;
 
 use sunrise_gameplay_common::game::player_equip::PlayerEquipGameExt1 as _;

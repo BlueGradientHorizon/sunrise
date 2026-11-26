@@ -78,6 +78,5 @@ fn a_block_part_decides_whether_the_campfire_above_is_a_signal_fire() {
     });
 }
 
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
 use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

@@ -1,4 +1,5 @@
 #![cfg(test)]
+
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
@@ -125,4 +126,3 @@ mod tests {
         });
     }
 }
-use sunrise_gameplay_common::game::tables::GameItems as _;

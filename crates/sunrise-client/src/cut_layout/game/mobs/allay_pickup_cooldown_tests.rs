@@ -9,9 +9,7 @@ use sunrise_level::chunk::Chunk;
 use sunrise_sim::mobs::allay;
 use {
     crate::game::*,
-    sunrise_gameplay_common::game::{
-        Instant, Mob, Options, PathBuf, Progress, Resources, entity, execution_role,
-    },
+    sunrise_gameplay_common::game::{Options, Progress, execution_role},
 };
 
 const SUPPLIED: &str = "00006096-0000-0000-0000-000000000001";

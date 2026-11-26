@@ -214,6 +214,5 @@ fn interception_does_not_send_item_use_or_release_packets() {
     });
 }
 
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
 use sunrise_gameplay_common::game::pick_ray::PickRayGameExt1 as _;

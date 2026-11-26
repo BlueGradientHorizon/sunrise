@@ -2,7 +2,6 @@
 //! copies the stack's `CUSTOM_NAME`), `Cushion.dropItem`'s suppression for a
 //! player with infinite materials, and `BlockAttachedEntity.tick`'s
 //! `discard()` when the support goes away (no `entity_die` game event).
-use super::super::*;
 use crate::game::load_resources;
 use crate::settings::Settings;
 use std::sync::Arc;

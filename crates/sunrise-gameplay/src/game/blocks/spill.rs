@@ -216,11 +216,18 @@ impl crate::game::ServerGame<'_> {
     }
 }
 
+use sunrise_gameplay_common::game::GameGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_hooks::block_entity_save_additional::BlockEntitySaveAdditionalGameExt1 as _;
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use sunrise_core::random::RandomSource;
     use sunrise_gameplay_common::game::spill_common::BlockDropEntity;
+    #[cfg(test)]
     use sunrise_world::level::removal;
 
     #[test]
@@ -288,6 +295,7 @@ mod tests {
 
     use sunrise_core::nbt::Tag;
     use sunrise_items::item_data;
+    #[cfg(test)]
     use sunrise_sim::{block_entity_item, mobs::raider, save};
 
     #[test]
@@ -435,9 +443,3 @@ mod tests {
         }
     }
 }
-
-use sunrise_gameplay_common::game::GameGameExt1 as _;
-
-use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;
-
-use sunrise_gameplay_common::game::native_hooks::block_entity_save_additional::BlockEntitySaveAdditionalGameExt1 as _;

@@ -38,7 +38,7 @@ fn send_team(
 #[ignore = "daily"]
 fn unknown_team_packets_leave_scoreboard_unchanged() {
     in_own_process(
-        "game::remote::sync::team_packet_tests::unknown_team_packets_leave_scoreboard_unchanged",
+        "cut_layout::game::client_side::remote_client::sync_reads::team_packet_tests::unknown_team_packets_leave_scoreboard_unchanged",
         || {
             with_client_game(|game| {
                 send_team(game, "stable", 0, Some("Stable"), &["member"]);

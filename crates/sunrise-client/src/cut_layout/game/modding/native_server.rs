@@ -20,12 +20,12 @@ pub(crate) mod sidebar_tests;
 pub(crate) mod tests {
 
     use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
-    use sunrise_gameplay_common::game::in_own_process;
+    
     use sunrise_gameplay_common::game::transactions::TransactionsGameExt;
 
     use sunrise_gameplay_common::game::native_server::tests::player_guest;
 
-    use sunrise_gameplay::game::server_side::native_item_places::tests::open_to_lan;
+    
 
     use super::*;
 
@@ -495,7 +495,7 @@ pub(crate) mod tests {
 #[cfg(test)]
 pub(crate) mod fake_action_tests {
 
-    use sunrise_gameplay_common::game::api_values::test_snapshot;
+    
     use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
     use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt6;
 
@@ -513,9 +513,9 @@ pub(crate) mod fake_action_tests {
 
     use mod_api::PlayerAction;
     use mod_api::{ActionOutcome, ActionRefused, FakeEffect};
-    use sunrise_gameplay_common::game::native_server::Acting;
+    
 
-    use mod_api::{BlockHit, Hand, PlayerRef};
+    use mod_api::Hand;
 
     use sunrise_items::items::ItemStack;
 

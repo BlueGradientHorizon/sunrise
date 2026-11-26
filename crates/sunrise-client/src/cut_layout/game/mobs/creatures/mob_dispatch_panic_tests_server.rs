@@ -1,4 +1,3 @@
-use super::*;
 use mod_api::__private::{HookPanicReport, take_hook_panics};
 use std::sync::{
     Arc,

@@ -3,15 +3,20 @@
 //! canceled Pre skips the model, layers and the later name tag and leash passes, but not its
 //! flames and shadow. Canceling only Living Pre still calls Player Post without a model. Culled
 //! entities are not asked; the hooks run in draw queue order.
+#[cfg(test)]
 use mod_api::{
     BlockEntityDrawContext, Hooks, RenderLivingPostEvent, RenderLivingPreEvent,
     RenderPlayerPostEvent, RenderPlayerPreEvent,
 };
+#[cfg(test)]
 use std::sync::{Arc, Mutex};
+#[cfg(test)]
 use sunrise_client::mesher::Vertex;
+#[cfg(test)]
 use sunrise_sim::mobs::Mob;
 
 /// What the mod heard, in order, and which entities it cancels.
+#[cfg(test)]
 #[derive(Default)]
 struct Heard {
     events: Vec<String>,
@@ -23,8 +28,10 @@ struct Heard {
 
 /// Records the four callbacks and their model observations. Living Pre draws a marker 100 blocks
 /// above the entity so the test can see which geometry survives cancellation.
+#[cfg(test)]
 struct Pair(Arc<Mutex<Heard>>);
 
+#[cfg(test)]
 fn marker(draw: &mut dyn BlockEntityDrawContext) {
     let corners = [
         [0.0, 101.0, 0.0],
@@ -35,6 +42,7 @@ fn marker(draw: &mut dyn BlockEntityDrawContext) {
     draw.quad("block/stone", corners, [0.0, 0.0, 16.0, 16.0], 0xFF_FFFF);
 }
 
+#[cfg(test)]
 #[mod_api::__subscriptions]
 impl Hooks for Pair {
     fn render_player_pre(
@@ -106,9 +114,11 @@ impl Hooks for Pair {
 }
 
 /// The camera, south of the entities and looking at them.
+#[cfg(test)]
 const CAMERA: glam::DVec3 = glam::DVec3::new(0.5, 64.0, -4.5);
 
 /// A mob of `kind` with id `id`, standing `x` blocks east of the camera's line.
+#[cfg(test)]
 fn mob(game: &crate::game::ClientGame<'_>, kind: &str, id: u32, x: f64) -> Mob {
     let kind = if kind == "minecraft:player" {
         game.client_res().player_type().clone().unwrap()
@@ -120,6 +130,7 @@ fn mob(game: &crate::game::ClientGame<'_>, kind: &str, id: u32, x: f64) -> Mob {
 }
 
 /// How many of `out`'s vertices are 100 or more blocks up: the pre hooks' markers.
+#[cfg(test)]
 fn markers(out: &[Vertex]) -> usize {
     out.iter()
         .filter(|v| v.pos[1] - (64.0 - CAMERA.y) as f32 >= 99.0)
@@ -151,6 +162,15 @@ fn with_pair(heard: &Arc<Mutex<Heard>>, check: impl FnOnce(&mut crate::game::Cli
     });
 }
 
+#[cfg(test)]
+fn with_player_pair(heard: &Arc<Mutex<Heard>>, check: impl FnOnce(&mut crate::game::ClientGame<'_>)) {
+    with_pair(heard, |game| {
+        game.init_remote_for_replay().unwrap();
+        check(game);
+    });
+}
+
+#[cfg(test)]
 fn events(heard: &Arc<Mutex<Heard>>) -> Vec<String> {
     std::mem::take(&mut heard.lock().unwrap().events)
 }
@@ -167,7 +187,7 @@ fn two_entities_are_asked_in_the_draw_queues_order() {
         return;
     }
     let heard = Arc::default();
-    with_pair(&heard, |game| {
+    with_player_pair(&heard, |game| {
         game.client.pack_ids = Some(Default::default());
         game.common
             .mobs
@@ -247,7 +267,7 @@ fn a_spectator_following_an_entity_submits_no_local_body() {
     });
 }
 
-pub(in crate::game) struct BodyWitness {
+pub struct BodyWitness {
     pub id: u32,
     pub vertices: std::ops::Range<usize>,
 }
@@ -258,6 +278,7 @@ thread_local! {
     static BODY_WITNESSES: std::cell::RefCell<Option<Vec<BodyWitness>>> = const { std::cell::RefCell::new(None) };
 }
 
+#[cfg(test)]
 pub(in crate::game) fn witness_body(id: u32, start: usize, end: usize) {
     if start < end {
         BODY_WITNESSES.with_borrow_mut(|witnesses| {
@@ -317,6 +338,7 @@ fn entity_draw_order_after_client_packets() {
     run_entity_draw_order_after_client_packets();
 }
 
+#[cfg(test)]
 pub(in crate::game::client_side) fn run_entity_draw_order_after_client_packets() {
     use sunrise_level::camera_math::CameraType;
     use sunrise_protocol::{
@@ -591,6 +613,7 @@ fn a_canceled_entity_draws_no_name_tag() {
 }
 
 /// A stone floor under the origin, so a standing entity has something to cast a shadow on.
+#[cfg(test)]
 fn place_stone_floor(game: &mut crate::game::ClientGame<'_>) {
     game.common
         .world
@@ -607,6 +630,7 @@ fn place_stone_floor(game: &mut crate::game::ClientGame<'_>) {
 }
 
 /// Vertices of one whole entity frame (`entity_geometry`).
+#[cfg(test)]
 fn entity_frame(game: &mut crate::game::ClientGame<'_>) -> usize {
     let (out, ..) = game.entity_geometry(CAMERA, 1.0, None, Vec::new(), &mut Vec::new());
     out.len()
@@ -614,6 +638,7 @@ fn entity_frame(game: &mut crate::game::ClientGame<'_>) -> usize {
 
 /// The vertices of one whole entity frame with a zombie standing on stone, burning when
 /// `burning`, with entity shadows on when `shadows`.
+#[cfg(test)]
 fn zombie_frame(game: &mut crate::game::ClientGame<'_>, burning: bool, shadows: bool) -> usize {
     let mut zombie = mob(game, "minecraft:zombie", 91, 0.0);
     zombie.fire_ticks = if burning { 100 } else { 0 };
@@ -662,7 +687,7 @@ fn a_canceled_pre_keeps_the_local_players_flames() {
         return;
     }
     let heard: Arc<Mutex<Heard>> = Arc::default();
-    with_pair(&heard, |game| {
+    with_player_pair(&heard, |game| {
         place_stone_floor(game);
         admit_own_player(game, false);
         game.client.settings.entity_shadows = false;
@@ -700,6 +725,7 @@ fn a_culled_entity_is_asked_neither_hook() {
 }
 
 /// Admit this window's player in third person with entity id 4321.
+#[cfg(test)]
 fn admit_own_player(game: &mut crate::game::ClientGame<'_>, spectator: bool) {
     let at = sunrise_core::geometry::Vec3::new(0.5, 64.0, 0.5);
     let mut player = sunrise_sim::motion::PlayerMotion::new(game.common.motion, at).unwrap();
@@ -715,6 +741,7 @@ fn admit_own_player(game: &mut crate::game::ClientGame<'_>, spectator: bool) {
     game.client.player_model.as_mut().unwrap().extra.spectator = spectator;
 }
 
+#[cfg(test)]
 fn own_player_frame(game: &mut crate::game::ClientGame<'_>, spectator: bool) -> Vec<Vertex> {
     admit_own_player(game, spectator);
     game.prepare_entity_culling();
@@ -728,7 +755,7 @@ fn own_player_frame(game: &mut crate::game::ClientGame<'_>, spectator: bool) -> 
 #[ignore = "daily"]
 fn the_player_pair_wraps_the_living_pair() {
     let heard: Arc<Mutex<Heard>> = Arc::default();
-    with_pair(&heard, |game| {
+    with_player_pair(&heard, |game| {
         own_player_frame(game, false);
         assert_eq!(
             events(&heard),
@@ -770,7 +797,7 @@ fn the_player_pair_wraps_the_living_pair() {
 #[ignore = "daily"]
 fn a_spectator_draws_no_layers_but_gets_its_post_hooks() {
     let heard: Arc<Mutex<Heard>> = Arc::default();
-    with_pair(&heard, |game| {
+    with_player_pair(&heard, |game| {
         // This window's player, spectating, in third person.
         own_player_frame(game, true);
         assert_eq!(

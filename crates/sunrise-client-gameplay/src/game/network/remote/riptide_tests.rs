@@ -2,7 +2,6 @@ use std::sync::mpsc::Receiver;
 use sunrise_protocol::buf::Reader;
 use sunrise_sim::lan::Out;
 use {
-    crate::game::remote::*,
     sunrise_gameplay_common::game::remote::{C, Chunk, Vec3, play},
 };
 

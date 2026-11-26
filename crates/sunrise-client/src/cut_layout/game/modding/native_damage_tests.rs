@@ -8,7 +8,9 @@ use mod_api::{
 };
 use std::sync::{Arc, Mutex};
 use sunrise_command::args::GameMode;
-use sunrise_core::{geometry::Vec3, random::RandomSource};
+use sunrise_core::geometry::Vec3;
+#[cfg(test)]
+use sunrise_core::random::RandomSource;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::mobs::{Damage, DamageKind, Mob};
 use sunrise_sim::motion::PlayerMotion;

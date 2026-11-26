@@ -345,13 +345,9 @@ impl crate::game::ServerGame<'_> {
 
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
-    use super::super::native_entity_refs::tests::with_game;
     use super::*;
-    use mod_api::WorldEpoch;
     use sunrise_core::geometry::Vec3;
-    use sunrise_gameplay_common::game::api_values::{StackReadError, TryIntoApi, TryIntoEngine};
-    use sunrise_items::items::ItemStack;
-    use sunrise_sim::{merchant::ItemCost, mobs::Mob};
+    use sunrise_sim::mobs::Mob;
 
     pub fn spawn(game: &mut crate::game::ServerGame<'_>, id: u32, kind: &str) -> MerchantRef {
         let kind = game.res.mob_types().get(kind).unwrap().clone();

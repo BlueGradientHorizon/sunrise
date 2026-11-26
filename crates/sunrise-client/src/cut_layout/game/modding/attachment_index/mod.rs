@@ -3,23 +3,37 @@ use mod_api::AttachmentHolder;
 use mod_api::ChunkRef;
 use std::sync::Arc;
 use sunrise_gameplay_common::game::Dim;
+
+use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_lifecycle_common::NativeLifecycleCommonGameExt1 as _;
+
 #[cfg(test)]
 mod attached_storage_tests;
+
 #[cfg(test)]
 mod idle_tests;
+
 #[cfg(test)]
 mod mob_tests;
+
 #[cfg(test)]
 mod painting_tests;
+
 #[cfg(test)]
 mod player_tests;
+
 #[cfg(test)]
 mod query_tests;
+
 #[cfg(test)]
 mod saved_entity_tests;
 
 #[cfg(test)]
 mod block_entity_tests;
+
 #[cfg(test)]
 mod boundary_tests;
 
@@ -158,8 +172,3 @@ mod tests {
         });
     }
 }
-use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
-
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
-
-use sunrise_gameplay_common::game::native_lifecycle_common::NativeLifecycleCommonGameExt1 as _;

@@ -177,11 +177,7 @@ pub(crate) mod tests {
 #[cfg(test)]
 mod unused_feature_startup_tests {
     use super::*;
-    use {
-        sunrise_gameplay_common::game::growth_features,
-        sunrise_gameplay_common::game::pack_discovery::data_repository,
-        sunrise_gameplay_common::game::world_preload::worldgen_overrides_of,
-    };
+    use sunrise_gameplay_common::game::world_preload::worldgen_overrides_of;
 
     #[test]
     #[ignore = "daily"]
@@ -290,11 +286,7 @@ mod unused_feature_startup_tests {
 #[cfg(test)]
 mod unused_feature_preservation_tests {
     use super::*;
-    use {
-        sunrise_gameplay_common::game::growth_features,
-        sunrise_gameplay_common::game::pack_discovery::data_repository,
-        sunrise_gameplay_common::game::world_preload::worldgen_overrides_of,
-    };
+    use sunrise_gameplay_common::game::world_preload::worldgen_overrides_of;
 
     #[test]
     #[ignore = "daily"]

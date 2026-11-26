@@ -56,6 +56,10 @@ impl View {
     pub fn len(&self) -> usize {
         self.parts.iter().map(|p| p.1).sum()
     }
+    pub fn is_empty(&self) -> bool {
+        self.parts.iter().all(|&(_, size)| size == 0)
+    }
+
     pub fn locate(&self, mut slot: usize) -> Option<(Pos, usize)> {
         for &(pos, size) in &self.parts {
             if slot < size {

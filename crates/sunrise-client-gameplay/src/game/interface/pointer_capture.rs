@@ -429,6 +429,10 @@ fn top_screen_pauses(dialog: Option<bool>, book: Option<bool>, screen: bool, win
     dialog.or(book).unwrap_or(screen || win)
 }
 
+use sunrise_gameplay_common::game::integrated_common::IntegratedCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;
+
 #[cfg(test)]
 mod tests {
     use super::{studio_suppresses_focus_pause, top_screen_pauses};
@@ -463,7 +467,3 @@ mod tests {
         assert!(!top_screen_pauses(Some(false), Some(true), false, false));
     }
 }
-
-use sunrise_gameplay_common::game::integrated_common::IntegratedCommonGameExt1 as _;
-
-use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

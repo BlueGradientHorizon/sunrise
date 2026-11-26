@@ -139,6 +139,7 @@ fn a_model_callback_clear_discards_particle_geometry_already_extracted() {
     });
 }
 
+#[cfg(test)]
 pub(in crate::game) fn add_frame_particles(game: &mut crate::game::ClientGame<'_>) {
     fill(game);
     for _ in 0..20 {

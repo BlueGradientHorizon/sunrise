@@ -7,7 +7,6 @@ use sunrise_gameplay::game::server_side::fishing::WARNED_TABLES;
 use sunrise_gameplay_common::game::fishing_common::{Hook, State};
 use sunrise_items::items::ItemStack;
 // Included as fishing's child so fixtures can construct its private hook state.
-use super::*;
 use std::sync::{Arc, Mutex};
 use sunrise_sim::motion::PlayerMotion;
 use {

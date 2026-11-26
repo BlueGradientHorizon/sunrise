@@ -168,7 +168,7 @@ pub struct ChatLayout {
 /// command block's three mode switches (none for a minecart) and Done/Cancel.
 /// Read by the drawing and `command_block_click`.
 #[derive(Clone, Debug, PartialEq)]
-pub(in crate::game) struct CommandBlockLayout {
+pub struct CommandBlockLayout {
     /// A minecart's screen (`getPreviousY` 150, no mode switches): an input,
     /// so another kind of edit screen opening at the same size rebuilds.
     pub(in crate::game) cart: bool,
@@ -929,6 +929,8 @@ impl crate::game::ClientGame<'_> {
     }
 }
 
+use sunrise_gameplay_common::game::native_book_displays::NativeBookDisplaysGameExt1 as _;
+
 #[cfg(feature = "client")]
 #[cfg(test)]
 mod tests {
@@ -1283,5 +1285,3 @@ mod tests {
         assert_eq!(state.builds, 1);
     }
 }
-
-use sunrise_gameplay_common::game::native_book_displays::NativeBookDisplaysGameExt1 as _;

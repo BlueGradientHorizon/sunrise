@@ -315,31 +315,6 @@ fn log_unreportable(menu: &SlotChangedMenu, refusal: &UnreportableSlot) {
     );
 }
 
-/// What the block-backed fast path costs, counted on the production path for the dailies: the
-/// container snapshots taken and the menu contexts built for `menu_slot_changed`.
-#[cfg(any(test, feature = "test-support"))]
-pub mod probe {
-    use std::cell::Cell;
-
-    thread_local! {
-        static SNAPSHOTS: Cell<usize> = const { Cell::new(0) };
-        static CONTEXTS: Cell<usize> = const { Cell::new(0) };
-    }
-
-    pub(in crate::game::server_side) fn snapshot() {
-        SNAPSHOTS.set(SNAPSHOTS.get() + 1);
-    }
-
-    pub(super) fn context() {
-        CONTEXTS.set(CONTEXTS.get() + 1);
-    }
-
-    /// `(snapshots, contexts)` since the last call, which starts the count again.
-    pub fn take() -> (usize, usize) {
-        (SNAPSHOTS.replace(0), CONTEXTS.replace(0))
-    }
-}
-
 impl crate::game::ServerGame<'_> {
     /// `menu_slot_changed` for one batch of `menu`'s non-result slot changes: inside a click step
     /// (`live` is the click's lifted `Menu`), or for a committed or external write (`None`).
@@ -923,6 +898,39 @@ pub(in crate::game::server_side) fn block_menu_viewed(guests: &GuestList, pos: P
     !guests.block_mod_menu_viewers(pos).is_empty()
 }
 
+use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
+
+use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
+
+use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;
+
+/// What the block-backed fast path costs, counted on the production path for the dailies: the
+/// container snapshots taken and the menu contexts built for `menu_slot_changed`.
+#[cfg(any(test, feature = "test-support"))]
+pub mod probe {
+    use std::cell::Cell;
+
+    thread_local! {
+        static SNAPSHOTS: Cell<usize> = const { Cell::new(0) };
+        static CONTEXTS: Cell<usize> = const { Cell::new(0) };
+    }
+
+    pub(in crate::game::server_side) fn snapshot() {
+        SNAPSHOTS.set(SNAPSHOTS.get() + 1);
+    }
+
+    pub(super) fn context() {
+        CONTEXTS.set(CONTEXTS.get() + 1);
+    }
+
+    /// `(snapshots, contexts)` since the last call, which starts the count again.
+    pub fn take() -> (usize, usize) {
+        (SNAPSHOTS.replace(0), CONTEXTS.replace(0))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
@@ -1398,11 +1406,3 @@ mod tests {
         });
     }
 }
-
-use sunrise_gameplay_common::game::tables::GameItems as _;
-
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
-
-use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
-
-use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;

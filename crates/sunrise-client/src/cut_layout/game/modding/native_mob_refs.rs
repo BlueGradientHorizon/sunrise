@@ -3,6 +3,16 @@ use mod_api::EntityRef;
 use mod_api::LivingRef;
 use mod_api::MobRef;
 use sunrise_sim::mobs::Who;
+use sunrise_gameplay_common::game::block_props::BlockPropsGameExt2 as _;
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::creatures::ModGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt6 as _;
+
 #[cfg(test)]
 pub(crate) mod tests {
     use super::super::native_entity_refs::tests::with_game;
@@ -994,12 +1004,3 @@ pub(crate) mod tests {
         });
     }
 }
-use sunrise_gameplay_common::game::block_props::BlockPropsGameExt2 as _;
-
-use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
-
-use sunrise_gameplay_common::game::creatures::ModGameExt1 as _;
-
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
-
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt6 as _;

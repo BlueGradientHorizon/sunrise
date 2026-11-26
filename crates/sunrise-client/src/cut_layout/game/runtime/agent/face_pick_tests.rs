@@ -2,7 +2,6 @@
 //! and `look-at entity ID` wait for the next tick or frame pick (client_pick.rs) instead of
 //! picking themselves, so a `client_pick` listener runs only in those calls. `attack ID`
 //! reports what the pick its click was taken with held.
-use super::*;
 use mod_api::{ClientHost, ClientPickEvent, CrosshairTarget, Hooks};
 use serde_json::Value;
 use serde_json::json;

@@ -1009,8 +1009,6 @@ pub mod attribute_missing_tests;
 
 #[cfg(any(test, feature = "test-support"))]
 pub mod datapack_damage_tests {
-    use crate::game::server_side::commands::world_cmds::datapack_damage_tests::with_pack;
-    use crate::game::{commands::Target, native_entity_refs::tests::with_game};
     use sunrise_core::geometry::Vec3;
     use sunrise_sim::mobs::Mob;
 

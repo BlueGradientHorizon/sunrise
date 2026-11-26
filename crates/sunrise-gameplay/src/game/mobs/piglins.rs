@@ -707,6 +707,16 @@ fn piglin_replace(
     equip::can_replace_current_item(new, Some(worn), slot, preferred)
 }
 
+use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::piglins_common::PiglinsCommonGameExt1 as _;
+
 #[cfg(test)]
 mod tests {
     use sunrise_gameplay_common::game::server_side::piglins::tests::armor;
@@ -801,13 +811,3 @@ mod tests {
         ));
     }
 }
-
-use sunrise_gameplay_common::game::tables::GameItems as _;
-
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
-
-use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
-
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
-
-use sunrise_gameplay_common::game::piglins_common::PiglinsCommonGameExt1 as _;

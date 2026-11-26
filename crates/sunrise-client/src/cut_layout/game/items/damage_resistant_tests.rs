@@ -1,5 +1,4 @@
 //! The effective damage-resistant component at its actual item-damage callers.
-use super::*;
 use std::sync::Arc;
 use sunrise_core::{geometry::Vec3, position::BlockPos};
 use sunrise_gameplay_common::game::GameGameExt1;

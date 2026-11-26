@@ -1,4 +1,6 @@
 #![cfg(test)]
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;
+
 #[cfg(test)]
 mod attachment_membership_tests {
     use sunrise_core::geometry::Vec3;
@@ -255,4 +257,3 @@ mod attachment_membership_tests {
         });
     }
 }
-use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

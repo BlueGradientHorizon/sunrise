@@ -78,7 +78,7 @@ impl Integrated {
         self.flags
             .debug
             .lock()
-            .map(|d| d.clone())
+            .map(|d| *d)
             .unwrap_or_default()
     }
     /// `MinecraftServer.isCurrentlySaving`.

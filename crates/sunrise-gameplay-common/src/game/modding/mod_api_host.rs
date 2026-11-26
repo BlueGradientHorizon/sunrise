@@ -79,14 +79,14 @@ pub(in crate::game) fn level_side(level: &impl SidedLevel) -> mod_api::LevelSide
 }
 
 /// The prediction's block states and the live block entities it invalidated.
-pub(in crate::game) trait PredictedLevel:
+pub trait PredictedLevel:
     sunrise_world::level::LevelAccess
 {
     fn block_entity_removed(&self, pos: BlockPos) -> bool;
 }
 
 /// The level read by fire-odds listeners, including edits already made in a dry prediction.
-pub(in crate::game) struct FireOddsLevel<'a> {
+pub struct FireOddsLevel<'a> {
     pub(in crate::game) base: &'a super::GameLevel<'a>,
     pub(in crate::game) prediction: Option<&'a dyn PredictedLevel>,
 }
@@ -1268,8 +1268,7 @@ impl super::GameLevel<'_> {
     }
 }
 
+#[cfg(test)]
 use crate::game::native_block_entity_read::NativeBlockEntityReadGameExt1 as _;
-
-use crate::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
-
+#[cfg(test)]
 use crate::game::native_world_read_common::NativeWorldReadGameExt1 as _;

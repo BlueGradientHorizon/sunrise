@@ -163,4 +163,3 @@ fn a_client_tells_a_forgotten_column_but_not_its_level_going() {
 
 use sunrise_gameplay_common::game::side_ops::events::EventsSideGameExt as _;
 
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;

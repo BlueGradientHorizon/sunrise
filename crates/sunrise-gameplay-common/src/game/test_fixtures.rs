@@ -1,9 +1,17 @@
-use std::sync::Mutex;
+use std::sync::{Condvar, LazyLock, Mutex};
 pub use tempfile;
 
 /// Bounds concurrent full resource loads and fresh-process children to keep peak memory low.
-static HEAVY_GATE: std::sync::LazyLock<(Mutex<(usize, usize, usize)>, std::sync::Condvar)> =
-    std::sync::LazyLock::new(|| (Mutex::new((0, 0, 0)), std::sync::Condvar::new()));
+static HEAVY_GATE: LazyLock<(Mutex<HeavyLoadState>, Condvar)> =
+    LazyLock::new(|| (Mutex::new(HeavyLoadState::default()), Condvar::new()));
+const MAX_TOTAL: usize = 2;
+
+#[derive(Default)]
+struct HeavyLoadState {
+    loading_in_process: bool,
+    running: usize,
+    waiting_to_load_in_process: usize,
+}
 
 pub struct HeavyLoadPermit {
     in_process: bool,
@@ -14,36 +22,37 @@ impl Drop for HeavyLoadPermit {
         let (lock, cv) = &*HEAVY_GATE;
         let mut state = lock.lock().unwrap_or_else(|e| e.into_inner());
         if self.in_process {
-            state.0 -= 1;
+            state.loading_in_process = false;
         }
-        state.1 -= 1;
+        state.running -= 1;
         cv.notify_all();
     }
 }
 
 pub fn acquire_in_process_load_permit() -> HeavyLoadPermit {
-    const MAX_IN_PROCESS: usize = 1;
-    const MAX_TOTAL: usize = 2;
     let (lock, cv) = &*HEAVY_GATE;
     let mut state = lock.lock().unwrap_or_else(|e| e.into_inner());
-    state.2 += 1;
-    while state.0 >= MAX_IN_PROCESS || state.1 >= MAX_TOTAL {
+    state.waiting_to_load_in_process += 1;
+    while state.loading_in_process || state.running >= MAX_TOTAL {
         state = cv.wait(state).unwrap_or_else(|e| e.into_inner());
     }
-    state.2 -= 1;
-    state.0 += 1;
-    state.1 += 1;
+    state.waiting_to_load_in_process -= 1;
+    state.loading_in_process = true;
+    state.running += 1;
+    cv.notify_all();
     HeavyLoadPermit { in_process: true }
 }
 
 pub fn acquire_fresh_child_permit() -> HeavyLoadPermit {
-    const MAX_TOTAL: usize = 2;
     let (lock, cv) = &*HEAVY_GATE;
     let mut state = lock.lock().unwrap_or_else(|e| e.into_inner());
-    while state.1 >= MAX_TOTAL || state.2 > 0 {
+    // Reserve a slot for a waiting load only if one is able to start.
+    while state.running >= MAX_TOTAL
+        || (!state.loading_in_process && state.waiting_to_load_in_process > 0)
+    {
         state = cv.wait(state).unwrap_or_else(|e| e.into_inner());
     }
-    state.1 += 1;
+    state.running += 1;
     HeavyLoadPermit { in_process: false }
 }
 
@@ -83,12 +92,23 @@ pub fn run_fresh_cases(name: &str, flag: &str, cases: &[&str]) -> bool {
     run_fresh_cases_at_once(name, flag, cases, 1)
 }
 
+pub fn child_test_name(name: &str) -> std::borrow::Cow<'_, str> {
+    let thread = std::thread::current();
+    if let Some(current) = thread.name()
+        && current.strip_prefix("cut_layout::") == Some(name)
+    {
+        return std::borrow::Cow::Owned(current.to_owned());
+    }
+    std::borrow::Cow::Borrowed(name)
+}
+
 /// [`run_fresh_cases`] with up to `at_once` children running together, for a test that runs
 /// alone in its job: each child still has its own process and folders.
 pub fn run_fresh_cases_at_once(name: &str, flag: &str, cases: &[&str], at_once: usize) -> bool {
     if std::env::var_os(flag).is_some() {
         return false;
     }
+    let name = child_test_name(name);
     let resources = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").expect(
         "SUNRISE_TEST_RESOURCES must name the prepared resources (.local/sunrise-client/<version>)",
     ))
@@ -105,7 +125,7 @@ pub fn run_fresh_cases_at_once(name: &str, flag: &str, cases: &[&str], at_once: 
             .args([
                 "--ignored",
                 "--exact",
-                name,
+                name.as_ref(),
                 "--nocapture",
                 "--test-threads=4",
             ])
@@ -128,7 +148,7 @@ pub fn run_fresh_cases_at_once(name: &str, flag: &str, cases: &[&str], at_once: 
             std::fs::create_dir(&home).unwrap();
             command.env(key, home);
         }
-        let output = output_within(&mut command, name, case);
+        let output = output_within(&mut command, &name, case);
         std::fs::remove_dir_all(scratch).unwrap();
         output
     };
@@ -284,4 +304,83 @@ pub fn fixture_facts_mut(
     resources: &mut std::sync::Arc<super::Resources>,
 ) -> &mut sunrise_items::blocks::BlockFacts {
     &mut std::sync::Arc::get_mut(resources).unwrap().core.facts
+}
+
+pub fn prepare_game_boot(
+    root: &std::path::Path,
+    register: fn(
+        Vec<String>,
+        &[&str],
+        &mod_api::__private::RuleSchema<'_>,
+        fn(&mod_api::DimensionSettings) -> bool,
+    ),
+) {
+    super::native_hooks::install_client_hooks();
+    register_game_keys(fixture_block_names(root).iter().cloned(), register);
+    let context =
+        <mod_api::RegistrationContext as mod_api::__private::game::RegistrationContextNew>::new();
+    mod_api::__private::install_content_owners(context.mods().iter().flat_map(|package| {
+        let owner = package.served_by().unwrap_or_else(|| package.id());
+        package
+            .namespaces()
+            .map(move |namespace| (namespace, owner))
+    }));
+    assert!(
+        mod_api::__private::content_owners_published(),
+        "fixture content ownership must be published before resource loading"
+    );
+    super::mods::resolve_particle_providers(
+        &sunrise_assets::resource_source::ResourceSource::directory(root.to_path_buf()),
+    )
+    .unwrap();
+}
+
+pub fn register_game_keys(
+    ids: impl IntoIterator<Item = String>,
+    register: fn(
+        Vec<String>,
+        &[&str],
+        &mod_api::__private::RuleSchema<'_>,
+        fn(&mod_api::DimensionSettings) -> bool,
+    ),
+) {
+    let mod_fluids = sunrise_world::fluid::mod_fluids();
+    let mod_fluids: Vec<&str> = mod_fluids
+        .iter()
+        .flat_map(|(_, fluid)| [fluid.id.as_str(), fluid.flowing_id.as_str()])
+        .collect();
+    super::api_values::with_rule_schema(|schema| {
+        register(
+            ids.into_iter().collect(),
+            &mod_fluids,
+            schema,
+            super::native_dimensions::fixture_valid_shape,
+        )
+    });
+    mod_api::__private::resolve_effects(
+        sunrise_game_data::potions::all_effects()
+            .map(|def| sunrise_game_data::potions::namespaced(def.id)),
+        |id| sunrise_game_data::potions::effect(id).map(|def| def.index),
+    )
+    .unwrap();
+    mod_api::__private::validate_effect_part_owners(|id| {
+        sunrise_game_data::potions::effect(id)?.owner
+    })
+    .unwrap();
+    if let Some(types) = sunrise_game_data::block_entity_types::current() {
+        // Registration just replaced the mod snapshot, but the process-wide engine
+        // table can still belong to an earlier fixture. Include this fixture's
+        // declarations before resolving its requested keys, as content loading does.
+        let declared = mod_api::__private::block_entity_types();
+        mod_api::__private::resolve_block_entity_types(
+            types
+                .names()
+                .chain(declared.iter().map(|(_, kind)| kind.id.as_str())),
+            |id| {
+                (types.key(id).is_some() || declared.iter().any(|(_, kind)| kind.id == id))
+                    .then_some(())
+            },
+        )
+        .unwrap();
+    }
 }

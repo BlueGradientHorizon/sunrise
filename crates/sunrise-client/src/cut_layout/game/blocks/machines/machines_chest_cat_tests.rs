@@ -5,6 +5,7 @@
 //! that predicate, so a sitting cat leaves the comparator at 0. A hopper's
 //! `getContainer(.., true)` ignores the block, and the menu path keeps
 //! closing as before.
+#[cfg(test)]
 use super::*;
 use std::sync::Arc;
 use sunrise_core::geometry::Vec3;
@@ -143,4 +144,5 @@ fn a_conductor_above_a_chest_still_silences_the_comparator() {
 
 use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
 
+#[cfg(test)]
 use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;

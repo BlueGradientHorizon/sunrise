@@ -87,4 +87,3 @@ fn each_mod_block_entity_of_an_unloading_chunk_is_told_once() {
     let _ = std::fs::remove_dir_all(&saves);
 }
 
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;

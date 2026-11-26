@@ -9,7 +9,6 @@ use sunrise_items::items::ItemStack;
 use sunrise_sim::cauldron::{Outcome, interactions::Entry};
 use sunrise_sim::first_person_sim::Hand;
 use {
-    crate::game::cauldron_interactions::*,
     sunrise_gameplay_common::game::cauldron_interactions::{
         Arc, Items, Registrar, clear, install, snapshot,
     },
@@ -22,7 +21,7 @@ use {
 
 pub(crate) const POS: [i32; 3] = [0, 64, 0];
 #[derive(Default)]
-pub(in crate::game) struct Seen {
+pub(crate) struct Seen {
     pub(in crate::game) fail_preparation: AtomicBool,
     pub(in crate::game) calls: AtomicUsize,
     pub(in crate::game) actor: AtomicUsize,
@@ -2055,6 +2054,7 @@ use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
+#[cfg(test)]
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_lifecycle_common::NativeLifecycleCommonGameExt1 as _;

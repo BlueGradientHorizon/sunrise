@@ -1,5 +1,4 @@
 //! Installed native listeners intercept the AI setter through the real server host.
-use super::*;
 use mod_api::EntityRef;
 use mod_api::LivingRef;
 use std::sync::{Arc, Mutex};
@@ -150,4 +149,5 @@ fn installed_native_listener_intercepts_ai_setter_and_preserves_species_effects(
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
+#[cfg(test)]
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

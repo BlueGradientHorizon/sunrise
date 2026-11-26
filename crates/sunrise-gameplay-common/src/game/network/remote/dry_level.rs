@@ -486,6 +486,4 @@ impl<'w> DryLevel<'w> {
     }
 }
 
-use crate::game::weather::WeatherGameExt as _;
-
 use crate::game::GameGameExt1 as _;

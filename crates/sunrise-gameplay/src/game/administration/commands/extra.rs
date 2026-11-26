@@ -112,7 +112,7 @@ pub struct CommandExtras {
     /// `debugCommandProfilerDelayStart`: the profiler starts with the next tick.
     pub profiler_delay: bool,
     /// `/fetchprofile name|id` lookups still running.
-    pub profile_fetches: Vec<ProfileFetch>,
+    pub(in crate::game) profile_fetches: Vec<ProfileFetch>,
     /// The `/jfr start` recording: when it started and the tick count then.
     pub jfr: Option<(Instant, u64, String)>,
     /// Waypoint icons changed by `/waypoint modify`.
@@ -135,7 +135,7 @@ pub struct CommandExtras {
     /// does for a command that calls no `broadcastChanges` (`/loot give`).
     pub broadcast_announced: usize,
     /// The running `/pregen` task.
-    pub pregen: Option<super::pregen::PregenTask>,
+    pub(in crate::game) pregen: Option<super::pregen::PregenTask>,
 }
 
 pub(in crate::game) fn num(n: impl std::fmt::Display) -> Text {

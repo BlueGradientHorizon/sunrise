@@ -331,6 +331,8 @@ impl crate::game::ServerGame<'_> {
     }
 }
 
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
+
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use super::invalid_selector;
@@ -373,5 +375,3 @@ pub(in crate::game) mod tests {
         );
     }
 }
-
-use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;

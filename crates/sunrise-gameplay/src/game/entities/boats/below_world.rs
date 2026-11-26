@@ -51,6 +51,8 @@ impl ServerGame<'_> {
     }
 }
 
+use sunrise_gameplay_common::game::native_ticks::NativeTicksGameExt1 as _;
+
 #[cfg(test)]
 mod tests {
     use super::below_world;
@@ -66,5 +68,3 @@ mod tests {
         assert!(below_world(-64.5, 0));
     }
 }
-
-use sunrise_gameplay_common::game::native_ticks::NativeTicksGameExt1 as _;

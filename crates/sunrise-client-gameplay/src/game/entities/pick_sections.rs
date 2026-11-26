@@ -1374,6 +1374,12 @@ impl crate::game::ClientGame<'_> {
     }
 }
 
+use sunrise_gameplay_common::game::side_ops::mobs_rest::MobsRestSideGameExt as _;
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
 #[cfg(feature = "client")]
 #[cfg(test)]
 mod tests {
@@ -1429,9 +1435,3 @@ mod tests {
         assert_eq!(seen, [55]);
     }
 }
-
-use sunrise_gameplay_common::game::side_ops::mobs_rest::MobsRestSideGameExt as _;
-
-use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
-
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

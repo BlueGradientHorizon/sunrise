@@ -164,4 +164,3 @@ fn a_mods_fluid_is_placed_flows_is_collected_and_saved() {
     }
 }
 
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;

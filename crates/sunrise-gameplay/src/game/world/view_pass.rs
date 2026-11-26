@@ -136,9 +136,7 @@ pub mod tests {
     use sunrise_gameplay_common::game::server_side::view_pass::tests::sent;
 
     use super::*;
-    use std::time::{Duration, Instant};
     use sunrise_protocol::{
-        buf::Reader,
         packets::play::Clientbound as C,
         viewed_levels::{CHANNEL, Level::Index, Message, REVISION_3, ScopedPacket},
     };
@@ -267,7 +265,5 @@ pub mod tests {
             .collect()
     }
 }
-
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_hooks::block_entity_on_load::BlockEntityOnLoadGameExt1 as _;

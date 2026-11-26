@@ -12,7 +12,7 @@ pub(crate) mod tests {
     use super::*;
 
     use sunrise_sim::{
-        mobs::{Mob, Species},
+        mobs::Mob,
         motion::PlayerMotion,
         thrown_trident::ThrownTrident,
     };

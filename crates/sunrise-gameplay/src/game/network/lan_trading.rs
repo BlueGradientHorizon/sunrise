@@ -1038,16 +1038,13 @@ impl crate::game::ServerGame<'_> {
 pub mod tests {
     use sunrise_gameplay_common::game::server_side::native_merchant_refs::tests::offer;
 
-    use super::super::native_entity_refs::tests::with_game;
     use super::*;
     use crate::game::lan::LanSettings;
     use crate::game::server_side::native_merchant_refs::tests::spawn;
-    use mod_api::ServerHost;
     use std::sync::{
         Arc,
         atomic::{AtomicI32, AtomicUsize},
     };
-    use sunrise_gameplay_common::game::api_values::TryIntoApi;
     use sunrise_protocol::packets::configuration::ClientInformation;
     use sunrise_sim::{
         lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig},
@@ -1206,6 +1203,5 @@ use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
 
 use sunrise_gameplay_common::game::stacked_on_other::StackedOnOtherGameExt1 as _;

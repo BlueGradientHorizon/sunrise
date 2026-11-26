@@ -186,4 +186,5 @@ impl engine::LootTags for Tags {
     }
 }
 
+#[cfg(test)]
 use crate::game::tables::WorldTablesExt as _;

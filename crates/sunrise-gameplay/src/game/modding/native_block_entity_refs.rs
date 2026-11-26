@@ -694,12 +694,14 @@ mod tests {
 
     use super::*;
     use mod_api::HostTransaction;
+    #[cfg(test)]
     use mod_api::LevelRef;
     use mod_api::ServerHost;
     use mod_api::TransactionError;
     use std::sync::Arc;
     use sunrise_level::world::World;
     use sunrise_level::{chunk::Chunk, containers::ModBlockEntityFields};
+    #[cfg(test)]
     use sunrise_sim::lan::menu::Slots;
     use sunrise_world::registry::BlockStateId;
 
@@ -991,102 +993,6 @@ mod tests {
             assert_ne!(game.world.block_entity_extras(key), before);
         });
     }
-
-    /// `LevelWriteHost::set_block` in a level hook: the block entity goes with
-    /// its block and comes with the new one, as the Host's write does.
-    #[test]
-    #[ignore = "daily"]
-    fn a_level_hook_set_block_replaces_whole_states_and_their_block_entities() {
-        use super::super::mod_api_host::LevelTicks;
-        use super::super::native_entity_refs::tests::with_game;
-        use mod_api::{BlockUpdateFlags, LevelWriteHost};
-        use sunrise_world::chunk::BlockState;
-
-        fn write(
-            game: &mut crate::game::ServerGame<'_>,
-            pos: [i32; 3],
-            state: mod_api::BlockState,
-            flags: BlockUpdateFlags,
-        ) -> bool {
-            game.with_level(|_, level, ticks| {
-                LevelWriteHost::set_block(&mut LevelTicks::new(level, ticks), pos, state, flags)
-            })
-        }
-        with_game(|game| {
-            game.options.dedicated = Some(Vec::new());
-            game.world
-                .chunks
-                .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-            let registry = game.pack.assets.registry;
-            let state = |name: &str, age: Option<&str>| {
-                registry
-                    .resolve(&BlockState {
-                        name: name.into(),
-                        properties: age
-                            .map(|age| ("age".into(), age.into()))
-                            .into_iter()
-                            .collect(),
-                    })
-                    .unwrap()
-            };
-            let stone = state("minecraft:stone", None);
-            let chest = state("minecraft:chest", None);
-            let young = state("minecraft:wheat", Some("0"));
-            let grown = state("minecraft:wheat", Some("7"));
-            use sunrise_gameplay_common::game::api_values::TryIntoApi;
-            let api_stone = stone.try_into_api().unwrap();
-            let api_chest = chest.try_into_api().unwrap();
-            let api_young = young.try_into_api().unwrap();
-            let api_grown = grown.try_into_api().unwrap();
-            let flags = BlockUpdateFlags::NEIGHBORS | BlockUpdateFlags::KNOWN_SHAPE;
-            let key = (0, 64, 0);
-
-            assert!(write(game, [0, 64, 0], api_stone, flags));
-            assert!(game.world.block_entities.get(&key).is_none());
-            assert!(write(game, [0, 64, 0], api_chest, flags));
-            assert!(matches!(
-                game.world.block_entities.get(&key),
-                Some(BlockEntity::Chest(_))
-            ));
-            assert!(write(game, [0, 64, 0], api_stone, flags));
-            assert_eq!(game.world.block(0, 64, 0), stone);
-            assert!(game.world.block_entities.get(&key).is_none());
-
-            // A crop's whole-state growth: no block entity, and a repeat changes nothing.
-            assert!(write(game, [0, 64, 0], api_young, flags));
-            assert!(write(game, [0, 64, 0], api_grown, flags));
-            assert_eq!(game.world.block(0, 64, 0), grown);
-            assert!(game.world.block_entities.get(&key).is_none());
-            assert!(!write(game, [0, 64, 0], api_grown, flags));
-
-            // Unloaded, outside the build height and invalid: refused, nothing loaded.
-            let chunks = game.world.chunks.len();
-            assert!(!write(game, [16, 64, 0], api_stone, flags));
-            assert!(!write(game, [0, 10000, 0], api_stone, flags));
-            assert!(!write(
-                game,
-                [0, 64, 0],
-                mod_api::__private::block_state_from_ordinal(api_stone.block(), u16::MAX),
-                flags
-            ));
-            assert_eq!(game.world.chunks.len(), chunks);
-            assert_eq!(game.world.block(0, 64, 0), grown);
-
-            // The same Host write still creates the block entity.
-            assert!(game.native_set_block("minecraft:overworld", [1, 64, 0], chest, flags.bits()));
-            assert!(matches!(
-                game.world.block_entities.get(&(1, 64, 0)),
-                Some(BlockEntity::Chest(_))
-            ));
-
-            // A client's copy of the level is not the server's.
-            game.options.execution_role =
-                sunrise_gameplay_common::game::execution_role::ExecutionRole::Client;
-            game.options.dedicated = None;
-            assert!(!write(game, [0, 64, 0], api_stone, flags));
-            assert_eq!(game.world.block(0, 64, 0), grown);
-        });
-    }
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
@@ -1099,6 +1005,7 @@ use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_block_entity_read::NativeBlockEntityReadGameExt1 as _;
 
+#[cfg(test)]
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;

@@ -3,7 +3,6 @@
 //! other effect an entity effect in its colour, faint when ambient. This is
 //! the list `LivingEntity.tickEffects` swirls around the window's player and
 //! around the mobs of this game.
-use super::*;
 use std::path::PathBuf;
 use std::time::Instant;
 use sunrise_level::effects::EffectInstance;
@@ -12,7 +11,7 @@ use sunrise_level::particle_options::{ParticleOptions, ParticleType};
 use sunrise_sim::motion::PlayerMotion;
 use {
     crate::game::*,
-    sunrise_gameplay_common::game::{Options, Progress, Vec3, World, entity, execution_role},
+    sunrise_gameplay_common::game::{Options, Progress, Vec3, World, execution_role},
 };
 
 /// The particle type an effect shows, or a panic naming the effect.

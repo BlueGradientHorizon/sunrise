@@ -647,7 +647,7 @@ pub(crate) mod movement_predicate_tests {
     use sunrise_core::position::BlockPos;
     use sunrise_gameplay::game::game_tests::tests::server_game;
     use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
-    use sunrise_sim::advancements as adv;
+    
 
     #[test]
     #[ignore = "daily"]
@@ -759,4 +759,5 @@ pub(crate) mod movement_predicate_tests {
 }
 use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
 
+#[cfg(test)]
 use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;

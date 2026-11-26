@@ -1,5 +1,6 @@
 //! `Game` as the `MobLevel` mob families run on: each service forwards to the game's own method.
 
+use crate::game::ServerGame;
 use sunrise_gameplay::mob_level::{MobLevel, MobParts};
 use sunrise_sim::entities::ItemEntity;
 
@@ -17,7 +18,7 @@ impl crate::game::ServerGame<'_> {
     }
 }
 
-impl MobLevel for crate::game::ServerGame<'_> {
+impl MobLevel for ServerGame<'_> {
     fn parts(&mut self) -> MobParts<'_> {
         MobParts {
             mobs: &mut self.common.mobs,

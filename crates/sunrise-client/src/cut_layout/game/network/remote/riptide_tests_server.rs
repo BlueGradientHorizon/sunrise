@@ -1,4 +1,3 @@
-use super::*;
 use sunrise_client_gameplay::game::remote::riptide_tests::OWNER;
 use sunrise_protocol::connection::ConnReader;
 use sunrise_protocol::packets::Empty;

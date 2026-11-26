@@ -313,9 +313,20 @@ pub(in crate::game) fn count_down(ticks: u32, duration: i32) -> Option<u32> {
     (i64::from(duration) - i64::from(ticks) != 0).then_some(ticks)
 }
 
+use sunrise_gameplay_common::game::native_hooks::base::GameHooks as _;
+
+use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;
+
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use super::{bow_release_power, count_down, release_parts, use_counter_leaving};
+    #[cfg(test)]
     use sunrise_core::use_animation::UseAnimation;
     use sunrise_gameplay_common::game::item_use_common::{
         consumes_at_once, duration_leaving, held, start_of, tick_left, ticks_left,
@@ -483,13 +494,3 @@ pub(in crate::game) mod tests {
         assert!(!consumes_at_once(32));
     }
 }
-
-use sunrise_gameplay_common::game::native_hooks::base::GameHooks as _;
-
-use sunrise_gameplay_common::game::tables::GameItems as _;
-
-use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
-
-use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
-
-use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;

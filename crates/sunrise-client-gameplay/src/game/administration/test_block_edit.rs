@@ -141,6 +141,9 @@ impl crate::game::ClientGame<'_> {
 }
 
 #[cfg(test)]
+use sunrise_gameplay_common::game::tables::GameItems as _;
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
@@ -181,5 +184,3 @@ mod tests {
         assert_eq!(boxes(&e), 1);
     }
 }
-
-use sunrise_gameplay_common::game::tables::GameItems as _;

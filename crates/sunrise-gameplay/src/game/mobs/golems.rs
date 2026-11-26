@@ -270,6 +270,9 @@ impl ServerGame<'_> {
     }
 }
 
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;
+
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use std::collections::HashMap;
@@ -406,7 +409,3 @@ pub(in crate::game) mod tests {
         );
     }
 }
-
-use sunrise_gameplay_common::game::tables::GameItems as _;
-
-use sunrise_gameplay_common::game::GameGameExt1 as _;

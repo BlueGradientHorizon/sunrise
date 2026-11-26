@@ -1,5 +1,3 @@
-use super::*;
-
 impl crate::game::ServerGame<'_> {
     pub(in crate::game) fn tick_weather_effects(&mut self) {
         if self.common.flash > 0 {

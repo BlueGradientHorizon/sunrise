@@ -1,6 +1,7 @@
 #[cfg(test)]
 pub(crate) mod tests {
 
+    #[cfg(test)]
     use super::*;
 
     use crate::game::client_side::trading_client::{

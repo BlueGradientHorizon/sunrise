@@ -81,6 +81,11 @@ impl LiveScenes {
     pub fn len(&self) -> usize {
         self.live.len()
     }
+
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn is_empty(&self) -> bool {
+        self.live.is_empty()
+    }
     /// Whether scene (`owner`, `id`) may animate in `frame`: the first
     /// `SCENE_MAX_ANIMATING` scenes a frame do, each as often as it is drawn.
     pub fn admit(&mut self, frame: u64, owner: &'static str, id: u32) -> bool {

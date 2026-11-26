@@ -1026,26 +1026,21 @@ impl ServerGame<'_> {
 
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
-    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+    use sunrise_gameplay_common::game::TryIntoApi;
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
     use sunrise_gameplay_common::game::native_menu_refs_common::NativeMenuRefsCommonGameExt1 as _;
-    use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;
     use sunrise_gameplay_common::game::server_side::native_item_places::tests::guest;
-    use sunrise_gameplay_common::game::tables::GameItems as _;
 
     use super::super::BlockEntity;
-    use crate::game::native_entity_refs::tests::with_game;
     use mod_api::HostTransaction;
     use mod_api::ServerHost;
-    use mod_api::{
-        CraftedByError, ENTITY_AUTOMATION, ENTITY_ITEMS, ItemPlace, ItemPlaceEditError,
-        ItemResource, MenuRef, TransactionError,
-    };
-    use std::sync::{Arc, atomic::AtomicI32, mpsc};
-    use sunrise_core::geometry::Direction;
-    use sunrise_gameplay_common::game::api_values::TryIntoApi;
+    use mod_api::{ItemResource, MenuRef, TransactionError};
+    use mod_api::{ENTITY_ITEMS, ItemPlace};
+    use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;
+    use sunrise_gameplay_common::game::tables::GameItems as _;
+    use std::sync::Arc;
     use sunrise_items::items::ItemStack;
-    use sunrise_protocol::packets::configuration::ClientInformation;
-    use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
+    use sunrise_sim::lan::{NetConfig, hub::HubConfig};
 
     /// A world open to LAN on a dedicated server, as a guest's actions run.
     pub fn open_to_lan(game: &mut crate::game::ServerGame<'_>) {
@@ -1160,13 +1155,16 @@ pub mod tests {
 
     pub type Offer = (usize, ItemStack);
 
+    #[derive(Debug, PartialEq, Eq)]
+    pub struct TradeRefused;
+
     /// Two guests' trade on a menu, as the docs' recipe has it: each offer's index must still
     /// hold exactly what was offered, and goes whole to the other player, or nothing moves.
     pub fn trade(
         game: &mut crate::game::ServerGame<'_>,
         a: &[Offer],
         b: &[Offer],
-    ) -> Result<(), ()> {
+    ) -> Result<(), TradeRefused> {
         let host: &mut dyn ServerHost = game;
         let items = |host: &mut dyn ServerHost, id| {
             let entity = host.entity(id).unwrap();
@@ -1191,7 +1189,7 @@ pub mod tests {
             Ok(())
         })
         .map_err(|err| match err {
-            TransactionError::Aborted(()) => (),
+            TransactionError::Aborted(()) => TradeRefused,
             other => panic!("unexpected transaction error: {other:?}"),
         })
     }
@@ -1284,8 +1282,6 @@ pub mod tests {
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
-
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
 

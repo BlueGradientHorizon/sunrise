@@ -3,7 +3,7 @@ use super::{Mob, Tag, entity_nbt};
 use sunrise_core::fast_hash::FxHashSet;
 use sunrise_gameplay_common::game::general::GeneralEntityRecord;
 
-pub(in crate::game) struct SpawnTree(Vec<Member>);
+pub struct SpawnTree(Vec<Member>);
 
 struct Member {
     node: Node,

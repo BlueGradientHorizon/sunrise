@@ -1033,8 +1033,6 @@ pub fn generic_player_seat(at: glam::DVec3, before: glam::DVec3, scale: f32) -> 
     )
 }
 
-use sunrise_gameplay_common::game::GameGameExt1 as _;
-
 use sunrise_gameplay_common::game::boats_common::BoatsCommonGameExt1 as _;
 
 use sunrise_gameplay_common::game::creatures::ModGameExt1 as _;
@@ -1046,8 +1044,6 @@ use sunrise_gameplay_common::game::mounts_common::MountsCommonGameExt1 as _;
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
 
 use sunrise_gameplay_common::game::passengers_common::PassengersCommonGameExt1 as _;
-
-use crate::game::client_side::remote_client::minecarts::CartLerpClientExt as _;
 
 use sunrise_gameplay_common::game::minecarts::MinecartRailGameExt as _;
 

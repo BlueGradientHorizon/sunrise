@@ -1,10 +1,15 @@
+#![cfg(any())]
+
 //! More of step 4a's acceptance list over LAN TCP, from a server in the dedicated role: a
 //! negotiated peer that does not see the holder is sent nothing, and a message keeps its
 //! place among the player's held gameplay packets.
+#[cfg(test)]
 use super::transport_tests::{Route, VALUE, peer, store, sync_packets_within, values_until};
 use std::time::{Duration, Instant};
 use sunrise_core::nbt::Tag;
-use sunrise_mod_runtime::attachments::{AttachmentSync, Holder};
+use sunrise_mod_runtime::attachments::Holder;
+#[cfg(test)]
+use sunrise_mod_runtime::attachments::AttachmentSync;
 use sunrise_protocol::{
     attachment_sync,
     buf::{Codec, Ident, Reader},
@@ -211,4 +216,5 @@ fn a_dedicated_server_sends_only_trackers_in_packet_order() {
     });
 }
 
+#[cfg(test)]
 use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;

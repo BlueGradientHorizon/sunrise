@@ -220,7 +220,9 @@ fn a_reload_fails_and_drops_the_selection(refused: &str) {
 /// A `refused` pack selected at startup: `clearResourcePacksOnError` saves the cleared
 /// selection before loading the game's own resources and reporting the original `error`.
 fn a_startup_load_fails_back_to_the_games_resources(refused: &str, error: &str) {
-    use {crate::game::*, sunrise_gameplay_common::game::*};
+    use crate::game::*;
+    #[cfg(test)]
+    use sunrise_gameplay_common::game::*;
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
     let mut settings = Settings {
         resource_packs: vec![refused.to_owned()],
@@ -264,7 +266,7 @@ fn a_startup_load_fails_back_to_the_games_resources(refused: &str, error: &str) 
 #[test]
 #[ignore = "daily"]
 fn content_entity_stays_registered_after_startup_pack_rollback() {
-    use {crate::game::*, sunrise_gameplay_common::game::*};
+    use crate::game::*;
 
     if run_fresh_cases(
         "game::client_side::packs::clouds_reload_tests::content_entity_stays_registered_after_startup_pack_rollback",

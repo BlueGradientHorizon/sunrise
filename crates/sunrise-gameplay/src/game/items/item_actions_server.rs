@@ -241,10 +241,6 @@ impl crate::game::ServerGame<'_> {
 
 use sunrise_gameplay_common::game::native_hooks::base::GameHooks as _;
 
-use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameExt as _;
-
-use sunrise_gameplay_common::game::GameGameExt1 as _;
-
 use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
 
 use sunrise_gameplay_common::game::game_mode_common::GameModeCommonGameExt1 as _;

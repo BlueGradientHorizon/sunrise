@@ -2,12 +2,7 @@
 use mod_api::{Hooks, PlayerInventoryChangedEvent, ServerHost};
 use std::sync::Mutex;
 use sunrise_level::chunk::Chunk;
-use {
-    crate::game::*,
-    sunrise_gameplay_common::game::{
-        Arc, ItemStack, PlayerMotion, Vec3, World, in_own_process, mods,
-    },
-};
+use sunrise_gameplay_common::game::{Arc, ItemStack, PlayerMotion, Vec3, World};
 
 type Heard = (u128, Vec<Option<(String, u32)>>);
 

@@ -129,59 +129,6 @@ impl ClientGame<'_> {
     }
 }
 
-#[cfg(test)]
-pub(in crate::game) mod tests {
-    use crate::game::native_entity_refs::tests::with_client_game;
-    use mod_api::{Hooks, Identifier, ModEntry, TagMembers, TagsUpdateCause, TagsUpdatedEvent};
-    use mod_platform::__private::part_tests::block_key;
-    use std::sync::{Arc, Mutex};
-    use sunrise_protocol::packets::{
-        configuration::{RegistryTags, TagEntry, UpdateTags},
-        play::{self, Clientbound as C},
-    };
-    use sunrise_protocol::registry::Builtin;
-
-    #[cfg(test)]
-    /// What a listener read of the tags during its notice.
-    #[derive(Debug, PartialEq)]
-    pub(in crate::game) struct Seen {
-        pub(in crate::game) cause: TagsUpdateCause,
-        pub(in crate::game) items: TagMembers<mod_api::ItemKey>,
-        pub(in crate::game) empty_items: TagMembers<mod_api::ItemKey>,
-        pub(in crate::game) fluids: TagMembers<mod_api::FluidKey>,
-        pub(in crate::game) stone_in_block_tag: Option<bool>,
-        pub(in crate::game) dirt_in_block_tag: Option<bool>,
-        pub(in crate::game) stick_in_item_tag: Option<bool>,
-        pub(in crate::game) lava_in_fluid_tag: Option<bool>,
-    }
-    #[cfg(test)]
-    pub(in crate::game) struct Probe(pub(in crate::game) Arc<Mutex<Vec<Seen>>>);
-
-    #[mod_api::__subscriptions]
-    impl Hooks for Probe {
-        fn tags_updated(&self, context: &dyn mod_api::ReloadContext, event: &mut TagsUpdatedEvent) {
-            assert!(
-                matches!(event.cause, TagsUpdateCause::ClientPacketReceived { .. }),
-                "the server's tags are a client's to apply"
-            );
-            let tags = context.tags();
-            let key = |tag| tags.key(&Identifier::parse(tag).unwrap()).unwrap();
-            let stick = context.item_key(&Identifier::parse("minecraft:stick").unwrap());
-            self.0.lock().unwrap().push(Seen {
-                cause: event.cause,
-                items: tags.items(key("test:items")),
-                empty_items: tags.items(key("test:empty_items")),
-                fluids: tags.fluids(key("test:fluids")),
-                stone_in_block_tag: context
-                    .block_in_tag(block_key("minecraft:stone"), "test:blocks"),
-                dirt_in_block_tag: context.block_in_tag(block_key("minecraft:dirt"), "test:blocks"),
-                stick_in_item_tag: tags.is_in_tag(stick.unwrap(), key("test:items")),
-                lava_in_fluid_tag: context.fluid_in_tag("minecraft:lava", "test:fluids"),
-            });
-        }
-    }
-}
-
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;

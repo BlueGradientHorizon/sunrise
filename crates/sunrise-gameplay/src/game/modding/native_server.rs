@@ -4,11 +4,16 @@ pub mod fake_action_tests {
     #[cfg(test)]
     use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;
 
+    #[cfg(test)]
     use sunrise_gameplay_common::game::native_server::fake_action_tests::on_top;
 
+    #[cfg(test)]
     use mod_api::{ActionOutcome, ActionRefused, FakeEffect, PlayerAction};
 
-    use mod_api::{BlockHit, Hand, PlayerRef};
+    use mod_api::PlayerRef;
+
+    #[cfg(test)]
+    use mod_api::{BlockHit, Hand};
 
     use sunrise_items::items::ItemStack;
 

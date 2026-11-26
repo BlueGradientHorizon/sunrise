@@ -1,5 +1,3 @@
-use super::*;
-
 #[cfg(feature = "client")]
 impl crate::game::ClientGame<'_> {
     /// Minecraft.disconnect's `ClientPlayerNetworkEvent.LoggingOut`: on

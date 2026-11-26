@@ -931,11 +931,8 @@ impl crate::game::ClientGame<'_> {
     }
 }
 
-use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameExt as _;
 
-use sunrise_gameplay_common::game::tables::GameItems as _;
 
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
 use sunrise_gameplay_common::game::api_values_common::ApiValuesCommonGameExt1 as _;
 

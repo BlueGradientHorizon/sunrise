@@ -9,9 +9,5 @@ impl crate::game::ServerGame<'_> {
         }
         sunrise_gameplay::cat_spawner::spawn_near_player(self);
     }
-    /// `spawnCat`: forwards to the shared flow; only the tests call it.
-    #[cfg(test)]
-    fn spawn_cat(&mut self, pos: [i32; 3], persistent: bool) {
-        sunrise_gameplay::cat_spawner::spawn_cat(self, pos, persistent);
-    }
+
 }

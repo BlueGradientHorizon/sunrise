@@ -1587,4 +1587,5 @@ pub(crate) mod arrow_contents {
         std::fs::write(output, serde_json::to_vec_pretty(&results).unwrap()).unwrap();
     }
 }
+#[cfg(test)]
 use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

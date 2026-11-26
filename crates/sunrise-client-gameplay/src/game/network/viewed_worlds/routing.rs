@@ -462,5 +462,3 @@ fn bound(level: Level) -> Result<(i32, i32), RouteError> {
 }
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
-
-use sunrise_gameplay_common::game::native_block_entity_read::NativeBlockEntityReadGameExt1 as _;

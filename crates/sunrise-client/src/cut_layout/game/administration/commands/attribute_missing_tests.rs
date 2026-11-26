@@ -6,10 +6,7 @@
 //! have still works.
 use std::sync::Arc;
 use sunrise_sim::motion::PlayerMotion;
-use {
-    crate::game::*,
-    sunrise_gameplay_common::game::{Mob, Resources, Vec3, entity},
-};
+use sunrise_gameplay_common::game::Vec3;
 
 pub(crate) fn game<'a>(
     resources: &'a mut Option<std::sync::Arc<sunrise_gameplay_common::game::Resources>>,

@@ -1,4 +1,3 @@
-use super::*;
 use crate::game::creatures::projectile_batch_tests::WindContinuationObserved;
 use crate::game::creatures::projectile_batch_tests::WindContinuationObserver;
 use crate::game::creatures::projectile_batch_tests::assert_boat_matches_witness;

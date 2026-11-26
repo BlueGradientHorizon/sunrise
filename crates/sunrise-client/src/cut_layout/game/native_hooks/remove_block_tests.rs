@@ -96,4 +96,3 @@ fn removal_exposes_default_and_honours_the_parts_answer() {
     });
 }
 
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;

@@ -9,9 +9,8 @@ use mod_api::{
 use std::sync::Arc;
 use std::sync::Mutex;
 use sunrise_gameplay_common::game::execution_role::ExecutionRole;
-use sunrise_gameplay_common::game::native_hooks::build_creative_mode_tab_contents::{
-    display_name, snapshot,
-};
+#[cfg(test)]
+use sunrise_gameplay_common::game::native_hooks::build_creative_mode_tab_contents::snapshot;
 use sunrise_items::creative_catalog::Catalog;
 use {
     sunrise_gameplay::game::native_entity_refs::tests::fixture_root,

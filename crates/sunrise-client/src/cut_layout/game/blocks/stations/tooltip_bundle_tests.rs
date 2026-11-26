@@ -1,4 +1,3 @@
-use super::*;
 use mod_api::TooltipElement;
 use mod_api::{ClientHost, Hooks, ModEntry, Mods, RenderTooltipGatherComponentsEvent};
 use sunrise_client::hud::HudBatch;

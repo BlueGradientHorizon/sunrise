@@ -2,7 +2,6 @@
 //! the UUID around `Entity.load`, and `ExperienceOrb.readAdditionalSaveData`
 //! reads the new `Age` into the same live orb
 //! (tools/test_orb_data_parity.py measures the same on vanilla 26.3).
-use super::*;
 use std::sync::Arc;
 use sunrise_core::nbt::{Tag, parse_snbt};
 

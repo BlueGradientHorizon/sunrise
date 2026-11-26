@@ -269,6 +269,5 @@ fn without_parts_a_calm_piglin_targets_a_player_in_leather_isolated() {
     });
 }
 
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
 use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

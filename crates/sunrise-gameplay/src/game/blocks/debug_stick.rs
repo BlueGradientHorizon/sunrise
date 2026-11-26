@@ -158,6 +158,8 @@ impl ServerGame<'_> {
     }
 }
 
+use sunrise_gameplay_common::game::GameGameExt1 as _;
+
 #[cfg(test)]
 mod tests {
     use super::relative_index;
@@ -174,5 +176,3 @@ mod tests {
         assert_eq!(relative_index(4, Some(3), true), 2);
     }
 }
-
-use sunrise_gameplay_common::game::GameGameExt1 as _;

@@ -215,6 +215,4 @@ impl crate::game::ServerGame<'_> {
     }
 }
 
-use sunrise_gameplay_common::game::GameGameExt1 as _;
-
 use sunrise_gameplay_common::game::mounts_common::MountsCommonGameExt1 as _;

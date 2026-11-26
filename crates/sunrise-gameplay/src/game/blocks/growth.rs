@@ -1,8 +1,7 @@
 #[cfg(test)]
-#[cfg(feature = "client")]
 pub(crate) mod tests {
 
-    use crate::game::growth_features::{build_live_features, install_live_features};
+    use sunrise_gameplay_common::game::growth_features::install_live_features;
 
     use std::sync::Arc;
 
@@ -14,7 +13,7 @@ pub(crate) mod tests {
     #[ignore = "daily"]
     fn the_live_features_follow_the_world_being_opened() {
         // Other feature fixtures can evict the process-wide last-built cache.
-        if super::super::native_entity_refs::tests::run_fresh_cases(
+        if crate::game::native_entity_refs::tests::run_fresh_cases(
             "game::client_side::growth::tests::the_live_features_follow_the_world_being_opened",
             "SUNRISE_LIVE_FEATURE_CACHE_CHILD",
             &["reopen"],
@@ -22,7 +21,7 @@ pub(crate) mod tests {
             return;
         }
         use sunrise_world::worldgen::overrides::WorldgenOverrides;
-        super::super::native_entity_refs::tests::with_game(|game| {
+        crate::game::native_entity_refs::tests::with_game(|game| {
             let mut with_tree = WorldgenOverrides::default();
             with_tree.add_file("mymod", "data/mymod/worldgen/feature/tree.json", || {
                 Some(r#"{"type":"minecraft:no_op","config":{}}"#.to_owned())

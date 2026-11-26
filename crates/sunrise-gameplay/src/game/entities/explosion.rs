@@ -2211,6 +2211,7 @@ fn blast_resistance(base: f32, cap: Option<f32>, kept: bool) -> f32 {
 
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
+    #[cfg(test)]
     use sunrise_gameplay_common::game::server_side::explosion::tests::zombie_type;
 
     use super::*;
@@ -2854,19 +2855,16 @@ pub mod tests {
     }
 }
 
-use sunrise_gameplay_common::game::tables::GameItems as _;
-
 use sunrise_gameplay_common::game::GameGameExt1 as _;
 
 use sunrise_gameplay_common::game::cart_rails::CartRailsGameExt1 as _;
 
 use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
 
+#[cfg(test)]
 use sunrise_gameplay_common::game::creatures::ModGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_components::NativeComponentsGameExt1 as _;
-
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_hooks::can_drop_from_explosion::CanDropFromExplosionGameExt1 as _;
 

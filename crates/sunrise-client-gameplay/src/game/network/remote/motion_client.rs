@@ -543,6 +543,4 @@ impl crate::game::ClientGame<'_> {
 
 use sunrise_gameplay_common::game::side_ops::player::PlayerSideGameExt as _;
 
-use sunrise_gameplay_common::game::tables::GameItems as _;
-
 use sunrise_gameplay_common::game::entity_sections::EntitySectionsGameExt1 as _;

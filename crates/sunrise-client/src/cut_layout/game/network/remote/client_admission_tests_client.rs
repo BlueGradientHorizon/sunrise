@@ -10,7 +10,7 @@ use {sunrise_protocol::packets::play, sunrise_protocol::packets::play::Clientbou
 #[ignore = "daily"]
 fn add_player_requires_info_before_replacing_a_tracked_entity() {
     with_isolated_client(
-        "add_player_requires_info_before_replacing_a_tracked_entity",
+        "cut_layout::game::client_side::remote_client::tests::client_admission_tests::add_player_requires_info_before_replacing_a_tracked_entity",
         |game| {
             let _reader = logged_in(game);
             let id = 42;

@@ -437,7 +437,6 @@ fn observer_unload_reload_requires_explicit_reregistration_and_replacement_retir
     );
 }
 
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
 

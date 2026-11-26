@@ -386,4 +386,3 @@ pub(crate) mod block_change_tests {
 }
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
-use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

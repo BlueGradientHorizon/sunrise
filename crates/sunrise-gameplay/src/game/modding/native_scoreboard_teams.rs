@@ -363,10 +363,14 @@ impl crate::game::ServerGame<'_> {
     }
 }
 
+use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
+
 #[cfg(test)]
 mod tests {
+    #[cfg(test)]
     use super::super::native_entity_refs::tests::with_game;
     use super::*;
+    #[cfg(test)]
     use mod_api::prelude::ScoreboardServerHost;
     use {
         crate::game::server_side::native_scoreboard::tests::open_lan,
@@ -627,5 +631,3 @@ mod tests {
         });
     }
 }
-
-use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;

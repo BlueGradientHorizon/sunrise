@@ -10,7 +10,6 @@
 //! stack it names with -- and `Player.interactOn` puts a creative player's
 //! count straight back -- and `EntityAttachment.NAME_TAG` says where the tag
 //! hangs, which `EntityTypes.SNIFFER` moves to 2.05 above the feet.
-use super::super::*;
 use crate::game::load_resources;
 use std::sync::Arc;
 use sunrise_client::audio::Audio;

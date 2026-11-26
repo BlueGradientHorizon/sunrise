@@ -3,6 +3,9 @@ use sunrise_client_gameplay::remote::chunks::{Next, Received};
 use sunrise_client_lib::net::Event;
 use sunrise_protocol::packets::play;
 use sunrise_protocol::packets::play::Clientbound as C;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "bundle_parity_tests_client.rs"]
@@ -70,4 +73,3 @@ pub(crate) mod tests {
         });
     }
 }
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

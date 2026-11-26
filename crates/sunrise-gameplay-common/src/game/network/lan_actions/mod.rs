@@ -6,6 +6,7 @@
 //! host, and every world change they cause reaches all players through the
 //! block log, the level events and the entity tracker.
 #[cfg(test)]
+#[cfg(test)]
 use super::Mining;
 use sunrise_core::geometry::Aabb;
 #[allow(unused_imports)]

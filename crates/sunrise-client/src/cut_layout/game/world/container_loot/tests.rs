@@ -1,5 +1,4 @@
 //! Production gameplay triggers, with one isolated game process per group of scenarios.
-use super::*;
 use mod_api::LevelRandomHost as _;
 use std::sync::{Arc, Mutex};
 use sunrise_core::{
@@ -128,7 +127,7 @@ fn in_child(group: &str) -> bool {
     let result = std::process::Command::new(std::env::current_exe().unwrap())
         .args([
             "--exact",
-            &format!("game::server_side::container_loot::tests::{group}"),
+            &format!("cut_layout::game::server_side::container_loot::tests::{group}"),
             "--include-ignored",
             "--nocapture",
         ])

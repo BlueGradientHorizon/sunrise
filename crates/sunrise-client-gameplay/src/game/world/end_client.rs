@@ -365,6 +365,10 @@ impl crate::game::ClientGame<'_> {
     }
 }
 
+use sunrise_gameplay_common::game::end_common::EndGameExt as _;
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;
+
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use super::*;
@@ -390,9 +394,3 @@ pub(in crate::game) mod tests {
         }
     }
 }
-
-use sunrise_gameplay_common::game::end_common::EndGameExt as _;
-
-use sunrise_gameplay_common::game::GameGameExt1 as _;
-
-use crate::game::client_side::remote_client::minecarts::CartLerpClientExt as _;

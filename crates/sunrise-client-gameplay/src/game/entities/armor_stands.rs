@@ -39,6 +39,7 @@ pub(in crate::game) mod layer_color_tests {
 
 #[cfg(test)]
 pub(in crate::game) mod setup_anim_tests {
+    #[cfg(test)]
     use super::*;
     use std::sync::atomic::{AtomicUsize, Ordering};
 

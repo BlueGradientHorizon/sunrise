@@ -24,8 +24,10 @@ pub fn arrow_attackable(tags: &UpdateTags, type_id: Option<i32>) -> bool {
 
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
+    #[cfg(test)]
     use super::*;
     use std::sync::mpsc;
+    #[cfg(test)]
     use sunrise_protocol::packets::configuration::{RegistryTags, TagEntry, UpdateTags};
     use sunrise_sim::lan::Out;
 

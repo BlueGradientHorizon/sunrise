@@ -631,7 +631,7 @@ impl crate::game::ServerGame<'_> {
 
 impl crate::game::ServerGame<'_> {
     /// `Entity.interact`: retain the holder-detach success's item context.
-    pub fn interact_leash_with_item_context(
+    pub(in crate::game) fn interact_leash_with_item_context(
         &mut self,
         index: usize,
         item: &str,
@@ -815,8 +815,6 @@ impl crate::game::ServerGame<'_> {
 }
 
 use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameExt as _;
-
-use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::item_use_stacks::ItemUseStacksGameExt1 as _;
 

@@ -36,5 +36,3 @@ pub fn golem_preserved_equipment(m: &mut Mob) -> Vec<ItemStack> {
     }
     stacks
 }
-
-use crate::game::tables::GameItems as _;

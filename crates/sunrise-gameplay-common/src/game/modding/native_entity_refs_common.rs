@@ -371,7 +371,7 @@ pub trait NativeEntityRefsCommonGameExt4<'__sg>: crate::game::SideGame<'__sg> {
         }
     }
 
-    fn native_entity_kind_name<'__loan>(&'__loan self, target: Target) -> Option<&str>
+    fn native_entity_kind_name<'__loan>(&'__loan self, target: Target) -> Option<&'__loan str>
     where
         '__sg: '__loan,
     {
@@ -706,7 +706,7 @@ pub trait NativeEntityRefsCommonGameExt5<'__sg>: crate::game::SideGame<'__sg> {
     /// one in place, as a kill credit can name one (`getEntityInAnyDimension`):
     /// its identity reads (`entity_kind`, `entity_uuid`, `entity_level`)
     /// answer from there. None on a client or for anything else.
-    fn mob_in_other_level<'__loan>(&'__loan self, id: u32) -> Option<(super::Dim, &super::Mob)>
+    fn mob_in_other_level<'__loan>(&'__loan self, id: u32) -> Option<(super::Dim, &'__loan super::Mob)>
     where
         '__sg: '__loan,
     {
@@ -784,6 +784,7 @@ use crate::game::side_ops::modapi_modding::ModapiModdingSideGameExt as _;
 
 use crate::game::side_ops::player::PlayerSideGameExt as _;
 
+#[cfg(test)]
 use crate::game::side_ops::world::WorldSideGameExt as _;
 
 use crate::game::tables::GameItems as _;

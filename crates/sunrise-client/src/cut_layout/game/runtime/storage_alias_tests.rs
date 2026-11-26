@@ -3,7 +3,6 @@
 //! non-empty array before it rejects the string. The command fails, and the
 //! storage keeps the cleared array, with no `setData` and so no save of its
 //! own (tools/test_storage_alias_parity.py measures the same on vanilla 26.3).
-use super::*;
 use crate::game::load_resources;
 use sunrise_client::settings::Settings;
 use sunrise_core::nbt::{Tag, parse_snbt};

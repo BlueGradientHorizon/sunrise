@@ -250,4 +250,3 @@ fn a_client_hears_each_block_the_server_sends_and_each_write_of_a_piston_replay(
     });
 }
 
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;

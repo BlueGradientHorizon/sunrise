@@ -1460,8 +1460,6 @@ pub(in crate::game) mod allay_owner_damage_tests {}
 
 #[cfg(any(test, feature = "test-support"))]
 pub mod datapack_damage_tests {
-    use crate::game::{commands::Target, native_entity_refs::tests::with_game};
-    use sunrise_core::geometry::Vec3;
     use sunrise_world::loot::PackOverlay;
 
     /// #2647: a damage type a world's datapack declares is in the world's frozen

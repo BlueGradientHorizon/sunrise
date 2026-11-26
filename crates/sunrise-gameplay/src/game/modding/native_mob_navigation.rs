@@ -73,7 +73,7 @@ impl crate::game::ServerGame<'_> {
         // mob can be mutably borrowed alongside the shared MobWorld, just as
         // the mob tick does. No mod hook fires during pathfinding.
         let mut mobs = self.common.mobs.lift();
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         crate::game::server_side::entity_server::taken_pass_tests::after_take(self);
         let moved = mobs[index].nav_move_to(&self.mob_world_base(&[]), at, speed);
         self.common
@@ -112,7 +112,7 @@ impl crate::game::ServerGame<'_> {
         // mob can be mutably borrowed alongside the shared MobWorld, as the
         // mob tick does. No mod hook fires during classification.
         let mut mobs = self.common.mobs.lift();
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         crate::game::server_side::entity_server::taken_pass_tests::after_take(self);
         let followed = mobs[index].nav_move_to_supplied(&self.mob_world_base(&[]), &nodes, speed);
         self.common
@@ -323,7 +323,5 @@ impl crate::game::ServerGame<'_> {
             .is_some()
     }
 }
-
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5 as _;

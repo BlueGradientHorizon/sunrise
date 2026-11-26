@@ -1,4 +1,3 @@
-use super::*;
 use mod_api::BlockEntityRef;
 use mod_api::BlockEntityScope;
 use mod_api::ServerHost;
@@ -258,7 +257,7 @@ fn a_scope_transaction_aborts_subject_and_dropped_item_edits_together() {
 }
 
 #[derive(Debug, Default, PartialEq, Eq)]
-pub(in crate::game) enum Retake {
+pub(crate) enum Retake {
     #[default]
     Off,
     Requested,
@@ -1025,12 +1024,12 @@ fn ordinary_replacement_between_strict_edits_uses_its_own_resident_row() {
 }
 
 #[derive(Clone, Default)]
-pub(in crate::game) struct Effects {
-    pub(in crate::game) notices: Arc<AtomicU32>,
-    pub(in crate::game) ticks: Arc<AtomicU32>,
-    pub(in crate::game) loaded_items: Arc<Mutex<Option<Tag>>>,
-    pub(in crate::game) saved_items: Arc<Mutex<Option<Tag>>>,
-    pub(in crate::game) retake: Arc<Mutex<Retake>>,
+pub(crate) struct Effects {
+    pub(crate) notices: Arc<AtomicU32>,
+    pub(crate) ticks: Arc<AtomicU32>,
+    pub(crate) loaded_items: Arc<Mutex<Option<Tag>>>,
+    pub(crate) saved_items: Arc<Mutex<Option<Tag>>>,
+    pub(crate) retake: Arc<Mutex<Retake>>,
 }
 #[mod_api::sunrise_part]
 impl BlockEntityPart for Effects {
@@ -1711,8 +1710,10 @@ fn items_changed_tracks_committed_slot_writes_and_ignores_aborted_nested_transac
     });
 }
 
+#[cfg(test)]
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
+#[cfg(test)]
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;

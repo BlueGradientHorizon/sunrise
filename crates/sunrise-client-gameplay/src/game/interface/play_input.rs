@@ -712,6 +712,8 @@ impl crate::game::ClientGame<'_> {
     }
 }
 
+use sunrise_gameplay_common::game::game_mode_common::GameModeCommonGameExt1 as _;
+
 #[cfg(test)]
 mod tests {
     use super::{studio_freecam_movement_key, studio_replay_shortcut};
@@ -746,5 +748,3 @@ mod tests {
         assert!(!studio_freecam_movement_key(KeyCode::KeyI));
     }
 }
-
-use sunrise_gameplay_common::game::game_mode_common::GameModeCommonGameExt1 as _;

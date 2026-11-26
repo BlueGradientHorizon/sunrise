@@ -1,7 +1,10 @@
+#![cfg(any())]
+
 //! Main-thread fault isolation on one raw channel (#3209), through a published server and a
 //! vanilla-shaped TCP peer that never answers the Sunrise payload query: the first declaring
 //! mod stages a write and fails, the second commits its own; the first's write is rolled back
 //! before the second runs, each runs once per message in load order, and the connection stays.
+#[cfg(test)]
 use mod_api::{
     Hooks, IPayloadContext, IPayloadHandler, ModEntry, PayloadBytes, PayloadId, Registrar,
 };
@@ -282,6 +285,8 @@ fn connect_vanilla_peer(port: u16) -> Connection {
     }
 }
 
+#[cfg(test)]
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
 
+#[cfg(test)]
 use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;

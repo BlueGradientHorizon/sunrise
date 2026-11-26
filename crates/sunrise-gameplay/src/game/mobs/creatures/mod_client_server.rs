@@ -53,6 +53,4 @@ impl ServerGame<'_> {
     }
 }
 
-use sunrise_gameplay_common::game::tables::GameItems as _;
-
 use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;

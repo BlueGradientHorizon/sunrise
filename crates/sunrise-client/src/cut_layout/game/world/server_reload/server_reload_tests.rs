@@ -1,4 +1,3 @@
-use super::*;
 use mod_api::__private::reload::ReloadStageError;
 use mod_api::FileToIdConverter;
 use mod_api::{
@@ -498,7 +497,7 @@ fn missing_original_at_reload_preserves_the_published_data_and_reports_its_owner
             .join(format!("server-reload-jar-{}", std::process::id()));
         std::fs::create_dir_all(&root).unwrap();
         let mut command = std::process::Command::new(std::env::current_exe().unwrap());
-        command.args(["--ignored", "--exact", "game::server_side::server_reload::tests::missing_original_at_reload_preserves_the_published_data_and_reports_its_owners", "--nocapture"])
+        command.args(["--ignored", "--exact", "cut_layout::game::server_side::server_reload::tests::missing_original_at_reload_preserves_the_published_data_and_reports_its_owners", "--nocapture"])
             .env(MODE, &root).env("SUNRISE_NO_AUDIO", "1").env("SUNRISE_LAUNCHER_NO_SELF_UPDATE", "1");
         for key in [
             "SUNRISE_HOME",
@@ -1390,6 +1389,7 @@ mod datapack_publication_tests;
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
+#[cfg(test)]
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
 use sunrise_gameplay_common::game::native_world_read_common::NativeWorldReadGameExt1 as _;

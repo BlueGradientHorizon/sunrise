@@ -50,6 +50,8 @@ impl ServerGame<'_> {
     }
 }
 
+use sunrise_gameplay_common::game::native_hooks::data_maps_updated::GameHooks as _;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -609,5 +611,3 @@ mod tests {
         assert_eq!(map.get("minecraft:oak_log"), Some(&json!(2)));
     }
 }
-
-use sunrise_gameplay_common::game::native_hooks::data_maps_updated::GameHooks as _;

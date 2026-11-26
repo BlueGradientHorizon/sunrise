@@ -1,6 +1,9 @@
 #![cfg(test)]
 use mod_api::PlayerRef;
 #[cfg(test)]
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+#[cfg(test)]
 mod tests {
     use super::super::native_entity_refs::tests::with_game;
     use super::*;
@@ -406,4 +409,3 @@ mod tests {
         });
     }
 }
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

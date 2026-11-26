@@ -5,13 +5,10 @@
 //! (`LocalPlayer.isControlledCamera`); the server keeps its player on the
 //! camera and lets go when the player sneaks.
 
-#[cfg(feature = "client")]
-#[cfg(test)]
-#[path = "tests/remote_camera_tests.rs"]
-pub(in crate::game) mod camera_tests;
-
 use crate::game::ClientGame;
-use crate::game::client_side::remote_client::{Remote, Tracked};
+use crate::game::client_side::remote_client::Remote;
+#[cfg(test)]
+use crate::game::client_side::remote_client::Tracked;
 #[cfg(test)]
 use std::collections::HashMap;
 use sunrise_client::{
@@ -114,14 +111,14 @@ pub struct ResolvedCameraEntity {
     pub is_spectator: bool,
     pub is_sleeping: bool,
     pub blocks_sky: bool,
-    pub fog_effects: CameraFogEffects,
+    pub(in crate::game) fog_effects: CameraFogEffects,
     pub hurt: Option<CameraHurt>,
     pub avatar_bob: Option<AvatarBob>,
     pub fov_player: Option<FovPlayer>,
     pub has_player_passenger: bool,
     pub collision_kind: EntityContextKind,
     pub post_effect: Option<&'static str>,
-    pub detached_hud: Option<DetachedPlayerHud>,
+    pub(in crate::game) detached_hud: Option<DetachedPlayerHud>,
 }
 
 /// The entity `Hud.getCameraPlayer` finds: local player, live remote player, detached remote player, or none.
@@ -1608,6 +1605,17 @@ impl ClientGame<'_> {
     }
 }
 
+use sunrise_gameplay_common::game::game_mode_common::GameModeCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::pick_ray::PickRayGameExt1 as _;
+
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;
+
+#[cfg(feature = "client")]
+#[cfg(test)]
+#[path = "tests/remote_camera_tests.rs"]
+pub(in crate::game) mod camera_tests;
+
 #[cfg(feature = "client")]
 #[cfg(test)]
 mod tests {
@@ -1638,6 +1646,13 @@ mod tests {
     /// Only a creeper, spider or enderman has a spectator chain.
     #[test]
     fn spectated_entities_pick_their_chain() {
+        sunrise_gameplay_common::game::in_own_process(
+            "game::client_side::remote_camera::tests::spectated_entities_pick_their_chain",
+            check_vanilla_spectator_chains,
+        );
+    }
+
+    fn check_vanilla_spectator_chains() {
         assert_eq!(
             entity_post_effect("minecraft:creeper"),
             Some("minecraft:creeper")
@@ -1667,9 +1682,3 @@ mod tests {
         assert_eq!(camera_after_packet(None, 5, 12, false), None);
     }
 }
-
-use sunrise_gameplay_common::game::game_mode_common::GameModeCommonGameExt1 as _;
-
-use sunrise_gameplay_common::game::pick_ray::PickRayGameExt1 as _;
-
-use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

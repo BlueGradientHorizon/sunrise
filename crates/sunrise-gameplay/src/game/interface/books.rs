@@ -1,13 +1,12 @@
-#[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "tests/lectern_tests.rs"]
 pub(in crate::game) mod lectern_tests;
 
-#[cfg(feature = "client")]
 #[cfg(test)]
 pub(in crate::game) mod lectern_signal_tests {
-    use super::super::game_tests::tests::server_game;
+    use crate::game::server_side::game_tests::tests::server_game;
     use sunrise_core::position::BlockPos;
+    use sunrise_gameplay_common::game::GameGameExt1 as _;
     use sunrise_gameplay_common::lectern::lectern_signal;
     use sunrise_items::{item_data::WrittenBook, items::ItemStack};
     use sunrise_level::containers::{BlockEntity, Lectern};

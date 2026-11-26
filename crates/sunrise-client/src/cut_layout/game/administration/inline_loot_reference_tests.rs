@@ -4,7 +4,6 @@
 //! parse. The command never runs, an `execute store` around it stores
 //! nothing and no item is given
 //! (tools/test_inline_loot_reference_parity.py measures the same on vanilla 26.3).
-use super::*;
 use crate::game::load_resources;
 use crate::settings::Settings;
 use std::sync::Arc;

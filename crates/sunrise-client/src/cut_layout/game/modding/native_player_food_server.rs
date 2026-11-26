@@ -1,5 +1,9 @@
 #![cfg(test)]
 use mod_api::PlayerRef;
+use sunrise_gameplay_common::game::native_player_food::NativePlayerFoodGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;
+
 #[cfg(test)]
 mod tests {
     use super::super::native_entity_refs::tests::with_game;
@@ -116,6 +120,3 @@ mod tests {
         });
     }
 }
-use sunrise_gameplay_common::game::native_player_food::NativePlayerFoodGameExt1 as _;
-
-use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;

@@ -635,12 +635,14 @@ impl crate::game::ServerGame<'_> {
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
     use super::*;
+    #[cfg(test)]
     use sunrise_gameplay_common::game::native_entity_state_common::{
         eye_fluid, max_air, touched_fluids,
     };
+    use sunrise_sim::motion::PlayerMotion;
+    #[cfg(test)]
     use sunrise_sim::{
         mobs::{Mob, Species},
-        motion::PlayerMotion,
         thrown_trident::ThrownTrident,
     };
 
@@ -1174,11 +1176,6 @@ pub mod tests {
     }
 
     // `EntityRef::main_arm` (`LivingEntity.getMainArm`) on a client and on a server.
-    use super::super::native_entity_refs::tests::run_fresh_cases;
-    use super::super::native_guest_turn_tests::with_guests;
-    use mod_api::MainHand;
-    use sunrise_protocol::entity_data::{Value, serializer};
-    use sunrise_protocol::packets::play::{self, Clientbound as C};
 }
 
 use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
@@ -1189,4 +1186,3 @@ use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCo
 
 use sunrise_gameplay_common::game::native_entity_state_common::NativeEntityStateCommonGameExt1 as _;
 
-use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;

@@ -3,7 +3,6 @@
 //! change only where `mayInteract` allows it.
 use sunrise_core::geometry::Vec3;
 use sunrise_gameplay::game::game_tests::tests::server_game;
-use sunrise_gameplay_common::game_side;
 use sunrise_sim::motion::{MotionWorld, PlayerMotion};
 use sunrise_world::chunk::BlockState;
 use sunrise_world::entity_move::MovementRecord;
@@ -217,4 +216,5 @@ fn outside_the_border_a_cauldron_keeps_its_level_but_the_fire_goes_out() {
     assert_eq!(server_hiss, 1, "the hiss still plays");
 }
 
+#[cfg(test)]
 use sunrise_gameplay_common::game::tables::GameItems as _;

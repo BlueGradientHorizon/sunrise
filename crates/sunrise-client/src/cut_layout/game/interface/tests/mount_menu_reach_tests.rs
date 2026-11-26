@@ -4,7 +4,6 @@
 //! menu stays open at 6.5 blocks and closes past 7, not at the 4.5 a
 //! centre-to-centre check gives. A server's guest is checked by
 //! `Game::lan_mount_valid`, the window's own copy by `Game::tick_mount_menu`.
-use super::super::*;
 #[cfg(test)]
 use crate::game::load_resources;
 use std::sync::{Arc, atomic::AtomicI32, mpsc};

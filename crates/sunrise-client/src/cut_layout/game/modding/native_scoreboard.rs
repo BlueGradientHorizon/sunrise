@@ -9,13 +9,13 @@ pub(crate) mod tests {
 
     use sunrise_gameplay::game::server_side::native_scoreboard::tests::open_lan;
 
-    use sunrise_gameplay::game::lan::LanSettings;
+    
 
     use super::super::native_entity_refs::tests::with_game;
 
-    use super::*;
+    
 
-    use mod_api::{TeamColor, prelude::ScoreboardServerHost, text::TextStyle};
+    use mod_api::prelude::ScoreboardServerHost;
 
     use mod_api::ObjectiveRenderType;
 

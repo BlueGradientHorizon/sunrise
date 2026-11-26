@@ -1,7 +1,6 @@
 //! `ServerPlayer.doTick` runs `super.tick()` (Player.tick, where NeoForge
 //! posts `PlayerTickEvent.Pre`/`Post`) only `if (!isSpectator() ||
 //! !touchingUnloadedChunk())` (#4520).
-use crate::game::lan_actions::tick::*;
 use mod_api::HostSide;
 use std::sync::{Arc, Mutex};
 use sunrise_gameplay::game::native_entity_refs::tests::with_game;

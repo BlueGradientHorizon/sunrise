@@ -415,4 +415,3 @@ pub(crate) mod pitch_preservation_controls {
         );
     }
 }
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;

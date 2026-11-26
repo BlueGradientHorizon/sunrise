@@ -271,6 +271,9 @@ fn mod_registered_bundle_items_uses_weight_and_front_extraction() {
     });
 }
 
+
+use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
+
 #[cfg(test)]
 mod custom_bundle_integration_tests {
     use super::*;
@@ -887,7 +890,3 @@ mod custom_bundle_integration_tests {
         });
     }
 }
-
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
-
-use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;

@@ -1,4 +1,5 @@
 //! Actual murder notification, with no server or world tick.
+#[cfg(test)]
 use super::*;
 use sunrise_core::geometry::Vec3;
 use sunrise_sim::mobs::Mob;
@@ -229,8 +230,11 @@ use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
 
+#[cfg(test)]
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
 
+#[cfg(test)]
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt6 as _;
 
+#[cfg(test)]
 use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;

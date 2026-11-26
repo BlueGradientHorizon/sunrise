@@ -13,12 +13,11 @@ impl<'__sg, G: crate::game::SideGame<'__sg>> NativeDataBoundGameExt1<'__sg> for 
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
     use mod_api::{
-        DataLoadContext, DefaultComponentsBoundEvent, Hooks, Identifier, ModEntry,
+        DataLoadContext, DefaultComponentsBoundEvent, Hooks, Identifier,
         ModifyDefaultComponentsEvent, ReloadContext, TagsUpdateCause, TagsUpdatedEvent,
     };
     use std::sync::{Arc, Mutex};
     use sunrise_protocol::packets::{
-        configuration::{RegistryTags, TagEntry, UpdateTags},
         play::{self, Clientbound as C},
     };
 

@@ -9,7 +9,9 @@ use std::{
     time::{Duration, Instant},
 };
 use sunrise_game_data::Result;
-use sunrise_gameplay_common::game::events_common::{Condition, Events, KEPT, Snapshot, Wait};
+use sunrise_gameplay_common::game::events_common::{Condition, Events, Snapshot, Wait};
+#[cfg(test)]
+use sunrise_gameplay_common::game::events_common::KEPT;
 
 pub(in crate::game) const HELP: &[&str] = &[
     "events [--since SEQ]           what happened (screen, chat, death, respawn, item, hurt, heal, food, dimension, world), oldest first",

@@ -3,7 +3,6 @@
 //! `Animal.mobInteract` gives a tame nautilus at full health the 600-tick love
 //! and the species' eating sound, the zombie nautilus too: `ZombieNautilus`
 //! overrides neither `isFood` nor `mobInteract`.
-use super::super::*;
 use crate::game::load_resources;
 use crate::settings::Settings;
 use std::sync::Arc;

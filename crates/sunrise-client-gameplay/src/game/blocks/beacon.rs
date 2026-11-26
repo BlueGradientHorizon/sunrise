@@ -497,6 +497,9 @@ fn beam(e: &BlockEntity) -> Option<&[(u32, i32)]> {
         _ => None,
     }
 }
+
+use sunrise_gameplay_common::game::beacon_common::BeaconCommonGameExt1 as _;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -597,5 +600,3 @@ mod tests {
         assert!(!hit(0.0, 535.0));
     }
 }
-
-use sunrise_gameplay_common::game::beacon_common::BeaconCommonGameExt1 as _;

@@ -214,7 +214,3 @@ impl<'__sg, G: crate::game::SideGame<'__sg>> GameModeCommonGameExt1<'__sg> for G
 use crate::game::side_ops::player::PlayerSideGameExt as _;
 
 use crate::game::side_ops::ui::UiSideGameExt as _;
-
-use crate::game::tables::GameItems as _;
-
-use crate::game::native_world_read_common::NativeWorldReadGameExt1 as _;

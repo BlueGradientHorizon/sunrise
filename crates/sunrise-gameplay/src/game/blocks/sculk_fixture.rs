@@ -860,5 +860,3 @@ use sunrise_gameplay_common::game::GameGameExt1 as _;
 use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
 
 use sunrise_gameplay_common::game::creatures::ModGameExt1 as _;
-
-use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;

@@ -4,9 +4,11 @@
 //! drowned, the live offhand, the saved offhand and the saved chance agree,
 //! and the count is in the original probe's wide range (1..30), not an exact
 //! random result.
+use sunrise_gameplay_common::game::Resources;
+#[cfg(test)]
 use {
     crate::game::*,
-    sunrise_gameplay_common::game::{Arc, Mob, RandomSource, Resources},
+    sunrise_gameplay_common::game::RandomSource,
 };
 fn game(
     resources: &mut Option<std::sync::Arc<Resources>>,

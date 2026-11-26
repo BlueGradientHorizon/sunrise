@@ -1,3 +1,4 @@
+#[cfg(test)]
 use super::*;
 use mod_api::AttachmentHolder;
 use mod_api::{AttachmentRowError, AttachmentType, AttachmentWriteToken};

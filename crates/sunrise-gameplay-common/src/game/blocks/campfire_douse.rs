@@ -59,6 +59,4 @@ pub trait CampfireDouseGameExt1<'__sg>: crate::game::SideGame<'__sg> {
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> CampfireDouseGameExt1<'__sg> for G {}
 
-use crate::game::tables::GameItems as _;
-
 use crate::game::player_identity::PlayerIdentityGameExt1 as _;

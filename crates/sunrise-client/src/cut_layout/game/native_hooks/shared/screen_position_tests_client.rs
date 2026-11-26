@@ -1,4 +1,3 @@
-use super::*;
 use std::sync::Arc;
 use sunrise_client::hud::HudBatch;
 use sunrise_client_gameplay::game::native_hooks::screen_position_tests::CRATE_MENU;
@@ -922,4 +921,3 @@ fn stock_menu_data_sync_round_trips_above_255_and_enforces_signed_short_boundary
     });
 }
 
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;

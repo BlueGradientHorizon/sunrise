@@ -1,13 +1,13 @@
-use super::*;
 use crate::game::server_side::dragon::thorns_tests::thorny;
 use sunrise_gameplay_common::game::dragon_common::Dragon;
 use sunrise_sim::mobs::{Damage, DamageKind, Mob, Who, finalize as f};
 use {
     crate::game::*,
-    sunrise_gameplay_common::game::{
-        Instant, Options, PathBuf, PlayerMotion, Progress, Vec3, World, dragon_common,
-        execution_role, hit,
-    },
+    sunrise_gameplay_common::game::execution_role,
+};
+#[cfg(test)]
+use sunrise_gameplay_common::game::{
+    Instant, Options, PathBuf, PlayerMotion, Progress, Vec3, World,
 };
 use {
     sunrise_gameplay_common::game::dragon_common::FightWho,
@@ -185,4 +185,5 @@ pub(crate) fn with_game(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGam
     test(&mut g);
 }
 
+#[cfg(test)]
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt6 as _;

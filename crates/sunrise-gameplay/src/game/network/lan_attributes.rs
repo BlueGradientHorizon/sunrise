@@ -322,21 +322,6 @@ impl ServerGame<'_> {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::slot_in_group;
-
-    #[test]
-    fn slot_groups_cover_their_slots() {
-        assert!(slot_in_group("head", "head"));
-        assert!(slot_in_group("armor", "chest"));
-        assert!(!slot_in_group("armor", "mainhand"));
-        assert!(slot_in_group("hand", "offhand"));
-        assert!(slot_in_group("any", "feet"));
-        assert!(!slot_in_group("mainhand", "offhand"));
-    }
-}
-
 /// [`add_modifier`] placed before the instance's first effect modifier
 /// (`minecraft:effect.<name>`, stored when the effect was added).
 fn add_before_effects(
@@ -358,4 +343,17 @@ fn add_before_effects(
     snapshot.modifiers.insert(at, modifier);
 }
 
-use sunrise_gameplay_common::game::tables::GameItems as _;
+#[cfg(test)]
+mod tests {
+    use super::slot_in_group;
+
+    #[test]
+    fn slot_groups_cover_their_slots() {
+        assert!(slot_in_group("head", "head"));
+        assert!(slot_in_group("armor", "chest"));
+        assert!(!slot_in_group("armor", "mainhand"));
+        assert!(slot_in_group("hand", "offhand"));
+        assert!(slot_in_group("any", "feet"));
+        assert!(!slot_in_group("mainhand", "offhand"));
+    }
+}

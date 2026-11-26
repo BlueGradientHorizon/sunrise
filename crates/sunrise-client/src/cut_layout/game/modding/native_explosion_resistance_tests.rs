@@ -420,7 +420,6 @@ fn a_reads_calculator_is_the_one_the_blasts_rays_use() {
     });
 }
 
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
 use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
 

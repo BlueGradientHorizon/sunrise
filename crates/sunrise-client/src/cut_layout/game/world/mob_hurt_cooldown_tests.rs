@@ -5,10 +5,7 @@ use {
     crate::game::load_resources, crate::settings::Settings, sunrise_gameplay_common::game::Options,
     sunrise_gameplay_common::game::Progress,
 };
-use {
-    crate::game::*,
-    sunrise_gameplay_common::game::{Arc, Instant, PathBuf, Vec3, execution_role, game_dir, hit},
-};
+use sunrise_gameplay_common::game::{Arc, Vec3};
 
 fn with_game(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());

@@ -615,6 +615,4 @@ impl<'__sg, G: crate::game::SideGame<'__sg>> ChatCommonGameExt1<'__sg> for G {}
 
 use crate::game::side_ops::presentation::PresentationSideGameExt as _;
 
-use crate::game::tables::GameItems as _;
-
 use crate::game::command_registries::CommandRegistriesGameExt1 as _;

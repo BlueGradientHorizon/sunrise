@@ -214,6 +214,8 @@ impl ServerGame<'_> {
     }
 }
 
+use sunrise_gameplay_common::game::passengers_common::PassengersCommonGameExt2 as _;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -232,5 +234,3 @@ mod tests {
         assert!(!aboard.contains(&6), "a mob riding nothing");
     }
 }
-
-use sunrise_gameplay_common::game::passengers_common::PassengersCommonGameExt2 as _;

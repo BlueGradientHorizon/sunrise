@@ -713,6 +713,14 @@ impl ServerGame<'_> {
     }
 }
 
+use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;
+
+use sunrise_gameplay_common::game::entity_sections::EntitySectionsGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;
+
 #[cfg(test)]
 pub(in crate::game) mod entity_event_particle_tests {
     /// The raid sweat (42) and the dolphin's treasure hearts (38) are in the
@@ -727,11 +735,3 @@ pub(in crate::game) mod entity_event_particle_tests {
         assert_eq!(kind("villager", 2), None);
     }
 }
-
-use sunrise_gameplay_common::game::tables::GameItems as _;
-
-use sunrise_gameplay_common::game::GameGameExt1 as _;
-
-use sunrise_gameplay_common::game::entity_sections::EntitySectionsGameExt1 as _;
-
-use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;

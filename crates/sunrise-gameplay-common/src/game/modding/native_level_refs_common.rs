@@ -117,7 +117,7 @@ pub trait NativeLevelRefsCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     fn native_level_world_result<'__loan>(
         &'__loan self,
         level: LevelRef,
-    ) -> Result<&World, mod_api::LevelReadError>
+    ) -> Result<&'__loan World, mod_api::LevelReadError>
     where
         '__sg: '__loan,
     {
@@ -140,7 +140,7 @@ pub trait NativeLevelRefsCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// The world a handle names for a read that works on both sides: the
     /// server's level, or on a client the one it shows (`Minecraft.level`, its
     /// copy of the server's). None for a stale handle or another dimension.
-    fn native_level_read_world<'__loan>(&'__loan self, level: LevelRef) -> Option<&World>
+    fn native_level_read_world<'__loan>(&'__loan self, level: LevelRef) -> Option<&'__loan World>
     where
         '__sg: '__loan,
     {
@@ -187,7 +187,7 @@ pub trait NativeLevelRefsCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
 
     /// The streaming of the level a handle names now, or None for a stale or
     /// foreign one.
-    fn native_level_streaming<'__loan>(&'__loan self, level: LevelRef) -> Option<&ChunkState>
+    fn native_level_streaming<'__loan>(&'__loan self, level: LevelRef) -> Option<&'__loan ChunkState>
     where
         '__sg: '__loan,
     {

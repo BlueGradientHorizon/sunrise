@@ -18,10 +18,7 @@ use std::sync::{
 };
 use sunrise_gameplay_common::world_biomes;
 use sunrise_level::chunk::Chunk;
-use {
-    crate::game::creatures::*,
-    sunrise_gameplay_common::game::creatures::{Dim, Mob, breeding, seen},
-};
+use sunrise_gameplay_common::game::creatures::{Dim, Mob};
 use {
     sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
     sunrise_gameplay::game::native_entity_refs::tests::with_game,

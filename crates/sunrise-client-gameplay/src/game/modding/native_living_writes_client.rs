@@ -88,5 +88,3 @@ impl crate::game::ClientGame<'_> {
         Some((true, self.common.creative, p.fall_distance, p.fall_flying))
     }
 }
-
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

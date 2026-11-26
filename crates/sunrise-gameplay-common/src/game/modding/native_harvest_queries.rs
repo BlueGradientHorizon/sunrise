@@ -1,12 +1,10 @@
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
-    use mod_api::__private::game::*;
     use mod_api::{
         CanHarvestBlockEvent, Flow, Hooks, HostSide, PlayerBreakSpeedEvent,
         PlayerHarvestCheckEvent, PlayerRef,
     };
     use std::sync::{Arc, Mutex};
-    use sunrise_items::items::ItemStack;
 
     /// Asks the player query for a different state from a `player_harvest_check` listener.
     pub struct Asker(pub Arc<Mutex<Vec<(PlayerRef, Option<bool>)>>>);

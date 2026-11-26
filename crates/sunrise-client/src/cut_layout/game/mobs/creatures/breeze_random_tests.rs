@@ -1,5 +1,4 @@
 use {
-    crate::game::creatures::*,
     sunrise_gameplay_common::game::creatures::{Mob, Projectile, ProjectileKind, Vec3},
 };
 

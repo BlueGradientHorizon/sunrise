@@ -4,7 +4,6 @@
 //! hand from vanilla's loop: `repair = min(floor(experience × ratio), damage)`, then
 //! `experience − repair × experience / floor(experience × ratio)` goes round again. Each test installs
 //! process-wide parts: run alone with the prepared resources.
-use super::*;
 use mod_api::{Hooks, ItemPart, ModEntry, Registrar, RegistrationContext, XpRepairRatioEvent};
 use std::sync::{Arc, Mutex};
 use sunrise_items::items::ItemStack;
@@ -228,6 +227,5 @@ fn a_data_packs_mending_arrives_as_the_ratio() {
     });
 }
 
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
 use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;

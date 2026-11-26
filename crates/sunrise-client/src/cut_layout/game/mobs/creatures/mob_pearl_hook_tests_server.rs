@@ -1,4 +1,3 @@
-use super::*;
 use crate::game::creatures::mob_pearl_hook_tests::PlayerPearlProbe;
 use mod_api::ModEntry;
 use std::sync::{

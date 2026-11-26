@@ -106,4 +106,3 @@ fn client_tick_cancellation_skips_one_tick_and_countdown_continues() {
     });
 }
 
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;

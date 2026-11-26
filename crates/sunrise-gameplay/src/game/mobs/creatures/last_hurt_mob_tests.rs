@@ -1,6 +1,5 @@
 use mod_api::LivingRef;
 use {
-    crate::game::creatures::*,
     sunrise_gameplay_common::game::creatures::{Hit, Mob, Projectile, ProjectileKind, Vec3, Who},
 };
 

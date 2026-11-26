@@ -1,4 +1,5 @@
 #![cfg(test)]
+
 #[cfg(test)]
 mod tests {
     use mod_api::{
@@ -288,4 +289,3 @@ mod tests {
         assert_eq!(state(&game, reopened, [3, 71, 5]), Some(1));
     }
 }
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

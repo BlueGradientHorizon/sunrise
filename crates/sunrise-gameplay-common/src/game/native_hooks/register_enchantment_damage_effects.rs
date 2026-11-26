@@ -77,5 +77,3 @@ pub mod tests {
         }
     }
 }
-
-use crate::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

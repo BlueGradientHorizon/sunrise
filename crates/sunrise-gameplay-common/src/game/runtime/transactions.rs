@@ -70,13 +70,13 @@ pub struct QuickMoveNotice {
     pub holder: BlockEntityIdentity,
 }
 
-pub(in crate::game) struct QuickMoveNotices<'a, 'g, S: crate::game::SideGame<'g> + ?Sized> {
+pub(in crate::game) struct QuickMoveNotices<'a, 'g, S: crate::game::SideGame<'g>> {
     pub(in crate::game) game: &'a mut S,
     pub(in crate::game) outer: Option<Vec<QuickMoveNotice>>,
     resource: std::marker::PhantomData<fn(&'g ()) -> &'g ()>,
 }
 
-impl<'a, 'g, S: crate::game::SideGame<'g> + ?Sized> QuickMoveNotices<'a, 'g, S> {
+impl<'a, 'g, S: crate::game::SideGame<'g>> QuickMoveNotices<'a, 'g, S> {
     #[inline(always)]
     pub(in crate::game) fn new(game: &'a mut S, outer: Option<Vec<QuickMoveNotice>>) -> Self {
         Self {
@@ -87,7 +87,7 @@ impl<'a, 'g, S: crate::game::SideGame<'g> + ?Sized> QuickMoveNotices<'a, 'g, S> 
     }
 }
 
-impl<'g, S: crate::game::SideGame<'g> + ?Sized> Drop for QuickMoveNotices<'_, 'g, S> {
+impl<'g, S: crate::game::SideGame<'g>> Drop for QuickMoveNotices<'_, 'g, S> {
     fn drop(&mut self) {
         self.game.transactions.quick_move_notices = self.outer.take();
     }
@@ -291,13 +291,13 @@ impl std::ops::DerefMut for OpenTransactions {
 }
 
 /// Puts the closing phase back when a close ends, however it ends.
-pub struct ClosingPhase<'a, 'g, S: crate::game::SideGame<'g> + ?Sized> {
+pub struct ClosingPhase<'a, 'g, S: crate::game::SideGame<'g>> {
     pub game: &'a mut S,
     pub(in crate::game) outer: Option<TransactionLifecycle>,
     resource: std::marker::PhantomData<fn(&'g ()) -> &'g ()>,
 }
 
-impl<'a, 'g, S: crate::game::SideGame<'g> + ?Sized> ClosingPhase<'a, 'g, S> {
+impl<'a, 'g, S: crate::game::SideGame<'g>> ClosingPhase<'a, 'g, S> {
     #[inline(always)]
     pub fn new(game: &'a mut S, outer: Option<TransactionLifecycle>) -> Self {
         Self {
@@ -308,7 +308,7 @@ impl<'a, 'g, S: crate::game::SideGame<'g> + ?Sized> ClosingPhase<'a, 'g, S> {
     }
 }
 
-impl<'g, S: crate::game::SideGame<'g> + ?Sized> Drop for ClosingPhase<'_, 'g, S> {
+impl<'g, S: crate::game::SideGame<'g>> Drop for ClosingPhase<'_, 'g, S> {
     fn drop(&mut self) {
         self.game.transactions.closing = self.outer;
     }
@@ -1047,13 +1047,13 @@ pub enum StorageSettlement {
 
 /// RAII guard for one open transaction frame. Dropping it without `close` aborts this frame
 /// and any nested frames still open inside it.
-pub struct StorageScope<'a, 'g, S: crate::game::SideGame<'g> + ?Sized> {
+pub struct StorageScope<'a, 'g, S: crate::game::SideGame<'g>> {
     pub game: &'a mut S,
     pub(in crate::game) frame: Option<TransactionFrame>,
     resource: std::marker::PhantomData<fn(&'g ()) -> &'g ()>,
 }
 
-impl<'g, S: crate::game::SideGame<'g> + ?Sized> StorageScope<'_, 'g, S> {
+impl<'g, S: crate::game::SideGame<'g>> StorageScope<'_, 'g, S> {
     pub fn close(mut self, commit: bool) -> Option<StorageSettlement> {
         self.frame
             .take()
@@ -1061,7 +1061,7 @@ impl<'g, S: crate::game::SideGame<'g> + ?Sized> StorageScope<'_, 'g, S> {
     }
 }
 
-impl<'a, 'g, S: crate::game::SideGame<'g> + ?Sized> StorageScope<'a, 'g, S> {
+impl<'a, 'g, S: crate::game::SideGame<'g>> StorageScope<'a, 'g, S> {
     #[inline(always)]
     pub(in crate::game) fn new(game: &'a mut S, frame: Option<TransactionFrame>) -> Self {
         Self {
@@ -1072,7 +1072,7 @@ impl<'a, 'g, S: crate::game::SideGame<'g> + ?Sized> StorageScope<'a, 'g, S> {
     }
 }
 
-impl<'g, S: crate::game::SideGame<'g> + ?Sized> Drop for StorageScope<'_, 'g, S> {
+impl<'g, S: crate::game::SideGame<'g>> Drop for StorageScope<'_, 'g, S> {
     fn drop(&mut self) {
         if let Some(frame) = self.frame.take() {
             let _ = self.game.close_storage_frame(frame, false);

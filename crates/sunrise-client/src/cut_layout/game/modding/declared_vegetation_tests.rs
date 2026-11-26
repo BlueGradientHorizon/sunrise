@@ -230,4 +230,3 @@ fn declared_vegetation_places_and_breaks_independently_of_its_template() {
     });
 }
 
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;

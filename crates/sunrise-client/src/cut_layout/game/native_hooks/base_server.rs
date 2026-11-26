@@ -1,4 +1,5 @@
 #![cfg(test)]
+
 #[cfg(test)]
 pub(crate) mod held_break_slot_tests {
 
@@ -80,4 +81,3 @@ pub(crate) mod held_break_slot_tests {
         assert_eq!(game.offhand.as_ref().unwrap().damage, 0);
     }
 }
-use sunrise_gameplay_common::game::tables::GameItems as _;

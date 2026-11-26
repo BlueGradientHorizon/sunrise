@@ -1,3 +1,4 @@
+#[cfg(test)]
 use super::*;
 use std::sync::Arc;
 use sunrise_core::geometry::Vec3;

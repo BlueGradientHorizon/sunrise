@@ -2783,11 +2783,7 @@ use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
 
 use sunrise_gameplay_common::game::item_use_stacks::ItemUseStacksGameExt1 as _;
 
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
-
 use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;
-
-use sunrise_gameplay_common::game::native_hooks::enchantments::EnchantmentsGameExt1 as _;
 
 use sunrise_gameplay_common::game::scoreboard_common::CommonGameExt1 as _;
 

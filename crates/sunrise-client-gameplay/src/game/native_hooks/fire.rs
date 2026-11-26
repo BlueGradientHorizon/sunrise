@@ -20,3 +20,28 @@ use sunrise_sim::first_person_sim::Hand;
 use sunrise_world::registry::BlockStateId;
 
 include!(concat!(env!("OUT_DIR"), "/mod_api_fire_generated.rs"));
+
+#[cfg(feature = "test-support")]
+impl crate::game::ClientGame<'_> {
+    pub fn test_fire_block_highlight(
+        &self,
+        pos: [i32; 3],
+        state: BlockStateId,
+        partial: f32,
+        canceled: &mut bool,
+    ) {
+        self.fire_block_highlight(pos, state, partial, canceled);
+    }
+
+    pub fn test_fire_screen_exclusion_areas(
+        &self,
+        screen: &ScreenView<'_>,
+        areas: &mut Vec<[f32; 4]>,
+    ) {
+        self.fire_screen_exclusion_areas(screen, areas);
+    }
+
+    pub fn test_fire_client_tick_pre(&mut self) {
+        self.fire_client_tick_pre();
+    }
+}

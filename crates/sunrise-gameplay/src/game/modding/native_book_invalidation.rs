@@ -1,5 +1,4 @@
 //! Reloads and authoritative knowledge changes revoke published display identities.
-use super::*;
 use sunrise_sim::recipe_book::placement_sync::Frame;
 impl crate::game::ServerGame<'_> {
     fn invalidate_mod_book_placement_connection(&mut self, conn: u32) {

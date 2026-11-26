@@ -1,7 +1,7 @@
 #![cfg(test)]
 #[cfg(test)]
 pub(crate) mod tests {
-    use super::*;
+    
     use sunrise_gameplay::game::commands::compute::ComputeContext;
     use sunrise_gameplay_common::game::commands_common::Target;
 
@@ -11,7 +11,7 @@ pub(crate) mod tests {
         use serde_json::json;
         use std::{path::PathBuf, sync::Arc, time::Instant};
         use sunrise_assets::resource_source::ResourceRoot;
-        use {crate::game::*, sunrise_gameplay_common::game::*};
+        use crate::game::*;
 
         let root = PathBuf::from(
             std::env::var_os("SUNRISE_TEST_RESOURCES")

@@ -16,7 +16,7 @@ pub struct ClientPick {
     pub rider_candidates: Vec<sunrise_gameplay_common::game::pick_ray::PickCandidate>,
     #[cfg(any(test, feature = "test-support"))]
     pub(in crate::game) test_forced_hit: Option<sunrise_gameplay_common::game::Hit>,
-    pub sections: std::cell::RefCell<crate::game::pick_entity::pick_sections::PickSectionStorage>,
+    pub(in crate::game) sections: std::cell::RefCell<crate::game::pick_entity::pick_sections::PickSectionStorage>,
     pub(in crate::game) dispatching: bool,
     /// How many picks have been taken.
     pub(in crate::game) taken: u64,

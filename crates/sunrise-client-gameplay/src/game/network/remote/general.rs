@@ -1,12 +1,17 @@
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
 
-    use crate::game::client_side::remote_client::general::{RemoteGeneral, tick_remote_general};
+    use crate::game::client_side::remote_client::general::RemoteGeneral;
 
+    #[cfg(test)]
+    use crate::game::client_side::remote_client::general::tick_remote_general;
+
+    #[cfg(test)]
     use sunrise_gameplay_common::game::remote::Lerp;
 
     use indexmap::IndexMap;
 
+    #[cfg(test)]
     use std::collections::HashMap;
 
     #[cfg(test)]

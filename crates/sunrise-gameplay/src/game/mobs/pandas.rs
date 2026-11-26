@@ -159,7 +159,7 @@ impl ServerGame<'_> {
             return;
         };
         let mut mobs = self.common.mobs.lift();
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         crate::game::server_side::entity_server::taken_pass_tests::after_take(self);
         let w = self.mob_world_base(&[]);
         for m in &mut mobs {
@@ -183,7 +183,5 @@ impl ServerGame<'_> {
             .restore(mobs, sunrise_sim::join_seq::RestoreOrder::SurvivorsFirst);
     }
 }
-
-use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::item_use_stacks::ItemUseStacksGameExt1 as _;

@@ -261,6 +261,5 @@ fn without_parts_the_vanilla_item_checks_stand() {
     });
 }
 
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
 use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;

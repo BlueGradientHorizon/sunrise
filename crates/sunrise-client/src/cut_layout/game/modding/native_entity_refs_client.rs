@@ -1,4 +1,6 @@
 #![cfg(test)]
+
+
 #[cfg(test)]
 pub(crate) mod tests {
     use crate::game::server_side::native_entity_refs::tests::collect_entities_in;
@@ -398,6 +400,3 @@ pub(crate) mod tests {
         });
     }
 }
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
-
-use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

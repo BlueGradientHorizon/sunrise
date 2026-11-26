@@ -2,6 +2,7 @@
 //! their waves, boss bar, victory and the raiders' bookkeeping. The rules are
 //! `sunrise_client::patrol` and `sunrise_client::raid`; this is the game's
 //! side of them.
+use crate::game::ServerGame;
 use super::Dim;
 use std::collections::{HashMap, HashSet};
 use sunrise_core::nbt::Tag;
@@ -1549,7 +1550,7 @@ impl crate::game::ServerGame<'_> {
     }
 }
 
-impl SiegeLevel for crate::game::ServerGame<'_> {
+impl SiegeLevel for ServerGame<'_> {
     fn sky_darken(&self) -> i32 {
         WeatherGameExt::sky_darken(self)
     }
@@ -1703,10 +1704,6 @@ impl crate::game::ServerGame<'_> {
         Ok(state)
     }
 }
-
-use sunrise_gameplay_common::game::tables::GameItems as _;
-
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
 use sunrise_gameplay_common::game::weather::WeatherGameExt;
 

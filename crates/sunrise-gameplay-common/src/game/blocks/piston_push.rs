@@ -235,8 +235,8 @@ pub trait PistonPushGameExt1<'__sg>: crate::game::SideGame<'__sg> {
         &'__loan self,
         target: MoveWho,
     ) -> Option<(
-        CollisionContext<'_>,
-        sunrise_level::collisions::PowderSnowSubject<'_>,
+        CollisionContext<'__loan>,
+        sunrise_level::collisions::PowderSnowSubject<'__loan>,
     )>
     where
         '__sg: '__loan,
@@ -333,6 +333,12 @@ where
     )
 }
 
+use crate::game::side_ops::blocks::BlocksSideGameExt as _;
+
+use crate::game::tables::GameItems as _;
+
+use crate::game::collision_source::CollisionSourceGameExt1 as _;
+
 #[cfg(test)]
 pub mod tests {
     use super::*;
@@ -394,9 +400,3 @@ pub mod tests {
         );
     }
 }
-
-use crate::game::side_ops::blocks::BlocksSideGameExt as _;
-
-use crate::game::tables::GameItems as _;
-
-use crate::game::collision_source::CollisionSourceGameExt1 as _;

@@ -2,8 +2,7 @@
 use std::sync::Arc;
 
 pub use sunrise_gameplay::game::server_side::entity_server::taken_pass_tests::{
-    PassBalance, ScratchDirectory, SlotIdentities, after_take, assert_mob_spawn_survives,
-    assert_projectile_spawn_survives, in_both_dimensions, with_spawn,
+    ScratchDirectory, SlotIdentities, assert_mob_spawn_survives, in_both_dimensions, with_spawn,
 };
 
 /// Storage adapters for the same production lifecycle walk across entity kinds.

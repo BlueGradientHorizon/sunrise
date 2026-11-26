@@ -2552,6 +2552,14 @@ impl crate::game::ServerGame<'_> {
     }
 }
 
+use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
+
+
+use sunrise_gameplay_common::game::native_configs::NativeConfigsGameExt1 as _;
+
+
+use sunrise_gameplay_common::game::native_lifecycle_common::NativeLifecycleCommonGameExt1 as _;
+
 #[cfg(test)]
 mod tests {
     use sunrise_gameplay_common::game::server_side::dedicated::tests::CHILD_HOME;
@@ -2955,13 +2963,3 @@ mod tests {
         fs::remove_dir_all(dir).unwrap();
     }
 }
-
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
-
-use sunrise_gameplay_common::game::GameGameExt1 as _;
-
-use sunrise_gameplay_common::game::native_configs::NativeConfigsGameExt1 as _;
-
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
-
-use sunrise_gameplay_common::game::native_lifecycle_common::NativeLifecycleCommonGameExt1 as _;

@@ -1,5 +1,9 @@
 #![cfg(test)]
 use sunrise_core::position::BlockPos;
+
+#[cfg(test)]
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
 #[cfg(test)]
 mod landing_crossing_tests {
     use crate::game::native_hooks::block_landing::*;
@@ -98,6 +102,3 @@ mod landing_crossing_tests {
         });
     }
 }
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
-
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

@@ -1,5 +1,7 @@
 //! A menu part reads the same authoritative generation as Host queries.
 #![cfg(test)]
+
+
 #[cfg(test)]
 mod tests {
     use crate::game::server_side::native_entity_refs::tests::with_client_game;
@@ -89,5 +91,3 @@ mod tests {
         });
     }
 }
-
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;

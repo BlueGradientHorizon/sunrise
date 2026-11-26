@@ -7,7 +7,7 @@ use sunrise_core::identifier::Identifier;
 use sunrise_protocol::registry::{Builtin, Dynamic};
 use sunrise_sim::lan::data::SyncData;
 
-enum LocalRegistry<'a> {
+pub enum LocalRegistry<'a> {
     Enchantments(&'a sunrise_items::enchant::Enchantments),
     Advancements(&'a sunrise_sim::advancements::Tree),
     Rules(&'a sunrise_game_data::gamerules::RuleRegistry),
@@ -83,14 +83,14 @@ pub trait NativeRegistryReads<'g>: crate::game::SideGame<'g> {
     fn context_registry<'__loan>(
         &'__loan self,
         registry: &str,
-    ) -> Option<&std::collections::HashMap<String, serde_json::Value>>
+    ) -> Option<&'__loan std::collections::HashMap<String, serde_json::Value>>
     where
         'g: '__loan,
     {
         self.active_providers().registry(registry)
     }
 
-    fn local_registry<'__loan>(&'__loan self, registry: &str) -> Option<LocalRegistry<'_>>
+    fn local_registry<'__loan>(&'__loan self, registry: &str) -> Option<LocalRegistry<'__loan>>
     where
         'g: '__loan,
     {

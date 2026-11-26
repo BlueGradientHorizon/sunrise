@@ -1360,8 +1360,6 @@ impl crate::game::ServerGame<'_> {
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
-use sunrise_gameplay_common::game::creatures::ModGameExt1 as _;
-
 use sunrise_gameplay_common::game::entity_sections::EntitySectionsGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_ticks::NativeTicksGameExt1 as _;

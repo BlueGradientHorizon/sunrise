@@ -1,6 +1,6 @@
 //! The game's side of the Launch API (docs/api/launch.md): the options another launcher may pass,
 //! `--launch-api`'s reply, the exit codes, and docs/api/launch-reference.md, generated from them.
-//! Update it with: `SUNRISE_WRITE_DOCS=1 cargo test -p sunrise-client --lib launch_api`.
+//! Update it with: `SUNRISE_WRITE_DOCS=1 cargo test -p sunrise-gameplay-common --lib launch_api`.
 
 /// The Launch API's version (docs/api/stability.md): an addition makes the next patch.
 pub const VERSION: &str = "0.1.1";
@@ -187,7 +187,7 @@ pub fn markdown() -> String {
     let w = &mut out;
     let _ = writeln!(
         w,
-        "<!-- Generated from crates/sunrise-client/src/game/runtime/launch_api.rs; a test fails when this file is out of date. Update it with: SUNRISE_WRITE_DOCS=1 cargo test -p sunrise-client --lib launch_api -->"
+        "<!-- Generated from crates/sunrise-gameplay-common/src/game/runtime/launch_api.rs; a test fails when this file is out of date. Update it with: SUNRISE_WRITE_DOCS=1 cargo test -p sunrise-gameplay-common --lib launch_api -->"
     );
     let _ = writeln!(w, "# Launch API reference\n");
     let _ = writeln!(
@@ -488,7 +488,7 @@ mod tests {
             .replace("\r\n", "\n");
         assert!(
             have == want,
-            "docs/api/launch-reference.md is out of date: SUNRISE_WRITE_DOCS=1 cargo test -p sunrise-client --lib launch_api"
+            "docs/api/launch-reference.md is out of date: SUNRISE_WRITE_DOCS=1 cargo test -p sunrise-gameplay-common --lib launch_api"
         );
     }
 }

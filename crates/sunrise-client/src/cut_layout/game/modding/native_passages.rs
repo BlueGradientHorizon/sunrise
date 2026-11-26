@@ -15,7 +15,7 @@ pub(crate) mod tests {
 
     use sunrise_gameplay::game::native_passages::tests::listen;
 
-    use sunrise_gameplay_common::game::native_passages::{HeldRefusal, check};
+    use sunrise_gameplay_common::game::native_passages::HeldRefusal;
 
     use sunrise_protocol::passage_sync::PassageForm;
 
@@ -27,7 +27,7 @@ pub(crate) mod tests {
 
     use crate::game::native_guest_turn_tests::with_guests;
 
-    use mod_api::{DimensionKey, LevelRef, Passage, PassageId, PassageTurn, Vec3, WorldEpoch};
+    use mod_api::{DimensionKey, LevelRef, Passage, PassageId, Vec3, WorldEpoch};
 
     use std::sync::{Arc, mpsc};
 
@@ -959,4 +959,3 @@ mod cross_tests {
         );
     }
 }
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

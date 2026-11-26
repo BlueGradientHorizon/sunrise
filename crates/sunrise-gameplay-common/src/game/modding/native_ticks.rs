@@ -354,6 +354,10 @@ impl TickBuffers {
     }
 }
 
+use crate::game::native_hooks::base::GameHooks as _;
+
+use crate::game::side_ops::modapi_modding::ModapiModdingSideGameExt as _;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -434,7 +438,3 @@ mod tests {
         assert_eq!(place(&list, 0, |&id| id == 50), None);
     }
 }
-
-use crate::game::native_hooks::base::GameHooks as _;
-
-use crate::game::side_ops::modapi_modding::ModapiModdingSideGameExt as _;

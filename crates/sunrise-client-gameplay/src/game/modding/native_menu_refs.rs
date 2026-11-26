@@ -277,13 +277,15 @@ pub(in crate::game) fn client_click_ops(
 
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
-    use sunrise_gameplay_common::game::in_own_process;
 
+    #[cfg(test)]
     use super::*;
     use std::sync::{
-        Arc, Mutex,
+        Arc,
         atomic::{AtomicI32, AtomicUsize},
     };
+    #[cfg(test)]
+    use std::sync::Mutex;
     use sunrise_protocol::packets::configuration::ClientInformation;
     use sunrise_sim::lan::{Joined, PlayerSender, guest::Guest};
 
@@ -835,10 +837,13 @@ pub mod tests {
 
 use sunrise_gameplay_common::game::game_mode_common::GameModeCommonGameExt1 as _;
 
+#[cfg(test)]
 use sunrise_gameplay_common::game::native_give_stack::NativeGiveStackGameExt1 as _;
 
+#[cfg(test)]
 use sunrise_gameplay_common::game::native_menu_refs_common::NativeMenuRefsCommonGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;
 
+#[cfg(test)]
 use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

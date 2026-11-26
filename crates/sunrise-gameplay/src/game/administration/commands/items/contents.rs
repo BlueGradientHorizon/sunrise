@@ -277,5 +277,3 @@ mod tests {
         assert_eq!(parent.data().unwrap().bundle_contents, vec![plain, marked]);
     }
 }
-
-use sunrise_gameplay_common::game::tables::GameItems as _;

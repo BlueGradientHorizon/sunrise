@@ -83,6 +83,27 @@ impl<'__carrier, S: crate::game::SideGame<'__carrier>> cauldron::Player
     }
 }
 
+use crate::game::transactions::TransactionsGameExt as _;
+
+use crate::game::held_items::HeldItemsGameExt1 as _;
+
+use crate::game::resident_state::ResidentStateGameExt1 as _;
+
+pub trait FilledResultGameExt<'g>: crate::game::SideGame<'g> {
+    /// `ItemUtils.createFilledResult(held, player, filled)` for the held stack.
+    fn filled_result(&mut self, filled: ItemStack) {
+        let slot = self.held_slot();
+        let mut held = HeldSlot {
+            game: self,
+            slot,
+            dropper: None,
+            resource_lifetime: std::marker::PhantomData,
+        };
+        cauldron::create_filled_result(&mut held, filled, true);
+    }
+}
+impl<'g, G: crate::game::SideGame<'g>> FilledResultGameExt<'g> for G {}
+
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use sunrise_items::items::ItemStack;
@@ -115,24 +136,3 @@ pub(in crate::game) mod tests {
         assert_eq!(arrows.count, 0);
     }
 }
-
-use crate::game::transactions::TransactionsGameExt as _;
-
-use crate::game::held_items::HeldItemsGameExt1 as _;
-
-use crate::game::resident_state::ResidentStateGameExt1 as _;
-
-pub trait FilledResultGameExt<'g>: crate::game::SideGame<'g> {
-    /// `ItemUtils.createFilledResult(held, player, filled)` for the held stack.
-    fn filled_result(&mut self, filled: ItemStack) {
-        let slot = self.held_slot();
-        let mut held = HeldSlot {
-            game: self,
-            slot,
-            dropper: None,
-            resource_lifetime: std::marker::PhantomData,
-        };
-        cauldron::create_filled_result(&mut held, filled, true);
-    }
-}
-impl<'g, G: crate::game::SideGame<'g>> FilledResultGameExt<'g> for G {}

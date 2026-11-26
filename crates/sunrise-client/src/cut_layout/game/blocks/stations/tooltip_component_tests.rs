@@ -2,7 +2,6 @@
 //! fixtures A–K, two-pass draw order & geometry (including audit [87] zero-sized components),
 //! `render_tooltip_pre` font replacement & cancellation, `render_tooltip_texture` & line-only
 //! `ItemResource::tooltip`, `show_tooltip_with_item_in_hand`, audit [88], and panic containment.
-use super::*;
 use mod_api::DefaultTooltipPositioner;
 use mod_api::{
     __private::game::RegistrationContextNew, ClientHost, ClientTooltipComponent, DrawContext, Flow,

@@ -2,6 +2,9 @@
 use std::time::Duration;
 use sunrise_protocol::packets::play;
 use sunrise_protocol::packets::play::Clientbound as C;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
 #[cfg(test)]
 #[path = "bundle_parity_tests.rs"]
 pub(crate) mod bundle_parity_tests;
@@ -88,7 +91,7 @@ pub(crate) mod tests {
     fn a_bundled_long_debug_sample_applies_only_the_prefix_before_packet_error() {
         use sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases;
         if run_fresh_cases(
-            "game::remote::raw_ingress::tests::a_bundled_long_debug_sample_applies_only_the_prefix_before_packet_error",
+            "cut_layout::game::client_side::remote_client::ingress_state::tests::a_bundled_long_debug_sample_applies_only_the_prefix_before_packet_error",
             "SUNRISE_DEBUG_SAMPLE_BUNDLE_CHILD",
             &["debug-sample"],
         ) {
@@ -189,4 +192,3 @@ pub(crate) mod tests {
         });
     }
 }
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

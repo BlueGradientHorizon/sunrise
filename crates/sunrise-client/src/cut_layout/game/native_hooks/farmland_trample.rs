@@ -1,4 +1,9 @@
 #![cfg(test)]
+use sunrise_gameplay_common::game::entity_sections::EntitySectionsGameExt1 as _;
+
+#[cfg(test)]
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
 #[cfg(test)]
 pub(crate) mod tests {
     use crate::game::native_hooks::farmland_trample::*;
@@ -607,6 +612,3 @@ pub(crate) mod tests {
         );
     }
 }
-use sunrise_gameplay_common::game::entity_sections::EntitySectionsGameExt1 as _;
-
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

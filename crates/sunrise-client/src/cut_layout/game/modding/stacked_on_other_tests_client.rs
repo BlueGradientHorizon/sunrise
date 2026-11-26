@@ -304,4 +304,3 @@ pub(crate) mod item_part_tests {
     }
 }
 
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;

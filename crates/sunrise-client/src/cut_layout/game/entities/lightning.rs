@@ -3,7 +3,7 @@
 #[cfg(feature = "client")]
 pub(crate) mod tests {
 
-    use super::*;
+    
 
     /// `LightningRodBlock.onLightningStrike` updates the neighbours of the block
     /// in front of the rod whether or not redstone experiments are on (#14371):

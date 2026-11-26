@@ -102,6 +102,8 @@ pub(in crate::game::client_side) fn keeps_song(
     active && (server_client || jukebox_playing)
 }
 
+use sunrise_gameplay_common::game::tables::GameItems as _;
+
 #[cfg(feature = "client")]
 #[cfg(test)]
 pub(in crate::game) mod tests {
@@ -130,5 +132,3 @@ pub(in crate::game) mod tests {
         assert!(!keeps_song(true, false, false));
     }
 }
-
-use sunrise_gameplay_common::game::tables::GameItems as _;

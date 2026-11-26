@@ -924,7 +924,7 @@ pub(crate) mod registered_slot_source_preservation_tests {
 
     use sunrise_gameplay::game::server_side::commands::items::registered_slot_source_preservation_tests::count;
 
-    use super::*;
+    
 
     pub(crate) use crate::game::server_side::commands_server::items::registered_slot_source_preservation_tests::scene;
 
@@ -1046,4 +1046,3 @@ pub(crate) mod registered_slot_source_preservation_tests {
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
-use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

@@ -1,6 +1,11 @@
 #![cfg(test)]
 use sunrise_sim::lan::playerdata::uuid_ints;
 #[cfg(test)]
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use mod_api::__private::game::Fields;
@@ -340,6 +345,3 @@ mod tests {
         game.boss_bar_state(bar).unwrap().uuid
     }
 }
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
-
-use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;

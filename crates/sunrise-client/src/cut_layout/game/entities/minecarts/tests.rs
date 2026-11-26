@@ -210,14 +210,15 @@ fn a_tnt_cart_detonates_only_when_a_collision_stops_a_moving_one() {
 }
 use sunrise_gameplay::game::server_side::minecarts_server::CartIndex;
 use {
-    crate::game::minecarts::*,
     sunrise_gameplay_common::game::minecarts::{
-        Arc, BlockStateId, CartKind, Minecart, SEAT, Species, Vec3, can_ride_cart,
-        cart_is_destroyed, cart_push_from, cart_seat, container_keep, default_display_offset,
+        BlockStateId, CartKind, Minecart, SEAT, Species, Vec3, can_ride_cart,
+        cart_is_destroyed, cart_seat, container_keep, default_display_offset,
         display_offset, forget_unreadable_display, offered_pickup, pickup_instead_of_push,
         push_along, shown_unless_air, takes_push_from_cart, tnt_ignites_by_collision,
     },
 };
+#[cfg(test)]
+use crate::game::minecarts::*;
 
 /// Issue #8624: chest and hopper carts keep 0.995 of their speed when
 /// empty (0.98 when full), not the plain cart's 0.96, so powered rails

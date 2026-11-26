@@ -1,4 +1,3 @@
-use crate::game::remote::recipe_properties::*;
 use std::sync::Arc;
 
 use sunrise_gameplay_common::game::stations_common::{Kind, Station};

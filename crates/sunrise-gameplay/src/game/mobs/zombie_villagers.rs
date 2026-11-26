@@ -350,6 +350,16 @@ pub fn convert_to_villager(from: &Mob, to: &mut Mob, nausea: bool) -> Vec<ItemSt
     drops_out
 }
 
+use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameExt as _;
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::creatures::ModGameExt1 as _;
+
+use sunrise_gameplay_common::game::item_use_stacks::ItemUseStacksGameExt1 as _;
+
+use sunrise_gameplay_common::game::passengers_common::PassengersCommonGameExt1 as _;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -593,13 +603,3 @@ mod tests {
         assert_eq!(kept[0].item.as_ref(), "minecraft:iron_boots");
     }
 }
-
-use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameExt as _;
-
-use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
-
-use sunrise_gameplay_common::game::creatures::ModGameExt1 as _;
-
-use sunrise_gameplay_common::game::item_use_stacks::ItemUseStacksGameExt1 as _;
-
-use sunrise_gameplay_common::game::passengers_common::PassengersCommonGameExt1 as _;

@@ -135,9 +135,9 @@ rng-trace = ["sunrise-core/rng-trace", "sunrise-client-gameplay?/rng-trace", "su
 # Rust's allocations go to the system heap instead of mimalloc, where heap profilers that replace
 # malloc (heaptrack, valgrind's massif) see them. Also the Windows and macOS prebuilt archives' allocator
 # (tools/prebuilt_game.py, #2394, #3877): there std's shared library keeps its own allocator. Otherwise mimalloc is faster.
-system-allocator = ["sunrise-threads/system-allocator"]
+system-allocator = ["sunrise-threads/system-allocator", "sunrise-gameplay-common/system-allocator"]
 # mimalloc that counts each thread's allocations and frees (`stats` replies with `alloc`).
-alloc-count = ["sunrise-threads/alloc-count"]
+alloc-count = ["sunrise-threads/alloc-count", "sunrise-gameplay-common/alloc-count"]
 # mimalloc with a tag on each block: `sunrise-ctl memory` lists the live heap by startup step and
 # thread (`heap_by_tag_mb`). For measuring only: each block costs 16 bytes more.
 alloc-census = ["sunrise-threads/alloc-census"]

@@ -4,7 +4,7 @@ pub(crate) mod tests {
 
     use sunrise_client_gameplay::game::client_side::native_block_entity_draw::tests::draw;
 
-    use super::*;
+    
 
     /// A mod registers a layer (`register_layer_definitions`) at start: the game bakes it by its
     /// id and draws it, before and after a resource reload, beside vanilla's layers. The cube's
