@@ -266,18 +266,23 @@ impl Game<'_> {
     /// from its type, `Monster` for the dragon, `Misc` for every other kind.
     pub(super) fn entity_classification(&self, entity: EntityRef) -> Option<MobCategory> {
         Some(match self.native_entity_target(entity)? {
-            Target::Mob(id) => match self.mobs.iter().find(|m| m.id == id)?.category() {
-                "monster" => MobCategory::Monster,
-                "creature" => MobCategory::Creature,
-                "ambient" => MobCategory::Ambient,
-                "axolotls" => MobCategory::Axolotls,
-                "underground_water_creature" => MobCategory::UndergroundWaterCreature,
-                "water_creature" => MobCategory::WaterCreature,
-                "water_ambient" => MobCategory::WaterAmbient,
-                _ => MobCategory::Misc,
-            },
+            Target::Mob(id) => mob_category(self.mobs.iter().find(|m| m.id == id)?.category()),
             Target::Dragon(_) => MobCategory::Monster,
             _ => MobCategory::Misc,
+        })
+    }
+    /// `EntityType.getCategory()` of a registered type with no entity: a mob type's declared
+    /// category (the mob table holds vanilla's and the mods' mob types), `Monster` for the
+    /// dragon, `Misc` for every other registered type.
+    pub(super) fn entity_type_category(&self, key: mod_api::EntityTypeKey) -> Option<MobCategory> {
+        let name = mod_api::__private::entity_type_key_id(key)?;
+        Some(match &*name {
+            "minecraft:ender_dragon" => MobCategory::Monster,
+            name => self
+                .res
+                .mob_types()
+                .get(name)
+                .map_or(MobCategory::Misc, |kind| mob_category(&kind.category)),
         })
     }
     /// Whether the entity is in its level: from when `entity_join_level` let
@@ -361,6 +366,20 @@ fn named_id(t: Target) -> Option<u32> {
     }
 }
 
+/// A mob type's `MobCategory` from its table name (`monster`); an unknown name is `Misc`.
+fn mob_category(name: &str) -> MobCategory {
+    match name {
+        "monster" => MobCategory::Monster,
+        "creature" => MobCategory::Creature,
+        "ambient" => MobCategory::Ambient,
+        "axolotls" => MobCategory::Axolotls,
+        "underground_water_creature" => MobCategory::UndergroundWaterCreature,
+        "water_creature" => MobCategory::WaterCreature,
+        "water_ambient" => MobCategory::WaterAmbient,
+        _ => MobCategory::Misc,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::super::api_values::TryIntoApi;
@@ -386,6 +405,38 @@ mod tests {
         game.mobs
             .push(Mob::new(id, kind, Vec3::new(0.5, 70.0, 0.5), 0.0));
         game.entity(id).unwrap()
+    }
+
+    /// `EntityType.getCategory()` read from the type alone (#6044), matching what a live mob
+    /// of the type reports.
+    #[test]
+    #[ignore = "daily"]
+    fn an_entity_types_category_reads_without_an_entity() {
+        with_game(|game| {
+            let key = |id: &str| mod_api::__private::resolved_entity_type_key(id).unwrap();
+            for (id, expected) in [
+                ("minecraft:zombie", MobCategory::Monster),
+                ("minecraft:cow", MobCategory::Creature),
+                ("minecraft:bat", MobCategory::Ambient),
+                ("minecraft:axolotl", MobCategory::Axolotls),
+                (
+                    "minecraft:glow_squid",
+                    MobCategory::UndergroundWaterCreature,
+                ),
+                ("minecraft:dolphin", MobCategory::WaterCreature),
+                ("minecraft:cod", MobCategory::WaterAmbient),
+                ("minecraft:ender_dragon", MobCategory::Monster),
+                ("minecraft:item", MobCategory::Misc),
+                ("minecraft:player", MobCategory::Misc),
+            ] {
+                assert_eq!(key(id).category(&*game), Some(expected), "{id}");
+            }
+            let zombie = push_mob(game, 41, "minecraft:zombie");
+            assert_eq!(
+                game.entity_classification(zombie),
+                key("minecraft:zombie").category(&*game)
+            );
+        });
     }
 
     #[test]

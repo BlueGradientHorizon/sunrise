@@ -1,7 +1,7 @@
 # Parity harness steps: each harness runs its test with the environment it sets (REFERENCE names
 # the harness or the variable); the ignored-tests job skips them.
 sunrise-client-lib mobs::villager_brain::poi_classification_tests::vanilla_bed_poi_states tools/test_bed_poi_parity.py harness
-sunrise-client-lib arrows::client_tests::client_arrow_parity_fixture tools/test_client_arrow_parity.py harness
+sunrise-client-lib entities::arrows::client_tests::client_arrow_parity_fixture tools/test_client_arrow_parity.py harness
 sunrise-client-lib mobs::shulker::space_tests::shulker_space_parity_fixture tools/test_shulker_space_parity.py harness
 sunrise-client-lib save::loot_tests::opened_loot_parity_fixture tools/test_opened_loot_parity.py harness
 sunrise-client-lib mobs::leash::tests::happy_ghast_leash_dispatch_matches_vanilla tools/test_happy_ghast_leash_parity.py harness

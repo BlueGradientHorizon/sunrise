@@ -10,7 +10,7 @@ pub mod advancements;
 pub mod ambience;
 pub mod animate_tick;
 pub mod api_text;
-pub mod arrows;
+pub use entities::arrows;
 pub mod bed_geometry;
 pub mod block_contact;
 pub mod block_sounds;
@@ -161,7 +161,7 @@ pub mod save;
 // save.rs below it. Not part of the mods' API surface.
 #[cfg(test)]
 mod carrier_recover_tests;
-pub mod carrier_store;
+pub use save::carrier as carrier_store;
 #[cfg(test)]
 mod carrier_store_tests;
 pub mod scoreboard_cmd;

@@ -226,7 +226,7 @@
   {
     "package": "sunrise-client-lib",
     "target": "lib",
-    "test": "arrows::client_tests::client_arrow_parity_fixture",
+    "test": "entities::arrows::client_tests::client_arrow_parity_fixture",
     "path": "crates/sunrise-client/src/arrows_client_tests.rs",
     "reason": "run by client-arrow differential harness",
     "rationale": "Existing parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_client_arrow_parity.py supplies its independent oracle/private fixture and drives it separately, not as a prepared-resource daily test."

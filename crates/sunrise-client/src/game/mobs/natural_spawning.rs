@@ -395,6 +395,9 @@ pub(super) struct GameLevel<'g, 'a> {
     /// The spawner block whose tick this pass is, told to the spawn checks;
     /// None for natural spawning and the other passes.
     pub(super) spawner: Option<mod_api::Spawner>,
+    /// What the spawner tick decided `isNearPlayer` is, a mod's `spawner_active` included: the
+    /// spawner's own `serverTick` reads it rather than asking again. None outside a spawner tick.
+    pub(super) spawner_active: Option<bool>,
     /// The mob a listened position check created and lent, which the spawn
     /// that follows takes rather than creating it again ([`Checked`]).
     checked: std::cell::RefCell<Option<Checked>>,
@@ -1157,6 +1160,10 @@ impl sunrise_client::mobs::spawner::SpawnerLevel for GameLevel<'_, '_> {
             .any(|p| p.alive_near(x, y, z, range))
     }
     #[inline]
+    fn spawner_active(&self, near: bool) -> bool {
+        self.spawner_active.unwrap_or(near)
+    }
+    #[inline]
     fn spawner_blocks_work(&self) -> bool {
         self.game
             .ui
@@ -1296,6 +1303,7 @@ impl<'a> Game<'a> {
             box_queries: Default::default(),
             costed,
             spawner: None,
+            spawner_active: None,
             checked: Default::default(),
             last_chunk: Default::default(),
         }

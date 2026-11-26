@@ -192,7 +192,7 @@ def seed_key(root=ROOT, *, version_pins=None, platform_name=None, runtime_pins=N
         'expected_worlds': sorted([subdir, name] for subdir, name in (expected_worlds() if expected is None else expected)),
         'versions': dict(sorted((resolve_version_pins() if version_pins is None else version_pins).items())),
         'platform': plat,
-        'java_runtimes': worlds.LOCK[plat] if runtime_pins is None else runtime_pins,
+        'java_runtimes': worlds.pinned_runtimes(plat) if runtime_pins is None else runtime_pins,
         'default_java': default_java_identity() if default_java is None else default_java,
     }
     return hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(',', ':')).encode('utf-8')).hexdigest()

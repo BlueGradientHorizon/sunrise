@@ -55,7 +55,7 @@ CompassItem.isFoil	port	crates/sunrise-assets/src/item_model.rs::Resolve::has_fo
 CrossbowItem.tryLoadProjectiles	port	crates/sunrise-client/src/game/items/crossbow.rs::Game::tick_crossbow	the drawn ammo is stored on the crossbow once charged
 CrossbowItem.shootProjectile	port	crates/sunrise-client/src/game/items/crossbow.rs::Game::shoot_crossbow
 CrossbowItem.getProjectileShotVector	inline	crates/sunrise-client/src/game/items/crossbow.rs::Game::shoot_crossbow	the multishot spread is rotated inline from the view and up vectors
-CrossbowItem.createProjectile	port	crates/sunrise-client/src/arrows.rs::Ticker::hit_sound	a crossbow arrow hits with item.crossbow.hit (the arrow keeps fired_from_weapon, set in shoot_crossbow)
+CrossbowItem.createProjectile	port	crates/sunrise-client/src/entities/arrows/flight.rs::Ticker::hit_sound	a crossbow arrow hits with item.crossbow.hit (the arrow keeps fired_from_weapon, set in shoot_crossbow)
 CrossbowItem.getShotPitch	inline	crates/sunrise-client/src/game/items/crossbow.rs::Game::shoot_crossbow	the shot pitch per index is inline
 CrossbowItem.getRandomShotPitch	inline	crates/sunrise-client/src/game/items/crossbow.rs::Game::shoot_crossbow	the random pitch formula is inline
 CrossbowItem.getPowerForTime	inline	crates/sunrise-client/src/game/items/crossbow.rs::Game::tick_crossbow	the charge fraction capped at one is the tick check against the charge time

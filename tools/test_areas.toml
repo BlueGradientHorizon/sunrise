@@ -188,6 +188,7 @@ name = "saves"
 about = "saving and loading worlds, entities and players, region files, datafix"
 paths = [
   "crates/sunrise-client/src/save.rs", "crates/sunrise-client/src/save/*", "crates/sunrise-client/src/entity_nbt.rs",
+  "crates/sunrise-client/src/entity_nbt/*",
   "crates/sunrise-client/src/game/world/saving.rs", "crates/sunrise-client/src/game/world/persist*",
   "crates/sunrise-client/src/game/world/storage.rs", "crates/sunrise-client/src/game/world/autosave.rs",
   "crates/sunrise-world/src/region.rs", "crates/sunrise-world/src/datafix/*", "crates/sunrise-core/src/nbt.rs",
@@ -211,7 +212,7 @@ lan = ["sleep-reload", "leash_reload", "reopen_player"]
 name = "motion"
 about = "entity and player movement, collision, vehicles and riding, projectiles"
 paths = [
-  "crates/sunrise-client/src/motion*", "crates/sunrise-client/src/projectiles.rs", "crates/sunrise-client/src/arrows.rs",
+  "crates/sunrise-client/src/motion*", "crates/sunrise-client/src/projectiles.rs", "crates/sunrise-client/src/entities/arrows*",
   "crates/sunrise-world/src/entity_move.rs", "crates/sunrise-world/src/player_travel.rs",
   "crates/sunrise-world/src/*collision*", "crates/sunrise-world/src/movement_*", "crates/sunrise-world/src/living_motion.rs",
   "crates/sunrise-world/src/swimming.rs", "crates/sunrise-world/src/climbing.rs",

@@ -551,6 +551,147 @@ pub(super) fn yellow_names(key: &str, names: Vec<Tag>) -> Tag {
     ])
 }
 
+impl Hub {
+    /// PlayerList.broadcastSystemMessage.
+    pub fn system_message(&self, content: Tag) {
+        self.broadcast(&C::SystemChat(play::SystemChat {
+            content,
+            overlay: false,
+        }));
+    }
+    /// A system message for the guests `hears` picks by name
+    /// (`PlayerList.broadcastSystemToTeam` and its kin).
+    pub fn system_message_to(&self, content: Tag, hears: impl Fn(&str) -> bool) {
+        let body = C::SystemChat(play::SystemChat {
+            content,
+            overlay: false,
+        })
+        .encode();
+        for g in self.guests.iter().filter(|g| g.placed && hears(&g.name)) {
+            g.sender.send(body.clone());
+        }
+    }
+    /// `ServerPlayer.sendSystemMessage` to the guest with `uuid`, in any dimension.
+    pub fn system_message_to_player(&self, uuid: u128, content: Tag) {
+        let body = C::SystemChat(play::SystemChat {
+            content,
+            overlay: false,
+        })
+        .encode();
+        for g in self.guests.iter().filter(|g| g.placed && g.uuid == uuid) {
+            g.sender.send(body.clone());
+        }
+    }
+    /// `ServerPlayer.sendOverlayMessage` to every guest (the action bar).
+    pub fn overlay_message(&self, content: Tag) {
+        self.broadcast(&C::SystemChat(play::SystemChat {
+            content,
+            overlay: true,
+        }));
+    }
+    /// A chat message from the host (a disguised chat: the host has no connection to sign with).
+    pub fn chat(&self, sender: &str, text: &str) {
+        // ChatType.bind throws without the type: nothing is sent.
+        let Some(chat_type) = self.chat_type_id("chat") else {
+            return;
+        };
+        self.broadcast(&C::DisguisedChat(play::DisguisedChat {
+            message: literal(text),
+            chat_type: play::ChatTypeBound {
+                chat_type: chat_type.network_id() as i32,
+                name: literal(sender),
+                target: None,
+            },
+        }));
+    }
+    /// ListPlayersCommand's reply: the players in join order (the host of a
+    /// LAN world first), as display names (Player.getDisplayName, with the
+    /// team's colour and affixes) or names with ids, joined by
+    /// gray commas (ComponentUtils.formatList).
+    pub fn list_reply(&self, uuids: bool) -> Tag {
+        let players: Vec<(u128, &str)> = self
+            .online_players()
+            .map(|g| (g.uuid, g.name.as_str()))
+            .collect();
+        let format = |(uuid, name): (u128, &str)| {
+            if uuids {
+                Tag::compound([
+                    ("translate", string("commands.list.nameAndId")),
+                    (
+                        "with",
+                        Tag::List(vec![
+                            string(name),
+                            string(&sunrise_protocol::crypto::uuid_string(uuid)),
+                        ]),
+                    ),
+                ])
+            } else {
+                self.player_display_name(uuid, name)
+            }
+        };
+        let names = match players.len() {
+            0 => string(""),
+            1 => format(players[0]),
+            _ => {
+                let mut extra = Vec::new();
+                for (k, p) in players.iter().enumerate() {
+                    if k > 0 {
+                        extra.push(Tag::compound([
+                            ("text", string(", ")),
+                            ("color", string("gray")),
+                        ]));
+                    }
+                    extra.push(format(*p));
+                }
+                Tag::compound([("text", string("")), ("extra", Tag::List(extra))])
+            }
+        };
+        Tag::compound([
+            ("translate", string("commands.list.players")),
+            (
+                "with",
+                Tag::List(vec![
+                    Tag::Int(players.len() as i32),
+                    Tag::Int(self.lan.shared.max_players() as i32),
+                    names,
+                ]),
+            ),
+        ])
+    }
+
+    /// Disconnect a guest with a reason (ServerGamePacketListenerImpl.disconnect), once
+    /// ([`Guest::begin_disconnect`]): a guest already on the way out keeps its first reason.
+    pub fn kick(&mut self, conn: u32, reason: Tag) {
+        let text = self.english(&reason);
+        let started = self.update_guest(conn, |g| {
+            g.begin_disconnect(text.clone(), reason)
+                .then(|| (g.uuid, g.name.clone()))
+        });
+        if let Some((player, name)) = started.flatten() {
+            self.pending_kicks.push(HostEvent::Kicked {
+                conn,
+                player,
+                name,
+                reason: text,
+            });
+        }
+    }
+
+    /// `TransferCommand.transfer`: the guest's client is handed to another
+    /// server (`ClientboundTransferPacket`, the play state's `Transfer`); the
+    /// client closes the connection and logs in there. Nothing disconnects the
+    /// player here: as in vanilla, the close comes from the client.
+    pub fn transfer(&self, conn: u32, host: &str, port: i32) {
+        self.send_to(
+            conn,
+            &C::Transfer(sunrise_protocol::packets::configuration::Transfer {
+                host: host.to_owned(),
+                port,
+            }),
+        );
+    }
+}
+
 #[cfg(test)]
 mod decorate_tests {
     use super::*;

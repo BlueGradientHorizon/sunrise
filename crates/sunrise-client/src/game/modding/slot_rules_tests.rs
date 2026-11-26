@@ -146,6 +146,34 @@ fn staged_slot_rule_reads_hide_unrepresentable_and_player_stacks() {
     );
 }
 
+/// A stack the parts can't be asked about (#6030): an item the mods' registry never resolved
+/// is not placed into a slot whose rules a part answers, and nothing is asked; one already in
+/// the slot can still be taken out by the slot's own rule.
+#[test]
+#[ignore = "daily"]
+fn a_stack_the_parts_cannot_be_asked_about_is_not_placed() {
+    with_mods(vec![ModEntry::new("rules", Box::new(Listener))], || {
+        with_game(|game| {
+            reset(None, false);
+            let mut menu = chest(("test:unregistered", 8));
+            assert_eq!(pickup(game, &mut menu), (0, 8));
+            assert_eq!(asked(), []);
+            let mut menu = chest(("minecraft:stone", 1));
+            menu.carried = None;
+            menu.load_slot(0, Some(ItemStack::new("test:unregistered", 3)));
+            assert_eq!(pickup(game, &mut menu), (0, 3));
+            assert_eq!(asked(), []);
+        });
+    });
+    // Without a part the slot's own rules decide, and the stack goes in as before.
+    with_mods(vec![ModEntry::new("quiet", Box::new(Quiet))], || {
+        with_game(|game| {
+            let mut menu = chest(("test:unregistered", 8));
+            assert_eq!(pickup(game, &mut menu), (8, 0));
+        });
+    });
+}
+
 #[test]
 #[ignore = "daily"]
 fn a_click_asks_the_part_for_each_slot_and_stack_it_consults_in_order() {

@@ -383,9 +383,9 @@ def main(argv=None) -> int:
     parser.add_argument("--trees", nargs=2, metavar=("BASE", "HEAD"), type=Path,
                         help="compare two local trees with the same generator instead of fetching the CI base; "
                              "use --build-base-tool if the generator changed")
-    parser.add_argument("--base", metavar="SHA",
-                        help="compare against this commit as CI compares against its base, including the base's "
-                             "own sunrise-stage (a local run)")
+    parser.add_argument("--base", metavar="COMMIT",
+                        help="compare against this commit (a sha or a ref such as origin/main) as CI compares "
+                             "against its base, including the base's own sunrise-stage (a local run)")
     parser.add_argument("--build-tool", action="store_true",
                         help="only build the head's sunrise-stage (cargo arguments from $JOBS), append "
                              "SUNRISE_STAGE_TOOL=<path> to $GITHUB_ENV when that is set, and print the path")
@@ -422,7 +422,9 @@ def main(argv=None) -> int:
         else:
             base = work / "base"
             try:
-                sha, why = (args.base, "") if args.base else base_commit(
+                # The base's tool tree and the report's last line take the commit's sha, so a ref such as
+                # origin/main is resolved first; a full sha resolves to itself, fetched or not.
+                sha, why = (git("rev-parse", "--verify", args.base).strip(), "") if args.base else base_commit(
                     os.environ.get("EVENT", ""), os.environ.get("PR", ""), git)
                 if sha:
                     base.mkdir()
