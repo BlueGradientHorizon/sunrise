@@ -459,6 +459,15 @@ def build_scene(server, run, Bot, port, protocol, props, era, data_version, stat
     return bot
 
 
+def tracked_bot(bots):
+    """A Bot class that appends each bot that joined to `bots` once __init__ returns (a failed join closes its own socket)."""
+    class JoinedBot(Bot):
+        def __init__(self, *args):
+            super().__init__(*args)
+            bots.append(self)
+    return JoinedBot
+
+
 def build(name, force=False):
     version, props = VARIANTS.get(name, (name, None))
     jar, data_version, protocol = server_jar(version)
@@ -491,11 +500,7 @@ def build(name, force=False):
         server = Server(work, jar, port, scene.experiments(data_version), java_exe, props)
     problems = []
     bots = []   # every bot that joined, so that the finally below closes it whatever fails
-
-    class JoinedBot(Bot):
-        def __init__(self, *args):
-            super().__init__(*args)
-            bots.append(self)
+    JoinedBot = tracked_bot(bots)
 
     def run(command):
         out = server.run(command)

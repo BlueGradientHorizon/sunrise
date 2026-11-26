@@ -196,5 +196,54 @@ class BuildCleanupTests(unittest.TestCase):
         self.assertEqual((events, str(error)), (['joined', 'left', 'stopped'], 'stop failed'))
 
 
+class BuildFlatCleanupTests(unittest.TestCase):
+    """build_flat() with the server, the bots and the scene replaced: what is closed when something fails."""
+
+    def build_flat(self, fail_in):
+        events = []
+
+        class FakeBot:
+            def __init__(self, port, protocol, name):
+                events.append('joined')
+
+            def leave(self):
+                events.append('left')
+
+        class FakeServer:
+            def _pump(self):
+                pass
+
+            def wait(self, *args):
+                pass
+
+            def stop(self):
+                events.append('stopped')
+
+        def populate(server, Bot, *args):
+            Bot(1, 340, 'x')
+            raise ValueError('populate failed')
+
+        def batch(server, commands, problems, **kwargs):
+            if fail_in == 'visit' and commands[0].startswith('tp '):
+                raise ValueError('visit failed')
+
+        with tempfile.TemporaryDirectory() as temp, mock.patch.object(worlds, 'LOCAL', Path(temp)), \
+                mock.patch.object(worlds, 'server_jar', return_value=(Path('server.jar'), 1343, 340)), \
+                mock.patch.object(worlds, 'java', return_value='java'), mock.patch.object(worlds, 'Server', FakeServer), \
+                mock.patch.object(worlds, 'Bot', FakeBot), mock.patch.object(worlds, 'subprocess', mock.MagicMock()), \
+                mock.patch.object(worlds.scene12, 'populate', populate), mock.patch.object(worlds.scene12, 'batch', batch), \
+                mock.patch.object(worlds.scene12, 'time', SimpleNamespace(sleep=lambda seconds: None)):
+            with self.assertRaises(ValueError) as caught:
+                worlds.scene12.build_flat(worlds)
+        return events, str(caught.exception)
+
+    def test_a_visit_that_fails_closes_the_visitor_and_stops_the_server(self):
+        self.assertEqual(self.build_flat('visit'), (['joined', 'left', 'stopped'], 'visit failed'))
+
+    def test_a_scene_that_fails_closes_every_bot_and_stops_the_server(self):
+        events, error = self.build_flat('populate')
+        self.assertEqual((events, error), (['joined', 'left', 'joined', 'left', 'left', 'stopped'], 'populate failed'))
+
+
 if __name__ == '__main__':
     unittest.main()
