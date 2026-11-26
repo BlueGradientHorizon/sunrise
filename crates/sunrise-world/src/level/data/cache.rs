@@ -6,7 +6,7 @@
 //! Snapshots live in the game's own cache folder ([`set_dir`]), never in the
 //! resource folder: that one is shared by worktrees and copied between installed
 //! versions by the launcher. Its key is the format version plus a hash of the
-//! resources the snapshot is resolved from, so no build input decides it.
+//! filesystem and embedded resources the snapshot is resolved from.
 use super::*;
 use crate::registry::snapshot as registry_snapshot;
 use serde::{Deserialize, Serialize};
@@ -21,7 +21,7 @@ use std::{
     time::SystemTime,
 };
 
-// Bump a version, and its file name, with any change to how its snapshot is resolved, stored or restored.
+// Bump a version and its file name for format changes or resolution changes not reflected by the fingerprint.
 const MAGIC: &[u8; 8] = b"HZBEHAV\0";
 const VERSION: u32 = 8;
 const FILE_NAME: &str = "behaviours-v8.bin";
@@ -142,6 +142,15 @@ fn fingerprint(registry: &BlockRegistry, root: &Path) -> io::Result<[u8; 32]> {
     let mut hasher = Sha256::new();
     hasher.update(b"sunrise resolved behaviours 2");
     hasher.update(sources_digest(root)?);
+    for kind in ["block", "fluid"] {
+        let entries = crate::tag_layers::convention::json_entries(kind);
+        hash_str(&mut hasher, kind);
+        hasher.update((entries.len() as u64).to_le_bytes());
+        for (id, json) in entries {
+            hash_str(&mut hasher, id);
+            hash_str(&mut hasher, json);
+        }
+    }
     // The registry argument may be modified independently of facts.json.
     hasher.update((registry.len() as u64).to_le_bytes());
     let mut seen = std::collections::HashSet::new();
