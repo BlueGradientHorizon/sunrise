@@ -291,8 +291,8 @@ owner = "::sunrise_gameplay_common::game::native_entity_state_common::NativeEnti
 
 [host.client."EntityIdentityBackend::entity_is_multipart"]
 borrow = "shared"
-kind = "common"
-owner = "::sunrise_gameplay_common::game::CommonGame"
+kind = "shared_trait"
+owner = "::sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1<'_>"
 
 [host.client."EntityIdentityBackend::entity_kind"]
 borrow = "shared"
@@ -451,28 +451,28 @@ owner = "::sunrise_gameplay_common::game::CommonGame"
 
 [host.client."ItemsBackend::item_container_capacity"]
 borrow = "shared"
-kind = "common"
-owner = "::sunrise_gameplay_common::game::CommonGame"
+kind = "shared_trait"
+owner = "::sunrise_gameplay_common::game::native_item_container::NativeItemContainerGameExt1<'_>"
 
 [host.client."ItemsBackend::item_container_extract"]
 borrow = "shared"
-kind = "common"
-owner = "::sunrise_gameplay_common::game::CommonGame"
+kind = "shared_trait"
+owner = "::sunrise_gameplay_common::game::native_item_container::NativeItemContainerGameExt1<'_>"
 
 [host.client."ItemsBackend::item_container_insert"]
 borrow = "shared"
-kind = "common"
-owner = "::sunrise_gameplay_common::game::CommonGame"
+kind = "shared_trait"
+owner = "::sunrise_gameplay_common::game::native_item_container::NativeItemContainerGameExt1<'_>"
 
 [host.client."ItemsBackend::item_container_insert_slot"]
 borrow = "shared"
-kind = "common"
-owner = "::sunrise_gameplay_common::game::CommonGame"
+kind = "shared_trait"
+owner = "::sunrise_gameplay_common::game::native_item_container::NativeItemContainerGameExt1<'_>"
 
 [host.client."ItemsBackend::item_container_slots"]
 borrow = "shared"
-kind = "common"
-owner = "::sunrise_gameplay_common::game::CommonGame"
+kind = "shared_trait"
+owner = "::sunrise_gameplay_common::game::native_item_container::NativeItemContainerGameExt1<'_>"
 
 [host.client."ItemsBackend::item_equippable_slot"]
 borrow = "shared"
@@ -546,18 +546,18 @@ owner = "::sunrise_gameplay_common::game::native_hooks::build_creative_mode_tab_
 
 [host.client."ItemsClientHost::enchantment_min_cost"]
 borrow = "shared"
-kind = "common"
-owner = "::sunrise_gameplay_common::game::CommonGame"
+kind = "shared_trait"
+owner = "::sunrise_gameplay_common::game::native_hooks::enchantments::EnchantmentsGameExt1<'_>"
 
 [host.client."ItemsClientHost::enchantment_supports"]
 borrow = "shared"
-kind = "common"
-owner = "::sunrise_gameplay_common::game::CommonGame"
+kind = "shared_trait"
+owner = "::sunrise_gameplay_common::game::native_hooks::enchantments::EnchantmentsGameExt1<'_>"
 
 [host.client."ItemsClientHost::enchantments"]
 borrow = "shared"
-kind = "common"
-owner = "::sunrise_gameplay_common::game::CommonGame"
+kind = "shared_trait"
+owner = "::sunrise_gameplay_common::game::native_hooks::enchantments::EnchantmentsGameExt1<'_>"
 
 [host.client."ItemsClientHost::potions"]
 borrow = "shared"
@@ -1276,8 +1276,8 @@ owner = "::sunrise_gameplay_common::game::tables::WorldTablesExt<'_>"
 
 [host.client."RecipesBackend::recipe_ingredient_item_keys"]
 borrow = "shared"
-kind = "common"
-owner = "::sunrise_gameplay_common::game::CommonGame"
+kind = "shared_trait"
+owner = "::sunrise_gameplay_common::game::native_hooks::ingredient_test::IngredientTestGameExt1<'_>"
 
 [host.client."RecipesBackend::recipe_ingredient_test"]
 borrow = "shared"
@@ -1596,8 +1596,8 @@ owner = "::sunrise_gameplay_common::game::native_entity_state_common::NativeEnti
 
 [host.server."EntityIdentityBackend::entity_is_multipart"]
 borrow = "shared"
-kind = "common"
-owner = "::sunrise_gameplay_common::game::CommonGame"
+kind = "shared_trait"
+owner = "::sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1<'_>"
 
 [host.server."EntityIdentityBackend::entity_kind"]
 borrow = "shared"
@@ -1761,28 +1761,28 @@ owner = "::sunrise_gameplay_common::game::CommonGame"
 
 [host.server."ItemsBackend::item_container_capacity"]
 borrow = "shared"
-kind = "common"
-owner = "::sunrise_gameplay_common::game::CommonGame"
+kind = "shared_trait"
+owner = "::sunrise_gameplay_common::game::native_item_container::NativeItemContainerGameExt1<'_>"
 
 [host.server."ItemsBackend::item_container_extract"]
 borrow = "shared"
-kind = "common"
-owner = "::sunrise_gameplay_common::game::CommonGame"
+kind = "shared_trait"
+owner = "::sunrise_gameplay_common::game::native_item_container::NativeItemContainerGameExt1<'_>"
 
 [host.server."ItemsBackend::item_container_insert"]
 borrow = "shared"
-kind = "common"
-owner = "::sunrise_gameplay_common::game::CommonGame"
+kind = "shared_trait"
+owner = "::sunrise_gameplay_common::game::native_item_container::NativeItemContainerGameExt1<'_>"
 
 [host.server."ItemsBackend::item_container_insert_slot"]
 borrow = "shared"
-kind = "common"
-owner = "::sunrise_gameplay_common::game::CommonGame"
+kind = "shared_trait"
+owner = "::sunrise_gameplay_common::game::native_item_container::NativeItemContainerGameExt1<'_>"
 
 [host.server."ItemsBackend::item_container_slots"]
 borrow = "shared"
-kind = "common"
-owner = "::sunrise_gameplay_common::game::CommonGame"
+kind = "shared_trait"
+owner = "::sunrise_gameplay_common::game::native_item_container::NativeItemContainerGameExt1<'_>"
 
 [host.server."ItemsBackend::item_equippable_slot"]
 borrow = "shared"
@@ -2586,8 +2586,8 @@ owner = "::sunrise_gameplay_common::game::tables::WorldTablesExt<'_>"
 
 [host.server."RecipesBackend::recipe_ingredient_item_keys"]
 borrow = "shared"
-kind = "common"
-owner = "::sunrise_gameplay_common::game::CommonGame"
+kind = "shared_trait"
+owner = "::sunrise_gameplay_common::game::native_hooks::ingredient_test::IngredientTestGameExt1<'_>"
 
 [host.server."RecipesBackend::recipe_ingredient_test"]
 borrow = "shared"
