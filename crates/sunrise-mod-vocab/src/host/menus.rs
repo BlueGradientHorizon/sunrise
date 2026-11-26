@@ -112,6 +112,18 @@ pub trait MenusClientBackend {
     /// scale and the recipe book's horizontal offset.
     fn menu_slot_boxes(&self, menu: MenuRef) -> Option<Vec<Option<[f32; 4]>>>;
     /// Side: client.
+    /// The creative item or search tab's catalog cells (`ItemPickerMenu`'s 45
+    /// `CustomCreativeSlot`s, 9 by 5, left to right then top to bottom), which
+    /// [`MenuRef::slot_boxes`] leaves out because they are not `InventoryMenu`'s slots.
+    /// Each cell is its box (`[x, y, width, height]` in GUI pixels, as `slot_boxes` gives:
+    /// `leftPos`/`topPos` plus `9 + column * 18`, `18 + row * 18`, 16x16) and the stack it
+    /// shows from the tab's list scrolled to its first visible row (`scrollTo`: list index
+    /// `first_row * 9 + cell`), components included; `None` for a cell past the list's end.
+    /// `Some` of an empty list on the creative inventory tab, which shows no catalog.
+    /// Returns `None` for a stale menu, another screen, or no window.
+    /// Built per call; read it in the frame that draws over it.
+    fn menu_creative_catalog(&self, menu: MenuRef) -> Option<Vec<([f32; 4], Option<ItemStack>)>>;
+    /// Side: client.
     /// Slot roles from the client layout and content menu declaration, in menu order.
     /// The length equals `slot_count`. Machine inputs (including fuel and brewing
     /// bottle slots) are `Input`; unknown roles are `Other`. Roles describe neither
