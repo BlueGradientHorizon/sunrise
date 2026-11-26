@@ -12,7 +12,7 @@ import unittest
 from unittest.mock import patch
 from pathlib import Path
 
-from tools import prebuilt_game
+from tools import lab, prebuilt_game
 from tests.os_support import needs_runner_shell, needs_symlinks
 from tests.test_ci_concurrency import yaml
 
@@ -149,7 +149,7 @@ class StageToolTests(unittest.TestCase):
                     prebuilt_game.build(root / "other-sdk", server=False)
                 raise RuntimeError("build failed")
 
-            with patch.object(prebuilt_game, "os", ScopedOs({"CARGO_TARGET_DIR": directory})), \
+            with scoped_os({"CARGO_TARGET_DIR": directory}), \
                  patch.object(prebuilt_game, "_build_locked", side_effect=build_then_fail) as build_locked:
                 with self.assertRaisesRegex(RuntimeError, "build failed"):
                     prebuilt_game.build(root / "sdk", server=True)
@@ -632,7 +632,7 @@ class ToolBuildTests(unittest.TestCase):
     def built_with(self, environment: dict, binary: bytes = b"tool") -> dict:
         calls = []
         with tempfile.TemporaryDirectory() as directory, \
-                patch.object(prebuilt_game, "os", ScopedOs({"CARGO_TARGET_DIR": directory, **environment})), \
+                scoped_os({"CARGO_TARGET_DIR": directory, **environment}), \
                 patch.object(prebuilt_game, "rustc_host", return_value="x86_64-unknown-linux-gnu"), \
                 patch.object(prebuilt_game, "head", return_value=COMMIT), \
                 patch.object(prebuilt_game, "run", side_effect=lambda *args, **kwargs: calls.append(kwargs)):
@@ -693,7 +693,7 @@ class AllocatorSelectionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             target = root / "target" / "prebuilt"
-            with patch.object(prebuilt_game, "os", ScopedOs({"CARGO_TARGET_DIR": str(target.parent)})), \
+            with scoped_os({"CARGO_TARGET_DIR": str(target.parent)}), \
                     patch.object(prebuilt_game, "_build_locked") as build_locked:
                 for out in (root, target, target / "stage"):
                     with self.subTest(out=out), self.assertRaisesRegex(SystemExit, "E_SDK_OUT_OVERLAPS_TARGET"):
@@ -716,7 +716,7 @@ class AllocatorSelectionTests(unittest.TestCase):
                 target.symlink_to(work, target_is_directory=True)
             except OSError:
                 self.skipTest("directory symlinks unavailable")
-            with patch.object(prebuilt_game, "os", ScopedOs({"CARGO_TARGET_DIR": str(target.parent)})), \
+            with scoped_os({"CARGO_TARGET_DIR": str(target.parent)}), \
                     patch.object(prebuilt_game, "_build_locked") as build_locked:
                 with self.assertRaisesRegex(SystemExit, "E_SDK_OUT_OVERLAPS_TARGET"):
                     prebuilt_game.build(output, server=False)
@@ -747,11 +747,11 @@ class AllocatorSelectionTests(unittest.TestCase):
              patch.object(prebuilt_game, "head", return_value="fixture-commit"), \
              patch.object(prebuilt_game, "rustc_host", return_value="fixture-host"), \
              patch.object(prebuilt_game, "run", side_effect=capture), \
-             patch.object(prebuilt_game, "os", ScopedOs({
+             scoped_os({
                  "CARGO_ENCODED_RUSTFLAGS": "-Cprefer-dynamic=no",
                  # An inherited unit count must not reach the SDK game.
                  "CARGO_PROFILE_RELEASE_CODEGEN_UNITS": "16",
-                 "CARGO_TARGET_DIR": target})):
+                 "CARGO_TARGET_DIR": target}):
             # Its own target folder: the build takes that folder's lock, never the checkout's.
             with self.assertRaises(Captured):
                 prebuilt_game.build(Path(target) / "unused-sdk", False)
@@ -765,6 +765,14 @@ class ScopedOs:
 
     def __getattr__(self, name):
         return getattr(os, name)
+
+
+@contextlib.contextmanager
+def scoped_os(environ: dict[str, str]):
+    """prebuilt_game and lab (which resolves CARGO_TARGET_DIR for it) both read `environ`, not the process's."""
+    scoped = ScopedOs(environ)
+    with patch.object(prebuilt_game, "os", scoped), patch.object(lab, "os", scoped):
+        yield
 
 
 class PrebuiltContentsTests(unittest.TestCase):
