@@ -312,6 +312,8 @@ mod fluid_rules;
 mod fluid_tick;
 mod fluid_tooltip;
 mod frame_graph_setup;
+#[cfg(test)]
+mod framerate_limit_tests;
 mod friction;
 mod game_rule_changed;
 mod game_shutting_down;

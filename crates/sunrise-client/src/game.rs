@@ -13704,7 +13704,9 @@ impl Game<'_> {
                     self.advance_flight();
                     self.tick_world_icon();
                     let ticked = Instant::now();
-                    let rendered = self.render_and_flip(elapsed)?;
+                    // A mod's `framerate_limit` of 0 skips this frame's render.
+                    let limit = self.framerate_limit();
+                    let rendered = limit != 0 && self.render_and_flip(elapsed)?;
                     self.native_frame_end()?;
                     // Drain once for both the raw flight and the slow-frame/capture route.
                     let frame_spans = if sunrise_client::spans::recording_here() {
@@ -13768,7 +13770,7 @@ impl Game<'_> {
                         self.frame_stats.record_gpu(&r.gpu_times);
                         r.gpu_times.clear();
                     }
-                    self.limit_frame();
+                    self.limit_frame(limit);
                     let paused = self.pauses_game();
                     if paused != self.pause {
                         let mut cancel = false;
