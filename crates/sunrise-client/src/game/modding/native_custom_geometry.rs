@@ -512,6 +512,38 @@ impl Game<'_> {
         let gpu = self.mod_gpu().ok_or(mod_api::BufferError::Unavailable)?;
         gpu.storage_buffer_release(mod_api::content::crash::current_native_mod(), buffer)
     }
+    /// Record a copy of retained storage `buffer`'s range at this point of the compute node being
+    /// recorded.
+    pub(super) fn storage_buffer_request_readback(
+        &self,
+        buffer: mod_api::StorageBufferRef,
+        offset: u64,
+        len: u64,
+    ) -> Result<mod_api::ReadbackTicket, mod_api::BufferError> {
+        let gpu = self.mod_gpu().ok_or(mod_api::BufferError::Unavailable)?;
+        gpu.storage_buffer_request_readback(
+            mod_api::content::crash::current_native_mod(),
+            buffer,
+            offset,
+            len,
+        )
+    }
+    /// The bytes of a readback, none while it is in flight.
+    pub(super) fn readback_poll(
+        &self,
+        ticket: mod_api::ReadbackTicket,
+    ) -> Result<Option<Vec<u8>>, mod_api::BufferError> {
+        let gpu = self.mod_gpu().ok_or(mod_api::BufferError::Unavailable)?;
+        gpu.readback_poll(mod_api::content::crash::current_native_mod(), ticket)
+    }
+    /// Drop a pending readback.
+    pub(super) fn readback_release(
+        &self,
+        ticket: mod_api::ReadbackTicket,
+    ) -> Result<(), mod_api::BufferError> {
+        let gpu = self.mod_gpu().ok_or(mod_api::BufferError::Unavailable)?;
+        gpu.readback_release(mod_api::content::crash::current_native_mod(), ticket)
+    }
     /// Allocate a mod-owned offscreen [`mod_api::RenderTargetRef`] on the active renderer's device.
     pub(super) fn create_render_target(
         &self,
@@ -1430,6 +1462,7 @@ impl Game<'_> {
             texel,
             kind,
         });
+        gpu.note_compute_dispatch();
         Ok(())
     }
 
