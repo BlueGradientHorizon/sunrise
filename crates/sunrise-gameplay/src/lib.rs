@@ -1,5 +1,9 @@
 //! Vanilla's logical side: the gameplay the server jar holds, common code included.
 #![forbid(unsafe_code)]
+
+#[cfg(test)]
+#[used]
+static KEEP_TEST_PLATFORM: fn() = mod_platform::__private::test_platform::keep;
 #[macro_use]
 extern crate sunrise_gameplay_common;
 pub mod allays;

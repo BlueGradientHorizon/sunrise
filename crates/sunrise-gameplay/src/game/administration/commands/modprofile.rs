@@ -41,7 +41,7 @@ impl crate::game::ServerGame<'_> {
 }
 fn run(action: Action, game_dir: &Path) -> R<Vec<Text>> {
     #[cfg(test)]
-    sunrise_gameplay_common::install_test_mod_platform!(mod_platform);
+    mod_platform::__private::test_platform::install();
     let profiler = mod_api::__private::platform::platform()
         .map_err(|e| err("sunrise.modprofile.writeFailed", &[&e.to_string()]))?;
     match action {

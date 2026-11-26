@@ -162,7 +162,7 @@ tempfile = "3"
 bytemuck = { version = "1.24", features = ["derive"] }
 sunrise-mod-runtime = { path = "../sunrise-mod-runtime", features = ["test-work-count"] }
 sunrise-threads = { path = "../sunrise-threads", features = ["test-allocation-count", "test-game-dir"] }
-mod_platform = { package = "sunrise-mod-api", path = "../sunrise-mod-api", features = ["testing"] }
+mod_platform = { package = "sunrise-mod-api", path = "../sunrise-mod-api", features = ["engine-test-platform"] }
 mod_api = { package = "sunrise-mod-vocab", path = "../sunrise-mod-vocab", features = ["testing"] }
 sunrise-client-render = { path = "../sunrise-client-render", features = ["test-support"] }
 sunrise-items = { path = "../sunrise-items", features = ["test-support"] }

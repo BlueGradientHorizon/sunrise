@@ -1760,7 +1760,7 @@ impl<'a> ServerGame<'a> {
         {
             static INITIALIZED: std::sync::Once = std::sync::Once::new();
             INITIALIZED.call_once(|| {
-                sunrise_gameplay_common::install_test_mod_platform!(mod_platform);
+                mod_platform::__private::test_platform::install();
                 mod_platform::__private::initialize()
                     .expect("engine test runtime initializes before mod dispatch");
             });

@@ -619,13 +619,14 @@ pub fn native_declared() -> std::borrow::Cow<'static, NativeDeclared> {
     // Production freezes one loaded mod set for startup and reload. Tests replace
     // that set in thread-local scopes, so a process-wide snapshot would retain
     // whichever fixture reached content loading first, even on another thread.
-    #[cfg(not(test))]
+    #[cfg(not(any(test, feature = "test-support")))]
     {
         static DECLARED: std::sync::OnceLock<NativeDeclared> = std::sync::OnceLock::new();
         std::borrow::Cow::Borrowed(DECLARED.get_or_init(declare))
     }
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     {
+        #[cfg(test)]
         crate::game::api_values::install_test_platform();
         std::borrow::Cow::Owned(declare())
     }

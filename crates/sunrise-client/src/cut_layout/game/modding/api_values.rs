@@ -14,7 +14,7 @@ pub(crate) fn resolve_cached_block_definitions(
 
 #[cfg(test)]
 pub(crate) fn install_test_platform() {
-    sunrise_gameplay_common::install_test_mod_platform!(mod_platform);
+    mod_platform::__private::test_platform::install();
 }
 
 #[cfg(test)]

@@ -1,5 +1,9 @@
 //! Portable gameplay rules and data shared across both logical sides.
 #![forbid(unsafe_code)]
+
+#[cfg(test)]
+#[used]
+static KEEP_TEST_PLATFORM: fn() = mod_platform::__private::test_platform::keep;
 pub mod brushing;
 pub mod cauldron_contents;
 pub mod chests;

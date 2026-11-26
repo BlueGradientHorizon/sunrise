@@ -1,5 +1,9 @@
 //! Client-only gameplay: what vanilla's client jar adds to the logical side.
 #![forbid(unsafe_code)]
+
+#[cfg(test)]
+#[used]
+static KEEP_TEST_PLATFORM: fn() = mod_platform::__private::test_platform::keep;
 #[macro_use]
 extern crate sunrise_gameplay_common;
 extern crate sunrise_client_lib as sunrise_client;

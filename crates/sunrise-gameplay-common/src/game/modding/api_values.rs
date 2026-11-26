@@ -226,56 +226,14 @@ pub fn resolve_cached_block_definitions(
 pub fn resolve_block_keys_from_registry(
     registry: &sunrise_world::registry::BlockRegistry,
 ) -> Result<(), String> {
-    #[cfg(test)]
-    {
-        type Grouped = (
-            Vec<String>,
-            std::collections::HashMap<
-                String,
-                (Vec<std::collections::BTreeMap<String, String>>, u16),
-            >,
-        );
-        static GROUPED: std::sync::Mutex<Vec<(usize, std::sync::Arc<Grouped>)>> =
-            std::sync::Mutex::new(Vec::new());
-        let key = registry.payload_identity();
-        let grouped = {
-            let cache = GROUPED.lock().unwrap_or_else(|e| e.into_inner());
-            cache
-                .iter()
-                .find(|(k, _)| *k == key)
-                .map(|(_, g)| g.clone())
-        };
-        let grouped = grouped.unwrap_or_else(|| {
-            let built = std::sync::Arc::new(group_block_states(registry));
-            let mut cache = GROUPED.lock().unwrap_or_else(|e| e.into_inner());
-            if let Some((_, existing)) = cache.iter().find(|(k, _)| *k == key) {
-                return existing.clone();
-            }
-            if cache.len() >= 4 {
-                cache.remove(0);
-            }
-            cache.push((key, built.clone()));
-            built
-        });
-        mod_api::__private::resolve_block_keys(grouped.0.iter().map(String::as_str), |name| {
-            let (states, ordinal) = &grouped.1[name];
-            let refs: Vec<_> = states.iter().collect();
-            sunrise_mod_runtime::block_definitions::BlockDefinition::new(&refs, *ordinal)
-                .map_err(|error| format!("block {name}: {error:?}"))
-        })
-        .map_err(|errors| errors.join("\n"))
-    }
-    #[cfg(not(test))]
-    {
-        let (ordered, blocks) = group_block_states(registry);
-        mod_api::__private::resolve_block_keys(ordered.iter().map(String::as_str), |name| {
-            let (states, ordinal) = &blocks[name];
-            let refs: Vec<_> = states.iter().collect();
-            sunrise_mod_runtime::block_definitions::BlockDefinition::new(&refs, *ordinal)
-                .map_err(|error| format!("block {name}: {error:?}"))
-        })
-        .map_err(|errors| errors.join("\n"))
-    }
+    let (ordered, blocks) = group_block_states(registry);
+    mod_api::__private::resolve_block_keys(ordered.iter().map(String::as_str), |name| {
+        let (states, ordinal) = &blocks[name];
+        let refs: Vec<_> = states.iter().collect();
+        sunrise_mod_runtime::block_definitions::BlockDefinition::new(&refs, *ordinal)
+            .map_err(|error| format!("block {name}: {error:?}"))
+    })
+    .map_err(|errors| errors.join("\n"))
 }
 
 pub fn group_block_states(
@@ -2647,38 +2605,9 @@ pub fn with_rule_schema<T>(f: impl FnOnce(&mod_api::__private::RuleSchema<'_>) -
             .expect("vanilla rule count fits u32"),
     })
 }
-#[cfg(any(test, feature = "test-support"))]
-#[doc(hidden)]
-#[macro_export]
-macro_rules! install_test_mod_platform {
-    ($platform:ident) => {{
-        static INSTALLED: std::sync::Once = std::sync::Once::new();
-        INSTALLED.call_once(|| {
-            let result = mod_api::__private::platform::install_platform(
-                mod_api::__private::platform::Platform {
-                    install_packages: $platform::__private::install_packages,
-                    install_registration_data: $platform::__private::install_registration_data,
-                    install_parts: $platform::__private::install_parts,
-                    with_registration_open: $platform::__private::with_registration_open,
-                    profiler_is_enabled: $platform::__private::profiler::is_enabled,
-                    profiler_start: $platform::__private::profiler::start,
-                    profiler_stop: $platform::__private::profiler::stop,
-                    profiler_summary: $platform::__private::profiler::summary,
-                    profiler_firefox_profile: $platform::__private::profiler::firefox_profile,
-                },
-            );
-            assert!(
-                result.is_ok()
-                    || result
-                        == Err(mod_api::__private::platform::PlatformRefusal::AlreadyInstalled)
-            );
-        });
-    }};
-}
-
 #[cfg(test)]
 pub(in crate::game) fn install_test_platform() {
-    crate::install_test_mod_platform!(mod_platform);
+    mod_platform::__private::test_platform::install();
 }
 pub fn install_parts(mods: &[mod_api::ModEntry]) -> Result<(), Vec<String>> {
     #[cfg(test)]

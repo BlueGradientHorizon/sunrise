@@ -2,6 +2,10 @@
 // No `#![recursion_limit]` or other inner attribute horizon-mixins doesn't know here: the
 // launcher's horizon-mixins then rejects every native mod targeting this crate (#8169).
 #![forbid(unsafe_code)]
+
+#[cfg(test)]
+#[used]
+static KEEP_TEST_PLATFORM: fn() = mod_platform::__private::test_platform::keep;
 extern crate self as sunrise_client;
 #[cfg(feature = "client")]
 pub use sunrise_client_lib::carrier_store;

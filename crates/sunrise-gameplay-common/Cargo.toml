@@ -36,7 +36,7 @@ sunrise-level = { path = "../sunrise-level" }
 
 [dev-dependencies]
 tempfile = "3"
-mod_platform = { package = "sunrise-mod-api", path = "../sunrise-mod-api", features = ["testing"] }
+mod_platform = { package = "sunrise-mod-api", path = "../sunrise-mod-api", features = ["engine-test-platform"] }
 sunrise-hooks = { path = "../sunrise-hooks", features = ["test-support"] }
 sunrise-game-data = { path = "../sunrise-game-data", features = ["test-language-publication"] }
 sunrise-mod-runtime = { path = "../sunrise-mod-runtime", features = ["test-work-count"] }

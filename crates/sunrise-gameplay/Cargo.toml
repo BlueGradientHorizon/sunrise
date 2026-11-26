@@ -38,7 +38,7 @@ mod_platform = { package = "sunrise-mod-api", path = "../sunrise-mod-api", featu
 [dev-dependencies]
 tempfile = "3"
 sunrise-gameplay-common = { path = "../sunrise-gameplay-common", features = ["test-support"] }
-mod_platform = { package = "sunrise-mod-api", path = "../sunrise-mod-api", features = ["testing"] }
+mod_platform = { package = "sunrise-mod-api", path = "../sunrise-mod-api", features = ["engine-test-platform"] }
 sunrise-sim = { path = "../sunrise-sim", features = ["test-dry-side", "test-menu-validity", "test-mob-kind", "test-payload-probe", "test-publication-scope", "test-residency-observer", "test-support"] }
 sunrise-level = { path = "../sunrise-level", features = ["test-support"] }
 sunrise-game-data = { path = "../sunrise-game-data", features = ["test-language-publication"] }
