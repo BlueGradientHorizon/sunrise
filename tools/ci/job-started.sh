@@ -21,6 +21,8 @@ fi
 # The checkout's history: actions/checkout fetches into the same .git every job and never repacks. git-slim.sh (beside
 # this hook) collects it past 1.5 GB (a healthy one is ~0.5 GB) and folds many packs; one that is still over MAX_GIT_GB
 # is removed: the checkout then clones again (and replaces the rest of the folder).
+# A git-slim.sh failure does not fail the job: it is disk housekeeping (f9d90fcb534), and the size check below is what
+# bounds the folder when it did not shrink (it removes .git over MAX_GIT_GB), so a failed collect costs a reclone, not a job.
 if [ -n "${GITHUB_WORKSPACE:-}" ] && [ -d "$GITHUB_WORKSPACE/.git" ]; then
   MAX_GIT_MB=${MAX_GIT_MB:-1536} bash "$(dirname "$0")/git-slim.sh" "$GITHUB_WORKSPACE" || true
   size=$(du -s --block-size=1G "$GITHUB_WORKSPACE/.git" | cut -f1)
@@ -30,6 +32,8 @@ if [ -n "${GITHUB_WORKSPACE:-}" ] && [ -d "$GITHUB_WORKSPACE/.git" ]; then
   fi
 fi
 # The runner's own diagnostic logs (a file per job, 1.3 GB a light runner in an hour on 2026-11-03): a day's worth.
+# Housekeeping that never fails a job (b8a348f56da): the runner writes and rotates these files while find walks them, so
+# a vanished or unreadable log is an expected find error, and the job has no use for the result.
 if [ -n "${RUNNER_WORKSPACE:-}" ] && [ -d "$RUNNER_WORKSPACE/../../_diag" ]; then
   find "$RUNNER_WORKSPACE/../../_diag" -maxdepth 1 -type f -name '*.log' -mmin +1440 -delete 2>/dev/null || true
 fi
