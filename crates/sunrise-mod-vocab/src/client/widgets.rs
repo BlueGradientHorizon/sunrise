@@ -351,7 +351,7 @@ impl fmt::Debug for TextField {
 pub type ContextMenuAction = dyn FnOnce(&mut dyn ClientHost) + Send + 'static;
 
 /// One row of a context menu: an action, a nested menu, or a separator line.
-// no wire: process-local tree of context menu entries carrying native callbacks.
+// no wire: the entries hold the mod's closures and stay in this process.
 #[non_exhaustive]
 pub enum ContextMenuEntry {
     /// A row the player can pick: the menu closes, then `on_select` runs.

@@ -14,7 +14,6 @@ sys.path.remove(TOOLS)
 # their codec and depth coverage have been reviewed.
 POLICIES = {
     "Compound": "iterative Tag codec; vanilla 512; wire/depth_tests.rs",
-    "ContextMenuEntry": "no Wire; process-local native callbacks",
     "Tag": "iterative Tag codec; vanilla 512; wire/depth_tests.rs",
     "Ingredient": "generic 32; wire/depth_tests.rs",
     "ItemPlace": "no Wire; process-local item address",

@@ -249,7 +249,7 @@ fn label_of(entry: &ContextMenuEntry) -> Option<String> {
             let text: sunrise_client::text::Text = label.try_into_engine(&()).unwrap_or_default();
             Some(text.plain())
         }
-        ContextMenuEntry::Separator => None,
+        // A separator, or a row kind a later API adds that this game can't draw.
         _ => None,
     }
 }
@@ -259,7 +259,6 @@ fn icon_of(entry: &ContextMenuEntry) -> Option<&mod_api::ItemStack> {
         ContextMenuEntry::Action { icon, .. } | ContextMenuEntry::Submenu { icon, .. } => {
             icon.as_ref()
         }
-        ContextMenuEntry::Separator => None,
         _ => None,
     }
 }
@@ -269,7 +268,6 @@ fn enabled(entry: &ContextMenuEntry) -> bool {
         ContextMenuEntry::Action { enabled, .. } | ContextMenuEntry::Submenu { enabled, .. } => {
             *enabled
         }
-        ContextMenuEntry::Separator => false,
         _ => false,
     }
 }
