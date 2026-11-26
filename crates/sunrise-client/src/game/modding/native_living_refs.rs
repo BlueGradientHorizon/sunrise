@@ -1000,6 +1000,32 @@ impl Game<'_> {
         lend_equipment(self.living_equipment_stack(living, slot)?, read)
     }
 
+    /// `Mob.getDropChances().byEquipment(slot)` of a mob of the level in place.
+    pub(super) fn living_equipment_drop_chance(
+        &self,
+        living: LivingRef,
+        slot: EquipmentSlot,
+    ) -> Option<f32> {
+        if !self.is_logical_server() {
+            return None;
+        }
+        let Target::Mob(id) = self.native_living_target(living)? else {
+            return None;
+        };
+        let mob = self.mobs.iter().find(|m| m.id == id)?;
+        let slot = match slot {
+            EquipmentSlot::MainHand => "mainhand",
+            EquipmentSlot::OffHand => "offhand",
+            EquipmentSlot::Feet => "feet",
+            EquipmentSlot::Legs => "legs",
+            EquipmentSlot::Chest => "chest",
+            EquipmentSlot::Head => "head",
+            EquipmentSlot::Body => "body",
+            EquipmentSlot::Saddle => "saddle",
+        };
+        Some(sunrise_client::mobs::drops::drop_chance(mob, slot))
+    }
+
     /// Damage an equipped stack without an equip/unequip notification.
     pub(super) fn living_hurt_and_break(
         &mut self,
@@ -1956,6 +1982,61 @@ pub(in crate::game) mod tests {
                 )),
                 Err(EntityReadError::Stale)
             );
+        });
+    }
+
+    /// `LivingRef::equipment_drop_chance` (#5935): a mob's default chance, then the one it
+    /// records, slot by slot; a handle of no living entity reads None.
+    #[test]
+    #[ignore = "daily"]
+    fn a_mobs_equipment_drop_chance_reads_its_recorded_chance_per_slot() {
+        use sunrise_client::chunk::Chunk;
+        super::super::native_entity_refs::tests::with_game(|game| {
+            game.world
+                .chunks
+                .insert((0, 0), std::sync::Arc::new(Chunk::empty(0, 0)));
+            let id = game
+                .spawn_mob(
+                    "minecraft:zombie",
+                    [2.5, 64.0, 2.5],
+                    true,
+                    super::super::creatures::SpawnSite::Finalizing(
+                        sunrise_client::mobs::spawn_rules::Reason::Command,
+                    ),
+                )
+                .unwrap();
+            let mob = game.living(game.entity(id).unwrap()).unwrap();
+            let zombie = game.mobs.iter_mut().find(|m| m.id == id).unwrap();
+            zombie.extra.drop_chances = None;
+            assert_eq!(
+                mob.equipment_drop_chance(game, EquipmentSlot::Head),
+                Some(0.085)
+            );
+            assert_eq!(
+                mob.equipment_drop_chance(game, EquipmentSlot::Saddle),
+                Some(2.0)
+            );
+            // `EQUIPMENT_SLOTS` order: mainhand, offhand, feet, legs, chest, head, body, saddle.
+            let zombie = game.mobs.iter_mut().find(|m| m.id == id).unwrap();
+            zombie.extra.drop_chances = Some(Box::new([0.1, 0.2, 0.3, 0.4, 0.5, 2.0, 0.7, 0.0]));
+            for (slot, chance) in [
+                (EquipmentSlot::MainHand, 0.1),
+                (EquipmentSlot::OffHand, 0.2),
+                (EquipmentSlot::Feet, 0.3),
+                (EquipmentSlot::Legs, 0.4),
+                (EquipmentSlot::Chest, 0.5),
+                (EquipmentSlot::Head, 2.0),
+                (EquipmentSlot::Body, 0.7),
+                (EquipmentSlot::Saddle, 0.0),
+            ] {
+                assert_eq!(
+                    mob.equipment_drop_chance(game, slot),
+                    Some(chance),
+                    "{slot:?}"
+                );
+            }
+            let gone = LivingRef::new(EntityRef::new(mob.entity().epoch(), 999));
+            assert_eq!(gone.equipment_drop_chance(game, EquipmentSlot::Head), None);
         });
     }
 

@@ -20,7 +20,7 @@ use glam::Mat4;
 use mod_api::{
     BindingKind, BlendFactor, BlendOp, ColorTargetState, ColorWrite, DepthCompare, DrawRange,
     Identifier, IndexFormat, MeshDraw, PipelineBlend, PipelineState, PolygonMode,
-    PrimitiveTopology, SamplerAddress, SamplerFilter, VertexAttributeFormat, VertexFormat,
+    PrimitiveTopology, Sampler, SamplerAddress, SamplerFilter, VertexAttributeFormat, VertexFormat,
     VertexStepMode,
 };
 use std::collections::{HashMap, HashSet};
@@ -725,10 +725,12 @@ struct CompiledOit {
 }
 
 /// One compiled entry in a pipeline's set-1 `BindGroupLayout`.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 struct CompiledSet1Entry {
     binding: u32,
     kind: BindingKind,
+    /// The device sampler of a [`BindingKind::CombinedImageSampler`] entry.
+    sampler: Option<wgpu::Sampler>,
     /// The texel format the shader declares for a [`BindingKind::StorageImage`] entry.
     storage_format: Option<wgpu::TextureFormat>,
 }
@@ -817,8 +819,6 @@ pub struct ModPipelines {
     sampler: wgpu::Sampler,
     /// Non-filtering nearest sampler for OIT float textures (`DepthBoundsSampler`, `Coeff0`, `Coeff1`).
     non_filtering_sampler: wgpu::Sampler,
-    /// Shared set-1 samplers indexed by `[filter][address]` (`Nearest`/`Linear` × `Clamp`/`Repeat`/`Mirror`).
-    mod_samplers: [[wgpu::Sampler; 3]; 2],
     /// Shared 1024-byte vanilla uniform buffer (`Globals`, `Projection`, `DynamicTransforms`, `Fog`).
     vanilla: wgpu::Buffer,
     /// CPU copy of the most recently uploaded `vanilla` blocks so offscreen passes can override
@@ -891,41 +891,52 @@ pub struct ModPipelines {
     pub(super) compute: super::mod_compute::ModCompute,
 }
 
-pub(super) fn sampler_filter_idx(filter: SamplerFilter) -> usize {
-    match filter {
-        SamplerFilter::Linear => 1,
-        _ => 0,
-    }
+/// Whether `sampler` blends texels: a linear minification or magnification filter, or linear
+/// blending between mip levels, which vanilla's backends do whenever `maxLod` allows more than
+/// the base level (`GlSampler`'s `*_MIPMAP_LINEAR`; Vulkan's linear mipmap mode for
+/// `maxLod > 0.25`). Such a sampler needs a filterable texture.
+pub fn sampler_filtering(sampler: &Sampler) -> bool {
+    sampler.min == SamplerFilter::Linear
+        || sampler.mag == SamplerFilter::Linear
+        || blends_mip_levels(sampler)
 }
 
-pub(super) fn sampler_address_idx(address: SamplerAddress) -> usize {
+fn blends_mip_levels(sampler: &Sampler) -> bool {
+    sampler.max_lod.is_some_and(|lod| lod > 0.25)
+}
+
+fn address_mode(address: SamplerAddress) -> wgpu::AddressMode {
     match address {
-        SamplerAddress::Repeat => 1,
-        SamplerAddress::MirroredRepeat => 2,
-        _ => 0,
+        SamplerAddress::Repeat => wgpu::AddressMode::Repeat,
+        SamplerAddress::MirroredRepeat => wgpu::AddressMode::MirrorRepeat,
+        _ => wgpu::AddressMode::ClampToEdge,
     }
 }
 
-pub(super) fn create_mod_samplers(device: &wgpu::Device) -> [[wgpu::Sampler; 3]; 2] {
-    let filters = [wgpu::FilterMode::Nearest, wgpu::FilterMode::Linear];
-    let addresses = [
-        wgpu::AddressMode::ClampToEdge,
-        wgpu::AddressMode::Repeat,
-        wgpu::AddressMode::MirrorRepeat,
-    ];
-    std::array::from_fn(|f| {
-        std::array::from_fn(|a| {
-            device.create_sampler(&wgpu::SamplerDescriptor {
-                label: Some("Mod set-1 sampler"),
-                address_mode_u: addresses[a],
-                address_mode_v: addresses[a],
-                address_mode_w: addresses[a],
-                mag_filter: filters[f],
-                min_filter: filters[f],
-                mipmap_filter: wgpu::MipmapFilterMode::Nearest,
-                ..Default::default()
-            })
-        })
+fn filter_mode(filter: SamplerFilter) -> wgpu::FilterMode {
+    match filter {
+        SamplerFilter::Linear => wgpu::FilterMode::Linear,
+        _ => wgpu::FilterMode::Nearest,
+    }
+}
+
+/// The device sampler for a mod set-1 [`Sampler`] entry, made once when its pipeline is compiled.
+pub(super) fn create_mod_sampler(device: &wgpu::Device, sampler: &Sampler) -> wgpu::Sampler {
+    device.create_sampler(&wgpu::SamplerDescriptor {
+        label: Some("Mod set-1 sampler"),
+        address_mode_u: address_mode(sampler.address_u),
+        address_mode_v: address_mode(sampler.address_v),
+        address_mode_w: wgpu::AddressMode::ClampToEdge,
+        mag_filter: filter_mode(sampler.mag),
+        min_filter: filter_mode(sampler.min),
+        mipmap_filter: if blends_mip_levels(sampler) {
+            wgpu::MipmapFilterMode::Linear
+        } else {
+            wgpu::MipmapFilterMode::Nearest
+        },
+        lod_min_clamp: 0.0,
+        lod_max_clamp: sampler.max_lod.unwrap_or(32.0),
+        ..Default::default()
     })
 }
 
@@ -1008,14 +1019,15 @@ fn build_set1_layout(
                 compiled_entries.push(CompiledSet1Entry {
                     binding: next_binding,
                     kind: entry.kind,
+                    sampler: None,
                     storage_format: None,
                 });
                 next_binding += 1;
             }
-            BindingKind::CombinedImageSampler { filter, .. } => {
+            BindingKind::CombinedImageSampler { sampler } => {
                 texture_count += 1;
                 sampler_count += 1;
-                let filterable = filter == SamplerFilter::Linear;
+                let filterable = sampler_filtering(&sampler);
                 layout_entries.push(wgpu::BindGroupLayoutEntry {
                     binding: next_binding,
                     visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
@@ -1039,6 +1051,7 @@ fn build_set1_layout(
                 compiled_entries.push(CompiledSet1Entry {
                     binding: next_binding,
                     kind: entry.kind,
+                    sampler: Some(create_mod_sampler(device, &sampler)),
                     storage_format: None,
                 });
                 next_binding += 2;
@@ -1058,6 +1071,7 @@ fn build_set1_layout(
                 compiled_entries.push(CompiledSet1Entry {
                     binding: next_binding,
                     kind: entry.kind,
+                    sampler: None,
                     storage_format: None,
                 });
                 next_binding += 1;
@@ -1101,6 +1115,7 @@ fn build_set1_layout(
                 compiled_entries.push(CompiledSet1Entry {
                     binding: next_binding,
                     kind: entry.kind,
+                    sampler: None,
                     storage_format: None,
                 });
                 next_binding += 1;
@@ -1154,6 +1169,7 @@ fn build_set1_layout(
                 compiled_entries.push(CompiledSet1Entry {
                     binding: next_binding,
                     kind: entry.kind,
+                    sampler: None,
                     storage_format: Some(format),
                 });
                 next_binding += 1;
@@ -1253,7 +1269,6 @@ impl ModPipelines {
             label: Some("Mod pipeline OIT sampler"),
             ..Default::default()
         });
-        let mod_samplers = create_mod_samplers(device);
         let buffer = |label| {
             device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some(label),
@@ -1269,7 +1284,6 @@ impl ModPipelines {
             linear_light,
             sampler,
             non_filtering_sampler,
-            mod_samplers,
             vanilla,
             last_vanilla_blocks: fallback_vanilla_blocks(Mat4::IDENTITY, [1, 1], 0.0),
             pack_vanilla,
@@ -2930,10 +2944,12 @@ impl ModPipelines {
                         }
                         (
                             ResolvedSet1Entry::Texture { view, .. },
-                            BindingKind::CombinedImageSampler { filter, address },
+                            BindingKind::CombinedImageSampler { .. },
                         ) => {
-                            let sampler = &self.mod_samplers[sampler_filter_idx(filter)]
-                                [sampler_address_idx(address)];
+                            let Some(sampler) = spec.sampler.as_ref() else {
+                                valid = false;
+                                break;
+                            };
                             bg_entries.push(wgpu::BindGroupEntry {
                                 binding: spec.binding,
                                 resource: wgpu::BindingResource::TextureView(view),
@@ -3773,10 +3789,12 @@ impl ModPipelines {
                         }
                         (
                             ResolvedSet1Entry::Texture { view, .. },
-                            BindingKind::CombinedImageSampler { filter, address },
+                            BindingKind::CombinedImageSampler { .. },
                         ) => {
-                            let sampler = &self.mod_samplers[sampler_filter_idx(filter)]
-                                [sampler_address_idx(address)];
+                            let Some(sampler) = spec.sampler.as_ref() else {
+                                valid = false;
+                                break;
+                            };
                             bg_entries.push(wgpu::BindGroupEntry {
                                 binding: spec.binding,
                                 resource: wgpu::BindingResource::TextureView(view),
@@ -7125,7 +7143,10 @@ void main() {
             PipelineBlend::Opaque,
             mod_api::WorldDepth::ThroughWalls,
         )
-        .sampler("CustomTex", SamplerFilter::Nearest, SamplerAddress::Repeat);
+        .sampler(
+            "CustomTex",
+            Sampler::new(SamplerFilter::Nearest, SamplerAddress::Repeat),
+        );
         let set = Pipelines::build(&[p], 1, |file| {
             if file.ends_with(".vsh") {
                 Ok(Some(vsh.to_owned()))
@@ -7215,6 +7236,155 @@ void main() {
 
     #[test]
     #[ignore = "daily"]
+    fn a_mipmapped_dynamic_texture_sampled_at_a_distance_shows_level_two() {
+        let _guard = crate::gfx::test_gpu::lock();
+        let Some((device, queue)) = device() else {
+            return;
+        };
+        let id = Identifier::parse("mod_c3:mip_tex").unwrap();
+        let vsh = "#version 330\n\
+            #include <minecraft:projection.glsl>\n\
+            #include <minecraft:dynamictransforms.glsl>\n\
+            in vec3 Position;\n\
+            in vec2 UV0;\n\
+            in vec4 Color;\n\
+            out vec2 vUv;\n\
+            void main() {\n\
+                vec2 ndc = vec2(Position.x / 32.0 - 1.0, 1.0 - Position.y / 32.0);\n\
+                gl_Position = vec4(ndc, 0.5, 1.0);\n\
+                vUv = UV0;\n\
+            }\n";
+        let fsh = "#version 330\n\
+            uniform sampler2D CustomTex;\n\
+            in vec2 vUv;\n\
+            out vec4 fragColor;\n\
+            void main() {\n\
+                fragColor = texture(CustomTex, vUv);\n\
+            }\n";
+        let p = RenderPipeline::new(
+            id.clone(),
+            id,
+            PipelineBlend::Opaque,
+            mod_api::WorldDepth::ThroughWalls,
+        )
+        .sampler("CustomTex", {
+            let mut sampler = Sampler::new(SamplerFilter::Nearest, SamplerAddress::ClampToEdge);
+            sampler.max_lod = Some(3.0);
+            sampler
+        });
+        let set = Pipelines::build(&[p], 1, |file| {
+            if file.ends_with(".vsh") {
+                Ok(Some(vsh.to_owned()))
+            } else if file.ends_with(".fsh") {
+                Ok(Some(fsh.to_owned()))
+            } else {
+                Ok(sunrise_mod_pipeline::stubs::read(
+                    file.strip_prefix("assets/")
+                        .and_then(|r| r.split_once('/'))
+                        .map(|(ns, p)| format!("{ns}:{p}"))
+                        .as_deref()
+                        .unwrap_or(""),
+                )
+                .map(str::to_owned))
+            }
+        })
+        .expect("textured set-1 pipeline must translate");
+
+        // A 256 x 256 texture of 4 levels (256, 128, 64, 32 wide), each one solid colour, made
+        // and filled the way a mod does: a create, then one region write per level.
+        let colors: [[u8; 4]; 4] = [
+            [255, 0, 0, 255],
+            [0, 255, 0, 255],
+            [0, 0, 255, 255],
+            [255, 255, 0, 255],
+        ];
+        let level_pixels =
+            |level: u32| colors[level as usize].repeat(((256 >> level) as usize).pow(2));
+        let mut commands = vec![crate::hud::dynamic_textures::Command::Create {
+            handle: 1,
+            size: [256, 256],
+            mip_levels: 4,
+            rgba: level_pixels(0),
+        }];
+        for level in 1..4 {
+            commands.push(crate::hud::dynamic_textures::Command::Write {
+                handle: 1,
+                mip_level: level,
+                origin: [0, 0],
+                size: [256 >> level; 2],
+                rgba: level_pixels(level),
+            });
+        }
+        let store = crate::hud::dynamic_textures::Store::default();
+        let mut uploads = crate::gfx::upload::Uploads::new(&device);
+        let mut encoder = device.create_command_encoder(&Default::default());
+        store.apply(&device, &mut uploads, &mut encoder, None, &commands);
+        uploads.finish(&encoder);
+        queue.submit([encoder.finish()]);
+        let (view, _) = store.view(1).expect("the texture was created");
+        let view_id = crate::gfx::mod_uniforms::DYNAMIC_VIEW_ID_BIT | 1;
+
+        let quad = [
+            PipelineVertex {
+                pos: [0.0, 0.0, 0.0],
+                uv: [0.0, 0.0],
+                color: 0xFFFF_FFFF,
+            },
+            PipelineVertex {
+                pos: [0.0, 64.0, 0.0],
+                uv: [0.0, 1.0],
+                color: 0xFFFF_FFFF,
+            },
+            PipelineVertex {
+                pos: [64.0, 64.0, 0.0],
+                uv: [1.0, 1.0],
+                color: 0xFFFF_FFFF,
+            },
+            PipelineVertex {
+                pos: [64.0, 0.0, 0.0],
+                uv: [1.0, 0.0],
+                color: 0xFFFF_FFFF,
+            },
+        ];
+        let vbytes = bytemuck::cast_slice(&quad);
+        let draw_cmd = PipelineDraw {
+            slot: 0,
+            stage: 4,
+            modifier_stack: 0,
+            draw: MeshDraw::vertices(0..4),
+            source: PipelineDrawSource::Transient {
+                vertex_ranges: vec![(0, 0..vbytes.len() as u64)],
+                index_range: None,
+            },
+            bindings: Some(ResolvedDrawBindings {
+                entries: vec![ResolvedSet1Entry::Texture {
+                    view_id,
+                    view,
+                    mips: None,
+                }],
+                push_constants: None,
+            }),
+        };
+
+        let format = wgpu::TextureFormat::Rgba8Unorm;
+        let mut primitives = WorldPrimitives::new(&device, (format, false));
+        let gpu = (device, queue);
+        let batch = Batch {
+            set: Some(&set),
+            draws: std::slice::from_ref(&draw_cmd),
+            transient_vertices: vbytes,
+            time: 0.0,
+            ..Default::default()
+        };
+        let at = render(&gpu, &mut primitives, format, batch, STAGES - 1);
+        // The quad is 64 pixels wide for 256 texels: four texels a pixel, level of detail 2.
+        for (x, y) in [(8, 8), (32, 32), (56, 56)] {
+            assert_near(at(x, y), [0.0, 0.0, 255.0, 255.0], 1.0, "level 2");
+        }
+    }
+
+    #[test]
+    #[ignore = "daily"]
     fn offscreen_render_target_draw_sample_persist_and_resize() {
         let _gpu_lock = crate::gfx::test_gpu::lock();
         let (device, queue) = device().expect("a GPU adapter");
@@ -7271,8 +7441,10 @@ void main() {
         )
         .sampler(
             "OffscreenTex",
-            mod_api::SamplerFilter::Nearest,
-            mod_api::SamplerAddress::ClampToEdge,
+            mod_api::Sampler::new(
+                mod_api::SamplerFilter::Nearest,
+                mod_api::SamplerAddress::ClampToEdge,
+            ),
         );
 
         let set = Pipelines::build(&[p_write, p_read], 1, |file| {

@@ -46,6 +46,7 @@ mod page;
 mod registry_source;
 mod sdk_cmds;
 mod sdk_fetch;
+mod sdk_notes;
 mod self_update;
 mod uses_table;
 
