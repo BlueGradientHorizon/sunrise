@@ -551,7 +551,7 @@ mod tests {
             assert!(game.entity_set_invulnerable_time(victim, 60));
             let before = game.mobs[0].health;
             assert!(!game.mobs[0].damage(
-                crate::game::server_side::entity_server::damage_level_of!(
+                sunrise_gameplay::game::server_side::entity_server::damage_level_of!(
                     game,
                     &sunrise_sim::health::NO_ATTACK,
                     no_push,
@@ -562,7 +562,7 @@ mod tests {
             ));
             assert_eq!(game.mobs[0].health, before, "the window refused it");
             assert!(game.mobs[0].damage(
-                crate::game::server_side::entity_server::damage_level_of!(
+                sunrise_gameplay::game::server_side::entity_server::damage_level_of!(
                     game,
                     &sunrise_sim::health::NO_ATTACK,
                     no_push,
@@ -876,8 +876,8 @@ mod tests {
 
             // Match cmd_damage's normalized direct and causing player source.
             let source = (
-                Some(super::Target::Player),
-                Some(super::Target::Player),
+                Some(sunrise_gameplay::game::server_side::native_entity_invulnerable::Target::Player),
+                Some(sunrise_gameplay::game::server_side::native_entity_invulnerable::Target::Player),
                 None,
             );
             let before = game.dragon.as_ref().unwrap().health;

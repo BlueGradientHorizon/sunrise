@@ -92,7 +92,7 @@ fn admission_uses_active_native_entries_and_accepted_content_not_startup_metadat
     );
 }
 
-pub struct Guard(pub(in crate::game) Arc<AtomicBool>);
+pub struct Guard(pub Arc<AtomicBool>);
 impl mod_api::ServerReloadListener for Guard {
     fn prepare(
         &self,

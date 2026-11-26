@@ -119,7 +119,7 @@ pub(crate) mod attach_tests {
         let mut cow = Mob::new(1, kind, Vec3::new(1.5, 64.0, 0.5), 0.0);
         cow.extra.leash_pending = Some(Pending::Uuid([9, 9, 9, 9]));
         game.mobs.push(cow);
-        game.inventory[game.selected] = Some(super::ItemStack::new("minecraft:lead", 1));
+        game.inventory[game.selected] = Some(sunrise_items::items::ItemStack::new("minecraft:lead", 1));
 
         assert!(game.interact_leash(0, "minecraft:lead"));
         assert_eq!(game.mobs[0].extra.leash, Some(Holder::Player));

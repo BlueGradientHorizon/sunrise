@@ -79,7 +79,7 @@ fn finish_hit_uses_registered_guest_context_and_restores_the_host() {
         let at = [arrow.position.x, arrow.position.y, arrow.position.z];
         let id = arrow.id;
         start_events();
-        game.finish_arrow_hit(arrow, super::EntityHit::Deflected);
+        game.finish_arrow_hit(arrow, sunrise_sim::arrows::EntityHit::Deflected);
         let first = take_shots();
         assert_eq!(game.acting_player_uuid(), host_uuid);
         assert_eq!(game.side.lan_acting, None);

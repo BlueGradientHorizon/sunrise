@@ -3,6 +3,11 @@
 //! player with infinite materials, and `BlockAttachedEntity.tick`'s
 //! `discard()` when the support goes away (no `entity_die` game event).
 use super::super::*;
+use sunrise_gameplay_common::game::load_resources;
+use sunrise_gameplay_common::game::Hit;
+use crate::settings::Settings;
+use sunrise_gameplay_common::game::Progress;
+use sunrise_gameplay_common::game::Options;
 use std::sync::Arc;
 use sunrise_core::geometry::Vec3;
 use sunrise_core::nbt::Tag;

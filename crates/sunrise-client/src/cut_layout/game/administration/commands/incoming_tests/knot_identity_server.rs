@@ -1,8 +1,8 @@
-use crate::game::commands::knot_identity_tests::game;
-use crate::game::commands::knot_identity_tests::knot_uuid;
-use crate::game::commands::knot_identity_tests::knots;
-use crate::game::commands::knot_identity_tests::step;
-use crate::game::commands::knot_identity_tests::summon_pig;
+use crate::game::server_side::commands::knot_identity_tests::game;
+use crate::game::server_side::commands::knot_identity_tests::knot_uuid;
+use crate::game::server_side::commands::knot_identity_tests::knots;
+use crate::game::server_side::commands::knot_identity_tests::step;
+use crate::game::server_side::commands::knot_identity_tests::summon_pig;
 use {crate::game::*, sunrise_gameplay_common::game::{Dim, entity, host}};
 use std::sync::{Arc, atomic::AtomicI32, mpsc};
 use sunrise_protocol::packets::configuration::ClientInformation;
@@ -39,7 +39,7 @@ fn a_server_that_starts_tracking_later_shows_the_same_knot() {
     assert_eq!(knots(&game), [id]);
     assert_eq!(knot_uuid(&mut game), uuid);
     assert_eq!(
-        game.network_entity_id(super::Target::Knot(id)),
+        game.network_entity_id(sunrise_gameplay_common::game::commands_common::Target::Knot(id)),
         Some(id as i32)
     );
 }

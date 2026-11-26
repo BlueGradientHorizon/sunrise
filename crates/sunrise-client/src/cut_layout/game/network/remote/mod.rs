@@ -222,7 +222,7 @@ pub(crate) mod tests {
         .into();
         sunrise_gameplay_common::game::api_values::install_parts(&mods).unwrap();
         mod_platform::testing::with_mods(mods, || {
-            sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+            crate::game::native_entity_refs::tests::with_client_game(|game| {
                 let (client, _server) = sunrise_protocol::connection::Pipe::pair();
                 game.connect_local(client, "avatar-tick-client").unwrap();
                 let remote = game.side.remote.as_mut().unwrap();

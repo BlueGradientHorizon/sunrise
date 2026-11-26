@@ -11,7 +11,7 @@ use sunrise_sim::motion::PlayerMotion;
 #[test]
 #[ignore = "daily"]
 fn a_spear_jab_sends_only_its_stab() {
-    sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+    crate::game::native_entity_refs::tests::with_client_game(|game| {
         let (mut peer, _writer) = super::connect_menu_test(game);
         peer.set_read_timeout(Some(std::time::Duration::from_millis(50)))
             .unwrap();

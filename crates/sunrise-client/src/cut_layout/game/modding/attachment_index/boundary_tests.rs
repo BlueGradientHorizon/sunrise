@@ -1,4 +1,5 @@
 use mod_api::AttachmentHolder;
+use sunrise_mod_runtime::attachments::Holder;
 use std::sync::Arc;
 use sunrise_gameplay_common::game::Dim;
 use super::*;

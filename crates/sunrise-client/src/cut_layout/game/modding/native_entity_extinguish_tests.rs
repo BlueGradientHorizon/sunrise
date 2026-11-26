@@ -75,7 +75,7 @@ fn extinguish_fire_preserves_player_guest_stand_and_item_sound_routes() {
         game.player = Some(body);
         game.bind_local_player_residency();
         // The joined-guest fixture starts before its lazy motion body exists.
-        game.for_player(crate::game::commands::Target::Guest(12), |_| {})
+        game.for_player(sunrise_gameplay_common::game::commands_common::Target::Guest(12), |_| {})
             .unwrap();
         game.armor_stands.push(ArmorStand::new(22, at, 0.0));
         game.dropped.push(ItemEntity::new(

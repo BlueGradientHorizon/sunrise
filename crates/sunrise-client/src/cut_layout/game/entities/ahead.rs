@@ -112,13 +112,13 @@ mod tests {
         // Each merge-written field independently invalidates a prepared move.
         // Rejecting it must not overwrite the merge or advance the item's RNG.
         AHEAD.with(|a| a.set(Some(true)));
-        let obstacles = super::ObstacleGrid::new(boxes);
+        let obstacles = sunrise_sim::entities::ObstacleGrid::new(boxes);
         for changed in 0..3 {
             let mut moves = sunrise_gameplay::game::server_side::ahead::Moves::work_out(
                 &game,
                 &items,
                 &obstacles,
-                &super::native_ticks::TickRound::default(),
+                &sunrise_gameplay_common::game::native_ticks::TickRound::default(),
                 |_| true,
             );
             let mut item = items[0].clone();

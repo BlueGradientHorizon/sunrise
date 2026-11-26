@@ -346,6 +346,7 @@ mod recipe_check_tests {
     use super::*;
     use std::sync::{Arc, atomic::AtomicI32, mpsc};
     use sunrise_level::containers::{ModBlockEntity, ModBlockEntityFields, ModCrafting};
+    use sunrise_sim::lan::recipes;
     use sunrise_protocol::packets::configuration::ClientInformation;
     use sunrise_sim::lan::{
         Joined, NetConfig, Out, PlayerSender, guest::Guest, hub::HubConfig, menu::Menu as HubMenu,
@@ -623,7 +624,7 @@ mod empty_ingredient_placement_tests {
     use sunrise_gameplay_common::world_recipes;
     use sunrise_gameplay_common::world_stations;
     use std::sync::{Arc, atomic::AtomicI32, mpsc};
-    use sunrise_protocol::packets::{configuration::ClientInformation, recipes::PlaceRecipe};
+    use sunrise_protocol::packets::{configuration::ClientInformation, play, recipes::PlaceRecipe};
     use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
 
     #[test]

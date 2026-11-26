@@ -7,6 +7,8 @@ use sunrise_client_gameplay::game::client_side::native_hooks_client::customize_b
 
 use sunrise_gameplay_common::game::native_hooks::customize_boss_event_progress::customize_boss_event_progress_tests::backgrounds;
 
+use sunrise_gameplay_common::game::native_hooks::customize_boss_event_progress::customize_boss_event_progress_tests::{Rearrange, Seen};
+
 use mod_api::{
         BossBarColor, ClientHost, CustomizeBossEventProgressEvent, Flow, Hooks, ModEntry,
     };

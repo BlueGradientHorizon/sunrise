@@ -1,3 +1,5 @@
+use sunrise_core::geometry::Direction;
+use sunrise_gameplay::dispense_rules::{Slot, mob_slot_item};
 use sunrise_items::items::ItemStack;
 use super::*;
 use std::sync::{Arc, Mutex};

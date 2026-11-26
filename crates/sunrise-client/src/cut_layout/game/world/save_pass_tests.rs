@@ -53,7 +53,7 @@ fn save_requested_during_pickup_keeps_lifted_items_on_disk() {
                 Some(Default::default()),
             ));
             game.options.dedicated = Some(Vec::new());
-            game.side.server_lists.0 = Some(Arc::new(Mutex::new(dedicated::Lists {
+            game.side.server_lists.0 = Some(Arc::new(Mutex::new(sunrise_gameplay::game::dedicated::Lists {
                 ops: OpList::new(root.join("ops.json")),
                 white: WhiteList::new(root.join("whitelist.json")),
                 bans: BanList::new(root.join("bans.json")),
@@ -66,7 +66,7 @@ fn save_requested_during_pickup_keeps_lifted_items_on_disk() {
                 autosave: true,
             })));
             game.build_registries();
-            game.ui.dispatcher = chat_common::SessionDispatcher(Arc::new(
+            game.ui.dispatcher = sunrise_gameplay_common::game::chat_common::SessionDispatcher(Arc::new(
                 sunrise_command::vanilla::build_for(false, true),
             ));
             game.world

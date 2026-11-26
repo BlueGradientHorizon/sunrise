@@ -9,6 +9,10 @@ use sunrise_core::geometry::Vec3;
 use sunrise_core::position::ChunkPos;
 use sunrise_level::chunk::Chunk;
 use sunrise_sim::motion::PlayerMotion;
+use crate::settings::Settings;
+use sunrise_gameplay_common::game::launch_options::Options;
+use sunrise_gameplay_common::game::load_resources;
+use sunrise_gameplay_common::game::resource_load::Progress;
 
 pub(crate) fn game<'a>(
     resources: &'a mut Option<std::sync::Arc<sunrise_gameplay_common::game::Resources>>,

@@ -31,8 +31,8 @@ fn sampled_picks_reach_the_parts_of_their_block_only() {
         let registry = &game.pack.assets.registry;
         let glass = registry.default_state("minecraft:glass").unwrap();
         let stone = registry.default_state("minecraft:stone").unwrap();
-        assert!(crate::game::ClientGame::animate_part_listens(glass));
-        assert!(!crate::game::ClientGame::animate_part_listens(stone));
+        assert!(sunrise_client_gameplay::game::ClientGame::animate_part_listens(glass));
+        assert!(!sunrise_client_gameplay::game::ClientGame::animate_part_listens(stone));
         // Under All the limiter draws nothing: the part's two draws are the level random's next.
         game.side.particles.0.particle_level = 0;
         let mut expected = level_random(game);

@@ -4,6 +4,10 @@
 //! the gossips about that player's UUID), and a player at -100 or below
 //! becomes the target (tools/test_golem_defense_guest_parity.py measures the
 //! same on vanilla 26.3 with two real players).
+use crate::settings::Settings;
+use sunrise_gameplay_common::game::resource_load::Progress;
+use sunrise_gameplay_common::game::Options;
+use sunrise_gameplay_common::game::load_resources;
 use sunrise_core::geometry::Vec3;
 use sunrise_gameplay_common::game::Dim;
 use super::*;

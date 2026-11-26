@@ -10,6 +10,7 @@ pub(crate) mod tests {
     use super::*;
     use sunrise_client_gameplay::game::client_side::native_menu_refs::tests::guest;
     use sunrise_sim::lan::{NetConfig, hub::HubConfig};
+    use sunrise_sim::lan::menu::VEHICLE_KEY_Y;
 
     #[test]
     #[ignore = "daily"]

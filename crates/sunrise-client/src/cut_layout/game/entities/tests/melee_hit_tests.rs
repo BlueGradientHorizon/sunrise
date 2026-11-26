@@ -1,6 +1,10 @@
 //! `Player.attack`'s admission of a hit (`baseDamage > 0.0F || magicBoost > 0.0F`), the
 //! attacker's `ATTACK_KNOCKBACK` in `LivingEntity.getKnockback`, and a creative player's
 //! blow through `Entity.isInvulnerableToBase`'s `!source.isCreativePlayer()`.
+use crate::settings::Settings;
+use sunrise_gameplay_common::game::Options;
+use sunrise_gameplay_common::game::Progress;
+use sunrise_gameplay_common::game::load_resources;
 use sunrise_core::geometry::Vec3;
 use sunrise_items::items::ItemStack;
 use super::super::*;

@@ -83,9 +83,9 @@ use sunrise_gameplay::game::server_side::commands::world_cmds::datapack_damage_t
 
 use sunrise_gameplay::game::server_side::commands_server::world_cmds::datapack_damage_tests::pig;
 
-use crate::game::commands::world_cmds::datapack_damage_tests::with_pack;
+use sunrise_gameplay_common::game::commands_common::Target;
 
-use crate::game::{commands::Target, native_entity_refs::tests::with_game};
+use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 
 use sunrise_core::geometry::Vec3;
 
@@ -218,7 +218,7 @@ pub(crate) mod vehicle_damage_command_tests {
     #[test]
     #[ignore = "daily"]
     fn direct_guest_attributes_adopt_the_target_and_restore_the_issuer() {
-        use crate::game::commands::Target;
+        use sunrise_gameplay_common::game::commands_common::Target;
         use sunrise_core::geometry::Vec3;
         use sunrise_sim::motion::PlayerMotion;
         with_game(|game| {

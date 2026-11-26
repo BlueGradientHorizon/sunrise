@@ -66,7 +66,7 @@ use super::*;
                 assert_eq!(drawn(game), face);
                 assert!(game.bake_layer("golem_mod:other#main").is_none());
                 assert!(game.bake_layer("minecraft:zombie#main").is_some());
-                game.spawn_pack_reload(crate::game::packs::ReloadKind::Selection)
+                game.spawn_pack_reload(sunrise_client_gameplay::game::client_side::packs::ReloadKind::Selection)
                     .unwrap();
                 let started = std::time::Instant::now();
                 while game.side.pack_reload.0.is_some() {

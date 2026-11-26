@@ -12,7 +12,7 @@ pub(crate) mod menu_extra_data_tests {
     #[test]
     #[ignore = "daily"]
     fn malformed_menu_extra_payload_disconnects_client() {
-        sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+        crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
             game.side.title.0 = None;
             let (pipe, _server) = Pipe::pair();
             game.connect_local(pipe, "Malformed menu extra").unwrap();

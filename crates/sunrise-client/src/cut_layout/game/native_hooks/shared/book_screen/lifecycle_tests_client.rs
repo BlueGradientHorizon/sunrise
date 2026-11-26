@@ -14,6 +14,8 @@ use sunrise_client_gameplay::game::client_side::native_hooks_client::book_screen
 use sunrise_client_gameplay::game::client_side::native_hooks_client::book_screen::lifecycle_tests_shared::with_bound_menu_type;
 use super::*;
 use sunrise_sim::recipe_book::{BookFlags, settings_sync::Message};
+use sunrise_gameplay_common::game::Screen;
+use sunrise_client_gameplay::game::native_hooks::{OpenNativeMenu, OpenNativeScreen, seed_native_menu};
 
 /// Slot moves and hides keep the catalogue and nonce. An in-place open of
 /// the same numeric window discards both, as well as the old layout.

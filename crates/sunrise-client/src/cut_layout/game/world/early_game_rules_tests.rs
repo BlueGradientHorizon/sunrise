@@ -74,7 +74,7 @@ fn early_server_game_rules_saved_and_creation_values() {
                 .into(),
                 || {
                     with_game(|game| {
-                        let mut request = crate::game::world_loading::WorldRequest::new(
+                        let mut request = sunrise_gameplay::game::world_loading::WorldRequest::new(
                             "rules",
                             Some("rules"),
                             Some(1),
@@ -87,7 +87,7 @@ fn early_server_game_rules_saved_and_creation_values() {
                         let prepared = if dedicated {
                             game.prepare_world_and_rules(request).unwrap()
                         } else {
-                            let loader = crate::game::world_loading::WorldLoader::start(
+                            let loader = sunrise_gameplay::game::world_loading::WorldLoader::start(
                                 request,
                                 game.res.clone(),
                                 game.pack.clone(),

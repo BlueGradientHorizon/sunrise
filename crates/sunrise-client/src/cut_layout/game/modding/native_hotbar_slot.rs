@@ -4,6 +4,7 @@
 #[cfg(test)]
 pub(crate) mod hotbar_slot_tests {
     use super::*;
+    use mod_api::HotbarSlotError;
     use crate::game::server_side::native_entity_refs::tests::with_client_game;
     use crate::game::remote::tests::connect_menu_test;
     use sunrise_command::args::GameMode;

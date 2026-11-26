@@ -149,7 +149,7 @@ pub(crate) mod tests {
         }
         let _mods = mod_platform::__private::part_tests::game_thread();
         let base = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
-        let root = super::super::mods::content_root(&base, &Default::default())
+        let root = sunrise_gameplay_common::game::mods::content_root(&base, &Default::default())
             .unwrap()
             .prepared()
             .to_path_buf();
@@ -262,7 +262,9 @@ pub(crate) mod tests {
         cached: bool,
         test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>),
     ) {
-        use sunrise_gameplay_common::game::{Options, Progress, Settings, load_resources, load_resources_uncached};
+        use sunrise_gameplay_common::game::{Options, Progress};
+        use crate::settings::Settings;
+        use crate::game::{load_resources, load_resources_uncached};
         use mod_api::Authority;
 
         // Parts registration replaces its metadata snapshot. Finish registration before
@@ -271,7 +273,7 @@ pub(crate) mod tests {
         crate::game::api_values::register_game_keys(ids.iter().cloned());
         // Parts registration also clears particle keys. Restore the load-owned
         // providers as content_root does, rather than relying on a prior test.
-        super::super::mods::resolve_particle_providers(
+        sunrise_gameplay_common::game::mods::resolve_particle_providers(
             &sunrise_assets::resource_source::ResourceSource::directory(root.clone()),
         )
         .unwrap();
@@ -351,9 +353,10 @@ pub(crate) mod tests {
         cached: bool,
         test: impl FnOnce(&mut sunrise_client_gameplay::game::ClientGame<'_>),
     ) {
-        use sunrise_gameplay_common::game::{
-            Audio, Options, Progress, Settings, load_resources, load_resources_uncached,
-        };
+        use sunrise_gameplay_common::game::{Options, Progress};
+        use crate::audio::Audio;
+        use crate::settings::Settings;
+        use crate::game::{load_resources, load_resources_uncached};
         use mod_api::Authority;
 
         // Parts registration replaces its metadata snapshot. Finish registration before
@@ -362,7 +365,7 @@ pub(crate) mod tests {
         crate::game::api_values::register_game_keys(ids.iter().cloned());
         // Parts registration also clears particle keys. Restore the load-owned
         // providers as content_root does, rather than relying on a prior test.
-        super::super::mods::resolve_particle_providers(
+        sunrise_gameplay_common::game::mods::resolve_particle_providers(
             &sunrise_assets::resource_source::ResourceSource::directory(root.clone()),
         )
         .unwrap();
@@ -454,7 +457,7 @@ pub(crate) mod tests {
                 "execute in minecraft:the_nether run summon cow 8.5 70 8.5 {UUID:[I;7,0,0,3],NoAI:1b}"
             )));
             let original = game.dim;
-            game.enter_command_level(super::super::Dim::Nether).unwrap();
+            game.enter_command_level(sunrise_gameplay_common::game::Dim::Nether).unwrap();
             let id = *game
                 .persist
                 .uuids
@@ -472,7 +475,7 @@ pub(crate) mod tests {
             assert!(!nbt.contains_key(&"id".into()));
             game.enter_command_level(original).unwrap();
             assert_eq!(game.entity_nbt(entity), None);
-            game.enter_command_level(super::super::Dim::Nether).unwrap();
+            game.enter_command_level(sunrise_gameplay_common::game::Dim::Nether).unwrap();
             assert_eq!(game.entity_uuid(entity), Some(uuid));
             assert_eq!(game.entity_nbt(entity), Some(nbt));
             game.enter_command_level(original).unwrap();
@@ -1453,13 +1456,13 @@ pub(crate) mod tests {
             assert_eq!(chunk.status(game), Some(ChunkStatus::Full));
             assert!(game.chunk(level, [99, 99]).is_none());
             assert!(
-                game.enter_command_level(super::super::Dim::Nether)
+                game.enter_command_level(sunrise_gameplay_common::game::Dim::Nether)
                     .is_some()
             );
             assert_eq!(chunk.status(game), Some(ChunkStatus::Full));
             assert_eq!(game.chunk(level, [-2, 3]), Some(chunk));
             assert!(
-                game.enter_command_level(super::super::Dim::Overworld)
+                game.enter_command_level(sunrise_gameplay_common::game::Dim::Overworld)
                     .is_some()
             );
             game.world.chunks.remove(&(-2, 3));
@@ -2284,7 +2287,7 @@ pub(crate) mod tests {
                 )
                 .unwrap();
             assert!(
-                game.enter_command_level(super::super::Dim::Nether)
+                game.enter_command_level(sunrise_gameplay_common::game::Dim::Nether)
                     .is_some()
             );
             let nether = game.level("minecraft:the_nether").unwrap();
@@ -2365,7 +2368,7 @@ pub(crate) mod tests {
             assert_eq!(game.player_experience(nether_actor).unwrap().level, 8);
             assert_eq!(game.player_experience(overworld_actor).unwrap().level, 3);
             assert!(
-                game.enter_command_level(super::super::Dim::Overworld)
+                game.enter_command_level(sunrise_gameplay_common::game::Dim::Overworld)
                     .is_some()
             );
             assert_eq!(
@@ -2389,7 +2392,7 @@ pub(crate) mod tests {
                     .unwrap(),
                 17
             );
-            game.enter_command_level(super::super::Dim::Nether).unwrap();
+            game.enter_command_level(sunrise_gameplay_common::game::Dim::Nether).unwrap();
             assert_eq!(
                 attachment
                     .get(
@@ -2401,7 +2404,7 @@ pub(crate) mod tests {
                 8
             );
             assert!(game.player_remove_fake(nether_actor));
-            game.enter_command_level(super::super::Dim::Overworld)
+            game.enter_command_level(sunrise_gameplay_common::game::Dim::Overworld)
                 .unwrap();
             game.options.dedicated = None;
             let players = game.native_server_players();
@@ -2419,7 +2422,7 @@ pub(crate) mod tests {
                     .update(1, |guest| guest.dimension = value);
             }
             let ticking = game.levels_to_tick();
-            assert!(!ticking.contains(&super::super::Dim::Nether));
+            assert!(!ticking.contains(&sunrise_gameplay_common::game::Dim::Nether));
             {
                 let value = "minecraft:the_nether".into();
                 game.side
@@ -2430,7 +2433,7 @@ pub(crate) mod tests {
                     .guests
                     .update(0, |guest| guest.dimension = value);
             }
-            assert!(game.levels_to_tick().contains(&super::super::Dim::Nether));
+            assert!(game.levels_to_tick().contains(&sunrise_gameplay_common::game::Dim::Nether));
             {
                 let value = "minecraft:overworld".into();
                 game.side
@@ -2496,7 +2499,7 @@ pub(crate) mod tests {
                 };
                 assert_eq!(
                     game.select(&source),
-                    vec![super::super::commands::Target::Player]
+                    vec![sunrise_gameplay_common::game::commands_common::Target::Player]
                 );
                 let named = sunrise_command::args::Selector {
                     player_name: Some("fake".into()),
@@ -2670,10 +2673,10 @@ pub(crate) mod tests {
                 assert!(receiver.try_recv().is_err());
             }
             let fake = game.fake_player(level, 5678, "joiner").unwrap();
-            game.enter_command_level(super::super::Dim::Nether).unwrap();
+            game.enter_command_level(sunrise_gameplay_common::game::Dim::Nether).unwrap();
             let nether = game.level("minecraft:the_nether").unwrap();
             let other_fake = game.fake_player(nether, 5678, "joiner").unwrap();
-            game.enter_command_level(super::super::Dim::Overworld)
+            game.enter_command_level(sunrise_gameplay_common::game::Dim::Overworld)
                 .unwrap();
             let saved_root = game.side.world_root.clone();
             let scratch = std::env::current_dir()
@@ -2866,7 +2869,7 @@ pub(crate) mod tests {
                 None
             );
             assert!(
-                game.enter_command_level(super::super::Dim::Nether)
+                game.enter_command_level(sunrise_gameplay_common::game::Dim::Nether)
                     .is_some()
             );
             assert_eq!(
@@ -2874,7 +2877,7 @@ pub(crate) mod tests {
                 Some(true)
             );
             assert!(
-                game.enter_command_level(super::super::Dim::Overworld)
+                game.enter_command_level(sunrise_gameplay_common::game::Dim::Overworld)
                     .is_some()
             );
             let shulker = game
@@ -2908,7 +2911,7 @@ pub(crate) mod tests {
                 for parked in [false, true] {
                     if parked {
                         assert!(
-                            game.enter_command_level(super::super::Dim::Nether)
+                            game.enter_command_level(sunrise_gameplay_common::game::Dim::Nether)
                                 .is_some()
                         );
                     }
@@ -2924,7 +2927,7 @@ pub(crate) mod tests {
                     }
                 }
                 assert!(
-                    game.enter_command_level(super::super::Dim::Overworld)
+                    game.enter_command_level(sunrise_gameplay_common::game::Dim::Overworld)
                         .is_some()
                 );
                 assert!(game.container_openers_changed((0, 64, 0), false));
@@ -2965,7 +2968,7 @@ pub(crate) mod tests {
                 }
             }
             assert!(
-                game.enter_command_level(super::super::Dim::Nether)
+                game.enter_command_level(sunrise_gameplay_common::game::Dim::Nether)
                     .is_some()
             );
             assert_eq!(
@@ -2973,7 +2976,7 @@ pub(crate) mod tests {
                 Some(false),
             );
             assert!(
-                game.enter_command_level(super::super::Dim::Overworld)
+                game.enter_command_level(sunrise_gameplay_common::game::Dim::Overworld)
                     .is_some()
             );
             game.world.shulkers.remove(&[0, 64, 0]);
@@ -3170,7 +3173,7 @@ pub(crate) mod tests {
             assert_eq!(bowl.block, [0, 64, 2]);
             assert_eq!(bowl.face, Face::Up);
             assert!(
-                game.enter_command_level(super::super::Dim::Nether)
+                game.enter_command_level(sunrise_gameplay_common::game::Dim::Nether)
                     .is_some()
             );
             assert_eq!(
@@ -3218,7 +3221,9 @@ pub(crate) mod tests {
     #[test]
     #[ignore = "daily"]
     fn level_shapes_use_empty_context() {
-        use super::super::{Options, Progress, Settings, load_resources};
+        use sunrise_gameplay_common::game::{Options, Progress};
+        use crate::settings::Settings;
+        use crate::game::load_resources;
         use mod_api::{Authority, BlockShapeKind};
         use std::{sync::Arc, time::Instant};
         use sunrise_level::chunk::Chunk;
@@ -3258,7 +3263,7 @@ pub(crate) mod tests {
 
         let level = game.level("minecraft:overworld").unwrap();
         assert!(
-            game.enter_command_level(super::super::Dim::Nether)
+            game.enter_command_level(sunrise_gameplay_common::game::Dim::Nether)
                 .is_some()
         );
         game.world
@@ -3272,7 +3277,7 @@ pub(crate) mod tests {
             .unwrap();
         game.world.set(0, 64, 0, stone).unwrap();
         assert!(
-            game.enter_command_level(super::super::Dim::Overworld)
+            game.enter_command_level(sunrise_gameplay_common::game::Dim::Overworld)
                 .is_some()
         );
         let nether = game.level("minecraft:the_nether").unwrap();
@@ -3349,14 +3354,16 @@ pub(crate) mod tests {
     fn uuid_words_are_most_significant_first() {
         let words = [0x0102_0304, -1, 0, 0x7fff_ffff];
         assert_eq!(
-            super::uuid_from_words(words),
+            sunrise_gameplay::game::native_entity_refs::uuid_from_words(words),
             0x0102_0304_ffff_ffff_0000_0000_7fff_ffff
         );
     }
     #[test]
     #[ignore = "daily"]
     fn level_block_writes_validate_and_change_world() {
-        use super::super::{Options, Progress, Settings, load_resources};
+        use sunrise_gameplay_common::game::{Options, Progress};
+        use crate::settings::Settings;
+        use crate::game::load_resources;
         use mod_api::{Authority, BlockUpdateFlags, HostTransaction};
         use std::{sync::Arc, time::Instant};
         use sunrise_items::items::ItemStack;
@@ -3553,7 +3560,7 @@ pub(crate) mod tests {
             assert_eq!(game.world.block(5, 64, 0), water);
             game.world.set(5, 64, 0, waterlogged).unwrap();
             let removed = game.with_level(|_, level, ticks| {
-                let mut host = super::super::mod_api_host::LevelTicks::new(level, ticks);
+                let mut host = sunrise_gameplay_common::game::mod_api_host::LevelTicks::new(level, ticks);
                 mod_api::LevelWriteHost::remove_block(&mut host, [5, 64, 0], moved)
             });
             assert!(removed);
@@ -3586,7 +3593,7 @@ pub(crate) mod tests {
                 .is_none()
         );
         let fill_chest = |game: &mut sunrise_gameplay::game::ServerGame<'_>| {
-            let Some(super::super::BlockEntity::Chest(items)) =
+            let Some(sunrise_level::containers::BlockEntity::Chest(items)) =
                 game.world.block_entities.get_mut(&(0, 64, 0))
             else {
                 panic!("chest block entity missing")
@@ -3681,7 +3688,7 @@ pub(crate) mod tests {
             game.level_set_block(level, [0, 64, 0], exposed, flags),
             Ok(true)
         );
-        let Some(super::super::BlockEntity::Chest(items)) =
+        let Some(sunrise_level::containers::BlockEntity::Chest(items)) =
             game.world.block_entities.get(&(0, 64, 0))
         else {
             panic!("copper chest entity missing")
@@ -3700,7 +3707,7 @@ pub(crate) mod tests {
         );
         assert!(matches!(
             game.world.block_entities.get(&(0, 64, 0)),
-            Some(super::super::BlockEntity::Sculk(_))
+            Some(sunrise_level::containers::BlockEntity::Sculk(_))
         ));
         assert_eq!(
             game.level_set_block(level, [0, 64, 0], chest, flags),
@@ -3708,10 +3715,10 @@ pub(crate) mod tests {
         );
         assert!(matches!(
             game.world.block_entities.get(&(0, 64, 0)),
-            Some(super::super::BlockEntity::Chest(_))
+            Some(sunrise_level::containers::BlockEntity::Chest(_))
         ));
         assert!(
-            game.enter_command_level(super::super::Dim::Nether)
+            game.enter_command_level(sunrise_gameplay_common::game::Dim::Nether)
                 .is_some()
         );
         assert_eq!(
@@ -3997,7 +4004,7 @@ pub(crate) mod tests {
             }
             let at = [16.5, 65.5, 3.0];
             assert_eq!(
-                game.place_teleport_filed(super::Target::Other(block), at, None, [false; 3], false),
+                game.place_teleport_filed(sunrise_gameplay_common::game::commands_common::Target::Other(block), at, None, [false; 3], false),
                 Some(ADMISSIONS[1].2)
             );
             assert_eq!(ids(game, level, LO, HI), [pig, text, item, block]);
@@ -4008,7 +4015,7 @@ pub(crate) mod tests {
             let far_lo = [39.5, 65.0, 2.0];
             let far_hi = [41.5, 66.0, 4.0];
             assert!(ids(game, level, far_lo, far_hi).is_empty());
-            let target = super::Target::Other(block);
+            let target = sunrise_gameplay_common::game::commands_common::Target::Other(block);
             let mut tag = game.command_target_nbt(target).unwrap();
             let pos = sunrise_core::nbt::Tag::List(
                 [40.5, 65.5, 3.0]

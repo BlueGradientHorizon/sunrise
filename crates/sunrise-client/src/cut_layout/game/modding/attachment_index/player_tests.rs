@@ -5,6 +5,7 @@ use super::*;
 use sunrise_gameplay::game::native_guest_turn_tests::with_guests;
 use mod_api::{AttachmentAccess, ServerHost};
 use sunrise_core::nbt::{Compound, Tag};
+use sunrise_mod_runtime::attachments::Holder;
 use sunrise_mod_runtime::attachments::{AttachmentCodec, AttachmentError, AttachmentType};
 
 const VALUE: AttachmentType<i32> = AttachmentType {

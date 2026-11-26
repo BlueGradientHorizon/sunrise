@@ -3,6 +3,8 @@
 //! message goes to the command's issuer
 //! (tools/test_test_pos_guest_parity.py measures the same on vanilla 26.3).
 use sunrise_core::geometry::Vec3;
+use crate::settings::Settings;
+use sunrise_gameplay_common::game::{Options, Progress, Resources, load_resources};
 use sunrise_gameplay_common::game::Dim;
 use super::*;
 use std::sync::{Arc, atomic::AtomicI32, mpsc};

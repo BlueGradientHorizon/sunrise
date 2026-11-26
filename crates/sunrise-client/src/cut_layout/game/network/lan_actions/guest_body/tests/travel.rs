@@ -7,6 +7,7 @@ use sunrise_gameplay_common::game::server_side::native_item_places::tests::guest
 use mod_api::{EntityMoveEvent, Flow, Hooks, LivingTravelEvent, LoopContext, MoveCause};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use sunrise_level::chunk::Chunk;
+use sunrise_protocol::packets::play;
 use sunrise_protocol::packets::play::Serverbound as S;
 use sunrise_sim::lan::{NetConfig, Out, hub::HubConfig};
 

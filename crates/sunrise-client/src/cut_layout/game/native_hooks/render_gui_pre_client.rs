@@ -11,7 +11,7 @@ pub(crate) mod local_sound_tests {
     fn a_screen_hooks_sound_reaches_audio_at_the_next_update() {
         let mods: mod_api::Mods = vec![ModEntry::new("click", Box::new(Mod))].into();
         with_mods(mods, || {
-            sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+            crate::game::native_entity_refs::tests::with_client_game(|game| {
                 game.side.audio.0.heard.clear();
                 game.native_render_gui_pre(&mut false);
                 assert_eq!(

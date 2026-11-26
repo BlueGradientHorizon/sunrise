@@ -400,7 +400,7 @@ impl ClientGame<'_> {
 
 /// The families `entity_geometry` draws in one ordered pass.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(in crate::game) enum DrawFamily {
+pub enum DrawFamily {
     Mob,
     LocalPlayer,
     RemoteGeneral,

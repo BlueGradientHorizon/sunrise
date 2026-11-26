@@ -6,6 +6,8 @@ use sunrise_core::nbt::Tag;
 pub(crate) mod tests {
 
 use super::*;
+use mod_api::{GuiEntity, GuiEntityError, GuiEntityLook, GuiEntityView};
+use sunrise_core::nbt::Compound;
 
 #[test]
     #[ignore = "daily"]

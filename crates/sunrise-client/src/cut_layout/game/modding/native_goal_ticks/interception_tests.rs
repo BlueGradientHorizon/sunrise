@@ -1,6 +1,7 @@
 //! Installed native listeners intercept the AI setter through the real server host.
 use mod_api::EntityRef;
 use mod_api::LivingRef;
+use sunrise_sim::mobs;
 use sunrise_sim::mobs::Mob;
 use sunrise_sim::mobs::Who;
 use super::*;

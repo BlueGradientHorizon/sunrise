@@ -252,7 +252,7 @@ fn a_local_player_sweep_credits_the_secondary_kill() {
     guests.update(victim, |g| g.health = 1.0);
     guests.update(primary, |g| g.position = [21.5, 100.0, 9.5]);
     let target = sunrise_gameplay::game::lan_mobs::guest_bounds(&guests[primary]);
-    game.sweep_damage(target, super::mace::Spared::Player(KILLER_ID as i32), 1.0);
+    game.sweep_damage(target, sunrise_gameplay::game::server_side::mace::Spared::Player(KILLER_ID as i32), 1.0);
 
     assert!(
         game.side
@@ -428,7 +428,7 @@ fn a_displaced_archer_receives_resistance_credit() {
         g.as_guest(CONN, |g| {
             assert!(matches!(
                 g.combat_player(KILLER_ID),
-                Some(crate::game::server_side::lan_actions_server::turn_state::CombatPlayer::Displaced(..))
+                Some(sunrise_gameplay::game::server_side::lan_actions_server::turn_state::CombatPlayer::Displaced(..))
             ));
             assert!(g.damage_projectile_with_weapon(&arrow, pig, 5.25, source, None));
             assert_eq!(g.stats.get("custom", stat), 0);

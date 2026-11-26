@@ -37,7 +37,7 @@ fn a_part_names_the_selected_stick_while_its_name_shows() {
                 vec![mod_api::ModEntry::new("charge", Box::new(Parts))].into();
             mod_platform::testing::with_mods(mods.clone(), || {
                 sunrise_gameplay_common::game::api_values::install_parts(&mods).unwrap();
-                sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+                crate::game::native_entity_refs::tests::with_client_game(|game| {
                     game.side.settings.notification_display_time = 1.0;
                     game.inventory[0] = Some(ItemStack::new("minecraft:stick", 1));
                     game.selected = 0;

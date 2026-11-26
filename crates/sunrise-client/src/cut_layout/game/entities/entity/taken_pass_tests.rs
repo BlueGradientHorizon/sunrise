@@ -10,7 +10,7 @@ pub use sunrise_gameplay::game::server_side::entity_server::taken_pass_tests::{
 pub(crate) struct LifecycleFixture {
     pub seed: fn(&mut sunrise_gameplay::game::ServerGame<'_>, &[(u32, [f64; 3])]),
     pub ids: fn(&sunrise_gameplay::game::ServerGame<'_>) -> Vec<u32>,
-    pub target: fn(u32) -> crate::game::commands::Target,
+    pub target: fn(u32) -> sunrise_gameplay_common::game::commands_common::Target,
     pub unloads_with_chunk: bool,
     pub remote: Option<RemoteLifecycle>,
 }
@@ -187,7 +187,7 @@ fn lifecycle_fixture_walks_fangs_owners() {
             }
         },
         ids: |game| game.fangs.list.iter().map(|f| f.id).collect(),
-        target: crate::game::commands::Target::Fangs,
+        target: sunrise_gameplay_common::game::commands_common::Target::Fangs,
         unloads_with_chunk: true,
         remote: None,
     }
@@ -201,7 +201,7 @@ fn lifecycle_fixture_walks_other_owners() {
         seed: |game, entries| {
             game.side.others.0.clear();
             for &(id, at) in entries {
-                game.side.others.0.push(crate::game::commands::OtherEntity {
+                game.side.others.0.push(sunrise_gameplay_common::game::commands_common::OtherEntity {
                     size_answer: None,
                     attachment_lifetime: Default::default(),
                     knot_check: None,
@@ -218,7 +218,7 @@ fn lifecycle_fixture_walks_other_owners() {
             }
         },
         ids: |game| game.side.others.0.iter().map(|entity| entity.id).collect(),
-        target: crate::game::commands::Target::Other,
+        target: sunrise_gameplay_common::game::commands_common::Target::Other,
         unloads_with_chunk: true,
         remote: None,
     }

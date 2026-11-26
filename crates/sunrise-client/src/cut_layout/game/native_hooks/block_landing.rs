@@ -4,6 +4,7 @@ use sunrise_core::position::BlockPos;
 #[cfg(test)]
 mod landing_crossing_tests {
     use {crate::game::native_hooks::block_landing::*};
+    use sunrise_gameplay_common::game::native_hooks::HitLevel;
     use sunrise_gameplay_common::game::api_values::TryIntoApi;
     use mod_api::{BlockPart, FallOnEvent, Hooks, LevelRandomHost, ModEntry, Registrar};
     use std::sync::{Arc, Mutex};

@@ -17,7 +17,7 @@ thread_local! {
 
 /// Runs `body` with `replacement` answering for `seam` on this thread, then puts back what
 /// answered before, also when `body` panics.
-pub(in crate::game) fn replaced<F: Copy + 'static, R>(
+pub fn replaced<F: Copy + 'static, R>(
     seam: &'static LocalKey<Cell<Option<F>>>,
     replacement: F,
     body: impl FnOnce() -> R,

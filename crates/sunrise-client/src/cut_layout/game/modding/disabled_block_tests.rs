@@ -2,7 +2,7 @@
 #[cfg(test)]
 pub(crate) mod tests {
     use super::super::native_entity_refs::tests as fixture;
-    use crate::game::api_values::{TryIntoApi, TryIntoEngine};
+    use sunrise_gameplay_common::game::api_values::{TryIntoApi, TryIntoEngine};
     use sunrise_gameplay_common::game::{Dim, Hit};
     use mod_api::{
         BlockPart, BlockToolModificationEvent, CanBeHydratedEvent, DispenseMethodEvent, Dispensed,
@@ -288,7 +288,7 @@ pub(crate) mod tests {
             .unwrap();
             std::fs::write(path.join("src/lib.rs"), "").unwrap();
         }
-        let sources = super::super::mods::ModsState {
+        let sources = sunrise_gameplay_common::game::mods::ModsState {
             native: Arc::new(Runtime::load(&dir.path().join("sunrise-client"), BUILT).unwrap()),
             ..Default::default()
         };
@@ -307,7 +307,7 @@ pub(crate) mod tests {
             mod_api::__private::mark_game_thread();
             let base =
                 std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
-            let root = super::super::mods::content_root(&base, &sources).unwrap();
+            let root = sunrise_gameplay_common::game::mods::content_root(&base, &sources).unwrap();
             fixture::with_game_at(root.prepared().to_owned(), |game| {
                 game.options.dedicated = Some(Vec::new());
                 game.native_level_opened(Dim::Overworld);

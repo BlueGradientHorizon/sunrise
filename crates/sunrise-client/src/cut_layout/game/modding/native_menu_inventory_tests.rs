@@ -395,8 +395,8 @@ mod owner {
             game.level.player_uuid = Some(playerdata::uuid_ints(12));
             assert_ne!(game.dim.id(), "minecraft:the_nether");
             // A level is open while a player is in it.
-            game.enter_level(super::super::Dim::Nether).unwrap();
-            game.enter_level(super::super::Dim::Overworld).unwrap();
+            game.enter_level(sunrise_gameplay_common::game::Dim::Nether).unwrap();
+            game.enter_level(sunrise_gameplay_common::game::Dim::Overworld).unwrap();
             let stack = |game: &sunrise_gameplay::game::ServerGame<'_>, snbt: &str| {
                 let host: &dyn mod_api::Host = game;
                 host.item_from_snbt(snbt).unwrap()
@@ -446,7 +446,7 @@ mod owner {
                 .transaction(|host, _| Ok::<_, ()>(player.give_stack(host, diamond)));
             assert_eq!(given, Ok(Ok(None)));
             assert_eq!(game.dropped.len(), dropped);
-            game.enter_level(super::super::Dim::Nether).unwrap();
+            game.enter_level(sunrise_gameplay_common::game::Dim::Nether).unwrap();
             let [overflow] = game.dropped.as_ref() else {
                 panic!("the full guest's level should have one overflow drop");
             };

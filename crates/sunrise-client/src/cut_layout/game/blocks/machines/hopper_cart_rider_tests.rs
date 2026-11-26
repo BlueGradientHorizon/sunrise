@@ -62,15 +62,15 @@ fn a_ridden_hopper_cart_takes_one_item_a_tick() {
     // so a player only gets in with `/ride`, whose `RideCommand.mount` forces
     // `startRiding` past `isRideable`. `tick_carts` then leaves that cart to
     // `tick_cart_riding`, as the server's guests' turns do.
-    let mount = crate::game::commands::Target::Cart(1);
+    let mount = sunrise_gameplay_common::game::commands_common::Target::Cart(1);
     assert!(
-        game.ride_mount(crate::game::commands::Target::Player, mount)
+        game.ride_mount(sunrise_gameplay_common::game::commands_common::Target::Player, mount)
             .is_ok(),
         "`/ride` mounts a player on a hopper minecart"
     );
     assert_eq!(game.riding, Some(1), "the rider is in the first cart");
     for _ in 0..20 {
-        assert!(game.tick_cart_riding(super::super::Keys::default()));
+        assert!(game.tick_cart_riding(sunrise_sim::sprint::Keys::default()));
         game.tick_carts();
     }
     assert_eq!(game.riding, Some(1), "the rider keeps its cart");

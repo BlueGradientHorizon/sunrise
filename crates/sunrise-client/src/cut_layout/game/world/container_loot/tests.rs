@@ -1,4 +1,5 @@
 //! Production gameplay triggers, with one isolated game process per group of scenarios.
+use sunrise_gameplay_common::game::container_loot_level::fill_with_random;
 use sunrise_gameplay_common::game::container_loot_level::LootTarget;
 use super::*;
 use {sunrise_gameplay_common::game::minecarts::CartKind, sunrise_gameplay_common::game::minecarts::Minecart};

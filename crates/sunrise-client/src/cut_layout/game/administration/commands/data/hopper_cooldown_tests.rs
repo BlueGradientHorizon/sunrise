@@ -3,6 +3,7 @@
 
 use sunrise_core::nbt::Tag;
 use super::*;
+use sunrise_gameplay::game::commands::data::DataRef;
 use sunrise_gameplay::game::game_tests::tests::server_game;
 use sunrise_core::position::BlockPos;
 use sunrise_level::containers::BlockEntity;

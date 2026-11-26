@@ -13,7 +13,7 @@ mod tests {
     use sunrise_level::chunk::{Chunk, MIN_Y};
     use sunrise_protocol::{
         connection::Pipe,
-        connection_groups::{Cell, Entry},
+        connection_groups::{Cell, Entry, Section},
         packets::{
             custom_payload::CustomPayload,
             play::{self, Clientbound as C},

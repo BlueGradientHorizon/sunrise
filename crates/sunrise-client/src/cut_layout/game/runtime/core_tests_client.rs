@@ -3,6 +3,8 @@ use sunrise_client::hud::HudBatch;
 use winit::event::ElementState;
 use winit::event::MouseButton;
 use winit::event::WindowEvent;
+use sunrise_client_gameplay::game::EventLoopCtl;
+use sunrise_gameplay_common::game::Screen;
 use super::*;
 
 #[path = "incoming_tests/pet_order_client.rs"]

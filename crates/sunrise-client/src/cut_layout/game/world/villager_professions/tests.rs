@@ -80,8 +80,8 @@ fn resource_root(scratch: &std::path::Path) -> std::path::PathBuf {
     .unwrap();
     root
 }
-fn request(root: &std::path::Path) -> world_loading::WorldRequest {
-    let mut value = world_loading::WorldRequest::new(
+fn request(root: &std::path::Path) -> sunrise_gameplay::game::world_loading::WorldRequest {
+    let mut value = sunrise_gameplay::game::world_loading::WorldRequest::new(
         "profession test",
         Some("test"),
         Some(1),

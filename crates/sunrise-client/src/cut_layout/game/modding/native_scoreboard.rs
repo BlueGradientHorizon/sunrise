@@ -15,6 +15,14 @@ use super::*;
 
 use mod_api::{TeamColor, prelude::ScoreboardServerHost, text::TextStyle};
 
+use mod_api::ObjectiveRenderType;
+
+use mod_api::ObjectiveError;
+
+use mod_api::ScoreHolder;
+
+use mod_api::DisplaySlot;
+
 #[test]
     #[ignore = "daily"]
     fn objectives_are_written_synced_saved_and_stale_once_removed() {

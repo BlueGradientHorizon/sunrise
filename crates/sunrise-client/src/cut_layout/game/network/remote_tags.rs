@@ -3,6 +3,8 @@
 #[cfg(test)]
 pub(crate) mod tests {
 
+use sunrise_client_gameplay::game::client_side::remote_tags::{Probe, Seen};
+
 use sunrise_gameplay_common::game::client_side::remote_tags::tests::login;
 
 use sunrise_gameplay_common::game::client_side::remote_tags::tests::power_update;

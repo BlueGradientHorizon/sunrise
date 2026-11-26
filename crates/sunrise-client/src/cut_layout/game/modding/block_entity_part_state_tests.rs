@@ -108,7 +108,7 @@ fn with_state_mod(name: &str, test: impl FnOnce(&mut sunrise_gameplay::game::Ser
         sunrise_gameplay_common::game::api_values::install_parts(&mods).unwrap();
         mod_api::__private::mark_game_thread();
         let base = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
-        let root = super::mods::content_root(&base, &Default::default()).unwrap();
+        let root = sunrise_gameplay_common::game::mods::content_root(&base, &Default::default()).unwrap();
         super::native_entity_refs::tests::with_game_at(root.prepared().to_owned(), |game| {
             game.options.dedicated = Some(Vec::new());
             game.native_level_opened(Dim::Overworld);
@@ -186,8 +186,8 @@ fn part_state_is_per_block_entity_through_ticks_transactions_and_replacement() {
         let level = game.level(game.dim.id()).unwrap();
         let dedicated = game.options.dedicated.take();
         let role = game.options.execution_role;
-        game.options.execution_role = super::execution_role::ExecutionRole::Client;
-        let client_view = super::native_level_signals::ReadLevel::new(game, level);
+        game.options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::Client;
+        let client_view = sunrise_gameplay_common::game::native_level_signals::ReadLevel::new(game, level);
         assert_eq!(Press::state_in(&client_view, a), Ok(0));
         assert_eq!(Press::state_existing_in(&client_view, a), Ok(None));
         game.options.dedicated = dedicated;
@@ -741,7 +741,7 @@ fn part_state_counts_ticks_across_chunk_reload() {
             mod_api::__private::mark_game_thread();
             let base =
                 std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
-            let root = super::mods::content_root(&base, &Default::default()).unwrap();
+            let root = sunrise_gameplay_common::game::mods::content_root(&base, &Default::default()).unwrap();
             super::native_entity_refs::tests::with_game_at(root.prepared().to_owned(), |game| {
                 game.options.dedicated = Some(Vec::new());
                 let (key, pos) = ((80, 80), (1283, 100, 1283));

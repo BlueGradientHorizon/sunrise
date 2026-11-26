@@ -100,6 +100,10 @@ pub(crate) mod entity_inside_tests {
 #[cfg(test)]
 pub(crate) mod sweep_tests {
 
+use sunrise_gameplay_common::game::native_hooks::BLOCK_CONTACT_HOOKS;
+
+use sunrise_gameplay_common::game::native_hooks::entity_inside::sweep_tests::InsidePart;
+
 use sunrise_gameplay_common::game::in_own_process;
 
 use sunrise_gameplay_common::game::native_hooks::entity_inside::sweep_tests::arrow_shot;

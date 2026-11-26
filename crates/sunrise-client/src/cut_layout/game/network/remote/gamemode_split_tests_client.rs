@@ -1,6 +1,7 @@
 use sunrise_core::geometry::Vec3;
 use sunrise_protocol::packets::play::Clientbound as C;
 use super::super::*;
+use sunrise_gameplay_common::game::Screen;
 use crate::game::server_side::native_entity_refs::tests::with_client_game;
 use crate::game::remote::abilities::gamemode_split_tests::SELF_NAME;
 use crate::game::remote::abilities::gamemode_split_tests::SELF_UUID;

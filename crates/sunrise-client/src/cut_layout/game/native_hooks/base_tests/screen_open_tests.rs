@@ -1,5 +1,8 @@
+use mod_api::Hand;
 use mod_api::InteractionAttempt;
 use mod_api::InteractionKey;
+use mod_api::ScreenOpening;
+use sunrise_gameplay_common::game::Screen;
 use sunrise_client::hud::HudBatch;
 #[allow(unused_imports)]
 use {crate::game::native_hooks::base::*};

@@ -20,7 +20,7 @@ fn math_profile_selection_matches_platform_and_is_stable() {
     let first = sunrise_gameplay_common::game::native_hooks::math::selected_profile();
     assert_platform_profile(first);
     for _ in 0..128 {
-        assert_eq!(super::selected_profile(), first);
+        assert_eq!(sunrise_gameplay_common::game::native_hooks::math::selected_profile(), first);
     }
 }
 

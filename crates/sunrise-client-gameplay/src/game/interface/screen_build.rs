@@ -89,7 +89,7 @@ pub(in crate::game) struct ScreenBuild {
 /// and every slot's hover box. Read by its drawing, `slot_at`,
 /// `clicked_outside` and `screen_exclusion`; never rebuilt per call.
 #[derive(Clone, Debug, PartialEq)]
-pub(in crate::game) struct ContainerLayout {
+pub struct ContainerLayout {
     pub(in crate::game) slot_inputs: super::container_layout::SlotInputs,
     /// `leftPos`, `topPos`, `imageWidth`, `imageHeight` in GUI pixels.
     pub(in crate::game) image: [f32; 4],
@@ -132,7 +132,7 @@ impl ContainerLayout {
 /// lays them out. Read by the drawing, `pause_click` and `pause_key`; never
 /// rebuilt per call.
 #[derive(Clone, Debug, PartialEq)]
-pub(in crate::game) struct PauseLayout {
+pub struct PauseLayout {
     /// The `PauseScreen.init` inputs this layout was made from: a server's
     /// links or a custom-additions dialog appearing, or a page registering a
     /// row, is a new layout even at the same size.
@@ -148,7 +148,7 @@ pub(in crate::game) struct PauseLayout {
 /// is open: the connection (the disconnect label), a server's links, the
 /// custom-additions dialog and the extra page rows.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(in crate::game) struct PauseInputs {
+pub struct PauseInputs {
     pub(in crate::game) remote: bool,
     pub(in crate::game) links: bool,
     pub(in crate::game) additions: bool,
@@ -183,7 +183,7 @@ pub(in crate::game) struct CommandBlockLayout {
 /// and `CommandBlock`. (Options keeps its own built layout, keyed by its
 /// revision, in `OptionsUi`.)
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(in crate::game) enum BuildLayout {
+pub enum BuildLayout {
     /// Not migrated yet: the build has the window's rectangle only.
     #[default]
     Empty,
@@ -199,7 +199,7 @@ pub(in crate::game) enum BuildLayout {
 
 /// A layout a screen just made for its build. One arm per migrated screen;
 /// `sync` replaces the built one when it differs.
-pub(in crate::game) enum ScreenLayout {
+pub enum ScreenLayout {
     Container(ContainerLayout),
     Pause(PauseLayout),
     Chat(ChatLayout),
@@ -429,7 +429,7 @@ struct RoomMemo {
 
 /// The open screen's build and what it was made from.
 #[derive(Default)]
-pub(in crate::game) struct ScreenBuildState {
+pub struct ScreenBuildState {
     current: Option<ScreenBuild>,
     /// The frame's effects answer, while this frame asked for one.
     effects: std::cell::Cell<Option<EffectsMemo>>,

@@ -11,7 +11,7 @@ use sunrise_core::geometry::Vec3;
 #[test]
     #[ignore = "daily"]
     fn for_player_keeps_the_outer_body_in_its_original_dimension() {
-        use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::load_resources};
+        use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::game::load_resources};
         use crate::settings::Settings;
         use std::sync::{Arc, atomic::AtomicI32, mpsc};
         use sunrise_protocol::packets::configuration::ClientInformation;
@@ -108,7 +108,7 @@ use sunrise_core::geometry::Vec3;
         guest.placed = true;
         guest.loaded = true;
         game.side.lan.as_mut().unwrap().hub.guests.push(guest);
-        let seen = game.for_player(super::super::commands::Target::Guest(2), |g| {
+        let seen = game.for_player(sunrise_gameplay_common::game::commands_common::Target::Guest(2), |g| {
             assert_eq!(g.dim, Dim::Nether);
             // for_player already switched the level before entering the guest.
             // The host's body must not become a phantom blocker in the Nether.

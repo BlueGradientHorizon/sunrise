@@ -190,7 +190,7 @@ fn general_tree_loads_joins_and_saves_one_record() {
         assert_eq!(rows[0].uuid, [1, 2, 3, 4]);
         assert_eq!(rows[1].mount, Some(rows[0].id));
         assert_eq!(
-            game.target_position(crate::game::commands::Target::General(rows[0].id)),
+            game.target_position(sunrise_gameplay_common::game::commands_common::Target::General(rows[0].id)),
             Some([0.5, 64.0, 0.5])
         );
         assert_eq!(rows[0].payload_bytes, b"payload");
@@ -285,7 +285,7 @@ fn minecart_keeps_its_general_passenger_after_the_rider_tick() {
 #[test]
 #[ignore = "daily"]
 fn mixed_passengers_sit_and_unload_with_their_actual_root() {
-    use crate::game::commands::Target;
+    use sunrise_gameplay_common::game::commands_common::Target;
     use mod_api::StartRidingRefusal;
     with_types(|game| {
         let root_uuid = [1, 2, 3, 4];
@@ -1349,7 +1349,7 @@ fn general_tree_travels_to_another_dimension_with_its_riders() {
                 [8.5, 100.0, 8.5],
                 None,
                 true,
-                crate::game::vehicle_teleport::TeleportMotion::Stop,
+                sunrise_gameplay::game::vehicle_teleport::TeleportMotion::Stop,
             )
             .unwrap()
         );
@@ -1502,7 +1502,7 @@ fn refused_dimension_transfer_returns_the_whole_tree() {
                 [8.5, 100.0, 8.5],
                 None,
                 true,
-                crate::game::vehicle_teleport::TeleportMotion::Stop,
+                sunrise_gameplay::game::vehicle_teleport::TeleportMotion::Stop,
             )
             .is_err()
         );

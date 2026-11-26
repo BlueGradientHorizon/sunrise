@@ -7,6 +7,8 @@ use super::*;
 
 use mod_api::{ClientHost, FireworkExplosion, FireworkShape};
 
+use mod_api::FireworksRequest;
+
 use sunrise_client::particles::ParticleLevel;
 
 /// A client mod's fireworks burst either way, and blast and twinkle only when audible,

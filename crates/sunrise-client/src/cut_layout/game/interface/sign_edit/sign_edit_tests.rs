@@ -5,7 +5,7 @@
 //! `SignBlock.otherPlayerIsEditingSign`, `SignBlockEntity.tick` and
 //! `SignBlockEntity.updateSignText`.
 use sunrise_level::containers::BlockEntity;
-use sunrise_protocol::packets::play::Serverbound as S;
+use sunrise_protocol::packets::play::{self, Serverbound as S};
 use super::*;
 use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay::game::lan::LanHost};
 use crate::game::{Settings, load_resources};

@@ -2,6 +2,9 @@ use std::sync::Arc;
 use sunrise_items::items::ItemStack;
 use super::*;
 use mod_api::ServerHost;
+use sunrise_gameplay_common::game::Hit;
+use sunrise_sim::first_person_sim::Hand;
+use sunrise_gameplay_common::game::GuestUse;
 
 #[test]
 #[ignore = "daily"]

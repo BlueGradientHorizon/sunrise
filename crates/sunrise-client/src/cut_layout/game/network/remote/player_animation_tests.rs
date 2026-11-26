@@ -32,7 +32,7 @@ fn remote_player_use_animation_dispatches_once() {
     .into();
     sunrise_gameplay_common::game::api_values::install_parts(&mods).unwrap();
     mod_platform::testing::with_mods(mods, || {
-        sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+        sunrise_client_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
             let (client, _server) = sunrise_protocol::connection::Pipe::pair();
             game.connect_local(client, "animation-client").unwrap();
             let remote = game.side.remote.as_mut().unwrap();

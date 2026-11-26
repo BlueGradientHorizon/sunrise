@@ -1,7 +1,11 @@
 //! `EnderDragonFight.updateDragon`: the fight's boss bar takes the dragon's
 //! custom name (`dragon.getDisplayName()`), and keeps the type's name until
 //! it has one.
+use sunrise_client::settings::Settings;
 use sunrise_gameplay_common::game::Dim;
+use sunrise_gameplay_common::game::launch_options::Options;
+use sunrise_gameplay_common::game::load_resources;
+use sunrise_gameplay_common::game::resource_load::Progress;
 use sunrise_sim::motion::PlayerMotion;
 use super::*;
 use sunrise_core::geometry::Vec3;

@@ -11,6 +11,9 @@ use sunrise_mod_runtime::attachments::ATTACHMENTS_KEY;
 use super::*;
 
 use sunrise_gameplay_common::world_biomes;
+use sunrise_sim::save::ChunkExtras;
+use sunrise_sim::save::text;
+use sunrise_gameplay::game::persist::{EntitySnapshot, ORB_LIVE, add_passengers, drop_unleashable_leash, join_saved_team, mark_fresh, parent_vehicle_root, read_attachments, root_vehicle_tag, take_fresh, vehicle_tree, with_raw_over, write_attachments};
 
 include!("position_load_tests.rs");
 

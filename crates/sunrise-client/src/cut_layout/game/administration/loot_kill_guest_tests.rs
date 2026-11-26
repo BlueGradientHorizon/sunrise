@@ -6,6 +6,11 @@
 use sunrise_core::geometry::Vec3;
 use sunrise_gameplay_common::game::Dim;
 use super::*;
+use crate::settings::Settings;
+use sunrise_gameplay_common::game::Options;
+use sunrise_gameplay_common::game::Resources;
+use sunrise_gameplay_common::game::load_resources;
+use sunrise_gameplay_common::game::resource_load::Progress;
 use std::sync::{Arc, atomic::AtomicI32, mpsc};
 use sunrise_items::items::ItemStack;
 use sunrise_level::chunk::Chunk;

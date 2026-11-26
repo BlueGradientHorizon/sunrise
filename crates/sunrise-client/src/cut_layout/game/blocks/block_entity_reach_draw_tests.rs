@@ -145,7 +145,7 @@ pub(crate) fn run_block_entity_draws_match_the_vanilla_cases() {
     };
     let mut resources = None;
     // A client: it loads what the draws need (the item atlas, baked block models).
-    let mut game = sunrise_client_gameplay::game::beacon_cull_tests::game_as_client(
+    let mut game = crate::game::client_side::beacon_cull_tests::game_as_client(
         &mut resources,
         sunrise_gameplay_common::game::execution_role::ExecutionRole::Client,
     );

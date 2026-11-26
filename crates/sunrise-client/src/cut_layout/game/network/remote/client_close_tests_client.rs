@@ -423,7 +423,7 @@ fn server_close_restores_inventory_under_chat_without_echo() {
                         game.side.chat_ui.chat_screen.as_ref().unwrap().value(),
                         "draft from a container"
                     );
-                    game.close_chat(crate::game::chat::ChatExit::Intentional);
+                    game.close_chat(sunrise_client_gameplay::game::client_side::chat::ChatExit::Intentional);
                     assert!(
                         !sent(&mut reader)
                             .iter()

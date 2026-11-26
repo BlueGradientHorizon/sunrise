@@ -46,7 +46,7 @@ fn piston_push_reaction_position_state_opens_ticks_and_saves() {
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         if client {
             #[cfg(feature = "client")]
-            sunrise_client_gameplay::game::native_hooks_client::piston_push_reaction_tests::run_client_piston_case(
+            crate::game::client_side::native_hooks_client::piston_push_reaction_tests::run_client_piston_case(
                 root,
             );
             #[cfg(not(feature = "client"))]
@@ -167,7 +167,7 @@ fn piston_push_reaction_position_state_opens_ticks_and_saves() {
             if case == "hopper" || case == "same-scope" {
                 game.side
                     .hoppers
-                    .insert(from, crate::game::machines::HopperState::with_cooldown(40));
+                    .insert(from, sunrise_gameplay_common::hoppers::HopperState::with_cooldown(40));
             }
             game.side.lid_openers.insert(from, 2);
             game.world.chest_openers.insert(from, (2, 4.0));

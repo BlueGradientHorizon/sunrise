@@ -7,6 +7,7 @@ mod tests {
     use super::super::native_entity_refs::tests::with_game;
     use super::*;
     use mod_api::{Hooks, RaidStateChangeEvent, ServerHost, WorldEpoch};
+    use mod_api::{RaidRef, RaidStatus};
     use std::sync::{Arc, Mutex};
     use sunrise_core::geometry::Vec3;
     use sunrise_sim::mobs::{Mob, raider};

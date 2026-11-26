@@ -509,7 +509,7 @@ pub(crate) mod combat_query_tests {
             assert_eq!(overridden.causing, Some(target));
             game.inventory[game.selected] = Some(mace);
             assert_eq!(
-                super::super::creatures::source_damage_type(game.attack_source([0.0; 3])),
+                sunrise_gameplay_common::game::creatures::source_damage_type(game.attack_source([0.0; 3])),
                 "minecraft:magic"
             );
 
@@ -643,7 +643,7 @@ pub(crate) mod combat_query_tests {
                 9.0
             );
             assert_eq!(
-                super::super::creatures::source_damage_type(game.attack_source([0.0; 3])),
+                sunrise_gameplay_common::game::creatures::source_damage_type(game.attack_source([0.0; 3])),
                 "minecraft:magic"
             );
             patch(&mut sword, "!minecraft:enchantments", serde_json::json!({}));
@@ -667,7 +667,7 @@ pub(crate) mod combat_query_tests {
                 7.0
             );
             assert_eq!(
-                super::super::creatures::source_damage_type(game.attack_source([0.0; 3])),
+                sunrise_gameplay_common::game::creatures::source_damage_type(game.attack_source([0.0; 3])),
                 "minecraft:player_attack"
             );
         });

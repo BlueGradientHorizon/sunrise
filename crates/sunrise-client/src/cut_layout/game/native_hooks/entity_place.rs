@@ -1,5 +1,6 @@
 
 
+use mod_api::Placement;
 use sunrise_core::position::BlockPos;
 #[cfg(test)]
 mod entity_place_tests {

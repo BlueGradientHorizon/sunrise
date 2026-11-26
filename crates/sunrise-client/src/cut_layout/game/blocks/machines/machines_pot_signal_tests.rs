@@ -2,6 +2,8 @@
 //! → `getRedstoneSignalFromContainer`): a pot's one slot lives in the chunk's
 //! saved block entity, so a comparator beside it has to read that tag.
 use sunrise_core::position::BlockPos;
+use sunrise_core::geometry::Direction;
+use sunrise_gameplay_common::hoppers::Pos;
 use super::*;
 use {sunrise_gameplay::game::game_tests::tests::server_game, sunrise_gameplay_common::game::spill_common as spill};
 use sunrise_sim::save;

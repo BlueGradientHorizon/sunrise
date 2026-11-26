@@ -2,7 +2,7 @@ use super::*;
 use sunrise_level::profile_lookup::TabPlayer;
 
 /// The live entity a bound sound names; absence means that object was removed.
-pub(in crate::game) fn entity_sound_state(
+pub fn entity_sound_state(
     id: i32,
     player: Option<(i32, [f64; 3], bool)>,
     mob: Option<sunrise_game_data::sound_source::SoundEntityState>,

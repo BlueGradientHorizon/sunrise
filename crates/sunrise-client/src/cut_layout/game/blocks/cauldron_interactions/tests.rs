@@ -300,7 +300,7 @@ pub(crate) fn fixture_mods_client(
         .unwrap()
         .prepared()
         .to_path_buf();
-    sunrise_gameplay::game::native_entity_refs::tests::with_game_role_client(
+    sunrise_client_gameplay::game::native_entity_refs::tests::with_game_role_client(
         root,
         sunrise_gameplay_common::game::execution_role::ExecutionRole::Client,
         test,
@@ -318,7 +318,7 @@ pub(crate) fn fixture_mods_pair(
         .prepared()
         .to_path_buf();
     with_game_at(root.clone(), |server| {
-        sunrise_gameplay::game::native_entity_refs::tests::with_game_role_client(
+        sunrise_client_gameplay::game::native_entity_refs::tests::with_game_role_client(
             root,
             sunrise_gameplay_common::game::execution_role::ExecutionRole::Client,
             |client| test(server, client),
@@ -371,7 +371,7 @@ pub(crate) fn setup_common<S>(
     game.hand = Hand::Main;
     game.inventory.fill(None);
     game.inventory[0] = Some(ItemStack::new(item, count));
-    sunrise_client_gameplay::game::sculk::TEST_POSTED_EVENTS.with(|events| *events.borrow_mut() = Some(Vec::new()));
+    sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|events| *events.borrow_mut() = Some(Vec::new()));
 }
 pub(crate) fn setup(
     game: &mut sunrise_gameplay::game::ServerGame<'_>,
@@ -396,7 +396,7 @@ pub(crate) fn state<S>(game: &Game<'_, S>) -> (String, Option<String>) {
     (state.name.clone(), state.properties.get("level").cloned())
 }
 pub(crate) fn events() -> usize {
-    sunrise_client_gameplay::game::sculk::TEST_POSTED_EVENTS.with(|events| events.borrow().as_ref().unwrap().len())
+    sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|events| events.borrow().as_ref().unwrap().len())
 }
 pub(crate) fn unchanged<S>(game: &Game<'_, S>, seen: &Seen) {
     assert_eq!(state(game), ("minecraft:cauldron".into(), None));
@@ -453,7 +453,7 @@ fn cauldron_syrup_applies_once() {
             1,
         );
         assert_eq!(events(), 1);
-        sunrise_client_gameplay::game::sculk::TEST_POSTED_EVENTS.with(|events| {
+        sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|events| {
             assert_eq!(
                 events.borrow().as_ref().unwrap()[0].0,
                 "minecraft:fluid_place"

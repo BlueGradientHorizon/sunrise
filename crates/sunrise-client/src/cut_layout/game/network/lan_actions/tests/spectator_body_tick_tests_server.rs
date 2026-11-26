@@ -1,4 +1,5 @@
 use sunrise_core::geometry::Vec3;
+use sunrise_sim::lan::guest::SPECTATOR;
 use sunrise_sim::motion::PlayerMotion;
 use super::*;
 use crate::game::lan_actions::tick::spectator_body_tick_tests::luck_left;

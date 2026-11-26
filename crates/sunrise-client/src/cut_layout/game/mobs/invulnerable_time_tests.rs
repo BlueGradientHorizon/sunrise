@@ -70,7 +70,7 @@ fn health(game: &mut sunrise_gameplay::game::ServerGame<'_>) -> f32 {
         .target_with_uuid(sunrise_sim::save::uuid_from_text(EDIT).unwrap())
         .unwrap();
     match target {
-        super::commands::Target::Mob(id) => game.mobs.iter().find(|m| m.id == id).unwrap().health,
+        sunrise_gameplay_common::game::commands_common::Target::Mob(id) => game.mobs.iter().find(|m| m.id == id).unwrap().health,
         other => panic!("{other:?}"),
     }
 }
@@ -111,7 +111,7 @@ use sunrise_core::nbt::Tag;
 
 fn mob(game: &mut sunrise_gameplay::game::ServerGame<'_>) -> usize {
     match game.target_with_uuid(sunrise_sim::save::uuid_from_text(EDIT).unwrap()) {
-        Some(super::commands::Target::Mob(id)) => {
+        Some(sunrise_gameplay_common::game::commands_common::Target::Mob(id)) => {
             game.mobs.iter().position(|m| m.id == id).unwrap()
         }
         other => panic!("{other:?}"),

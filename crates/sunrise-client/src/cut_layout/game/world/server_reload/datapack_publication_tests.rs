@@ -269,8 +269,8 @@ fn datapack_game_open_reload_and_exhaustion_are_atomic() {
                 game.reload_datapacks(false, &features).unwrap();
                 assert_eq!(power(game), DatapackValue::Int(9));
                 game.finish_close_world_server();
-                crate::game::lan::sync::forget_sync_data();
-                crate::game::lan::sync::forget_server_sources();
+                sunrise_gameplay_common::game::lan_common::sync::forget_sync_data();
+                sunrise_gameplay_common::game::lan_common::sync::forget_server_sources();
                 game.options.execution_role =
                     sunrise_gameplay_common::game::execution_role::ExecutionRole::DedicatedServer;
                 game.load_world(request(root)).unwrap();
@@ -345,7 +345,7 @@ fn world_open_and_wire_use_the_pack_biome_instead_of_the_bundled_file() {
     let _publication = sunrise_sim::datapack_net::isolate_server_publication();
     with_game_at(resources, |game| {
         game.load_world(request(&world)).unwrap();
-        let sync = crate::game::lan::sync::cached_reload_sync().unwrap();
+        let sync = sunrise_gameplay_common::game::lan_common::sync::cached_reload_sync().unwrap();
         let biome = sync
             .registry_packets(true, &game.side.level_shapes)
             .into_iter()

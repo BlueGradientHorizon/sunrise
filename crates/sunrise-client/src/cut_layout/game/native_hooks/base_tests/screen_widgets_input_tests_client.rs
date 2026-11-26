@@ -1,3 +1,4 @@
+use sunrise_gameplay_common::game::Screen;
 use super::*;
 use crate::game::native_hooks::base::screen_widgets_tests::input_routing::Cancel;
 use crate::game::native_hooks::base::screen_widgets_tests::input_routing::Seen;

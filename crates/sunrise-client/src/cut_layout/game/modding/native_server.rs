@@ -2,6 +2,7 @@
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::atomic::Ordering;
+use sunrise_gameplay_common::game::modding::native_server::tests::Watcher;
 #[cfg(test)]
 #[path = "native_server/command_failure_tests.rs"]
 pub(crate) mod command_failure_tests;

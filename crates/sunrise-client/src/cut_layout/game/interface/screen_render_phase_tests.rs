@@ -113,7 +113,7 @@ fn overlay_reference(game: &mut sunrise_client_gameplay::game::ClientGame<'_>, c
 fn chest_render_phases_cover_panel_but_preserve_items_tooltips_and_carried_stack() {
     let mut no_subscriber = None;
     with_mods(Vec::new().into(), || {
-        sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+        sunrise_client_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
             chest(game);
             no_subscriber = Some(frame(game));
         });
@@ -127,7 +127,7 @@ fn chest_render_phases_cover_panel_but_preserve_items_tooltips_and_carried_stack
         )]
         .into(),
         || {
-            sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+            sunrise_client_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
                 let (x, y) = chest(game);
                 let baseline = frame(game);
                 assert_eq!(

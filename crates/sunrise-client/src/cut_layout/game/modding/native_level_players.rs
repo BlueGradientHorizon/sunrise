@@ -155,7 +155,7 @@ mod tests {
                     "minecraft:pig",
                     [2.5, 64.0, 2.5],
                     true,
-                    super::super::creatures::SpawnSite::Finalizing(
+                    sunrise_gameplay_common::game::creatures::SpawnSite::Finalizing(
                         sunrise_sim::mobs::spawn_rules::Reason::Command,
                     ),
                 )

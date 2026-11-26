@@ -48,7 +48,7 @@ fn data_edits_reach_the_same_live_interaction() {
             (true, modified.clone())
         );
         let tag = game
-            .command_target_nbt(commands::Target::Other(id))
+            .command_target_nbt(sunrise_gameplay_common::game::commands_common::Target::Other(id))
             .unwrap();
         assert_eq!(tag.get("width"), Some(&Tag::Float(2.5f32.to_bits())));
         assert_eq!(tag.get("height"), Some(&Tag::Float(1.25f32.to_bits())));
@@ -64,7 +64,7 @@ fn data_edits_reach_the_same_live_interaction() {
             (true, modified.clone())
         );
         let tag = game
-            .command_target_nbt(commands::Target::Other(id))
+            .command_target_nbt(sunrise_gameplay_common::game::commands_common::Target::Other(id))
             .unwrap();
         assert_eq!(
             tag.get("attack"),
@@ -72,7 +72,7 @@ fn data_edits_reach_the_same_live_interaction() {
         );
         assert!(run(game, &format!("data remove entity {EDITED} width")).0);
         let tag = game
-            .command_target_nbt(commands::Target::Other(id))
+            .command_target_nbt(sunrise_gameplay_common::game::commands_common::Target::Other(id))
             .unwrap();
         assert_eq!(tag.get("width"), Some(&Tag::Float(1.0f32.to_bits())));
         // The same entity: its id, UUID and place.
@@ -156,7 +156,7 @@ fn the_live_settings_are_what_the_interaction_saves() {
             Some(raw) => game.persist.raw.insert(id, raw.clone()),
             None => game.persist.raw.remove(&id),
         };
-        let tag = game.command_target_nbt(commands::Target::Other(id)).unwrap();
+        let tag = game.command_target_nbt(sunrise_gameplay_common::game::commands_common::Target::Other(id)).unwrap();
         assert_eq!(tag.get("width"), Some(&Tag::Float(2.5f32.to_bits())));
         assert_eq!(tag.get("height"), Some(&Tag::Float(1.0f32.to_bits())));
         assert_eq!(tag.get("response"), Some(&Tag::Byte(1)));
@@ -173,7 +173,7 @@ fn the_live_settings_are_what_the_interaction_saves() {
         let state = find(game, [66, 0, 0, 1]).interaction.unwrap();
         assert_eq!((state.attack, state.width), (None, 1.0));
         let tag = game
-            .command_target_nbt(commands::Target::Other(id))
+            .command_target_nbt(sunrise_gameplay_common::game::commands_common::Target::Other(id))
             .unwrap();
         assert!(tag.get("attack").is_none());
         // The others keep their own state, and every entity its identity.

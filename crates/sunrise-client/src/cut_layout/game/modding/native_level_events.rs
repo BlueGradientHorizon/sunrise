@@ -142,7 +142,7 @@ mod tests {
                     game.lan_record_events(&events);
                     assert_eq!(
                         game.side.lan_events[1],
-                        super::super::QueuedLevelEvent {
+                        sunrise_gameplay_common::game::QueuedLevelEvent {
                             kind: 1500,
                             pos: [1, 64, 1],
                             data: 0,
@@ -151,7 +151,7 @@ mod tests {
                     );
                     assert_eq!(
                         game.side.lan_events[2],
-                        super::super::QueuedLevelEvent {
+                        sunrise_gameplay_common::game::QueuedLevelEvent {
                             kind: 2005,
                             pos: [2, 64, 2],
                             data: 7,
@@ -214,7 +214,7 @@ mod tests {
             assert!(game.side.lan_global_events.is_empty());
             assert_eq!(
                 game.side.lan_events,
-                [super::super::QueuedLevelEvent {
+                [sunrise_gameplay_common::game::QueuedLevelEvent {
                     kind: 1038,
                     pos: [10, 64, -3],
                     data: 0,

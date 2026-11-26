@@ -152,7 +152,7 @@ fn startup_rollback_waits_for_world_resources() {
         assert!(
             game.side
                 .toast_manager
-                .system_mut(crate::game::toast_manager::SystemToastId::PackLoadFailure)
+                .system_mut(sunrise_client_gameplay::game::toast_manager::SystemToastId::PackLoadFailure)
                 .is_some()
         );
         assert!(game.side.pending_pack_reload);
@@ -203,7 +203,7 @@ fn a_reload_fails_and_drops_the_selection(refused: &str) {
         assert!(
             game.side
                 .toast_manager
-                .system_mut(crate::game::toast_manager::SystemToastId::PackLoadFailure)
+                .system_mut(sunrise_client_gameplay::game::toast_manager::SystemToastId::PackLoadFailure)
                 .is_some(),
             "resourcePack.load_fail"
         );

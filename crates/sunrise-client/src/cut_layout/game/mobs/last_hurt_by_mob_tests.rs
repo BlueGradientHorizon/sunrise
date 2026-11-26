@@ -139,7 +139,7 @@ use sunrise_core::nbt::Tag;
 
 fn index(game: &mut sunrise_gameplay::game::ServerGame<'_>, uuid: &str) -> usize {
     match game.target_with_uuid(sunrise_sim::save::uuid_from_text(uuid).unwrap()) {
-        Some(super::commands::Target::Mob(id)) => {
+        Some(sunrise_gameplay_common::game::commands_common::Target::Mob(id)) => {
             game.mobs.iter().position(|m| m.id == id).unwrap()
         }
         other => panic!("{other:?}"),

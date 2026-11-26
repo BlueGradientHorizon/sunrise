@@ -64,7 +64,7 @@ pub(in crate::game) struct PlayerEntityState<'a> {
 
 /// The game's world for predicates.
 pub struct View<'a, 'g>(
-    pub(in crate::game) &'a crate::game::ServerGame<'g>,
+    pub &'a crate::game::ServerGame<'g>,
 );
 impl adv::World for View<'_, '_> {
     fn predicate(&self, id: &str) -> Option<&Value> {

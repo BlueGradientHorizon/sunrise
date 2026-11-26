@@ -92,7 +92,7 @@ pub(in crate::game) fn mob_render<'a>(m: &'a Mob, id: u32, partial: f32) -> MobR
 
 /// The frame of `m` at `partial` an entity renderer or layer reads, told as entity `id`:
 /// `LivingEntityRenderer.extractRenderState`'s `LivingEntityRenderState`.
-pub(in crate::game) fn entity_render_state(m: &Mob, id: u32, partial: f32) -> EntityRenderState {
+pub fn entity_render_state(m: &Mob, id: u32, partial: f32) -> EntityRenderState {
     let body_rot = anim::body_rot(m, partial);
     let pose = anim::state(m, partial);
     // `isEntityUpsideDown` turns the head's angles over with the body.

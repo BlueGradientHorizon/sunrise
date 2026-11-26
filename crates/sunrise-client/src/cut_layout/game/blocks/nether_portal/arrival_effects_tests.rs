@@ -7,6 +7,8 @@ use super::*;
 use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use sunrise_items::items::ItemStack;
 use sunrise_level::chunk::Chunk;
+use sunrise_gameplay::game::server_side::nether_portal::{arrival_from_tag, arrival_tag};
+use sunrise_sim::nether_portal::PortalState;
 
 fn prepare(game: &mut sunrise_gameplay::game::ServerGame<'_>) {
     game.build_registries();

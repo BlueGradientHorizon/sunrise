@@ -1787,7 +1787,7 @@ pub(in crate::game) fn run_review_followup_camera_parity_26_3() {
         assert_eq!(
             matches!(
                 game.camera_player(),
-                crate::game::remote_camera::CameraPlayer::Detached
+                sunrise_client_gameplay::game::client_side::remote_camera::CameraPlayer::Detached
             ),
             rf["detached_mid_tick"]["detached_player_still_camera_player"]
                 .as_bool()

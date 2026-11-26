@@ -65,7 +65,7 @@ impl mod_api::Hooks for Recipes {
 #[ignore = "daily"]
 fn rectangular_recipe_for_preserves_two_custom_remainder_cells() {
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new("rectangular", Box::new(Recipes))].into();
-    super::api_values::install_parts(&mods).unwrap();
+    sunrise_gameplay_common::game::api_values::install_parts(&mods).unwrap();
     mod_platform::testing::with_mods(mods, || {
         with_game(|game| {
             let recipes = sunrise_sim::crafting::Recipes::from_sources(

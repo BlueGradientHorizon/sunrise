@@ -66,10 +66,10 @@ pub(crate) fn with_game(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGam
     test(&mut game);
 }
 pub(crate) fn start_events() {
-    sunrise_client_gameplay::game::sculk::TEST_POSTED_EVENTS.with(|v| *v.borrow_mut() = Some(Vec::new()));
+    sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|v| *v.borrow_mut() = Some(Vec::new()));
 }
 pub(crate) fn take_shots() -> Vec<(&'static str, [f64; 3], Option<Who>)> {
-    sunrise_client_gameplay::game::sculk::TEST_POSTED_EVENTS.with(|v| {
+    sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|v| {
         std::mem::take(v.borrow_mut().as_mut().unwrap())
             .into_iter()
             .filter(|e| e.0 == "minecraft:projectile_shoot")
@@ -77,7 +77,7 @@ pub(crate) fn take_shots() -> Vec<(&'static str, [f64; 3], Option<Who>)> {
     })
 }
 pub(crate) fn stop_events() {
-    sunrise_client_gameplay::game::sculk::TEST_POSTED_EVENTS.with(|v| *v.borrow_mut() = None);
+    sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|v| *v.borrow_mut() = None);
 }
 pub(crate) fn owner(game: &sunrise_gameplay::game::ServerGame<'_>) -> u32 {
     game.mobs
@@ -130,7 +130,7 @@ fn a_landing_orb_posts_hit_ground_after_a_fall() {
                 in_water: true,
             },
         );
-        let events: Vec<_> = sunrise_client_gameplay::game::sculk::TEST_POSTED_EVENTS.with(|v| {
+        let events: Vec<_> = sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|v| {
             std::mem::take(v.borrow_mut().as_mut().unwrap())
                 .into_iter()
                 .filter(|e| e.0 == "minecraft:hit_ground")
@@ -337,7 +337,7 @@ fn rocket_and_mob_trident_post_only_on_their_first_tick() {
             );
             if route == "finish_hit" {
                 let p = game.creatures.projectiles.pop().unwrap();
-                game.finish_arrow_hit(p, super::EntityHit::Deflected);
+                game.finish_arrow_hit(p, sunrise_sim::arrows::EntityHit::Deflected);
             } else {
                 game.tick_projectiles().unwrap();
             }
@@ -374,7 +374,7 @@ fn finish_hit_dispatches_once_and_the_next_tick_does_not_repeat_it() {
         assert!(!arrow.arrow.as_ref().unwrap().has_been_shot);
         let id = arrow.id;
         start_events();
-        game.finish_arrow_hit(arrow, super::EntityHit::Deflected);
+        game.finish_arrow_hit(arrow, sunrise_sim::arrows::EntityHit::Deflected);
         let first = take_shots();
         assert!(
             game.creatures

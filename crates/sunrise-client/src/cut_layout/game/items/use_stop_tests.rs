@@ -37,7 +37,7 @@ fn guest_action(item: &str, action: u8) -> Vec<String> {
     with_game(item, |game| {
         game.reset_entity_residency();
         game.native_lifecycle
-            .begin_open(super::native_lifecycle::Authority::IntegratedServer);
+            .begin_open(mod_api::Authority::IntegratedServer);
         open_to_lan(game);
         let mut player = guest(1);
         // `with_game` binds the local player to UUID 123; the guest is another profile.
@@ -236,6 +236,7 @@ fn swap_with_emptied_used_slot_clears_silently() {
 fn nether_portal_stops_use_in_target_level() {
     use {sunrise_gameplay_common::game::server_side::native_item_places::tests::guest, sunrise_gameplay::game::server_side::native_item_places::tests::open_to_lan};
     use std::sync::{Arc, Mutex};
+    use sunrise_gameplay_common::game::Dim;
     use sunrise_core::{geometry::Vec3, position::BlockPos};
     use sunrise_items::items::ItemStack;
     use sunrise_level::chunk::Chunk;
@@ -272,8 +273,8 @@ fn nether_portal_stops_use_in_target_level() {
                     .begin_open(mod_api::Authority::IntegratedServer);
                 open_to_lan(game);
                 // Reuse enter_level's normal second-level preparation before the trip.
-                game.enter_level(super::Dim::Nether).unwrap();
-                game.enter_level(super::Dim::Overworld).unwrap();
+                game.enter_level(Dim::Nether).unwrap();
+                game.enter_level(Dim::Overworld).unwrap();
                 let mut chunk = Chunk::empty(0, 0);
                 chunk.lit = true;
                 game.world.chunks.insert((0, 0), Arc::new(chunk));
@@ -296,13 +297,13 @@ fn nether_portal_stops_use_in_target_level() {
                     1.8,
                     false,
                 );
-                game.start_server_trip(1, super::Dim::Nether, Some(plan));
+                game.start_server_trip(1, Dim::Nether, Some(plan));
                 let player = &game.side.lan.as_ref().unwrap().hub.guests[0];
                 assert_eq!(player.dimension, "minecraft:the_nether");
                 assert_eq!(player.position, [1.5, 70.0, 1.5]);
-                game.enter_level(super::Dim::Nether).unwrap();
+                game.enter_level(Dim::Nether).unwrap();
                 game.as_guest(1, |g| assert!(g.using.is_none())).unwrap();
-                game.enter_level(super::Dim::Overworld).unwrap();
+                game.enter_level(Dim::Overworld).unwrap();
             })
             .unwrap();
         },

@@ -434,6 +434,8 @@ pub(crate) mod order_tests {
 #[cfg(test)]
 pub(crate) mod h255_mob_piston_ground_tests {
     use super::*;
+    use sunrise_core::geometry::Direction;
+    use sunrise_gameplay_common::game::move_gate::MoveWho;
     use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_client_render::settings::Settings, sunrise_gameplay_common::game::load_resources};
     use std::sync::Arc;
     use sunrise_core::{geometry::Vec3, position::ChunkPos, random::RandomSource};

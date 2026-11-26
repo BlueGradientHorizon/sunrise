@@ -36,6 +36,10 @@ use super::*;
 
 use mod_api::{HostTransaction, ItemPlace, ItemResource, ServerHost, TransactionError};
 
+use mod_api::{MenuReplace, ModMenuOpen};
+
+use sunrise_gameplay::game::server_side::native_menus::open_menu_of;
+
 use std::sync::{Arc, mpsc};
 
 use sunrise_protocol::{

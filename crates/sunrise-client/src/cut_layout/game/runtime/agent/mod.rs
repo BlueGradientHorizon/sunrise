@@ -14,7 +14,7 @@ use serde_json::json;
 #[test]
     #[ignore = "daily"]
     fn region_adoption_agent_state_reports_the_actual_title_mode() {
-        sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+        crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
             use sunrise_client::title::{Mode, Title, list_worlds};
             let scratch = tempfile::tempdir().unwrap();
             let saves = scratch.path().join("saves");

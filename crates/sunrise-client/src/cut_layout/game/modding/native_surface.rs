@@ -492,7 +492,7 @@ mod tests {
                 coefficient: &|id| facts.states.get(id.0 as usize).map(|facts| facts.friction),
             };
             let mut value = facts.get(state).friction;
-            assert!(super::friction(
+            assert!(sunrise_gameplay_common::game::native_surface::friction(
                 view,
                 None,
                 BlockPos::new(3, 64, 3),

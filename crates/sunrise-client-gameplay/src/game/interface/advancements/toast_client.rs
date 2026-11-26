@@ -3,7 +3,7 @@ use sunrise_game_data::text::Text;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::advancements::Frame;
 
-pub(in crate::game) struct Toast {
+pub struct Toast {
     pub(in crate::game) icon: ItemStack,
     pub(in crate::game) frame: Frame,
     pub(in crate::game) title: Text,
@@ -70,7 +70,7 @@ impl Toast {
 
 /// The toast's frame label and its colour (`AdvancementToast`: -30465, pink,
 /// for a challenge, else -256, yellow), packed as `hud::rgba` for the batch.
-pub(in crate::game) fn toast_label(frame: Frame) -> (&'static str, u32) {
+pub fn toast_label(frame: Frame) -> (&'static str, u32) {
     match frame {
         Frame::Task => ("advancements.toast.task", rgba(255, 255, 0, 255)),
         Frame::Goal => ("advancements.toast.goal", rgba(255, 255, 0, 255)),

@@ -6,6 +6,7 @@ use {crate::game::*, sunrise_gameplay_common::game::{Instant, Mob, Options, Path
 use crate::settings::Settings;
 use std::sync::Arc;
 use sunrise_core::nbt::{Tag, parse_snbt};
+use crate::game::server_side::commands;
 
 fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> sunrise_gameplay::game::ServerGame<'_> {
     let root = std::path::PathBuf::from(

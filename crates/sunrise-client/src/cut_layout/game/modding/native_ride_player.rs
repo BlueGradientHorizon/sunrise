@@ -45,7 +45,7 @@ mod tests {
                     game.options.dedicated = Some(Vec::new());
                     let pig = game.res.mob_types().get("minecraft:pig").unwrap().clone();
                     game.mobs.push(Mob::new(80, pig, Vec3::ZERO, 0.0));
-                    let player = super::super::native_player_death::tests::add_guest(game).entity();
+                    let player = crate::game::native_player_death::tests::add_guest(game).entity();
                     let pig = game.entity(80).unwrap();
                     assert_eq!(game.entity_ride_player(pig, player, false), Ok(()));
                     heard.lock().unwrap().clear();
@@ -169,7 +169,7 @@ mod tests {
     #[ignore = "daily"]
     fn a_dimension_change_ejects_a_mob_riding_the_player() {
         ejected(|game, conn| {
-            game.start_server_trip(conn, super::super::Dim::Nether, None);
+            game.start_server_trip(conn, sunrise_gameplay_common::game::Dim::Nether, None);
         });
     }
 
@@ -184,7 +184,7 @@ mod tests {
             for id in [80, 81] {
                 game.mobs.push(Mob::new(id, pig.clone(), Vec3::ZERO, 0.0));
             }
-            let player = super::super::native_player_death::tests::add_guest(game).entity();
+            let player = crate::game::native_player_death::tests::add_guest(game).entity();
             let (first, second) = (game.entity(80).unwrap(), game.entity(81).unwrap());
             let mut riding = Riding::default();
             // Nothing rides a player: no one is told anything.

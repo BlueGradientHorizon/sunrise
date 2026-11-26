@@ -287,9 +287,9 @@ pub(crate) fn check_case(
     let mut actual_drops: BTreeMap<String, u32> = BTreeMap::new();
 
     for expected in &case.ticks[1..] {
-        sunrise_client_gameplay::game::sculk::TEST_POSTED_EVENTS.with(|e| *e.borrow_mut() = Some(Vec::new()));
+        sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|e| *e.borrow_mut() = Some(Vec::new()));
         game.tick_server(false).unwrap();
-        let posted = sunrise_client_gameplay::game::sculk::TEST_POSTED_EVENTS
+        let posted = sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS
             .with(|e| e.borrow_mut().take().unwrap_or_default());
 
         // Record new non-terrain item drops surviving the tick.

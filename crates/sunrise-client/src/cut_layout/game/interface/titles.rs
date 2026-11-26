@@ -18,7 +18,7 @@ pub(crate) mod tests {
         sunrise_gameplay_common::game::in_own_process(
             "game::client_side::titles::tests::a_mods_overlay_line_replaces_the_action_bar_and_restarts_its_timer",
             || {
-                sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+                crate::game::native_entity_refs::tests::with_client_game(|game| {
                     let chat = game.side.chat_ui.chat.recent_lines(usize::MAX);
                     let host: &mut dyn ClientHost = game;
                     assert_eq!(

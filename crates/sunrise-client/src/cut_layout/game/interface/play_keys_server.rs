@@ -3,7 +3,7 @@
 #[cfg(test)]
 pub(crate) mod swap_hands_tests {
 
-use crate::game::client_side::play_keys::swap_hands_tests::Torch;
+use sunrise_client_gameplay::game::client_side::play_keys::swap_hands_tests::Torch;
 
 use crate::game::native_entity_refs::tests::with_game;
 

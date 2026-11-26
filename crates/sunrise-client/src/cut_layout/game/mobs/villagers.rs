@@ -5,6 +5,7 @@ use sunrise_sim::mobs::Mob;
 #[cfg(test)]
 pub(crate) mod off_level_tests {
     use super::*;
+    use sunrise_sim::mobs::villager_brain;
 
     #[test]
     #[ignore = "daily"]

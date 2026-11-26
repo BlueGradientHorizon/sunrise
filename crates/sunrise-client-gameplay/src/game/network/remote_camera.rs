@@ -126,7 +126,7 @@ pub(in crate::game) struct ResolvedCameraEntity {
 
 /// The entity `Hud.getCameraPlayer` finds: local player, live remote player, detached remote player, or none.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub(in crate::game) enum CameraPlayer {
+pub enum CameraPlayer {
     Own,
     Other(usize),
     Detached,

@@ -6,7 +6,7 @@ use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use sunrise_core::nbt::Tag;
 use sunrise_level::{chunk::Chunk, containers::BlockEntity};
 use sunrise_mod_runtime::attachments::{
-    AttachmentCodec, AttachmentError, AttachmentType, Attachments,
+    AttachmentCodec, AttachmentError, AttachmentType, Attachments, Holder,
 };
 
 static VALUE: AttachmentType<i32> = AttachmentType {

@@ -25,7 +25,7 @@ fn mining_uses_admitted_stack_tools_and_actual_eye_immersion() {
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
-    options.execution_role = super::execution_role::ExecutionRole::IntegratedServer;
+    options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
     let mut game = sunrise_gameplay::game::ServerGame::new(
         &loaded.resources,
         loaded.pack,
@@ -161,7 +161,7 @@ fn with_survival_game(f: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
-    options.execution_role = super::execution_role::ExecutionRole::IntegratedServer;
+    options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
     let mut game = sunrise_gameplay::game::ServerGame::new(
         &loaded.resources,
         loaded.pack,

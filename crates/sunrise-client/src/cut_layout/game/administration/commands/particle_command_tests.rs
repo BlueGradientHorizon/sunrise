@@ -178,7 +178,7 @@ fn typed_particle_command_encoder_refusal_does_not_deliver_to_a_guest() {
             g.position = [0.5, 100.5, 0.5];
         }
     });
-    game.side.lan = Some(crate::game::lan::LanHost::for_test(hub));
+    game.side.lan = Some(sunrise_gameplay::game::lan::LanHost::for_test(hub));
     game.side.lan_acting = Some(1);
     assert!(game.run_command("particle test:measured{measure:1} 0.5 100.5 0.5 0 0 0 0 1 force @s"));
     assert!(game.side.guest_packets.iter().any(|p| matches!(

@@ -1,6 +1,6 @@
 #[test]
 fn client_menu_generation_changes_on_reused_window_ids() {
-    let mut menu = crate::game::client_side::remote_client::ClientMenu::default();
+    let mut menu = sunrise_client_gameplay::game::client_side::remote_client::ClientMenu::default();
     let inventory = menu.generation;
     menu.set(Some((7, "minecraft:generic_9x3".to_owned())));
     let first = menu.generation;

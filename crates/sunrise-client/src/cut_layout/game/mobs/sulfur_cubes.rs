@@ -4,6 +4,7 @@
 pub(crate) mod off_level_tests {
     use super::*;
     use sunrise_core::geometry::Vec3;
+    use sunrise_sim::mobs::sulfur_cube;
 
     #[test]
     #[ignore = "daily"]

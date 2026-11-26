@@ -285,7 +285,7 @@ pub(crate) fn with_interaction_client_game_at(
     root: std::path::PathBuf,
     test: impl FnOnce(&mut sunrise_client_gameplay::game::ClientGame<'_>),
 ) {
-    sunrise_gameplay::game::native_entity_refs::tests::with_game_role_client(
+    sunrise_client_gameplay::game::client_side::native_entity_refs::tests::with_game_role_client(
         root,
         ExecutionRole::Client,
         |game| {

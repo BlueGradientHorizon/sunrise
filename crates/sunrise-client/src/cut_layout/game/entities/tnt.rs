@@ -542,7 +542,7 @@ pub(crate) fn run_silent_creeper_keeps_the_blast_after_its_source_is_removed() {
                         "minecraft:creeper",
                         [8.5, 64.0, 8.5],
                         true,
-                        super::super::creatures::SpawnSite::Plain,
+                        sunrise_gameplay_common::game::creatures::SpawnSite::Plain,
                     )
                     .unwrap();
                 let mob = game.mobs.iter_mut().find(|m| m.id == id).unwrap();

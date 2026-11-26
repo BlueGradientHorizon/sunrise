@@ -21,7 +21,7 @@ use sunrise_sim::mobs::equine;
 use sunrise_world::entity_move::MoverType;
 
 /// `PlayerInput` flags, as the server player's client last sent them.
-pub(in crate::game::server_side) fn input_keys(flags: u8) -> Keys {
+pub fn input_keys(flags: u8) -> Keys {
     Keys {
         forward: flags & 1 != 0,
         backward: flags & 2 != 0,

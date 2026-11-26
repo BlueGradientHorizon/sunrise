@@ -383,7 +383,7 @@ pub(crate) fn entity_data_validation_inline_painting_and_pre_login_bundle_case(
                         ],
                     })
                     .unwrap_err();
-                assert!(err.is::<super::PacketError>());
+                assert!(err.is::<sunrise_client_gameplay::game::client_side::remote_client::ingress_state::PacketError>());
                 assert_eq!(
                     game.side.remote.as_ref().unwrap().glowing.contains(&1001),
                     assignment["out_of_range_preserves_prefix"]["glowing_after"]
@@ -402,7 +402,7 @@ pub(crate) fn entity_data_validation_inline_painting_and_pre_login_bundle_case(
                         ],
                     })
                     .unwrap_err();
-                assert!(err.is::<super::PacketError>());
+                assert!(err.is::<sunrise_client_gameplay::game::client_side::remote_client::ingress_state::PacketError>());
                 assert_eq!(
                     game.side.remote.as_ref().unwrap().glowing.contains(&1001),
                     assignment["mismatched_serializer_preserves_prefix"]["glowing_after"]

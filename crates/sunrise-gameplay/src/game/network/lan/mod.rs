@@ -46,7 +46,7 @@ use sunrise_sim::{
 };
 use sunrise_world::block_collision::BlockCollisionRegistry;
 
-pub(in crate::game) struct LanHost {
+pub struct LanHost {
     pub hub: Hub,
     /// Acknowledged joins whose runtime destination closed before placement.
     pub(in crate::game) spawn_joins: Vec<(u32, Configured)>,

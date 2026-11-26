@@ -659,7 +659,7 @@ use sunrise_gameplay::game::respawn_anchor::RespawnConfig;
 
 use sunrise_gameplay_common::game::stations_common::{Kind, Station};
 
-use sunrise_gameplay_common::game::modding::native_server::Acting;
+use sunrise_gameplay_common::game::native_server::Acting;
 
 use mod_api::{ActionOutcome, ActionRefused, FakeEffect, PlayerAction};
 
@@ -715,7 +715,7 @@ use sunrise_items::items::ItemStack;
     fn a_fakes_action_leaves_the_per_action_state_as_it_was() {
         super::super::native_entity_refs::tests::with_game(|game| {
             let (player, ..) = fake(game, Some("minecraft:oak_log"), 0);
-            let before = super::super::Hit {
+            let before = sunrise_gameplay_common::game::Hit {
                 pos: [7, 7, 7],
                 face: [1, 0, 0],
                 point: [7.0, 7.5, 7.5],

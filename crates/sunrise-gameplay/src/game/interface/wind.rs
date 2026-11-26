@@ -95,7 +95,7 @@ pub(in crate::game) const WIND_CHARGE_BURST: &str = "minecraft:entity.wind_charg
 /// a mob is the indirect source (`VehicleEntity.ignoreExplosion`), and whether
 /// the source is silent (`ServerLevel.explode`'s `playSound`).
 #[derive(Clone, Copy)]
-pub(in crate::game) struct Source {
+pub struct Source {
     pub(in crate::game) sound: &'static str,
     pub(in crate::game) breeze: bool,
     pub(in crate::game) wind_charge: bool,
@@ -190,7 +190,7 @@ pub(in crate::game::server_side) fn reverse(p: &mut Projectile) {
 /// is the level's own height, not the chunks' widened column
 /// (`LevelShape::max_y` is `getMaxY() + 1`), and `getBlockY` is
 /// `floor(y)`, so `floor(y) > getMaxY() + 30` is `y >= max_y + 30`.
-pub(in crate::game) fn above_the_top(shape: LevelShape, y: f64) -> bool {
+pub fn above_the_top(shape: LevelShape, y: f64) -> bool {
     y >= f64::from(shape.max_y() + 30)
 }
 /// Whether a block reacts to a wind charge's burst by being used.

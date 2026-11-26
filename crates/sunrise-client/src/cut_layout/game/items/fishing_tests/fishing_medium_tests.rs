@@ -3,7 +3,8 @@
 //! its checked table; the client keeps only the surface; the first mod in order wins.
 use sunrise_core::geometry::Vec3;
 use sunrise_core::random::LegacyRandom;
-use sunrise_gameplay_common::game::fishing_common::Hook;
+use sunrise_gameplay_common::game::fishing_common::{Hook, State};
+use sunrise_gameplay::game::server_side::fishing::WARNED_TABLES;
 use sunrise_items::items::ItemStack;
 // Included as fishing's child so fixtures can construct its private hook state.
 use super::*;

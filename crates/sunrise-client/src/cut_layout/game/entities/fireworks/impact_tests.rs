@@ -1,5 +1,6 @@
 //! Real rocket tick coverage for impact payloads and canceled explosions.
 use sunrise_core::geometry::Vec3;
+use sunrise_items::firework::FireworkExplosion;
 use sunrise_gameplay_common::game::fireworks::Rocket;
 use sunrise_sim::mobs::Who;
 use {crate::game::fireworks::impact::*};

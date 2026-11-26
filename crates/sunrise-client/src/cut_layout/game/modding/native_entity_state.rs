@@ -117,7 +117,7 @@ use sunrise_protocol::packets::play::{self, Clientbound as C};
             let cart = game.entity(44).unwrap();
             assert_eq!(cart.tick_count(game), Some(5));
 
-            game.boats.push(super::super::boats_common::Boat::new(
+            game.boats.push(sunrise_gameplay_common::game::boats_common::Boat::new(
                 45,
                 "oak".into(),
                 Vec3::ZERO,
@@ -546,10 +546,8 @@ use sunrise_protocol::packets::play::{self, Clientbound as C};
 #[test]
     #[ignore = "daily"]
     fn client_fluid_reads_use_cached_local_and_tracked_bodies() {
-        use super::super::{
-            native_client_session::tests::logged_client,
-            native_entity_refs::tests::with_client_game,
-        };
+        use sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client;
+        use super::super::native_entity_refs::tests::with_client_game;
         use sunrise_core::geometry::Vec3;
         use sunrise_protocol::packets::play;
 

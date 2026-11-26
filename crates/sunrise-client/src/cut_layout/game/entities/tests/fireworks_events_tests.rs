@@ -64,11 +64,11 @@ pub(crate) fn twinkling() -> FireworkExplosion {
 
 /// Recording of `Game::post_game_event`, as the sculk tests read it.
 pub(crate) fn start_events() {
-    sunrise_client_gameplay::game::sculk::TEST_POSTED_EVENTS.with(|e| *e.borrow_mut() = Some(Vec::new()));
+    sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|e| *e.borrow_mut() = Some(Vec::new()));
 }
 
 pub(crate) fn take_explosions() -> Vec<(&'static str, [f64; 3], Option<Who>)> {
-    sunrise_client_gameplay::game::sculk::TEST_POSTED_EVENTS.with(|e| {
+    sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|e| {
         std::mem::take(e.borrow_mut().as_mut().unwrap())
             .into_iter()
             .filter(|e| e.0 == "minecraft:explode")
@@ -77,7 +77,7 @@ pub(crate) fn take_explosions() -> Vec<(&'static str, [f64; 3], Option<Who>)> {
 }
 
 pub(crate) fn stop_events() {
-    sunrise_client_gameplay::game::sculk::TEST_POSTED_EVENTS.with(|e| *e.borrow_mut() = None);
+    sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|e| *e.borrow_mut() = None);
 }
 
 /// `FireworkRocketEntity.explode`: `gameEvent(GameEvent.EXPLODE, getOwner())` at

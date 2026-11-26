@@ -36,7 +36,7 @@ mod tests {
         mod_platform::testing::with_mods(mods.clone(), || {
             sunrise_gameplay_common::game::api_values::install_parts(&mods).unwrap();
             let root = sunrise_gameplay_common::game::mods::content_root(&base, &Default::default()).unwrap();
-            fixture::with_game_role_client(
+            crate::game::native_entity_refs::tests::with_game_role_client(
                 root.prepared().to_owned(),
                 ExecutionRole::Client,
                 |game| {

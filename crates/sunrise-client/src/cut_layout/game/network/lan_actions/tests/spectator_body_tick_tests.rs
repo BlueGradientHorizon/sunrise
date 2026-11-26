@@ -1,6 +1,7 @@
 //! `ServerPlayer.doTick` runs `super.tick()` (Player.tick, where NeoForge
 //! posts `PlayerTickEvent.Pre`/`Post`) only `if (!isSpectator() ||
 //! !touchingUnloadedChunk())` (#4520).
+use sunrise_sim::lan::guest::SPECTATOR;
 use {crate::game::lan_actions::tick::*};
 use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use {sunrise_gameplay_common::game::server_side::native_item_places::tests::guest, sunrise_gameplay::game::server_side::native_item_places::tests::open_to_lan};

@@ -1,8 +1,10 @@
 //! `AbstractThrownPotion.onHit` reads the stack's whole `potion_contents`: the
 //! potion's effects and the stack's `custom_effects`, the colour they mix to
 //! (or `custom_color`) and its `potion_duration_scale`.
+use sunrise_core::geometry::Direction;
 use sunrise_core::geometry::Vec3;
 use sunrise_core::nbt::Tag;
+use sunrise_gameplay::game::server_side::potions_server::PotionOwner;
 use sunrise_items::items::ItemStack;
 use sunrise_level::particle_options::ParticleType;
 use super::*;

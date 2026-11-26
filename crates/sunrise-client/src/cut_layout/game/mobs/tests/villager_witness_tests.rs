@@ -1,6 +1,7 @@
 //! Actual murder notification, with no server or world tick.
 use sunrise_core::geometry::Vec3;
 use sunrise_sim::mobs::Mob;
+use sunrise_sim::mobs::villager_brain;
 use super::*;
 use {sunrise_gameplay::game::native_entity_refs::tests::bind_acting_guest, sunrise_gameplay::game::native_entity_refs::tests::bind_local_player, sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::with_game};
 use sunrise_sim::mobs::{Damage, Who};
@@ -8,7 +9,7 @@ use sunrise_sim::mobs::{Damage, Who};
 #[test]
 #[ignore = "daily"]
 fn murder_uses_only_the_victims_sensor_memory() {
-    sunrise_gameplay::game::kill_die_vibration_tests::game(|game| {
+    crate::game::server_side::kill_die_vibration_tests::game(|game| {
         game.mobs.clear();
         let player = [0, 0, 0, 101];
         game.level.player_uuid = Some(player);
@@ -74,7 +75,7 @@ fn every_accepted_hurt_counts_for_its_own_attacker() {
             .spawn_mob_spawned(
                 "minecraft:ender_dragon",
                 at.components(),
-                super::super::creatures::SpawnSite::Finalizing(
+                sunrise_gameplay_common::game::creatures::SpawnSite::Finalizing(
                     sunrise_sim::mobs::spawn_rules::Reason::SpawnItemUse,
                 ),
             )

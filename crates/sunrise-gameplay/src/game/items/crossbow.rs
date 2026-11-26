@@ -20,7 +20,7 @@ use sunrise_sim::{
 };
 
 #[allow(unused_imports)]
-pub(in crate::game) use super::held_items::{is_arrow, projectile_slot};
+pub use super::held_items::{is_arrow, projectile_slot};
 
 /// `CrossbowItem.onUseTick`'s loading sounds for a charge now at `charge`
 /// (of `getChargeDuration`) that has played `played` so far: the start and

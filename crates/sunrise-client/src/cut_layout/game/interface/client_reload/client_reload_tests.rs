@@ -6,6 +6,11 @@ use mod_api::{
     Identifier, ReloadResourceError,
 };
 use std::{path::PathBuf, sync::Arc};
+use mod_api::ClientReloadListenerContext;
+use sunrise_client_gameplay::game::client_reload::{
+    APPLY_GENERATIONS, PreparedClientReload, register_startup_client_reload_listeners,
+    stage_client_reload,
+};
 
 fn id(value: &str) -> Identifier {
     Identifier::parse(value).unwrap()

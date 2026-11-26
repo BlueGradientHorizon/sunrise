@@ -112,7 +112,7 @@ fn bound_boat_server_case(tick: impl Fn(&mut sunrise_gameplay::game::ServerGame<
         assert_eq!(after[0].entry.read(&VALUE), Ok(&20));
         game.persist
             .removals
-            .push(super::super::commands::Target::Boat(71));
+            .push(sunrise_gameplay_common::game::commands_common::Target::Boat(71));
         let clone = game.boats[0].clone();
         assert!(!game.store_boat_back(0, clone));
         assert_eq!(index.lock().unwrap().snapshot(&key).len(), 1);
@@ -162,7 +162,7 @@ fn bound_boat_client_case(tick: impl Fn(&mut sunrise_client_gameplay::game::Clie
         assert_eq!(after[0].entry.read(&VALUE), Ok(&20));
         game.persist
             .removals
-            .push(super::super::commands::Target::Boat(71));
+            .push(sunrise_gameplay_common::game::commands_common::Target::Boat(71));
         let clone = game.boats[0].clone();
         assert!(!game.store_boat_back(0, clone));
         assert_eq!(index.lock().unwrap().snapshot(&key).len(), 1);

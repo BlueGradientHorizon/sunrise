@@ -186,7 +186,7 @@ fn loot_kill_asks_with_a_non_living_source_and_with_none() {
             let stick = sunrise_items::items::ItemStack::new("minecraft:stick", 1);
             game.spawn_item(stick, [0.5, 64.0, 0.5], [0.0; 3], 0);
             let item = game.dropped.iter().last().unwrap().id;
-            let item = super::super::commands::Target::Item(item);
+            let item = sunrise_gameplay_common::game::commands_common::Target::Item(item);
             game.side.command_source = Some(sunrise_gameplay::game::server_side::commands::execute::Source {
                 entity: Some(item),
                 ..source

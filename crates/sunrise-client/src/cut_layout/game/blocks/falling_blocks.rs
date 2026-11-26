@@ -13,7 +13,7 @@ pub(crate) mod geometry_tests {
     #[ignore = "daily"]
     fn falling_model_cache_matches_direct_vertices() {
         // Geometry belongs to the client resource graph; server packs have no models.
-        sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+        crate::game::native_entity_refs::tests::with_client_game(|game| {
             for frame in 0..2 {
                 for (name, pos, origin, light) in [
                     (

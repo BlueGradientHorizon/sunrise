@@ -7,6 +7,8 @@ pub(crate) mod impact_tests;
 pub(crate) mod tests {
 
 use sunrise_core::geometry::{Aabb, Vec3};
+use sunrise_items::items::ItemStack;
+use sunrise_sim::arrows::Pickup;
 
 /// A stack can reach its final durability point after use began. The release
     /// guard is independent of admission, and short charges still do nothing.
@@ -47,8 +49,8 @@ use sunrise_core::geometry::{Aabb, Vec3};
         )
         .unwrap();
         game.player =
-            Some(PlayerMotion::new(game.motion, super::Vec3::new(4.5, 200.0, 4.5)).unwrap());
-        let mut stack = super::ItemStack::new("minecraft:trident", 1);
+            Some(PlayerMotion::new(game.motion, Vec3::new(4.5, 200.0, 4.5)).unwrap());
+        let mut stack = ItemStack::new("minecraft:trident", 1);
         stack.damage = 8;
         stack
             .data_mut()
@@ -76,18 +78,18 @@ use sunrise_core::geometry::{Aabb, Vec3};
         assert_eq!(game.tridents.len(), 1);
         assert_eq!(game.tridents[0].stack.damage, 250);
         assert!(game.held().is_none());
-        assert_eq!(game.tridents[0].pickup, super::Pickup::Allowed);
+        assert_eq!(game.tridents[0].pickup, Pickup::Allowed);
         assert_eq!(game.tridents[0].owner_uuid, game.level.player_uuid);
         assert!(!game.tridents[0].has_been_shot);
         assert!(!game.tridents[0].left_owner);
 
         game.creative = true;
         game.using = None;
-        let stack = super::ItemStack::new("minecraft:trident", 1);
+        let stack = ItemStack::new("minecraft:trident", 1);
         *game.held_mut() = Some(stack.clone());
         assert!(game.use_trident(&stack));
         game.release_trident(10);
-        assert_eq!(game.tridents[1].pickup, super::Pickup::CreativeOnly);
+        assert_eq!(game.tridents[1].pickup, Pickup::CreativeOnly);
         assert!(game.held().is_some());
     }
 /// `TridentItem.releaseUsing` launches a Riptide III player along the float look vector
@@ -139,12 +141,12 @@ use sunrise_core::geometry::{Aabb, Vec3};
             .default_state("minecraft:water")
             .unwrap();
         game.world.set(4, 200, 4, water).unwrap();
-        let mut player = PlayerMotion::new(game.motion, super::Vec3::new(4.5, 200.0, 4.5)).unwrap();
-        player.velocity = super::Vec3::new(0.1, 0.2, 0.3);
+        let mut player = PlayerMotion::new(game.motion, Vec3::new(4.5, 200.0, 4.5)).unwrap();
+        player.velocity = Vec3::new(0.1, 0.2, 0.3);
         game.player = Some(player);
         game.yaw = 30.0;
         game.pitch = 20.0;
-        let mut stack = super::ItemStack::new("minecraft:trident", 1);
+        let mut stack = ItemStack::new("minecraft:trident", 1);
         stack
             .data_mut()
             .enchantments
@@ -178,7 +180,7 @@ use sunrise_core::geometry::{Aabb, Vec3};
             let mut player = PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 0.5)).unwrap();
             player.ground.on_ground = true;
             game.player = Some(player);
-            let mut stack = super::ItemStack::new("minecraft:trident", 1);
+            let mut stack = ItemStack::new("minecraft:trident", 1);
             stack.enchant("minecraft:riptide", 3);
             *game.held_mut() = Some(stack.clone());
             assert!(game.use_trident(&stack));

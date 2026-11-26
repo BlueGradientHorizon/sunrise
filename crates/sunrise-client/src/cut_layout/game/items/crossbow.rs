@@ -5,6 +5,7 @@ use sunrise_items::items::ItemStack;
 pub(crate) mod tests {
 
 use super::*;
+use sunrise_gameplay_common::game::crossbow_common::{ARROW, CROSSBOW};
 
 pub(crate) use crate::game::client_side::crossbow_client::tests::game_with_player;
 

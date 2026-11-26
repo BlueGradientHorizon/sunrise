@@ -8,7 +8,7 @@ use sunrise_protocol::connection::Pipe;
 fn with_client_on_a_server_with_a_custom_enchantment(
     test: impl FnOnce(&mut sunrise_client_gameplay::game::ClientGame<'_>),
 ) {
-    sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+    crate::game::native_entity_refs::tests::with_client_game(|game| {
         let (client, _server) = Pipe::pair();
         game.connect_local(client, "AnvilTest").unwrap();
         let definition = serde_json::json!({

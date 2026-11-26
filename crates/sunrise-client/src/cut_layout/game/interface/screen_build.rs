@@ -24,7 +24,7 @@ use sunrise_client::hud::{GuiScale, HudBatch};
     #[test]
     #[ignore = "daily"]
     fn the_chat_box_is_resized_by_the_build_not_the_draw() {
-        sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+        crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
             use sunrise_client::chat::{ChatAbilities, ChatScreen, ChatVisibility, Commands};
             game.side.title.0 = None;
             // 1280x720 at GUI scale 3 is 427x240.
@@ -70,7 +70,7 @@ use sunrise_client::hud::{GuiScale, HudBatch};
 #[test]
     #[ignore = "daily"]
     fn production_screen_build_geometry() {
-        sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+        crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
             game.side.screen = Screen::Inventory;
             game.container = None;
             game.craft_size = 2;
@@ -96,7 +96,7 @@ use sunrise_client::hud::{GuiScale, HudBatch};
             game.build_screen();
             let before = game.side.screen_state.0.build.builds;
             let constructions =
-                crate::game::container_layout::LAYOUT_CONSTRUCTIONS.with(|count| count.get());
+                sunrise_client_gameplay::game::client_side::container_layout::LAYOUT_CONSTRUCTIONS.with(|count| count.get());
             let slots = match &game
                 .side
                 .screen_state
@@ -118,7 +118,7 @@ use sunrise_client::hud::{GuiScale, HudBatch};
             );
             assert_eq!(game.side.screen_state.0.build.builds, before);
             assert_eq!(
-                crate::game::container_layout::LAYOUT_CONSTRUCTIONS.with(|count| count.get()),
+                sunrise_client_gameplay::game::client_side::container_layout::LAYOUT_CONSTRUCTIONS.with(|count| count.get()),
                 constructions
             );
             let BuildLayout::Container(layout) = &game
@@ -136,10 +136,10 @@ use sunrise_client::hud::{GuiScale, HudBatch};
             assert_eq!(layout.slots.as_ptr(), slots);
             // Each changed input builds once; its next frame does no slot work.
             let check = |game: &mut sunrise_client_gameplay::game::ClientGame<'_>| {
-                let builds = crate::game::container_layout::LAYOUT_CONSTRUCTIONS.with(|c| c.get());
+                let builds = sunrise_client_gameplay::game::client_side::container_layout::LAYOUT_CONSTRUCTIONS.with(|c| c.get());
                 game.build_screen();
                 assert_eq!(
-                    crate::game::container_layout::LAYOUT_CONSTRUCTIONS.with(|c| c.get()),
+                    sunrise_client_gameplay::game::client_side::container_layout::LAYOUT_CONSTRUCTIONS.with(|c| c.get()),
                     builds + 1
                 );
                 let positions = sunrise_gameplay_common::game::inventory_slots::SLOT_POSITIONS.with(|c| c.get());
@@ -159,8 +159,8 @@ use sunrise_client::hud::{GuiScale, HudBatch};
             check(game);
             game.craft_size = 3;
             check(game);
-            game.open_station_client(crate::game::stations::Station::new_kind(
-                crate::game::stations::Kind::Merchant,
+            game.open_station_client(sunrise_client_gameplay::game::client_side::stations::Station::new_kind(
+                sunrise_client_gameplay::game::client_side::stations::Kind::Merchant,
                 [0, 0, 0],
             ));
             check(game);
@@ -213,7 +213,7 @@ use sunrise_client::hud::{GuiScale, HudBatch};
         )]
         .into();
         mod_platform::testing::with_mods(mods, || {
-            sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+            crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
                 game.side.screen = Screen::Inventory;
                 game.container = None;
                 game.craft_size = 2;
@@ -286,7 +286,7 @@ use sunrise_client::hud::{GuiScale, HudBatch};
         ]
         .into();
         mod_platform::testing::with_mods(mods, || {
-            sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+            crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
                 game.side.screen = Screen::Inventory;
                 game.container = None;
                 game.craft_size = 2;
@@ -354,7 +354,7 @@ use sunrise_client::hud::{GuiScale, HudBatch};
                 Vec::<ModEntry>::new().into()
             };
             mod_platform::testing::with_mods(mods, || {
-                sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+                crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
                     game.side.screen = Screen::Inventory;
                     game.container = None;
                     game.craft_size = 2;
@@ -466,7 +466,7 @@ use sunrise_client::hud::{GuiScale, HudBatch};
         )]
         .into();
         mod_platform::testing::with_mods(mods, || {
-            sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+            crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
                 // The inventory and creative screen belong to a client in a world. An
                 // in-memory connection supplies the client registry holder for creative tabs.
                 let _server = sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client(game);
@@ -570,7 +570,7 @@ use sunrise_client::hud::{GuiScale, HudBatch};
                 game.remote_open_station(
                     1,
                     "minecraft:anvil".into(),
-                    crate::game::stations::Kind::Anvil,
+                    sunrise_client_gameplay::game::client_side::stations::Kind::Anvil,
                     sunrise_game_data::text::Text::literal("Anvil"),
                     [0; 3],
                 );

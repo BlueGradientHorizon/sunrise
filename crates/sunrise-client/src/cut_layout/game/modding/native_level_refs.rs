@@ -2207,6 +2207,7 @@ pub(crate) mod environment_read_tests {
     use mod_api::{BiomeSearch, LevelRef, WorldEpoch};
     use std::sync::Arc;
     use sunrise_level::chunk::Chunk;
+    use sunrise_gameplay_common::world_biomes;
 
     fn paint_biome<S>(game: &mut sunrise_gameplay_common::game::Game<'_, S>, name: &str) {
         let biome = world_biomes!(game).id(name);

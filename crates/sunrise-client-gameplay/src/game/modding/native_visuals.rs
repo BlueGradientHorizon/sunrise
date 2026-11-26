@@ -42,7 +42,7 @@ impl FrameVisuals {
     }
 }
 
-fn rim_target_valid(
+pub fn rim_target_valid(
     loaded: bool,
     state: sunrise_world::registry::BlockStateId,
     air: sunrise_world::registry::BlockStateId,

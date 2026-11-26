@@ -149,7 +149,7 @@ pub(in crate::game) struct MountedWidgetEntry {
 }
 
 /// Engine representation of each mounted widget variant.
-pub(in crate::game) enum MountedWidgetKind {
+pub enum MountedWidgetKind {
     Button {
         state: ButtonState,
         on_press: Option<Box<ButtonPress>>,

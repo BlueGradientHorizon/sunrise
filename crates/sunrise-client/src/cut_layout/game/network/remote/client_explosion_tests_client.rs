@@ -1,5 +1,5 @@
 use {sunrise_client_gameplay::game::client_side::remote_client::C, sunrise_client_gameplay::game::client_side::remote_client::Vec3, sunrise_client_gameplay::game::client_side::remote_client::play};
-use sunrise_client_gameplay::game::native_hotbar_slot::hotbar_slot_tests::logged_in;
+use crate::game::client_side::native_hotbar_slot::hotbar_slot_tests::logged_in;
 use crate::game::remote::tests::client_explosion_tests::registry_id;
 use crate::game::remote::tests::client_explosion_tests::roundtrip;
 use crate::game::remote::tests::client_explosion_tests::with_isolated_client;

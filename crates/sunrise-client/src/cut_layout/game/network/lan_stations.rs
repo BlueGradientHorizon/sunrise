@@ -7,6 +7,7 @@ use sunrise_items::items::ItemStack;
 pub(crate) mod anvil_tests {
     use super::*;
     use sunrise_gameplay::game::native_guest_turn_tests::with_guests;
+    use mod_api::item::menu::AnvilCraftInputs;
     use mod_api::{
         AnvilCraftPostEvent, AnvilCraftPreEvent, AnvilUpdateEvent, Flow, Hooks, HostSide, ModEntry,
         ServerHost,

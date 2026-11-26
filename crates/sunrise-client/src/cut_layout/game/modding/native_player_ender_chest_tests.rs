@@ -205,7 +205,7 @@ fn a_write_while_the_local_ender_chest_is_open_survives_closing_it() {
         game.side.ender_items = vec![None; 27];
         game.side.ender_items[3] = Some(old);
         game.open_ender_chest(key);
-        assert!(game.slot_set(&super::commands::items::Slot::Ender(3), Some(new.clone())));
+        assert!(game.slot_set(&sunrise_gameplay::game::commands::items::Slot::Ender(3), Some(new.clone())));
         let Some(BlockEntity::Chest(open)) = game.world.block_entities.get(&key) else {
             panic!("the open copy")
         };

@@ -331,7 +331,7 @@ pub(crate) mod tests {
                     .registry
                     .default_state("minecraft:lever")
                     .unwrap();
-                let hit = super::super::Hit {
+                let hit = sunrise_gameplay_common::game::Hit {
                     pos: [0, 64, 4],
                     face: [0, 1, 0],
                     point: [0.5, 65.0, 4.5],
@@ -385,7 +385,7 @@ pub(crate) mod tests {
                         &[("level", "3")],
                     )
                     .unwrap();
-                let cauldron_hit = super::super::Hit {
+                let cauldron_hit = sunrise_gameplay_common::game::Hit {
                     pos: [5, 64, 4],
                     point: [5.5, 65.0, 4.5],
                     ..hit
@@ -437,7 +437,7 @@ pub(crate) mod tests {
                         },
                     ),
                 );
-                let jukebox_hit = super::super::Hit {
+                let jukebox_hit = sunrise_gameplay_common::game::Hit {
                     pos: [6, 64, 4],
                     point: [6.5, 65.0, 4.5],
                     ..hit
@@ -476,7 +476,7 @@ pub(crate) mod tests {
                     .registry
                     .default_state("minecraft:cobblestone")
                     .unwrap();
-                let replaced_hit = super::super::Hit {
+                let replaced_hit = sunrise_gameplay_common::game::Hit {
                     pos: [8, 64, 4],
                     point: [8.5, 65.0, 4.5],
                     ..hit
@@ -554,7 +554,7 @@ pub(crate) mod tests {
                 game.world.set(11, 64, 4, ore).unwrap();
                 game.inventory[game.selected] =
                     Some(sunrise_items::items::ItemStack::new("minecraft:stone", 1));
-                let ore_hit = super::super::Hit {
+                let ore_hit = sunrise_gameplay_common::game::Hit {
                     pos: [11, 64, 4],
                     point: [11.5, 65.0, 4.5],
                     ..hit
@@ -581,7 +581,7 @@ pub(crate) mod tests {
                     .default_state("minecraft:decorated_pot")
                     .unwrap();
                 game.world.set(10, 64, 4, pot).unwrap();
-                let pot_hit = super::super::Hit {
+                let pot_hit = sunrise_gameplay_common::game::Hit {
                     pos: [10, 64, 4],
                     point: [10.5, 65.0, 4.5],
                     ..hit
@@ -615,7 +615,7 @@ pub(crate) mod tests {
                     (9, 64, 4),
                     sunrise_level::containers::BlockEntity::ChiseledBookshelf(books),
                 );
-                let shelf_hit = super::super::Hit {
+                let shelf_hit = sunrise_gameplay_common::game::Hit {
                     pos: [9, 64, 4],
                     face: [0, 0, -1],
                     point: [9.75, 64.75, 4.0],
@@ -1013,6 +1013,7 @@ pub(crate) mod guest_close_listener_tests {
     use sunrise_core::position::ChunkPos;
     use sunrise_level::chunk::Chunk;
     use sunrise_protocol::packets::configuration::ClientInformation;
+    use sunrise_protocol::packets::play;
     use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
 
     #[test]

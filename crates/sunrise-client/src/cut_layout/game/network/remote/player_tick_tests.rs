@@ -285,7 +285,7 @@ pub(crate) fn tags_over_steve(mods: mod_api::Mods) -> Vec<String> {
     let mut shown = Vec::new();
     mod_platform::testing::with_mods(mods, || {
         crate::entry::install_client_hooks();
-        sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+        crate::game::native_entity_refs::tests::with_client_game(|game| {
             let (client, _server) = sunrise_protocol::connection::Pipe::pair();
             game.connect_local(client, "name-tag").unwrap();
             let remote = game.side.remote.as_mut().unwrap();

@@ -1,4 +1,5 @@
 
+use sunrise_gameplay::game::server_side::commands::items::Slot;
 
 #[cfg(test)]
 pub(crate) mod mob_equipment_command_tests {

@@ -1,5 +1,7 @@
 
 
+use mod_api::BlockEntityError;
+use mod_api::__private::game::player_ref;
 use sunrise_core::nbt::Tag;
 use sunrise_level::containers::BlockEntity;
 #[cfg(test)]

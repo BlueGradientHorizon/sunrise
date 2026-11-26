@@ -62,7 +62,7 @@ pub(in sunrise_gameplay::game::server_side) fn script(value: Script) {
     STAGED_WRITES.set(false);
     USES.with(|uses| uses.borrow_mut().clear());
     IN_ACTION.with(|a| a.borrow_mut().clear());
-    super::decided_action::DECIDED.set(0);
+    sunrise_gameplay::game::server_side::decided_action::DECIDED.set(0);
 }
 pub(crate) struct Mod;
 #[mod_api::__subscriptions]
@@ -311,7 +311,7 @@ pub(crate) fn prepare_work(
     use sunrise_sim::mobs::villager_brain;
 
     game.side.world_root = save.to_path_buf();
-    game.enter_level(super::Dim::Overworld).unwrap();
+    game.enter_level(sunrise_gameplay_common::game::Dim::Overworld).unwrap();
     game.options.dedicated = Some(Vec::new());
     game.side
         .streaming
@@ -405,7 +405,7 @@ pub(in sunrise_gameplay::game::server_side) fn reloaded_trader(
 #[test]
 #[ignore = "daily"]
 fn a_restock_while_a_guest_trades_reaches_the_screen_the_save_and_the_mob() {
-    super::in_own_process(
+    sunrise_gameplay_common::game::in_own_process(
         "game::server_side::lan_trade_decisions_tests::a_restock_while_a_guest_trades_reaches_the_screen_the_save_and_the_mob",
         || {
             with_guests(|game| {
@@ -557,7 +557,7 @@ impl Hooks for EditInPost {
 #[test]
 #[ignore = "daily"]
 fn an_offer_edit_after_the_work_step_survives_the_restock() {
-    super::in_own_process(
+    sunrise_gameplay_common::game::in_own_process(
         "game::server_side::lan_trade_decisions_tests::an_offer_edit_after_the_work_step_survives_the_restock",
         || {
             let mods: Mods = vec![ModEntry::new("edit-in-post", Box::new(EditInPost))].into();
@@ -586,7 +586,7 @@ fn an_offer_edit_after_the_work_step_survives_the_restock() {
 #[test]
 #[ignore = "daily"]
 fn a_silent_trade_edit_keeps_the_mob_clock_and_rng_when_the_threshold_wraps() {
-    super::in_own_process(
+    sunrise_gameplay_common::game::in_own_process(
         "game::server_side::lan_trade_decisions_tests::a_silent_trade_edit_keeps_the_mob_clock_and_rng_when_the_threshold_wraps",
         || {
             with_guests(|game| {
@@ -617,7 +617,7 @@ fn a_silent_trade_edit_keeps_the_mob_clock_and_rng_when_the_threshold_wraps() {
 #[test]
 #[ignore = "daily"]
 fn an_unused_offer_stays_unchanged_when_the_villager_starts_work() {
-    super::in_own_process(
+    sunrise_gameplay_common::game::in_own_process(
         "game::server_side::lan_trade_decisions_tests::an_unused_offer_stays_unchanged_when_the_villager_starts_work",
         || {
             with_guests(|game| {
@@ -667,7 +667,7 @@ fn an_earlier_restock_does_not_skip_a_paused_mobs_first_action() {
     use sunrise_core::geometry::Vec3;
     use sunrise_sim::mobs::Mob;
 
-    super::in_own_process(
+    sunrise_gameplay_common::game::in_own_process(
         "game::server_side::lan_trade_decisions_tests::an_earlier_restock_does_not_skip_a_paused_mobs_first_action",
         || {
             crate::entry::install_client_hooks();
@@ -1109,7 +1109,7 @@ fn accepted_trade_keeps_the_collect_answer() {
             });
             assert!(game.lan_merchant_click(12, &click));
             assert_eq!(CALLS.get(), 1);
-            assert_eq!(super::decided_action::DECIDED.get(), 1);
+            assert_eq!(sunrise_gameplay::game::server_side::decided_action::DECIDED.get(), 1);
             assert_eq!(IN_ACTION.with(|a| a.borrow().clone()), [true]);
             assert_eq!(result(game), 1);
             assert_eq!(dirt(game), 0);
@@ -1225,7 +1225,7 @@ fn a_second_trade_panic_undoes_the_entire_shift_click() {
             });
             assert!(game.lan_merchant_click(12, &click));
             assert_eq!(CALLS.get(), 2);
-            assert_eq!(super::decided_action::DECIDED.get(), 2);
+            assert_eq!(sunrise_gameplay::game::server_side::decided_action::DECIDED.get(), 2);
             unchanged(game, 3);
             assert!(game.transactions.is_empty());
             script(Script::default());
@@ -1285,7 +1285,7 @@ fn no_subscriber_uses_the_ordinary_trade_without_a_decision() {
             click.input = 1;
             script(Script::default());
             assert!(game.lan_merchant_click(12, &click));
-            assert_eq!(super::decided_action::DECIDED.get(), 0);
+            assert_eq!(sunrise_gameplay::game::server_side::decided_action::DECIDED.get(), 0);
             assert_eq!(CALLS.get(), 0);
             assert_eq!((result(game), stat(game)), (3, 3));
             assert_eq!(game.lan_trade_session(12).unwrap().offers[0].uses, 3);

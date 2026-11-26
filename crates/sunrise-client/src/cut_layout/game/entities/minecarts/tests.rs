@@ -1,4 +1,5 @@
 // Test module extracted without changing its logical path.
+use sunrise_gameplay_common::minecart_seat::PASSENGER_Y;
 /// `NewMinecartBehavior` caps the first track step with
 /// `AbstractMinecart.getMaxSpeed`, which `MinecartFurnace` halves, and
 /// `comeOffTrack` clamps with it too.

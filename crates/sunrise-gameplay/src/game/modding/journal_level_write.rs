@@ -20,7 +20,7 @@ use sunrise_world::{
     registry::BlockStateId,
 };
 
-pub(in crate::game) struct JournalLevelWrite<'g, 'a> {
+pub struct JournalLevelWrite<'g, 'a> {
     game: &'g mut crate::game::ServerGame<'a>,
     level: LevelRef,
 }

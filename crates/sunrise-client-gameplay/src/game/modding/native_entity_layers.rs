@@ -41,7 +41,7 @@ static TABLE: RwLock<Option<LayerTable>> = RwLock::new(None);
 
 /// What one `register_entity_layers` round collects: the [`EntityLayers`] mods are handed, with
 /// what this load's renderers are, and the layers added to each target.
-pub(in crate::game) struct LayerRegistration<'a> {
+pub struct LayerRegistration<'a> {
     rows: &'a EntityTypeRows,
     mod_renderers: &'a BTreeMap<String, Arc<dyn EntityRenderer>>,
     /// Whether a living type draws where layers run (as a mob).

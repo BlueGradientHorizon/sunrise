@@ -1,6 +1,7 @@
 //! Tests verifying that registered local coordinate commands preserve exact saved positions.
 
 use {crate::game::server_side::commands::*};
+use sunrise_gameplay_common::game::commands_common::Target;
 use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use sunrise_core::nbt::Tag;
 use sunrise_core::position::BlockPos;

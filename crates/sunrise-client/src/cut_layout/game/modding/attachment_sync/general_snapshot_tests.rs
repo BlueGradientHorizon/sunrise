@@ -110,7 +110,7 @@ fn remote_attachment_sync_ignores_unknown_entity() {
     use sunrise_mod_runtime::attachments::AttachmentSync;
     use sunrise_protocol::attachment_sync::Message;
 
-    sunrise_gameplay::game::item_entities::thrown_items_tests::with_remote_game(|game| {
+    crate::game::server_side::item_entities::thrown_items_tests::with_remote_game(|game| {
         let holder = Holder::Entity(77);
         let message = || Message {
             holder,
@@ -156,7 +156,7 @@ fn remote_player_attachments_only_apply_while_the_foreign_player_is_tracked() {
         packets::play::{AddEntity, Clientbound, PlayerInfo, PlayerInfoUpdate, RemoveEntities},
     };
 
-    sunrise_gameplay::game::item_entities::thrown_items_tests::with_remote_game(|game| {
+    crate::game::server_side::item_entities::thrown_items_tests::with_remote_game(|game| {
         let (id, uuid) = (77, 0x1234);
         let player_kind = game
             .side

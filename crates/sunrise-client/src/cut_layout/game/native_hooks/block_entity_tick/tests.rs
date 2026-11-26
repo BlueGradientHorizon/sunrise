@@ -1,4 +1,8 @@
 use mod_api::BlockEntityRef;
+use sunrise_core::nbt::Compound;
+use sunrise_level::block_entities::Pos;
+use sunrise_level::containers::ModBlockEntity as EngineBlockEntity;
+use sunrise_gameplay::game::server_side::native_hooks_server::block_entity_tick::{Loan, ResidentBlockEntityAccess};
 use mod_api::BlockEntityScope;
 use mod_api::ServerHost;
 use sunrise_core::nbt::Tag;

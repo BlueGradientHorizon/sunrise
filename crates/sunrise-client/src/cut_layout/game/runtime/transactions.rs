@@ -583,7 +583,7 @@ pub(crate) mod tests {
     #[test]
     #[ignore = "daily"]
     fn an_aborted_transaction_puts_back_what_it_and_its_committed_children_changed() {
-        let Some(root) = sunrise_gameplay::game::native_entity_refs::tests::declared_part_root(
+        let Some(root) = crate::game::native_entity_refs::tests::declared_part_root(
             "game::transactions::tests::an_aborted_transaction_puts_back_what_it_and_its_committed_children_changed",
         ) else {
             return;

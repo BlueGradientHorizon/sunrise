@@ -4,7 +4,7 @@
 mod tests {
     use super::super::native_entity_refs::tests::with_game;
     use super::*;
-    use mod_api::SpawnerKey;
+    use mod_api::{CustomSpawners, SpawnerEntry, SpawnerKey, SpawnerKind};
     use std::sync::{Arc, Mutex};
 
     type Log = Arc<Mutex<Vec<String>>>;

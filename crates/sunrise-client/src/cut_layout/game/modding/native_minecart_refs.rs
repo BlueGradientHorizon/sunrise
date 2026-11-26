@@ -1,6 +1,9 @@
 
 
 use mod_api::EntityRef;
+use mod_api::MinecartKind;
+use mod_api::MinecartRef;
+use sunrise_gameplay_common::game::minecarts::CartKind;
 use sunrise_gameplay_common::game::minecarts::Minecart;
 #[cfg(test)]
 mod tests {

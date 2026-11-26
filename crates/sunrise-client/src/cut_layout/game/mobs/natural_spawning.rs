@@ -11,6 +11,7 @@ mod spawn_obstruction_fixture;
 pub(crate) mod tests {
 
 use super::*;
+use sunrise_sim::mobs::spawn_selection::{Category, Heightmap};
 use sunrise_gameplay_common::world_biomes;
 
 /// `Level.hasNearbyAlivePlayer` as spawners ask it, against the same

@@ -3,6 +3,8 @@
 #[cfg(test)]
 pub(crate) mod server_tick_rate_changed_tests {
 
+use sunrise_gameplay_common::game::native_hooks::server_tick_rate_changed::server_tick_rate_changed_tests::Scheduler;
+
 use crate::game::native_guest_turn_tests::with_guests;
 
 use mod_api::{Hooks, ModEntry, ServerHost, ServerTickRateChangedEvent};

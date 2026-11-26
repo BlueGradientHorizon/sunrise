@@ -3,6 +3,7 @@ use sunrise_core::geometry::Vec3;
 use sunrise_core::position::BlockPos;
 use sunrise_core::random::LegacyRandom;
 use super::*;
+use sunrise_gameplay::game::server_side::explosion::BlockInteraction;
 use mod_api::{
     BlockPart, BreakBlockEvent, CanDropFromExplosionEvent, CanEntityDestroyEvent, ExpDropEvent,
     ExplosionResistanceEvent, Flow, Hooks, LevelHost, OnBlockExplodedEvent, Registrar, ServerHost,

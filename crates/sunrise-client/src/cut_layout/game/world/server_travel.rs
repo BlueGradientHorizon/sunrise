@@ -3,6 +3,7 @@
 use sunrise_core::geometry::Vec3;
 use sunrise_core::position::BlockPos;
 use sunrise_gameplay_common::game::entity_memory::OffLevel;
+use sunrise_gameplay_common::game::minecarts;
 use sunrise_sim::mobs::Mob;
 #[cfg(test)]
 pub(crate) mod tests {
@@ -322,7 +323,7 @@ use std::sync::Arc;
     fn natural_portal_schedules_a_player_on_a_retained_indirect_vehicle() {
         super::super::native_entity_refs::tests::with_game(|game| {
             game.options.dedicated = Some(Vec::new());
-            super::super::native_player_death::tests::add_guest(game);
+            crate::game::native_player_death::tests::add_guest(game);
             let source = game.dim;
             let tag = sunrise_core::nbt::parse_snbt(
                 r#"{
@@ -746,7 +747,7 @@ use sunrise_sim::lan::{
             g.seen_credits = true;
             g.dimension = "minecraft:the_end".into();
         });
-        game.enter_level(super::Dim::End).unwrap();
+        game.enter_level(Dim::End).unwrap();
         game.side
             .streaming
             .insert_remote(&mut game.world, Chunk::empty(0, 0));

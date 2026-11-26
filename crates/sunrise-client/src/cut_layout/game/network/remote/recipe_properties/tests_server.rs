@@ -68,7 +68,7 @@ fn guest_stonecutter_uses_packet_tags_components_and_authoritative_buttons() {
             .unwrap()
             .window;
         let click = |slot, input| {
-            S::ContainerClick(play::ContainerClick {
+            S::ContainerClick(sunrise_protocol::packets::play::ContainerClick {
                 state: 0,
                 changed: Vec::new(),
                 carried: None,
@@ -278,7 +278,7 @@ fn guest_stonecutter_uses_packet_tags_components_and_authoritative_buttons() {
             assert!(client.station.is_none());
             server.lan_guest_packet(
                 12,
-                S::ContainerButtonClick(play::ContainerButtonClick {
+                S::ContainerButtonClick(sunrise_protocol::packets::play::ContainerButtonClick {
                     container: window,
                     button: 0,
                 }),

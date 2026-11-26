@@ -166,7 +166,7 @@ fn declared_vegetation_places_and_breaks_independently_of_its_template() {
             assert!(game.with_level(|b, level, ticks| b.can_survive(level, ticks, pos, ordinary)));
             // Nor does the same Part reached by a vanilla block tag.
             let leaf = registry.default_state("minecraft:cherry_leaves").unwrap();
-            assert!(super::api_values::block_state::block_listens(
+            assert!(sunrise_gameplay_common::game::api_values::block_state::block_listens(
                 mod_api::HookId::MayPlaceOn,
                 leaf
             ));

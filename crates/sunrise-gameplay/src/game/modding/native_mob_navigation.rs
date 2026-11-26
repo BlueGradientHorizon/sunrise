@@ -34,7 +34,7 @@ fn navigation_flags_supported(mob: &sunrise_sim::mobs::Mob) -> bool {
 /// carries no cap); a node outside the block-coordinate range is floored to
 /// the saturating integer and reads as void air, as vanilla's `BlockPos` cast
 /// does.
-pub(in crate::game) fn supplied_path_accepts(nodes: &[mod_api::PathNode], speed: f64) -> bool {
+pub fn supplied_path_accepts(nodes: &[mod_api::PathNode], speed: f64) -> bool {
     speed.is_finite()
         && nodes
             .iter()

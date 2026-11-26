@@ -765,7 +765,7 @@ pub(crate) mod tests {
             seed: 9,
         });
         let payload = run(1, &[anvil, bound]);
-        let checks = || super::sounds::LISTENED_CHECKS.with(std::cell::Cell::get);
+        let checks = || sunrise_client_gameplay::game::client_side::viewed_worlds::sounds::LISTENED_CHECKS.with(std::cell::Cell::get);
         let before = checks();
         let (routed, allocations) =
             sunrise_threads::allocation_count::measure(|| game.route_viewed_levels(data(&payload)));

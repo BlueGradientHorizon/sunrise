@@ -6,6 +6,7 @@ mod tests {
     use sunrise_gameplay_common::game::fishing_common::Hook;
     use super::super::native_entity_refs::tests::{collect_game_entities_in, with_game};
     use super::*;
+    use mod_api::FishingHookRef;
     use mod_api::WorldEpoch;
     use sunrise_core::geometry::Vec3;
     use sunrise_sim::{mobs::Mob, motion::PlayerMotion};

@@ -1,5 +1,6 @@
 
 
+use mod_api::Identifier;
 use mod_api::PackType;
 #[cfg(test)]
 mod tests {

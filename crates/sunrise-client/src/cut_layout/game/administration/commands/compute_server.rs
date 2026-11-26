@@ -3,6 +3,8 @@
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
+    use sunrise_gameplay::game::commands::compute::ComputeContext;
+    use sunrise_gameplay_common::game::commands_common::Target;
 
     #[test]
     #[ignore = "daily"]

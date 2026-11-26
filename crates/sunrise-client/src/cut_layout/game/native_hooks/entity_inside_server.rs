@@ -21,7 +21,7 @@ pub(crate) mod sweep_tests {
                 let mods = install_inside_mod("inside-item-kill", &part);
                 mod_platform::testing::with_mods(mods, || {
                     sunrise_gameplay::game::native_entity_refs::tests::with_game(|game| {
-                        let _ = sunrise_sim::block_contact::HOOKS.set(super::BLOCK_CONTACT_HOOKS);
+                        let _ = sunrise_sim::block_contact::HOOKS.set(sunrise_gameplay_common::game::native_hooks::BLOCK_CONTACT_HOOKS);
                         let mut item = item_at_blocks(game);
                         use sunrise_items::items::ItemStack;
                         let diamonds = ItemStack::new("minecraft:diamond", 3);

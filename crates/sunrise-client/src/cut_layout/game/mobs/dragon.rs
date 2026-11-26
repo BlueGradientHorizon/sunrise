@@ -10,6 +10,10 @@ use sunrise_sim::projectiles::ProjectileKind;
 pub(crate) mod tests {
 
 use sunrise_gameplay_common::game::server_side::dragon::tests::flying;
+use sunrise_gameplay_common::game::dragon_common::Phase;
+use sunrise_gameplay_common::game::server_side::dragon::tests::dragon;
+use sunrise_gameplay::game::server_side::dragon::{DragonHitOrigin, Hurt};
+use sunrise_protocol::entity_data::Value;
 
 use super::*;
 

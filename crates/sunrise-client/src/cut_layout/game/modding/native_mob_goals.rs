@@ -42,7 +42,7 @@ mod tests {
                 let actual = game
                     .boxed_goal(
                         species,
-                        super::NavKind::Ground,
+                        sunrise_sim::mobs::nav::NavKind::Ground,
                         &GoalSpec::Panic {
                             speed: 1.0,
                             water_range: None,
@@ -58,17 +58,17 @@ mod tests {
             assert!(mismatches.is_empty(), "{}", mismatches.join("; "));
             for species in [Species::Bat, Species::Ghast, Species::Phantom] {
                 assert!(
-                    game.boxed_goal(species, super::NavKind::Ground, &GoalSpec::EatBlock)
+                    game.boxed_goal(species, sunrise_sim::mobs::nav::NavKind::Ground, &GoalSpec::EatBlock)
                         .is_some()
                 );
                 assert!(
-                    game.boxed_goal(species, super::NavKind::Ground, &GoalSpec::RestrictSun)
+                    game.boxed_goal(species, sunrise_sim::mobs::nav::NavKind::Ground, &GoalSpec::RestrictSun)
                         .is_none()
                 );
                 assert!(
                     game.boxed_goal(
                         species,
-                        super::NavKind::Ground,
+                        sunrise_sim::mobs::nav::NavKind::Ground,
                         &GoalSpec::HurtByTarget { alert: false }
                     )
                     .is_none()
@@ -76,7 +76,7 @@ mod tests {
                 assert!(
                     game.boxed_goal(
                         species,
-                        super::NavKind::Ground,
+                        sunrise_sim::mobs::nav::NavKind::Ground,
                         &GoalSpec::FollowMob {
                             speed: 1.0,
                             stop: 2.0,
@@ -98,7 +98,7 @@ mod tests {
                 assert!(
                     game.boxed_goal(
                         species,
-                        super::NavKind::Water { breach: false },
+                        sunrise_sim::mobs::nav::NavKind::Water { breach: false },
                         &GoalSpec::FollowMob {
                             speed: 1.0,
                             stop: 2.0,
@@ -122,8 +122,8 @@ mod tests {
                 area: 8.0,
             };
             for nav in [
-                super::NavKind::Water { breach: false },
-                super::NavKind::Amphibious {
+                sunrise_sim::mobs::nav::NavKind::Water { breach: false },
+                sunrise_sim::mobs::nav::NavKind::Amphibious {
                     prefers_shallow: false,
                 },
             ] {
@@ -132,9 +132,9 @@ mod tests {
                 assert!(!game.mob_add_target_goal(mob, 0, &goal));
             }
             for nav in [
-                super::NavKind::Ground,
-                super::NavKind::WallClimber,
-                super::NavKind::Flying,
+                sunrise_sim::mobs::nav::NavKind::Ground,
+                sunrise_sim::mobs::nav::NavKind::WallClimber,
+                sunrise_sim::mobs::nav::NavKind::Flying,
             ] {
                 game.mobs[0].ai.nav.kind = nav;
                 assert!(game.mob_add_goal(mob, 0, &goal));
@@ -171,7 +171,7 @@ mod tests {
             let mut mobs = game.mobs.lift();
             let snapshot: Vec<_> = mobs
                 .iter()
-                .map(|m| super::super::creatures::seen(m, game.level.player_uuid, game.items()))
+                .map(|m| sunrise_gameplay_common::game::creatures::seen(m, game.level.player_uuid, game.items()))
                 .collect();
             let mut test_level = sunrise_sim::health::TestLevel::new(0);
             let mut level = test_level.level();
@@ -217,7 +217,7 @@ mod tests {
             mobs[0].ai.target = Some(Who::Player);
             let snapshot: Vec<_> = mobs
                 .iter()
-                .map(|m| super::super::creatures::seen(m, game.level.player_uuid, game.items()))
+                .map(|m| sunrise_gameplay_common::game::creatures::seen(m, game.level.player_uuid, game.items()))
                 .collect();
             let mut test_level = sunrise_sim::health::TestLevel::new(0);
             let mut level = test_level.level();

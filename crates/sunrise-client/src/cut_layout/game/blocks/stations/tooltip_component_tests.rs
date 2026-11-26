@@ -2,6 +2,13 @@
 //! fixtures A–K, two-pass draw order & geometry (including audit [87] zero-sized components),
 //! `render_tooltip_pre` font replacement & cancellation, `render_tooltip_texture` & line-only
 //! `ItemResource::tooltip`, `show_tooltip_with_item_in_hand`, audit [88], and panic containment.
+use mod_api::DefaultTooltipPositioner;
+use sunrise_client::tooltip_components::TooltipComponentPrepareError;
+use sunrise_client_gameplay::game::client_item_extensions::DEFAULT_TOOLTIP_FONT_ID;
+use sunrise_client_gameplay::game::client_side::stations::tooltip::{
+    GatheredTooltip, PreparedTooltipItem, WidgetTooltipPositioner, quantize_tooltip_anchor,
+};
+use sunrise_gameplay_common::game::Screen;
 use std::borrow::Cow;
 use sunrise_client::hud::HudBatch;
 use sunrise_client::hud::rgba;

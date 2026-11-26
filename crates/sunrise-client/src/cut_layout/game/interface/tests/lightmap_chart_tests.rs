@@ -17,7 +17,7 @@ fn f3_and_4(game: &mut sunrise_client_gameplay::game::ClientGame<'_>) {
 #[test]
 #[ignore = "daily"]
 fn the_lightmap_readback_is_asked_for_only_while_f3_charts_the_lightmap() {
-    sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+    sunrise_client_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
         game.side.screen = Screen::Playing;
         assert!(!game.debug_shows_lightmap(), "F3 closed");
         f3_and_4(game);

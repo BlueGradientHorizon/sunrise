@@ -91,7 +91,7 @@ impl Drop for Withdraw<'_, '_, '_> {
 
 /// The editor a lend hands out: it reaches only the lent copies, through the
 /// game it was made from.
-pub(in crate::game) struct Edits<'a, 'g> {
+pub struct Edits<'a, 'g> {
     pub(in crate::game) game: &'a crate::game::ServerGame<'g>,
 }
 

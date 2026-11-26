@@ -5,6 +5,9 @@
 //! vanilla 26.3).
 use super::*;
 use std::sync::Arc;
+use sunrise_gameplay_common::game::{Options, Resources, load_resources};
+use sunrise_gameplay_common::game::resource_load::Progress;
+use crate::settings::Settings;
 
 fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> sunrise_gameplay::game::ServerGame<'_> {
     let root = std::path::PathBuf::from(

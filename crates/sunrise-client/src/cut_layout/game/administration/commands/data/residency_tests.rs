@@ -2,6 +2,8 @@ use sunrise_core::nbt::Tag;
 use super::*;
 use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use sunrise_mod_runtime::attachments::{AttachmentLifetime, Attachments, index::AttachmentIndex};
+use sunrise_gameplay::game::commands::data::set_key;
+use sunrise_gameplay_common::game::commands_common::Target;
 use sunrise_sim::join_seq::JoinSeq;
 
 fn identity<'a>(

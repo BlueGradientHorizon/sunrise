@@ -16,7 +16,7 @@ use super::*;
     #[test]
     #[ignore = "daily"]
     fn a_damage_item_part_changes_the_wear_of_a_weapon_hit() {
-        use crate::game::damage_item_tests::{Rule, with_wear_part};
+        use crate::game::server_side::damage_item_tests::{Rule, with_wear_part};
         with_wear_part("minecraft:mace", Rule::Times(5), |game, wear| {
             let hit = |game: &mut sunrise_gameplay::game::ServerGame<'_>, item: &str| {
                 game.creative = false;

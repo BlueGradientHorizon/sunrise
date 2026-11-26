@@ -119,7 +119,7 @@ use sunrise_client_gameplay::game::client_side::item_use_client::tests::stand_in
                     stand_in_first_person(game);
                     for (i, (slot, item)) in [
                         (game.selected, "minecraft:iron_sword"),
-                        (sunrise_client_gameplay::game::client_side::item_use_client::OFFHAND_SLOT, "minecraft:stick"),
+                        (sunrise_gameplay_common::game::held_items::OFFHAND_SLOT, "minecraft:stick"),
                     ]
                     .into_iter()
                     .enumerate()

@@ -302,7 +302,7 @@ pub(crate) fn run_portal_arrival_effects_explicit_tnt_teleports_protect_portals(
             assert_eq!(game.tnts.len(), 1);
             assert_ne!(game.tnts[0].id, old);
             assert!(game.tnts[0].used_portal);
-            sunrise_gameplay::game::nether_portal::arrival_effects_tests::assert_tnt_blast(game, true);
+            crate::game::server_side::nether_portal::arrival_effects_tests::assert_tnt_blast(game, true);
             game.summon_with_nbt(
                 "minecraft:tnt",
                 [8.5, 70.0, 8.5],
@@ -310,7 +310,7 @@ pub(crate) fn run_portal_arrival_effects_explicit_tnt_teleports_protect_portals(
             )
             .unwrap();
             assert!(!game.tnts[0].used_portal);
-            sunrise_gameplay::game::nether_portal::arrival_effects_tests::assert_tnt_blast(game, false);
+            crate::game::server_side::nether_portal::arrival_effects_tests::assert_tnt_blast(game, false);
         });
     }
 }

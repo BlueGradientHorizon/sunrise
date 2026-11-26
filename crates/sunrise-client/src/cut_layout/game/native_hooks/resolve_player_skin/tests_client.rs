@@ -3,6 +3,8 @@ use sunrise_gameplay_common::game::native_hooks::resolve_player_skin::tests::Cho
 use sunrise_gameplay_common::game::native_hooks::resolve_player_skin::tests::SkinPicker;
 use {sunrise_gameplay_common::game::Screen, sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_client_gameplay::game::native_hooks::particle_count_tests::frame_scene};
 use mod_api::{Identifier, ModEntry};
+use mod_api::PlayerModel;
+use mod_api::PlayerSkinOverride;
 use mod_platform::testing::with_mods;
 use std::sync::{Arc, Mutex};
 use sunrise_client::hud::Rect;

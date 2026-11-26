@@ -19,6 +19,8 @@ use super::*;
 
 use std::path::Path;
 
+use sunrise_gameplay_common::stats::player_json;
+
 #[test]
     #[ignore = "daily"]
     fn fake_players_do_not_advance_phantom_rng() {

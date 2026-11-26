@@ -3,6 +3,7 @@
 #[cfg(test)]
 mod tests {
     use super::*;
+    use mod_api::ClientExecutor;
     use {sunrise_client_gameplay::game::EventLoopCtl, sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, crate::game::server_side::native_entity_refs::tests::with_client_game};
     use mod_api::{
         __private::{HookPanicReport, take_hook_panics},

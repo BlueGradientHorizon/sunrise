@@ -1,5 +1,7 @@
 
 
+use sunrise_gameplay_common::game::server_side::native_item_places::Bin;
+
 #[cfg(test)]
 pub(crate) mod tests {
 

@@ -136,16 +136,16 @@ fn teleport_to_the_current_position_marks_the_player_for_sync() {
 
 #[test]
 fn pitch_wraps_before_clamping() {
-    assert_eq!(super::entity_pitch(360.0), 0.0);
-    assert_eq!(super::entity_pitch(450.0), 90.0);
-    assert_eq!(super::entity_pitch(-360.0), 0.0);
-    assert_eq!(super::entity_pitch(-450.0), -90.0);
-    assert_eq!(super::entity_pitch(super::wrap_degrees(270.0)), -90.0);
-    assert_eq!(super::entity_pitch(super::wrap_degrees(-270.0)), 90.0);
-    assert_eq!(super::entity_pitch(super::wrap_degrees(360.0)), 0.0);
-    assert_eq!(super::entity_pitch(super::wrap_degrees(450.0)), 90.0);
-    assert_eq!(super::wrap_degrees(190.0), -170.0);
-    assert_eq!(super::wrap_degrees(540.0), -180.0);
+    assert_eq!(sunrise_gameplay_common::game::commands_common::entity_pitch(360.0), 0.0);
+    assert_eq!(sunrise_gameplay_common::game::commands_common::entity_pitch(450.0), 90.0);
+    assert_eq!(sunrise_gameplay_common::game::commands_common::entity_pitch(-360.0), 0.0);
+    assert_eq!(sunrise_gameplay_common::game::commands_common::entity_pitch(-450.0), -90.0);
+    assert_eq!(sunrise_gameplay_common::game::commands_common::entity_pitch(sunrise_gameplay_common::game::commands_common::wrap_degrees(270.0)), -90.0);
+    assert_eq!(sunrise_gameplay_common::game::commands_common::entity_pitch(sunrise_gameplay_common::game::commands_common::wrap_degrees(-270.0)), 90.0);
+    assert_eq!(sunrise_gameplay_common::game::commands_common::entity_pitch(sunrise_gameplay_common::game::commands_common::wrap_degrees(360.0)), 0.0);
+    assert_eq!(sunrise_gameplay_common::game::commands_common::entity_pitch(sunrise_gameplay_common::game::commands_common::wrap_degrees(450.0)), 90.0);
+    assert_eq!(sunrise_gameplay_common::game::commands_common::wrap_degrees(190.0), -170.0);
+    assert_eq!(sunrise_gameplay_common::game::commands_common::wrap_degrees(540.0), -180.0);
 }
 
 use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

@@ -338,7 +338,7 @@ fn item_parts_rewrite_or_refuse_context_and_control_survival_on_both_sides() {
         });
 
         // The connected client actually predicts through DryLevel.
-        sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+        crate::game::native_entity_refs::tests::with_client_game(|game| {
             let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
             game.connect_local(pipe, "PlacementPrediction").unwrap();
             let remote = game.side.remote.as_mut().unwrap();
@@ -363,13 +363,13 @@ fn item_parts_rewrite_or_refuse_context_and_control_survival_on_both_sides() {
                 inside: false,
             };
             let stack = |item| ItemStack::new(item, 1);
-            assert!(!crate::game::ClientGame::can_hint_block_placement(&stack(
+            assert!(!sunrise_client_gameplay::game::ClientGame::can_hint_block_placement(&stack(
                 "minecraft:stone"
             )));
-            assert!(!crate::game::ClientGame::can_hint_block_placement(&stack(
+            assert!(!sunrise_client_gameplay::game::ClientGame::can_hint_block_placement(&stack(
                 "minecraft:poppy"
             )));
-            assert!(crate::game::ClientGame::can_hint_block_placement(&stack(
+            assert!(sunrise_client_gameplay::game::ClientGame::can_hint_block_placement(&stack(
                 "minecraft:glass"
             )));
             assert!(

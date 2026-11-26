@@ -6,6 +6,9 @@ use super::*;
 use std::sync::Arc;
 use sunrise_core::position::ChunkPos;
 use sunrise_level::chunk::Chunk;
+use crate::settings::Settings;
+use sunrise_gameplay_common::game::resource_load::Progress;
+use sunrise_gameplay_common::game::{Options, load_resources};
 
 fn game<'a>(
     resources: &'a mut Option<std::sync::Arc<sunrise_gameplay_common::game::Resources>>,

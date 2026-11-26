@@ -28,7 +28,7 @@ pub(crate) mod lectern_book_removal_tests {
             }),
         );
         game.set_lectern_property(key, "has_book", true);
-        sunrise_client_gameplay::game::sculk::TEST_POSTED_EVENTS.with(|e| *e.borrow_mut() = Some(Vec::new()));
+        sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|e| *e.borrow_mut() = Some(Vec::new()));
 
         game.set_lectern_has_book(key, false, None);
 
@@ -43,7 +43,7 @@ pub(crate) mod lectern_book_removal_tests {
             Some("false"),
             "the lectern has no book"
         );
-        sunrise_client_gameplay::game::sculk::TEST_POSTED_EVENTS.with(|e| {
+        sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|e| {
             assert!(
                 e.borrow().as_ref().unwrap().contains(&(
                     "minecraft:block_change",

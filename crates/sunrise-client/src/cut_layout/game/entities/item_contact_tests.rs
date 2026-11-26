@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use sunrise_level::world::World;
 use sunrise_core::geometry::Vec3;
 use sunrise_core::position::BlockPos;
 use sunrise_items::items::ItemStack;

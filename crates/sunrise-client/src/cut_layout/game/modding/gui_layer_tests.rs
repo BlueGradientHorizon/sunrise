@@ -958,7 +958,7 @@ fn hotbar_attack_indicator_progress_edits_only_stock_hotbar_paint() {
                 game.remote_set_camera(31);
                 assert_eq!(
                     game.camera_player(),
-                    super::remote_camera::CameraPlayer::Absent
+                    sunrise_client_gameplay::game::remote_camera::CameraPlayer::Absent
                 );
             }
             let mode = if frame.variant == Variant::Spectator {

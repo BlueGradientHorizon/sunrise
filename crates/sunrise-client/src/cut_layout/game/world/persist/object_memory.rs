@@ -6,6 +6,7 @@ use sunrise_sim::mobs::Mob;
 #[cfg(test)]
 mod namespace_review_tests {
     use super::*;
+    use sunrise_sim::entity_nbt;
 
     #[test]
     #[ignore = "daily"]

@@ -3,7 +3,7 @@ use mod_api::{ClientHost, Text};
 #[test]
 #[ignore = "daily"]
 fn visual_read_uses_live_translations_styles_and_bidi_outside_drawing() {
-    sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+    sunrise_client_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
         let host: &dyn ClientHost = game;
         let mut argument = Text::literal("Alex");
         argument.style.bold = Some(true);

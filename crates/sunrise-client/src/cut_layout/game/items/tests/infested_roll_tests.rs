@@ -175,7 +175,7 @@ fn a_starving_infested_player_rolls_the_infested_effect() {
         p.health.hurt.cooldown = 0;
         p.food_tick(
             &g.loop_context,
-            crate::game::server_side::entity_server::damage_level_of!(
+            sunrise_gameplay::game::server_side::entity_server::damage_level_of!(
                 g,
                 &sunrise_sim::health::NO_ATTACK,
                 no_push,

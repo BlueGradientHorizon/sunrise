@@ -57,7 +57,7 @@ fn summoned_drowned_hold_shells_as_guaranteed_drops() {
             }
         }
         let tag = game
-            .command_target_nbt(crate::game::commands::Target::Mob(id))
+            .command_target_nbt(sunrise_gameplay::game::commands::Target::Mob(id))
             .unwrap();
         let body = sunrise_game_data::snbt::pretty(&tag).plain();
         if body.contains("offhand: {count: 1, id: \"minecraft:nautilus_shell\"}") {

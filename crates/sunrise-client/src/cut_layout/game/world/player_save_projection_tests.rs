@@ -139,7 +139,7 @@ fn actual_player_save_tracks_mutable_body_and_keeps_guest_context() {
             ..NetConfig::lan(0, "h157-context".into(), 2)
         };
         game.lan_host(
-            lan::LanSettings {
+            sunrise_gameplay::game::lan::LanSettings {
                 port: 0,
                 guest_commands: true,
                 force_game_mode: false,
@@ -190,7 +190,7 @@ fn actual_player_save_tracks_mutable_body_and_keeps_guest_context() {
         guest.motion = Some(Box::new(body));
         game.side.lan.as_mut().unwrap().hub.guests.push(guest);
         let guest_tag = game
-            .for_player(commands::Target::Guest(2), |g| {
+            .for_player(sunrise_gameplay_common::game::commands_common::Target::Guest(2), |g| {
                 assert_eq!(g.player.as_ref().unwrap().impulse.reset_grace_time, 7);
                 assert!(!g.player.as_ref().unwrap().spawn_extra_particles_on_fall);
                 g.player_nbt().unwrap()

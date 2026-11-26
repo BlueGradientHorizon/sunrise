@@ -9,6 +9,7 @@ use sunrise_sim::save::SaveDir;
 pub(crate) mod tests {
 
 use sunrise_gameplay_common::game::server_side::levels::tests::LOGGED;
+use sunrise_gameplay::game::server_side::levels::IDLE_TICKS;
 
 #[cfg(test)]
 struct LogCapture;

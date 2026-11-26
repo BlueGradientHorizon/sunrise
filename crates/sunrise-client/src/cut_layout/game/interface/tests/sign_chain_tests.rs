@@ -88,11 +88,11 @@ fn click_sign(
             0.5 + 0.5 * f64::from(face[2]),
         ],
     };
-    sunrise_client_gameplay::game::sculk::TEST_POSTED_EVENTS.with(|events| *events.borrow_mut() = Some(Vec::new()));
+    sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|events| *events.borrow_mut() = Some(Vec::new()));
     // The player caused it (`GameEvent.Context.of(player, state)`).
     game.with_player_actor(|game| game.use_hand(Some(&hit)))
         .unwrap();
-    let events = sunrise_client_gameplay::game::sculk::TEST_POSTED_EVENTS
+    let events = sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS
         .with(|events| events.borrow_mut().take().unwrap_or_default());
     let name = |game: &sunrise_gameplay::game::ServerGame<'_>, pos: [i32; 3]| {
         let state = game.world.block(pos[0], pos[1], pos[2]);

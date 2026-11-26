@@ -120,7 +120,7 @@ pub(crate) fn take_log(log: &Arc<Mutex<Vec<String>>>) -> Vec<String> {
 /// (`bump_instance()`).
 #[test]
 fn double_click_window_checks_250ms_button_screen_and_generation() {
-    let mut state = crate::game::screen_build::ScreenState::default();
+    let mut state = sunrise_client_gameplay::game::client_side::screen_build::ScreenState::default();
     let t0 = 1_000;
     let inst = state.screen_instance;
     assert!(!state.is_double_click(t0, inst, None, 0));

@@ -6,6 +6,7 @@ use sunrise_sim::mobs::Mob;
 mod tests {
     use super::*;
     use std::sync::{Arc, Mutex};
+    use sunrise_sim::mobs::equip::Slot;
 
     /// What the part of an iron helmet answers to `can_equip`: yes for one entity type only,
     /// and only while that entity stands at or above y 64, read through the `Host`.

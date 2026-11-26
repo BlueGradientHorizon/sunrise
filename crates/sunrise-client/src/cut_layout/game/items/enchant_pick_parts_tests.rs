@@ -633,7 +633,7 @@ fn support_resolves_once_against_the_tags_published_by_world_open_and_play_packe
             let scratch = tempfile::tempdir().unwrap();
             let registry = Arc::new(sunrise_game_data::gamerules::RuleRegistry::vanilla());
             let create = sunrise_sim::world_options::WorldOptions::default();
-            let mut request = crate::game::world_loading::WorldRequest::new(
+            let mut request = sunrise_gameplay::game::world_loading::WorldRequest::new(
                 "enchant_tags",
                 Some("enchant_tags"),
                 Some(1),

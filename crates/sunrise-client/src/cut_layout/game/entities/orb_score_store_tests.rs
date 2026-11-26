@@ -1,7 +1,8 @@
 //! An experience orb is a score holder: `execute as <orb> store … score @s`
 //! stores into the score named by the orb's UUID, as an armor stand's does
 //! (tools/test_orb_score_store_parity.py measures the same on vanilla 26.3).
-use {crate::game::*, sunrise_gameplay_common::game::{Instant, Options, PathBuf, Progress, Resources, Settings, entity, execution_role, load_resources}};
+use {crate::game::*, sunrise_gameplay_common::game::{Instant, Options, PathBuf, Progress, Resources, entity, execution_role}};
+use crate::settings::Settings;
 use std::sync::Arc;
 use sunrise_core::position::ChunkPos;
 use sunrise_level::chunk::Chunk;
@@ -17,7 +18,7 @@ fn game<'a>(
             .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),
     );
     let settings = Settings::default();
-    let loaded = load_resources(
+    let loaded = crate::game::load_resources(
         sunrise_assets::resource_source::ResourceRoot::directory(root.clone()),
         Vec::new(),
         None,

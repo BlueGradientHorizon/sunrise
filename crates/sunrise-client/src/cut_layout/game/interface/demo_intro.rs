@@ -4,6 +4,7 @@ use sunrise_game_data::text::Text;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use sunrise_gameplay_common::game::Screen;
     use {sunrise_gameplay_common::game::in_own_process, crate::game::server_side::native_entity_refs::tests::with_client_game, crate::game::remote::tests::connect_menu_test, crate::game::remote::tests::spawn_menu_test};
     use mod_api::{ClientHost, Hooks, ModEntry, ScreenOpening, ScreenOpeningEvent};
     use serde_json::json;

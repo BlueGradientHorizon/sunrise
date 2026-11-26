@@ -27,6 +27,14 @@ use sunrise_sim::entities::ArmorStand;
 use sunrise_sim::mobs::{Mob, Species, Who};
 use sunrise_sim::motion::PlayerMotion;
 use sunrise_sim::save::uuid_text;
+use sunrise_gameplay_common::game::load_resources;
+use sunrise_client::settings::Settings;
+use sunrise_gameplay_common::game::resource_load::Progress;
+use sunrise_gameplay_common::game::Options;
+use sunrise_client::audio::Audio;
+use sunrise_gameplay_common::game::Screen;
+use sunrise_client_gameplay::game::client_side::resource_tables_client::UiResources;
+use sunrise_gameplay_common::game::InteractTarget;
 
 /// `EntityTypes.SNIFFER`: `.sized(1.9F, 1.75F).nameTagOffset(2.05F)`. The tag
 /// hangs 2.05 above the feet where every other type hangs it at its box

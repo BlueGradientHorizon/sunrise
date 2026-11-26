@@ -76,11 +76,11 @@ pub(crate) fn run_case(
     let is_dragon = matches!(tracked, TrackedTarget::Dragon);
     for expected in &case.ticks {
         game.start_audio_capture();
-        sunrise_client_gameplay::game::sculk::TEST_POSTED_EVENTS.with(|e| {
+        sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|e| {
             *e.borrow_mut() = Some(Vec::new());
         });
         game.tick_server(false).unwrap();
-        let posted = sunrise_client_gameplay::game::sculk::TEST_POSTED_EVENTS
+        let posted = sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS
             .with(|e| e.borrow_mut().take().unwrap_or_default());
         check_hook_tick(
             game,
@@ -215,11 +215,11 @@ pub(crate) fn run_extra_case(
 
     for expected in &case.ticks {
         game.start_audio_capture();
-        sunrise_client_gameplay::game::sculk::TEST_POSTED_EVENTS.with(|e| {
+        sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|e| {
             *e.borrow_mut() = Some(Vec::new());
         });
         game.tick_server(false).unwrap();
-        let posted = sunrise_client_gameplay::game::sculk::TEST_POSTED_EVENTS
+        let posted = sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS
             .with(|e| e.borrow_mut().take().unwrap_or_default());
         check_hook_tick(
             game,

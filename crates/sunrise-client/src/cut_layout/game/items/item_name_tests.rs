@@ -202,7 +202,7 @@ fn a_part_names_its_stacks_everywhere_the_game_names_them() {
             run(game, "kill @e[type=zombie]");
 
             // The screen uses the same comparison before sending the rename packet.
-            let mut station = super::stations::Station::new(super::stations::Kind::Anvil, [0; 3]);
+            let mut station = sunrise_gameplay_common::game::stations_common::Station::new(sunrise_gameplay_common::game::stations_common::Kind::Anvil, [0; 3]);
             station.inputs[0] = Some(named);
             station.name = KEY.into();
             assert_eq!(game.anvil_item_name(&station), "");

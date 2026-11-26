@@ -80,7 +80,7 @@ fn exercise_restore<S: sunrise_gameplay_common::game::Side>(
 #[test]
 #[ignore = "daily"]
 fn projectile_restore_entries_keep_the_bound_arrow() {
-    sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+    crate::game::native_entity_refs::tests::with_client_game(|game| {
         exercise_restore(game, 0, |game, at| {
             game.tick_remote_projectiles(|_, at| at);
             assert!(game.creatures.projectiles[0].position.x > at[0]);

@@ -41,7 +41,7 @@ pub(crate) fn with_spectator(test: impl FnOnce(&mut sunrise_client_gameplay::gam
         game.connect_local(client, "CameraViewTest").unwrap();
         game.enter_remote_dimension(
             &spawn("minecraft:overworld"),
-            crate::game::client_side::remote_client::RemoteDimensionEntry::Login,
+            sunrise_client_gameplay::game::client_side::remote_client::RemoteDimensionEntry::Login,
             Reason::Other,
         );
         let remote = game.side.remote.as_mut().unwrap();

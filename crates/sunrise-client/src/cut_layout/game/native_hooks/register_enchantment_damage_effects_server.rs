@@ -31,7 +31,7 @@ pub(crate) mod tests {
             .into(),
             || {
                 // Exercise the generated registrar dispatch, then the same publication as startup.
-                super::super::super::mods::register_enchantment_damage_effects();
+                sunrise_gameplay_common::game::mods::register_enchantment_damage_effects();
                 sunrise_gameplay::game::native_entity_refs::tests::with_game(|game| {
                     game.options.dedicated = Some(Vec::new());
                     let root = std::env::temp_dir()

@@ -24,7 +24,7 @@ fn a_falling_rocket_hits_the_ground_and_one_in_water_splashes() {
             game.tick_rockets();
             falls.push(game.rockets[0].fall_distance);
         }
-        let events: Vec<_> = sunrise_client_gameplay::game::sculk::TEST_POSTED_EVENTS.with(|v| {
+        let events: Vec<_> = sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|v| {
             std::mem::take(v.borrow_mut().as_mut().unwrap())
                 .into_iter()
                 .map(|e| (e.0, e.1[0].floor() as i32))

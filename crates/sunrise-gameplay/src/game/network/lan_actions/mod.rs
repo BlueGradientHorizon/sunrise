@@ -1,4 +1,4 @@
 
-pub(in crate::game) mod tick;
+pub mod tick;
 
 include!("shared.rs");

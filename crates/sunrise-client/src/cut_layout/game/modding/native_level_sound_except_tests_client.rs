@@ -34,9 +34,9 @@ fn cross_level_transaction_replays_effects_in_request_level_and_preserves_packet
                     g.dimension = "minecraft:the_nether".to_owned();
                 });
                 // Load Nether once so it sits in `levels.parked` when Overworld is active.
-                game.enter_level(super::Dim::Nether).unwrap();
+                game.enter_level(sunrise_gameplay_common::game::Dim::Nether).unwrap();
                 let mut expected_nether_random = game.world.random.clone();
-                game.enter_level(super::Dim::Overworld).unwrap();
+                game.enter_level(sunrise_gameplay_common::game::Dim::Overworld).unwrap();
                 let mut expected_overworld_random = game.world.random.clone();
 
                 let player13 = game.player(13).unwrap();
@@ -71,7 +71,7 @@ fn cross_level_transaction_replays_effects_in_request_level_and_preserves_packet
                 // transaction to issue Nether effects across all effect kinds, commit the Nether
                 // transaction, and switch back to Overworld before closing the outer transaction.
                 let committed = game.storage_transaction(|game, _| {
-                    game.enter_level(super::Dim::Nether).unwrap();
+                    game.enter_level(sunrise_gameplay_common::game::Dim::Nether).unwrap();
                     let nether = game.level("minecraft:the_nether").unwrap();
                     let nether_committed = game.storage_transaction(|game, _| {
                         assert!(game.level_global_level_event(nether, 1038, pos, 0));
@@ -100,11 +100,11 @@ fn cross_level_transaction_replays_effects_in_request_level_and_preserves_packet
                         Ok::<(), ()>(())
                     });
                     assert!(nether_committed.is_ok());
-                    game.enter_level(super::Dim::Overworld).unwrap();
+                    game.enter_level(sunrise_gameplay_common::game::Dim::Overworld).unwrap();
                     Ok::<(), ()>(())
                 });
                 assert!(committed.is_ok());
-                assert_eq!(game.dim, super::Dim::Overworld);
+                assert_eq!(game.dim, sunrise_gameplay_common::game::Dim::Overworld);
 
                 // Overworld guest 12 receives ONLY the global level event (1038); no Nether-local
                 // level event, entity event, particles, or sounds leak into the Overworld.
@@ -204,7 +204,7 @@ fn cross_level_transaction_replays_effects_in_request_level_and_preserves_packet
                     Ok::<(), ()>(())
                 });
                 assert!(cross_commit.is_ok());
-                assert_eq!(game.dim, super::Dim::Overworld);
+                assert_eq!(game.dim, sunrise_gameplay_common::game::Dim::Overworld);
                 assert!(decode_packets(&rx12).is_empty());
                 let cross_tags: Vec<&'static str> = decode_packets(&rx13)
                     .iter()
@@ -225,7 +225,7 @@ fn cross_level_transaction_replays_effects_in_request_level_and_preserves_packet
 
                 // Packet order also holds inside an `as_guest` turn in BOTH directions
                 // (`GlobalEvent(1038)` -> `StopSound` and `StopSound` -> `GlobalEvent(1038)`).
-                game.enter_level(super::Dim::Nether).unwrap();
+                game.enter_level(sunrise_gameplay_common::game::Dim::Nether).unwrap();
                 let nether = game.level("minecraft:the_nether").unwrap();
                 decode_packets(&rx13);
                 game.as_guest(13, |game| {

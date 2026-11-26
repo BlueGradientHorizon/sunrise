@@ -291,7 +291,7 @@ fn client_menu_kind_names_the_server_menu_type() {
                 assert_eq!(old.kind(game), None, "a closed menu's handle is stale");
                 // HorseInventoryMenu is opened by MountScreenOpen, which names no MenuType.
                 game.remote_set_menu(
-                    Some((8, format!("{}3", crate::game::remote::MOUNT_MENU))),
+                    Some((8, format!("{}3", sunrise_gameplay_common::game::remote::MOUNT_MENU))),
                     None,
                 );
                 assert_eq!(live(game).kind(game), Some(None));

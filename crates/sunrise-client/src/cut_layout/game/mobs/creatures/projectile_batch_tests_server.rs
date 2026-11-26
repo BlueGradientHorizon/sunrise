@@ -8,7 +8,7 @@ use crate::game::creatures::projectile_batch_tests::assert_boat_matches_witness;
 use crate::game::creatures::projectile_batch_tests::assert_vec3_bits;
 use crate::game::creatures::projectile_batch_tests::load_wind_continuation_witness_26_3;
 use crate::game::creatures::projectile_batch_tests::wind_continuation_witness_26_3;
-use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, crate::game::native_projectiles::impact_probe::Action, crate::game::native_projectiles::impact_probe::with_probe};
+use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::server_side::native_projectiles::impact_probe::Action, sunrise_gameplay::game::server_side::native_projectiles::impact_probe::with_probe};
 use std::sync::{Arc, atomic::Ordering};
 use sunrise_level::chunk::Chunk;
 

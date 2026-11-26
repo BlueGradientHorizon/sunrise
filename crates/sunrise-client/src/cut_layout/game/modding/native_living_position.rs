@@ -46,7 +46,7 @@ pub(crate) mod tests {
     #[ignore = "daily"]
     fn pose_regression_dragon_dimensions() {
         with_game(|game| {
-            let mut dragon = super::super::dragon_common::Dragon::new(Vec3::ZERO, 0.0, 0);
+            let mut dragon = sunrise_gameplay_common::game::dragon_common::Dragon::new(Vec3::ZERO, 0.0, 0);
             dragon.id = 55;
             game.dragon.replace(dragon);
             let living = game.living(game.entity(55).unwrap()).unwrap();

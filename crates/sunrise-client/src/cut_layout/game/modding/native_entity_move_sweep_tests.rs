@@ -147,7 +147,7 @@ impl Hooks for DeclareGeneral {
 
 /// The handle's family, as `EntityHandle`'s Debug names it (`Mob(3)`): every
 /// variant is a tuple of its index, so the name is the part before `(`.
-fn family_of(handle: super::entity::EntityHandle) -> String {
+fn family_of(handle: crate::game::entity::EntityHandle) -> String {
     let printed = format!("{handle:?}");
     printed[..printed.find('(').expect("a tuple variant")].to_owned()
 }

@@ -1,6 +1,7 @@
 use super::super::*;
 use crate::game::minecarts::minecart_tnt_tests::server;
 use crate::game::minecarts::minecart_tnt_tests::*;
+use sunrise_gameplay_common::game::InteractTarget;
 use sunrise_items::items::ItemStack;
 
 #[test]

@@ -1,5 +1,7 @@
 
 
+use sunrise_client::spectator_menu::Outcome;
+use sunrise_level::profile_lookup::SPECTATOR;
 use sunrise_game_data::scoreboard::comp_text;
 use sunrise_game_data::text::Text;
 use sunrise_protocol::packets::play::Serverbound as S;

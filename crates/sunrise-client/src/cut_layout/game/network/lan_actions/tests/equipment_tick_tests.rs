@@ -2,6 +2,7 @@
 //! a slot change and an attack sent in one tick act with the old item's attributes (the
 //! attribute swap, #637, #808).
 use sunrise_items::items::ItemStack;
+use sunrise_protocol::packets::play;
 use sunrise_protocol::packets::play::Serverbound as S;
 use {crate::game::lan_actions::tick::*};
 use sunrise_gameplay::game::native_entity_refs::tests::with_game;

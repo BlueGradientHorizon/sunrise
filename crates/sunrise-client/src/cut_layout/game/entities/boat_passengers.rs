@@ -5,6 +5,7 @@ use sunrise_core::geometry::Vec3;
 use sunrise_gameplay_common::game::boats_common::Boat;
 use sunrise_sim::join_seq::ListStamp;
 use sunrise_sim::mobs::Mob;
+use sunrise_sim::mobs::riders;
 use sunrise_sim::mobs::seen_grid::SeenGrid;
 #[cfg(test)]
 pub(crate) mod tests {
@@ -269,7 +270,7 @@ mod boat_callback_review_tests {
                     mob.extra.vehicle_order = i64::from(id);
                     game.mobs.push(mob);
                 }
-                assert!(game.kill_vehicle_object(crate::game::commands::Target::Boat(71)));
+                assert!(game.kill_vehicle_object(sunrise_gameplay_common::game::commands_common::Target::Boat(71)));
                 assert_eq!(game.mob_object(73).unwrap().extra.mount, Some(74));
                 assert_eq!(
                     heard
@@ -315,7 +316,7 @@ mod boat_callback_review_tests {
                 let mut boat = game.boats[0].clone();
                 boat.position = Vec3::new(40.0, 70.0, 40.0);
                 game.boats.store_back(0, boat);
-                assert!(game.kill_vehicle_object(crate::game::commands::Target::Boat(71)));
+                assert!(game.kill_vehicle_object(sunrise_gameplay_common::game::commands_common::Target::Boat(71)));
                 assert!(game.mob_object(72).unwrap().removed);
                 assert_eq!(game.mob_object(72).unwrap().position, original);
                 assert_eq!(game.mob_object(73).unwrap().position, original);

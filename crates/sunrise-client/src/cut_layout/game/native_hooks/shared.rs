@@ -303,21 +303,21 @@ pub(in crate::game) mod tests {
     #[test]
     fn observed_overlay_prefers_first_open_screen() {
         assert_eq!(
-            crate::game::client_side::native_hooks_client::observed_overlay_id(&[
+            sunrise_client_gameplay::game::client_side::native_hooks_client::observed_overlay_id(&[
                 (false, "sign"),
                 (false, "book")
             ]),
             None
         );
         assert_eq!(
-            crate::game::client_side::native_hooks_client::observed_overlay_id(&[
+            sunrise_client_gameplay::game::client_side::native_hooks_client::observed_overlay_id(&[
                 (false, "sign"),
                 (true, "book")
             ]),
             Some("book")
         );
         assert_eq!(
-            crate::game::client_side::native_hooks_client::observed_overlay_id(&[
+            sunrise_client_gameplay::game::client_side::native_hooks_client::observed_overlay_id(&[
                 (true, "sign"),
                 (true, "book")
             ]),
@@ -401,14 +401,14 @@ pub(in crate::game) mod tests {
             &settings,
             std::time::Instant::now(),
             false,
-            super::ExecutionRole::IntegratedServer,
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer,
             &Progress::new(),
             &mut |_, _| unreachable!("no menu handoff"),
         )
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
-        options.execution_role = super::ExecutionRole::IntegratedServer;
+        options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
         let mut game = sunrise_gameplay::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
@@ -428,7 +428,7 @@ pub(in crate::game) mod tests {
             ])
         {
             match game.new_block_entity(name) {
-                Some(super::BlockEntity::Sign(sign)) => {
+                Some(sunrise_level::containers::BlockEntity::Sign(sign)) => {
                     assert_eq!(sign.hanging, hanging, "{name}")
                 }
                 entity => panic!("{name}: expected a sign, got {entity:?}"),
@@ -437,7 +437,7 @@ pub(in crate::game) mod tests {
         // `createDefaultSignText`: a declared colour and glow on both sides of a new sign, black
         // and unlit on one that declares none.
         let mut text = |name| match game.new_block_entity(name) {
-            Some(super::BlockEntity::Sign(sign)) => {
+            Some(sunrise_level::containers::BlockEntity::Sign(sign)) => {
                 assert_eq!(sign.front.color, sign.back.color);
                 assert_eq!(sign.front.glowing, sign.back.glowing);
                 (sign.front.color, sign.front.glowing)
@@ -450,7 +450,7 @@ pub(in crate::game) mod tests {
         assert!(game.new_block_entity("ruby:road_sign").is_none());
         assert!(matches!(
             game.new_block_entity("minecraft:white_banner"),
-            Some(super::BlockEntity::Banner(_))
+            Some(sunrise_level::containers::BlockEntity::Banner(_))
         ));
         let _ = std::fs::remove_dir_all(&root);
     }

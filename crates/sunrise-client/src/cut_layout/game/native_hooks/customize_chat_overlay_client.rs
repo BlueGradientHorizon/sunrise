@@ -47,7 +47,7 @@ pub(crate) mod customize_chat_overlay_tests {
                 chat_top(game);
                 assert_eq!(seen.lock().unwrap().len(), 1);
                 // Focused, the chat shows under F1 and is asked again.
-                game.side.screen = super::Screen::Chat;
+                game.side.screen = sunrise_gameplay_common::game::Screen::Chat;
                 chat_top(game);
                 let seen = seen.lock().unwrap();
                 assert_eq!(seen.len(), 2);

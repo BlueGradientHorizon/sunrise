@@ -281,7 +281,7 @@ fn in_scene(test: &str, check: impl FnOnce(&mut sunrise_client_gameplay::game::C
     mod_platform::testing::with_mods(mods().into(), || {
         mod_platform::__private::part_tests::install_parts_fixture(&mods()).unwrap();
         sunrise_client_gameplay::game::client_side::mods_client::register_entity_renderers(
-            super::execution_role::ExecutionRole::Client,
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::Client,
         );
         // A frame draws with a world open, as the window does.
         drop(registration);
@@ -641,7 +641,7 @@ fn integrated_scene(test: &str, place: fn(&mut sunrise_gameplay::game::ServerGam
         mod_platform::testing::with_mods(mods, || {
             super::native_entity_refs::tests::with_client_game(|game| {
                 sunrise_client_gameplay::game::client_side::mods_client::register_entity_renderers(
-                    super::execution_role::ExecutionRole::Client,
+                    sunrise_gameplay_common::game::execution_role::ExecutionRole::Client,
                 );
                 drop(registration);
                 game.resolve_entity_renderers();

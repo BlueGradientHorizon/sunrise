@@ -1,4 +1,5 @@
 use sunrise_core::geometry::Vec3;
+use sunrise_gameplay_common::game::Screen;
 use sunrise_protocol::packets::Empty;
 use sunrise_protocol::packets::play::Clientbound as C;
 use sunrise_protocol::packets::play::Serverbound as S;

@@ -77,7 +77,7 @@ fn target(id: u32) -> Option<InteractTarget> {
 }
 
 fn take_shear_events() -> Vec<(&'static str, [f64; 3], Option<Who>)> {
-    sunrise_client_gameplay::game::client_side::sculk::TEST_POSTED_EVENTS.with(|events| {
+    sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|events| {
         std::mem::take(events.borrow_mut().as_mut().unwrap())
             .into_iter()
             .filter(|event| event.0 == "minecraft:shear")
@@ -186,7 +186,7 @@ fn shearing_by_hand_posts_the_shear_game_event() {
     let mut resources = None;
     let mut game = game(&mut resources);
     game.inventory[0] = Some(ItemStack::new("minecraft:shears", 1));
-    sunrise_client_gameplay::game::client_side::sculk::TEST_POSTED_EVENTS.with(|events| *events.borrow_mut() = Some(Vec::new()));
+    sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|events| *events.borrow_mut() = Some(Vec::new()));
     for (kind, id, at) in [
         ("minecraft:sheep", 11, [1.5, 64.0, 2.5]),
         ("minecraft:mooshroom", 12, [2.5, 64.0, 2.5]),
@@ -200,7 +200,7 @@ fn shearing_by_hand_posts_the_shear_game_event() {
             "{kind}"
         );
     }
-    sunrise_client_gameplay::game::client_side::sculk::TEST_POSTED_EVENTS.with(|events| *events.borrow_mut() = None);
+    sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|events| *events.borrow_mut() = None);
 }
 
 use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

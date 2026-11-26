@@ -11,6 +11,8 @@ mod lifetime_tests;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use sunrise_gameplay::game::commands::Target;
+    use sunrise_gameplay::game::entity_residency::SlotAccess;
     use sunrise_gameplay::game::native_entity_refs::tests::with_game;
     use sunrise_core::{geometry::Vec3, position::BlockPos};
     use sunrise_sim::{

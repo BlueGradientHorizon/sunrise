@@ -5,7 +5,7 @@ pub(crate) fn matrix(mods: mod_api::Mods) {
     mod_platform::testing::with_mods(mods.clone(), || {
         sunrise_gameplay_common::game::api_values::install_parts(&mods).unwrap();
         let base = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
-        let root = super::super::super::mods::content_root(&base, &Default::default()).unwrap();
+        let root = sunrise_gameplay_common::game::mods::content_root(&base, &Default::default()).unwrap();
         with_interaction_client_game_at(root.prepared().to_owned(), |game| {
             let stone = game
                 .pack

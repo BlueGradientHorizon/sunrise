@@ -5,6 +5,7 @@ use super::*;
 use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use mod_api::{AttachmentQueries, AttachmentQueriesMut, AttachmentType};
 use sunrise_level::chunk::Chunk;
+use sunrise_mod_runtime::attachments::Holder;
 
 static VALUE: AttachmentType<u32> = AttachmentType {
     namespace: "query_test",

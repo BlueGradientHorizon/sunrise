@@ -103,7 +103,7 @@ impl<T: ?Sized> Resolved<T> {
 }
 
 /// The registered renderers, by the slot each draw route reads: rebuilt on every resource load.
-pub(in crate::game) struct EntityRendererTable {
+pub struct EntityRendererTable {
     /// By [`ThrownType::slot`].
     thrown: Vec<Option<Arc<Resolved<dyn EntityRenderer>>>>,
     /// By the address of the mob type the game shares with every mob of the type.

@@ -172,7 +172,7 @@ fn a_block_the_server_puts_back_snaps_the_player_out_of_it() {
 /// is, a teleport from where its interpolation is headed.
 #[test]
 fn a_far_move_snaps_by_the_packets_own_measure() {
-    use {sunrise_gameplay_common::game::remote::MovePacket, sunrise_gameplay_common::game::remote::Path, sunrise_gameplay_common::game::remote::PosRot, sunrise_gameplay_common::game::remote::SteppedInterpolation};
+    use {sunrise_gameplay_common::game::remote::movement::MovePacket, sunrise_gameplay_common::game::remote::Path, sunrise_gameplay_common::game::remote::PosRot, sunrise_gameplay_common::game::remote::SteppedInterpolation};
     let at = |x: f64| PosRot {
         position: [x, 0.0, 0.0],
         yaw: 0.0,
@@ -196,7 +196,7 @@ fn a_far_move_snaps_by_the_packets_own_measure() {
 /// over the update interval.
 #[test]
 fn a_living_entitys_move_snaps_or_steps() {
-    use {sunrise_gameplay_common::game::remote::MovePacket, sunrise_gameplay_common::game::remote::Path, sunrise_gameplay_common::game::remote::PosRot, sunrise_gameplay_common::game::remote::SteppedInterpolation, sunrise_gameplay_common::game::remote::stepped_move};
+    use {sunrise_gameplay_common::game::remote::movement::MovePacket, sunrise_gameplay_common::game::remote::Path, sunrise_gameplay_common::game::remote::PosRot, sunrise_gameplay_common::game::remote::SteppedInterpolation, sunrise_gameplay_common::game::remote::movement::stepped_move};
     let at = |x: f64, yaw: f32| PosRot {
         position: [x, 0.0, 0.0],
         yaw,

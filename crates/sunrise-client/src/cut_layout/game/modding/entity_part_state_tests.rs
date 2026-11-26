@@ -158,13 +158,13 @@ fn mob(game: &mut sunrise_gameplay::game::ServerGame<'_>, kind: &str, uuid: i32)
 
 /// A saved `part_state:robot` record with `uuid`.
 fn robot_tag(uuid: i32) -> Tag {
-    super::general::GeneralEntityRecord {
+    sunrise_gameplay_common::game::general::GeneralEntityRecord {
         position: [0.5, 64.0, 0.5],
         velocity: [0.0; 3],
         rotation: [0.0, 90.0],
         owner: None,
         uuid: [uuid, 0, 0, 2],
-        envelope: super::general::GeneralTypeEnvelope {
+        envelope: sunrise_gameplay_common::game::general::GeneralTypeEnvelope {
             type_key: "part_state:robot".to_owned(),
             payload_version: 1,
             payload_bytes: Vec::new(),
@@ -527,7 +527,7 @@ fn a_lone_mob_or_general_row_moves_under_a_new_id_and_a_ridden_pig_keeps_its_han
         // with it, the carrier path starts the guest's trip and parks the pig, and the arrival
         // (`arrive_vehicle`, what the trip's arrival runs once the exit is found) brings it to
         // the other level under the same handle.
-        let rider = super::native_player_death::tests::add_guest(game);
+        let rider = sunrise_gameplay::game::native_player_death::tests::add_guest(game);
         let mut tag = mob_tag("minecraft:pig", 43);
         if let Tag::Compound(map) = &mut tag {
             map.insert(

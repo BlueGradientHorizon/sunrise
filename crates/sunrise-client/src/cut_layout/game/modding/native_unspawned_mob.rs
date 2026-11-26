@@ -5,6 +5,10 @@ use sunrise_sim::mobs::Mob;
 #[cfg(test)]
 pub(crate) mod tests {
 
+use mod_api::{AgeableGroup, EquipmentSlot, Identifier, SpawnGroup, UnspawnedMobError, UnspawnedMobRef};
+
+use sunrise_gameplay_common::game::server_side::native_unspawned_mob::{KeptGoalMod, pumpkin};
+
 use sunrise_gameplay_common::game::server_side::native_unspawned_mob::tests::AT;
 
 use sunrise_gameplay_common::game::server_side::native_unspawned_mob::tests::id;

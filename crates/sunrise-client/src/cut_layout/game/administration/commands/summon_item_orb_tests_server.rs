@@ -1,4 +1,4 @@
-use crate::game::commands::summon_item_orb_tests::with_game;
+use crate::game::server_side::commands::summon_item_orb_tests::with_game;
 
 pub(crate) fn run_summon_replies_with_the_custom_name_of_every_kind() {
     let path = std::env::var_os("SUNRISE_SUMMON_CUSTOM_NAME_WITNESS").unwrap_or_else(|| {

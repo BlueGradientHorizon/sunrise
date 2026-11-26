@@ -1,3 +1,5 @@
+use sunrise_gameplay_common::game::Hit;
+use sunrise_sim::first_person_sim::Hand;
 use sunrise_items::items::ItemStack;
 use super::*;
 use std::sync::{

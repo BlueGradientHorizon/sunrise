@@ -6,7 +6,7 @@ use sunrise_gameplay_common::game::{
 use sunrise_level::{chunk_streamer::ChunkStreamer, sim_settings::SimSettings};
 use sunrise_sim::vanillagen::TerrainResources;
 
-pub(in crate::game) struct WorldRequest {
+pub struct WorldRequest {
     pub save_root: PathBuf,
     pub folder: String,
     pub name: Option<String>,

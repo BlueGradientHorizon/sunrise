@@ -255,7 +255,7 @@ pub(crate) fn with_probe(
         };
         if matches!(action, Action::SaveOnImpact) {
             let save = tempfile::tempdir().unwrap();
-            sunrise_gameplay::game::visibility_unwind_tests::with_save_game(save.path(), check);
+            crate::game::server_side::visibility_unwind_tests::with_save_game(save.path(), check);
         } else {
             with_game(check);
         }

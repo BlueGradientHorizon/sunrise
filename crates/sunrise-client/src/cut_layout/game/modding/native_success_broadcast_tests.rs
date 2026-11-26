@@ -126,8 +126,12 @@ fn with_operators(
                 game.world
                     .chunks
                     .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
-                let back = game.enter_command_level(super::Dim::Nether);
-                assert_eq!(game.dim, super::Dim::Nether, "the fixture has a Nether");
+                let back = game.enter_command_level(sunrise_gameplay_common::game::Dim::Nether);
+                assert_eq!(
+                    game.dim,
+                    sunrise_gameplay_common::game::Dim::Nether,
+                    "the fixture has a Nether"
+                );
                 game.world
                     .chunks
                     .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));

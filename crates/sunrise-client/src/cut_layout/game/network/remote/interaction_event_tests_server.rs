@@ -412,7 +412,7 @@ fn an_item_used_from_the_off_hand_reaches_the_use_hooks_on_the_server() {
             // A guest's use packet names the off hand alone.
             game.inventory[game.selected] = None;
             *observer.0.lock().unwrap() = Controls::default();
-            game.side.guest_use = Some(super::super::GuestUse::Item(Hand::Off));
+            game.side.guest_use = Some(sunrise_gameplay_common::game::GuestUse::Item(Hand::Off));
             assert_eq!(game.use_item_as_player().unwrap(), Some(Hand::Off));
             assert_eq!(
                 observer.0.lock().unwrap().steps,
@@ -426,7 +426,7 @@ fn an_item_used_from_the_off_hand_reaches_the_use_hooks_on_the_server() {
             game.world.set(0, 63, 0, stone).unwrap();
             game.world.set(0, 64, 0, stone).unwrap();
             game.set_test_forced_hit(Some(hit()));
-            for guest in [None, Some(super::super::GuestUse::on_block(Hand::Off))] {
+            for guest in [None, Some(sunrise_gameplay_common::game::GuestUse::on_block(Hand::Off))] {
                 game.inventory[game.selected] = None;
                 *observer.0.lock().unwrap() = Controls {
                     hands: Some(Vec::new()),
@@ -713,7 +713,7 @@ fn item_use_overlap_matrix_on_the_server() {
                                             )
                                     };
                                     game.side.guest_use =
-                                        Some(super::super::GuestUse::on_block(hand));
+                                        Some(sunrise_gameplay_common::game::GuestUse::on_block(hand));
                                     game.adv.progress = Default::default();
                                     let swings = game.swings_started;
                                     let used =

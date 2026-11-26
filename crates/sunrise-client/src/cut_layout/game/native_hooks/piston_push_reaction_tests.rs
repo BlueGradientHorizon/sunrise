@@ -706,7 +706,7 @@ fn piston_push_reaction_client_received_tags_refresh_the_cache() {
     let mods: Mods = vec![ModEntry::new("tagged", Box::new(TagUser))].into();
     sunrise_gameplay_common::game::api_values::install_parts(&mods).unwrap();
     mod_platform::testing::with_mods(mods, || {
-        sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+        crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
             use sunrise_protocol::packets::configuration::{RegistryTags, TagEntry, UpdateTags};
             let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
             game.connect_local(pipe, "PistonTags").unwrap();

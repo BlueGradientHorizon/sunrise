@@ -35,7 +35,7 @@ impl sunrise_client_gameplay::game::client_side::remote_client::Remote {
 #[ignore = "daily"]
 fn client_base_tick_preserves_previous_eye_sample() {
     mod_platform::testing::with_mods(Vec::new().into(), || {
-        sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+        crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
             let _server = sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client(game);
             game.spawn_entity(15, "minecraft:zombie", [0.0; 3], [0.0; 3]);
             game.mobs

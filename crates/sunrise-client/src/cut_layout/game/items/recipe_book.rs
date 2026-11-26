@@ -10,6 +10,11 @@ pub(crate) mod check_mod_menu_tests;
 #[cfg(test)]
 pub(crate) mod screen_room_tests {
     use super::*;
+    use sunrise_client::recipe_book_screen::Screen as Layout;
+    use sunrise_client::recipe_book_screen::Call;
+    use sunrise_client::recipe_book_screen::Search;
+    use sunrise_gameplay_common::game::Screen;
+    use sunrise_sim::recipe_book::BookType;
     #[test]
     #[ignore = "daily"]
     fn shifted_book_painter_and_input_share_the_absolute_origin() {

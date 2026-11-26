@@ -179,6 +179,8 @@ mod nested_spawn_tests {
 #[cfg(test)]
 mod pearl_hit_tests {
     use super::*;
+    use sunrise_gameplay_common::game::dragon_common::SPECIAL;
+    use sunrise_sim::projectiles::Hit;
 
     /// `ender_pearl_teleport`'s hit fields: a block and its face normal, or an
     /// entity with the cell of its hit point and no face.

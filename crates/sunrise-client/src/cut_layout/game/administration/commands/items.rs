@@ -887,6 +887,7 @@ pub(crate) mod component_modifier_tests {
 
 #[cfg(test)]
 pub(crate) mod registered_slot_source_preservation_tests {
+use sunrise_gameplay_common::game::commands_common::Slot;
 
 use sunrise_gameplay::game::server_side::commands::items::registered_slot_source_preservation_tests::count;
 

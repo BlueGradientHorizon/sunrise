@@ -297,6 +297,7 @@ pub(crate) mod interact_vibration_tests {
     use super::*;
 
     use sunrise_gameplay::game::server_side::sculk_server::item_use_event_fixture::{EVENTS, RECORDING};
+    use sunrise_gameplay::game::server_side::item_use::interact_vibrations;
 
     /// Runs `f` on a windowless game built from the prepared resources with
     /// `held` in the main hand and returns the game events it posted;

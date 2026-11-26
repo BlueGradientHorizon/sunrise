@@ -7,6 +7,7 @@ use sunrise_game_data::text::Text;
 pub(crate) mod tests {
     use {crate::game::host::draw::*, sunrise_client_gameplay::game::host::draw::{EngineTooltipFont, label_layout, label_layout_with}};
     use std::collections::BTreeMap;
+    use mod_api::{Identifier, TextAlign, TextFormError, TextLines, TextLinesRefusal};
 
     /// A font whose printable characters are all `advance` GUI pixels wide: the vanilla provider
     /// list with a `space` provider, so a layout test measures exact advances.

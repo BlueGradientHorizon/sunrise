@@ -1,6 +1,7 @@
 
 
 use mod_api::ExplosionStart;
+use sunrise_gameplay::game::server_side::explosion::{BlockInteraction, ExplicitBlastSource, ExplosionCause, ExplosionSource};
 use sunrise_core::geometry::Vec3;
 use sunrise_core::position::BlockPos;
 use sunrise_game_data::text::Text;

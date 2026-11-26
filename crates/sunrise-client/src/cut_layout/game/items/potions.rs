@@ -23,7 +23,7 @@ use super::*;
             packets::play::AddEntity,
         };
 
-        sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+        sunrise_client_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
             let entries = [mod_api::ModEntry::new("test", Box::new(MeasuredParticle))];
             mod_platform::__private::part_tests::install_parts_fixture(&entries).unwrap();
             sunrise_gameplay_common::game::mods::resolve_particle_providers(&Default::default()).unwrap();

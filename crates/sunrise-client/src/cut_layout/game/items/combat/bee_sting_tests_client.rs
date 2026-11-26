@@ -92,7 +92,7 @@ fn a_refused_sting_leaves_the_bee_alone() {
     game.yaw = 0.0;
     game.offhand = Some(ItemStack::new("minecraft:shield", 1));
     // `BlocksAttacks.blockDelayTicks` of the shield: 0.25s.
-    game.using = Some((super::super::shield::OFFHAND_SLOT, 5));
+    game.using = Some((sunrise_gameplay::game::server_side::shield::OFFHAND_SLOT, 5));
     let bee = spawn(&mut game, 44, "minecraft:bee", Vec3::new(0.5, 64.0, 2.5));
     sting(&mut game, bee, Who::Player);
     let bee_mob = game.mobs.iter().find(|m| m.id == bee).unwrap();

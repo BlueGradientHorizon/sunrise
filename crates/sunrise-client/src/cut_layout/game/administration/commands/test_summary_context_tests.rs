@@ -1,4 +1,7 @@
 //! Added after the original old-fail module: context boundaries, not new runtime breadth.
+use sunrise_gameplay::game::commands::execute::Source;
+use sunrise_gameplay::game::game_tests::{Grid, Info, RunnerOptions, summary_line};
+use sunrise_gameplay_common::game::commands_common::Target;
 use sunrise_game_data::text::Text;
 use sunrise_gameplay_common::game::Dim;
 use sunrise_sim::lan::Out;

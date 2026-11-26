@@ -22,7 +22,7 @@ pub(crate) mod tests {
     fn hud_mode_game_bridge_respects_client_and_guest_guards() {
         let mods: mod_api::Mods = vec![ModEntry::new("three-state", Box::new(ThreeState))].into();
         with_mods(mods, || {
-            sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+            crate::game::native_entity_refs::tests::with_client_game(|game| {
                 for mode in [HudMode::NoHud, HudMode::AllHidden, HudMode::AllVisible] {
                     game.fire_client_tick_pre();
                     assert_eq!(game.hud_mode(), mode);

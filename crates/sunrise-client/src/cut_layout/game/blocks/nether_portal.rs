@@ -16,6 +16,8 @@ use sunrise_gameplay::game::server_side::nether_portal::tests::portal_cooldown_k
 use sunrise_gameplay::game::server_side::server_travel::TravelCause;
 
 use super::*;
+use sunrise_gameplay::game::server_side::nether_portal::{Plan, TransferredArrivalState, arrival_from_tag};
+use sunrise_sim::nether_portal::ENTITY_DELAY;
 
 use std::sync::{
         Arc, Mutex,

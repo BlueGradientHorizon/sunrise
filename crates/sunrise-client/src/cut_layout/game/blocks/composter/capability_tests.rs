@@ -503,7 +503,7 @@ fn sided_composter_transactions_preserve_literal_chance_and_defer_all_effects() 
 fn a_composter_click_supplies_its_interacting_player_and_no_this() {
     let mut resources = None;
     let (_published, mut game) =
-        sunrise_gameplay::game::game_tests::tests::isolated_server_game(&mut resources);
+        crate::game::game_tests::tests::isolated_server_game(&mut resources);
     let provider = |who: &str| {
         serde_json::json!({
             "type": "minecraft:conditional",

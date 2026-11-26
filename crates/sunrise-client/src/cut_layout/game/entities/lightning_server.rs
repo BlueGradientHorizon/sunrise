@@ -3,6 +3,7 @@
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
+    use sunrise_gameplay_common::game::lightning_common::Bolt;
     use sunrise_gameplay::game::native_entity_refs::tests::collect_entities_in;
     use mod_api::{self, ServerHost};
     use std::sync::Arc;

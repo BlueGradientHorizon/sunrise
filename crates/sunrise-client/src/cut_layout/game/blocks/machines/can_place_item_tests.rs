@@ -1,4 +1,8 @@
 use mod_api::ItemResource;
+use sunrise_core::geometry::Direction;
+use sunrise_gameplay_common::game::machine_containers::{PlacementAttempt, PlacementQuery};
+use sunrise_gameplay_common::hoppers::Pos;
+use sunrise_level::containers::HOPPER_SLOTS;
 use sunrise_core::nbt::Tag;
 use sunrise_core::position::BlockPos;
 use sunrise_items::items::ItemStack;

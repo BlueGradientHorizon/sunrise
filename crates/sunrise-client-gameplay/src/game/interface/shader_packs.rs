@@ -262,7 +262,7 @@ pub(in crate::game) fn picks_material_pack(settings: &sunrise_client::settings::
 /// The ids a pack gives entities and block entities (4.1, 5.3), for the spans of the entity
 /// geometry.
 #[cfg_attr(test, derive(Default))]
-pub(in crate::game) struct PackIds {
+pub struct PackIds {
     pub(in crate::game) entities: HashMap<String, i32>,
     pub(in crate::game) blocks: BlockIds,
     /// `blockEntityId` by block state, filled as states are drawn.

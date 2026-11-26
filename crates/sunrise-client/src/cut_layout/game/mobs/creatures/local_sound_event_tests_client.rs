@@ -66,7 +66,7 @@ fn local_mob_events_play_without_entering_the_shared_capture() {
         ([5.0, 100.0, 6.0], 1.0, 0.9, 5)
     );
     // Client role plays LocalSound locally without entering shared capture.
-    sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+    sunrise_client_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
         game.side.audio.0.capture = Some(Vec::new());
         let mut events = vec![MobEvent::LocalSound(
             "entity.breeze.whirl",

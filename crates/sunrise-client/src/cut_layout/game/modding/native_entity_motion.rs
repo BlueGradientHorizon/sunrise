@@ -58,7 +58,7 @@ use sunrise_core::geometry::{Aabb, Vec3};
 #[test]
     #[ignore = "daily"]
     fn only_a_mount_its_rider_controls_takes_the_riders_speed() {
-        use crate::game::commands::Target;
+        use sunrise_gameplay_common::game::commands_common::Target;
         use sunrise_sim::mobs::{Mob, equine::Rider};
         super::super::native_entity_refs::tests::with_game(|game| {
             for (id, name) in [(30, "minecraft:horse"), (31, "minecraft:pig")] {

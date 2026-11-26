@@ -256,6 +256,7 @@ pub(crate) mod arrow_hit_sound_tests {
 mod tests {
     use super::*;
     use sunrise_game_data::gamerules::Value;
+    use sunrise_gameplay::game::server_side::lan_pvp::{Strike, Sweep, Victim};
 
     /// A fresh survival body for guest `conn` (entity `conn`), where `with_guests` stands it.
     fn fresh_body(game: &mut sunrise_gameplay::game::ServerGame<'_>, conn: u32) {

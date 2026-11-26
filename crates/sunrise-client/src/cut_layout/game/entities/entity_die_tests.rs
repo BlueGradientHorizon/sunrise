@@ -1,5 +1,7 @@
 //! Entity.kill, BlockAttachedEntity.kill, ArmorStand.kill and ItemEntity.dampensVibrations.
-use sunrise_gameplay_common::game::{Options, Progress, Settings, load_resources};
+use sunrise_gameplay_common::game::{Options, Progress};
+use crate::settings::Settings;
+use crate::game::load_resources;
 use sunrise_gameplay_common::game::execution_role;
 use std::sync::Arc;
 use sunrise_core::{geometry::Vec3, position::ChunkPos};
@@ -8,7 +10,7 @@ use sunrise_level::{chunk::Chunk, containers::BlockEntity};
 use sunrise_sim::mobs::{Mob, Who, warden};
 
 fn deaths() -> Vec<(&'static str, [f64; 3], Option<Who>)> {
-    super::sculk::TEST_POSTED_EVENTS.with(|events| {
+    sunrise_client_gameplay::game::sculk::TEST_POSTED_EVENTS.with(|events| {
         events
             .borrow_mut()
             .take()
@@ -19,7 +21,7 @@ fn deaths() -> Vec<(&'static str, [f64; 3], Option<Who>)> {
     })
 }
 fn capture() {
-    super::sculk::TEST_POSTED_EVENTS.with(|events| *events.borrow_mut() = Some(Vec::new()));
+    sunrise_client_gameplay::game::sculk::TEST_POSTED_EVENTS.with(|events| *events.borrow_mut() = Some(Vec::new()));
 }
 
 fn with_game(f: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
@@ -40,7 +42,7 @@ fn with_game(f: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
-    options.execution_role = super::execution_role::ExecutionRole::IntegratedServer;
+    options.execution_role = execution_role::ExecutionRole::IntegratedServer;
     let mut game = sunrise_gameplay::game::ServerGame::new(
         &loaded.resources,
         loaded.pack,

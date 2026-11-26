@@ -4,7 +4,12 @@
 //! burning one, so the command fails while the stand changes
 //! (tools/test_stand_command_hurt_parity.py measures the same on vanilla 26.3).
 use super::*;
+use crate::settings::Settings;
 use std::sync::Arc;
+use sunrise_gameplay_common::game::Options;
+use sunrise_gameplay_common::game::Progress;
+use sunrise_gameplay_common::game::Resources;
+use sunrise_gameplay_common::game::load_resources;
 use sunrise_core::position::ChunkPos;
 use sunrise_level::chunk::Chunk;
 use sunrise_sim::mobs::Who;

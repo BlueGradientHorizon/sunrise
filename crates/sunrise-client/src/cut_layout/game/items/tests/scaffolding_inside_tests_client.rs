@@ -1,5 +1,6 @@
 use sunrise_gameplay::game::server_side::use_hand::scaffolding_inside_tests::name;
 use sunrise_gameplay::game::server_side::use_hand::scaffolding_inside_tests::*;
+use sunrise_gameplay::game::server_side::use_hand::scaffolding_inside_tests::set_sneak;
 use {sunrise_gameplay_common::game::Hit, sunrise_gameplay::game::game_tests::tests::server_game};
 use sunrise_command::args::GameMode;
 use sunrise_core::geometry::Vec3;

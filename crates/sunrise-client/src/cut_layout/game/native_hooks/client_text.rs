@@ -51,7 +51,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn styled_text_reads_use_live_font_language_and_wrapping_outside_drawing() {
-        sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+        crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
             let mut text = mod_api::Text::literal("AA AA");
             text.style.bold = Some(true);
             let host: &dyn mod_api::ClientHost = game;

@@ -1789,6 +1789,7 @@ pub(crate) mod content_seat_tests {
 pub(crate) mod trap_scatter_tests {
 
 use super::*;
+use sunrise_gameplay::game::server_side::passengers::trap_horse_scatter;
 
 /// `SkeletonTrapGoal.tick`: springing a skeleton trap draws the three
     /// additional horses' horizontal velocity scatter from the original trap

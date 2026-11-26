@@ -65,7 +65,7 @@ pub(crate) fn with_stick_part(body: impl FnOnce(&mut sunrise_client_gameplay::ga
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new("hands", Box::new(Parts))].into();
     mod_platform::testing::with_mods(mods.clone(), || {
         sunrise_gameplay_common::game::api_values::install_parts(&mods).unwrap();
-        sunrise_gameplay::game::native_entity_refs::tests::with_client_game(body);
+        crate::game::server_side::native_entity_refs::tests::with_client_game(body);
     });
 }
 
@@ -201,7 +201,7 @@ fn a_part_decides_whether_a_changed_stick_restarts_the_break() {
 #[test]
 #[ignore = "daily"]
 fn without_a_part_the_break_compares_item_and_components() {
-    sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+    crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
         game.inventory[0] = Some(ItemStack::new("minecraft:stick", 1));
         game.selected = 0;
         let began = game.main_hand_key();

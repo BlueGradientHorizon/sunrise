@@ -161,7 +161,7 @@ fn the_feedback_kept_is_capped() {
     use sunrise_game_data::text::Text;
     let long = Text::literal(format!(
         "ab{}",
-        "\u{20ac}".repeat(super::native_console::MAX_FEEDBACK_LINE_BYTES)
+        "\u{20ac}".repeat(sunrise_gameplay::game::server_side::native_console::MAX_FEEDBACK_LINE_BYTES)
     ));
     let many: Vec<Text> = std::iter::once(long)
         .chain(
@@ -171,7 +171,7 @@ fn the_feedback_kept_is_capped() {
         .collect();
     let kept = sunrise_gameplay::game::server_side::native_console::capped_lines(&many);
     assert_eq!(kept.len(), 256);
-    assert_eq!(super::native_console::MAX_FEEDBACK_LINE_BYTES, 4096);
+    assert_eq!(sunrise_gameplay::game::server_side::native_console::MAX_FEEDBACK_LINE_BYTES, 4096);
     // "ab" and 1364 whole euro signs (4094 bytes) fit; a 1365th would pass 4096.
     assert_eq!(kept[0].len(), 2 + 1364 * 3);
     assert!(kept[0].starts_with("ab\u{20ac}"));

@@ -1,4 +1,6 @@
 use super::*;
+use sunrise_client_gameplay::tutorial::Hint;
+use sunrise_client_gameplay::game::toast_manager::Toast;
 use {sunrise_gameplay_common::game::Screen, sunrise_gameplay_common::game::in_own_process, crate::game::server_side::native_entity_refs::tests::with_client_game};
 
 #[test]

@@ -4,7 +4,7 @@ use {crate::game::*, sunrise_gameplay_common::game::{Level, LevelEvent, World, e
 use sunrise_core::random::{LegacyRandom, RandomSource};
 
 pub(in crate::game) fn with_game(test: impl FnOnce(&mut sunrise_client_gameplay::game::ClientGame<'_>)) {
-    sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|g| {
+    sunrise_client_gameplay::game::native_entity_refs::tests::with_client_game(|g| {
         g.world = World::new(g.res.facts().air, 1);
         g.side.audio.0.capture = Some(Vec::new());
         test(g);

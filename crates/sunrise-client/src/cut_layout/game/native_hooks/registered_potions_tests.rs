@@ -36,7 +36,7 @@ fn vanilla_potions_in_registry_order_with_ids() {
 #[test]
 #[ignore = "daily"]
 fn host_read_matches_the_prepared_potion_registry() {
-    sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+    crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let report = sunrise_protocol::registry::Builtin::find(&root).unwrap();
         let builtin = sunrise_protocol::registry::Builtin::load(&report).unwrap();

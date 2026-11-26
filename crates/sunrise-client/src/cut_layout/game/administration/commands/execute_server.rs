@@ -3,6 +3,7 @@
 #[cfg(test)]
 pub(crate) mod passenger_relation_tests {
     use super::*;
+    use sunrise_gameplay_common::game::commands_common::Target;
     use sunrise_gameplay::game::server_side::commands::execute::passenger_relation_tests::actor;
     use sunrise_gameplay::game::server_side::commands::execute::passenger_relation_tests::value;
     use sunrise_gameplay::game::server_side::commands::execute::passenger_relation_tests::vehicle;

@@ -66,7 +66,7 @@ fn game<'a>(
 
 fn id(game: &sunrise_gameplay::game::ServerGame<'_>, n: usize) -> u32 {
     match game.target_with_uuid([24732, 0, 0, n as i32]) {
-        Some(crate::game::commands::Target::Mob(id)) => id,
+        Some(sunrise_gameplay_common::game::commands_common::Target::Mob(id)) => id,
         other => panic!("{other:?}"),
     }
 }

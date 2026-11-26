@@ -100,10 +100,10 @@ fn with_game(name: &str, test: impl FnOnce(&mut sunrise_gameplay::game::ServerGa
     }
     let mods: Mods = vec![ModEntry::new("placement_read", Box::new(PlacementReadMod))].into();
     mod_platform::testing::with_mods(mods.clone(), || {
-        super::api_values::install_parts(&mods).unwrap();
+        sunrise_gameplay_common::game::api_values::install_parts(&mods).unwrap();
         mod_api::__private::mark_game_thread();
         let base = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
-        let root = super::mods::content_root(&base, &Default::default()).unwrap();
+        let root = sunrise_gameplay_common::game::mods::content_root(&base, &Default::default()).unwrap();
         with_game_at(root.prepared().to_path_buf(), |game| {
             game.options.dedicated = Some(Vec::new());
             game.world
@@ -252,7 +252,7 @@ fn placement_refusals_are_typed() {
             level.state_for_placement(game, mod_block, &context),
             Ok(game
                 .block_state_default(mod_block)
-                .map(|state| super::api_values::TryIntoApi::try_into_api(&state).unwrap()))
+                .map(|state| sunrise_gameplay_common::game::api_values::TryIntoApi::try_into_api(&state).unwrap()))
         );
 
         for (hit_y, yaw, pitch) in [

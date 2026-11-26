@@ -68,7 +68,7 @@ use super::*;
         mod_platform::testing::with_mods(mods, || {
             sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
                 let name = Tag::compound([("text", Tag::String(BASE_NAME.into()))]);
-                let mut stack = super::ItemStack::new("minecraft:iron_sword", 1);
+                let mut stack = sunrise_items::items::ItemStack::new("minecraft:iron_sword", 1);
                 stack
                     .data_mut()
                     .set_other("minecraft:item_name", Some(name.clone()));
@@ -112,14 +112,14 @@ use super::*;
                     u32::MAX,
                 )));
 
-                let mut crossbow = super::ItemStack::new("minecraft:crossbow", 1);
+                let mut crossbow = sunrise_items::items::ItemStack::new("minecraft:crossbow", 1);
                 crossbow
                     .data_mut()
                     .set_other("minecraft:item_name", Some(name));
                 crossbow
                     .data_mut()
                     .charged
-                    .push(super::ItemStack::new("minecraft:arrow", 1));
+                    .push(sunrise_items::items::ItemStack::new("minecraft:arrow", 1));
                 let lines = game.stack_tooltip_lines(&crossbow, false, false);
                 assert_eq!(
                     lines
@@ -216,7 +216,7 @@ use super::*;
                     "advancedItemTooltips",
                     sunrise_client::options_file::V::Bool(true),
                 );
-                let stick = super::ItemStack::new("minecraft:stick", 1);
+                let stick = sunrise_items::items::ItemStack::new("minecraft:stick", 1);
                 let lines: Vec<String> = game
                     .stack_tooltip_lines(&stick, false, false)
                     .iter()
@@ -245,7 +245,7 @@ use super::*;
                 );
                 // The creative screen's inventory and hotbar slots aren't creative
                 // tab slots: still hidden there.
-                game.set_screen(super::Screen::Creative);
+                game.set_screen(sunrise_gameplay_common::game::Screen::Creative);
                 let inventory: Vec<String> = game
                     .stack_tooltip_lines(&hidden, false, false)
                     .iter()

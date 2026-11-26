@@ -195,12 +195,12 @@ pub(in crate::game::server_side) fn cached_user_by_id(id: u128) -> Option<NameAn
 }
 
 /// What the start answers when the server folder still has a `forwarding.secret`.
-const FORWARDING_REMOVED: &str = "Velocity forwarding was removed from Sunrise; delete forwarding.secret from the \
+pub const FORWARDING_REMOVED: &str = "Velocity forwarding was removed from Sunrise; delete forwarding.secret from the \
      server folder (with online-mode=false, anyone who can reach the port then joins under any name)";
 
 /// A `forwarding.secret` in `dir` stops the start: Velocity forwarding is gone, and an owner who relied on it
 /// to keep an offline server closed must not find it silently open.
-fn refuse_forwarding_secret(dir: &std::path::Path) -> std::result::Result<(), String> {
+pub fn refuse_forwarding_secret(dir: &std::path::Path) -> std::result::Result<(), String> {
     if dir.join("forwarding.secret").exists() {
         return Err(FORWARDING_REMOVED.to_owned());
     }
@@ -215,7 +215,7 @@ fn startup_done(elapsed: Duration) -> String {
 
 /// `MinecraftServer.runServer`'s overload warning for a server `behind` its
 /// schedule, in milliseconds and in ticks of `tick`.
-fn overload_warning(behind: Duration, tick: Duration) -> String {
+pub fn overload_warning(behind: Duration, tick: Duration) -> String {
     format!(
         "Can't keep up! Is the server overloaded? Running {}ms or {} ticks behind",
         behind.as_millis(),
@@ -247,12 +247,12 @@ fn idles_out(idle_ticks: u64, minutes: i32, won_game: bool) -> bool {
 }
 
 /// Log4j's console pattern: `[HH:mm:ss] [thread/LEVEL]: message`.
-pub(in crate::game) fn log(level: &str, message: &str) {
+pub fn log(level: &str, message: &str) {
     log_from("Server thread", level, message);
 }
 
 /// A line from another of vanilla's threads (the login's User Authenticator).
-fn log_from(thread: &str, level: &str, message: &str) {
+pub fn log_from(thread: &str, level: &str, message: &str) {
     let file_level = match level {
         "WARN" => ::log::Level::Warn,
         "ERROR" => ::log::Level::Error,

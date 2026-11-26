@@ -11,6 +11,7 @@ mod tests {
     use {sunrise_gameplay_common::game::server_side::native_item_places::tests::guest, sunrise_gameplay::game::server_side::native_item_places::tests::open_to_lan};
     use super::*;
     use mod_api::{HostTransaction, MenuReplace, MenuSlotBacking};
+    use mod_api::{Hand, MenuContainer, MenuSlotBackRefusal};
     use sunrise_items::items::ItemStack;
     use sunrise_sim::lan::menu::Slots;
 

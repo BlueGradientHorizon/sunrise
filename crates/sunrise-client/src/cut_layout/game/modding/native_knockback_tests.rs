@@ -159,7 +159,7 @@ fn the_bridge_names_the_attacker_and_what_it_holds() {
             let plan = game.prepare_knockback_credit(victim, None, game.side.combat.0.attack());
             let mut credit = plan.lend(&mut game.side.last_hurt_by_player);
             let mut knock = PUSH;
-            let canceled = super::native_hooks::knockback(
+            let canceled = sunrise_gameplay_common::game::native_hooks::knockback(
                 damage_level_of!(game, attack, &mut credit, None).reborrow(),
                 pushed,
                 &mut knock,
@@ -221,7 +221,7 @@ fn a_canceled_push_is_reported() {
         let level = damage_level_of!(game, &NO_ATTACK, &mut credit, None);
         log.lock().unwrap().cancel = true;
         let mut knock = PUSH;
-        assert!(super::native_hooks::knockback(
+        assert!(sunrise_gameplay_common::game::native_hooks::knockback(
             level.reborrow(),
             Hurting::Player(12, source(7)),
             &mut knock
@@ -661,7 +661,7 @@ fn callable_knockback_reads_resistance_written_this_tick() {
         let living = game.living(game.entity(42).unwrap()).unwrap();
         assert_eq!(
             game.write_attribute(
-                super::commands::Target::Mob(42),
+                sunrise_gameplay_common::game::commands_common::Target::Mob(42),
                 "minecraft:knockback_resistance",
                 AttributeWrite::Base(1.0),
             ),

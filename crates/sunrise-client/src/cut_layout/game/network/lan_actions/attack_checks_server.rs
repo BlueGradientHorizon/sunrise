@@ -11,7 +11,7 @@ pub(crate) mod tests {
     use std::sync::{Arc, atomic::AtomicI32, mpsc};
     use sunrise_core::position::ChunkPos;
     use sunrise_level::chunk::Chunk;
-    use sunrise_protocol::packets::configuration::ClientInformation;
+    use sunrise_protocol::packets::{configuration::ClientInformation, play};
     use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
 
     /// handleAttack disconnects a player who attacks a dropped item, an experience orb,

@@ -1,2 +1,2 @@
 
-pub(in crate::game) mod recipe_properties;
+pub mod recipe_properties;

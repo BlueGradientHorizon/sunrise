@@ -1055,7 +1055,7 @@ fn a_falling_block_finishes_each_hit_before_the_next_victim() {
             second.position = at;
             game.mobs.push(first);
             game.mobs.push(second);
-            let mut anvil = super::FallingBlock {
+            let mut anvil = sunrise_gameplay_common::game::FallingBlock {
                 size_answer: None,
                 attachment_lifetime: Default::default(),
                 rotation: [0.0; 2],
@@ -1601,7 +1601,7 @@ fn borrowed_mod_effect_posts_before_the_next_action() {
         let pig = game.mobs.iter().find(|m| m.id == 225046).unwrap();
         assert_eq!(pig.health, 4.0, "revived to 5, lost 2, healed once for 1");
         assert_eq!(
-            super::creatures::source_damage_type(pig.last_damage.unwrap().0),
+            sunrise_gameplay_common::game::creatures::source_damage_type(pig.last_damage.unwrap().0),
             "minecraft:indirect_magic"
         );
         assert_eq!(pig.extra.effects[0].duration, 9);
@@ -2019,7 +2019,7 @@ fn a_dolphin_goal_move_posts_before_the_next_goal() {
 
             if !breath {
                 let at = Vec3::new(3.5, 80.0, 1.5);
-                let mut boat = super::boats_common::Boat::new(225049, "oak".into(), at, 0.0);
+                let mut boat = sunrise_gameplay_common::game::boats_common::Boat::new(225049, "oak".into(), at, 0.0);
                 boat.velocity.x = 0.2;
                 game.riding = Some(boat.id);
                 game.boats.push(boat);

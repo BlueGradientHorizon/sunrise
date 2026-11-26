@@ -16,7 +16,7 @@ fn block_crumble_draws_the_block_it_names() {
         &mut server,
         "particle minecraft:block_crumble{block_state:\"minecraft:stone\"} 0.5 100.5 0.5 0 0 0 0 1",
     );
-    sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|client| {
+    crate::game::native_entity_refs::tests::with_client_game(|client| {
         client
             .world
             .chunks

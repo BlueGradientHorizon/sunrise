@@ -6,7 +6,7 @@
 //! server's players, and in-frame on the window's own level. Clients get the
 //! new entities through the tracker, as any other.
 use crate::game::ServerGame;
-use sunrise_gameplay_common::game::spill_common as spill;
+pub use sunrise_gameplay_common::game::spill_common as spill;
 use mod_api::{EntityRef, LevelRef};
 use sunrise_items::items::ItemStack;
 

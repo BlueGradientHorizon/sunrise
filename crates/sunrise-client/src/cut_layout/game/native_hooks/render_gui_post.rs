@@ -31,7 +31,7 @@ mod tests {
         ]
         .into();
         mod_platform::testing::with_mods(mods, || {
-            sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+            crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
                 let mut batch = HudBatch::scratch([640, 480]);
                 let mut corners = Corners::new(batch.width, batch.height, 0.0);
                 game.native_render_gui_post(&mut batch, &mut corners);

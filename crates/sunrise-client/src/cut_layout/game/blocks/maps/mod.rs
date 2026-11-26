@@ -80,7 +80,7 @@ use super::*;
             .data
             .insert(map_id, MapData::fresh(0.0, 0.0, 0, "minecraft:overworld"));
         game.set_mode(GameMode::Adventure);
-        let hit = super::super::Hit {
+        let hit = sunrise_gameplay_common::game::Hit {
             pos,
             face: [0, 1, 0],
             inside: false,

@@ -192,7 +192,7 @@ use std::{
         let mut properties = Properties::default();
         properties.put("level-seed", "54321".into());
         let props =
-            super::ServerProperties::new(properties, &mut super::SystemEntropy::default()).unwrap();
+            sunrise_server_files::properties::ServerProperties::new(properties, &mut sunrise_server_files::properties::SystemEntropy::default()).unwrap();
         let resources = std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap().into();
         sunrise_gameplay::game::native_entity_refs::tests::with_game_role(
             resources,

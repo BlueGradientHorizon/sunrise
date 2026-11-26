@@ -5,6 +5,7 @@ use sunrise_level::containers::BlockEntity;
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
+    use sunrise_sim::mobs::spawner::Spawner;
 
     /// `BaseSpawner.serverTick` with a player in range: a running delay only
     /// goes down by one a tick, drawing nothing from the level random and

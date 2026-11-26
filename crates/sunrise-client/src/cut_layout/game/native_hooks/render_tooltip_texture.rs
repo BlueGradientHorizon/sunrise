@@ -115,7 +115,7 @@ pub(crate) mod render_tooltip_texture_tests {
                 .collect()
         };
 
-        sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+        crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
             for case in &witness.cases {
                 let [bx, by, bw, bh] = case.bounds.map(|v| v as f32);
                 let mut plain_batch = HudBatch::scratch([320, 240]);
@@ -194,7 +194,7 @@ pub(crate) mod render_tooltip_texture_tests {
         let stone = ItemStack::new("minecraft:stone", 1);
         let mods: mod_api::Mods = vec![ModEntry::new("gold", Box::new(Gold))].into();
         // Keep baseline and modded draws on one atlas so `atlas.white`'s UV matches (#4437).
-        sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+        crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
             let unheard = [None, Some(&stick)].map(|stack| drawn(game, stack));
             // The solid fills: the background's three, the two borders' and their gradient sides.
             assert_eq!(unheard[0].len(), 7 * 6);

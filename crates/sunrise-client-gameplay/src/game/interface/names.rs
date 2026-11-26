@@ -876,7 +876,7 @@ pub(in crate::game::client_side) fn named_by_player_list(
 /// `Pose::dimensions(1.0)`.
 /// shortcut: the scale attribute is not in the tag height, add `model_scale`
 /// when tags on scaled players matter.
-pub(in crate::game::client_side) fn name_tag_at(m: &Mob, alpha: f64) -> glam::DVec3 {
+pub fn name_tag_at(m: &Mob, alpha: f64) -> glam::DVec3 {
     glam::DVec3::new(
         m.previous.x + (m.position.x - m.previous.x) * alpha,
         m.previous.y + (m.position.y - m.previous.y) * alpha + m.name_tag_height() + 0.5,

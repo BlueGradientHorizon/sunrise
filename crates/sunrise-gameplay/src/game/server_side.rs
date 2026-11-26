@@ -120,7 +120,7 @@ pub(in crate::game) mod entity_initialization;
 #[path = "entities/entity_residency.rs"]
 pub mod entity_residency;
 #[path = "modding/entity_sizes.rs"]
-pub(in crate::game) mod entity_sizes;
+pub mod entity_sizes;
 #[path = "entities/explosion.rs"]
 pub mod explosion;
 #[path = "entities/explosion_detonate.rs"]

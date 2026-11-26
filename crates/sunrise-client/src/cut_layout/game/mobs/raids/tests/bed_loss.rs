@@ -18,14 +18,14 @@ fn admitted_raid_loses_removed_loaded_bed_without_erasing_memory() {
         &settings,
         std::time::Instant::now(),
         false,
-        super::super::execution_role::ExecutionRole::IntegratedServer,
+        sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer,
         &Progress::new(),
         &mut |_, _| unreachable!(),
     )
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
-    options.execution_role = super::super::execution_role::ExecutionRole::IntegratedServer;
+    options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
     let mut game = sunrise_gameplay::game::ServerGame::new(
         &loaded.resources,
         loaded.pack,

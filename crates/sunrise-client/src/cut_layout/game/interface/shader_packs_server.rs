@@ -12,7 +12,7 @@ pub(crate) mod player_status_tests {
     #[test]
     #[ignore = "daily"]
     fn pack_status_follows_the_player() {
-        sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+        sunrise_client_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
             stand_player(game);
 
             let status = game.pack_player_status();

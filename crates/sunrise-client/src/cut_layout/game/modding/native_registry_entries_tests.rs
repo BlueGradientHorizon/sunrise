@@ -32,7 +32,7 @@ fn write(path: &Path, bytes: impl AsRef<[u8]>) {
     std::fs::write(path, bytes).unwrap();
 }
 pub fn request(root: &Path) -> sunrise_gameplay::game::world_loading::WorldRequest {
-    let mut request = super::world_loading::WorldRequest::new(
+    let mut request = sunrise_gameplay::game::world_loading::WorldRequest::new(
         "generic registries",
         Some("generic registries"),
         Some(1),
@@ -373,7 +373,7 @@ fn generic_client_entries_use_only_builtin_synced_and_negotiated_tables() {
                     assert_eq!(host(game).registry_entries(registry), None);
                     assert_eq!(host(game).registry_entry(registry, "minecraft:oak"), None);
                 }
-                let sync = super::lan::sync::sync_data(
+                let sync = sunrise_gameplay::game::lan::sync::sync_data(
                     &game.options.resources,
                     &game.res.core.item_data,
                     game.items(),

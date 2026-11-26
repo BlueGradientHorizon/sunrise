@@ -17,7 +17,7 @@ mod command_exploration_map_tests {
         );
         assert_eq!(
             game.player_source().entity,
-            Some(crate::game::commands::Target::Player)
+            Some(sunrise_gameplay_common::game::commands_common::Target::Player)
         );
         game.build_registries();
         game.set_allow_commands(true);

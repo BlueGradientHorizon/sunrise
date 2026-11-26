@@ -28,7 +28,7 @@ fn lifecycle_carts_keep_registrations_through_commands_unload_park_and_remote() 
             }
         },
         ids: |game| game.carts.iter().map(|cart| cart.id).collect(),
-        target: crate::game::commands::Target::Cart,
+        target: sunrise_gameplay_common::game::commands_common::Target::Cart,
         unloads_with_chunk: true,
         remote: None,
     }
@@ -76,7 +76,7 @@ fn lifecycle_carts_keep_registrations_through_commands_unload_park_and_remote() 
 #[ignore = "daily"]
 fn connecting_to_a_remote_level_clears_the_existing_cart_list() {
     use sunrise_protocol::connection::Pipe;
-    sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+    sunrise_client_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
         game.carts.push(Minecart::new(
             71,
             CartKind::Rideable,
@@ -336,7 +336,7 @@ fn a_bound_tnt_cart_passes_interaction_without_priming() {
 #[ignore = "daily"]
 fn a_bound_cart_commits_valid_nbt_and_refuses_an_invalid_load() {
     bound_cart_case(CartKind::Furnace, |game| {
-        let target = super::super::commands::Target::Cart(71);
+        let target = sunrise_gameplay_common::game::commands_common::Target::Cart(71);
         game.carts.update(0, |cart| cart.fuel = 6);
         let uuid = game.uuid_for(71);
         assert!(

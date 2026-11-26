@@ -11,7 +11,7 @@ fn a_new_player_after_a_portal_keeps_the_old_ones_modifiers() {
     use sunrise_protocol::packets::play::{
         self, AttributeModifier, AttributeSnapshot, Clientbound as C,
     };
-    sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+    crate::game::native_entity_refs::tests::with_client_game(|game| {
         let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
         game.connect_local(pipe, "Steve").unwrap();
         let spawn = |dimension: &str| play::SpawnInfo {

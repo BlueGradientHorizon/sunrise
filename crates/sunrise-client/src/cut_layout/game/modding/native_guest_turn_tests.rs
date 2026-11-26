@@ -27,9 +27,9 @@ pub use sunrise_gameplay::game::native_guest_turn_tests::{
 #[ignore = "daily"]
 fn player_dimensions_validate_identity_on_both_server_roles() {
     use sunrise_gameplay_common::game::execution_role::ExecutionRole;
-    let previous_extra = super::EXTRA_DIMS.read().unwrap().clone();
+    let previous_extra = sunrise_gameplay_common::game::EXTRA_DIMS.read().unwrap().clone();
     with_guests(|game| {
-        super::Dim::add_extra("test:pocket");
+        sunrise_gameplay_common::game::Dim::add_extra("test:pocket");
         for role in [
             ExecutionRole::DedicatedServer,
             ExecutionRole::IntegratedServer,
@@ -114,7 +114,7 @@ fn player_dimensions_validate_identity_on_both_server_roles() {
             );
         }
     });
-    *super::EXTRA_DIMS.write().unwrap() = previous_extra;
+    *sunrise_gameplay_common::game::EXTRA_DIMS.write().unwrap() = previous_extra;
 }
 
 #[test]
@@ -602,12 +602,12 @@ fn velocity_writes_send_only_the_owning_player_the_replacement_motion() {
         })
         .unwrap();
         // The player's own level can be parked while the mod runs in another one.
-        game.enter_level(super::Dim::Nether).unwrap();
+        game.enter_level(sunrise_gameplay_common::game::Dim::Nether).unwrap();
         let living = game.living(b).unwrap();
         assert!(living.knockback(game, 1.0, [0.0, 1.0]));
         let b_body = game.command_guest(13).unwrap().motion.as_ref().unwrap();
         assert_eq!(b_body.velocity, Vec3::new(-1.0, 0.0, 0.0));
-        assert_eq!(game.dim, super::Dim::Nether);
+        assert_eq!(game.dim, sunrise_gameplay_common::game::Dim::Nether);
         // A direction too short to normalise is retried from the player's own random
         // (`Entity.random`), never the level's.
         use sunrise_core::random::RandomSource;
@@ -616,7 +616,7 @@ fn velocity_writes_send_only_the_owning_player_the_replacement_motion() {
             .side
             .levels
             .0
-            .parked_mut(super::Dim::Overworld)
+            .parked_mut(sunrise_gameplay_common::game::Dim::Overworld)
             .unwrap()
             .world
             .random
@@ -640,7 +640,7 @@ fn velocity_writes_send_only_the_owning_player_the_replacement_motion() {
             game.side
                 .levels
                 .0
-                .parked_mut(super::Dim::Overworld)
+                .parked_mut(sunrise_gameplay_common::game::Dim::Overworld)
                 .unwrap()
                 .world
                 .random
@@ -670,7 +670,7 @@ fn velocity_writes_send_only_the_owning_player_the_replacement_motion() {
 #[test]
 #[ignore = "daily"]
 fn another_guests_services_work_during_a_turn() {
-    use {crate::game::commands::Target, sunrise_gameplay::game::server_side::native_inventories::NativeInventoryKind::Ender, sunrise_gameplay::game::server_side::native_inventories::NativeInventoryKind::Player};
+    use {sunrise_gameplay_common::game::commands_common::Target,sunrise_gameplay::game::server_side::native_inventories::NativeInventoryKind::Ender, sunrise_gameplay::game::server_side::native_inventories::NativeInventoryKind::Player};
     use mod_api::{CriterionContext, CriterionTest, CriterionTestError, TriggerCriterionError};
     use sunrise_command::args::Selector;
     use sunrise_items::items::ItemStack;

@@ -101,7 +101,7 @@ use super::*;
         mod_platform::testing::with_mods(mods.clone(), || {
             mod_platform::__private::part_tests::install_parts_fixture(&mods).unwrap();
             with_test_factories(factories, || {
-                sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+                crate::game::native_entity_refs::tests::with_client_game(|game| {
                     let draw = |game: &mut sunrise_client_gameplay::game::ClientGame<'_>, stack: &ItemStack| {
                         TEXT_DRAWN.store(false, Ordering::Relaxed);
                         IMAGE_DRAWN.store(false, Ordering::Relaxed);

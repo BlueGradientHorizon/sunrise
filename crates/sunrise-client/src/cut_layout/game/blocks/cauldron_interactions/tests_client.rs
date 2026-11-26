@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use sunrise_gameplay_common::game::Hit;
 use sunrise_items::items::ItemStack;
 use super::*;
 use crate::game::cauldron_interactions::tests::{

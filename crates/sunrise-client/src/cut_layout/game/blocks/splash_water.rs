@@ -24,7 +24,7 @@ mod tests {
         // The lit campfire the douse looks for.
         let lit = game.lit_campfire(campfire, "minecraft:campfire");
         assert!(lit.is_some(), "the campfire starts lit");
-        super::super::sculk::TEST_POSTED_EVENTS.with(|e| *e.borrow_mut() = Some(Vec::new()));
+        sunrise_client_gameplay::game::client_side::sculk::TEST_POSTED_EVENTS.with(|e| *e.borrow_mut() = Some(Vec::new()));
 
         game.douse_fire(pos, Some(Who::Mob(7)));
 
@@ -39,7 +39,7 @@ mod tests {
                 .is_some_and(|v| v == "true"),
             "the campfire is out"
         );
-        super::super::sculk::TEST_POSTED_EVENTS.with(|e| {
+        sunrise_client_gameplay::game::client_side::sculk::TEST_POSTED_EVENTS.with(|e| {
             assert!(
                 e.borrow().as_ref().unwrap().contains(&(
                     "minecraft:block_change",

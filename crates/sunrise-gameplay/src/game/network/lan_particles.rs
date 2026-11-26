@@ -857,7 +857,7 @@ pub mod tests {
         pub(in crate::game) static PARTICLE_MAP_READS: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
     }
 
-    pub(in crate::game) struct MeasuredParticle;
+    pub struct MeasuredParticle;
     #[mod_api::__subscriptions]
     impl mod_api::Hooks for MeasuredParticle {
         fn register(

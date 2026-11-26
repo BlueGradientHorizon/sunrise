@@ -133,7 +133,7 @@ pub(crate) mod entity_tick_tests {
         .into();
         let mut positions = Vec::new();
         mod_platform::testing::with_mods(mods, || {
-            sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+            crate::game::native_entity_refs::tests::with_client_game(|game| {
                 game.world.chunks.insert(
                     (0, 0),
                     std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
@@ -188,7 +188,7 @@ pub(crate) mod entity_tick_tests {
         .into();
         let mut after = [0.0; 3];
         mod_platform::testing::with_mods(mods, || {
-            sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+            crate::game::native_entity_refs::tests::with_client_game(|game| {
                 game.world.chunks.insert(
                     (0, 0),
                     std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),

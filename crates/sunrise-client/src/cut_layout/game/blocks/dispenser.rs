@@ -4,7 +4,9 @@ use sunrise_core::geometry::Vec3;
 #[cfg(test)]
 pub(crate) mod tests {
 
-use sunrise_gameplay::dispense_rules::{CLICK, FAIL};
+use sunrise_gameplay::dispense_rules::{CLICK, FAIL, Slot};
+use sunrise_core::geometry::Direction;
+use sunrise_gameplay::game::server_side::dispenser::mod_dispensed;
 use sunrise_items::items::ItemStack;
 
 use sunrise_gameplay::game::server_side::dispenser::tests::dispense_at_guest;

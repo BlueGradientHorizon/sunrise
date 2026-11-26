@@ -1380,7 +1380,7 @@ pub(crate) fn run_hud_camera_mounts_match_26_3_oracle() {
                     );
                     let camera = game.camera_player();
                     assert_eq!(
-                        camera != crate::game::remote_camera::CameraPlayer::Absent,
+                        camera != sunrise_client_gameplay::game::remote_camera::CameraPlayer::Absent,
                         row["camera_is_player"].as_bool().unwrap(),
                         "{label}: camera_is_player"
                     );

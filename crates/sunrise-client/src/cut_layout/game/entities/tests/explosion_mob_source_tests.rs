@@ -10,6 +10,7 @@ use sunrise_gameplay::game::game_tests::tests::server_game;
 use sunrise_core::nbt::Tag;
 use sunrise_game_data::gamerules::Value;
 use sunrise_sim::mobs::{Mob, MobEvent, Species};
+use sunrise_gameplay::game::server_side::explosion::BlockInteraction;
 
 /// Blasts a boat 7.7 blocks away with `owner` as the indirect source, and
 /// returns what the boat took: its damage and its push.

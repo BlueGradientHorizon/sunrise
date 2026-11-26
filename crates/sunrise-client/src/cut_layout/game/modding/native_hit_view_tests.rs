@@ -245,7 +245,7 @@ fn a_hit_listener_reads_its_victim_and_causer_live_and_their_attachments_read_on
                 .unwrap()
                 .unwrap()
             {
-                crate::game::commands::Target::Stand(id) => id,
+                crate::game::server_side::commands::Target::Stand(id) => id,
                 other => panic!("an armor stand summoned as {other:?}"),
             };
             let stand = game.entity(stand).unwrap();

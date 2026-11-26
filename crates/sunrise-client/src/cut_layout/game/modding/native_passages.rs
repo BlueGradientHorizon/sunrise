@@ -3,6 +3,8 @@
 #[cfg(test)]
 pub(crate) mod tests {
 
+use sunrise_gameplay_common::game::native_passages::tests::RemoveOnSecondSent;
+
 use sunrise_gameplay_common::game::native_passages::tests::doorway;
 
 use sunrise_gameplay_common::game::native_passages::tests::doorway_form;

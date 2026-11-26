@@ -167,7 +167,7 @@ fn native_datapack_host_reads_enforce_level_session_and_generation() {
                 assert!(!visited_refusal);
             });
             // The client must use the received snapshot, not any server set on its Game.
-            sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|client| {
+            sunrise_client_gameplay::game::native_entity_refs::tests::with_client_game(|client| {
                 let (_reader, _writer) = crate::game::remote::tests::connect_menu_test(client);
                 crate::game::remote::tests::spawn_menu_test(client);
                 client.mods.datapack_registries = Some(std::sync::Arc::new(

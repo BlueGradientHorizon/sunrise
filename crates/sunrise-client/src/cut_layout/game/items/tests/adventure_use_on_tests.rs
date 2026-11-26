@@ -332,7 +332,7 @@ fn an_adventure_use_on_is_not_predicted_on_the_client() {
     if std::env::var_os("SUNRISE_TEST_RESOURCES").is_none() {
         return;
     }
-    sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+    sunrise_client_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
         let _pipe = sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client(game);
         game.player = Some(
             sunrise_sim::motion::PlayerMotion::new(

@@ -2,7 +2,8 @@
 //! (`applyItemBlocking`'s `blockingFactor`).
 use {crate::game::*, sunrise_gameplay_common::game::{Instant, ItemStack, Options, PathBuf, PlayerMotion, Progress, Resources, Vec3, execution_role, hit}};
 use std::sync::Arc;
-use sunrise_gameplay_common::game::{Settings, load_resources};
+use crate::settings::Settings;
+use crate::game::load_resources;
 use sunrise_level::chunk::Chunk;
 use sunrise_sim::mobs::{Damage, MobEvent, Who};
 

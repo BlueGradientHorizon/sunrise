@@ -151,7 +151,7 @@ pub(crate) mod tnt_impact_tests {
             &mut cart,
             [0.0; 2],
             0,
-            &mut crate::game::server_side::minecarts_server::CartIndex::default()
+            &mut sunrise_gameplay::game::server_side::minecarts_server::CartIndex::default()
         ));
         let powered = registry
             .state(game.world.block(6, 65, 8))
@@ -633,7 +633,7 @@ pub(crate) mod rejected_passenger_tests {
                 .unwrap();
             let leaf = game.mob_passenger_ids(ghost)[0];
             assert!(game.mobs_below_off_level().contains(&leaf));
-            assert!(game.kill_vehicle_object(crate::game::commands::Target::Cart(5000)));
+            assert!(game.kill_vehicle_object(sunrise_gameplay::game::commands::Target::Cart(5000)));
             let rider = game.mob_object(ghost).unwrap();
             assert_eq!(rider.extra.mount, None);
             assert!(!rider.extra.passenger);

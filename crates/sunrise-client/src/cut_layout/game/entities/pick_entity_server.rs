@@ -73,7 +73,7 @@ pub(crate) mod tests {
                         g.inventory[0] = None;
                         g.selected = 0;
                     });
-                    game.side.lan = Some(crate::game::lan::LanHost::for_test(hub));
+                    game.side.lan = Some(sunrise_gameplay::game::server_side::lan::LanHost::for_test(hub));
 
                     for (id, expected) in [
                         (far_knot as i32, None),

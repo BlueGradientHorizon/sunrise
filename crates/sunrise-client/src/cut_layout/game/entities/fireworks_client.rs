@@ -53,7 +53,7 @@ pub(crate) mod tests {
         let camera = glam::DVec3::new(0.5, 64.0, 0.5);
         let start = Vec3::new(0.5, 64.0, 4.5);
         game.rockets
-            .push(super::Rocket::remote(77, start, Vec3::ZERO));
+            .push(sunrise_gameplay_common::game::fireworks::Rocket::remote(77, start, Vec3::ZERO));
         let id = sunrise_gameplay_common::game::MOTION_OBJECT | 77;
         // One frame's motion runs: the rocket's vertices open a run under its own id, and
         // a camera-only run (id 0) closes it so nothing drawn after takes its motion.
@@ -78,20 +78,20 @@ pub(crate) mod tests {
         use sunrise_client::particles::ParticleLevel;
         use sunrise_core::geometry::Vec3;
         use sunrise_protocol::packets::play::{Clientbound as C, EntityEvent};
-        sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+        crate::game::native_entity_refs::tests::with_client_game(|game| {
             game.player = Some(
                 sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::new(2.5, 200.0, 2.5))
                     .unwrap(),
             );
             let (quiet_at, loud_at) = ([6.5, 201.5, 10.5], [12.5, 201.5, 10.5]);
-            let mut quiet = super::Rocket::remote(
+            let mut quiet = sunrise_gameplay_common::game::fireworks::Rocket::remote(
                 101,
                 Vec3::new(quiet_at[0], quiet_at[1], quiet_at[2]),
                 Vec3::ZERO,
             );
             quiet.silent = true;
             quiet.explosions = vec![explosion.clone()].into();
-            let mut loud = super::Rocket::remote(
+            let mut loud = sunrise_gameplay_common::game::fireworks::Rocket::remote(
                 102,
                 Vec3::new(loud_at[0], loud_at[1], loud_at[2]),
                 Vec3::ZERO,
@@ -102,7 +102,7 @@ pub(crate) mod tests {
             for id in [101, 102] {
                 game.apply_packet(C::EntityEvent(EntityEvent {
                     id,
-                    event: sunrise_client_gameplay::game::client_side::fireworks_client::FIREWORK_EXPLODE_EVENT,
+                    event: sunrise_gameplay_common::game::fireworks::FIREWORK_EXPLODE_EVENT,
                 }))
                 .unwrap();
             }

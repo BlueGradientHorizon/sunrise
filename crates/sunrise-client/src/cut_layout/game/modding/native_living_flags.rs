@@ -181,7 +181,7 @@ pub(crate) mod tests {
                     game.spawn_mob_spawned(
                         "zombie",
                         [5.0, 64.0, 5.0],
-                        super::super::creatures::SpawnSite::Finalizing(
+                        sunrise_gameplay_common::game::creatures::SpawnSite::Finalizing(
                             sunrise_sim::mobs::spawn_rules::Reason::Command,
                         ),
                     )
@@ -199,7 +199,7 @@ pub(crate) mod tests {
             game.spawn_mob_spawned(
                 "zombie",
                 [5.0, 64.0, 5.0],
-                super::super::creatures::SpawnSite::Finalizing(
+                sunrise_gameplay_common::game::creatures::SpawnSite::Finalizing(
                     sunrise_sim::mobs::spawn_rules::Reason::Command,
                 ),
             )
@@ -614,7 +614,7 @@ pub(crate) mod tests {
                     assert_eq!(game.world.block(5, 64, 5), foreign_bed);
                     assert_eq!(game.world.block(7, 64, 7), outer_bed);
                     assert!(game.side.lan_guest_swaps.is_empty());
-                    assert_eq!(game.dim, super::super::Dim::Overworld);
+                    assert_eq!(game.dim, sunrise_gameplay_common::game::Dim::Overworld);
                 });
             }
         }

@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+use mod_api::Holder;
 use super::*;
 use {sunrise_gameplay_common::game::Dim, crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_entity_refs::tests::with_game};
 use mod_api::{AttachmentType, EntityConstructingEvent, Hooks, HostSide};

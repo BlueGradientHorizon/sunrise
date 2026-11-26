@@ -499,7 +499,7 @@ fn a_listener_discarded_row_gets_no_callback() {
         assert!(
             game.persist
                 .removals
-                .contains(&crate::game::commands::Target::General(second))
+                .contains(&sunrise_gameplay_common::game::commands_common::Target::General(second))
         );
         assert_eq!(counter(game, second), 0, "no callback ran for it");
     });
@@ -1014,13 +1014,13 @@ fn summon_answers_a_target_with_a_network_id() {
         let rows = &game.resident_entities.general.rows;
         assert_eq!(rows.len(), 1);
         let id = rows[0].id;
-        assert_eq!(target, crate::game::commands::Target::General(id));
+        assert_eq!(target, sunrise_gameplay_common::game::commands_common::Target::General(id));
         assert_eq!(
-            game.network_entity_id(crate::game::commands::Target::General(id)),
+            game.network_entity_id(sunrise_gameplay_common::game::commands_common::Target::General(id)),
             Some(id as i32)
         );
         assert_eq!(
-            game.target_position(crate::game::commands::Target::General(id)),
+            game.target_position(sunrise_gameplay_common::game::commands_common::Target::General(id)),
             Some([0.5, 64.0, 0.5])
         );
     });

@@ -2,6 +2,8 @@
 
 use std::time::Duration;
 use std::time::Instant;
+use sunrise_gameplay_common::game::saving::ClosingSave;
+use sunrise_gameplay_common::game::saving::Stage;
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;

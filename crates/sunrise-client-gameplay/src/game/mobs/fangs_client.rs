@@ -6,7 +6,7 @@ use sunrise_sim::mobs::anim::Poses;
 
 /// One of the twelve `crit` particles `EvokerFangs.tick` spawns on a client
 /// when `lifeTicks` hits 14. The box is 0.5 wide (`getBbWidth() * 0.5`).
-pub(in crate::game) fn fang_crit(
+pub fn fang_crit(
     random: &mut impl RandomSource,
     pos: [f64; 3],
 ) -> ([f64; 3], [f64; 3]) {

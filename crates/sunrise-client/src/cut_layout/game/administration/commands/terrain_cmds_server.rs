@@ -1,5 +1,8 @@
 
 
+use sunrise_core::position::ChunkPos;
+use sunrise_gameplay_common::game::commands_common::Target;
+
 #[cfg(test)]
 pub(crate) mod loot_mine_component_tests {
     use super::*;

@@ -18,7 +18,7 @@ mod tests {
             fn set_control_flow(&self, _: ControlFlow) {}
         }
 
-        sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+        crate::game::native_entity_refs::tests::with_client_game(|game| {
             game.options.frames = None;
             game.options.world_frames = None;
             game.options.timeout = Some(Duration::from_secs(1));

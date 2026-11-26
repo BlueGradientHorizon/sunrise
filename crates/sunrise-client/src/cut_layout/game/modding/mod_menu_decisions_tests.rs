@@ -81,7 +81,7 @@ thread_local! {
 fn script(script: Script) {
     DISPATCHES.set(0);
     TAKE.set(None);
-    super::decided_action::DECIDED.set(0);
+    sunrise_gameplay::game::server_side::decided_action::DECIDED.set(0);
     IN_ACTION.with(|a| a.borrow_mut().clear());
     SCRIPT.with(|s| *s.borrow_mut() = script);
 }
@@ -547,7 +547,7 @@ fn with_publication_mods(test: impl FnOnce()) {
 
 /// How many decisions were entered since the last `script`.
 fn decided() -> usize {
-    super::decided_action::DECIDED.get()
+    sunrise_gameplay::game::server_side::decided_action::DECIDED.get()
 }
 
 fn count(stack: &Option<ItemStack>) -> u32 {
@@ -806,7 +806,7 @@ fn open_live_depot(game: &mut sunrise_gameplay::game::ServerGame<'_>) -> i32 {
     place_depot(game, Some(QUICK_MOVE_MENU));
     assert_eq!(
         game.open_block_menu(12, POS),
-        super::lan_actions::MenuOpen::Opened
+        sunrise_gameplay_common::game::lan_actions::MenuOpen::Opened
     );
     let menu = game.side.lan.as_ref().unwrap().hub.guests[0]
         .menu
@@ -1351,7 +1351,7 @@ fn a_stale_quick_move_restores_the_original_source_and_menu_without_fallback() {
     with_publication_mods(|| {
         with_live_depot_guests(|game| {
             game.build_registries();
-            let _serving = super::integrated::tests::install_serving(game, false);
+            let _serving = sunrise_gameplay::game::server_side::integrated::tests::install_serving(game, false);
             for (handled, reopen) in [(true, false), (false, false), (true, true)] {
                 let window = open_live_depot(game);
                 let holder = game.world.block_entities.identity(POS).unwrap();
@@ -2185,7 +2185,7 @@ fn a_block_menu_click_commits_only_the_replacement_or_a_fresh_default() {
                     });
                     assert_eq!(
                         game.open_block_menu(12, POS),
-                        super::lan_actions::MenuOpen::Opened
+                        sunrise_gameplay_common::game::lan_actions::MenuOpen::Opened
                     );
                     let menu = game.side.lan.as_ref().unwrap().hub.guests[0]
                         .menu

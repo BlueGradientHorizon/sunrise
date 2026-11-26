@@ -1,4 +1,4 @@
-use super::super::Game;
+use sunrise_gameplay_common::game::Game;
 use crate::game::remote::interaction_event_tests::*;
 use mod_api::{self, LogicalSide};
 use std::sync::{Arc, Mutex};

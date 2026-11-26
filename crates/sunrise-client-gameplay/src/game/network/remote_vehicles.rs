@@ -968,7 +968,7 @@ fn mount_move(m: &Mob, at: PosRot) -> S {
 }
 
 /// Avatar's VEHICLE attachment scales independently of the vehicle's seat.
-pub(in crate::game::client_side) fn generic_player_seat(
+pub fn generic_player_seat(
     at: glam::DVec3,
     before: glam::DVec3,
     scale: f32,

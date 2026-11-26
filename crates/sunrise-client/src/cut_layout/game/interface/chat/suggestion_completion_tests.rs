@@ -3,6 +3,7 @@ use sunrise_client::chat::Commands;
 use sunrise_client::screen_draw::Measure;
 use winit::keyboard::KeyCode;
 use super::*;
+use sunrise_gameplay_common::game::Screen;
 use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress};
 use crate::game::{Audio, Settings, load_resources};
 use mod_api::{self, ChatSuggestionAppliedEvent, ClientHost, Hooks};

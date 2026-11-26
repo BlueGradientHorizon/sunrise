@@ -201,7 +201,7 @@ fn native_process_environment_in_registration_and_game_hosts() {
             ExecutionRole::Client
         };
         if role.is_client() {
-            sunrise_gameplay::game::native_entity_refs::tests::with_game_role_client(
+            sunrise_client_gameplay::game::client_side::native_entity_refs::tests::with_game_role_client(
                 sunrise_gameplay::game::native_entity_refs::tests::fixture_root(),
                 ExecutionRole::Client,
                 |game: &mut sunrise_client_gameplay::game::ClientGame<'_>| {

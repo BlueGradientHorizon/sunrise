@@ -4,6 +4,8 @@ use sunrise_gameplay_common::game::Dim;
 use sunrise_sim::mobs::Mob;
 use sunrise_sim::mobs::MobEvent;
 use super::*;
+use sunrise_gameplay_common::game::creatures::MobOutputBatch;
+use sunrise_gameplay_common::game::creatures::NormalMobActions;
 use crate::game::creatures::borrowed_panic_tests::BreathPanic;
 use crate::game::creatures::borrowed_panic_tests::Breather;
 use crate::game::creatures::borrowed_panic_tests::Consumer;

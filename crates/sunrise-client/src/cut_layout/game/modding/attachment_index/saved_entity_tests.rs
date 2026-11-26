@@ -6,6 +6,7 @@ use mod_api::{AttachmentQueries, AttachmentQueriesMut, AttachmentType};
 use std::collections::HashSet;
 use sunrise_core::nbt::Tag;
 use sunrise_mod_runtime::attachments::{ATTACHMENTS_KEY, AttachmentCodec, AttachmentError};
+use sunrise_mod_runtime::attachments::Holder;
 
 static PROJECTILE_VALUE: AttachmentType<i32> = AttachmentType {
     namespace: "saved_projectile",

@@ -1,4 +1,4 @@
-use crate::game::commands::summon_bolt_tests::ORACLE_PLAYER_UUID;
+use crate::game::server_side::commands::summon_bolt_tests::ORACLE_PLAYER_UUID;
 use {sunrise_gameplay::game::native_entity_refs::tests::bind_local_player, sunrise_gameplay::game::native_entity_refs::tests::prepare_entity_ticking_neighborhood, sunrise_gameplay::game::native_entity_refs::tests::with_game};
 use sunrise_core::geometry::Vec3;
 use sunrise_core::position::ChunkPos;
@@ -84,7 +84,7 @@ fn silent_bolt_suppresses_sound_and_posts_strike_event_on_first_tick() {
     });
 
     // Client bolt tick plays thunder + impact once for audible bolts and suppresses both for Silent:1b.
-    sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+    crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
         game.bolts.clear();
         game.spawn_remote_bolt(1, [4.5, 210.0, 4.5]);
         game.bolts.update(0, |b| b.silent = true);

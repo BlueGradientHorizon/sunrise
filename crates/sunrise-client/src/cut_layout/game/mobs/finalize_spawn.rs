@@ -6,6 +6,7 @@ use sunrise_sim::mobs::Species;
 mod tests {
     use super::*;
     use sunrise_core::random::{LegacyRandom, RandomSource};
+    use sunrise_sim::mobs::spawn_rules::Reason;
 
     /// A zombie for the spawn tests, at a spot with room around it.
     fn zombie(game: &sunrise_gameplay::game::ServerGame<'_>) -> sunrise_sim::mobs::Mob {

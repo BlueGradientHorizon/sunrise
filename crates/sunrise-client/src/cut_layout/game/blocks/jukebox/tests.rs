@@ -12,9 +12,9 @@ use sunrise_world::registry::BlockStateId;
 
 /// The game events posted while `f` runs, as `(event, position, source)`.
 fn record(f: impl FnOnce()) -> Vec<(&'static str, [f64; 3], Option<Who>)> {
-    sunrise_client_gameplay::game::sculk::TEST_POSTED_EVENTS.with(|e| *e.borrow_mut() = Some(Vec::new()));
+    sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|e| *e.borrow_mut() = Some(Vec::new()));
     f();
-    sunrise_client_gameplay::game::sculk::TEST_POSTED_EVENTS.with(|e| e.borrow_mut().take().unwrap_or_default())
+    sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|e| e.borrow_mut().take().unwrap_or_default())
 }
 
 /// A windowless integrated-server game from the prepared resources with a

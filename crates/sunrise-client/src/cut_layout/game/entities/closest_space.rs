@@ -109,7 +109,7 @@ mod tests {
                 }
                 let body = PlayerMotion::new(game.motion, Vec3::new(3.5, 64.0, 5.5)).unwrap();
                 assert_eq!(
-                    super::closest_space_nudge(
+                    sunrise_gameplay_common::game::closest_space::closest_space_nudge(
                         &body,
                         &game.world,
                         game.collision,

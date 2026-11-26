@@ -1,6 +1,8 @@
 
 
 use sunrise_core::geometry::Vec3;
+use sunrise_gameplay::game::respawn_anchor::RespawnConfig;
+use sunrise_gameplay::game::respawn_anchor::look_at_yaw;
 use sunrise_gameplay_common::game::Dim;
 #[cfg(test)]
 pub(crate) mod connected_spawnpoint_rotation_tests {

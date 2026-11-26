@@ -7,7 +7,7 @@ use super::*;
 #[test]
 #[ignore = "daily"]
 fn an_end_crystal_click_on_a_block_ends_there() {
-    sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+    crate::game::native_entity_refs::tests::with_client_game(|game| {
         use sunrise_gameplay_common::game::Hit;
         use std::sync::Arc;
         use sunrise_core::geometry::Vec3;

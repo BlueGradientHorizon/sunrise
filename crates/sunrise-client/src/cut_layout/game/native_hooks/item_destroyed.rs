@@ -160,7 +160,7 @@ mod item_destroyed_tests {
                 game.server_explode(
                     [5.5, 64.0, 5.5],
                     2.0,
-                    crate::game::explosion::BlockInteraction::Keep,
+                    sunrise_gameplay::game::server_side::explosion::BlockInteraction::Keep,
                     false,
                 )
                 .unwrap();
@@ -535,7 +535,7 @@ mod item_destroyed_tests {
                 game.server_explode(
                     [4.5, 64.0, 4.5],
                     2.0,
-                    crate::game::explosion::BlockInteraction::Keep,
+                    sunrise_gameplay::game::server_side::explosion::BlockInteraction::Keep,
                     false,
                 )
                 .unwrap();

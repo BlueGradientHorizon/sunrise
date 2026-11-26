@@ -8,6 +8,8 @@ use super::*;
 use std::sync::Arc;
 use sunrise_core::position::ChunkPos;
 use sunrise_level::chunk::Chunk;
+use sunrise_gameplay_common::game::{Options, Progress, Resources, load_resources};
+use crate::settings::Settings;
 
 fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> sunrise_gameplay::game::ServerGame<'_> {
     let root = std::path::PathBuf::from(

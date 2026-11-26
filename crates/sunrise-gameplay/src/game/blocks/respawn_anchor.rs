@@ -21,7 +21,7 @@ use sunrise_world::{level::data::state_flags, registry::BlockStateId};
 /// `ServerPlayer.RespawnConfig`: a respawn point other than the world spawn
 /// that the game resolves through its block (a respawn anchor).
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(in crate::game) struct RespawnConfig {
+pub struct RespawnConfig {
     pub dim: Dim,
     pub pos: [i32; 3],
     pub yaw: f32,

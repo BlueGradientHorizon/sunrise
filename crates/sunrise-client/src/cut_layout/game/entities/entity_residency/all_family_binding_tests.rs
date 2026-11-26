@@ -98,7 +98,7 @@ fn every_ordinary_resident_family_binds_its_actual_owned_slot() {
         game.tie_knot(fence);
         let mob_id = game.mobs[0].id;
         assert!(game.set_leash(
-            crate::game::commands::Target::Mob(mob_id),
+            sunrise_gameplay_common::game::commands_common::Target::Mob(mob_id),
             sunrise_sim::mobs::leash::Holder::Knot(fence),
             None,
         ));
@@ -114,7 +114,7 @@ fn every_ordinary_resident_family_binds_its_actual_owned_slot() {
         game.resident_entities
             .general
             .rows
-            .push(super::super::general::GeneralRow {
+            .push(sunrise_gameplay_common::game::general::GeneralRow {
                 id: 4242,
                 uuid: [11, 12, 13, 14],
                 join: sunrise_sim::join_seq::JoinSeq::UNJOINED,

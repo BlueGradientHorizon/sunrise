@@ -116,7 +116,7 @@ pub(crate) mod tests {
         };
         let mut snapshots = Vec::new();
         with_game(|game| {
-            let mut request = crate::game::world_loading::WorldRequest::new(
+            let mut request = sunrise_gameplay::game::world_loading::WorldRequest::new(
                 "tag-reload",
                 Some("test"),
                 Some(1),

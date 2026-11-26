@@ -4,6 +4,10 @@
 //! `mob_drops` on) before the equipment pops
 //! (tools/test_stand_break_loot_parity.py measures the same on vanilla 26.3).
 use super::*;
+use crate::settings::Settings;
+use sunrise_gameplay_common::game::launch_options::Options;
+use sunrise_gameplay_common::game::load_resources;
+use sunrise_gameplay_common::game::resource_load::Progress;
 use std::sync::Arc;
 use sunrise_core::position::ChunkPos;
 use sunrise_level::chunk::Chunk;

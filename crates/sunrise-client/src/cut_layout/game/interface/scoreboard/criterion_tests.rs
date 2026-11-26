@@ -1,5 +1,6 @@
 use super::*;
 use sunrise_core::geometry::Vec3;
+use sunrise_gameplay_common::game::commands_common::Target;
 
 #[test]
 #[ignore = "daily"]

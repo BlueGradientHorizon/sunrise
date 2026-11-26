@@ -112,7 +112,7 @@ pub(crate) mod escape_tests {
         let mut game = server_game(&mut game_resources);
         let feet = sunrise_core::geometry::Vec3::new(8.5, 70.0, 8.5);
         game.player = Some(sunrise_sim::motion::PlayerMotion::new(game.motion, feet).unwrap());
-        super::native_entity_refs::tests::prepare_entity_ticking_neighborhood(
+        crate::game::native_entity_refs::tests::prepare_entity_ticking_neighborhood(
             &mut game,
             sunrise_core::position::ChunkPos::new(0, 0),
         );

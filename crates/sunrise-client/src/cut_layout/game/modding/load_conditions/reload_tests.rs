@@ -100,7 +100,7 @@ fn reload_conditions_read_candidate_registries_and_bound_tags() {
         .into(),
         || {
             sunrise_gameplay::game::native_entity_refs::tests::with_game(|game| {
-                let mut request = crate::game::world_loading::WorldRequest::new(
+                let mut request = sunrise_gameplay::game::world_loading::WorldRequest::new(
                     "conditions",
                     Some("test"),
                     Some(1),

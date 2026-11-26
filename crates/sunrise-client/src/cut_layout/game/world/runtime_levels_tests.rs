@@ -2,6 +2,7 @@
 
 use super::native_entity_refs::tests::with_game;
 use sunrise_gameplay::game::server_side::runtime_levels::RuntimeTable;
+use sunrise_gameplay_common::game::Dim;
 use mod_api::{
     ChunkRef, ChunkUnloadEvent, Hooks, HostSide, LevelLoadEvent, LevelRef, LevelTickPostEvent,
     LevelUnloadEvent, ModEntry, RuntimeGenerator, RuntimeLevel, RuntimeLevelError, ServerHost,
@@ -262,7 +263,7 @@ fn delete_as(
 /// level again.
 fn place_block(game: &mut sunrise_gameplay::game::ServerGame<'_>, id: &str, block: &str) {
     let state = game.pack.assets.registry.default_state(block).unwrap();
-    let dim = super::Dim::extra(id).unwrap();
+    let dim = Dim::extra(id).unwrap();
     game.enter_level(dim).unwrap();
     game.side.streaming.forced.insert((0, 0));
     for _ in 0..2000 {
@@ -279,7 +280,7 @@ fn place_block(game: &mut sunrise_gameplay::game::ServerGame<'_>, id: &str, bloc
         "the chunk generated"
     );
     game.world.set(1, -50, 1, state).unwrap();
-    game.enter_level(super::Dim::Overworld).unwrap();
+    game.enter_level(Dim::Overworld).unwrap();
 }
 
 /// The block at (1, -50, 1) of the open level `id`, loading it as `place_block` does.
@@ -287,7 +288,7 @@ fn block_at(
     game: &mut sunrise_gameplay::game::ServerGame<'_>,
     id: &str,
 ) -> sunrise_world::registry::BlockStateId {
-    let dim = super::Dim::extra(id).unwrap();
+    let dim = Dim::extra(id).unwrap();
     game.enter_level(dim).unwrap();
     game.side.streaming.forced.insert((0, 0));
     for _ in 0..2000 {
@@ -301,7 +302,7 @@ fn block_at(
     }
     assert!(game.world.chunks.contains_key(&(0, 0)), "the chunk loaded");
     let block = game.world.block(1, -50, 1);
-    game.enter_level(super::Dim::Overworld).unwrap();
+    game.enter_level(Dim::Overworld).unwrap();
     block
 }
 
@@ -401,7 +402,7 @@ fn the_idle_close_keeps_a_runtime_level_open_until_its_unload() {
         tick_post(game);
         game.apply_runtime_levels();
         let handle = seen.answers.lock().unwrap()[0].unwrap();
-        let dim = super::Dim::extra("idle:a").unwrap();
+        let dim = Dim::extra("idle:a").unwrap();
         // What the idle close does to a level nobody is in.
         game.close_parked_level(dim).unwrap();
         assert_eq!(*seen.unloads.lock().unwrap(), ["idle:a"]);
@@ -409,11 +410,11 @@ fn the_idle_close_keeps_a_runtime_level_open_until_its_unload() {
         assert!(game.level_handle_current(handle));
         game.enter_level(dim).unwrap();
         assert_eq!(*seen.loads.lock().unwrap(), ["idle:a", "idle:a"]);
-        game.enter_level(super::Dim::Overworld).unwrap();
+        game.enter_level(Dim::Overworld).unwrap();
         assert_eq!(unload_as(game, "idle", "idle:a"), Ok(()));
         game.apply_runtime_levels();
         assert!(!game.runtime_level_is_open("idle:a"));
-        assert!(super::Dim::extra("idle:a").is_none());
+        assert!(Dim::extra("idle:a").is_none());
         assert_eq!(*seen.unloads.lock().unwrap(), ["idle:a", "idle:a"]);
     });
 }
@@ -473,7 +474,7 @@ fn an_idle_level_aborts_an_abandoned_chunk_unload_transaction_before_it_closes()
                     tick_post(game);
                     game.apply_runtime_levels();
                     place_block(game, ID, "minecraft:stone");
-                    let dim = super::Dim::extra(ID).unwrap();
+                    let dim = Dim::extra(ID).unwrap();
                     let custom = game.level(ID).unwrap();
                     let home = game.level("minecraft:overworld").unwrap();
                     game.world
@@ -485,7 +486,7 @@ fn an_idle_level_aborts_an_abandoned_chunk_unload_transaction_before_it_closes()
                     // Simulate an engine-abandoned transaction left open in `dim` before close.
                     let _ = game.open_storage_transaction();
                     assert_eq!(custom.set_connection_group(game, POS, Some(30)), Ok(true));
-                    game.enter_level(super::Dim::Overworld).unwrap();
+                    game.enter_level(Dim::Overworld).unwrap();
                     assert!(!game.transaction_matches(None));
 
                     game.close_parked_level(dim).unwrap();
@@ -523,7 +524,7 @@ fn a_ticket_a_chunk_unload_listener_adds_keeps_an_idle_custom_level_open() {
         tick_post(game);
         game.apply_runtime_levels();
         seen.mode.store(IDLE, Ordering::SeqCst);
-        let dim = super::Dim::extra("rescue:a").unwrap();
+        let dim = Dim::extra("rescue:a").unwrap();
         let custom = ChunkRef::new(game.level("rescue:a").unwrap(), [0, 0]);
         // Idle the custom level to one server tick short of its close.
         for _ in 1..IDLE_TICKS {
@@ -534,11 +535,11 @@ fn a_ticket_a_chunk_unload_listener_adds_keeps_an_idle_custom_level_open() {
         // its first drain leaves the view it opened with, so that drain unloads
         // the chunk at once, in the tick the custom level's close is due.
         game.side.settings.render_distance = 2;
-        game.enter_level(super::Dim::Nether).unwrap();
+        game.enter_level(Dim::Nether).unwrap();
         let nether = ChunkRef::new(game.level("minecraft:the_nether").unwrap(), [0, 0]);
         assert!(game.chunk_set_forced(nether, true));
         assert!(game.chunk_set_forced(nether, false));
-        game.enter_level(super::Dim::Overworld).unwrap();
+        game.enter_level(Dim::Overworld).unwrap();
         assert!(game.chunk_loaded(nether));
         seen.mode.store(RESCUE, Ordering::SeqCst);
         game.tick_server(false).unwrap();
@@ -651,7 +652,7 @@ fn a_live_loading_ticket_keeps_an_idle_custom_level_open_until_it_expires() {
         tick_post(game);
         game.apply_runtime_levels();
         seen.mode.store(IDLE, Ordering::SeqCst);
-        let dim = super::Dim::extra("loading:a").unwrap();
+        let dim = Dim::extra("loading:a").unwrap();
         let level = game.level("loading:a").unwrap();
         let chunk = ChunkRef::new(level, [5, 5]);
         // Idle the custom level to one server tick short of its close.
@@ -694,21 +695,21 @@ fn a_failed_unload_leaves_the_level_open_for_a_retry() {
     with_opener("stuck", "stuck:a", flat(), |game, _| {
         tick_post(game);
         game.apply_runtime_levels();
-        let dim = super::Dim::extra("stuck:a").unwrap();
+        let dim = Dim::extra("stuck:a").unwrap();
         // A broken carrier transfer refuses every save of the level (`admit_level_save`).
         game.enter_level(dim).unwrap();
         game.world.carrier_fences.mark_broken();
         assert_eq!(unload_as(game, "stuck", "stuck:a"), Ok(()));
         game.apply_runtime_levels();
         assert!(game.runtime_level_is_open("stuck:a"));
-        assert!(super::Dim::extra("stuck:a").is_some());
+        assert!(Dim::extra("stuck:a").is_some());
         assert_eq!(game.dim, dim);
         // The save can be written again: the same unload, asked again, goes through.
         game.world.carrier_fences = Default::default();
         assert_eq!(unload_as(game, "stuck", "stuck:a"), Ok(()));
         game.apply_runtime_levels();
         assert!(!game.runtime_level_is_open("stuck:a"));
-        assert!(super::Dim::extra("stuck:a").is_none());
+        assert!(Dim::extra("stuck:a").is_none());
     });
 }
 
@@ -720,7 +721,7 @@ fn an_unload_drops_a_save_waiting_for_its_level() {
     with_opener("saved", "saved:a", flat(), |game, seen| {
         tick_post(game);
         game.apply_runtime_levels();
-        let dim = super::Dim::extra("saved:a").unwrap();
+        let dim = Dim::extra("saved:a").unwrap();
         game.side.levels.0.request_save(dim);
         assert_eq!(unload_as(game, "saved", "saved:a"), Ok(()));
         game.apply_runtime_levels();
@@ -738,7 +739,7 @@ fn a_level_with_a_player_in_it_is_not_unloaded() {
     with_opener("crowd", "crowd:a", flat(), |game, seen| {
         tick_post(game);
         game.apply_runtime_levels();
-        let dim = super::Dim::extra("crowd:a").unwrap();
+        let dim = Dim::extra("crowd:a").unwrap();
         game.enter_level(dim).unwrap();
         // The player stands in the level in place.
         game.player = Some(
@@ -752,7 +753,7 @@ fn a_level_with_a_player_in_it_is_not_unloaded() {
             unload_as(game, "crowd", "crowd:a"),
             Err(RuntimeLevelError::PlayersInside)
         );
-        game.enter_level(super::Dim::Overworld).unwrap();
+        game.enter_level(Dim::Overworld).unwrap();
         assert_eq!(unload_as(game, "crowd", "crowd:a"), Ok(()));
         game.apply_runtime_levels();
         assert!(!game.runtime_level_is_open("crowd:a"));
@@ -772,7 +773,7 @@ fn a_reopened_level_comes_back_from_its_folder_with_its_block() {
             .unwrap();
         tick_post(game);
         game.apply_runtime_levels();
-        let dim = super::Dim::extra("keep:a").unwrap();
+        let dim = Dim::extra("keep:a").unwrap();
         game.enter_level(dim).unwrap();
         game.side.streaming.forced.insert((0, 0));
         for _ in 0..2000 {
@@ -789,7 +790,7 @@ fn a_reopened_level_comes_back_from_its_folder_with_its_block() {
             "the chunk generated"
         );
         game.world.set(1, -50, 1, stone).unwrap();
-        game.enter_level(super::Dim::Overworld).unwrap();
+        game.enter_level(Dim::Overworld).unwrap();
         unload_as(game, "keep", "keep:a").unwrap();
         game.apply_runtime_levels();
         assert!(
@@ -800,7 +801,7 @@ fn a_reopened_level_comes_back_from_its_folder_with_its_block() {
         seen.answers.lock().unwrap().clear();
         tick_post(game);
         game.apply_runtime_levels();
-        let dim = super::Dim::extra("keep:a").unwrap();
+        let dim = Dim::extra("keep:a").unwrap();
         game.enter_level(dim).unwrap();
         game.side.streaming.forced.insert((0, 0));
         for _ in 0..2000 {
@@ -813,7 +814,7 @@ fn a_reopened_level_comes_back_from_its_folder_with_its_block() {
                 .wait(std::time::Duration::from_millis(5));
         }
         assert_eq!(game.world.block(1, -50, 1), stone);
-        game.enter_level(super::Dim::Overworld).unwrap();
+        game.enter_level(Dim::Overworld).unwrap();
         unload_as(game, "keep", "keep:a").unwrap();
         game.apply_runtime_levels();
     });
@@ -829,7 +830,7 @@ fn failed_construction_rolls_back_every_published_table() {
         game.apply_runtime_levels();
         assert!(!game.runtime_level_is_open("rollback:a"));
         assert!(!game.side.levels.0.runtime.holds("rollback:a"));
-        assert!(super::Dim::extra("rollback:a").is_none());
+        assert!(Dim::extra("rollback:a").is_none());
         assert!(
             !game
                 .side
@@ -1030,7 +1031,7 @@ fn a_level_with_a_player_in_it_is_not_deleted() {
     with_opener("guest", "guest:a", flat(), |game, _| {
         tick_post(game);
         game.apply_runtime_levels();
-        let dim = super::Dim::extra("guest:a").unwrap();
+        let dim = Dim::extra("guest:a").unwrap();
         game.enter_level(dim).unwrap();
         game.player = Some(
             sunrise_sim::motion::PlayerMotion::new(
@@ -1048,7 +1049,7 @@ fn a_level_with_a_player_in_it_is_not_deleted() {
         game.apply_runtime_levels();
         assert!(game.runtime_level_is_open("guest:a"));
         assert!(marker.is_file());
-        game.enter_level(super::Dim::Overworld).unwrap();
+        game.enter_level(Dim::Overworld).unwrap();
         assert_eq!(delete_as(game, "guest", "guest:a"), Ok(()));
         game.apply_runtime_levels();
         assert!(!marker.exists());
@@ -1282,7 +1283,7 @@ fn a_failed_removal_leaves_the_level_closed_and_its_id_closed_to_open() {
         game.apply_runtime_levels();
         // Closed: not open, out of the world's levels, its handle stale, `level_unload` heard.
         assert!(!game.runtime_level_is_open("stuck2:a"));
-        assert!(super::Dim::extra("stuck2:a").is_none());
+        assert!(Dim::extra("stuck2:a").is_none());
         assert!(!game.level_handle_current(first));
         assert_eq!(*seen.unloads.lock().unwrap(), ["stuck2:a"]);
         assert!(marker.is_file(), "the files are left");
@@ -1328,7 +1329,7 @@ fn an_open_queued_behind_a_failed_removal_is_dropped() {
         game.apply_runtime_levels();
         assert!(!game.runtime_level_is_open("behind2:a"));
         assert!(!game.side.levels.0.runtime.holds("behind2:a"));
-        assert!(super::Dim::extra("behind2:a").is_none());
+        assert!(Dim::extra("behind2:a").is_none());
         assert!(leftover.is_file());
         assert!(seen.loads.lock().unwrap().is_empty());
     });
@@ -1475,7 +1476,7 @@ fn a_removal_that_fails_part_way_is_finished_by_a_second_delete() {
         assert_eq!(delete_as(game, "part", "part:a"), Ok(()));
         game.apply_runtime_levels();
         assert!(!game.runtime_level_is_open("part:a"));
-        assert!(super::Dim::extra("part:a").is_none());
+        assert!(Dim::extra("part:a").is_none());
         assert_eq!(*seen.unloads.lock().unwrap(), ["part:a"]);
         assert!(
             locked.is_file(),
@@ -1609,7 +1610,7 @@ fn a_level_the_player_left_in_single_player_still_unloads_and_deletes() {
     use sunrise_protocol::packets::play::{self, Clientbound as C};
     let travel = |dimension: &str| {
         C::Respawn(play::Respawn {
-            spawn: super::viewed_worlds::tests::spawn(dimension),
+            spawn: crate::game::client_side::viewed_worlds::tests::spawn(dimension),
             keep: 3,
         })
     };
@@ -1618,18 +1619,18 @@ fn a_level_the_player_left_in_single_player_still_unloads_and_deletes() {
         game.apply_runtime_levels();
         assert!(game.runtime_level_is_open("solo:a"));
         let mut resources = None;
-        let mut window = super::viewed_worlds::tests::client(&mut resources);
+        let mut window = crate::game::client_side::viewed_worlds::tests::client(&mut resources);
         window.handle_packet(travel("solo:a")).unwrap();
         window.handle_packet(travel("minecraft:overworld")).unwrap();
         assert!(
-            super::Dim::extra("solo:a").is_some(),
+            Dim::extra("solo:a").is_some(),
             "still the server's level"
         );
         assert_eq!(unload_as(game, "solo", "solo:a"), Ok(()));
         game.apply_runtime_levels();
         assert!(!game.runtime_level_is_open("solo:a"));
         assert!(
-            super::Dim::extra("solo:a").is_none(),
+            Dim::extra("solo:a").is_none(),
             "closed by the server"
         );
         // Opened again by the mod, entered and left again, then deleted.

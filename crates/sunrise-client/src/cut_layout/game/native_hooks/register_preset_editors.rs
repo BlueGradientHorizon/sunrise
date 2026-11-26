@@ -4,6 +4,7 @@ use std::sync::Arc;
 use sunrise_client::hud::HudBatch;
 #[cfg(test)]
 pub(crate) mod tests {
+    use sunrise_gameplay_common::game::Screen;
     use {crate::game::native_hooks::register_preset_editors::*, sunrise_gameplay_common::game::native_hooks::register_preset_editors::{native_register_preset_editors}};
     use sunrise_client_gameplay::game::WindowKeyInput;
     use mod_api::{

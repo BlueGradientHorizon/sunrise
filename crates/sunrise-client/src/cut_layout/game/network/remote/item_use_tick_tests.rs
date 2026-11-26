@@ -54,7 +54,7 @@ fn client_tick_cancellation_skips_one_tick_and_countdown_continues() {
     .into();
     sunrise_gameplay_common::game::api_values::install_parts(&mods).unwrap();
     mod_platform::testing::with_mods(mods, || {
-        sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+        crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
             for (cancel, replacement, after_first, after_second) in [
                 (true, 5, -2, -3),
                 (false, 0, -1, -2),

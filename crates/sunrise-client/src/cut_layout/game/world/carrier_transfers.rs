@@ -3,6 +3,10 @@
 #[cfg(test)]
 pub(crate) mod tests {
 
+use sunrise_sim::carrier_store::Store;
+
+use sunrise_sim::menu::place::TransferError;
+
 use sunrise_gameplay_common::game::server_side::carrier_transfers::tests::copy_dir;
 
 use sunrise_gameplay_common::game::server_side::carrier_transfers::tests::region_files;

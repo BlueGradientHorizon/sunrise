@@ -1,4 +1,6 @@
 use mod_api::TooltipElement;
+use sunrise_client_gameplay::game::client_item_extensions::DEFAULT_TOOLTIP_FONT_ID;
+use sunrise_client_gameplay::game::blocks::stations::tooltip::PreparedTooltipItem;
 use sunrise_client::hud::HudBatch;
 use sunrise_client::hud::rgba;
 use sunrise_items::items::ItemStack;

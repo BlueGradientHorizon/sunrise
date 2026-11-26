@@ -53,7 +53,7 @@ pub(in crate::game) struct StoreEntry {
 }
 /// Command execution state shared across nested commands and functions.
 #[derive(Default)]
-pub(in crate::game) struct ExecState {
+pub struct ExecState {
     pub(in crate::game) stores: Vec<StoreEntry>,
     /// Commands run since the outermost one began.
     pub commands: u32,

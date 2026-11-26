@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use sunrise_gameplay_common::game::mods::content_overlay;
 use sunrise_gameplay_common::game::mods::ModsState;
 use super::*;
 use sunrise_gameplay::game::mods::tests::inventory::EmptyCode;

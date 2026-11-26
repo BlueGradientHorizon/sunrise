@@ -37,7 +37,7 @@ pub(crate) mod tests {
             let mut own = LegacyRandom::new(seed);
             sunrise_sim::save::insecure_uuid(&mut own);
             assert_eq!(
-                super::rocket_draws(&mut own, flight).1,
+                sunrise_gameplay_common::game::fireworks::rocket_draws(&mut own, flight).1,
                 lifetime,
                 "seed {seed}"
             );
@@ -46,8 +46,8 @@ pub(crate) mod tests {
 
     #[test]
     fn use_on_passes_only_while_gliding() {
-        assert!(super::use_on_passes(true));
-        assert!(!super::use_on_passes(false));
+        assert!(sunrise_gameplay_common::game::fireworks::use_on_passes(true));
+        assert!(!sunrise_gameplay_common::game::fireworks::use_on_passes(false));
     }
 
     /// `FireworkRocketItem.use` on the server, while fall-flying: a lead on a
@@ -120,7 +120,7 @@ pub(crate) mod tests {
         leashed(1, here, me);
         leashed(2, Vec3::new(feet[0] + 40.0, feet[1], feet[2]), me);
         leashed(3, here, someone_else);
-        game.inventory[game.selected] = Some(super::ItemStack::new("minecraft:firework_rocket", 1));
+        game.inventory[game.selected] = Some(sunrise_items::items::ItemStack::new("minecraft:firework_rocket", 1));
         let stack = game.inventory[game.selected].clone().unwrap();
         game.start_audio_capture();
 

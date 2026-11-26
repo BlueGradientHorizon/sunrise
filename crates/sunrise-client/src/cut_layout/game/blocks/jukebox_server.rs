@@ -2,6 +2,8 @@
 
 use sunrise_items::items::ItemStack;
 use sunrise_level::containers::BlockEntity;
+use sunrise_level::containers::Jukebox;
+use sunrise_gameplay_common::game::jukebox_common::jukebox_signals;
 #[cfg(test)]
 pub(crate) mod jukebox_play_tests {
     use super::*;

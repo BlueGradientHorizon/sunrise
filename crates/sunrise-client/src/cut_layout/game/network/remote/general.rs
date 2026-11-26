@@ -9,6 +9,8 @@ use sunrise_client_gameplay::game::remote::general::tests::rows;
 
 use sunrise_gameplay_common::game::remote::general::tests::FUEL;
 
+use sunrise_gameplay_common::game::remote::general::tests::Declare;
+
 use sunrise_gameplay_common::game::remote::general::tests::attachment_message;
 
 use sunrise_gameplay_common::game::remote::general::tests::spawn;

@@ -234,7 +234,7 @@ pub(in crate::game::server_side) fn is_illager(s: Species) -> bool {
 }
 /// One side of an ally check: whether it is an illager and its team.
 #[derive(Clone, Copy)]
-pub(in crate::game) struct Party<'a> {
+pub struct Party<'a> {
     pub(in crate::game) illager: bool,
     pub(in crate::game) team: Option<&'a sunrise_game_data::scoreboard::Team>,
 }
@@ -248,7 +248,7 @@ pub(in crate::game::server_side) fn illager_considers(me: Party, other: Party) -
 /// either way round. `vex_root` is the root owner of a vex target (whether it
 /// is the owner itself, and its party); the owner treats such a vex as an ally
 /// when its root owner is.
-pub(in crate::game::server_side) fn fangs_allied(
+pub fn fangs_allied(
     owner: Party,
     other: Party,
     vex_root: Option<(bool, Party)>,

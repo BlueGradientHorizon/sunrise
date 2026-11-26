@@ -21,6 +21,8 @@ use sunrise_gameplay_common::game::client_side::container_hooks::tests::TAKE_REL
 
 use super::*;
 
+use sunrise_gameplay_common::game::Screen;
+
 use crate::game::native_entity_refs::tests::with_client_game;
 
 use sunrise_hooks::containers::{ContainerHooks, engine::with_registrants};

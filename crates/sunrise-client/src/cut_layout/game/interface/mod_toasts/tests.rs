@@ -1,4 +1,7 @@
 use super::*;
+use mod_api::{AddToastError, Identifier, ModToast, ToastIcon, ToastKind};
+use sunrise_client_gameplay::game::client_side::mod_toasts::Entry;
+use sunrise_client_gameplay::game::toast_manager::Toast;
 use {sunrise_gameplay_common::game::in_own_process, crate::game::server_side::native_entity_refs::tests::with_client_game};
 use mod_api::{ClientHost, Flow, Hooks, ModEntry, ScreenRenderPostEvent, Text, ToastAddEvent};
 use std::{

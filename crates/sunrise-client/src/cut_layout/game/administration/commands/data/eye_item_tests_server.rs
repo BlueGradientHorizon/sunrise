@@ -1,6 +1,6 @@
-use crate::game::commands::data::eye_item_tests::load_witness;
-use crate::game::commands::data::eye_item_tests::parse_exact_snbt;
-use crate::game::commands::data::eye_item_tests::saved_item;
+use crate::game::server_side::commands_server::data::eye_item_tests::load_witness;
+use crate::game::server_side::commands_server::data::eye_item_tests::parse_exact_snbt;
+use crate::game::server_side::commands_server::data::eye_item_tests::saved_item;
 use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 
 pub(crate) fn run_a_summoned_eye_saves_its_normalised_item_live_and_after_a_reload() {

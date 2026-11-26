@@ -5,6 +5,7 @@
 //! closes only the screens whose `Screen.isAllowedInPortal` is false.
 
 use sunrise_core::geometry::Vec3;
+use sunrise_sim::nether_portal::ENTITY_DELAY;
 use super::*;
 use sunrise_gameplay::game::game_tests::tests::server_game;
 use sunrise_sim::entities::ArmorStand;

@@ -5,6 +5,7 @@ use sunrise_protocol::packets::play::Serverbound as S;
 use sunrise_sim::mobs::Mob;
 use sunrise_sim::sprint::Keys;
 use sunrise_world::stepped_interpolation::PosRot;
+use sunrise_client_gameplay::game::client_side::remote_vehicles::{client_moves, mount_move, riding_jump};
 #[cfg(feature = "client")]
 #[cfg(test)]
 pub(crate) mod tests {

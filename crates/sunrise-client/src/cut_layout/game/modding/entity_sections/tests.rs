@@ -615,7 +615,7 @@ fn a_size_change_nudge_in_a_mobs_tick_then_its_walk_are_two_crossings() {
 fn a_mods_random_teleport_of_a_mob_is_told_at_once() {
     observe(|calls| {
         with_game(|game| {
-            sunrise_gameplay::game::native_living_position::tests::floor_and_zombies(game);
+            crate::game::server_side::native_living_position::tests::floor_and_zombies(game);
             // The zombie at (0.5, 64, 0.5) is filed where it stands, then sent to land on the
             // floor at (-3.5, 64, -3.5): one section west and one north.
             game.teleport_to(Target::Mob(12), [0.5, 64.0, 0.5], None, true);

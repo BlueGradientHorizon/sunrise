@@ -5,7 +5,12 @@
 //! (tools/test_frozen_first_tick_water_parity.py measures the same on
 //! vanilla 26.3: it flows 5 ticks after placement).
 use super::*;
+use crate::settings::Settings;
 use std::sync::Arc;
+use sunrise_gameplay_common::game::Options;
+use sunrise_gameplay_common::game::Progress;
+use sunrise_gameplay_common::game::Resources;
+use sunrise_gameplay_common::game::load_resources;
 use sunrise_core::position::ChunkPos;
 use sunrise_level::chunk::Chunk;
 

@@ -6,6 +6,8 @@ use sunrise_sim::mobs::Mob;
 pub(crate) mod pass_tests {
     use super::*;
     use sunrise_core::{geometry::Vec3, random::LegacyRandom};
+    use sunrise_gameplay_common::game::potent_sulfur_common::PassMobs;
+    use sunrise_gameplay_common::potent_sulfur::nearby_living_area;
 
     /// The mobs whose box meets `area`, by walking them all.
     fn scan(game: &sunrise_gameplay::game::ServerGame<'_>, area: Aabb) -> Vec<u32> {

@@ -111,7 +111,7 @@ fn run_in_child(test: &str) -> bool {
 
 /// A client of a server with the block entity types of `TYPES`, for `test`.
 fn with_remote_game(test: impl FnOnce(&mut sunrise_client_gameplay::game::ClientGame<'_>)) {
-    sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+    sunrise_client_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
         game.side.settings.render_distance = 32;
         let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
         game.connect_local(pipe, "ClientTick").unwrap();

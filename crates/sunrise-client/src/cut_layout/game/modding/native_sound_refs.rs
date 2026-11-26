@@ -190,7 +190,7 @@ use sunrise_sim::mobs::Mob;
             let mut level_random = game.world.random.clone();
             for _ in 0..2 {
                 assert!(game.native_queue_sound(
-                    super::super::native_level_effects::NativeSoundRequest {
+                    sunrise_gameplay::game::server_side::native_level_effects::NativeSoundRequest {
                         level,
                         sound,
                         at: [0.5, 64.0, 0.0],

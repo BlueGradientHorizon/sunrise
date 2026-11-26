@@ -10,6 +10,8 @@ use sunrise_client_gameplay::game::native_hooks::screen_position_tests::HopperSc
 use sunrise_client_gameplay::game::native_hooks::screen_position_tests::PACK;
 use sunrise_client_gameplay::game::native_hooks::screen_position_tests::Seen;
 use sunrise_client_gameplay::game::native_hooks::screen_position_tests::with_listener;
+use sunrise_client_gameplay::game::native_hooks::{OpenNativeMenu, OpenNativeScreen, seed_native_menu};
+use sunrise_gameplay_common::game::Screen;
 use std::sync::Arc;
 use winit::dpi::PhysicalPosition;
 

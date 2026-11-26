@@ -20,7 +20,7 @@ use sunrise_sim::{lan::hub::TickCtx, world_spawn::PlayerSpawnFinder};
 
 /// Why an entity changes level (`entity_travel_to_dimension`'s `cause`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(in crate::game) enum TravelCause {
+pub enum TravelCause {
     NetherPortal,
     EndPortal,
     EndGateway,

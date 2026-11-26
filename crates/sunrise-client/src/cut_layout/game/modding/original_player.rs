@@ -12,7 +12,8 @@ mod tests {
         AttachmentType, Holder, Hooks, HostTransaction, PlayerCloneEvent,
         PlayerContainerCloseEvent, ServerHost,
     };
-    use sunrise_core::nbt::{JavaString, Tag};
+    use sunrise_core::nbt::{Compound, JavaString, Tag};
+    use mod_api::Attachments;
 
     const VALUE: AttachmentType<i32> = AttachmentType {
         namespace: "clone",

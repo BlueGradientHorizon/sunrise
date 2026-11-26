@@ -95,14 +95,14 @@ fn bundle_items_place_handler_reads_and_rolls_back() {
         assert_eq!(handler.amount(game, 1), 2);
         let pearl = handler.resource(game, 0).unwrap();
         assert_eq!(
-            crate::game::api_values::stack_value(pearl.as_stack())
+            sunrise_gameplay_common::game::api_values::stack_value(pearl.as_stack())
                 .unwrap()
                 .item
                 .as_ref(),
             "minecraft:ender_pearl"
         );
         assert_eq!(
-            crate::game::api_values::stack_value(handler.resource(game, 1).unwrap().as_stack())
+            sunrise_gameplay_common::game::api_values::stack_value(handler.resource(game, 1).unwrap().as_stack())
                 .unwrap()
                 .item
                 .as_ref(),

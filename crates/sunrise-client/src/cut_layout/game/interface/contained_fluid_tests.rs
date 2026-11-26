@@ -147,7 +147,7 @@ fn a_mod_container_draws_the_fluid_its_part_reports_isolated() {
     let root = resource_root(scratch.path());
     mod_platform::testing::with_mods(mods.clone(), || {
         sunrise_gameplay_common::game::api_values::install_parts(&mods).unwrap();
-        sunrise_gameplay::game::native_entity_refs::tests::with_game_role_client(
+        crate::game::server_side::native_entity_refs::tests::with_game_role_client(
             root,
             sunrise_gameplay_common::game::execution_role::ExecutionRole::Client,
             |game| {

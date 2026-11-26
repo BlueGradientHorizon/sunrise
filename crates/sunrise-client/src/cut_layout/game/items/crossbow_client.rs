@@ -4,6 +4,7 @@ use sunrise_items::items::ItemStack;
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
+    use sunrise_gameplay_common::game::crossbow_common::ARROW;
 
     /// `BowItem.releaseUsing` and `CrossbowItem.performShooting` play the shot
     /// with no player at the shooter's `getX/Y/Z`, the feet. At the eye, a

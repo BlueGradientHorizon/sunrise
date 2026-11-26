@@ -411,7 +411,7 @@ impl SpecialHost for Host<'_> {
 /// (camera-relative) at `light` (packed lightmap coordinates).
 /// `stack`, `display` and `seed` are what the parity test compares with vanilla's renderers;
 /// drawing reads only the resolved `state`.
-pub(in crate::game) struct BlockItemDraw<'a> {
+pub struct BlockItemDraw<'a> {
     #[cfg(test)]
     pub(in crate::game) stack: &'a ItemStack,
     #[cfg(test)]

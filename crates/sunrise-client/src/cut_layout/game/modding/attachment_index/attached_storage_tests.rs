@@ -1,6 +1,7 @@
 //! Stock attached storage (`AttachedItems`, `AttachedEnergy`) through real holder writes and
 //! the transaction journal.
 use std::sync::Arc;
+use sunrise_mod_runtime::attachments::Holder;
 use sunrise_gameplay_common::game::Dim;
 use super::*;
 use sunrise_gameplay_common::game::api_values::TryIntoApi;

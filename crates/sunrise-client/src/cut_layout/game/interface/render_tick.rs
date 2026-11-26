@@ -20,7 +20,7 @@ use sunrise_gameplay_common::game::in_own_process;
             || {
                 with_client_game(|game| {
                     game.player = Some(
-                        super::PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 0.5)).unwrap(),
+                        sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 0.5)).unwrap(),
                     );
                     game.side.camera_type = CameraType::FirstPerson;
                     game.side.chat_ui.hide_gui = false;

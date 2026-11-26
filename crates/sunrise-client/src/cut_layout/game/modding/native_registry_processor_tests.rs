@@ -42,7 +42,7 @@ fn generic_processor_and_referencing_pool_accept_pillar_block_properties() {
         r#"{"fallback":"minecraft:empty","elements":[{"weight":1,"element":{"element_type":"minecraft:single_pool_element","location":"minecraft:village/plains/houses/plains_small_house_1","processors":"registry_processor_test:rejected","projection":"rigid"}}]}"#,
     );
     with_game(|game| {
-        let mut request = super::world_loading::WorldRequest::new(
+        let mut request = crate::game::world_loading::WorldRequest::new(
             "processor registries",
             Some("processor registries"),
             Some(1),

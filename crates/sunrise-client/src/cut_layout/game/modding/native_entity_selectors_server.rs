@@ -5,6 +5,7 @@ use sunrise_command::args::Selector;
 mod tests {
     use super::*;
     use mod_api::SelectorSort;
+    use sunrise_gameplay::game::commands::Target;
     use std::sync::{Arc, Mutex};
     use sunrise_core::geometry::Vec3;
 

@@ -2,6 +2,7 @@
 use sunrise_core::geometry::Vec3;
 use sunrise_sim::projectiles::Projectile;
 use sunrise_sim::projectiles::ProjectileKind;
+use sunrise_sim::projectiles::Hit;
 #[cfg(test)]
 #[path = "tests/wind_charged_tests.rs"]
 pub(crate) mod wind_charged_tests;

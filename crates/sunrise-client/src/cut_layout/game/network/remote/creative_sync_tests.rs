@@ -14,7 +14,7 @@ fn the_creative_sync_covers_inventory_menu_slots_5_to_45_once_each() {
         stack("minecraft:diamond_boots"),
     ];
     let stacks = sunrise_gameplay_common::game::remote::creative_sync_stacks(&inventory, &offhand, &armor);
-    assert_eq!(stacks.len(), crate::game::remote::CREATIVE_SYNCED);
+    assert_eq!(stacks.len(), sunrise_gameplay_common::game::remote::CREATIVE_SYNCED);
     let mut slots: Vec<i16> = (0..stacks.len())
         .map(sunrise_gameplay_common::game::remote::creative_sync_slot)
         .collect();
@@ -36,7 +36,7 @@ fn the_creative_sync_covers_inventory_menu_slots_5_to_45_once_each() {
 #[test]
 fn a_server_slot_update_leaves_an_unsent_creative_click_to_be_sent() {
     let stack = |item: &str| Some(sunrise_items::items::ItemStack::new(item, 1));
-    let none = || vec![None; crate::game::remote::CREATIVE_SYNCED];
+    let none = || vec![None; sunrise_gameplay_common::game::remote::CREATIVE_SYNCED];
     // Synced: nothing. A click puts a helmet on (entry 37, not sent yet), then the server
     // sets hotbar slot 0 (a pickup): only that entry counts as synced.
     let mut synced = none();

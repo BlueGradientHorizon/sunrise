@@ -2,6 +2,7 @@
 
 use sunrise_core::nbt::Tag;
 use sunrise_core::nbt::parse_snbt;
+use sunrise_gameplay_common::game::commands_common::Target;
 #[cfg(test)]
 pub(crate) mod tests {
     use sunrise_gameplay::game::native_entity_refs::tests::with_game;

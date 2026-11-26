@@ -117,7 +117,7 @@ fn malformed_known_recipe_stops_dedicated_world_startup() {
                 std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap()),
                 sunrise_gameplay_common::game::execution_role::ExecutionRole::DedicatedServer,
                 |game| {
-                    let mut request = crate::game::world_loading::WorldRequest::new(
+                    let mut request = sunrise_gameplay::game::world_loading::WorldRequest::new(
                         "bad-recipes",
                         Some("test"),
                         Some(1),
@@ -164,7 +164,7 @@ fn load_conditions_recipe_reload_counts_and_failed_candidates_keep_old_recipes()
         .into(),
         || {
             sunrise_gameplay::game::native_entity_refs::tests::with_game(|game| {
-                let mut request = crate::game::world_loading::WorldRequest::new(
+                let mut request = sunrise_gameplay::game::world_loading::WorldRequest::new(
                     "conditions",
                     Some("test"),
                     Some(1),
@@ -309,8 +309,8 @@ fn load_conditions_recipe_reload_counts_and_failed_candidates_keep_old_recipes()
                     );
                 }
                 let host = game.side.lan.take();
-                crate::game::lan::sync::forget_sync_data();
-                assert!(crate::game::lan::sync::cached_reload_sync().is_none());
+                sunrise_gameplay::game::lan::sync::forget_sync_data();
+                assert!(sunrise_gameplay::game::lan::sync::cached_reload_sync().is_none());
                 mode.store(5, Ordering::SeqCst);
                 let error = format!(
                     "{:?}",
@@ -536,7 +536,7 @@ fn load_conditions_disabled_owner_does_not_execute_registered_handler() {
             let inventory = sunrise_mod_package::enabled::EnabledMods::default();
             let file = json!({"neoforge:conditions":[{"type":"testmod:flag","value":true}]});
             assert!(
-                super::conditions_for_mods(&sources, &inventory)
+                sunrise_gameplay_common::game::load_conditions::conditions_for_mods(&sources, &inventory)
                     .unwrap()
                     .allows_file(&file, "flag.json")
             );
@@ -547,7 +547,7 @@ fn load_conditions_disabled_owner_does_not_execute_registered_handler() {
             assert_eq!(count.load(Ordering::SeqCst), 1);
             assert!(mod_api::__private::set_mod_enabled("testmod", true));
             assert!(
-                super::conditions_for_mods(&sources, &inventory)
+                sunrise_gameplay_common::game::load_conditions::conditions_for_mods(&sources, &inventory)
                     .unwrap()
                     .allows_file(&file, "flag.json")
             );

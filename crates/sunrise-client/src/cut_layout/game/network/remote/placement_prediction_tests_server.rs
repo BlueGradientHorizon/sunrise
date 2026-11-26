@@ -2,6 +2,7 @@ use std::sync::Arc;
 use sunrise_core::geometry::Vec3;
 use sunrise_items::items::ItemStack;
 use sunrise_protocol::packets::play::Serverbound as S;
+use sunrise_sim::first_person_sim::Hand;
 use sunrise_sim::motion::PlayerMotion;
 use super::*;
 use crate::game::remote::placement_prediction_tests::top_of;

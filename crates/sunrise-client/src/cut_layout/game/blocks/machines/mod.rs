@@ -1,8 +1,10 @@
 
 
+use sunrise_core::geometry::Direction;
 use sunrise_core::position::BlockPos;
+use sunrise_gameplay_common::hoppers::Pos;
 use sunrise_items::items::ItemStack;
-use sunrise_level::containers::BlockEntity;
+use sunrise_level::containers::{BlockEntity, HOPPER_SLOTS};
 use sunrise_world::registry::BlockStateId;
 #[cfg(test)]
 pub(crate) mod can_place_item_tests;

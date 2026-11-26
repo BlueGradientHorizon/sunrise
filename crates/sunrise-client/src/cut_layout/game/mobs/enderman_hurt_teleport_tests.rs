@@ -27,7 +27,7 @@ fn floored_game<'a>(
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.to_path_buf();
-    options.execution_role = super::execution_role::ExecutionRole::IntegratedServer;
+    options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
     let resources = resources.insert(loaded.resources);
     let mut game = sunrise_gameplay::game::ServerGame::new(
         resources,
@@ -320,7 +320,7 @@ fn a_teleporting_shulker_posts_teleport_where_it_stood() {
         let others: Vec<_> = game
             .mobs
             .iter()
-            .map(|m| super::creatures::seen(m, uuid, game.items()))
+            .map(|m| sunrise_gameplay_common::game::creatures::seen(m, uuid, game.items()))
             .collect();
         let mut level_random = game.world.random.clone();
         let mut events = Vec::new();
@@ -367,9 +367,9 @@ fn a_teleporting_shulker_posts_teleport_where_it_stood() {
             "seed {seed}: the game event is not between the sound and level event: {events:?}"
         );
         game.mobs.push(mob);
-        super::sculk::TEST_POSTED_EVENTS.with(|events| *events.borrow_mut() = Some(Vec::new()));
+        sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|events| *events.borrow_mut() = Some(Vec::new()));
         game.handle_mob_events(events).unwrap();
-        let posted: Vec<_> = super::sculk::TEST_POSTED_EVENTS.with(|events| {
+        let posted: Vec<_> = sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|events| {
             events
                 .borrow_mut()
                 .take()

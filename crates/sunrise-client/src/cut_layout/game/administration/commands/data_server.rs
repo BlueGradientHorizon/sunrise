@@ -4,6 +4,9 @@ use sunrise_core::nbt::Tag;
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
+    use sunrise_core::nbt::Compound;
+    use sunrise_gameplay::game::commands::data::DataRef;
+    use sunrise_gameplay_common::game::commands_common::Target;
     use sunrise_gameplay::game::native_entity_refs::tests::with_game;
     use sunrise_core::geometry::Vec3;
 

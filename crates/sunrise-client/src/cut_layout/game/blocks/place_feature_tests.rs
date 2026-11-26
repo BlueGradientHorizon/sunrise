@@ -2,6 +2,11 @@
 //! (`ResourceOrHolderArgument`): the same `Feature.place` as a named one,
 //! reported by `commands.place.feature.success.inline`. The expected results
 //! and messages are vanilla 26.3's (tools/test_place_feature_inline_parity.py).
+use sunrise_client::settings::Settings;
+use sunrise_gameplay_common::game::launch_options::Options;
+use sunrise_gameplay_common::game::resource_load::Progress;
+use sunrise_gameplay_common::game::load_resources;
+use sunrise_gameplay_common::game::Resources;
 use super::*;
 use std::sync::Arc;
 use sunrise_level::chunk::Chunk;

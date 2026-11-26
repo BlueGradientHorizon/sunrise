@@ -4,6 +4,7 @@
 pub(crate) mod tests {
     use {crate::game::native_hooks::mod_mismatch::*, sunrise_gameplay_common::game::native_hooks::mod_mismatch::{level_mods}};
     use mod_api::{Hooks, HostSide, ModEntry, ModMismatchEvent};
+    use sunrise_gameplay_common::game::execution_role;
     use std::sync::{Arc, Mutex};
 
     #[test]

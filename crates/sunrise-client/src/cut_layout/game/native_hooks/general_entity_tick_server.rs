@@ -6,6 +6,9 @@ use sunrise_items::items::ItemStack;
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
+    use mod_api::EntityServerScope;
+    use sunrise_gameplay::game::native_hooks::general_entity_tick_server::GeneralTickAccess;
+    use sunrise_gameplay_common::game::general::GeneralRow;
     use {sunrise_gameplay_common::game::api_values::test_snapshot, sunrise_gameplay::game::native_entity_refs::tests::with_game};
 
     #[test]

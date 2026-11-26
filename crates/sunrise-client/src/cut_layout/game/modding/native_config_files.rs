@@ -6,6 +6,7 @@ pub(crate) mod tests {
 use sunrise_gameplay_common::game::server_side::native_config_files::tests::path;
 
 use super::*;
+use mod_api::ConfigFileError;
 
 /// The service through a real game and the hooks' own dispatch: a mod
     /// saves its registered config from `config_loading` and keeps a file in

@@ -7,6 +7,20 @@ use sunrise_sim::mobs::Who;
 #[cfg(test)]
 pub(crate) mod tests {
 
+use mod_api::AttributeModifier;
+
+use mod_api::EquipmentSlot;
+
+use mod_api::client::first_person::Hand;
+
+use sunrise_gameplay::game::commands::Target;
+
+use sunrise_gameplay::game::commands::items::Owner;
+
+use sunrise_gameplay::game::living_attributes::AttributeWrite;
+
+use sunrise_gameplay::game::server_side::native_living_refs::slot_name;
+
 use sunrise_gameplay_common::game::server_side::native_living_refs::tests::ZOMBIE_NBT;
 
 use sunrise_gameplay_common::game::server_side::native_living_refs::tests::ZOMBIE_UUID;

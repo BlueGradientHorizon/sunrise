@@ -26,7 +26,7 @@ fn world_preset_availability_does_not_depend_on_shared_generator_history() {
     let _publication = sunrise_sim::datapack_net::isolate_server_publication();
     let scratch = tempfile::tempdir().unwrap();
     with_game(|game| {
-        let mut request = super::world_loading::WorldRequest::new(
+        let mut request = sunrise_gameplay::game::world_loading::WorldRequest::new(
             "registry ownership",
             Some("registry ownership"),
             Some(1),

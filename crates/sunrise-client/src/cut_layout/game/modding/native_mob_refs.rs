@@ -11,6 +11,7 @@ pub(crate) mod tests {
     use mod_api::WorldEpoch;
     use sunrise_core::geometry::Vec3;
     use sunrise_sim::{entities::ArmorStand, mobs::Mob};
+    use sunrise_sim::mobs;
 
     pub(in sunrise_gameplay::game::server_side) fn add_mob(
         game: &mut sunrise_gameplay::game::ServerGame<'_>,
@@ -199,7 +200,7 @@ pub(crate) mod tests {
             assert_eq!(cow.entity().leash_holder(game), None);
             let stale = EntityRef::new(WorldEpoch::new(999), 12);
             assert_eq!(stale.leash_holder(game), None);
-            game.enter_level(super::super::Dim::Nether).unwrap();
+            game.enter_level(sunrise_gameplay_common::game::Dim::Nether).unwrap();
             assert_eq!(cow.entity().leash_holder(game), None);
         });
     }
@@ -232,10 +233,10 @@ pub(crate) mod tests {
             let stale = MobRef::new(mod_api::EntityRef::new(WorldEpoch::new(999), 12));
             let host: &dyn mod_api::Host = game;
             assert_eq!(stale.can_use_portal(host), None);
-            game.enter_command_level(super::super::Dim::Nether).unwrap();
+            game.enter_command_level(sunrise_gameplay_common::game::Dim::Nether).unwrap();
             let host: &dyn mod_api::Host = game;
             assert_eq!(cow.can_use_portal(host), None);
-            game.enter_command_level(super::super::Dim::Overworld)
+            game.enter_command_level(sunrise_gameplay_common::game::Dim::Overworld)
                 .unwrap();
             check(game, cow, true);
         });
@@ -389,7 +390,7 @@ pub(crate) mod tests {
             game.mobs = taken;
             assert!(mob.set_baby(game, true));
 
-            let mut dragon = super::super::dragon_common::Dragon::new(Vec3::ZERO, 0.0, 0);
+            let mut dragon = sunrise_gameplay_common::game::dragon_common::Dragon::new(Vec3::ZERO, 0.0, 0);
             dragon.id = 15;
             game.dragon.replace(dragon);
             let dragon = game.mob(game.entity(15).unwrap()).unwrap();
@@ -680,7 +681,7 @@ pub(crate) mod tests {
                 .push(Mob::new(12, zombie.clone(), Vec3::ZERO, 0.0));
             game.mobs.push(Mob::new(13, zombie, Vec3::ZERO, 0.0));
             game.armor_stands.push(ArmorStand::new(14, Vec3::ZERO, 0.0));
-            let mut dragon = super::super::dragon_common::Dragon::new(Vec3::ZERO, 0.0, 0);
+            let mut dragon = sunrise_gameplay_common::game::dragon_common::Dragon::new(Vec3::ZERO, 0.0, 0);
             // Reserve the dragon's eight consecutive part IDs away from the mobs.
             dragon.id = 40;
             game.dragon.replace(dragon);
@@ -926,7 +927,7 @@ pub(crate) mod tests {
                 .unwrap()
                 .clone();
             game.mobs.push(Mob::new(12, zombie, Vec3::ZERO, 0.0));
-            let mut dragon = super::super::dragon_common::Dragon::new(Vec3::ZERO, 0.0, 0);
+            let mut dragon = sunrise_gameplay_common::game::dragon_common::Dragon::new(Vec3::ZERO, 0.0, 0);
             dragon.id = 15;
             game.dragon.replace(dragon);
             let entity = game.entity(12).unwrap();

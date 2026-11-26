@@ -4,6 +4,7 @@ use mod_api::MobRef;
 use sunrise_sim::mobs::Mob;
 use super::*;
 use sunrise_gameplay::game::native_entity_refs::tests::with_game;
+use sunrise_gameplay::game::native_goal_ticks::GoalCx;
 use sunrise_core::geometry::Vec3;
 
 struct OneMob<'a>(&'a Mob);

@@ -1,4 +1,5 @@
 use super::*;
+use sunrise_gameplay_common::game::Screen;
 
 #[test]
 #[ignore = "daily"]

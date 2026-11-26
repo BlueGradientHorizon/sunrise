@@ -6,6 +6,7 @@ use sunrise_level::containers::BlockEntity;
 #[cfg(test)]
 pub(crate) mod part_remainder_tests {
     use super::*;
+    use sunrise_level::containers::Crafter;
     struct Milk;
     #[mod_api::sunrise_part]
     impl mod_api::ItemPart for Milk {

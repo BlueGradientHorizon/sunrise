@@ -321,7 +321,7 @@ fn with_order_probe(
 ) -> Vec<Seen> {
     let seen = Arc::new(Mutex::new(Vec::new()));
     with_game(|game| {
-        let (player, ..) = super::native_server::fake_action_tests::fake(game, Some(item), 0);
+        let (player, ..) = crate::game::native_server::fake_action_tests::fake(game, Some(item), 0);
         let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
             "order",
             Box::new(OrderProbe {

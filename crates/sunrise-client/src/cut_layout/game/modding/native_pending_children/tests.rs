@@ -11,6 +11,10 @@ use std::sync::{
     atomic::{AtomicUsize, Ordering},
 };
 use sunrise_mod_runtime::pending_children::Decision;
+use mod_api::{PendingChildrenEdits, PendingChildrenRef, PendingMobSpec, UnspawnedMobError};
+use sunrise_mod_runtime::attachments::Attachments;
+use sunrise_mod_runtime::pending_children::{Action, Error};
+use sunrise_gameplay::game::server_side::native_pending_children::{Children, PendingMob};
 
 fn initial(game: &sunrise_gameplay::game::ServerGame<'_>, id: u32) -> PendingMob {
     let kind = game.res.mob_types().get("minecraft:cow").unwrap().clone();

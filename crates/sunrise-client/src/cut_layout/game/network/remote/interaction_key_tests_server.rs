@@ -134,7 +134,7 @@ fn no_interaction_listener_attack_mining_offhand_and_pick() {
                     }
                     _ => {
                         use sunrise_client::interaction_input::InteractionWorld;
-                        sunrise_gameplay::game::server_side::remote_server::RemoteInputWorld(game).pick();
+                        sunrise_client_gameplay::game::client_side::remote_client::RemoteInputWorld(game).pick();
                     }
                 }
                 assert_eq!(
@@ -241,7 +241,7 @@ fn pick_keeps_packet_veto_and_never_swings() {
                 game.world.set(0, 64, 0, stone).unwrap();
                 game.set_test_forced_hit(Some(hit()));
                 use sunrise_client::interaction_input::InteractionWorld;
-                sunrise_gameplay::game::server_side::remote_server::RemoteInputWorld(game).pick();
+                sunrise_client_gameplay::game::client_side::remote_client::RemoteInputWorld(game).pick();
                 assert_eq!(
                     packets
                         .lock()

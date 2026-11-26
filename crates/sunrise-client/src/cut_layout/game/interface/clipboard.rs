@@ -50,7 +50,7 @@ mod tests {
         let reads = Reads::default();
         let mods: mod_api::Mods = vec![ModEntry::new("paste", Box::new(Mod(reads.clone())))].into();
         with_mods(mods, || {
-            sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+            sunrise_client_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
                 game.options.headless = true;
                 game.side.clipboard.0.set_text("pasted");
 
@@ -64,7 +64,7 @@ mod tests {
                         state: winit::event::ElementState::Pressed,
                         button: winit::event::MouseButton::Left,
                     },
-                    crate::game::input_trace::InputOrigin::User,
+                    sunrise_client_gameplay::game::input_trace::InputOrigin::User,
                 );
                 game.native_client_tick_pre();
                 let got = reads.0.lock().unwrap().clone();

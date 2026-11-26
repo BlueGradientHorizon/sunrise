@@ -105,11 +105,11 @@ fn hit(pos: [i32; 3]) -> Hit {
 fn click(game: &mut sunrise_gameplay::game::ServerGame<'_>, pos: [i32; 3]) -> (bool, Vec<Posted>) {
     let hit = hit(pos);
     game.side.forced_hit = Some(hit);
-    sunrise_client_gameplay::game::sculk::TEST_POSTED_EVENTS.with(|events| *events.borrow_mut() = Some(Vec::new()));
+    sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|events| *events.borrow_mut() = Some(Vec::new()));
     let consumed = game.with_player_actor(|g| g.use_hand(Some(&hit))).unwrap();
     game.side.forced_hit = None;
     let events =
-        sunrise_client_gameplay::game::sculk::TEST_POSTED_EVENTS.with(|events| events.borrow_mut().take().unwrap());
+        sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|events| events.borrow_mut().take().unwrap());
     (consumed, events)
 }
 

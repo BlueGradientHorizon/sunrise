@@ -3,7 +3,7 @@
 //! (`playSearchingSound`, the block's hit sound) and the egg's own-random push
 //! (`Sniffer.spawnChildFromBreeding`'s `new ItemEntity(..)`).
 use {sunrise_client_gameplay::game::client_side::sniffers::Mob, sunrise_client_gameplay::game::client_side::sniffers::sniffer};
-use crate::game::kill_die_vibration_tests::game as sculk_game;
+use crate::game::server_side::kill_die_vibration_tests::game as sculk_game;
 use sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS;
 use {sunrise_gameplay_common::game::Game, sunrise_gameplay_common::game::PlayerMotion};
 use sunrise_core::{geometry::Vec3, random::RandomSource};
@@ -76,7 +76,7 @@ fn digging_posts_entity_action_every_ten_ticks_outside_the_dust_window() {
 #[test]
 #[ignore = "daily"]
 fn a_silent_sniffer_still_plays_the_local_searching_and_hit_sounds() {
-    sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+    crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
         game.world.chunks.insert(
             (0, 0),
             std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),

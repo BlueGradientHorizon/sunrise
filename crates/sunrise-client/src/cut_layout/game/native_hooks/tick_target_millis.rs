@@ -27,7 +27,7 @@ mod tick_target_millis_tests {
         )]
         .into();
         with_mods(mods, || {
-            sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+            crate::game::native_entity_refs::tests::with_client_game(|game| {
                 check(game);
             });
         });
@@ -40,7 +40,7 @@ mod tick_target_millis_tests {
     #[test]
     #[ignore = "daily"]
     fn a_client_mod_sets_how_long_a_client_tick_lasts() {
-        sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+        crate::game::native_entity_refs::tests::with_client_game(|game| {
             assert_eq!(game.tick_target_millis(), 50.0);
         });
         let seen = with_timer(

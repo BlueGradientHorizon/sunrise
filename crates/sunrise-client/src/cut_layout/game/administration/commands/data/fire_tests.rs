@@ -285,7 +285,7 @@ pub(crate) fn run_fire_changes_on_eyes_fangs_spawners_clouds_and_bullets() {
         game.kill_target(neg_bullet);
 
         // Fresh vs already-ticked bullet in lava, plus shoot -> hurt -> discard -> entity_damage order and Silent:1b.
-        sunrise_client_gameplay::game::sculk::TEST_POSTED_EVENTS.with(|e| *e.borrow_mut() = Some(Vec::new()));
+        sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|e| *e.borrow_mut() = Some(Vec::new()));
         game.side.audio_capture_active = true;
         game.side.pending_sounds.clear();
         let fresh = summon_target_at(
@@ -296,7 +296,7 @@ pub(crate) fn run_fire_changes_on_eyes_fangs_spawners_clouds_and_bullets() {
         );
         tick_fire_entities(game);
         assert!(!target_exists(game, fresh));
-        let fresh_events: Vec<&'static str> = sunrise_client_gameplay::game::sculk::TEST_POSTED_EVENTS.with(|e| {
+        let fresh_events: Vec<&'static str> = sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|e| {
             std::mem::take(e.borrow_mut().as_mut().unwrap())
                 .into_iter()
                 .map(|(ev, ..)| ev)
@@ -397,7 +397,7 @@ pub(crate) fn run_fire_changes_on_eyes_fangs_spawners_clouds_and_bullets() {
             std::mem::take(&mut game.side.pending_sounds).is_empty(),
             "Silent:1b bullet must not play hurt sound on attack path"
         );
-        sunrise_client_gameplay::game::sculk::TEST_POSTED_EVENTS.with(|e| *e.borrow_mut() = None);
+        sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|e| *e.borrow_mut() = None);
 
         // ShulkerBullet.isOnFire() is always false, even with positive fire_ticks or visual fire.
         let bullet_vis = summon_target_at(

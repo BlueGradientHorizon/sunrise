@@ -1,7 +1,8 @@
 
 
-use mod_api::EntityRef;
+use mod_api::{ArrowPickup, Deflection, EntityRef, PierceLevelError, ProjectileRef};
 use sunrise_core::geometry::Vec3;
+use sunrise_sim::arrows::Pickup;
 use sunrise_sim::mobs::Who;
 use sunrise_sim::projectiles::Projectile;
 use sunrise_sim::projectiles::ProjectileKind;

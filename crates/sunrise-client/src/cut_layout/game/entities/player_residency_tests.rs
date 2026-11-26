@@ -250,7 +250,7 @@ fn production_login_and_local_body_constructor_admit_profile_and_real_loan() {
     };
     use sunrise_sim::lan::{NetConfig, guest::Guest, hub::HubConfig};
     let mut profile = 0_u128;
-    sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+    sunrise_client_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
         let (pipe, _server) = Pipe::pair();
         game.connect_local(pipe, "SourceProfile").unwrap();
         profile = game.side.remote.as_ref().unwrap().profile();

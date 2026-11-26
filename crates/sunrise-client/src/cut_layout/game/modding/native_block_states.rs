@@ -236,10 +236,10 @@ mod tests {
     #[test]
     fn description_ids_write_a_path_separator_as_a_dot() {
         assert_eq!(
-            super::description_id("fluid_type", "ruby:molten/iron").as_deref(),
+            description_id("fluid_type", "ruby:molten/iron").as_deref(),
             Some("fluid_type.ruby.molten.iron")
         );
-        assert_eq!(super::description_id("block", "no_namespace"), None);
+        assert_eq!(description_id("block", "no_namespace"), None);
     }
 
     #[test]
@@ -665,11 +665,11 @@ mod tests {
         ]);
         sunrise_gameplay_common::game::api_values::resolve_block_definitions(registry).unwrap();
         assert_eq!(
-            crate::game::api_values::default_state(part_tests::block_key("oak_stairs")).unwrap(),
+            sunrise_gameplay_common::game::api_values::default_state(part_tests::block_key("oak_stairs")).unwrap(),
             BlockStateId(1)
         );
         assert_eq!(
-            crate::game::api_values::default_state(part_tests::block_key("minecraft:wheat"))
+            sunrise_gameplay_common::game::api_values::default_state(part_tests::block_key("minecraft:wheat"))
                 .unwrap(),
             BlockStateId(5)
         );
@@ -677,7 +677,7 @@ mod tests {
         // refused by the generated host boundary, not revalidated by typed operations.
         let key = part_tests::block_key("minecraft:wheat");
         assert!(
-            std::thread::spawn(move || crate::game::api_values::default_state(key))
+            std::thread::spawn(move || sunrise_gameplay_common::game::api_values::default_state(key))
                 .join()
                 .unwrap()
                 .is_none()

@@ -1,3 +1,4 @@
+use sunrise_gameplay::game::server_side::natural_spawning::{PassLevel, SCANNED_QUERIES};
 use sunrise_core::geometry::Aabb;
 use sunrise_core::geometry::Vec3;
 use sunrise_core::nbt::Tag;

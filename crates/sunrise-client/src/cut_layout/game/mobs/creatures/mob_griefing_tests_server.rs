@@ -1,6 +1,6 @@
 use super::super::native_entity_refs::tests::with_game;
 use {sunrise_gameplay_common::game::server_side::native_item_places::tests::guest, sunrise_gameplay::game::server_side::native_item_places::tests::open_to_lan};
-use sunrise_gameplay_common::game::mobs::creatures::mob_griefing_tests::Deny;
+use sunrise_gameplay_common::game::creatures::mob_griefing_tests::Deny;
 use std::sync::Arc;
 
 /// `EntityMobGriefingEvent`: the mod's answer for one entity reaches the

@@ -7,6 +7,10 @@ use sunrise_world::worldgen::structure::Rotation;
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
+    use mod_api::GameTests;
+    use sunrise_gameplay::game::game_tests::{Grid, verify_batches};
+    use sunrise_gameplay::game::test_instances::TestDef;
+    use sunrise_gameplay::game_tests::{Retry, TestError};
 
     pub use sunrise_gameplay::game::game_tests::tests::server_game;
 

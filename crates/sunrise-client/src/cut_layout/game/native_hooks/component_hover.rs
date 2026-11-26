@@ -56,7 +56,7 @@ mod component_hover_tests {
         let entity = style(serde_json::json!({
             "action": "show_entity", "id": "minecraft:pig", "uuid": [0, 1, 0, 2], "name": "Babe"
         }));
-        sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+        crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
             // Compare the same atlas before and after installing the scoped listener.
             let unheard = [&text, &secret, &item, &entity].map(|style| drawn(game, style));
             assert!(unheard[..3].iter().all(|quads| !quads.is_empty()));

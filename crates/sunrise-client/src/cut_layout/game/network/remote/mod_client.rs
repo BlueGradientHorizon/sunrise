@@ -316,7 +316,7 @@ pub(crate) mod tests {
                         12,
                         game.guest_index(12).unwrap(),
                         hit,
-                        super::Hand::Main,
+                        sunrise_sim::first_person_sim::Hand::Main,
                         None,
                     )
                     .unwrap()

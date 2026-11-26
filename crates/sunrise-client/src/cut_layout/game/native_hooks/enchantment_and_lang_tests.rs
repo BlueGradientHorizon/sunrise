@@ -32,7 +32,7 @@ fn a_servers_synced_enchantment_reaches_the_registry_reads() {
     sunrise_gameplay_common::game::in_own_process(
         "game::native_hooks::enchantment_and_lang_tests::a_servers_synced_enchantment_reaches_the_registry_reads",
         || {
-            sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+            sunrise_client_gameplay::game::client_side::native_entity_refs::tests::with_client_game(|game| {
                 let (client, _server) = sunrise_protocol::connection::Pipe::pair();
                 game.connect_local(client, "SyncedEnchantment").unwrap();
                 let definition = serde_json::json!({

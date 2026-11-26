@@ -31,11 +31,11 @@ pub(crate) fn target(id: u32) -> Option<InteractTarget> {
 }
 
 pub(crate) fn watch() {
-    sunrise_client_gameplay::game::sculk::TEST_POSTED_EVENTS.with(|events| *events.borrow_mut() = Some(Vec::new()));
+    sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|events| *events.borrow_mut() = Some(Vec::new()));
 }
 
 pub(crate) fn posted() -> Vec<(&'static str, [f64; 3], Option<Who>)> {
-    sunrise_client_gameplay::game::sculk::TEST_POSTED_EVENTS
+    sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS
         .with(|events| std::mem::take(events.borrow_mut().as_mut().unwrap()))
 }
 
@@ -69,7 +69,7 @@ fn an_egg_used_on_a_mob_posts_entity_interact() {
     game.inventory[0] = Some(ItemStack::new("minecraft:stick", 1));
     assert!(!game.interact_mob(target(8)).unwrap());
     assert!(posted().is_empty());
-    sunrise_client_gameplay::game::sculk::TEST_POSTED_EVENTS.with(|events| *events.borrow_mut() = None);
+    sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|events| *events.borrow_mut() = None);
 }
 
 #[test]

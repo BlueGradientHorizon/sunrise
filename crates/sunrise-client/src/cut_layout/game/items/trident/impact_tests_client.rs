@@ -1,4 +1,5 @@
 use sunrise_core::geometry::Vec3;
+use sunrise_sim::arrows::Pickup;
 use sunrise_sim::thrown_trident::ThrownTrident;
 use super::*;
 use crate::game::server_side::trident::impact_tests::aim_trident_at_wall;

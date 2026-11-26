@@ -16,7 +16,7 @@ fn unregistered_serializer_failed_reload_preserves_previous_recipes() {
         }),
     )]
     .into();
-    super::api_values::install_parts(&mods).unwrap();
+    sunrise_gameplay_common::game::api_values::install_parts(&mods).unwrap();
     mod_platform::testing::with_mods(mods, || {
         super::native_entity_refs::tests::with_game(|game| {
             let scratch = tempfile::tempdir().unwrap();

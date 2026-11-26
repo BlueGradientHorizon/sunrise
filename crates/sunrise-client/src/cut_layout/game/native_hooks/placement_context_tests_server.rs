@@ -231,7 +231,7 @@ fn state_for_placement_distinguishes_player_and_dispenser_sources() {
                 });
 
                 // Client placement prediction also reports `Player`.
-                sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+                crate::game::native_entity_refs::tests::with_client_game(|game| {
                     let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
                     game.connect_local(pipe, "SourceClient").unwrap();
                     let remote = game.side.remote.as_mut().unwrap();

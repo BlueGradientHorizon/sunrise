@@ -7,6 +7,8 @@ use sunrise_gameplay_common::game::native_block_tables::BlockTables;
 
 use super::super::native_guest_turn_tests::with_guests;
 
+use mod_api::__private::game::player_ref;
+
 use std::sync::{Arc, Mutex};
 
 use sunrise_items::items::ItemStack;

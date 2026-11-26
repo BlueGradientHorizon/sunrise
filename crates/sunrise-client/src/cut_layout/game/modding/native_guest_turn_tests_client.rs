@@ -10,7 +10,7 @@ fn level_event_excludes_its_source_even_during_another_guests_turn() {
     with_guests(|game| {
         let mut receivers = Vec::new();
         let host = game.side.lan.as_mut().unwrap();
-        host.owner = Some(super::lan::Owner {
+        host.owner = Some(sunrise_gameplay::game::lan::Owner {
             uuid: 12,
             saved: None,
         });

@@ -14,6 +14,8 @@ use std::sync::{
 use sunrise_command::args::GameMode;
 use sunrise_protocol::{packets::configuration as config, registry::Builtin};
 use sunrise_sim::lan::data::SyncData;
+use sunrise_client_lib::net::Event;
+use sunrise_gameplay_common::game::Screen;
 
 #[test]
 #[ignore = "daily"]

@@ -8,6 +8,7 @@ use sunrise_sim::mobs::Species;
 pub(crate) mod tests {
 
 use super::*;
+use sunrise_level::sculk::Context;
 
 /// The wardens that hear an event are those in the list when it is
     /// posted, however the list changed since the last one.
@@ -82,6 +83,7 @@ use super::*;
 #[cfg(test)]
 pub(crate) mod command_damage_listener_tests {
     use super::*;
+    use sunrise_level::sculk::Info;
     use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress};
     use crate::game::{Settings, load_resources};
     use std::sync::Arc;
