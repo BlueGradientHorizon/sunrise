@@ -41,3 +41,47 @@ fn a_mod_halves_a_guests_visibility() {
         });
     });
 }
+
+/// Logs the player each visibility question names, by UUID.
+struct NamePlayer(Arc<Mutex<Vec<Option<u128>>>>);
+#[mod_api::__subscriptions]
+impl mod_api::Hooks for NamePlayer {
+    fn living_visibility(
+        &self,
+        host: &dyn mod_api::Host,
+        event: &mut mod_api::LivingVisibilityEvent,
+    ) {
+        let player = event.entity.player(host).map(|p| p.uuid());
+        self.0.lock().unwrap().push(player);
+    }
+}
+
+/// A `living_visibility` listener names the guest it is asked about by its
+/// UUID, under the hook's read-only host (#5944), and an entity that is no player as none.
+#[test]
+#[ignore = "daily"]
+fn a_mod_names_the_guest_whose_visibility_it_is_asked() {
+    let heard = Arc::default();
+    let mods = vec![mod_api::ModEntry::new(
+        "name_player",
+        Box::new(NamePlayer(Arc::clone(&heard))),
+    )]
+    .into();
+    mod_platform::testing::with_mods(mods, || {
+        with_game(|game| {
+            open_to_lan(game);
+            let mut seen = guest(5);
+            seen.loaded = true;
+            let uuid = seen.uuid;
+            game.lan.as_mut().unwrap().hub.guests.push(seen);
+            let view = game.lan_guest_views()[0].1.clone();
+            let world = game.mob_world_base(&[]);
+            world.player_visibility(&view, 900, 0.8);
+            world
+                .mob_hooks
+                .unwrap()
+                .living_visibility_mob(900, 901, 1.0);
+            assert_eq!(*heard.lock().unwrap(), [Some(uuid), None]);
+        });
+    });
+}

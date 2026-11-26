@@ -1377,6 +1377,22 @@ impl Game<'_> {
         let owner = self.native_tamable(living)?.extra.owner?;
         Some(sunrise_client::lan::playerdata::ints_uuid(owner))
     }
+    /// The living entity as a player, with its UUID: the player in place (a guest's while it
+    /// acts) or a guest. None for any other living entity, a stale handle or on a client.
+    pub(super) fn living_player(&self, living: LivingRef) -> Option<mod_api::PlayerRef> {
+        if !self.is_logical_server() {
+            return None;
+        }
+        let uuid = match self.native_living_target(living)? {
+            Target::Player => match self.lan_acting_uuid {
+                Some(guest) => guest,
+                None => sunrise_client::lan::playerdata::ints_uuid(self.level.player_uuid?),
+            },
+            Target::Guest(conn) => self.command_guest(conn)?.uuid,
+            _ => return None,
+        };
+        Some(mod_api::__private::game::player_ref(living.entity(), uuid))
+    }
     /// The mob a handle names, when it is a `TamableAnimal` or an `AbstractHorse`.
     fn native_tamable(&self, living: LivingRef) -> Option<&Mob> {
         let Target::Mob(id) = self.native_living_target(living)? else {
