@@ -187,6 +187,10 @@ mod tests {
             || {
                 with_game(|game| {
                     game.options.dedicated = Some(Vec::new());
+                    crate::game::native_entity_refs::tests::fixture_resident_column(
+                        &mut game.world,
+                        (0, 0),
+                    );
                     game.spawn_item(ItemStack::new("minecraft:stick", 1), [0.0; 3], [0.0; 3], 0);
                     let peer = game
                         .item_entity(game.entity(game.dropped[0].id).unwrap())
@@ -203,8 +207,11 @@ mod tests {
                         previous: Vec3::ZERO,
                         velocity: Vec3::new(1.0, 2.0, 3.0),
                         rotation: [4.0, 5.0],
+                        previous_rotation: [4.0, 5.0],
                         owner: None,
                         fall_distance: 6.0,
+                        custom_name: None,
+                        custom_name_visible: false,
                         payload_version: 1,
                         payload_bytes: Vec::new(),
                         mount: None,
@@ -235,7 +242,7 @@ mod tests {
                                         })
                                         .unwrap();
                                     assert_eq!(
-                                        peer.set_stack(scope.host(), stack.clone()),
+                                        peer.set_stack(scope.host(), Some(stack.clone())),
                                         Ok(true)
                                     );
                                     Ok::<_, ()>(())

@@ -169,7 +169,17 @@ fn handle_read(game: &mut super::Game<'_>, id: u32) -> Read {
         speed: living
             .effect(game, speed())
             .map(|e| (e.amplifier, e.duration)),
-        effects: living.effects(game).map(|list| list.len()),
+        effects: {
+            // Part 3 lends each effect through `visit_effects` instead of a list.
+            let mut count = 0;
+            living
+                .visit_effects(game, &mut |_| {
+                    count += 1;
+                    core::ops::ControlFlow::Continue(())
+                })
+                .map(|_| count)
+                .ok()
+        },
         speed_affected: living.potion_affected(game, speed()),
         main_hand: living.with_hand_item(game, Hand::Main, |stack| {
             (stack.count(), Some(stack.item()) == stick)
@@ -429,7 +439,13 @@ fn a_hit_listener_reads_its_victim_and_causer_live_and_their_attachments_read_on
             assert_eq!(post.causing.as_ref().map(|read| read.id), Some(7));
 
             // A hit with no causing entity lends none.
-            game.hurt_player_from(1.0, None, "minecraft:generic", Some(None), false);
+            game.hurt_player_from(
+                1.0,
+                None,
+                "minecraft:generic",
+                crate::game::creatures::KnownCause::None,
+                false,
+            );
             let calls = std::mem::take(&mut *seen.lock().unwrap());
             assert_eq!(calls.len(), 3);
             for call in &calls {

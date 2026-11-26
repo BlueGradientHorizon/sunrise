@@ -215,6 +215,7 @@ impl FrameHooks for WorldStageProbe {
         Batch {
             lines_through: &lines[..1],
             lines: &lines[1..],
+            stage_ends: [[0, 0, 1, 1]; client::gfx::world_primitives::STAGES - 1],
             ..Default::default()
         }
     }
@@ -309,9 +310,11 @@ fn feature_stage_order(
             feature_draws: [
                 DrawRanges {
                     primitives: [0..0, 0..0, 0..0, 0..1],
+                    ..Default::default()
                 },
                 DrawRanges {
                     primitives: [0..0, 0..0, 0..1, 0..0],
+                    ..Default::default()
                 },
             ],
             ..Default::default()
@@ -393,12 +396,13 @@ fn fixture(window: Arc<Window>, out: &Path) -> Result<(), Box<dyn std::error::Er
         &[],
         &[],
         (&white, 16, 16),
+        None,
         (&zero, 1, 1),
         (&zero, 1, 1),
         (&zero, 1),
         Arc::new(client::gfx::panorama::Faces::colour([0, 0, 0, 255])),
         None,
-        None,
+        sunrise_client_render::gfx::RendererDevice::New,
         GraphicsApi::Vulkan,
         false,
         (true, true),
@@ -594,14 +598,12 @@ fn fixture(window: Arc<Window>, out: &Path) -> Result<(), Box<dyn std::error::Er
         !hooks.stages.contains(&Stage::AfterSky),
         "a dimension with no skybox has no sky stage"
     );
-    assert!(
-        !hooks.stages.contains(&Stage::AfterOpaqueBlocks),
-        "the pack owns terrain"
-    );
     assert!(hooks.stages.contains(&Stage::AfterTranslucentParticles));
     assert!(hooks.stages.ends_with(&[
+        Stage::AfterOpaqueBlocks,
         Stage::AfterOpaqueFeatures,
         Stage::AfterTranslucentFeatures,
+        Stage::AfterTranslucentBlocks,
         Stage::AfterLevel
     ]));
     assert_eq!(hooks.prepared_after_sky, Some(false));
@@ -708,11 +710,13 @@ fn fixture(window: Arc<Window>, out: &Path) -> Result<(), Box<dyn std::error::Er
     assert!(
         classic.stages.ends_with(&[
             Stage::AfterSky,
+            Stage::AfterOpaqueBlocks,
             Stage::AfterOpaqueFeatures,
             Stage::AfterTranslucentFeatures,
+            Stage::AfterTranslucentBlocks,
             Stage::AfterLevel
         ]),
-        "the pack sky follows the engine world stages and precedes the end of the pack world: {:?}",
+        "the pack sky, block, and feature stages follow the engine world stages and precede AfterLevel: {:?}",
         classic.stages
     );
     assert_eq!(
@@ -745,8 +749,10 @@ fn fixture(window: Arc<Window>, out: &Path) -> Result<(), Box<dyn std::error::Er
         if boss_world_fog {
             assert!(end.stages.ends_with(&[
                 Stage::AfterSky,
+                Stage::AfterOpaqueBlocks,
                 Stage::AfterOpaqueFeatures,
                 Stage::AfterTranslucentFeatures,
+                Stage::AfterTranslucentBlocks,
                 Stage::AfterLevel
             ]));
         } else {
@@ -868,8 +874,10 @@ fn fixture(window: Arc<Window>, out: &Path) -> Result<(), Box<dyn std::error::Er
     );
     assert!(celestial_hooks.stages.ends_with(&[
         Stage::AfterSky,
+        Stage::AfterOpaqueBlocks,
         Stage::AfterOpaqueFeatures,
         Stage::AfterTranslucentFeatures,
+        Stage::AfterTranslucentBlocks,
         Stage::AfterLevel,
     ]));
     frame.celestial = &[];
@@ -884,20 +892,6 @@ fn fixture(window: Arc<Window>, out: &Path) -> Result<(), Box<dyn std::error::Er
     ordering_frame.pitch = 0.0;
     ordering_frame.eye_rotation = [0.0; 2];
     feature_stage_order(&mut renderer, ordering_frame, out)?;
-
-    // A native sky uses the same no-pass notification boundary, even with its own timing pass.
-    use sunrise_shader_api::{MANIFEST, Pack, check};
-    let files = [
-        (MANIFEST, "schema = 1\nid = \"test\"\nname = \"Test\"\nversion = \"1\"\napi = \"0.1\"\n[sky]\nfile = \"sky.wgsl\"\n"),
-        ("sky.wgsl", "fn sky(input: SkyInput) -> vec4<f32> { return input.color; }"),
-    ].map(|(name, text)| (name.to_owned(), text.as_bytes().to_vec())).into();
-    let report = check(&Pack::from_files(files).expect("native sky pack")).expect("valid sky");
-    renderer.set_native_shader_pack(Some((report, vec![], vec![], vec![], Default::default())))?;
-    renderer.set_pass_timing(true);
-    let mut native_sky_hooks = WorldStageProbe::default();
-    renderer.render(&frame, Some(&mut native_sky_hooks))?;
-    assert_eq!(native_sky_hooks.stages.first(), Some(&Stage::AfterSky));
-    assert_eq!(native_sky_hooks.prepared_after_sky, Some(true));
 
     std::fs::write(
         out.join("result.json"),
@@ -1023,12 +1017,14 @@ fn fixture_frame(hud: &HudBatch) -> Frame<'_> {
         camera: glam::DVec3::new(0.5, 100.0, 0.5),
         yaw: 0.0,
         pitch: 10.0,
+        roll: 0.0,
         fov_degrees: 85.0,
         cull_fov_degrees: 85.0,
         eye: glam::DVec3::new(0.5, 100.0, 0.5),
         eye_rotation: [0.0, 10.0],
         first_person: true,
         bob: glam::Mat4::IDENTITY,
+        view_transform: glam::Mat4::IDENTITY,
         spin: glam::Mat4::IDENTITY,
         sky: client::environment::Sky::default(),
         shadow_scene_revision: (0, 0),
@@ -1038,7 +1034,6 @@ fn fixture_frame(hud: &HudBatch) -> Frame<'_> {
         shadow_distance: None,
         depth_far: 1000.0,
         underwater: false,
-        water_plane: None,
         cave_culling: false,
         title: true,
         sky_pass: false,

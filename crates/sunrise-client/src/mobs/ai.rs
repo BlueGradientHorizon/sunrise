@@ -28,7 +28,7 @@ use sunrise_core::{
     geometry::{Aabb, Axis, ShapeOp, Vec3, VoxelShape},
     random::RandomSource,
 };
-use sunrise_world::native_load_context::LoopContext;
+use sunrise_world::native_load_context::{LoopContext, LoopSide};
 
 #[cfg(test)]
 mod inside_walk_tests {
@@ -78,6 +78,7 @@ mod inside_walk_tests {
             sunrise_client_core::potions::all_effects()
                 .map(|def| sunrise_client_core::potions::namespaced(def.id)),
             |id| sunrise_client_core::potions::effect(id).map(|e| e.index),
+            |_| true,
         )
         .unwrap();
         CONTACTS.lock().unwrap().clear();
@@ -450,7 +451,7 @@ mod inside_walk_tests {
 }
 #[cfg(test)]
 #[path = "effect_modifier_tests.rs"]
-mod effect_modifier_tests;
+pub(crate) mod effect_modifier_tests;
 #[cfg(test)]
 #[path = "fall_flying_tests.rs"]
 mod fall_flying_tests;
@@ -511,6 +512,10 @@ pub struct Ai {
     /// last started on. On the mob, not the goal, so the mob tick can tell that a pet
     /// has nothing new to read without building the level's player views.
     pub owner_hurt_timestamp: i32,
+    /// `OwnerHurtByTargetGoal.timestamp`: the owner's `getLastHurtByMobTimestamp` the
+    /// goal last started on. On the mob, not the goal, so the mob tick can tell that a
+    /// pet has nothing new to read without building the level's player views.
+    pub owner_hurt_by_timestamp: i64,
     /// Sensing: line-of-sight results cached for one tick.
     pub seen_cache: Vec<(Who, bool)>,
     /// Swing animation progress (attackAnim) and ticks.
@@ -1128,10 +1133,18 @@ pub enum Pause {
     Consumption {
         decision: super::fox::Consumption,
     },
+    Drink {
+        stack: crate::items::ItemStack,
+        resume: DrinkResume,
+    },
     Breathing {
         air: AirPause,
         /// `Entity.computeSpeed`, read before the tick moved the mob.
         known_speed: Vec3,
+    },
+    /// The server found changed equipment before the living AI step.
+    Equipment {
+        first: sunrise_core::equipment_slot::EquipmentSlot,
     },
     /// A breeding goal or brain behaviour finished its decision. Deliver the action before
     /// resuming any later goal, movement or age and love ticks.
@@ -1145,8 +1158,31 @@ pub enum Pause {
     Trample(sunrise_world::block_landing::FarmlandTrample),
     /// A vehicle must propagate the selected fall before this move continues.
     FallToPassengers(super::living::PassengerFall),
+    /// A brain was constructed or rebuilt during the tick and needs the owning
+    /// game to fire `register_behaviors` with a scoped `ServerHost`.
+    RegisterBehaviors {
+        stage: BrainStage,
+    },
     /// The mob's `InsideEffects` collector is ready to flush against the live level.
     InsideEffects(InsidePause),
+}
+
+/// Where a mob tick paused for staged `register_behaviors`.
+#[derive(Clone, Copy, Debug)]
+pub enum BrainStage {
+    /// Brain was just built or rebuilt before running its brain tick.
+    BeforeBrain,
+    /// Villager brain refreshed itself during `villager::tick_brain`.
+    AfterVillagerBrain,
+    /// A brain was rebuilt during `AgeableMob.aiStep` (`age_boundary_reached`).
+    AfterAgeBoundary { no_ai: bool, after_water: bool },
+}
+
+/// The remainder of the mob tick after a drink finishes on its owning level.
+#[derive(Debug)]
+pub enum DrinkResume {
+    Trader,
+    Witch,
 }
 
 #[derive(Debug)]
@@ -1216,6 +1252,7 @@ enum AiPause {
     Movement(MovementPhase),
     Breed(Box<MobEvent>, BreedingPhase),
     BeeDamage(super::bee::ServerAiStage),
+    RegisterBehaviors(BrainStage),
 }
 
 fn goal_pause_to_ai(phase: SelectorPhase, pause: super::goals::GoalPause) -> AiPause {
@@ -1323,14 +1360,30 @@ pub fn tick(
                 let breath = Some(air.step.vanilla);
                 resume_after_breathing(m, w, level, events, air, known_speed, breath, None)
             }
+            TickProgress::Paused(Pause::Drink { stack, resume }) => {
+                // The hostless probe runs the same drink's built-in behaviour.
+                if stack.potion().unwrap_or(&stack.item) == "minecraft:healing" {
+                    m.heal(w.loop_context, 4.0);
+                }
+                if let Some(effect) = drink_potion_effect(&stack) {
+                    m.add_effect_instance(crate::brewing::namespaced(effect.id), effect);
+                }
+                if &*stack.item == "minecraft:milk_bucket" {
+                    m.apply_consume_effect(&crate::items::ConsumeEffect::ClearAllEffects);
+                }
+                m.extra.set_main_hand_stack(None);
+                resume_after_drink(m, w, level, events, resume, None)
+            }
             TickProgress::Paused(Pause::AfterDamage(resume)) => {
                 resume_after_damage(m, w, level, events, resume, None)
             }
             TickProgress::Paused(
-                Pause::Trample(_) | Pause::FallToPassengers(_) | Pause::Breeding { .. },
-            ) => {
-                unreachable!("a hostless tick cannot pause for movement or breeding")
-            }
+                Pause::Equipment { .. }
+                | Pause::Trample(_)
+                | Pause::FallToPassengers(_)
+                | Pause::RegisterBehaviors { .. }
+                | Pause::Breeding { .. },
+            ) => unreachable!("a hostless tick cannot reach this pause"),
             TickProgress::Paused(Pause::InsideEffects(_)) => {
                 unreachable!("hostless inside-block flush cannot pause")
             }
@@ -1463,6 +1516,7 @@ pub(super) fn resume_after_damage(
     if m.join != resume.join {
         return TickProgress::Complete(true);
     }
+    hurt_teleports(m, w, events);
     match resume.tail {
         DamageTail::Base { next, known_speed } => {
             let progress = continue_base_tick(m, w, level, events, next);
@@ -1490,7 +1544,7 @@ pub(super) fn resume_after_damage(
     }
 }
 
-/// The tick after `Entity.baseTick`, up to the fox's consumption boundary.
+/// Update item use and detect equipment changes after `Entity.baseTick`.
 fn after_base_tick(
     m: &mut Mob,
     w: &MobWorld,
@@ -1516,6 +1570,82 @@ fn after_base_tick(
     if m.alive() {
         super::spear_use::update_using_item(m, w, known_speed, events);
     }
+    if m.alive()
+        && m.species() == Species::WanderingTrader
+        && let Some(stack) = super::trader::tick_drink(m, events)
+    {
+        return TickProgress::Paused(Pause::Drink {
+            stack,
+            resume: DrinkResume::Trader,
+        });
+    }
+    after_using_item(m, w, level, events, movement)
+}
+
+fn after_using_item(
+    m: &mut Mob,
+    w: &MobWorld,
+    level: &mut DamageLevel<'_>,
+    events: &mut Vec<MobEvent>,
+    movement: Option<&mut Option<MobMovement>>,
+) -> TickProgress {
+    // LivingEntity.tick -> detectEquipmentUpdates, before the sleep check and aiStep.
+    if movement.is_some()
+        && !m.removed
+        && w.loop_context.side() == LoopSide::Server
+        && let Some(items) = w.items
+        && let Some(first) =
+            super::finalize::detect_equipment_updates(m, w.attributes, items, || {
+                mod_api::__private::enabled_listened(mod_api::HookId::LivingEquipmentChange)
+            })
+    {
+        return TickProgress::Paused(Pause::Equipment { first });
+    }
+    resume_after_equipment(m, w, level, events, movement)
+}
+
+/// Continue `finish_server_ai_step` after the owning game flushed staged
+/// `register_behaviors` for a freshly built or rebuilt brain.
+pub(super) fn resume_after_register_behaviors(
+    m: &mut Mob,
+    w: &MobWorld,
+    level: &mut DamageLevel<'_>,
+    stage: BrainStage,
+    events: &mut Vec<MobEvent>,
+    movement: Option<&mut Option<MobMovement>>,
+) -> TickProgress {
+    let pause_owner = movement.is_some();
+    if let BrainStage::AfterAgeBoundary { no_ai, after_water } = stage {
+        let next = if after_water {
+            AiStage::Finish
+        } else {
+            AiStage::AfterWater
+        };
+        return continue_ai_tail(m, w, level, events, no_ai, pause_owner, next);
+    }
+    let progress = match finish_server_ai_step_from(
+        m,
+        w,
+        level,
+        events,
+        Some(stage),
+        pause_owner,
+        pause_owner,
+    ) {
+        ControlFlow::Continue(()) => ai_step_after_server_ai(m, w, level, events, pause_owner),
+        ControlFlow::Break(next) => ControlFlow::Break(next),
+    };
+    finish_ai_progress(m, w, level, events, movement, progress)
+}
+
+/// Continue without redoing base tick, item use or equipment detection.
+pub(super) fn resume_after_equipment(
+    m: &mut Mob,
+    w: &MobWorld,
+    level: &mut DamageLevel<'_>,
+    events: &mut Vec<MobEvent>,
+    movement: Option<&mut Option<MobMovement>>,
+) -> TickProgress {
     super::sulfur_cube::adopt_body(m);
     let sleep_answer = m
         .extra
@@ -1555,6 +1685,42 @@ pub fn resume_after_consumption(
     }
     super::fox::before_living_ai_step(m, w);
     ai_and_finish_tick(m, w, level, events, movement)
+}
+
+/// Resume the exact tick site after `finishUsingItem` or a witch's potion.
+pub(super) fn resume_after_drink(
+    m: &mut Mob,
+    w: &MobWorld,
+    level: &mut DamageLevel<'_>,
+    events: &mut Vec<MobEvent>,
+    resume: DrinkResume,
+    movement: Option<&mut Option<MobMovement>>,
+) -> TickProgress {
+    if m.removed {
+        return TickProgress::Complete(false);
+    }
+    match resume {
+        DrinkResume::Trader => after_using_item(m, w, level, events, movement),
+        DrinkResume::Witch => {
+            super::witch::after_drink(m, events);
+            let progress = ai_step(m, w, level, events, movement.is_some());
+            finish_ai_progress(m, w, level, events, movement, progress)
+        }
+    }
+}
+
+/// The built-in status effect on either specialty drink's potion contents.
+pub fn drink_potion_effect(
+    stack: &crate::items::ItemStack,
+) -> Option<crate::effects::EffectInstance> {
+    let effect = match stack.potion().unwrap_or(&stack.item) {
+        "minecraft:water_breathing" => "water_breathing",
+        "minecraft:fire_resistance" => "fire_resistance",
+        "minecraft:swiftness" => "speed",
+        "minecraft:invisibility" => "invisibility",
+        _ => return None,
+    };
+    Some(crate::effects::EffectInstance::new(effect, 3600, 0))
 }
 
 fn ai_and_finish_tick(
@@ -1598,6 +1764,18 @@ fn ai_and_finish_tick(
         let progress = ridden_without_ai(m, w, level, events, movement.is_some());
         return finish_ai_progress(m, w, level, events, movement, progress);
     }
+    // Witch.aiStep drinks before super.aiStep; resume at the following magic roll.
+    if m.species() == Species::Witch {
+        let far = m
+            .target_info(w)
+            .is_some_and(|t| t.position.distance_squared(m.position) > 121.0);
+        if let Some(stack) = super::witch::ai_step_until_drink(m, events, far) {
+            return TickProgress::Paused(Pause::Drink {
+                stack,
+                resume: DrinkResume::Witch,
+            });
+        }
+    }
     let progress = ai_step(m, w, level, events, movement.is_some());
     finish_ai_progress(m, w, level, events, movement, progress)
 }
@@ -1625,7 +1803,7 @@ pub(super) fn resume_after_birth(
             } else if m.removed {
                 return TickProgress::Complete(false);
             } else {
-                match finish_server_ai_step(m, w, level, events, true) {
+                match finish_server_ai_step_from(m, w, level, events, None, true, true) {
                     ControlFlow::Continue(()) => ai_step_after_server_ai(m, w, level, events, true),
                     ControlFlow::Break(pause) => ControlFlow::Break(pause),
                 }
@@ -1671,6 +1849,9 @@ fn finish_ai_progress(
                 join: m.join,
                 tail: DamageTail::BeeServerAi { next },
             }))
+        }
+        ControlFlow::Break(AiPause::RegisterBehaviors(stage)) => {
+            TickProgress::Paused(Pause::RegisterBehaviors { stage })
         }
     }
 }
@@ -1840,6 +2021,14 @@ fn continue_ai_tail(
                 AiStage::Finish
             }
             AiStage::Finish => {
+                if pause_damage && m.staged_parts.pending_behaviors.is_some() {
+                    return TickProgress::Paused(Pause::RegisterBehaviors {
+                        stage: BrainStage::AfterAgeBoundary {
+                            no_ai,
+                            after_water: true,
+                        },
+                    });
+                }
                 return TickProgress::Complete(finish_tick(m, w, level, events));
             }
         };
@@ -1848,6 +2037,12 @@ fn continue_ai_tail(
                 join: m.join,
                 tail: DamageTail::Ai { next, no_ai },
             }));
+        }
+        if pause_damage && m.staged_parts.pending_behaviors.is_some() {
+            let after_water = matches!(next, AiStage::Finish);
+            return TickProgress::Paused(Pause::RegisterBehaviors {
+                stage: BrainStage::AfterAgeBoundary { no_ai, after_water },
+            });
         }
     }
 }
@@ -1926,7 +2121,7 @@ pub(super) fn resume_movement(
                     return TickProgress::Complete(false);
                 }
                 let pause_birth = w.asks_live_birth(m.species());
-                match finish_server_ai_step(m, w, level, events, pause_birth) {
+                match finish_server_ai_step_from(m, w, level, events, None, true, pause_birth) {
                     ControlFlow::Continue(()) => ai_step_after_server_ai(m, w, level, events, true),
                     ControlFlow::Break(pause) => ControlFlow::Break(pause),
                 }
@@ -3299,27 +3494,19 @@ pub(super) fn play_ambient(m: &mut Mob, w: &MobWorld, events: &mut Vec<MobEvent>
         Species::Nautilus | Species::ZombieNautilus => super::nautilus::sounds(m)[0],
         Species::Enderman if m.ai.target.is_some() => "entity.enderman.scream",
         // Wolf.isAngry reads the persistent anger timer, not the current target.
-        Species::Wolf if super::tame::angry(m) => {
-            super::finalize::variant_sound(m, "growl").unwrap_or("entity.wolf.growl")
+        Species::Wolf => {
+            play_wolf_ambient(m, w.side.variant_tables(), events);
+            return;
         }
-        Species::Wolf if m.random.next_int_bound(3).unwrap_or(1) == 0 => {
-            let kind = if m.extra.tame && m.health < m.attrs.max_health / 2.0 {
-                "whine"
-            } else {
-                "pant"
-            };
-            super::finalize::variant_sound(m, kind).unwrap_or("entity.wolf.pant")
+        Species::Pig | Species::Cow | Species::Chicken => {
+            play_farm_ambient(m, w.side.variant_tables(), events);
+            return;
         }
         Species::Parrot => super::parrot::ambient(m, w),
-        // Cat.getAmbientSound: purr in love, purreow one time in four, else ambient.
-        Species::Cat if m.extra.tame && m.extra.in_love > 0 => {
-            super::finalize::variant_sound(m, "purr").unwrap_or("entity.cat.purr")
-        }
-        Species::Cat if m.extra.tame && m.random.next_int_bound(4).unwrap_or(1) == 0 => {
-            super::finalize::variant_sound(m, "purreow").unwrap_or("entity.cat.purreow")
-        }
-        Species::Cat if !m.extra.tame => {
-            super::finalize::variant_sound(m, "stray_ambient").unwrap_or("entity.cat.stray_ambient")
+        // Cat.getAmbientSound: purr in love, purreow one time in four, else ambient (stray_ambient when wild).
+        Species::Cat => {
+            play_cat_ambient(m, w.side.variant_tables(), events);
+            return;
         }
         // Fox.getAmbientSound: a sleeping fox makes its sleep sound.
         Species::Fox if super::fox::flag(m, super::fox::SLEEPING) => "entity.fox.sleep",
@@ -3510,13 +3697,6 @@ fn ai_step(
     if m.species() == Species::Parrot {
         super::parrot::ai_step(m, w, level.random(), events);
     }
-    // Witch.aiStep runs before super.aiStep().
-    if m.species() == Species::Witch {
-        let far = m
-            .target_info(w)
-            .is_some_and(|t| t.position.distance_squared(m.position) > 121.0);
-        super::witch::ai_step(m, w.loop_context, events, far);
-    }
     if m.species() == Species::Fox {
         super::fox::pre_ai_step(m);
     }
@@ -3619,6 +3799,9 @@ fn hurt(m: &mut Mob, w: &MobWorld, events: &mut Vec<MobEvent>, amount: f32, sour
 /// The teleport `Enderman.hurtServer` or `Shulker.hurtServer` makes inside a
 /// hurt, after the hurt's sound; with or without AI.
 fn hurt_teleports(m: &mut Mob, w: &MobWorld, events: &mut Vec<MobEvent>) {
+    if m.has_protected_hurt() {
+        return;
+    }
     if m.species() == Species::Enderman && m.extra.counter2 > 0 {
         events.append(&mut m.outbox);
         super::enderman::run_pending_teleports(m, w, events);
@@ -3929,18 +4112,23 @@ mod selector_restore_tests {
         }
     }
     impl Goal for TrackedGoal {
+        #[inline]
         fn flags(&self) -> u8 {
             0
         }
+        #[inline]
         fn can_use(&mut self, _: &mut Mob, _: &mut Cx) -> bool {
             false
         }
+        #[inline]
         fn box_clone(&self) -> Box<dyn Goal> {
             panic!("selectors must not clone goals")
         }
+        #[inline]
         fn set_start_delay(&mut self, ticks: i32) {
             self.progress = ticks;
         }
+        #[inline]
         fn name(&self) -> &'static str {
             if self.progress == 7 {
                 "progress"
@@ -3965,18 +4153,23 @@ mod selector_restore_tests {
             ticks: u32,
         }
         impl Goal for Probe {
+            #[inline]
             fn flags(&self) -> u8 {
                 0
             }
+            #[inline]
             fn can_use(&mut self, _: &mut Mob, _: &mut Cx) -> bool {
                 true
             }
+            #[inline]
             fn every_tick(&self) -> bool {
                 true
             }
+            #[inline]
             fn box_clone(&self) -> Box<dyn Goal> {
                 panic!("live goals must not clone")
             }
+            #[inline]
             fn tick(&mut self, _: &mut Mob, _: &mut Cx) {
                 self.ticks += 1;
                 self.calls
@@ -4847,30 +5040,71 @@ fn server_ai_step(
             }
         }
     }
-    finish_server_ai_step(m, w, level, events, pause_birth)
+    finish_server_ai_step_from(m, w, level, events, None, pause_movement, pause_birth)
 }
 
-fn finish_server_ai_step(
+fn finish_server_ai_step_from(
     m: &mut Mob,
     w: &MobWorld,
     level: &mut DamageLevel<'_>,
     events: &mut Vec<MobEvent>,
+    stage: Option<BrainStage>,
+    pause_owner: bool,
     pause_birth: bool,
 ) -> ControlFlow<AiPause> {
     // A creaking looked at stands still: its navigation, move, look and jump
     // controls wait (CreakingPathNavigation and the Creaking*Control).
     let frozen = super::creaking::is_creaking(m) && !super::creaking::can_move(m);
-    // The bee's navigation waits while it pollinates.
-    if !frozen && !super::bee::pollinating(m) {
-        m.nav_tick(w);
+    let animal_brain_active = m.species() == Species::Sniffer
+        || m.species() == Species::HappyGhast && m.is_baby()
+        || m.species() == Species::CopperGolem
+        || m.species() == Species::Axolotl
+        || m.species() == Species::Tadpole;
+    if stage.is_none() {
+        // The bee's navigation waits while it pollinates.
+        if !frozen && !super::bee::pollinating(m) {
+            m.nav_tick(w);
+        }
+        if pause_owner {
+            if super::monster_brain::has_brain(m.species()) {
+                super::monster_brain::ensure_brain(m);
+            }
+            if m.species() == Species::Villager {
+                super::villager_brain::ensure_brain(m, w.game_time, w.day_time);
+            }
+            if animal_brain_active {
+                super::animal_brain::ensure_brain(m);
+            }
+            if m.staged_parts.pending_behaviors.is_some() {
+                return ControlFlow::Break(AiPause::RegisterBehaviors(BrainStage::BeforeBrain));
+            }
+        }
     }
-    if super::monster_brain::has_brain(m.species()) {
-        // Breeze/Creaking.customServerAiStep: the brain, then updateActivity.
-        super::monster_brain::tick(m, w, level, events);
+    if !matches!(stage, Some(BrainStage::AfterVillagerBrain)) {
+        if super::monster_brain::has_brain(m.species()) {
+            // Breeze/Creaking.customServerAiStep: the brain, then updateActivity.
+            super::monster_brain::tick(m, w, level, events);
+        }
+        if m.species() == Species::Villager {
+            // Villager.customServerAiStep: the brain, then the raid sound roll.
+            super::villager::tick_brain(m, w, level, events);
+            if pause_owner && m.staged_parts.pending_behaviors.is_some() {
+                return ControlFlow::Break(AiPause::RegisterBehaviors(
+                    BrainStage::AfterVillagerBrain,
+                ));
+            }
+        }
+        if m.species() == Species::Warden {
+            // Warden.customServerAiStep: the brain and its bookkeeping.
+            super::warden::server_ai_step(m, w, level, events);
+        }
+        // Sniffer and HappyGhast.customServerAiStep: the brain (a happy ghast's
+        // only while it is a ghastling), then updateActivity.
+        if animal_brain_active {
+            super::animal_brain::tick(m, w, level, events);
+        }
     }
     if m.species() == Species::Villager {
-        // Villager.customServerAiStep: the brain, then the raid sound roll.
-        super::villager::tick_brain(m, w, level, events);
         if let Some(player) = super::villager::ext_mut(m).last_traded_player.take() {
             events.push(MobEvent::VillagerTrade { mob: m.id, player });
         }
@@ -4882,11 +5116,7 @@ fn finish_server_ai_step(
     }
     // Sniffer and HappyGhast.customServerAiStep: the brain (a happy ghast's
     // only while it is a ghastling), then updateActivity.
-    if (m.species() == Species::Sniffer
-        || m.species() == Species::HappyGhast && m.is_baby()
-        || m.species() == Species::CopperGolem
-        || m.species() == Species::Axolotl
-        || m.species() == Species::Tadpole)
+    if animal_brain_active
         && let Some((event, resume)) =
             super::animal_brain::tick_until_birth(m, w, level, events, pause_birth)
     {
@@ -5021,7 +5251,7 @@ fn species_ai_step(
         // to persist is discarded at 2400.
         Species::Endermite => super::hostile::endermite_lifetime(m),
         Species::Wolf => super::tame::ai_step(m, w, events),
-        Species::Cat => super::tame::cat_ai_step(m, events),
+        Species::Cat => super::tame::cat_ai_step(m, w, events),
         Species::IronGolem => super::golem::iron_ai_step(m, w),
         Species::Piglin | Species::PiglinBrute | Species::Hoglin => super::piglin::ai_step(m),
         Species::Zoglin if m.extra.anim_ticks > 0 => m.extra.anim_ticks -= 1,
@@ -5273,15 +5503,131 @@ pub(super) fn inherited_voice_sounds(m: &Mob) -> [&'static str; 3] {
             m.kind.sounds[1],
             m.kind.sounds[2],
         ],
-        // The mob's sound variant set, the baby one for a baby.
-        Species::Pig | Species::Cow | Species::Chicken | Species::Wolf | Species::Cat => {
-            use super::finalize::variant_sound as v;
-            match (v(m, "ambient"), v(m, "hurt"), v(m, "death")) {
-                (Some(a), Some(h), Some(d)) => [a, h, d],
-                _ => m.kind.sounds,
-            }
-        }
         _ => m.kind.sounds,
+    }
+}
+/// `Wolf.getSoundSet`: resolves `kind` (`ambient`, `death`, `growl`, `hurt`,
+/// `pant`, `whine`, `step`) from the world's `minecraft:wolf_sound_variant` table.
+pub(super) fn wolf_sound<'a>(
+    m: &Mob,
+    variants: Option<&'a super::variants::VariantTables>,
+    kind: &str,
+) -> Option<&'a str> {
+    let variants = variants?;
+    let r = m.wolf_sound_variant(&variants.wolf_sound)?;
+    variants.wolf_sound.get(r)?.sound(m.is_baby(), kind)
+}
+/// `Pig.getSoundSet`: resolves `kind` (`ambient`, `hurt`, `death`, `step`, `eat`)
+/// from the world's `minecraft:pig_sound_variant` table.
+pub(super) fn pig_sound<'a>(
+    m: &Mob,
+    variants: Option<&'a super::variants::VariantTables>,
+    kind: &str,
+) -> Option<&'a str> {
+    let variants = variants?;
+    let r = m.pig_sound_variant(&variants.pig_sound)?;
+    variants.pig_sound.get(r)?.sound(m.is_baby(), kind)
+}
+/// `Cow.getSoundSet`: resolves `kind` (`ambient`, `hurt`, `death`, `step`)
+/// from the world's `minecraft:cow_sound_variant` table.
+pub(super) fn cow_sound<'a>(
+    m: &Mob,
+    variants: Option<&'a super::variants::VariantTables>,
+    kind: &str,
+) -> Option<&'a str> {
+    let variants = variants?;
+    let r = m.cow_sound_variant(&variants.cow_sound)?;
+    variants.cow_sound.get(r)?.sound(kind)
+}
+/// `Chicken.getSoundSet`: resolves `kind` (`ambient`, `hurt`, `death`, `step`)
+/// from the world's `minecraft:chicken_sound_variant` table.
+pub(super) fn chicken_sound<'a>(
+    m: &Mob,
+    variants: Option<&'a super::variants::VariantTables>,
+    kind: &str,
+) -> Option<&'a str> {
+    let variants = variants?;
+    let r = m.chicken_sound_variant(&variants.chicken_sound)?;
+    variants.chicken_sound.get(r)?.sound(m.is_baby(), kind)
+}
+/// `Pig`/`Cow`/`Chicken.getSoundSet` for `kind` (`ambient`, `hurt`, `death`): the
+/// sound variant every such mob holds, which `Mob::pig_sound_variant` and its
+/// siblings resolve to the registry default when the mob stores none.
+pub(super) fn farm_sound<'a>(
+    m: &Mob,
+    variants: Option<&'a super::variants::VariantTables>,
+    kind: &str,
+) -> Option<&'a str> {
+    match m.species() {
+        Species::Pig => pig_sound(m, variants, kind),
+        Species::Cow => cow_sound(m, variants, kind),
+        Species::Chicken => chicken_sound(m, variants, kind),
+        _ => None,
+    }
+}
+/// `Pig`/`Cow`/`Chicken.getAmbientSound` + `Mob.playAmbientSound` over the world's
+/// sound-variant tables.
+pub(super) fn play_farm_ambient(
+    m: &mut Mob,
+    variants: Option<&super::variants::VariantTables>,
+    events: &mut Vec<MobEvent>,
+) {
+    if let Some(sound) = farm_sound(m, variants, "ambient") {
+        m.voice_id(sound, events);
+    }
+}
+/// `Wolf.getAmbientSound` + `Mob.playAmbientSound` over the world's sound-variant table.
+pub(super) fn play_wolf_ambient(
+    m: &mut Mob,
+    variants: Option<&super::variants::VariantTables>,
+    events: &mut Vec<MobEvent>,
+) {
+    let kind = if super::tame::angry(m) {
+        "growl"
+    } else if m.random.next_int_bound(3).unwrap_or(1) == 0 {
+        if m.extra.tame && m.health < 20.0 {
+            "whine"
+        } else {
+            "pant"
+        }
+    } else {
+        "ambient"
+    };
+    if let Some(sound) = wolf_sound(m, variants, kind) {
+        m.voice_id(sound, events);
+    }
+}
+/// `Cat.getSoundSet`: resolves `kind` (`ambient`, `stray_ambient`, `hiss`,
+/// `hurt`, `death`, `eat`, `beg_for_food`, `purr`, `purreow`) from the world's
+/// `minecraft:cat_sound_variant` table.
+pub fn cat_sound<'a>(
+    m: &Mob,
+    variants: Option<&'a super::variants::VariantTables>,
+    kind: &str,
+) -> Option<&'a str> {
+    let variants = variants?;
+    let r = m.cat_sound_variant(&variants.cat_sound)?;
+    variants.cat_sound.get(r)?.sound(m.is_baby(), kind)
+}
+/// `Cat.getAmbientSound` + `Mob.playAmbientSound` over the world's sound-variant table.
+pub(super) fn play_cat_ambient(
+    m: &mut Mob,
+    variants: Option<&super::variants::VariantTables>,
+    events: &mut Vec<MobEvent>,
+) {
+    let kind = if m.extra.tame {
+        if m.extra.in_love > 0 {
+            "purr"
+        } else if m.random.next_int_bound(4).unwrap_or(1) == 0 {
+            "purreow"
+        } else {
+            "ambient"
+        }
+    } else {
+        "stray_ambient"
+    };
+    if let Some(sound) = cat_sound(m, variants, kind) {
+        m.voice_id(sound, events);
     }
 }
 /// `Animal.mobInteract` with its food in hand: an adult that can fall in
@@ -5293,6 +5639,19 @@ pub fn feed_animal(
     level: &mut impl RandomSource,
     love_cause: Option<[i32; 4]>,
 ) -> Option<Option<(&'static str, f32, f32)>> {
+    let sound = feed_animal_with_variants(m, level, love_cause, None)?;
+    Some(sound.and_then(|(s, v, p)| match s {
+        std::borrow::Cow::Borrowed(s) => Some((s, v, p)),
+        std::borrow::Cow::Owned(_) => None,
+    }))
+}
+/// [`feed_animal`] resolving registry-backed sound variants against `variants`.
+pub fn feed_animal_with_variants(
+    m: &mut Mob,
+    level: &mut impl RandomSource,
+    love_cause: Option<[i32; 4]>,
+    variants: Option<&super::variants::VariantTables>,
+) -> Option<Option<(std::borrow::Cow<'static, str>, f32, f32)>> {
     // Armadillo.mobInteract: a ball takes no food.
     if super::armadillo::scared(m) {
         return None;
@@ -5310,10 +5669,10 @@ pub fn feed_animal(
         let secs = ((-m.extra.age / 20) as f32 * 0.1) as i32;
         age_up(m, secs, true);
     }
-    let mut sound = eating_sound(m, level);
+    let mut sound = eating_sound_with_variants(m, level, variants);
     if m.species() == Species::Strider && !m.silent {
         let pitch = 1.0 + (m.random.next_float() - m.random.next_float()) * 0.2;
-        sound = Some(("entity.strider.eat", 1.0, pitch));
+        sound = Some((std::borrow::Cow::Borrowed("entity.strider.eat"), 1.0, pitch));
     }
     Some(sound)
 }
@@ -5401,34 +5760,50 @@ pub fn eating_sound(
     m: &mut Mob,
     level: &mut impl RandomSource,
 ) -> Option<(&'static str, f32, f32)> {
+    let (s, v, p) = eating_sound_with_variants(m, level, None)?;
+    match s {
+        std::borrow::Cow::Borrowed(s) => Some((s, v, p)),
+        std::borrow::Cow::Owned(_) => None,
+    }
+}
+/// [`eating_sound`] resolving registry-backed sound variants against `variants`.
+pub fn eating_sound_with_variants(
+    m: &mut Mob,
+    level: &mut impl RandomSource,
+    variants: Option<&super::variants::VariantTables>,
+) -> Option<(std::borrow::Cow<'static, str>, f32, f32)> {
+    use std::borrow::Cow;
     // Mth.randomBetween(level.getRandom(), 0.8, 1.2).
     let mut between = || level.next_float() * 0.4 + 0.8;
     let (sound, volume, pitch, entity_sound) = match m.species() {
         // makeSound: getSoundVolume, getVoicePitch.
         Species::Armadillo | Species::Pig | Species::SulfurCube => {
-            let sound = match m.species() {
-                Species::Armadillo => "entity.armadillo.eat",
-                Species::Pig => {
-                    super::finalize::variant_sound(m, "eat").unwrap_or("entity.pig.eat")
-                }
-                _ => "entity.small_sulfur_cube.eat",
+            let sound: Cow<'static, str> = match m.species() {
+                Species::Armadillo => Cow::Borrowed("entity.armadillo.eat"),
+                Species::Pig => pig_sound(m, variants, "eat")
+                    .map(|s| Cow::Owned(s.to_owned()))
+                    .unwrap_or(Cow::Borrowed("entity.pig.eat")),
+                _ => Cow::Borrowed("entity.small_sulfur_cube.eat"),
             };
             let pitch = m.voice_pitch();
             (sound, sound_volume(m), pitch, true)
         }
         // playSound(sound, 1, 1).
-        Species::Cat => (
-            super::finalize::variant_sound(m, "eat").unwrap_or("entity.cat.eat"),
-            1.0,
-            1.0,
-            true,
-        ),
-        Species::Fox => ("entity.fox.eat", 1.0, 1.0, true),
+        Species::Cat => {
+            let sound = Cow::Owned(cat_sound(m, variants, "eat")?.to_owned());
+            (sound, 1.0, 1.0, true)
+        }
+        Species::Fox => (Cow::Borrowed("entity.fox.eat"), 1.0, 1.0, true),
         // level().playSound(null, this, sound, NEUTRAL, volume, pitch).
-        Species::Frog => ("entity.frog.eat", 2.0, 1.0, false),
-        Species::Goat if m.extra.screaming => ("entity.goat.screaming.eat", 1.0, between(), false),
-        Species::Goat => ("entity.goat.eat", 1.0, between(), false),
-        Species::Sniffer => ("entity.sniffer.eat", 1.0, between(), false),
+        Species::Frog => (Cow::Borrowed("entity.frog.eat"), 2.0, 1.0, false),
+        Species::Goat if m.extra.screaming => (
+            Cow::Borrowed("entity.goat.screaming.eat"),
+            1.0,
+            between(),
+            false,
+        ),
+        Species::Goat => (Cow::Borrowed("entity.goat.eat"), 1.0, between(), false),
+        Species::Sniffer => (Cow::Borrowed("entity.sniffer.eat"), 1.0, between(), false),
         _ => return None,
     };
     // Entity.playSound is skipped for a silent entity.
@@ -5978,7 +6353,10 @@ fn tick_effects_until_hurt(
                 m.extra.effects[i].update_from_instance(&hidden);
                 // `tickServer`'s onExpire: `onEffectUpdated(instance, true, null)`,
                 // the modifiers of the amplifier that is active now.
-                m.set_effect_modifiers(effect, Some(hidden.amplifier));
+                let def = m.extra.effects[i]
+                    .registry_index
+                    .and_then(sunrise_client_core::potions::effect_by_index);
+                m.set_effect_modifiers(effect, def, Some(hidden.amplifier));
                 m.extra.ambient_effects.retain(|e| *e != effect);
                 if hidden.ambient {
                     m.extra.ambient_effects.push(effect);
@@ -6462,14 +6840,17 @@ mod poison_effect_tests {
     /// place: a Poison hit reads Resistance there (0.8 of 1.0 at level I).
     #[test]
     fn effect_ticks_find_the_other_effects() {
-        let mut test_level = crate::health::TestLevel::new(0);
-        let level = &mut test_level.level();
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../.local/sunrise-client")
             .join(sunrise_core::VANILLA_VERSION);
         if !root.join("entity-types.json").exists() {
             return;
         }
+        // A pig always holds a sound variant, so a hurt pig always makes its
+        // sound and draws the voice pitch before `onMobHurt` rolls Infested.
+        let tables = crate::mobs::variants::VariantTables::load_prepared(&root);
+        let mut test_level = crate::health::TestLevel::new(0);
+        let level = &mut test_level.level().with_variants(&tables);
         let data = MobTypes::load(&root).unwrap();
         let pig_kind = Arc::new(data.types.get("minecraft:pig").unwrap().clone());
         let mut pig = Mob::new(1, pig_kind.clone(), Vec3::new(0.0, 4.0, 0.0), 0.0);
@@ -6559,7 +6940,7 @@ mod poison_effect_tests {
         let pig_kind = Arc::new(data.types.get("minecraft:pig").unwrap().clone());
         let mut pig = Mob::new(1, pig_kind, Vec3::new(0.0, 4.0, 0.0), 0.0);
         pig.extra
-            .set_main_hand(Some("minecraft:totem_of_undying".into()));
+            .set_main_hand_stack(Some(crate::mobs::totem_tests::totem_with_components()));
         pig.extra.effects.push(crate::mobs::StoredEffect::new(
             "minecraft:instant_damage",
             5,

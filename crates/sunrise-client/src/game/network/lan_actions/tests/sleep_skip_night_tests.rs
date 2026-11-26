@@ -37,7 +37,7 @@ impl Hooks for Unsettle {
 }
 
 /// Guest 12 in bed for 100 ticks at night, in the rain, in this level.
-fn deep_asleep(game: &mut Game<'_>) {
+pub(super) fn deep_asleep(game: &mut Game<'_>) {
     let level = game.dim.id().to_owned();
     game.lan.as_mut().unwrap().hub.guests.update_all(|g| {
         g.dimension = level.clone();

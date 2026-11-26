@@ -1,6 +1,6 @@
 /// Install a part on glass that records each `on_place` it hears and, when a neighbour gives a
-/// signal (`has_neighbor_signal`), turns itself into white stained glass in the same call, as
-/// `GemLampBlock.onPlace` switches to its lit block, for real-game tests.
+/// signal (`has_neighbor_signal`), turns itself into white stained glass in the same call, for
+/// real-game tests.
 pub fn block_on_place_game_thread() {
     struct Lamp {
         lit: BlockKey,

@@ -1511,15 +1511,11 @@ pub enum Page {
     Font,
     Packs,
     Mods,
-    /// Browse mods: the registry's content mods, searched (`mod_browser`).
-    ModBrowser,
-    /// One registry project's page: `OptionsUi::mod_project`.
-    ModProject,
     /// A native mod's settings page: its index in `mods.installed`.
     NativeMod(usize),
     /// A page a crate registered (`sunrise_hooks::pages`): its index in `OptionsUi::pages`.
     Added(usize),
-    /// Sunrise's shader packs, either kind (`shader_pack_list`).
+    /// The shader packs (`shader_pack_list`).
     ShaderPacks,
     /// The picked pack's options: the shader screen (`shader_ui`) at the pack's main screen.
     ShaderOptions,
@@ -1580,12 +1576,6 @@ pub(crate) enum Act {
     /// Setting `.1` of native mod `.0`'s page clicked: a toggle, choice or colour steps on.
     NativeSetting(usize, usize),
     PageRow(usize, usize),
-    /// Browse mods: the page of listing `.0` of `mod_browser`.
-    ModProject(usize),
-    /// The open project page's Install or Update.
-    InstallMod,
-    /// The open project page's page on the website.
-    OpenModPage,
     /// Accessibility's "Accessibility Help" link
     /// (`AccessibilityOptionsScreen.addFooter`'s openLinkButton).
     AccessibilityHelp,
@@ -1720,12 +1710,6 @@ pub enum Event {
     OpenLink(String),
     /// A click on the Mods screen's mod id or version: copy it.
     CopyText(String),
-    /// Browse mods opened: read the registry's index into `mod_browser`.
-    BrowseMods,
-    /// Install (or update) the registry's content mod with this id.
-    InstallMod(String),
-    /// Open a registry project's page on the website.
-    OpenModPage(String),
     /// Accessibility's Help link: confirm and open
     /// `CommonLinks.ACCESSIBILITY_HELP` over the options screen.
     AccessibilityHelp,
@@ -1738,11 +1722,11 @@ pub enum Event {
     OpenShaderOptions,
     /// The Shader Options page closed with changes: save them and load the pack again.
     ShaderOptions,
-    /// The options of `shader_packs[.0]`, a Sunrise pack, changed: save them (the pack reloads
-    /// with them).
-    NativePackOptions(usize),
     /// Native mod `.0`'s page opened: the game reads its settings' kept values again.
     NativeSettings(usize),
+    /// Config was pressed for native mod `.0`, which has its own config screen
+    /// (`IConfigScreenFactory`): the game asks the mod to open it over this screen.
+    ModConfigScreen(usize),
     /// Setting `.1` of native mod `.0`'s page changed (`settings.mods`): the game keeps it and
     /// tells the mod (`setting_changed`).
     NativeSetting(usize, usize),
@@ -1804,7 +1788,8 @@ pub struct OptionsUi {
     pub selected_key: Option<&'static str>,
     /// The registered key waiting: (mod, mapping) in `mods.installed`.
     selected_mod_key: Option<(usize, usize)>,
-    selected_page_key: Option<(usize, usize)>,
+    /// The registered page's key row waiting for a key.
+    selected_page_key: Option<pages::PageKey>,
     /// The open registered page's rows its layout was made from (`refresh_added_rows`).
     added_seen: Vec<sunrise_hooks::pages::Row>,
     pending_mod_key: Option<winit::keyboard::KeyCode>,
@@ -1820,12 +1805,6 @@ pub struct OptionsUi {
     language_choice: Option<String>,
     language_search: ui::EditBox,
     pub(crate) settings_search: ui::EditBox,
-    /// Browse mods: the registry's projects, filled by the game.
-    pub mod_browser: crate::mod_browser::ModBrowser,
-    /// The project whose page is open (`Page::ModProject`).
-    pub mod_project: String,
-    /// The line about mods that wait for a restart to switch, for Browse mods' message.
-    pub mods_note: Option<String>,
     /// The Mods screen (`Page::Mods`), made when the page opens.
     pub mods_screen: Option<crate::mods_screen::ModsScreen>,
     /// Sunrise's `packBrowser` extra: the pack screen's Add button.
@@ -1944,9 +1923,6 @@ impl Default for OptionsUi {
             language_choice: None,
             language_search: search,
             settings_search,
-            mod_browser: Default::default(),
-            mod_project: String::new(),
-            mods_note: None,
             mods_screen: None,
             pack_browser: false,
             pack_infos: Vec::new(),
@@ -2303,10 +2279,7 @@ impl OptionsUi {
     }
     fn settings_search_active(&self) -> bool {
         self.settings_search.focused
-            && matches!(
-                self.page(),
-                Page::Video | Page::Controls | Page::KeyBinds | Page::ModBrowser
-            )
+            && matches!(self.page(), Page::Video | Page::Controls | Page::KeyBinds)
     }
     pub fn page(&self) -> Page {
         *self.stack.last().unwrap_or(&Page::Main)
@@ -2443,10 +2416,7 @@ impl OptionsUi {
         self.focus = None;
         self.focus_from_keyboard = false;
         self.can_change_value = false;
-        if matches!(
-            page,
-            Page::Video | Page::Controls | Page::KeyBinds | Page::ModBrowser
-        ) {
+        if matches!(page, Page::Video | Page::Controls | Page::KeyBinds) {
             self.settings_search.set_value("");
             self.settings_search.focused = false;
         }
@@ -2522,8 +2492,6 @@ impl OptionsUi {
             Page::Font => "options.font.title",
             Page::Packs => "resourcePack.title",
             Page::Mods => "sunrise.pages.mods",
-            Page::ModBrowser => "sunrise.mods.browse.title",
-            Page::ModProject => "sunrise.mods.browse.project",
             Page::NativeMod(_) => "Mod Settings",
             Page::Added(i) => pages::title(i),
             Page::ShaderPacks => "sunrise.pages.shader_packs",
@@ -2593,133 +2561,6 @@ impl OptionsUi {
         filtered
     }
 
-    /// Browse mods: what the registry offers this game, by the search box.
-    fn mod_browser_rows(&self) -> Vec<Row> {
-        use crate::mod_browser::Status;
-        let b = &self.mod_browser;
-        match &b.status {
-            Status::Idle | Status::Loading => {
-                return vec![Row::Note(lang::get("sunrise.mods.browse.loading"))];
-            }
-            Status::Failed(why) => {
-                return vec![Row::Note(lang::tr("sunrise.mods.browse.failed", &[why]))];
-            }
-            Status::Ready => {}
-        }
-        let found = b.found(&self.settings_search.value);
-        if found.is_empty() {
-            return vec![Row::Note(lang::get("sunrise.mods.browse.none"))];
-        }
-        let mut rows = Vec::new();
-        for i in found {
-            let l = &b.listings[i];
-            let mut label = Text::literal(format!("{} {}", l.name, l.version));
-            if l.has_update() {
-                label = label.append(tr("sunrise.mods.browse.has_update"));
-            } else if l.installed.is_some() {
-                label = label.append(tr("sunrise.mods.browse.is_installed"));
-            }
-            rows.push(Row::Buttons(
-                button(0.0, 0.0, 310.0, label, Act::ModProject(i)),
-                None,
-            ));
-            rows.extend(wrap(&l.summary, 64).into_iter().take(1).map(Row::Note));
-        }
-        rows
-    }
-    /// A registry project's page: what it is, Install or Update, its description and
-    /// changelog. An installed mod is on already: the install turned it on.
-    fn mod_project_rows(&self) -> Vec<Row> {
-        let b = &self.mod_browser;
-        let Some(l) = b.listing(&self.mod_project) else {
-            return vec![Row::Note(lang::get("sunrise.mods.browse.none"))];
-        };
-        let mut rows = vec![Row::Note(format!("{} {}", l.name, l.version))];
-        let by = [
-            lang::tr("sunrise.mods.browse.by", &[&l.authors.join(", ")]),
-            l.license.clone(),
-            l.published.clone(),
-        ];
-        let by: Vec<&str> = by
-            .iter()
-            .map(String::as_str)
-            .filter(|t| !t.is_empty())
-            .collect();
-        rows.push(Row::Note(by.join(" · ")));
-        let labels: Vec<&str> = l
-            .categories
-            .iter()
-            .chain(&l.tags)
-            .map(String::as_str)
-            .collect();
-        if !labels.is_empty() {
-            rows.push(Row::Note(labels.join(", ")));
-        }
-        let installing = b.installing.as_deref() == Some(l.id.as_str());
-        let install = match (&l.installed, installing) {
-            (_, true) => inactive(button(
-                0.0,
-                0.0,
-                150.0,
-                tr("sunrise.mods.browse.installing"),
-                Act::None,
-            )),
-            (None, false) => button(
-                0.0,
-                0.0,
-                150.0,
-                tr("sunrise.mods.browse.install"),
-                Act::InstallMod,
-            ),
-            (Some(_), false) if l.has_update() => button(
-                0.0,
-                0.0,
-                150.0,
-                tr("sunrise.mods.browse.update"),
-                Act::InstallMod,
-            ),
-            (Some(_), false) => inactive(button(
-                0.0,
-                0.0,
-                150.0,
-                tr("sunrise.mods.browse.installed"),
-                Act::None,
-            )),
-        };
-        let page = button(
-            0.0,
-            0.0,
-            150.0,
-            tr("sunrise.mods.browse.open_page"),
-            Act::OpenModPage,
-        );
-        rows.push(Row::Buttons(install, Some(page)));
-        if let Some((message, _)) = &b.message {
-            rows.extend(wrap(message, 64).into_iter().map(Row::Note));
-        }
-        let description = crate::mod_browser::plain_lines(if l.description.is_empty() {
-            &l.summary
-        } else {
-            &l.description
-        });
-        rows.extend(
-            description
-                .iter()
-                .flat_map(|line| wrap(line, 64))
-                .map(Row::Note),
-        );
-        let changelog = crate::mod_browser::plain_lines(&l.changelog);
-        if !changelog.is_empty() {
-            rows.push(Row::Heading("sunrise.mods.browse.changelog".into()));
-            rows.extend(
-                changelog
-                    .iter()
-                    .flat_map(|line| wrap(line, 64))
-                    .map(Row::Note),
-            );
-        }
-        rows
-    }
     /// A native mod's page: its name, its keys as Key Binds rows (the
     /// player's choice, else the default), then its buttons.
     fn native_rows(&self, s: &Settings, i: usize) -> Vec<Row> {
@@ -2730,7 +2571,14 @@ impl OptionsUi {
         let Some(page) = &m.native else {
             return rows;
         };
+        let mut category: Option<&str> = None;
         for (j, setting) in page.settings.iter().enumerate() {
+            if setting.category.as_deref() != category {
+                category = setting.category.as_deref();
+                if let Some(category) = category {
+                    rows.push(Row::Heading(category.to_owned()));
+                }
+            }
             let widget = match (&setting.value, u16::try_from(i), u16::try_from(j)) {
                 (crate::mod_list::NativeSettingValue::Range { .. }, Ok(i), Ok(j)) => Widget {
                     x: 0.0,
@@ -3043,8 +2891,6 @@ impl OptionsUi {
                 rows
             }
             Page::Font => pairs(&[Opt::ForceUnicode, Opt::JapaneseGlyphs]),
-            Page::ModBrowser => self.mod_browser_rows(),
-            Page::ModProject => self.mod_project_rows(),
             Page::NativeMod(i) => self.native_rows(s, i),
             Page::Added(i) => self.added_rows(i),
             _ => {
@@ -3329,6 +3175,7 @@ impl OptionsUi {
                 return (Vec::new(), true);
             }
             // Waiting on a key: a mouse button binds, as on Key Binds.
+            self.end_stale_page_key();
             if self.selected_key.is_some() {
                 let button = if right {
                     winit::event::MouseButton::Right
@@ -3365,6 +3212,15 @@ impl OptionsUi {
                 Do::None => {}
                 Do::OpenFolder => events.push(Event::OpenModFolder),
                 Do::Back => events.extend(self.back(s)),
+                Do::Config(i)
+                    if s.mods.is_on(i)
+                        && s.mods.installed[i]
+                            .native
+                            .as_ref()
+                            .is_some_and(|page| page.own_screen) =>
+                {
+                    events.push(Event::ModConfigScreen(i));
+                }
                 Do::Config(i) => {
                     self.push(Page::NativeMod(i));
                     events.push(Event::NativeSettings(i));
@@ -3409,10 +3265,7 @@ impl OptionsUi {
         self.size = size;
         self.framebuffer = framebuffer;
         let mut events = Vec::new();
-        if matches!(
-            self.page(),
-            Page::Video | Page::Controls | Page::KeyBinds | Page::ModBrowser
-        ) {
+        if matches!(self.page(), Page::Video | Page::Controls | Page::KeyBinds) {
             let search = &mut self.settings_search;
             search.focused = ui::hovered((x, y), search.x, search.y, search.width, search.height);
             if search.focused {
@@ -3490,9 +3343,6 @@ impl OptionsUi {
                             if *p == Page::Music {
                                 events.push(Event::ListMusicTracks);
                             }
-                            if *p == Page::ModBrowser {
-                                events.push(Event::BrowseMods);
-                            }
                             self.push(*p);
                             self.capture_video_atlas(s);
                         }
@@ -3552,21 +3402,6 @@ impl OptionsUi {
                             if let Some(setting) = setting {
                                 setting.value.click();
                                 events.push(Event::NativeSetting(*i, *j));
-                            }
-                        }
-                        Act::ModProject(i) => {
-                            if let Some(listing) = self.mod_browser.listings.get(*i) {
-                                self.mod_project = listing.id.clone();
-                                self.push(Page::ModProject);
-                            }
-                        }
-                        Act::InstallMod => {
-                            self.mod_browser.message = None;
-                            events.push(Event::InstallMod(self.mod_project.clone()));
-                        }
-                        Act::OpenModPage => {
-                            if let Some(l) = self.mod_browser.listing(&self.mod_project) {
-                                events.push(Event::OpenModPage(l.page.clone()));
                             }
                         }
                         Act::PvpPreset => {
@@ -4030,8 +3865,6 @@ impl OptionsUi {
                 }
             }
             Page::Mods => self.mods_screen = None,
-            // Browse mods may have installed some: the list is made again.
-            Page::ModBrowser => self.mods_screen = None,
             Page::Packs => {
                 // PackSelectionScreen.onClose: PackSelectionModel.commit.
                 let data = self.data_pack_dir.take();
@@ -4312,6 +4145,7 @@ impl OptionsUi {
             }
             return (true, vec![Event::Changed]);
         }
+        self.end_stale_page_key();
         if self.selected_key.is_some() {
             // KeyBindsScreen.keyPressed: Escape unbinds.
             if self.selected_key == Some(MOD_KEY)
@@ -4590,9 +4424,6 @@ impl OptionsUi {
                             if p == Page::Music {
                                 events.push(Event::ListMusicTracks);
                             }
-                            if p == Page::ModBrowser {
-                                events.push(Event::BrowseMods);
-                            }
                             self.push(p);
                             self.capture_video_atlas(s);
                         }
@@ -4657,21 +4488,6 @@ impl OptionsUi {
                             if let Some(setting) = setting {
                                 setting.value.click();
                                 events.push(Event::NativeSetting(i, j));
-                            }
-                        }
-                        Act::ModProject(i) => {
-                            if let Some(listing) = self.mod_browser.listings.get(i) {
-                                self.mod_project = listing.id.clone();
-                                self.push(Page::ModProject);
-                            }
-                        }
-                        Act::InstallMod => {
-                            self.mod_browser.message = None;
-                            events.push(Event::InstallMod(self.mod_project.clone()));
-                        }
-                        Act::OpenModPage => {
-                            if let Some(l) = self.mod_browser.listing(&self.mod_project) {
-                                events.push(Event::OpenModPage(l.page.clone()));
                             }
                         }
                         Act::PvpPreset => {
@@ -5339,16 +5155,8 @@ mod tests {
     /// read, and leaving the shader screen applies them.
     #[test]
     fn the_shader_screen_saves_changed_options_before_reading_the_next_packs() {
-        use crate::shader_pack_list::{Entry, Kind};
-        let entry = |file: &str| Entry {
-            file: file.into(),
-            key: file.into(),
-            title: file.into(),
-            kind: Kind::Classic,
-            options: Vec::new(),
-            values: Vec::new(),
-            pages: Vec::new(),
-        };
+        use crate::shader_pack_list::Entry;
+        let entry = |file: &str| Entry { file: file.into() };
         let mut s = Settings {
             shader_packs: vec![entry("A.zip"), entry("B.zip")],
             ..Settings::default()
@@ -5551,6 +5359,7 @@ mod tests {
                     label: "Trails".into(),
                     tooltip: None,
                     value: crate::mod_list::NativeSettingValue::Toggle(true),
+                    category: None,
                 }],
                 ..Default::default()
             }),
@@ -5577,6 +5386,17 @@ mod tests {
         let events = click(&mut ui, &mut s, 320.0, 223.0);
         assert_eq!(events.first(), Some(&Event::ButtonClick));
         assert_eq!(ui.page(), Page::Main);
+        // A mod with its own config screen (`IConfigScreenFactory`) has Config with no
+        // settings, and Config asks the game to open that screen over this one.
+        s.mods.installed[0].native = Some(crate::mod_list::NativePage {
+            own_screen: true,
+            ..Default::default()
+        });
+        ui.show(Page::Mods);
+        assert!(click(&mut ui, &mut s, 61.0, 76.0).is_empty());
+        let events = click(&mut ui, &mut s, 397.0, 192.0);
+        assert_eq!(events, vec![Event::ButtonClick, Event::ModConfigScreen(0)]);
+        assert_eq!(ui.page(), Page::Mods);
     }
 
     #[test]
@@ -5586,10 +5406,11 @@ mod tests {
         let mut s = Settings::default();
         let mut ui = OptionsUi::default();
         let size = (480.0, 240.0);
-        let setting = |key: &str, value: V| NativeSetting {
+        let setting = |key: &str, category: Option<&str>, value: V| NativeSetting {
             key: key.into(),
             label: key.into(),
             tooltip: None,
+            category: category.map(str::to_owned),
             value,
         };
         s.mods.installed.push(crate::mod_list::Installed {
@@ -5600,9 +5421,10 @@ mod tests {
             dev: false,
             native: Some(crate::mod_list::NativePage {
                 settings: vec![
-                    setting("trails", V::Toggle(true)),
+                    setting("trails", None, V::Toggle(true)),
                     setting(
                         "speed",
+                        Some("test.movement"),
                         V::Range {
                             min: 0.0,
                             max: 4.0,
@@ -5610,11 +5432,47 @@ mod tests {
                             value: 1.0,
                         },
                     ),
+                    setting("jump", Some("test.movement"), V::Toggle(false)),
+                    setting("sneak", Some("test.safety"), V::Toggle(false)),
                 ],
                 ..Default::default()
             }),
         });
         ui.show(Page::NativeMod(0));
+        // Headings appear in order at category changes; each setting's (i, j)
+        // is its index in the page, headings never taking one.
+        let rows = ui.native_rows(&s, 0);
+        let summary: Vec<String> = rows
+            .iter()
+            .map(|row| match row {
+                Row::Note(_) => "note".to_string(),
+                Row::Heading(key) => format!("heading:{key}"),
+                Row::Buttons(widget, _) => match &widget.kind {
+                    WKind::Button {
+                        act: Act::NativeSetting(_, j),
+                        ..
+                    } => format!("button:{j}"),
+                    WKind::Slider {
+                        opt: Opt::ModSetting(_, j),
+                        ..
+                    } => format!("slider:{j}"),
+                    _ => "other".to_string(),
+                },
+                _ => "other".to_string(),
+            })
+            .collect();
+        assert_eq!(
+            summary.iter().map(String::as_str).collect::<Vec<_>>(),
+            [
+                "note",
+                "button:0",
+                "heading:test.movement",
+                "slider:1",
+                "button:2",
+                "heading:test.safety",
+                "button:3",
+            ]
+        );
         let (widgets, ..) = ui.layout(&s, size.0, size.1);
         let toggle = widgets
             .iter()
@@ -5676,6 +5534,50 @@ mod tests {
         );
     }
 
+    #[test]
+    fn an_uncategorized_mod_page_has_no_headings() {
+        use crate::mod_list::{NativeSetting, NativeSettingValue as V};
+        let mut s = Settings::default();
+        let ui = OptionsUi::default();
+        let setting = |key: &str, value: V| NativeSetting {
+            key: key.into(),
+            label: key.into(),
+            tooltip: None,
+            category: None,
+            value,
+        };
+        s.mods.installed.push(crate::mod_list::Installed {
+            id: "native".into(),
+            title: "Native 1.0".into(),
+            description: String::new(),
+            problem: None,
+            dev: false,
+            native: Some(crate::mod_list::NativePage {
+                settings: vec![
+                    setting("trails", V::Toggle(true)),
+                    setting(
+                        "speed",
+                        V::Range {
+                            min: 0.0,
+                            max: 4.0,
+                            step: 1.0,
+                            value: 1.0,
+                        },
+                    ),
+                ],
+                ..Default::default()
+            }),
+        });
+        let rows = ui.native_rows(&s, 0);
+        assert_eq!(
+            rows.iter()
+                .filter(|row| matches!(row, Row::Heading(_)))
+                .count(),
+            0,
+            "uncategorized settings draw no headings"
+        );
+    }
+
     /// A native mod's toggle shows the tooltip it registered, as its range slider does
     /// (`OptionInstance.createButton` hands every kind its `Tooltip`).
     #[test]
@@ -5688,6 +5590,7 @@ mod tests {
             key: name.into(),
             label: name.into(),
             tooltip: Some(key.into()),
+            category: None,
             value,
         };
         s.mods.installed.push(crate::mod_list::Installed {
@@ -6062,6 +5965,7 @@ mod tests {
                     ..Default::default()
                 }],
                 settings: Vec::new(),
+                own_screen: false,
             }),
         });
         ui.show(Page::KeyBinds);
@@ -6419,7 +6323,9 @@ mod tests {
                     label: "Trails".into(),
                     tooltip: None,
                     value: crate::mod_list::NativeSettingValue::Toggle(true),
+                    category: None,
                 }],
+                own_screen: false,
             }),
         });
         let labels = lang::scoped(english(), || ui.extras.row_labels(&s)).0;
@@ -7991,13 +7897,7 @@ mod tests {
         ui.push(Page::Sunrise);
         assert_eq!(
             pushes(&mut ui),
-            [
-                Page::Extras,
-                Page::Pvp,
-                Page::Studio,
-                Page::Agent,
-                Page::ModBrowser,
-            ]
+            [Page::Extras, Page::Pvp, Page::Studio, Page::Agent,]
         );
         // No AI hides the AI Agent page.
         let mut no_ai = Settings::default();
@@ -8474,36 +8374,6 @@ mod tests {
             events.contains(&Event::ButtonClick),
             "Enter on FocusId::Act must emit Event::ButtonClick"
         );
-    }
-
-    /// Browse Mods is on the Sunrise settings page (the Mods footer has only Open Mods Folder
-    /// and Back): clicking it lists the registry's mods and opens the browser.
-    #[test]
-    fn browse_mods_opens_the_registry_browser_from_the_sunrise_page() {
-        let atlas = atlas();
-        let size = (960.0, 540.0);
-        let mut s = Settings::default();
-        let mut ui = OptionsUi::default();
-        ui.show(Page::Sunrise);
-        let (widgets, ..) = ui.layout(&s, size.0, size.1);
-        let browse = widgets
-            .into_iter()
-            .find(|w| {
-                matches!(&w.kind, WKind::Button { act, .. } if *act == Act::Push(Page::ModBrowser))
-            })
-            .expect("Browse Mods... on the Sunrise page");
-        let events = ui.click(
-            &mut s,
-            &atlas,
-            browse.x + browse.w / 2.0,
-            browse.y + browse.h / 2.0,
-            size,
-            [854, 480],
-            false,
-            false,
-        );
-        assert_eq!(events, vec![Event::ButtonClick, Event::BrowseMods]);
-        assert_eq!(ui.page(), Page::ModBrowser);
     }
 
     #[test]

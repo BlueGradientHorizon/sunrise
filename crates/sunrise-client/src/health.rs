@@ -78,10 +78,11 @@ pub struct DamageHooks {
     /// (`LivingKnockBackEvent`), on the raw strength and before the knockback resistance and
     /// the motion change. It may change the [`Knock`]; true cancels it.
     pub knockback: Option<fn(DamageLevel<'_>, Hurting<'_>, &mut Knock) -> bool>,
-    /// `native_living_use_totem`: a `death_protection` item in the hand (true: the off hand)
-    /// is about to save the entity from a killing blow (`LivingUseTotemEvent`). True cancels
-    /// it: the entity dies.
-    pub totem: Option<fn(DamageLevel<'_>, Hurting<'_>, bool) -> bool>,
+    /// `LivingUseTotemEvent` for one eligible stack. True refuses this hand only.
+    pub totem: Option<fn(DamageLevel<'_>, Hurting<'_>, mod_api::Hand, &ItemStack) -> bool>,
+    /// `native_living_death_protection`: a protector a mod keeps outside the hands, asked once
+    /// neither hand protected. The game takes the stack from nowhere.
+    pub protector: Option<fn(DamageLevel<'_>, Hurting<'_>) -> Option<ItemStack>>,
     /// `native_living_shield_block`: `LivingEntity.applyItemBlocking` of a hit with damage,
     /// for what it hurts, the damage and whether vanilla blocks. It may change the
     /// [`ShieldBlock`].
@@ -99,6 +100,7 @@ impl DamageHooks {
         owner_post_listened: None,
         knockback: None,
         totem: None,
+        protector: None,
         shield: None,
         accepted: None,
     };
@@ -565,9 +567,6 @@ pub struct DamageLevel<'a> {
     mob_uuids: Option<&'a std::collections::HashMap<u32, [i32; 4]>>,
     /// Whether this is a client's level, for a hook asked on both sides ([`Self::on_client`]).
     client_side: bool,
-    /// Which entry of `LivingEntity.knockback` a push in progress came through, for
-    /// `living_knockback` ([`Self::through_short_knockback`]).
-    knock_entry: mod_api::KnockbackEntry,
     /// Who a push credits: the site's per-victim loan, or [`KnockbackCredit`]'s memory
     /// resolution where the level was built without one.
     credit: Credit<'a>,
@@ -584,6 +583,9 @@ pub struct DamageLevel<'a> {
     /// The entity id the hook's source names as its causing entity (`DamageSource.getEntity`),
     /// 0 for none: the lent attacker is the hit's causer only when it is that entity.
     causing: i32,
+    /// The world's frozen mob variant tables, for variant-backed hurt and death sounds
+    /// (`Wolf.getHurtSound`/`getDeathSound`, `Cat.getHurtSound`/`getDeathSound`).
+    variants: Option<&'a crate::mobs::variants::VariantTables>,
 }
 impl<'a> DamageLevel<'a> {
     /// The level of `world`, whose blocks `registry` names.
@@ -620,7 +622,6 @@ impl<'a> DamageLevel<'a> {
             attack: &NO_ATTACK,
             mob_uuids: None,
             client_side: false,
-            knock_entry: mod_api::KnockbackEntry::Full,
             credit: Credit::Memory,
             players: None,
             effects: None,
@@ -628,6 +629,7 @@ impl<'a> DamageLevel<'a> {
             reads: None,
             victim: None,
             causing: 0,
+            variants: None,
         }
     }
     /// The level of `world`, with the random and attachments `lent` took out of it.
@@ -655,7 +657,6 @@ impl<'a> DamageLevel<'a> {
             attack: &NO_ATTACK,
             mob_uuids: None,
             client_side: false,
-            knock_entry: mod_api::KnockbackEntry::Full,
             credit: Credit::Memory,
             players: None,
             effects: None,
@@ -663,6 +664,7 @@ impl<'a> DamageLevel<'a> {
             reads: None,
             victim: None,
             causing: 0,
+            variants: None,
         }
     }
     /// The same level, whose hit lends `lend` (its causing entity) to its listeners, where the
@@ -680,6 +682,14 @@ impl<'a> DamageLevel<'a> {
     }
     pub(crate) fn mob_uuid(&self, id: u32) -> Option<[i32; 4]> {
         self.mob_uuids?.get(&id).copied()
+    }
+    /// Attach the world's frozen mob variant tables for variant-backed hurt and death sounds.
+    pub fn with_variants(mut self, variants: &'a crate::mobs::variants::VariantTables) -> Self {
+        self.variants = Some(variants);
+        self
+    }
+    pub(crate) fn variants(&self) -> Option<&crate::mobs::variants::VariantTables> {
+        self.variants
     }
     /// The same level, for a shorter borrow.
     pub fn reborrow(&mut self) -> DamageLevel<'_> {
@@ -699,7 +709,6 @@ impl<'a> DamageLevel<'a> {
             attack: self.attack,
             mob_uuids: self.mob_uuids,
             client_side: self.client_side,
-            knock_entry: self.knock_entry,
             credit: self.credit.reborrow(),
             players: self
                 .players
@@ -710,6 +719,7 @@ impl<'a> DamageLevel<'a> {
             reads: self.reads,
             victim: self.victim,
             causing: self.causing,
+            variants: self.variants,
         }
     }
     /// The owner's slot for a hit that must release its borrows before resuming.
@@ -899,36 +909,27 @@ impl<'a> DamageLevel<'a> {
             }
         }
     }
-    /// Only the game bridge calls this after checking for a knockback subscriber. Without a
-    /// site's loan the credit comes from the pushed entity's own hurt memories and this hit's
-    /// attack ([`kill_credit::from_memory`]).
-    pub fn knockback_credit(
-        &self,
+    /// Only the game bridge calls this after checking for a knockback subscriber. Splits out
+    /// the credit loan so the returned main-hand borrow can outlive moving `self` into the
+    /// hook host. Without a site's loan the credit comes from the pushed entity's own hurt
+    /// memories and this hit's attack ([`kill_credit::from_memory`]).
+    pub fn split_knockback_credit(
+        mut self,
         pushed: &Hurting<'_>,
-    ) -> (i32, Option<&crate::items::ItemStack>) {
-        match &self.credit {
-            Credit::Loan(credit) => credit.snapshot(pushed, self.attack),
+    ) -> (Self, i32, Option<&'a crate::items::ItemStack>) {
+        let credit = std::mem::replace(&mut self.credit, Credit::Memory);
+        let (id, main) = match credit {
+            Credit::Loan(credit) => {
+                let credit: &'a dyn KnockbackCredit = &*credit;
+                credit.snapshot(pushed, self.attack)
+            }
             Credit::Memory => kill_credit::from_memory(pushed, self.attack),
             Credit::NoPush => {
                 debug_assert!(false, "living_knockback push from a no_push damage site");
                 kill_credit::from_memory(pushed, self.attack)
             }
-        }
-    }
-
-    /// Runs `push` as the short entry of `LivingEntity.knockback` (power and direction), which
-    /// delegates to the full entry: the knockback hook, fired once inside the full entry, tells
-    /// its listener the push came in as [`mod_api::KnockbackEntry::Short`]. A direct call of the
-    /// full entry stays `Full`.
-    pub fn through_short_knockback<R>(&mut self, push: impl FnOnce(&mut Self) -> R) -> R {
-        let before = std::mem::replace(&mut self.knock_entry, mod_api::KnockbackEntry::Short);
-        let out = push(self);
-        self.knock_entry = before;
-        out
-    }
-    /// Which entry of `LivingEntity.knockback` the push in progress came through.
-    pub fn knockback_entry(&self) -> mod_api::KnockbackEntry {
-        self.knock_entry
+        };
+        (self, id, main)
     }
     /// The same level, on a client when `client_side`: a hook asked on both sides tells its
     /// listener so.
@@ -958,6 +959,45 @@ impl<'a> DamageLevel<'a> {
     pub fn block_registries(&self) -> Option<&crate::command::args::Registries> {
         self.block_registries
     }
+    /// `CombatRules.getDamageAfterAbsorb`: resolve the weapon of the actual direct entity.
+    pub fn armor_effectiveness(
+        &mut self,
+        source: HurtSource<'_>,
+        victim: &str,
+        motion: (f64, bool),
+        random: &mut sunrise_core::random::LegacyRandom,
+        value: f32,
+    ) -> f32 {
+        let Some(stack) = self.attack.weapon_of(source.direct) else {
+            return value;
+        };
+        self.enchanted_armor(stack, source, victim, motion, random, value)
+    }
+
+    fn enchanted_armor(
+        &mut self,
+        stack: &ItemStack,
+        source: HurtSource<'_>,
+        victim: &str,
+        motion: (f64, bool),
+        random: &mut sunrise_core::random::LegacyRandom,
+        value: f32,
+    ) -> f32 {
+        let Some(items) = self.tags.filter(|_| !self.client_side) else {
+            return value;
+        };
+        let mut ctx = self.attack.enchantment_context(source, victim);
+        ctx.this_motion = Some(motion);
+        items.enchantments.modify_entity_value(
+            &stack.all_enchantments(),
+            "minecraft:armor_effectiveness",
+            &ctx,
+            self.random,
+            random,
+            value,
+        )
+    }
+
     /// The build range of the level whose damage hook is running.
     pub fn shape(&self) -> crate::chunk::LevelShape {
         self.shape
@@ -1058,6 +1098,7 @@ impl<'a> DamageLevel<'a> {
                     damage_type: source.damage_type.to_owned(),
                     causing: source.causing,
                     direct: source.direct,
+                    direct_type: source.direct_type.map(str::to_owned),
                     position: source.position,
                     lent_entity: self
                         .effects
@@ -1067,7 +1108,10 @@ impl<'a> DamageLevel<'a> {
                     state: container.into_state(),
                 })
             });
-            return Some(DamageCompletion { post });
+            return Some(DamageCompletion {
+                post,
+                protection: None,
+            });
         }
         self.damage_post(hurting, &container);
         None
@@ -1079,7 +1123,23 @@ impl<'a> DamageLevel<'a> {
 #[derive(Clone, Debug)]
 pub struct DamageCompletion {
     pub post: Option<std::sync::Arc<DamagePost>>,
+    pub protection: Option<PlayerProtection>,
 }
+
+/// The hand and original stack accepted by `checkTotemDeathProtection`.
+#[derive(Clone, Debug)]
+pub struct PlayerProtection {
+    /// The hand it is used up from; None for a mod's protector from outside the hands
+    /// (`living_death_protection`), which the game takes from nowhere.
+    pub hand: Option<mod_api::Hand>,
+    pub stack: ItemStack,
+}
+
+/// `InteractionHand.values()`, paired with the corresponding equipment slots.
+pub(crate) const PROTECTION_HANDS: [(mod_api::Hand, usize); 2] = [
+    (mod_api::Hand::Main, sunrise_items::equipment::MAINHAND),
+    (mod_api::Hand::Off, sunrise_items::equipment::OFFHAND),
+];
 
 /// The exact accepted hit values, only retained across the handoff for a Post listener.
 #[derive(Debug)]
@@ -1087,6 +1147,7 @@ pub struct DamagePost {
     damage_type: String,
     causing: i32,
     direct: i32,
+    direct_type: Option<String>,
     position: Option<[f64; 3]>,
     lent_entity: Option<i32>,
     state: DamageState,
@@ -1099,6 +1160,7 @@ impl DamagePost {
             damage_type: &self.damage_type,
             causing: self.causing,
             direct: self.direct,
+            direct_type: self.direct_type.as_deref(),
             position: self.position,
         };
         (source, &self.state, self.lent_entity)
@@ -1242,25 +1304,19 @@ impl Knock {
 
 /// `CombatRules.getDamageAfterAbsorb`'s weapon: the stack
 /// `DamageSource.getWeaponItem` names, the registry its `armor_effectiveness`
-/// enchantments (Breach) are read from, and the entity that swung it.
+/// enchantments (Breach) are read from.
 pub struct ArmorWeapon {
     pub stack: crate::items::ItemStack,
     pub enchantments: std::sync::Arc<crate::enchant::Enchantments>,
-    /// The causing and direct entity's type id: one entity swung.
-    pub attacker: String,
-    /// `DamageSource.isDirect`: the causing entity swung itself.
-    pub is_direct: bool,
 }
 impl std::fmt::Debug for ArmorWeapon {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ArmorWeapon")
             .field("stack", &self.stack)
-            .field("attacker", &self.attacker)
-            .field("is_direct", &self.is_direct)
             .finish_non_exhaustive()
     }
 }
-impl DamageLevel<'_> {
+impl<'a> DamageLevel<'a> {
     /// What `applyItemBlocking` stops of `damage` (above 0) once [`DamageHooks::shield`] had
     /// its say on `vanilla`, the block vanilla resolved: none when the hook unblocks it.
     pub fn shield_block(
@@ -1290,12 +1346,44 @@ impl DamageLevel<'_> {
         };
         Some(block)
     }
-    /// Whether [`DamageHooks::totem`] canceled the totem of `hurting` (never without it).
-    pub fn totem_canceled(&mut self, hurting: Hurting<'_>, off_hand: bool) -> bool {
-        let Some(hook) = self.hooks.totem else {
-            return false;
-        };
-        hook(self.without_views(), hurting, off_hand)
+    /// The live component of an eligible hand stack, including its prototype defaults.
+    pub(crate) fn death_protection<'s>(
+        &self,
+        stack: &'s ItemStack,
+    ) -> Option<&'s [crate::items::ConsumeEffect]>
+    where
+        'a: 's,
+    {
+        if stack.count == 0 {
+            return None;
+        }
+        stack.death_protection(self.tags.and_then(|items| items.get(&stack.item)))
+    }
+
+    /// Whether [`DamageHooks::totem`] refused this particular hand stack.
+    pub(crate) fn totem_canceled(
+        &mut self,
+        hurting: Hurting<'_>,
+        hand: mod_api::Hand,
+        stack: &ItemStack,
+    ) -> bool {
+        self.hooks
+            .totem
+            .is_some_and(|hook| hook(self.without_views(), hurting, hand, stack))
+    }
+    /// [`DamageHooks::protector`]'s answer once neither hand protected `hurting`: a stack with
+    /// `death_protection`, else nothing.
+    pub(crate) fn mod_protector(&mut self, hurting: Hurting<'_>) -> Option<ItemStack> {
+        let stack = self
+            .hooks
+            .protector
+            .and_then(|hook| hook(self.without_views(), hurting))?;
+        self.death_protection(&stack).is_some().then_some(stack)
+    }
+    /// Whether this level belongs to a logical server `Game` whose hooks
+    /// apply mob death-protection and effect additions through the owning loop.
+    pub fn defers_death_protection_effects(&self) -> bool {
+        !self.client_side && self.hooks.totem.is_some()
     }
 }
 /// The block an entity with no raised item is asked about: none, and one a mod forces
@@ -1371,10 +1459,22 @@ pub struct Attack {
     pub player_uuid: Option<[i32; 4]>,
     /// The causing mob's UUID for `Villager.setLastHurtByMob`'s gossip.
     pub attacker_uuid: Option<[i32; 4]>,
+    /// Type and movement of the causing entity, bound before the hit borrows its victim.
+    pub enchantment_attacker: Option<EnchantmentActor>,
+    /// The explicit direct entity or projectile, distinct from the causing entity.
+    pub enchantment_direct: Option<EnchantmentActor>,
     /// What it holds, or none when it is not known (no native mod listens: the game only
     /// records it then).
     pub held: Held,
 }
+/// The identity and predicate view of one entity named by a damage source.
+#[derive(Clone, Debug, PartialEq)]
+pub struct EnchantmentActor {
+    pub id: i32,
+    pub kind: std::borrow::Cow<'static, str>,
+    pub motion: Option<(f64, bool)>,
+}
+
 /// The attack of a hit nobody started: environment damage, falls, a level built outside a hit.
 pub static NO_ATTACK: Attack = Attack {
     attacker: 0,
@@ -1388,6 +1488,8 @@ pub static NO_ATTACK: Attack = Attack {
     projectile_weapon: None,
     player_uuid: None,
     attacker_uuid: None,
+    enchantment_attacker: None,
+    enchantment_direct: None,
     held: [None, None],
 };
 /// Whether vanilla's factory for `damage_type` passes the projectile as
@@ -1694,12 +1796,6 @@ pub struct PlayerHealth {
     pub tick_count: i32,
     /// The living target and this player’s tick count at `setLastHurtMob`. Not saved.
     pub last_hurt_mob: Option<(u32, i32)>,
-    /// A death-protection item (totem) is in either hand.
-    pub totem_ready: bool,
-    /// The current hit used death protection; its game continuation applies the effects.
-    pub totem_used: bool,
-    /// The totem that would save the player is in the off hand.
-    pub totem_off_hand: bool,
 }
 impl PlayerHealth {
     pub fn new(resources: &HealthResources, attributes: &mut Attributes) -> Result<Self> {
@@ -1753,9 +1849,6 @@ impl PlayerHealth {
             game_time: 0,
             tick_count: 0,
             last_hurt_mob: None,
-            totem_ready: false,
-            totem_used: false,
-            totem_off_hand: false,
         })
     }
     pub fn health(&self) -> f32 {
@@ -1771,6 +1864,11 @@ impl PlayerHealth {
     /// The game time the damage clock has counted.
     pub fn game_time(&self) -> i64 {
         self.game_time
+    }
+    pub fn has_pending_protection(&self) -> bool {
+        self.damage_completion
+            .as_ref()
+            .is_some_and(|hit| hit.protection.is_some())
     }
     pub fn dead_or_dying(&self) -> bool {
         self.health() <= 0.0 || self.dead
@@ -1955,7 +2053,6 @@ impl PlayerMotion {
             fully_blocked: false,
             block_sound: false,
             knocked: false,
-            totem_fired: false,
             canceled: false,
             dealt: 0.0,
         };
@@ -2042,10 +2139,6 @@ impl PlayerMotion {
             canceled: hit.canceled,
             dealt: hit.dealt,
         };
-        if hit.totem_fired {
-            h.totem_used = true;
-            h.totem_ready = false;
-        }
         if outcome.hurt {
             h.accepted_hit = if h.health() <= 0.0 {
                 let source = level.attack().player_source(&hit.source_name, hit.causing);
@@ -2123,6 +2216,7 @@ impl PlayerMotion {
             can_harm_player: hit.can_harm_player,
             entity: self.entity_id,
             victim,
+            victim_motion: (self.fall_distance, self.fall_flying || self.flying),
             causing: hit.causing,
             invulnerable: hit.invulnerable,
             permanently_invulnerable: hit.permanently_invulnerable,
@@ -2149,9 +2243,7 @@ impl PlayerMotion {
             fully_blocked: hit.fully_blocked,
             block_sound: hit.block_sound,
             knocked: hit.knocked,
-            totem: h.totem_ready,
-            totem_off_hand: h.totem_off_hand,
-            totem_fired: hit.totem_fired,
+            protection: None,
             canceled: hit.canceled,
             dealt: hit.dealt,
         };
@@ -2173,7 +2265,6 @@ impl PlayerMotion {
         hit.fully_blocked = environment.fully_blocked;
         hit.block_sound = environment.block_sound;
         hit.knocked = environment.knocked;
-        hit.totem_fired = environment.totem_fired;
         hit.canceled = environment.canceled;
         hit.dealt = environment.dealt;
         Ok(result)
@@ -2205,6 +2296,7 @@ pub(crate) struct Environment<'a> {
     pub(crate) entity: i32,
     /// Where the player stands and looks, for the incoming-damage hook.
     pub(crate) victim: Victim,
+    pub(crate) victim_motion: (f64, bool),
     pub(crate) causing: i32,
     /// `Abilities.invulnerable`, the game mode (`Player.hurtServer`'s own
     /// gate answers it, which no creative hit passes).
@@ -2225,10 +2317,7 @@ pub(crate) struct Environment<'a> {
     /// `DamageSource.getWeaponItem` with the registry of its
     /// `armor_effectiveness` enchantments, for `getDamageAfterArmorAbsorb`.
     pub(crate) weapon: Option<&'a ArmorWeapon>,
-    /// The victim's own random. `Enchantment.modifyDamageFilteredValue` gives
-    /// its value effects `victim.getRandom()`; `Enchantments::modify_value`
-    /// takes one random for those and for the requirements, which vanilla
-    /// draws from the level's.
+    /// The victim's own random for the damage-filtered enchantment effects.
     pub(crate) random: &'a mut sunrise_core::random::EntityRandom,
     /// The causing entity is a living non-player (a mob, or its projectile's owner).
     pub(crate) living_cause: bool,
@@ -2252,11 +2341,7 @@ pub(crate) struct Environment<'a> {
     pub(crate) block_sound: bool,
     /// `dealDefaultKnockback` ran: a fresh hit, not fully blocked.
     pub(crate) knocked: bool,
-    /// LivingEntity.checkTotemDeathProtection: a totem is held / was used.
-    pub(crate) totem: bool,
-    /// The totem is in the off hand.
-    pub(crate) totem_off_hand: bool,
-    pub(crate) totem_fired: bool,
+    pub(crate) protection: Option<PlayerProtection>,
     /// A native mod canceled the hit (`living_incoming_damage`).
     pub(crate) canceled: bool,
     /// The damage `ENTITY_HURT_PLAYER` is told of.
@@ -2299,7 +2384,6 @@ pub struct PausedHurt {
     fully_blocked: bool,
     block_sound: bool,
     knocked: bool,
-    totem_fired: bool,
     canceled: bool,
     dealt: f32,
 }
@@ -2421,6 +2505,7 @@ impl Environment<'_> {
 }
 impl Observer for Environment<'_> {
     type Error = io::Error;
+    #[inline]
     fn updated(&mut self, data: &mut SyncedFloats, id: u8) -> io::Result<()> {
         Updates(self.events).updated(data, id)
     }
@@ -2429,50 +2514,49 @@ impl<'a> ArmorWorld for Environment<'a> {
     type Error = io::Error;
     type Weapon = &'a ArmorWeapon;
     type ServerLevel = ();
+    #[inline]
     fn weapon(&mut self) -> io::Result<Option<&'a ArmorWeapon>> {
         Ok(self.weapon)
     }
+    #[inline]
     fn server_level(&mut self) -> io::Result<Option<()>> {
         Ok(Some(()))
     }
     /// `EnchantmentHelper.modifyArmorEffectiveness`: the weapon's
     /// `armor_effectiveness` effects over the fraction the armour, toughness
     /// and damage left.
+    #[inline]
     fn modify_armor_effectiveness(
         &mut self,
         _: (),
         weapon: &'a ArmorWeapon,
         value: f32,
     ) -> io::Result<f32> {
-        let ctx = crate::enchant::EffectContext {
-            // `Enchantment.damageContext` carries no tool, so `match_tool`
-            // matches nothing and never reads the item tables.
-            items: None,
-            tool: None,
-            damage_type: Some(&self.source.definition().name),
-            is_direct: weapon.is_direct,
-            this: Some("minecraft:player"),
-            attacker: Some(&weapon.attacker),
-            direct_attacker: Some(&weapon.attacker),
-            direct_motion: None,
-        };
-        Ok(weapon.enchantments.modify_value(
-            Some(&weapon.stack),
+        let attack = self.level.attack();
+        let source = attack.player_source(&self.source.definition().name, self.causing);
+        let mut ctx = attack.enchantment_context(source, "minecraft:player");
+        ctx.this_motion = Some(self.victim_motion);
+        Ok(weapon.enchantments.modify_entity_value(
+            &weapon.stack.all_enchantments(),
             "minecraft:armor_effectiveness",
             &ctx,
-            &mut *self.random,
+            self.level.random(),
+            self.random,
             value,
         ))
     }
 }
 impl ServerDamageEnvironment<Attributes> for Environment<'_> {
     type Attacker = ();
+    #[inline]
     fn invulnerable(&mut self) -> io::Result<bool> {
         damage_immunity::server_player_immunity(self)
     }
+    #[inline]
     fn bypasses(&mut self, kind: Bypass) -> io::Result<bool> {
         Ok(self.source.bypasses(kind))
     }
+    #[inline]
     fn hurt_armor(&mut self, _: &mut Attributes, damage: f32) -> io::Result<()> {
         // The worn armor lives in the game, which wears it from this event.
         let hit = self
@@ -2488,26 +2572,57 @@ impl ServerDamageEnvironment<Attributes> for Environment<'_> {
         });
         Ok(())
     }
+    #[inline]
     fn has_resistance(&mut self) -> io::Result<bool> {
         Ok(self.status.resistance.is_some())
     }
+    #[inline]
     fn resistance_amplifier(&mut self) -> io::Result<i32> {
         self.status
             .resistance
             .ok_or_else(|| io::Error::other("no resistance effect"))
     }
+    #[inline]
     fn award_resisted(&mut self, value: i32) -> io::Result<()> {
         self.stat("resisted", value)
     }
+    #[inline]
     fn attacker(&mut self) -> io::Result<Option<()>> {
         Ok(None)
     }
+    #[inline]
     fn award_dealt_resisted(&mut self, _: i32) -> io::Result<()> {
         Err(io::Error::other("no damage attacker"))
     }
+    #[inline]
     fn damage_protection(&mut self, _: ()) -> io::Result<f32> {
-        Ok(self.status.protection(&self.source.definition().name))
+        let Some(items) = self.level.tags() else {
+            return Ok(self.status.protection(&self.source.definition().name));
+        };
+        let attack = self.level.attack();
+        let source = attack.player_source(&self.source.definition().name, self.causing);
+        let mut ctx = attack.enchantment_context(source, "minecraft:player");
+        ctx.this_motion = Some(self.victim_motion);
+        let mut protection = 0.0;
+        for (stack, slot) in self
+            .level
+            .player_equipment
+            .into_iter()
+            .zip(sunrise_items::equipment::SLOT_NAMES)
+        {
+            let Some(stack) = stack else { continue };
+            protection = items.enchantments.equipment_protection(
+                stack,
+                slot,
+                &ctx,
+                self.level.random(),
+                self.random,
+                protection,
+            );
+        }
+        Ok(protection)
     }
+    #[inline]
     fn award_self(&mut self, stat: DamageStat, value: i32) -> io::Result<()> {
         self.stat(
             match stat {
@@ -2518,18 +2633,23 @@ impl ServerDamageEnvironment<Attributes> for Environment<'_> {
             value,
         )
     }
+    #[inline]
     fn award_attacker(&mut self, _: (), _: DamageStat, _: i32) -> io::Result<()> {
         Err(io::Error::other("no damage attacker"))
     }
+    #[inline]
     fn source_food_exhaustion(&mut self) -> io::Result<f32> {
         Ok(self.source.definition().exhaustion)
     }
+    #[inline]
     fn ability_invulnerable(&self) -> bool {
         self.invulnerable
     }
+    #[inline]
     fn level_is_client(&mut self) -> io::Result<bool> {
         Ok(false)
     }
+    #[inline]
     fn record_damage(&mut self, amount: f32) -> io::Result<()> {
         self.event(HealthEvent::RecordedDamage {
             source: self.source.type_id(),
@@ -2537,12 +2657,15 @@ impl ServerDamageEnvironment<Attributes> for Environment<'_> {
         });
         Ok(())
     }
+    #[inline]
     fn damage_event(&mut self) -> io::Result<()> {
         self.phase("entity-damage")
     }
+    #[inline]
     fn damage_pre(&mut self, container: &mut DamageContainer) -> io::Result<()> {
         self.pre(container, None)
     }
+    #[inline]
     fn damage_pre_with(
         &mut self,
         container: &mut DamageContainer,
@@ -2552,9 +2675,11 @@ impl ServerDamageEnvironment<Attributes> for Environment<'_> {
     }
 }
 impl CombatEnvironment<Attributes> for Environment<'_> {
+    #[inline]
     fn dead_flag(&self) -> bool {
         *self.dead
     }
+    #[inline]
     fn hurt_start_with(
         &mut self,
         _: &mut State,
@@ -2563,6 +2688,7 @@ impl CombatEnvironment<Attributes> for Environment<'_> {
     ) -> io::Result<bool> {
         self.incoming(container, Some(body))
     }
+    #[inline]
     fn damage_post_with(
         &mut self,
         _: &mut State,
@@ -2639,36 +2765,46 @@ impl Environment<'_> {
             .level
             .attack()
             .player_source(&self.source.definition().name, self.causing);
-        let (entity, needs_owner) = (self.entity, *self.dead || self.totem_fired);
+        let (entity, needs_owner) = (self.entity, *self.dead || self.protection.is_some());
         let completion = player_hook_level(&mut self.level, self.entity, body).finish_damage(
             Hurting::Player(entity, source),
             container,
             needs_owner,
         );
         *self.damage_completion = completion;
+        if let Some(hit) = self.damage_completion.as_mut() {
+            hit.protection = self.protection.take();
+        }
         Ok(())
     }
 }
 impl EntityImmunityWorld for Environment<'_> {
     type Error = io::Error;
+    #[inline]
     fn removed(&self) -> bool {
         false
     }
+    #[inline]
     fn permanently_invulnerable(&mut self) -> io::Result<bool> {
         Ok(self.permanently_invulnerable)
     }
+    #[inline]
     fn temporarily_invulnerable(&mut self) -> io::Result<bool> {
         Ok(self.invulnerable_time)
     }
+    #[inline]
     fn tag(&mut self, tag: ImmunityTag) -> io::Result<bool> {
         Ok(self.source.immunity_tag(tag))
     }
+    #[inline]
     fn creative_source(&mut self) -> io::Result<bool> {
         Ok(self.creative_source)
     }
+    #[inline]
     fn fire_immune(&mut self) -> io::Result<bool> {
         Ok(self.fire_immune)
     }
+    #[inline]
     fn fall_immune(&mut self) -> io::Result<bool> {
         Ok(self.level.tags().is_some_and(|items| {
             items.entity_type_tags.has_flag(
@@ -2677,11 +2813,13 @@ impl EntityImmunityWorld for Environment<'_> {
             )
         }))
     }
+    #[inline]
     fn invulnerability_check(&mut self, vanilla: bool) -> io::Result<bool> {
         Ok(self.observe_hit_invulnerability(vanilla))
     }
 }
 impl ImmunityWorld for Environment<'_> {
+    #[inline]
     fn enchantment_immunity(&mut self) -> io::Result<bool> {
         let Some(items) = self.level.tags() else {
             return Ok(false);
@@ -2696,19 +2834,17 @@ impl ImmunityWorld for Environment<'_> {
             .level
             .attack()
             .player_source(&self.source.definition().name, self.causing);
-        let context = crate::enchant::EffectContext {
-            items: Some(items),
-            damage_type: Some(source.damage_type),
-            is_direct: source.causing == source.direct,
-            this: Some("minecraft:player"),
-            ..Default::default()
-        };
+        let context = self
+            .level
+            .attack()
+            .enchantment_context(source, "minecraft:player");
         Ok(items.enchantments.is_damage_immune(
             items.enchantments.damage_immunities(equipment),
             &context,
             self.level.random(),
         ))
     }
+    #[inline]
     fn damage_rule(&mut self, rule: DamageRule) -> io::Result<bool> {
         Ok(match rule {
             DamageRule::Drowning => self.rules.drowning_damage,
@@ -2717,12 +2853,15 @@ impl ImmunityWorld for Environment<'_> {
             DamageRule::Freeze => self.rules.freeze_damage,
         })
     }
+    #[inline]
     fn changing_dimension(&mut self) -> io::Result<bool> {
         Ok(false)
     }
+    #[inline]
     fn ender_pearl(&mut self) -> io::Result<bool> {
         Ok(self.source.is_type("minecraft:ender_pearl"))
     }
+    #[inline]
     fn client_loaded(&mut self) -> io::Result<bool> {
         Ok(self.client_loaded)
     }
@@ -2733,36 +2872,47 @@ impl HurtWorld for Environment<'_> {
     type UseItem = ();
     type Blocking = ();
     type Sound = ();
+    #[inline]
     fn source(&self) -> DamageTypeId {
         self.source.type_id()
     }
+    #[inline]
     fn is_server_player(&self) -> bool {
         true
     }
+    #[inline]
     fn invulnerable(&mut self, _: &mut State) -> io::Result<bool> {
         damage_immunity::server_player_immunity(self)
     }
+    #[inline]
     fn dead_or_dying(&mut self, _: &mut State) -> io::Result<bool> {
         Err(io::Error::other("combat binding supplies health predicate"))
     }
+    #[inline]
     fn tag(&mut self, _: &mut State, tag: HurtTag) -> io::Result<bool> {
         Ok(self.source.hurt_tag(tag))
     }
+    #[inline]
     fn fire_resistance(&mut self, _: &mut State) -> io::Result<bool> {
         Ok(self.status.fire_resistance)
     }
+    #[inline]
     fn hurt_start(&mut self, _: &mut State, container: &mut DamageContainer) -> io::Result<bool> {
         self.incoming(container, None)
     }
+    #[inline]
     fn sleeping(&mut self, _: &mut State) -> io::Result<bool> {
         Ok(false)
     }
+    #[inline]
     fn stop_sleeping(&mut self, _: &mut State) -> io::Result<()> {
         Ok(())
     }
+    #[inline]
     fn use_item(&mut self, _: &mut State) -> io::Result<()> {
         Ok(())
     }
+    #[inline]
     fn apply_blocking(&mut self, _: &mut State, damage: f32) -> io::Result<f32> {
         if damage <= 0.0 {
             return Ok(0.0);
@@ -2826,52 +2976,63 @@ impl HurtWorld for Environment<'_> {
         self.fully_blocked = self.blocked >= damage;
         Ok(self.blocked)
     }
+    #[inline]
     fn freeze_hurts_extra(&mut self, _: &mut State) -> io::Result<bool> {
         Ok(false)
     }
+    #[inline]
     fn helmet_empty(&mut self, _: &mut State) -> io::Result<bool> {
         Ok(!self.helmet)
     }
     /// The game wears it between the hit's halves ([`PlayerMotion::start_hurt`]).
+    #[inline]
     fn hurt_helmet(&mut self, _: &mut State, _: f32) -> io::Result<()> {
         Ok(())
     }
+    #[inline]
     fn actually_hurt(&mut self, _: &mut State, _: &mut DamageContainer, _: f32) -> io::Result<()> {
         Err(io::Error::other("combat binding supplies inner damage"))
     }
+    #[inline]
     fn resolve_mob(&mut self, _: &mut State) -> io::Result<()> {
         Ok(())
     }
+    #[inline]
     fn resolve_player(&mut self, _: &mut State) -> io::Result<()> {
         Ok(())
     }
+    #[inline]
     fn blocking_component(&mut self, _: ()) -> Option<()> {
         self.blocking.as_ref().map(|_| ())
     }
+    #[inline]
     fn on_blocked(&mut self, _: &mut State, _: ()) -> io::Result<()> {
         self.block_sound = true;
         Ok(())
     }
+    #[inline]
     fn broadcast_damage(&mut self, _: &mut State) -> io::Result<()> {
         self.event(HealthEvent::DamageBroadcast {
             source: self.source.type_id(),
         });
         Ok(())
     }
+    #[inline]
     fn mark_hurt(&mut self, _: &mut State) -> io::Result<()> {
         *self.sync_velocity = true;
         Ok(())
     }
     /// The caller applies it: these sources carry no entity or position.
+    #[inline]
     fn knockback(&mut self, _: &mut State, _: f32, _: bool) -> io::Result<()> {
         self.knocked = true;
         Ok(())
     }
+    #[inline]
     fn death_protection(&mut self, _: &mut State) -> io::Result<bool> {
-        if !self.totem
-            || self
-                .source
-                .immunity_tag(ImmunityTag::BypassesInvulnerability)
+        if self
+            .source
+            .immunity_tag(ImmunityTag::BypassesInvulnerability)
         {
             return Ok(false);
         }
@@ -2879,33 +3040,50 @@ impl HurtWorld for Environment<'_> {
             .level
             .attack()
             .player_source(&self.source.definition().name, self.causing);
-        // A native mod may cancel the totem: the player dies.
-        if self
-            .level
-            .totem_canceled(Hurting::Player(self.entity, source), self.totem_off_hand)
-        {
-            return Ok(false);
+        for (hand, slot) in PROTECTION_HANDS {
+            let Some(stack) = self.level.player_equipment[slot] else {
+                continue;
+            };
+            if self.level.death_protection(stack).is_some()
+                && !self
+                    .level
+                    .totem_canceled(Hurting::Player(self.entity, source), hand, stack)
+            {
+                self.protection = Some(PlayerProtection {
+                    hand: Some(hand),
+                    stack: stack.clone(),
+                });
+                return Ok(true);
+            }
         }
-        self.totem_fired = true;
-        Ok(true)
+        let protector = self
+            .level
+            .mod_protector(Hurting::Player(self.entity, source));
+        self.protection = protector.map(|stack| PlayerProtection { hand: None, stack });
+        Ok(self.protection.is_some())
     }
+    #[inline]
     fn death_sound(&mut self, _: &mut State) -> io::Result<()> {
         Ok(())
     }
+    #[inline]
     fn make_sound(&mut self, _: &mut State, _: ()) -> io::Result<()> {
         self.phase("death-sound")
     }
+    #[inline]
     fn secondary_sound(&mut self, _: &mut State) -> io::Result<()> {
         if self.source.definition().effects == "thorns" {
             self.phase("thorns-sound")?;
         }
         Ok(())
     }
+    #[inline]
     fn die(&mut self, _: &mut State) -> io::Result<()> {
         *self.dead = true;
         self.phase("death-request")
     }
     /// `Player.playSound` leaves the player itself out: others hear this one.
+    #[inline]
     fn hurt_sound(&mut self, _: &mut State) -> io::Result<()> {
         if !self.block_sound {
             let sound = hurt_sound(&self.source.definition().effects);
@@ -2913,9 +3091,11 @@ impl HurtWorld for Environment<'_> {
         }
         self.phase("hurt-sound")
     }
+    #[inline]
     fn game_time(&mut self, _: &mut State) -> io::Result<i64> {
         Ok(self.game_time)
     }
+    #[inline]
     fn effects_on_hurt(&mut self, _: &mut State, _: f32) -> io::Result<()> {
         // `for (MobEffectInstance effect : getActiveEffects()) effect.onMobHurt(..)`:
         // Infested is the only effect that answers a hit, and its roll draws
@@ -2925,6 +3105,7 @@ impl HurtWorld for Environment<'_> {
         }
         Ok(())
     }
+    #[inline]
     fn player_hurt_criterion(
         &mut self,
         _: &mut State,
@@ -2941,26 +3122,33 @@ impl HurtWorld for Environment<'_> {
         });
         Ok(())
     }
+    #[inline]
     fn award_blocked(&mut self, _: &mut State, amount: i32) -> io::Result<()> {
         self.stat("blocked", amount)
     }
+    #[inline]
     fn attacker_criterion(&mut self, _: &mut State, _: f32, _: f32, _: bool) -> io::Result<()> {
         Ok(())
     }
+    #[inline]
     fn damage_post(&mut self, _: &mut State, container: DamageContainer) -> io::Result<()> {
         self.post(container, None)
     }
 }
 impl PlayerHurtWorld for Environment<'_> {
+    #[inline]
     fn ability_invulnerable(&self) -> bool {
         self.invulnerable
     }
+    #[inline]
     fn bypasses_invulnerability(&mut self, _: &mut State) -> io::Result<bool> {
         Ok(self.source.in_tag("minecraft:bypasses_invulnerability"))
     }
+    #[inline]
     fn remove_shoulders(&mut self, _: &mut State) -> io::Result<()> {
         Ok(())
     }
+    #[inline]
     fn scales_with_difficulty(&mut self, _: &mut State) -> io::Result<bool> {
         // DamageSource.scalesWithDifficulty.
         Ok(match self.source.definition().scaling {
@@ -2969,6 +3157,7 @@ impl PlayerHurtWorld for Environment<'_> {
             Scaling::LivingNonPlayer => self.living_cause,
         })
     }
+    #[inline]
     fn difficulty(&mut self, _: &mut State) -> io::Result<Difficulty> {
         Ok(self.rules.difficulty)
     }
@@ -2976,6 +3165,7 @@ impl PlayerHurtWorld for Environment<'_> {
 impl ServerPlayerHurtWorld for Environment<'_> {
     type Player = ();
     type Arrow = ();
+    #[inline]
     fn causing_entity(&mut self, _: &mut State) -> io::Result<CausingEntity<(), ()>> {
         Ok(if self.can_harm_player {
             CausingEntity::Other
@@ -2983,9 +3173,11 @@ impl ServerPlayerHurtWorld for Environment<'_> {
             CausingEntity::Player(())
         })
     }
+    #[inline]
     fn arrow_player_owner(&mut self, _: &mut State, _: ()) -> io::Result<Option<()>> {
         Ok(None)
     }
+    #[inline]
     fn can_harm_player(&mut self, _: &mut State, _: ()) -> io::Result<bool> {
         Ok(self.can_harm_player)
     }
@@ -3083,6 +3275,7 @@ mod tests {
             causing: 0,
             direct: 0,
             position: None,
+            direct_type: None,
         };
         let mut knock = Knock {
             strength: 0.4,

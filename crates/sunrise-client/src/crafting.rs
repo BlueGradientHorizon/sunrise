@@ -36,7 +36,7 @@ pub use ingredient::{Ingredient, Shape};
 use serde_json::Value;
 use shapeless_matching::matches_all;
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeSet, HashMap, HashSet},
     path::Path,
     sync::{Arc, OnceLock},
 };
@@ -184,17 +184,8 @@ impl Template {
 /// Assembly also carries the transient map postprocess component; the saved
 /// ItemStack codec deliberately omits it. Do not turn it into saved data.
 fn assembly_components(stack: &ItemStack) -> Tag {
-    let mut components = match crate::item_data::component_snapshot(stack) {
-        Some(Tag::Compound(map)) => map,
-        _ => Default::default(),
-    };
-    if let Some(postprocess) = stack.data().and_then(|d| d.map_post_processing) {
-        components.insert(
-            "minecraft:map_post_processing".into(),
-            Tag::Int(i32::from(postprocess)),
-        );
-    }
-    Tag::Compound(components)
+    crate::item_data::live_component_patch(stack, true)
+        .unwrap_or_else(|| Tag::Compound(Default::default()))
 }
 /// A JSON recipe value as the NBT a component codec reads.
 pub(crate) fn json_tag(v: &Value) -> Tag {
@@ -1241,7 +1232,7 @@ pub fn recipe_result(v: &Value) -> Option<ItemStack> {
     template.item.is_some().then(|| template.create())
 }
 /// Recipe serializers registered by the engine for pinned vanilla and brewing data.
-const VANILLA_RECIPE_SERIALIZERS: [&str; 22] = [
+pub(crate) const VANILLA_RECIPE_SERIALIZERS: [&str; 22] = [
     "minecraft:blasting",
     "minecraft:brewing",
     "minecraft:campfire_cooking",
@@ -1277,12 +1268,6 @@ pub fn registration_key(name: &str) -> (String, String) {
     let (namespace, path) = name.split_once(':').unwrap_or(("minecraft", name));
     (format!("{path}.json"), namespace.to_owned())
 }
-/// The type of a recipe the game doesn't craft itself: one outside `minecraft`.
-fn custom_type(v: &Value) -> Option<&str> {
-    v["type"]
-        .as_str()
-        .filter(|t| t.contains(':') && !t.starts_with("minecraft:"))
-}
 pub struct Recipes {
     /// The published entries shared with the station and network projections.
     sources: Vec<Arc<ResolvedRecipe>>,
@@ -1292,6 +1277,8 @@ pub struct Recipes {
     /// Every effective recipe's file, by recipe type (`minecraft:smelting`,
     /// `mymod:crusher`), in priority order: data packs merged, load conditions held.
     pub by_type: HashMap<String, std::sync::Arc<[crate::crafting::RecipeSnapshot]>>,
+    // The unique IDs of this publication, even if an ID occurs in several types.
+    registry_ids: BTreeSet<String>,
     /// `category` and `group` of each crafting recipe, by file name.
     pub meta: HashMap<String, (String, String)>,
     facts: HashMap<Arc<str>, Facts>,
@@ -1687,42 +1674,60 @@ pub struct ResolvedSources {
     /// reports them and refuses the whole candidate generation.
     failures: Vec<(String, String)>,
 }
-/// The items mods added to the recipe property sets
-/// (`RecipeManager.RECIPE_PROPERTY_SETS`) in one load, by set key without
-/// its `minecraft:` prefix (`furnace_input`). The one answer every reader of
-/// the sets takes: the cooking, station and brewing acceptance and the
-/// network copy.
+/// Each recipe property set's additions and first contributing mod in one load,
+/// keyed by the short id for built-in sets and the full id for custom sets.
+/// Cooking, station and brewing acceptance and the network copy all read this answer.
 #[derive(Clone, Debug, Default)]
-pub struct PropertyAdditions(HashMap<String, HashSet<String>>);
+pub struct PropertyAdditions(HashMap<String, PropertySetAddition>);
+
+#[derive(Clone, Debug)]
+struct PropertySetAddition {
+    first_mod: &'static str,
+    items: HashSet<String>,
+}
 #[cfg(test)]
 #[path = "crafting/property_sets_tests.rs"]
 mod property_sets_tests;
+#[cfg(test)]
+#[path = "crafting/unknown_item_tests.rs"]
+mod unknown_item_tests;
 impl PropertyAdditions {
     /// Asks the `recipe_property_sets` hook once. An unknown set key and an
     /// item that is air are logged and skipped.
     fn ask(context: &sunrise_world::native_load_context::LoadContext) -> Self {
         let mut asked = Vec::new();
         native_hooks::native_recipe_property_sets(context, &mut asked);
-        let mut sets = HashMap::<String, HashSet<String>>::new();
-        for addition in asked {
-            let key = addition
-                .set
-                .strip_prefix("minecraft:")
-                .unwrap_or(&addition.set);
+        let mut sets = HashMap::new();
+        for entry in asked {
+            let mod_id = entry.mod_id;
+            let addition = entry.answer;
+            let key =
+                crate::lan::recipes::vanilla_property_set(&addition.set).unwrap_or(&addition.set);
             if !key.contains(':')
                 && !crate::lan::recipes::PROPERTY_SETS
                     .iter()
                     .any(|(set, ..)| *set == key)
             {
-                log::warn!("recipe_property_sets: unknown set {}", addition.set);
+                log::warn!(
+                    "recipe_property_sets: {mod_id}: unknown set {}",
+                    addition.set
+                );
                 continue;
             }
-            let set = sets.entry(key.to_owned()).or_default();
+            let set = sets
+                .entry(key.to_owned())
+                .or_insert_with(|| PropertySetAddition {
+                    first_mod: mod_id,
+                    items: HashSet::new(),
+                });
             for item in addition.items {
                 if item == "minecraft:air" {
-                    log::warn!("recipe_property_sets: air skipped in {key}");
+                    log::warn!(
+                        "recipe_property_sets: {mod_id}: air skipped in {key} (first contributed by {})",
+                        set.first_mod
+                    );
                 } else {
-                    set.insert(item);
+                    set.items.insert(item);
                 }
             }
         }
@@ -1730,7 +1735,7 @@ impl PropertyAdditions {
     }
     /// The items mods added to the set `key` (`furnace_input`).
     pub fn get(&self, key: &str) -> Option<&HashSet<String>> {
-        self.0.get(key)
+        self.0.get(key).map(|set| &set.items)
     }
     /// Custom sets, with fully qualified keys. Vanilla additions are read by
     /// their owning recipe projections instead.
@@ -1738,7 +1743,7 @@ impl PropertyAdditions {
         self.0
             .iter()
             .filter(|(key, _)| key.contains(':'))
-            .map(|(key, items)| (key.as_str(), items))
+            .map(|(key, set)| (key.as_str(), &set.items))
     }
     /// Whether a mod added `item` to the set `key`.
     pub fn adds(&self, key: &str, item: &str) -> bool {
@@ -1793,6 +1798,20 @@ impl ResolvedSources {
         resolved.failures.extend(refused);
         Ok(resolved)
     }
+    /// Fails every recipe that names an item `items` lacks, as `Item.CODEC` does
+    /// for a recipe's ingredients and results. The decode also runs against
+    /// partial item tables (unit tests, network copies), so the owning load,
+    /// which holds the complete item registry (`lan::sync::collect`, the one
+    /// funnel of world open, reload and sync), calls this once after
+    /// `load_collecting`; the other `load_collecting` callers are tests and probes.
+    pub fn refuse_unknown_items(&mut self, items: &Items) {
+        for recipe in &self.recipes {
+            if let Some(reason) = unknown_item(&recipe.file, items) {
+                self.failures
+                    .push((recipe.name.clone(), recipe_refused(&recipe.name, &reason)));
+            }
+        }
+    }
     /// Whether every recipe resolved; sources with failures are never shared.
     pub fn is_complete(&self) -> bool {
         self.failures.is_empty()
@@ -1830,9 +1849,19 @@ impl ResolvedSources {
         items: &Items,
         context: &sunrise_world::native_load_context::LoadContext,
     ) -> Result<Self> {
-        sources.retain(|(name, value)| Ingredient::validate_persistence(value, name));
+        let mut refused = Vec::new();
+        sources.retain(
+            |(name, value)| match Ingredient::validate_persistence(value) {
+                Ok(()) => true,
+                Err(reason) => {
+                    refused.push((name.clone(), recipe_refused(name, &reason)));
+                    false
+                }
+            },
+        );
         let listener = mod_api::__private::listened(mod_api::HookId::Ingredient).then_some(context);
         let mut resolved = Self::decode(sources, items, IngredientInput::File(listener));
+        resolved.failures.extend(refused);
         resolved.property_additions = PropertyAdditions::ask(context);
         Ok(resolved)
     }
@@ -1865,9 +1894,7 @@ impl ResolvedSources {
                 resolved.failures.push((name, failure));
                 continue;
             }
-            let decoded = if custom_type(&file).is_some() {
-                DecodedRecipe::Mod(OnceLock::new())
-            } else if VANILLA_RECIPE_SERIALIZERS.contains(&serializer) {
+            let decoded = if VANILLA_RECIPE_SERIALIZERS.contains(&serializer) {
                 match decode_vanilla_recipe(&name, serializer, &file, items, input) {
                     Ok(decoded) => decoded,
                     Err(failure) => {
@@ -1876,7 +1903,7 @@ impl ResolvedSources {
                     }
                 }
             } else {
-                DecodedRecipe::Ignored
+                DecodedRecipe::Mod(OnceLock::new())
             };
             resolved.recipes.push(Arc::new(ResolvedRecipe {
                 name,
@@ -1886,6 +1913,74 @@ impl ResolvedSources {
             }));
         }
         resolved
+    }
+}
+
+/// The item ids a minecraft-typed recipe file names directly: its results and
+/// the ids of its ingredients (a tag's members are not checked, as in vanilla).
+fn unknown_item(file: &Value, items: &Items) -> Option<String> {
+    if !file["type"]
+        .as_str()
+        .is_some_and(|kind| kind.starts_with("minecraft:"))
+    {
+        return None;
+    }
+    let mut named = Vec::new();
+    for key in INGREDIENT_KEYS {
+        named_items(&file[key], &mut named);
+    }
+    for key in INGREDIENT_MAPS {
+        for ingredient in file[key]
+            .as_object()
+            .into_iter()
+            .flat_map(|map| map.values())
+        {
+            named_items(ingredient, &mut named);
+        }
+    }
+    // A brewing recipe's input and reagent wrap their ingredient in `item`.
+    for key in ["input", "reagent"] {
+        named_items(&file[key]["item"], &mut named);
+    }
+    for key in ["result", "output"] {
+        named.extend(sunrise_world::loot::recipe_result_id(&file[key]));
+    }
+    named.into_iter().find_map(|id| {
+        let known = Identifier::parse(id).is_ok_and(|parsed| {
+            let canonical = format!("{}:{}", parsed.namespace(), parsed.path());
+            canonical != "minecraft:air" && items.get(&canonical).is_some()
+        });
+        (!known).then(|| format!("unknown item {id}"))
+    })
+}
+
+fn named_items<'a>(value: &'a Value, out: &mut Vec<&'a str>) {
+    match value {
+        Value::String(id) => {
+            if !id.starts_with('#') {
+                out.push(id);
+            }
+        }
+        Value::Array(values) => {
+            for value in values {
+                named_items(value, out);
+            }
+        }
+        Value::Object(object) => match ingredient::ingredient_kind(object) {
+            Some("neoforge:components") => named_items(&value["items"], out),
+            Some("neoforge:compound" | "neoforge:intersection") => {
+                for key in ["children", "ingredients"] {
+                    named_items(&value[key], out);
+                }
+            }
+            Some("neoforge:difference") => {
+                named_items(&value["base"], out);
+                named_items(&value["subtracted"], out);
+            }
+            Some("neoforge:custom_display") => named_items(&value["base"], out),
+            _ => {}
+        },
+        _ => {}
     }
 }
 
@@ -2301,6 +2396,7 @@ impl Recipes {
             crafting: Vec::new(),
             cooking: Vec::new(),
             by_type: HashMap::new(),
+            registry_ids: BTreeSet::new(),
             meta: HashMap::new(),
             facts: HashMap::new(),
             curses: HashSet::new(),
@@ -2485,6 +2581,11 @@ impl Recipes {
                 .is_empty(),
             crafting,
             cooking,
+            registry_ids: by_type
+                .values()
+                .flatten()
+                .map(|entry| entry.id.clone())
+                .collect(),
             by_type: by_type
                 .into_iter()
                 .map(|(kind, files)| (kind, files.into()))
@@ -2495,6 +2596,13 @@ impl Recipes {
             cook_index: Default::default(),
             property_additions: sources.property_additions.clone(),
         }
+    }
+    /// The published recipe IDs across all types, once each, in lexical order.
+    pub fn registry_ids(&self) -> impl Iterator<Item = &str> {
+        self.registry_ids.iter().map(String::as_str)
+    }
+    pub fn registry_contains(&self, id: &str) -> bool {
+        self.registry_ids.contains(id)
     }
     /// Match a `size`x`size` grid (row-major) against the crafting recipes.
     pub fn craft(
@@ -2868,9 +2976,10 @@ mod tests {
             root.path(),
             &items,
             &PackOverlay::NONE,
-            &defaults,
+            crate::banner::Banners::load(root.path(), &defaults),
             (&sources, &recipes),
-        );
+        )
+        .unwrap();
         assert_eq!(stations.brewing.recipes.len(), 1);
         assert_eq!(stations.brewing.recipes[0].id, "example:custom_elixir");
         assert!(stations.brewing.reagents.contains("minecraft:blaze_powder"));
@@ -3061,7 +3170,7 @@ mod tests {
             let sources = ResolvedSources::resolve(raw, &items, &load).unwrap();
             let recipes =
                 Recipes::from_resolved(&root, &items, &PackOverlay::NONE, &sources).unwrap();
-            let stations = crate::stations::StationRecipes::from_sources(&root, &items, &sources);
+            let stations = crate::stations::StationRecipes::from_sources(&items, &sources);
             let cuts = &recipes.by_type["minecraft:stonecutting"];
             assert_eq!(cuts.len(), 1);
             let Some(crate::crafting::RecipeRule::Stonecutting { input, result }) = &cuts[0].rule
@@ -3437,28 +3546,13 @@ mod tests {
             crafting: Vec::new(),
             cooking,
             by_type: HashMap::new(),
+            registry_ids: BTreeSet::new(),
             meta: HashMap::new(),
             facts: HashMap::new(),
             curses: HashSet::new(),
             cook_index: Default::default(),
             property_additions: PropertyAdditions::default(),
         }
-    }
-    #[test]
-    fn only_types_outside_minecraft_are_custom() {
-        let kind = |json: &str| {
-            let v: Value = serde_json::from_str(json).unwrap();
-            custom_type(&v).map(str::to_owned)
-        };
-        assert_eq!(
-            kind(r#"{"type":"mymod:crusher"}"#).as_deref(),
-            Some("mymod:crusher")
-        );
-        assert_eq!(kind(r#"{"type":"minecraft:smelting"}"#), None);
-        assert_eq!(kind(r#"{"type":"minecraft:from_a_later_version"}"#), None);
-        assert_eq!(kind(r#"{"type":"no_namespace"}"#), None);
-        assert_eq!(kind(r#"{"type":7}"#), None);
-        assert_eq!(kind("{}"), None);
     }
     /// Recipes of every type land in `by_type`, in file order, with the id the
     /// file has; a data pack overrides by id and adds more; a recipe of a mod's
@@ -3588,6 +3682,18 @@ mod tests {
                 );
                 assert_eq!(crusher[1].json["tag"], "pack-b");
                 assert_eq!(recipes.by_type["pack:press"][0].id, "minecraft:p");
+                assert_eq!(
+                    recipes.registry_ids().collect::<Vec<_>>(),
+                    [
+                        "minecraft:iron_ingot",
+                        "minecraft:p",
+                        "mymod:a",
+                        "mymod:b",
+                        "mymod:c",
+                        "mymod:deep/er/d",
+                        "pack:d"
+                    ]
+                );
                 assert_eq!(
                     recipes.by_type["minecraft:stonecutting"][0].json["tag"],
                     "pack-iron"
@@ -3885,6 +3991,7 @@ mod tests {
             crafting: Vec::new(),
             cooking: Vec::new(),
             by_type: HashMap::new(),
+            registry_ids: BTreeSet::new(),
             meta: HashMap::new(),
             facts: HashMap::new(),
             curses: HashSet::new(),

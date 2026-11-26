@@ -11,12 +11,13 @@ impl Renderer {
         sprite_mips: &[crate::mipmap::Settings],
         animations: &[SpriteAnimation],
         hud_atlas: (&[u8], u32, u32),
+        hud_pages: Option<&crate::hud::HudAtlas>,
         glint: (&[u8], u32, u32),
         glint_armor: (&[u8], u32, u32),
         forcefield: (&[u8], u32),
         panorama_faces: Arc<panorama::Faces>,
         prepared: Option<PreparedTextures>,
-        previous: Option<&Self>,
+        render_device: RendererDevice<'_>,
         api: GraphicsApi,
         translucent_batching: bool,
         (shader_pack, pack_starts_wide): (bool, bool),
@@ -26,6 +27,10 @@ impl Renderer {
         request: output::FrameRequest,
         display: output::DisplayReading,
     ) -> Result<Self> {
+        let previous = match &render_device {
+            RendererDevice::Reuse(renderer) => Some(*renderer),
+            _ => None,
+        };
         let Opened {
             instance,
             surface,
@@ -34,11 +39,11 @@ impl Renderer {
             queue,
             device_lost,
             configured,
-        } = match previous {
+        } = match render_device {
             // Reload resources on the same device; replacing live Vulkan
             // devices can invalidate the driver's swapchain state on the same
             // window.
-            Some(renderer) => {
+            RendererDevice::Reuse(renderer) => {
                 describe_adapter(&renderer.adapter);
                 check_layers(&renderer.adapter, layers)?;
                 Opened {
@@ -63,10 +68,8 @@ impl Renderer {
                     configured: None,
                 }
             }
-            None => {
-                let _step = crate::spans::startup::step("renderer.open_device");
-                open_device(&window, offscreen, api, layers).await?
-            }
+            RendererDevice::Opened(opened) => *opened,
+            RendererDevice::New => Opened::for_window(&window, offscreen, api, layers).await?,
         };
         // Computed once: the sprite arrays, the shaders' constants and the
         // shader pack atlas all cut the sprites by it.
@@ -476,9 +479,8 @@ impl Renderer {
             &terrain_buffers,
             wgpu::Face::Back,
         );
-        // The water mirror's camera sees the world from the other side of the plane, and a
-        // mirrored world view's picture is flipped (`world_views::Flipped`): each turns the
-        // winding round, so their terrain culls the front.
+        // A mirrored world view's picture is flipped (`world_views::Flipped`), which turns the
+        // winding round, so its terrain culls the front.
         let front = |label, fragment, blend| {
             pipeline(
                 label,
@@ -492,7 +494,6 @@ impl Renderer {
                 blend,
             )
         };
-        let solid_mirror = front("Terrain solid (mirrored)", "fs_solid_mirror", None);
         let flipped = solid_in(
             &layout,
             "Terrain solid (flipped)",
@@ -720,12 +721,6 @@ impl Renderer {
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
-        let mirror_globals = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Water mirror globals"),
-            size: std::mem::size_of::<Globals>() as u64,
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
         let prepared = match prepared {
             Some(prepared) => prepared.resplit(layers, split),
             None => PreparedTextures::with_split(
@@ -928,17 +923,6 @@ impl Renderer {
             &lightmap_sampler,
             &emission_stats.view,
         );
-        let mirror_group = terrain_group(
-            &device,
-            "Water mirror resources",
-            &bindings,
-            &mirror_globals,
-            &sprite_views,
-            &sprite_sampler,
-            &lightmap_view,
-            &lightmap_sampler,
-            &emission_stats.view,
-        );
         let index_quads = 1 << 16;
         let indices = Self::quad_indices(&device, index_quads);
         let instance_capacity = 4096;
@@ -973,7 +957,7 @@ impl Renderer {
         let limit = device.limits().max_texture_dimension_2d;
         if atlas_width.max(atlas_height) > limit {
             return Err(format!(
-                "the shared atlas is {atlas_width}x{atlas_height}; this GPU allows {limit}x{limit}"
+                "HUD atlas {atlas_width}x{atlas_height} exceeds device texture limit {limit}"
             )
             .into());
         }
@@ -1061,10 +1045,22 @@ impl Renderer {
             &atlas_view,
             &glint_view,
             &glint_armor_view,
+            &lightmap_view,
             &glint_sampler,
             hud_coverage,
+            hud_pages.map_or_else(Vec::new, |atlas| {
+                atlas
+                    .registered_pages
+                    .iter()
+                    .map(|page| crate::hud::upload_atlas_page(&device, &queue, page))
+                    .collect()
+            }),
         )?;
         hud.atlas_texture = Some(atlas.clone());
+        // On the same device the previous renderer's dynamic textures are still valid.
+        if let Some(previous) = previous {
+            hud.share_dynamic(previous.hud.dynamic().clone());
+        }
         let entity_step = crate::spans::startup::step("renderer.entity_pipelines");
         let entity_shader = kept.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Sunrise entities"),
@@ -1101,44 +1097,59 @@ impl Renderer {
             label: Some("Atlas"),
             ..Default::default()
         });
-        let entity_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("Entity resources"),
-            layout: &entity_bindings,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: globals.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::TextureView(&atlas_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: wgpu::BindingResource::Sampler(&atlas_sampler),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 3,
-                    resource: wgpu::BindingResource::TextureView(&lightmap_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 4,
-                    resource: wgpu::BindingResource::Sampler(&lightmap_sampler),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 5,
-                    resource: wgpu::BindingResource::TextureView(&glint_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 6,
-                    resource: wgpu::BindingResource::Sampler(&glint_sampler),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 7,
-                    resource: wgpu::BindingResource::TextureView(&glint_armor_view),
-                },
-            ],
-        });
+        let entity_group_for = |view: &wgpu::TextureView| {
+            device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("Entity resources"),
+                layout: &entity_bindings,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: globals.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: wgpu::BindingResource::TextureView(view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 2,
+                        resource: wgpu::BindingResource::Sampler(&atlas_sampler),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 3,
+                        resource: wgpu::BindingResource::TextureView(&lightmap_view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 4,
+                        resource: wgpu::BindingResource::Sampler(&lightmap_sampler),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 5,
+                        resource: wgpu::BindingResource::TextureView(&glint_view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 6,
+                        resource: wgpu::BindingResource::Sampler(&glint_sampler),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 7,
+                        resource: wgpu::BindingResource::TextureView(&glint_armor_view),
+                    },
+                ],
+            })
+        };
+        let entity_group = entity_group_for(&atlas_view);
+        let dynamic_entity = dynamic_entity::DynamicEntity::new(
+            &device,
+            entity_bindings.clone(),
+            globals.clone(),
+            (lightmap_view.clone(), lightmap_sampler.clone()),
+            (glint_view.clone(), glint_sampler.clone()),
+            glint_armor_view.clone(),
+        );
+        let screen_page_groups = hud
+            .atlas_page_views()
+            .map(|view| view.map(entity_group_for))
+            .collect();
         let static_entity_transform =
             device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("Static block-entity camera position"),
@@ -1595,28 +1606,7 @@ impl Renderer {
                 multiview_mask: None,
                 cache: None,
             });
-        // RenderPipelines.ENERGY_SWIRL: BlendFunction.ADDITIVE (one, one), no culling; no depth
-        // writes either: vanilla sorts the quads far to near, so every face passes the test.
-        let one_one = wgpu::BlendComponent {
-            src_factor: wgpu::BlendFactor::One,
-            dst_factor: wgpu::BlendFactor::One,
-            operation: wgpu::BlendOperation::Add,
-        };
-        let energy_swirl_pipeline = entity_pipeline_with(EntityPipelineOptions {
-            label: "Energy swirls",
-            cull_mode: None,
-            depth_write: false,
-            compare: wgpu::CompareFunction::GreaterEqual,
-            bias: Default::default(),
-            blend: wgpu::BlendState {
-                color: one_one,
-                alpha: one_one,
-            },
-            clouds: false,
-            vertex: "vs_entity",
-            fragment: "fs_energy_swirl",
-            write_mask: wgpu::ColorWrites::ALL,
-        });
+        let energy_swirl_pipeline = entity_pipeline_with(energy_swirl_options(false));
         // HDR output's mark on light-giving particles (entity.wgsl fs_hdr_mark).
         let hdr_mark_pipeline = entity_pipeline_with(EntityPipelineOptions {
             label: "HDR particle mark",
@@ -2056,15 +2046,22 @@ impl Renderer {
         crate::mesher::group_parts(adapter.get_info().backend == wgpu::Backend::Metal);
         // Readable as storage where flat draws run, or while a `shaders/` pack's terrain programs
         // read them per section (`arena_storage`): it starts as for the picked pack, taken to
-        // read them, so the pack loading keeps it (`follow_arena_storage`).
-        let terrain_pages = flat::pages_readable(&adapter, &device);
+        // read them, so the pack loading keeps it (`follow_arena_layout`).
+        // `SUNRISE_SHADER_PACK_WITHOUT=vertex-storage` takes reads away as for a pack
+        // (`pack_post::Gpu::vertex_reads`).
+        let terrain_pages = flat::pages_readable(&adapter, &device)
+            && pack_post::Gpu::of(&adapter, device.features()).vertex_reads;
         let arena_storage = arena_storage(flat_wanted, pack_starts_wide && terrain_pages);
+        // With a normal stream where the pack's per-section draws read no pages
+        // (`follow_arena_layout`), as for the pack's taken to fit with it.
+        let arena_normals = pack_starts_wide && !flat_wanted && !terrain_pages;
         let arena = arena::Arena::new(
             &device,
             std::mem::size_of::<TerrainVertex>() as u64,
             1 << 20,
             arena_storage,
-        );
+        )
+        .with_normals(arena_normals);
         // Sections as one index list per frame where multi-draw is emulated.
         let mut flat = flat_wanted.then(|| {
             let buffers = [Some(wgpu::VertexBufferLayout {
@@ -2109,7 +2106,7 @@ impl Renderer {
         // With flat draws' page groups the per-section solid draws read their vertices from
         // the page too (`Flat::page_group`), in either layout of the solid quads
         // (`mesher::packed`): only the origins stay a vertex buffer, at slot 1.
-        let (solid, solid_opaque, solid_cutout, solid_mirror, flipped) = match &flat {
+        let (solid, solid_opaque, solid_cutout, flipped) = match &flat {
             Some(f) => {
                 let pulled_layout = kept.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                     label: Some("Sunrise terrain layout (pulled)"),
@@ -2135,22 +2132,10 @@ impl Renderer {
                         "fs_solid",
                         back,
                     ),
-                    pipeline_in(
-                        &pulled_layout,
-                        "Terrain solid (mirrored)",
-                        "vs_section",
-                        "fs_solid_mirror",
-                        &origins,
-                        tri,
-                        Some(front),
-                        true,
-                        true,
-                        None,
-                    ),
                     solid("Terrain solid (flipped)", "vs_section", "fs_solid", front),
                 )
             }
-            None => (solid, solid_opaque, solid_cutout, solid_mirror, flipped),
+            None => (solid, solid_opaque, solid_cutout, flipped),
         };
         // The solid quads in the compact layout where every pass reads it; the first world
         // frames settle it for the picked pack (`follow_packed_layout`).
@@ -2214,6 +2199,7 @@ impl Renderer {
                 shader_pack,
                 false,
             ),
+            arena_normals,
         );
         if let (Some(flat), Some(arena)) = (&mut flat, &translucent_arena) {
             flat.set_translucent_page_vertices(arena.page_vertices());
@@ -2295,6 +2281,22 @@ impl Renderer {
         let core_particles =
             core_particles::CoreParticles::new(&device, &queue, (frame_format, linear_light));
         let views = world_views::Kept::new(flipped, translucent_flipped, entity_pipeline_with);
+        let mod_gpu = mod_gpu::ModGpuResources::new(
+            adapter.clone(),
+            device.clone(),
+            queue.clone(),
+            hud.dynamic().clone(),
+            mod_gpu::ModFrameState {
+                entity_atlas: atlas_view.clone(),
+                lightmap: lightmap_view.clone(),
+                world_depth: depth.clone(),
+                entity_quad_capacity: EntityQuadCapacity::from_limits(
+                    &device.limits(),
+                    entity_skin.is_some(),
+                ),
+                pack_iris: false,
+            },
+        );
         Ok(Self {
             display: None,
             reading: display,
@@ -2369,10 +2371,6 @@ impl Renderer {
             debug_line_capacity: 4096,
             crosshair_group,
             crosshair_globals,
-            solid_mirror,
-            mirror_globals,
-            mirror_group,
-            mirror: None,
             world_views: views,
             world_view_side: max_side,
             entity_pipeline,
@@ -2381,6 +2379,7 @@ impl Renderer {
             particle_pipelines,
             explicit_opaque_particles: Default::default(),
             explicit_translucent_particles: Default::default(),
+            explicit_additive_particles: Default::default(),
             static_entity_pipeline,
             hdr_mark_pipeline,
             hdr_entity_mark_pipeline,
@@ -2405,6 +2404,10 @@ impl Renderer {
             lightning: lightning::Renderer::new(),
             see_through_pipeline,
             world_primitives: Some(world_primitives),
+            mod_gpu,
+            transient_targets: std::sync::Mutex::new(
+                mod_frame_graph::TransientTargetPool::default(),
+            ),
             text_polygon_offset_pipeline,
             world_text_pipeline,
             text_mark_pipelines,
@@ -2423,6 +2426,7 @@ impl Renderer {
             border_uniform,
             border_vertices,
             screen_pipelines,
+            screen_page_groups,
             screen_buffer,
             screen_capacity,
             entity_group,
@@ -2447,6 +2451,7 @@ impl Renderer {
             static_entity_indices,
             static_entity_index_quads,
             entity_batch: EntityBatch::default(),
+            dynamic_entity,
             entity_order: entity_skin::OrdinaryOrder::default(),
             entity_skin,
             group,
@@ -2542,8 +2547,6 @@ impl Renderer {
             newest_upload: None,
             newest_lod_fade: None,
             block_entity_revision: next_block_entity_revision(),
-            light_blocks: Default::default(),
-            light_revision: 0,
             occlusion: occlusion::Occlusion::new(crate::chunk::MIN_Y, crate::chunk::HEIGHT / 16),
             layout: crate::chunk::ColumnLayout::VANILLA,
             world_post,
@@ -2557,12 +2560,11 @@ impl Renderer {
             auto_off_since: None,
             // Nothing is presented as HDR yet: `update_output` applies the settings.
             output: output::resolve_output(settings, output_caps, display, frame, false),
-            frame_kept_logged: false,
             hdr_marker: None,
             hdr_driver,
             pack_post: None,
             pack_loading: None,
-            native: None,
+            pack_generation: 0,
             pass_timing: false,
             pass_detail: false,
             pass_timing_gap: std::time::Duration::ZERO,
@@ -2577,10 +2579,13 @@ impl Renderer {
             pack_terrain_flat: false,
             terrain_pages,
             pack_terrain_pages: false,
+            pack_terrain_normals: false,
             pack_terrain_bindings: Default::default(),
             arena_storage,
             separate_ao: false,
             pack_pages: Vec::new(),
+            pack_block_ids: None,
+            pack_sources_on: false,
             outline_edges_scratch: Vec::new(),
             outline_lines_scratch: Vec::new(),
             debug_lines_scratch: Vec::new(),

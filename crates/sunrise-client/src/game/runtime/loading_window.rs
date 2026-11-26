@@ -1,6 +1,7 @@
 //! The window's first renderer and frames: the renderer built from the prepared textures, the
 //! boot screen's frame, and `start_game`, which turns the loaded resources into a `Game`.
 use super::*;
+use sunrise_client::gfx::RendererDevice;
 
 /// CPU mip chains for the block sprites and world border.
 pub(super) fn prepare_renderer_textures(
@@ -22,13 +23,15 @@ pub(super) fn prepare_renderer_textures(
     )
 }
 
-/// Upload pack textures and create the renderer on the window's device.
+/// Upload pack textures and create the renderer on the window's device, with whether the device
+/// made every pipeline of the packs' core shaders it draws (the first refusal, named by its
+/// pipeline, fails the pack load as a required shader's does).
 pub(super) fn build_renderer(
     window: Arc<Window>,
     offscreen: bool,
     pack: &PackResources,
     gui: &UiResources,
-    previous: Option<&Renderer>,
+    device: RendererDevice<'_>,
     prepared: Option<sunrise_client::gfx::PreparedTextures>,
     api: sunrise_client::graphics::GraphicsApi,
     translucent_batching: bool,
@@ -63,6 +66,7 @@ pub(super) fn build_renderer(
         &assets.sprite_mips,
         &assets.animations,
         (&atlas_pixels, atlas.width, atlas.height),
+        Some(atlas),
         (&atlas.glint.0, atlas.glint.1, atlas.glint.2),
         (
             &atlas.glint_armor.0,
@@ -72,7 +76,7 @@ pub(super) fn build_renderer(
         (&pack.forcefield.2, pack.forcefield.0),
         gui.panorama.clone(),
         prepared,
-        previous,
+        device,
         api,
         translucent_batching,
         (shader_pack.draws_flat, shader_pack.starts_wide),
@@ -81,7 +85,7 @@ pub(super) fn build_renderer(
         display,
     ))?;
     let (prepared_vertices, prepared_ranges) =
-        native_block_entity_draw::StandaloneGeometry::new(pack, gui).prepared_upload();
+        native_block_entity_draw::StandaloneGeometry::new(pack, gui, None).prepared_upload();
     renderer.install_prepared_models(
         pack.render.generation,
         &prepared_vertices,
@@ -92,7 +96,9 @@ pub(super) fn build_renderer(
     // waiting for `Game::apply_settings` after the handoff.
     renderer.set_present_mode(vsync, settings.present_mode);
     renderer.hud.sprite_animations = atlas.renderer_animations();
-    renderer.hud.set_text_shader(&renderer.device, {
+    // The packs' core shaders: the device refusing a pipeline vanilla requires fails the load,
+    // after the renderer is made (`ShaderManager.apply`'s required programs).
+    let gui_text = renderer.hud.set_text_shader(&renderer.device, {
         let text = &atlas.text_shaders;
         (text.gui.as_deref()).map(|p| (p, &text.expressions.gui[..]))
     });
@@ -101,19 +107,22 @@ pub(super) fn build_renderer(
         (filtering.0, filtering.1),
         filtering.2,
     )?;
-    renderer.set_lines_shader(
+    let world_text = renderer.set_world_text_shaders(&atlas.text_shaders);
+    let clouds = renderer.set_clouds_shader(atlas.clouds_shader.as_deref());
+    let lines = renderer.set_lines_shader(
         (atlas.lines_shader.as_deref()).map(|p| (p, &atlas.lines_expressions[..])),
     );
-    renderer.set_world_text_shaders(&atlas.text_shaders);
-    renderer.set_sky_shaders(
+    let sky = renderer.set_sky_shaders(
         (atlas.sky_shader.as_deref()).map(|p| (p, &atlas.sky_expressions[..])),
         (atlas.stars_shader.as_deref()).map(|p| (p, &atlas.stars_expressions[..])),
     );
-    renderer.set_lightmap_shader(
+    let lightmap = renderer.set_lightmap_shader(
         atlas.lightmap_shader.as_deref(),
         &atlas.lightmap_expressions,
     );
-    let clouds = renderer.set_clouds_shader(atlas.clouds_shader.as_deref());
+    let required = [world_text, gui_text, clouds, lines, sky, lightmap]
+        .into_iter()
+        .collect::<std::result::Result<(), String>>();
     renderer.set_custom_sky(&*pack.custom_sky);
     renderer.set_shared_material_maps(&atlas.material_maps);
     let cit_glints = pack.item_renderer.cit.as_ref().map(|c| &c.glint_textures);
@@ -126,7 +135,7 @@ pub(super) fn build_renderer(
         let r = atlas.sprites.get(name)?;
         Some([r.u0, r.v0, r.u1, r.v1])
     })?;
-    Ok((renderer, clouds))
+    Ok((renderer, required))
 }
 
 /// The loading screen's renderer: one atlas (the boot screen's until the
@@ -169,12 +178,13 @@ pub(super) fn loading_renderer(
         &[],
         &[],
         (pixels, width, height),
+        atlas,
         (glint_pixels, glint_width, glint_height),
         (glint_pixels, glint_width, glint_height),
         (&FORCEFIELD[..], 1),
         panorama,
         None,
-        previous,
+        previous.map_or(RendererDevice::New, RendererDevice::Reuse),
         api,
         // It draws no terrain.
         false,
@@ -197,12 +207,14 @@ pub(super) fn loading_frame(hud: &HudBatch) -> Frame<'_> {
         camera: glam::DVec3::new(0.5, 100.0, 0.5),
         yaw: 0.0,
         pitch: 10.0,
+        roll: 0.0,
         fov_degrees: 85.0,
         cull_fov_degrees: 85.0,
         eye: glam::DVec3::new(0.5, 100.0, 0.5),
         eye_rotation: [0.0, 10.0],
         first_person: true,
         bob: glam::Mat4::IDENTITY,
+        view_transform: glam::Mat4::IDENTITY,
         spin: glam::Mat4::IDENTITY,
         sky: sunrise_client::environment::Sky::default(),
         shadow_scene_revision: (0, 0),
@@ -212,7 +224,6 @@ pub(super) fn loading_frame(hud: &HudBatch) -> Frame<'_> {
         shadow_distance: None,
         depth_far: 1000.0,
         underwater: false,
-        water_plane: None,
         cave_culling: false,
         title: true,
         sky_pass: false,
@@ -486,7 +497,7 @@ impl Game<'_> {
                         game.settings.simulation_distance = 2;
                     }
                     // Headless, but with the same server and memory connection as play.
-                    game.open_integrated(&folder, None, Some(seed), creative, None)?;
+                    game.open_integrated(&folder, None, seed, creative, None)?;
                 } else {
                     // Start after the window is handed over, so --world uses the
                     // same responsive initialization path as the title screen.
@@ -497,7 +508,7 @@ impl Game<'_> {
                     game.pending_entry = Some(PendingWorldEntry::Local {
                         folder,
                         name: None,
-                        seed: Some(seed),
+                        seed,
                         creative,
                         create: None,
                     });

@@ -3,7 +3,8 @@
 //! continuing a value on the next line, and conditional directives evaluated with the
 //! standard and option macros (1.5 item 2). `#define` and `#undef` work in every one of them:
 //! a public pack defines a macro in its `shaders.properties` and tests it further down. The
-//! lines of custom uniforms and variables (`uniform.*`, `variable.*`) have those macros expanded.
+//! lines of custom uniforms and variables (`uniform.*`, `variable.*`) have those macros expanded,
+//! and so do the values of buffer and image sizes (`size.buffer.*`, `image.*`).
 //! No other escape is read: values are names, numbers and expressions. A later duplicate key
 //! replaces the earlier one, with a note.
 
@@ -73,14 +74,33 @@ impl Properties {
             }
             match logical.split_once('=') {
                 Some((key, value)) if !key.trim().is_empty() => {
-                    let (mut key, mut value) = (key.trim().to_owned(), value.trim().to_owned());
-                    // A custom uniform's or variable's line is read with the macros expanded, as
-                    // Iris 1.11.7 reads it (probe pack): options, standard macros and this
-                    // file's own `#define`s, in the name too.
-                    if key.starts_with("uniform.") || key.starts_with("variable.") {
-                        key = macros.expand(&key).trim().to_owned();
-                        value = macros.expand(&value).trim().to_owned();
-                    }
+                    let expanded =
+                        |text: &str| macros.try_expand(text).map(|t| t.trim().to_owned());
+                    let read = || {
+                        let (mut key, mut value) = (key.trim().to_owned(), value.trim().to_owned());
+                        // A custom uniform's or variable's line is read with the macros expanded,
+                        // as Iris 1.11.7 reads it (probe pack): options, standard macros and this
+                        // file's own `#define`s, in the name too.
+                        if key.starts_with("uniform.") || key.starts_with("variable.") {
+                            key = expanded(&key)?;
+                            value = expanded(&value)?;
+                        }
+                        // A buffer's or an image's sizes may be macros the file defines above it
+                        // (spec 1.5 item 2, 6.1.2, 6.5): its value is expanded with the macros of
+                        // its line. The name stays as the pack wrote it.
+                        if key.starts_with("image.") || key.starts_with("size.buffer.") {
+                            value = expanded(&value)?;
+                        }
+                        Ok::<_, String>((key, value))
+                    };
+                    // A call nested past `MAX_ARGUMENT_DEPTH` drops the entry, with a note.
+                    let (key, value) = match read() {
+                        Ok(read) => read,
+                        Err(why) => {
+                            out.note(number, &why);
+                            continue;
+                        }
+                    };
                     out.insert(Entry {
                         key,
                         value,
@@ -141,7 +161,7 @@ impl Properties {
         conditionals: &mut Conditionals,
         macros: &mut Macros,
     ) {
-        match conditionals.apply(word, rest, macros) {
+        match crate::condition::apply(conditionals, word, rest, macros) {
             Err(e) => self.note(number, &e),
             Ok(true) => {}
             Ok(false) if conditionals.active() => match word {
@@ -265,5 +285,85 @@ mod tests {
         let lines: Vec<u32> = p.notes.iter().map(|n| n.line).collect();
         assert_eq!(lines, [1, 2, 3, 8, 8]);
         assert!(p.entries.is_empty());
+    }
+
+    /// `#if` and `#elif` nested to `MAX_CONDITION_DEPTH` read on a thread of half the 2 MiB Rust
+    /// gives a spawned thread, such as the one a pack loads on, in this (debug) build; one level
+    /// more is noted by name at its line and reads as false.
+    #[test]
+    fn a_condition_nested_past_the_bound_is_noted_and_read_as_false() {
+        use sunrise_glsl::condition::{MAX_CONDITION_DEPTH, too_deep};
+        let parens = |depth: usize| format!("{}1{}", "(".repeat(depth), ")".repeat(depth));
+        let (at, past) = (parens(MAX_CONDITION_DEPTH), parens(MAX_CONDITION_DEPTH + 1));
+        let text = format!(
+            "#if {at}\ndeepest=1\n#endif\n#if {past}\npast=1\n#else\nother=1\n#endif\n\
+             #if 0\n#elif {at}\nelif_deepest=1\n#endif\n#if 0\n#elif {past}\nelif_past=1\n#endif\n"
+        );
+        let p = std::thread::Builder::new()
+            .stack_size(1 << 20)
+            .spawn(move || read(&text))
+            .unwrap()
+            .join()
+            .unwrap();
+        assert_eq!(
+            pairs(&p),
+            [("deepest", "1"), ("other", "1"), ("elif_deepest", "1")]
+        );
+        let note = |line: u32| Note {
+            line,
+            message: format!("`#if {past}`: {}; read as false", too_deep()),
+        };
+        assert_eq!(p.notes, [note(4), note(14)]);
+    }
+
+    /// Macro calls nested to `MAX_ARGUMENT_DEPTH` expand on a thread of half the 2 MiB Rust gives
+    /// a spawned thread, in this (debug) build. 400 levels, which overflowed it, stop at the
+    /// bound, by name at the line: an `#if` or `#elif` reads as false, and a custom uniform or a
+    /// buffer size expanded with the macros is dropped. The lines after expand.
+    #[test]
+    fn macro_calls_nested_past_the_depth_are_noted_where_they_are() {
+        use sunrise_glsl::macros::{MAX_ARGUMENT_DEPTH, calls_too_deep};
+        let nested = |depth: usize, value: &str| {
+            format!("{}{value}{}", "F(".repeat(depth), ")".repeat(depth))
+        };
+        let past = nested(400, "1");
+        let text = format!(
+            "#define F(x) x\n#if {past}\npast=1\n#else\nother=1\n#endif\n\
+             #if 0\n#elif {past}\nelif_past=1\n#endif\n\
+             uniform.float.deepest = {}\nuniform.float.past = {past}\n\
+             size.buffer.colortex4 = {} 4\nsize.buffer.colortex5 = {past} 4\n\
+             uniform.float.after = F(3)\n",
+            nested(MAX_ARGUMENT_DEPTH, "1"),
+            nested(MAX_ARGUMENT_DEPTH, "4"),
+        );
+        let p = std::thread::Builder::new()
+            .stack_size(1 << 20)
+            .spawn(move || read(&text))
+            .unwrap()
+            .join()
+            .unwrap();
+        assert_eq!(
+            pairs(&p),
+            [
+                ("other", "1"),
+                ("uniform.float.deepest", "1"),
+                ("size.buffer.colortex4", "4 4"),
+                ("uniform.float.after", "3")
+            ]
+        );
+        let condition = format!("`#if {past}`: {}; read as false", calls_too_deep());
+        let note = |line: u32, message: &str| Note {
+            line,
+            message: message.to_owned(),
+        };
+        assert_eq!(
+            p.notes,
+            [
+                note(2, &condition),
+                note(8, &condition),
+                note(12, &calls_too_deep()),
+                note(14, &calls_too_deep())
+            ]
+        );
     }
 }

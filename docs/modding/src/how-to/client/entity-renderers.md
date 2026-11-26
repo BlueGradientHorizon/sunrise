@@ -40,6 +40,10 @@ impl EntityRenderer for Bolt {
 | `partial` | The frame's partial tick, 0 to 1. |
 | `age` | Ticks lived plus the partial tick (`ageInTicks`). |
 | `yaw`, `pitch` | The way it faces, in degrees, interpolated to the frame, except for primed TNT and experience orbs, which supply their current rotation (0 is south, positive pitch looks down). |
+| `position` | The world-space position interpolated to the frame (`EntityRenderState.x/y/z`). |
+| `size` | The bounding box's width and height, in blocks. |
+| `eye_height` | The eye height above `position[1]`, in blocks. |
+| `distance_to_camera_sq` | The squared distance from `position` to the active view's camera. |
 | `living` | A living entity's own frame (`LivingRenderState`, below); none for any other entity. |
 | `tnt_fuse` | Primed TNT's remaining fuse, in ticks, as vanilla draws it (`fuse - partial + 1`); none for any other entity. |
 | `orb_value` | An experience orb's value (`ExperienceOrb.DATA_VALUE`); none for any other entity. |
@@ -193,9 +197,12 @@ scan over the mods.
   it, as in NeoForge, also for a vanilla type. A [failed registration callback](../../concepts/load-phases.md#registration-and-setup)
   does not replace the earlier renderer.
 - A type the game does not know is logged with its id and left out; nothing panics.
-- `submit` returns `Ok(())` to keep what it drew. A renderer that returns an `Err` or panics is logged once and asked no more until the next resource
-  load (a reload resolves it again); what it drew that frame is dropped, and until then its type draws
-  as it would without one.
+- `submit` returns `Ok(())` to keep what it drew. A renderer that returns an `Err` rolls back what
+  it drew that frame, logs a warning, falls back for that draw to what the type would draw without
+  a registered renderer, and stays active for later draws. A renderer that panics rolls back what
+  it drew that frame and disables only that renderer for the rest of the session (including across
+  reloads), with an error log and an in-game error toast naming the mod; until the session ends its
+  type draws as it would without one.
 
 ## What draws through registered renderers
 

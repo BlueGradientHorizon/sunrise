@@ -1,8 +1,209 @@
 //! Stable entity material grouping with renderer-owned, reusable CPU scratch.
 use super::Vertex;
+use sunrise_render_core::entity::QuadSort;
+#[cfg(test)]
+use sunrise_render_core::entity::quad_distance_sq;
 pub use sunrise_render_core::entity::{
-    TEXT_NORMAL_SOLID_OVERLAY, TEXT_POLYGON_OFFSET_SOLID_OVERLAY,
+    ARMOR_GLINT_ONLY_OVERLAY, DYNAMIC_TEXTURE_CUTOUT_OVERLAY, DYNAMIC_TEXTURE_SOLID_OVERLAY,
+    DYNAMIC_TEXTURE_TRANSLUCENT_OVERLAY, TEXT_NORMAL_SOLID_OVERLAY,
+    TEXT_POLYGON_OFFSET_SOLID_OVERLAY, dynamic_texture_bits,
 };
+
+/// Device-derived vertex and index byte capacities governing the combined entity batch.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct EntityQuadCapacity {
+    /// Maximum byte size of the combined entity vertex buffer (`max_buffer_size`, narrowed to
+    /// `max_storage_buffer_binding_size` when GPU entity skinning binds it as a storage buffer).
+    pub vertex_bytes: u64,
+    /// Maximum byte size of the shared quad index buffer (`max_buffer_size`).
+    pub index_bytes: u64,
+}
+
+impl EntityQuadCapacity {
+    /// Bytes occupied by one complete quad (4 vertices) in the entity vertex buffer.
+    pub const VERTEX_QUAD_BYTES: u64 = (4 * std::mem::size_of::<Vertex>()) as u64;
+    /// Bytes occupied by one complete quad (6 `u32` indices) in the quad index buffer.
+    pub const INDEX_QUAD_BYTES: u64 = (6 * std::mem::size_of::<u32>()) as u64;
+    /// Maximum quads addressable by `draw_indexed` (`i32` base vertex and `u32` index count).
+    pub const MAX_ADDRESSABLE_QUADS: u64 = {
+        let by_base_vertex = i32::MAX as u64 / 4;
+        let by_index = u32::MAX as u64 / 6;
+        if by_base_vertex < by_index {
+            by_base_vertex
+        } else {
+            by_index
+        }
+    };
+
+    /// Derives the combined entity batch capacity from the active device limits.
+    pub fn from_limits(limits: &wgpu::Limits, storage_bound: bool) -> Self {
+        let max_buffer = limits.max_buffer_size;
+        let vertex_bytes = if storage_bound {
+            max_buffer.min(limits.max_storage_buffer_binding_size)
+        } else {
+            max_buffer
+        };
+        Self {
+            vertex_bytes,
+            index_bytes: max_buffer,
+        }
+    }
+
+    /// Capacity for a device whose vertex and index buffers share `max_buffer_size`.
+    pub const fn from_max_buffer_size(max_buffer_size: u64) -> Self {
+        Self {
+            vertex_bytes: max_buffer_size,
+            index_bytes: max_buffer_size,
+        }
+    }
+
+    /// Baseline capacity matching `wgpu::Limits::default()` when no GPU device is attached.
+    pub fn default_device() -> Self {
+        Self::from_limits(&wgpu::Limits::default(), false)
+    }
+
+    /// Maximum complete quads that fit in both the entity vertex buffer and the quad index buffer.
+    pub fn max_quads(self) -> usize {
+        let by_vertex = self.vertex_bytes / Self::VERTEX_QUAD_BYTES;
+        let by_index = self.index_bytes / Self::INDEX_QUAD_BYTES;
+        let quads = by_vertex.min(by_index).min(Self::MAX_ADDRESSABLE_QUADS);
+        usize::try_from(quads).unwrap_or(usize::MAX / 4)
+    }
+
+    /// Maximum complete vertices corresponding to [`Self::max_quads`].
+    pub fn max_vertices(self) -> usize {
+        self.max_quads().saturating_mul(4)
+    }
+
+    /// Maximum quads the shared `u32` quad index buffer can hold within `index_bytes`.
+    pub fn max_index_quads(self) -> u32 {
+        let by_index = self.index_bytes / Self::INDEX_QUAD_BYTES;
+        let quads = by_index.min(u32::MAX as u64 / 6);
+        u32::try_from(quads).unwrap_or(u32::MAX / 6)
+    }
+
+    /// Index buffer quad capacity grown to the next power of two without exceeding `index_bytes`.
+    pub fn index_buffer_quads(self, quads: u32) -> u32 {
+        let most = self.max_index_quads();
+        if quads == 0 || most == 0 {
+            return 0;
+        }
+        let needed = quads.min(most);
+        needed
+            .checked_next_power_of_two()
+            .unwrap_or(most)
+            .min(most)
+            .max(needed)
+    }
+}
+
+fn quad_is_finite(quad: &[Vertex; 4]) -> bool {
+    quad.iter().all(|v| {
+        v.pos.into_iter().all(f32::is_finite)
+            && v.uv.into_iter().all(f32::is_finite)
+            && v.glint_uv.into_iter().all(f32::is_finite)
+    })
+}
+
+/// Scoped submission sink for complete material-tagged quads entering the renderer's combined
+/// entity vertex and index buffers.
+///
+/// Validates each quad's vertex coordinates and UVs as finite and admits only complete quads that
+/// fit within [`EntityQuadCapacity`] after reserving `reserved_quads` for other draw sources in
+/// the same combined batch.
+pub struct EntityQuadScope<'a> {
+    vertices: &'a mut Vec<Vertex>,
+    vertex_limit: usize,
+}
+
+impl<'a> EntityQuadScope<'a> {
+    /// Opens a submission scope appending complete quads to `vertices`, bounded by `capacity`
+    /// minus `reserved_quads` already occupied by other draw sources in the same batch.
+    pub fn new(
+        vertices: &'a mut Vec<Vertex>,
+        capacity: EntityQuadCapacity,
+        reserved_quads: usize,
+    ) -> Self {
+        let quad_limit = capacity.max_quads().saturating_sub(reserved_quads);
+        Self {
+            vertices,
+            vertex_limit: quad_limit.saturating_mul(4),
+        }
+    }
+
+    /// Whether at least one more complete quad fits in this scope's remaining batch budget.
+    pub fn has_room(&self) -> bool {
+        self.vertices
+            .len()
+            .checked_add(4)
+            .is_some_and(|end| end <= self.vertex_limit)
+    }
+
+    /// Complete quads that can still be appended to `self.vertices` within this batch's budget.
+    pub fn remaining_quads(&self) -> usize {
+        self.vertex_limit.saturating_sub(self.vertices.len()) / 4
+    }
+
+    /// Submits one complete material-tagged quad.
+    ///
+    /// Returns `true` if further quads may still be submitted (including when this quad was
+    /// skipped for non-finite coordinates or UVs), or `false` once the device-derived batch
+    /// capacity is full.
+    pub fn submit_quad(&mut self, quad: [Vertex; 4]) -> bool {
+        if !self.has_room() {
+            return false;
+        }
+        if !quad_is_finite(&quad) {
+            return true;
+        }
+        self.vertices.extend_from_slice(&quad);
+        self.has_room()
+    }
+
+    /// Truncates the contribution starting at `start` to complete quads within the remaining
+    /// budget. Earlier geometry (and the caller's offsets into it) belongs to the caller.
+    pub fn truncate_to_budget_since(&mut self, start: usize) {
+        let end = self.vertices.len().min(self.vertex_limit);
+        self.vertices
+            .truncate(start + end.saturating_sub(start) / 4 * 4);
+    }
+
+    /// Compacts `vertices[start..]` in place to retain only complete finite quads within this
+    /// scope's budget.
+    pub fn retain_valid_since(&mut self, start: usize) {
+        let start = start.min(self.vertices.len());
+        let mut write = start;
+        let mut read = start;
+        let end = self.vertices.len();
+        while read + 4 <= end && write + 4 <= self.vertex_limit {
+            let quad = [
+                self.vertices[read],
+                self.vertices[read + 1],
+                self.vertices[read + 2],
+                self.vertices[read + 3],
+            ];
+            if quad_is_finite(&quad) {
+                if write != read {
+                    self.vertices[write..write + 4].copy_from_slice(&quad);
+                }
+                write += 4;
+            }
+            read += 4;
+        }
+        self.vertices.truncate(write);
+    }
+}
+
+/// Complete quad counts admitted into [`EntityBatch::combined`] by [`EntityBatch::update_within`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) struct EntityBatchCounts {
+    pub(super) materials: [u32; MATERIALS],
+    pub(super) admitted_entity_vertices: usize,
+    pub(super) additive: u32,
+    pub(super) hand: u32,
+    pub(super) see_through: u32,
+    pub(super) shadow_only: u32,
+}
 
 /// Entity materials by a quad's overlay (`Vertex::layer`), in draw order:
 /// ordinary entities, world text drawn with a depth bias (35,
@@ -18,11 +219,15 @@ pub use sunrise_render_core::entity::{
 /// (translucent, emissive, eyes and breeze wind entity models). Off, the tag is
 /// ignored and they stay in the first one, in their order.
 /// Sorted still-fluid geometry follows, then the two native world-canvas text materials,
-/// NORMAL and POLYGON_OFFSET, the four native terrain model materials, banner patterns,
+/// NORMAL and POLYGON_OFFSET, the four native terrain model materials, then (stored after them,
+/// the last three materials by index) the three dynamic-texture materials
+/// (`RenderTypes.entitySolid`, `entityCutout`, `entityTranslucent` of a texture), banner patterns,
 /// glint-only overlays, and solid `POLYGON_OFFSET` and `NORMAL` text
 /// (`SubmitNodeCollection.canRenderAsSolid`).
 /// Material storage order is independent of their draw stages.
-const MATERIALS: usize = 21;
+const MATERIALS: usize = 24;
+// A subrange of the energy swirl pass, also drawn by secondary world views.
+const ARMOR_FOIL: usize = MATERIALS;
 const _: () = assert!(
     TEXT_POLYGON_OFFSET_SOLID_OVERLAY != super::EXPLICIT_PARTICLE_OVERLAY
         && TEXT_POLYGON_OFFSET_SOLID_OVERLAY != GLINT_ONLY_OVERLAY
@@ -154,6 +359,10 @@ fn material(layer: u32, oit: bool) -> usize {
         GLINT_ONLY_OVERLAY => return 18,
         TEXT_POLYGON_OFFSET_SOLID_OVERLAY => return 19,
         TEXT_NORMAL_SOLID_OVERLAY => return 20,
+        DYNAMIC_TEXTURE_SOLID_OVERLAY => return 21,
+        DYNAMIC_TEXTURE_CUTOUT_OVERLAY => return 22,
+        DYNAMIC_TEXTURE_TRANSLUCENT_OVERLAY => return 23,
+        ARMOR_GLINT_ONLY_OVERLAY => return ARMOR_FOIL,
         _ => {}
     }
     if layer & 0xffff == FLUID_OVERLAY {
@@ -182,53 +391,15 @@ pub(crate) struct EntityBatch {
     // Runs of consecutive quads of one material (first quad, quad count): a
     // model's quads share one, so whole runs are copied at once. Cleared each
     // frame, keeping their storage.
-    runs: [Vec<(usize, usize)>; MATERIALS],
+    runs: [Vec<(usize, usize)>; MATERIALS + 1],
     pub(super) combined: Vec<Vertex>,
+    /// Foil-only quads in `combined`, immediately after the energy swirls.
+    pub(super) armor_foil: std::ops::Range<u32>,
     sort: QuadSort,
     /// Additive quads tagged `OIT_ENTITY` that the last `update` moved into the
     /// last material (improved transparency on): the dragon's eyes, which share
     /// the additive buffer with its rays.
     pub(super) moved_additive: u32,
-}
-
-/// The buffers [`append_sorted`] sorts through, kept between frames so a sort allocates nothing
-/// once warm.
-#[derive(Default)]
-struct QuadSort {
-    /// Each quad's distance and its place before the sort.
-    keys: Vec<(f32, u32)>,
-    quads: Vec<[Vertex; 4]>,
-}
-
-/// `MeshData.decodeQuadCentroids` + `VertexSorting.DISTANCE_TO_ORIGIN`:
-/// JOML `Vector3f(0, 0, 0).distanceSquared(mid)` using JOML's right-to-left unfused `Math.fma`.
-#[inline]
-fn quad_distance_sq(q: &[Vertex; 4]) -> f32 {
-    let dx = 0.0 - (q[0].pos[0] + q[2].pos[0]) * 0.5;
-    let dy = 0.0 - (q[0].pos[1] + q[2].pos[1]) * 0.5;
-    let dz = 0.0 - (q[0].pos[2] + q[2].pos[2]) * 0.5;
-    dx * dx + (dy * dy + dz * dz)
-}
-
-/// Sort `quads` in place far to near by `quad_distance_sq`, preserving arrival order on ties.
-fn sort_quads_in_place(sort: &mut QuadSort, quads: &mut [[Vertex; 4]]) {
-    if quads.len() <= 1 {
-        return;
-    }
-    sort.keys.clear();
-    sort.keys.extend(
-        quads
-            .iter()
-            .enumerate()
-            .map(|(i, q)| (quad_distance_sq(q), i as u32)),
-    );
-    sort.keys
-        .sort_unstable_by(|a, b| b.0.total_cmp(&a.0).then(a.1.cmp(&b.1)));
-    sort.quads.clear();
-    sort.quads.extend_from_slice(quads);
-    for (quad, &(_, from)) in quads.iter_mut().zip(&sort.keys) {
-        *quad = sort.quads[from as usize];
-    }
 }
 
 /// `runs` of `entities` appended to `combined`, their quads far to near, quads at one distance
@@ -245,7 +416,7 @@ fn append_sorted(
         combined.extend_from_slice(&entities[first * 4..(first + count) * 4]);
     }
     let quads = combined[start..].as_chunks_mut::<4>().0;
-    sort_quads_in_place(sort, quads);
+    sort.sort(quads);
 }
 
 /// `runs` of strictly ordered draws appended to `combined`, preserving draw order across runs
@@ -270,7 +441,7 @@ fn append_sorted_per_run(
         );
         if sort_each {
             let quads = combined[start..].as_chunks_mut::<4>().0;
-            sort_quads_in_place(sort, quads);
+            sort.sort(quads);
         }
     }
 }
@@ -290,24 +461,42 @@ fn run_key(layer: u32, oit: bool) -> (usize, u32) {
 }
 
 impl EntityBatch {
-    /// After `update`: quads only a native pack's shadow pass draws, at the buffer's end.
-    pub(super) fn append_shadow_only(&mut self, shadow_only: &[Vertex]) {
-        self.combined.extend_from_slice(shadow_only);
-    }
-
-    pub(super) fn update(
+    /// Groups complete quads from `entities`, `additive`, `hand`, `see_through`, and `shadow_only`
+    /// into [`Self::combined`] without exceeding `max_quads`.
+    pub(super) fn update_within(
         &mut self,
         entities: &[Vertex],
         additive: &[Vertex],
         hand: &[Vertex],
         see_through: &[Vertex],
+        shadow_only: &[Vertex],
         oit: bool,
-    ) -> [u32; MATERIALS] {
-        let quads = entities.as_chunks::<4>().0;
+        max_quads: usize,
+    ) -> EntityBatchCounts {
+        let all_quads = entities.as_chunks::<4>().0;
+        let quads = &all_quads[..all_quads.len().min(max_quads)];
+        let admitted_entity_vertices = quads.len() * 4;
+        let mut remaining = max_quads.saturating_sub(quads.len());
+
+        let additive_all = additive.as_chunks::<4>().0;
+        let additive_admitted = &additive_all[..additive_all.len().min(remaining)];
+        remaining -= additive_admitted.len();
+
+        let hand_all = hand.as_chunks::<4>().0;
+        let hand_admitted = &hand_all[..hand_all.len().min(remaining)];
+        remaining -= hand_admitted.len();
+
+        let see_through_all = see_through.as_chunks::<4>().0;
+        let see_through_admitted = &see_through_all[..see_through_all.len().min(remaining)];
+        remaining -= see_through_admitted.len();
+
+        let shadow_only_all = shadow_only.as_chunks::<4>().0;
+        let shadow_only_admitted = &shadow_only_all[..shadow_only_all.len().min(remaining)];
+
         for runs in &mut self.runs {
             runs.clear();
         }
-        let mut counts = [0usize; MATERIALS];
+        let mut counts = [0usize; MATERIALS + 1];
         let mut start = 0;
         while start < quads.len() {
             let key = run_key(quads[start][0].layer, oit);
@@ -320,10 +509,13 @@ impl EntityBatch {
             counts[kind] += end - start;
             start = end;
         }
-        let entity_vertices = quads.len() * 4;
+        let total_quads = quads.len()
+            + additive_admitted.len()
+            + hand_admitted.len()
+            + see_through_admitted.len()
+            + shadow_only_admitted.len();
         self.combined.clear();
-        self.combined
-            .reserve(entity_vertices + additive.len() + hand.len() + see_through.len());
+        self.combined.reserve(total_quads * 4);
         for (kind, runs) in self.runs[..10].iter().enumerate() {
             // Classic mode sorts `RenderTypes.TEXT_POLYGON_OFFSET` (1) and each translucent
             // block/item draw (8) far to near on upload (`VertexSorting.DISTANCE_TO_ORIGIN`),
@@ -338,13 +530,22 @@ impl EntityBatch {
                         .extend_from_slice(&entities[first * 4..(first + count) * 4]);
                 }
             }
+            if kind == 5 {
+                let start = self.combined.len() as u32 / 4;
+                for &(first, count) in &self.runs[ARMOR_FOIL] {
+                    self.combined
+                        .extend_from_slice(&entities[first * 4..(first + count) * 4]);
+                }
+                self.armor_foil = start..self.combined.len() as u32 / 4;
+            }
         }
+        counts[5] += counts[ARMOR_FOIL];
         // `RenderTypes.eyes` is blended like the other entities, not added: with
         // improved transparency on, tagged additive quads join the last
         // material, drawn without the additive overlay and the baked shading.
         self.moved_additive = 0;
         if oit {
-            for quad in additive.as_chunks::<4>().0 {
+            for quad in additive_admitted {
                 if quad[0].layer & OIT_ENTITY != 0 {
                     self.combined.extend(quad.iter().map(|v| Vertex {
                         layer: v.layer & !0xffff,
@@ -371,9 +572,19 @@ impl EntityBatch {
         }
         // Native translucent models sort their quads far to near, as `sortOnUpload` does.
         append_sorted(&mut self.sort, &mut self.combined, entities, &self.runs[16]);
+        // Dynamic-texture quads follow the terrain models, before banner patterns: solid and
+        // cutout keep their submission order, translucent ones sort far to near
+        // (`RenderTypes.entityTranslucent` sorts on upload).
+        for runs in &self.runs[21..23] {
+            for &(first, count) in runs {
+                self.combined
+                    .extend_from_slice(&entities[first * 4..(first + count) * 4]);
+            }
+        }
+        append_sorted(&mut self.sort, &mut self.combined, entities, &self.runs[23]);
         // Classic `RenderTypes.textPolygonOffset` sorts on upload. `RenderTypes.text`,
         // banner patterns and glint keep their submission order in either mode.
-        for (kind, runs) in self.runs.iter().enumerate().skip(17) {
+        for (kind, runs) in self.runs.iter().enumerate().take(21).skip(17) {
             if kind == 19 && !oit {
                 append_sorted(&mut self.sort, &mut self.combined, entities, runs);
             } else {
@@ -384,17 +595,42 @@ impl EntityBatch {
             }
         }
         if self.moved_additive == 0 {
-            self.combined.extend_from_slice(additive);
+            self.combined
+                .extend_from_slice(&additive[..additive_admitted.len() * 4]);
         } else {
-            for quad in additive.as_chunks::<4>().0 {
+            for quad in additive_admitted {
                 if quad[0].layer & OIT_ENTITY == 0 {
                     self.combined.extend_from_slice(quad);
                 }
             }
         }
-        self.combined.extend_from_slice(hand);
-        self.combined.extend_from_slice(see_through);
-        counts.map(|count| count as u32)
+        self.combined
+            .extend_from_slice(&hand[..hand_admitted.len() * 4]);
+        self.combined
+            .extend_from_slice(&see_through[..see_through_admitted.len() * 4]);
+        self.combined
+            .extend_from_slice(&shadow_only[..shadow_only_admitted.len() * 4]);
+        EntityBatchCounts {
+            materials: std::array::from_fn(|i| counts[i] as u32),
+            admitted_entity_vertices,
+            additive: additive_admitted.len() as u32 - self.moved_additive,
+            hand: hand_admitted.len() as u32,
+            see_through: see_through_admitted.len() as u32,
+            shadow_only: shadow_only_admitted.len() as u32,
+        }
+    }
+
+    #[cfg(test)]
+    pub(super) fn update(
+        &mut self,
+        entities: &[Vertex],
+        additive: &[Vertex],
+        hand: &[Vertex],
+        see_through: &[Vertex],
+        oit: bool,
+    ) -> [u32; MATERIALS] {
+        self.update_within(entities, additive, hand, see_through, &[], oit, usize::MAX)
+            .materials
     }
 }
 
@@ -615,7 +851,7 @@ mod tests {
         assert_eq!(
             counts,
             [
-                1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 2, 1, 1, 0, 0, 0, 0, 0
+                1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 2, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0
             ]
         );
         let xs: Vec<_> = batch.combined.iter().step_by(4).map(|v| v.pos[0]).collect();
@@ -691,7 +927,7 @@ mod tests {
         assert_eq!(
             batch.update(&entities, &additive, &quad(0, 9.0), &quad(0, 10.0), true),
             [
-                1, 1, 0, 0, 0, 0, 0, 0, 0, 2, 2, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0
+                1, 1, 0, 0, 0, 0, 0, 0, 0, 2, 2, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
             ]
         );
         let positions: Vec<_> = batch.combined.iter().step_by(4).map(|v| v.pos[0]).collect();
@@ -736,8 +972,8 @@ mod tests {
                     .sort_by(|a, b| quad_distance_sq(b).total_cmp(&quad_distance_sq(a)));
             }
         }
-        combined.extend_from_slice(additive);
-        combined.extend_from_slice(hand);
+        combined.extend_from_slice(&additive[..additive.len() / 4 * 4]);
+        combined.extend_from_slice(&hand[..hand.len() / 4 * 4]);
         (combined, counts)
     }
 
@@ -818,7 +1054,7 @@ mod tests {
         let mut batch = EntityBatch::default();
         for (oit, want) in [(false, [2, 3, 1, 4, 5]), (true, [1, 2, 3, 4, 5])] {
             let counts = batch.update(&entities, &[], &[], &[], oit);
-            assert_eq!(counts[19..], [3, 2]);
+            assert_eq!(counts[19..21], [3, 2]);
             assert_eq!(counts[9], 0);
             let ids: Vec<u32> = batch.combined.iter().step_by(4).map(|v| v.color).collect();
             assert_eq!(ids, want);
@@ -936,7 +1172,7 @@ mod tests {
         assert_eq!(
             counts,
             [
-                4, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+                4, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
             ]
         );
         let xs: Vec<f32> = batch.combined.iter().step_by(4).map(|v| v.pos[0]).collect();
@@ -946,7 +1182,7 @@ mod tests {
         assert_eq!(
             counts,
             [
-                2, 0, 0, 0, 0, 0, 1, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+                2, 0, 0, 0, 0, 0, 1, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
             ]
         );
         let xs: Vec<f32> = batch.combined.iter().step_by(4).map(|v| v.pos[0]).collect();
@@ -1093,6 +1329,118 @@ mod tests {
             assert_eq!(batch.runs.each_ref().map(|b| b.capacity()), capacities);
             assert_eq!(batch.combined.capacity(), capacity);
         }
+    }
+
+    #[test]
+    fn entity_quad_capacity_respects_vertex_index_and_storage_limits() {
+        let limits = wgpu::Limits {
+            max_buffer_size: EntityQuadCapacity::VERTEX_QUAD_BYTES * 5 + 32,
+            max_storage_buffer_binding_size: EntityQuadCapacity::VERTEX_QUAD_BYTES * 3 + 16,
+            ..Default::default()
+        };
+
+        let plain = EntityQuadCapacity::from_limits(&limits, false);
+        assert_eq!(plain.max_quads(), 5);
+        assert_eq!(plain.max_vertices(), 20);
+
+        let storage = EntityQuadCapacity::from_limits(&limits, true);
+        assert_eq!(storage.max_quads(), 3);
+        assert_eq!(storage.max_vertices(), 12);
+
+        // When index bytes are tighter than vertex bytes, index capacity wins.
+        let index_tight = EntityQuadCapacity {
+            vertex_bytes: EntityQuadCapacity::VERTEX_QUAD_BYTES * 10,
+            index_bytes: EntityQuadCapacity::INDEX_QUAD_BYTES * 4 + 12,
+        };
+        assert_eq!(index_tight.max_quads(), 4);
+        assert_eq!(index_tight.max_index_quads(), 4);
+        assert_eq!(index_tight.index_buffer_quads(3), 4);
+        assert_eq!(index_tight.index_buffer_quads(4), 4);
+        assert_eq!(index_tight.index_buffer_quads(5), 4);
+
+        // Power-of-two index growth clamps to max_index_quads instead of overshooting.
+        let five_index = EntityQuadCapacity {
+            vertex_bytes: EntityQuadCapacity::VERTEX_QUAD_BYTES * 10,
+            index_bytes: EntityQuadCapacity::INDEX_QUAD_BYTES * 5,
+        };
+        assert_eq!(five_index.index_buffer_quads(5), 5);
+        assert_eq!(five_index.index_buffer_quads(3), 4);
+    }
+
+    #[test]
+    fn entity_quad_scope_accounts_for_reserved_and_existing_quads_and_drops_non_finite() {
+        let capacity = EntityQuadCapacity::from_max_buffer_size(
+            EntityQuadCapacity::VERTEX_QUAD_BYTES * 5 + 100,
+        );
+        // 1 existing quad in `vertices` + 2 reserved by other draw sources => 2 quads left.
+        let mut vertices = geometry(1, false);
+        let mut scope = EntityQuadScope::new(&mut vertices, capacity, 2);
+        assert_eq!(scope.remaining_quads(), 2);
+
+        let mut bad = [geometry(1, false)[0]; 4];
+        bad[2].pos[1] = f32::INFINITY;
+        assert!(
+            scope.submit_quad(bad),
+            "non-finite quad skips without stopping"
+        );
+        assert_eq!(scope.remaining_quads(), 2);
+
+        let mut bad_uv = [geometry(1, false)[0]; 4];
+        bad_uv[1].uv[0] = f32::NAN;
+        assert!(scope.submit_quad(bad_uv));
+        assert_eq!(scope.remaining_quads(), 2);
+
+        let good = [geometry(1, false)[0]; 4];
+        assert!(scope.submit_quad(good), "room remains after first quad");
+        assert!(
+            !scope.submit_quad(good),
+            "second quad fills the remaining budget and signals stop"
+        );
+        assert!(!scope.submit_quad(good), "over-budget quad is rejected");
+        assert_eq!(vertices.len(), 3 * 4);
+    }
+
+    #[test]
+    fn entity_batch_update_within_bounds_combined_quads_across_all_streams() {
+        let quad = |layer, x| {
+            [Vertex {
+                layer,
+                pos: [x, 0.0, 0.0],
+                ..geometry(1, false)[0]
+            }; 4]
+        };
+        let entities: Vec<_> = [
+            (FLUID_OVERLAY, 1.0),
+            (TERRAIN_MODEL_SOLID_OVERLAY, 2.0),
+            (TERRAIN_MODEL_TRANSLUCENT_OVERLAY, 3.0),
+        ]
+        .into_iter()
+        .flat_map(|(layer, x)| quad(layer, x))
+        .collect();
+        let additive: Vec<_> = [quad(0, 4.0), quad(0, 5.0)].into_iter().flatten().collect();
+        let hand: Vec<_> = quad(0, 6.0).into_iter().collect();
+        let see_through: Vec<_> = quad(0, 7.0).into_iter().collect();
+        let shadow_only: Vec<_> = quad(0, 8.0).into_iter().collect();
+
+        let mut batch = EntityBatch::default();
+        let counts = batch.update_within(
+            &entities,
+            &additive,
+            &hand,
+            &see_through,
+            &shadow_only,
+            false,
+            4,
+        );
+        assert_eq!(counts.admitted_entity_vertices, 12);
+        assert_eq!(counts.materials[10], 1);
+        assert_eq!(counts.materials[13], 1);
+        assert_eq!(counts.materials[16], 1);
+        assert_eq!(counts.additive, 1);
+        assert_eq!(counts.hand, 0);
+        assert_eq!(counts.see_through, 0);
+        assert_eq!(counts.shadow_only, 0);
+        assert_eq!(batch.combined.len(), 4 * 4);
     }
 
     #[test]

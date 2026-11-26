@@ -222,14 +222,8 @@ impl Renderer {
             // GameRenderer.render -> preparePostEffects(Collections.emptyList()).
             post.clear_active(frame.post_effects.root);
         }
-        // The layered frame's light eases into the peak, before the camera overlays draw on it,
-        // unless a 0.2 pack's own `[tonemap]` did.
-        let pack_tonemap = self
-            .native
-            .as_ref()
-            .and_then(|n| n.post.as_ref())
-            .is_some_and(native_post::NativePost::tonemaps);
-        if sunrise_tone_curve(layered, !frame.title, pack_tonemap)
+        // The layered frame's light eases into the peak, before the camera overlays draw on it.
+        if sunrise_tone_curve(layered, !frame.title)
             && let Some(hdr) = &self.hdr
         {
             hdr.tonemap(encoder, timing.as_mut());
@@ -250,10 +244,21 @@ impl Renderer {
                 color_attachments: &attachments,
                 ..Default::default()
             });
-            pass.set_bind_group(0, &self.entity_group, &[]);
             pass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
             pass.set_vertex_buffer(0, self.screen_buffer.slice(..));
             for (i, quad) in frame.screen.iter().enumerate() {
+                let group = match quad.atlas_page {
+                    Some(page) => {
+                        let Some(group) =
+                            self.screen_page_groups.get(page).and_then(Option::as_ref)
+                        else {
+                            continue;
+                        };
+                        group
+                    }
+                    None => &self.entity_group,
+                };
+                pass.set_bind_group(0, group, &[]);
                 let blend = match quad.blend {
                     crate::screen_effects::Blend::Alpha => 0,
                     crate::screen_effects::Blend::Vignette => 4,

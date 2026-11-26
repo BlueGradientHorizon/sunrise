@@ -43,6 +43,12 @@ impl Game<'_> {
         }
     }
 
+    /// `MultiPlayerGameMode.destroyDelay`: the ticks left before the local player's next block
+    /// starts breaking. 0 outside a world.
+    pub(in crate::game) fn mining_destroy_delay(&self) -> u32 {
+        self.remote.as_ref().map_or(0, |r| r.destroy_delay)
+    }
+
     /// MultiPlayerGameMode.startDestroyBlock / continueDestroyBlock.
     pub(in crate::game) fn remote_mining(&mut self, start: bool) -> bool {
         let debug_stick = self
@@ -163,6 +169,8 @@ impl Game<'_> {
                 (r.destroying, r.destroying_item) = (Some((hit.pos, face, 0.0)), held);
                 r.is_destroying = true;
             }
+            // startDestroyBlock tells its level the new dig before the first hit's effects.
+            self.native_local_break_progress(hit.pos, 0.0);
             // startDestroyBlock plays the first hit and crack itself; the
             // server's level events 2019 and 2020 do the rest.
             self.breaking_block_effects(hit.pos, hit.face, true);
@@ -206,6 +214,8 @@ impl Game<'_> {
                 r.destroy_delay = 5;
             }
             self.mining = None;
+            // continueDestroyBlock tells its level the reset progress: the crack goes.
+            self.native_local_break_progress(pos, 0.0);
         } else {
             if last_face != face {
                 self.send(S::PlayerAction(play::PlayerAction {
@@ -225,6 +235,7 @@ impl Game<'_> {
                 ticks,
                 crack: None,
             }));
+            self.native_local_break_progress(pos, done);
         }
         true
     }
@@ -425,11 +436,13 @@ impl Game<'_> {
                         .then(|| level.rewrite_placement_context(stack, context, placer))
                         .flatten()
                 })?;
-            let placed = b.place_resolved_block(&mut dry, &mut ticks, decision, stack_state)?;
+            let placed = b.apply_placement(&mut dry, &mut ticks, decision, stack_state)?;
+            b.placement_set_placed_by(&mut dry, &mut ticks, &placed);
             let pos = placed.context.pos;
             let primary = dry.changed.remove_entry(&pos);
             Some(DryPlace {
                 pos,
+                sound_state: placed.state,
                 matches_candidate: placed.matches_candidate,
                 changes: primary.into_iter().chain(dry.changed).collect(),
             })
@@ -563,7 +576,7 @@ impl Game<'_> {
     /// `InstrumentItem.use` on this client: unless the horn is on cooldown,
     /// it is held up, plays its sound at the player and starts its cooldown.
     pub(in crate::game) fn remote_use_instrument(&mut self, held: &ItemStack) {
-        let Some(instrument) = self.res.items().instrument(held) else {
+        let Some(instrument) = self.items().instrument(held) else {
             return;
         };
         let group = sunrise_client::cooldowns::group(held, None);

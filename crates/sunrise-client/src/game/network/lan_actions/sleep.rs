@@ -171,7 +171,7 @@ impl Game<'_> {
     /// of those have slept 100 ticks.
     pub(in crate::game) fn sleep_counts(&self) -> (i64, i64, i64) {
         let (mut active, mut sleeping, mut deep) = (0i64, 0i64, 0i64);
-        let mut count = |in_bed: bool, timer: u32| {
+        let mut count = |in_bed: bool, timer: i32| {
             active += 1;
             if in_bed {
                 sleeping += 1;
@@ -213,15 +213,18 @@ impl Game<'_> {
                     .is_some_and(|host| host.sleep_ignored.contains(&g.uuid)))
     }
 
-    /// `SleepStatus.sleepersNeeded`.
+    /// `SleepStatus.sleepersNeeded`, then a mod's `sleepers_needed` (at least 1).
     pub(super) fn sleepers_needed(&self, active: i64) -> i64 {
-        let percent = i64::from(
-            self.ui
-                .rules
-                .int_at(sunrise_client::gamerules::vanilla::PLAYERS_SLEEPING_PERCENTAGE)
-                .max(0),
-        );
-        ((active * percent + 99) / 100).max(1)
+        let percentage = self
+            .ui
+            .rules
+            .int_at(sunrise_client::gamerules::vanilla::PLAYERS_SLEEPING_PERCENTAGE);
+        let mut needed = ((active * i64::from(percentage.max(0)) + 99) / 100).max(1);
+        if percentage <= 100 && mod_api::__private::listened(mod_api::HookId::SleepersNeeded) {
+            self.native_sleepers_needed(self.dim.id(), percentage, active, &mut needed);
+            needed = needed.max(1);
+        }
+        needed
     }
 
     /// `SleepStatus.areEnoughSleeping` and `areEnoughDeepSleeping` over the
@@ -354,3 +357,7 @@ mod sleep_skip_night_tests;
 #[cfg(test)]
 #[path = "tests/sleep_status_announce_tests.rs"]
 mod sleep_status_announce_tests;
+
+#[cfg(test)]
+#[path = "tests/sleepers_needed_tests.rs"]
+mod sleepers_needed_tests;

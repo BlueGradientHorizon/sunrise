@@ -4,7 +4,7 @@ use super::{
     Behaviours, LevelAccess, Sim, Spread,
     buckets::{Douse, Drain, PlacedLiquid},
     classes::{Class, Interface},
-    fluid_interactions::{Cell, first_match},
+    fluid_interactions::{Cell, Matched, first_match},
     update::{HORIZONTAL, above, below, rel},
 };
 use crate::{
@@ -980,15 +980,38 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
             }
         });
         let below = b.block(self.below_state(pos));
-        let source_cell = self.fluid_at(pos).is_source();
-        let Some(result) = first_match(&interactions, neighbours, below, source_cell) else {
-            return true;
-        };
-        if let Some(state) = self.level.fluid_place_block(pos, pos, result) {
-            self.set_block_and_update(pos, state);
+        let fluid = self.fluid_at(pos);
+        let relative = |neighbour: usize| rel(pos, POSSIBLE_FLOW_DIRECTIONS[neighbour].opposite());
+        let level = &*self.level;
+        let matched = first_match(
+            &interactions,
+            neighbours,
+            below,
+            fluid.is_source(),
+            |handler, neighbour| {
+                level.fluid_interaction_test(handler, pos, relative(neighbour), fluid)
+            },
+        );
+        match matched {
+            None => true,
+            Some(Matched::Becomes(result)) => {
+                if let Some(state) = self.level.fluid_place_block(pos, pos, result) {
+                    self.set_block_and_update(pos, state);
+                }
+                self.level_event(1501, pos, 0);
+                false
+            }
+            Some(Matched::Handler { handler, neighbour }) => {
+                self.level.fluid_interaction_interact(
+                    self.ticks,
+                    handler,
+                    pos,
+                    relative(neighbour),
+                    fluid,
+                );
+                false
+            }
         }
-        self.level_event(1501, pos, 0);
-        false
     }
     /// `LiquidBlock.onPlace` / `neighborChanged`.
     pub(crate) fn liquid_block_changed(&mut self, pos: BlockPos, state: BlockStateId) {
@@ -1296,11 +1319,10 @@ mod tests {
     /// `fluid_passage` closes one side of a cell: water beside an open east cell spreads every
     /// other way, and the east cell stays dry while the closing stands.
     #[test]
+    #[ignore = "daily"]
     fn a_closed_side_is_not_flowed_into() {
         use super::super::tests::{World, fixture};
-        let Some(f) = fixture() else {
-            return;
-        };
+        let f = fixture().expect("prepared resources");
         let mut w = World::new(f);
         w.floor(0, 10, "stone");
         let origin = BlockPos::new(0, 1, 0);
@@ -1327,11 +1349,10 @@ mod tests {
     /// The hook is asked only after the game's own answer is true: a level that never closes
     /// anything (it answers true everywhere) does not let water into a wall.
     #[test]
+    #[ignore = "daily"]
     fn an_open_answer_does_not_open_a_wall() {
         use super::super::tests::{World, fixture};
-        let Some(f) = fixture() else {
-            return;
-        };
+        let f = fixture().expect("prepared resources");
         let mut w = World::new(f);
         w.floor(0, 10, "stone");
         let wall = BlockPos::new(1, 1, 0);

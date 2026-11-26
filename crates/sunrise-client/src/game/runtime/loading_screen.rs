@@ -50,6 +50,8 @@ pub(super) fn run_event_loop(mut game: Game<'_>) -> Result<()> {
 pub(super) struct Loading {
     pub(super) window: Option<Arc<Window>>,
     pub(super) renderer: Option<Renderer>,
+    /// The opened GPU device's `max_texture_dimension_2d`, shared with the background loader.
+    pub(super) max_atlas_size: Arc<AtomicU32>,
     /// The boot screen's atlas, until the pack's GUI atlas replaces it.
     pub(super) boot: sunrise_client::hud::HudAtlas,
     pub(super) gui: Option<UiResources>,
@@ -172,7 +174,13 @@ impl Loading {
             None,
             self.settings.sunrise.api,
         ) {
-            Ok(r) => self.renderer = Some(r),
+            Ok(r) => {
+                self.max_atlas_size.store(
+                    r.device.limits().max_texture_dimension_2d,
+                    Ordering::Relaxed,
+                );
+                self.renderer = Some(r);
+            }
             Err(e) => {
                 #[cfg(target_os = "windows")]
                 if let Some(stop) = &boot_paint_stop {
@@ -210,11 +218,26 @@ impl Loading {
     }
     /// The menu bundle arrived: rebuild the loading screen with the real atlas
     /// and title panorama.
-    pub(super) fn set_ui(&mut self, gui: UiResources, root: PathBuf) {
+    pub(super) fn set_ui(
+        &mut self,
+        mut gui: UiResources,
+        root: PathBuf,
+        source: sunrise_assets::resource_source::ResourceSource,
+    ) {
         log::info!(
             "Sunrise: loading the title artwork after {} ms",
             self.started.elapsed().as_millis()
         );
+        if let Some(renderer) = &self.renderer
+            && let Err(error) = gui.stitch_for_device(
+                &source,
+                &self.vanilla_root,
+                renderer.device.limits().max_texture_dimension_2d,
+            )
+        {
+            self.error = Some(error);
+            return;
+        }
         let additional = self
             .options
             .as_ref()
@@ -325,13 +348,16 @@ impl Loading {
             renderer.release_surface();
         }
         let renderer_at = Instant::now();
-        let (renderer, clouds) = startup::time("renderer.world", || {
+        let (renderer, required) = startup::time("renderer.world", || {
             build_renderer(
                 window.clone(),
                 options.offscreen,
                 &loaded.pack,
                 &gui,
-                self.renderer.as_ref(),
+                self.renderer.as_ref().map_or(
+                    sunrise_client::gfx::RendererDevice::New,
+                    sunrise_client::gfx::RendererDevice::Reuse,
+                ),
                 loaded.renderer_cpu,
                 self.settings.sunrise.api,
                 self.settings.sunrise.translucent_batching,
@@ -394,7 +420,7 @@ impl Loading {
         game.panorama_rotation = self.panorama_rotation;
         self.menu.handoff(&mut game);
         game.apply_settings();
-        if let Err(error) = clouds {
+        if let Err(error) = required {
             game.selection_reload_failed(&error);
         }
         game.previous = Instant::now();

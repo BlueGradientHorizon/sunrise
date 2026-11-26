@@ -589,9 +589,7 @@ fn a_driven_mounts_effects_count_down_in_its_own_tick() {
 #[test]
 #[ignore = "daily"]
 fn a_canceled_tick_counts_no_effect_down() {
-    use mod_api::{
-        EntityTickListenedEvent, EntityTickPreEvent, Hooks, HostSide, ModEntry, Mods, Registrar,
-    };
+    use mod_api::{EntityTickPreEvent, Hooks, HostSide, ModEntry, Mods};
     const HUSK: i32 = 34;
     const TICKING: i32 = 36;
     use std::sync::Mutex;
@@ -600,18 +598,16 @@ fn a_canceled_tick_counts_no_effect_down() {
     struct Cancel(Heard);
     #[mod_api::__subscriptions]
     impl Hooks for Cancel {
-        fn entity_tick_listened(&self, _: HostSide<'_>, event: &mut EntityTickListenedEvent) {
-            event.listened = true;
-        }
-        fn register(&self, r: &mut dyn Registrar, _: &mod_api::RegistrationContext) {
-            r.entity_tick_each("minecraft:husk");
-        }
-        fn entity_tick_pre(&self, _: HostSide<'_>, event: &mut EntityTickPreEvent<'_>) {
-            self.0.lock().unwrap().extend_from_slice(event.entities);
-            for id in [ZOMBIE as u32, HUSK as u32] {
-                if event.entities.contains(&id) {
-                    event.canceled.push(id);
-                }
+        fn entity_tick_pre(
+            &self,
+            _: HostSide<'_>,
+            event: &mut EntityTickPreEvent<'_>,
+        ) -> mod_api::Flow {
+            self.0.lock().unwrap().push(event.entity);
+            if event.entity == ZOMBIE as u32 || event.entity == HUSK as u32 {
+                mod_api::Flow::Cancel
+            } else {
+                mod_api::Flow::Continue
             }
         }
     }
@@ -683,16 +679,26 @@ fn the_frame_reads_the_eye_light_in_first_and_third_person() {
     with_client_game(|game| {
         let _event_loop = crate::game::native_hooks::particle_count_tests::frame_scene(game);
         game.screen = crate::game::Screen::Playing;
-        // The view's uniforms are worked out while a pack is picked: an empty Sunrise pack.
+        // The view's uniforms are worked out while a pack is picked: a `shaders/` pack with
+        // one program. The first frame turns the resource packs' material maps on and reloads
+        // them, and the next loads the pack.
         let packs = tempfile::tempdir().unwrap();
         let pack = packs.path().join("eye_light");
-        std::fs::create_dir_all(&pack).unwrap();
+        let shaders = pack.join("shaders");
+        std::fs::create_dir_all(&shaders).unwrap();
         std::fs::write(
-            pack.join(sunrise_shader_api::MANIFEST),
-            "schema = 1\nid = \"eye_light\"\nname = \"Eye light\"\nversion = \"1\"\napi = \"0.1\"\n",
+            shaders.join("gbuffers_terrain.vsh"),
+            "#version 120\nvoid main() {\n    gl_Position = ftransform();\n}\n",
+        )
+        .unwrap();
+        std::fs::write(
+            shaders.join("gbuffers_terrain.fsh"),
+            "#version 120\nvoid main() {\n    gl_FragData[0] = vec4(1.0);\n}\n",
         )
         .unwrap();
         game.settings.sunrise.shader_pack = pack.to_string_lossy().into_owned();
+        framed(game);
+        framed(game);
         for camera_type in [CameraType::FirstPerson, CameraType::ThirdPersonBack] {
             game.apply_camera_type(camera_type);
             let (camera, eye, _) = framed(game);

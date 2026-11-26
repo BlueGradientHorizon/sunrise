@@ -52,6 +52,7 @@ impl SpawnTree {
                     game.pack.assets.registry,
                     random,
                 );
+                entity_nbt::read_mob_variants(&mut mob, &tag, game.world_variants());
                 mob.extra.spawn_tags = spawn_tags(&tag).collect();
                 (
                     Node::Mob(Box::new(mob)),
@@ -87,6 +88,15 @@ impl SpawnTree {
 
     pub(in crate::game) fn root_uuid(&self) -> [i32; 4] {
         self.0[0].uuid
+    }
+
+    /// The spawner changes only the root before admitting the finished tree.
+    pub(in crate::game) fn root_mob_mut(&mut self) -> Option<(&mut Mob, &mut Tag)> {
+        let root = &mut self.0[0];
+        match &mut root.node {
+            Node::Mob(mob) => Some((mob, &mut root.tag)),
+            Node::General(..) => None,
+        }
     }
 
     /// `ServerLevel.tryAddFreshEntityWithPassengers`: compare the whole tree
