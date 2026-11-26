@@ -176,9 +176,9 @@ pub(in crate::game) struct Remote {
     pub brand: String,
     /// `ClientPacketListener.random` draws packet spread, not provider RNG.
     pub(in crate::game) particle_packet_random: sunrise_core::random::LegacyRandom,
-    pub(in crate::game) recipe_viewer: crate::game::client_side::recipe_book::ViewerChannels,
+    pub recipe_viewer: crate::game::client_side::recipe_book::ViewerChannels,
     /// This connection's configured feature flags, carried through reconfiguration.
-    pub(in crate::game) features: std::sync::Arc<[String]>,
+    pub features: std::sync::Arc<[String]>,
     /// The server announced it runs mods' quiet commands.
     pub quiet_commands: bool,
     /// The server advertised private custom recipe-book synchronization.
@@ -194,50 +194,50 @@ pub(in crate::game) struct Remote {
     pub carry_age: sunrise_sim::colliders::CarryAge,
     /// The server samples far terrain for us, this far at most (`lod_net`).
     pub far_terrain: Option<sunrise_sim::lod_net::Offer>,
-    pub(in crate::game) builtin: Arc<Builtin>,
+    pub builtin: Arc<Builtin>,
     pub(in crate::game) lang: Arc<Language>,
-    pub(in crate::game) registries: Arc<Dynamic>,
+    pub registries: Arc<Dynamic>,
     /// The block, item and fluid tags of `registries` by name, as native mods read them
     /// (`install_remote_tags`).
-    pub(in crate::game) tags: Option<sunrise_items::items::Items>,
+    pub tags: Option<sunrise_items::items::Items>,
     /// The game's enchantments and the server's that it lacks (a data
     /// pack's), from their synced data; `None` when the server has none.
-    pub(in crate::game) enchantments: Option<Arc<sunrise_items::enchant::Enchantments>>,
-    pub(in crate::game) joined: bool,
+    pub enchantments: Option<Arc<sunrise_items::enchant::Enchantments>>,
+    pub joined: bool,
     /// `ServerReconfigScreen` is up since this tick.
-    pub(in crate::game) reconfiguring: Option<u64>,
+    pub reconfiguring: Option<u64>,
     /// `handleLogin` ran: vanilla's `Minecraft.player` exists from then on,
     /// while here the player is made at the first teleport.
-    pub(in crate::game) logged_in: bool,
+    pub logged_in: bool,
     /// Whether a logical `LocalPlayer` already exists on this connection (retained across
     /// a second `Login`, replaced on `Respawn`, cleared on reconfiguration).
-    pub(in crate::game) has_logical_player: bool,
+    pub has_logical_player: bool,
     pub(in crate::game) status: String,
-    pub(in crate::game) entity_id: i32,
-    pub(in crate::game) local_entity_silent: bool,
+    pub entity_id: i32,
+    pub local_entity_silent: bool,
     /// `Minecraft.cameraEntity` when the server put the view on another
     /// entity (ClientboundSetCameraPacket); None while it is the player.
-    pub(in crate::game) camera: Option<i32>,
+    pub camera: Option<i32>,
     /// Detached camera snapshot retained after `RemoveEntities` until `SetCamera` replaces it.
     pub(in crate::game) detached_camera:
         Option<Box<crate::game::client_side::remote_camera::ResolvedCameraEntity>>,
     pub(in crate::game) dimension: DimensionType,
     /// The level's key (`minecraft:overworld`): where its far terrain is kept.
-    pub(in crate::game) level: String,
+    pub level: String,
     /// `level`'s key, as mods' handles name the level.
-    pub(in crate::game) level_key: mod_api::DimensionKey,
+    pub level_key: mod_api::DimensionKey,
     /// The level's facts from the dimension type this connection's server sent (`None` when it
     /// sent none the game takes): owned by the connection, so entering a level touches no other
     /// level's facts, the integrated server's included.
-    pub(in crate::game) level_facts: Option<Arc<sunrise_world::dimension_type::DimensionFacts>>,
+    pub level_facts: Option<Arc<sunrise_world::dimension_type::DimensionFacts>>,
     /// The sky, fog and cloud attributes (and timelines) of the level from the server's type over
     /// the client's own environment of that type: what gameplay reads. `None` when the type is
     /// refused, or has no data at all: neither the server sent it nor the client's resources hold
     /// it (`fill_known_entries` fills a known pack's entries from the client's own files).
-    pub(in crate::game) level_environment: Option<Arc<sunrise_level::environment::Environment>>,
+    pub level_environment: Option<Arc<sunrise_level::environment::Environment>>,
     /// The same over the packs' Polytone stack of that type, what the frame draws (`None` without
     /// pack modifiers, or for a type the packs have no stack of: any but the three vanilla IDs).
-    pub(in crate::game) level_pack_environment:
+    pub level_pack_environment:
         Option<Arc<sunrise_level::environment::Environment>>,
     /// The level's synchronized dimension type, which both environments are built from again
     /// when the packs change.
@@ -260,7 +260,7 @@ pub(in crate::game) struct Remote {
     /// of a world reports it once.
     pub(in crate::game) logged_out: bool,
     /// The other levels' worlds the server opened on `sunrise:levels` (`viewed_worlds`).
-    pub(in crate::game) viewed: crate::game::client_side::viewed_worlds::ViewedWorlds,
+    pub viewed: crate::game::client_side::viewed_worlds::ViewedWorlds,
     /// The level's hashed seed (login, respawn): the folder of its kept chunks
     /// (`server_terrain::level_dir`).
     pub(in crate::game) hashed_seed: i64,
@@ -268,24 +268,24 @@ pub(in crate::game) struct Remote {
     pub(in crate::game) sea_level: i32,
     /// What chunk packets decode with (the dimension's height and sky, the
     /// biome registry); replaced whenever one of them changes.
-    pub(in crate::game) chunk_format: Arc<ChunkFormat>,
+    pub chunk_format: Arc<ChunkFormat>,
     /// Decodes chunk packets as they arrive, off the frame.
-    pub(in crate::game) decoder: ChunkDecoder,
+    pub decoder: ChunkDecoder,
     /// Options.serverRenderDistance: the server's view distance from the
     /// login or the last chunk-cache-radius packet.
-    pub(in crate::game) view_distance: i32,
+    pub view_distance: i32,
     /// `ClientLevel.serverSimulationDistance`: from the login or the last
     /// simulation-distance packet.
     pub(in crate::game) simulation_distance: i32,
     /// `BlockStatePredictionHandler.currentSequenceNr`: the level's, so a new level (a login,
     /// another dimension) counts from 0 again.
-    pub(in crate::game) sequence: i32,
+    pub sequence: i32,
     /// `BlockStatePredictionHandler.lastTeleportSequence`: the sequence of the last
     /// teleport, so a prediction made before it keeps its block but not its snap.
-    pub(in crate::game) last_teleport_sequence: i32,
+    pub last_teleport_sequence: i32,
     pub(in crate::game) position_sender: sunrise_client_lib::player_sync::PositionSender,
-    pub(in crate::game) last_input: u8,
-    pub(in crate::game) was_sprinting: bool,
+    pub last_input: u8,
+    pub was_sprinting: bool,
     /// The slot the server last heard (`MultiPlayerGameMode.carriedIndex`): a cell, so `send` can
     /// send a new one first (`ensureHasSentCarriedItem`).
     pub(in crate::game) carried: std::cell::Cell<Option<usize>>,
@@ -299,17 +299,17 @@ pub(in crate::game) struct Remote {
     /// for the player made at the next teleport: a portal's teleport adds to it.
     pub(in crate::game) respawn_velocity: Option<Vec3>,
     /// ServerboundPlayerLoadedPacket went out: the tick's keybinds act from then on.
-    pub(in crate::game) loaded_sent: bool,
+    pub loaded_sent: bool,
     /// The dimension of the client level the mods heard made
     /// (`native_client_level_load`), to be told dropped once.
     pub(in crate::game) heard_level: Option<String>,
     /// `ClientPacketListener.levelLoadTracker`: the loading screen after a login
     /// or respawn, until the player's section is shown.
-    pub(in crate::game) level_load: sunrise_client_render::level_loading::LevelLoadTracker,
+    pub level_load: sunrise_client_render::level_loading::LevelLoadTracker,
     /// The ClientInformation last sent (`Options.broadcastOptions` sends it
     /// again when a view distance, Chat, skin or Main Hand option changes).
     pub(in crate::game) sent_info: sunrise_protocol::packets::configuration::ClientInformation,
-    pub(in crate::game) group_count: sunrise_level::chunk_map::ConnectionGroupCount,
+    pub group_count: sunrise_level::chunk_map::ConnectionGroupCount,
     /// BlockStatePredictionHandler: blocks changed ahead of the server (a predicted break),
     /// with what it remembers of each of them. Until the server acknowledges the
     /// sequence its block updates only replace the remembered state; then the block
@@ -319,16 +319,16 @@ pub(in crate::game) struct Remote {
     /// (`ClientLevel.addEntity` on login or respawn): `ClientLevel.tickEntities`
     /// ticks in the order entities were added, so these tick before the
     /// player and every later one after it.
-    pub(in crate::game) ticked_before_player: std::collections::HashSet<u32>,
+    pub ticked_before_player: std::collections::HashSet<u32>,
     /// Open container: (window id, menu name).
-    pub(in crate::game) menu: ClientMenu,
+    pub menu: ClientMenu,
     /// The crafting result slot of the open menu as the server last set it
     /// (`CraftingMenu.slotChangedCraftingGrid`): the client never computes it.
-    pub(in crate::game) craft_result: Option<ItemStack>,
+    pub craft_result: Option<ItemStack>,
     /// The open menu's title as the server named it, with its styles.
-    pub(in crate::game) menu_title: Option<sunrise_game_data::text::Text>,
+    pub menu_title: Option<sunrise_game_data::text::Text>,
     pub(in crate::game) menu_title_snapshot: Option<Arc<mod_api::Text>>,
-    pub(in crate::game) state_id: i32,
+    pub state_id: i32,
     /// Window 0's state and carried stack while another menu is active.
     pub(in crate::game) inventory_state_id: i32,
     pub(in crate::game) inventory_carried: Option<ItemStack>,
@@ -344,7 +344,7 @@ pub(in crate::game) struct Remote {
     /// A mod menu's extra data, kept for the `OpenScreen` of its window that
     /// follows (`sunrise:menu_extra`).
     pub(in crate::game) menu_extra: Option<sunrise_protocol::menu_extra::Message>,
-    pub(in crate::game) entities: HashMap<i32, Tracked>,
+    pub entities: HashMap<i32, Tracked>,
     /// Synced entity attributes keyed by entity id and attribute id.
     pub(in crate::game) synced_attributes:
         HashMap<i32, HashMap<sunrise_world::attributes::entity::AttributeId, f64>>,
@@ -354,10 +354,10 @@ pub(in crate::game) struct Remote {
     pub(in crate::game) tick_standings: Vec<Option<String>>,
     pub(in crate::game) tick_water_fx: Vec<sunrise_sim::mobs::MobEvent>,
     /// Complete network riding graph, including invisible plugin seat entities.
-    pub(in crate::game) passenger_vehicles: HashMap<u32, PassengerSeat>,
+    pub passenger_vehicles: HashMap<u32, PassengerSeat>,
     pub(in crate::game) lerps: HashMap<i32, Lerp>,
     /// A native mod's general rows the server shows the window (`general.rs`).
-    pub(in crate::game) general: general::RemoteGenerals,
+    pub general: general::RemoteGenerals,
     /// The minecarts the server moves with `ClientboundMoveMinecartPacket`
     /// (`NewMinecartBehavior`), which have no interpolation handler.
     pub(in crate::game) cart_lerps: HashMap<i32, CartLerp>,
@@ -367,10 +367,10 @@ pub(in crate::game) struct Remote {
     pub(in crate::game) head_lerps: HashMap<i32, (f32, u32)>,
     /// The happy ghast the player just got off, until the server's teleport
     /// puts the player on top of it (`place_ghast_under`).
-    pub(in crate::game) ghast_dismount: Option<u32>,
+    pub ghast_dismount: Option<u32>,
     /// Whether the player is the first passenger of its vehicle, the one
     /// `getControllingPassenger` names.
-    pub(in crate::game) first_passenger: bool,
+    pub first_passenger: bool,
     /// `Entity.tickCount` of the local player: its ticks in the client level since the player
     /// was made (Login or Respawn, then the server's first teleport).
     pub(in crate::game) own_tick_count: i32,
@@ -378,11 +378,11 @@ pub(in crate::game) struct Remote {
     pub(in crate::game) passenger_index: usize,
     /// Item entities waiting for their item data: where they are and their motion.
     pub(in crate::game) pending_items: HashMap<i32, PendingItem>,
-    pub(in crate::game) health: (f32, i32, f32),
+    pub health: (f32, i32, f32),
     /// `LocalPlayer.flashOnSetHealth`: set by the first health the server
     /// sends; from then on a drop starts the hurt animation.
     pub(in crate::game) flash_on_set_health: bool,
-    pub(in crate::game) game_mode: i32,
+    pub game_mode: i32,
     pub chat: Vec<(String, Instant)>,
     /// Lines received since joining, for the control socket's events.
     pub chat_received: u64,
@@ -403,7 +403,7 @@ pub(in crate::game) struct Remote {
     /// The `RemoteChatSession.Data` each player's list entry last carried (INITIALIZE_CHAT).
     pub(in crate::game) chat_sessions: HashMap<u128, Option<(u128, i64, Vec<u8>, Vec<u8>)>>,
     /// `PlayerInfo.messageValidator` of the players whose chat has been read.
-    pub(in crate::game) chat_validators: HashMap<u128, secure_chat::MessageValidator>,
+    pub chat_validators: HashMap<u128, secure_chat::MessageValidator>,
     /// `ConnectScreen.lastNarration`: when "Joining the world" was last said.
     pub(in crate::game) joining_narrated: Option<Instant>,
     /// The tree the chat colours, completes and parses with: the server's
@@ -417,7 +417,7 @@ pub(in crate::game) struct Remote {
     /// arguments against an empty tree until the server sends one.
     pub(in crate::game) chat_tree_received: bool,
     /// The chat session, the last-seen window and the signature cache.
-    pub(in crate::game) secure_chat: crate::game::client_side::remote_chat::SecureChat,
+    pub secure_chat: crate::game::client_side::remote_chat::SecureChat,
     /// `ClientSuggestionProvider.customCompletionSuggestions`: the extra chat
     /// completions this server sent (ClientboundCustomChatCompletionsPacket).
     pub(in crate::game) custom_completions: std::collections::BTreeSet<String>,
@@ -428,7 +428,7 @@ pub(in crate::game) struct Remote {
     /// slot while leaving any entity's cached `Arc` untouched (`AbstractClientPlayer.playerInfo`).
     pub tab_game_modes: HashMap<u128, Arc<std::sync::atomic::AtomicI32>>,
     /// First resolved `PlayerInfo` game mode cell of the current `LocalPlayer` entity.
-    pub(in crate::game) own_player_info: std::cell::OnceCell<Arc<std::sync::atomic::AtomicI32>>,
+    pub own_player_info: std::cell::OnceCell<Arc<std::sync::atomic::AtomicI32>>,
     /// Each listed profile's `textures` property, verified once the keys are ready.
     pub(in crate::game) skin_textures: HashMap<u128, Arc<PlayerTextures>>,
     /// Active skin and cape from the services profile when the server sent none.
@@ -437,14 +437,14 @@ pub(in crate::game) struct Remote {
     pub(in crate::game) skins: HashMap<u128, sunrise_client_render::skins::ResolvedSkin>,
     pub(in crate::game) skins_revision: u64,
     pub(in crate::game) published_skins: Option<(usize, u128, u64, u64)>,
-    pub(in crate::game) listed: std::collections::HashSet<u128>,
+    pub listed: std::collections::HashSet<u128>,
     /// `ClientboundLoginPacket.onlineMode`: the player list shows heads.
     pub(in crate::game) online_mode: bool,
     /// `ClientboundLoginPacket.levels`: the server's level keys, which
     /// `ClientPacketListener.levels()` hands to command suggestions.
     pub(in crate::game) levels: Vec<String>,
     /// Player entities in the level: entity id to profile UUID.
-    pub(in crate::game) level_players: HashMap<i32, u128>,
+    pub level_players: HashMap<i32, u128>,
     /// Authoritative entity UUID index scoped to the current client level (`EntityLookup.byUuid`).
     pub(in crate::game) level_uuids: HashMap<u128, i32>,
     /// Reverse entity-id-to-UUID index for O(1) removal and replacement in the current client level.
@@ -454,14 +454,14 @@ pub(in crate::game) struct Remote {
         HashMap<i32, std::cell::OnceCell<Arc<std::sync::atomic::AtomicI32>>>,
     /// The profile name each player entity was created with (`RemotePlayer.getGameProfile`): it outlives the
     /// player-list entry, which servers remove to hide their NPCs from the list.
-    pub(in crate::game) level_player_names: HashMap<i32, String>,
+    pub level_player_names: HashMap<i32, String>,
     /// The `textures` each player entity found in the player list first
     /// (`AbstractClientPlayer.getPlayerInfo` keeps that `PlayerInfo`): its skin
     /// outlives the entry, which NPC plugins remove a moment after spawning.
     pub(in crate::game) level_player_textures: HashMap<i32, Arc<PlayerTextures>>,
     /// Entities with shared flag 6 (`Entity.isCurrentlyGlowing` on a client); mobs keep
     /// theirs in `Mob::glowing`.
-    pub(in crate::game) glowing: std::collections::HashSet<i32>,
+    pub glowing: std::collections::HashSet<i32>,
     /// The player's own shared flag 5 (`Entity.isInvisible`) as the server last set it.
     pub(in crate::game) own_invisible: bool,
     /// The player's own shared flag 0 (`Entity.isOnFire`) as the server last
@@ -477,19 +477,19 @@ pub(in crate::game) struct Remote {
     /// The local player's profile UUID (always in the level).
     pub profile: u128,
     /// The local player's profile name: its score holder and team member.
-    pub(in crate::game) profile_name: String,
+    pub profile_name: String,
     /// `MultiPlayerGameMode.destroyBlockPos`, `.destroyProgress` and the face last sent: the block
     /// the break targets, which outlives the break itself.
-    pub(in crate::game) destroying: Option<([i32; 3], u8, f32)>,
+    pub destroying: Option<([i32; 3], u8, f32)>,
     /// `MultiPlayerGameMode.destroyingItem`: the main-hand stack the break began with.
-    pub(in crate::game) destroying_item: Option<ItemStack>,
+    pub destroying_item: Option<ItemStack>,
     /// `MultiPlayerGameMode.isDestroying`: a break is running. `destroying` keeps the target after
     /// one ends (`destroyBlockPos` is written only when a break starts), so a dig resumed on the
     /// same block and item sends no new START and the server keeps its clock (#4124).
-    pub(in crate::game) is_destroying: bool,
+    pub is_destroying: bool,
     /// Per-hand swing policy, restored when the current input attempt ends.
-    pub(in crate::game) interaction_swing: [bool; 2],
-    pub(in crate::game) destroy_delay: u32,
+    pub interaction_swing: [bool; 2],
+    pub destroy_delay: u32,
     /// Whether the main and off hand still wait for the server's answer to
     /// a SWAP_ITEM_WITH_OFFHAND (`remote_hand_slot_set`).
     pub(in crate::game) swap_answer: [bool; 2],
@@ -498,15 +498,15 @@ pub(in crate::game) struct Remote {
     pub(in crate::game) flat: bool,
     pub(in crate::game) death_message: Option<sunrise_game_data::text::Text>,
     /// `LocalPlayer.showDeathScreen`: off with `immediate_respawn`.
-    pub(in crate::game) show_death_screen: bool,
+    pub show_death_screen: bool,
     /// `Player.isReducedDebugInfo`: the server's `reduced_debug_info` rule.
     pub(in crate::game) reduced_debug_info: bool,
     /// `LocalPlayer.doLimitedCrafting`: whether limited crafting is enabled.
     pub(in crate::game) do_limited_crafting: bool,
-    pub(in crate::game) player_type: Option<Arc<MobType>>,
+    pub player_type: Option<Arc<MobType>>,
     /// Inventory, off hand and armour as last synchronised, for creative-mode
     /// slot updates (`creative_sync_stacks`).
-    pub(in crate::game) synced: Vec<Option<ItemStack>>,
+    pub synced: Vec<Option<ItemStack>>,
     pub(in crate::game) decode_errors: u32,
     /// Connection-owned `ClientClockManager` state, retained across dimensions.
     pub(in crate::game) clocks: HashMap<i32, play::ClockState>,
@@ -517,10 +517,10 @@ pub(in crate::game) struct Remote {
     pub(in crate::game) chunk_center: (i32, i32),
     /// A viewed-level swap adopts columns before the server sends the active cache centre.
     pub(in crate::game) awaiting_viewed_chunk_center: bool,
-    pub(in crate::game) chunk_light: RemoteLight,
+    pub chunk_light: RemoteLight,
     /// Received events a frame left for the next one, in order, and when
     /// the oldest of them first waited (`poll_remote`).
-    pub(in crate::game) backlog: VecDeque<Received>,
+    pub backlog: VecDeque<Received>,
     pub(in crate::game) backlog_since: Option<Instant>,
     /// `ClientCommonPacketListenerImpl.serverLinks`: the links "Server
     /// Links..." in the pause menu lists (only `http`/`https` URIs kept).

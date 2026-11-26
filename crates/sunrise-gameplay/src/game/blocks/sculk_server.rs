@@ -65,7 +65,7 @@ pub(in crate::game) struct SculkState {
     pub(in crate::game) falling_items: HashSet<u32>,
     /// The vehicle each rider had last tick and where it stood.
     pub(in crate::game) mounts: FxHashMap<Who, (u32, [f64; 3])>,
-    pub(in crate::game) damaged: FxHashMap<u32, i64>,
+    pub damaged: FxHashMap<u32, i64>,
     /// Set while the mobs' events are posted (`tick_mob_sculk_events`).
     pub(in crate::game) mob_slots: Option<MobSlots>,
     pub(in crate::game) last_health: Option<f32>,

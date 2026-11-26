@@ -103,7 +103,7 @@ pub(in crate::game) struct TransferredEntityState {
 
 impl TransferredEntityState {
     /// Move the single accepted-hit owner onto a reconstructed living body.
-    pub(in crate::game) fn restore_mob(&mut self, mob: &mut sunrise_sim::mobs::Mob) {
+    pub fn restore_mob(&mut self, mob: &mut sunrise_sim::mobs::Mob) {
         if mob.health > 0.0 {
             self.died = false;
         }

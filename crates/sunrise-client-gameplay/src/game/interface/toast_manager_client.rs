@@ -88,7 +88,7 @@ impl ClientGame<'_> {
 }
 
 impl ToastManager {
-    pub(in crate::game) fn system_mut(&mut self, id: SystemToastId) -> Option<&mut SystemToast> {
+    pub fn system_mut(&mut self, id: SystemToastId) -> Option<&mut SystemToast> {
         self.find_mut(|entry| match entry {
             Toast::System(Some(key), toast) if *key == id => Some(toast),
             _ => None,
@@ -97,7 +97,7 @@ impl ToastManager {
     /// `ToastManager.update`: finish/update the visible list before offering
     /// vacancies to the queue, in insertion order. Admission cannot sound a
     /// visibility change until the next update of the promoted instance.
-    pub(in crate::game) fn update(&mut self, multiplier: f64) -> (Option<bool>, bool) {
+    pub fn update(&mut self, multiplier: f64) -> (Option<bool>, bool) {
         let mut visibility_sound = None;
         self.visible.retain_mut(|entry| {
             let (sound, finished) = match &mut entry.toast {

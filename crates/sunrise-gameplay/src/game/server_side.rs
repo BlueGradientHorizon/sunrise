@@ -1528,7 +1528,7 @@ impl ServerState {
 
 #[allow(dead_code)]
 #[repr(transparent)]
-pub(in crate::game) struct ServerOnly<T>(pub(in crate::game) T);
+pub(in crate::game) struct ServerOnly<T>(pub T);
 
 #[allow(dead_code)]
 impl<T> ServerOnly<T> {

@@ -182,7 +182,7 @@ impl crate::game::ServerGame<'_> {
     /// lead within reach of `center` that `canHaveALeashAttachedTo` the
     /// entity (`skip` is the entity itself) are re-tied to `to`. Whether any
     /// was.
-    pub(in crate::game) fn tie_player_leads(
+    pub fn tie_player_leads(
         &mut self,
         center: glam::DVec3,
         to: Holder,

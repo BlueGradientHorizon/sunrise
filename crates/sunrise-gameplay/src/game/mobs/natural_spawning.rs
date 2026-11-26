@@ -187,7 +187,7 @@ impl LevelPlayer {
     }
     /// `Level.hasNearbyAlivePlayer`'s test of one player (any distance for a
     /// negative range).
-    fn alive_near(&self, x: f64, y: f64, z: f64, range: f64) -> bool {
+    pub fn alive_near(&self, x: f64, y: f64, z: f64, range: f64) -> bool {
         self.alive && !self.spectator && (range < 0.0 || self.distance_sqr(x, y, z) < range * range)
     }
 }

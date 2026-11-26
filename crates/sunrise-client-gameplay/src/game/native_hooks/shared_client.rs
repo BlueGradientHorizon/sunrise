@@ -141,7 +141,7 @@ impl SlotMoves {
 }
 
 impl OpenNativeScreen {
-    pub(in crate::game) fn layout(&self) -> &mod_api::MenuScreenLayout {
+    pub fn layout(&self) -> &mod_api::MenuScreenLayout {
         self.screen.layout()
     }
 
@@ -193,7 +193,7 @@ impl OpenNativeScreen {
         true
     }
 
-    pub(in crate::game) fn container_slot_base(&self) -> usize {
+    pub fn container_slot_base(&self) -> usize {
         if self.menu.mod_type.is_some() {
             sunrise_gameplay_common::game::inventory_slots::MOD_MENU_SLOT_BASE
         } else {

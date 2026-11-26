@@ -28,7 +28,7 @@ impl crate::game::ServerGame<'_> {
         }
     }
     /// `ItemCooldowns.addCooldown` (a guest also gets the packet).
-    pub(crate) fn add_cooldown(&mut self, group: Arc<str>, ticks: i32) {
+    pub fn add_cooldown(&mut self, group: Arc<str>, ticks: i32) {
         self.common.cooldowns.add(Arc::clone(&group), ticks);
         if self.server.lan_acting.is_some() {
             self.server.guest_cooldowns.push((group, ticks));
@@ -1392,7 +1392,7 @@ impl crate::game::ServerGame<'_> {
             self.server_system_message(sunrise_game_data::text::Text::translate(key, &[]));
         }
     }
-    pub(in crate::game::server_side) fn tick_mining(&mut self) -> Result<()> {
+    pub fn tick_mining(&mut self) -> Result<()> {
         if self.server.destroy_delay > 0 {
             self.server.destroy_delay -= 1;
         }
@@ -1469,7 +1469,7 @@ impl crate::game::ServerGame<'_> {
         }
         Ok(())
     }
-    pub(in crate::game) fn tick_sleep(&mut self) {
+    pub fn tick_sleep(&mut self) {
         self.common.sleep_timer = tick_sleep_timer(self.common.sleep_timer, self.common.sleeping.is_some());
         if let Some(head) = self.common.sleeping {
             // LivingEntity.tick's checkBedExists: a sleeper whose bed is

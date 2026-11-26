@@ -265,7 +265,7 @@ impl ServerGame<'_> {
     /// further to blocks and 2 to entities. Its client reads the reach from
     /// these synced modifiers. The crouch modifier belongs to the server's
     /// effective transmit range, like the item's equipment modifier.
-    pub(in crate::game) fn update_player_attributes(&mut self) {
+    pub fn update_player_attributes(&mut self) {
         let creative = self.common.mode_id() == 1;
         let Some(p) = self.common.player.as_mut() else {
             return;

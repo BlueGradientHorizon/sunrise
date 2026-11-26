@@ -421,7 +421,7 @@ pub enum DrawFamily {
 /// pass is concerned.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(in crate::game) struct DrawRun {
-    pub(in crate::game) family: DrawFamily,
+    pub family: DrawFamily,
     pub(in crate::game) range: std::ops::Range<usize>,
 }
 

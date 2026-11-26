@@ -33,9 +33,9 @@ pub struct VisibleToast {
 
 #[derive(Default)]
 pub(in crate::game) struct ToastManager {
-    pub(in crate::game) pending_mod: RefCell<Vec<mod_toasts::Pending>>,
-    pub(in crate::game) queued: VecDeque<Toast>,
-    pub(in crate::game) visible: Vec<VisibleToast>,
+    pub pending_mod: RefCell<Vec<mod_toasts::Pending>>,
+    pub queued: VecDeque<Toast>,
+    pub visible: Vec<VisibleToast>,
 }
 
 impl ToastManager {

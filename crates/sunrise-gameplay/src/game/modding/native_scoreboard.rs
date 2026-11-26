@@ -183,7 +183,7 @@ impl ServerGame<'_> {
     }
 
     /// `Scoreboard.addObjective`.
-    pub(in crate::game) fn add_objective(
+    pub fn add_objective(
         &mut self,
         name: &str,
         criteria: &str,

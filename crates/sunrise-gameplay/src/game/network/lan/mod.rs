@@ -92,7 +92,7 @@ pub struct LanHost {
     pub sleep_ignored: std::collections::HashSet<u128>,
     /// The entities the guests track, described again every tick
     /// (`lan_entities`) over last tick's states.
-    pub(in crate::game) states: lan::entity::States,
+    pub states: lan::entity::States,
     /// The entity id counter when this tick's states were taken for guests
     /// (`lan_note_joined`), None when no guest tracked them.
     pub(in crate::game) states_next_entity: Option<u32>,

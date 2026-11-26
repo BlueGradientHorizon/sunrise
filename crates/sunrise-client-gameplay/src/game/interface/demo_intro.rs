@@ -51,7 +51,7 @@ impl DemoIntro {
         }
     }
 
-    fn layout(&self, atlas: &HudAtlas, width: f32, height: f32) -> Layout {
+    pub fn layout(&self, atlas: &HudAtlas, width: f32, height: f32) -> Layout {
         let sections = [
             atlas
                 .font

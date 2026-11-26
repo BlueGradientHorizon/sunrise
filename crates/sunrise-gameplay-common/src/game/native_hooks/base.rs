@@ -331,7 +331,7 @@ impl GameLevel<'_> {
     /// as it is now, if it still ticks randomly. Lava's fluid random tick
     /// runs either way.
     #[inline(always)]
-    pub(in crate::game) fn native_random_tick(
+    pub fn native_random_tick(
         &mut self,
         ticks: &mut Ticks,
         dimension: LevelDimension,
@@ -1130,7 +1130,7 @@ pub fn another_mods(mod_id: &str) -> bool {
 pub type LevelView<'a> = super::super::mod_api_host::LevelTicks<'a, &'a GameLevel<'a>, &'a Ticks>;
 impl GameLevel<'_> {
     /// This level as a placement or survival question sees it, with the simulation's `ticks`.
-    pub(in crate::game) fn view<'a>(&'a self, ticks: &'a Ticks) -> LevelView<'a> {
+    pub fn view<'a>(&'a self, ticks: &'a Ticks) -> LevelView<'a> {
         super::super::mod_api_host::LevelTicks::new(self, ticks)
     }
 }

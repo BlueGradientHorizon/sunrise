@@ -27,7 +27,7 @@ pub(in crate::game) struct MountMenu {
 impl MountMenu {
     /// The mount whose menu is open.
     #[allow(dead_code)]
-    pub(in crate::game::client_side) fn opened_mob(&self) -> Option<u32> {
+    pub fn opened_mob(&self) -> Option<u32> {
         self.open.as_ref().map(|o| o.mob)
     }
 }

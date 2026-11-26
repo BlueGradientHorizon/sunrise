@@ -430,7 +430,7 @@ struct RoomMemo {
 /// The open screen's build and what it was made from.
 #[derive(Default)]
 pub struct ScreenBuildState {
-    current: Option<ScreenBuild>,
+    pub current: Option<ScreenBuild>,
     /// The frame's effects answer, while this frame asked for one.
     effects: std::cell::Cell<Option<EffectsMemo>>,
     /// The frame's `screen_room` answer, while this frame asked for one.

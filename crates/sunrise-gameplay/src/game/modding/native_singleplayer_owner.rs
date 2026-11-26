@@ -9,8 +9,8 @@ use sunrise_sim::lan::OwnerProfile;
 /// `IntegratedServer`'s `singleplayerProfile`: the window's player as the server was created
 /// with it, properties and all. Fixed once made: every read returns this snapshot.
 pub struct SingleplayerProfile {
-    pub(in crate::game) name: String,
-    pub(in crate::game) uuid: u128,
+    pub name: String,
+    pub uuid: u128,
     properties: Vec<AccountProperty>,
 }
 

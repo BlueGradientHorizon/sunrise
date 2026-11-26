@@ -15,7 +15,7 @@ impl ServerGame<'_> {
     /// single-player owner's 4 with commands allowed. A displaced connected
     /// player keeps their permission level even while their body is unavailable.
     /// None for a stale or unavailable player.
-    pub(in crate::game) fn player_permission_level(&self, player: PlayerRef) -> Option<u8> {
+    pub fn player_permission_level(&self, player: PlayerRef) -> Option<u8> {
         let read = self
             .player_handle_read(player)
             .or_else(|| self.online_player_record(player).map(PlayerRead::Guest))?;

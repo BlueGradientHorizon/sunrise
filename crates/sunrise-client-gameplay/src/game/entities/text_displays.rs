@@ -85,7 +85,7 @@ pub struct RemoteTextDisplay {
     pub(in crate::game) render_state_ready: bool,
     /// `Display.lastProgress`: the progress the last drawn frame evaluated (untouched when culled
     /// or while `duration <= 0`).
-    pub(in crate::game) last_progress: f32,
+    pub last_progress: f32,
     /// `Entity.DATA_SHARED_FLAGS_ID` (id 0): bit 0 = on fire, bit 1 = shift/discrete,
     /// bit 5 = invisible, bit 6 = glowing.
     pub(in crate::game) shared_flags: u8,
@@ -109,7 +109,7 @@ pub struct SeeThroughCollector {
 }
 
 impl SeeThroughCollector {
-    pub(in crate::game::client_side) fn clear(&mut self) {
+    pub fn clear(&mut self) {
         self.verts.clear();
         self.submits.clear();
     }
@@ -536,7 +536,7 @@ impl RemoteTextDisplay {
     }
     /// The entries after `Display`'s: a block state, or an item with its
     /// display context (the stack comes converted by the caller). Changes defer to `tick()`.
-    pub(in crate::game::client_side) fn show(
+    pub fn show(
         &mut self,
         values: &[(u8, i32, Value)],
         item: Option<Option<ItemStack>>,

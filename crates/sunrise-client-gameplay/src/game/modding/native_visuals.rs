@@ -10,7 +10,7 @@ pub(in crate::game) struct FrameVisuals {
 }
 
 impl FrameVisuals {
-    pub(in crate::game::client_side) fn finish(
+    pub fn finish(
         self,
         game: &crate::game::ClientGame<'_>,
         camera: glam::DVec3,

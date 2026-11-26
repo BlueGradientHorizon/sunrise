@@ -37,7 +37,7 @@ const WALKS_BEFORE_GRID: u32 = 8;
 pub(in crate::game) struct VehicleMobs {
     /// The mobs' [`BoxReach`] with the mob count it was worked out for; None outside a stretch.
     reach: Cell<Option<(usize, BoxReach)>>,
-    grid: RefCell<MobGrid>,
+    pub grid: RefCell<MobGrid>,
     /// The last query's candidates, kept for their allocation.
     near: Cell<Vec<u32>>,
     /// Each ridden vehicle's mobs by slot, for the mob list as it stood ([`Game::resident_mob_riders`]).

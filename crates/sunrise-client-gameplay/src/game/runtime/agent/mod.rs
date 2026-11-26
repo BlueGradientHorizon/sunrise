@@ -362,7 +362,7 @@ pub(in crate::game) struct Glide {
 
 #[derive(Default)]
 pub(in crate::game) struct Agent {
-    pub(in crate::game) task: Option<Task>,
+    pub task: Option<Task>,
     pub(in crate::game) glide: Option<Glide>,
     /// Control-fixture barrier: hold simulation and packet handling, not transport threads.
     pub hold_server: bool,

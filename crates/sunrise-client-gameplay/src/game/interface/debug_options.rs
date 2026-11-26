@@ -33,7 +33,7 @@ const HINT: u32 = 0xAA_AAAA;
 
 /// The open screen: its search box and the list's scroll.
 pub(in crate::game) struct DebugOptionsUi {
-    pub(in crate::game) search: EditBox,
+    pub search: EditBox,
     scroll: Scroll,
 }
 

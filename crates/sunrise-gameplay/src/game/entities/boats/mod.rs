@@ -816,7 +816,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// Existing boat access routes all use the shared unpack operation.
-    pub(in crate::game) fn unpack_boat_loot(&mut self, i: usize, player: bool) {
+    pub fn unpack_boat_loot(&mut self, i: usize, player: bool) {
         let player = player.then(|| self.native_acting_player()).flatten();
         self.unpack_loot(
             sunrise_gameplay_common::game::container_loot_level::LootTarget::Boat(self.common.boats[i].id),

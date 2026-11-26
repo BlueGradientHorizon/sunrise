@@ -8,6 +8,7 @@ pub(crate) mod tests {
 
 use mod_vocab::HostTransaction;
 use mod_vocab::HostTransaction;
+use mod_vocab::HostTransaction;
 use sunrise_gameplay_common::game::TryIntoApi;
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt;
 use sunrise_gameplay_common::game::in_own_process;

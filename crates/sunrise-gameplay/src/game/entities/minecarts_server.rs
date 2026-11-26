@@ -1046,7 +1046,7 @@ impl crate::game::ServerGame<'_> {
     /// `AbstractMinecartContainer.interact`: the menu opens over the cart's
     /// own slots, kept under a placeholder key until it closes
     /// (`store_cart_items`/`close_cart_container`).
-    pub(in crate::game) fn open_cart_container(&mut self, i: usize) {
+    pub fn open_cart_container(&mut self, i: usize) {
         self.unpack_cart_loot(i);
         let c = self.common.carts[i].clone();
         let key = (i32::MAX - 15, CART_KEY_Y, c.id as i32);

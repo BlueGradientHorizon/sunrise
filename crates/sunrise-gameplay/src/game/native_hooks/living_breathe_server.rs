@@ -44,7 +44,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// The acting (guest) player's breathing, the answer to apply to the air
     /// `step` decided on, or `None` when the player is gone or their air changed.
-    pub(in crate::game) fn ask_player_breath(
+    pub fn ask_player_breath(
         &mut self,
         step: sunrise_sim::breathing::AirStep,
     ) -> Option<sunrise_sim::breathing::Breath> {

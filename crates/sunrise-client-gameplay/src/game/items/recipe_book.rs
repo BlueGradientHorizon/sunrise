@@ -110,7 +110,7 @@ pub(in crate::game) struct RecipeUi {
     /// place again; slot clicks keep it.
     pub(in crate::game) last_clicked: Option<i32>,
     /// The server's checks of viewer transfers (`transfer_recipe_check`).
-    pub(in crate::game) checks: TransferChecks,
+    pub checks: TransferChecks,
 }
 
 /// The recipe viewer channels the server said it answers: `sunrise:recipe_transfer`
@@ -227,7 +227,7 @@ pub(in crate::game) mod transfer_check_cache_tests {
 
 impl RecipeUi {
     /// A new screen starts without a ghost recipe, overlay or search focus.
-    pub(in crate::game::client_side) fn reset_screen(&mut self) {
+    pub fn reset_screen(&mut self) {
         self.ghost.clear();
         self.last_placed = None;
         self.overlay = None;

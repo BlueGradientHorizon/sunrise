@@ -1,9 +1,9 @@
 /// Per-guest state of the gameplay code that lives outside `Guest`.
 #[derive(Default)]
 pub struct GuestPlay {
-    pub(in crate::game) mining: Option<Mining>,
-    pub(in crate::game) destroy_delay: u32,
-    pub(in crate::game) using: Option<(usize, u32)>,
+    pub mining: Option<Mining>,
+    pub destroy_delay: u32,
+    pub using: Option<(usize, u32)>,
     pub(in crate::game) use_duration: i32,
     pub(in crate::game) use_start: sunrise_gameplay_common::game::item_use_common::UseStart,
     pub(in crate::game) use_delay: u32,
@@ -13,7 +13,7 @@ pub struct GuestPlay {
     /// item a creative player drops from the creative screen, one less each tick.
     pub(in crate::game) creative_drops: u32,
     /// `ServerGamePacketListenerImpl.chatSpamThrottler`: 20 for each chat message, one less each tick.
-    pub(in crate::game) chat_spam: u32,
+    pub chat_spam: u32,
     /// `commandSpamThrottler`: 20 for each command, one less each tick.
     pub(in crate::game) command_spam: u32,
     /// `sunrise:recipe_check` requests still counting against the burst limit.
@@ -24,15 +24,15 @@ pub struct GuestPlay {
     pub(in crate::game) suggestion: Option<Vec<u8>>,
     pub(in crate::game) suggestion_budget: bool,
     /// The guest's `Player.getCooldowns()` (`Game::cooldowns` for its turn).
-    pub(in crate::game) cooldowns: sunrise_items::cooldowns::Cooldowns,
+    pub cooldowns: sunrise_items::cooldowns::Cooldowns,
     pub(in crate::game) attack_ticks: u32,
     /// The main hand's item at the guest's last tick (`Game::attack_item`).
     pub(in crate::game) attack_item: Option<std::sync::Arc<str>>,
     pub(in crate::game) swing: sunrise_sim::first_person_sim::SwingState,
     /// The block being dug and the face the client aimed at.
-    pub(in crate::game) digging: Option<([i32; 3], [i32; 3])>,
+    pub digging: Option<([i32; 3], [i32; 3])>,
     /// The server tick the digging started (ServerPlayerGameMode.destroyProgressStart).
-    pub(in crate::game) dig_start: u64,
+    pub dig_start: u64,
     /// The block that clock is for (ServerPlayerGameMode.destroyPos). A START is the only writer
     /// that names one (death, a new ServerPlayerGameMode, clears it), so an abort, or a STOP that
     /// arrives out of reach, leaves it: the STOP of a dig resumed on the same block is still
@@ -64,14 +64,14 @@ pub struct GuestPlay {
     pub stats: sunrise_gameplay_common::stats::Stats,
     /// `Stats.LEAVE_GAME` is counted: a guest is saved more than once on the
     /// way out, the statistic is awarded once (`Game::award_leave_game`).
-    pub(in crate::game) left_game: bool,
+    pub left_game: bool,
     pub(in crate::game) last_inventory: u64,
     /// `ServerPlayer.levitationStartPos` and `levitationStartTime`.
     pub(in crate::game) levitation: Option<([f64; 3], u64)>,
     /// The fall, lava ride, Nether trip and blast the guest's advancements track.
-    pub(in crate::game) marks: sunrise_gameplay_common::game::advancements_common::TravelMarks,
+    pub marks: sunrise_gameplay_common::game::advancements_common::TravelMarks,
     /// `Entity.portalProcess` and `portalCooldown` (game/world/server_travel.rs).
-    pub(in crate::game) portal: sunrise_sim::nether_portal::PortalState,
+    pub portal: sunrise_sim::nether_portal::PortalState,
     /// `Player.takeXpDelay`: ticks until the next orb can be taken.
     pub(in crate::game) xp_delay: u32,
     /// This player entity's age and level-up sound cooldown.

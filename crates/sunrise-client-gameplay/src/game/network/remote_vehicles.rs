@@ -41,7 +41,7 @@ impl Remote {
             .retain(|_, seat| seat.vehicle != vehicle);
     }
 
-    pub(in crate::game) fn passenger_vehicle(&self, passenger: u32) -> Option<u32> {
+    pub fn passenger_vehicle(&self, passenger: u32) -> Option<u32> {
         self.passenger_vehicles
             .get(&passenger)
             .map(|seat| seat.vehicle)

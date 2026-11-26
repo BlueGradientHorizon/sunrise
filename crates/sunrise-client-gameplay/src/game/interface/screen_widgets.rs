@@ -62,11 +62,11 @@ impl Drop for MountedScreenWidgets {
 }
 
 impl MountedScreenWidgets {
-    pub(in crate::game::client_side) fn generation(&self) -> u64 {
+    pub fn generation(&self) -> u64 {
         self.generation.get()
     }
 
-    pub(in crate::game::client_side) fn is_empty(&self) -> bool {
+    pub fn is_empty(&self) -> bool {
         self.inner.borrow().entries.is_empty()
     }
 
@@ -75,11 +75,11 @@ impl MountedScreenWidgets {
         self.inner.borrow().entries.len()
     }
 
-    pub(in crate::game::client_side) fn has_focus(&self) -> bool {
+    pub fn has_focus(&self) -> bool {
         self.inner.borrow().focused.is_some()
     }
 
-    pub(in crate::game::client_side) fn focused_index(&self) -> Option<usize> {
+    pub fn focused_index(&self) -> Option<usize> {
         self.inner.borrow().focused
     }
 
@@ -106,14 +106,14 @@ impl MountedScreenWidgets {
             .position(|slot| slot.as_ref().is_some_and(|entry| entry.id == id))
     }
 
-    pub(in crate::game::client_side) fn focused_id(&self) -> Option<ScreenWidgetId> {
+    pub fn focused_id(&self) -> Option<ScreenWidgetId> {
         let inner = self.inner.borrow();
         let idx = inner.focused?;
         inner.entries.get(idx)?.as_ref().map(|entry| entry.id)
     }
 
     /// Bump the screen-widget generation, clear focus/drag state, and dispose all entries.
-    pub(in crate::game) fn clear(&self) {
+    pub fn clear(&self) {
         self.generation.set(self.generation.get().wrapping_add(1));
         let (mut entries, focused) = {
             let mut inner = self.inner.borrow_mut();

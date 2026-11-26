@@ -26,7 +26,7 @@ use sunrise_sim::menu::Input;
 
 #[derive(Default)]
 pub(in crate::game) struct Tweaks {
-    drag: Option<Drag>,
+    pub drag: Option<Drag>,
     /// Wheel steps not yet acted on (a trackpad scrolls in fractions).
     wheel: f32,
 }

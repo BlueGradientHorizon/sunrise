@@ -17,6 +17,7 @@ mod owned_slots_tests;
 #[cfg(test)]
 pub(crate) mod tests {
 
+use mod_vocab::__private::game::Fields;
 use sunrise_gameplay_common::game::native_block_entity_read::NativeBlockEntityReadGameExt1;
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
 use sunrise_gameplay_common::game::native_menu_refs_common::NativeMenuRefsCommonGameExt1;

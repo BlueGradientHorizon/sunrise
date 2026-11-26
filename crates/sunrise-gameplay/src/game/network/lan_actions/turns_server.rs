@@ -41,7 +41,7 @@ impl crate::game::ServerGame<'_> {
     /// Resolve a recorded player entity id even when a nested turn has lent
     /// the acting slot to another body. A displaced guest's hub row still
     /// names them, but it does not own their body or stats.
-    pub(in crate::game) fn combat_player(&self, id: u32) -> Option<CombatPlayer<'_>> {
+    pub fn combat_player(&self, id: u32) -> Option<CombatPlayer<'_>> {
         if self
             .common.player
             .as_ref()
@@ -75,7 +75,7 @@ impl crate::game::ServerGame<'_> {
     /// What reaches the players around a point (a beacon's powers, a splash
     /// potion, a warden's darkness, an elder guardian's curse) lands on each
     /// of them, not only on the host. A server has no player of its own.
-    pub(in crate::game) fn for_each_player(&mut self, mut f: impl FnMut(&mut Self)) {
+    pub fn for_each_player(&mut self, mut f: impl FnMut(&mut Self)) {
         if self.common.player.is_some() && !self.server.lan_acting_fake {
             f(self);
         }

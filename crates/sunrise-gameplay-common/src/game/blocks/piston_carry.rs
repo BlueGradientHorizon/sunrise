@@ -86,7 +86,7 @@ impl GameLevel<'_> {
     /// Takes the block entity at `from` out of the world for the moving piston
     /// at `to`, with what removing it would take from its position (its custom
     /// name, its loaded tag) but none of its side effects.
-    pub(in crate::game) fn carry_mod_block_entity(&mut self, from: BlockPos, to: BlockPos) {
+    pub fn carry_mod_block_entity(&mut self, from: BlockPos, to: BlockPos) {
         let (from, to) = ((from.x, from.y, from.z), (to.x, to.y, to.z));
         let partner = self
             .registry
@@ -135,7 +135,7 @@ impl GameLevel<'_> {
     /// Installs the block entity the moving piston at `pos` carried there; its
     /// custom name is the block's again, as for one loaded there, and on a
     /// server its synced attachments go whole to the players who see it.
-    pub(in crate::game) fn land_carried_block_entity(&mut self, pos: BlockPos) -> bool {
+    pub fn land_carried_block_entity(&mut self, pos: BlockPos) -> bool {
         let key = (pos.x, pos.y, pos.z);
         let data = self
             .world

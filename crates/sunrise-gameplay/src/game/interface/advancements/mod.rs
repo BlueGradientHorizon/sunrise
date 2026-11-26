@@ -807,7 +807,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// `SimpleCriterionTrigger.trigger`: test each open criterion of the
     /// trigger and award what it completes.
-    pub(in crate::game) fn trigger(
+    pub fn trigger(
         &mut self,
         name: &str,
         test: impl Fn(&Value, &dyn adv::World) -> bool,
@@ -1054,7 +1054,7 @@ impl crate::game::ServerGame<'_> {
         taken_back
     }
     /// `ServerPlayer.awardRecipes`: fake players learn no recipes.
-    pub(in crate::game) fn award_recipes(&mut self, recipes: &[String]) -> usize {
+    pub fn award_recipes(&mut self, recipes: &[String]) -> usize {
         if self.server.lan_acting_fake {
             return 0;
         }
@@ -1068,7 +1068,7 @@ impl crate::game::ServerGame<'_> {
     /// vanilla's `Invalid recipe: {}` and knows nothing. Whether the click
     /// ends here: `InteractionResult.SUCCESS` does and swings, `FAIL` leaves
     /// the other hand its turn (`Minecraft.startUseItem`).
-    pub(in crate::game::server_side) fn use_knowledge_book(&mut self, stack: &ItemStack) -> bool {
+    pub fn use_knowledge_book(&mut self, stack: &ItemStack) -> bool {
         if &*stack.item != "minecraft:knowledge_book" {
             return false;
         }
@@ -1345,7 +1345,7 @@ impl crate::game::ServerGame<'_> {
         });
     }
     /// Per-tick checks for the player already in place, without a guest connection turn.
-    pub(in crate::game::server_side) fn tick_advancements(&mut self) {
+    pub fn tick_advancements(&mut self) {
         self.tick_level_advancements();
         if let Some(player) = &self.common.player
             && player.health.tick_count % 20 == 0
@@ -2502,7 +2502,7 @@ pub(in crate::game::server_side) fn decorate_name(d: &adv::Display) -> Text {
 impl crate::game::ServerGame<'_> {
     /// `AdvancementCommands.Action.GRANT` on one advancement (or one of
     /// its criteria): false when nothing changed.
-    pub(in crate::game) fn grant_advancement(
+    pub fn grant_advancement(
         &mut self,
         index: usize,
         criterion: Option<&str>,
@@ -2535,7 +2535,7 @@ impl crate::game::ServerGame<'_> {
         changed || criterion.is_none()
     }
     /// `AdvancementCommands.Action.REVOKE`.
-    pub(in crate::game) fn revoke_advancement(
+    pub fn revoke_advancement(
         &mut self,
         index: usize,
         criterion: Option<&str>,

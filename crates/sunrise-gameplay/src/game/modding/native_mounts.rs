@@ -168,7 +168,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// The acting player is about to board `vehicle`: false when a mod canceled it.
-    pub(in crate::game) fn native_may_board(&mut self, vehicle: u32) -> bool {
+    pub fn native_may_board(&mut self, vehicle: u32) -> bool {
         // A fake player boards nothing: every boarding path asks here first.
         if self.fake_blocks(mod_api::FakeEffect::Ride) {
             return false;

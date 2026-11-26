@@ -1001,7 +1001,7 @@ impl GameLevel<'_> {
     /// `BlockEntity.preRemoveSideEffects` and `removeBlockEntity` for the block
     /// entity of `old` at `pos`. A block entity Sunrise never created reads as
     /// vanilla's fresh one: an empty container still draws a spot per slot.
-    pub(crate) fn remove_entity(
+    pub fn remove_entity(
         &mut self,
         pos: BlockPos,
         old: BlockStateId,

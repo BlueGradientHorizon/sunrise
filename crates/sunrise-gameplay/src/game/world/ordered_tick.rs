@@ -21,12 +21,12 @@ use sunrise_sim::join_seq::{JoinSeq, Joined};
 pub(in crate::game) struct OrderedTicks {
     /// Joins at or above this started after the tick began; they tick next tick.
     /// The general rows' pass (`general/tick.rs`) shares the same cutoff.
-    pub(in crate::game) born: JoinSeq,
+    pub born: JoinSeq,
     /// The last join number ticked, if any: later ones are still to come.
-    pub(in crate::game) done: Option<JoinSeq>,
+    pub done: Option<JoinSeq>,
     /// Joins below this have had their spawn packet; the ones above joined
     /// since (a summoned falling block, a lit TNT) and tick after it goes out.
-    pub(in crate::game) announced: JoinSeq,
+    pub announced: JoinSeq,
     /// For each batch of another kind, in tick order (see [`Batch`]): the
     /// lowest join number among it and every batch after it.
     suffix_min: [JoinSeq; Batch::COUNT],
@@ -49,7 +49,7 @@ pub(in crate::game) struct OrderedTicks {
     /// Whether the entity tick hooks are heard this tick, and which types are told alone: the
     /// server's unsimulated entities of those types are told at their place in this order
     /// (game/modding/native_ticks.rs).
-    pub(in crate::game) told: super::native_ticks::Told,
+    pub told: super::native_ticks::Told,
 }
 
 /// The batches of the other kinds, in the order they tick.

@@ -3,16 +3,16 @@ use sunrise_gameplay_common::game::{api_values::TryIntoApi, remote::client_has_l
 use std::sync::Arc;
 
 impl Remote {
-    pub(in crate::game) fn set_menu_title(&mut self, title: Option<sunrise_game_data::text::Text>) {
+    pub fn set_menu_title(&mut self, title: Option<sunrise_game_data::text::Text>) {
         self.menu_title_snapshot = title.try_into_api().ok().flatten().map(Arc::new);
         self.menu_title = title;
     }
 
-    pub(in crate::game) fn menu_title_snapshot(&self) -> Option<&mod_api::Text> {
+    pub fn menu_title_snapshot(&self) -> Option<&mod_api::Text> {
         self.menu_title_snapshot.as_deref()
     }
 
-    pub(in crate::game) fn shared_menu_title_snapshot(&self) -> Option<Arc<mod_api::Text>> {
+    pub fn shared_menu_title_snapshot(&self) -> Option<Arc<mod_api::Text>> {
         self.menu_title_snapshot.clone()
     }
 
@@ -30,7 +30,7 @@ impl Remote {
 
     /// An entity the server added to this client level: its type
     /// (`minecraft:text_display`) and its position as last sent.
-    pub(in crate::game) fn tracked_entity(&self, id: i32) -> Option<(&str, [f64; 3])> {
+    pub fn tracked_entity(&self, id: i32) -> Option<(&str, [f64; 3])> {
         if let Some(row) = self.general.rows.get(&id) {
             return Some((row.kind(), row.position));
         }
@@ -49,7 +49,7 @@ impl Remote {
     }
 
     /// The local player's profile UUID.
-    pub(in crate::game) fn profile(&self) -> u128 {
+    pub fn profile(&self) -> u128 {
         self.profile
     }
 
@@ -77,7 +77,7 @@ impl Remote {
         })
     }
     /// The kind and last sent position of a tracked server entity.
-    pub(in crate::game) fn tracked(&self, id: i32) -> Option<(&str, [f64; 3])> {
+    pub fn tracked(&self, id: i32) -> Option<(&str, [f64; 3])> {
         self.entities.get(&id).map(|t| (&*t.kind, t.position))
     }
 }

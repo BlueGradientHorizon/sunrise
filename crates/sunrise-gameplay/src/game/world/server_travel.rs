@@ -52,12 +52,12 @@ impl TravelCause {
 /// A trip under way: the player is in the destination's level, whose
 /// chunks are loading around `target`.
 pub(in crate::game) struct Trip {
-    conn: u32,
-    dim: Dim,
+    pub conn: u32,
+    pub dim: Dim,
     /// The level the player came from: the vehicle it rides waits there
     /// until the exit is found.
-    source: Dim,
-    target: Vec3,
+    pub source: Dim,
+    pub target: Vec3,
     /// Through an End portal.
     end: bool,
     /// Into the End through its portal, building its platform
@@ -68,23 +68,23 @@ pub(in crate::game) struct Trip {
     plan: Option<Plan>,
     /// The vehicle the player rides, which travels with it
     /// (`Entity.teleportCrossDimension` carries the passengers).
-    vehicle: Option<u32>,
+    pub vehicle: Option<u32>,
     /// Through an End gateway, within the level: its exit, found or built
     /// on arrival.
     gateway: Option<GatewayJob>,
     /// A respawn at this point outside the Overworld, resolved through its
     /// block on arrival.
-    respawn: Option<RespawnConfig>,
+    pub respawn: Option<RespawnConfig>,
     /// A transition that resolves its spawn destination before moving the player.
-    spawn_search: Option<SpawnTrip>,
+    pub spawn_search: Option<SpawnTrip>,
     /// A respawn at the world spawn, moved onto a free column within the
     /// respawn radius once the chunks around it have loaded.
-    world_spawn: bool,
+    pub world_spawn: bool,
     /// The respawn point whose bed or anchor was gone, for a world-spawn
     /// respawn that replaces it (`TeleportTransition.missingRespawnBlock`).
     missing: Option<RespawnConfig>,
     /// The search for that column while a candidate's chunk loads.
-    finder: Option<PlayerSpawnFinder>,
+    pub finder: Option<PlayerSpawnFinder>,
     /// Sent by a command: the player is already where it goes.
     placed: bool,
     /// A command teleport to chunks not loaded yet: the client's moves are ignored until the
@@ -257,7 +257,7 @@ const WIDTH: f64 = 0.6;
 const HEIGHT: f64 = 1.8;
 
 impl Trip {
-    pub(in crate::game::server_side) fn is(&self, conn: u32) -> bool {
+    pub fn is(&self, conn: u32) -> bool {
         self.conn == conn
     }
 

@@ -107,7 +107,7 @@ impl ClientResources {
     pub(in crate::game) fn ambient(&self) -> &sunrise_client::ambience::AmbientTables {
         &self.ambient
     }
-    pub(in crate::game) fn animate(&self) -> &sunrise_client::animate_tick::AnimateTables {
+    pub fn animate(&self) -> &sunrise_client::animate_tick::AnimateTables {
         &self.animate
     }
     pub(in crate::game) fn block_entity_render(&self) -> &BlockEntityRenderer {
@@ -134,16 +134,16 @@ impl ClientResources {
     pub(in crate::game) fn spin_attack(&self) -> &Option<sunrise_client::mobs::Part> {
         &self.spin_attack
     }
-    pub(in crate::game) fn player_type(&self) -> &Option<Arc<sunrise_sim::mobs::MobType>> {
+    pub fn player_type(&self) -> &Option<Arc<sunrise_sim::mobs::MobType>> {
         &self.player_type
     }
-    pub(in crate::game) fn client_mob_models(
+    pub fn client_mob_models(
         &self,
     ) -> &sunrise_client::mobs_render::ClientMobModels {
         &self.client_mobs.models
     }
 
-    pub(in crate::game) fn client_mob_data(&self) -> &sunrise_client::mobs_render::ClientMobData {
+    pub fn client_mob_data(&self) -> &sunrise_client::mobs_render::ClientMobData {
         &self.client_mobs.data
     }
 }
@@ -434,7 +434,7 @@ pub struct ClientPackResources {
     pub water_overlay_state: mod_api::BlockState,
     pub render: Arc<RenderAssets>,
     pub context: Arc<sunrise_client_render::streaming::WorkerContext>,
-    pub(in crate::game) layer_names: Arc<HashMap<u32, String>>,
+    pub layer_names: Arc<HashMap<u32, String>>,
     /// Item definitions, baked item models and special renderers.
     pub item_renderer: Arc<sunrise_client::item_render::ItemRenderer>,
     /// clouds.png: (width, height, filled cells).
@@ -445,7 +445,7 @@ pub struct ClientPackResources {
     pub(in crate::game) custom_sky: Arc<dyn sunrise_client::custom_sky::SkyLayers>,
     /// The overworld's, Nether's and End's attribute stacks with the packs' Polytone biome and
     /// dimension modifiers (#11486), when a pack has some: what the frame draws.
-    pub(in crate::game) environments: Option<Arc<[Environment; 3]>>,
+    pub environments: Option<Arc<[Environment; 3]>>,
     /// The packs' Polytone custom particles and block emitters (#11486), when a pack has some.
     pub(in crate::game) polytone_particles:
         Option<Arc<sunrise_client::particles::polytone::Registry>>,

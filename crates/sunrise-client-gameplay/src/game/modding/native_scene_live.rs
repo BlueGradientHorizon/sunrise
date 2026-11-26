@@ -74,7 +74,7 @@ pub struct LiveScenes {
 impl LiveScenes {
     /// Forgets every kept scene: their particles name the old atlas's sprites and their
     /// entities the old resources' types (a resource reload), or the world closed.
-    pub(in crate::game::client_side) fn clear(&mut self) {
+    pub fn clear(&mut self) {
         self.live.clear();
         self.animating.clear();
     }

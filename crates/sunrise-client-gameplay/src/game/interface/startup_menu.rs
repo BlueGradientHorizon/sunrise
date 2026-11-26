@@ -262,7 +262,7 @@ impl StartupMenu {
         true
     }
 
-    fn queue_entry(&mut self, action: Action, player_name: String) {
+    pub fn queue_entry(&mut self, action: Action, player_name: String) {
         let entry = match action {
             Action::Play { folder } => PendingWorldEntry::Local {
                 folder,

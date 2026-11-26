@@ -137,19 +137,19 @@ pub(in crate::game) struct Push {
 
 #[derive(Default)]
 pub(in crate::game) struct Fight {
-    pub(in crate::game) loaded: bool,
+    pub loaded: bool,
     pub(in crate::game) needs_scan: bool,
     pub killed: bool,
     pub previously_killed: bool,
     /// `dragonUUID`: the fight's own dragon. Only its death wins the fight
     /// (`setDragonKilled`); a dragon summoned after the fight is won is not it.
-    pub(in crate::game) dragon_uuid: Option<[i32; 4]>,
+    pub dragon_uuid: Option<[i32; 4]>,
     /// `ticksSinceDragonSeen`: ticks since the fight's dragon last ticked
     /// (`updateDragon`); at 1200 the fight looks for another one.
     pub(in crate::game) dragon_unseen: i32,
     pub(in crate::game) gateways: Vec<i32>,
     pub(in crate::game) exit_portal: Option<[i32; 3]>,
-    pub(in crate::game) alive_crystals: i32,
+    pub alive_crystals: i32,
     pub(in crate::game) crystal_scan: i32,
     /// `ticksSinceLastPlayerScan`, and whether the last scan found a player
     /// for the fight (`dragonEvent.getPlayers()` is not empty).

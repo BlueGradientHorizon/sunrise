@@ -602,7 +602,7 @@ impl crate::game::ServerGame<'_> {
     /// `DamageCommand.damage`: retain the accepted hit's player context and run
     /// `Zombie.hurtServer`'s reinforcement requests before the command returns.
     /// Health-changing hits also raise their damage vibration before return.
-    pub(in crate::game::server_side) fn command_damage_mob(
+    pub fn command_damage_mob(
         &mut self,
         id: u32,
         amount: f32,

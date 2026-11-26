@@ -147,7 +147,7 @@ struct TabState {
 }
 #[derive(Default)]
 pub(in crate::game) struct AdvUi {
-    cache: Option<Cache>,
+    pub cache: Option<Cache>,
     /// The selected root in this screen, if present in its tabs.
     tab: Option<String>,
     tabs: BTreeMap<String, TabState>,
@@ -155,13 +155,13 @@ pub(in crate::game) struct AdvUi {
     drag: Option<(f32, f32)>,
     scrolling: bool,
     from_pause: bool,
-    last_frame: Option<Instant>,
+    pub last_frame: Option<Instant>,
 }
 impl AdvUi {
-    fn tab_state(&self) -> Option<&TabState> {
+    pub fn tab_state(&self) -> Option<&TabState> {
         self.tabs.get(self.tab.as_ref()?)
     }
-    fn tab_state_mut(&mut self) -> Option<&mut TabState> {
+    pub fn tab_state_mut(&mut self) -> Option<&mut TabState> {
         self.tabs.get_mut(self.tab.as_ref()?)
     }
 }

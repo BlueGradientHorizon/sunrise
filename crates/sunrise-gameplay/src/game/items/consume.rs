@@ -303,7 +303,7 @@ impl crate::game::ServerGame<'_> {
 
     /// `LivingEntity.randomTeleport(x, y, z, true, avoid)`: down to the first
     /// block entities can teleport onto, inside the border, in a loaded chunk.
-    pub(in crate::game) fn random_teleport(&mut self, target: Vec3, avoid: Option<&str>) -> bool {
+    pub fn random_teleport(&mut self, target: Vec3, avoid: Option<&str>) -> bool {
         let [min_x, min_z, max_x, max_z] = self.common.border.bounds();
         // WorldBorder.clampVec3ToBound (Mth.clamp, 1.0E-5F inside the far edge).
         let clamp = |v: f64, low: f64, high: f64| if v < low { low } else { v.min(high) };

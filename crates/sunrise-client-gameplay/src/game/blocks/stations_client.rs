@@ -156,10 +156,10 @@ pub(in crate::game) struct StationUi {
     /// The box itself (`AnvilScreen`'s `EditBox` of 50, unbordered).
     pub(in crate::game::client_side) rename: sunrise_client::ui::EditBox,
     /// Stonecutter: the screen's first shown recipe index (`startIndex`).
-    pub(in crate::game::client_side) start: usize,
+    pub start: usize,
     /// Stonecutter: the screen's `scrollOffs` (0 to 1) and `scrolling`, the
     /// scroller held by the mouse.
-    pub(in crate::game::client_side) scroll: f32,
+    pub scroll: f32,
     pub(in crate::game::client_side) scrolling: bool,
     /// Anvil: the input the rename box was last filled from.
     pub(in crate::game::client_side) anvil_last: Option<ItemStack>,

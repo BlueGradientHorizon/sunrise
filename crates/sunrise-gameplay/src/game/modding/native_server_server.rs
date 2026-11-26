@@ -122,7 +122,7 @@ impl crate::game::ServerGame<'_> {
     /// Whether `effect` must not start because the player acting is a fake one: true stops it,
     /// and, inside `perform_action`, records it for the action's answer. The one check every
     /// effect a fake can't take part in makes where it starts.
-    pub(in crate::game) fn fake_blocks(&self, effect: FakeEffect) -> bool {
+    pub fn fake_blocks(&self, effect: FakeEffect) -> bool {
         if !self.server.lan_acting_fake {
             return false;
         }
@@ -250,7 +250,7 @@ impl crate::game::ServerGame<'_> {
         }
     }
     /// Resolve the source once at the command boundary, retaining its output origin.
-    pub(in crate::game) fn native_command_origin(
+    pub fn native_command_origin(
         &mut self,
         permission: u8,
     ) -> super::commands::R<mod_api::CommandSource> {
@@ -314,7 +314,7 @@ impl crate::game::ServerGame<'_> {
     /// originating source and, with `broadcast_to_admins`, the other operators
     /// and the log (`send_success`). The executing level is in place: the
     /// entity's name is read there, the origin block or minecart in its own.
-    pub(in crate::game) fn native_feedback(&mut self, line: Text, broadcast_to_admins: bool) {
+    pub fn native_feedback(&mut self, line: Text, broadcast_to_admins: bool) {
         let source = self
             .server
             .command_source
@@ -1514,7 +1514,7 @@ impl crate::game::ServerGame<'_> {
         })
     }
 
-    pub(in crate::game) fn native_live_acting_body(&self) -> Option<&PlayerMotion> {
+    pub fn native_live_acting_body(&self) -> Option<&PlayerMotion> {
         let body = self.common.player.as_ref()?;
         if body.health.health() <= 0.0 {
             return None;

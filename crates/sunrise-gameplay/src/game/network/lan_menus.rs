@@ -17,13 +17,13 @@ use sunrise_gameplay_common::game::{
 #[derive(Default)]
 pub(in crate::game) struct GuestMenus {
     /// The inventory menu, the crafting table and the machine menu.
-    pub(in crate::game) crafting: GuestCrafting,
+    pub crafting: GuestCrafting,
     /// The workstation menu the guest has open (game/network/lan_stations.rs).
-    pub(in crate::game) station: MenuOwner<Option<GuestStation>>,
+    pub station: MenuOwner<Option<GuestStation>>,
     /// The transient menu engine, kept between clicks for drag state.
     pub(in crate::game) owned_menu: Option<(u64, Box<sunrise_sim::menu::Menu>)>,
     /// The trading window is live even while the guest's player state is on loan.
-    pub(in crate::game) merchant: MenuOwner<Option<GuestMerchant>>,
+    pub merchant: MenuOwner<Option<GuestMerchant>>,
     /// The outer `menu_clicked` decision. Nested default routing can decide a pickup on `hub`.
     pub(in crate::game) click: MenuOwner<()>,
     /// Names the hub's container clicks of this guest, which have no menu value of their own: a

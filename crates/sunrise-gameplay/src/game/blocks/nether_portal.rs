@@ -138,10 +138,10 @@ pub(in crate::game) struct Arrival {
 #[derive(Default)]
 pub(in crate::game) struct Portals {
     /// Items and mobs, by entity id.
-    pub(in crate::game) entities: HashMap<u32, PortalState>,
+    pub entities: HashMap<u32, PortalState>,
     /// Positions before this tick's moves, by entity id.
     pub(in crate::game) before: FxHashMap<u32, Vec3>,
-    pub(in crate::game) arrivals: Vec<Arrival>,
+    pub arrivals: Vec<Arrival>,
     /// The vehicles server players ride that went through a portal this
     /// tick, in their level, with their entry: they carry their riders
     /// (`tick_server_travel`).
@@ -152,7 +152,7 @@ pub(in crate::game) struct Portals {
     /// The cooldown a carrying vehicle left with. Vanilla's copy arrives in
     /// the same tick (`Entity.restoreFrom`), so the source level ticking
     /// while the destination loads must not run it down.
-    pub(in crate::game) carried_cooldown: HashMap<u32, i32>,
+    pub carried_cooldown: HashMap<u32, i32>,
     /// Where a carrying vehicle stood then: its plan is taken from there
     /// (`vehicle_plan`), as vanilla's is, not from where its rider's own tick
     /// has moved it on to since.

@@ -322,7 +322,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// `note_named_attacker` for a player, with their custom-named main-hand
     /// item for the death message's `.item` form.
-    pub(in crate::game) fn note_player_attacker(
+    pub fn note_player_attacker(
         &mut self,
         damage_type: &str,
         id: u32,

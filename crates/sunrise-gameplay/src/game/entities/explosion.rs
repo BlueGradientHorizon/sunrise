@@ -92,7 +92,7 @@ pub struct ExplicitBlastSource {
     pub cause: Option<ExplosionCause>,
 }
 impl ExplosionSource {
-    pub(in crate::game::server_side) fn with_silence(mut self, silent: bool) -> Self {
+    pub fn with_silence(mut self, silent: bool) -> Self {
         self.silent = silent;
         self
     }

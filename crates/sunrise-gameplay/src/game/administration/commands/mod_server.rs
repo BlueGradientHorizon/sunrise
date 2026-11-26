@@ -1781,7 +1781,7 @@ impl crate::game::ServerGame<'_> {
     /// once (`teleport_target_across`), a server's player is queued to move
     /// after the command (ServerPlayer.teleport). False when `t` cannot
     /// change level or is already in `level`.
-    pub(in crate::game::server_side) fn teleport_across(
+    pub fn teleport_across(
         &mut self,
         t: Target,
         level: super::Dim,

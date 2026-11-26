@@ -54,10 +54,10 @@ pub(in crate::game) struct Pads {
     /// The virtual pad of `sunrise-ctl pad`.
     pub(in crate::game) injected: PadState,
     /// The virtual pad was in use at the last poll.
-    pub(in crate::game) virtual_input: bool,
+    pub virtual_input: bool,
     /// Buttons a `pad ... tap` releases at the next poll.
     pub(in crate::game) taps: Vec<Button>,
-    pub(in crate::game) edges: Edges,
+    pub edges: Edges,
     pub(in crate::game) activity: gamepad::Activity,
     pub(in crate::game) context: Option<Context>,
     pub(in crate::game) blocked_sticks: [bool; 2],
@@ -69,7 +69,7 @@ pub(in crate::game) struct Pads {
     pub(in crate::game) pressed_at: [Option<u64>; 16],
     pub(in crate::game) late_releases: Vec<Button>,
     /// The merged state of the last poll.
-    pub(in crate::game) state: PadState,
+    pub state: PadState,
     /// The hardware's buttons at the last poll, for `input-log`'s `pad`
     /// events: the merged state hides which source moved.
     pub(in crate::game) last_hardware: PadState,
@@ -86,7 +86,7 @@ pub(in crate::game) struct Pads {
     /// The right stick's turn still easing out under the cinematic camera.
     pub(in crate::game) look: gamepad::SmoothLook,
     /// The cursor the pad drives in menus.
-    pub(in crate::game) menu: super::pad_menu::MenuCursor,
+    pub menu: super::pad_menu::MenuCursor,
     /// The radial menu while its opener is held, and the page it stays on.
     pub(in crate::game) radial: radial::RadialMenu,
     /// What the radial menu ran, for `pad status`.

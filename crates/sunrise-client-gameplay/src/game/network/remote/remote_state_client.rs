@@ -7,7 +7,7 @@ impl Remote {
     }
     /// The profile of the player entity `id`: this window's own player, or
     /// another one by the UUID it was added with and its profile name.
-    pub(in crate::game) fn level_player(&self, id: i32) -> Option<(u128, Option<&str>)> {
+    pub fn level_player(&self, id: i32) -> Option<(u128, Option<&str>)> {
         if id == self.entity_id {
             return Some((self.profile, Some(self.profile_name.as_str())));
         }
