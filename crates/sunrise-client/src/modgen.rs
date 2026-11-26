@@ -17,7 +17,7 @@ use sunrise_world::{
     worldgen::{
         biome_source::ResolvedBiomeSource,
         climate::ClimateSampler,
-        mod_generators::{ChunkAccess, ModChunkGenerator},
+        mod_generators::{ChunkAccess, ChunkBiomes, ModChunkGenerator, pending_block_entity_pos},
         structure::legacy::block_state,
     },
 };
@@ -36,32 +36,33 @@ pub struct ModTerrain {
     registry: &'static BlockRegistry,
     shape: LevelShape,
     source: Arc<ResolvedBiomeSource>,
+    /// The world's biomes by name, the source's possible ones and every biome a generator's
+    /// `create_biomes` may name.
     biome_ids: HashMap<String, u16>,
     level: Box<str>,
     seed: i64,
 }
 
 impl ModTerrain {
-    /// A generator paired with a source already bound by `BiomeSourceData::resolve_mod_biome_source`.
-    /// Translate its possible holders to the client biome table once, before any chunk fills.
+    /// A generator paired with a source already bound by `BiomeSourceData::resolve_mod_biome_source`,
+    /// and the world's biome table, `biome_ids`. Checks the source's possible holders against it
+    /// once, before any chunk fills.
     pub fn new(
         level: &str,
         generator: Arc<dyn ModChunkGenerator>,
         source: Arc<ResolvedBiomeSource>,
         registry: &'static BlockRegistry,
-        biome_id: impl Fn(&str) -> Option<u16>,
+        biome_ids: HashMap<String, u16>,
         shape: LevelShape,
         seed: i64,
     ) -> Result<Self, String> {
-        let biome_ids = source
+        if let Some(name) = source
             .possible_biomes()
             .into_iter()
-            .map(|name| {
-                biome_id(name)
-                    .map(|id| (name.to_owned(), id))
-                    .ok_or_else(|| format!("{level}: unknown biome {name}"))
-            })
-            .collect::<Result<_, _>>()?;
+            .find(|name| !biome_ids.contains_key(*name))
+        {
+            return Err(format!("{level}: unknown biome {name}"));
+        }
         Ok(Self {
             generator,
             registry,
@@ -79,6 +80,60 @@ struct Filling<'a> {
     chunk: &'a mut Chunk,
     terrain: &'a ModTerrain,
     pos: ChunkPos,
+    /// The pending block-entity data, by absolute position, in the order it was set.
+    block_entities: &'a mut Vec<([i32; 3], sunrise_core::nbt::Compound)>,
+}
+
+/// The proto chunk's biome cells as a generator fills them.
+struct Biomes<'a> {
+    chunk: &'a mut Chunk,
+    terrain: &'a ModTerrain,
+    pos: ChunkPos,
+    /// The first biome the world does not have.
+    error: Option<String>,
+}
+
+impl ChunkBiomes for Biomes<'_> {
+    fn pos(&self) -> ChunkPos {
+        self.pos
+    }
+    fn level(&self) -> &str {
+        &self.terrain.level
+    }
+    fn seed(&self) -> i64 {
+        self.terrain.seed
+    }
+    fn min_y(&self) -> i32 {
+        self.terrain.shape.min_y
+    }
+    fn height(&self) -> i32 {
+        self.terrain.shape.height
+    }
+    fn fill_biomes_from_noise(
+        &mut self,
+        resolver: &mut dyn FnMut([i32; 3]) -> sunrise_core::identifier::Identifier,
+    ) {
+        let bottom = self.terrain.shape.min_y >> 2;
+        let (west, north) = (self.pos.x.wrapping_mul(4), self.pos.z.wrapping_mul(4));
+        // LevelChunkSection.fillBiomesFromNoise: sections bottom up, then x, y, z.
+        for section in 0..self.chunk.sections.len() as i32 {
+            for qx in 0..4 {
+                for dy in 0..4 {
+                    for qz in 0..4 {
+                        let qy = section * 4 + dy;
+                        let name = resolver([west + qx, bottom + qy, north + qz]);
+                        match self.terrain.biome_ids.get(name.as_str()) {
+                            Some(&id) => self.chunk.set_biome_cell(qx, qy, qz, id),
+                            None => {
+                                self.error
+                                    .get_or_insert_with(|| format!("unknown biome {name}"));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 impl ChunkAccess for Filling<'_> {
@@ -114,6 +169,13 @@ impl ChunkAccess for Filling<'_> {
             self.chunk.set(x & 15, y, z & 15, state.0);
         }
         inside
+    }
+    fn set_block_entity_nbt(&mut self, nbt: sunrise_core::nbt::Compound) {
+        let heights = self.min_y()..self.min_y() + self.height();
+        if let Some(pos) = pending_block_entity_pos(self.pos, &nbt, heights) {
+            self.block_entities.retain(|(at, _)| *at != pos);
+            self.block_entities.push((pos, nbt));
+        }
     }
 }
 
@@ -155,11 +217,41 @@ impl ChunkGenerator for ModTerrain {
                 }
             }
         }
+        let pos = ChunkPos::new(cx, cz);
+        // ChunkGenerator.createBiomes, which a generator may answer over the source's biomes.
+        let mut biomes = Biomes {
+            chunk: &mut chunk,
+            terrain: self,
+            pos,
+            error: None,
+        };
+        self.generator.create_biomes(&mut biomes);
+        if let Some(error) = biomes.error {
+            return Err(format!("{}: {error}", self.level));
+        }
+        let mut block_entities = Vec::new();
         self.generator.build_terrain(&mut Filling {
             chunk: &mut chunk,
             terrain: self,
-            pos: ChunkPos::new(cx, cz),
+            pos,
+            block_entities: &mut block_entities,
         });
+        // LevelChunk's promotion of the pending block entities, as the chunk becomes full.
+        if !block_entities.is_empty() {
+            let promoted = crate::structure_blocks::promote(&block_entities, |[x, y, z]| {
+                self.registry
+                    .state(chunk.block(x & 15, y, z & 15))
+                    .map_or("minecraft:air", |state| state.name.as_str())
+            });
+            chunk.block_entities = promoted.modelled;
+            if !promoted.unmodelled.is_empty() || !promoted.pending_loot.is_empty() {
+                chunk.saved = Some(Arc::new(crate::save::ChunkExtras {
+                    block_entities: promoted.unmodelled,
+                    pending_loot: promoted.pending_loot,
+                    ..Default::default()
+                }));
+            }
+        }
         for s in &mut chunk.sections {
             Arc::make_mut(s).compact();
         }
@@ -251,6 +343,18 @@ mod tests {
         ModBiomeSources::from([("test:oasis".to_owned(), Arc::new(oasis) as _)])
     }
 
+    /// Every biome these fixtures name.
+    const BIOMES: [&str; 8] = [
+        "minecraft:plains",
+        "minecraft:desert",
+        "minecraft:lush_caves",
+        "minecraft:the_end",
+        "minecraft:end_highlands",
+        "minecraft:end_midlands",
+        "minecraft:small_end_islands",
+        "minecraft:end_barrens",
+    ];
+
     /// The test world's biome ids: plains 0, desert 3, lush caves 7.
     fn biome_id(name: &str) -> Option<u16> {
         match name {
@@ -311,13 +415,18 @@ mod tests {
                 .bind_custom_source(&source.to_string(), &BTreeMap::new(), seed)
                 .map_err(|e| e.to_string())
         };
+        // The world's biome table, as far as these fixtures name biomes.
+        let biome_ids = BIOMES
+            .iter()
+            .filter_map(|name| Some(((*name).to_owned(), biome_id(name)?)))
+            .collect();
         Some(resolved.and_then(|source| {
             ModTerrain::new(
                 level,
                 generator.clone(),
                 Arc::new(source),
                 registry,
-                biome_id,
+                biome_ids,
                 shape,
                 seed,
             )
@@ -757,5 +866,151 @@ mod tests {
         let end = terrain(&stem, LevelShape::OVERWORLD, 3).unwrap();
         assert_eq!(chunk(&end, 64, 0).biome(0, 0, 0), 8); // central End
         assert_eq!(chunk(&end, 65, 0).biome(0, 0, 0), 10); // midlands at erosion zero
+    }
+
+    /// A chest with a loot table at `[3, 70, 5]` of its chunk (its data set twice, the second
+    /// replacing the first), a second chest at `[6, 70, 5]` whose data has no `id`, data for a
+    /// block with no block entity (air) beside the first, data whose `x` lies in the next chunk,
+    /// and the generator's own biomes: desert where the quart x is even, plains elsewhere. It
+    /// records the quarts its resolver is asked for.
+    struct Dungeon(std::sync::Mutex<Vec<[i32; 3]>>);
+    impl ModChunkGenerator for Dungeon {
+        fn build_terrain(&self, chunk: &mut dyn ChunkAccess) {
+            let pos = chunk.pos();
+            let (x, z) = (pos.x * 16, pos.z * 16);
+            let chest = chunk.state("minecraft:chest");
+            assert!(chunk.set_block([x + 3, 70, z + 5], chest));
+            assert!(chunk.set_block([x + 6, 70, z + 5], chest));
+            use sunrise_core::nbt::Tag;
+            let data = |dx: i32, id: bool, seed: i64| {
+                let mut nbt = sunrise_core::nbt::Compound::new();
+                if id {
+                    nbt.insert("id".into(), Tag::String("minecraft:chest".into()));
+                }
+                for (key, value) in [("x", x + dx), ("y", 70), ("z", z + 5)] {
+                    nbt.insert(key.into(), Tag::Int(value));
+                }
+                nbt.insert(
+                    "LootTable".into(),
+                    Tag::String("minecraft:chests/simple_dungeon".into()),
+                );
+                nbt.insert("LootTableSeed".into(), Tag::Long(seed));
+                nbt
+            };
+            chunk.set_block_entity_nbt(data(3, true, 7));
+            chunk.set_block_entity_nbt(data(3, true, 42));
+            chunk.set_block_entity_nbt(data(6, false, 42));
+            chunk.set_block_entity_nbt(data(4, true, 42));
+            // In the next chunk east: vanilla moves it to x 1 of this one, which is air too.
+            chunk.set_block_entity_nbt(data(17, true, 42));
+        }
+        fn create_biomes(&self, chunk: &mut dyn ChunkBiomes) {
+            chunk.fill_biomes_from_noise(&mut |quart| {
+                self.0.lock().unwrap().push(quart);
+                let name = if quart[0] % 2 == 0 {
+                    "minecraft:desert"
+                } else {
+                    "minecraft:plains"
+                };
+                sunrise_core::identifier::Identifier::parse(name).unwrap()
+            });
+        }
+    }
+
+    /// Air, stone, bedrock and a chest.
+    fn registry_with_chest() -> &'static BlockRegistry {
+        Box::leak(Box::new(
+            BlockRegistry::from_facts_json(
+                &br#"{"states":[["minecraft:air",true,false,"","minecraft:air"],["minecraft:stone",true,false,"","minecraft:stone"],["minecraft:bedrock",true,false,"","minecraft:bedrock"],["minecraft:chest",false,false,"","minecraft:chest"]],"defaults":{"minecraft:air":0,"minecraft:stone":1,"minecraft:bedrock":2,"minecraft:chest":3}}"#[..],
+            )
+            .unwrap(),
+        ))
+    }
+
+    fn dungeon(generator: Arc<dyn ModChunkGenerator>) -> ModTerrain {
+        let generators = ModChunkGenerators::from([("test:dungeon".to_owned(), generator)]);
+        for_stem(
+            "test:pocket",
+            &stem("test:dungeon"),
+            &generators,
+            &sources(&[]),
+            registry_with_chest(),
+            biome_id,
+            LevelShape::OVERWORLD,
+            0,
+        )
+        .unwrap()
+        .unwrap()
+    }
+
+    /// `setBlockEntityNbt` during generation: the chest's last data becomes its block entity
+    /// before the chunk loads, its loot table waiting with its seed as a structure chest's does.
+    /// Data with no `id` (`BlockEntity.loadStatic`'s invalid type) and data for blocks with no
+    /// block entity are dropped (`LevelChunk.promotePendingBlockEntity`).
+    #[test]
+    fn a_generators_block_entity_data_becomes_the_chests_when_the_chunk_is_full() {
+        let terrain = dungeon(Arc::new(Dungeon(Default::default())));
+        let chunk = chunk(&terrain, 2, -3);
+        let positions: Vec<_> = chunk.block_entities.iter().map(|(pos, _)| *pos).collect();
+        assert_eq!(positions, [(35, 70, -43)]);
+        let extras = chunk
+            .saved
+            .as_deref()
+            .expect("the chest's loot table waits");
+        assert!(extras.block_entities.is_empty());
+        let loot = &extras.pending_loot[&(35, 70, -43)];
+        assert_eq!(
+            (loot.table_id().as_str(), loot.seed_value()),
+            ("minecraft:chests/simple_dungeon", Some(42))
+        );
+    }
+
+    /// `createBiomes` answered: every cell of the chunk takes the generator's biome over the
+    /// level's fixed lush caves, asked once per cell in vanilla's order, sections bottom up and
+    /// x, then y, then z within each.
+    #[test]
+    fn a_generators_resolver_gives_every_cell_its_biome() {
+        let generator = Arc::new(Dungeon(Default::default()));
+        let terrain = dungeon(generator.clone());
+        let chunk = chunk(&terrain, 2, -3);
+        // Quart x 8 is even (desert, 3), 9 odd (plains, 0); the source alone gives lush caves.
+        for [x, y, z, biome] in [
+            [0, -64, 0, 3],
+            [4, -64, 0, 0],
+            [8, 100, 12, 3],
+            [12, 319, 15, 0],
+        ] {
+            assert_eq!(chunk.biome(x, y, z), biome as u16, "{x} {y} {z}");
+        }
+        let asked = generator.0.lock().unwrap();
+        assert_eq!(asked.len(), 4 * 4 * 4 * 24);
+        assert_eq!(
+            asked[..5],
+            [
+                [8, -16, -12],
+                [8, -16, -11],
+                [8, -16, -10],
+                [8, -16, -9],
+                [8, -15, -12]
+            ]
+        );
+        assert_eq!(asked[64], [8, -12, -12]);
+    }
+
+    /// A resolver naming a biome the world does not have fails the column, naming it.
+    #[test]
+    fn a_resolver_naming_an_unknown_biome_fails_the_column() {
+        struct Unknown;
+        impl ModChunkGenerator for Unknown {
+            fn build_terrain(&self, _: &mut dyn ChunkAccess) {}
+            fn create_biomes(&self, chunk: &mut dyn ChunkBiomes) {
+                chunk.fill_biomes_from_noise(&mut |_| {
+                    sunrise_core::identifier::Identifier::parse("test:nowhere").unwrap()
+                });
+            }
+        }
+        let terrain = dungeon(Arc::new(Unknown));
+        let error = terrain.proto(&mut (), 0, 0).err().unwrap();
+        assert_eq!(error, "test:pocket: unknown biome test:nowhere");
     }
 }

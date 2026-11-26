@@ -1187,7 +1187,7 @@ fn mod_terrain(
                 stem.generator.clone(),
                 stem.source.clone(),
                 terrain_resources.registry,
-                |name| biomes.contains(name).then(|| biomes.id(name)),
+                biomes.index.clone(),
                 shape,
                 seed,
             )
