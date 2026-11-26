@@ -4629,6 +4629,7 @@ impl Game<'_> {
             direct: self
                 .combat
                 .explosion_direct
+                .map(|(id, _)| id)
                 .or(self.combat.explosion_source)
                 .map_or(0, |id| id as i32),
             position: Some(center),
