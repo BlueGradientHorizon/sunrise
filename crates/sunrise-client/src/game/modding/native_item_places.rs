@@ -218,6 +218,20 @@ impl Game<'_> {
             || self.armor_stands.iter().any(|a| a.id == entity))
         .then_some(7)
     }
+    /// `EntityType.getDimensions()` of `entity_type`, from the entity type rows of the game's
+    /// resources, as a constructor reads them. None for an unregistered type or one without a
+    /// size row.
+    pub(super) fn entity_type_dimensions(
+        &self,
+        entity_type: &str,
+    ) -> Option<mod_api::EntityTypeDimensions> {
+        let id = sunrise_client::command::args::normalize(entity_type);
+        let [width, height, eye_height] =
+            super::entity_type_rows::entity_type_rows(&self.options.resources).dimensions(&id)?;
+        Some(mod_api::EntityTypeDimensions::new(
+            width, height, eye_height,
+        ))
+    }
     /// `EntityType.is(TagKey)`: whether `entity_type` (`minecraft:player`) is in the entity
     /// type tag `tag` (`minecraft:cannot_be_pushed_onto_boats`).
     pub(super) fn entity_type_in_tag(&self, entity_type: &str, tag: &str) -> bool {
@@ -1032,6 +1046,31 @@ pub(super) mod tests {
         );
         guest.placed = true;
         guest
+    }
+
+    /// `EntityType.getDimensions()` before any entity exists: zombie 0.6 x 1.95 with eyes at 1.74,
+    /// cow 0.9 x 1.4 with eyes at 1.3, `zombie` as `minecraft:zombie`, nothing for a type that
+    /// does not exist.
+    #[test]
+    #[ignore = "daily"]
+    fn entity_type_dimensions_read_the_registered_size_without_spawning() {
+        use mod_api::{EntityTypeDimensions, prelude::ItemsHost};
+        with_game(|game| {
+            let size = |width, height, eye_height| {
+                Some(EntityTypeDimensions::new(width, height, eye_height))
+            };
+            assert_eq!(
+                game.entity_type_dimensions("minecraft:zombie"),
+                size(0.6, 1.95, 1.74)
+            );
+            assert_eq!(game.entity_type_dimensions("zombie"), size(0.6, 1.95, 1.74));
+            assert_eq!(
+                ItemsHost::entity_type_dimensions(&*game, "minecraft:cow"),
+                size(0.9, 1.4, 1.3)
+            );
+            assert_eq!(game.entity_type_dimensions("minecraft:no_such_mob"), None);
+            assert_eq!(game.entity_type_dimensions("nope:ghost"), None);
+        });
     }
 
     #[test]
