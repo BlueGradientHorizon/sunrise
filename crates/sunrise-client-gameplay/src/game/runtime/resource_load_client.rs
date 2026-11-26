@@ -144,9 +144,9 @@ impl CorePresentation for ClientCorePresentation {
 
 /// The prepared resource location, optional world to preload, and launch start time.
 pub struct StartupLoadContext<'a> {
-    pub(in crate::game) vanilla_root: &'a std::path::Path,
-    pub(in crate::game) launch_world: Option<&'a str>,
-    pub(in crate::game) started: Instant,
+    pub vanilla_root: &'a std::path::Path,
+    pub launch_world: Option<&'a str>,
+    pub started: Instant,
 }
 
 /// A launch without an interactive title owns its settings on the loading thread.

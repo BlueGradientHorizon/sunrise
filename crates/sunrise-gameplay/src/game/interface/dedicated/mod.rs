@@ -38,7 +38,7 @@ use sunrise_sim::lan::{
 
 pub(in crate::game) mod biome_regions;
 mod missing_mods;
-pub(crate) use missing_mods::is_missing_mods_refusal;
+pub use missing_mods::is_missing_mods_refusal;
 pub(in crate::game) mod events;
 mod management;
 use sunrise_gameplay::dedicated::predicate_graph;

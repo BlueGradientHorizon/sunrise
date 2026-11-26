@@ -766,15 +766,7 @@ pub(crate) fn run_with(
             session_verifier(),
             profile_resolver,
         )?;
-        if let Some(mut game) = game {
-            // Minecraft.onGameLoadFinished: a start that made it this far is clean.
-            if is_client_start(&game.options) && game.options.headless {
-                game.client.settings.file.set(
-                    "startedCleanly",
-                    sunrise_client::options_file::V::Bool(true),
-                );
-                game.client.settings.save(&sunrise_gameplay_common::game::options_path());
-            }
+        if let Some(game) = game {
             run_event_loop(game)?;
         }
         Ok(())

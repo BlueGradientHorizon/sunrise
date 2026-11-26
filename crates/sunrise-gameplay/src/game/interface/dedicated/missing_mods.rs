@@ -19,7 +19,7 @@ impl std::fmt::Display for MissingModsRefusal {
 impl std::error::Error for MissingModsRefusal {}
 
 /// Whether this error is the already-explained, intentional world refusal.
-pub(crate) fn is_missing_mods_refusal(error: &(dyn std::error::Error + 'static)) -> bool {
+pub fn is_missing_mods_refusal(error: &(dyn std::error::Error + 'static)) -> bool {
     error.is::<MissingModsRefusal>()
 }
 

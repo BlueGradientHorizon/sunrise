@@ -411,7 +411,7 @@ pub(in crate::game) struct ClientMobTables {
 }
 
 #[cfg(feature = "client")]
-pub(in crate::game) struct ClientResources {
+pub struct ClientResources {
     pub(in crate::game) block_entity_render: BlockEntityRenderer,
     pub(in crate::game) animate: sunrise_client::animate_tick::AnimateTables,
     pub(in crate::game) fog: sunrise_client::fog::FogTables,
@@ -429,7 +429,7 @@ pub(in crate::game) struct ClientResources {
 
 #[cfg(feature = "client")]
 #[derive(Clone)]
-pub(in crate::game) struct ClientPackResources {
+pub struct ClientPackResources {
     /// `Blocks.WATER.defaultBlockState()` for screen-effect extraction.
     pub(in crate::game) water_overlay_state: mod_api::BlockState,
     pub(in crate::game) render: Arc<RenderAssets>,

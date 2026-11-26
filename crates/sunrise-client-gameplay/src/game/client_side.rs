@@ -1117,7 +1117,7 @@ pub(in crate::game) mod world_entry_client;
 pub(in crate::game) mod world_ops_client;
 
 #[cfg(feature = "client")]
-pub(in crate::game) struct ClientState {
+pub struct ClientState {
     /// Single player's server while it loads its world (`Minecraft.doWorldLoad`).
     pub(in crate::game) integrated_starting: Option<integrated_client::Starting>,
     pub(in crate::game::client_side) station_loom: loom::LoomState,

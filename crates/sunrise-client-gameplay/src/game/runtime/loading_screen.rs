@@ -31,6 +31,16 @@ pub(in crate::game) fn leave_fullscreen_after(
 pub fn run_event_loop(
     mut game: crate::game::ClientGame<'_>,
 ) -> Result<()> {
+    // Minecraft.onGameLoadFinished: a start that made it this far is clean.
+    if is_client_start(&game.options) && game.options.headless {
+        game.client.settings.file.set(
+            "startedCleanly",
+            sunrise_client::options_file::V::Bool(true),
+        );
+        game.client
+            .settings
+            .save(&sunrise_gameplay_common::game::options_path());
+    }
     if game.options.headless {
         // No display to open winit's loop on: the game's own loop.
         game.run_headless();

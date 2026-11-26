@@ -10,7 +10,7 @@ use sunrise_sim::lan::SessionVerifier;
 
 /// CPU-only startup data, owned by one loader generation. No file reads or
 /// model baking are needed when the event loop installs this bundle.
-pub(in crate::game) struct GameCpuResources {
+pub struct GameCpuResources {
     pub(in crate::game) painting_variants: PaintingVariants,
     pub(in crate::game) frame_model: frames_client::FrameModel,
     pub(in crate::game) glow_frame_model: frames_client::FrameModel,
@@ -298,7 +298,7 @@ impl GameCpuResources {
 }
 
 /// The data the background loader produces for `Game::new`.
-pub(in crate::game) struct Loaded {
+pub struct Loaded {
     pub(in crate::game) game_cpu: Option<GameCpuResources>,
     /// The one parsed `entity-models.json`, for the handoff `Game::new` does
     /// itself on the synchronous launch.
