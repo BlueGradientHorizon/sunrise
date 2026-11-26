@@ -99,8 +99,8 @@ pub fn with_options(pack: &Pack, macros: &crate::Macros) -> crate::Macros {
 /// options over `macros` (the standard set and the renderer's), in two reads (spec 3.2,
 /// decision D-6): the first, with no `IRIS_FEATURE_*`, settles the flags the pack lists;
 /// `Macros::define_features` then defines the answers in `macros` (any `IRIS_FEATURE_*` it held
-/// before is dropped first), and the second read, the
-/// one returned, sees them. A flag list only a feature macro reaches is not read, and the
+/// before is dropped first) and in the option set, and the second read, the one returned, sees
+/// them. The file and the pack's options are read once, for both reads. A flag list only a feature macro reaches is not read, and the
 /// returned properties hold the two lists as the first read gave them, so whatever decides by
 /// them (`load_post`'s shadow colour buffers) follows the answers the programs got. Returns the
 /// properties and a note for each required feature Sunrise lacks (`Macros::feature_notes`, of
@@ -118,13 +118,18 @@ pub fn read_properties(
     for name in &answers {
         macros.undef(name);
     }
+    // The file and the options are read once, so both reads see the same pack.
     let text = pack.read_text("shaders.properties").unwrap_or_default();
-    let listed = crate::Properties::parse(&text, &with_options(pack, macros));
+    let mut options = with_options(pack, macros);
+    let listed = crate::Properties::parse(&text, &options);
     let notes = crate::Macros::feature_notes(&listed);
     if !macros.define_features(&listed) {
         return (listed, notes);
     }
-    let mut properties = crate::Properties::parse(&text, &with_options(pack, macros));
+    // No option is named as an answer (`is_feature_answer`), so adding the answers to the
+    // options read once is the same as the options over the answered `macros`.
+    options.define_features(&listed);
+    let mut properties = crate::Properties::parse(&text, &options);
     // The settled lists, back in file order: each before the first entry of a later line.
     for key in FEATURE_LISTS {
         properties.entries.retain(|e| e.key != key);

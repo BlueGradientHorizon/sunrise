@@ -233,12 +233,15 @@ the full list.
     not listed among the pack's options, not defined for its property files, doesn't count as on in
     `program.<name>.enabled`, and a saved choice never rewrites it (a commented-out `//#define` stays commented out).
   - The pack's own uncommented directives are read as written. In a program, a `#define` or `#undef` of such a name
-    applies from its line to the end of that file, as any directive does. In `shaders.properties` it decides the
-    conditionals (`#if`, `#ifdef`, `#elif`) from its line on: a `#define` lets the first read reach a list behind it,
-    and an `#undef` hides Sunrise's answer from the later conditionals, not from the programs. The values the load
-    expands again with its own macros (`size.buffer.*`, `image.*`, `program.<name>.enabled`) are expanded with the
-    answers, as they are with every other macro of the load, so an `#undef` earlier in the file doesn't hide the
-    answer there.
+    applies, as any directive does, to the rest of that stage's preprocessed source: the lines after it, the files
+    included after it and the including file after their `#include` line. `shaders.properties` is read line by line,
+    with no `#include`, by each of the two reads: there a `#define` or `#undef` applies from its line to the end of
+    the file, to the conditionals (`#if`, `#ifdef`, `#elif`) and to the macros that read expands in the lines after
+    it (custom `uniform.*` / `variable.*` lines, and `size.buffer.*` / `image.*` values). So a `#define` lets the
+    first read reach a list behind it, and an `#undef` hides Sunrise's answer from those later lines, not from the
+    programs nor from the id files. The values the load expands again with its own macros (`size.buffer.*`,
+    `image.*`, `program.<name>.enabled`) are expanded with the answers, as with every other macro of the load, so an
+    `#undef` earlier in the file doesn't hide the answer there.
   - A flag list set twice is noted as the lists were settled: the note that a later list "counts" comes from the first
     read for the two flag-list keys, and from the second read for every other key.
   - The same read serves every place that reads a pack's `shaders.properties`: the load, the HDR read made before

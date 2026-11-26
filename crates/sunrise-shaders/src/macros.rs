@@ -45,7 +45,8 @@ const FEATURE_MACRO: &str = "IRIS_FEATURE_";
 /// It is not found as one (`options`, `switches_on`, `value_options`), so it is never defined for
 /// the pack's property files, never counted as on in `program.*.enabled`, and a saved choice
 /// never rewrites it (`Pack::with_chosen`, `options::apply`). As written, uncommented, it is the
-/// pack's own directive and decides the conditionals of its file from its line on (decision D-6).
+/// pack's own directive, with a directive's scope (decision D-6): in a program, the rest of the
+/// stage's preprocessed source; in `shaders.properties`, the rest of that file.
 pub(crate) fn is_feature_answer(name: &str) -> bool {
     name.starts_with(FEATURE_MACRO)
 }
