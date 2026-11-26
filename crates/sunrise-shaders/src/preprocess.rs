@@ -10,6 +10,10 @@
 //! is not read, so it can't fail (OQ-14). Ten levels deep at most, which also stops a file that
 //! includes itself. `#version` and `#extension` are taken out of the code and kept apart: the
 //! translation writes its own header.
+//!
+//! The macros of a stage file, its includes and all, spend at most
+//! [`MAX_EXPANSION_WORK`](crate::macros::MAX_EXPANSION_WORK) (#4135): a line that would spend more
+//! refuses the program, an `#if` that would reads as false, both noted at their file and line.
 
 use std::collections::HashMap;
 
@@ -65,7 +69,7 @@ impl Preprocessed {
 pub fn preprocess(pack: &Pack, path: &str, macros: &Macros) -> Preprocessed {
     let mut run = Run {
         pack,
-        macros: macros.clone(),
+        macros: macros.for_file(),
         conditionals: Conditionals::default(),
         out: Preprocessed::default(),
         code: Vec::new(),
@@ -123,6 +127,8 @@ impl Run<'_> {
             }
             n += 1;
             // A macro call's arguments may span lines: they join the line the call starts on.
+            // Telling whether a call goes on expands the line so far, from the file's work too,
+            // so a joined line spends its work up to twice.
             if !line.trim_start().starts_with('#') && self.conditionals.active() {
                 n += self.macros.join_call(&mut line, &lines[n..], n - first - 1);
             }
@@ -152,7 +158,8 @@ impl Run<'_> {
         let Some(after) = line.trim_start().strip_prefix('#') else {
             let code = if self.conditionals.active() {
                 self.macros.define("__LINE__", origin.line.to_string());
-                // A call nested past `MAX_ARGUMENT_DEPTH` refuses the program, at its line.
+                // A call nested past `MAX_ARGUMENT_DEPTH`, or an expansion past the file's
+                // `MAX_EXPANSION_WORK`, refuses the program, at its line.
                 self.macros.try_expand(line).unwrap_or_else(|why| {
                     self.diagnose(origin, &why);
                     String::new()
@@ -605,5 +612,170 @@ mod tests {
             message: why.clone(),
         };
         assert_eq!(p.diagnostics, [refused]);
+    }
+
+    /// The issue's doubling macros (#4135): `FZ_D23(+1.0)` would make 2^20 copies of
+    /// `FZ_D3(+1.0)`, past the memory of a pack's load.
+    fn doubling(top: usize) -> String {
+        (4..=top)
+            .map(|n| format!("#define FZ_D{n}(x) FZ_D{m}(x) FZ_D{m}(x)\n", m = n - 1))
+            .collect()
+    }
+
+    /// The issue's object-like macros, each the sum of two of the one before, tested by an `#if`.
+    fn doubling_objects(top: usize) -> String {
+        let mut text = "#define FZ_E0 1\n".to_owned();
+        for n in 1..=top {
+            text += &format!("#define FZ_E{n} (FZ_E{m} + FZ_E{m})\n", m = n - 1);
+        }
+        text
+    }
+
+    /// The stage files that a doubling macro reaches stop at the file's `MAX_EXPANSION_WORK`, at
+    /// the file and line of the expansion: in code (an included file's line) it refuses the
+    /// program; in an `#if`, it is a warning and reads as false, as every condition that can't be
+    /// evaluated does. Another stage read with the same macros has its whole work again.
+    #[test]
+    fn a_doubling_macro_stops_at_the_files_work() {
+        let code = format!(
+            "{}float before = 1.0;\nfloat fz_bomb = 0.0 FZ_D23(+1.0);\n",
+            doubling(23)
+        );
+        let condition = format!(
+            "#version 330\n{}#if FZ_E39 > 0\nfloat taken;\n#else\nfloat other;\n#endif\n",
+            doubling_objects(39)
+        );
+        let pack = Pack::from_zip_bytes(
+            "P.zip",
+            zip(&[
+                (
+                    "shaders/final.fsh",
+                    "#version 330\n#include \"/lib/bomb.glsl\"\nvoid main() {}\n",
+                ),
+                ("shaders/lib/bomb.glsl", code.as_str()),
+                ("shaders/final.vsh", condition.as_str()),
+                (
+                    "shaders/composite.fsh",
+                    "#define F(x) x\nfloat c = F(2.0);\n",
+                ),
+            ]),
+        )
+        .unwrap();
+        let macros = Macros::standard();
+        let why = sunrise_glsl::macros::work_ran_out(crate::macros::MAX_EXPANSION_WORK);
+        let p = preprocess(&pack, "final.fsh", &macros);
+        let file = p.files.iter().position(|f| f == "lib/bomb.glsl").unwrap() as u16;
+        let refused = Diagnostic {
+            origin: Origin { file, line: 22 },
+            message: why.clone(),
+        };
+        assert_eq!(p.diagnostics, std::slice::from_ref(&refused));
+        assert!(p.warnings.is_empty(), "{:?}", p.warnings);
+        let at = p.lines.iter().position(|o| *o == refused.origin).unwrap();
+        assert_eq!(p.locate(at), "lib/bomb.glsl:22");
+        let code: Vec<&str> = code_lines(&p).iter().map(|(c, _)| *c).collect();
+        assert_eq!(code, ["float before = 1.0;", "void main() {}"]);
+
+        let p = preprocess(&pack, "final.vsh", &macros);
+        assert!(p.diagnostics.is_empty(), "{:?}", p.diagnostics);
+        let warning = Diagnostic {
+            origin: Origin { file: 0, line: 42 },
+            message: format!("`#if FZ_E39 > 0`: {why}; read as false"),
+        };
+        assert_eq!(p.warnings, [warning]);
+        let code: Vec<&str> = code_lines(&p).iter().map(|(c, _)| *c).collect();
+        assert_eq!(code, ["float other;"]);
+
+        let p = preprocess(&pack, "composite.fsh", &macros);
+        assert!(p.diagnostics.is_empty(), "{:?}", p.diagnostics);
+        let code: Vec<&str> = code_lines(&p).iter().map(|(c, _)| *c).collect();
+        assert_eq!(code, ["float c = 2.0;"]);
+    }
+
+    /// A call over lines joins its lines as before the bound: telling whether it goes on expands
+    /// the line so far, from the file's work. A doubling call whose `(` closes on the next line
+    /// is refused at its first line, the lines after it kept: neither the expansions that tell
+    /// whether it goes on nor the line's own get past the work.
+    #[test]
+    fn a_call_over_lines_past_the_work_is_refused() {
+        let text = format!(
+            "{}float x = 0.0 FZ_D23(\n+1.0);\nfloat after;\n",
+            doubling(23)
+        );
+        let p = run(&[("program/final.fsh", &text)]);
+        let why = sunrise_glsl::macros::work_ran_out(crate::macros::MAX_EXPANSION_WORK);
+        let refused = Diagnostic {
+            origin: Origin { file: 0, line: 21 },
+            message: why,
+        };
+        assert_eq!(p.diagnostics, std::slice::from_ref(&refused));
+        assert_eq!(
+            code_lines(&p),
+            [("float after;", "program/final.fsh:23".into())]
+        );
+    }
+
+    /// Which lines a call joins is what it was before the bound. A function-like name followed by
+    /// a macro that expands to nothing, with `(` on the next line, joins that line and is not
+    /// called; a name pasted with `__LINE__` on a file's first line of code is pasted with the
+    /// name `__LINE__` while the joining is told (`__LINE__` is defined for the line after), so
+    /// it doesn't join the next line, and is `F4` in the line's code.
+    #[test]
+    fn calls_over_lines_join_as_before() {
+        let p = run(&[(
+            "program/final.fsh",
+            "#define F(x) x x\n#define EMPTY\nint a = F EMPTY\n(1);\nint b;\n",
+        )]);
+        assert!(p.diagnostics.is_empty(), "{:?}", p.diagnostics);
+        assert_eq!(
+            code_lines(&p),
+            [
+                ("int a = F  (1);", "program/final.fsh:3".into()),
+                ("int b;", "program/final.fsh:5".into())
+            ]
+        );
+        let p = run(&[(
+            "program/final.fsh",
+            "#define CAT(a, b) a ## b\n#define XCAT(a, b) CAT(a, b)\n#define F4(x) x + x\n\
+             int a = XCAT(F, __LINE__)\n(7);\n",
+        )]);
+        assert!(p.diagnostics.is_empty(), "{:?}", p.diagnostics);
+        assert_eq!(
+            code_lines(&p),
+            [
+                ("int a = F4", "program/final.fsh:4".into()),
+                ("(7);", "program/final.fsh:5".into())
+            ]
+        );
+    }
+
+    /// Each name a token hides is work (16 bytes held as long as it): a chain of 1000 macros that
+    /// ends in a replacement of 400,000 tokens, or in a call that copies an argument of 101
+    /// tokens 10,000 times, would hold GBs of names in fewer tokens than the file's work. Both
+    /// stop at the work, at their lines, before the names are made.
+    #[test]
+    fn the_names_a_token_hides_are_work() {
+        let chain = |top: &str| {
+            let mut text = format!("#define C0 {top}\n");
+            for n in 1..1000 {
+                text += &format!("#define C{n} C{}\n", n - 1);
+            }
+            text
+        };
+        let text = format!("{}float a = C999;\n", chain(&"a,".repeat(200_000)));
+        let p = run(&[("program/final.fsh", &text)]);
+        let why = sunrise_glsl::macros::work_ran_out(crate::macros::MAX_EXPANSION_WORK);
+        let refused = |line: u32| Diagnostic {
+            origin: Origin { file: 0, line },
+            message: why.clone(),
+        };
+        assert_eq!(p.diagnostics, [refused(1001)]);
+        let text = format!(
+            "#define F(x) {}\n{}float b = C999;\n",
+            "x,".repeat(10_000),
+            chain(&format!("F({})", "b+".repeat(50) + "b"))
+        );
+        let p = run(&[("program/final.fsh", &text)]);
+        assert_eq!(p.diagnostics, [refused(1002)]);
     }
 }
