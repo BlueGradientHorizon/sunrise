@@ -591,6 +591,7 @@ mod sleepers_needed;
 mod sound_and_shader_helpers;
 mod sound_type;
 mod spawn_cluster_size;
+mod spawner_active;
 mod spread_players_teleport;
 mod state_at_viewpoint;
 mod stateful_block_entity;

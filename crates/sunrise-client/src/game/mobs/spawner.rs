@@ -100,10 +100,21 @@ impl Game<'_> {
         cart: Option<u32>,
     ) -> Result<()> {
         // `BaseSpawner.serverTick` does nothing without an alive player in
-        // range (`isNearPlayer`) or with the rule off: no level to build for it.
+        // range (`isNearPlayer`, or what a mod's `spawner_active` says) or with the rule off: no
+        // level to build for it.
         let at = [key.0, key.1, key.2].map(|c| f64::from(c) + 0.5);
         let range = f64::from(spawner.required_player_range);
-        if !self.alive_player_near(at[0], at[1], at[2], range)
+        let near = self.alive_player_near(at[0], at[1], at[2], range);
+        let identity = match cart {
+            Some(id) => mod_api::Spawner::Minecart {
+                entity: mod_api::EntityRef::new(self.lend_epoch(), id),
+            },
+            None => mod_api::Spawner::Block {
+                pos: mod_api::BlockPos::new(key.0, key.1, key.2),
+            },
+        };
+        let active = self.spawner_active(identity, near);
+        if !active
             || !self
                 .ui
                 .rules
@@ -129,17 +140,11 @@ impl Game<'_> {
         // `BaseSpawner` belongs either to a monster spawner block (`SpawnerBlockEntity`) or to a
         // spawner minecart (`MinecartSpawner`); both `mob_spawn_position_check` (`PositionCheck`)
         // and `finalize_spawn` (`FinalizeSpawnEvent`) receive that typed spawner identity.
-        let source = Some(match cart {
-            Some(id) => mod_api::Spawner::Minecart {
-                entity: mod_api::EntityRef::new(self.lend_epoch(), id),
-            },
-            None => mod_api::Spawner::Block {
-                pos: mod_api::BlockPos::new(key.0, key.1, key.2),
-            },
-        });
+        let source = Some(identity);
         let mut plan = |game: &Self| {
             let mut level = game.natural_level();
             level.spawner = source;
+            level.spawner_active = Some(active);
             let mut spawn = |l: &super::natural_spawning::GameLevel,
                              rng: &mut LevelRandom,
                              r: &SpawnerSpawn| {
@@ -509,6 +514,12 @@ impl Game<'_> {
                 !p.health.dead_or_dying() && !self.spectator() && (range < 0.0 || d < range * range)
             })
         };
+        let near = self.spawner_active(
+            mod_api::Spawner::Block {
+                pos: mod_api::BlockPos::new(key.0, key.1, key.2),
+            },
+            near,
+        );
         let display = self.update_spawner_display(key);
         let pos = [key.0, key.1, key.2];
         let random = self.particles.level_random();
@@ -731,6 +742,100 @@ impl Game<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Keeps the spawner block at `self.0` going with no player near, and the one at `self.1`
+    /// idle with one beside it; logs what it is asked.
+    struct Rule(
+        [i32; 3],
+        [i32; 3],
+        std::sync::Arc<std::sync::Mutex<Vec<(String, [i32; 3], bool)>>>,
+    );
+    #[mod_api::__subscriptions]
+    impl mod_api::Hooks for Rule {
+        fn spawner_active(
+            &self,
+            _: &dyn mod_api::Host,
+            event: &mut mod_api::SpawnerActiveEvent<'_>,
+        ) {
+            let mod_api::Spawner::Block { pos } = event.spawner else {
+                return;
+            };
+            let pos = [pos.x, pos.y, pos.z];
+            self.2
+                .lock()
+                .unwrap()
+                .push((event.dimension.to_owned(), pos, event.active));
+            if pos == self.0 {
+                event.active = true;
+            } else if pos == self.1 {
+                event.active = false;
+            }
+        }
+    }
+
+    /// `spawner_active` (#6040): a mod keeps a spawner with no player in range ticking and one
+    /// with a player beside it idle, each asked once a tick from vanilla's `isNearPlayer`
+    /// answer, and the saved `RequiredPlayerRange` is left as it was.
+    #[test]
+    #[ignore = "daily"]
+    fn a_mod_decides_whether_a_spawner_is_active() {
+        let heard = std::sync::Arc::default();
+        let (far, near) = ((8, 64, 120), (8, 64, 12));
+        let mods = vec![mod_api::ModEntry::new(
+            "rule",
+            Box::new(Rule(
+                [8, 64, 120],
+                [8, 64, 12],
+                std::sync::Arc::clone(&heard),
+            )),
+        )]
+        .into();
+        mod_platform::testing::with_mods(mods, || {
+            crate::game::native_entity_refs::tests::with_game(|game| {
+                game.options.dedicated = Some(Vec::new());
+                game.player = Some(
+                    sunrise_client::motion::PlayerMotion::new(
+                        game.motion,
+                        Vec3::new(8.5, 64.0, 8.5),
+                    )
+                    .unwrap(),
+                );
+                for key in [far, near] {
+                    let spawner = Spawner {
+                        spawn_delay: 3,
+                        ..Spawner::default()
+                    };
+                    game.world
+                        .block_entities
+                        .insert(key, BlockEntity::Spawner(Box::new(spawner)));
+                }
+                let state = |game: &Game<'_>, key| match game.world.block_entities.get(&key) {
+                    Some(BlockEntity::Spawner(s)) => (s.spawn_delay, s.required_player_range),
+                    _ => panic!("the spawner is gone"),
+                };
+                game.tick_spawner(far).unwrap();
+                game.tick_spawner(near).unwrap();
+                assert_eq!(
+                    state(game, far),
+                    (2, 16),
+                    "no player near, but the mod keeps it going"
+                );
+                assert_eq!(
+                    state(game, near),
+                    (3, 16),
+                    "a player beside it, but the mod idles it"
+                );
+                let dimension = game.dim.id().to_owned();
+                assert_eq!(
+                    *heard.lock().unwrap(),
+                    [
+                        (dimension.clone(), [8, 64, 120], false),
+                        (dimension, [8, 64, 12], true)
+                    ]
+                );
+            });
+        });
+    }
 
     /// `BaseSpawner.serverTick` with a player in range: a running delay only
     /// goes down by one a tick, drawing nothing from the level random and
