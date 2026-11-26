@@ -1,4 +1,5 @@
 pub use client::render_pipeline::PackProgramMode;
+pub use client::render_pipeline::Sampler;
 pub use client::render_pipeline::{
     BUILTIN_RENDER_TYPE_IDS, BindEntry, BindGroupLayout, BindGroupLayoutBuilder,
     BindGroupLayoutError, BindingKind, BindingValue, BlendEquation, BlendFactor, BlendFunction,
@@ -30,9 +31,9 @@ pub use client::render_pipeline::{
 };
 pub use client::render_pipeline::{RenderCapabilities, StorageImageAccess, StorageImageBinding};
 pub use client::render_pipeline::{
-    RenderTypeTextureSource, Sampler, SamplerAddress, SamplerFilter, TexelBufferFormat,
-    TextureSource, TextureTransform, UniformBufferBackendRef, UniformBufferContext,
-    UniformBufferRef, UniformValue, VANILLA_BIND_GROUP_LAYOUT_NAMES, VERTEX_ALIGNMENT,
+    RenderTypeTextureSource, SamplerAddress, SamplerFilter, TexelBufferFormat, TextureSource,
+    TextureTransform, UniformBufferBackendRef, UniformBufferContext, UniformBufferRef,
+    UniformValue, VANILLA_BIND_GROUP_LAYOUT_NAMES, VERTEX_ALIGNMENT,
 };
 pub use client::render_pipeline::{
     ShaderPackShadowView, ShaderPackState, VertexAttribute, VertexAttributeFormat, VertexFormat,
