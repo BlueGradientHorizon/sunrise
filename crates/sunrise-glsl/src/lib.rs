@@ -1583,24 +1583,28 @@ const LEADING_QUALIFIERS: [&str; 11] = [
     "lowp",
 ];
 
+/// A line's leading `layout(...)` qualifier split off: what stood inside it (trimmed, empty
+/// without one) and the line after it. `None` for a `layout` with no closed parenthesis.
+fn layout_prefix(line: &str) -> Option<(&str, &str)> {
+    let line = line.trim();
+    let Some(after) = line.strip_prefix("layout") else {
+        return Some(("", line));
+    };
+    let after = after.trim_start().strip_prefix('(')?;
+    let close = after.find(')')?;
+    Some((after[..close].trim(), after[close + 1..].trim_start()))
+}
+
 /// The declaration `line` is, if it is one: a statement of `layout(...)`, then only real
 /// qualifiers (`LEADING_QUALIFIERS`, `MEMORY_QUALIFIERS`), then `in`, `out` or `uniform`, then
 /// the type and the name. Any other word before the storage word makes it some other statement
 /// (`x = in vec2 y;`, `return out vec4 c;`).
 fn declaration(line: &str) -> Option<Decl<'_>> {
-    let mut rest = line.trim();
-    let mut location = None;
-    let mut layout = "";
-    if let Some(after) = rest.strip_prefix("layout") {
-        let after = after.trim_start().strip_prefix('(')?;
-        let close = after.find(')')?;
-        layout = after[..close].trim();
-        location = after[..close].split(',').find_map(|q| {
-            let (key, value) = q.split_once('=')?;
-            (key.trim() == "location").then(|| value.trim().parse().ok())?
-        });
-        rest = after[close + 1..].trim_start();
-    }
+    let (layout, rest) = layout_prefix(line)?;
+    let location = layout.split(',').find_map(|q| {
+        let (key, value) = q.split_once('=')?;
+        (key.trim() == "location").then(|| value.trim().parse().ok())?
+    });
     let body = rest.strip_suffix(';')?.trim_end();
     let words: Vec<&str> = body.split_whitespace().collect();
     let storage_at = words
@@ -1723,21 +1727,14 @@ struct StorageBlock<'a> {
 
 /// The storage buffer block a line opens, if it opens one.
 fn storage_block(line: &str) -> Option<StorageBlock<'_>> {
-    let mut rest = line.trim();
-    let mut layout = "";
-    if let Some(after) = rest.strip_prefix("layout") {
-        let after = after.trim_start().strip_prefix('(')?;
-        let close = after.find(')')?;
-        layout = &after[..close];
-        rest = after[close + 1..].trim_start();
-    }
+    let (layout, mut rest) = layout_prefix(line)?;
     let word_end = |s: &str| s.find(|c: char| !is_ident(c)).unwrap_or(s.len());
     let mut qualifiers = Vec::new();
     loop {
         let (word, after) = rest.split_at(word_end(rest));
         let after = after.trim_start();
         match word {
-            "readonly" | "writeonly" | "coherent" | "volatile" | "restrict" => {
+            memory if MEMORY_QUALIFIERS.contains(&memory) => {
                 qualifiers.push(word);
                 rest = after;
             }
