@@ -831,7 +831,7 @@ impl Menu {
     }
 
     /// Registry identity of this menu, or the mount sentinel for a mount menu.
-    /// Player inventory and the creative picker have no registered menu type.
+    /// The creative picker has no registered menu type; the player's own inventory is INVENTORY_MENU.
     pub fn registry_id(&self) -> Option<&str> {
         self.state.registry_id.as_deref()
     }
