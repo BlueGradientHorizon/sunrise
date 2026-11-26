@@ -84,10 +84,7 @@ fn an_error_in_a_nested_include_names_that_file_and_line() {
         (errors[0].file.as_str(), errors[0].line, errors[0].column),
         ("minecraft:shaders/include/inner/deep.glsl", 6, 16)
     );
-    assert!(
-        errors[0].message.starts_with("fragment shader: "),
-        "{errors:?}"
-    );
+    assert_eq!(errors[0].stage, Some(ShaderStage::Fragment));
 }
 
 /// The stage keeps its line and column past glue, rewritten declarations and macro expansion.
@@ -104,6 +101,8 @@ fn an_error_in_the_stage_keeps_its_line_past_the_rewrites() {
         (errors[0].file.as_str(), errors[0].line, errors[0].column),
         (VSH_FILE, 8, 44)
     );
+    assert_eq!(errors[0].stage, Some(ShaderStage::Vertex));
+    assert!(errors[0].message.starts_with('('), "{errors:?}");
 }
 
 /// A helper taking a sampler is copied per sampler passed, below the sampler's declaration:
@@ -133,6 +132,7 @@ fn a_refused_include_names_the_directive_in_the_file_that_asks() {
             file: "minecraft:shaders/include/asks.glsl".into(),
             line: 2,
             column: 0,
+            stage: Some(ShaderStage::Fragment),
             unprovided: None,
             message: "minecraft:shaders/include/absent.glsl not found".into(),
         }]
@@ -152,6 +152,7 @@ fn a_location_no_stage_writes_names_the_input() {
             file: FSH_FILE.into(),
             line: 3,
             column: 1,
+            stage: Some(ShaderStage::Fragment),
             unprovided: None,
             message: "the fragment shader reads location 5, which the vertex shader doesn't write"
                 .into(),
@@ -206,10 +207,7 @@ fn a_validation_error_in_an_include_names_its_file_and_line() {
         [("minecraft:shaders/include/pick.glsl", 4)]
     );
     // Not the parser's: its errors quote the line they read.
-    assert!(
-        !errors[0].message.starts_with("fragment shader: ("),
-        "{errors:?}"
-    );
+    assert!(!errors[0].message.starts_with('('), "{errors:?}");
 }
 
 /// A validation error whose span is in no line the author wrote (an entry point using what its

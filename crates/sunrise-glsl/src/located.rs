@@ -11,6 +11,9 @@ pub struct Error {
     pub line: u32,
     /// Byte column from 1 in the author's line, or 0 when no column is known.
     pub column: u32,
+    /// The shader stage that raised the error, when it can be attributed to one stage.
+    pub stage: Option<naga::ShaderStage>,
+    /// Why translation failed, without a stage prefix.
     pub message: String,
     /// The block or sampler a pipeline does not provide, for the error that says so (a program
     /// reads a name its pipeline neither binds nor provides); `None` for every other error.
@@ -31,15 +34,22 @@ impl std::fmt::Display for Error {
 impl std::error::Error for Error {}
 
 impl Error {
-    /// `message` at `line` of `file` (line 0: the file as a whole), with no known column.
+    /// `message` at `line` of `file` (line 0: the file as a whole), with no column or stage.
     pub fn new(file: impl Into<String>, line: u32, message: impl Into<String>) -> Self {
         Self {
             file: file.into(),
             line,
             column: 0,
+            stage: None,
             message: message.into(),
             unprovided: None,
         }
+    }
+
+    /// Attribute the error to `stage`, without changing the refusal message.
+    pub fn with_stage(mut self, stage: naga::ShaderStage) -> Self {
+        self.stage = Some(stage);
+        self
     }
 
     /// This error, saying `name` is the block or sampler the pipeline does not provide.
@@ -570,13 +580,14 @@ mod tests {
             file: "minecraft:shaders/core/text.fsh".into(),
             line,
             column: if line == 0 { 0 } else { 5 },
-            message: "fragment shader: oops".into(),
+            stage: Some(naga::ShaderStage::Fragment),
+            message: "oops".into(),
             unprovided: None,
         };
         assert_eq!(
             describe(&[error(3), error(0)]),
-            "minecraft:shaders/core/text.fsh:3:5: fragment shader: oops; \
-             minecraft:shaders/core/text.fsh: fragment shader: oops"
+            "minecraft:shaders/core/text.fsh:3:5: oops; \
+             minecraft:shaders/core/text.fsh: oops"
         );
     }
 }

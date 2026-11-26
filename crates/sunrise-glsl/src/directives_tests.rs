@@ -664,10 +664,11 @@ fn an_expansion_past_the_budget_is_refused_where_it_is() {
         file: tests::VSH_FILE.into(),
         line: 42,
         column: 1,
+        stage: Some(ShaderStage::Vertex),
         unprovided: None,
         message: directives::stopped(crate::macros::Stop::Work),
     };
-    assert_eq!(errors, [in_stage(naga::ShaderStage::Vertex, refused)]);
+    assert_eq!(errors, [refused]);
 }
 
 /// A post shader's includes are pasted with every branch (no defines), and its directives run on
