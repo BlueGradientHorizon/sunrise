@@ -1139,7 +1139,7 @@ fn trade_files_with_unknown_load_condition_report_errors() {
         conditions: &conditions,
         ..sunrise_world::loot::PackOverlay::default()
     };
-    let loaded = sunrise_client::merchant::Trades::load(root, &overlay);
+    let loaded = sunrise_client::merchant::Trades::load(root, &overlay).unwrap();
     assert!(!loaded.trades.contains_key("boiler:bad_trade"));
     assert!(!loaded.sets.contains_key("boiler:bad_set"));
     let err = conditions

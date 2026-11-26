@@ -1154,6 +1154,20 @@ pub(crate) fn sprite_mipmap_limit(requested: u32, size: u32, minimum: u32, avail
     requested.saturating_add(upscale).min(available - 1)
 }
 
+/// The frame each layer of `native` larger than the array's edge `size` starts on, at its own
+/// side, by layer: what [`Sprites::finish`] keeps in [`Sprites::oversized`].
+pub(crate) fn oversized_frames(
+    native: &[(u32, Arc<Vec<Vec<u8>>>, usize)],
+    size: u32,
+) -> std::collections::BTreeMap<u32, (u32, Vec<u8>)> {
+    native
+        .iter()
+        .enumerate()
+        .filter(|(_, (from, _, _))| *from > size)
+        .map(|(layer, (from, frames, initial))| (layer as u32, (*from, frames[*initial].clone())))
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2495,18 +2509,4 @@ mod tests {
         assert_eq!(load([4, 5, 6]), [4, 5, 6, 255]);
         fs::remove_dir_all(&root).unwrap();
     }
-}
-
-/// The frame each layer of `native` larger than the array's edge `size` starts on, at its own
-/// side, by layer: what [`Sprites::finish`] keeps in [`Sprites::oversized`].
-pub(crate) fn oversized_frames(
-    native: &[(u32, Arc<Vec<Vec<u8>>>, usize)],
-    size: u32,
-) -> std::collections::BTreeMap<u32, (u32, Vec<u8>)> {
-    native
-        .iter()
-        .enumerate()
-        .filter(|(_, (from, _, _))| *from > size)
-        .map(|(layer, (from, frames, initial))| (layer as u32, (*from, frames[*initial].clone())))
-        .collect()
 }

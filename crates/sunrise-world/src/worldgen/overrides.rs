@@ -630,6 +630,32 @@ impl WorldgenOverrides {
             .flatten()
             .map(|(id, pack, json)| (id.as_str(), pack.as_str(), json.as_str()))
     }
+    /// Removes the entries of `bundle` that `keep` refuses, returning their ids.
+    pub fn retain(&mut self, bundle: &str, mut keep: impl FnMut(&str) -> bool) -> Vec<String> {
+        if bundle == DIMENSIONS {
+            let mut dropped = Vec::new();
+            self.level_stems.retain(|id, stem| {
+                if stem.is_none() || keep(id) {
+                    true
+                } else {
+                    dropped.push(id.clone());
+                    false
+                }
+            });
+            return dropped;
+        }
+        let Some(entries) = self.entries.get_mut(bundle) else {
+            return Vec::new();
+        };
+        let dropped: Vec<String> = entries.keys().filter(|id| !keep(id)).cloned().collect();
+        for id in &dropped {
+            entries.remove(id);
+        }
+        if entries.is_empty() {
+            self.entries.remove(bundle);
+        }
+        dropped
+    }
     /// `bundle` with the packs' entries over it.
     pub fn apply(
         &self,
