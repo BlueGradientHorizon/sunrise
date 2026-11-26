@@ -5046,10 +5046,10 @@ include!("advancement_save_tests.rs");
 
 #[cfg(test)]
 pub(in crate::game) mod merchant_packet_tests {
-    use sunrise_gameplay_common::game::{chat_common::ChatCommonGameExt1 as _, tables::GameItems as _};
     //! Vanilla notifyTrade changes the live offer while its frozen owner retains
     //! the last outbound offer packet. No sockets, server loop or world generation.
 
+    use sunrise_gameplay_common::game::{chat_common::ChatCommonGameExt1 as _, tables::GameItems as _};
     use mod_api::HostTransaction;
 
     pub(in crate::game) struct ReplaceOnTradeVoice {
