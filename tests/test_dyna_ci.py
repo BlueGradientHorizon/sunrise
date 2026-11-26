@@ -631,6 +631,28 @@ class DynaRoutingTests(unittest.TestCase):
                 legacy.rmdir()
                 check("sunrise-client")
 
+    def test_ignored_shard_finalizers_run_only_after_seed_readiness(self):
+        job = workflow("ignored-tests.yml")["jobs"]["ignored-tests-shards"]
+        seed_id = job["steps"][0]["id"]
+        finalizers = ("Keep a failed run's full output beyond this slot", "Upload the leg report",
+                      "Record data-leg end and compiler cache")
+        diagnostic = step_named(job, "Retain typed preparation diagnostics only")["if"]
+        for case, seed, data, job_status, finalize, diagnose in (
+            ("preflight refusal", "failure", "skipped", "failure", False, False),
+            ("preparation failure", "success", "failure", "failure", True, True),
+            ("test failure", "success", "success", "failure", True, False),
+            ("clean run", "success", "success", "success", True, False),
+        ):
+            steps = {seed_id: {"outcome": seed}, "data": {"outcome": data}}
+            with self.subTest(case=case, step="preparation diagnostic"):
+                # This step is evaluated before the tests, even if they later fail.
+                prep_status = "success" if data == "success" else "failure"
+                self.assertIs(expression_value(diagnostic, {}, steps=steps, job_status=prep_status), diagnose)
+            for name in finalizers:
+                with self.subTest(case=case, step=name):
+                    condition = step_named(job, name)["if"]
+                    self.assertIs(expression_value(condition, {}, steps=steps, job_status=job_status), finalize)
+
     def test_telemetry_ingest_checks_require_manual_dispatch(self):
         self.assertEqual(set(workflow("telemetry-server.yml")["on"]), {"workflow_dispatch"})
 
@@ -752,7 +774,7 @@ class IgnoredTestsKeepTests(unittest.TestCase):
     def test_the_run_step_writes_where_the_keep_step_reads(self):
         run = self.steps["Run the ignored tests that need prepared data"]["env"]
         step = self.steps[self.STEP]
-        self.assertEqual(step["if"], "always()")
+        self.assertEqual(step["if"], "always() && steps.seed.outcome == 'success'")
         self.assertEqual(run["IGNORED_TESTS_PRIVATE_LOGS"], step["env"]["PRIVATE_LOGS"])
         self.assertEqual(step["env"]["NAME"],
                          "${{ github.run_id }}-${{ github.run_attempt }}-${{ strategy.job-index }}")

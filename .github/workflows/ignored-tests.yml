@@ -72,6 +72,7 @@ jobs:
     steps:
       # Check the runner's seed before checking out any (possibly older) commit.
       - name: Check runner prepared data
+        id: seed
         env:
           EVENT: ${{ github.event_name }}
         run: |
@@ -182,7 +183,7 @@ jobs:
       # The public log withholds panic payloads (they can carry vanilla data); a failed run's full output is copied
       # into this host's keep, as parity.yml keeps a failed share's logs, with the same three-day retention.
       - name: Keep a failed run's full output beyond this slot
-        if: always()
+        if: always() && steps.seed.outcome == 'success'
         env:
           PRIVATE_LOGS: ${{ runner.temp }}/ignored-tests-private
           NAME: ${{ github.run_id }}-${{ github.run_attempt }}-${{ strategy.job-index }}
@@ -198,7 +199,7 @@ jobs:
           [ -d "$root" ] && find "$root" -mindepth 1 -maxdepth 1 -type d -mmin +4320 -exec rm -rf {} + || true
       # The leg's verdict for the daily summary: test names, panic locations and policy only (ignored_tests.py --report).
       - name: Upload the leg report
-        if: always()
+        if: always() && steps.seed.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
           name: daily-report-shard-${{ strategy.job-index }}
@@ -206,7 +207,7 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
       - name: Record data-leg end and compiler cache
-        if: always()
+        if: always() && steps.seed.outcome == 'success'
         run: |
           date -u '+data-leg end utc=%Y-%m-%dT%H:%M:%SZ'
           # Whole-job cgroup high-water: compilation, tests and file cache, not per-test RSS
