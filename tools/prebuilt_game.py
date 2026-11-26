@@ -118,10 +118,12 @@ PROGRAMS = "programs"
 
 
 LAUNCHER_FILES = ("src/game_app.rs", "assets/icons/sunrise.icns")  # game_app.rs include_bytes!es the icon
+# The sunrise-launcher commit the bundle preparation is fetched at (tools/ci/launcher_pin.sh reads the same file).
+LAUNCHER_PIN = ROOT / "tools/ci/launcher-pin"
 
 
 def launcher_pin() -> str:
-    pin = (ROOT / "tools/ci/launcher-pin").read_text().strip()
+    pin = LAUNCHER_PIN.read_text().strip()
     if not re.fullmatch(r"[0-9a-f]{40}", pin):
         sys.exit("tools/ci/launcher-pin must be a full 40-character lowercase commit SHA")
     return pin
