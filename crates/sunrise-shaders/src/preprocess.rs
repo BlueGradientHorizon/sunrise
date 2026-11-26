@@ -142,7 +142,7 @@ impl Preprocessed {
             }
             at += line.len();
         }
-        let first = self.code[..at].matches('\n').count().min(self.lines.len());
+        let first = self.code[..at].matches('\n').count();
         let added = declaration.matches('\n').count() + 1;
         let mut out = self.clone();
         out.code = format!("{}{declaration}\n{}", &self.code[..at], &self.code[at..]);
