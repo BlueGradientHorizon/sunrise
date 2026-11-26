@@ -82,7 +82,7 @@ def parity_fixtures(default_features=True):
                    '--features', features, '--bin', 'sunrise-parity-fixtures',
                    '--message-format=json-render-diagnostics']
         cargo_target().mkdir(parents=True, exist_ok=True)
-        with open(cargo_target() / 'sunrise-parity-fixtures.lock', 'w') as lock:
+        with open(cargo_target() / 'sunrise-parity-fixtures.lock', 'a') as lock:
             file_lock.lock(lock)
             built = subprocess.run(command, cwd=ROOT, stdout=subprocess.PIPE, text=True, check=True)
             executables = [row['executable'] for row in map(json.loads, filter(None, built.stdout.splitlines()))

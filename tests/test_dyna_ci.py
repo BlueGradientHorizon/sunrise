@@ -608,11 +608,19 @@ class DynaRoutingTests(unittest.TestCase):
         # Its one rustc outgrew the 16 GiB parity runner (#4896): a harness runs a sunrise-client fixture from
         # lab.parity_fixtures() instead.
         def builds_client_lib_test(path):
-            # Any command list holding cargo, test and sunrise-client, whatever its flags and their order.
-            return any(isinstance(node, ast.List)
-                       and {"cargo", "test", "sunrise-client"} <= {item.value for item in node.elts
-                                                                   if isinstance(item, ast.Constant)}
-                       for node in ast.walk(ast.parse(path.read_text())))
+            # A command list or tuple naming sunrise-client with `cargo test` or `--lib`, whatever its flags and their
+            # order, or a call of a `*test_binary*` helper naming sunrise-client.
+            for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+                if isinstance(node, (ast.List, ast.Tuple)):
+                    words = {item.value for item in node.elts if isinstance(item, ast.Constant)}
+                    if "sunrise-client" in words and ({"cargo", "test"} <= words or "--lib" in words):
+                        return True
+                elif isinstance(node, ast.Call):
+                    name = getattr(node.func, "id", getattr(node.func, "attr", ""))
+                    if "test_binary" in name and any(isinstance(arg, ast.Constant) and arg.value == "sunrise-client"
+                                                     for arg in node.args):
+                        return True
+            return False
 
         self.assertEqual([path.name for path in sorted((ROOT / "tools").glob("test_*_parity.py"))
                           if builds_client_lib_test(path)], [])

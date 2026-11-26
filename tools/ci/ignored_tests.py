@@ -79,7 +79,7 @@ from tools.ci import ignored_shards
 
 ROOT = Path(__file__).resolve().parents[2]
 
-# The command every cargo run starts with (a test sets it to stand in for cargo).
+# The command every cargo run starts with.
 CARGO = ["cargo"]
 # The environment variable through which a test executable finds the shared libraries beside it.
 LIBRARY_PATH = "PATH" if os.name == "nt" else "DYLD_LIBRARY_PATH" if sys.platform == "darwin" else "LD_LIBRARY_PATH"
