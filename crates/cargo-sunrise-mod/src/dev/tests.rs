@@ -502,7 +502,7 @@ fn two_callers_initialize_an_empty_sdk_cache_concurrently() {
                             &keys,
                             HOST,
                             BUILD,
-                            &stub_rust,
+                            stub_rust,
                         )
                         .unwrap();
                         assert_eq!(sdk.index.build.commit, BUILD);
@@ -557,7 +557,7 @@ fn two_callers_initialize_an_empty_sdk_cache_concurrently() {
             &keys,
             HOST,
             BUILD,
-            &stub_rust,
+            stub_rust,
         )
         .unwrap();
         assert_eq!(fs::read(refreshed.surface()).unwrap(), SURFACE_BYTES);
