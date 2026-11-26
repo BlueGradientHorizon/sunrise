@@ -57,8 +57,8 @@ LAB = 'tools/lab.py'
 
 
 def _sibling(name):
-    """A module of tools/, by package name when this module is part of the package, else by bare name (script)."""
-    return importlib.import_module(f'{__package__}.{name}' if __package__ else name)
+    """A module of tools/, imported when first needed."""
+    return importlib.import_module(f'tools.{name}')
 
 
 def seed_modules():
