@@ -356,6 +356,7 @@ impl ScreenState {
         self.last_click = None;
         if self.context_menu.is_some() {
             self.context_menu = None;
+            self.context_menu_input.clear_unowned_keys_if_idle();
         }
         self.screen_instance
     }

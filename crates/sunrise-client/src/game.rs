@@ -12765,10 +12765,11 @@ impl Game<'_> {
                 (_, false) => KeyAction::Press,
                 (_, true) => KeyAction::Repeat,
             };
-            let menu_modal = self.context_menu_open()
-                || (action != KeyAction::Press
-                    && self.context_menu_owns_key(Source::Keyboard, key));
-            if menu_modal {
+            if self.context_menu_key_active()
+                && (self.context_menu_open()
+                    || (action != KeyAction::Press
+                        && self.context_menu_owns_key(Source::Keyboard, key)))
+            {
                 if action == KeyAction::Release {
                     self.debug_key_release_cleanup(key);
                 }
@@ -14030,6 +14031,29 @@ impl Game<'_> {
         text: Option<&str>,
     ) -> Result<()> {
         let has_screen = self.observed_screen_view().is_some();
+        if !self.context_menu_key_active() {
+            if let Some(key) = key
+                && !self.dispatch_screen_key_body(
+                    event_loop,
+                    key,
+                    pressed,
+                    repeat,
+                    shortcut,
+                    Source::Keyboard,
+                )?
+                && !self.key_press_canceled(key, pressed, repeat)
+            {
+                self.native_panel_key_event(key, pressed, repeat);
+                self.mapped_key_event(key, pressed, repeat)?;
+            }
+            // GLFW's character event follows the key, even if KeyPressed.Pre canceled;
+            // recheck the menu in case a key callback just opened one.
+            if pressed && has_screen && !self.context_menu_open() {
+                self.settle_title_mode();
+                self.screen_chars_typed(text);
+            }
+            return Ok(());
+        }
         let menu_blocking = self.context_menu_open()
             || key.is_some_and(|k| self.context_menu_owns_key(Source::Keyboard, k));
         if let Some(key) = key
@@ -14065,9 +14089,24 @@ impl Game<'_> {
         shortcut: Option<sunrise_client::clipboard::EditShortcut>,
         source: Source,
     ) -> Result<bool> {
-        if self.context_menu_key_event(source, key, pressed, repeat) {
+        if self.context_menu_key_active()
+            && self.context_menu_key_event(source, key, pressed, repeat)
+        {
             return Ok(true);
         }
+        self.dispatch_screen_key_body(event_loop, key, pressed, repeat, shortcut, source)
+    }
+
+    #[inline(always)]
+    fn dispatch_screen_key_body(
+        &mut self,
+        event_loop: &dyn EventLoopCtl,
+        key: KeyCode,
+        pressed: bool,
+        repeat: bool,
+        shortcut: Option<sunrise_client::clipboard::EditShortcut>,
+        source: Source,
+    ) -> Result<bool> {
         let instance = self.screen_state.screen_instance;
         let receiver = self.observed_input_screen();
         let canceled = if pressed {
@@ -14092,7 +14131,7 @@ impl Game<'_> {
         Ok(post_canceled
             || self.screen_state.screen_instance != instance
             || (pressed
-                && (self.context_menu_open()
+                && ((receiver.is_some() && self.context_menu_open())
                     || self.mounted_widget_captures_input()
                     || self.observed_overlay_now().is_some()
                     || self.title_input_active()

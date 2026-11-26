@@ -70,6 +70,11 @@ impl From<Source> for KeySource {
     }
 }
 
+const PAD_REPEAT_OWNED: u8 = 1 << 0;
+const PAD_WHEEL_OWNED: u8 = 1 << 1;
+const STICK_OWNED: u8 = 1 << 2;
+const RIGHT_STICK_OWNED: u8 = 1 << 3;
+
 /// Press-to-release ownership for input consumed by a context menu, kept across menu close or
 /// screen replacement so releases and repeats never leak to the screen underneath.
 #[derive(Default)]
@@ -77,12 +82,8 @@ pub(super) struct ContextMenuInput {
     owned_buttons: HashSet<(MouseSource, MouseButton)>,
     owned_keys: HashSet<(KeySource, KeyCode)>,
     unowned_keys: HashSet<(KeySource, KeyCode)>,
-    agent_keys: HashSet<KeyCode>,
     owned_pad: HashSet<PadButton>,
-    pad_repeat_owned: bool,
-    pad_wheel_owned: bool,
-    stick_owned: bool,
-    right_stick_owned: bool,
+    pad_flags: u8,
 }
 
 impl ContextMenuInput {
@@ -96,14 +97,11 @@ impl ContextMenuInput {
         if !self.unowned_keys.is_empty() {
             self.unowned_keys.clear();
         }
-        if !self.agent_keys.is_empty() {
-            self.agent_keys.clear();
-        }
         if !self.owned_pad.is_empty() {
             self.owned_pad.clear();
         }
-        if self.has_pad_stick_or_repeat() {
-            self.clear_pad_stick_and_repeat();
+        if self.pad_flags != 0 {
+            self.pad_flags = 0;
         }
     }
 
@@ -120,29 +118,32 @@ impl ContextMenuInput {
             self.unowned_keys
                 .retain(|(source, _)| *source != KeySource::Agent);
         }
-        if !self.agent_keys.is_empty() {
-            self.agent_keys.clear();
+    }
+
+    /// True only while a context menu has outstanding ownership and another source holds `key`.
+    #[inline(always)]
+    pub(super) fn holds_other_source(&self, releasing: Source, key: KeyCode) -> bool {
+        if self.owned_keys.is_empty() {
+            return false;
+        }
+        let releasing: KeySource = releasing.into();
+        self.owned_keys
+            .iter()
+            .any(|&(s, k)| k == key && s != releasing)
+            || self
+                .unowned_keys
+                .iter()
+                .any(|&(s, k)| k == key && s != releasing)
+    }
+
+    #[inline(always)]
+    pub(super) fn clear_unowned_keys_if_idle(&mut self) {
+        if self.owned_keys.is_empty() && !self.unowned_keys.is_empty() {
+            self.unowned_keys.clear();
         }
     }
 
-    pub(super) fn agent_key_down(&mut self, key: KeyCode) {
-        self.agent_keys.insert(key);
-    }
-
-    pub(super) fn agent_key_up(&mut self, key: KeyCode) {
-        if !self.agent_keys.is_empty() {
-            self.agent_keys.remove(&key);
-        }
-    }
-
-    pub(super) fn has_agent_key(&self, key: KeyCode) -> bool {
-        !self.agent_keys.is_empty() && self.agent_keys.contains(&key)
-    }
-
-    pub(super) fn has_unowned_key(&self, source: Source, key: KeyCode) -> bool {
-        !self.unowned_keys.is_empty() && self.unowned_keys.contains(&(source.into(), key))
-    }
-
+    #[inline(always)]
     pub(super) fn owned_keys_empty(&self) -> bool {
         self.owned_keys.is_empty()
     }
@@ -160,12 +161,12 @@ impl ContextMenuInput {
     }
 
     pub(super) fn own_pad_repeat(&mut self) {
-        self.pad_repeat_owned = true;
+        self.pad_flags |= PAD_REPEAT_OWNED;
     }
 
     pub(super) fn take_pad_repeat_owned(&mut self) -> bool {
-        if self.pad_repeat_owned {
-            self.pad_repeat_owned = false;
+        if self.pad_flags & PAD_REPEAT_OWNED != 0 {
+            self.pad_flags &= !PAD_REPEAT_OWNED;
             true
         } else {
             false
@@ -173,12 +174,12 @@ impl ContextMenuInput {
     }
 
     pub(super) fn own_pad_wheel(&mut self) {
-        self.pad_wheel_owned = true;
+        self.pad_flags |= PAD_WHEEL_OWNED;
     }
 
     pub(super) fn take_pad_wheel_owned(&mut self) -> bool {
-        if self.pad_wheel_owned {
-            self.pad_wheel_owned = false;
+        if self.pad_flags & PAD_WHEEL_OWNED != 0 {
+            self.pad_flags &= !PAD_WHEEL_OWNED;
             true
         } else {
             false
@@ -186,38 +187,41 @@ impl ContextMenuInput {
     }
 
     pub(super) fn own_stick(&mut self) {
-        self.stick_owned = true;
+        self.pad_flags |= STICK_OWNED;
     }
 
     pub(super) fn stick_owned(&self) -> bool {
-        self.stick_owned
+        self.pad_flags & STICK_OWNED != 0
     }
 
     pub(super) fn release_stick(&mut self) {
-        self.stick_owned = false;
+        self.pad_flags &= !STICK_OWNED;
     }
 
     pub(super) fn own_right_stick(&mut self) {
-        self.right_stick_owned = true;
+        self.pad_flags |= RIGHT_STICK_OWNED;
     }
 
     pub(super) fn right_stick_owned(&self) -> bool {
-        self.right_stick_owned
+        self.pad_flags & RIGHT_STICK_OWNED != 0
     }
 
     pub(super) fn release_right_stick(&mut self) {
-        self.right_stick_owned = false;
+        self.pad_flags &= !RIGHT_STICK_OWNED;
     }
 
+    #[inline(always)]
     pub(super) fn has_pad_stick_or_repeat(&self) -> bool {
-        self.pad_repeat_owned || self.pad_wheel_owned || self.stick_owned || self.right_stick_owned
+        self.pad_flags != 0
+    }
+
+    #[inline(always)]
+    pub(super) fn has_pad_ownership(&self) -> bool {
+        self.pad_flags != 0 || !self.owned_pad.is_empty()
     }
 
     pub(super) fn clear_pad_stick_and_repeat(&mut self) {
-        self.pad_repeat_owned = false;
-        self.pad_wheel_owned = false;
-        self.stick_owned = false;
-        self.right_stick_owned = false;
+        self.pad_flags = 0;
     }
 }
 
@@ -857,7 +861,7 @@ impl Game<'_> {
     fn snapshot_unowned_keys_for_context_menu(&mut self) {
         let input = &mut self.screen_state.context_menu_input;
         for &key in &self.physical_keys {
-            let source = if input.agent_keys.contains(&key) {
+            let source = if self.keys.held_by(&key, Source::Agent) {
                 KeySource::Agent
             } else {
                 KeySource::Keyboard
@@ -873,10 +877,27 @@ impl Game<'_> {
         self.live_context_menu();
         let closed = self.screen_state.context_menu.take().is_some();
         if closed {
+            self.screen_state
+                .context_menu_input
+                .clear_unowned_keys_if_idle();
             self.clear_context_menu_pad_state();
             self.sync_ime();
         }
         closed
+    }
+
+    /// Single entry gate for keyboard dispatch: false when no menu is open and no key is owned.
+    #[inline(always)]
+    pub(super) fn context_menu_key_active(&self) -> bool {
+        self.screen_state.context_menu.is_some()
+            || !self.screen_state.context_menu_input.owned_keys.is_empty()
+    }
+
+    /// Single entry gate for controller menu polling: false when no menu or pad ownership is live.
+    #[inline(always)]
+    pub(super) fn context_menu_pad_active(&self) -> bool {
+        self.screen_state.context_menu.is_some()
+            || self.screen_state.context_menu_input.has_pad_ownership()
     }
 
     /// Read-only live check for `&self` callers (such as `set_pointer_grab`).
@@ -908,6 +929,9 @@ impl Game<'_> {
             || self.observed_screen_view().is_none()
         {
             self.screen_state.context_menu = None;
+            self.screen_state
+                .context_menu_input
+                .clear_unowned_keys_if_idle();
             self.clear_context_menu_pad_state();
             return false;
         }
@@ -1060,10 +1084,7 @@ impl Game<'_> {
         if input.unowned_keys.contains(&(KeySource::Keyboard, key)) {
             mask |= 1;
         }
-        if input.unowned_keys.contains(&(KeySource::Agent, key))
-            || (input.agent_keys.contains(&key)
-                && !input.owned_keys.contains(&(KeySource::Agent, key)))
-        {
+        if input.unowned_keys.contains(&(KeySource::Agent, key)) {
             mask |= 2;
         }
         Some(mask)
@@ -1190,6 +1211,9 @@ impl Game<'_> {
             Outcome::Stay => return,
             Outcome::Close => {
                 self.screen_state.context_menu = None;
+                self.screen_state
+                    .context_menu_input
+                    .clear_unowned_keys_if_idle();
                 self.clear_context_menu_pad_state();
                 self.sync_ime();
                 return;
@@ -1206,6 +1230,9 @@ impl Game<'_> {
             .map(|entry| std::mem::replace(entry, ContextMenuEntry::Separator));
         let owner = menu.owner.clone();
         drop(menu);
+        self.screen_state
+            .context_menu_input
+            .clear_unowned_keys_if_idle();
         self.clear_context_menu_pad_state();
         self.sync_ime();
         let Some(ContextMenuEntry::Action { on_select, .. }) = picked else {

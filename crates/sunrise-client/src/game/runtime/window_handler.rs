@@ -227,7 +227,11 @@ impl Game<'_> {
             if event.state == ElementState::Pressed {
                 self.physical_keys.insert(key);
                 sunrise_client::keybinds::learn_layout(event);
-            } else if !self.screen_state.context_menu_input.has_agent_key(key) {
+            } else if !self
+                .screen_state
+                .context_menu_input
+                .holds_other_source(sunrise_client::held::Source::Keyboard, key)
+            {
                 self.physical_keys.remove(&key);
             }
         }

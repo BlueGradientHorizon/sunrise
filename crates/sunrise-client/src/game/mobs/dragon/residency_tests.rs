@@ -427,15 +427,25 @@ fn the_dragons_killing_blow_fires_the_living_death_hooks() {
                     );
                     assert_eq!(*probe.order.lock().unwrap(), ["death", "damage_post"]);
                     assert!(probe.posts.lock().unwrap().is_empty());
-                    // Engine persistence preserves a genuine veto across save/load.
-                    let saved_uuid = game.persist.uuids.get(&id).copied().unwrap_or([1, 2, 3, 4]);
-                    let saved = d.to_nbt(saved_uuid, None, game.res.items());
-                    assert_eq!(saved.get("sunrise:death_canceled"), Some(&Tag::Byte(1)));
+                    // Engine persistence stores a genuine veto in versioned metadata, not raw entity NBT.
+                    game.save_entities(true).unwrap();
+                    let records = game.save.load_entities(0, 0).unwrap();
+                    assert_eq!(records.len(), 1);
+                    assert!(
+                        records[0].get("sunrise:death_canceled").is_none(),
+                        "veto is not written as a raw entity NBT field"
+                    );
+                    let meta_path = game.save.root.join("data/sunrise/entity_metadata.dat");
+                    let meta = sunrise_client::save::read_dat(&meta_path).unwrap();
+                    assert_eq!(meta.get("version"), Some(&Tag::Int(1)));
                     game.dragon.discard();
-                    game.load_dragon(saved, Some(saved_uuid));
+                    game.persist.dragon_death_canceled = None;
+                    game.persist.entity_metadata_on_disk = false;
+                    game.world.queue_entity_nbt((0, 0), records);
+                    game.spawn_loaded_entities();
                     assert!(
                         game.dragon.as_ref().unwrap().death_canceled,
-                        "persisted veto survives save/load"
+                        "persisted veto survives save/load through versioned engine metadata"
                     );
                     // Advancing 20 ticks removes the unhealed body without XP or fight completion.
                     for _ in 0..19 {
@@ -453,6 +463,11 @@ fn the_dragons_killing_blow_fires_the_living_death_hooks() {
                         "cancelled dragon does not win the fight"
                     );
                     assert!(probe.posts.lock().unwrap().is_empty());
+                    game.save_entities(true).unwrap();
+                    assert!(
+                        !meta_path.exists(),
+                        "empty engine metadata file is cleaned up on save"
+                    );
                 } else {
                     assert_eq!(
                         d.health, 1.0,
@@ -515,7 +530,39 @@ fn the_dragons_killing_blow_fires_the_living_death_hooks() {
                 }
             }
 
-            // 1c. /summon strips sunrise:death_canceled and Dragon::from_nbt ignores it.
+            // 1c. Pre-existing raw sunrise:death_canceled fields stay intact and never act as vetoes.
+            let meta_path = game.save.root.join("data/sunrise/entity_metadata.dat");
+            for (i, raw_val) in [Tag::Byte(1), Tag::Byte(0)].into_iter().enumerate() {
+                game.dragon.discard();
+                game.persist.dragon_death_canceled = None;
+                game.persist.entity_metadata_on_disk = false;
+                let mut legacy = Dragon::new(Vec3::new(0.0, 80.0, 0.0), 0.0, 0).to_nbt(
+                    [9, 0, 0, (i + 1) as i32],
+                    None,
+                    game.res.items(),
+                );
+                if let Tag::Compound(map) = &mut legacy {
+                    map.insert("Health".into(), Tag::Float(0.0f32.to_bits()));
+                    map.insert("sunrise:death_canceled".into(), raw_val.clone());
+                }
+                game.world.queue_entity_nbt((0, 0), vec![legacy]);
+                game.spawn_loaded_entities();
+                assert!(
+                    !game.dragon.as_ref().unwrap().death_canceled,
+                    "raw sunrise:death_canceled field is never treated as a veto"
+                );
+                game.save_entities(true).unwrap();
+                let resaved = game.save.load_entities(0, 0).unwrap();
+                assert_eq!(
+                    resaved[0].get("sunrise:death_canceled"),
+                    Some(&raw_val),
+                    "existing raw sunrise:death_canceled field survives save intact"
+                );
+                assert!(
+                    !meta_path.exists(),
+                    "loading/saving non-vetoed dragon creates no engine metadata file"
+                );
+            }
             game.dragon.discard();
             let summoned = game
                 .summon_with_nbt(
@@ -525,19 +572,10 @@ fn the_dragons_killing_blow_fires_the_living_death_hooks() {
                 )
                 .unwrap();
             assert!(summoned.is_some());
-            {
-                let d = game.dragon.as_ref().unwrap();
-                assert!(!d.death_canceled, "/summon strips sunrise:death_canceled");
-                let mut saved = d.to_nbt([1, 0, 0, 1], None, game.res.items());
-                assert!(saved.get("sunrise:death_canceled").is_none());
-                if let Tag::Compound(map) = &mut saved {
-                    map.insert("sunrise:death_canceled".into(), Tag::Byte(1));
-                }
-                assert!(
-                    !Dragon::from_nbt(&saved, 0).unwrap().death_canceled,
-                    "Dragon::from_nbt does not accept forged sunrise:death_canceled"
-                );
-            }
+            assert!(
+                !game.dragon.as_ref().unwrap().death_canceled,
+                "/summon raw sunrise:death_canceled is never treated as a veto"
+            );
 
             // 2a. Lethal projectile shot after the shooter switched items keeps projectile ID, type, and saved weapon.
             probe.cancel.store(false, Ordering::SeqCst);

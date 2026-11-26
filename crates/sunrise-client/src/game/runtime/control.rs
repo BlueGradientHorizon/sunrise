@@ -809,18 +809,20 @@ impl Game<'_> {
                 // KeyboardHandler.keyPress: the debug keys see the physical key first.
                 let physical = key;
                 let repeat = action == "repeat";
-                let menu_modal = self.context_menu_open()
-                    || ((action == "up" || repeat)
-                        && self.context_menu_owns_key(Source::Agent, physical));
+                let menu_active = self.context_menu_key_active();
+                let menu_modal = menu_active
+                    && (self.context_menu_open()
+                        || ((action == "up" || repeat)
+                            && self.context_menu_owns_key(Source::Agent, physical)));
                 {
                     use sunrise_client::debug_keys::KeyAction;
                     if action == "up" {
                         self.press_modifier_key(key, false);
-                        self.screen_state.context_menu_input.agent_key_up(key);
-                        if !self
-                            .screen_state
-                            .context_menu_input
-                            .has_unowned_key(Source::Keyboard, key)
+                        if !menu_active
+                            || !self
+                                .screen_state
+                                .context_menu_input
+                                .holds_other_source(Source::Agent, key)
                         {
                             self.physical_keys.remove(&key);
                         }
@@ -832,15 +834,13 @@ impl Game<'_> {
                     } else {
                         self.press_modifier_key(key, true);
                         self.physical_keys.insert(key);
-                        self.screen_state.context_menu_input.agent_key_down(key);
                         if !menu_modal && self.debug_key(key, KeyAction::Press) {
                             if action == "tap" {
                                 self.press_modifier_key(key, false);
-                                self.screen_state.context_menu_input.agent_key_up(key);
                                 if !self
                                     .screen_state
                                     .context_menu_input
-                                    .has_unowned_key(Source::Keyboard, key)
+                                    .holds_other_source(Source::Agent, key)
                                 {
                                     self.physical_keys.remove(&key);
                                 }
@@ -854,16 +854,18 @@ impl Game<'_> {
                     if self.screenshot_shortcut(physical, repeat) {
                         if action == "tap" {
                             self.press_modifier_key(physical, false);
-                            self.screen_state.context_menu_input.agent_key_up(physical);
-                            if !self
-                                .screen_state
-                                .context_menu_input
-                                .has_unowned_key(Source::Keyboard, physical)
+                            let tap_menu = self.context_menu_key_active();
+                            if !tap_menu
+                                || !self
+                                    .screen_state
+                                    .context_menu_input
+                                    .holds_other_source(Source::Agent, physical)
                             {
                                 self.physical_keys.remove(&physical);
                             }
-                            if self.context_menu_open()
-                                || self.context_menu_owns_key(Source::Agent, physical)
+                            if tap_menu
+                                && (self.context_menu_open()
+                                    || self.context_menu_owns_key(Source::Agent, physical))
                             {
                                 self.debug_key_release_cleanup(physical);
                             } else {
@@ -895,16 +897,18 @@ impl Game<'_> {
                     if action == "tap" {
                         self.settle_title_mode();
                         self.press_modifier_key(physical, false);
-                        self.screen_state.context_menu_input.agent_key_up(physical);
-                        if !self
-                            .screen_state
-                            .context_menu_input
-                            .has_unowned_key(Source::Keyboard, physical)
+                        let tap_menu = self.context_menu_key_active();
+                        if !tap_menu
+                            || !self
+                                .screen_state
+                                .context_menu_input
+                                .holds_other_source(Source::Agent, physical)
                         {
                             self.physical_keys.remove(&physical);
                         }
-                        if self.context_menu_open()
-                            || self.context_menu_owns_key(Source::Agent, physical)
+                        if tap_menu
+                            && (self.context_menu_open()
+                                || self.context_menu_owns_key(Source::Agent, physical))
                         {
                             self.debug_key_release_cleanup(physical);
                         } else {

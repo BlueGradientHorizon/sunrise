@@ -2165,16 +2165,15 @@ pub(in crate::game) fn summon_position_ok([x, y, z]: [f64; 3]) -> bool {
         && (-30_000_000.0..30_000_000.0).contains(&z)
 }
 
-/// Internal engine markers (`sunrise:finalize`, `sunrise:death_canceled`) off
-/// `tag` and off the riders under its `Passengers`: only worldgen / persistence
-/// leaves them, never for a player to ask for. Taken off the compounds a
-/// player's NBT arrives in: `/summon`'s argument, `/data`'s and the
+/// `sunrise:finalize` off `tag` and off the riders under its `Passengers`:
+/// only worldgen leaves it, for a structure mob the game finishes when its
+/// chunk loads (`Game::load_mob`), never for a player to ask for. Taken off the
+/// compounds a player's NBT arrives in: `/summon`'s argument, `/data`'s and the
 /// `minecraft:entity_data` component's (`Game::apply_entity_nbt`), and
 /// `LevelRef::summon`, which takes `/summon`'s argument.
 fn strip_finalize_tree(tag: &mut Tag) {
     let Tag::Compound(c) = tag else { return };
     c.remove(&"sunrise:finalize".into());
-    c.remove(&"sunrise:death_canceled".into());
     if let Some(Tag::List(passengers)) = c.get_mut(&"Passengers".into()) {
         for passenger in passengers {
             strip_finalize_tree(passenger);
