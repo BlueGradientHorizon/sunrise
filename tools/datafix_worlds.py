@@ -41,13 +41,13 @@ else:
 
 ROOT = Path(__file__).resolve().parent.parent
 LOCAL = datafix_paths.writable_root()
-LEGACY = {'1.8.9', '1.9.4', '1.10.2', '1.11.2', '1.12.2', '1.13.2', '1.14.4', '1.15.2', '1.16.1', '1.16.5'}
 
 
 def worlds_dir(name):
     return LOCAL / 'worlds-pre-1.17' if name.split('-')[0] in LEGACY else LOCAL / 'worlds'
 
 
+# The versions the harness covers, oldest first: a choice, not something any file states.
 VERSIONS = ['1.8.9', '1.9.4', '1.10.2', '1.11.2', '1.12.2', '1.13.2', '1.14.4', '1.15.2', '1.16.1', '1.16.5', '1.17.1', '1.18.1', '1.18.2', '1.19', '1.19.2', '1.19.3', '1.19.4', '1.20.1', '1.20.2', '1.20.4', '1.20.5', '1.20.6', '1.21.1',
             '1.21.3', '1.21.4', '1.21.5', '1.21.6', '1.21.8', '1.21.9', '1.21.10', '1.21.11', '26.1', '26.1.2', '26.2']
 # Extra worlds of one version with another world type, for the level.dat generator settings:
@@ -65,6 +65,9 @@ VARIANTS = {
                                  '{"chunk_generator":{"type":"minecraft:surface"},"biome_source":{"type":"minecraft:fixed","options":'
                                  '{"biomes":["minecraft:desert"]}}}'}),
 }
+# Worlds saved before 1.17 go in worlds-pre-1.17: every version of VERSIONS before this one.
+FIRST_MODERN = '1.17.1'
+LEGACY = set(VERSIONS[:VERSIONS.index(FIRST_MODERN)])
 MANIFEST = 'https://piston-meta.mojang.com/mc/game/version_manifest_v2.json'
 LOCK = json.loads((ROOT / 'research-lock.json').read_text())['java_runtimes']
 BOT = 'Upgrader'
