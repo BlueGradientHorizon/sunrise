@@ -420,13 +420,15 @@ impl Game<'_> {
         Some(position)
     }
 
+    fn controls_vehicle(&self, id: u32) -> bool {
+        self.riding == Some(id) && self.remote.as_ref().is_none_or(|r| r.first_passenger)
+    }
+
     /// AbstractBoat.getControllingPassenger: `id` is a boat this client's player rides as its
     /// first passenger, the only one who steers it. Another vehicle is never a driven boat. A
     /// non-remote world retains its existing local movement ownership.
     pub(super) fn controls_boat(&self, id: u32) -> bool {
-        self.riding == Some(id)
-            && self.remote.as_ref().is_none_or(|r| r.first_passenger)
-            && self.boats.iter().any(|b| b.id == id)
+        self.controls_vehicle(id) && self.boats.iter().any(|b| b.id == id)
     }
 
     /// Tick the local player's vehicle before the player tick:
@@ -753,7 +755,7 @@ impl Game<'_> {
     /// the synched bubble time, followed by the oars on boats this client does not drive.
     pub(super) fn tick_remote_boat_bubbles(&mut self) {
         for i in 0..self.boats.len() {
-            let driven = self.controls_boat(self.boats[i].id);
+            let driven = self.controls_vehicle(self.boats[i].id);
             if !driven {
                 // `AbstractBoat.tick`: the non-authoritative copy carries no
                 // cached motion into the next time this player drives it.

@@ -97,6 +97,10 @@ impl render::RenderDataSource for HiddenLayersData<'_, '_> {
     fn model_posed(&self) -> Option<&dyn render::ModelPosed> {
         render::RenderDataSource::model_posed(self.game)
     }
+
+    fn piglin_loves(&self, item: &str) -> bool {
+        render::RenderDataSource::piglin_loves(self.game, item)
+    }
 }
 
 #[cfg(test)]
