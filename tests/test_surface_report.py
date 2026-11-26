@@ -159,6 +159,46 @@ echo '{{}}' > "$3"
         self.assertEqual(catalogs[1:], [*own[2:], "--with-internals"])
         self.assertLess(calls.index("surface-catalogs "), calls.index("surface-diff "))
 
+    def test_cross_layout_endpoints_use_their_own_catalog_reader(self):
+        with tempfile.TemporaryDirectory() as directory:
+            work = Path(directory)
+            base, head = work / "base", work / "head"
+            marker = head / surface_report.SOURCE_LAYOUT
+            marker.parent.mkdir(parents=True)
+            marker.write_text("split\n")
+            for owner in ("common", "server", "client"):
+                game = head / "crates" / f"fixture-{owner}" / "src" / "game"
+                game.mkdir(parents=True)
+                (game / "mod.rs").write_text(f'include!("{owner}.rs");')
+                (game / f"{owner}.rs").write_text(f"pub fn {owner}() {{}}")
+            calls = []
+
+            def run(command, **kwargs):
+                tool, action, *args = command
+                calls.append((tool, action, args[0]))
+                if action == "surface":
+                    Path(args[1]).write_text('{"schema": 3}')
+                return subprocess.CompletedProcess(command, 0, "", "")
+
+            with mock.patch.object(surface_report.subprocess, "run", side_effect=run), \
+                    mock.patch.object(surface_report, "tree_tool", return_value="split-stage"), \
+                    mock.patch.object(surface_report, "ROOT", base):
+                code, _ = surface_report.report("legacy-stage", base, head, work, False)
+                self.assertEqual(code, 0)
+                self.assertIn(("split-stage", "surface-catalogs", str(head)), calls)
+                self.assertEqual(calls[-1][:2], ("split-stage", "surface-diff"))
+
+            calls.clear()
+            with mock.patch.object(surface_report.subprocess, "run", side_effect=run), \
+                    mock.patch.object(surface_report, "ROOT", head):
+                code, _ = surface_report.report(
+                    "split-stage", base, head, work, False, own_base_tool=lambda: "legacy-stage",
+                    own_head_tool=lambda: "split-stage", landed="fixture")
+                self.assertEqual(code, 0)
+                self.assertIn(("legacy-stage", "surface-catalogs", str(base)), calls)
+                self.assertIn(("split-stage", "surface-catalogs", str(head)), calls)
+                self.assertEqual(calls[-1][:2], ("split-stage", "surface-diff"))
+
     def test_an_unreadable_base_fails_naming_the_selected_exporter(self):
         code, text, calls = self.run_report(own_export=1)
         self.assertEqual(code, 1)
