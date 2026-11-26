@@ -100,7 +100,7 @@ fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> sunrise_gameplay::
     )
     .unwrap();
     // Reserve the manually installed guest in the shared runtime ID allocator.
-    game.side.next_entity = game.side.next_entity.max(2);
+    game.server.next_entity = game.server.next_entity.max(2);
     let (tx, _rx) = mpsc::channel();
     let mut guest = Guest::new(
         Joined {
@@ -125,16 +125,16 @@ fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> sunrise_gameplay::
     let mut sword = ItemStack::new("minecraft:diamond_sword", 1);
     sword.data_mut().enchantments = vec![("minecraft:looting".into(), 3)];
     guest.inventory[0] = Some(sword);
-    game.side.lan.as_mut().unwrap().hub.guests.push(guest);
+    game.server.lan.as_mut().unwrap().hub.guests.push(guest);
     game.player.as_mut().unwrap().position = Vec3::new(4.5, 100.0, 4.5);
     game.inventory[game.selected] = Some(ItemStack::new("minecraft:diamond_sword", 1));
     assert!(game.run_command("setblock 8 100 8 chest"));
     assert!(game.run_command("difficulty normal"));
     let still = "NoAI:1b,NoGravity:1b,PersistenceRequired:1b,Silent:1b";
     let mut setup = |command: String| {
-        game.side.chat_capture = Some(Vec::new());
+        game.server.chat_capture = Some(Vec::new());
         let ok = game.run_command(&command);
-        let said = game.side.chat_capture.take().unwrap_or_default();
+        let said = game.server.chat_capture.take().unwrap_or_default();
         let said: Vec<_> = said
             .iter()
             .map(sunrise_game_data::text::Text::plain)
@@ -152,9 +152,9 @@ fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> sunrise_gameplay::
 
 /// Runs `command`: whether it succeeded and what the issuer was told.
 fn run(game: &mut sunrise_gameplay::game::ServerGame<'_>, command: &str) -> (bool, Vec<String>) {
-    game.side.chat_capture = Some(Vec::new());
+    game.server.chat_capture = Some(Vec::new());
     let ok = game.run_command(command);
-    let said = game.side.chat_capture.take().unwrap_or_default();
+    let said = game.server.chat_capture.take().unwrap_or_default();
     (
         ok,
         said.iter()
@@ -228,7 +228,7 @@ fn an_empty_handed_guest_is_the_killer_and_a_missing_one_is_not() {
     let mut first_resources = None;
     let mut first = game(&mut first_resources);
     first
-        .side
+        .server
         .lan
         .as_mut()
         .unwrap()
@@ -262,7 +262,7 @@ fn an_empty_handed_guest_is_the_killer_and_a_missing_one_is_not() {
         ([p.x, p.y, p.z], first.dim),
         ([4.5, 100.0, 4.5], Dim::Overworld)
     );
-    let g = first.side.lan.as_ref().unwrap().hub.guest(2).unwrap();
+    let g = first.server.lan.as_ref().unwrap().hub.guest(2).unwrap();
     assert_eq!(
         (g.position, g.selected, g.inventory[0].is_none()),
         ([22.5, 101.0, 9.5], 0, true)

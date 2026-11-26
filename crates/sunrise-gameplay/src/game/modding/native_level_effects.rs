@@ -40,7 +40,7 @@ impl crate::game::ServerGame<'_> {
     /// leaves out no one; a stale one queues nothing). A `minecraft:` event
     /// must be registered; a mod's goes by name and is heard where its
     /// resources define it. True means queued, not heard.
-    pub(in crate::game) fn level_play_sound(
+    pub fn level_play_sound(
         &mut self,
         level: LevelRef,
         sound: &str,
@@ -122,7 +122,7 @@ impl crate::game::ServerGame<'_> {
     /// `except` and optionally binding to `entity`. Inside an open transaction the sound waits in
     /// `PendingWrite::Sound` until root commit (drawing its seed on publish unless the request
     /// gave one) and discards on abort.
-    pub(in crate::game) fn native_queue_sound(&mut self, request: NativeSoundRequest<'_>) -> bool {
+    pub fn native_queue_sound(&mut self, request: NativeSoundRequest<'_>) -> bool {
         let NativeSoundRequest {
             level,
             sound,
@@ -163,7 +163,7 @@ impl crate::game::ServerGame<'_> {
     /// count sends one particle moving along `spread`). Block particle types
     /// need `state`; item particles need a validated stack; trail and vibration aren't supported.
     /// True means queued, not drawn.
-    pub(in crate::game) fn level_send_particles(
+    pub fn level_send_particles(
         &mut self,
         level: LevelRef,
         options: &ParticleOptions,

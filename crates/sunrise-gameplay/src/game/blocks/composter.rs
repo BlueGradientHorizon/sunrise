@@ -27,7 +27,7 @@ impl Drop for ScopedRandom<'_, '_> {
 
 impl crate::game::ServerGame<'_> {
     /// The composter's `level` at `pos`, None when it isn't a composter.
-    pub(in crate::game) fn composter_level(&self, pos: [i32; 3]) -> Option<i32> {
+    pub fn composter_level(&self, pos: [i32; 3]) -> Option<i32> {
         let state = self.common.world.block(pos[0], pos[1], pos[2]);
         let s = self.common.pack.assets.registry.state(state)?;
         if !is_composter(&s.name) {
@@ -59,7 +59,7 @@ impl crate::game::ServerGame<'_> {
     /// ComposterWrapper's private transactional random, using the unchanged vanilla layers
     /// provider. Sunrise initializes the owner from the current level stream once; it never
     /// advances or rewinds the regular level stream while evaluating this capability.
-    fn composter_transactional_layers(
+    pub fn composter_transactional_layers(
         &mut self,
         pos: [i32; 3],
         provider: &serde_json::Value,
@@ -92,7 +92,7 @@ impl crate::game::ServerGame<'_> {
     /// `ComposterBlock.useItemOn` with the main-hand stack: true when it
     /// consumed the action (SUCCESS; a full composter falls through to
     /// `useWithoutItem`, which empties it).
-    pub(in crate::game) fn use_composter(
+    pub fn use_composter(
         &mut self,
         pos: [i32; 3],
         held: Option<&ItemStack>,

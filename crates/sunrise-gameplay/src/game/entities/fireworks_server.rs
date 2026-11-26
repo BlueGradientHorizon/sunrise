@@ -106,7 +106,7 @@ impl crate::game::ServerGame<'_> {
         self.entity_powder_snow_particles(r.previous, r.position, r.bounds(), r.velocity, false);
         (old_rotation, hit)
     }
-    pub(in crate::game) fn new_rocket(
+    pub fn new_rocket(
         &mut self,
         at: Vec3,
         stack: &ItemStack,
@@ -152,7 +152,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// `FireworkRocketItem.use` while gliding: drop the player's leads, then a
     /// rocket attached to the player.
-    pub(in crate::game) fn boost_firework(&mut self, stack: &ItemStack) -> bool {
+    pub fn boost_firework(&mut self, stack: &ItemStack) -> bool {
         if &*stack.item != "minecraft:firework_rocket"
             || !self.common.player.as_ref().is_some_and(|p| p.fall_flying)
         {
@@ -183,7 +183,7 @@ impl crate::game::ServerGame<'_> {
         true
     }
     /// `FireworkRocketEntity.explode` and `dealExplosionDamage`.
-    pub(in crate::game) fn explode_rocket(&mut self, r: &Rocket) {
+    pub fn explode_rocket(&mut self, r: &Rocket) {
         let at = [r.position.x, r.position.y, r.position.z];
         // FireworkRocketEntity.explode broadcasts before discard. Send now:
         // tick_lan removes missing tracked entities before flushing effects.
@@ -397,7 +397,7 @@ impl crate::game::ServerGame<'_> {
         self.common.rockets.push(rocket);
     }
     /// `FireworkRocketItem.useOn`: launch from the clicked point.
-    pub(in crate::game) fn launch_firework(&mut self, hit: &Hit, stack: &ItemStack) -> bool {
+    pub fn launch_firework(&mut self, hit: &Hit, stack: &ItemStack) -> bool {
         if &*stack.item != "minecraft:firework_rocket"
             || use_on_passes(self.common.player.as_ref().is_some_and(|p| p.fall_flying))
         {
@@ -473,7 +473,7 @@ impl crate::game::ServerGame<'_> {
         let ctx = self.who_context(owner, None);
         self.post_game_event("minecraft:explode", at, ctx);
     }
-    pub(in crate::game) fn rocket_hurt_mobs(
+    pub fn rocket_hurt_mobs(
         &mut self,
         hits: &[(u32, f32)],
         rocket_id: u32,
@@ -840,7 +840,7 @@ impl crate::game::ServerGame<'_> {
         self.entity_section_step(id, [from.x, from.y, from.z], [to.x, to.y, to.z]);
         true
     }
-    pub(in crate::game) fn tick_rockets(&mut self) {
+    pub fn tick_rockets(&mut self) {
         let ticking = self.entity_ticking_area();
         let hears_impacts = !self.common.rockets.is_empty() && self.native_hears_impacts();
         let mut i = 0;

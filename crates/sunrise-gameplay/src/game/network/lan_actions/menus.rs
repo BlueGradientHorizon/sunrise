@@ -4,7 +4,7 @@ impl crate::game::ServerGame<'_> {
     /// Finish the menu handoff after the guest's use. As in
     /// `ChestBlock.useWithoutItem`, the block has already decided its use
     /// result independently of what `ServerPlayer.openMenu` does.
-    pub(in crate::game) fn lan_open_container(
+    pub fn lan_open_container(
         &mut self,
         conn: u32,
         pos: (i32, i32, i32),
@@ -16,7 +16,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// Install the block menu for a guest's use or a direct BlockEntityRef open.
-    pub(in crate::game) fn open_block_menu(&mut self, conn: u32, pos: (i32, i32, i32)) -> MenuOpen {
+    pub fn open_block_menu(&mut self, conn: u32, pos: (i32, i32, i32)) -> MenuOpen {
         let generation = self.common.world.block_entities.generation(&pos);
         let name = &self
             .common.res
@@ -421,7 +421,7 @@ impl crate::game::ServerGame<'_> {
     /// Does not send a close packet or remove window 0: ordinary menu
     /// replacement keeps its cursor and crafting inputs. The guest's level
     /// must be the one in place.
-    pub(in crate::game) fn guest_close_all(&mut self, conn: u32) {
+    pub fn guest_close_all(&mut self, conn: u32) {
         self.guest_remove_menus(conn, MenuRemoval::Live);
     }
 

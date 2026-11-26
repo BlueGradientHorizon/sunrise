@@ -12,7 +12,7 @@ pub(in crate::game) struct ClientCrack {
 
 #[cfg(feature = "client")]
 impl crate::game::ClientGame<'_> {
-    pub(in crate::game) fn expire_client_cracks(&mut self) {
+    pub fn expire_client_cracks(&mut self) {
         let now = self.common.world.game_time;
         self.client
             .destroying
@@ -25,14 +25,14 @@ impl crate::game::ClientGame<'_> {
         self.expire_client_cracks();
     }
 
-    pub(in crate::game::client_side) fn reset_client_world(&mut self, seed: i64) {
+    pub fn reset_client_world(&mut self, seed: i64) {
         self.client.destroying.clear();
         self.set_client_mining(None);
         self.common.world = sunrise_gameplay_common::game::world_for_mods(self.common.res.facts().air, seed);
     }
 
     /// Preserve the stage's stored display answer across prediction updates.
-    pub(in crate::game) fn set_client_mining(&mut self, mining: Option<Mining>) {
+    pub fn set_client_mining(&mut self, mining: Option<Mining>) {
         let keep = mining
             .as_ref()
             .is_some_and(|next| self.common.mining.as_ref().is_some_and(|old| old.pos == next.pos));

@@ -27,7 +27,7 @@ enum Icon {
 
 impl crate::game::ClientGame<'_> {
     /// Queue from a shared ClientHost without dispatching back into a running hook.
-    pub(in crate::game) fn add_toast(&self, request: ModToast) -> Result<(), AddToastError> {
+    pub fn add_toast(&self, request: ModToast) -> Result<(), AddToastError> {
         let title = to_engine(&request.title).map_err(AddToastError::Text)?;
         let description = request
             .description

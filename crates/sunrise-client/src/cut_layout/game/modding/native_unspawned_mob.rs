@@ -284,7 +284,7 @@ use sunrise_sim::mobs::finalize::{self, Attr};
                 }));
                 assert!(panicked.is_err());
                 assert!(
-                    game.side.lent_mobs.0.borrow().lends.is_empty(),
+                    game.server.lent_mobs.0.borrow().lends.is_empty(),
                     "the lend is withdrawn"
                 );
                 let kept = kept.expect("the call ran");

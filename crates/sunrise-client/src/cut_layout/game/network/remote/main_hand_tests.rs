@@ -19,7 +19,7 @@ fn a_client_receives_a_mannequins_main_hand() {
 
                 let kind = "minecraft:mannequin";
                 let network_kind = game
-                    .side
+                    .client
                     .remote
                     .as_ref()
                     .unwrap()

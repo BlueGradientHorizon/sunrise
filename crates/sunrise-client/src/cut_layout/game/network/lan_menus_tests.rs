@@ -14,14 +14,14 @@ fn open_inventory(game: &mut sunrise_gameplay::game::ServerGame<'_>, conn: u32, 
         "minecraft:stick",
         count,
     ));
-    let host = game.side.lan.as_mut().unwrap();
+    let host = game.server.lan.as_mut().unwrap();
     *host.menus.entry(conn).or_default().crafting.inventory = Some(menu);
     host.play.entry(conn).or_default().chat_spam = 5;
 }
 
 fn carried(game: &sunrise_gameplay::game::ServerGame<'_>, conn: u32) -> Option<u32> {
     let menu = game
-        .side
+        .server
         .lan
         .as_ref()?
         .menus
@@ -39,7 +39,7 @@ fn menu_owners_stay_reachable_through_nested_guest_turns() {
         open_inventory(game, 12, 3);
         open_inventory(game, 13, 7);
         let outside = ServerDecisionTarget::admit(game, 12).unwrap();
-        assert!(game.side.lan.as_ref().unwrap().play.contains_key(&12));
+        assert!(game.server.lan.as_ref().unwrap().play.contains_key(&12));
 
         let inside = game
             .as_guest(12, |game| {
@@ -67,8 +67,8 @@ fn menu_owners_stay_reachable_through_nested_guest_turns() {
         let after = ServerDecisionTarget::admit(game, 12).unwrap();
         assert_eq!(after.owner_id(), outside.owner_id());
         // The play state came back as it was.
-        assert_eq!(game.side.lan.as_ref().unwrap().play[&12].chat_spam, 5);
-        assert_eq!(game.side.lan.as_ref().unwrap().play[&13].chat_spam, 5);
+        assert_eq!(game.server.lan.as_ref().unwrap().play[&12].chat_spam, 5);
+        assert_eq!(game.server.lan.as_ref().unwrap().play[&13].chat_spam, 5);
     });
 }
 
@@ -93,10 +93,10 @@ fn a_panicking_turn_leaves_play_state_and_menus_restored() {
             })
         }));
         assert!(panicked.is_err());
-        let host = game.side.lan.as_ref().unwrap();
+        let host = game.server.lan.as_ref().unwrap();
         // The swap is undone: the guest's play state is back, and the menu is as the turn left it.
         assert_eq!(host.play[&12].chat_spam, 5);
-        assert!(game.side.lan_guest_swaps.is_empty());
+        assert!(game.server.lan_guest_swaps.is_empty());
         assert_eq!(carried(game, 12), None);
         let after = ServerDecisionTarget::admit(game, 12).unwrap();
         assert_eq!(after.owner_id(), before.owner_id());
@@ -110,7 +110,7 @@ fn a_panicking_turn_leaves_play_state_and_menus_restored() {
 fn a_lifted_host_comes_back_after_a_panic_and_is_never_lifted_twice() {
     with_guests(|game| {
         open_inventory(game, 12, 3);
-        let guests = game.side.lan.as_ref().unwrap().hub.guests.len();
+        let guests = game.server.lan.as_ref().unwrap().hub.guests.len();
         // The game and the host are separate while lifted, and a second lift finds none.
         let seen = game
             .with_lan_lifted(|game, host| {
@@ -123,7 +123,7 @@ fn a_lifted_host_comes_back_after_a_panic_and_is_never_lifted_twice() {
             })
             .unwrap();
         assert_eq!(seen, (true, true, guests));
-        assert!(game.side.lan.is_some());
+        assert!(game.server.lan.is_some());
 
         let panicked = catch_unwind(AssertUnwindSafe(|| {
             game.with_lan_lifted(|_, host| {
@@ -132,7 +132,7 @@ fn a_lifted_host_comes_back_after_a_panic_and_is_never_lifted_twice() {
             })
         }));
         assert!(panicked.is_err());
-        let host = game.side.lan.as_ref().unwrap();
+        let host = game.server.lan.as_ref().unwrap();
         assert_eq!(host.hub.guests.len(), guests);
         // What the lifted code did to the host stays done; nothing was swapped back for it.
         assert!(!host.menus.contains_key(&12));
@@ -145,11 +145,11 @@ fn a_lifted_host_comes_back_after_a_panic_and_is_never_lifted_twice() {
 fn removing_a_fake_player_drops_its_menu_owners() {
     with_guests(|game| {
         let _serving = sunrise_gameplay::game::server_side::integrated::tests::install_serving(game, false);
-        game.side.next_entity = 100;
+        game.server.next_entity = 100;
         let level = game.level(game.dim.id()).unwrap();
         let fake = game.fake_player(level, 1234, "machine").unwrap();
         let conn = game
-            .side
+            .server
             .lan
             .as_ref()
             .unwrap()
@@ -164,7 +164,7 @@ fn removing_a_fake_player_drops_its_menu_owners() {
         // A guest of the same host, untouched by the removal.
         open_inventory(game, 12, 3);
         assert!(game.player_remove_fake(fake));
-        let host = game.side.lan.as_ref().unwrap();
+        let host = game.server.lan.as_ref().unwrap();
         assert!(!host.menus.contains_key(&conn));
         assert!(!host.play.contains_key(&conn));
         assert_eq!(carried(game, 12), Some(3));

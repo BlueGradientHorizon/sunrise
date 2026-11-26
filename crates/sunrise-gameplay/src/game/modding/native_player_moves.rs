@@ -13,7 +13,7 @@ impl ServerGame<'_> {
     /// swapped in and nothing of the hub borrowed, then the hub commits it or drops it and
     /// corrects the client. A report the hub no longer holds (the player left or was teleported
     /// first) is not heard.
-    pub(in crate::game) fn lan_player_move(&mut self, conn: u32) {
+    pub fn lan_player_move(&mut self, conn: u32) {
         let Some(report) = self
             .server
             .lan

@@ -17,7 +17,7 @@ impl crate::game::ClientGame<'_> {
     }
     /// The old player goes (`handleRespawn`, `handleLogin`): after a respawn its attributes are
     /// kept for the next one; a login starts from nothing.
-    pub(in crate::game) fn drop_remote_player(&mut self) {
+    pub fn drop_remote_player(&mut self) {
         let respawn = &mut self.client.respawn_attributes;
         match (respawn.keep_modifiers.take(), self.common.player.as_ref()) {
             (Some(keep_modifiers), Some(old)) => {

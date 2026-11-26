@@ -113,18 +113,18 @@ pub(crate) fn game<'a>(
     guest.loaded = true;
     // Its view, as the client sent it: straight down.
     guest.pitch = 90.0;
-    game.side.lan.as_mut().unwrap().hub.guests.push(guest);
+    game.server.lan.as_mut().unwrap().hub.guests.push(guest);
     // This fixture installs the guest without the normal login allocator.
     // Reserve its entity ID before commands allocate the camel and sensor mob.
-    game.side.next_entity = game.side.next_entity.max(2);
+    game.server.next_entity = game.server.next_entity.max(2);
     game
 }
 
 /// Runs `command`: whether it succeeded and what the issuer was told.
 fn run(game: &mut sunrise_gameplay::game::ServerGame<'_>, command: &str) -> (bool, Vec<String>) {
-    game.side.chat_capture = Some(Vec::new());
+    game.server.chat_capture = Some(Vec::new());
     let ok = game.run_command(command);
-    let said = game.side.chat_capture.take().unwrap_or_default();
+    let said = game.server.chat_capture.take().unwrap_or_default();
     (
         ok,
         said.iter()

@@ -8,7 +8,7 @@ impl crate::game::ServerGame<'_> {
     /// (`dragonFight.setDragonKilled`): the exit portal, a gateway and the
     /// first dragon's egg, and no new dragon. No experience: `tickDeath`
     /// drops it, and a killed dragon never gets there.
-    pub(in crate::game::server_side) fn kill_dragon(&mut self, id: u32) {
+    pub fn kill_dragon(&mut self, id: u32) {
         if self.common.dragon.as_ref().is_some_and(|d| d.id == id) {
             // Only the fight's own dragon (`dragonFight`) ends it.
             let fight = self.is_fight_dragon();

@@ -130,7 +130,7 @@ impl crate::game::ServerGame<'_> {
         true
     }
     /// Create or retrieve a connectionless player for the level currently in place.
-    pub(in crate::game) fn fake_player(
+    pub fn fake_player(
         &mut self,
         level: LevelRef,
         uuid: u128,
@@ -197,7 +197,7 @@ impl crate::game::ServerGame<'_> {
     /// swapped in (command executors, `native_right_click_block`,
     /// `native_use_on`, `native_break_block`...): None outside such a
     /// hook.
-    pub(in crate::game) fn native_acting_player(&self) -> Option<PlayerRef> {
+    pub fn native_acting_player(&self) -> Option<PlayerRef> {
         self.common.player.as_ref()?;
         self.server.lan_acting_name.as_ref()?;
         self.server.lan_acting_permission?;
@@ -234,7 +234,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// Runs `f` in the turn of the player a handle names, against the level in place. False
     /// when it didn't run: stale or dead.
-    pub(in crate::game) fn native_as_player_handle(
+    pub fn native_as_player_handle(
         &mut self,
         player: PlayerRef,
         f: impl FnOnce(&mut Self),
@@ -415,7 +415,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// The real players on this server, in join order, including an integrated
     /// server's own player even when the world is not open to LAN. Empty on a client.
-    pub(in crate::game) fn native_server_players(&self) -> Vec<PlayerRef> {
+    pub fn native_server_players(&self) -> Vec<PlayerRef> {
         let Some(epoch) = self.common.native_lifecycle.epoch() else {
             return Vec::new();
         };
@@ -479,7 +479,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// A guest's command for the mods, inside their swap (`run_guest_command`).
     /// `None` leaves dispatch to the caller; `Some(false)` is a handled failure.
-    pub(in crate::game) fn perform_native_command(
+    pub fn perform_native_command(
         &mut self,
         conn: u32,
         permission: u8,
@@ -504,7 +504,7 @@ impl crate::game::ServerGame<'_> {
     /// (`native_register_commands`). The console is level 4, so a registered
     /// usage is always allowed; a command no mod takes answers as vanilla's
     /// unknown command.
-    pub(in crate::game::server_side) fn perform_native_console_command(
+    pub fn perform_native_console_command(
         &mut self,
         line: &str,
     ) -> bool {
@@ -624,7 +624,7 @@ impl crate::game::ServerGame<'_> {
         None
     }
     /// Whether a live player handle names a connectionless actor.
-    pub(in crate::game) fn player_is_fake(&self, player: PlayerRef) -> Option<bool> {
+    pub fn player_is_fake(&self, player: PlayerRef) -> Option<bool> {
         match self.player_handle_read(player)? {
             PlayerRead::Acting { .. } => Some(self.server.lan_acting_fake),
             PlayerRead::Guest(guest) => Some(guest.is_fake()),
@@ -640,7 +640,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// A machine's one use on the persistent actor, with its private state put back even
     /// when the action refuses. Only the existing guest turn runs gameplay and its hooks.
-    pub(in crate::game) fn player_perform_action_scoped(
+    pub fn player_perform_action_scoped(
         &mut self,
         player: PlayerRef,
         action: PlayerAction,
@@ -721,7 +721,7 @@ impl crate::game::ServerGame<'_> {
         outcome.map(|outcome| ScopedActionResult::new(outcome, held, other, unrepresentable))
     }
     /// Remove a fake without treating it as a disconnect or saving it.
-    pub(in crate::game) fn player_remove_fake(&mut self, player: PlayerRef) -> bool {
+    pub fn player_remove_fake(&mut self, player: PlayerRef) -> bool {
         if self.common.native_lifecycle.epoch() != Some(player.fields().entity.epoch())
             || !self.server.lan_guest_swaps.is_empty()
         {
@@ -777,7 +777,7 @@ impl crate::game::ServerGame<'_> {
     /// (vanilla's setters take any float). Returns false for a
     /// stale or unavailable player, a displaced outer player, and a speed
     /// that is not finite.
-    pub(in crate::game) fn player_set_abilities(
+    pub fn player_set_abilities(
         &mut self,
         player: PlayerRef,
         abilities: mod_api::PlayerAbilities,
@@ -816,7 +816,7 @@ impl crate::game::ServerGame<'_> {
     /// player holds and a guest's client is told (`SetHeldSlot`). A new slot ends a main-hand use,
     /// as `handleSetCarriedItem` does, without `player_switch_hotbar_slot_pre`, which is for the
     /// player's own input. False for a slot past 8, a stale or dead player.
-    pub(in crate::game) fn player_set_selected_slot(
+    pub fn player_set_selected_slot(
         &mut self,
         player: PlayerRef,
         slot: usize,
@@ -906,7 +906,7 @@ impl crate::game::ServerGame<'_> {
     /// with no player's state swapped in, and a sent chunk's passages sent
     /// after it. The player handle is built from the record, so an unwatch
     /// after a disconnect still names them. Nothing while the log is empty.
-    pub(in crate::game) fn run_chunk_watches(&mut self) {
+    pub fn run_chunk_watches(&mut self) {
         use sunrise_sim::lan::chunk_watch::ChunkWatchKind;
         let Some(host) = self.server.lan.as_mut() else {
             return;
@@ -980,7 +980,7 @@ impl crate::game::ServerGame<'_> {
         (ok, lines)
     }
     /// The shared command-node executor, also reached by functions and `execute`.
-    pub(in crate::game::server_side) fn run_native_command(
+    pub fn run_native_command(
         &mut self,
         context: Context,
     ) -> super::commands::R<i32> {
@@ -1033,7 +1033,7 @@ impl crate::game::ServerGame<'_> {
         (!self.server.world_root.as_os_str().is_empty()).then(|| self.server.world_root.clone())
     }
 
-    pub(in crate::game) fn player_perform_action(
+    pub fn player_perform_action(
         &mut self,
         player: PlayerRef,
         action: PlayerAction,
@@ -1042,7 +1042,7 @@ impl crate::game::ServerGame<'_> {
         self.perform_fake_action(gi, conn, action)
     }
 
-    pub(in crate::game) fn player_set_game_mode(
+    pub fn player_set_game_mode(
         &mut self,
         player: PlayerRef,
         mode: GameMode,
@@ -1186,7 +1186,7 @@ impl crate::game::ServerGame<'_> {
         self.native_send(uuid, packet)
     }
 
-    pub(in crate::game) fn set_tick_rate(&mut self, rate: f32) -> bool {
+    pub fn set_tick_rate(&mut self, rate: f32) -> bool {
         !LevelControl::TickRate.is_heard() && self.apply_tick_rate(rate)
     }
 
@@ -1265,7 +1265,7 @@ impl crate::game::ServerGame<'_> {
         (self.native_acting_player() == Some(player)).then_some(false)
     }
 
-    pub(in crate::game) fn player_set_respawn_config(
+    pub fn player_set_respawn_config(
         &mut self,
         player: PlayerRef,
         config: Option<PlayerRespawnConfig>,
@@ -1378,7 +1378,7 @@ impl crate::game::ServerGame<'_> {
         Ok(hub.nicknames.get(&uuid).map(String::as_str))
     }
 
-    pub(in crate::game) fn player_hide(&mut self, player: PlayerRef, level: Option<u8>) -> bool {
+    pub fn player_hide(&mut self, player: PlayerRef, level: Option<u8>) -> bool {
         if self.common.native_lifecycle.epoch() != Some(player.entity().epoch()) {
             return false;
         }
@@ -1411,7 +1411,7 @@ impl crate::game::ServerGame<'_> {
         true
     }
 
-    pub(in crate::game) fn native_broadcast(&self, mut line: Text) {
+    pub fn native_broadcast(&self, mut line: Text) {
         let mut cancel = false;
         self.native_broadcast_message(&mut line, &mut cancel);
         if cancel {
@@ -1432,7 +1432,7 @@ impl crate::game::ServerGame<'_> {
         }
     }
 
-    pub(in crate::game) fn native_server_event(
+    pub fn native_server_event(
         &self,
         name: &str,
         uuid: u128,
@@ -1445,11 +1445,11 @@ impl crate::game::ServerGame<'_> {
         true
     }
 
-    pub(in crate::game) fn native_run_command(&mut self, line: &str) -> bool {
+    pub fn native_run_command(&mut self, line: &str) -> bool {
         self.run_console_command(line, false).0
     }
 
-    pub(in crate::game) fn experience_orbs(
+    pub fn experience_orbs(
         &self,
         dimension: &str,
         min: [f64; 3],
@@ -1476,7 +1476,7 @@ impl crate::game::ServerGame<'_> {
             .collect()
     }
 
-    pub(in crate::game) fn set_experience_orb(
+    pub fn set_experience_orb(
         &mut self,
         dimension: &str,
         id: u32,

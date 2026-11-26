@@ -9,8 +9,8 @@ mod typed_state_range_read_tests {
         let mut game = sunrise_gameplay::game::game_tests::tests::server_game(&mut resources);
         let source =
             std::path::PathBuf::from(std::env::var_os("SUNRISE_TYPED_RANGE_PACK").unwrap());
-        game.side.world_root = std::env::current_dir().unwrap().join("typed-range-world");
-        let target = game.side.world_root.join("datapacks/typed_ranges");
+        game.server.world_root = std::env::current_dir().unwrap().join("typed-range-world");
+        let target = game.server.world_root.join("datapacks/typed_ranges");
         let preds = target.join("data/ranges/predicate");
         std::fs::create_dir_all(&preds).unwrap();
         std::fs::copy(source.join("pack.mcmeta"), target.join("pack.mcmeta")).unwrap();
@@ -22,19 +22,19 @@ mod typed_state_range_read_tests {
         game.set_allow_commands(true);
         assert!(game.run_command("reload"));
         assert!(
-            game.side
+            game.server
                 .fns
                 .0
                 .enabled
                 .contains(&"file/typed_ranges".to_owned())
         );
         assert!(
-            game.side.fns.0.store.errors.is_empty(),
+            game.server.fns.0.store.errors.is_empty(),
             "{:?}",
-            game.side.fns.0.store.errors
+            game.server.fns.0.store.errors
         );
         assert_eq!(
-            game.side
+            game.server
                 .fns
                 .0
                 .store
@@ -50,7 +50,7 @@ mod typed_state_range_read_tests {
             let expected: serde_json::Value =
                 serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
             assert_eq!(
-                game.side.fns.0.store.predicates.get(&id),
+                game.server.fns.0.store.predicates.get(&id),
                 Some(&expected),
                 "{id}"
             );
@@ -59,12 +59,12 @@ mod typed_state_range_read_tests {
         // Use actual streaming and forced-ticket paths, never a lit/status override.
         game.world.chunks.remove(&(0, 0));
         // Game::new pauses its placeholder streamer until world opening.
-        game.side.streaming.paused = false;
+        game.server.streaming.paused = false;
         assert!(game.run_command("forceload add 0 0 15 15"));
         game.update_chunk_tickets();
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(120);
-        while !game.side.streaming.is_lit(0, 0) || !game.world.chunks.contains_key(&(0, 0)) {
-            let _ = game.side.streaming.update(&mut game.world);
+        while !game.server.streaming.is_lit(0, 0) || !game.world.chunks.contains_key(&(0, 0)) {
+            let _ = game.server.streaming.update(&mut game.world);
             game.spawn_loaded_entities();
             assert!(
                 std::time::Instant::now() < deadline,
@@ -171,10 +171,10 @@ mod typed_state_range_read_tests {
         let mut game = sunrise_gameplay::game::game_tests::tests::server_game(&mut resources);
         let source =
             std::path::PathBuf::from(std::env::var_os("SUNRISE_TYPED_RANGE_PACK").unwrap());
-        game.side.world_root = std::env::current_dir()
+        game.server.world_root = std::env::current_dir()
             .unwrap()
             .join("typed-direction-world");
-        let target = game.side.world_root.join("datapacks/typed_ranges");
+        let target = game.server.world_root.join("datapacks/typed_ranges");
         let preds = target.join("data/ranges/predicate");
         std::fs::create_dir_all(&preds).unwrap();
         std::fs::copy(source.join("pack.mcmeta"), target.join("pack.mcmeta")).unwrap();
@@ -186,19 +186,19 @@ mod typed_state_range_read_tests {
         game.set_allow_commands(true);
         assert!(game.run_command("reload"));
         assert!(
-            game.side
+            game.server
                 .fns
                 .0
                 .enabled
                 .contains(&"file/typed_ranges".to_owned())
         );
         assert!(
-            game.side.fns.0.store.errors.is_empty(),
+            game.server.fns.0.store.errors.is_empty(),
             "{:?}",
-            game.side.fns.0.store.errors
+            game.server.fns.0.store.errors
         );
         assert_eq!(
-            game.side
+            game.server
                 .fns
                 .0
                 .store
@@ -214,7 +214,7 @@ mod typed_state_range_read_tests {
             let expected: serde_json::Value =
                 serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
             assert_eq!(
-                game.side.fns.0.store.predicates.get(&id),
+                game.server.fns.0.store.predicates.get(&id),
                 Some(&expected),
                 "{id}"
             );
@@ -223,12 +223,12 @@ mod typed_state_range_read_tests {
         // Use actual streaming and forced-ticket paths, never a lit/status override.
         game.world.chunks.remove(&(0, 0));
         // Game::new pauses its placeholder streamer until world opening.
-        game.side.streaming.paused = false;
+        game.server.streaming.paused = false;
         assert!(game.run_command("forceload add 0 0 15 15"));
         game.update_chunk_tickets();
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(120);
-        while !game.side.streaming.is_lit(0, 0) || !game.world.chunks.contains_key(&(0, 0)) {
-            let _ = game.side.streaming.update(&mut game.world);
+        while !game.server.streaming.is_lit(0, 0) || !game.world.chunks.contains_key(&(0, 0)) {
+            let _ = game.server.streaming.update(&mut game.world);
             game.spawn_loaded_entities();
             assert!(
                 std::time::Instant::now() < deadline,
@@ -267,7 +267,7 @@ mod typed_state_range_read_tests {
         }
         assert!(game.run_command("reload"));
         assert_eq!(
-            game.side
+            game.server
                 .fns
                 .0
                 .store

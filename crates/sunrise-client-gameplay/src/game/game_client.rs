@@ -196,7 +196,7 @@ impl crate::game::ClientGame<'_> {
             && self.client_res().block_entity_render().renders(state)
     }
     /// Route a winit key event and its text independently (`KeyboardHandler.charTyped`).
-    pub(in crate::game) fn dispatch_window_keyboard(
+    pub fn dispatch_window_keyboard(
         &mut self,
         event_loop: &dyn EventLoopCtl,
         key: Option<KeyCode>,
@@ -300,7 +300,7 @@ impl crate::game::ClientGame<'_> {
             }
         }
     }
-    pub(in crate::game) fn pointer_projection(
+    pub fn pointer_projection(
         &self,
         framebuffer: [u32; 2],
     ) -> sunrise_client::window::PointerProjection {
@@ -319,7 +319,7 @@ impl crate::game::ClientGame<'_> {
     /// Extract every particle group after the frame's entity, screen and hand callbacks.
     /// Item model callbacks can clear during extraction too: roll back only this tail of
     /// geometry (including GPU jobs and outlines), never the frame's ordinary entities.
-    pub(in crate::game) fn client_particle_geometry(
+    pub fn client_particle_geometry(
         &mut self,
         camera: glam::DVec3,
         alpha: f64,
@@ -433,7 +433,7 @@ impl crate::game::ClientGame<'_> {
         self.mark_motion(out.len(), 0);
         self.mark_stage(out.len(), "NONE");
     }
-    pub(crate) fn close_container_client(&mut self) {
+    pub fn close_container_client(&mut self) {
         assert!(
             !self.is_logical_server(),
             "close_container_client called on Server role"
@@ -448,7 +448,7 @@ impl crate::game::ClientGame<'_> {
     }
     /// Shared window/socket ScreenEvent Pre → the captured screen → cancellable Post.
     /// A declined event is never offered to a replacement screen or its bindings.
-    pub(in crate::game) fn dispatch_screen_key(
+    pub fn dispatch_screen_key(
         &mut self,
         event_loop: &dyn EventLoopCtl,
         key: KeyCode,
@@ -499,7 +499,7 @@ impl crate::game::ClientGame<'_> {
     }
     /// Dispatch a window key through IME, the window's shortcuts and overlays, then any bound
     /// preset editor. `true` means no further screen or gameplay handling is needed.
-    pub(in crate::game) fn dispatch_window_key(
+    pub fn dispatch_window_key(
         &mut self,
         event_loop: &dyn EventLoopCtl,
         input: WindowKeyInput<'_>,
@@ -542,7 +542,7 @@ impl crate::game::ClientGame<'_> {
         true
     }
     /// ItemEntityRenderer: items bob and spin; blocks render as small cubes.
-    pub(in crate::game) fn entity_geometry(
+    pub fn entity_geometry(
         &mut self,
         camera: glam::DVec3,
         alpha: f64,
@@ -1211,7 +1211,7 @@ impl crate::game::ClientGame<'_> {
     }
     /// Aligns `locator_camera` with this frame's render camera before HUD extraction
     /// (`GameRenderer.renderLevel` sets `mainCamera` before `Gui.render`).
-    pub(in crate::game::client_side) fn extract_frame_hud(
+    pub fn extract_frame_hud(
         &mut self,
         size: [u32; 2],
         reload_overlay: Option<(f32, sunrise_client::level_loading::OverlayFade)>,
@@ -1305,7 +1305,7 @@ impl crate::game::ClientGame<'_> {
     /// `mouse_press_millis` is the monotonic timestamp of a physical press, absent for synthetic
     /// inputs and all other events.
     /// Returns true when button routing already settled the title before its Post.
-    pub(in crate::game) fn handle_window_event_inner(
+    pub fn handle_window_event_inner(
         &mut self,
         event_loop: &dyn EventLoopCtl,
         event: WindowEvent,
@@ -2138,7 +2138,7 @@ impl crate::game::ClientGame<'_> {
         }
         title_settled
     }
-    pub(in crate::game) fn hud_layers(&mut self, size: [u32; 2]) -> HudBatch {
+    pub fn hud_layers(&mut self, size: [u32; 2]) -> HudBatch {
         use sunrise_client::gui_layers::VanillaGuiLayer;
 
         self.input_hud_begin();
@@ -3064,7 +3064,7 @@ impl crate::game::ClientGame<'_> {
         }
         false
     }
-    pub(in crate::game) fn client_process_level_events(&mut self) -> Result<()> {
+    pub fn client_process_level_events(&mut self) -> Result<()> {
         let events = std::mem::take(&mut self.common.level_events);
         for event in events {
             match event {
@@ -3759,7 +3759,7 @@ impl crate::game::ClientGame<'_> {
     }
     /// Render the frame, then its two moments after that: `render_frame_post` whatever
     /// became of it, `flip_frame` once it was presented.
-    pub(in crate::game) fn render_and_flip(&mut self, elapsed: Duration) -> Result<bool> {
+    pub fn render_and_flip(&mut self, elapsed: Duration) -> Result<bool> {
         let rendered = match self.render() {
             // The callback can fire during this frame; rebuild on
             // the next redraw rather than exiting on its error.
@@ -3793,7 +3793,7 @@ impl crate::game::ClientGame<'_> {
     }
     /// Build the complete frame before handing its borrowed geometry and lighting to
     /// the consumer. Tests use the same boundary as GPU submission.
-    pub(in crate::game) fn render_with(
+    pub fn render_with(
         &mut self,
         consume: impl FnOnce(&mut Renderer, &Frame<'_>) -> Result<bool>,
     ) -> Result<bool> {
@@ -5267,7 +5267,7 @@ impl crate::game::ClientGame<'_> {
     #[allow(dead_code)]
     #[inline(always)]
     pub(in crate::game) fn client_container_changed(&mut self, _: (i32, i32, i32)) {}
-    pub(in crate::game::client_side) fn set_window_cursor(
+    pub fn set_window_cursor(
         &mut self,
         sample: sunrise_client::window::PointerSample,
         projection: sunrise_client::window::PointerProjection,
@@ -5278,7 +5278,7 @@ impl crate::game::ClientGame<'_> {
     /// The title remains the no-level sentinel while debug options or a mod's
     /// screen covers it. Only UI dispatch ignores it; world loading and
     /// simulation still see it.
-    pub(in crate::game::client_side) fn title_input_active(&self) -> bool {
+    pub fn title_input_active(&self) -> bool {
         self.client.title.0.is_some()
             && !matches!(self.client.screen, Screen::DebugOptions | Screen::Mod)
     }

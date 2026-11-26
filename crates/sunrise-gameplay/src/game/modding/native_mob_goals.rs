@@ -60,7 +60,7 @@ impl crate::game::ServerGame<'_> {
     /// (`nearest_target`, `hurt_by_target`) go in through
     /// `add_target_goal`; both selectors take them, as vanilla's two
     /// selectors do.
-    pub(in crate::game) fn mob_add_goal(
+    pub fn mob_add_goal(
         &mut self,
         mob: MobRef,
         priority: i32,
@@ -89,7 +89,7 @@ impl crate::game::ServerGame<'_> {
 
     /// `GoalSelector.addGoal` on the mob's target selector. The same rules
     /// as `add_goal`.
-    pub(in crate::game) fn mob_add_target_goal(
+    pub fn mob_add_target_goal(
         &mut self,
         mob: MobRef,
         priority: i32,
@@ -246,7 +246,7 @@ impl crate::game::ServerGame<'_> {
     /// constructor takes or the mob's class does not hold the goal. The
     /// species ids of a filter resolve through the mob type table, a bare
     /// id in `minecraft:`'s, as the effects' ids read.
-    fn boxed_goal(
+    pub fn boxed_goal(
         &self,
         species: Species,
         navigation: NavKind,

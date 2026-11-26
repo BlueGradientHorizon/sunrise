@@ -50,7 +50,7 @@ impl PickDispatchExt for PickAccumulator {
 }
 
 impl ClientGame<'_> {
-    pub(in crate::game) fn pick_camera_id(&self) -> Option<u32> {
+    pub fn pick_camera_id(&self) -> Option<u32> {
         if let Some(remote) = self.client.remote.as_ref() {
             if let Some(id) = remote.camera {
                 remote.detached_camera.is_none().then_some(id as u32)

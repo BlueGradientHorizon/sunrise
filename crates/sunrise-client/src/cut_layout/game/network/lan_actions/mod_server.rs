@@ -37,7 +37,7 @@ pub(crate) mod tests {
                 MenuOpen::NoProvider
             );
             assert_eq!(game.lan_open_container(999, pos), MenuOpen::Refused);
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()
@@ -47,8 +47,8 @@ pub(crate) mod tests {
                     guest.kind = GuestKind::Fake;
                 });
             assert_eq!(game.lan_open_container(12, pos), MenuOpen::Refused);
-            assert!(game.side.lan.as_ref().unwrap().hub.guests[0].menu.is_none());
-            game.side
+            assert!(game.server.lan.as_ref().unwrap().hub.guests[0].menu.is_none());
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()
@@ -65,7 +65,7 @@ pub(crate) mod tests {
                 .into(),
                 || {
                     assert_eq!(game.lan_open_container(12, pos), MenuOpen::Cancelled);
-                    assert!(game.side.lan.as_ref().unwrap().hub.guests[0].menu.is_none());
+                    assert!(game.server.lan.as_ref().unwrap().hub.guests[0].menu.is_none());
                 },
             );
             let lock = Tag::compound([(
@@ -75,14 +75,14 @@ pub(crate) mod tests {
             assert_eq!(game.lan_open_container(13, pos), MenuOpen::Opened);
             game.world.set_block_lock(pos, &lock);
             assert_eq!(game.lan_open_container(12, pos), MenuOpen::Refused);
-            assert!(game.side.lan.as_ref().unwrap().hub.guests[0].menu.is_none());
-            assert_eq!(game.side.lid_openers.get(&pos), Some(&1));
+            assert!(game.server.lan.as_ref().unwrap().hub.guests[0].menu.is_none());
+            assert_eq!(game.server.lid_openers.get(&pos), Some(&1));
             game.guest_close_all(13);
-            assert!(!game.side.lid_openers.contains_key(&pos));
+            assert!(!game.server.lid_openers.contains_key(&pos));
             game.world
                 .set_block_lock(pos, &Tag::Compound(Default::default()));
             assert_eq!(game.lan_open_container(12, pos), MenuOpen::Opened);
-            assert!(game.side.lan.as_ref().unwrap().hub.guests[0].menu.is_some());
+            assert!(game.server.lan.as_ref().unwrap().hub.guests[0].menu.is_some());
         });
     }
 
@@ -286,8 +286,8 @@ pub(crate) mod tests {
                     seed: 0,
                     max_players: 2,
                     integrated: true,
-                    levels: game.side.level_shapes,
-                    level_seeds: game.side.levels.0.runtime.seeds(),
+                    levels: game.server.level_shapes,
+                    level_seeds: game.server.levels.0.runtime.seeds(),
                 };
                 game.lan_host(settings, net, config).unwrap();
                 let (tx, _rx) = std::sync::mpsc::channel();
@@ -313,7 +313,7 @@ pub(crate) mod tests {
                     guest.game_mode = 1;
                     guest
                 };
-                game.side
+                game.server
                     .lan
                     .as_mut()
                     .unwrap()
@@ -587,14 +587,14 @@ pub(crate) mod tests {
                     ..hit
                 };
                 game.start_audio_capture();
-                game.side.lan_block_events.clear();
+                game.server.lan_block_events.clear();
                 assert!(game.use_hand(Some(&pot_hit)).unwrap());
-                assert!(!game.side.lan_block_events.iter().any(|&(p, b0, b1, _)| {
+                assert!(!game.server.lan_block_events.iter().any(|&(p, b0, b1, _)| {
                     p == pot_hit.pos && b0 == 1 && b1 == crate::game::decorated_pot::WOBBLE_NEGATIVE
                 }));
                 *user.empty_answer.lock().unwrap() = None;
                 assert!(game.use_hand(Some(&pot_hit)).unwrap());
-                assert!(game.side.lan_block_events.iter().any(|&(p, b0, b1, _)| {
+                assert!(game.server.lan_block_events.iter().any(|&(p, b0, b1, _)| {
                     p == pot_hit.pos && b0 == 1 && b1 == crate::game::decorated_pot::WOBBLE_NEGATIVE
                 }));
                 game.stop_audio_capture();
@@ -638,7 +638,7 @@ pub(crate) mod tests {
                 game.world.set(0, 64, 4, lever).unwrap();
                 {
                     let value = Some(sunrise_items::items::ItemStack::new("minecraft:stick", 1));
-                    game.side
+                    game.server
                         .lan
                         .as_mut()
                         .unwrap()
@@ -679,7 +679,7 @@ pub(crate) mod tests {
                     (Some(20), cake, 20, item_uses + 1),
                 ] {
                     game.world.set(0, 64, 4, cake).unwrap();
-                    game.side
+                    game.server
                         .lan
                         .as_mut()
                         .unwrap()
@@ -703,12 +703,12 @@ pub(crate) mod tests {
                         }),
                     );
                     assert_eq!(game.world.block(0, 64, 4), expected);
-                    assert_eq!(game.side.lan.as_ref().unwrap().hub.guests[0].food, food);
+                    assert_eq!(game.server.lan.as_ref().unwrap().hub.guests[0].food, food);
                     assert_eq!(user.item_uses.load(SeqCst), item_calls);
                 }
                 {
                     let value = 1;
-                    game.side
+                    game.server
                         .lan
                         .as_mut()
                         .unwrap()
@@ -724,7 +724,7 @@ pub(crate) mod tests {
                         include_data: true,
                     }),
                 );
-                let guest = &game.side.lan.as_ref().unwrap().hub.guests[0];
+                let guest = &game.server.lan.as_ref().unwrap().hub.guests[0];
                 assert_eq!(
                     &*guest.inventory[guest.selected].as_ref().unwrap().item,
                     "minecraft:diamond"
@@ -736,7 +736,7 @@ pub(crate) mod tests {
                         include_data: false,
                     }),
                 );
-                let guest = &game.side.lan.as_ref().unwrap().hub.guests[0];
+                let guest = &game.server.lan.as_ref().unwrap().hub.guests[0];
                 assert_eq!(
                     &*guest.inventory[guest.selected].as_ref().unwrap().item,
                     "minecraft:stone"
@@ -748,12 +748,12 @@ pub(crate) mod tests {
                         include_data: true,
                     }),
                 );
-                let guest = &game.side.lan.as_ref().unwrap().hub.guests[0];
+                let guest = &game.server.lan.as_ref().unwrap().hub.guests[0];
                 assert_eq!(
                     &*guest.inventory[guest.selected].as_ref().unwrap().item,
                     "minecraft:wheat_seeds"
                 );
-                game.side
+                game.server
                     .lan
                     .as_mut()
                     .unwrap()
@@ -767,7 +767,7 @@ pub(crate) mod tests {
                         include_data: false,
                     }),
                 );
-                let second = &game.side.lan.as_ref().unwrap().hub.guests[1];
+                let second = &game.server.lan.as_ref().unwrap().hub.guests[1];
                 assert_eq!(
                     &*second.inventory[second.selected].as_ref().unwrap().item,
                     "minecraft:stone"
@@ -793,7 +793,7 @@ pub(crate) mod tests {
                         include_data: true,
                     }),
                 );
-                let guest = &game.side.lan.as_ref().unwrap().hub.guests[0];
+                let guest = &game.server.lan.as_ref().unwrap().hub.guests[0];
                 let picked = guest.inventory[guest.selected].as_ref().unwrap();
                 assert_eq!(&*picked.item, "minecraft:diamond");
                 let Some(sunrise_core::nbt::Tag::Compound(components)) =
@@ -845,12 +845,12 @@ pub(crate) mod tests {
                 )
                 .unwrap(),
             );
-            game.side.lan_acting_fake = false;
+            game.server.lan_acting_fake = false;
             let real = game.sleep_counts();
             assert_eq!(real.0, 1);
-            game.side.lan_acting_fake = true;
+            game.server.lan_acting_fake = true;
             assert_eq!(game.sleep_counts(), (0, 0, 0));
-            game.side.lan_acting_fake = false;
+            game.server.lan_acting_fake = false;
             assert_eq!(game.sleep_counts(), real);
         });
     }
@@ -904,7 +904,7 @@ pub(crate) mod respawn_world_point_tests {
                 .as_nanos()
         ));
         std::fs::create_dir_all(&scratch).unwrap();
-        game.side.world_root = scratch.clone();
+        game.server.world_root = scratch.clone();
         let world = [0, 100, 0];
         let personal = [5.5, 101.0, 5.5];
         game.level.world_spawn = Some(world);
@@ -960,9 +960,9 @@ pub(crate) mod respawn_world_point_tests {
         guest.spawn = Some(personal);
         guest.health = 0.0;
         guest.dead = true;
-        game.side.lan.as_mut().unwrap().hub.guests.push(guest);
+        game.server.lan.as_mut().unwrap().hub.guests.push(guest);
         game.guest_respawn(2);
-        let guest = &game.side.lan.as_ref().unwrap().hub.guests[0];
+        let guest = &game.server.lan.as_ref().unwrap().hub.guests[0];
         assert_eq!(guest.uuid, 330);
         assert_eq!(guest.position, personal);
         assert_eq!(guest.health, 20.0);
@@ -1118,17 +1118,17 @@ pub(crate) mod guest_close_listener_tests {
             guest.game_mode = if conn == 3 { 3 } else { 0 };
             guest.on_ground = true;
             assert_eq!(guest.health, 20.0);
-            game.side.lan.as_mut().unwrap().hub.guests.push(guest);
+            game.server.lan.as_mut().unwrap().hub.guests.push(guest);
         }
         let clock = game.world.game_time;
         let mut missing = Vec::new();
         let window = open(&mut game, 1, 1);
-        assert_eq!(game.side.lid_openers.get(&(6, 100, 4)), Some(&1));
+        assert_eq!(game.server.lid_openers.get(&(6, 100, 4)), Some(&1));
         assert_eq!(selected(&game).unwrap().event, "minecraft:container_open");
         reset_listener(&mut game);
         close(&mut game, 1, window + 20);
         assert_eq!(
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()
@@ -1141,11 +1141,11 @@ pub(crate) mod guest_close_listener_tests {
                 .window,
             window
         );
-        assert_eq!(game.side.lid_openers.get(&(6, 100, 4)), Some(&1));
+        assert_eq!(game.server.lid_openers.get(&(6, 100, 4)), Some(&1));
         assert!(selected(&game).is_none());
         close(&mut game, 1, window);
         assert!(
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()
@@ -1155,7 +1155,7 @@ pub(crate) mod guest_close_listener_tests {
                 .menu
                 .is_none()
         );
-        assert!(!game.side.lid_openers.contains_key(&(6, 100, 4)));
+        assert!(!game.server.lid_openers.contains_key(&(6, 100, 4)));
         match selected(&game) {
             Some(info) => {
                 assert_eq!(info.event, "minecraft:container_close");
@@ -1168,11 +1168,11 @@ pub(crate) mod guest_close_listener_tests {
         assert_eq!(selected(&game).unwrap().event, "minecraft:container_open");
         reset_listener(&mut game);
         let last = open(&mut game, 2, 1);
-        assert_eq!(game.side.lid_openers.get(&(6, 100, 4)), Some(&2));
+        assert_eq!(game.server.lid_openers.get(&(6, 100, 4)), Some(&2));
         assert!(selected(&game).is_none());
         close(&mut game, 1, first);
         assert!(
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()
@@ -1182,10 +1182,10 @@ pub(crate) mod guest_close_listener_tests {
                 .menu
                 .is_some()
         );
-        assert_eq!(game.side.lid_openers.get(&(6, 100, 4)), Some(&1));
+        assert_eq!(game.server.lid_openers.get(&(6, 100, 4)), Some(&1));
         assert!(selected(&game).is_none());
         close(&mut game, 2, last);
-        assert!(!game.side.lid_openers.contains_key(&(6, 100, 4)));
+        assert!(!game.server.lid_openers.contains_key(&(6, 100, 4)));
         match selected(&game) {
             Some(info) => {
                 assert_eq!(info.event, "minecraft:container_close");
@@ -1195,11 +1195,11 @@ pub(crate) mod guest_close_listener_tests {
         }
         reset_listener(&mut game);
         let spectator = open(&mut game, 3, 1);
-        assert!(!game.side.lid_openers.contains_key(&(6, 100, 4)));
+        assert!(!game.server.lid_openers.contains_key(&(6, 100, 4)));
         assert!(selected(&game).is_none());
         close(&mut game, 3, spectator);
         assert!(
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()
@@ -1216,7 +1216,7 @@ pub(crate) mod guest_close_listener_tests {
         );
         let boat = game.boats.last().unwrap().id;
         // Chest boats open for a sneaking guest; a plain empty-hand click boards.
-        game.side
+        game.server
             .lan
             .as_mut()
             .unwrap()
@@ -1232,7 +1232,7 @@ pub(crate) mod guest_close_listener_tests {
             }),
         );
         let vehicle_window = game
-            .side
+            .server
             .lan
             .as_ref()
             .unwrap()
@@ -1246,7 +1246,7 @@ pub(crate) mod guest_close_listener_tests {
         reset_listener(&mut game);
         close(&mut game, 1, vehicle_window);
         assert!(
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()
@@ -1258,7 +1258,7 @@ pub(crate) mod guest_close_listener_tests {
         );
         assert_eq!(selected(&game).unwrap().event, "minecraft:container_close");
         assert_eq!(selected(&game).unwrap().pos, [6.5, 100.0, 4.5]);
-        for guest in &game.side.lan.as_mut().unwrap().hub.guests {
+        for guest in &game.server.lan.as_mut().unwrap().hub.guests {
             assert_eq!(guest.uuid, u128::from(guest.conn) + 11200);
             assert_eq!(guest.health, 20.0);
             assert_eq!(guest.position, [4.5, 100.0, 4.5]);

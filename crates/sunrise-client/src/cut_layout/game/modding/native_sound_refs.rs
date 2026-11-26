@@ -44,8 +44,8 @@ use sunrise_sim::mobs::Mob;
                 seed: 0,
                 max_players: 3,
                 integrated: true,
-                levels: game.side.level_shapes,
-                level_seeds: game.side.levels.0.runtime.seeds(),
+                levels: game.server.level_shapes,
+                level_seeds: game.server.levels.0.runtime.seeds(),
             };
             let settings = LanSettings {
                 port: 0,
@@ -56,7 +56,7 @@ use sunrise_sim::mobs::Mob;
             let (a, rx_a) = guest(21, 21, [1.0, 64.0, 2.0]);
             let (b, rx_b) = guest(22, 22, [3.0, 64.0, 2.0]);
             let (far, rx_far) = guest(23, 23, [900.0, 64.0, 2.0]);
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()
@@ -164,8 +164,8 @@ use sunrise_sim::mobs::Mob;
                 seed: 0,
                 max_players: 3,
                 integrated: true,
-                levels: game.side.level_shapes,
-                level_seeds: game.side.levels.0.runtime.seeds(),
+                levels: game.server.level_shapes,
+                level_seeds: game.server.levels.0.runtime.seeds(),
             };
             let settings = LanSettings {
                 port: 0,
@@ -175,7 +175,7 @@ use sunrise_sim::mobs::Mob;
             game.lan_host(settings, net, config).unwrap();
             let (near, rx_near) = guest(31, 31, [0.5, 64.0, 1.0]);
             let (edge, rx_edge) = guest(32, 32, [0.5, 64.0, 16.0]);
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()
@@ -187,7 +187,7 @@ use sunrise_sim::mobs::Mob;
             let sound = "minecraft:entity.player.burp";
             // The sound source's draws bookend the queue's: each queued sound
             // takes one of its own, distinct from every neighbour's.
-            let before = game.side.lan.as_ref().unwrap().hub.next_sound_seed();
+            let before = game.server.lan.as_ref().unwrap().hub.next_sound_seed();
             let mut level_random = game.world.random.clone();
             for _ in 0..2 {
                 assert!(game.native_queue_sound(
@@ -224,7 +224,7 @@ use sunrise_sim::mobs::Mob;
                     p.seed
                 })
                 .collect();
-            let after = game.side.lan.as_ref().unwrap().hub.next_sound_seed();
+            let after = game.server.lan.as_ref().unwrap().hub.next_sound_seed();
             assert_ne!(seeds[0], seeds[1], "each play draws its own seed");
             assert!(
                 seeds.iter().all(|seed| *seed != before && *seed != after),

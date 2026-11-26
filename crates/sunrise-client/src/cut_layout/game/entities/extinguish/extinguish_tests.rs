@@ -104,7 +104,7 @@ fn powder_snow_puts_a_burning_player_out_with_the_hiss() {
     assert!(game.player.as_ref().unwrap().fire_ticks <= 0, "fire out");
     assert_eq!(block(&game, pos), "minecraft:air", "the snow is destroyed");
     let server_hiss = game
-        .side
+        .server
         .pending_sounds
         .iter()
         .filter(|s| s.event == "minecraft:entity.generic.extinguish_fire")
@@ -133,7 +133,7 @@ fn a_cauldron_puts_a_burning_player_out_with_the_hiss() {
         .and_then(|s| s.properties.get("level").cloned());
     assert_eq!(level.as_deref(), Some("2"), "the water drops a level");
     let server_hiss = game
-        .side
+        .server
         .pending_sounds
         .iter()
         .filter(|s| s.event == "minecraft:entity.generic.extinguish_fire")
@@ -157,7 +157,7 @@ fn outside_the_border_powder_snow_stays_but_the_fire_goes_out() {
     assert!(game.player.as_ref().unwrap().fire_ticks <= 0, "fire out");
     assert_eq!(block(&game, pos), "minecraft:powder_snow", "it stays");
     let server_hiss = game
-        .side
+        .server
         .pending_sounds
         .iter()
         .filter(|s| s.event == "minecraft:entity.generic.extinguish_fire")
@@ -187,7 +187,7 @@ fn outside_the_border_a_cauldron_keeps_its_level_but_the_fire_goes_out() {
         .and_then(|s| s.properties.get("level").cloned());
     assert_eq!(level.as_deref(), Some("3"), "it keeps its level");
     let server_hiss = game
-        .side
+        .server
         .pending_sounds
         .iter()
         .filter(|s| s.event == "minecraft:entity.generic.extinguish_fire")

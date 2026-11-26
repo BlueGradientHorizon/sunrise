@@ -103,7 +103,7 @@ fn a_refused_sting_leaves_the_bee_alone() {
 pub(crate) fn sting_sounds(
     game: &mut sunrise_gameplay::game::ServerGame<'_>,
 ) -> Vec<(f32, [f64; 3])> {
-    std::mem::take(&mut game.side.pending_sounds)
+    std::mem::take(&mut game.server.pending_sounds)
         .into_iter()
         .filter(|s| s.event == "minecraft:entity.bee.sting")
         .map(|s| (s.pitch, s.position))

@@ -50,7 +50,7 @@ impl crate::game::ClientGame<'_> {
         })
     }
     /// Draw the presentation retained by the existing load tracker, if one matched at entry.
-    pub(in crate::game) fn draw_dimension_transition_screen(
+    pub fn draw_dimension_transition_screen(
         &self,
         batch: &mut HudBatch,
         tracker: &sunrise_client::level_loading::LevelLoadTracker,
@@ -80,7 +80,7 @@ impl crate::game::ClientGame<'_> {
         false
     }
     /// `LevelLoadingScreen.extractBackground`.
-    pub(in crate::game) fn draw_level_loading_background(
+    pub fn draw_level_loading_background(
         &self,
         batch: &mut HudBatch,
         reason: sunrise_client::level_loading::Reason,
@@ -119,7 +119,7 @@ impl crate::game::ClientGame<'_> {
             self.draw_mounted_screen_widgets(batch);
         }
     }
-    pub(in crate::game) fn draw_screen_phase(
+    pub fn draw_screen_phase(
         &self,
         batch: &mut HudBatch,
         phase: sunrise_client::screen_draw::RenderPhase,
@@ -183,7 +183,7 @@ impl crate::game::ClientGame<'_> {
     }
     /// `Screen.extractBlurredBackground` over the panorama or the world and
     /// HUD, when `menuBackgroundBlurriness` is at least 1.
-    pub(in crate::game) fn menu_blur(&self) -> Option<f32> {
+    pub fn menu_blur(&self) -> Option<f32> {
         let blurred = self.remote_loading()
             || self.client.title.0.as_ref().is_some_and(|t| {
                 matches!(self.client.screen, Screen::Options | Screen::Win)
@@ -224,7 +224,7 @@ impl crate::game::ClientGame<'_> {
         // Screen.extractBackground draws deferred subtitles after its dimming and before widgets.
         self.draw_deferred_subtitles(batch);
     }
-    pub(in crate::game) fn requested_post_effects(&self) -> Vec<String> {
+    pub fn requested_post_effects(&self) -> Vec<String> {
         let mut out = Vec::new();
         self.sync_requested_post_effects(&mut out, std::iter::empty());
         out
@@ -273,7 +273,7 @@ impl crate::game::ClientGame<'_> {
     }
     /// The frame shows the title's panorama, not a level: the title screen, or a
     /// LevelLoadingScreen (Reason.OTHER), which draws it too.
-    pub(in crate::game) fn shows_panorama(&self) -> bool {
+    pub fn shows_panorama(&self) -> bool {
         // The two cases that always had one: the title screen and waiting on
         // a server. Left exactly as they were.
         self.client.title.0.is_some() || self.remote_loading() || self.screen_wants_panorama()
@@ -282,7 +282,7 @@ impl crate::game::ClientGame<'_> {
     /// pack's own chain), then the server's `LocalPlayer.postEffects`, then the
     /// active spectated entity's chain, then `extra`. Reuses unchanged `String`
     /// slots in `out` without deduplicating repeated effect IDs.
-    pub(in crate::game) fn sync_requested_post_effects<'a>(
+    pub fn sync_requested_post_effects<'a>(
         &self,
         out: &mut Vec<String>,
         extra: impl IntoIterator<Item = &'a str>,
@@ -319,7 +319,7 @@ impl crate::game::ClientGame<'_> {
     /// when a screen of the game's own is over the title (Options draws and
     /// fires its own), nor while a dialog, a prompt or a connect or load
     /// hides it, and None with no mod listening to a render hook.
-    pub(in crate::game) fn title_screen_render_view(
+    pub fn title_screen_render_view(
         &self,
         batch: &HudBatch,
     ) -> Option<mod_api::ScreenView<'_>> {

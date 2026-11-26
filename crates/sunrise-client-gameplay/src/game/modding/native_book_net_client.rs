@@ -37,7 +37,7 @@ impl ClientGame<'_> {
         }
     }
 
-    pub(in crate::game) fn reset_book_view(&mut self) {
+    pub fn reset_book_view(&mut self) {
         self.common.native_net.placement.client = Default::default();
         self.common.native_net.placement.deadline = None;
         self.clear_mod_book_placement_screen();

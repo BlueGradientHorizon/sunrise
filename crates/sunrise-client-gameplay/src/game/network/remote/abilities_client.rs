@@ -24,7 +24,7 @@ impl Remote {
 #[cfg(feature = "client")]
 impl crate::game::ClientGame<'_> {
     /// `Abilities.getWalkingSpeed()` of the local player: the server's, on a server.
-    pub(in crate::game) fn remote_walking_speed(&self) -> f32 {
+    pub fn remote_walking_speed(&self) -> f32 {
         walking_speed(self.client.remote.as_ref().map(|r| &r.abilities))
     }
 

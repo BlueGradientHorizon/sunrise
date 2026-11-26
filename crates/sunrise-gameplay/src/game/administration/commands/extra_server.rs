@@ -479,7 +479,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// The waypoint part of a living entity's tick: dirty transmit ranges
     /// track or untrack it.
-    pub(in crate::game::server_side) fn tick_waypoints(&mut self) {
+    pub fn tick_waypoints(&mut self) {
         let dirty = std::mem::take(&mut self.server.cmds.0.waypoint_dirty);
         if dirty.is_empty() {
             return;
@@ -531,7 +531,7 @@ impl crate::game::ServerGame<'_> {
             None => 0.0,
         }
     }
-    pub(in crate::game) fn waypoint_icon(&self, t: Target) -> Icon {
+    pub fn waypoint_icon(&self, t: Target) -> Icon {
         self.server
             .cmds
             .0

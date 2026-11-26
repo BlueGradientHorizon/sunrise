@@ -96,12 +96,12 @@ pub(in crate::game::server_side) fn num(n: impl std::fmt::Display) -> Text {
 }
 
 impl crate::game::ServerGame<'_> {
-    pub(in crate::game::server_side) fn bossbar_path(&self) -> std::path::PathBuf {
+    pub fn bossbar_path(&self) -> std::path::PathBuf {
         self.server
             .world_root
             .join("data/minecraft/custom_boss_events.dat")
     }
-    pub(in crate::game::server_side) fn load_bossbars(&mut self) {
+    pub fn load_bossbars(&mut self) {
         if self.server.bosses.loaded || !self.common.is_logical_server() {
             return;
         }
@@ -114,7 +114,7 @@ impl crate::game::ServerGame<'_> {
         self.server.bosses.rebuild_listing();
         self.common.ui.registries.bossbars = self.server.bosses.bars.ids();
     }
-    pub(in crate::game::server_side) fn save_bossbars(&self) {
+    pub fn save_bossbars(&self) {
         if !self.server.bosses.loaded || !self.common.is_logical_server() {
             return;
         }
@@ -528,7 +528,7 @@ impl crate::game::ServerGame<'_> {
     // ---- ServerBossEvent delivery ------------------------------------------------
 
     /// Tell every connected viewer the boss events they should be seeing via `ClientboundBossEventPacket`.
-    pub(in crate::game) fn publish_boss_bars(&mut self) {
+    pub fn publish_boss_bars(&mut self) {
         if !self.common.is_logical_server() {
             return;
         }
@@ -578,7 +578,7 @@ impl crate::game::ServerGame<'_> {
             ));
         }
     }
-    pub(in crate::game::server_side) fn boss_viewers(&self) -> Vec<Viewer> {
+    pub fn boss_viewers(&self) -> Vec<Viewer> {
         let mut out: Vec<Viewer> = Vec::new();
         if let Some(host) = &self.server.lan {
             for g in host

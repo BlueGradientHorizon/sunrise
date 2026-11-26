@@ -185,8 +185,8 @@ mod tests {
         mod_platform::testing::with_mods(mods, || {
             with_game(|game| {
                 game.native_joins_skip();
-                game.side.next_entity += 1;
-                let id = game.side.next_entity;
+                game.server.next_entity += 1;
+                let id = game.server.next_entity;
                 let cow = push_mob(game, id, "minecraft:cow");
                 // In the lists, but not yet let in.
                 assert!(!cow.added_to_level(game));

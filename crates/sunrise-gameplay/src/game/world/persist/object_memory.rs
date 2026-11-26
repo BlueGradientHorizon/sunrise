@@ -24,7 +24,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// Mutate an extant mob object without making it resident.
-    pub(in crate::game) fn mob_object_mut(&mut self, id: u32) -> Option<&mut Mob> {
+    pub fn mob_object_mut(&mut self, id: u32) -> Option<&mut Mob> {
         if let Some(index) = self.common.mobs.iter().position(|mob| mob.id == id) {
             return Some(&mut self.common.mobs[index]);
         }
@@ -36,7 +36,7 @@ impl crate::game::ServerGame<'_> {
 
     /// A boat object, resident or retained as the root of a passenger graph.
     /// Selectors, tracking and ticking keep iterating `boats` instead.
-    pub(in crate::game) fn boat_object(&self, id: u32) -> Option<&sunrise_gameplay_common::game::boats_common::Boat> {
+    pub fn boat_object(&self, id: u32) -> Option<&sunrise_gameplay_common::game::boats_common::Boat> {
         self.common.boats
             .iter()
             .find(|boat| boat.id == id)
@@ -45,7 +45,7 @@ impl crate::game::ServerGame<'_> {
 
     /// A minecart object, resident or retained as the root of a passenger graph.
     /// Selectors, tracking and ticking keep iterating `carts` instead.
-    pub(in crate::game::server_side) fn cart_object(
+    pub fn cart_object(
         &self,
         id: u32,
     ) -> Option<&sunrise_gameplay_common::game::minecarts::Minecart> {
@@ -57,7 +57,7 @@ impl crate::game::ServerGame<'_> {
 
     /// Internal topology only: resident objects followed by retained passengers.
     /// Callers needing level membership must continue to iterate `mobs` instead.
-    pub(in crate::game) fn mob_objects(&self) -> impl Iterator<Item = &Mob> {
+    pub fn mob_objects(&self) -> impl Iterator<Item = &Mob> {
         self.common.mobs
             .iter()
             .chain(self.common.persist.off_level.values().filter_map(OffLevel::as_mob))
@@ -382,7 +382,7 @@ impl crate::game::ServerGame<'_> {
         }
     }
 
-    pub(in crate::game::server_side) fn load_boat_transferred(
+    pub fn load_boat_transferred(
         &mut self,
         tag: Tag,
         uuid: Option<[i32; 4]>,
@@ -438,7 +438,7 @@ impl crate::game::ServerGame<'_> {
         None
     }
 
-    pub(in crate::game::server_side) fn load_cart_transferred(
+    pub fn load_cart_transferred(
         &mut self,
         tag: Tag,
         uuid: Option<[i32; 4]>,
@@ -487,7 +487,7 @@ impl crate::game::ServerGame<'_> {
         })
     }
 
-    pub(in crate::game::server_side) fn load_mob_transferred(
+    pub fn load_mob_transferred(
         &mut self,
         tag: Tag,
         mount: Option<u32>,
@@ -677,7 +677,7 @@ impl crate::game::ServerGame<'_> {
         riders.into_iter().map(|(_, _, object)| object).collect()
     }
 
-    pub(in crate::game) fn mob_passenger_ids(&self, root: u32) -> Vec<u32> {
+    pub fn mob_passenger_ids(&self, root: u32) -> Vec<u32> {
         self.mob_passenger_objects(root)
             .into_iter()
             .map(|object| self.mob_at(object).id)
@@ -686,7 +686,7 @@ impl crate::game::ServerGame<'_> {
 
     /// Capture after tree serialization and before source removal. This consumes
     /// each object's runtime ownership once, independently of duplicate UUIDs.
-    pub(in crate::game) fn capture_vehicle_tree_state(
+    pub fn capture_vehicle_tree_state(
         &mut self,
         root: u32,
     ) -> Option<TransferredVehicleTree> {
@@ -726,7 +726,7 @@ impl crate::game::ServerGame<'_> {
         })
     }
 
-    pub(super) fn prepare_vehicle_transfer(
+    pub fn prepare_vehicle_transfer(
         &mut self,
         mut tag: Tag,
         tree: TransferredVehicleTree,
@@ -762,7 +762,7 @@ impl crate::game::ServerGame<'_> {
     /// Reconstruct using actual object IDs, even when the copied root is refused
     /// residency. `Entity.teleportCrossDimension` admits every passenger before
     /// its copied vehicle, whether that root is a mob, boat or minecart.
-    pub(in crate::game) fn restore_vehicle_tree_state(
+    pub fn restore_vehicle_tree_state(
         &mut self,
         tag: Tag,
         tree: TransferredVehicleTree,

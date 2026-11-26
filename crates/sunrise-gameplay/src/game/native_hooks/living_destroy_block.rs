@@ -10,7 +10,7 @@ impl crate::game::ServerGame<'_> {
     /// `pos` the block and `state` its state. Canceling keeps the block (an
     /// enderman then holds nothing). Asked once per block, only while a mod is
     /// loaded. Server-side.
-    pub(in crate::game) fn native_living_destroy_block(
+    pub fn native_living_destroy_block(
         &mut self,
         entity: u32,
         kind: &str,

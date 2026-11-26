@@ -369,15 +369,15 @@ fn run_isolated() {
             continuations_preserve_listener_hand_writes(game, &observer);
 
             // The same notice identifies a swapped-in guest rather than the local host.
-            game.side.lan_acting_uuid = Some(0x1111_2222_3333_4444_5555_6666_7777_8888);
-            game.side.lan_acting_entity = Some(123);
+            game.server.lan_acting_uuid = Some(0x1111_2222_3333_4444_5555_6666_7777_8888);
+            game.server.lan_acting_entity = Some(123);
             game.offhand = Some(named_stack("minecraft:apple", 1));
             game.with_hand(Hand::Off, Game::consume_held);
             let guest = take_notice(&observer, Some(Hand::Off), "minecraft:apple", 0);
             assert_eq!(guest.player, 0x1111_2222_3333_4444_5555_6666_7777_8888);
             assert_eq!(guest.entity, 123);
-            game.side.lan_acting_uuid = None;
-            game.side.lan_acting_entity = None;
+            game.server.lan_acting_uuid = None;
+            game.server.lan_acting_entity = None;
 
             // Native entity interaction: the last wheat is eaten by an adult cow.
             let kind = game.res.mob_types().get("minecraft:cow").unwrap().clone();
@@ -424,7 +424,7 @@ fn run_isolated() {
         native_entity_refs::tests::with_client_game(|game| {
             let (local, _peer) = Pipe::pair();
             game.connect_local(local, "DestroyTest").unwrap();
-            let remote = game.side.remote.as_mut().unwrap();
+            let remote = game.client.remote.as_mut().unwrap();
             remote.logged_in = true;
             remote.entity_id = 71;
             remote.profile = PLAYER;
@@ -433,7 +433,7 @@ fn run_isolated() {
             game.player = Some(player);
             game.set_local_mode(sunrise_command::args::GameMode::Survival);
             game.selected = 0;
-            game.side.screen = Screen::Playing;
+            game.client.screen = Screen::Playing;
             game.world
                 .chunks
                 .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));

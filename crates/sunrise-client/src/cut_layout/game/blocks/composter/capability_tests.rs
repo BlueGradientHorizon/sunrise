@@ -47,7 +47,7 @@ fn assert_quiet(game: &sunrise_gameplay::game::ServerGame<'_>, heard: &Mutex<Vec
     );
     assert!(game.level_events.is_empty());
     assert!(
-        game.side.pending_sounds.is_empty(),
+        game.server.pending_sounds.is_empty(),
         "sound escaped a transaction"
     );
     assert!(
@@ -270,7 +270,7 @@ fn sided_composter_transactions_preserve_literal_chance_and_defer_all_effects() 
                 game.tick_scheduled().unwrap();
                 assert_eq!(game.composter_level(POS), Some(8));
                 assert!(
-                    game.side
+                    game.server
                         .pending_sounds
                         .iter()
                         .any(|s| s.event == "minecraft:block.composter.ready")
@@ -303,7 +303,7 @@ fn sided_composter_transactions_preserve_literal_chance_and_defer_all_effects() 
                 .unwrap();
                 assert_eq!(game.composter_level(POS), Some(0));
                 assert_eq!(heard.lock().unwrap().as_slice(), ["minecraft:block_change"]);
-                assert!(game.side.pending_sounds.is_empty());
+                assert!(game.server.pending_sounds.is_empty());
                 assert!(game.dropped.is_empty());
 
                 // A real bulk consumer offers all remaining items up to 64, not a pre-trimmed

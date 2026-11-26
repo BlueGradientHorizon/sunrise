@@ -86,7 +86,7 @@ pub(in crate::game) fn java_int(v: f64) -> i32 {
 
 impl crate::game::ServerGame<'_> {
     /// The source a command typed by the player starts from.
-    pub(in crate::game) fn player_source(&self) -> Source {
+    pub fn player_source(&self) -> Source {
         Source {
             // The server console has no entity (CommandSourceStack of the server).
             entity: self.common.player.is_some().then_some(Target::Player),
@@ -106,7 +106,7 @@ impl crate::game::ServerGame<'_> {
     /// The server as a source (function ticks and schedules,
     /// `MinecraftServer.createCommandSourceStack`): the world spawn, in its level
     /// (`findRespawnDimension`), whichever level is in place.
-    pub(in crate::game) fn server_source(&self) -> Source {
+    pub fn server_source(&self) -> Source {
         let level = self.world_spawn_level();
         Source {
             entity: None,
@@ -174,7 +174,7 @@ impl crate::game::ServerGame<'_> {
 
     /// Run one command line with `source` (no error reporting): the entry
     /// for functions and `execute run`.
-    pub(in crate::game) fn execute_line(&mut self, line: &str, source: Source) -> R<i32> {
+    pub fn execute_line(&mut self, line: &str, source: Source) -> R<i32> {
         let d = self.common.ui.dispatcher.0.clone();
         let parse = d.parse(line, &self.common.ui.registries);
         let (ctx, _) = parse.executable()?;

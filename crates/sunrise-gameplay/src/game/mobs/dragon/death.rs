@@ -4,7 +4,7 @@ use super::*;
 impl crate::game::ServerGame<'_> {
     /// `tickDeath`: rising for 200 ticks, explosions, experience, then the
     /// exit portal, the egg and a gateway.
-    pub(in crate::game::server_side) fn tick_dragon_death(&mut self) {
+    pub fn tick_dragon_death(&mut self) {
         let Some(d) = self.common.dragon.as_mut() else {
             return;
         };

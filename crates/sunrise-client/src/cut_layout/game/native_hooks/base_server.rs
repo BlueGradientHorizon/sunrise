@@ -44,7 +44,7 @@ pub(crate) mod held_break_slot_tests {
         game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.0, 70.0, 0.0)).unwrap());
         game.set_mode_id(0);
         // Stage an acting guest: break events are queued instead of rendering local crumbs.
-        game.side.lan_acting = Some(1);
+        game.server.lan_acting = Some(1);
         game.hand = Hand::Off;
         let main = ItemStack::new("minecraft:stick", 3);
         game.inventory[game.selected] = Some(main.clone());
@@ -56,7 +56,7 @@ pub(crate) mod held_break_slot_tests {
         game.offhand = Some(ItemStack::new("minecraft:flint_and_steel", 1));
         game.damage_held_in_slot(1, EquipmentSlot::OffHand);
         assert_eq!(game.offhand.as_ref().unwrap().damage, 1);
-        assert!(game.side.guest_equipment_breaks.is_empty());
+        assert!(game.server.guest_equipment_breaks.is_empty());
         for (explicit, event) in [(true, 48), (false, 47)] {
             let mut tool = ItemStack::new("minecraft:flint_and_steel", 1);
             tool.damage = max - 1;
@@ -68,7 +68,7 @@ pub(crate) mod held_break_slot_tests {
             }
             assert!(game.offhand.is_none());
             assert_eq!(game.inventory[game.selected], Some(main.clone()));
-            assert_eq!(*game.side.guest_equipment_breaks.last().unwrap(), event);
+            assert_eq!(*game.server.guest_equipment_breaks.last().unwrap(), event);
         }
         game.set_mode_id(1);
         game.offhand = Some(ItemStack::new("minecraft:flint_and_steel", 1));

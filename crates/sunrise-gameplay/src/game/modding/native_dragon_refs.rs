@@ -23,7 +23,7 @@ impl crate::game::ServerGame<'_> {
 
     /// The entity as the ender dragon, or None for another kind, a stale
     /// handle or a client.
-    pub(in crate::game) fn dragon(&self, entity: EntityRef) -> Option<DragonRef> {
+    pub fn dragon(&self, entity: EntityRef) -> Option<DragonRef> {
         self.native_dragon(entity)?;
         Some(DragonRef::new(entity))
     }

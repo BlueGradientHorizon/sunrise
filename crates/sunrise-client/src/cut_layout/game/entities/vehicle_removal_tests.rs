@@ -52,7 +52,7 @@ fn nested_blast_skips_the_stand_or_cushion_already_being_removed() {
             },
             |game, gate| {
                 tick_area(game);
-                game.side.next_entity = 100;
+                game.server.next_entity = 100;
                 push_pig(game, 72);
                 game.mob_object_mut(72).unwrap().extra.mount = Some(71);
                 if stand {
@@ -107,7 +107,7 @@ fn stand_equipment_and_below_world_spills_are_visible_at_dismount() {
                 }
             },
             |game, gate| {
-                game.side.next_entity = 100;
+                game.server.next_entity = 100;
                 let below = Vec3::new(AT.x, f64::from(game.world.shape.min_y - 65), AT.z);
                 let stack = ItemStack::new("minecraft:diamond", 1);
                 push_pig(game, 72);
@@ -230,7 +230,7 @@ pub(crate) fn with_removal_test_hooks(
         with_game(|game| {
             game.options.dedicated = Some(Vec::new());
             tick_area(game);
-            game.side.next_entity = 100;
+            game.server.next_entity = 100;
             test(game);
         });
     });
@@ -240,7 +240,7 @@ pub(crate) fn finish_death_on_next_tick(game: &mut sunrise_gameplay::game::Serve
     let mob = game.mob_object_mut(id).unwrap();
     mob.health = 0.0;
     mob.death_time = 19;
-    game.side.died.insert(id);
+    game.server.died.insert(id);
     game.tick_creature_entities().unwrap();
 }
 

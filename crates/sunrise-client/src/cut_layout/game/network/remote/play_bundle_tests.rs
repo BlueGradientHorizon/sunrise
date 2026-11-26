@@ -318,7 +318,7 @@ fn a_bundle_applies_its_column_and_orders_main_network_and_close() {
 
         // A Disconnect member closes the connection, not the iteration.
         // A cookie and a typed handler still run before the listener is removed.
-        let cookies = game.side.remote.as_ref().unwrap().session.cookies.clone();
+        let cookies = game.client.remote.as_ref().unwrap().session.cookies.clone();
         let cookie = "bundle_probe:after_close";
         for packet in [
             delimiter.clone(),
@@ -346,7 +346,7 @@ fn a_bundle_applies_its_column_and_orders_main_network_and_close() {
         // processing either one: only the inline handlers survive the close.
         game.wait_for_test_remote_event(|event| matches!(event, Event::RawPayload(_)));
         game.poll_remote_events(true).unwrap();
-        assert!(game.side.remote.is_none());
+        assert!(game.client.remote.is_none());
         assert_eq!(cookies.lock().unwrap().get(cookie), Some(&vec![17]));
         assert_eq!(
             *witness.order.lock().unwrap(),
@@ -372,7 +372,7 @@ fn a_bundle_applies_its_column_and_orders_main_network_and_close() {
 fn a_post_disconnect_droppable_reply_cannot_join_the_writer_drain() {
     with_probe(|game, witness| {
         let (local, reader, mut writer) = connect_probe(game);
-        let session = &game.side.remote.as_ref().unwrap().session;
+        let session = &game.client.remote.as_ref().unwrap().session;
         let endpoint = session.payload_endpoint();
         let epoch = session.payload_transport().epoch().unwrap();
         endpoint
@@ -410,7 +410,7 @@ fn a_post_disconnect_droppable_reply_cannot_join_the_writer_drain() {
         }
         wait_for_bundle(game);
         game.poll_remote_events(true).unwrap();
-        assert!(game.side.remote.is_none());
+        assert!(game.client.remote.is_none());
         assert_eq!(
             *witness.order.lock().unwrap(),
             ["droppable refused", "earlier write drained"]
@@ -477,7 +477,7 @@ fn a_grouped_column_split_across_tcp_reads_is_adopted_as_one_bundle() {
             });
         spawn_menu_test(game);
         let counters = game
-            .side
+            .client
             .remote
             .as_ref()
             .unwrap()
@@ -570,7 +570,7 @@ fn a_bundled_transfer_starts_the_next_session_before_later_members() {
     with_probe(|game, witness| {
         let (local, _reader, mut writer) = connect_probe(game);
         // The in-memory fixture represents a multiplayer source here.
-        let source = &mut game.side.remote.as_mut().unwrap().session;
+        let source = &mut game.client.remote.as_mut().unwrap().session;
         source.address = "source.invalid".into();
         let old = source.cookies.clone();
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
@@ -635,7 +635,7 @@ fn a_bundled_transfer_starts_the_next_session_before_later_members() {
         });
         game.poll_remote_events(true).unwrap();
         assert_eq!(*witness.order.lock().unwrap(), ["network after transfer"]);
-        let next = &game.side.remote.as_ref().unwrap().session;
+        let next = &game.client.remote.as_ref().unwrap().session;
         assert_eq!(next.address, destination.to_string());
         assert_eq!(old.lock().unwrap().get(cookie), Some(&vec![27]));
         assert_eq!(old.lock().unwrap().get(queued), Some(&vec![42]));
@@ -659,7 +659,7 @@ fn standalone_transfer_keeps_its_earlier_cookie_even_after_source_eof() {
         for eof in [false, true] {
             let (mut reader, mut writer) = connect_play_test(game, |_, _| {});
             spawn_menu_test(game);
-            let source = &mut game.side.remote.as_mut().unwrap().session;
+            let source = &mut game.client.remote.as_mut().unwrap().session;
             source.address = "source.invalid".into();
             let old = source.cookies.clone();
             let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
@@ -710,7 +710,7 @@ fn standalone_transfer_keeps_its_earlier_cookie_even_after_source_eof() {
             }
             game.poll_remote_events(true).unwrap();
             assert_eq!(
-                game.side.remote.as_ref().unwrap().session.address,
+                game.client.remote.as_ref().unwrap().session.address,
                 destination.to_string()
             );
             // The login listener has already copied the cookies when it sends Hello.
@@ -750,7 +750,7 @@ fn a_second_admitted_standalone_transfer_keeps_the_first_opening() {
     with_client_game(|game| {
         let (_reader, mut writer) = connect_play_test(game, |_, _| {});
         spawn_menu_test(game);
-        game.side.remote.as_mut().unwrap().session.address = "source.invalid".into();
+        game.client.remote.as_mut().unwrap().session.address = "source.invalid".into();
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let first = listener.local_addr().unwrap();
         let unexpected = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
@@ -768,7 +768,7 @@ fn a_second_admitted_standalone_transfer_keeps_the_first_opening() {
         });
         writer.shutdown();
         game.wait_for_test_remote_event(|event| matches!(event, Event::Disconnected { .. }));
-        let source = game.side.remote.as_ref().unwrap();
+        let source = game.client.remote.as_ref().unwrap();
         assert!(!source.session.accepts_packets());
         let admitted = source.backlog.iter().filter_map(|item| match item {
             Received::Event(Event::Transfer(task), _) => Some(task.is_eligible()),
@@ -778,7 +778,7 @@ fn a_second_admitted_standalone_transfer_keeps_the_first_opening() {
         game.poll_remote_events(true).unwrap();
         let target = target.join().unwrap();
         assert_eq!(
-            game.side.remote.as_ref().unwrap().session.address,
+            game.client.remote.as_ref().unwrap().session.address,
             first.to_string()
         );
         assert!(
@@ -793,7 +793,7 @@ fn a_second_admitted_standalone_transfer_keeps_the_first_opening() {
 fn a_parked_main_payload_does_not_retire_the_bundle_listener() {
     with_probe(|game, witness| {
         let (local, _reader, mut writer) = connect_probe(game);
-        let old = game.side.remote.as_ref().unwrap().session.cookies.clone();
+        let old = game.client.remote.as_ref().unwrap().session.cookies.clone();
         let key = "bundle_probe:after_refusal";
         for packet in [
             C::BundleDelimiter(Empty),
@@ -824,7 +824,7 @@ fn a_parked_main_payload_does_not_retire_the_bundle_listener() {
                 .unwrap();
         }
         wait_for_bundle(game);
-        let source = &mut game.side.remote.as_mut().unwrap().session;
+        let source = &mut game.client.remote.as_mut().unwrap().session;
         let held = source.hold_test_ingress_credit();
         writer
             .send(
@@ -841,7 +841,7 @@ fn a_parked_main_payload_does_not_retire_the_bundle_listener() {
         // then can the second one classify and dispatch against the old epoch.
         game.poll_remote_events(true).unwrap();
         drop(held);
-        assert!(game.side.remote.is_none());
+        assert!(game.client.remote.is_none());
         assert_eq!(old.lock().unwrap().get(key), Some(&vec![45]));
         assert_eq!(*witness.order.lock().unwrap(), ["network after close"]);
     });

@@ -41,7 +41,7 @@ impl crate::game::ClientGame<'_> {
     }
 
     /// What a handle names on a client: the local player or an entity tracked by the server.
-    pub(in crate::game) fn native_client_entity_target(&self, entity: EntityRef) -> Option<Target> {
+    pub fn native_client_entity_target(&self, entity: EntityRef) -> Option<Target> {
         let (remote, id) = self.native_client_entity_context(entity)?;
         if id == remote.entity_id {
             return self.common.player.as_ref().map(|_| Target::Player);

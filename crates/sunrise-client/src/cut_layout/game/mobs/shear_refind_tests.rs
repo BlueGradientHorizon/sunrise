@@ -21,8 +21,8 @@ fn a_mob_the_listener_removed_is_not_sheared() {
         |game, gate| {
             assert!(game.run_command("summon sheep 8.5 100 8.5 {NoAI:1b,Silent:1b}"));
             sheep.store(game.mobs[0].id, Ordering::SeqCst);
-            game.side.lan_acting_uuid = Some(7);
-            game.side.lan_acting_name = Some("Alex".into());
+            game.server.lan_acting_uuid = Some(7);
+            game.server.lan_acting_name = Some("Alex".into());
             game.inventory[game.selected] = Some(ItemStack::new("minecraft:shears", 1));
             gate.arm();
             assert_eq!(game.player_shear(0), Some(true));

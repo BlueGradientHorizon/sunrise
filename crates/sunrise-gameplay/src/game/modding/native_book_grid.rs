@@ -81,7 +81,7 @@ impl crate::game::ServerGame<'_> {
     /// `place_recipe_in_grid`: only while a `recipe_book_place` part runs. The placement is worked
     /// out on the detached menu; the game compares the player and the blocks again before
     /// it publishes anything.
-    pub(in crate::game) fn place_recipe_in_grid(
+    pub fn place_recipe_in_grid(
         &mut self,
         recipe: &str,
         grid_width: u16,

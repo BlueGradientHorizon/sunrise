@@ -276,7 +276,7 @@ impl crate::game::ServerGame<'_> {
         }
         out
     }
-    pub(in crate::game) fn difficulty_id(&self) -> i32 {
+    pub fn difficulty_id(&self) -> i32 {
         use sunrise_world::food::Difficulty;
         match self.common.world.health_rules.difficulty {
             Difficulty::Peaceful => 0,
@@ -307,7 +307,7 @@ impl crate::game::ServerGame<'_> {
     /// dimension's saved first), as a level opens (`ServerLevel`'s
     /// constructor). Their own randoms are seeded by `load_raids` on the first
     /// raid tick without drawing from the level's stream.
-    pub(in crate::game::server_side) fn read_raids(&mut self) {
+    pub fn read_raids(&mut self) {
         if self.server.raiding.0.loaded == Some(self.common.dim) {
             return;
         }
@@ -327,7 +327,7 @@ impl crate::game::ServerGame<'_> {
         self.server.raiding.0.unseeded = Some(order);
     }
     /// `Raids` as its dimension's `raids.dat`, when it changed.
-    pub(in crate::game::server_side) fn save_raids(&mut self) {
+    pub fn save_raids(&mut self) {
         let Some(dim) = self.server.raiding.0.loaded else {
             return;
         };
@@ -460,7 +460,7 @@ impl crate::game::ServerGame<'_> {
     /// `Raids.createOrExtendRaid`: not for spectators, with the `raids` rule
     /// and where raids may start; the raid centres on the occupied village
     /// points of interest within 64 blocks.
-    pub(in crate::game::server_side) fn create_or_extend_raid(
+    pub fn create_or_extend_raid(
         &mut self,
         at: [i32; 3],
         amplifier: Option<i32>,
@@ -507,7 +507,7 @@ impl crate::game::ServerGame<'_> {
         self.server.raiding.0.raids.nearby(at).map(|(id, _)| id)
     }
     /// `/raid start`: a raid in the local village at the given omen level.
-    pub(in crate::game) fn raid_command_create(&mut self, at: [i32; 3], omen_level: i32) -> bool {
+    pub fn raid_command_create(&mut self, at: [i32; 3], omen_level: i32) -> bool {
         self.load_raids();
         let Some(id) = self.create_or_extend_raid(at, None) else {
             return false;
@@ -518,7 +518,7 @@ impl crate::game::ServerGame<'_> {
         self.server.raiding.0.raids.dirty = true;
         true
     }
-    pub(in crate::game) fn raid_command_stop(&mut self, id: i32) {
+    pub fn raid_command_stop(&mut self, id: i32) {
         if let Some(center) = self.server.raiding.0.raids.stop(id)
             && let Some(level) = self.level(self.common.dim.id())
         {
@@ -558,7 +558,7 @@ impl crate::game::ServerGame<'_> {
         )
     }
     /// A raid's members (`groupRaiderMap`): the living raiders it counts.
-    pub(in crate::game::server_side) fn raid_members(&self, id: i32) -> impl Iterator<Item = &Mob> {
+    pub fn raid_members(&self, id: i32) -> impl Iterator<Item = &Mob> {
         members(&self.common.mobs, id)
     }
     /// `getHealthOfLivingRaiders`, leaving out one raider.
@@ -653,7 +653,7 @@ impl crate::game::ServerGame<'_> {
         }
     }
     /// `ServerLevel.tick` for the raids and their raiders.
-    pub(in crate::game::server_side) fn tick_raids(&mut self) {
+    pub fn tick_raids(&mut self) {
         if !self.common.is_logical_server() {
             return;
         }
@@ -716,7 +716,7 @@ impl crate::game::ServerGame<'_> {
         let infos = self.raider_infos();
         self.sync_villager_raids(&infos);
     }
-    pub(in crate::game::server_side) fn apply_raid_action(&mut self, id: i32, action: Action) {
+    pub fn apply_raid_action(&mut self, id: i32, action: Action) {
         match action {
             Action::Spawn { pos, wave, spawns } => self.spawn_wave(id, pos, wave, &spawns),
             Action::Horn { pos, seed } => self.raid_horn(id, pos, seed),
@@ -1344,7 +1344,7 @@ impl crate::game::ServerGame<'_> {
     /// beat, so a viewer joins or leaves it up to 19 ticks late, alive or not
     /// (`validPlayer`'s `isAlive` is only read on a beat). The name is the
     /// translate component the client draws.
-    pub(in crate::game::server_side) fn raid_bars_at(&self, uuid: u128) -> Vec<(i32, Tag, f32)> {
+    pub fn raid_bars_at(&self, uuid: u128) -> Vec<(i32, Tag, f32)> {
         if self.common.dim != Dim::Overworld {
             return Vec::new();
         }
@@ -1408,7 +1408,7 @@ impl crate::game::ServerGame<'_> {
 impl crate::game::ServerGame<'_> {
     /// Sections holding a claimed village point of interest (a job site,
     /// bed or bell a villager has taken): `PoiManager.isVillageCenter`.
-    pub(in crate::game) fn village_centers(&self) -> HashSet<(i32, i32, i32)> {
+    pub fn village_centers(&self) -> HashSet<(i32, i32, i32)> {
         let mut out = HashSet::new();
         let world = self.mob_world_base(&[]);
         for m in &self.common.mobs {
@@ -1433,7 +1433,7 @@ impl crate::game::ServerGame<'_> {
     /// `PatrolSpawner.tick` (`sunrise_client::patrol`) on the game level:
     /// the pillagers it accepts are created after the pass, finalized for a
     /// patrol.
-    pub(in crate::game) fn tick_patrol_spawner(&mut self) {
+    pub fn tick_patrol_spawner(&mut self) {
         if self.common.dim != Dim::Overworld {
             return;
         }
@@ -1498,13 +1498,13 @@ impl crate::game::ServerGame<'_> {
         }
     }
     /// `VillageSiege.tick`, run by `VillageSiege` in `sunrise-gameplay`.
-    pub(in crate::game) fn tick_village_siege(&mut self) {
+    pub fn tick_village_siege(&mut self) {
         let mut siege = std::mem::take(&mut self.server.raiding.0.siege);
         siege.tick(self);
         self.server.raiding.0.siege = siege;
     }
     /// `ServerLevel.isVillage`: within one section of a village.
-    pub(in crate::game::server_side) fn is_village(
+    pub fn is_village(
         centers: &HashSet<(i32, i32, i32)>,
         pos: [i32; 3],
     ) -> bool {

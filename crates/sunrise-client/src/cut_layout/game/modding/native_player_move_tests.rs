@@ -29,7 +29,7 @@ impl Hooks for Wall {
 }
 
 fn hold(game: &mut sunrise_gameplay::game::ServerGame<'_>, conn: u32, to: [f64; 3], yaw: f32) {
-    let hub = &mut game.side.lan.as_mut().unwrap().hub;
+    let hub = &mut game.server.lan.as_mut().unwrap().hub;
     let i = hub.guests.iter().position(|g| g.conn == conn).unwrap();
     let (teleports, dimension) = (
         hub.guests[i].teleport_counter,
@@ -78,14 +78,14 @@ fn a_veto_corrects_the_player_and_a_pass_commits_the_report() {
                     [40.0, 0.0]
                 )]
             );
-            let g = game.side.lan.as_ref().unwrap().hub.guest(13).unwrap();
+            let g = game.server.lan.as_ref().unwrap().hub.guest(13).unwrap();
             assert_eq!((g.position, g.yaw), ([5.0, 64.0, 5.0], 40.0));
             assert!(g.pending_move.is_none());
             // A report past it: vetoed, the player stays and the client is corrected.
             hold(game, 13, [20.0, 64.0, 5.0], 90.0);
             game.lan_player_move(13);
             assert_eq!(heard.lock().unwrap().len(), 1);
-            let g = game.side.lan.as_ref().unwrap().hub.guest(13).unwrap();
+            let g = game.server.lan.as_ref().unwrap().hub.guest(13).unwrap();
             assert_eq!((g.position, g.yaw), ([5.0, 64.0, 5.0], 40.0));
             assert!(
                 g.awaiting_teleport.is_some(),
@@ -121,7 +121,7 @@ impl Hooks for Ruling {
 fn two_turns_waiting(game: &mut sunrise_gameplay::game::ServerGame<'_>) {
     use sunrise_protocol::packets::play::{self, Serverbound as S};
     use sunrise_sim::lan::guest::InboxItem;
-    let hub = &mut game.side.lan.as_mut().unwrap().hub;
+    let hub = &mut game.server.lan.as_mut().unwrap().hub;
     hub.ticks = 10;
     hub.update_guest(13, |g| {
         g.load_timeout = 0;
@@ -143,13 +143,13 @@ fn two_turns_waiting(game: &mut sunrise_gameplay::game::ServerGame<'_>) {
 /// One server tick of the real game: the poll, the guests' packets, and the events the hub tells
 /// the game, with the mods' ruling in them.
 fn game_tick(game: &mut sunrise_gameplay::game::ServerGame<'_>) {
-    game.side.level_pass.packets_drained = false;
+    game.server.level_pass.packets_drained = false;
     game.tick_lan_packets();
 }
 
 /// The accepted look of guest 13, its inbox length, and whether a correction waits for it.
 fn state(game: &sunrise_gameplay::game::ServerGame<'_>) -> ([f32; 2], usize, bool) {
-    let g = game.side.lan.as_ref().unwrap().hub.guest(13).unwrap();
+    let g = game.server.lan.as_ref().unwrap().hub.guest(13).unwrap();
     (
         [g.yaw, g.pitch],
         g.inbox.len(),
@@ -219,7 +219,7 @@ fn two_reports_in_one_tick_with_no_listener_are_committed_in_the_one_pass() {
         two_turns_waiting(game);
         game_tick(game);
         assert_eq!(state(game), ([20.0, 0.0], 0, false));
-        let g = game.side.lan.as_ref().unwrap().hub.guest(13).unwrap();
+        let g = game.server.lan.as_ref().unwrap().hub.guest(13).unwrap();
         assert!(g.pending_move.is_none(), "nothing was held");
     });
 }

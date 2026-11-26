@@ -352,7 +352,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// Run a parsed command (`root` is the first context; `ctx` the one with
     /// the executable node): `execute` and `return` walk their own chains.
-    pub(in crate::game) fn run_chain(&mut self, root: &Context, ctx: &Context) -> R<i32> {
+    pub fn run_chain(&mut self, root: &Context, ctx: &Context) -> R<i32> {
         self.server.exec.0.commands += 1;
         let limit = self
             .common.ui
@@ -679,7 +679,7 @@ impl crate::game::ServerGame<'_> {
     /// Evaluate `f` with `source` as the command source, in the source's
     /// level (`CommandSourceStack.getLevel`): a server puts that level in
     /// place for it.
-    pub(in crate::game) fn with_source<T>(
+    pub fn with_source<T>(
         &mut self,
         source: Source,
         f: impl FnOnce(&mut Self) -> T,

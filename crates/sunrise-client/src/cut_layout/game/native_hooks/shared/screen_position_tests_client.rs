@@ -76,7 +76,7 @@ fn a_hopper_layout_mod_menu_opens_its_screen_from_block_packets() {
                         player.brand = "sunrise".into();
                         player.sender = PlayerSender::new(tx, Arc::default());
                         player.sender.menu_extra_rev = menu_extra::LIVE_DATA_REVISION;
-                        game.side.lan.as_mut().unwrap().hub.guests.push(player);
+                        game.server.lan.as_mut().unwrap().hub.guests.push(player);
                         register_test_menu(game, MENU);
                         rx.try_iter().for_each(drop);
                         game.world
@@ -106,7 +106,7 @@ fn a_hopper_layout_mod_menu_opens_its_screen_from_block_packets() {
                             game.lan_open_container(1, pos),
                             sunrise_gameplay_common::game::lan_actions::MenuOpen::Opened
                         );
-                        let hub = &game.side.lan.as_ref().unwrap().hub;
+                        let hub = &game.server.lan.as_ref().unwrap().hub;
                         let menu = hub.guest(1).unwrap().menu.as_ref().unwrap();
                         assert_eq!((&*menu.registry_id, menu.slot_count()), (MENU, 41));
                         let packets: Vec<_> = rx
@@ -138,7 +138,7 @@ fn a_hopper_layout_mod_menu_opens_its_screen_from_block_packets() {
                     |game| {
                         let (client, _server) = Pipe::pair();
                         game.connect_local(client, "Hopper layout").unwrap();
-                        let remote = game.side.remote.as_mut().unwrap();
+                        let remote = game.client.remote.as_mut().unwrap();
                         remote.builtin = Arc::new(builtin);
                         Arc::make_mut(&mut remote.registries).menu_extra_revision =
                             menu_extra::LIVE_DATA_REVISION;
@@ -150,9 +150,9 @@ fn a_hopper_layout_mod_menu_opens_its_screen_from_block_packets() {
                         for packet in packets {
                             game.handle_packet(packet).unwrap();
                         }
-                        assert_eq!(game.side.screen, Screen::Inventory);
+                        assert_eq!(game.client.screen, Screen::Inventory);
                         let open = game
-                            .side
+                            .client
                             .mod_screen
                             .0
                             .as_ref()
@@ -234,7 +234,7 @@ fn a_mod_blocks_custom_menu_gets_its_registered_screen() {
                         game.world.set(pos.0, pos.1, pos.2, state).unwrap();
                         assert!(game.open_native_screen(pos, Some(pos), 27, None));
                         let open = game
-                            .side
+                            .client
                             .mod_screen
                             .0
                             .as_ref()
@@ -243,9 +243,9 @@ fn a_mod_blocks_custom_menu_gets_its_registered_screen() {
                         assert_eq!(open.layout().height, 166.0);
                         assert!(open.layout().slots[4].is_none());
                         game.container = Some(pos);
-                        game.side.title.0 = None;
-                        game.side.chat_ui.hide_gui = true;
-                        game.side.settings.gui_scale = 2;
+                        game.client.title.0 = None;
+                        game.client.chat_ui.hide_gui = true;
+                        game.client.settings.gui_scale = 2;
                         game.level.recipe_book.open = [false; 4];
                         game.world
                             .block_entities
@@ -262,8 +262,8 @@ fn a_mod_blocks_custom_menu_gets_its_registered_screen() {
                         game.hud([641, 481]);
 
                         // A cursor supplied in GUI pixels directly still truncates toward zero.
-                        game.side.window_cursor = None;
-                        game.side.cursor = (-3.75, 129.75);
+                        game.client.window_cursor = None;
+                        game.client.cursor = (-3.75, 129.75);
                         game.hud([641, 481]);
                         {
                             let seen = seen.lock().unwrap();
@@ -327,7 +327,7 @@ fn a_mod_menu_opened_without_a_block_gets_its_types_screen() {
                 seed_native_menu(game, 1, PACK);
                 assert!(game.open_native_screen(key, None, 9, None));
                 let open = game
-                    .side
+                    .client
                     .mod_screen
                     .0
                     .as_ref()
@@ -342,7 +342,7 @@ fn a_mod_menu_opened_without_a_block_gets_its_types_screen() {
                 seed_native_menu(game, 2, "minecraft:generic_9x3");
                 assert!(game.open_native_screen(key, None, 27, None));
                 assert!(
-                    game.side.mod_screen.0.is_none(),
+                    game.client.mod_screen.0.is_none(),
                     "a vanilla chest keeps its screen"
                 );
             });
@@ -448,7 +448,7 @@ fn custom_menu_screens_route_by_menu_type_and_allow_cross_mod_slot_controls() {
                             game.container = Some(pos);
                             game.set_screen(Screen::Inventory);
                             let open = game
-                                .side
+                                .client
                                 .mod_screen
                                 .0
                                 .as_ref()
@@ -465,7 +465,7 @@ fn custom_menu_screens_route_by_menu_type_and_allow_cross_mod_slot_controls() {
                             assert_eq!(game.native_screen_slots(), Some(ids));
                             let mut batch = HudBatch::scratch([512, 512]);
                             let (ox, oy) = game.inventory_origin(&batch);
-                            game.side.cursor = (ox + 90.0, oy + 105.0);
+                            game.client.cursor = (ox + 90.0, oy + 105.0);
                             assert!(game.draw_native_screen(&mut batch, ox, oy));
                             assert!(game.native_screen_press_at(&batch, false));
                             let click = (0..32).find_map(|_| {
@@ -523,7 +523,7 @@ fn custom_menu_screens_route_by_menu_type_and_allow_cross_mod_slot_controls() {
                         seed_native_menu(game, 3, "minecraft:hopper");
                         assert!(game.open_native_screen(pos, Some(pos), 5, None));
                         assert!(
-                            game.side.mod_screen.0.is_none(),
+                            game.client.mod_screen.0.is_none(),
                             "a vanilla hopper keeps its screen"
                         );
                         assert_eq!(game.menu_opener_block(pos, "minecraft:hopper"), None);
@@ -563,7 +563,7 @@ fn slotless_screen_draw_sees_full_width_updates_only_for_its_window() {
             with_listener(|game, seen| {
                 let (pipe, _server) = Pipe::pair();
                 game.connect_local(pipe, "Slotless").unwrap();
-                let remote = game.side.remote.as_mut().unwrap();
+                let remote = game.client.remote.as_mut().unwrap();
                 Arc::make_mut(&mut remote.registries).menu_extra_revision = LIVE_DATA_REVISION;
                 Arc::make_mut(&mut remote.builtin).registries.insert(
                     "minecraft:menu".into(),
@@ -598,10 +598,10 @@ fn slotless_screen_draw_sees_full_width_updates_only_for_its_window() {
                 open(game, 1, 0); // Anvil
                 assert!(game.station.is_some());
                 assert!(!game.slots().is_empty());
-                game.side.cursor = (25.0, 40.0);
+                game.client.cursor = (25.0, 40.0);
                 open(game, 2, 1); // No intervening close packet.
-                assert_eq!(game.side.screen, Screen::Inventory);
-                assert_eq!(game.side.cursor, (25.0, 40.0));
+                assert_eq!(game.client.screen, Screen::Inventory);
+                assert_eq!(game.client.cursor, (25.0, 40.0));
                 assert!(game.station.is_none());
                 assert!(game.slots().is_empty());
                 assert_eq!(game.slot_count(), 0);
@@ -612,7 +612,7 @@ fn slotless_screen_draw_sees_full_width_updates_only_for_its_window() {
                 );
                 seen.lock().unwrap().cancel_opening = true;
                 game.set_screen(Screen::Paused);
-                assert_eq!(game.side.screen, Screen::Inventory);
+                assert_eq!(game.client.screen, Screen::Inventory);
                 assert!(
                     game.native_screen_shown(),
                     "an unrelated veto keeps the menu"
@@ -624,10 +624,10 @@ fn slotless_screen_draw_sees_full_width_updates_only_for_its_window() {
                 receive(game, 2, 2, 9);
                 receive(game, 2, 0, i32::MAX);
                 draw(game);
-                let first = game.side.remote.as_ref().unwrap().menu.generation;
+                let first = game.client.remote.as_ref().unwrap().menu.generation;
                 // Even before the old state is dropped, another generation
                 // of the same window cannot see it or write to it.
-                game.side
+                game.client
                     .remote
                     .as_mut()
                     .unwrap()
@@ -636,7 +636,7 @@ fn slotless_screen_draw_sees_full_width_updates_only_for_its_window() {
                 assert!(game.shown_native_screen().is_none());
                 assert!(!game.native_screen_data(2, 0, 8));
                 open(game, 2, 1); // Same id, new opening.
-                assert_ne!(game.side.remote.as_ref().unwrap().menu.generation, first);
+                assert_ne!(game.client.remote.as_ref().unwrap().menu.generation, first);
                 receive(game, 3, 0, 8);
                 draw(game);
                 receive(game, 2, 0, -17);
@@ -648,12 +648,12 @@ fn slotless_screen_draw_sees_full_width_updates_only_for_its_window() {
                 assert!(game.shown_native_screen().is_none());
                 seen.lock().unwrap().cancel_opening = true;
                 open(game, 2, 1);
-                assert_eq!(game.side.screen, Screen::Playing);
+                assert_eq!(game.client.screen, Screen::Playing);
                 assert!(
-                    game.side.mod_screen.0.is_none(),
+                    game.client.mod_screen.0.is_none(),
                     "a veto drops the staged screen"
                 );
-                assert!(game.side.remote.as_ref().unwrap().menu.as_ref().is_none());
+                assert!(game.client.remote.as_ref().unwrap().menu.as_ref().is_none());
                 assert_eq!(
                     seen.lock().unwrap().data,
                     [
@@ -728,13 +728,13 @@ fn stock_menu_data_sync_round_trips_above_255_and_enforces_signed_short_boundary
                 game.world.set(pos.0, pos.1, pos.2, state).unwrap();
                 assert!(game.open_native_screen(pos, Some(pos), 27, None));
                 assert!(
-                    game.side.mod_screen.0.is_none(),
+                    game.client.mod_screen.0.is_none(),
                     "the stock menu has no mod factory"
                 );
                 // Stock screens cannot be replaced by registration. Stage a draw
                 // probe to inspect the data delivered by the stock packet handler.
                 let draw_seen = seen.clone();
-                game.side.mod_screen.0 = Some(OpenNativeScreen {
+                game.client.mod_screen.0 = Some(OpenNativeScreen {
                     menu: OpenNativeMenu {
                         key: pos,
                         window: 1,

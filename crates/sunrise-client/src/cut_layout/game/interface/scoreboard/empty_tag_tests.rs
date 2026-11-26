@@ -43,7 +43,7 @@ fn empty_tag_selectors_follow_actual_tag_edits() {
             .as_nanos()
     ));
     std::fs::create_dir_all(&scratch).unwrap();
-    game.side.world_root = scratch.clone();
+    game.server.world_root = scratch.clone();
     game.player = Some(PlayerMotion::new(game.motion, Vec3::new(10.5, 64.0, 0.5)).unwrap());
 
     game.build_registries();

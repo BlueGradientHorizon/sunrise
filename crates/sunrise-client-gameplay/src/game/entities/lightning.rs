@@ -12,14 +12,14 @@ use sunrise_core::random::RandomSource;
 impl ClientGame<'_> {
     /// `ClientLevel.addEntity` for a server's lightning bolt: on a client it
     /// only flashes, sounds and draws (`LightningBolt.tick` off the server).
-    pub(in crate::game) fn spawn_remote_bolt(&mut self, id: u32, at: [f64; 3]) {
+    pub fn spawn_remote_bolt(&mut self, id: u32, at: [f64; 3]) {
         self.common.bolts.retain(|b| b.id != id);
         let (bolt, _) = Bolt::new(id, at, true);
         self.client.lightning_seen[0] += 1;
         self.common.bolts.push(bolt);
     }
     /// Client-side `LightningBolt.tick`: thunder/impact sounds and sky flash.
-    pub(in crate::game) fn client_tick_bolts(&mut self) {
+    pub fn client_tick_bolts(&mut self) {
         let _save_lease = sunrise_sim::join_seq::visibility::PassLease::enter();
         let ids: Vec<u32> = self.common.bolts.iter().map(|b| b.id).collect();
         for id in ids {
@@ -94,7 +94,7 @@ impl ClientGame<'_> {
     /// blocks times the view scale of the camera, and past that only its sky
     /// flash and thunder remain. Simulation-order render inputs; seeded
     /// geometry lives in the renderer.
-    pub(in crate::game) fn bolt_instances(
+    pub fn bolt_instances(
         &self,
         camera: glam::DVec3,
     ) -> Vec<sunrise_client::gfx::lightning::Bolt> {

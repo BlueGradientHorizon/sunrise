@@ -50,20 +50,20 @@ fn stopping_a_retained_client_dig_aborts_only_once() {
             game.refresh_client_pick(1.0);
             game.set_test_forced_hit(None);
             let held = game.main_hand_key();
-            let remote = game.side.remote.as_mut().unwrap();
+            let remote = game.client.remote.as_mut().unwrap();
             remote.destroying = Some((pos, 1, 0.5));
             remote.destroying_item = held;
             remote.is_destroying = true;
             game.remote_continue_attack(true);
             assert_eq!(vetoes.load(Ordering::Relaxed), 1);
-            let remote = game.side.remote.as_ref().unwrap();
+            let remote = game.client.remote.as_ref().unwrap();
             assert!(remote.is_destroying);
             assert_eq!(remote.destroying, Some((pos, 1, 0.5)));
             assert_eq!(count.load(Ordering::Relaxed), 0);
             game.remote_continue_attack(false);
             game.remote_continue_attack(false);
             assert_eq!(
-                game.side.remote.as_ref().unwrap().destroying,
+                game.client.remote.as_ref().unwrap().destroying,
                 Some((pos, 1, 0.0))
             );
         })

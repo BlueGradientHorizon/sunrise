@@ -153,21 +153,21 @@ fn part_amount_boundaries_and_threshold_crossing() {
             )
             .unwrap(),
         );
-        game.side.lan_acting = Some(1);
+        game.server.lan_acting = Some(1);
         for amount in [250, i32::MAX] {
-            game.side.guest_equipment_breaks.clear();
+            game.server.guest_equipment_breaks.clear();
             let broken_before = game.stats.get("broken", "minecraft:iron_pickaxe");
             wear.set(Rule::Set(amount));
             assert_eq!(used(game, "minecraft:iron_pickaxe", 1), u32::MAX);
             assert_eq!(wear.take_asked(), [1]);
-            assert_eq!(game.side.guest_equipment_breaks, [47]);
+            assert_eq!(game.server.guest_equipment_breaks, [47]);
             assert_eq!(
                 game.stats.get("broken", "minecraft:iron_pickaxe"),
                 broken_before + 1
             );
             game.damage_held(1);
             assert!(wear.take_asked().is_empty());
-            assert_eq!(game.side.guest_equipment_breaks, [47]);
+            assert_eq!(game.server.guest_equipment_breaks, [47]);
             assert_eq!(
                 game.stats.get("broken", "minecraft:iron_pickaxe"),
                 broken_before + 1
@@ -236,12 +236,12 @@ fn a_part_breaks_its_tool_now() {
             )
             .unwrap(),
         );
-        game.side.lan_acting = Some(1);
-        game.side.guest_equipment_breaks.clear();
+        game.server.lan_acting = Some(1);
+        game.server.guest_equipment_breaks.clear();
         let broken_before = game.stats.get("broken", "minecraft:iron_pickaxe");
         assert_eq!(used(game, "minecraft:iron_pickaxe", 1), u32::MAX);
         assert_eq!(wear.take_asked(), [1]);
-        assert_eq!(game.side.guest_equipment_breaks, [47]);
+        assert_eq!(game.server.guest_equipment_breaks, [47]);
         assert_eq!(
             game.stats.get("broken", "minecraft:iron_pickaxe"),
             broken_before + 1

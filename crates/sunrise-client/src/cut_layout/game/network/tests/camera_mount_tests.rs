@@ -26,7 +26,7 @@ fn fb(v: f32) -> String {
 }
 
 fn kind_id(game: &sunrise_client_gameplay::game::ClientGame<'_>, kind: &str) -> i32 {
-    game.side
+    game.client
         .remote
         .as_ref()
         .unwrap()

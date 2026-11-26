@@ -27,18 +27,18 @@ use sunrise_client::hud::{GuiScale, HudBatch};
     fn the_chat_box_is_resized_by_the_build_not_the_draw() {
         crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
             use sunrise_client::chat::{ChatAbilities, ChatScreen, ChatVisibility, Commands};
-            game.side.title.0 = None;
+            game.client.title.0 = None;
             // 1280x720 at GUI scale 3 is 427x240.
-            game.side.settings.gui_scale = 3;
-            let m = sunrise_client::screen_draw::Measure(&game.side.gui.atlas.font);
+            game.client.settings.gui_scale = 3;
+            let m = sunrise_client::screen_draw::Measure(&game.client.gui.atlas.font);
             let c = Commands {
                 dispatcher: sunrise_command::vanilla::game_dispatcher(),
                 registries: &game.ui.registries,
             };
             let abilities = ChatAbilities::new(ChatVisibility::Full);
             let screen = ChatScreen::new(&m, &c, "/say hi", false, 0, 427, 240, abilities);
-            game.side.chat_ui.chat_screen = Some(screen);
-            game.side.screen = Screen::Chat;
+            game.client.chat_ui.chat_screen = Some(screen);
+            game.client.screen = Screen::Chat;
             game.build_screen();
             let input = |game: &sunrise_client_gameplay::game::ClientGame<'_>| {
                 let i = &game.client.chat_ui.chat_screen.as_ref().unwrap().input;
@@ -49,19 +49,19 @@ use sunrise_client::hud::{GuiScale, HudBatch};
                 game.built_chat(w, h).map(|layout| layout.leave_bed)
             };
             assert_eq!(leave_bed(game, 427.0, 240.0), Some((113, 200, 200, 20)));
-            let builds = game.side.screen_state.0.build.builds;
+            let builds = game.client.screen_state.0.build.builds;
             game.build_screen();
             assert_eq!(
-                game.side.screen_state.0.build.builds, builds,
+                game.client.screen_state.0.build.builds, builds,
                 "an unchanged frame"
             );
             // GUI scale 1: the build re-makes the box, keeping its text.
-            game.side.settings.gui_scale = 1;
+            game.client.settings.gui_scale = 1;
             game.build_screen();
-            assert_eq!(game.side.screen_state.0.build.builds, builds + 1);
+            assert_eq!(game.client.screen_state.0.build.builds, builds + 1);
             assert_eq!(input(game), [4, 708, 1276, 12]);
             assert_eq!(
-                game.side.chat_ui.chat_screen.as_ref().unwrap().value(),
+                game.client.chat_ui.chat_screen.as_ref().unwrap().value(),
                 "/say hi"
             );
             assert_eq!(leave_bed(game, 1280.0, 720.0), Some((540, 680, 200, 20)));
@@ -72,10 +72,10 @@ use sunrise_client::hud::{GuiScale, HudBatch};
     #[ignore = "daily"]
     fn production_screen_build_geometry() {
         crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
-            game.side.screen = Screen::Inventory;
+            game.client.screen = Screen::Inventory;
             game.container = None;
             game.craft_size = 2;
-            game.side.title.0 = None;
+            game.client.title.0 = None;
             game.potions.effects.list =
                 vec![sunrise_level::effects::EffectInstance::new("speed", 200, 0)];
             let batch = HudBatch::new(
@@ -88,18 +88,18 @@ use sunrise_client::hud::{GuiScale, HudBatch};
             let layout = game.container_layout(&batch);
             assert_eq!(layout.origin, (72.0, 37.0));
             assert_eq!(layout.effects, Some([250.0, 37.0, 32.0, 32.0]));
-            game.side.screen = Screen::Creative;
+            game.client.screen = Screen::Creative;
             let layout = game.container_layout(&batch);
             assert_eq!(
                 layout.tabs,
                 Some([[62.0, 24.0, 195.0, 28.0], [62.0, 188.0, 195.0, 28.0]])
             );
             game.build_screen();
-            let before = game.side.screen_state.0.build.builds;
+            let before = game.client.screen_state.0.build.builds;
             let constructions =
                 sunrise_client_gameplay::game::client_side::container_layout::LAYOUT_CONSTRUCTIONS.with(|count| count.get());
             let slots = match &game
-                .side
+                .client
                 .screen_state
                 .0
                 .build
@@ -117,13 +117,13 @@ use sunrise_client::hud::{GuiScale, HudBatch};
                 crate::game::inventory_slots::SLOT_POSITIONS.with(|count| count.get()),
                 positions
             );
-            assert_eq!(game.side.screen_state.0.build.builds, before);
+            assert_eq!(game.client.screen_state.0.build.builds, before);
             assert_eq!(
                 sunrise_client_gameplay::game::client_side::container_layout::LAYOUT_CONSTRUCTIONS.with(|count| count.get()),
                 constructions
             );
             let BuildLayout::Container(layout) = &game
-                .side
+                .client
                 .screen_state
                 .0
                 .build
@@ -150,9 +150,9 @@ use sunrise_client::hud::{GuiScale, HudBatch};
                     positions
                 );
             };
-            game.side.settings.gui_scale = 1;
+            game.client.settings.gui_scale = 1;
             check(game);
-            game.side.screen = Screen::Inventory;
+            game.client.screen = Screen::Inventory;
             check(game);
             game.level.recipe_book.open[0] = true;
             check(game);
@@ -166,17 +166,17 @@ use sunrise_client::hud::{GuiScale, HudBatch};
             ));
             check(game);
             game.clear_station_client();
-            game.side.screen = Screen::Creative;
+            game.client.screen = Screen::Creative;
             check(game);
             let inventory = game
-                .side
+                .client
                 .creative_screen
                 .0
                 .tab_headers()
                 .iter()
                 .position(|tab| tab.inventory)
                 .unwrap();
-            game.side.creative_screen.0.select(inventory);
+            game.client.creative_screen.0.select(inventory);
             check(game);
         });
     }
@@ -215,12 +215,12 @@ use sunrise_client::hud::{GuiScale, HudBatch};
         .into();
         mod_platform::testing::with_mods(mods, || {
             crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
-                game.side.screen = Screen::Inventory;
+                game.client.screen = Screen::Inventory;
                 game.container = None;
                 game.craft_size = 2;
                 game.potions.effects.list =
                     vec![sunrise_level::effects::EffectInstance::new("speed", 200, 0)];
-                game.side.frames = 11;
+                game.client.frames = 11;
                 game.build_screen();
                 assert_eq!(
                     calls.load(Ordering::Relaxed),
@@ -233,7 +233,7 @@ use sunrise_client::hud::{GuiScale, HudBatch};
                     1,
                     "a second build in the same frame reuses the answer"
                 );
-                game.side.frames = 12;
+                game.client.frames = 12;
                 game.build_screen();
                 assert_eq!(
                     calls.load(Ordering::Relaxed),
@@ -288,14 +288,14 @@ use sunrise_client::hud::{GuiScale, HudBatch};
         .into();
         mod_platform::testing::with_mods(mods, || {
             crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
-                game.side.screen = Screen::Inventory;
+                game.client.screen = Screen::Inventory;
                 game.container = None;
                 game.craft_size = 2;
                 game.level.recipe_book.open.fill(false);
-                game.side.settings.gui_scale = 3;
-                game.side.frames = 11;
+                game.client.settings.gui_scale = 3;
+                game.client.frames = 11;
                 game.build_screen();
-                let batch = HudBatch::new([1280, 720], game.side.settings.gui_scale_inputs());
+                let batch = HudBatch::new([1280, 720], game.client.settings.gui_scale_inputs());
                 assert_eq!(game.inventory_origin(&batch), (51.0, 37.0));
                 assert_eq!(
                     game.screen_view(&batch, Screen::Inventory).rect,
@@ -312,20 +312,20 @@ use sunrise_client::hud::{GuiScale, HudBatch};
                 assert_eq!(slot, [58.0, 178.0, 18.0, 18.0]);
                 assert_eq!(game.slot_at(&batch, 59.0, 179.0), Some(0));
                 assert_eq!(game.slot_at(&batch, 133.0, 179.0), Some(4));
-                let builds = game.side.screen_state.0.build.builds;
+                let builds = game.client.screen_state.0.build.builds;
                 assert_eq!(calls.load(Ordering::Relaxed), 2);
                 game.build_screen();
                 assert_eq!(calls.load(Ordering::Relaxed), 2);
-                assert_eq!(game.side.screen_state.0.build.builds, builds);
-                game.side.frames += 1;
+                assert_eq!(game.client.screen_state.0.build.builds, builds);
+                game.client.frames += 1;
                 game.build_screen();
                 assert_eq!(calls.load(Ordering::Relaxed), 4);
-                assert_eq!(game.side.screen_state.0.build.builds, builds);
+                assert_eq!(game.client.screen_state.0.build.builds, builds);
                 width.store(100, Ordering::Relaxed);
-                game.side.frames += 1;
+                game.client.frames += 1;
                 game.build_screen();
                 assert_eq!(game.inventory_origin(&batch), (75.0, 37.0));
-                assert_eq!(game.side.screen_state.0.build.builds, builds + 1);
+                assert_eq!(game.client.screen_state.0.build.builds, builds + 1);
                 assert_eq!(game.slot_at(&batch, 83.0, 179.0), Some(0));
                 assert_eq!(
                     game.screen_view(&batch, Screen::Inventory).rect,
@@ -356,20 +356,20 @@ use sunrise_client::hud::{GuiScale, HudBatch};
             };
             mod_platform::testing::with_mods(mods, || {
                 crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
-                    game.side.screen = Screen::Inventory;
+                    game.client.screen = Screen::Inventory;
                     game.container = None;
                     game.craft_size = 2;
-                    game.side.settings.gui_scale = 1;
+                    game.client.settings.gui_scale = 1;
                     for (width, closed_x, open_x, book_x) in [
                         (378, 101.0, 101.0, 115.0),
                         (379, 101.0, 178.0, 30.0),
                         (380, 102.0, 179.0, 30.0),
                     ] {
                         for open in [false, true] {
-                            game.side.frames += 1;
+                            game.client.frames += 1;
                             game.level.recipe_book.open[BookType::Crafting.index()] = open;
                             let batch =
-                                HudBatch::new([width, 240], game.side.settings.gui_scale_inputs());
+                                HudBatch::new([width, 240], game.client.settings.gui_scale_inputs());
                             let layout = game.container_layout(&batch);
                             let x = if open { open_x } else { closed_x };
                             assert_eq!(layout.origin, (x, 37.0));
@@ -480,12 +480,12 @@ use sunrise_client::hud::{GuiScale, HudBatch};
                     )
                     .unwrap(),
                 );
-                game.side.title.0 = None;
+                game.client.title.0 = None;
                 game.container = None;
                 game.craft_size = 2;
-                game.side.screen = Screen::Inventory;
-                game.side.settings.gui_scale = 1;
-                game.side.settings.force_unicode = false;
+                game.client.screen = Screen::Inventory;
+                game.client.settings.gui_scale = 1;
+                game.client.settings.force_unicode = false;
                 let crafting = sunrise_sim::recipe_book::BookType::Crafting.index();
                 game.level.recipe_book.recipes.clear();
                 game.level.recipe_book.open[crafting] = false;
@@ -512,7 +512,7 @@ use sunrise_client::hud::{GuiScale, HudBatch};
                 // is Search. At 427 x 240 the book and shifted compact effect
                 // fit on opposite sides of the inventory.
                 let wide = [854, 480];
-                game.side.settings.gui_scale = 2;
+                game.client.settings.gui_scale = 2;
                 game.build_screen_at(wide);
                 game.level.recipe_book.open[crafting] = true;
                 game.build_screen_at(wide);
@@ -531,7 +531,7 @@ use sunrise_client::hud::{GuiScale, HudBatch};
                 observer.canceled.store(false, Ordering::Relaxed);
 
                 // The narrow book covers the inventory, so its panel is not a side region.
-                game.side.settings.gui_scale = 1;
+                game.client.settings.gui_scale = 1;
                 game.build_screen_at(small);
                 assert_eq!(
                     render(game, small),
@@ -547,8 +547,8 @@ use sunrise_client::hud::{GuiScale, HudBatch};
                 game.potions.effects.list.clear();
                 game.set_local_mode(sunrise_command::args::GameMode::Creative);
                 game.ui.registries.permission = 2;
-                game.side.settings.operator_items_tab = true;
-                game.side.screen = Screen::Creative;
+                game.client.settings.operator_items_tab = true;
+                game.client.screen = Screen::Creative;
                 game.refresh_creative_tabs();
                 game.build_screen_at(small);
                 let mut tabs = render(game, small);

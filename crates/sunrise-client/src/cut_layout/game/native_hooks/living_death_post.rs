@@ -221,7 +221,7 @@ pub(crate) use sunrise_gameplay::game::server_side::native_hooks_server::living_
             with_game(|game| {
                 game.load_server_loot();
                 add_guest(game);
-                game.side
+                game.server
                     .lan
                     .as_mut()
                     .unwrap()
@@ -232,7 +232,7 @@ pub(crate) use sunrise_gameplay::game::server_side::native_hooks_server::living_
                         guest.inventory[0] =
                             Some(sunrise_items::items::ItemStack::new("minecraft:stone", 1));
                     });
-                let id = game.side.lan.as_ref().unwrap().hub.guests[0].entity_id as u32;
+                let id = game.server.lan.as_ref().unwrap().hub.guests[0].entity_id as u32;
 
                 game.guest_die(0, 1);
 

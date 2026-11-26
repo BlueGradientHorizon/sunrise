@@ -17,7 +17,7 @@ use sunrise_core::geometry::{Aabb, Vec3};
 
 #[cfg(feature = "client")]
 impl crate::game::ClientGame<'_> {
-    pub(in crate::game) fn prepare_entity_culling(&mut self) {
+    pub fn prepare_entity_culling(&mut self) {
         // The mods' render hooks: whether any listens this frame, and no entity canceled yet.
         super::native_mob_draw::begin_entity_frame();
         // Spans tell the pack's passes which entities are hidden; without them, nothing changes.
@@ -218,7 +218,7 @@ pub(in crate::game::client_side) fn effective_render_distance_for(
 #[cfg(feature = "client")]
 impl crate::game::ClientGame<'_> {
     /// Options.getEffectiveRenderDistance: the client setting, capped by the server's view distance.
-    pub(in crate::game) fn effective_render_distance(&self) -> i32 {
+    pub fn effective_render_distance(&self) -> i32 {
         effective_render_distance_for(
             self.client.settings.render_distance,
             self.client.remote.as_ref().map(|r| r.view_distance),

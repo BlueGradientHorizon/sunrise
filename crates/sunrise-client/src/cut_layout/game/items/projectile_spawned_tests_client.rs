@@ -17,7 +17,7 @@ use sunrise_sim::{
 pub(crate) fn played(
     game: &mut sunrise_gameplay::game::ServerGame<'_>,
 ) -> Vec<(String, f32, f32)> {
-    std::mem::take(&mut game.side.pending_sounds)
+    std::mem::take(&mut game.server.pending_sounds)
         .into_iter()
         .map(|s| {
             assert_eq!(s.source, mod_api::SoundSource::Neutral as usize);

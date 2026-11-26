@@ -9,7 +9,7 @@ impl crate::game::ClientGame<'_> {
     }
 
     /// Lend both parts of the sampled input together, without deriving either from edits to the other.
-    pub(in crate::game) fn update_movement_input(&self, keys: Keys) -> Keys {
+    pub fn update_movement_input(&self, keys: Keys) -> Keys {
         if !mod_api::__private::enabled_listened(mod_api::HookId::MovementInputUpdate) {
             return keys;
         }

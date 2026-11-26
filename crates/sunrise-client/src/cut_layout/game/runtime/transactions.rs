@@ -269,7 +269,7 @@ pub(crate) mod tests {
             })
             .unwrap();
             assert_eq!(
-                game.side.lan.as_ref().unwrap().play[&12]
+                game.server.lan.as_ref().unwrap().play[&12]
                     .stats
                     .get("custom", "minecraft:fill_cauldron"),
                 0
@@ -1259,7 +1259,7 @@ pub(crate) mod mod_capability_tests {
             let level = game.level(game.dim.id()).unwrap();
             let player_ref = game.fake_player(level, guest, "test").unwrap();
             let conn = game
-                .side
+                .server
                 .lan
                 .as_ref()
                 .unwrap()
@@ -1309,10 +1309,10 @@ pub(crate) mod mod_capability_tests {
             // Written while the guest's state is swapped in for their turn, aborted after it
             // is swapped back out: the guest's own map is put back.
             game.open_storage_transaction();
-            game.side.lan_acting_uuid = Some(guest);
+            game.server.lan_acting_uuid = Some(guest);
             std::mem::swap(
                 &mut game.player_state.attachments,
-                game.side
+                game.server
                     .lan
                     .as_mut()
                     .unwrap()
@@ -1325,7 +1325,7 @@ pub(crate) mod mod_capability_tests {
             ENERGY.set(host, player, 70).unwrap();
             std::mem::swap(
                 &mut game.player_state.attachments,
-                game.side
+                game.server
                     .lan
                     .as_mut()
                     .unwrap()
@@ -1334,7 +1334,7 @@ pub(crate) mod mod_capability_tests {
                     .attachments_mut(conn)
                     .unwrap(),
             );
-            game.side.lan_acting_uuid = None;
+            game.server.lan_acting_uuid = None;
             game.close_storage_transaction(false);
             let host: &mut dyn ServerHost = game;
             assert_eq!(energy(host, player), Some(40));
@@ -1378,7 +1378,7 @@ pub(crate) mod mod_capability_tests {
                 sunrise_sim::cauldron::Outcome::Success
             );
             assert_eq!(game.stats.get("custom", "minecraft:fill_cauldron"), before);
-            assert!(game.side.pending_sounds.is_empty());
+            assert!(game.server.pending_sounds.is_empty());
             game.close_storage_transaction(false);
             assert_eq!(game.world.block(pos[0], pos[1], pos[2]), empty);
             assert_eq!(
@@ -1386,7 +1386,7 @@ pub(crate) mod mod_capability_tests {
                 "minecraft:water_bucket"
             );
             assert_eq!(game.stats.get("custom", "minecraft:fill_cauldron"), before);
-            assert!(game.side.pending_sounds.is_empty());
+            assert!(game.server.pending_sounds.is_empty());
             game.open_storage_transaction();
             game.open_storage_transaction();
             assert_eq!(
@@ -1401,7 +1401,7 @@ pub(crate) mod mod_capability_tests {
             );
             game.close_storage_transaction(true);
             assert_eq!(game.stats.get("custom", "minecraft:fill_cauldron"), before);
-            assert!(game.side.pending_sounds.is_empty());
+            assert!(game.server.pending_sounds.is_empty());
             assert_eq!(
                 game.use_on_cauldron(pos).unwrap(),
                 sunrise_sim::cauldron::Outcome::Success
@@ -1416,7 +1416,7 @@ pub(crate) mod mod_capability_tests {
                 before + 1
             );
             assert_eq!(
-                game.side
+                game.server
                     .pending_sounds
                     .iter()
                     .map(|s| s.event.as_str())

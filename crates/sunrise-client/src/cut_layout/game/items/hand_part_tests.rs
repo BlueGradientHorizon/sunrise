@@ -80,7 +80,7 @@ pub(crate) fn settle(
     for _ in 0..20 {
         game.tick_hand();
     }
-    assert_eq!(game.side.heights.main, 1.0);
+    assert_eq!(game.client.heights.main, 1.0);
     REEQUIP_ASKED.lock().unwrap().clear();
 }
 
@@ -90,8 +90,8 @@ pub(crate) fn dip(game: &mut sunrise_client_gameplay::game::ClientGame<'_>) -> V
     (0..6)
         .map(|_| {
             game.tick_hand();
-            let shown = game.side.visible_hands[0].1.as_ref().map_or(0, |s| s.count);
-            (game.side.heights.main, shown)
+            let shown = game.client.visible_hands[0].1.as_ref().map_or(0, |s| s.count);
+            (game.client.heights.main, shown)
         })
         .collect()
 }

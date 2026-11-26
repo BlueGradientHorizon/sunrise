@@ -123,9 +123,9 @@ fn game<'a>(
         r#"{"enabled":["file/sift"],"disabled":[]}"#,
     )
     .unwrap();
-    game.side.world_root = dir;
+    game.server.world_root = dir;
     let stack = functions::pack_stack(
-        &game.side.world_root,
+        &game.server.world_root,
         &root,
         &sunrise_assets::resource_source::ResourceSource::directory(root.clone()),
         &Default::default(),
@@ -133,7 +133,7 @@ fn game<'a>(
         &[],
         &[],
     );
-    game.side.world_tables.0 = game
+    game.server.world_tables.0 = game
         .stage_world_tables(&stack, false, &root)
         .unwrap()
         .tables;
@@ -161,12 +161,12 @@ fn lines<'a>(stacks: impl IntoIterator<Item = &'a ItemStack>) -> Vec<String> {
 /// the order the roll gave it.
 fn command_roll(game: &mut sunrise_gameplay::game::ServerGame<'_>, table: &str, tool: &str) -> Vec<String> {
     let _ = game.run_command("clear @s");
-    game.side.chat_capture = Some(Vec::new());
+    game.server.chat_capture = Some(Vec::new());
     let ok = game.run_command(&format!(
         "loot replace entity @s container.0 fish {table} 8 100 8 {tool}"
     ));
     let said: Vec<String> = game
-        .side
+        .server
         .chat_capture
         .take()
         .unwrap_or_default()
@@ -279,7 +279,7 @@ fn weighted_pools_conditions_and_functions_roll_as_the_table_says() {
 fn a_table_with_a_random_sequence_draws_from_it_not_the_level() {
     let mut resources = None;
     let (mut game, level) = game(&mut resources, "sequence");
-    let sequences = game.side.rand_sequences.clone();
+    let sequences = game.server.rand_sequences.clone();
     *game.world.random = LegacyRandom::new(7);
     let rolled = game
         .level_roll_loot(level, "test:sequence", ORIGIN, None, None)
@@ -292,7 +292,7 @@ fn a_table_with_a_random_sequence_draws_from_it_not_the_level() {
     let n: u32 = rolled.iter().map(|s| s.count).sum();
     assert!((1..=3).contains(&n));
     // The command draws from the same sequence, from where it was.
-    game.side.rand_sequences = sequences;
+    game.server.rand_sequences = sequences;
     assert_eq!(
         lines(&rolled),
         command_roll(&mut game, "test:sequence", "minecraft:stick")

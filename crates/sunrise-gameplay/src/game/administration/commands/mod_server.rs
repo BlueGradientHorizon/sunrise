@@ -420,7 +420,7 @@ impl crate::game::ServerGame<'_> {
         self.feedback(Text::tr("commands.fill.success", &[&count]));
         Ok(count)
     }
-    pub(in crate::game::server_side) fn cmd_gamerule(&mut self, ctx: &Context) -> R<i32> {
+    pub fn cmd_gamerule(&mut self, ctx: &Context) -> R<i32> {
         let Some(name) = ctx.literals.get(1).cloned() else {
             return Ok(0);
         };
@@ -752,7 +752,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// `SummonCommand.createEntity`: Peaceful admission uses the entity-type
     /// policy for both forms, independently of the mob category.
-    pub(in crate::game) fn cmd_summon(&mut self, ctx: &Context) -> R<i32> {
+    pub fn cmd_summon(&mut self, ctx: &Context) -> R<i32> {
         let Some(Arg::Resource(kind)) = ctx.get("entity").cloned() else {
             return Ok(0);
         };
@@ -1238,7 +1238,7 @@ impl crate::game::ServerGame<'_> {
         }
         out
     }
-    pub(in crate::game) fn kill_target_in_level(&mut self, t: Target) {
+    pub fn kill_target_in_level(&mut self, t: Target) {
         // Entity.kill (BlockAttachedEntity.kill; ArmorStand's generic_kill hit,
         // which bypasses its invulnerability; a vehicle is no LivingEntity):
         // removed, then ENTITY_DIE by the entity itself. Mobs post theirs as
@@ -1406,7 +1406,7 @@ impl crate::game::ServerGame<'_> {
     /// `EntitySelectorParser` gives `@e` and `@n` that predicate, so a killed
     /// mob through its death animation, a stand or a dragon at no health is
     /// not among them.
-    pub(in crate::game) fn level_candidates(&self, alive_only: bool) -> Vec<Target> {
+    pub fn level_candidates(&self, alive_only: bool) -> Vec<Target> {
         use super::entity::{Entity as _, entity_lists_of, for_each_entity};
         let mut candidates = Vec::new();
         for_each_entity!(entity_lists_of!(self), entity => {
@@ -1507,7 +1507,7 @@ impl crate::game::ServerGame<'_> {
     /// unless the entity moves first.
     /// `Entity.getId` as the players' clients know it: a player's is the one the
     /// hub gave it, any other entity's is its own id.
-    pub(in crate::game) fn network_entity_id(&self, t: Target) -> Option<i32> {
+    pub fn network_entity_id(&self, t: Target) -> Option<i32> {
         let host = self.server.lan.as_ref();
         match t {
             Target::Player => self.player_entity_id_by_connection(self.server.lan_acting),
@@ -1536,7 +1536,7 @@ impl crate::game::ServerGame<'_> {
     /// an `execute as @a run ...` forks and calls back once per fork) and the
     /// last callback's result. None when no command reached a callback (a
     /// syntax error, an unknown command, an `execute` forking to no target).
-    pub(in crate::game) fn recording_command_outcome<T>(
+    pub fn recording_command_outcome<T>(
         &mut self,
         f: impl FnOnce(&mut Self) -> T,
     ) -> (T, Option<(bool, i32)>) {
@@ -1558,7 +1558,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// Commands.performCommand for a line without its slash. A client mod's
     /// `command` hook is the caller's: this also runs on a server.
-    pub(in crate::game) fn run_command(&mut self, command: &str) -> bool {
+    pub fn run_command(&mut self, command: &str) -> bool {
         let d = self.common.ui.dispatcher.0.clone();
         let parse = d.parse(command, &self.common.ui.registries);
         let result = match parse.executable() {
@@ -1590,7 +1590,7 @@ impl crate::game::ServerGame<'_> {
     /// `run_command` with its output suppressed
     /// (`CommandSourceStack.withSuppressedOutput`): the player's own source,
     /// rights and checks, no feedback and no failure in the chat.
-    pub(in crate::game) fn run_command_quietly(&mut self, command: &str) -> bool {
+    pub fn run_command_quietly(&mut self, command: &str) -> bool {
         let quiet = execute::Source {
             silent: true,
             ..self.player_source()
@@ -1657,7 +1657,7 @@ impl crate::game::ServerGame<'_> {
             self.broadcast_to_admins(message);
         }
     }
-    pub(in crate::game) fn set_game_mode(&mut self, mut mode: GameMode) -> bool {
+    pub fn set_game_mode(&mut self, mut mode: GameMode) -> bool {
         if self.common.mode == mode {
             return false;
         }

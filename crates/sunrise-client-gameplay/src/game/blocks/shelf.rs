@@ -8,14 +8,14 @@ use sunrise_level::containers::BlockEntity;
 
 impl crate::game::ClientGame<'_> {
     /// `ShelfRenderer`: three items face out, aligned to the bottom or centre.
-    pub(in crate::game) fn shelf_geometry(&self, camera: glam::DVec3, out: &mut Vec<Vertex>) {
+    pub fn shelf_geometry(&self, camera: glam::DVec3, out: &mut Vec<Vertex>) {
         self.shelf_items(camera, |d| {
             self.submit_item_world(d.state, d.pose, d.light, out);
         });
     }
 
     /// The items [`Self::shelf_geometry`] draws, slot by slot.
-    pub(in crate::game) fn shelf_items(
+    pub fn shelf_items(
         &self,
         camera: glam::DVec3,
         mut draw: impl FnMut(BlockItemDraw),

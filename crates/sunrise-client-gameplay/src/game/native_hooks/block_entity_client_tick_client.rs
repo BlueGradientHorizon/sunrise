@@ -100,7 +100,7 @@ impl crate::game::ClientGame<'_> {
     /// each live one inside the world border then ticks in its order, as they all draw from the
     /// one level random. A mod one is told only while a part has a client tick and there is a
     /// client level.
-    pub(in crate::game) fn tick_client_block_entities(&mut self) {
+    pub fn tick_client_block_entities(&mut self) {
         self.ensure_client_ticking_states();
         let level = mod_api::__private::has_part_hook(mod_api::HookId::BlockEntityClientTick)
             .then(|| self.native_client_level())

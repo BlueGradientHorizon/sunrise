@@ -142,7 +142,7 @@ impl Integrated {
             .as_ref()
             .is_none_or(|thread| thread.is_finished())
     }
-    pub(in crate::game) fn halt(&mut self) -> Result<()> {
+    pub fn halt(&mut self) -> Result<()> {
         self.request_stop();
         self.emergency_save.take();
         if let Some(thread) = self.thread.take() {
@@ -212,7 +212,7 @@ impl crate::game::ClientGame<'_> {
     }
     /// `Minecraft.doWorldLoad`: start the server thread on the world; the
     /// window joins it through memory once it is ready (`poll_integrated_start`).
-    pub(in crate::game) fn open_integrated(
+    pub fn open_integrated(
         &mut self,
         folder: &str,
         name: Option<&str>,

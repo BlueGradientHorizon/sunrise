@@ -92,7 +92,7 @@ impl crate::game::ServerGame<'_> {
     /// The armor hits among a tick's motion events (`Player.hurtArmor` from
     /// `getDamageAfterArmorAbsorb`), whatever the damage: a mob, an explosion,
     /// a cactus, lava, a campfire.
-    pub(in crate::game) fn wear_armor(&mut self, events: &[MotionEvent]) {
+    pub fn wear_armor(&mut self, events: &[MotionEvent]) {
         for event in events {
             if let MotionEvent::Health(sunrise_sim::health::HealthEvent::ArmorHurt {
                 source,
@@ -121,7 +121,7 @@ impl crate::game::ServerGame<'_> {
         }
     }
     /// `Player.hurtArmor`: every armor slot wears.
-    pub(in crate::game::server_side) fn hurt_armor(
+    pub fn hurt_armor(
         &mut self,
         source: &sunrise_sim::health::HurtSource<'_>,
         damage: f32,
@@ -130,7 +130,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// `Player.hurtHelmet`: the head slot alone wears.
-    pub(in crate::game::server_side) fn hurt_helmet(
+    pub fn hurt_helmet(
         &mut self,
         source: &sunrise_sim::health::HurtSource<'_>,
         damage: f32,
@@ -243,7 +243,7 @@ impl crate::game::ServerGame<'_> {
             }
         }
     }
-    pub(in crate::game) fn damage_held(&mut self, amount: u32) {
+    pub fn damage_held(&mut self, amount: u32) {
         self.damage_held_in_slot(
             amount,
             sunrise_core::equipment_slot::EquipmentSlot::MainHand,
@@ -251,7 +251,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// Hurt the acting hand's stack through ordinary wear/criterion/break handling,
     /// reporting its break in the caller's explicit equipment slot.
-    pub(in crate::game::server_side) fn damage_held_in_slot(
+    pub fn damage_held_in_slot(
         &mut self,
         amount: u32,
         break_slot: sunrise_core::equipment_slot::EquipmentSlot,

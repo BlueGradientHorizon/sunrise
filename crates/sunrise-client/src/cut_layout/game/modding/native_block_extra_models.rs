@@ -27,7 +27,7 @@ mod tests {
                 Err(BlockExtraModelsError::NotLoaded),
             );
 
-            let render = &game.side.client_pack.render;
+            let render = &game.client.client_pack.render;
             let generation = render.generation;
             let state = game
                 .pack

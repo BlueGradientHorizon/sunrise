@@ -37,7 +37,7 @@ impl crate::game::ClientGame<'_> {
     /// sends no creative packet in vanilla (its inventory-slot edits go out
     /// through the open creative screen's `CreativeInventoryListener`), so the
     /// slot counts as synced for this client's creative sync.
-    pub(in crate::game) fn remote_use_item_finished(
+    pub fn remote_use_item_finished(
         &mut self,
         slot: usize,
         stack: &ItemStack,

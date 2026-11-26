@@ -258,7 +258,7 @@ impl crate::game::ClientGame<'_> {
     }
 
     /// The vanilla book the open screen has, if any.
-    pub(in crate::game::client_side) fn active_book(&self) -> Option<BookType> {
+    pub fn active_book(&self) -> Option<BookType> {
         if self.client.screen != Screen::Inventory || self.common.station.is_some() {
             return None;
         }
@@ -309,7 +309,7 @@ impl crate::game::ClientGame<'_> {
             || (width < NARROW && self.active_book().is_some_and(|b| self.book_open(b)))
     }
     /// Whether typed keys go to the search box.
-    pub(in crate::game::client_side) fn recipe_search_focused(&self) -> bool {
+    pub fn recipe_search_focused(&self) -> bool {
         (self.mod_book_open() || self.active_book().is_some_and(|b| self.book_open(b)))
             && self
                 .client
@@ -320,7 +320,7 @@ impl crate::game::ClientGame<'_> {
                 .is_some_and(|s| s.focused)
     }
     /// `keyChat` focuses the search box.
-    pub(in crate::game::client_side) fn recipe_focus_search(&mut self) -> bool {
+    pub fn recipe_focus_search(&mut self) -> bool {
         if (self.mod_book_open() || self.active_book().is_some_and(|b| self.book_open(b)))
             && let Some(s) = self.client.recipe_ui.0.search.as_mut()
         {
@@ -568,7 +568,7 @@ impl crate::game::ClientGame<'_> {
         }
         self.ensure_recipe_search();
     }
-    pub(in crate::game::client_side) fn ensure_recipe_search(&mut self) {
+    pub fn ensure_recipe_search(&mut self) {
         if self.client.recipe_ui.0.search.is_none() {
             let mut search = EditBox::new(0.0, 0.0, 81.0, 14.0);
             search.message = super::screen_info::tr("itemGroup.search", &[]);
@@ -781,14 +781,14 @@ impl crate::game::ClientGame<'_> {
     /// `RecipeBookComponent.getXOrigin` / `getYOrigin` (`widthTooNarrow`
     /// centres the book over the menu), moved left with the window by the
     /// room the mods ask beside it (`screen_room`).
-    pub(in crate::game) fn book_origin(&self, batch: &HudBatch) -> (f32, f32) {
+    pub fn book_origin(&self, batch: &HudBatch) -> (f32, f32) {
         let (x, y) = self.book_origin_in_place(batch);
         (x - self.screen_room_shift(batch), y)
     }
     /// The visible left edge, including the selected tab, of the book beside
     /// the window before room moves it; none while no book is open or it covers the
     /// window of a narrow screen.
-    pub(in crate::game::client_side) fn open_book_left(&self, batch: &HudBatch) -> Option<f32> {
+    pub fn open_book_left(&self, batch: &HudBatch) -> Option<f32> {
         if !self.mod_book_open() {
             self.active_book().filter(|b| self.book_open(*b))?;
         }
@@ -833,10 +833,10 @@ impl crate::game::ClientGame<'_> {
             _ => (ox + 20.0, mid - 49.0),
         }
     }
-    pub(in crate::game) fn tab_pos(&self, xo: f32, yo: f32, index: usize) -> (f32, f32) {
+    pub fn tab_pos(&self, xo: f32, yo: f32, index: usize) -> (f32, f32) {
         (xo - 30.0, yo + 3.0 + 27.0 * index as f32)
     }
-    pub(in crate::game) fn button_pos(xo: f32, yo: f32, i: usize) -> (f32, f32) {
+    pub fn button_pos(xo: f32, yo: f32, i: usize) -> (f32, f32) {
         (
             xo + 11.0 + 25.0 * (i % 5) as f32,
             yo + 31.0 + 25.0 * (i / 5) as f32,
@@ -1452,7 +1452,7 @@ impl crate::game::ClientGame<'_> {
     /// Whether the open screen takes `native_place_recipe`: a crafting grid's
     /// book (the inventory's or a crafting table's), or a mod menu type's
     /// crafting grid.
-    pub(in crate::game::client_side) fn mod_recipe_screen(&self) -> bool {
+    pub fn mod_recipe_screen(&self) -> bool {
         self.client.screen == Screen::Inventory
             && (self.active_book() == Some(BookType::Crafting) || self.mod_crafting_open())
             && !self.common.spectator()
@@ -1672,7 +1672,7 @@ impl crate::game::ClientGame<'_> {
     /// can't see them. One request out at a time. None until the answer comes,
     /// outside a screen that takes recipes, and on a server that doesn't advertise
     /// `sunrise:recipe_check`.
-    pub(in crate::game) fn transfer_recipe_check(
+    pub fn transfer_recipe_check(
         &mut self,
         recipe: &str,
     ) -> Option<RecipeTransferCheck> {

@@ -118,7 +118,7 @@ impl ServerGame<'_> {
     }
 
     /// Scheduled rechecks only: no player or mob walk without an open container.
-    pub(in crate::game::server_side) fn tick_mod_container_viewers(&mut self) {
+    pub fn tick_mod_container_viewers(&mut self) {
         let dim = self.common.dim.id();
         let time = self.common.world.game_time;
         let due: Vec<_> = self

@@ -35,7 +35,7 @@ use super::*;
                 finish_login(game, &mut server);
                 game.native_lifecycle
                     .begin_open(mod_api::Authority::RemoteClient);
-                game.side.title.0 = None;
+                game.client.title.0 = None;
                 game.player =
                     Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 1.0, 0.5)).unwrap());
                 game.entity_reach = 3.0;
@@ -43,7 +43,7 @@ use super::*;
                     .chunks
                     .insert((0, 0), std::sync::Arc::new(Chunk::empty(0, 0)));
                 let kind = game
-                    .side
+                    .client
                     .remote
                     .as_ref()
                     .unwrap()

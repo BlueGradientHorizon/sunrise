@@ -19,7 +19,7 @@ fn flint_and_steel_passes_on_a_tnt_cart_without_lighting_it() {
     }));
     assert!(!used, "Entity.interact passes to the held item");
     assert_eq!(game.carts[0].fuse, -1, "flint and steel lit the cart");
-    let sounds = std::mem::take(&mut game.side.pending_sounds);
+    let sounds = std::mem::take(&mut game.server.pending_sounds);
     game.stop_audio_capture();
     assert!(sounds.is_empty(), "{sounds:?}");
 }

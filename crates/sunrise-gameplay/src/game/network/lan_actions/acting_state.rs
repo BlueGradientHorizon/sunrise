@@ -82,7 +82,7 @@ impl ServerGame<'_> {
     }
 
     #[inline(always)]
-    pub(in crate::game::server_side) fn server_set_acting_sneak(&mut self, held: bool) {
+    pub fn server_set_acting_sneak(&mut self, held: bool) {
         assert!(
             self.is_logical_server(),
             "server_set_acting_sneak called on Client role"
@@ -100,7 +100,7 @@ impl ServerGame<'_> {
     }
 
     #[inline(always)]
-    pub(in crate::game) fn server_set_acting_use(&mut self, held: bool) {
+    pub fn server_set_acting_use(&mut self, held: bool) {
         assert!(
             self.is_logical_server(),
             "server_set_acting_use called on Client role"

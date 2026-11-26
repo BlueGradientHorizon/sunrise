@@ -111,7 +111,7 @@ impl ServerGame<'_> {
     /// out (a mod goal's own object) is kept; the caller's slot holds a copy
     /// meanwhile, which nothing reads. A listener that panics still ends the
     /// lend and puts the mob back ([`Withdraw`]).
-    pub(in crate::game) fn lend_unspawned<R>(
+    pub fn lend_unspawned<R>(
         &self,
         kind: &str,
         position: [f64; 3],
@@ -153,7 +153,7 @@ impl ServerGame<'_> {
 
     /// The world a lend's handles belong to; a game with none open lends
     /// under epoch 0, which no open world has.
-    pub(in crate::game) fn lend_epoch(&self) -> WorldEpoch {
+    pub fn lend_epoch(&self) -> WorldEpoch {
         self.common
             .native_lifecycle
             .epoch()
@@ -224,7 +224,7 @@ impl ServerGame<'_> {
     }
 
     /// The mob's entity type (`minecraft:zombie`).
-    pub(in crate::game) fn unspawned_mob_kind(
+    pub fn unspawned_mob_kind(
         &self,
         mob: UnspawnedMobRef,
     ) -> Result<Identifier, UnspawnedMobError> {
@@ -239,7 +239,7 @@ impl ServerGame<'_> {
     }
 
     /// Where the mob will join the level.
-    pub(in crate::game) fn unspawned_mob_position(
+    pub fn unspawned_mob_position(
         &self,
         mob: UnspawnedMobRef,
     ) -> Result<[f64; 3], UnspawnedMobError> {
@@ -301,7 +301,7 @@ impl ServerGame<'_> {
     }
 
     /// The tags a mod gave the mob so far (`Entity.entityTags()`).
-    pub(in crate::game) fn unspawned_mob_tags(
+    pub fn unspawned_mob_tags(
         &self,
         mob: UnspawnedMobRef,
     ) -> Result<Vec<String>, UnspawnedMobError> {

@@ -280,7 +280,7 @@ impl ServerGame<'_> {
     /// still visited for its transfer state (cooldown and `tickedGameTime`) but is not handed
     /// to the slot: mod loop listeners see it again once something wakes it.
     #[sunrise_mod_api_macros::sunrise_loop(name = "block_entities.tick", side = "server")]
-    pub(in crate::game) fn tick_block_entities(&mut self) -> Result<()> {
+    pub fn tick_block_entities(&mut self) -> Result<()> {
         self.tick_block_entities_with(&mut ())
     }
     /// `tick_block_entities` with `slot` asked before and after each block entity's tick. Generic
@@ -290,7 +290,7 @@ impl ServerGame<'_> {
     /// its own, the work after the loop included. It sets the enclosing pass's scratch (the item
     /// and mob caches, the spawners ticked so far) aside and puts it back when it ends, so the
     /// enclosing pass goes on with its own.
-    pub(crate) fn tick_block_entities_with<S: BlockEntityTickSlot>(
+    pub fn tick_block_entities_with<S: BlockEntityTickSlot>(
         &mut self,
         slot: &mut S,
     ) -> Result<()> {

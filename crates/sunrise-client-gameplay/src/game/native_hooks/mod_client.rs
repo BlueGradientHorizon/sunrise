@@ -227,7 +227,7 @@ impl crate::game::ClientGame<'_> {
     }
     /// Whether a mod cancelled `packet` on its way to the server (`client_packet_send`).
     /// Builds the packet's view only when a mod listens.
-    pub(in crate::game) fn client_packet_send_canceled(
+    pub fn client_packet_send_canceled(
         &self,
         packet: &sunrise_protocol::packets::play::Serverbound,
     ) -> bool {
@@ -464,7 +464,7 @@ impl crate::game::ClientGame<'_> {
     /// The open mod screen: a plain panel with its slots' frames, the mod's
     /// drawing over it, then the title and the inventory's label. False when
     /// none is showing.
-    pub(crate) fn draw_native_screen(
+    pub fn draw_native_screen(
         &self,
         batch: &mut HudBatch,
         ox: f32,
@@ -568,7 +568,7 @@ impl crate::game::ClientGame<'_> {
     /// loading screen, then null): `screen_opening` to no screen, then
     /// `screen_closing` for the title's screen, before it goes. The world
     /// is opening, so a `Cancel` doesn't keep it.
-    pub(in crate::game) fn hide_title(&mut self) {
+    pub fn hide_title(&mut self) {
         if self.client.title.0.is_none() {
             return;
         }
@@ -588,7 +588,7 @@ impl crate::game::ClientGame<'_> {
     }
     /// The camera native mods draw this frame from (`native_camera_pose`), starting from
     /// `view`, vanilla's position, yaw and pitch.
-    pub(in crate::game) fn native_camera_pose_now(
+    pub fn native_camera_pose_now(
         &mut self,
         partial: f32,
         view: (glam::DVec3, f32, f32),
@@ -642,7 +642,7 @@ impl crate::game::ClientGame<'_> {
     }
     /// A data slot of window `window`'s menu (`ContainerSetData`); false
     /// when no mod screen is showing for that active remote window.
-    pub(in crate::game) fn native_screen_data(
+    pub fn native_screen_data(
         &mut self,
         window: i32,
         index: usize,
@@ -686,7 +686,7 @@ impl crate::game::ClientGame<'_> {
         self.native_screen_press_at(&batch, right)
     }
     /// Dispatch a press in the given GUI viewport, with inventory slots taking priority.
-    pub(crate) fn native_screen_press_at(
+    pub fn native_screen_press_at(
         &mut self,
         batch: &HudBatch,
         right: bool,
@@ -719,7 +719,7 @@ impl crate::game::ClientGame<'_> {
     /// Where the open mod screen puts container slot `slot` this frame: where
     /// a mod last moved it, else where the screen declared it; None when
     /// inactive/hidden.
-    pub(in crate::game) fn native_screen_slot(&self, slot: usize) -> Option<(f32, f32)> {
+    pub fn native_screen_slot(&self, slot: usize) -> Option<(f32, f32)> {
         let s = self.shown_native_screen()?;
         let declared = s
             .layout()
@@ -740,7 +740,7 @@ impl crate::game::ClientGame<'_> {
             .as_deref()
     }
     /// The container slots the open mod screen shows this frame.
-    pub(in crate::game) fn native_screen_slots(&self) -> Option<Vec<usize>> {
+    pub fn native_screen_slots(&self) -> Option<Vec<usize>> {
         Some(
             self.shown_native_screen()?
                 .visible_container_slots()
@@ -749,7 +749,7 @@ impl crate::game::ClientGame<'_> {
     }
     /// The screen-specific line override, shared by filled-slot and empty-space tooltips.
     /// Item images and component gathering remain on the stack's normal drawing path.
-    pub(crate) fn native_screen_tooltip_lines(
+    pub fn native_screen_tooltip_lines(
         &self,
         batch: &HudBatch,
         slot: Option<usize>,
@@ -821,7 +821,7 @@ impl crate::game::ClientGame<'_> {
     /// overlay closing, is announced here, through the same `screen_change`
     /// and in the same order, but after the change. `screen_init_post`
     /// follows on opening and when a resize rebuilds the receiver's children.
-    pub(in crate::game) fn observe_change(&mut self, current: Option<ObservedScreen>) {
+    pub fn observe_change(&mut self, current: Option<ObservedScreen>) {
         let changed = match (&self.client.screen_state.0.observed, &current) {
             (Some(old), Some(new)) => {
                 old.id != new.id
@@ -900,7 +900,7 @@ impl crate::game::ClientGame<'_> {
         }
         self.client.screen_state.0.observed = current;
     }
-    pub(in crate::game) fn observe_screen(&mut self) {
+    pub fn observe_screen(&mut self) {
         self.settle_title_mode();
         self.refresh_screen_widgets();
     }
@@ -980,7 +980,7 @@ impl crate::game::ClientGame<'_> {
     /// sets the overlay and `screen_init_post` follows. Returns whether
     /// `open` ran. With no mod loaded, on a server's `Game` and on a guest's
     /// behalf, `open` just runs.
-    pub(in crate::game) fn open_screen_overlay(
+    pub fn open_screen_overlay(
         &mut self,
         id: &'static str,
         open: impl FnOnce(&mut Self),
@@ -1192,7 +1192,7 @@ impl crate::game::ClientGame<'_> {
     /// `native_screen_char_typed_pre` (when hooks apply), then mounted widgets,
     /// then the focused text box, and unhandled characters fire
     /// `native_screen_char_typed_post` on that character's captured receiver.
-    pub(in crate::game) fn screen_chars_typed(&mut self, text: Option<&str>) {
+    pub fn screen_chars_typed(&mut self, text: Option<&str>) {
         let Some(text) = text else {
             return;
         };
@@ -1290,7 +1290,7 @@ impl crate::game::ClientGame<'_> {
     /// (`Screen::Playing` behind it, so not a book, a sign editor, a server
     /// dialog or a prompt drawn over gameplay), and no connect or world load
     /// is in progress. The one gate they all ask before they fire.
-    pub(in crate::game) fn screen_hooks_open(&self) -> bool {
+    pub fn screen_hooks_open(&self) -> bool {
         self.client.renderer.0.is_some()
             && !self.screen_over_playing()
             && !self.remote_loading()
@@ -1560,7 +1560,7 @@ impl crate::game::ClientGame<'_> {
         }
         self.apply_screen_with_mod_book(screen, owner);
     }
-    pub(in crate::game) fn settle_title_mode(&mut self) {
+    pub fn settle_title_mode(&mut self) {
         let heard = self.screen_hooks_heard();
         let gated = heard
             || (self.common.options.execution_role.is_client()
@@ -1682,7 +1682,7 @@ impl crate::game::ClientGame<'_> {
     /// `world_create`, `multiplayer`, `add_server`…), no menu and no menu
     /// title, the whole window as its rectangle and no slots (no menu is
     /// open). None while no title screen is up.
-    pub(in crate::game) fn title_screen_view(&self, batch: &HudBatch) -> Option<ScreenView<'_>> {
+    pub fn title_screen_view(&self, batch: &HudBatch) -> Option<ScreenView<'_>> {
         let title = self.client.title.0.as_ref()?;
         Some(ScreenView::from(mod_api::__private::built::ScreenView {
             id: title.mode.id(),
@@ -1706,7 +1706,7 @@ impl crate::game::ClientGame<'_> {
         self.client.drag_button = pressed.then_some(button);
     }
     /// Opens `screen` (`Gui.setScreen`; `Screen::Playing` is vanilla's null).
-    pub(in crate::game) fn set_screen(&mut self, screen: Screen) {
+    pub fn set_screen(&mut self, screen: Screen) {
         self.set_screen_with(screen, |_| {});
     }
     /// Runs `screen_change` from `current` to `new`, then resolves the hooks' decision.
@@ -1743,7 +1743,7 @@ impl crate::game::ClientGame<'_> {
         outcome
     }
     /// Shows `title` (`Minecraft.setScreen(new TitleScreen())`) with the game-rule registry attached.
-    pub(in crate::game) fn show_title(&mut self, mut title: sunrise_client::title::Title) {
+    pub fn show_title(&mut self, mut title: sunrise_client::title::Title) {
         title.set_rule_registry(Arc::new(sunrise_gameplay_common::game::api_values::game_rule_registry()));
         self.show_title_with_registry(title);
     }
@@ -1763,7 +1763,7 @@ impl crate::game::ClientGame<'_> {
         !cancel
     }
     /// Client tick target duration in ms (`Minecraft.getTickTargetMillis`), after mod hooks.
-    pub(in crate::game) fn tick_target_millis(&self) -> f32 {
+    pub fn tick_target_millis(&self) -> f32 {
         let vanilla = self.common.clock.tick_target_millis();
         let mut millis = vanilla;
         self.native_tick_target_millis(&mut millis);
@@ -1774,7 +1774,7 @@ impl crate::game::ClientGame<'_> {
         }
     }
     /// Local player's heart kind (`Hud.HeartType.forPlayer`, then `player_heart_type`).
-    pub(in crate::game) fn player_heart_kind(
+    pub fn player_heart_kind(
         &mut self,
     ) -> Option<mod_api::client::hud_layout::HeartKind> {
         use mod_api::client::hud_layout::HeartKind;
@@ -1854,7 +1854,7 @@ impl crate::game::ClientGame<'_> {
         self.native_screen_render_post(draw, screen);
     }
     /// Borrowed `ScreenView` of the open screen for this frame.
-    pub(in crate::game) fn screen_view(&self, batch: &HudBatch, screen: Screen) -> ScreenView<'_> {
+    pub fn screen_view(&self, batch: &HudBatch, screen: Screen) -> ScreenView<'_> {
         self.screen_view_at(screen, self.screen_rect(batch, screen))
     }
     /// `screen_view` with an explicit panel `rect` for container layout.
@@ -1935,12 +1935,12 @@ impl crate::game::ClientGame<'_> {
         }
     }
     /// Next-frame position of container slot `slot` on open mod menu `menu`.
-    pub(in crate::game) fn screen_slot(&self, menu: &str, slot: usize) -> Option<[f32; 2]> {
+    pub fn screen_slot(&self, menu: &str, slot: usize) -> Option<[f32; 2]> {
         let s = self.shown_native_screen().filter(|s| s.menu.name == menu)?;
         s.slot_moves.latest(&s.layout().slots, slot)
     }
     /// Moves, activates, or hides container slot `slot` on open mod menu `menu` from next frame.
-    pub(in crate::game) fn set_screen_slot(
+    pub fn set_screen_slot(
         &self,
         menu: &str,
         slot: usize,

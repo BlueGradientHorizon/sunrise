@@ -316,7 +316,7 @@ fn placement_and_prediction_choose_from_their_local_item_providers() {
     });
     on_a_client(mods(), |game| {
         resolve_kinds();
-        game.side.remote.as_mut().unwrap().logged_in = true;
+        game.client.remote.as_mut().unwrap().logged_in = true;
         setup(game, false);
         let guess = game
             .remote_can_place(&top_of(4, 4), &ItemStack::new("minecraft:oak_log", 1))
@@ -634,7 +634,7 @@ fn a_denied_break_restores_wall_sign_text_and_synced_attachments() {
             RemoteDimensionEntry::Login,
             sunrise_client::level_loading::Reason::Other,
         );
-        game.side.remote.as_mut().unwrap().logged_in = true;
+        game.client.remote.as_mut().unwrap().logged_in = true;
         game.world
             .chunks
             .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
@@ -949,7 +949,7 @@ fn a_placement_view_hides_block_entity_data_at_replaced_positions() {
     use sunrise_world::level::PreviewBlocks;
 
     on_a_client(Vec::new().into(), |game| {
-        game.side.remote.as_mut().unwrap().logged_in = true;
+        game.client.remote.as_mut().unwrap().logged_in = true;
         let pos = [1, 65, 1];
         let campfire = game
             .pack

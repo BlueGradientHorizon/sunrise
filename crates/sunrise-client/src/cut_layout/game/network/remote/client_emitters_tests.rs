@@ -14,7 +14,7 @@ pub(in crate::game) fn registry_id(
     registry: &str,
     name: &str,
 ) -> i32 {
-    game.side
+    game.client
         .remote
         .as_ref()
         .unwrap()
@@ -289,7 +289,7 @@ fn replacing_a_general_entity_keeps_its_emitters_separate() {
                     deliver(game, add_entity(game, id, 172, "minecraft:minecart", new));
                     assert!(
                         !game
-                            .side
+                            .client
                             .remote
                             .as_ref()
                             .unwrap()

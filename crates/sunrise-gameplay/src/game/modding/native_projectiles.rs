@@ -152,7 +152,7 @@ impl crate::game::ServerGame<'_> {
 
     /// Guard just the dispatch: normal completion returns the still-owned pass
     /// to its caller, which restores explicitly at the established tick boundary.
-    pub(in crate::game::server_side) fn with_projectile_dispatch(
+    pub fn with_projectile_dispatch(
         &mut self,
         pass: &mut JoinList<Projectile, false>,
         fire: impl FnOnce(&mut Self),
@@ -264,7 +264,7 @@ impl crate::game::ServerGame<'_> {
 
     /// `EntityTeleportEvent.EnderPearl` for `owner`'s pearl that hit `hit`:
     /// the listeners' `(target, damage, cancel)`, starting from `to` and `damage`.
-    pub(in crate::game) fn native_pearl_teleport(
+    pub fn native_pearl_teleport(
         &mut self,
         owner: mod_api::EntityRef,
         pearl: u32,
@@ -297,7 +297,7 @@ impl crate::game::ServerGame<'_> {
     /// What a pearl hit (`getHitResult`), as `ender_pearl_teleport` tells it:
     /// `(hit_entity, hit_block, hit_face, hit_at)`. An entity's block is the
     /// cell of the hit point and its face `[0, 0, 0]`; a dragon part is the dragon.
-    fn pearl_hit(&self, hit: Hit) -> (Option<u32>, [i32; 3], [i32; 3], [f64; 3]) {
+    pub fn pearl_hit(&self, hit: Hit) -> (Option<u32>, [i32; 3], [i32; 3], [f64; 3]) {
         match hit {
             Hit::Block { pos, at, face } => (None, pos, face, [at.x, at.y, at.z]),
             Hit::Entity { who, at } => {
@@ -358,7 +358,7 @@ impl crate::game::ServerGame<'_> {
     /// Hand back the owning rows (including terminal impacts) while mods run. A veto
     /// alone replays the flight; all other captured contacts keep their row until the
     /// apply boundary (or, for an explicit discard, the removal sweep).
-    pub(in crate::game::server_side) fn native_settle_impacts(
+    pub fn native_settle_impacts(
         &mut self,
         projectiles: &mut JoinList<Projectile, false>,
         impacts: Vec<Impact>,

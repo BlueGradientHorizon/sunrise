@@ -956,7 +956,7 @@ mod tests {
 
     fn deliver_group_bundle(game: &mut sunrise_client_gameplay::game::ClientGame<'_>, packets: Vec<C>) {
         let epoch = game
-            .side
+            .client
             .remote
             .as_ref()
             .unwrap()
@@ -976,7 +976,7 @@ mod tests {
     }
 
     fn negotiate(game: &sunrise_client_gameplay::game::ClientGame<'_>, with_groups: bool) {
-        let remote = game.side.remote.as_ref().unwrap();
+        let remote = game.client.remote.as_ref().unwrap();
         let transport = remote.session.payload_transport();
         let entries: Vec<_> = transport
             .local
@@ -1004,7 +1004,7 @@ mod tests {
         crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
             let (client, _server) = Pipe::pair();
             game.connect_local(client, "ConnGroupsClient").unwrap();
-            game.side.remote.as_mut().unwrap().logged_in = true;
+            game.client.remote.as_mut().unwrap().logged_in = true;
             game.native_lifecycle.world_open_ready().unwrap();
             negotiate(game, true);
             let level = game.level("minecraft:overworld").unwrap();
@@ -1278,7 +1278,7 @@ mod tests {
                 let target = if with_groups { [32, 64, 0] } else { pos };
                 send(&mut game, target, Some(70));
                 assert!(
-                    game.side.remote.is_none(),
+                    game.client.remote.is_none(),
                     "unnegotiated or unloaded group target must disconnect"
                 );
                 continue;
@@ -1291,7 +1291,7 @@ mod tests {
                 ],
             );
             let viewed = game.level("minecraft:the_nether").unwrap();
-            let count = game.side.remote.as_ref().unwrap().group_count.clone();
+            let count = game.client.remote.as_ref().unwrap().group_count.clone();
             assert!(!count.allows_replacement(0, 1, 1));
             assert_eq!(viewed.connection_group(&game, pos), Ok(Some(50)));
             assert_eq!(own.connection_group(&game, pos), Ok(None));

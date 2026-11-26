@@ -92,7 +92,7 @@ impl crate::game::ClientGame<'_> {
     /// Whether a text box or input-capturing mounted widget has focus right now
     /// (so OS IME commits and text typing are enabled). Note that `ime_preedit`
     /// separately checks `mounted_widget_preedit`, never `captures_input()`.
-    pub(in crate::game::client_side) fn text_field_focused(&mut self) -> bool {
+    pub fn text_field_focused(&mut self) -> bool {
         if self.client.screen_state.0.widgets.has_focus() {
             return self.mounted_widget_captures_input();
         }
@@ -131,7 +131,7 @@ impl crate::game::ClientGame<'_> {
 
     /// Allow the input method only while a text box has focus, and reset
     /// composition whenever the focused text box itself changes.
-    pub(in crate::game::client_side) fn sync_ime(&mut self) {
+    pub fn sync_ime(&mut self) {
         let focus = self.ime_focus_identity();
         let want = focus.is_some();
         if focus != self.client.screen_state.0.ime_focus {
@@ -159,7 +159,7 @@ impl crate::game::ClientGame<'_> {
 
     /// `WindowEvent::Ime(Preedit)`: `KeyboardHandler.textEditing`. The text
     /// still being composed is shown under the focused field's caret.
-    pub(in crate::game::client_side) fn ime_preedit(
+    pub fn ime_preedit(
         &mut self,
         text: &str,
         cursor: Option<(usize, usize)>,
@@ -269,7 +269,7 @@ impl crate::game::ClientGame<'_> {
     }
 
     /// Text the input method committed (`WindowEvent::Ime(Commit)`).
-    pub(in crate::game::client_side) fn ime_commit(&mut self, text: &str) {
+    pub fn ime_commit(&mut self, text: &str) {
         preedit::mark_committed();
         if text.is_empty() || self.client.held_key_text.swallows(text) {
             return;

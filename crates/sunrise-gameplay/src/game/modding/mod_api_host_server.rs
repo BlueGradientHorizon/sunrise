@@ -31,7 +31,7 @@ fn saved_binding_target(target: super::commands::Target) -> bool {
 impl ServerGame<'_> {
     /// Attachment membership uses physical presence (except removed mobs), not the
     /// command resolver's pending-removal masks. Limit resolution to this level.
-    pub(in crate::game) fn attachment_entity_exists(&self, id: u32) -> bool {
+    pub fn attachment_entity_exists(&self, id: u32) -> bool {
         use sunrise_sim::join_seq::residency::table::EntityLookup;
         matches!(
             self.resident_entities
@@ -70,7 +70,7 @@ impl ServerGame<'_> {
     /// The attachments of entities that left the level, dropped: each tick
     /// while any entity has some. Only those entities are looked at, and
     /// nothing else of the entities' memory changes.
-    pub(in crate::game::server_side) fn prune_entity_attachments(&mut self) {
+    pub fn prune_entity_attachments(&mut self) {
         let alive = self.retained_entity_ids();
         let gone: Vec<u32> = self
             .common.persist
@@ -103,7 +103,7 @@ impl ServerGame<'_> {
 
     /// `attachment_map` without recording the holder for the sync. Inside a transaction, the
     /// map is kept as it was on its first access, so an abort puts it back.
-    pub(in crate::game) fn attachment_map_quiet(
+    pub fn attachment_map_quiet(
         &mut self,
         holder: mod_api::Holder,
         access: AttachmentAccess,
@@ -117,7 +117,7 @@ impl ServerGame<'_> {
 
     /// Bind first-store contents to their real owner, including writes made before
     /// insertion by EntityConstructing listeners. Never invent a temporary owner.
-    pub(in crate::game::server_side) fn bind_resident_entity_attachments(
+    pub fn bind_resident_entity_attachments(
         &mut self,
         id: u32,
     ) -> Result<(), mod_api::AttachmentError> {
@@ -165,7 +165,7 @@ impl ServerGame<'_> {
 
     /// Where `holder`'s attachment map lives now: an entity's by its object ID, a player's where
     /// their state is (swapped in for a guest's turn, or kept beside), the world's others.
-    pub(in crate::game) fn attachment_slot(
+    pub fn attachment_slot(
         &mut self,
         holder: mod_api::Holder,
         access: AttachmentAccess,

@@ -35,7 +35,7 @@ mod tests {
                 game.connect_local(client, "PropertyPrediction").unwrap();
                 let item = mod_api::__private::item_key("minecraft:emerald").unwrap();
                 let id = game
-                    .side
+                    .client
                     .remote
                     .as_ref()
                     .unwrap()

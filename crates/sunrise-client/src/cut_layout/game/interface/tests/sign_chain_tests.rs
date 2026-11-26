@@ -98,7 +98,7 @@ fn click_sign(
         let state = game.world.block(pos[0], pos[1], pos[2]);
         game.res.facts().get(state).name.to_string()
     };
-    let sounds = std::mem::take(&mut game.side.pending_sounds)
+    let sounds = std::mem::take(&mut game.server.pending_sounds)
         .into_iter()
         .map(|sound| sound.event)
         .collect();

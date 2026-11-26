@@ -136,7 +136,7 @@ impl Options {
             std::env::var_os("SUNRISE_HOME").as_deref(),
         )?)
     }
-    pub(in crate::game) fn from_launch(launch: LaunchArguments) -> Result<Option<Self>> {
+    pub fn from_launch(launch: LaunchArguments) -> Result<Option<Self>> {
         let installation_side = launch.installation_side();
         let LaunchArguments { context, rest, .. } = launch;
         let sibling = std::env::current_exe()?

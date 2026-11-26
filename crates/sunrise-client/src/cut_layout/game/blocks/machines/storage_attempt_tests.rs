@@ -490,7 +490,7 @@ fn item_capability_presence_does_not_open_loot_or_load_chunks() {
         with_game_role_client(fixture_root(), ExecutionRole::Client, |game| {
             let (pipe, _peer) = sunrise_protocol::connection::Pipe::pair();
             game.connect_local(pipe, "StorageContents").unwrap();
-            game.side.remote.as_mut().unwrap().logged_in = true;
+            game.client.remote.as_mut().unwrap().logged_in = true;
             let (pot, pending, before, _) = check_presence!(game, false);
             assert_eq!(spill::saved_entity(&game.world, pot), Some(pending));
             assert_eq!(
@@ -751,7 +751,7 @@ fn block_capabilities_contain_panics_under_the_provider_owner() {
                     |game| {
                         let (pipe, _peer) = sunrise_protocol::connection::Pipe::pair();
                         game.connect_local(pipe, "ProviderOwner").unwrap();
-                        game.side.remote.as_mut().unwrap().logged_in = true;
+                        game.client.remote.as_mut().unwrap().logged_in = true;
                         let (outer, query, _, _) = check_discovery!(game);
                         drop(query);
                         assert_eq!(current_native_mod(), outer);
@@ -846,7 +846,7 @@ fn aborting_a_pot_insert_restores_its_named_loot_sequence() {
             )
             .unwrap();
             assert_eq!(loot.random_sequence(TABLE), Some(SEQUENCE));
-            game.side.server_loot.0.set(Some(Arc::new(loot)));
+            game.server.server_loot.0.set(Some(Arc::new(loot)));
 
             let pos = [4, 64, 0];
             place(game, (4, 64, 0), "minecraft:decorated_pot");
@@ -860,8 +860,8 @@ fn aborting_a_pot_insert_restores_its_named_loot_sequence() {
             spill::put_saved_entity(&mut game.world, pos, tag.clone());
             // The named sequence already exists: this tests restoration of its actual
             // position, not merely removal of a newly created sequence.
-            game.side.rand_sequences.get(SEQUENCE, game.level.seed);
-            let before = game.side.rand_sequences.to_nbt();
+            game.server.rand_sequences.get(SEQUENCE, game.level.seed);
+            let before = game.server.rand_sequences.to_nbt();
             let level_before = game.world.random.state();
             let level = game.level(game.dim.id()).unwrap();
             let items = level.capability(game, &ITEMS, pos, None).unwrap();
@@ -878,7 +878,7 @@ fn aborting_a_pot_insert_restores_its_named_loot_sequence() {
                 let materialized = spill::saved_entity(&game.world, pos).unwrap();
                 assert!(materialized.get("LootTable").is_none());
                 assert_eq!(game.world.random.state(), level_before);
-                let after = game.side.rand_sequences.to_nbt();
+                let after = game.server.rand_sequences.to_nbt();
                 assert_ne!(after, before);
                 (materialized, after)
             };
@@ -891,7 +891,7 @@ fn aborting_a_pot_insert_restores_its_named_loot_sequence() {
                 })
                 .unwrap_err();
             assert_eq!(spill::saved_entity(&game.world, pos), Some(tag));
-            assert_eq!(game.side.rand_sequences.to_nbt(), before);
+            assert_eq!(game.server.rand_sequences.to_nbt(), before);
             assert_eq!(game.world.random.state(), level_before);
 
             assert_eq!(
@@ -975,7 +975,7 @@ fn hopper_respects_a_mod_container_only_when_empty_rule() {
                 .get_mut(&BELOW)
                 .unwrap()
                 .slots_mut()[0] = None;
-            game.side.hoppers.get_mut(&HOPPER).unwrap().cooldown = 0;
+            game.server.hoppers.get_mut(&HOPPER).unwrap().cooldown = 0;
             game.world.game_time = 2;
             game.tick_hopper(HOPPER);
             assert_eq!(count(game, BELOW, 0), 1);
@@ -1278,7 +1278,7 @@ fn pull_chooses_the_first_slot_after_extract_and_not_an_existing_stack() {
                 vec![Some(ItemStack::new("minecraft:diamond", 1)), None],
             );
             probe.rules.lock().unwrap().release_first = false;
-            game.side.hoppers.get_mut(&HOPPER).unwrap().cooldown = 0;
+            game.server.hoppers.get_mut(&HOPPER).unwrap().cooldown = 0;
             game.tick_hopper(HOPPER);
             assert_eq!((count(game, HOPPER, 0), count(game, HOPPER, 1)), (1, 1));
         },
@@ -1397,7 +1397,7 @@ fn vanilla_container_provider_and_entity_never_ask_their_storage() {
             use {sunrise_gameplay_common::game::minecarts::CartKind, sunrise_gameplay_common::game::minecarts::Minecart};
             for target in ["minecraft:chest", "minecraft:composter", "minecraft:air"] {
                 hopper(game, vec![None; 5]);
-                game.side.hoppers.clear();
+                game.server.hoppers.clear();
                 place(game, ABOVE, target);
                 game.world.block_entities.remove(&ABOVE);
                 game.carts.clear();
@@ -1520,7 +1520,7 @@ fn extract_notifications_cross_signal_each_tick_and_comparator_ticks_every_secon
                     }
                 }
             }
-            game.side
+            game.server
                 .tickets
                 .0
                 .update(Some(sunrise_sim::ticket_levels::Sources {
@@ -1691,7 +1691,7 @@ fn pushes_use_only_the_opposite_face_for_each_hopper_facing() {
                         None,
                     ],
                 );
-                game.side.hoppers.clear();
+                game.server.hoppers.clear();
                 storage(game, target, vec![None; 2]);
                 probe.rules.lock().unwrap().accept = Some("minecraft:stone");
                 game.tick_hopper(HOPPER);

@@ -13,7 +13,7 @@ pub(in crate::game) struct GivenBack {
 }
 
 impl crate::game::ServerGame<'_> {
-    pub(in crate::game) fn tick_items(&mut self) {
+    pub fn tick_items(&mut self) {
         let mut round = self.item_update_round();
         self.tick_dropped_items(&mut round);
         sunrise_threads::work::clear_work();
@@ -25,7 +25,7 @@ impl crate::game::ServerGame<'_> {
     pub fn joined_during_entity_pass(&self, id: u32) -> bool {
         id > self.server.ticked_entities_through || self.server.contact_drops.contains(&id)
     }
-    pub(in crate::game) fn tick_dropped_items(&mut self, round: &mut native_ticks::TickRound) {
+    pub fn tick_dropped_items(&mut self, round: &mut native_ticks::TickRound) {
         let mut items = self.common.dropped.lift();
         // ServerLevel.tick: only entities in entity-ticking chunks tick.
         let ticking = self.entity_ticking_area();
@@ -464,7 +464,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// `ItemUtils.onContainerDestroyed`: spilled stacks use their own constructor
     /// motion (0.2 up and ±0.1 sideways), leaving the level random untouched.
-    pub(in crate::game::server_side) fn spawn_destroyed_contents(
+    pub fn spawn_destroyed_contents(
         &mut self,
         destroyed: Vec<(ItemStack, Vec3)>,
     ) {
@@ -499,7 +499,7 @@ impl crate::game::ServerGame<'_> {
     /// 1 block box of `at`, whose id is a multiple of 40 from `merge_id`, takes
     /// the new one as one more in its count (and restarts its age); otherwise
     /// a fresh orb spawns.
-    pub(in crate::game) fn award_orb(&mut self, at: [f64; 3], value: u32, merge_id: i32) {
+    pub fn award_orb(&mut self, at: [f64; 3], value: u32, merge_id: i32) {
         if !self.merge_new_orb(at, value, merge_id) {
             self.add_orb(at, value);
         }
@@ -601,7 +601,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// `ExperienceOrb.tick`'s scan before movement, once every twenty ticks.
     /// Hooks can change the resident list, so retain join identities, not indices.
-    pub(in crate::game) fn merge_orb(&mut self, i: usize) {
+    pub fn merge_orb(&mut self, i: usize) {
         if !self.common.orbs[i].ticks.is_multiple_of(20) {
             return;
         }
@@ -678,7 +678,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// `new ExperienceOrb(level, pos, Vec3.ZERO, value)`: yaw and motion from
     /// the orb's own random.
-    pub(in crate::game) fn add_orb(&mut self, at: [f64; 3], value: u32) {
+    pub fn add_orb(&mut self, at: [f64; 3], value: u32) {
         self.add_orb_toward(at, [0.0; 3], value);
     }
     /// `new ExperienceOrb(level, pos, roughly, value)`: a random motion that
@@ -739,7 +739,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// The orbs' tick, but for the movement: that is `run_ordered_ticks`'s,
     /// in join order with the other kinds.
-    pub(in crate::game::server_side) fn tick_experience(&mut self) {
+    pub fn tick_experience(&mut self) {
         if self.server.xp_delay > 0 {
             self.server.xp_delay -= 1;
         }
@@ -876,7 +876,7 @@ impl crate::game::ServerGame<'_> {
     /// `at` (the eyes less 0.3): slots 0..36, armor feet to head (36..39),
     /// the off hand (40), each thrown in a random direction. The mods hear
     /// the drops (`native_living_drops`) before they join the level.
-    pub(in crate::game::server_side) fn drop_inventory(
+    pub fn drop_inventory(
         &mut self,
         at: [f64; 3],
         dying: &creatures::DyingDrops<'_>,
@@ -908,7 +908,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// Item entity `i` leaves the level (`Entity.discard`); mods hear it.
-    pub(in crate::game) fn remove_dropped(&mut self, i: usize) -> ItemEntity {
+    pub fn remove_dropped(&mut self, i: usize) -> ItemEntity {
         let e = self.common.dropped.remove(i);
         self.native_entity_left(e.id);
         e
@@ -929,7 +929,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// `new ItemEntity(level, x, y, z, stack, dx, dy, dz)`.
-    pub(in crate::game) fn spawn_item(
+    pub fn spawn_item(
         &mut self,
         stack: ItemStack,
         position: [f64; 3],
@@ -941,7 +941,7 @@ impl crate::game::ServerGame<'_> {
 
     /// `new ItemEntity(level, x, y, z, stack)`: the item leaves with its own
     /// random's motion, which this returns.
-    pub(in crate::game) fn spawn_item_own(
+    pub fn spawn_item_own(
         &mut self,
         stack: ItemStack,
         position: [f64; 3],
@@ -961,7 +961,7 @@ impl crate::game::ServerGame<'_> {
         self.add_item_entity_prepared(stack, position, Some(velocity), 0, Some(random));
     }
 
-    pub(in crate::game::server_side) fn add_item_entity(
+    pub fn add_item_entity(
         &mut self,
         stack: ItemStack,
         position: [f64; 3],
@@ -1041,7 +1041,7 @@ impl crate::game::ServerGame<'_> {
     /// Player.drop: thrown from the eyes along the view direction. True when
     /// the selected stack's `on_dropped_by_player` Part kept it in the slot
     /// (`ServerPlayer.drop(boolean)`, as NeoForge asks it).
-    pub(in crate::game) fn drop_held_item(&mut self, all: bool) -> bool {
+    pub fn drop_held_item(&mut self, all: bool) -> bool {
         if self.common.eye_position().is_none() {
             return false;
         }
@@ -1062,7 +1062,7 @@ impl crate::game::ServerGame<'_> {
 
     /// A guest's drop key. A drop the held item's Part refused sends the
     /// inventory back, undoing the removal the client predicted.
-    pub(in crate::game) fn guest_drop_held(&mut self, gi: usize, conn: u32, all: bool) {
+    pub fn guest_drop_held(&mut self, gi: usize, conn: u32, all: bool) {
         let kept = self.as_guest(conn, |g| g.drop_held_item(all)) == Some(true);
         if let Some(host) = self.server.lan.as_mut() {
             if kept {
@@ -1077,7 +1077,7 @@ impl crate::game::ServerGame<'_> {
     /// along the view direction. `thrown_from_hand` (`drop(stack, true)`, the
     /// drop key) names the player as the thrower; `drop(stack, false)`, for
     /// what no longer fits in the inventory, does not.
-    pub(in crate::game) fn throw_from_eyes(
+    pub fn throw_from_eyes(
         &mut self,
         thrown: ItemStack,
         eye: [f64; 3],

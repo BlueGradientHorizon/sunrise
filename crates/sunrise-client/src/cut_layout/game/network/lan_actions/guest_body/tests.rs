@@ -179,7 +179,7 @@ fn guest_equipment_changes_powder_snow_support_on_the_same_move() {
 
             with_game(|game| {
                 open_to_lan(game);
-                game.side
+                game.server
                     .streaming
                     .insert_remote(&mut game.world, Chunk::empty(0, 0));
                 let snow = game
@@ -195,9 +195,9 @@ fn guest_equipment_changes_powder_snow_support_on_the_same_move() {
                 guest.motion = Some(Box::new(
                     PlayerMotion::new(game.motion, Vec3::new(1.5, 64.0, 1.5)).unwrap(),
                 ));
-                game.side.lan.as_mut().unwrap().hub.guests.push(guest);
+                game.server.lan.as_mut().unwrap().hub.guests.push(guest);
                 for boots in [true, false] {
-                    game.side
+                    game.server
                         .lan
                         .as_mut()
                         .unwrap()
@@ -222,7 +222,7 @@ fn guest_equipment_changes_powder_snow_support_on_the_same_move() {
                             },
                         },
                     );
-                    let guest = game.side.lan.as_ref().unwrap().hub.guest(1).unwrap();
+                    let guest = game.server.lan.as_ref().unwrap().hub.guest(1).unwrap();
                     let ground = &guest.motion.as_ref().unwrap().ground;
                     assert_eq!(ground.horizontal_collision, boots);
                     assert_eq!(
@@ -316,7 +316,7 @@ pub(crate) fn breathing_guest_tick(meddle: bool) -> (Option<String>, i32, i32) {
         || {
             with_game(|game| {
                 open_to_lan(game);
-                game.side
+                game.server
                     .streaming
                     .insert_remote(&mut game.world, Chunk::empty(0, 0));
                 let mut guest = online_guest(1);
@@ -327,8 +327,8 @@ pub(crate) fn breathing_guest_tick(meddle: bool) -> (Option<String>, i32, i32) {
                 ));
                 guest.armor[0] = Some(ItemStack::new("minecraft:turtle_helmet", 1));
                 guest.armor[1] = Some(ItemStack::new("minecraft:diamond_chestplate", 1));
-                game.side.lan.as_mut().unwrap().hub.guests.push(guest);
-                game.side
+                game.server.lan.as_mut().unwrap().hub.guests.push(guest);
+                game.server
                     .lan
                     .as_mut()
                     .unwrap()
@@ -345,7 +345,7 @@ pub(crate) fn breathing_guest_tick(meddle: bool) -> (Option<String>, i32, i32) {
                     })
                     .unwrap();
                 game.guest_server_tick(1, true);
-                let guest = game.side.lan.as_ref().unwrap().hub.guest(1).unwrap();
+                let guest = game.server.lan.as_ref().unwrap().hub.guest(1).unwrap();
                 left = (
                     guest.motion.as_ref().unwrap().air,
                     guest.armor[1].as_ref().unwrap().damage,

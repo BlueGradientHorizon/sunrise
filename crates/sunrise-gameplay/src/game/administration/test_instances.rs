@@ -71,7 +71,7 @@ pub(in crate::game::server_side) fn red(key: &str, args: &[Text]) -> Text {
 impl crate::game::ServerGame<'_> {
     /// `registryAccess().get(testKey)`: the test instance from the game's
     /// data (`data/<namespace>/test_instance/<path>.json`).
-    pub(in crate::game) fn test_def(&self, id: &str) -> Option<TestDef> {
+    pub fn test_def(&self, id: &str) -> Option<TestDef> {
         if let Some(known) = self.server.test_defs.0.borrow().get(id) {
             return known.clone();
         }
@@ -93,7 +93,7 @@ impl crate::game::ServerGame<'_> {
     /// enabled, later packs overriding earlier ones. The set stays as it is
     /// until the next world opens; `/reload` and `/datapack` do not change it.
     /// It replaces the previous world's definitions and selector ids.
-    pub(in crate::game::server_side) fn snapshot_test_defs(&mut self) {
+    pub fn snapshot_test_defs(&mut self) {
         let stack = super::functions::pack_stack(
             &self.server.world_root,
             &self.common.options.resources,

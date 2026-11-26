@@ -23,7 +23,7 @@ fn walled(game: &mut sunrise_gameplay::game::ServerGame<'_>) {
 }
 
 fn exclude(game: &mut sunrise_gameplay::game::ServerGame<'_>, boxes: &[[f64; 6]]) {
-    let hub = &mut game.side.lan.as_mut().unwrap().hub;
+    let hub = &mut game.server.lan.as_mut().unwrap().hub;
     hub.update_guest(12, |g| g.collision_exclusions.set(boxes))
         .unwrap()
         .unwrap();
@@ -39,7 +39,7 @@ fn a_block_in_a_players_exclusions_does_not_suffocate_it() {
         walled(game);
         let at = [3.5, 64.0, 5.5];
         let body = game
-            .side
+            .server
             .lan
             .as_ref()
             .unwrap()
@@ -111,7 +111,7 @@ fn a_carried_guests_eyes_are_tested_against_the_collider_as_it_stands_now() {
     sunrise_gameplay::game::native_guest_turn_tests::with_guests(|game| {
         let at = [3.5, 64.0, 5.5];
         let body = game
-            .side
+            .server
             .lan
             .as_ref()
             .unwrap()
@@ -128,7 +128,7 @@ fn a_carried_guests_eyes_are_tested_against_the_collider_as_it_stands_now() {
         history.record(&now);
         let history = std::rc::Rc::new(std::cell::RefCell::new(history));
         let local = Vec3::new(0.0, 0.0, 0.0);
-        let hub = &mut game.side.lan.as_mut().unwrap().hub;
+        let hub = &mut game.server.lan.as_mut().unwrap().hub;
         hub.update_guest(12, |g| {
             g.on_collider = Some(Carried {
                 collider: COLLIDER,

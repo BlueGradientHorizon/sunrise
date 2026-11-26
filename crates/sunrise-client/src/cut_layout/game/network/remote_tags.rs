@@ -180,7 +180,7 @@ use sunrise_protocol::packets::{
             with_client_game(|game| {
                 let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
                 game.connect_local(pipe, "Steve").unwrap();
-                let builtin = game.side.remote.as_ref().unwrap().builtin.clone();
+                let builtin = game.client.remote.as_ref().unwrap().builtin.clone();
 
                 use mod_api::LoopContext;
                 use sunrise_level::api_context::LoopReader;
@@ -202,7 +202,7 @@ use sunrise_protocol::packets::{
                 };
 
                 // Configuration's tags wait for the login, which binds the client's blocks.
-                let registries = &mut game.side.remote.as_mut().unwrap().registries;
+                let registries = &mut game.client.remote.as_mut().unwrap().registries;
                 Arc::make_mut(registries).add_tags(&update(
                     &builtin,
                     &[
@@ -364,7 +364,7 @@ use sunrise_protocol::packets::{
                     .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
                 place(game, [0, 0, 0], "minecraft:enchanting_table");
                 place(game, [-2, 0, -1], "minecraft:bookshelf");
-                let builtin = game.side.remote.as_ref().unwrap().builtin.clone();
+                let builtin = game.client.remote.as_ref().unwrap().builtin.clone();
                 let mut send = |providers: &[&str], transmitters: &[&str]| {
                     game.handle_packet(C::UpdateTags(power_update(
                         &builtin,
@@ -450,7 +450,7 @@ use sunrise_protocol::packets::{
                     .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
                 place(game, [0, 0, 0], "minecraft:enchanting_table");
                 place(game, [-2, 0, -1], "minecraft:glass");
-                let builtin = game.side.remote.as_ref().unwrap().builtin.clone();
+                let builtin = game.client.remote.as_ref().unwrap().builtin.clone();
                 let mut send = |attached: bool, enabled: bool| {
                     let calls = CALLS.load(Ordering::Relaxed);
                     let notices = NOTICES.load(Ordering::Relaxed);
@@ -577,7 +577,7 @@ use sunrise_protocol::packets::{
             with_client_game(|game| {
                 let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
                 game.connect_local(pipe, "Steve").unwrap();
-                let registries = Arc::make_mut(&mut game.side.remote.as_mut().unwrap().registries);
+                let registries = Arc::make_mut(&mut game.client.remote.as_mut().unwrap().registries);
                 registries.registries.insert(
                     "minecraft:damage_type".into(),
                     TYPES.map(|name| (name.to_owned(), None)).to_vec(),

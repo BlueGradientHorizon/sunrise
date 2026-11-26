@@ -58,7 +58,7 @@ use sunrise_items::items::ItemStack;
                         conn,
                         main: Option<ItemStack>,
                         off: Option<ItemStack>| {
-                game.side
+                game.server
                     .lan
                     .as_mut()
                     .unwrap()
@@ -110,7 +110,7 @@ use sunrise_items::items::ItemStack;
             };
             let player = game.player(12).unwrap();
             let level = player.level(&*game).unwrap();
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()
@@ -154,14 +154,14 @@ use sunrise_items::items::ItemStack;
                 let stone = (game as &dyn mod_api::Host)
                     .block_state_id("minecraft:stone")
                     .unwrap();
-                game.side.next_entity = 100;
+                game.server.next_entity = 100;
                 let fakes = [
                     (1234, "pickaxe", "minecraft:iron_pickaxe", true),
                     (5678, "shovel", "minecraft:iron_shovel", false),
                 ]
                 .map(|(uuid, name, item, expected)| {
                     let player = game.fake_player(level, uuid, name).unwrap();
-                    let hub = &mut game.side.lan.as_mut().unwrap().hub;
+                    let hub = &mut game.server.lan.as_mut().unwrap().hub;
                     let index = hub
                         .guests
                         .identity_index(uuid, player.entity().id())
@@ -201,7 +201,7 @@ use sunrise_items::items::ItemStack;
                 let stone = (game as &dyn mod_api::Host)
                     .block_state_id("minecraft:stone")
                     .unwrap();
-                game.side
+                game.server
                     .lan
                     .as_mut()
                     .unwrap()

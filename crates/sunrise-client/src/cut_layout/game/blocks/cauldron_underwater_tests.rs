@@ -47,9 +47,9 @@ fn held(game: &sunrise_gameplay::game::ServerGame<'_>) -> Option<String> {
 
 /// Run `command`, reporting what it said when it failed.
 fn command(game: &mut sunrise_gameplay::game::ServerGame<'_>, command: &str) {
-    game.side.chat_capture = Some(Vec::new());
+    game.server.chat_capture = Some(Vec::new());
     let ok = game.run_command(command);
-    let said = game.side.chat_capture.take().unwrap_or_default();
+    let said = game.server.chat_capture.take().unwrap_or_default();
     assert!(
         ok,
         "{command}: {}",

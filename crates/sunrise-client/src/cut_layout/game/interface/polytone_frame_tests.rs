@@ -88,13 +88,13 @@ fn rain_particles(game: &mut sunrise_client_gameplay::game::ClientGame<'_>, pack
         w: 16,
         h: 16,
     };
-    game.side.particles.0 = ParticleEngine::new(
+    game.client.particles.0 = ParticleEngine::new(
         pack,
         &HashMap::from([("particle/generic_0".to_owned(), rect)]),
         &HashSet::new(),
     );
-    game.side.particles.0.set_polytone(Some(Arc::new(registry)));
-    game.side.particles.0.camera = camera;
+    game.client.particles.0.set_polytone(Some(Arc::new(registry)));
+    game.client.particles.0.camera = camera;
 }
 
 #[test]
@@ -103,12 +103,12 @@ fn a_frame_of_gpu_records_only_draws_their_quads() {
     with_game(|game| {
         let at = [0.5, 80.0, 0.5];
         rain_particles(game, &rain_pack(false), at);
-        game.side
+        game.client
             .particles
             .0
             .add(&ParticleOptions::named("test:rain"), at, [0.0; 3]);
         assert_eq!(game.client_particle_count(), 0, "not in the native count");
-        assert_eq!(game.side.particles.0.polytone_gpu_records(), 1);
+        assert_eq!(game.client.particles.0.polytone_gpu_records(), 1);
         let camera = glam::DVec3::new(at[0], at[1] + 2.0, at[2]);
         game.polytone_gpu_decide(camera);
         let mut out = Vec::new();
@@ -128,15 +128,15 @@ fn rain_under_the_surface_is_hidden_from_its_first_frame() {
         let camera = [0.5, bottom + 4.0, 0.5];
         rain_particles(game, &rain_pack(true), camera);
         let rain = ParticleOptions::named("test:rain");
-        game.side
+        game.client
             .particles
             .0
             .add(&rain, [0.5, bottom + 2.0, 0.5], [0.0; 3]);
-        game.side
+        game.client
             .particles
             .0
             .add(&rain, [0.5, bottom - 2.0, 0.5], [0.0; 3]);
-        assert_eq!(game.side.particles.0.polytone_gpu_records(), 2);
+        assert_eq!(game.client.particles.0.polytone_gpu_records(), 2);
         let camera = glam::DVec3::from_array(camera);
         game.polytone_gpu_decide(camera);
         let mut out = Vec::new();
@@ -154,15 +154,15 @@ fn a_pending_clear_goes_before_the_heightmap_is_read() {
         let bottom = f64::from(game.world.bottom_y());
         let camera = [0.5, bottom + 4.0, 0.5];
         rain_particles(game, &rain_pack(true), camera);
-        game.side.particles.0.add(
+        game.client.particles.0.add(
             &ParticleOptions::named("test:rain"),
             [0.5, bottom + 2.0, 0.5],
             [0.0; 3],
         );
-        game.side.mod_clear_particles.set(true);
+        game.client.mod_clear_particles.set(true);
         game.polytone_gpu_decide(glam::DVec3::from_array(camera));
         assert_eq!(
-            game.side.particles.0.polytone_gpu_records(),
+            game.client.particles.0.polytone_gpu_records(),
             0,
             "cleared first"
         );

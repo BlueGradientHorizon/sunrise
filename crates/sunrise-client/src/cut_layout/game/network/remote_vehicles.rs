@@ -61,7 +61,7 @@ pub(crate) mod tests {
             game.mobs.push(m);
             game.inventory[game.selected] = Some(ItemStack::new("minecraft:carrot_on_a_stick", 1));
             game.riding = Some(7);
-            game.side.remote.as_mut().unwrap().first_passenger = true;
+            game.client.remote.as_mut().unwrap().first_passenger = true;
             assert!(game.driven_mount().is_some());
             use sunrise_protocol::packets::play::relative as rel;
             game.apply_packet(C::TeleportEntity(play::TeleportEntity {
@@ -156,7 +156,7 @@ pub(crate) mod tests {
         .unwrap();
         let (client, _server) = Pipe::pair();
         game.connect_local(client, "SteeringTest").unwrap();
-        game.side.remote.as_mut().unwrap().joined = true;
+        game.client.remote.as_mut().unwrap().joined = true;
         game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 300.0, 0.5)).unwrap());
         let types = MobTypes::load(&root).unwrap();
         for row in &rows {
@@ -186,7 +186,7 @@ pub(crate) mod tests {
             game.mobs.clear();
             game.mobs.push(m);
             game.riding = Some(7);
-            game.side.remote.as_mut().unwrap().first_passenger = row["first"].as_bool().unwrap();
+            game.client.remote.as_mut().unwrap().first_passenger = row["first"].as_bool().unwrap();
             let controlled = row["controlled"].as_bool().unwrap();
             assert_eq!(game.driven_mount().is_some(), controlled, "{row}");
             let packets = game.remote_vehicle_packets();
@@ -402,8 +402,8 @@ pub(crate) mod tests {
         .unwrap();
         let (client, _server) = Pipe::pair();
         game.connect_local(client, "RiderTest").unwrap();
-        game.side.remote.as_mut().unwrap().joined = true;
-        game.side.remote.as_mut().unwrap().first_passenger = true;
+        game.client.remote.as_mut().unwrap().joined = true;
+        game.client.remote.as_mut().unwrap().first_passenger = true;
         game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 300.0, 0.5)).unwrap());
         let types = MobTypes::load(&root).unwrap();
         let t = std::sync::Arc::new(types.types["minecraft:horse"].clone());
@@ -440,7 +440,7 @@ pub(crate) mod tests {
                 sunrise_client_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
                     let (client, _server) = sunrise_protocol::connection::Pipe::pair();
                     game.connect_local(client, "CamelRider").unwrap();
-                    let remote = game.side.remote.as_mut().unwrap();
+                    let remote = game.client.remote.as_mut().unwrap();
                     remote.joined = true;
                     remote.entity_id = 42;
                     game.world.game_time = 1_000;

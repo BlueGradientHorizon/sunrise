@@ -52,7 +52,7 @@ pub struct LayerRegistration<'a> {
 }
 
 impl<'a> LayerRegistration<'a> {
-    pub(in crate::game) fn new(
+    pub fn new(
         rows: &'a EntityTypeRows,
         mod_renderers: &'a BTreeMap<String, Arc<dyn EntityRenderer>>,
         routed: &'a dyn Fn(&str) -> bool,
@@ -208,7 +208,7 @@ impl crate::game::ClientGame<'_> {
     /// once per mob a frame: the answer both decides whether the draw keeps the mob's final model
     /// and is what `mod_layer_geometry` draws. With no layer added at all it is none after one
     /// flag check, with no lock and no lookup.
-    pub(in crate::game) fn mod_layers(&self, mob: &Mob) -> Option<Layers> {
+    pub fn mod_layers(&self, mob: &Mob) -> Option<Layers> {
         if !ANY.load(Ordering::Relaxed) {
             return None;
         }

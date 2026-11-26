@@ -25,18 +25,18 @@ pub(crate) mod tests {
             game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 0.5)).unwrap());
             // RaidCommand needs the owner's permission level (3).
             game.ui.registries.permission = 4;
-            game.side.chat_capture = Some(Vec::new());
+            game.server.chat_capture = Some(Vec::new());
             let (id, _) = game
-                .side
+                .server
                 .raiding
                 .0
                 .raids
                 .create_or_extend([0, 64, 0], 2, None, 3);
-            assert!(!game.side.raiding.0.raids.get(id).unwrap().started);
+            assert!(!game.server.raiding.0.raids.get(id).unwrap().started);
 
             assert_eq!(run_dev(game, "raid check"), 1);
             let lines: Vec<String> = game
-                .side
+                .server
                 .chat_capture
                 .take()
                 .unwrap()
@@ -53,10 +53,10 @@ pub(crate) mod tests {
 
             game.start_audio_capture();
             run_dev(game, "raid sound global");
-            assert!(game.side.pending_sounds.is_empty());
+            assert!(game.server.pending_sounds.is_empty());
             run_dev(game, "raid sound local");
-            assert_eq!(game.side.pending_sounds.len(), 1);
-            let sound = &game.side.pending_sounds[0];
+            assert_eq!(game.server.pending_sounds.len(), 1);
+            let sound = &game.server.pending_sounds[0];
             assert_eq!(sound.event, "minecraft:event.raid.horn");
             assert_eq!(sound.position, [5.5, 64.0, 0.5]);
             assert_eq!(sound.volume, 2.0);

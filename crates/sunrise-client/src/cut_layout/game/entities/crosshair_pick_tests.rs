@@ -64,7 +64,7 @@ fn face_from_name(name: &str) -> [i32; 3] {
 }
 
 fn entity_type_id(game: &sunrise_client_gameplay::game::ClientGame<'_>, kind: &str) -> i32 {
-    game.side
+    game.client
         .remote
         .as_ref()
         .unwrap()
@@ -97,18 +97,18 @@ fn setup_remote_overworld(
         sea_level: 63,
     };
     game.enter_remote_dimension(&spawn, RemoteDimensionEntry::Login, Reason::Other);
-    let remote = game.side.remote.as_mut().unwrap();
+    let remote = game.client.remote.as_mut().unwrap();
     remote.logged_in = true;
     remote.entity_id = player_id;
     remote.view_distance = 8;
     remote.level_load.finish();
-    game.side.title.0 = None;
+    game.client.title.0 = None;
     let pos = Vec3::new(player_pos[0], player_pos[1], player_pos[2]);
     game.player = Some(PlayerMotion::new(game.motion, pos).unwrap());
     game.previous_position = pos;
-    game.side.camera_type = CameraType::FirstPerson;
-    game.side.settings.fov = 70.0;
-    game.side.settings.render_distance = 8;
+    game.client.camera_type = CameraType::FirstPerson;
+    game.client.settings.fov = 70.0;
+    game.client.settings.render_distance = 8;
     server
 }
 
@@ -181,7 +181,7 @@ fn pin_entity_pose(
     }
     let uid = id as u32;
     if let Some(t) = game
-        .side
+        .client
         .remote
         .as_mut()
         .and_then(|r| r.entities.get_mut(&id))
@@ -213,7 +213,7 @@ fn pin_entity_pose(
             (c.yaw, c.previous_yaw, c.pitch, c.previous_pitch) = (yaw, yaw, pitch, pitch);
         }
     });
-    if let Some(inter) = game.side.interactions.get_mut(&id) {
+    if let Some(inter) = game.client.interactions.get_mut(&id) {
         (inter.position, inter.previous) = (pos, pos);
         (
             inter.yaw,
@@ -1251,9 +1251,9 @@ pub(crate) fn run_singleplayer_and_unstored_pick_share_unified_query_and_root_ex
 
             with_client_game(|game| {
                 let _pipe = sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client(game);
-                game.side.remote.as_mut().unwrap().entity_id = 1;
+                game.client.remote.as_mut().unwrap().entity_id = 1;
                 ensure_chunk(game, 0, 0);
-                game.side.title.0 = None;
+                game.client.title.0 = None;
                 game.block_reach = 4.5;
                 game.entity_reach = 3.0;
                 let registry = game.pack.assets.registry;
@@ -1278,7 +1278,7 @@ pub(crate) fn run_singleplayer_and_unstored_pick_share_unified_query_and_root_ex
                              kind: &str,
                              position: [f64; 3],
                              vehicle: Option<u32>| {
-                    game.side.remote.as_mut().unwrap().entities.insert(
+                    game.client.remote.as_mut().unwrap().entities.insert(
                         id,
                         sunrise_client_gameplay::game::client_side::remote_client::session_state::Tracked {
                             kind: kind.into(),
@@ -1410,7 +1410,7 @@ pub(crate) fn run_singleplayer_and_unstored_pick_share_unified_query_and_root_ex
                 let pig_type = game.res.mob_types().get("minecraft:pig").unwrap().clone();
                 game.mobs
                     .push(Mob::new(150, pig_type, Vec3::new(0.5, 66.2, 0.5), 0.0));
-                game.side
+                game.client
                     .remote
                     .as_mut()
                     .unwrap()
@@ -1448,7 +1448,7 @@ pub(crate) fn run_singleplayer_and_unstored_pick_share_unified_query_and_root_ex
                     .push(Mob::new(130, camel_type, Vec3::new(0.5, 64.0, 0.5), 0.0));
                 game.mobs
                     .push(Mob::new(131, husk_type, Vec3::new(0.5, 64.17, 1.0), 0.0));
-                game.side
+                game.client
                     .remote
                     .as_mut()
                     .unwrap()
@@ -1534,7 +1534,7 @@ pub(crate) fn run_singleplayer_and_unstored_pick_share_unified_query_and_root_ex
                 let mut inter = RemoteInteraction::new([0.5, 66.1, 1.9]);
                 inter.vehicle = Some(110);
                 inter.dimensions_refreshed = true;
-                game.side.interactions.insert(113, inter);
+                game.client.interactions.insert(113, inter);
                 game.riding = Some(110);
                 place_player(game, [0.5, 65.0, 0.5], 0.0, 0.0);
                 track(
@@ -1544,7 +1544,7 @@ pub(crate) fn run_singleplayer_and_unstored_pick_share_unified_query_and_root_ex
                     [0.5, 66.1, 1.9],
                     Some(110),
                 );
-                game.side
+                game.client
                     .remote
                     .as_mut()
                     .unwrap()
@@ -1570,7 +1570,7 @@ pub(crate) fn run_singleplayer_and_unstored_pick_share_unified_query_and_root_ex
 
                 // F (client): out-of-reach TNT occluding chest yields MISS; exact block_reach fails strict `<`.
                 game.mobs.clear();
-                game.side.interactions.clear();
+                game.client.interactions.clear();
                 game.falling.clear();
                 game.tnts.clear();
                 game.riding = None;

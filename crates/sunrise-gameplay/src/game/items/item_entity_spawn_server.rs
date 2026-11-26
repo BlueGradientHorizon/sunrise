@@ -7,7 +7,7 @@ use sunrise_sim::entities::ItemEntity;
 impl ServerGame<'_> {
     /// `new ItemEntity(..)`: the item at the end of `dropped`, not yet joined
     /// (`join_item_entity`). Returns its motion.
-    pub(in crate::game) fn push_item_entity(
+    pub fn push_item_entity(
         &mut self,
         stack: ItemStack,
         position: [f64; 3],

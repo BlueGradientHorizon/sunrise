@@ -75,7 +75,7 @@ impl ClientGame<'_> {
     /// feet, its last tick's place, its velocity and its look carried through, and the
     /// server is told the passage and where the feet were; a payload a mod cancels moves
     /// nothing. Until the server's position packet, the next crossing waits.
-    pub(in crate::game) fn cross_passage(&mut self, passage: PassageId) -> Result<(), Error> {
+    pub fn cross_passage(&mut self, passage: PassageId) -> Result<(), Error> {
         if self.client.remote.is_none() {
             return Err(Error::Unavailable);
         }
@@ -132,7 +132,7 @@ impl ClientGame<'_> {
     }
 
     /// `ClientHost::last_passage_refusal`.
-    pub(in crate::game) fn last_passage_refusal(&self) -> Option<(PassageId, Refusal)> {
+    pub fn last_passage_refusal(&self) -> Option<(PassageId, Refusal)> {
         self.common.passages.refused
     }
 

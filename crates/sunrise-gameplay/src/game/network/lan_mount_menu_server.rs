@@ -4,7 +4,7 @@ impl crate::game::ServerGame<'_> {
     /// `AbstractMountInventoryMenu.stillValid`: the mount is alive and the
     /// guest's eyes are within the entity interaction range (3, 5 in creative)
     /// plus 4 of its box (`Player.isWithinEntityInteractionRange(mount, 4.0)`).
-    pub(in crate::game) fn lan_mount_valid(
+    pub fn lan_mount_valid(
         &self,
         g: &sunrise_sim::lan::guest::Guest,
         mob: u32,

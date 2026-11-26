@@ -32,12 +32,12 @@ pub(in crate::game) fn run_a_spectated_dying_living_entity_squeezes_the_fov_26_3
             sea_level: 63,
         };
         game.enter_remote_dimension(&spawn, RemoteDimensionEntry::Login, Reason::Other);
-        let remote = game.side.remote.as_mut().unwrap();
+        let remote = game.client.remote.as_mut().unwrap();
         remote.logged_in = true;
         remote.entity_id = 7;
         game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
         let creeper = game
-            .side
+            .client
             .remote
             .as_ref()
             .unwrap()
@@ -60,7 +60,7 @@ pub(in crate::game) fn run_a_spectated_dying_living_entity_squeezes_the_fov_26_3
         .unwrap();
         game.remote_set_camera(31);
         assert!(!game.controls_camera());
-        game.side.settings.fov = 70.0;
+        game.client.settings.fov = 70.0;
         let mut wrong = Vec::new();
         for row in witness.lines().filter(|l| !l.starts_with('#')) {
             let [dead, partial, fov, hud] = row.split('\t').collect::<Vec<_>>()[..] else {
@@ -72,7 +72,7 @@ pub(in crate::game) fn run_a_spectated_dying_living_entity_squeezes_the_fov_26_3
                 "none" => (20.0, 0),
                 n => (0.0, n.parse().unwrap()),
             };
-            game.side.view = Default::default();
+            game.client.view = Default::default();
             for _ in 0..8 {
                 game.tick_fov();
             }

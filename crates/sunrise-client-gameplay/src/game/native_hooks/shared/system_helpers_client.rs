@@ -10,7 +10,7 @@ impl crate::game::ClientGame<'_> {
         self.frame_reading()
     }
     /// Attack and use clicks in the last second.
-    pub(in crate::game) fn native_clicks(&mut self) -> (u32, u32) {
+    pub fn native_clicks(&mut self) -> (u32, u32) {
         self.click_reading()
     }
     /// Every item and recipe the game knows, made once (the same for every
@@ -51,7 +51,7 @@ impl crate::game::ClientGame<'_> {
     }
     /// The areas the game itself draws beside the open screen's window: the
     /// container build's, or the frame's own arithmetic with no build yet.
-    pub(crate) fn screen_own_exclusion(
+    pub fn screen_own_exclusion(
         &self,
         batch: &HudBatch,
     ) -> Vec<[f32; 4]> {

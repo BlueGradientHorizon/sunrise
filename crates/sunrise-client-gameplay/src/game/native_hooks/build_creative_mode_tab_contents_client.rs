@@ -47,7 +47,7 @@ impl crate::game::ClientGame<'_> {
     }
 
     /// The screen uses the completed cache, with the same holder definitions for search text.
-    pub(crate) fn refresh_creative_tabs(&mut self) {
+    pub fn refresh_creative_tabs(&mut self) {
         let Ok(lists) = self.build_creative(self.creative_permissions()) else {
             return;
         };

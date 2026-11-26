@@ -15,7 +15,7 @@ pub(in crate::game) mod icons;
 
 impl ClientGame<'_> {
     /// The `AdvancementToast` or `RecipeToast` in its slot at `y`.
-    pub(in crate::game::client_side) fn draw_advancement_toast(
+    pub fn draw_advancement_toast(
         &self,
         batch: &mut HudBatch,
         t: &Toast,
@@ -79,7 +79,7 @@ impl ClientGame<'_> {
         self.draw_item(batch, icon, x + 8.0, y + 8.0);
     }
     /// `ClientAdvancements.update`: update the tree before applying progress.
-    pub(in crate::game) fn remote_advancements(
+    pub fn remote_advancements(
         &mut self,
         p: sunrise_protocol::packets::play::UpdateAdvancements,
     ) {
@@ -220,7 +220,7 @@ impl ClientGame<'_> {
         self.common.adv.tree = Arc::new(tree);
         self.common.adv.remote_tree = Some(remote);
     }
-    pub(in crate::game) fn add_advancement_toast(&mut self, mut toast: Toast) {
+    pub fn add_advancement_toast(&mut self, mut toast: Toast) {
         let kind = if toast.is_recipe() {
             mod_api::ToastKind::Recipe
         } else {

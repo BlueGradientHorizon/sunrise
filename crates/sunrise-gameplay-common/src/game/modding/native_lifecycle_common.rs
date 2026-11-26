@@ -57,7 +57,7 @@ pub struct OpenAttempt {
 }
 
 impl OpenAttempt {
-    pub(in crate::game) fn context(&self) -> LifecycleContext {
+    pub fn context(&self) -> LifecycleContext {
         LifecycleContext::from(mod_api::__private::built::LifecycleContext {
             authority: self.authority,
             epoch: WorldEpoch::new(self.epoch),

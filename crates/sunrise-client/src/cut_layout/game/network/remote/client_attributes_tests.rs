@@ -27,7 +27,7 @@ fn update_attributes_answers_the_local_players_living_reads() {
         game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
         game.player.as_mut().unwrap().entity_id = 42;
         game.mobs.push(Mob::new(60, zombie, Vec3::ZERO, 0.0));
-        let remote = game.side.remote.as_mut().unwrap();
+        let remote = game.client.remote.as_mut().unwrap();
         remote.entity_id = 42;
         remote.logged_in = true;
         remote.entities.insert(

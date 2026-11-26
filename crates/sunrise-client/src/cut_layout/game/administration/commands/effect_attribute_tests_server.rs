@@ -34,7 +34,7 @@ fn a_given_invisibility_hides_a_mobs_waypoint_and_a_loaded_one_does_not() {
         };
         set_range(game);
         let tracked = |game: &sunrise_gameplay::game::ServerGame<'_>| {
-            game.side.cmds.0.waypoints.clone().unwrap_or_default()
+            game.server.cmds.0.waypoints.clone().unwrap_or_default()
         };
         assert!(tracked(game).contains(&given));
         assert!(tracked(game).contains(&loaded));
@@ -52,10 +52,10 @@ pub(crate) fn read(
     game: &mut sunrise_gameplay::game::ServerGame<'_>,
     command: &str,
 ) -> Option<String> {
-    game.side.chat_capture = Some(Vec::new());
+    game.server.chat_capture = Some(Vec::new());
     let ok = game.run_command(command);
     let said: String = game
-        .side
+        .server
         .chat_capture
         .take()
         .unwrap_or_default()

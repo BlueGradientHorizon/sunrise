@@ -347,7 +347,7 @@ impl crate::game::ClientGame<'_> {
         first_controller_target(targets.iter().copied().filter(|t| Some(t.rect) != warning))
     }
 
-    pub(in crate::game::client_side) fn gui_batch(&self) -> Option<HudBatch> {
+    pub fn gui_batch(&self) -> Option<HudBatch> {
         self.client.renderer.0.as_ref().map(|r| {
             HudBatch::new(
                 [r.config.width, r.config.height],
@@ -386,7 +386,7 @@ impl crate::game::ClientGame<'_> {
     /// target (sliders, fields, rows, keyboard keys), and the slots
     /// and tabs of inventories (GUI pixels), on screen. The keyboard's
     /// focus skips what vanilla's keyboard can't reach (`key_targets`).
-    pub(in crate::game) fn pad_targets(&self) -> Vec<Target> {
+    pub fn pad_targets(&self) -> Vec<Target> {
         if self.client.pad.0.menu.keyboard {
             self.key_targets()
         } else {
@@ -416,7 +416,7 @@ impl crate::game::ClientGame<'_> {
 
     /// The inventory screen's slots as pad targets, at the positions the
     /// frame draws them (a mod screen's moved slots included).
-    pub(in crate::game::client_side) fn pad_slot_targets(&self, batch: &HudBatch) -> Vec<Target> {
+    pub fn pad_slot_targets(&self, batch: &HudBatch) -> Vec<Target> {
         let (ox, oy) = self.inventory_origin(batch);
         self.slots()
             .into_iter()
@@ -768,7 +768,7 @@ impl crate::game::ClientGame<'_> {
     }
 
     /// A button in a menu.
-    pub(in crate::game::client_side) fn pad_menu_button(
+    pub fn pad_menu_button(
         &mut self,
         event_loop: &dyn EventLoopCtl,
         button: Button,
@@ -2158,7 +2158,7 @@ impl crate::game::ClientGame<'_> {
     /// container's own close key can move the focus and close the screen in
     /// one press (Tab bound to the inventory), and vanilla clears the focus
     /// before the next frame, so nothing stays highlighted.
-    pub(in crate::game) fn pad_clear_focus(&mut self) {
+    pub fn pad_clear_focus(&mut self) {
         self.client.pad.0.menu.clear_focus();
     }
 
@@ -2168,7 +2168,7 @@ impl crate::game::ClientGame<'_> {
     /// widget's own keys come first (a text field's caret, a slider's
     /// value). Whether the key was used; when not, the screen has it (a
     /// container also has Tab and the arrows once they moved the focus).
-    pub(in crate::game) fn key_focus_key(
+    pub fn key_focus_key(
         &mut self,
         event_loop: &dyn EventLoopCtl,
         key: KeyCode,
@@ -2328,7 +2328,7 @@ impl crate::game::ClientGame<'_> {
     }
 
     /// Which screen is open, as far as the keyboard's focus cares.
-    pub(in crate::game::client_side) fn key_screen(&self) -> u64 {
+    pub fn key_screen(&self) -> u64 {
         use std::hash::{Hash, Hasher};
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
         std::mem::discriminant(&self.client.screen).hash(&mut hasher);
@@ -2641,7 +2641,7 @@ impl crate::game::ClientGame<'_> {
 
     /// What a key of the on-screen keyboard does: the same as a typed key in
     /// the field that has focus.
-    pub(in crate::game::client_side) fn pad_osk_output(&mut self, out: osk::Output) {
+    pub fn pad_osk_output(&mut self, out: osk::Output) {
         use osk::Output;
         let (key, text) = match &out {
             Output::Text(t) => (None, Some(t.as_str())),

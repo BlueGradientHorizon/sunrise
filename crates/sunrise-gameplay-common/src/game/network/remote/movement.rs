@@ -48,7 +48,7 @@ impl MovePacket {
     /// A position sync measures it from where the entity is, a teleport from
     /// where it is headed (`PositionMoveRotation.of`'s
     /// `getClientPositionAndRotation`).
-    pub(in crate::game) fn snaps(
+    pub fn snaps(
         self,
         handler: &SteppedInterpolation,
         entity: PosRot,

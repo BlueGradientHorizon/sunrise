@@ -93,8 +93,8 @@ pub(crate) fn align_next_entity_mod4(
     game: &mut sunrise_gameplay::game::ServerGame<'_>,
     want_mod4: u32,
 ) {
-    while ((game.side.next_entity + 1) & 3) != (want_mod4 & 3) {
-        game.side.next_entity += 1;
+    while ((game.server.next_entity + 1) & 3) != (want_mod4 & 3) {
+        game.server.next_entity += 1;
     }
 }
 
@@ -121,7 +121,7 @@ pub(crate) fn setup_game<'a>(
         sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 4.5)).unwrap(),
     );
     sunrise_gameplay::game::native_entity_refs::tests::bind_local_player(&mut game, 7, 7);
-    game.side.next_entity = game.side.next_entity.max(100);
+    game.server.next_entity = game.server.next_entity.max(100);
     game
 }
 
@@ -143,9 +143,9 @@ pub(crate) fn clear_entities(game: &mut sunrise_gameplay::game::ServerGame<'_>) 
     game.cushions.clear();
     game.crystals.clear();
     game.discard_resident_dragon();
-    game.side.others.0.clear();
-    game.side.knot_ids.clear();
-    game.side.broken_knots.clear();
+    game.server.others.0.clear();
+    game.server.knot_ids.clear();
+    game.server.broken_knots.clear();
     game.resident_entities.knots.clear();
     game.reset_entity_residency();
     game.bind_local_player_residency();
@@ -252,7 +252,7 @@ pub(crate) fn summon_target(
         }
         "leash_knot" => {
             assert!(game.run_command("summon minecraft:leash_knot 3.5 64.375 4.5 {}"));
-            TrackedTarget::ExplicitKnot(game.side.others.0.last().unwrap().id)
+            TrackedTarget::ExplicitKnot(game.server.others.0.last().unwrap().id)
         }
         "leash_knot_tied" => {
             assert!(game.run_command(
@@ -260,7 +260,7 @@ pub(crate) fn summon_target(
             ));
             game.tick_server(false).unwrap();
             let id = *game
-                .side
+                .server
                 .knot_ids
                 .get(&[3, 64, 4])
                 .expect("natural leash knot created on fence");
@@ -395,8 +395,8 @@ pub(crate) fn spawn_test_hook(
     vel: Vec3,
     hook_seed: i64,
 ) {
-    game.side.next_entity += 1;
-    let id = game.side.next_entity;
+    game.server.next_entity += 1;
+    let id = game.server.next_entity;
     let mut hook = Hook::remote(id, pos, [0, 0, 0, id as i32]);
     hook.yaw = -90.0;
     hook.velocity = vel;

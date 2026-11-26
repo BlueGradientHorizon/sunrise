@@ -11,7 +11,7 @@ impl crate::game::ClientGame<'_> {
     /// stack, menu data and drops are copied back when it returns Some(true)
     /// (Some(false): handled, nothing kept; None: not handled). False when the
     /// open screen is not one the engine models or `run` did not handle it.
-    pub(in crate::game) fn menu_session(
+    pub fn menu_session(
         &mut self,
         run: impl FnOnce(
             &mut sunrise_sim::menu::Menu,
@@ -184,7 +184,7 @@ impl crate::game::ClientGame<'_> {
     /// chest, hopper, dispenser or furnace menu, run by the verified menu
     /// engine (`sunrise_client::menu`). `slot` None is outside the window.
     /// False when the open screen is not one the engine models.
-    pub(in crate::game) fn click_open_inventory(
+    pub fn click_open_inventory(
         &mut self,
         slot: Option<usize>,
         button: i32,
@@ -216,7 +216,7 @@ impl crate::game::ClientGame<'_> {
     }
     /// A click on an item tab's display slot: the screen's own handling
     /// (`creative::click_display`), never the menu's.
-    pub(in crate::game) fn creative_display_click(
+    pub fn creative_display_click(
         &mut self,
         slot: usize,
         button: i32,
@@ -301,7 +301,7 @@ impl crate::game::ClientGame<'_> {
         self.slot_at(&batch, self.client.cursor.0, self.client.cursor.1)
     }
     /// Several clicks on one menu instance (a quick craft drag is three).
-    pub(in crate::game) fn menu_ops(
+    pub fn menu_ops(
         &mut self,
         ops: &[(Option<usize>, i32, sunrise_sim::menu::Input)],
     ) -> bool {

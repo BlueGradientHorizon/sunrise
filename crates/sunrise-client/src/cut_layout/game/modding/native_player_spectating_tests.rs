@@ -75,7 +75,7 @@ fn third_guest(game: &mut sunrise_gameplay::game::ServerGame<'_>, position: [f64
         10,
     );
     guest.placed = true;
-    game.side.lan.as_mut().unwrap().hub.guests.push(guest);
+    game.server.lan.as_mut().unwrap().hub.guests.push(guest);
 }
 
 /// Runs `test` with the probe listening and three guests, guest 14 standing apart at `FAR`.
@@ -95,7 +95,7 @@ const FAR: [f64; 3] = [9.5, 70.0, 9.5];
 const NEAR: [f64; 3] = [3.0, 64.0, 5.0];
 
 fn camera(game: &sunrise_gameplay::game::ServerGame<'_>, conn: u32) -> Option<i32> {
-    game.side.cmds.0.guest_cameras.get(&conn).map(|c| c.id)
+    game.server.cmds.0.guest_cameras.get(&conn).map(|c| c.id)
 }
 
 #[test]

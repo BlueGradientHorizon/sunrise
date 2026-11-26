@@ -64,11 +64,11 @@ mod resize_state_tests {
             for (scale, expected) in [(0, (320, 360)), (2, (480, 540))] {
                 super::super::native_entity_refs::tests::with_client_game(|game| {
                     game.options.offscreen = true;
-                    game.side.window.0 = Some(window.clone());
-                    game.side.renderer.0 = Some(game.new_renderer(window.clone()).unwrap());
-                    game.side.renderer.0.as_mut().unwrap().resize(960, 1080);
-                    game.side.settings.gui_scale = scale;
-                    game.side.settings.force_unicode = false;
+                    game.client.window.0 = Some(window.clone());
+                    game.client.renderer.0 = Some(game.new_renderer(window.clone()).unwrap());
+                    game.client.renderer.0.as_mut().unwrap().resize(960, 1080);
+                    game.client.settings.gui_scale = scale;
+                    game.client.settings.force_unicode = false;
                     game.notify_window_resize();
                     game.notify_window_resize();
                     assert_eq!(
@@ -76,7 +76,7 @@ mod resize_state_tests {
                         Some((1920, 1080, expected.0, expected.1))
                     );
                     assert!(events.lock().unwrap().is_empty());
-                    game.side.renderer.0.as_mut().unwrap().resize(1920, 1080);
+                    game.client.renderer.0.as_mut().unwrap().resize(1920, 1080);
                     game.notify_window_resize();
                     let gui = sunrise_client::window::GuiSize::new([1920, 1080], scale, false).size;
                     assert_eq!(
@@ -163,7 +163,7 @@ mod resize_state_tests {
             super::super::native_entity_refs::tests::with_client_game(|game| {
                 game.options.offscreen = true;
                 assert_eq!((&*game as &dyn ClientHost).window_size(), None);
-                game.side.window.0 = Some(window.clone());
+                game.client.window.0 = Some(window.clone());
                 assert_eq!(
                     (&*game as &dyn ClientHost).window_size(),
                     Some([1920, 1080])

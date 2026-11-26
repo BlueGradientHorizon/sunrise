@@ -92,7 +92,7 @@ pub(in crate::game) fn drawn_groups(game: &mut sunrise_client_gameplay::game::Cl
         .flat_map(|(_, names)| names.iter())
         .map(|name| {
             let r = *game
-                .side
+                .client
                 .gui
                 .atlas
                 .gui_rect(name)
@@ -120,7 +120,7 @@ pub(in crate::game) fn drawn_groups(game: &mut sunrise_client_gameplay::game::Cl
 }
 
 pub(in crate::game) fn id(game: &sunrise_client_gameplay::game::ClientGame<'_>, registry: &str, name: &str) -> i32 {
-    game.side
+    game.client
         .remote
         .as_ref()
         .unwrap()

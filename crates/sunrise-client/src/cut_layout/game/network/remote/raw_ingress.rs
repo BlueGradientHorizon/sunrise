@@ -56,7 +56,7 @@ pub(crate) mod tests {
             let (_reader, _writer) = connect_play_test(game, |_, _| {});
             spawn_menu_test(game);
             let publisher = game
-                .side
+                .client
                 .remote
                 .as_ref()
                 .unwrap()
@@ -128,7 +128,7 @@ pub(crate) mod tests {
             let (_reader, mut writer) = connect_play_test(game, |_, _| {});
             spawn_menu_test(game);
             let recorded = Arc::new(Mutex::new(Vec::new()));
-            game.side
+            game.client
                 .remote
                 .as_ref()
                 .unwrap()
@@ -151,7 +151,7 @@ pub(crate) mod tests {
             let outcome =
                 |event: &Event| matches!(event, Event::Bundle(_) | Event::Disconnected { .. });
             game.wait_for_test_remote_event(outcome);
-            let backlog = &mut game.side.remote.as_mut().unwrap().backlog;
+            let backlog = &mut game.client.remote.as_mut().unwrap().backlog;
             let pos = backlog
                 .iter()
                 .position(|item| matches!(item, Received::Event(event, _) if outcome(event)))

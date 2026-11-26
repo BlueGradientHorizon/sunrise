@@ -79,7 +79,7 @@ fn with_operators(
                 let mut receivers = Vec::new();
                 // A dedicated server: its players' commands run at their ops.json level.
                 game.set_allow_commands(true);
-                let host = game.side.lan.as_mut().unwrap();
+                let host = game.server.lan.as_mut().unwrap();
                 host.settings.guest_commands = true;
                 let hub = &mut host.hub;
                 hub.config.integrated = false;
@@ -116,7 +116,7 @@ fn with_operators(
                     hub.guests.push(guest);
                     receivers.push((conn, rx));
                 }
-                game.side.next_entity = game.side.next_entity.max(NON_OP);
+                game.server.next_entity = game.server.next_entity.max(NON_OP);
                 game.ensure_datapacks();
                 game.build_registries();
                 // A dedicated server's command tree (`save-off`), as `run_dedicated` selects it
@@ -156,7 +156,7 @@ fn chats(
     game: &sunrise_gameplay::game::ServerGame<'_>,
     receivers: &[(u32, mpsc::Receiver<Out>)],
 ) -> Vec<(u32, Vec<Value>)> {
-    for g in &game.side.lan.as_ref().unwrap().hub.guests {
+    for g in &game.server.lan.as_ref().unwrap().hub.guests {
         g.sender.flush();
     }
     receivers
@@ -528,12 +528,12 @@ fn console_output_is_logged_and_broadcast_once() {
                 chats(game, receivers);
                 set_rules(game, true, true);
                 let console = |game: &mut sunrise_gameplay::game::ServerGame<'_>, rcon: bool, line: &str| {
-                    game.side.console_broadcast = Some(true);
-                    game.side.rcon_source = rcon;
+                    game.server.console_broadcast = Some(true);
+                    game.server.rcon_source = rcon;
                     let logged =
                         sunrise_gameplay::game::dedicated::capture_log(|| game.console_dispatch(line));
-                    game.side.console_broadcast = None;
-                    game.side.rcon_source = false;
+                    game.server.console_broadcast = None;
+                    game.server.rcon_source = false;
                     logged
                 };
                 let nobody = vec![
@@ -572,7 +572,7 @@ fn console_output_is_logged_and_broadcast_once() {
                 // A vanilla reply the console broadcasts, through the dispatcher: once. `save-off`
                 // reads the dedicated server's lists.
                 let home = tempfile::tempdir().unwrap();
-                game.side.server_lists.0 = Some(Arc::new(std::sync::Mutex::new(
+                game.server.server_lists.0 = Some(Arc::new(std::sync::Mutex::new(
                     sunrise_gameplay::game::dedicated::Lists {
                         ops: OpList::new(home.path().join("ops.json")),
                         white: WhiteList::new(home.path().join("whitelist.json")),

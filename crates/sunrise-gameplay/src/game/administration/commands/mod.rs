@@ -87,7 +87,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// MinecraftServer.createCommandSourceStack's position: the corner of
     /// the respawn block (`Vec3.atLowerCornerOf`).
-    pub(in crate::game) fn server_position(&self) -> [f64; 3] {
+    pub fn server_position(&self) -> [f64; 3] {
         self.common.spawn.map_or([0.0, 64.0, 0.0], |s| {
             [s.x.floor(), s.y.floor(), s.z.floor()]
         })
@@ -126,7 +126,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// The candidates of the level in place that pass the selector
     /// (EntitySelector.getPredicate).
-    pub(in crate::game) fn select_in_level(
+    pub fn select_in_level(
         &mut self,
         candidates: Vec<Target>,
         s: &Selector,
@@ -273,7 +273,7 @@ impl crate::game::ServerGame<'_> {
     /// `ServerLevel.getEntityOrPart` for a part: the `EnderDragonPart` of the
     /// level in place with this network id. `level_entity` does not find it,
     /// as `Level.getEntity` does not: no selector or command reaches a part.
-    pub(in crate::game) fn level_dragon_part(&self, id: u32) -> Option<Target> {
+    pub fn level_dragon_part(&self, id: u32) -> Option<Target> {
         let part = Target::DragonPart(id);
         self.level_holds(part).then_some(part)
     }
@@ -281,7 +281,7 @@ impl crate::game::ServerGame<'_> {
     /// (the entity ids are unique across the loaded levels) and put the
     /// level back afterwards. `f` does not run when no level holds the
     /// entity.
-    pub(in crate::game) fn in_target_level<R>(
+    pub fn in_target_level<R>(
         &mut self,
         t: Target,
         f: impl FnOnce(&mut Self) -> R,
@@ -412,7 +412,7 @@ impl crate::game::ServerGame<'_> {
         }
         Ok(count)
     }
-    pub(in crate::game) fn teleport_to(
+    pub fn teleport_to(
         &mut self,
         t: Target,
         pos: [f64; 3],
@@ -421,7 +421,7 @@ impl crate::game::ServerGame<'_> {
     ) {
         self.teleport_to_relative(t, pos, rotation, [false; 3], turn_riders);
     }
-    pub(in crate::game) fn teleport_to_in_level(
+    pub fn teleport_to_in_level(
         &mut self,
         t: Target,
         pos: [f64; 3],
@@ -996,7 +996,7 @@ impl crate::game::ServerGame<'_> {
         self.feedback(Text::translate(key, &[]));
         Ok(duration.unwrap_or(-1))
     }
-    pub(in crate::game) fn kill_target(&mut self, t: Target) {
+    pub fn kill_target(&mut self, t: Target) {
         // An entity in another level is killed in the level that holds it.
         let _ = self.in_target_level(t, |g| g.kill_target_in_level(t));
     }
@@ -1198,7 +1198,7 @@ impl crate::game::ServerGame<'_> {
     /// `Level.destroyBlock(pos, true)` through the behaviour library: the
     /// destroy event, the block's drops without a tool or breaker, then its
     /// fluid's block, the block entity spilling its contents on the way.
-    pub(in crate::game) fn destroy_block_dropping(&mut self, pos: [i32; 3]) -> R<()> {
+    pub fn destroy_block_dropping(&mut self, pos: [i32; 3]) -> R<()> {
         self.destroy_block_by(pos, None)
     }
     /// `Level.destroyBlock(pos, true, entity)`: [`Self::destroy_block_dropping`]
@@ -1220,7 +1220,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// The block entity part of `BlockInput.place`: load the block entity
     /// from the argument's tag; true when its saved data changed.
-    pub(in crate::game) fn load_block_entity_nbt(&mut self, pos: [i32; 3], nbt: &str) -> bool {
+    pub fn load_block_entity_nbt(&mut self, pos: [i32; 3], nbt: &str) -> bool {
         let Ok((tag, _)) = sunrise_core::nbt::parse_snbt(nbt) else {
             return false;
         };
@@ -1590,7 +1590,7 @@ impl crate::game::ServerGame<'_> {
     /// `GameRules.set` as the `/gamerule` command and the management protocol call it: the rule changes, the
     /// world follows it, and a dedicated server tells the event stream (`MinecraftServer.onGameRuleChanged`
     /// tells the management protocol's clients).
-    pub(in crate::game) fn set_game_rule(
+    pub fn set_game_rule(
         &mut self,
         rule: &gamerules::Rule,
         value: Value,
@@ -1722,7 +1722,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// `ItemPredicateArgument`: the item test and its `[...]` component
     /// tests (presence, `=` equality, `!` negation, `|` alternatives).
-    pub(in crate::game) fn stack_matches(&self, predicate: &ItemInput, stack: &ItemStack) -> bool {
+    pub fn stack_matches(&self, predicate: &ItemInput, stack: &ItemStack) -> bool {
         if !self.item_matches(predicate, &stack.item) {
             return false;
         }
@@ -2122,7 +2122,7 @@ impl crate::game::ServerGame<'_> {
         }
     }
     /// The structures of a `worldgen/structure` tag, nested tags expanded.
-    pub(in crate::game) fn structure_tag(&self, tag: &str) -> Vec<String> {
+    pub fn structure_tag(&self, tag: &str) -> Vec<String> {
         self.tag_entries("worldgen/structure", tag)
     }
     /// ListPlayersCommand: every online player in join order (a single-player

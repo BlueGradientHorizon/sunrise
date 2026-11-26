@@ -235,9 +235,9 @@ fn a_server_never_ticks_a_client_ticker() {
         game.set_allow_commands(true);
         assert!(game.run_command("forceload add 1600 1600"));
         let deadline = Instant::now() + Duration::from_secs(120);
-        while !game.world.chunks.contains_key(&CHUNK) || game.side.streaming.busy() {
+        while !game.world.chunks.contains_key(&CHUNK) || game.server.streaming.busy() {
             assert!(Instant::now() < deadline, "chunk {CHUNK:?} did not load");
-            game.side.streaming.wait(Duration::from_millis(5));
+            game.server.streaming.wait(Duration::from_millis(5));
             game.side_update_world();
         }
         game.tick_world(true).unwrap();

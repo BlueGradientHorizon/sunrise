@@ -118,10 +118,10 @@ fn wanted_position_names_invalid_inputs_and_refuses_unavailable_mobs() {
         ));
         assert_eq!(stale.set_wanted_position(game, [0.0; 3], 1.0), Ok(false));
         assert_eq!(stale.wanted_position(game), None);
-        game.side.held_out.push(12);
+        game.server.held_out.push(12);
         assert_eq!(mob.set_wanted_position(game, [0.0; 3], 1.0), Ok(false));
         assert_eq!(mob.wanted_position(game), None);
-        game.side.held_out.retain(|id| *id != 12);
+        game.server.held_out.retain(|id| *id != 12);
         let taken = game.mobs.lift();
         assert_eq!(mob.set_wanted_position(game, [0.0; 3], 1.0), Ok(false));
         assert_eq!(mob.wanted_position(game), None);

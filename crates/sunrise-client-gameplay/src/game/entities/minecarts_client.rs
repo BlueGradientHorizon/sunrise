@@ -352,7 +352,7 @@ impl ClientGame<'_> {
         has_translucency
     }
     /// Baked block-state faces with default block tints and terrain shade or diffuse lighting.
-    pub(in crate::game) fn block_model_vertices(
+    pub fn block_model_vertices(
         &self,
         state: BlockStateId,
         seed: i64,
@@ -681,7 +681,7 @@ impl ClientGame<'_> {
     /// joined the level since the last tick, and `LocalPlayer.startRiding`'s
     /// two inside sounds when the player got in one; then what the sound
     /// instances read this tick (the ridden cart and every cart).
-    pub(in crate::game::client_side) fn start_cart_sounds(
+    pub fn start_cart_sounds(
         &mut self,
     ) -> (Option<u32>, Vec<CartSound>) {
         let improved = self.minecart_improvements();

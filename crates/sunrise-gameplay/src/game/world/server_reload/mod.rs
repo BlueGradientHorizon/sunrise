@@ -117,7 +117,7 @@ impl ServerGame<'_> {
         self.server.structure_templates.clear();
     }
     /// The retained server reload listeners of the last successful reload.
-    pub(in crate::game) fn reload_resources(&self) -> &dyn ServerReloadResources {
+    pub fn reload_resources(&self) -> &dyn ServerReloadResources {
         &self.server.reload_resources.0
     }
 }

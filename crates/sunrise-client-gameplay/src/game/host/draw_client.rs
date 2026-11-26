@@ -246,7 +246,7 @@ impl<'a, 'g> GameCameraDrawContext<'a, 'g> {
 }
 
 impl<'a, 'g> GameDrawContext<'a, 'g> {
-    pub(crate) fn new(
+    pub fn new(
         game: &'a crate::game::ClientGame<'g>,
         surface: &'a mut sunrise_client_render::hud::HudBatch,
     ) -> Self {

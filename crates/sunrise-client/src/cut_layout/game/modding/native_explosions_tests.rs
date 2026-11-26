@@ -151,7 +151,7 @@ fn credit_arena(game: &mut sunrise_gameplay::game::ServerGame<'_>) {
     game.player = Some(PlayerMotion::new(game.motion, Vec3::new(14.5, 80.0, 14.5)).unwrap());
     bind_local_player(game, 11, 123);
     game.set_mode_id(0);
-    game.side.next_entity = 100;
+    game.server.next_entity = 100;
     game.load_ticking_neighbourhood(0, 0);
     game.update_chunk_tickets();
 }
@@ -211,7 +211,7 @@ fn kill(
                     game.tick_creature_entities().unwrap();
                 }
                 assert!(game.entity(41).is_none());
-                assert!(!game.side.last_hurt_by_player.contains_key(&41));
+                assert!(!game.server.last_hurt_by_player.contains_key(&41));
                 assert_eq!(mob_kills(game), expected_kills);
             })
         },
@@ -269,11 +269,11 @@ fn a_player_hit_expires_on_a_living_mob_after_the_last_memory_tick() {
                 game.tick_creature_entities().unwrap();
             }
             assert_eq!(living.kill_credit(game).map(|killer| killer.id()), Some(11));
-            assert!(game.side.last_hurt_by_player.contains_key(&41));
+            assert!(game.server.last_hurt_by_player.contains_key(&41));
             game.tick_creature_entities().unwrap();
             assert_eq!(living.alive(game), Some(true));
             assert_eq!(living.kill_credit(game), None);
-            assert!(!game.side.last_hurt_by_player.contains_key(&41));
+            assert!(!game.server.last_hurt_by_player.contains_key(&41));
         });
     });
 }
@@ -968,7 +968,7 @@ fn targets(game: &mut sunrise_gameplay::game::ServerGame<'_>, flying: bool) {
     game.player = Some(PlayerMotion::new(game.motion, Vec3::new(5.5, 80.0, 8.5)).unwrap());
     game.set_mode_id(0);
     game.player.as_mut().unwrap().flying = flying;
-    game.side.next_entity = 100;
+    game.server.next_entity = 100;
     mob(
         game,
         48,

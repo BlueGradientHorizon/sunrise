@@ -86,7 +86,7 @@ impl crate::game::ServerGame<'_> {
             .any(|entry| entry.split_once(':') == Some((id.namespace(), id.path())))
     }
 
-    fn stats_path(&self) -> Option<PathBuf> {
+    pub fn stats_path(&self) -> Option<PathBuf> {
         Some(locate_player_json(
             &self.server.world_root,
             "stats",
@@ -105,7 +105,7 @@ impl crate::game::ServerGame<'_> {
         }
     }
     /// `ServerStatsCounter.save`.
-    pub(in crate::game::server_side) fn save_stats(&self) {
+    pub fn save_stats(&self) {
         if !self.common.stats.loaded
             || self.no_player_here()
             || self.server.crash_save.holds_interrupted(self.server.lan_acting)
@@ -118,7 +118,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// `ServerPlayer.awardStat`: `n` more of the statistic `ty` (a bare type
     /// such as `used`) and `key`, unless a native mod cancels the award.
-    pub(in crate::game) fn award_stat(&mut self, ty: &str, key: &str, n: i32) {
+    pub fn award_stat(&mut self, ty: &str, key: &str, n: i32) {
         if self.server.lan_acting_fake {
             return;
         }
@@ -355,7 +355,7 @@ impl crate::game::ServerGame<'_> {
     /// (`ServerLevel.isSpawningMonsters`: `spawn_monsters` too). Every
     /// player of the level counts: the game's own and the hosted ones (a
     /// server thread's players are all hosted).
-    pub(in crate::game::server_side) fn spawn_phantoms(&mut self) {
+    pub fn spawn_phantoms(&mut self) {
         let rules = &self.common.ui.rules;
         if !rules.bool_at(sunrise_game_data::gamerules::vanilla::SPAWN_MOBS)
             || !rules.bool_at(sunrise_game_data::gamerules::vanilla::SPAWN_MONSTERS)

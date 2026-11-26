@@ -29,14 +29,14 @@ fn a_silent_tnt_cart_primes_without_its_sound() {
     game.activate_cart(&mut silent, true);
     assert_eq!(silent.fuse, 80, "a silent cart still primes");
     assert!(
-        game.side
+        game.server
             .lan_entity_events
             .iter()
             .any(|(id, event)| *id == 42 && *event == 70),
         "a silent cart still broadcasts EntityEvent.TNT_PRIME: {:?}",
-        game.side.lan_entity_events
+        game.server.lan_entity_events
     );
-    let sounds = std::mem::take(&mut game.side.pending_sounds);
+    let sounds = std::mem::take(&mut game.server.pending_sounds);
     game.stop_audio_capture();
     assert!(sounds.is_empty(), "a silent cart hissed: {sounds:?}");
 
@@ -47,7 +47,7 @@ fn a_silent_tnt_cart_primes_without_its_sound() {
     let mut normal = game.carts[0].clone();
     game.activate_cart(&mut normal, true);
     assert_eq!(normal.fuse, 80);
-    let sounds = std::mem::take(&mut game.side.pending_sounds);
+    let sounds = std::mem::take(&mut game.server.pending_sounds);
     game.stop_audio_capture();
     assert_eq!(sounds.len(), 1, "{sounds:?}");
     let sound = &sounds[0];

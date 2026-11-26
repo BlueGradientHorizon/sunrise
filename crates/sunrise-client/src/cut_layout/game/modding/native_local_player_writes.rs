@@ -41,7 +41,7 @@ mod tests {
         game.options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::Client;
         let (client, server) = sunrise_protocol::connection::Pipe::pair();
         game.connect_local(client, "writes").unwrap();
-        let remote = game.side.remote.as_mut().unwrap();
+        let remote = game.client.remote.as_mut().unwrap();
         remote.logged_in = true;
         remote.profile = 456;
         remote.entity_id = 42;
@@ -53,7 +53,7 @@ mod tests {
         .unwrap();
         player.entity_id = remote.entity_id;
         game.player = Some(player);
-        game.side
+        game.client
             .streaming
             .insert_remote(&mut game.world, sunrise_level::chunk::Chunk::empty(0, 0));
         sunrise_protocol::connection::Connection::local(server)
@@ -333,7 +333,7 @@ mod tests {
                 loaded_client(game);
                 // Keep the tick's normal gravity away from a section boundary.
                 game.player.as_mut().unwrap().position.y = 64.5;
-                game.side
+                game.client
                     .streaming
                     .insert_remote(&mut game.world, sunrise_level::chunk::Chunk::empty(1, 0));
                 game.tick_remote().unwrap();
@@ -366,7 +366,7 @@ mod tests {
     ) -> sunrise_protocol::connection::ConnReader {
         let (peer, _writer) = crate::game::remote::tests::connect_menu_test(game);
         crate::game::remote::tests::spawn_menu_test(game);
-        let remote = game.side.remote.as_mut().unwrap();
+        let remote = game.client.remote.as_mut().unwrap();
         remote.loaded_sent = true;
         let mut player = sunrise_sim::motion::PlayerMotion::new(
             game.motion,
@@ -375,7 +375,7 @@ mod tests {
         .unwrap();
         player.entity_id = remote.entity_id;
         game.player = Some(player);
-        game.side
+        game.client
             .streaming
             .insert_remote(&mut game.world, sunrise_level::chunk::Chunk::empty(0, 0));
         peer
@@ -473,7 +473,7 @@ mod tests {
         with_game(|game| {
             game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 0.5)).unwrap());
             bind_local_player(game, 42, 456);
-            game.side
+            game.server
                 .streaming
                 .insert_remote(&mut game.world, Chunk::empty(0, 0));
             check(game);
@@ -495,7 +495,7 @@ mod tests {
             game.sleeping = Some([0, 64, 0]);
             assert_eq!(game.move_local_player_by([1.0, 0.0, 0.0]), Ok(None));
             game.sleeping = None;
-            game.side.screen = sunrise_gameplay_common::game::Screen::Dead;
+            game.client.screen = sunrise_gameplay_common::game::Screen::Dead;
             assert_eq!(game.move_local_player_by([1.0, 0.0, 0.0]), Ok(None));
             assert_eq!(game.player.as_ref().unwrap().position, before);
         });

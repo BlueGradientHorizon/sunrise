@@ -285,8 +285,8 @@ pub(crate) fn clear_arena(game: &mut sunrise_gameplay::game::ServerGame<'_>, bac
     game.cushions.clear();
     game.crystals.clear();
     crate::game::server_side::creatures_server::projectiles_120_124_tests::clear_others(game);
-    game.side.knot_ids.clear();
-    game.side.broken_knots.clear();
+    game.server.knot_ids.clear();
+    game.server.broken_knots.clear();
     game.resident_entities.knots.clear();
     game.reset_entity_residency();
     game.bind_local_player_residency();

@@ -93,7 +93,7 @@ pub(in crate::game::server_side) fn first_join<T: Joined>(list: &[T]) -> Option<
 
 impl crate::game::ServerGame<'_> {
     /// A level tick starts: what has joined so far ticks this tick.
-    pub(in crate::game) fn begin_ordered_ticks(&mut self) {
+    pub fn begin_ordered_ticks(&mut self) {
         let _span = sunrise_level::spans::guard("ordered_ticks");
         let pending_buf = std::mem::take(&mut self.server.ordered.pending_buf);
         let landed = std::mem::take(&mut self.server.ordered.landed);
@@ -139,7 +139,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// Ticks each ordered entity that joined before `cut` and has not ticked yet.
-    pub(in crate::game::server_side) fn run_ordered_ticks(
+    pub fn run_ordered_ticks(
         &mut self,
         cut: JoinSeq,
         late: bool,

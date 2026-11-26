@@ -29,8 +29,8 @@ pub(crate) mod tests {
                 seed: 0,
                 max_players: 10,
                 integrated: true,
-                levels: game.side.level_shapes,
-                level_seeds: game.side.levels.0.runtime.seeds(),
+                levels: game.server.level_shapes,
+                level_seeds: game.server.levels.0.runtime.seeds(),
             };
             let mut net = NetConfig::lan(0, "test".into(), 10);
             net.listen = false;
@@ -44,7 +44,7 @@ pub(crate) mod tests {
                 config,
             )
             .unwrap();
-            game.side.lan.as_mut().unwrap().hub.guests.push(guest());
+            game.server.lan.as_mut().unwrap().hub.guests.push(guest());
             let player = game.player(123).unwrap();
 
             // The selected slot: a slot past the hotbar is refused, a real one is held.
@@ -56,11 +56,11 @@ pub(crate) mod tests {
                 "the same slot is no error"
             );
             assert_eq!(player.selected_slot(game), Some(4));
-            assert_eq!(game.side.lan.as_ref().unwrap().hub.guests[0].selected, 4);
+            assert_eq!(game.server.lan.as_ref().unwrap().hub.guests[0].selected, 4);
 
             // A menu: closing it returns the carried stack and leaves no menu behind.
             let stone = ItemStack::new("minecraft:stone", 4);
-            let host = game.side.lan.as_mut().unwrap();
+            let host = game.server.lan.as_mut().unwrap();
             host.hub
                 .open_native_menu(
                     1,
@@ -74,7 +74,7 @@ pub(crate) mod tests {
                 .update(0, |guest| guest.carried = Some(stone.clone()));
             let menu = game.player_container_menu(player).unwrap();
             assert_ne!(menu.container_id(game), Some(0));
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()
@@ -83,12 +83,12 @@ pub(crate) mod tests {
                 .update(0, |guest| guest.disconnect_pending = true);
             assert!(!menu.close_container(game), "disconnect owns the teardown");
             assert_eq!(game.player_container_menu(player), Some(menu));
-            let hub = &mut game.side.lan.as_mut().unwrap().hub;
+            let hub = &mut game.server.lan.as_mut().unwrap().hub;
             assert_eq!(hub.guests[0].carried.as_ref(), Some(&stone));
             hub.guests
                 .update(0, |guest| guest.disconnect_pending = false);
             assert!(menu.close_container(game));
-            let guest = &game.side.lan.as_ref().unwrap().hub.guests[0];
+            let guest = &game.server.lan.as_ref().unwrap().hub.guests[0];
             assert!(guest.menu.is_none(), "the menu is gone");
             assert!(guest.carried.is_none(), "the cursor stack went back");
             assert_eq!(
@@ -125,8 +125,8 @@ pub(crate) mod tests {
                 seed: 0,
                 max_players: 10,
                 integrated: true,
-                levels: game.side.level_shapes,
-                level_seeds: game.side.levels.0.runtime.seeds(),
+                levels: game.server.level_shapes,
+                level_seeds: game.server.levels.0.runtime.seeds(),
             };
             let mut net = NetConfig::lan(0, "test".into(), 10);
             net.listen = false;
@@ -140,7 +140,7 @@ pub(crate) mod tests {
                 config,
             )
             .unwrap();
-            game.side.lan.as_mut().unwrap().hub.guests.push(guest());
+            game.server.lan.as_mut().unwrap().hub.guests.push(guest());
             let player = game.player(123).unwrap();
             let inventory = game.player_container_menu(player).unwrap();
             assert_eq!(inventory.container_id(game), Some(0));
@@ -157,7 +157,7 @@ pub(crate) mod tests {
             );
             assert_eq!(inventory.slot(game, 46), None);
             let stone = ItemStack::new("minecraft:stone", 4);
-            let host = game.side.lan.as_mut().unwrap();
+            let host = game.server.lan.as_mut().unwrap();
             {
                 let value = Some(stone.clone());
                 host.hub.guests.update(0, |g| g.inventory[9] = value);
@@ -189,7 +189,7 @@ pub(crate) mod tests {
             // independent of the inventory menu's carried stack.
             assert_eq!(menu.carried(game), Some(None));
             let stick = ItemStack::new("minecraft:stick", 2);
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()
@@ -215,7 +215,7 @@ pub(crate) mod tests {
                 Some(MenuSlotBacking::Player(0))
             );
             assert_eq!(game.menu_slot_backing(menu, 45), None);
-            let host = game.side.lan.as_mut().unwrap();
+            let host = game.server.lan.as_mut().unwrap();
             for _ in 0..100 {
                 host.hub
                     .open_native_menu(1, 1, title.clone(), vec![])
@@ -224,7 +224,7 @@ pub(crate) mod tests {
             assert_eq!(host.hub.guests[0].menu.as_ref().unwrap().window, window);
             assert_eq!(menu.slot_count(game), None);
             let newer = game.player_container_menu(player).unwrap();
-            let host = game.side.lan.as_mut().unwrap();
+            let host = game.server.lan.as_mut().unwrap();
             host.hub.close_container(1);
             assert_eq!(newer.slot_count(game), None);
             let inventory = game.player_container_menu(player).unwrap();
@@ -232,7 +232,7 @@ pub(crate) mod tests {
                 inventory.carried(game),
                 Some(Some(stone.try_into_api().unwrap()))
             );
-            let host = game.side.lan.as_mut().unwrap();
+            let host = game.server.lan.as_mut().unwrap();
             *host.menus.entry(1).or_default().crafting.table = Some((
                 7,
                 0,
@@ -243,7 +243,7 @@ pub(crate) mod tests {
             ));
             assert_eq!(game.player_container_menu(player), None);
             assert_eq!(inventory.slot_count(game), None);
-            let host = game.side.lan.as_mut().unwrap();
+            let host = game.server.lan.as_mut().unwrap();
             host.play.clear();
             host.menus.clear();
             host.hub.guests.replace(0, guest());
@@ -260,7 +260,7 @@ pub(crate) mod tests {
             game.world
                 .block_entities
                 .insert(b, BlockEntity::Chest(vec![Some(stone.clone()); 3]));
-            game.side.lan.as_mut().unwrap().hub.open_container(
+            game.server.lan.as_mut().unwrap().hub.open_container(
                 1,
                 "minecraft:generic_9x1",
                 title.clone(),
@@ -286,7 +286,7 @@ pub(crate) mod tests {
             game.world
                 .block_entities
                 .insert(vehicle, BlockEntity::Chest(vec![Some(stone.clone())]));
-            game.side.lan.as_mut().unwrap().hub.open_container(
+            game.server.lan.as_mut().unwrap().hub.open_container(
                 1,
                 "minecraft:generic_9x1",
                 title,
@@ -315,7 +315,7 @@ pub(crate) mod tests {
                 .block_entities
                 .insert(a, BlockEntity::Chest(vec![Some(gold.clone())]));
             let title = sunrise_core::nbt::Tag::String("dimension".into());
-            game.side.lan.as_mut().unwrap().hub.open_container(
+            game.server.lan.as_mut().unwrap().hub.open_container(
                 1,
                 "minecraft:generic_9x1",
                 title.clone(),
@@ -338,14 +338,14 @@ pub(crate) mod tests {
             nether_guest.uuid = 456;
             nether_guest.entity_id = 2;
             nether_guest.dimension = "minecraft:the_nether".into();
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()
                 .hub
                 .guests
                 .push(nether_guest);
-            game.side.lan.as_mut().unwrap().hub.open_container(
+            game.server.lan.as_mut().unwrap().hub.open_container(
                 2,
                 "minecraft:generic_9x1",
                 title,

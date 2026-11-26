@@ -34,7 +34,7 @@ impl crate::game::ServerGame<'_> {
     /// dimension, an air or unknown state, a chunk that isn't loaded, a value
     /// that isn't finite, or with 1024 falling blocks in the level already.
     /// Each axis of `velocity` is cut to 3.9.
-    pub(in crate::game) fn spawn_falling_block(
+    pub fn spawn_falling_block(
         &mut self,
         dimension: &str,
         state: BlockStateId,

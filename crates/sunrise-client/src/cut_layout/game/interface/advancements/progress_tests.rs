@@ -143,8 +143,8 @@ fn progress_events_capture_each_players_full_mutation_state() {
     with_guests(|game| {
         if matches!(case.as_str(), "command-reload" | "nested-reload") {
             use sunrise_gameplay_common::game::lan_actions::GuestCommand;
-            game.side.world_root = scratch.join("world");
-            let pack = game.side.world_root.join("datapacks/test");
+            game.server.world_root = scratch.join("world");
+            let pack = game.server.world_root.join("datapacks/test");
             std::fs::create_dir_all(pack.join("data/testmod/function")).unwrap();
             std::fs::write(
                 pack.join("pack.mcmeta"),
@@ -157,7 +157,7 @@ fn progress_events_capture_each_players_full_mutation_state() {
             )
             .unwrap();
             std::fs::write(
-                game.side.world_root.join("datapacks.json"),
+                game.server.world_root.join("datapacks.json"),
                 r#"{"enabled":["file/test"],"disabled":[]}"#,
             )
             .unwrap();
@@ -170,7 +170,7 @@ fn progress_events_capture_each_players_full_mutation_state() {
                 false,
                 None,
             );
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()
@@ -180,7 +180,7 @@ fn progress_events_capture_each_players_full_mutation_state() {
                     guest.advancements_loaded = true;
                     guest.advancements.grant(ID, "gamma", DATE);
                 });
-            game.side.lan.as_mut().unwrap().hub.mods_loaded = true;
+            game.server.lan.as_mut().unwrap().hub.mods_loaded = true;
             let reload = |game: &mut sunrise_gameplay::game::ServerGame<'_>| {
                 assert!(game.run_guest_command(GuestCommand {
                     conn: 12,
@@ -196,7 +196,7 @@ fn progress_events_capture_each_players_full_mutation_state() {
                 reload(game);
             }
             assert!(
-                game.side
+                game.server
                     .fns
                     .0
                     .store
@@ -241,7 +241,7 @@ fn progress_events_capture_each_players_full_mutation_state() {
             let kept = first[0].progress.clone();
             drop(events);
             for conn in [12, 13] {
-                let guest = game.side.lan.as_ref().unwrap().hub.guest(conn).unwrap();
+                let guest = game.server.lan.as_ref().unwrap().hub.guest(conn).unwrap();
                 assert_eq!(guest.xp_total, if conn == 12 { 7 } else { 0 });
                 {
                     let item = "minecraft:stone";
@@ -296,7 +296,7 @@ fn progress_events_capture_each_players_full_mutation_state() {
             for conn in [12, 13] {
                 game.as_guest(conn, |game| game.tick_advancements())
                     .unwrap();
-                let guest = game.side.lan.as_ref().unwrap().hub.guest(conn).unwrap();
+                let guest = game.server.lan.as_ref().unwrap().hub.guest(conn).unwrap();
                 assert_eq!(
                     guest.xp_total,
                     if conn == 12 || case == "nested-reload" {
@@ -325,7 +325,7 @@ fn progress_events_capture_each_players_full_mutation_state() {
         } else if case == "acting" {
             game.adv.tree = Arc::new(Tree::load(&scratch.join("data")));
             // Another player has unrelated progress: the acting snapshot must not use it.
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()
@@ -393,7 +393,7 @@ fn progress_events_capture_each_players_full_mutation_state() {
                 sunrise_sim::lan::recipes::BookProjections::single_shapeless("testmod:reward"),
             );
             let reload = case == "reload";
-            let host = game.side.lan.as_mut().unwrap();
+            let host = game.server.lan.as_mut().unwrap();
             host.hub.guests.update_all(|guest| {
                 guest.advancements_loaded = reload;
             });
@@ -405,7 +405,7 @@ fn progress_events_capture_each_players_full_mutation_state() {
             if reload {
                 game.run_native_advancement_grants();
             } else {
-                game.side.world_root = game.options.game_dir.clone().unwrap();
+                game.server.world_root = game.options.game_dir.clone().unwrap();
                 game.tick_server(false).unwrap();
             }
             let events = observed.lock().unwrap();
@@ -441,7 +441,7 @@ fn progress_events_capture_each_players_full_mutation_state() {
             );
             for conn in [12, 13] {
                 assert!(
-                    game.side
+                    game.server
                         .lan
                         .as_ref()
                         .unwrap()

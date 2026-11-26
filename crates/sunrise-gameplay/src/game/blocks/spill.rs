@@ -165,7 +165,7 @@ impl crate::game::ServerGame<'_> {
 
     /// Add the item entities the block behaviour spawned and follow up on the
     /// block entities it removed.
-    pub(in crate::game) fn flush_spill(&mut self) {
+    pub fn flush_spill(&mut self) {
         if self.server.spill.0.is_empty() {
             return;
         }

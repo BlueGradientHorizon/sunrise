@@ -80,7 +80,7 @@ fn game<'a>(resources: &'a mut Option<Arc<sunrise_gameplay_common::game::Resourc
         },
     )
     .unwrap();
-    game.side.lan.as_mut().unwrap().hub.guests.push(guest(
+    game.server.lan.as_mut().unwrap().hub.guests.push(guest(
         CONN,
         VICTIM_ID as i32,
         VICTIM,
@@ -169,7 +169,7 @@ fn add_objectives(game: &mut sunrise_gameplay::game::ServerGame<'_>) {
 }
 
 pub fn guest_stats<'a>(game: &'a sunrise_gameplay::game::ServerGame<'_>, conn: u32) -> &'a sunrise_gameplay::game::stats::Stats {
-    &game.side.lan.as_ref().unwrap().play[&conn].stats
+    &game.server.lan.as_ref().unwrap().play[&conn].stats
 }
 
 fn assert_player_kill(game: &sunrise_gameplay::game::ServerGame<'_>, killer: &str) {
@@ -248,14 +248,14 @@ fn a_local_player_sweep_credits_the_secondary_kill() {
     game.player.as_mut().unwrap().position = Vec3::new(20.5, 100.0, 9.5);
     let primary = game.guest_index(KILLER_CONN).unwrap();
     let victim = game.guest_index(CONN).unwrap();
-    let guests = &mut game.side.lan.as_mut().unwrap().hub.guests;
+    let guests = &mut game.server.lan.as_mut().unwrap().hub.guests;
     guests.update(victim, |g| g.health = 1.0);
     guests.update(primary, |g| g.position = [21.5, 100.0, 9.5]);
     let target = sunrise_gameplay::game::lan_mobs::guest_bounds(&guests[primary]);
     game.sweep_damage(target, sunrise_gameplay::game::server_side::mace::Spared::Player(KILLER_ID as i32), 1.0);
 
     assert!(
-        game.side
+        game.server
             .lan
             .as_ref()
             .unwrap()
@@ -266,7 +266,7 @@ fn a_local_player_sweep_credits_the_secondary_kill() {
     );
     assert!(
         !game
-            .side
+            .server
             .lan
             .as_ref()
             .unwrap()
@@ -314,7 +314,7 @@ fn a_guest_killing_another_guest_credits_the_kill() {
 }
 
 fn add_guest_killer(game: &mut sunrise_gameplay::game::ServerGame<'_>) {
-    game.side.lan.as_mut().unwrap().hub.guests.push(guest(
+    game.server.lan.as_mut().unwrap().hub.guests.push(guest(
         KILLER_CONN,
         KILLER_ID as i32,
         KILLER,
@@ -652,7 +652,7 @@ fn a_victim_advancement_matches_the_displaced_killers_facts() {
             .unwrap(),
         case => panic!("unexpected fresh case {case}"),
     }
-    let victim = game.side.lan.as_ref().unwrap().hub.guest(CONN).unwrap();
+    let victim = game.server.lan.as_ref().unwrap().hub.guest(CONN).unwrap();
     assert!(victim.advancements.has(ADVANCEMENT, "killed"));
 }
 
@@ -733,7 +733,7 @@ fn a_wither_killing_a_player_without_mob_griefing_drops_the_rose() {
     let mut resources = None;
     let mut game = game(&mut resources);
     // Experience to drop: `dropAllDeathLoot` drops it before the rose.
-    game.side
+    game.server
         .lan
         .as_mut()
         .unwrap()

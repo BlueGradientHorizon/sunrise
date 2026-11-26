@@ -180,7 +180,7 @@ fn panicking_client_reload_registration_discards_its_listener_and_edges() {
         ]
         .into();
         mod_platform::testing::with_mods(mods, || {
-            let old = game.side.client_pack.render.generation;
+            let old = game.client.client_pack.render.generation;
             let staged = stage_pack(
                 &game.vanilla_root(),
                 &[],
@@ -191,22 +191,22 @@ fn panicking_client_reload_registration_discards_its_listener_and_edges() {
                 &game.pack.assets,
                 &game.res,
                 game.client_res(),
-                &game.side.client_pack.context,
-                game.side.settings.force_unicode,
-                game.side.settings.japanese_glyphs,
+                &game.client.client_pack.context,
+                game.client.settings.force_unicode,
+                game.client.settings.japanese_glyphs,
                 &Progress::new(),
             )
             .unwrap();
             let candidate = staged.client_pack.render.generation;
             assert_ne!(candidate, old);
-            assert_eq!(game.side.client_pack.render.generation, old);
+            assert_eq!(game.client.client_pack.render.generation, old);
             assert!(staged_failure.load(Ordering::Relaxed));
             assert_eq!(*trace.lock().unwrap(), ["prepare before", "prepare after"]);
             APPLY_GENERATIONS.replace(Some(Vec::new()));
             let result = game.apply_staged_pack(staged);
             let generations = APPLY_GENERATIONS.take().unwrap();
             result.unwrap();
-            assert_eq!(game.side.client_pack.render.generation, candidate);
+            assert_eq!(game.client.client_pack.render.generation, candidate);
             assert_eq!(generations, [old, candidate]);
             assert_eq!(
                 *trace.lock().unwrap(),
@@ -1187,9 +1187,9 @@ fn refused_client_context_keeps_pack_and_listeners() {
             &game.pack.assets,
             &game.res,
             game.client_res(),
-            &game.side.client_pack.context,
-            game.side.settings.force_unicode,
-            game.side.settings.japanese_glyphs,
+            &game.client.client_pack.context,
+            game.client.settings.force_unicode,
+            game.client.settings.japanese_glyphs,
             &Progress::new(),
         )
         .unwrap();
@@ -1428,9 +1428,9 @@ fn client_startup_finishes_configs_before_the_first_runtime_callback() {
                         .unwrap();
                         let mut started = start_client_game(
                             &resources,
-                            std::sync::Arc::clone(&game.side.client_res),
+                            std::sync::Arc::clone(&game.client.client_res),
                             game.pack.clone(),
-                            game.side.client_pack.clone(),
+                            game.client.client_pack.clone(),
                             gui,
                             options,
                             pack_error.map(str::to_owned),
@@ -1442,7 +1442,7 @@ fn client_startup_finishes_configs_before_the_first_runtime_callback() {
                             root,
                             Instant::now(),
                             None,
-                            game.side.settings.clone(),
+                            game.client.settings.clone(),
                             None,
                             vec![PreparedClientReload::Vanilla(())],
                             None,
@@ -1567,7 +1567,7 @@ fn humanoid_arm_pose_mod_reads_mob_state_and_changes_the_model() {
         game.offhand.as_mut().unwrap().damage = 9;
         game.tick_player_model();
         let own_before =
-            anim::humanoid_arm_poses(game.side.player_model.as_ref().unwrap(), [None; 2], 0.0);
+            anim::humanoid_arm_poses(game.client.player_model.as_ref().unwrap(), [None; 2], 0.0);
         assert_eq!(own_before, [sunrise_core::arm_pose::ArmPose::Item; 2]);
         for (id, kind) in [
             (60, "minecraft:zombie"),
@@ -1640,7 +1640,7 @@ fn humanoid_arm_pose_mod_reads_mob_state_and_changes_the_model() {
                 assert_eq!(game.held_arm_poses(60, &empty), [None; 2]);
                 // The local player's extraction also exposes its actual off-hand stack.
                 game.tick_player_model();
-                let own = game.side.player_model.as_ref().unwrap();
+                let own = game.client.player_model.as_ref().unwrap();
                 assert_eq!(
                     anim::humanoid_arm_poses(own, own.extra.held_arm_pose, 0.0),
                     own_before

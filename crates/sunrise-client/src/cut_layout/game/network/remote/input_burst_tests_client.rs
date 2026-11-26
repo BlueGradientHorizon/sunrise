@@ -16,10 +16,10 @@ fn the_inventory_poll_releases_live_queues_only_when_it_opens_a_screen() {
         ] {
             game.key_pressed(key, key).unwrap();
         }
-        assert_eq!((game.side.screen, game.selected), (Screen::Playing, 0));
+        assert_eq!((game.client.screen, game.selected), (Screen::Playing, 0));
         assert!(sent(packets).is_empty());
         game.remote_handle_input();
-        assert_eq!((game.side.screen, game.selected), (Screen::Inventory, 2));
+        assert_eq!((game.client.screen, game.selected), (Screen::Inventory, 2));
         assert!(
             sent(packets).is_empty(),
             "ordinary E released swap and drop before they could act"
@@ -45,7 +45,7 @@ fn the_inventory_poll_releases_live_queues_only_when_it_opens_a_screen() {
         }
         assert!(sent(packets).is_empty());
         game.remote_handle_input();
-        assert_eq!(game.side.screen, Screen::Playing);
+        assert_eq!(game.client.screen, Screen::Playing);
         assert_eq!(game.selected, 2);
         assert_eq!(game.pending_mapping_clicks("key.hotbar.2"), 1);
         assert_eq!(

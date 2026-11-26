@@ -46,7 +46,7 @@ pub(in crate::game::server_side) fn list_query_body<T: Entity + Joined, const DI
 impl crate::game::ServerGame<'_> {
     /// `ServerLevel.getEntity(UUID)` for [`LevelRef::entity_by_uuid`]: the level's UUID index,
     /// in place or parked, then the same resolution and visibility as any handle of that level.
-    pub(in crate::game) fn level_entity_by_uuid(
+    pub fn level_entity_by_uuid(
         &self,
         level: LevelRef,
         uuid: mod_api::EntityUuid,
@@ -73,7 +73,7 @@ impl crate::game::ServerGame<'_> {
         }
     }
     /// Loaded server levels, in vanilla dimension order. Empty without a server world.
-    pub(in crate::game) fn native_list_levels(&self) -> Vec<LevelRef> {
+    pub fn native_list_levels(&self) -> Vec<LevelRef> {
         if !self.common.is_logical_server() || self.common.native_lifecycle.epoch().is_none() {
             return Vec::new();
         }
@@ -368,7 +368,7 @@ impl crate::game::ServerGame<'_> {
     /// else the level random, and the stacks come split to their stack sizes. None for a
     /// missing table, a stale handle or one of a parked level, a client, and an `entity` that
     /// names nothing.
-    pub(in crate::game) fn level_roll_loot(
+    pub fn level_roll_loot(
         &mut self,
         level: LevelRef,
         table: &str,
@@ -394,7 +394,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// Set a block through Level.setBlock. Typed errors distinguish stale/unavailable
     /// levels; Ok(false) preserves vanilla's position/no-change refusal.
-    pub(in crate::game) fn level_set_block(
+    pub fn level_set_block(
         &mut self,
         level: LevelRef,
         pos: [i32; 3],
@@ -426,7 +426,7 @@ impl crate::game::ServerGame<'_> {
     /// `Block.updateFromNeighbourShapes` for `state` at `pos`, nothing written: the state
     /// fitted to the loaded blocks around it. A position that is not loaded or outside the
     /// world gives `state` back.
-    pub(in crate::game) fn level_update_from_neighbour_shapes(
+    pub fn level_update_from_neighbour_shapes(
         &mut self,
         level: LevelRef,
         pos: [i32; 3],
@@ -442,7 +442,7 @@ impl crate::game::ServerGame<'_> {
         Ok(fitted)
     }
     /// Remove a block in place (`Level.removeBlock`), preserving its fluid.
-    pub(in crate::game) fn level_remove_block(
+    pub fn level_remove_block(
         &mut self,
         level: LevelRef,
         pos: [i32; 3],
@@ -509,7 +509,7 @@ impl crate::game::ServerGame<'_> {
     /// once, in vanilla's random order. `drop` false suppresses resources entirely.
     /// None means nothing broke: air, a refused write, a stale handle, a client, an
     /// unloaded/out-of-height position, or a parked level.
-    pub(in crate::game) fn level_destroy_block(
+    pub fn level_destroy_block(
         &mut self,
         level: LevelRef,
         pos: [i32; 3],
@@ -551,7 +551,7 @@ impl crate::game::ServerGame<'_> {
         true
     }
     /// `Level.sendBlockUpdated`: queue the block at `pos` to be sent to the clients again.
-    pub(in crate::game) fn level_send_block_updated(
+    pub fn level_send_block_updated(
         &mut self,
         level: LevelRef,
         pos: [i32; 3],
@@ -566,7 +566,7 @@ impl crate::game::ServerGame<'_> {
     /// `growWaterPlant`): the mods' `bonemeal` hook first, level event 1505 when something grew.
     /// False for a refused write, a stale or parked handle, a client, and a block that did not
     /// grow.
-    pub(in crate::game) fn level_bone_meal(&mut self, level: LevelRef, pos: [i32; 3]) -> bool {
+    pub fn level_bone_meal(&mut self, level: LevelRef, pos: [i32; 3]) -> bool {
         if !self.native_level_write_allowed(level, pos) || self.common.dim.key() != level.dimension() {
             return false;
         }
@@ -592,7 +592,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// Set the biome of the cell holding `pos` to `biome` (`/fillbiome` for one cell). False for a
     /// refused write, a stale or parked handle, a client, an unknown biome and an unchanged cell.
-    pub(in crate::game) fn level_set_biome(
+    pub fn level_set_biome(
         &mut self,
         level: LevelRef,
         pos: [i32; 3],
@@ -617,7 +617,7 @@ impl crate::game::ServerGame<'_> {
             && world.loaded(pos[0], pos[2])
             && world.shape.contains_y(pos[1]))
     }
-    pub(crate) fn native_level_write_allowed(&self, level: LevelRef, pos: [i32; 3]) -> bool {
+    pub fn native_level_write_allowed(&self, level: LevelRef, pos: [i32; 3]) -> bool {
         // A carrier transfer fence holds this cell: every mod write
         // through the level gate refuses while the operation runs.
         !self.common.world.carrier_fences.locks_cell(&pos)
@@ -648,7 +648,7 @@ impl crate::game::ServerGame<'_> {
     /// entity that has none yet gets it now, as a new vanilla entity does.
     /// On a client, the one the server added it with (a player's is its
     /// profile's). API 373.
-    pub(in crate::game) fn entity_uuid(&mut self, entity: EntityRef) -> Option<u128> {
+    pub fn entity_uuid(&mut self, entity: EntityRef) -> Option<u128> {
         if self.common.native_lifecycle.epoch() == Some(entity.epoch())
             && self.mob_in_other_level(entity.id()).is_some()
         {

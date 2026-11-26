@@ -412,7 +412,7 @@ fn an_item_used_from_the_off_hand_reaches_the_use_hooks_on_the_server() {
             // A guest's use packet names the off hand alone.
             game.inventory[game.selected] = None;
             *observer.0.lock().unwrap() = Controls::default();
-            game.side.guest_use = Some(sunrise_gameplay_common::game::GuestUse::Item(Hand::Off));
+            game.server.guest_use = Some(sunrise_gameplay_common::game::GuestUse::Item(Hand::Off));
             assert_eq!(game.use_item_as_player().unwrap(), Some(Hand::Off));
             assert_eq!(
                 observer.0.lock().unwrap().steps,
@@ -432,7 +432,7 @@ fn an_item_used_from_the_off_hand_reaches_the_use_hooks_on_the_server() {
                     hands: Some(Vec::new()),
                     ..Controls::default()
                 };
-                game.side.guest_use = guest;
+                game.server.guest_use = guest;
                 assert_eq!(game.use_item_as_player().unwrap(), Some(Hand::Off));
                 let state = observer.0.lock().unwrap();
                 assert!(
@@ -712,7 +712,7 @@ fn item_use_overlap_matrix_on_the_server() {
                                                 Answer::Success | Answer::Fail | Answer::Consume
                                             )
                                     };
-                                    game.side.guest_use =
+                                    game.server.guest_use =
                                         Some(sunrise_gameplay_common::game::GuestUse::on_block(hand));
                                     game.adv.progress = Default::default();
                                     let swings = game.swings_started;
@@ -1274,8 +1274,8 @@ pub(crate) fn setup_interaction_guest(
             seed: 0,
             max_players: 2,
             integrated: true,
-            levels: game.side.level_shapes,
-            level_seeds: game.side.levels.0.runtime.seeds(),
+            levels: game.server.level_shapes,
+            level_seeds: game.server.levels.0.runtime.seeds(),
         },
     )
     .unwrap();
@@ -1299,7 +1299,7 @@ pub(crate) fn setup_interaction_guest(
     );
     guest.placed = true;
     guest.game_mode = 1;
-    game.side.lan.as_mut().unwrap().hub.guests.push(guest);
+    game.server.lan.as_mut().unwrap().hub.guests.push(guest);
     rx
 }
 

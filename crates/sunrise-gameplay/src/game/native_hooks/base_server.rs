@@ -12,7 +12,7 @@ impl crate::game::ServerGame<'_> {
     /// not for every tick's progress: a menu's data slots carry that. Nothing
     /// happens for an unloaded block. It also sends the one-shot fields of
     /// `BlockEntityView::set_client_update_fields`.
-    pub(in crate::game) fn block_entity_sync(&mut self, pos: [i32; 3]) {
+    pub fn block_entity_sync(&mut self, pos: [i32; 3]) {
         if !self.common.world.loaded(pos[0], pos[2]) {
             return;
         }
@@ -203,7 +203,7 @@ impl crate::game::ServerGame<'_> {
     /// `canceled` to keep the block: nothing is destroyed or dropped, and a
     /// guest sees it back. Server-side, for every player of the world (the
     /// helpers read the acting one).
-    pub(in crate::game) fn native_break_block(
+    pub fn native_break_block(
         &mut self,
         pos: [i32; 3],
         state: BlockStateId,
@@ -1662,16 +1662,16 @@ impl crate::game::ServerGame<'_> {
     /// followed by `native_server_started` or
     /// `native_world_lifecycle`'s `WorldOpenFailed`. `dedicated` tells a dedicated server from the single
     /// player one.
-    pub(in crate::game) fn native_server_about_to_start(&mut self, dedicated: bool) {
+    pub fn native_server_about_to_start(&mut self, dedicated: bool) {
         self.fire_server_about_to_start(dedicated);
     }
     /// Before play can be accepted: after the dedicated world loads or at
     /// the integrated server's early startup notice.
-    pub(in crate::game) fn native_server_starting(&mut self, dedicated: bool) {
+    pub fn native_server_starting(&mut self, dedicated: bool) {
         self.fire_server_starting(dedicated);
     }
     /// Server teardown has finished, including the final save if possible.
-    pub(in crate::game) fn native_server_stopped(&mut self, dedicated: bool) {
+    pub fn native_server_stopped(&mut self, dedicated: bool) {
         self.fire_server_stopped(dedicated);
     }
     /// The server begins teardown (NeoForge's `ServerStoppingEvent`):
@@ -1680,7 +1680,7 @@ impl crate::game::ServerGame<'_> {
     /// mod can save its own data or tell them. `native_world_lifecycle`'s
     /// `WorldCloseFinal` follows once the worlds are saved. A server whose loop
     /// fails still fires this before the final save attempt and `native_server_stopped`.
-    pub(in crate::game) fn native_server_stopping(&mut self, dedicated: bool) {
+    pub fn native_server_stopping(&mut self, dedicated: bool) {
         self.fire_server_stopping(dedicated);
     }
     /// The authoritative server tick's phases: `ServerTickStart` before any
@@ -1689,7 +1689,7 @@ impl crate::game::ServerGame<'_> {
     /// dimension: which level `self.world` holds here is not defined. A paused
     /// pass fires nothing; a frozen world carries `world_running` false except
     /// during a requested step.
-    pub(in crate::game) fn native_server_tick(
+    pub fn native_server_tick(
         &mut self,
         context: &LifecycleContext,
         phase: ServerTickPhase,
@@ -2002,7 +2002,7 @@ impl crate::game::ServerGame<'_> {
     /// fail sound (`OptionalDispenseItemBehavior` without success), or 0 for
     /// nothing at all (`DispenseItemBehavior.NOOP`). To drop one normally,
     /// answer `(dispense_default(..), 1000)`.
-    pub(in crate::game) fn native_dispense_item(
+    pub fn native_dispense_item(
         &mut self,
         dimension: &str,
         pos: [i32; 3],
@@ -2364,7 +2364,7 @@ impl crate::game::ServerGame<'_> {
     /// a player still get a last message. A kicked fake has already left the list
     /// and is not saved.
     /// Server-side.
-    pub(in crate::game) fn native_player_logged_out(&mut self, player: u128, name: &str) {
+    pub fn native_player_logged_out(&mut self, player: u128, name: &str) {
         self.fire_player_logged_out(player, name);
     }
     /// A server player opened a sign for editing, after the editor state was made. `front` selects the
@@ -2507,7 +2507,7 @@ impl crate::game::ServerGame<'_> {
     /// The server opened its worlds and is about to tick (NeoForge's
     /// `ServerStartedEvent`): every level loaded, no player joined. Where
     /// `WorldOpenReady` fired: the end of the open, before the tick loop.
-    pub(in crate::game) fn native_server_started(&mut self, dedicated: bool) {
+    pub fn native_server_started(&mut self, dedicated: bool) {
         self.fire_server_started(dedicated);
     }
     /// The world's spawn point changed to `pos` in level `dimension`, facing `angle`.

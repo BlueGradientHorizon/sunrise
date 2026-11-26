@@ -19,7 +19,7 @@ impl crate::game::ClientGame<'_> {
             && self.client.sign_edit.is_none()
             && self.client.book.is_none()
     }
-    pub(in crate::game) fn vanilla_key_mapping(
+    pub fn vanilla_key_mapping(
         &self,
         name: &str,
     ) -> Result<VanillaKeyMappingRef, MappingError> {
@@ -78,7 +78,7 @@ impl crate::game::ClientGame<'_> {
         ))
     }
     /// Validate an API mapping handle before using it to index the current bindings.
-    pub(in crate::game) fn vanilla_mapping_slot(
+    pub fn vanilla_mapping_slot(
         &self,
         mapping: VanillaKeyMappingRef,
     ) -> Result<VanillaMappingSlot, MappingError> {

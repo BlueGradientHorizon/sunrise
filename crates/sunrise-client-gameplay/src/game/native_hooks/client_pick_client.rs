@@ -146,7 +146,7 @@ impl crate::game::ClientGame<'_> {
     pub(crate) fn client_picks(&self) -> u64 {
         self.client.client_pick.taken
     }
-    pub(in crate::game) fn pick_distance(&self, point: [f64; 3]) -> f64 {
+    pub fn pick_distance(&self, point: [f64; 3]) -> f64 {
         (0..3)
             .map(|i| (point[i] - self.client.client_pick.origin[i]).powi(2))
             .sum::<f64>()
@@ -627,7 +627,7 @@ impl crate::game::ClientGame<'_> {
         self.native_client_tracked(entity)
             .map(|(kind, _)| kind.to_owned())
     }
-    pub(in crate::game) fn refresh_client_pick(&mut self, partial_tick: f32) {
+    pub fn refresh_client_pick(&mut self, partial_tick: f32) {
         if !self.common.native_window()
             || self.client.title.0.is_some()
             || self.common.player.is_none()
@@ -812,7 +812,7 @@ impl crate::game::ClientGame<'_> {
     }
     /// Consumers read the stored hit as-is until the next pick. In particular,
     /// a block broken earlier in a tick is still that tick's use target.
-    pub(in crate::game) fn stored_client_pick(&self) -> Option<CrosshairTarget> {
+    pub fn stored_client_pick(&self) -> Option<CrosshairTarget> {
         if self.client.client_pick.dispatching {
             return self.client.client_pick.result;
         }

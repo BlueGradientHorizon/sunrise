@@ -128,7 +128,7 @@ use super::*;
                 // The last comparisons ran against the grid: it stands, for the list as it is.
                 let fresh = |(stamp, _): &(ListStamp, SeenGrid)| *stamp == game.mobs.stamp();
                 assert!(
-                    game.side
+                    game.server
                         .vehicle_mobs
                         .grid
                         .borrow()

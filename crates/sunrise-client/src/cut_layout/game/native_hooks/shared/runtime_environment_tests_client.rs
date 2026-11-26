@@ -8,9 +8,9 @@ fn client_host_reads_playing_and_key_mappings() {
     use winit::keyboard::KeyCode;
 
     with_client_game(|game| {
-        game.side.screen = Screen::Playing;
+        game.client.screen = Screen::Playing;
         assert!(mod_api::prelude::ClientInputClientHost::playing(game));
-        game.side.screen = Screen::Chat;
+        game.client.screen = Screen::Chat;
         assert!(!mod_api::prelude::ClientInputClientHost::playing(game));
 
         // Vanilla's default bindings: forward is W, attack the left mouse button.

@@ -672,7 +672,7 @@ use mod_api::{AttributeModifier, AttributeOperation, Identifier, ModifierLifetim
             game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
             // The dragon owns its multipart IDs above 14; keep the fixture
             // player outside that range and reserve it against later spawns.
-            game.side.next_entity = game.side.next_entity.max(100);
+            game.server.next_entity = game.server.next_entity.max(100);
             sunrise_gameplay::game::native_entity_refs::tests::bind_local_player(game, 100, 123);
             let player = living(game, 100);
             assert!(player.add_attribute_modifier(

@@ -37,7 +37,7 @@ impl ClientGame<'_> {
     /// player edits and sends it, or presses Escape. The box keeps its limit
     /// (256 characters) and its character filter. An error with no player in a
     /// world, or while another screen is open. API @API:open_chat@.
-    pub(in crate::game) fn open_chat(&mut self, text: &str) -> Result<(), String> {
+    pub fn open_chat(&mut self, text: &str) -> Result<(), String> {
         if self.common.player.is_none() {
             return Err("no player in a world".into());
         }
@@ -52,7 +52,7 @@ impl ClientGame<'_> {
     /// exact physical protocol incarnation. Registered and engine-reserved
     /// channels require their payload/service API; unrelated plugin payloads
     /// retain vanilla's discard-codec limit. No local effects are applied. API 409.
-    pub(in crate::game) fn send_packet(
+    pub fn send_packet(
         &mut self,
         packet: ServerboundPlayPacket,
     ) -> Result<(), SendPacketError> {

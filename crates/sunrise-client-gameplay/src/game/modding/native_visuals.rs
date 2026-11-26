@@ -52,7 +52,7 @@ pub fn rim_target_valid(
 
 impl ClientGame<'_> {
     /// Frame-local requests never persist after a mod is removed or a world changes.
-    pub(in crate::game::client_side) fn native_frame_visuals(
+    pub fn native_frame_visuals(
         &self,
         alpha: f64,
         lines: &mut Vec<gizmos::Line>,

@@ -16,7 +16,7 @@ pub(in crate::game) const DAMAGE_TYPE: &str = "minecraft:damage_type";
 
 impl ClientGame<'_> {
     /// `ClientboundUpdateTagsPacket` in play.
-    pub(in crate::game) fn remote_update_tags(&mut self, tags: &UpdateTags) {
+    pub fn remote_update_tags(&mut self, tags: &UpdateTags) {
         if let Some(r) = self.client.remote.as_mut() {
             Arc::make_mut(&mut r.registries).add_tags(tags);
         }
@@ -55,7 +55,7 @@ impl ClientGame<'_> {
 
     /// Make the server's tags what native mods read, then tell them. Snapshot client
     /// enchant answers only after the tags, rebound parts and tag listeners are published.
-    pub(in crate::game) fn install_remote_tags(&mut self) {
+    pub fn install_remote_tags(&mut self) {
         if mod_api::__private::mods().is_empty() {
             self.resolve_enchant_particles();
             return;

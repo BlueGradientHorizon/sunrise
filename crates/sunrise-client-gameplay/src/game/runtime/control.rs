@@ -323,7 +323,7 @@ impl crate::game::ClientGame<'_> {
     /// `type`: its `\b` is a backspace sentinel for the boxes that have always
     /// taken one, not the characters `\` and `b`. `Err` when no text box of
     /// the screen takes it.
-    pub(in crate::game::client_side) fn type_into_screen(&mut self, text: &str) -> Result<()> {
+    pub fn type_into_screen(&mut self, text: &str) -> Result<()> {
         if text == "\\b" {
             let instance = self.client.screen_state.0.screen_instance;
             if self.mounted_widget_key_pressed(
@@ -453,7 +453,7 @@ impl crate::game::ClientGame<'_> {
         Ok(())
     }
 
-    pub(in crate::game) fn control_command(
+    pub fn control_command(
         &mut self,
         line: &str,
         reply: &Sender<String>,
@@ -484,7 +484,7 @@ impl crate::game::ClientGame<'_> {
 
     /// A recorded control line fed back by a replay: not new input, so the
     /// trace does not see it, and its reply has no one waiting.
-    pub(in crate::game) fn replay_line(&mut self, line: &str, event_loop: &dyn EventLoopCtl) {
+    pub fn replay_line(&mut self, line: &str, event_loop: &dyn EventLoopCtl) {
         let (reply, _) = std::sync::mpsc::channel();
         if let Err(e) = self.control_command(line, &reply, event_loop) {
             log::warn!("Sunrise: replay: {line}: {e}");

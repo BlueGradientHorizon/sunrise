@@ -24,7 +24,7 @@ mod tests {
                         ParticleType::BlockMarker,
                     ];
                     let registry = game
-                        .side
+                        .client
                         .remote
                         .as_ref()
                         .unwrap()

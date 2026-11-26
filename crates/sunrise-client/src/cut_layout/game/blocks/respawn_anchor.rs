@@ -19,7 +19,7 @@ pub(crate) mod connected_spawnpoint_rotation_tests {
     };
 
     fn command(game: &mut sunrise_gameplay::game::ServerGame<'_>, text: &str) {
-        game.side.chat_capture = Some(Vec::new());
+        game.server.chat_capture = Some(Vec::new());
         game.ui.registries.permission = 4;
         let dispatcher = sunrise_command::vanilla::build_for(false, true);
         let parsed = dispatcher.parse(text, &game.ui.registries);
@@ -29,7 +29,7 @@ pub(crate) mod connected_spawnpoint_rotation_tests {
         let (root, ctx) = (parsed.context.clone(), ctx.clone());
         assert_eq!(game.run_chain(&root, &ctx).unwrap(), 1, "{text}");
         assert!(
-            !game.side.chat_capture.take().unwrap().is_empty(),
+            !game.server.chat_capture.take().unwrap().is_empty(),
             "actual command feedback {text}"
         );
     }
@@ -49,14 +49,14 @@ pub(crate) mod connected_spawnpoint_rotation_tests {
                 .as_nanos()
         ));
         std::fs::create_dir_all(&scratch).unwrap();
-        game.side.world_root = scratch.clone();
+        game.server.world_root = scratch.clone();
         // Fixture setup through the existing column insertion API; admit every lit column below.
         for x in -2..=2 {
             for z in -2..=2 {
-                game.side
+                game.server
                     .streaming
                     .insert_remote(&mut game.world, Chunk::empty(x, z));
-                assert!(game.side.streaming.is_lit(x, z));
+                assert!(game.server.streaming.is_lit(x, z));
             }
         }
         let stone = game
@@ -132,10 +132,10 @@ pub(crate) mod connected_spawnpoint_rotation_tests {
         guest.game_mode = 0;
         guest.yaw = 0.0;
         guest.pitch = 0.0;
-        game.side.lan.as_mut().unwrap().hub.guests.push(guest);
+        game.server.lan.as_mut().unwrap().hub.guests.push(guest);
         let clock = game.world.game_time;
         command(&mut game, "spawnpoint Alice 12 100 12 45 10");
-        let host = game.side.lan.as_ref().unwrap();
+        let host = game.server.lan.as_ref().unwrap();
         assert!(host.owner.is_none());
         let guest = &host.hub.guests[0];
         assert_eq!(
@@ -157,7 +157,7 @@ pub(crate) mod connected_spawnpoint_rotation_tests {
         );
         command(&mut game, "kill Alice");
         game.tick_lan(false);
-        let host = game.side.lan.take().unwrap();
+        let host = game.server.lan.take().unwrap();
         assert_eq!(host.hub.guests[0].uuid, 77);
         assert_eq!(host.hub.guests[0].health, 0.0);
         assert!(
@@ -165,10 +165,10 @@ pub(crate) mod connected_spawnpoint_rotation_tests {
             "actual command death before request"
         );
         for _ in rx.try_iter() {}
-        game.side.lan = Some(host);
+        game.server.lan = Some(host);
         game.lan_guest_packet(7, S::ClientCommand(play::ClientCommand { action: 0 }));
         game.tick_server_travel();
-        let host = game.side.lan.take().unwrap();
+        let host = game.server.lan.take().unwrap();
         assert!(
             !game.on_server_trip(7),
             "admitted lit columns permit actual arrival"

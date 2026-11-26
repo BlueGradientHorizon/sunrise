@@ -21,7 +21,7 @@ fn rocket_impact_listener_can_save_the_advanced_rocket() {
                 let hits = observed.hits.lock().unwrap();
                 assert_eq!(hits.len(), 1);
                 assert_eq!(hits[0].projectile, 71);
-                let saved = game.side.save.0.load_entities(0, 0).unwrap();
+                let saved = game.server.save.0.load_entities(0, 0).unwrap();
                 let rocket = saved
                     .iter()
                     .find(|tag| {

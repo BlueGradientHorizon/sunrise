@@ -6,7 +6,7 @@ use mod_api::{EntityRef, FishingHookRef};
 impl crate::game::ServerGame<'_> {
     /// Narrows an entity to a cast fishing hook. None for another kind, a
     /// stale handle, a client, or a hook taken out for its tick.
-    pub(in crate::game) fn fishing_hook(&self, entity: EntityRef) -> Option<FishingHookRef> {
+    pub fn fishing_hook(&self, entity: EntityRef) -> Option<FishingHookRef> {
         matches!(self.native_entity_target(entity)?, Target::Hook(_))
             .then(|| FishingHookRef::new(entity))
     }

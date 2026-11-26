@@ -485,7 +485,7 @@ impl crate::game::ServerGame<'_> {
     /// Each is asked of the mods first (`play_level_sound_at_entity` when
     /// bound to an entity, `_at_position` otherwise). One at a position also
     /// goes wrapped to its level's viewers (`Hub::send_viewed_sound`).
-    pub(in crate::game) fn flush_native_sounds(&mut self) {
+    pub fn flush_native_sounds(&mut self) {
         if self.server.lan.is_none() {
             return;
         }
@@ -498,7 +498,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// The particles guests' turns put off.
-    pub(in crate::game) fn flush_lan_particles(&mut self) {
+    pub fn flush_lan_particles(&mut self) {
         if self.server.lan.is_none() {
             return;
         }

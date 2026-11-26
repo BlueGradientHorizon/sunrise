@@ -18,7 +18,7 @@ impl ClientGame<'_> {
     /// Escape first. Declining a required pack disconnects rather than returning to the
     /// screen underneath. False when no screen is open, or the foreground screen does not
     /// close with Escape.
-    pub(in crate::game) fn close_screen(&mut self) -> bool {
+    pub fn close_screen(&mut self) -> bool {
         if self.common.player.is_none() {
             return false;
         }
@@ -93,7 +93,7 @@ impl ClientGame<'_> {
     /// sent at the player's next tick as the key's press is). False with a
     /// screen already open, for a spectator, in a portal transition, or with no
     /// world.
-    pub(in crate::game) fn open_inventory(&mut self) -> bool {
+    pub fn open_inventory(&mut self) -> bool {
         if self.common.player.is_none()
             || self.client.screen != Screen::Playing
             || self.client.sign_edit.is_some()
@@ -112,7 +112,7 @@ impl ClientGame<'_> {
     }
     /// `AbstractSignEditScreen`'s sign: its block position and the side the
     /// editor is on. None when no sign editor is open, or outside a world.
-    pub(in crate::game) fn sign_editor(&self) -> Option<SignEditView> {
+    pub fn sign_editor(&self) -> Option<SignEditView> {
         self.common.player.as_ref()?;
         let edit = self.client.sign_edit.as_ref()?;
         Some(SignEditView {

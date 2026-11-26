@@ -5,7 +5,7 @@ use sunrise_gameplay_common::game::inventory_slots::SLOT_POSITIONS;
 use sunrise_gameplay_common::game::inventory_slots::container_slot_index;
 
 impl crate::game::ClientGame<'_> {
-    pub(in crate::game) fn craft_result(&self) -> Option<ItemStack> {
+    pub fn craft_result(&self) -> Option<ItemStack> {
         // A server's result slot is the server's (`CraftingMenu.slotChangedCraftingGrid`).
         if let Some(r) = &self.client.remote {
             return r.craft_result.clone();
@@ -39,7 +39,7 @@ impl crate::game::ClientGame<'_> {
     }
     /// `extractCarriedItem`: the carried stack at the cursor, showing what a
     /// quick craft drag over several slots leaves in hand.
-    pub(in crate::game) fn draw_carried(&mut self, batch: &mut HudBatch) {
+    pub fn draw_carried(&mut self, batch: &mut HudBatch) {
         let Some(mut stack) = self.common.carried.clone() else {
             return;
         };
@@ -449,7 +449,7 @@ impl crate::game::ClientGame<'_> {
     /// The open container screen's player-inventory origin (`getXOrigin`/
     /// `getYOrigin`): the build's, or the frame's own arithmetic with no
     /// build yet.
-    pub(in crate::game) fn inventory_origin(&self, batch: &HudBatch) -> (f32, f32) {
+    pub fn inventory_origin(&self, batch: &HudBatch) -> (f32, f32) {
         match self.built_container(batch) {
             Some(layout) => layout.origin,
             None => self.inventory_origin_unbuilt(batch),
@@ -488,7 +488,7 @@ impl crate::game::ClientGame<'_> {
     /// from the build's slot boxes rather than a fresh grid, so the hit test
     /// is the one the frame draws with. None while the recipe book covers the
     /// menu in a narrow window (`AbstractRecipeBookScreen.isHovering`).
-    pub(in crate::game) fn slot_at(&self, batch: &HudBatch, x: f32, y: f32) -> Option<usize> {
+    pub fn slot_at(&self, batch: &HudBatch, x: f32, y: f32) -> Option<usize> {
         if self.book_covers_menu(batch.width) {
             return None;
         }
@@ -527,7 +527,7 @@ impl crate::game::ClientGame<'_> {
     /// How many slots `slots` lists, counted without building the list: the
     /// screen render hook asks once a frame and must not allocate. Same
     /// branches in the same order, so the two stay in step.
-    pub(in crate::game) fn slot_count(&self) -> usize {
+    pub fn slot_count(&self) -> usize {
         if self.creative_inventory_open() {
             return Creative::inventory_slots().count();
         }
@@ -587,7 +587,7 @@ impl crate::game::ClientGame<'_> {
         };
         inventory + container
     }
-    pub(in crate::game) fn slot_mut(&mut self, i: usize) -> &mut Option<ItemStack> {
+    pub fn slot_mut(&mut self, i: usize) -> &mut Option<ItemStack> {
         if i >= MOD_MENU_SLOT_BASE && !self.is_mount_chest_slot(i) {
             return self.container_slot_mut(i - MOD_MENU_SLOT_BASE);
         }
@@ -613,7 +613,7 @@ impl crate::game::ClientGame<'_> {
         }
     }
     /// InventoryMenu / CraftingMenu slot layouts.
-    pub(in crate::game) fn slot_position(&self, i: usize) -> (f32, f32) {
+    pub fn slot_position(&self, i: usize) -> (f32, f32) {
         #[cfg(test)]
         SLOT_POSITIONS.with(|count| count.set(count.get() + 1));
         if self.creative_inventory_open()
@@ -688,7 +688,7 @@ impl crate::game::ClientGame<'_> {
         }
     }
     /// What a slot shows: the crafting result slots are computed.
-    pub(in crate::game) fn slot_view(&self, i: usize) -> Option<ItemStack> {
+    pub fn slot_view(&self, i: usize) -> Option<ItemStack> {
         match i {
             200 => self.craft_result(),
             309 if matches!(self.container_kind(), Some(BlockEntity::Crafter(_))) => {
@@ -707,7 +707,7 @@ impl crate::game::ClientGame<'_> {
         }
     }
     /// 300.. are the open container's slots.
-    pub(in crate::game) fn slots(&self) -> Vec<usize> {
+    pub fn slots(&self) -> Vec<usize> {
         if self.creative_inventory_open() {
             return Creative::inventory_slots().collect();
         }

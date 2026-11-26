@@ -45,7 +45,7 @@ fn a_mod_keeps_one_stared_at_enderman_calm() {
             let mut staring = guest(5);
             staring.loaded = true;
             staring.position = [8.0, 64.0, 2.0];
-            game.side.lan.as_mut().unwrap().hub.guests.push(staring);
+            game.server.lan.as_mut().unwrap().hub.guests.push(staring);
             let views = game.lan_guest_views();
             let mut view = views[0].1.clone();
             let kind = game

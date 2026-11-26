@@ -147,7 +147,7 @@ fn with_guest_probe(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_
     .into();
     mod_platform::testing::with_mods(mods, || {
         super::native_guest_turn_tests::with_guests(|game| {
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()
@@ -170,14 +170,14 @@ fn blast(
     player: bool,
     guest: Option<u32>,
 ) {
-    game.side.combat.0.blast_owner = Some((owner, sunrise_game_data::text::Text::literal("owner")));
-    game.side.combat.0.blast_owner_player = player;
-    game.side.combat.0.blast_guest = guest;
+    game.server.combat.0.blast_owner = Some((owner, sunrise_game_data::text::Text::literal("owner")));
+    game.server.combat.0.blast_owner_player = player;
+    game.server.combat.0.blast_guest = guest;
     game.server_explode(at, 3.0, sunrise_gameplay::game::server_side::explosion::BlockInteraction::Keep, false)
         .unwrap();
-    game.side.combat.0.blast_owner = None;
-    game.side.combat.0.blast_owner_player = false;
-    game.side.combat.0.blast_guest = None;
+    game.server.combat.0.blast_owner = None;
+    game.server.combat.0.blast_owner_player = false;
+    game.server.combat.0.blast_guest = None;
 }
 
 /// A projectile of `kind` owned by `owner`, at the origin.
@@ -351,7 +351,7 @@ fn trident(game: &mut sunrise_gameplay::game::ServerGame<'_>, seen: &Mutex<Vec<S
 /// `LivingRef` reads answer for it then, with its own attachment map.
 fn guest(game: &mut sunrise_gameplay::game::ServerGame<'_>, seen: &Mutex<Vec<Seen>>) {
     let pig = summon_mob(game, "minecraft:pig", "{NoAI:1b}");
-    assert!(game.side.lan_acting != Some(12));
+    assert!(game.server.lan_acting != Some(12));
     MARK.set(game, Holder::Player(12), 5).unwrap();
     let living = game.living(game.entity(12).unwrap()).unwrap();
     assert_eq!(living.health(game), Some(20.0));

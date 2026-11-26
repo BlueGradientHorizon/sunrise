@@ -80,7 +80,7 @@ impl crate::game::ServerGame<'_> {
     /// joining or leaving works the reach out again, and so does [`Self::vehicle_picked_up`].
     /// The first query that needs one works it out (the reach's count is one no list has), so
     /// a level without boats or carts never walks its mobs for them.
-    pub(in crate::game) fn vehicles_ticking(&self, on: bool) {
+    pub fn vehicles_ticking(&self, on: bool) {
         let reach = (on && mod_api::__private::mods().is_empty())
             .then(|| (usize::MAX, BoxReach::default()));
         self.server.vehicle_mobs.reach.set(reach);
@@ -199,7 +199,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// The mobs in boat `id`, in their seat order after the players
     /// (`Entity.addPassenger` puts a player first).
-    pub(in crate::game) fn boat_mobs(&self, id: u32) -> Vec<usize> {
+    pub fn boat_mobs(&self, id: u32) -> Vec<usize> {
         self.resident_mob_riders(id)
             .filter_map(|(slot, mob)| (!mob.removed && mob.alive()).then_some(slot))
             .collect()
@@ -267,7 +267,7 @@ impl crate::game::ServerGame<'_> {
     /// player touching it pushes the two apart once more. Only the window's
     /// own player is moved here: a server's players are pushed by their
     /// clients, which tick the boats near them (`remote_pushes`).
-    pub(in crate::game) fn boat_contacts(&mut self, mut i: usize) {
+    pub fn boat_contacts(&mut self, mut i: usize) {
         let (id, bb, max) = {
             let b = &self.common.boats[i];
             (b.id, b.bounds(), b.max_passengers())
@@ -474,7 +474,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// `Entity.setRemoved` for a killed boat or cart; false on a reentrant
     /// removal of the same object while its dismount callbacks are running.
-    pub(in crate::game) fn kill_vehicle_object(&mut self, target: Target) -> bool {
+    pub fn kill_vehicle_object(&mut self, target: Target) -> bool {
         let id = match target {
             Target::Boat(id) | Target::Cart(id) => id,
             _ => unreachable!("only boat and cart removals use this helper"),

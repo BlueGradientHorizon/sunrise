@@ -46,7 +46,7 @@ fn guest_action(item: &str, action: u8) -> Vec<String> {
         player.permission = 4;
         player.position = [21.5, 70.0, -8.25];
         player.inventory[0] = Some(ItemStack::new(item, 1));
-        game.side.lan.as_mut().unwrap().hub.guests.push(player);
+        game.server.lan.as_mut().unwrap().hub.guests.push(player);
         game.as_guest(1, |g| assert!(g.start_using_item()));
         match action {
             0 => game.lan_guest_packet(
@@ -67,7 +67,7 @@ fn guest_action(item: &str, action: u8) -> Vec<String> {
                 assert!(game.player_set_selected_slot(player, 1));
             }
             3 => {
-                game.side
+                game.server
                     .lan
                     .as_mut()
                     .unwrap()
@@ -153,7 +153,7 @@ fn axe_disabled_shield_posts_finish() {
     use sunrise_sim::health::{BlockOutcome, NO_ATTACK};
     let lines = with_game("minecraft:shield", |game| {
         assert!(game.start_using_item());
-        game.side.combat.0.player_attacker = Some(([11.5, 64.0, -3.25], 5.0));
+        game.server.combat.0.player_attacker = Some(([11.5, 64.0, -3.25], 5.0));
         game.after_block(
             BlockOutcome {
                 blocking_item_used: true,
@@ -176,7 +176,7 @@ fn axe_disabled_shield_posts_finish() {
             &NO_ATTACK,
         );
         assert!(game.using.is_none());
-        assert!(game.side.shield_cooldown > 0);
+        assert!(game.server.shield_cooldown > 0);
     })
     .expect("prepared resources");
     assert_eq!(
@@ -208,7 +208,7 @@ fn swap_with_emptied_used_slot_clears_silently() {
         open_to_lan(game);
         let mut player = guest(1);
         player.inventory[0] = Some(ItemStack::new("minecraft:golden_apple", 1));
-        game.side.lan.as_mut().unwrap().hub.guests.push(player);
+        game.server.lan.as_mut().unwrap().hub.guests.push(player);
         game.as_guest(1, |g| {
             assert!(g.start_using_item());
             *g.held_mut() = None;
@@ -267,7 +267,7 @@ fn nether_portal_stops_use_in_target_level() {
         || {
             with_game("minecraft:golden_apple", |game| {
                 let scratch = tempfile::tempdir().unwrap();
-                game.side.world_root = scratch.path().to_path_buf();
+                game.server.world_root = scratch.path().to_path_buf();
                 game.reset_entity_residency();
                 game.native_lifecycle
                     .begin_open(mod_api::Authority::IntegratedServer);
@@ -288,7 +288,7 @@ fn nether_portal_stops_use_in_target_level() {
                 let mut player = guest(1);
                 player.position = [8.5, 70.0, 8.5];
                 player.inventory[0] = Some(ItemStack::new("minecraft:golden_apple", 1));
-                game.side.lan.as_mut().unwrap().hub.guests.push(player);
+                game.server.lan.as_mut().unwrap().hub.guests.push(player);
                 game.as_guest(1, |g| assert!(g.start_using_item())).unwrap();
                 let plan = game.portal_plan(
                     BlockPos::new(8, 70, 8),
@@ -298,7 +298,7 @@ fn nether_portal_stops_use_in_target_level() {
                     false,
                 );
                 game.start_server_trip(1, Dim::Nether, Some(plan));
-                let player = &game.side.lan.as_ref().unwrap().hub.guests[0];
+                let player = &game.server.lan.as_ref().unwrap().hub.guests[0];
                 assert_eq!(player.dimension, "minecraft:the_nether");
                 assert_eq!(player.position, [1.5, 70.0, 1.5]);
                 game.enter_level(Dim::Nether).unwrap();

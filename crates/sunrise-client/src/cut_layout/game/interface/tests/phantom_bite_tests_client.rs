@@ -6,7 +6,7 @@ use sunrise_core::random::{LegacyRandom, RandomSource};
 pub(crate) fn with_game(test: impl FnOnce(&mut sunrise_client_gameplay::game::ClientGame<'_>)) {
     sunrise_client_gameplay::game::native_entity_refs::tests::with_client_game(|g| {
         g.world = World::new(g.res.facts().air, 1);
-        g.side.audio.0.capture = Some(Vec::new());
+        g.client.audio.0.capture = Some(Vec::new());
         test(g);
     });
 }
@@ -19,12 +19,12 @@ pub(crate) fn with_game(test: impl FnOnce(&mut sunrise_client_gameplay::game::Cl
 fn a_phantom_bite_level_event_plays_the_bite_at_0_3_volume() {
     with_game(|g| {
         // The client level's random, seeded so the pitch has an expected value.
-        *g.side.particles.0.level_random() = LegacyRandom::new(7);
+        *g.client.particles.0.level_random() = LegacyRandom::new(7);
         let pitch = LegacyRandom::new(7).next_float() * 0.1 + 0.9;
-        g.side.audio.0.engine.loaded = true;
+        g.client.audio.0.engine.loaded = true;
         g.client_level_event_at(1039, [0, 64, 0], 0);
         let bite = (0..=8u64)
-            .filter_map(|id| g.side.audio.0.engine.instance(id))
+            .filter_map(|id| g.client.audio.0.engine.instance(id))
             .find(|i| i.identifier == "minecraft:entity.phantom.bite")
             .expect("level event 1039 plays the phantom's bite");
         assert_eq!(bite.volume, 0.3);

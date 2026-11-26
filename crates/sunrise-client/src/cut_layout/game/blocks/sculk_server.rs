@@ -196,12 +196,12 @@ pub(crate) mod command_damage_listener_tests {
                 );
                 assert_eq!(tick, before);
                 assert_eq!(
-                    game.side.sculk.damaged.get(&id).copied(),
+                    game.server.sculk.damaged.get(&id).copied(),
                     mob.last_damage.map(|(_, tick)| tick)
                 );
             } else {
                 assert!(selected(&game, origin).is_none());
-                assert!(!game.side.sculk.damaged.contains_key(&id));
+                assert!(!game.server.sculk.damaged.contains_key(&id));
             }
             assert!(game.run_command(&format!("tp {uuid} 36.5 200 4.5")));
             assert_eq!(game.world.game_time, before);

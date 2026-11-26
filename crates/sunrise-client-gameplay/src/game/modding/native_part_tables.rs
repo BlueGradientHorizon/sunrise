@@ -11,7 +11,7 @@ use sunrise_world::fluid::{FluidKind, FluidState, mod_fluids};
 impl crate::game::ClientGame<'_> {
     /// Every table, built for the states and fluids of this game; a table that changes nothing
     /// is left empty. The overlay answer starts with vanilla's test, the mesher's `Info::overlay`.
-    pub(in crate::game) fn resolve_part_tables(&self) -> PartTables {
+    pub fn resolve_part_tables(&self) -> PartTables {
         let states = self.common.pack.assets.registry.len();
         let fluids = asked_fluids();
         let hidden_fluid_faces = Self::resolve_per_state_fluid(

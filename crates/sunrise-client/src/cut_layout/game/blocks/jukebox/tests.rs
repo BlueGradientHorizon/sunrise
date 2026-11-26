@@ -191,18 +191,18 @@ fn a_saved_song_comes_back_without_its_sound() {
                 .unwrap()
                 .0
         };
-        game.side.audio_capture_active = true;
+        game.server.audio_capture_active = true;
         let mut cases = Vec::new();
         for clock in [Some(41), Some(10_000), None, Some(0)] {
             load_saved(game, clock);
-            game.side.lan_songs.clear();
+            game.server.lan_songs.clear();
             let events = record(|| game.tick_jukebox((0, 64, 0)));
             let j = game.jukebox([0, 64, 0]).unwrap();
             cases.push((
                 clock,
                 (j.playing, j.ticks, j.song_clock_present),
                 signal(game),
-                !game.side.lan_songs.is_empty(),
+                !game.server.lan_songs.is_empty(),
                 events,
             ));
         }

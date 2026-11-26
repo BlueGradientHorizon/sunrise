@@ -3,7 +3,7 @@ use sunrise_items::items::ItemStack;
 
 impl ClientGame<'_> {
     /// `ItemStack.getStyledHoverName`, without the rarity colour applied by the tooltip.
-    pub(in crate::game) fn styled_stack_name(
+    pub fn styled_stack_name(
         &self,
         stack: &ItemStack,
     ) -> sunrise_game_data::text::Text {

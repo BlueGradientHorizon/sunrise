@@ -158,7 +158,7 @@ impl crate::game::ClientGame<'_> {
         self.capture(false);
         Ok(())
     }
-    pub(in crate::game) fn connect_remote_session(
+    pub fn connect_remote_session(
         &mut self,
         address: &str,
         name: &str,
@@ -173,7 +173,7 @@ impl crate::game::ClientGame<'_> {
         self.install_remote_session(opening, lan, realm)
     }
     /// Switch to a (possibly new) dimension: a fresh client level.
-    pub(in crate::game) fn enter_remote_dimension(
+    pub fn enter_remote_dimension(
         &mut self,
         spawn: &play::SpawnInfo,
         entry: RemoteDimensionEntry,
@@ -414,7 +414,7 @@ impl crate::game::ClientGame<'_> {
     /// Prepare a client session and remote state to receive packets from a studio replay.
     /// A replayed or viewed world checks its players' signed properties as a joined
     /// client does.
-    pub(in crate::game) fn init_remote_for_replay(&mut self) -> Result<()> {
+    pub fn init_remote_for_replay(&mut self) -> Result<()> {
         // Resolve fallible resources before mutating state or clearing the title screen.
         let root = self.common.options.resources.clone();
         let builtin = builtin_registries(&root).ok_or("Resources are incomplete")?;
@@ -986,7 +986,7 @@ impl crate::game::ClientGame<'_> {
         self.install_remote_session(opening, false, false)
     }
     /// Disconnect and return to the multiplayer screen (DisconnectedScreen).
-    pub(in crate::game) fn leave_server(&mut self, reason: Option<Text>) -> Result<()> {
+    pub fn leave_server(&mut self, reason: Option<Text>) -> Result<()> {
         if reason.is_none() && self.client.integrated.as_ref().is_some_and(|s| !s.stopped()) {
             return self.begin_closing_save(false);
         }

@@ -148,7 +148,7 @@ impl ServerGame<'_> {
         self.holds_mace() && self.can_smash_attack()
     }
     /// The damage source of the player's hit from `from` with the held item.
-    pub(in crate::game) fn attack_source(&self, from: [f64; 3]) -> Damage {
+    pub fn attack_source(&self, from: [f64; 3]) -> Damage {
         let motion = self
             .common.player
             .as_ref()
@@ -171,7 +171,7 @@ impl ServerGame<'_> {
     /// `MaceItem.getAttackDamageBonus` against `victim`: 4 per block for the
     /// first three blocks fallen, 2 for the next five, 1 after that, plus
     /// `smash_damage_per_fallen_block` (Density) for every block.
-    pub(in crate::game) fn smash_damage_bonus(&mut self, victim: &str) -> f32 {
+    pub fn smash_damage_bonus(&mut self, victim: &str) -> f32 {
         if !self.smash_attack() {
             return 0.0;
         }
@@ -264,7 +264,7 @@ impl ServerGame<'_> {
     /// `LivingEntity.hurtServer` of the mob at `index` by the player's hit:
     /// the weapon's `armor_effectiveness` enchantments (Breach) thin its armor.
     /// Returns whether the hurt landed and whether it killed, before death listeners ran.
-    pub(in crate::game) fn hurt_by_player(
+    pub fn hurt_by_player(
         &mut self,
         index: usize,
         amount: f32,
@@ -409,7 +409,7 @@ impl ServerGame<'_> {
     }
     /// `ItemStack.postHurtEnemy`: `hurtAndBreak(weapon.itemDamagePerAttack)` of
     /// the weapon in the acting hand.
-    pub(in crate::game::server_side) fn weapon_wear(&mut self, stack: &ItemStack) {
+    pub fn weapon_wear(&mut self, stack: &ItemStack) {
         let items = self.common.res.items();
         let weapon = items
             .weapon_damage(stack)
@@ -600,7 +600,7 @@ impl ServerGame<'_> {
     /// `getEnchantedDamage(1 + sweeping ratio * attack damage) * strength`,
     /// knocked back 0.4 along the player's yaw. The player's allies and the
     /// target (`spared`) are spared.
-    pub(in crate::game) fn sweep_damage(&mut self, target: Aabb, spared: Spared, scale: f32) {
+    pub fn sweep_damage(&mut self, target: Aabb, spared: Spared, scale: f32) {
         let Some(player) = self.common.player.as_ref() else {
             return;
         };

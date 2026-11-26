@@ -365,7 +365,7 @@ impl crate::game::ClientGame<'_> {
         }
     }
     /// A left click: a status button, the search box, a footer button.
-    pub(in crate::game::client_side) fn debug_options_click(&mut self) -> bool {
+    pub fn debug_options_click(&mut self) -> bool {
         let Some(mut s) = self.client.debug_options.take() else {
             return false;
         };

@@ -47,7 +47,7 @@ mod biome_tint_tests {
                     }
                 }
                 game.world.chunks.insert((0, 0), Arc::new(chunk));
-                game.side.streaming.biome_blend = 1;
+                game.client.streaming.biome_blend = 1;
 
                 // Stock server biome definitions do not install a world-specific table.
                 assert!(game.world_biomes.is_none());

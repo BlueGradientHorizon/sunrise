@@ -19,7 +19,7 @@ impl ServerGame<'_> {
     /// why the edit was left out, with nothing changed: another dimension, a client of a server, a palette entry
     /// or filter that doesn't read or carries NBT (refused), a run naming a palette entry or filter past the end,
     /// or more than 65536 filters.
-    pub(in crate::game) fn edit_blocks(
+    pub fn edit_blocks(
         &mut self,
         dimension: &str,
         edit: &mod_api::BlockEdit,

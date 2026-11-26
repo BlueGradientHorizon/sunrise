@@ -39,7 +39,7 @@ impl ClientGame<'_> {
         self.send_mod_book_placement(message);
     }
 
-    pub(in crate::game) fn check_mod_book_placement_timeout(&mut self) {
+    pub fn check_mod_book_placement_timeout(&mut self) {
         if self
             .common
             .native_net
@@ -74,7 +74,7 @@ impl ClientGame<'_> {
         self.reset_mod_book_placement_ui();
     }
 
-    pub(in crate::game) fn ensure_mod_book_catalog(&mut self) {
+    pub fn ensure_mod_book_catalog(&mut self) {
         let Some(window) = self.native_book_placement_window() else {
             return;
         };

@@ -42,7 +42,7 @@ impl crate::game::ServerGame<'_> {
     /// The value of statistic `stat_type` for `key` (`minecraft:stone`,
     /// `minecraft:jump`...), as `ServerStatsCounter.getValue`: 0 when never
     /// counted.
-    pub(in crate::game) fn player_stat(
+    pub fn player_stat(
         &self,
         player: PlayerRef,
         stat_type: StatType,
@@ -143,7 +143,7 @@ impl crate::game::ServerGame<'_> {
 
     /// Whether the player's recipe book knows `recipe`
     /// (`ServerRecipeBook.contains`).
-    pub(in crate::game) fn player_has_discovered_recipe(
+    pub fn player_has_discovered_recipe(
         &self,
         player: PlayerRef,
         recipe: &str,
@@ -223,7 +223,7 @@ impl crate::game::ServerGame<'_> {
 
     /// Every recipe the player's recipe book knows (`ServerRecipeBook.recipes`), qualified ids in
     /// order. None for a player it can't reach.
-    pub(in crate::game) fn player_discovered_recipes(
+    pub fn player_discovered_recipes(
         &self,
         player: PlayerRef,
     ) -> Option<Vec<String>> {

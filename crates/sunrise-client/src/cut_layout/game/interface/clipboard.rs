@@ -53,7 +53,7 @@ mod tests {
         with_mods(mods, || {
             sunrise_client_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
                 game.options.headless = true;
-                game.side.clipboard.0.set_text("pasted");
+                game.client.clipboard.0.set_text("pasted");
 
                 game.native_client_tick_pre();
                 game.native_render_gui_pre(&mut false);
@@ -78,7 +78,7 @@ mod tests {
                         ("tick", None, false),
                     ]
                 );
-                assert_eq!(game.side.clipboard.0.text(), "click");
+                assert_eq!(game.client.clipboard.0.text(), "click");
             });
         });
     }

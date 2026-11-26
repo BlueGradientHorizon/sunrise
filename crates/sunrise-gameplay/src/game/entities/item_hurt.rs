@@ -7,7 +7,7 @@ use sunrise_world::damage_source::DamageTypeId;
 
 impl crate::game::ServerGame<'_> {
     /// `ItemEntity.hurtServer`: the item branch reached by `DamageCommand.damage`.
-    pub(in crate::game) fn hurt_item_entity(
+    pub fn hurt_item_entity(
         &mut self,
         id: u32,
         amount: f32,

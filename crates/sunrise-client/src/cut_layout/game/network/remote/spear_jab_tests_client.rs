@@ -22,7 +22,7 @@ fn a_spear_jab_sends_only_its_stab() {
             .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
         game.inventory[0] = Some(ItemStack::new("minecraft:iron_spear", 1));
         game.selected = 0;
-        game.side.hand_strength.ticker = 100;
+        game.client.hand_strength.ticker = 100;
         while peer.recv().is_ok() {}
         game.yaw = 37.0;
         assert!(game.remote_start_attack());

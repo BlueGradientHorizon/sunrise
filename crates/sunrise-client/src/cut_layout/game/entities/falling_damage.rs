@@ -84,10 +84,10 @@ mod tests {
         mod_platform::testing::with_mods(mods.clone(), || {
             sunrise_gameplay_common::game::api_values::install_parts(&mods).unwrap();
             with_game(|game| {
-                game.side.lan_acting_uuid = Some(123);
-                game.side.lan_acting_entity = Some(20);
-                game.side.lan_acting_name = Some("Steve".into());
-                game.side.lan_acting_permission = Some(0);
+                game.server.lan_acting_uuid = Some(123);
+                game.server.lan_acting_entity = Some(20);
+                game.server.lan_acting_name = Some("Steve".into());
+                game.server.lan_acting_permission = Some(0);
                 test(game, &log);
             })
         });

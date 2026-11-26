@@ -331,8 +331,8 @@ fn part_state_saves_with_its_chunk_and_reloads_under_a_fresh_handle() {
         let key = (80, 80);
         let pos = (1283, 100, 1283);
         // The test game starts with streaming paused, which never unloads.
-        game.side.streaming.paused = false;
-        assert!(game.side.streaming.set_forced(key.0, key.1, true));
+        game.server.streaming.paused = false;
+        assert!(game.server.streaming.set_forced(key.0, key.1, true));
         game.world
             .chunks
             .insert(key, Arc::new(Chunk::empty(key.0, key.1)));
@@ -352,7 +352,7 @@ fn part_state_saves_with_its_chunk_and_reloads_under_a_fresh_handle() {
         // The ticket goes and the residency owner (`update_world`) unloads the column: it
         // saves it, then drops its block entities and their live bindings. Its sweep runs every
         // eighth update.
-        assert!(game.side.streaming.set_forced(key.0, key.1, false));
+        assert!(game.server.streaming.set_forced(key.0, key.1, false));
         for _ in 0..9 {
             game.side_update_world();
         }
@@ -363,7 +363,7 @@ fn part_state_saves_with_its_chunk_and_reloads_under_a_fresh_handle() {
         // Loaded back from the region file it was saved to, as streaming installs a column.
         game.save_level(true).unwrap();
         let mut chunk = game
-            .side
+            .server
             .save
             .0
             .load(key.0, key.1, game.pack.assets.registry, world_biomes!(game))
@@ -421,7 +421,7 @@ fn item_slot_writes_save_but_menu_data_is_transient() {
             );
             game.save_level(true).unwrap();
             let chunk = game
-                .side
+                .server
                 .save
                 .0
                 .load(0, 0, game.pack.assets.registry, world_biomes!(game))
@@ -482,7 +482,7 @@ fn an_item_write_commits_in_its_own_level_despite_an_unrelated_transaction() {
         assert!(game.transactions.is_empty());
         assert!(!game.world.modified.contains(&chunk));
         assert!(
-            game.side
+            game.server
                 .levels
                 .0
                 .parked_world(Dim::Nether)
@@ -494,7 +494,7 @@ fn an_item_write_commits_in_its_own_level_despite_an_unrelated_transaction() {
         game.save_parked_levels(true).unwrap();
         game.enter_level(Dim::Nether).unwrap();
         let reloaded = game
-            .side
+            .server
             .save
             .0
             .load(
@@ -582,8 +582,8 @@ fn a_save_or_unload_during_a_transaction_writes_only_committed_state() {
     const NAME: &str = "game::server_side::block_entity_part_state_tests::a_save_or_unload_during_a_transaction_writes_only_committed_state";
     with_state_mod(NAME, |game| {
         let (key, pos) = ((80, 80), (1283, 100, 1283));
-        game.side.streaming.paused = false;
-        assert!(game.side.streaming.set_forced(key.0, key.1, true));
+        game.server.streaming.paused = false;
+        assert!(game.server.streaming.set_forced(key.0, key.1, true));
         game.world
             .chunks
             .insert(key, Arc::new(Chunk::empty(key.0, key.1)));
@@ -592,7 +592,7 @@ fn a_save_or_unload_during_a_transaction_writes_only_committed_state() {
         assert_eq!(Press::edit_state(game, entity, |_, n| *n = 7), Ok(()));
         let reload = |game: &mut sunrise_gameplay::game::ServerGame<'_>| {
             let chunk = game
-                .side
+                .server
                 .save
                 .0
                 .load(key.0, key.1, game.pack.assets.registry, world_biomes!(game))
@@ -620,7 +620,7 @@ fn a_save_or_unload_during_a_transaction_writes_only_committed_state() {
         // committed value.
         game.storage_scope(|game, _| {
             assert_eq!(Press::edit_state(game, entity, |_, n| *n = 11), Ok(()));
-            assert!(game.side.streaming.set_forced(key.0, key.1, false));
+            assert!(game.server.streaming.set_forced(key.0, key.1, false));
             for _ in 0..9 {
                 game.side_update_world();
             }
@@ -745,8 +745,8 @@ fn part_state_counts_ticks_across_chunk_reload() {
             super::native_entity_refs::tests::with_game_at(root.prepared().to_owned(), |game| {
                 game.options.dedicated = Some(Vec::new());
                 let (key, pos) = ((80, 80), (1283, 100, 1283));
-                game.side.streaming.paused = false;
-                assert!(game.side.streaming.set_forced(key.0, key.1, true));
+                game.server.streaming.paused = false;
+                assert!(game.server.streaming.set_forced(key.0, key.1, true));
                 game.world
                     .chunks
                     .insert(key, Arc::new(Chunk::empty(key.0, key.1)));
@@ -774,7 +774,7 @@ fn part_state_counts_ticks_across_chunk_reload() {
                 assert_eq!(saved_value(game, pos, "part_state_count"), Some(3));
 
                 // Unloaded by the owner, then loaded back from the region file.
-                assert!(game.side.streaming.set_forced(key.0, key.1, false));
+                assert!(game.server.streaming.set_forced(key.0, key.1, false));
                 for _ in 0..9 {
                     game.side_update_world();
                 }
@@ -782,7 +782,7 @@ fn part_state_counts_ticks_across_chunk_reload() {
                 assert!(game.world.block_entities.attachments(pos).is_none());
                 game.save_level(true).unwrap();
                 let mut chunk = game
-                    .side
+                    .server
                     .save
                     .0
                     .load(key.0, key.1, game.pack.assets.registry, world_biomes!(game))

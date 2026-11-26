@@ -98,7 +98,7 @@ fn with_pig_and_server(
             finish_login(game, &mut server);
             game.native_lifecycle
                 .begin_open(mod_api::Authority::RemoteClient);
-            game.side.title.0 = None;
+            game.client.title.0 = None;
             game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 1.0, 0.5)).unwrap());
             game.previous_position = Vec3::new(0.5, 1.0, 0.5);
             game.yaw = 90.0;
@@ -109,7 +109,7 @@ fn with_pig_and_server(
                 .chunks
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
             let pig = game
-                .side
+                .client
                 .remote
                 .as_ref()
                 .unwrap()
@@ -133,7 +133,7 @@ fn with_pig_and_server(
             game.refresh_client_pick(1.0);
             assert!(game.mob_hit().is_none(), "the pig starts behind the view");
             // The player is loaded: the tick's keybinds act.
-            game.side.remote.as_mut().unwrap().loaded_sent = true;
+            game.client.remote.as_mut().unwrap().loaded_sent = true;
             listener.lock().unwrap().calls = 0;
             run(game, &listener, &mut server);
         })
@@ -156,7 +156,7 @@ fn calls(listener: &Mutex<Listener>) -> usize {
 /// A drawn frame: its pick, then the control poll's agent step.
 fn frame(game: &mut sunrise_client_gameplay::game::ClientGame<'_>) {
     game.refresh_client_pick(1.0);
-    game.side.frames += 1;
+    game.client.frames += 1;
     game.advance_agent();
 }
 
@@ -190,7 +190,7 @@ fn clicks_sent(game: &sunrise_client_gameplay::game::ClientGame<'_>, server: &mu
 /// A second pig, entity 32, 1.5 blocks east and 1 south of the player.
 fn add_second_pig(game: &mut sunrise_client_gameplay::game::ClientGame<'_>) {
     let pig = game
-        .side
+        .client
         .remote
         .as_ref()
         .unwrap()
@@ -254,7 +254,7 @@ fn look_at_entity_replies_after_a_tick_pick_with_no_frame() {
     with_pig_behind(|game, listener| {
         let (_, replies) = command(game, "look-at entity 31");
         tick(game);
-        assert_eq!(game.side.frames, 0, "no frame was drawn");
+        assert_eq!(game.client.frames, 0, "no frame was drawn");
         assert_eq!(calls(listener), 1, "the tick's own pick");
         let reply = reply(&replies);
         assert_eq!(reply["target"]["entity"]["id"], json!(31), "{reply}");
@@ -300,7 +300,7 @@ fn attack_by_id_hits_the_entity_it_turned_to() {
             attacked.err()
         );
         assert_eq!(
-            game.side.agent.task.as_ref().map(|t| t.name),
+            game.client.agent.task.as_ref().map(|t| t.name),
             Some("attack")
         );
         assert_eq!(calls(listener), 0, "the command itself picks nothing");
@@ -359,7 +359,7 @@ fn attack_by_id_reports_the_pick_the_click_was_taken_with() {
             "{reply}"
         );
         assert_eq!(reply["picked"], json!(32), "{reply}");
-        assert!(game.side.agent.task.is_none());
+        assert!(game.client.agent.task.is_none());
     });
 }
 
@@ -439,7 +439,7 @@ fn attack_by_id_expiry_retires_only_its_queued_click() {
         let (_, replies) = command(game, "attack 31");
         tick_with_player_clicks(game, 1);
 
-        game.side.agent.task.as_mut().unwrap().deadline = Instant::now();
+        game.client.agent.task.as_mut().unwrap().deadline = Instant::now();
         game.advance_agent();
         assert_eq!(
             reply(&replies)["error"],
@@ -570,12 +570,12 @@ fn an_ordinary_click_attacks_what_the_pick_holds() {
 fn attack_by_id_ends_without_a_click_on_death_or_without_ticks() {
     with_pig_and_server(|game, _, server| {
         let (_, replies) = command(game, "attack 31");
-        game.side.screen = Screen::Dead;
+        game.client.screen = Screen::Dead;
         game.advance_agent();
         assert_eq!(reply(&replies)["error"], json!("the player died"));
-        game.side.screen = Screen::Playing;
+        game.client.screen = Screen::Playing;
         let (_, replies) = command(game, "attack 31");
-        game.side.agent.task.as_mut().unwrap().deadline = Instant::now();
+        game.client.agent.task.as_mut().unwrap().deadline = Instant::now();
         game.advance_agent();
         assert_eq!(
             reply(&replies)["error"],
@@ -583,11 +583,11 @@ fn attack_by_id_ends_without_a_click_on_death_or_without_ticks() {
         );
         // A screen opened over the world before the tick: the click would land on it.
         let (_, replies) = command(game, "attack 31");
-        game.side.screen = Screen::GameModeSwitcher;
+        game.client.screen = Screen::GameModeSwitcher;
         tick(game);
         let error = reply(&replies)["error"].as_str().unwrap().to_owned();
         assert!(error.ends_with("screen is open; close it first (close, or click-button)"));
-        game.side.screen = Screen::Playing;
+        game.client.screen = Screen::Playing;
         tick(game);
         assert_eq!(clicks_sent(game, server), Vec::<String>::new());
     });
@@ -607,7 +607,7 @@ fn attack_by_id_follows_the_listener_decision() {
             reply["error"],
             json!("that entity is out of reach or hidden; get closer")
         );
-        assert!(game.side.agent.task.is_none());
+        assert!(game.client.agent.task.is_none());
         tick(game);
         assert_eq!(
             clicks_sent(game, server),

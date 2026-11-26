@@ -64,7 +64,7 @@ fn liquid_part_predicts_the_same_target_on_connected_client() {
         with_client_game(|game| {
             let (client, _server) = sunrise_protocol::connection::Pipe::pair();
             game.connect_local(client, "LiquidPrediction").unwrap();
-            let remote = game.side.remote.as_mut().unwrap();
+            let remote = game.client.remote.as_mut().unwrap();
             remote.logged_in = true;
             remote.entity_id = 91;
             remote.profile = 42;

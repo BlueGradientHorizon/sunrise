@@ -48,9 +48,9 @@ impl Hooks for PaintPhases {
 }
 
 fn chest(game: &mut sunrise_client_gameplay::game::ClientGame<'_>) -> (u32, u32) {
-    game.side.title.0 = None;
-    game.side.screen = Screen::Inventory;
-    game.side.chat_ui.hide_gui = true;
+    game.client.title.0 = None;
+    game.client.screen = Screen::Inventory;
+    game.client.chat_ui.hide_gui = true;
     game.container = Some(POS);
     game.craft_size = 2;
     game.level.recipe_book.open = [false; 4];
@@ -73,7 +73,7 @@ fn chest(game: &mut sunrise_client_gameplay::game::ClientGame<'_>) -> (u32, u32)
     let (x, y) = game.inventory_origin(&batch);
     let (sx, sy) = game.slot_position(300);
     assert_eq!((sx, sy), (8.0, 18.0));
-    game.side.cursor = (x + sx + 8.0, y + sy + 8.0);
+    game.client.cursor = (x + sx + 8.0, y + sy + 8.0);
     ((x + sx) as u32, (y + sy) as u32)
 }
 
@@ -81,7 +81,7 @@ fn frame(game: &mut sunrise_client_gameplay::game::ClientGame<'_>) -> Vec<u8> {
     // Exercise the actual Game dispatch, including its Pre/Post orchestration,
     // rather than manufacturing an equivalent sequence of render operations.
     let batch = game.hud_layers(SIZE);
-    render_hud(&batch, &game.side.gui.atlas, SIZE).expect("software Vulkan screen draw")
+    render_hud(&batch, &game.client.gui.atlas, SIZE).expect("software Vulkan screen draw")
 }
 
 fn pixel(pixels: &[u8], x: u32, y: u32) -> [u8; 4] {
@@ -93,7 +93,7 @@ fn pixel(pixels: &[u8], x: u32, y: u32) -> [u8; 4] {
 fn overlay_reference(game: &mut sunrise_client_gameplay::game::ClientGame<'_>, carried: bool) -> Vec<u8> {
     let mut batch = HudBatch::scratch(SIZE);
     batch.fill(
-        &game.side.gui.atlas,
+        &game.client.gui.atlas,
         0.0,
         0.0,
         320.0,
@@ -105,7 +105,7 @@ fn overlay_reference(game: &mut sunrise_client_gameplay::game::ClientGame<'_>, c
     } else {
         game.draw_slot_tooltip(&mut batch);
     }
-    render_hud(&batch, &game.side.gui.atlas, SIZE).expect("software Vulkan overlay reference")
+    render_hud(&batch, &game.client.gui.atlas, SIZE).expect("software Vulkan overlay reference")
 }
 
 #[test]

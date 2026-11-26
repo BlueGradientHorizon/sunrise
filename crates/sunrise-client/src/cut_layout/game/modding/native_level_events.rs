@@ -184,17 +184,17 @@ mod tests {
             let level = game.level(game.dim.id()).unwrap();
             let stale = LevelRef::new(WorldEpoch::new(level.epoch().get() + 1), level.dimension());
             game.start_audio_capture();
-            game.side.lan_global_events.clear();
-            game.side.lan_events.clear();
+            game.server.lan_global_events.clear();
+            game.server.lan_events.clear();
 
             // An End portal opening: one packet with the global flag for every player.
             assert!(level.global_level_event(game, 1038, [10, 64, -3], 0));
             assert_eq!(
-                game.side.lan_global_events,
+                game.server.lan_global_events,
                 [("minecraft:overworld", 1038, [10, 64, -3], 0)]
             );
             assert!(
-                game.side.lan_events.is_empty(),
+                game.server.lan_events.is_empty(),
                 "no plain event while the rule is on"
             );
             assert!(
@@ -203,18 +203,18 @@ mod tests {
             );
             assert!(!stale.global_level_event(game, 1038, [0, 64, 0], 0));
             assert_eq!(
-                game.side.lan_global_events.len(),
+                game.server.lan_global_events.len(),
                 1,
                 "refusals send nothing"
             );
 
             // ServerLevel.globalLevelEvent without global_sound_events: levelEvent(null, ...).
             assert!(game.ui.rules.set("global_sound_events", Value::Bool(false)));
-            game.side.lan_global_events.clear();
+            game.server.lan_global_events.clear();
             assert!(level.global_level_event(game, 1038, [10, 64, -3], 0));
-            assert!(game.side.lan_global_events.is_empty());
+            assert!(game.server.lan_global_events.is_empty());
             assert_eq!(
-                game.side.lan_events,
+                game.server.lan_events,
                 [sunrise_gameplay_common::game::QueuedLevelEvent {
                     kind: 1038,
                     pos: [10, 64, -3],
@@ -263,8 +263,8 @@ mod tests {
                 seed: 0,
                 max_players: 2,
                 integrated: true,
-                levels: game.side.level_shapes,
-                level_seeds: game.side.levels.0.runtime.seeds(),
+                levels: game.server.level_shapes,
+                level_seeds: game.server.levels.0.runtime.seeds(),
             };
             let settings = LanSettings {
                 port: 0,
@@ -293,7 +293,7 @@ mod tests {
                 );
                 guest.placed = true;
                 guest.dimension = game.dim.id().to_owned();
-                game.side.lan.as_mut().unwrap().hub.guests.push(guest);
+                game.server.lan.as_mut().unwrap().hub.guests.push(guest);
                 rx
             };
             let near = guest_at(12, [30.5, 64.0, -3.5]);

@@ -21,10 +21,10 @@ fn block_crumble_draws_the_block_it_names() {
             .world
             .chunks
             .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-        client.side.particles.0.created_requests = None;
-        client.side.particles.0.clear();
+        client.client.particles.0.created_requests = None;
+        client.client.particles.0.clear();
         client
-            .side
+            .client
             .particles
             .0
             .create(&options, [0.5, 100.5, 0.5], [0.0; 3]);
@@ -35,8 +35,8 @@ fn block_crumble_draws_the_block_it_names() {
             player: None,
             cached_chunk: std::cell::Cell::new(None),
         };
-        client.side.particles.0.tick(&level);
-        assert_eq!(client.side.particles.0.len(), 1, "the crumble is drawn");
+        client.client.particles.0.tick(&level);
+        assert_eq!(client.client.particles.0.len(), 1, "the crumble is drawn");
     });
 }
 
@@ -46,9 +46,9 @@ pub(crate) fn drawn(
     command: &str,
 ) -> ParticleOptions {
     use sunrise_sim::lan::server_effects::ServerParticleData;
-    game.side.pending_particles.clear();
+    game.server.pending_particles.clear();
     assert!(game.run_command(command), "{command}");
-    let mut made = std::mem::take(&mut game.side.pending_particles);
+    let mut made = std::mem::take(&mut game.server.pending_particles);
     assert_eq!(made.len(), 1, "{command}");
     let queued = made.remove(0);
     if let ServerParticleData::Mod { name, options } = &queued.particle.data {

@@ -21,9 +21,9 @@ fn game(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
 
 /// Runs `command`: whether it succeeded and what it said first.
 fn run(game: &mut sunrise_gameplay::game::ServerGame<'_>, command: &str) -> (bool, Option<String>) {
-    game.side.chat_capture = Some(Vec::new());
+    game.server.chat_capture = Some(Vec::new());
     let ok = game.run_command(command);
-    let said = game.side.chat_capture.take().unwrap_or_default();
+    let said = game.server.chat_capture.take().unwrap_or_default();
     (ok, said.first().map(sunrise_game_data::text::Text::plain))
 }
 
@@ -172,7 +172,7 @@ fn the_merge_keeps_the_live_orb_and_its_portal_process() {
             time: 5,
             inside: true,
         };
-        game.side.portals.entities.insert(
+        game.server.portals.entities.insert(
             id,
             PortalState {
                 cooldown: 300,
@@ -186,7 +186,7 @@ fn the_merge_keeps_the_live_orb_and_its_portal_process() {
             )
             .0
         );
-        let state = game.side.portals.entities.get(&id).unwrap();
+        let state = game.server.portals.entities.get(&id).unwrap();
         let kept = state.process.map(|p| (p.entry, p.time, p.inside));
         assert_eq!(
             (state.cooldown, kept),
@@ -198,7 +198,7 @@ fn the_merge_keeps_the_live_orb_and_its_portal_process() {
             "{Pos:[8.5d,100d,8.5d],Value:1s,Age:0s,Health:5s,Count:1}",
             2,
         );
-        assert!(!game.side.portals.entities.contains_key(&other));
+        assert!(!game.server.portals.entities.contains_key(&other));
         assert!(
             run(
                 game,
@@ -206,7 +206,7 @@ fn the_merge_keeps_the_live_orb_and_its_portal_process() {
             )
             .0
         );
-        let state = game.side.portals.entities.get(&other).unwrap();
+        let state = game.server.portals.entities.get(&other).unwrap();
         assert_eq!((state.cooldown, state.process.is_none()), (120, true));
         assert_eq!(game.orbs.len(), 2);
     });

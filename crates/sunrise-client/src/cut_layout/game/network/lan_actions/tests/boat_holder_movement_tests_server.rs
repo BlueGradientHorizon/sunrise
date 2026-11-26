@@ -82,9 +82,9 @@ pub(crate) fn scene<'a>(
     guest.load_timeout = 0;
     guest.dimension = "minecraft:overworld".into();
     guest.inventory[0] = Some(ItemStack::new("minecraft:lead", 1));
-    g.side.lan.as_mut().unwrap().hub.guests.push(guest);
+    g.server.lan.as_mut().unwrap().hub.guests.push(guest);
     g.sync_tick_chunks();
-    g.side.ticked_entities_through = g.side.next_entity;
+    g.server.ticked_entities_through = g.server.next_entity;
     (g, rx)
 }
 

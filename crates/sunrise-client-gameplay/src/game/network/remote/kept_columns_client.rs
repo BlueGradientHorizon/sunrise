@@ -5,7 +5,7 @@ use sunrise_level::{chunk_map::ClientChunkRange, fast_hash::FxHashSet};
 #[cfg(feature = "client")]
 impl crate::game::ClientGame<'_> {
     /// Every column goes with the client level, including hidden ring slots.
-    pub(in crate::game) fn forget_all_remote_columns(&mut self) -> Vec<Column> {
+    pub fn forget_all_remote_columns(&mut self) -> Vec<Column> {
         self.clear_remote_light();
         let mut gone = self.common.world.chunks.resident_keys().collect();
         self.forget_remote_columns(&mut gone, false)
@@ -16,7 +16,7 @@ impl crate::game::ClientGame<'_> {
     /// far terrain keeps their last state (`server_terrain`). Returns the
     /// positions it freed, in `gone`'s order: only those still resident,
     /// so a later forget of the same positions frees nothing.
-    pub(in crate::game) fn forget_remote_columns(
+    pub fn forget_remote_columns(
         &mut self,
         gone: &mut FxHashSet<Column>,
         keep_terrain: bool,

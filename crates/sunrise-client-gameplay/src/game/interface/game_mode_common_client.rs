@@ -4,7 +4,7 @@ use sunrise_items::items::ItemStack;
 
 impl ClientGame<'_> {
     /// `MultiPlayerGameMode.canHurtPlayer()` and `hasExperience()` (`localPlayerMode.isSurvival()`).
-    pub(in crate::game) fn can_hurt_player(&self) -> bool {
+    pub fn can_hurt_player(&self) -> bool {
         matches!(self.mode, GameMode::Survival | GameMode::Adventure)
     }
     /// `ItemStack.canPlaceOnBlockInAdventureMode` of the stack a use names.

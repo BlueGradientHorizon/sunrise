@@ -66,15 +66,15 @@ fn run(mode: Option<u8>) -> (Vec<(String, u32)>, usize, i32, u32, i64, bool) {
     mod_platform::testing::with_mods(Default::default(), || {
         sunrise_gameplay::game::native_entity_refs::tests::with_game(|game| {
             let scratch = tempfile::tempdir().unwrap();
-            game.side.world_root = scratch.path().into();
-            game.side.save.0 = Arc::new(sunrise_sim::save::SaveDir::new(
+            game.server.world_root = scratch.path().into();
+            game.server.save.0 = Arc::new(sunrise_sim::save::SaveDir::new(
                 scratch.path().join("save"),
                 sunrise_sim::save::LevelShape::OVERWORLD,
                 Some(Default::default()),
             ));
             game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 0.5)).unwrap());
-            game.side.lan_acting_uuid = Some(7);
-            game.side.next_entity = 1000;
+            game.server.lan_acting_uuid = Some(7);
+            game.server.next_entity = 1000;
             game.level.seed = 12345;
             *game.world.random = LegacyRandom::new(12345);
             let advancement = scratch.path().join("test/advancement/catch.json");
@@ -92,7 +92,7 @@ fn run(mode: Option<u8>) -> (Vec<(String, u32)>, usize, i32, u32, i64, bool) {
                 game.res.item_defaults(),
             )
             .unwrap();
-            game.side.server_loot.0.set(Some(Arc::new(loot)));
+            game.server.server_loot.0.set(Some(Arc::new(loot)));
             let mut hook = Hook {
                 uuid: [0; 4],
                 attachment_lifetime: Default::default(),

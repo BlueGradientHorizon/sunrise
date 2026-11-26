@@ -6,9 +6,9 @@ pub(crate) fn run(
     game: &mut sunrise_gameplay::game::ServerGame<'_>,
     line: &str,
 ) -> String {
-    game.side.chat_capture = Some(Vec::new());
+    game.server.chat_capture = Some(Vec::new());
     assert!(game.run_command(&format!("time {line}")), "/time {line}");
-    let lines = game.side.chat_capture.take().unwrap();
+    let lines = game.server.chat_capture.take().unwrap();
     lines.last().expect("feedback").plain()
 }
 
@@ -19,7 +19,7 @@ fn time_moves_the_clock_the_end_runs_on() {
     let mut game = game(&mut resources);
     let world = std::env::temp_dir().join(format!("sunrise-end-clock-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&world);
-    game.side.world_root = world.clone();
+    game.server.world_root = world.clone();
     // `DimensionTypes`: the End's dimension type's default clock.
     assert_eq!(
         game.dimension_type().default_clock.as_deref(),

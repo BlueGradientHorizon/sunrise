@@ -6,7 +6,7 @@ impl crate::game::ServerGame<'_> {
     /// `LivingEntity.knockback` on the player: pushed `power` away from the
     /// direction (`xd`, `zd`), less its knockback resistance, and up only from
     /// the ground.
-    pub(in crate::game) fn knock_back_player(
+    pub fn knock_back_player(
         &mut self,
         power: f64,
         xd: f64,
@@ -19,7 +19,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// Full living knockback entry. Effect pushes enter here directly.
-    pub(in crate::game) fn knock_back_player_full(
+    pub fn knock_back_player_full(
         &mut self,
         power: f64,
         xd: f64,

@@ -74,7 +74,7 @@ fn integrated_stop_finishes_after_an_unencodable_record() {
     .into();
     with_mods(mods, || {
         with_game(|game| {
-            game.side.world_root = root.path().to_path_buf();
+            game.server.world_root = root.path().to_path_buf();
             let open = || {
                 SaveDir::new(
                     root.path().to_path_buf(),
@@ -82,9 +82,9 @@ fn integrated_stop_finishes_after_an_unencodable_record() {
                     Some(Default::default()),
                 )
             };
-            game.side.save.0 = Arc::new(open());
-            game.side.session_lock.0 = Some(SessionLock::acquire(root.path()).unwrap());
-            game.side.world_adopted = true;
+            game.server.save.0 = Arc::new(open());
+            game.server.session_lock.0 = Some(SessionLock::acquire(root.path()).unwrap());
+            game.server.world_adopted = true;
             game.native_lifecycle
                 .begin_open(mod_api::Authority::IntegratedServer);
             game.native_lifecycle.world_open_ready().unwrap();
@@ -97,14 +97,14 @@ fn integrated_stop_finishes_after_an_unencodable_record() {
             let neighbour = (3, -3);
             let deleted = (4, -3);
             let entity = |marker| Tag::compound([("marker", Tag::Int(marker))]);
-            game.side
+            game.server
                 .save
                 .0
                 .save_entities(vec![(slot, vec![entity(1)]), (deleted, vec![entity(3)])])
                 .unwrap();
             let invalid = (0..=DISK_WRITE_NESTING_GUARD)
                 .fold(Tag::Int(0), |nested, _| Tag::List(vec![nested]));
-            game.side
+            game.server
                 .save
                 .0
                 .save_entities_later(vec![
@@ -120,7 +120,7 @@ fn integrated_stop_finishes_after_an_unencodable_record() {
                 Ok(())
             })
             .unwrap();
-            assert!(game.side.session_lock.0.is_none());
+            assert!(game.server.session_lock.0.is_none());
             let disk = open();
             assert_eq!(disk.load_entities(slot.0, slot.1).unwrap(), [entity(1)]);
             assert_eq!(
@@ -132,8 +132,8 @@ fn integrated_stop_finishes_after_an_unencodable_record() {
                 sunrise_sim::save::Level::read(root.path()).unwrap().name,
                 "saved on exit after record failure"
             );
-            game.side.save.0.flush().unwrap();
-            assert_eq!(game.side.save.0.record_save_failures(), 1);
+            game.server.save.0.flush().unwrap();
+            assert_eq!(game.server.save.0.record_save_failures(), 1);
             assert_eq!(
                 *events.lock().unwrap(),
                 ["level saved", "world saved", "closed"]
@@ -155,23 +155,23 @@ fn integrated_stop_propagates_metadata_errors_even_after_a_record_failure() {
         with_game(|game| {
             for mixed in [false, true] {
                 let root = tempfile::tempdir().unwrap();
-                game.side.world_root = root.path().to_path_buf();
-                game.side.save.0 = Arc::new(SaveDir::new(
-                    game.side.world_root.clone(),
+                game.server.world_root = root.path().to_path_buf();
+                game.server.save.0 = Arc::new(SaveDir::new(
+                    game.server.world_root.clone(),
                     LevelShape::OVERWORLD,
                     Some(Default::default()),
                 ));
-                game.side.session_lock.0 = Some(SessionLock::acquire(root.path()).unwrap());
-                game.side.world_adopted = true;
+                game.server.session_lock.0 = Some(SessionLock::acquire(root.path()).unwrap());
+                game.server.world_adopted = true;
                 if mixed {
                     let invalid = (0..=DISK_WRITE_NESTING_GUARD)
                         .fold(Tag::Int(0), |nested, _| Tag::List(vec![nested]));
-                    game.side
+                    game.server
                         .save
                         .0
                         .save_entities(vec![((2, 0), vec![invalid])])
                         .unwrap();
-                    assert_eq!(game.side.save.0.record_save_failures(), 1);
+                    assert_eq!(game.server.save.0.record_save_failures(), 1);
                 }
                 let blocked = root.path().join("level.dat_new");
                 std::fs::create_dir(&blocked).unwrap();
@@ -186,7 +186,7 @@ fn integrated_stop_propagates_metadata_errors_even_after_a_record_failure() {
                     error.downcast_ref::<std::io::Error>().unwrap().kind(),
                     expected.kind()
                 );
-                assert!(game.side.session_lock.0.is_none());
+                assert!(game.server.session_lock.0.is_none());
             }
         });
     });
@@ -312,8 +312,8 @@ fn every_started_server_stops_and_saves_even_when_startup_or_ticks_fail() {
                             std::process::id()
                         ));
                         std::fs::create_dir_all(&root).unwrap();
-                        game.side.world_root = root.clone();
-                        game.side.save.0 = Arc::new(sunrise_sim::save::SaveDir::new(
+                        game.server.world_root = root.clone();
+                        game.server.save.0 = Arc::new(sunrise_sim::save::SaveDir::new(
                             root.clone(),
                             sunrise_sim::save::LevelShape::OVERWORLD,
                             Some(Default::default()),
@@ -322,12 +322,12 @@ fn every_started_server_stops_and_saves_even_when_startup_or_ticks_fail() {
                         let adopted =
                             !matches!(case, "unopened" | "before-start" | "locked-unadopted");
                         if adopted || case == "locked-unadopted" {
-                            game.side.session_lock.0 =
+                            game.server.session_lock.0 =
                                 Some(sunrise_sim::save::SessionLock::acquire(&root).unwrap());
                         }
                         // The lock is held while tags are readable, before the prepared
                         // level replaces the placeholder. Only adoption may save.
-                        game.side.world_adopted = adopted;
+                        game.server.world_adopted = adopted;
                         if matches!(case, "unopened" | "locked-unadopted") {
                             // A failed open must not overwrite an existing, unreadable save.
                             std::fs::write(root.join("level.dat"), b"unadopted save").unwrap();
@@ -348,7 +348,7 @@ fn every_started_server_stops_and_saves_even_when_startup_or_ticks_fail() {
                                 .default_state("minecraft:stone")
                                 .unwrap();
                             game.world.set(1, 64, 1, stone).unwrap();
-                            assert!(game.side.save.0.raw_chunk(0, 0).is_none());
+                            assert!(game.server.save.0.raw_chunk(0, 0).is_none());
                             let serving_stopped = if dedicated {
                                 Box::new(|| true) as Box<dyn Fn() -> bool + Send + Sync>
                             } else {
@@ -360,12 +360,12 @@ fn every_started_server_stops_and_saves_even_when_startup_or_ticks_fail() {
                                 ))
                             };
                             let lan =
-                                Arc::downgrade(&game.side.lan.as_ref().unwrap().hub.lan.shared);
+                                Arc::downgrade(&game.server.lan.as_ref().unwrap().hub.lan.shared);
                             *stopped_probe.lock().unwrap() = Some(StoppedProbe {
                                 serving_stopped,
                                 lan,
                                 root: root.clone(),
-                                save: game.side.save.0.clone(),
+                                save: game.server.save.0.clone(),
                             });
                             game.native_configs_server_start(&root, dedicated);
                         }
@@ -443,16 +443,16 @@ fn every_started_server_stops_and_saves_even_when_startup_or_ticks_fail() {
                         };
                         assert_eq!(*log.lock().unwrap(), expected, "{dedicated} {case}");
                         assert!(
-                            game.side.session_lock.0.is_none(),
+                            game.server.session_lock.0.is_none(),
                             "storage released after {case}"
                         );
-                        assert!(!game.side.world_adopted, "adoption cleared after {case}");
-                        assert!(game.side.serving.is_none(), "serving retired after {case}");
-                        assert!(game.side.lan.is_none(), "LAN dropped after {case}");
+                        assert!(!game.server.world_adopted, "adoption cleared after {case}");
+                        assert!(game.server.serving.is_none(), "serving retired after {case}");
+                        assert!(game.server.lan.is_none(), "LAN dropped after {case}");
                         if config_panic {
                             let registry = &game.pack.assets.registry;
                             let chunk = game
-                                .side
+                                .server
                                 .save
                                 .0
                                 .load(0, 0, registry, world_biomes!(game))

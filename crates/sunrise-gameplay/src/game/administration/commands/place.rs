@@ -42,7 +42,7 @@ pub fn read_template_data(
 }
 
 impl crate::game::ServerGame<'_> {
-    pub(in crate::game) fn state_transforms(&self) -> Option<&'static StateTransforms> {
+    pub fn state_transforms(&self) -> Option<&'static StateTransforms> {
         static TRANSFORMS: OnceLock<Option<StateTransforms>> = OnceLock::new();
         TRANSFORMS
             .get_or_init(|| {

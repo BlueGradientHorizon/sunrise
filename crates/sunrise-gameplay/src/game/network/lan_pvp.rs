@@ -315,7 +315,7 @@ impl crate::game::ServerGame<'_> {
     /// `attacker` (connections), or by the player in place when none: a player's projectile or
     /// trident, which the victim's hurt refuses when it answers false. A guest no longer here
     /// is entity -1, on no team.
-    pub(in crate::game::server_side) fn guest_may_harm(
+    pub fn guest_may_harm(
         &self,
         attacker: Option<u32>,
         victim: u32,
@@ -340,7 +340,7 @@ impl crate::game::ServerGame<'_> {
     /// hurt refuses it when the `pvp` game rule or their teams forbid it
     /// (`ServerPlayer.canHarmPlayer`; `AbstractArrow.onHitEntity` then turns
     /// the arrow back).
-    pub(in crate::game) fn projectile_hits_player(
+    pub fn projectile_hits_player(
         &mut self,
         p: &Projectile,
         hit: Hit,
@@ -418,7 +418,7 @@ impl crate::game::ServerGame<'_> {
 
     /// The hit landing on the victim with its extra knockback, then the
     /// attacker's attack sound. Whether the victim was hurt.
-    pub(in crate::game) fn pvp_land(&mut self, victim: Victim, s: &Strike) -> bool {
+    pub fn pvp_land(&mut self, victim: Victim, s: &Strike) -> bool {
         let Some(host) = self.server.lan.as_ref() else {
             return false;
         };
@@ -709,7 +709,7 @@ impl crate::game::ServerGame<'_> {
     /// closer than 3 blocks (`distanceToSqr < 9`) and not an ally
     /// (`isAlliedTo`), is hurt (`ServerPlayer.canHarmPlayer`: the `pvp` rule)
     /// and pushed 0.4 along the attacker's yaw.
-    pub(in crate::game::server_side) fn sweep_players(&mut self, sweep: &Sweep) {
+    pub fn sweep_players(&mut self, sweep: &Sweep) {
         let Some(host) = self.server.lan.as_ref() else {
             return;
         };

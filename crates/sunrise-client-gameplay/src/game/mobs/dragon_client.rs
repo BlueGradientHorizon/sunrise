@@ -76,7 +76,7 @@ pub(in crate::game) fn breath_puffs(
 
 impl ClientGame<'_> {
     /// The boss bars' draws on a `w` x `h` GUI.
-    pub(in crate::game) fn boss_bar_draws(&self, w: i32, h: i32) -> Vec<hud_layout::GuiDraw> {
+    pub fn boss_bar_draws(&self, w: i32, h: i32) -> Vec<hud_layout::GuiDraw> {
         let now = sunrise_client::boss_overlay::now_millis();
         let bars = self.client.boss_overlay.bars(now);
         // NeoForge's `CustomizeGuiOverlayEvent.BossEventProgress`, asked per
@@ -706,7 +706,7 @@ impl ClientGame<'_> {
     /// `handleAddEntity` for `minecraft:ender_dragon`. Its constructor
     /// sets the full health and the hovering phase until the server's
     /// synched data says otherwise.
-    pub(in crate::game) fn spawn_remote_dragon(&mut self, id: i32, position: [f64; 3], yaw: f32) {
+    pub fn spawn_remote_dragon(&mut self, id: i32, position: [f64; 3], yaw: f32) {
         let at = Vec3::new(position[0], position[1], position[2]);
         let mut d = Dragon::new(at, yaw, i64::from(id));
         d.id = id as u32;
@@ -769,7 +769,7 @@ impl ClientGame<'_> {
 
     /// `handleRemoveEntities`, or a crystal removed: the healing beam
     /// keeps pointing at the same crystal.
-    pub(in crate::game) fn remove_remote_dragon(&mut self, id: i32) {
+    pub fn remove_remote_dragon(&mut self, id: i32) {
         if self.common.dragon.as_ref().is_some_and(|d| d.id as i32 == id) {
             self.client_discard_dragon();
             return;

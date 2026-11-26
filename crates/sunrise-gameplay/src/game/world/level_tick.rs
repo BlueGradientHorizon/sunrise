@@ -6,7 +6,7 @@ use super::*;
 impl crate::game::ServerGame<'_> {
     /// What the tick runs after the local player's own update: effects, the
     /// world's entities and blocks, and the network hub.
-    pub(in crate::game) fn tick_world(&mut self, running: bool) -> Result<()> {
+    pub fn tick_world(&mut self, running: bool) -> Result<()> {
         // Entities added since the last tick join the level before it ticks.
         span("mods_joins_flush", || self.native_joins_flush(false, 0));
         span("share_spawn_conditions", || self.share_spawn_conditions());
@@ -195,7 +195,7 @@ impl crate::game::ServerGame<'_> {
         Ok(())
     }
 
-    pub(in crate::game) fn tick_mobs(&mut self) -> Result<()> {
+    pub fn tick_mobs(&mut self) -> Result<()> {
         self.sync_mob_death_protection();
         self.tick_creatures()?;
         if !self.common.entity_attachments.is_empty() {

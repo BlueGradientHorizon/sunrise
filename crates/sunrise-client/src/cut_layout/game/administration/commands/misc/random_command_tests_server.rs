@@ -14,11 +14,11 @@ fn a_blocks_roll_names_the_block_and_the_console_says_server() {
     ));
     let roll = |game: &mut sunrise_gameplay::game::ServerGame<'_>,
                 source: sunrise_gameplay::game::commands::execute::Source| {
-        let outer = game.side.command_source.replace(source);
-        game.side.chat_capture = Some(Vec::new());
+        let outer = game.server.command_source.replace(source);
+        game.server.chat_capture = Some(Vec::new());
         assert!(game.run_command("random roll 1..2"));
-        game.side.command_source = outer;
-        let lines = game.side.chat_capture.take().unwrap();
+        game.server.command_source = outer;
+        let lines = game.server.chat_capture.take().unwrap();
         assert_eq!(lines.len(), 1, "{:?}", lines[0].plain());
         lines[0].plain()
     };

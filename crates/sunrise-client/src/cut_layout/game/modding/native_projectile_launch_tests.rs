@@ -154,19 +154,19 @@ fn owner_launch_reports_explicit_guest_to_launch_listeners() {
         sunrise_gameplay::game::native_guest_turn_tests::with_guests(|game| {
             let source = game.entity(12).unwrap();
             let owner = game.living(source).unwrap();
-            let previous_actor = game.side.lan_acting;
+            let previous_actor = game.server.lan_acting;
             let stack = ItemStack::new("minecraft:snowball", 1);
             let kind = Identifier::parse("minecraft:snowball").unwrap();
             let shot = game
                 .spawn_projectile_from_rotation(owner, &kind, &stack, 0.0, 1.5, 1.0)
                 .unwrap();
             assert_eq!(game.projectile_owner(shot), Some(source));
-            assert_eq!(game.side.lan_acting, previous_actor);
+            assert_eq!(game.server.lan_acting, previous_actor);
             assert_eq!(
                 *observed.lock().unwrap(),
                 [(Some(12), "guest12".to_owned(), Some(12))]
             );
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()

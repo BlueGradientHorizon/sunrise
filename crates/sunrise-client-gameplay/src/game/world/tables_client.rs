@@ -75,7 +75,7 @@ impl crate::game::ClientGame<'_> {
                 .unwrap_or(&self.stations().recipe_index)
         }
     }
-    pub(in crate::game) fn falling_block_face_sprite(
+    pub fn falling_block_face_sprite(
         &self,
         state: BlockStateId,
     ) -> Option<(String, u32)> {
@@ -118,7 +118,7 @@ impl crate::game::ClientGame<'_> {
     pub(in crate::game) fn client_recipes(&self) -> &Recipes {
         self.synced_recipes().unwrap_or_else(|| self.common.res.recipes())
     }
-    pub(in crate::game) fn worker_context(&self) -> Arc<WorkerContext> {
+    pub fn worker_context(&self) -> Arc<WorkerContext> {
         self.client
             .client_pack
             .context_with(self.mesh_biomes().clone())

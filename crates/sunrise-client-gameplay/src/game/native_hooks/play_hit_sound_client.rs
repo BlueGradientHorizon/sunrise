@@ -3,7 +3,7 @@ use sunrise_client::audio::Audio;
 use sunrise_core::{geometry::Direction, position::BlockPos};
 
 impl crate::game::ClientGame<'_> {
-    pub(in crate::game) fn play_mining_hit_sound(
+    pub fn play_mining_hit_sound(
         &mut self,
         state: BlockStateId,
         pos: [i32; 3],

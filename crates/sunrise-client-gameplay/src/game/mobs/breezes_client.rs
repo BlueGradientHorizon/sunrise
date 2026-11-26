@@ -4,7 +4,7 @@ use sunrise_level::particle_options::{ParticleOptions, ParticleType};
 use sunrise_sim::mobs::{Species, breeze};
 
 impl ClientGame<'_> {
-    pub(in crate::game) fn tick_breeze_effects(&mut self) {
+    pub fn tick_breeze_effects(&mut self) {
         let Some(camera) = self.common.player.as_ref().map(|p| p.position) else {
             return;
         };

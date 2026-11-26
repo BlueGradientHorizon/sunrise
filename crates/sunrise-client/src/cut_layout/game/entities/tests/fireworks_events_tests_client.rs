@@ -51,7 +51,7 @@ fn a_falling_rocket_hits_the_ground_and_one_in_water_splashes() {
             [("minecraft:splash", 20), ("minecraft:hit_ground", 6)]
         );
         assert_eq!(
-            game.side
+            game.server
                 .pending_sounds
                 .iter()
                 .filter(|s| s.event == "minecraft:entity.generic.splash")
@@ -80,7 +80,7 @@ fn a_silent_rocket_bursts_without_blast_or_twinkle() {
         game.rockets.push(launching);
         game.start_audio_capture();
         game.tick_rockets();
-        let heard = std::mem::take(&mut game.side.pending_sounds);
+        let heard = std::mem::take(&mut game.server.pending_sounds);
         game.stop_audio_capture();
         assert!(
             heard

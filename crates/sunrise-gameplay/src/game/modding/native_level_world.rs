@@ -74,7 +74,7 @@ impl crate::game::ServerGame<'_> {
     /// `/gamerule <rule> <value>` from a mod: the world's rule changes, `game_rule_changed`
     /// fires with no actor and the clients get the rules. The rule already at `value` is true
     /// with nothing fired; an unknown rule, a value of the other kind or out of range is false.
-    pub(in crate::game) fn level_set_game_rule(
+    pub fn level_set_game_rule(
         &mut self,
         level: LevelRef,
         rule: &str,
@@ -98,7 +98,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// `/time set <time>` in the level a handle names, on its default clock: `time_skip`
     /// (cause `mod`) may keep the old time; the clock's partial tick restarts.
-    pub(in crate::game) fn level_set_clock_time(&mut self, level: LevelRef, time: i64) -> bool {
+    pub fn level_set_clock_time(&mut self, level: LevelRef, time: i64) -> bool {
         if time < 0 || self.native_level_world(level).is_none() {
             return false;
         }
@@ -204,7 +204,7 @@ impl crate::game::ServerGame<'_> {
     /// it rains there and `pos` is under open sky in a biome that rains. None for a stale
     /// handle, on a client, and where `pos` is not loaded or outside the world's height; a
     /// read never loads a chunk.
-    pub(in crate::game) fn level_is_raining_at(
+    pub fn level_is_raining_at(
         &self,
         level: LevelRef,
         pos: [i32; 3],
@@ -225,7 +225,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// `LevelReader.enabledFeatures` of the level a handle names. Every level of a world shares
     /// the world's flags. None for a stale handle and on a client.
-    pub(in crate::game) fn level_enabled_features(&self, level: LevelRef) -> Option<FeatureFlags> {
+    pub fn level_enabled_features(&self, level: LevelRef) -> Option<FeatureFlags> {
         self.native_level_world(level)?;
         Some(FeatureFlags::new(self.enabled_feature_ids().clone()))
     }

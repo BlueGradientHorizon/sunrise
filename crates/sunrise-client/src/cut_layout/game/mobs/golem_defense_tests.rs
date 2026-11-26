@@ -97,7 +97,7 @@ fn game<'a>(
     )
     .unwrap();
     // Reserve the manually installed guest in the shared runtime ID allocator.
-    game.side.next_entity = game.side.next_entity.max(2);
+    game.server.next_entity = game.server.next_entity.max(2);
     let (tx, _rx) = mpsc::channel();
     let mut guest = Guest::new(
         Joined {
@@ -120,15 +120,15 @@ fn game<'a>(
     guest.loaded = true;
     // Its view, as the client sent it: straight down.
     guest.pitch = 90.0;
-    game.side.lan.as_mut().unwrap().hub.guests.push(guest);
+    game.server.lan.as_mut().unwrap().hub.guests.push(guest);
     game
 }
 
 /// Runs `command`: whether it succeeded and what the issuer was told.
 fn run(game: &mut sunrise_gameplay::game::ServerGame<'_>, command: &str) -> (bool, Vec<String>) {
-    game.side.chat_capture = Some(Vec::new());
+    game.server.chat_capture = Some(Vec::new());
     let ok = game.run_command(command);
-    let said = game.side.chat_capture.take().unwrap_or_default();
+    let said = game.server.chat_capture.take().unwrap_or_default();
     (
         ok,
         said.iter()
@@ -173,7 +173,7 @@ fn targets_guest(game: &mut sunrise_gameplay::game::ServerGame<'_>, ticks: usize
         .id;
     let golem = game.mobs.iter().find(|m| m.id == id).unwrap();
     golem.ai.target == Some(sunrise_sim::mobs::Who::Player)
-        && game.side.lan.as_ref().unwrap().mob_players.get(&id) == Some(&2)
+        && game.server.lan.as_ref().unwrap().mob_players.get(&id) == Some(&2)
 }
 
 #[test]
@@ -261,7 +261,7 @@ fn control_a_hated_host_does_not_turn_the_golem_on_the_selected_guest() {
     let (golem_id, target) = golem_of(&game);
     assert_eq!(target, Some(sunrise_sim::mobs::Who::Player));
     assert_ne!(
-        game.side.lan.as_ref().unwrap().mob_players.get(&golem_id),
+        game.server.lan.as_ref().unwrap().mob_players.get(&golem_id),
         Some(&2),
         "the target is the host, not the guest"
     );

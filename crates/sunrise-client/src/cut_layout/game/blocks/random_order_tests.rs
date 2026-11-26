@@ -14,8 +14,8 @@ fn game_loading<'a>(
     order: &[(i32, i32)],
 ) -> sunrise_gameplay::game::ServerGame<'a> {
     let mut game = server_game(resources);
-    game.side.settings.simulation_distance = 5;
-    game.side.settings.render_distance = 8;
+    game.server.settings.simulation_distance = 5;
+    game.server.settings.render_distance = 8;
     game.player = Some(
         sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::new(8.5, 65.0, 8.5)).unwrap(),
     );

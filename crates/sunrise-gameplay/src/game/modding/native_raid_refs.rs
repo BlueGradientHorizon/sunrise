@@ -21,7 +21,7 @@ impl crate::game::ServerGame<'_> {
             Some((parked.raiding.raids(level.dimension_id())?, &parked.mobs))
         }
     }
-    fn native_level_raids_mut(&mut self, level: LevelRef) -> Option<&mut Raids> {
+    pub fn native_level_raids_mut(&mut self, level: LevelRef) -> Option<&mut Raids> {
         self.native_level_world(level)?;
         if level.dimension() == self.common.dim.key() {
             self.server.raiding.0.raids_mut(level.dimension_id())
@@ -48,21 +48,21 @@ impl crate::game::ServerGame<'_> {
 
     /// `Raids.get(id)`: the raid saved under `id` in the requested level, if
     /// `Raids` still holds it (a stopped raid goes at its next tick).
-    pub(in crate::game) fn level_raid(&self, level: LevelRef, id: i32) -> Option<RaidRef> {
+    pub fn level_raid(&self, level: LevelRef, id: i32) -> Option<RaidRef> {
         let raid = RaidRef::new(level, id);
         self.native_raid_data(raid).map(|_| raid)
     }
 
     /// `ServerLevel.getRaidAt(pos)`: the closest active raid whose centre is
     /// less than 96 blocks away (`Raids.getNearbyRaid`, 9216 squared).
-    pub(in crate::game) fn level_raid_at(&self, level: LevelRef, pos: [i32; 3]) -> Option<RaidRef> {
+    pub fn level_raid_at(&self, level: LevelRef, pos: [i32; 3]) -> Option<RaidRef> {
         let (id, _) = self.native_level_raid_collections(level)?.0.nearby(pos)?;
         Some(RaidRef::new(level, id))
     }
 
     /// Every raid `Raids` holds, in its iteration order, stopped ones
     /// included until their next tick. None for a closed or stale level.
-    pub(in crate::game) fn level_raids(&self, level: LevelRef) -> Option<Vec<RaidRef>> {
+    pub fn level_raids(&self, level: LevelRef) -> Option<Vec<RaidRef>> {
         Some(
             self.native_level_raid_collections(level)?
                 .0
@@ -75,7 +75,7 @@ impl crate::game::ServerGame<'_> {
 
     /// `Raider.getCurrentRaid`: the raid a raider belongs to, even a stopped
     /// one. None for a mob that is no raider or in no raid.
-    pub(in crate::game) fn mob_raid(&self, mob: MobRef) -> Option<RaidRef> {
+    pub fn mob_raid(&self, mob: MobRef) -> Option<RaidRef> {
         let Target::Mob(id) = self.native_entity_target(mob.entity())? else {
             return None;
         };
@@ -86,53 +86,53 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// `Raid.getCenter`.
-    pub(in crate::game) fn raid_center(&self, raid: RaidRef) -> Option<[i32; 3]> {
+    pub fn raid_center(&self, raid: RaidRef) -> Option<[i32; 3]> {
         Some(self.native_raid_data(raid)?.center)
     }
 
     /// `Raid.getRaidOmenLevel`: 0 to 5 in play, any value a mod set.
-    pub(in crate::game) fn raid_omen_level(&self, raid: RaidRef) -> Option<i32> {
+    pub fn raid_omen_level(&self, raid: RaidRef) -> Option<i32> {
         Some(self.native_raid_data(raid)?.omen_level)
     }
 
     /// `Raid.setRaidOmenLevel`: any value, as vanilla assigns it (only
     /// `absorbRaidOmen` clamps, to 0 to 5). The raid is saved with it.
-    pub(in crate::game) fn raid_set_omen_level(&mut self, raid: RaidRef, level: i32) -> bool {
+    pub fn raid_set_omen_level(&mut self, raid: RaidRef, level: i32) -> bool {
         self.native_level_raids_mut(raid.level())
             .and_then(|raids| raids.set_omen_level(raid.id(), level))
             .is_some()
     }
 
     /// `Raid.getGroupsSpawned`: the waves spawned so far.
-    pub(in crate::game) fn raid_groups_spawned(&self, raid: RaidRef) -> Option<i32> {
+    pub fn raid_groups_spawned(&self, raid: RaidRef) -> Option<i32> {
         Some(self.native_raid_data(raid)?.groups_spawned)
     }
 
     /// `Raid.numGroups`, set from `getNumGroups(difficulty)` when the raid
     /// began: 0, 3, 5 or 7. A raid of omen level 2 or more adds a bonus wave
     /// (`hasBonusWave`).
-    pub(in crate::game) fn raid_num_groups(&self, raid: RaidRef) -> Option<i32> {
+    pub fn raid_num_groups(&self, raid: RaidRef) -> Option<i32> {
         Some(self.native_raid_data(raid)?.num_groups)
     }
 
     /// Whether the omen level is above 1, which adds a wave after the last
     /// (`Raid.hasBonusWave`).
-    pub(in crate::game) fn raid_has_bonus_wave(&self, raid: RaidRef) -> Option<bool> {
+    pub fn raid_has_bonus_wave(&self, raid: RaidRef) -> Option<bool> {
         Some(self.native_raid_data(raid)?.omen_level > 1)
     }
 
     /// `Raid.isStarted`.
-    pub(in crate::game) fn raid_is_started(&self, raid: RaidRef) -> bool {
+    pub fn raid_is_started(&self, raid: RaidRef) -> bool {
         self.native_raid_data(raid).is_some_and(|r| r.started)
     }
 
     /// `Raid.isActive`: false once stopped.
-    pub(in crate::game) fn raid_is_active(&self, raid: RaidRef) -> bool {
+    pub fn raid_is_active(&self, raid: RaidRef) -> bool {
         self.native_raid_data(raid).is_some_and(|r| r.active)
     }
 
     /// `Raid.RaidStatus`.
-    pub(in crate::game) fn raid_status(&self, raid: RaidRef) -> Option<RaidStatus> {
+    pub fn raid_status(&self, raid: RaidRef) -> Option<RaidStatus> {
         Some(match self.native_raid_data(raid)?.status {
             Status::Ongoing => RaidStatus::Ongoing,
             Status::Victory => RaidStatus::Victory,
@@ -143,12 +143,12 @@ impl crate::game::ServerGame<'_> {
 
     /// `Raid.getTotalHealth`: the health of every raider that joined, which
     /// the boss bar divides by.
-    pub(in crate::game) fn raid_total_health(&self, raid: RaidRef) -> Option<f32> {
+    pub fn raid_total_health(&self, raid: RaidRef) -> Option<f32> {
         Some(self.native_raid_data(raid)?.total_health)
     }
 
     /// `Raid.getHealthOfLivingRaiders`.
-    pub(in crate::game) fn raid_living_health(&self, raid: RaidRef) -> Option<f32> {
+    pub fn raid_living_health(&self, raid: RaidRef) -> Option<f32> {
         Some(
             self.native_raid_members(raid)?
                 .fold(0.0, |a, m| a + m.health),
@@ -156,13 +156,13 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// The boss bar's progress, 0 to 1 (`Raid.raidEvent.getProgress`).
-    pub(in crate::game) fn raid_bar_progress(&self, raid: RaidRef) -> Option<f32> {
+    pub fn raid_bar_progress(&self, raid: RaidRef) -> Option<f32> {
         Some(self.native_raid_data(raid)?.bar.progress)
     }
 
     /// `Raid.getAllRaiders`: the living raiders that joined, in mob-list
     /// order, as entity handles.
-    pub(in crate::game) fn raid_raiders(&self, raid: RaidRef) -> Option<Vec<EntityRef>> {
+    pub fn raid_raiders(&self, raid: RaidRef) -> Option<Vec<EntityRef>> {
         Some(
             self.native_raid_members(raid)?
                 .map(|m| EntityRef::new(raid.level().epoch(), m.id))
@@ -171,7 +171,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// The living raiders of one wave (`groupRaiderMap.get(wave)`).
-    pub(in crate::game) fn raid_wave_raiders(
+    pub fn raid_wave_raiders(
         &self,
         raid: RaidRef,
         wave: i32,
@@ -186,7 +186,7 @@ impl crate::game::ServerGame<'_> {
 
     /// `Raid.heroesOfTheVillage`: the UUIDs of the players who got Hero of
     /// the Village, online or not, in the order vanilla's set iterates them.
-    pub(in crate::game) fn raid_heroes(&self, raid: RaidRef) -> Option<Vec<u128>> {
+    pub fn raid_heroes(&self, raid: RaidRef) -> Option<Vec<u128>> {
         Some(
             self.native_raid_data(raid)?
                 .heroes()
@@ -199,7 +199,7 @@ impl crate::game::ServerGame<'_> {
     /// `Raid.stop`: the raid ends as `stopped` and its boss bar leaves the
     /// players; the `raid_state_change` hook fires. False if the raid is
     /// already stopped.
-    pub(in crate::game) fn raid_stop(&mut self, raid: RaidRef) -> bool {
+    pub fn raid_stop(&mut self, raid: RaidRef) -> bool {
         if self.native_raid_data(raid).is_none_or(|r| r.is_stopped()) {
             return false;
         }

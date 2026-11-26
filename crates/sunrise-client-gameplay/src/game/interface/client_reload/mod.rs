@@ -75,7 +75,7 @@ impl ClientGame<'_> {
     /// Registers a later reload's client listeners through the game
     /// (`native_add_client_reload_listeners`), gated on the hook being
     /// listened to.
-    pub(in crate::game) fn register_client_reload_listeners(
+    pub fn register_client_reload_listeners(
         &self,
     ) -> mod_api::ClientListenerRegistry {
         let mut listeners = <mod_api::ClientListenerRegistry as mod_api::__private::game::ClientReloadListenersOrder>::new();

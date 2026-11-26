@@ -37,8 +37,8 @@ pub(crate) mod item_resource_property_tests {
         assert_eq!(inputs.len(), expected.len());
         sunrise_gameplay::game::native_entity_refs::tests::with_game(|game| {
             // Authoritative tag reads are available only while a world is owned.
-            game.side.session_lock.0 =
-                Some(sunrise_sim::save::SessionLock::acquire(&game.side.save.0.root).unwrap());
+            game.server.session_lock.0 =
+                Some(sunrise_sim::save::SessionLock::acquire(&game.server.save.0.root).unwrap());
             for (input, expected) in inputs.iter().zip(&expected) {
                 assert_eq!(input["name"], expected["name"]);
                 let support::Outcome {
@@ -79,7 +79,7 @@ pub(crate) mod item_resource_property_tests {
                     item.repairable(game, &material)
                 );
             }
-            game.side.session_lock.0 = None;
+            game.server.session_lock.0 = None;
         });
     }
 }

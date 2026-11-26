@@ -267,8 +267,8 @@ pub(crate) mod tests {
                 seed: 0,
                 max_players: 2,
                 integrated: true,
-                levels: game.side.level_shapes,
-                level_seeds: game.side.levels.0.runtime.seeds(),
+                levels: game.server.level_shapes,
+                level_seeds: game.server.levels.0.runtime.seeds(),
             };
             game.lan_host(settings, net, config).unwrap();
             let (tx, _rx) = std::sync::mpsc::channel();
@@ -294,7 +294,7 @@ pub(crate) mod tests {
                 sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::new(3.0, 64.0, 5.0))
                     .unwrap();
             guest.motion = Some(Box::new(motion));
-            game.side.lan.as_mut().unwrap().hub.guests.push(guest);
+            game.server.lan.as_mut().unwrap().hub.guests.push(guest);
             let living = game.living(game.entity(12).unwrap()).unwrap();
             // Avatar.POSES: the box of each stance a player takes.
             assert_eq!(
@@ -326,7 +326,7 @@ pub(crate) mod tests {
                 Some([f64::from(0.2_f32), f64::from(0.2_f32), f64::from(1.62_f32)]),
                 "Avatar.POSES dying dimensions remain fixed even at scale 2"
             );
-            game.side.lan.as_mut().unwrap().hub.guests.clear();
+            game.server.lan.as_mut().unwrap().hub.guests.clear();
             assert_eq!(
                 living.dimensions_for_pose(game, Pose::Sleeping),
                 None,

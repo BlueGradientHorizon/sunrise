@@ -281,11 +281,11 @@ pub(crate) fn open(
             name: None,
         },
     );
-    game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+    game.server.lan.as_mut().unwrap().hub.guests.update(0, |g| {
         g.inventory[9] = Some(ItemStack::new("minecraft:wheat", payment));
     });
     game.lan_select_trade(12, 0);
-    let window = game.side.lan.as_ref().unwrap().menus[&12]
+    let window = game.server.lan.as_ref().unwrap().menus[&12]
         .merchant
         .as_ref()
         .unwrap()
@@ -310,10 +310,10 @@ pub(crate) fn prepare_work(
     use sunrise_core::{geometry::Vec3, random::LegacyRandom};
     use sunrise_sim::mobs::villager_brain;
 
-    game.side.world_root = save.to_path_buf();
+    game.server.world_root = save.to_path_buf();
     game.enter_level(sunrise_gameplay_common::game::Dim::Overworld).unwrap();
     game.options.dedicated = Some(Vec::new());
-    game.side
+    game.server
         .streaming
         .insert_remote(&mut game.world, sunrise_level::chunk::Chunk::empty(0, 0));
     assert!(game.entity_ticking_area()(0, 0));
@@ -357,7 +357,7 @@ pub(crate) fn tick_work(game: &mut sunrise_gameplay::game::ServerGame<'_>) {
 pub(crate) fn work_screen<'a>(
     game: &'a sunrise_gameplay::game::ServerGame<'_>,
 ) -> &'a sunrise_gameplay_common::game::lan_menu_data::GuestMerchant {
-    game.side.lan.as_ref().unwrap().menus[&12]
+    game.server.lan.as_ref().unwrap().menus[&12]
         .merchant
         .as_ref()
         .unwrap()
@@ -366,7 +366,7 @@ pub(crate) fn work_screen<'a>(
 pub(crate) fn work_screen_mut<'a>(
     game: &'a mut sunrise_gameplay::game::ServerGame<'_>,
 ) -> &'a mut sunrise_gameplay_common::game::lan_menu_data::GuestMerchant {
-    game.side
+    game.server
         .lan
         .as_mut()
         .unwrap()
@@ -744,7 +744,7 @@ fn refusal_restores_crafted_score_and_another_merchants_offers() {
             )
             .unwrap();
             let player = game
-                .side
+                .server
                 .lan
                 .as_ref()
                 .unwrap()
@@ -1006,7 +1006,7 @@ pub(crate) fn record_packets(
     game: &mut sunrise_gameplay::game::ServerGame<'_>,
 ) -> mpsc::Receiver<Out> {
     let (tx, rx) = mpsc::channel();
-    game.side
+    game.server
         .lan
         .as_mut()
         .unwrap()
@@ -1052,7 +1052,7 @@ pub(crate) fn count(stack: Option<&ItemStack>) -> u32 {
     stack.map_or(0, |s| s.count)
 }
 pub(crate) fn result(game: &sunrise_gameplay::game::ServerGame<'_>) -> u32 {
-    let guest = &game.side.lan.as_ref().unwrap().hub.guests[0];
+    let guest = &game.server.lan.as_ref().unwrap().hub.guests[0];
     guest
         .inventory
         .iter()
@@ -1068,10 +1068,10 @@ pub(crate) fn result(game: &sunrise_gameplay::game::ServerGame<'_>) -> u32 {
         )
 }
 pub(crate) fn dirt(game: &sunrise_gameplay::game::ServerGame<'_>) -> u32 {
-    count(game.side.lan.as_ref().unwrap().hub.guests[0].inventory[20].as_ref())
+    count(game.server.lan.as_ref().unwrap().hub.guests[0].inventory[20].as_ref())
 }
 pub(crate) fn stat(game: &sunrise_gameplay::game::ServerGame<'_>) -> i32 {
-    game.side.lan.as_ref().unwrap().play[&12]
+    game.server.lan.as_ref().unwrap().play[&12]
         .stats
         .values
         .get("minecraft:custom")
@@ -1090,7 +1090,7 @@ pub(crate) fn unchanged(
     assert_eq!(session.offers[0].uses, 0);
     assert_eq!(session.xp, 0);
     assert!(game.orbs.is_empty());
-    let host = game.side.lan.as_ref().unwrap();
+    let host = game.server.lan.as_ref().unwrap();
     let slots = &host.menus[&12].merchant.as_ref().unwrap().slots;
     assert_eq!(count(slots[0].as_ref()), payment);
     assert_eq!(slots[2], Some(ItemStack::new("minecraft:emerald", 1)));
@@ -1391,7 +1391,7 @@ fn shift_click_reads_each_use_and_applies_the_second_price_before_the_next_trade
             assert!(game.lan_merchant_click(12, &click));
             assert_eq!(USES.with(|uses| uses.borrow().clone()), [1, 2]);
             assert_eq!((result(game), stat(game)), (2, 2));
-            let gm = game.side.lan.as_ref().unwrap().menus[&12]
+            let gm = game.server.lan.as_ref().unwrap().menus[&12]
                 .merchant
                 .as_ref()
                 .unwrap();
@@ -1426,7 +1426,7 @@ fn player_writes_refuse_the_frozen_take_without_recomputing() {
                 );
                 unchanged(game, 3);
                 assert!(
-                    game.side
+                    game.server
                         .lan
                         .as_ref()
                         .unwrap()

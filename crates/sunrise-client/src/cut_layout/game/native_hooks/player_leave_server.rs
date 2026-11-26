@@ -27,14 +27,14 @@ use sunrise_gameplay_common::game::server_side::native_item_places::tests::guest
         let mods = vec![ModEntry::new("leave_test", Box::new(Leave(heard.clone())))].into();
         mod_platform::testing::with_mods(mods, || {
             with_guests(|game| {
-                game.side.world_root = game.side.save.0.root.clone();
+                game.server.world_root = game.server.save.0.root.clone();
                 game.options.dedicated = Some(Vec::new());
                 game.native_level_opened(Dim::Overworld);
                 game.world
                     .chunks
                     .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
                 prepare(game);
-                let shared = &game.side.lan.as_ref().unwrap().hub.lan.shared;
+                let shared = &game.server.lan.as_ref().unwrap().hub.lan.shared;
                 shared
                     .events
                     .send(NetEvent::Left(12, "Disconnected".into()))
@@ -61,7 +61,7 @@ use sunrise_gameplay_common::game::server_side::native_item_places::tests::guest
             |game| {
                 if credits {
                     // ServerPlayer.showEndCredits: out of the level, still joined.
-                    game.side
+                    game.server
                         .lan
                         .as_mut()
                         .unwrap()
@@ -89,7 +89,7 @@ use sunrise_gameplay_common::game::server_side::native_item_places::tests::guest
                 assert_eq!(game.guest_index(12), None);
                 let mut saved = guest(12);
                 saved.uuid = 12;
-                assert!(playerdata::load(&mut saved, &game.side.world_root));
+                assert!(playerdata::load(&mut saved, &game.server.world_root));
                 assert_eq!(VALUE.get(&mut saved.attachments, Holder::Level), Ok(77));
                 if !credits {
                     assert_eq!(saved.health, 7.0);

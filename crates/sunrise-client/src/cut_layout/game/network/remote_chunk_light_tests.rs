@@ -129,7 +129,7 @@ fn standalone_light_survives_missing_columns_and_rebuilds_on_equal_resends() {
                 light(game, 0, data(&[(1, 8)], &[(0, 2), (1, 4), (top, 6)], &[]));
                 assert!(
                     !game
-                        .side
+                        .client
                         .remote
                         .as_ref()
                         .unwrap()
@@ -140,7 +140,7 @@ fn standalone_light_survives_missing_columns_and_rebuilds_on_equal_resends() {
                 assert!(game.world.dirty_sections.is_empty());
                 game.poll_remote_light();
                 assert!(!game.world.loaded(0, 0));
-                let layers = game.side.remote.as_ref().unwrap().chunk_light.columns[&origin]
+                let layers = game.client.remote.as_ref().unwrap().chunk_light.columns[&origin]
                     .as_ref()
                     .unwrap();
                 assert_eq!(layers[1].0.as_ref().unwrap()[0], 0x88);
@@ -168,7 +168,7 @@ fn standalone_light_survives_missing_columns_and_rebuilds_on_equal_resends() {
                     game.world.chunks[&origin].stored_light_layers(1),
                     Some([true, true])
                 );
-                assert!(game.side.remote.as_ref().unwrap().chunk_light.columns[&origin].is_none());
+                assert!(game.client.remote.as_ref().unwrap().chunk_light.columns[&origin].is_none());
 
                 let first = game.world.chunks[&origin].sections[0].clone();
                 for _ in 0..2 {
@@ -201,11 +201,11 @@ fn standalone_light_survives_missing_columns_and_rebuilds_on_equal_resends() {
                 let far = (50, 0);
                 light(game, far.0, data(&[], &[], &[]));
                 game.poll_remote_light();
-                assert!(game.side.remote.as_ref().unwrap().chunk_light.columns[&far].is_none());
+                assert!(game.client.remote.as_ref().unwrap().chunk_light.columns[&far].is_none());
                 column(game, far.0, data(&[], &[(1, 7)], &[]));
                 game.poll_remote_light();
                 assert!(!game.world.loaded(far.0 * 16, 0));
-                let layers = game.side.remote.as_ref().unwrap().chunk_light.columns[&far]
+                let layers = game.client.remote.as_ref().unwrap().chunk_light.columns[&far]
                     .as_ref()
                     .unwrap();
                 assert_eq!(layers[1].1.as_ref().unwrap()[0], 0x77);
@@ -214,7 +214,7 @@ fn standalone_light_survives_missing_columns_and_rebuilds_on_equal_resends() {
                 }))
                 .unwrap();
                 assert!(
-                    game.side
+                    game.client
                         .remote
                         .as_ref()
                         .unwrap()
@@ -225,7 +225,7 @@ fn standalone_light_survives_missing_columns_and_rebuilds_on_equal_resends() {
                 game.poll_remote_light();
                 assert!(
                     !game
-                        .side
+                        .client
                         .remote
                         .as_ref()
                         .unwrap()

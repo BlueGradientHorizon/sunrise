@@ -5,7 +5,7 @@ impl crate::game::ServerGame<'_> {
     /// A placed player's login as the mods hear it: the client information
     /// they joined with (`client_information_updated`, from the defaults),
     /// then `player_logged_in`.
-    pub(in crate::game) fn announce_login(&mut self, player: u128, name: &str) {
+    pub fn announce_login(&mut self, player: u128, name: &str) {
         if mod_api::__private::listened(mod_api::HookId::ClientInformationUpdated)
             && let Some(g) = self
                 .server

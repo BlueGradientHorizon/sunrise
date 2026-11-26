@@ -12,7 +12,7 @@ use sunrise_protocol::packets::play::{self, Serverbound as S};
 
 impl crate::game::ClientGame<'_> {
     /// The server opened workstation menu `menu` in window `container`.
-    pub(in crate::game) fn remote_open_station(
+    pub fn remote_open_station(
         &mut self,
         container: i32,
         menu: String,

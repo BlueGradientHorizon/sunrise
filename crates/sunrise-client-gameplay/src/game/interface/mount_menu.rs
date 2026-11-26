@@ -53,7 +53,7 @@ impl crate::game::ClientGame<'_> {
         self.common.mobs.iter().position(|m| m.id == id)
     }
     /// `AbstractHorse.openCustomInventoryScreen` for a tamed adult mount.
-    pub(in crate::game) fn open_mount_menu(&mut self, index: usize) {
+    pub fn open_mount_menu(&mut self, index: usize) {
         let m = &self.common.mobs[index];
         let species = m.species();
         if !has_mount_menu(species) {
@@ -124,7 +124,7 @@ impl crate::game::ClientGame<'_> {
         Some(m.kind.id.to_string())
     }
     /// The chest columns of the open mount menu (the server's window's).
-    pub(in crate::game::client_side) fn mount_menu_columns(&self) -> Option<usize> {
+    pub fn mount_menu_columns(&self) -> Option<usize> {
         self.client.mount_menu.open.as_ref().map(|o| o.columns)
     }
     /// The menu ends when the mount dies or its box leaves the entity
@@ -133,7 +133,7 @@ impl crate::game::ClientGame<'_> {
     /// `Player.isWithinEntityInteractionRange(mount, 4.0)`: 7 blocks away, 9
     /// in creative).
     #[allow(dead_code)]
-    pub(in crate::game) fn tick_mount_menu(&mut self) {
+    pub fn tick_mount_menu(&mut self) {
         // A server's menu ends when the server closes it.
         if self.client.remote.is_some() {
             return;
@@ -195,7 +195,7 @@ impl crate::game::ClientGame<'_> {
             .filter(|_| self.mount_active())
             .map(|s| (s.columns, s.show_saddle, s.show_armor))
     }
-    pub(in crate::game::client_side) fn mount_slot_position(&self, i: usize) -> Option<(f32, f32)> {
+    pub fn mount_slot_position(&self, i: usize) -> Option<(f32, f32)> {
         let open = self
             .client
             .mount_menu

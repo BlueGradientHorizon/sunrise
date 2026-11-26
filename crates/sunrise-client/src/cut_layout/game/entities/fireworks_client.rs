@@ -58,10 +58,10 @@ pub(crate) mod tests {
         let id = sunrise_gameplay_common::game::MOTION_OBJECT | 77;
         // One frame's motion runs: the rocket's vertices open a run under its own id, and
         // a camera-only run (id 0) closes it so nothing drawn after takes its motion.
-        game.side.entity_motion.borrow_mut().clear();
+        game.client.entity_motion.borrow_mut().clear();
         let mut out = Vec::new();
         game.rocket_geometry(camera, 1.0, &mut out, 0..game.rockets.len());
-        let marks = game.side.entity_motion.borrow().clone();
+        let marks = game.client.entity_motion.borrow().clone();
         let at = marks
             .iter()
             .position(|m| m.1 == id)
@@ -107,7 +107,7 @@ pub(crate) mod tests {
                 }))
                 .unwrap();
             }
-            game.side.particles.0.sounds.clear();
+            game.client.particles.0.sounds.clear();
             for _ in 0..20 {
                 let level = ParticleLevel {
                     world: &game.world,
@@ -116,10 +116,10 @@ pub(crate) mod tests {
                     player: None,
                     cached_chunk: std::cell::Cell::new(None),
                 };
-                game.side.particles.0.tick(&level);
+                game.client.particles.0.tick(&level);
             }
             let bursts: Vec<(&str, [f64; 3])> = game
-                .side
+                .client
                 .particles
                 .0
                 .sounds
@@ -136,7 +136,7 @@ pub(crate) mod tests {
                 "only the loud rocket bangs and twinkles, both at its own position"
             );
             assert!(
-                !game.side.particles.0.is_empty(),
+                !game.client.particles.0.is_empty(),
                 "the silent rocket still drew its sparks and flash"
             );
         });

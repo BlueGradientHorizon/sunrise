@@ -625,7 +625,7 @@ impl crate::game::ClientGame<'_> {
     }
 
     /// The reach of the block entity a block state holds (see [`Self::block_entity_reach_entry`]).
-    pub(in crate::game) fn block_entity_reach(&self, state: u32) -> Reach {
+    pub fn block_entity_reach(&self, state: u32) -> Reach {
         self.block_entity_reach_entry(state).0
     }
 

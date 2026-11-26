@@ -34,7 +34,7 @@ pub(in crate::game) struct GuestLectern {
 impl ServerGame<'_> {
     /// A workstation a guest's use opened (`ServerPlayer.openMenu`); false
     /// when guests can't use that one yet.
-    pub(in crate::game) fn lan_open_station(&mut self, conn: u32, station: &Station) -> bool {
+    pub fn lan_open_station(&mut self, conn: u32, station: &Station) -> bool {
         let Some((menu_type, kind, _)) = menu_of(station.kind) else {
             return false;
         };
@@ -117,7 +117,7 @@ impl ServerGame<'_> {
     /// Runs `op` on the guest's open station (window `window`, any when
     /// None) with their inventory in it, then sends what changed. False when
     /// no such window is open.
-    pub(in crate::game) fn lan_station_op(
+    pub fn lan_station_op(
         &mut self,
         conn: u32,
         window: Option<i32>,

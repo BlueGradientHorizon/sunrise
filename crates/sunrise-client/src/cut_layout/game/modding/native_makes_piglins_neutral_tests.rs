@@ -130,7 +130,7 @@ fn a_part_decides_whether_a_worn_piece_counts_as_gold_isolated() {
         // A LAN guest's view asks with the guest as the wearer.
         with_guests(|game| {
             game.options.dedicated = Some(Vec::new());
-            let lan = game.side.lan.as_mut().unwrap();
+            let lan = game.server.lan.as_mut().unwrap();
             lan.hub.guests.update_all(|guest| {
                 guest.loaded = true;
                 if guest.conn == GUEST {

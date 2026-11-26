@@ -114,7 +114,7 @@ fn scene(
             None,
         ));
     }
-    let guests = &mut game.side.lan.as_mut().unwrap().hub.guests;
+    let guests = &mut game.server.lan.as_mut().unwrap().hub.guests;
     guests.clear();
     guests.push(guest);
     if let Some(rider) = guest_rider {
@@ -126,10 +126,10 @@ fn scene(
         passenger != Passenger::Empty,
         "fixture seat"
     );
-    game.side.level_pass = Default::default();
+    game.server.level_pass = Default::default();
     game.tick_lan_packets();
 
-    let guest = game.side.lan.as_ref().unwrap().hub.guest(CONN).unwrap();
+    let guest = game.server.lan.as_ref().unwrap().hub.guest(CONN).unwrap();
     let mut seats = game
         .seated_passengers(VEHICLE)
         .into_iter()
@@ -186,15 +186,15 @@ pub(crate) fn run_interact_with_a_pig_or_strider() {
                     seed: 0,
                     max_players: 16,
                     integrated: false,
-                    levels: game.side.level_shapes,
-                    level_seeds: game.side.levels.0.runtime.seeds(),
+                    levels: game.server.level_shapes,
+                    level_seeds: game.server.levels.0.runtime.seeds(),
                 },
             )
             .unwrap();
-            game.side
+            game.server
                 .streaming
                 .insert_remote(&mut game.world, Chunk::empty(0, 0));
-            game.side.next_entity = OTHER_PLAYER + 1;
+            game.server.next_entity = OTHER_PLAYER + 1;
             let report = std::env::var_os("SUNRISE_STEERABLE_BOARDING_REPORT");
             let mut rows = serde_json::Map::new();
             for (kind, food) in [

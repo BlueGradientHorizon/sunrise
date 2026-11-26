@@ -62,7 +62,7 @@ impl ServerGame<'_> {
         }
     }
     /// Queue and play level event `id` at `pos` (`Level.levelEvent`).
-    pub(in crate::game) fn server_level_event_at(&mut self, id: i32, pos: [i32; 3], data: i32) {
+    pub fn server_level_event_at(&mut self, id: i32, pos: [i32; 3], data: i32) {
         self.level_event_from(None, id, pos, data);
     }
 

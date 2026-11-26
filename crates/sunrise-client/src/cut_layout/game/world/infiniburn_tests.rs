@@ -17,7 +17,7 @@ impl Drop for RestoreFacts {
 fn infiniburn_refresh_updates_active_and_parked_worlds() {
     with_game(|game| {
         let scratch = tempfile::tempdir().unwrap();
-        game.side.world_root = scratch.path().to_owned();
+        game.server.world_root = scratch.path().to_owned();
         let _restore = RestoreFacts(
             Dim::all()
                 .into_iter()
@@ -68,7 +68,7 @@ fn infiniburn_refresh_updates_active_and_parked_worlds() {
                     [member.to_owned()].into_iter().collect(),
                 );
             game.refresh_infiniburn();
-            let parked_world = &game.side.levels.0.parked.get(&Dim::Nether).unwrap().world;
+            let parked_world = &game.server.levels.0.parked.get(&Dim::Nether).unwrap().world;
             for world in [&game.world, parked_world] {
                 let set = world.infiniburn.as_deref().expect("resolved level tag");
                 assert_eq!(

@@ -252,7 +252,7 @@ mod completed_test_coordinate_feedback_tests {
         let definition = game.test_def("minecraft:always_pass").unwrap();
         assert_eq!(definition.dimension, "minecraft:overworld");
         assert!(!definition.block_based);
-        game.side.chat_capture = Some(Vec::new());
+        game.server.chat_capture = Some(Vec::new());
         assert!(game.run_command("scoreboard objectives add coords dummy"));
         assert!(game.run_command("scoreboard players set result coords 99"));
         assert!(game.run_command("scoreboard players set success coords 99"));
@@ -260,7 +260,7 @@ mod completed_test_coordinate_feedback_tests {
         assert!(game.run_command("execute if score result coords matches 1"));
         assert!(game.run_command("execute if score success coords matches 1"));
         assert!(
-            game.side
+            game.server
                 .game_tests
                 .0
                 .ticker
@@ -272,18 +272,18 @@ mod completed_test_coordinate_feedback_tests {
         for _ in 0..8 {
             game.enter_command_level(Dim::Overworld);
             game.tick_game_tests();
-            for out in &game.side.game_tests.0.outbox {
+            for out in &game.server.game_tests.0.outbox {
                 if let Out::Console { text, .. } = out {
                     messages.push(text.component());
                 }
             }
             game.enter_command_level(Dim::Nether);
         }
-        let runner = game.side.game_tests.0.runner.as_ref().unwrap();
+        let runner = game.server.game_tests.0.runner.as_ref().unwrap();
         assert_eq!(runner.tracked.len(), 1);
         assert!(runner.tracked.iter().all(|t| t.done && !t.failed));
         messages.extend(
-            game.side
+            game.server
                 .chat_capture
                 .take()
                 .unwrap()
@@ -428,7 +428,7 @@ mod registered_game_test_tests {
                     .register("minecraft:always_pass", Arc::new(Fail))
                     .is_err()
             );
-            game.side.game_tests.0.runner = Some(Runner {
+            game.server.game_tests.0.runner = Some(Runner {
                 batches: Vec::new(),
                 current: 0,
                 batch_pending: 5,
@@ -496,11 +496,11 @@ mod registered_game_test_tests {
                 game.test_finished(&info);
                 outcomes.push((info.done, info.error.is_none()));
             }
-            let runner = game.side.game_tests.0.runner.as_ref().unwrap();
+            let runner = game.server.game_tests.0.runner.as_ref().unwrap();
             assert_eq!(runner.tracked.iter().filter(|t| t.done).count(), 5);
             assert_eq!(runner.tracked.iter().filter(|t| t.failed).count(), 3);
             assert_eq!(
-                game.side.game_tests.0.failed,
+                game.server.game_tests.0.failed,
                 ["example:panic", "example:fail", "example:missing"]
             );
             assert_eq!(

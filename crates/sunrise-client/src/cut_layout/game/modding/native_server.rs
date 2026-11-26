@@ -168,7 +168,7 @@ pub(crate) fn with_command_sources(
                     dimension: dimension.into(),
                     watches,
                 };
-                game.side.lan.as_mut().unwrap().hub.chunk_watches = ChunkWatchLog::new(vec![
+                game.server.lan.as_mut().unwrap().hub.chunk_watches = ChunkWatchLog::new(vec![
                     run(
                         here,
                         vec![
@@ -183,7 +183,7 @@ pub(crate) fn with_command_sources(
                     run(here, vec![watch(ChunkWatchKind::Unwatch, [1, 2])]),
                 ]);
                 game.run_chunk_watches();
-                assert!(game.side.lan.as_ref().unwrap().hub.chunk_watches.is_empty());
+                assert!(game.server.lan.as_ref().unwrap().hub.chunk_watches.is_empty());
                 assert_eq!(
                     *heard.lock().unwrap(),
                     [
@@ -422,7 +422,7 @@ pub(crate) fn with_command_sources(
                     sunrise_gameplay::game::native_entity_refs::tests::with_game(|game| {
                         sunrise_gameplay::game::server_side::native_item_places::tests::open_to_lan(game);
                         game.register_native_commands();
-                        game.side
+                        game.server
                             .lan
                             .as_mut()
                             .unwrap()
@@ -575,7 +575,7 @@ use sunrise_gameplay_common::game::{
                 };
                 // Twice: the second use is the next one finding it as it was.
                 for _ in 0..2 {
-                    game.side
+                    game.server
                         .lan
                         .as_mut()
                         .unwrap()
@@ -620,7 +620,7 @@ use sunrise_gameplay_common::game::{
             cart.items[3] = Some(ItemStack::new("minecraft:diamond", 5));
             game.carts.push(cart);
             let gi = game
-                .side
+                .server
                 .lan
                 .as_ref()
                 .unwrap()
@@ -629,7 +629,7 @@ use sunrise_gameplay_common::game::{
                 .iter()
                 .position(|g| g.conn == real_conn)
                 .unwrap();
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()
@@ -643,7 +643,7 @@ use sunrise_gameplay_common::game::{
             );
             let key = (i32::MAX - 15, CART_KEY_Y, 6110);
             let viewer = |game: &sunrise_gameplay::game::ServerGame<'_>| {
-                game.side
+                game.server
                     .lan
                     .as_ref()
                     .unwrap()
@@ -696,7 +696,7 @@ use sunrise_gameplay_common::game::{
             );
             assert_eq!(items[4], emerald, "the viewer's edit reached the vehicle");
             assert!(
-                game.side
+                game.server
                     .lan
                     .as_ref()
                     .unwrap()
@@ -714,7 +714,7 @@ use sunrise_gameplay_common::game::{
         use mod_api::PlayerActionSetup;
         sunrise_gameplay::game::native_entity_refs::tests::with_game(|game| {
             let (player, conn, _) = fake(game, Some("minecraft:diamond"), 1);
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()
@@ -730,7 +730,7 @@ use sunrise_gameplay_common::game::{
                     guest.motion.as_mut().unwrap().shift_key_down = true;
                 })
                 .unwrap();
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()
@@ -778,7 +778,7 @@ use sunrise_gameplay_common::game::{
                     1
                 ))]
             );
-            let guest = game.side.lan.as_ref().unwrap().hub.guest(conn).unwrap();
+            let guest = game.server.lan.as_ref().unwrap().hub.guest(conn).unwrap();
             assert_eq!(guest.position, [0.5, 64.0, 0.5]);
             assert_eq!(
                 (guest.yaw, guest.pitch, guest.selected, guest.game_mode),
@@ -795,11 +795,11 @@ use sunrise_gameplay_common::game::{
             assert_eq!(game.fake_player(level, 2, "fake"), Some(player));
             // The original cooldown is still in force, not the temporary action's timer.
             assert!(
-                game.side.lan.as_ref().unwrap().play[&conn]
+                game.server.lan.as_ref().unwrap().play[&conn]
                     .cooldowns
                     .is_on_cooldown("minecraft:bucket")
             );
-            assert_eq!(game.side.lan.as_ref().unwrap().hub.guests.len(), 2);
+            assert_eq!(game.server.lan.as_ref().unwrap().hub.guests.len(), 2);
         });
     }
 /// An armor stand holding a saved item this build doesn't have hands it to a scoped action:
@@ -914,7 +914,7 @@ use sunrise_gameplay_common::game::{
             menu.carried = Some(ItemStack::new("minecraft:stick", 3));
             let owner = (&*menu) as *const sunrise_sim::menu::Menu;
             *game
-                .side
+                .server
                 .lan
                 .as_mut()
                 .unwrap()
@@ -941,7 +941,7 @@ use sunrise_gameplay_common::game::{
                 result.outcome,
                 ActionOutcome::EffectBlocked(FakeEffect::Menu)
             );
-            let restored = game.side.lan.as_ref().unwrap().menus[&conn]
+            let restored = game.server.lan.as_ref().unwrap().menus[&conn]
                 .crafting
                 .inventory
                 .as_ref()
@@ -1003,7 +1003,7 @@ use sunrise_gameplay_common::game::{
             assert_eq!(mob.target(game), None);
             assert!(
                 !game
-                    .side
+                    .server
                     .lan
                     .as_ref()
                     .unwrap()
@@ -1021,7 +1021,7 @@ use sunrise_gameplay_common::game::{
         sunrise_gameplay::game::native_entity_refs::tests::with_game(|game| {
             let (_, fake_conn, real_conn) = fake(game, None, 0);
             let gi = game
-                .side
+                .server
                 .lan
                 .as_ref()
                 .unwrap()
@@ -1066,7 +1066,7 @@ use sunrise_gameplay_common::game::{
                                 .unwrap(),
                         );
                     }
-                    game.side.lan.as_mut().unwrap().hub.guests.update_all(|g| {
+                    game.server.lan.as_mut().unwrap().hub.guests.update_all(|g| {
                         g.position = [0.5, 64.0, 0.5];
                         g.yaw = -90.0;
                     });
@@ -1131,7 +1131,7 @@ use sunrise_gameplay_common::game::{
             // A real guest's click on a chest is the vanilla click, nothing stopped.
             place(game, [1, 64, 0], "minecraft:chest");
             let gi = game
-                .side
+                .server
                 .lan
                 .as_ref()
                 .unwrap()
@@ -1168,7 +1168,7 @@ pub(crate) mod player_rule_tests {
     /// The guests of `with_guests` are rows 0 and 1; both stand in the level in place.
     fn in_this_level(game: &mut sunrise_gameplay::game::ServerGame<'_>) {
         let level = game.dim.id().to_owned();
-        game.side.lan.as_mut().unwrap().hub.guests.update_all(|g| {
+        game.server.lan.as_mut().unwrap().hub.guests.update_all(|g| {
             g.dimension = level.clone();
         });
     }
@@ -1204,7 +1204,7 @@ pub(crate) mod player_rule_tests {
                 Some(Some(respawn(nether, [1, 2, 3], -90.0, true)))
             );
             assert_eq!(
-                game.side.lan.as_ref().unwrap().hub.guests[0].respawn_elsewhere,
+                game.server.lan.as_ref().unwrap().hub.guests[0].respawn_elsewhere,
                 Some((nether.into(), [1, 2, 3], -90.0, 0.0, true)),
                 "the record a respawn reads"
             );
@@ -1232,7 +1232,7 @@ pub(crate) mod player_rule_tests {
             assert!(a.set_respawn_config(game, None));
             assert_eq!(a.respawn_config(&*game), Some(None));
             assert_eq!(
-                game.side.lan.as_ref().unwrap().hub.guests[0].respawn_elsewhere,
+                game.server.lan.as_ref().unwrap().hub.guests[0].respawn_elsewhere,
                 None
             );
         });
@@ -1271,13 +1271,13 @@ pub(crate) mod player_rule_tests {
     fn text_filtering_is_what_the_clients_information_said() {
         with_guests(|game| {
             let (a, b) = (game.player(12).unwrap(), game.player(13).unwrap());
-            game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+            game.server.lan.as_mut().unwrap().hub.guests.update(0, |g| {
                 g.info.text_filtering = true;
             });
             assert_eq!(a.text_filtering(&*game), Some(true));
             assert_eq!(b.text_filtering(&*game), Some(false));
             // A later `ClientInformation` replaces it.
-            game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+            game.server.lan.as_mut().unwrap().hub.guests.update(0, |g| {
                 g.info.text_filtering = false;
             });
             assert_eq!(a.text_filtering(&*game), Some(false));
@@ -1297,13 +1297,13 @@ pub(crate) mod player_rule_tests {
             assert_eq!(a.sleep_ignored(&*game), Some(false));
 
             // A player in bed at 100 ticks is one of the deep sleepers the night waits for.
-            game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+            game.server.lan.as_mut().unwrap().hub.guests.update(0, |g| {
                 g.bed = Some([5, 64, 5]);
             });
             assert!(a.set_sleep_timer(game, 100));
             assert_eq!(a.sleep_timer(&*game), Some(100));
             assert_eq!(
-                game.side.lan.as_ref().unwrap().hub.guests[0].sleep_timer,
+                game.server.lan.as_ref().unwrap().hub.guests[0].sleep_timer,
                 100
             );
             assert_eq!(game.sleep_counts(), (active, sleeping + 1, deep + 1));
@@ -1319,7 +1319,7 @@ pub(crate) mod player_rule_tests {
             assert_eq!(game.sleep_counts().0, active - 1);
             assert!(a.set_sleep_ignored(game, true));
             assert_eq!(a.counts_for_sleep(&*game), Some(true), "in bed");
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()
@@ -1332,7 +1332,7 @@ pub(crate) mod player_rule_tests {
             assert_eq!(a.counts_for_sleep(&*game), Some(true));
 
             // A spectator is never counted.
-            game.side.lan.as_mut().unwrap().hub.guests.update(1, |g| {
+            game.server.lan.as_mut().unwrap().hub.guests.update(1, |g| {
                 g.game_mode = 3;
             });
             assert_eq!(b.counts_for_sleep(&*game), Some(false));

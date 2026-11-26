@@ -26,7 +26,7 @@ impl ServerGame<'_> {
         self.spawn_item(item, at, [0.0, 0.2, 0.0], 10);
     }
     /// `SulfurCube.mobInteract`. Returns whether the click was used.
-    pub(in crate::game::server_side) fn interact_sulfur_cube(
+    pub fn interact_sulfur_cube(
         &mut self,
         index: usize,
         item: &str,
@@ -153,7 +153,7 @@ impl ServerGame<'_> {
     /// body `collectEquipmentChanges` last took) explodes, with its fuse:
     /// their cached `explosionData`, which `primeWhenOnPoweredPosition` may
     /// use this tick although the body has changed since.
-    pub(in crate::game::server_side) fn sulfur_cubes_adopted_explosive(&self) -> Vec<(u32, i32)> {
+    pub fn sulfur_cubes_adopted_explosive(&self) -> Vec<(u32, i32)> {
         self.common.mobs
             .iter()
             .filter(|m| m.species() == Species::SulfurCube)
@@ -166,7 +166,7 @@ impl ServerGame<'_> {
     /// Only the cubes `primable` names (an adopted explosive body when the
     /// tick started) can: `canExplode` and `primeTime` both read the cached
     /// `explosionData`, so the fuse is that body's, not the live one's.
-    pub(in crate::game) fn sulfur_cube_power_priming(&mut self, primable: &[(u32, i32)]) {
+    pub fn sulfur_cube_power_priming(&mut self, primable: &[(u32, i32)]) {
         if !self
             .common.ui
             .rules
@@ -223,7 +223,7 @@ impl ServerGame<'_> {
     }
     /// `SulfurCubeSearchForItemsGoal` and `pickUpItem`: an adult with nothing
     /// inside hops to a block it can swallow within 8 and takes it in.
-    pub(in crate::game) fn sulfur_cube_pickups(&mut self) {
+    pub fn sulfur_cube_pickups(&mut self) {
         let griefing = self
             .common.ui
             .rules

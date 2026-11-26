@@ -2,14 +2,14 @@
 use crate::game::ServerGame;
 
 impl ServerGame<'_> {
-    pub(in crate::game) fn prepare_recipe_join(&mut self, conn: u32) {
+    pub fn prepare_recipe_join(&mut self, conn: u32) {
         self.ask_recipe_for_conn(conn);
         self.native_filter_commands(Some(conn));
     }
 
     /// Ask once per online player before rebuilding their recipe payloads.
     /// No online players means no calls.
-    pub(in crate::game) fn sync_recipe_content(&mut self) {
+    pub fn sync_recipe_content(&mut self) {
         let connections: Vec<_> = self
             .server
             .lan

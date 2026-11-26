@@ -108,7 +108,7 @@ fn game<'a>(
     )
     .unwrap();
     // Reserve the manually installed guest in the shared runtime ID allocator.
-    game.side.next_entity = game.side.next_entity.max(2);
+    game.server.next_entity = game.server.next_entity.max(2);
     let (tx, _rx) = mpsc::channel();
     let mut guest = Guest::new(
         Joined {
@@ -129,7 +129,7 @@ fn game<'a>(
     );
     guest.placed = true;
     guest.loaded = true;
-    game.side.lan.as_mut().unwrap().hub.guests.push(guest);
+    game.server.lan.as_mut().unwrap().hub.guests.push(guest);
     for command in [
         "forceload add 0 0 47 15",
         "fill 0 200 0 47 200 15 stone",
@@ -193,7 +193,7 @@ fn a_fence_leash_pulls_a_pig_as_vanilla_does() {
         let i = pig(&mut game, uuid);
         let leash = game.mobs[i].extra.leash;
         let pending = game.mobs[i].extra.leash_pending;
-        let knot = game.side.knot_ids.get(&fence).copied();
+        let knot = game.server.knot_ids.get(&fence).copied();
         let state = knot_state(fence);
         eprintln!(
             "tick-1 binding {uuid}: leash={leash:?} pending={pending:?} knot entity={knot:?} at {:?}",

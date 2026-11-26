@@ -126,7 +126,7 @@ fn failed_reload_preparation_keeps_secondary_tag_entries() {
     fixture(|game, enabled, mob| {
         enabled.store(false, Ordering::SeqCst);
         let old = game
-            .side
+            .server
             .world_tables
             .0
             .as_ref()
@@ -139,7 +139,7 @@ fn failed_reload_preparation_keeps_secondary_tag_entries() {
         assert!(!game.run_command("reload"));
         assert_eq!(
             old,
-            game.side
+            game.server
                 .world_tables
                 .0
                 .as_ref()

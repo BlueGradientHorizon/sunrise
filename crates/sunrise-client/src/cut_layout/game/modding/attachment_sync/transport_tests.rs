@@ -69,7 +69,7 @@ pub(super) fn store<'a>(
 
 /// The server sets the level's value, committed or rolled back.
 pub(super) fn set_level(game: &sunrise_client_gameplay::game::ClientGame<'_>, value: i32, commit: bool) {
-    game.side
+    game.client
         .integrated
         .as_ref()
         .unwrap()
@@ -99,7 +99,7 @@ fn window_value(game: &mut sunrise_client_gameplay::game::ClientGame<'_>) -> Opt
 /// Let the server's hub tick `n` times, so later edits land in a later pass.
 pub(super) fn wait_server_ticks(game: &sunrise_client_gameplay::game::ClientGame<'_>, n: u64) {
     let ticks = |game: &sunrise_client_gameplay::game::ClientGame<'_>| {
-        game.side
+        game.client
             .integrated
             .as_ref()
             .unwrap()
@@ -319,8 +319,8 @@ fn attachment_sync_follows_the_negotiated_route() {
     let mods = vec![mod_api::ModEntry::new("sync_route", Box::new(Route))].into();
     mod_platform::testing::with_mods(mods, || {
         super::super::native_entity_refs::tests::with_client_game(|game| {
-            game.side.settings.render_distance = 2;
-            game.side.settings.simulation_distance = 2;
+            game.client.settings.render_distance = 2;
+            game.client.settings.simulation_distance = 2;
             let options = sunrise_sim::world_options::WorldOptions {
                 world_type: sunrise_sim::save::WorldPreset::Flat,
                 ..Default::default()
@@ -335,7 +335,7 @@ fn attachment_sync_follows_the_negotiated_route() {
             .unwrap();
             let deadline = Instant::now() + Duration::from_secs(60);
             while !game
-                .side
+                .client
                 .remote
                 .as_ref()
                 .is_some_and(|r| r.logged_in && r.joined)
@@ -352,7 +352,7 @@ fn attachment_sync_follows_the_negotiated_route() {
             wait_window(game, 10);
 
             let port = game
-                .side
+                .client
                 .integrated
                 .as_ref()
                 .unwrap()
@@ -374,7 +374,7 @@ fn attachment_sync_follows_the_negotiated_route() {
             set_level(game, 12, true);
             assert_eq!(values_until(&mut sunrise, Holder::Level, 12), [12]);
             let authority = game
-                .side
+                .client
                 .integrated
                 .as_ref()
                 .unwrap()
@@ -387,7 +387,7 @@ fn attachment_sync_follows_the_negotiated_route() {
             // Past the network frame limits: refused by name, the peer stays joined and is
             // sent the next value. The memory connection has no frame limit.
             let refused = game
-                .side
+                .client
                 .integrated
                 .as_ref()
                 .unwrap()
@@ -437,7 +437,7 @@ fn attachment_sync_follows_the_negotiated_route() {
             // A message prepared against an epoch that ended before the root commit publishes
             // nothing, on the TCP and the memory connection alike.
             let stale = game
-                .side
+                .client
                 .integrated
                 .as_ref()
                 .unwrap()

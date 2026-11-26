@@ -7,7 +7,7 @@ use sunrise_game_data::{bossbar::BossBar, scoreboard::comp_text, text::Text};
 use sunrise_sim::lan::playerdata::{ints_uuid, uuid_ints};
 
 impl ServerGame<'_> {
-    fn boss_bar_state(&self, bar: BossBarRef) -> Option<&BossBar> {
+    pub fn boss_bar_state(&self, bar: BossBarRef) -> Option<&BossBar> {
         if !self.common.is_logical_server() || self.common.native_lifecycle.epoch() != Some(bar.fields().epoch) {
             return None;
         }
@@ -48,7 +48,7 @@ impl ServerGame<'_> {
     /// None. Saved bars are there from the world's start, as vanilla's
     /// `CustomBossEvents`. Boss bars of mobs and raids are not custom boss
     /// events.
-    pub(in crate::game) fn boss_bar(&self, id: &str) -> Option<BossBarRef> {
+    pub fn boss_bar(&self, id: &str) -> Option<BossBarRef> {
         let id = Identifier::parse(id).ok()?;
         let id = format!("{}:{}", id.namespace(), id.path());
         self.boss_bar_handle(self.boss_bar_state_by_id(&id)?)
@@ -62,7 +62,7 @@ impl ServerGame<'_> {
     }
 
     /// Every custom boss bar, in the order `/bossbar list` shows them.
-    pub(in crate::game) fn boss_bars(&self) -> Vec<BossBarRef> {
+    pub fn boss_bars(&self) -> Vec<BossBarRef> {
         if !self.common.is_logical_server() {
             return Vec::new();
         }

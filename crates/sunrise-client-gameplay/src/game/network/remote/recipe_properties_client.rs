@@ -5,7 +5,7 @@ impl crate::game::ClientGame<'_> {
     /// Minecraft.disconnect's `ClientPlayerNetworkEvent.LoggingOut`: on
     /// leaving a world, and on quitting the game from one. Once per
     /// connection, whichever way out runs first.
-    pub(in crate::game) fn client_logging_out(&mut self) {
+    pub fn client_logging_out(&mut self) {
         let Some(remote) = self.client.remote.as_mut().filter(|r| !r.logged_out) else {
             return;
         };

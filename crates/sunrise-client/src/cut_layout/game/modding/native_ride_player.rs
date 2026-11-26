@@ -50,7 +50,7 @@ mod tests {
                     let pig = game.entity(80).unwrap();
                     assert_eq!(game.entity_ride_player(pig, player, false), Ok(()));
                     heard.lock().unwrap().clear();
-                    let conn = game.side.lan.as_ref().unwrap().hub.guests[0].conn;
+                    let conn = game.server.lan.as_ref().unwrap().hub.guests[0].conn;
                     case(game, conn);
                     // The unload save takes the pig away with its chunk; every other case keeps it.
                     let mount = |game: &sunrise_gameplay::game::ServerGame<'_>| {
@@ -141,13 +141,13 @@ mod tests {
     #[ignore = "daily"]
     fn a_logout_ejects_a_mob_riding_the_player() {
         ejected(|game, _| {
-            let host = game.side.lan.as_mut().unwrap();
+            let host = game.server.lan.as_mut().unwrap();
             host.hub.guests.update(0, |g| g.placed = true);
             // The hub takes a guest out of its list before it reports the leave.
             let guest = host.hub.guests.remove(0);
             let event = sunrise_sim::lan::hub::HostEvent::Left(Box::new(guest));
-            let host = game.side.lan.take().unwrap();
-            game.side.lan = game.lan_process_events(host, [event], &[], [0.5, 64.0, 0.5]);
+            let host = game.server.lan.take().unwrap();
+            game.server.lan = game.lan_process_events(host, [event], &[], [0.5, 64.0, 0.5]);
         });
     }
 
@@ -155,7 +155,7 @@ mod tests {
     #[ignore = "daily"]
     fn a_death_ejects_a_mob_riding_the_player() {
         ejected(|game, conn| {
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()
@@ -263,7 +263,7 @@ mod tests {
             assert_eq!(game.entity_vehicle(first), Some(player));
 
             // The player riding the second pig: that pig can't ride the player.
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()
@@ -274,7 +274,7 @@ mod tests {
                 game.entity_ride_player(second, player, true),
                 Err(Refusal::Cycle)
             );
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()

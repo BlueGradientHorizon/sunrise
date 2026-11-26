@@ -8,7 +8,7 @@ impl crate::game::ClientGame<'_> {
         HudBatch::text_width(&self.client.gui.atlas, text)
     }
     /// The size of a GUI atlas sprite in its own pixels, if present.
-    pub(in crate::game) fn gui_sprite_pixels(&self, name: &str) -> Option<[f32; 2]> {
+    pub fn gui_sprite_pixels(&self, name: &str) -> Option<[f32; 2]> {
         let r = self.client.gui.atlas.gui_rect(name)?;
         Some([r.w as f32, r.h as f32])
     }

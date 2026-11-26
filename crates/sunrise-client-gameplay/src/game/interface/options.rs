@@ -110,7 +110,7 @@ impl crate::game::ClientGame<'_> {
     pub(in crate::game::client_side) fn shader_packs_dir() -> std::path::PathBuf {
         sunrise_gameplay_common::game::game_dir().join(sunrise_client::shader_pack_list::DIR)
     }
-    pub(in crate::game) fn gui_size(&self) -> (f32, f32) {
+    pub fn gui_size(&self) -> (f32, f32) {
         let size = self
             .client
             .renderer
@@ -123,7 +123,7 @@ impl crate::game::ClientGame<'_> {
     /// Close the options screens (`OptionsScreen.onClose`) back to where they
     /// were opened: the recipe book's settings, World Options, the title or
     /// the pause menu.
-    pub(in crate::game::client_side) fn leave_options(&mut self) {
+    pub fn leave_options(&mut self) {
         let to_game = self.client.options_from_title;
         let back = if let Some(screen) = self.client.panel.recipes_settings_return.take() {
             screen
@@ -149,7 +149,7 @@ impl crate::game::ClientGame<'_> {
     pub fn open_options(&mut self, from_title: bool) {
         self.open_options_at(from_title, Page::Main);
     }
-    pub(in crate::game::client_side) fn open_options_at(&mut self, from_title: bool, page: Page) {
+    pub fn open_options_at(&mut self, from_title: bool, page: Page) {
         // Gameplay keys must not stay held behind the options screen, where
         // bindings can also change before the physical key is released.
         self.clear_device_keys();
@@ -460,7 +460,7 @@ impl crate::game::ClientGame<'_> {
             .bind_mouse(&mut self.client.settings, button);
         self.handle_option_events(events)
     }
-    pub(in crate::game::client_side) fn handle_option_events(
+    pub fn handle_option_events(
         &mut self,
         events: Vec<Event>,
     ) -> Result<()> {
@@ -678,7 +678,7 @@ impl crate::game::ClientGame<'_> {
         }
     }
     /// Settings that Sunrise applies beyond render distance, volume and GUI scale.
-    pub(in crate::game::client_side) fn apply_ui_settings(&mut self) {
+    pub fn apply_ui_settings(&mut self) {
         sunrise_sim::parallel::set_setting(self.client.settings.sunrise.parallel_tick);
         if sunrise_client_render::mipmap::set_dither_cutouts(
             self.client.settings.sunrise.dither_cutout_mips,
@@ -782,7 +782,7 @@ impl crate::game::ClientGame<'_> {
         }
     }
     /// Fires `window_resize` once when the physical or GUI-scaled dimensions change.
-    pub(in crate::game::client_side) fn notify_window_resize(&mut self) {
+    pub fn notify_window_resize(&mut self) {
         // The size `ClientOptionsClientHost::window_size` reads, so the two agree.
         let Some([width, height]) = self.window_size() else {
             return;

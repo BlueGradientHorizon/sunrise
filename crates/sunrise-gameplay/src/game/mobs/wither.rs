@@ -186,7 +186,7 @@ impl ServerGame<'_> {
     /// skull with an owner (healing a wither owner 5 when it kills), else 5
     /// `magic`, withering on a living target that took it (10 seconds on
     /// Normal, 40 on Hard, none on Easy), then a power 1 blast.
-    pub(in crate::game::server_side) fn wither_skull_hit(
+    pub fn wither_skull_hit(
         &mut self,
         p: &Projectile,
         hit: sunrise_sim::projectiles::Hit,

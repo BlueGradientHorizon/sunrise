@@ -17,8 +17,8 @@ fn mobs_past_the_simulation_distance_neither_enter_portals_nor_cool_down() {
         game.world
             .chunks
             .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-        game.side.settings.simulation_distance = 4;
-        game.side.settings.render_distance = 12;
+        game.server.settings.simulation_distance = 4;
+        game.server.settings.render_distance = 12;
         let registry = game.pack.assets.registry;
         let stone = registry.default_state("minecraft:stone").unwrap();
         let portal = registry.default_state("minecraft:nether_portal").unwrap();
@@ -62,7 +62,7 @@ fn mobs_past_the_simulation_distance_neither_enter_portals_nor_cool_down() {
             game.handle_entity_portals();
             game.find_entity_portals();
         }
-        let state = |id| game.side.portals.entities.get(&id);
+        let state = |id| game.server.portals.entities.get(&id);
         let here = |id| game.mobs.iter().any(|m| m.id == id);
         // A mob crosses a nether portal at once: the ticking zombie has gone.
         assert!(!here(1), "the ticking zombie went through its portal");

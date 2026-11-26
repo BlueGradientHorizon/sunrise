@@ -43,17 +43,17 @@ fn datapack_sync_selects_once_per_join_and_reload_for_each_recipient() {
                 let mut receivers = Vec::new();
                 for conn in [12, 13] {
                     let (tx, rx) = std::sync::mpsc::channel();
-                    game.side.lan.as_mut().unwrap().hub.update_guest(conn, |g| {
+                    game.server.lan.as_mut().unwrap().hub.update_guest(conn, |g| {
                         g.sender = sunrise_sim::lan::PlayerSender::new(tx, Arc::default());
                     });
                     receivers.push(rx);
                 }
-                let host = game.side.lan.as_mut().unwrap();
+                let host = game.server.lan.as_mut().unwrap();
                 host.hub.guests.update_all(|g| g.brand = "sunrise".into());
                 game.prepare_recipe_join(12);
                 game.prepare_recipe_join(13);
                 assert_eq!(*calls.lock().unwrap(), [12, 13]);
-                let host = game.side.lan.as_ref().unwrap();
+                let host = game.server.lan.as_ref().unwrap();
                 let a = &host.hub.guest(12).unwrap().recipe_sync;
                 assert_eq!(a.types, ["recipe_sync_data:grinding"]);
                 let last = ContentPart::decode(a.payloads.last().unwrap()).unwrap();
@@ -61,7 +61,7 @@ fn datapack_sync_selects_once_per_join_and_reload_for_each_recipient() {
                 assert!(host.hub.guest(13).unwrap().recipe_sync.payloads.is_empty());
                 for conn in [12, 13] {
                     sunrise_sim::lan::recipes::send_content(
-                        game.side.lan.as_ref().unwrap().hub.guest(conn).unwrap(),
+                        game.server.lan.as_ref().unwrap().hub.guest(conn).unwrap(),
                     );
                 }
                 assert_eq!(
@@ -73,7 +73,7 @@ fn datapack_sync_selects_once_per_join_and_reload_for_each_recipient() {
                 assert_eq!(*calls.lock().unwrap(), [12, 13, 12, 13]);
                 for conn in [12, 13] {
                     sunrise_sim::lan::recipes::send_content(
-                        game.side.lan.as_ref().unwrap().hub.guest(conn).unwrap(),
+                        game.server.lan.as_ref().unwrap().hub.guest(conn).unwrap(),
                     );
                 }
                 assert_eq!(
@@ -81,13 +81,13 @@ fn datapack_sync_selects_once_per_join_and_reload_for_each_recipient() {
                     [vec!["recipe_sync_data:grinding".to_owned()]]
                 );
                 assert!(received(&receivers[1]).is_empty());
-                let host = game.side.lan.as_ref().unwrap();
+                let host = game.server.lan.as_ref().unwrap();
                 assert_eq!(
                     host.hub.guest(12).unwrap().recipe_sync.types,
                     ["recipe_sync_data:grinding"]
                 );
                 assert!(host.hub.guest(13).unwrap().recipe_sync.payloads.is_empty());
-                game.side
+                game.server
                     .lan
                     .as_mut()
                     .unwrap()
@@ -95,7 +95,7 @@ fn datapack_sync_selects_once_per_join_and_reload_for_each_recipient() {
                     .update_guest(12, |g| g.brand = "vanilla".into());
                 game.prepare_recipe_join(12);
                 assert!(
-                    game.side
+                    game.server
                         .lan
                         .as_ref()
                         .unwrap()
@@ -109,7 +109,7 @@ fn datapack_sync_selects_once_per_join_and_reload_for_each_recipient() {
                 game.sync_recipe_content();
                 assert_eq!(*calls.lock().unwrap(), [12, 13, 12, 13, 12, 12, 13]);
                 assert!(
-                    game.side
+                    game.server
                         .lan
                         .as_ref()
                         .unwrap()
@@ -186,7 +186,7 @@ fn datapack_sync_decision_precedes_join_recipe_packets() {
         || {
             with_guests(|game| {
                 let scratch = tempfile::tempdir().unwrap();
-                game.side.world_root = scratch.path().to_path_buf();
+                game.server.world_root = scratch.path().to_path_buf();
                 game.native_lifecycle.world_open_ready().unwrap();
                 let mut receivers = Vec::new();
                 for conn in [12, 13] {
@@ -196,7 +196,7 @@ fn datapack_sync_decision_precedes_join_recipe_packets() {
                         .lock()
                         .unwrap()
                         .insert(u128::from(conn), sender.clone());
-                    game.side.lan.as_mut().unwrap().hub.update_guest(conn, |g| {
+                    game.server.lan.as_mut().unwrap().hub.update_guest(conn, |g| {
                         g.sender = sender;
                         g.brand = "sunrise".into();
                         g.placed = false;
@@ -254,14 +254,14 @@ fn datapack_sync_disconnect_before_ask_sends_nothing_and_empty_reload_asks_nobod
             with_guests(|game| {
                 game.native_lifecycle.world_open_ready().unwrap();
                 let (tx, rx) = std::sync::mpsc::channel();
-                game.side.lan.as_mut().unwrap().hub.update_guest(12, |g| {
+                game.server.lan.as_mut().unwrap().hub.update_guest(12, |g| {
                     g.sender = sunrise_sim::lan::PlayerSender::new(tx, Arc::default());
                     g.brand = "sunrise".into();
                     g.placed = false;
                 });
                 // Deterministically force the gap: remove the admitted guest just
                 // before the join helper resolves the recipient for ask_for.
-                let guests = &mut game.side.lan.as_mut().unwrap().hub.guests;
+                let guests = &mut game.server.lan.as_mut().unwrap().hub.guests;
                 let index = guests.iter().position(|g| g.conn == 12).unwrap();
                 drop(guests.remove(index));
                 game.prepare_recipe_join(12);
@@ -269,7 +269,7 @@ fn datapack_sync_disconnect_before_ask_sends_nothing_and_empty_reload_asks_nobod
                 assert!(rx.try_iter().next().is_none());
                 game.sync_recipe_content();
                 assert_eq!(*calls.lock().unwrap(), [13]);
-                drop(game.side.lan.as_mut().unwrap().hub.guests.remove(0));
+                drop(game.server.lan.as_mut().unwrap().hub.guests.remove(0));
                 game.sync_recipe_content();
                 assert_eq!(*calls.lock().unwrap(), [13], "empty reload never asks");
                 assert!(rx.try_iter().next().is_none());

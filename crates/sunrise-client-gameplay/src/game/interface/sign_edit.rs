@@ -45,7 +45,7 @@ pub(in crate::game::client_side) fn done_button(w: f32, h: f32) -> (f32, f32) {
 
 impl ClientGame<'_> {
     /// `SignBlock.openTextEdit` for the front side after placement.
-    pub(in crate::game) fn open_sign_editor(&mut self, pos: (i32, i32, i32), front: bool) {
+    pub fn open_sign_editor(&mut self, pos: (i32, i32, i32), front: bool) {
         self.open_screen_overlay("sign_editor", |game| {
             // Minecraft.setScreen: the editor already open is removed first.
             game.close_sign_editor();
@@ -117,7 +117,7 @@ impl ClientGame<'_> {
     }
     /// `ClientPacketListener.handleOpenSignEditor`: the editor on a sign this
     /// client has.
-    pub(in crate::game::client_side) fn remote_open_sign_editor(
+    pub fn remote_open_sign_editor(
         &mut self,
         p: play::OpenSignEditor,
     ) {
@@ -164,7 +164,7 @@ impl ClientGame<'_> {
     }
     /// A key and the text it typed on the sign being edited (the keyboard,
     /// or a controller's on-screen keyboard).
-    pub(in crate::game::client_side) fn sign_input(
+    pub fn sign_input(
         &mut self,
         key: Option<KeyCode>,
         typed: Option<&str>,

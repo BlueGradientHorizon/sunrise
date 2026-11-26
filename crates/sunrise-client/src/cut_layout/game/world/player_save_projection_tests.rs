@@ -48,8 +48,8 @@ fn raw(marker: &str, grace: i32, particles: bool) -> Tag {
 #[ignore = "daily"]
 fn actual_player_save_tracks_mutable_body_and_keeps_guest_context() {
     sunrise_gameplay::game::native_entity_refs::tests::with_game(|game| {
-        game.side.world_root = std::env::current_dir().unwrap().join("h157-owner");
-        std::fs::create_dir_all(&game.side.world_root).unwrap();
+        game.server.world_root = std::env::current_dir().unwrap().join("h157-owner");
+        std::fs::create_dir_all(&game.server.world_root).unwrap();
         game.world
             .chunks
             .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
@@ -64,7 +64,7 @@ fn actual_player_save_tracks_mutable_body_and_keeps_guest_context() {
         assert!(game.run_command("tick freeze"));
         assert!(game.clock.frozen());
         let clock = game.world.game_time;
-        let tracker = (game.side.sculk.tracker, game.side.sculk.tracker_loaded);
+        let tracker = (game.server.sculk.tracker, game.server.sculk.tracker_loaded);
         let mut failures = Vec::new();
         let initial = game.player_nbt().expect("actual owner getter");
         assert_eq!(
@@ -188,7 +188,7 @@ fn actual_player_save_tracks_mutable_body_and_keeps_guest_context() {
         assert_eq!(body.impulse.reset_grace_time, 7);
         assert!(!body.spawn_extra_particles_on_fall);
         guest.motion = Some(Box::new(body));
-        game.side.lan.as_mut().unwrap().hub.guests.push(guest);
+        game.server.lan.as_mut().unwrap().hub.guests.push(guest);
         let guest_tag = game
             .for_player(sunrise_gameplay_common::game::commands_common::Target::Guest(2), |g| {
                 assert_eq!(g.player.as_ref().unwrap().impulse.reset_grace_time, 7);
@@ -221,7 +221,7 @@ fn actual_player_save_tracks_mutable_body_and_keeps_guest_context() {
             &mut failures,
         );
         let mut saved_guest = sunrise_sim::save::Level::default();
-        let guest = &game.side.lan.as_ref().unwrap().hub.guests[0];
+        let guest = &game.server.lan.as_ref().unwrap().hub.guests[0];
         assert_eq!(guest.motion.as_ref().unwrap().impulse.reset_grace_time, 7);
         playerdata::store(guest, &mut saved_guest, None);
         check(
@@ -233,7 +233,7 @@ fn actual_player_save_tracks_mutable_body_and_keeps_guest_context() {
         );
         assert_eq!(game.world.game_time, clock);
         assert_eq!(
-            (game.side.sculk.tracker, game.side.sculk.tracker_loaded),
+            (game.server.sculk.tracker, game.server.sculk.tracker_loaded),
             tracker,
             "external-owned tracker must stay untouched"
         );

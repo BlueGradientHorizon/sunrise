@@ -26,7 +26,7 @@ impl ServerGame<'_> {
     }
 
     /// Forget destroyed objects in this level before its UUID metadata is pruned.
-    pub(in crate::game::server_side) fn prune_entity_initializations(
+    pub fn prune_entity_initializations(
         &mut self,
         retained: &HashSet<u32>,
     ) {
@@ -39,7 +39,7 @@ impl ServerGame<'_> {
     }
 
     /// A LAN guest's player, its file just read for connection `conn`.
-    pub(in crate::game::server_side) fn initialize_server_player(&mut self, uuid: u128, conn: u32) {
+    pub fn initialize_server_player(&mut self, uuid: u128, conn: u32) {
         if self.common.entity_initialization.players.insert(uuid, conn) != Some(conn) {
             self.common.forget_entity_initialization(Holder::Player(uuid));
         }
@@ -120,7 +120,7 @@ impl ServerGame<'_> {
     /// Inside a transaction the take is journaled: the map's writes in the action roll back
     /// wherever the map is, and the source level's index keeps its rows until the root closes
     /// (`defer_departure`). Travel itself is not undone, so the map stays with the entity.
-    pub(in crate::game) fn take_transferred_entity_state(
+    pub fn take_transferred_entity_state(
         &mut self,
         id: u32,
     ) -> TransferredEntityState {
@@ -156,7 +156,7 @@ impl ServerGame<'_> {
 
     /// Install before `remember_uuid`: the destination is the same logical entity,
     /// so neither construction nor the saved overlay may replace its runtime values.
-    pub(in crate::game) fn adopt_transferred_entity_state(
+    pub fn adopt_transferred_entity_state(
         &mut self,
         id: u32,
         state: TransferredEntityState,

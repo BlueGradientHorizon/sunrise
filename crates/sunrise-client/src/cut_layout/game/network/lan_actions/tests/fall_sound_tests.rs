@@ -10,7 +10,7 @@ fn run(distance: f64, expected: usize) {
     mod_platform::testing::with_mods(Vec::new().into(), || {
         with_game(|game| {
             open_to_lan(game);
-            game.side
+            game.server
                 .streaming
                 .insert_remote(&mut game.world, Chunk::empty(0, 0));
             let stone = game
@@ -31,14 +31,14 @@ fn run(distance: f64, expected: usize) {
             observer.loaded = true;
             let (tx, other) = mpsc::channel();
             observer.sender = PlayerSender::new(tx, Arc::default());
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()
                 .hub
                 .guests
                 .extend([landing, observer]);
-            let target = match game.side.lan.as_ref().unwrap().hub.sound_packet(
+            let target = match game.server.lan.as_ref().unwrap().hub.sound_packet(
                 "minecraft:block.stone.fall",
                 [1.5, 64.0, 1.5],
                 0.5,

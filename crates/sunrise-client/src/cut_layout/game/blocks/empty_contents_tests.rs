@@ -202,7 +202,7 @@ fn a_player_pour_with_a_changed_hand_is_refused() {
             ..Plan::default()
         };
         sunrise_gameplay::game::server_side::native_item_places::tests::open_to_lan(game);
-        game.side
+        game.server
             .lan
             .as_mut()
             .unwrap()

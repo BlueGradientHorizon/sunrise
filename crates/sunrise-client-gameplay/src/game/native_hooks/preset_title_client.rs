@@ -17,7 +17,7 @@ impl crate::game::ClientGame<'_> {
             })
     }
     /// Forward a mouse press to the open bound preset editor.
-    pub(in crate::game) fn preset_editor_mouse_clicked(
+    pub fn preset_editor_mouse_clicked(
         &self,
         button: i32,
         double_click: bool,
@@ -81,7 +81,7 @@ impl crate::game::ClientGame<'_> {
         }
     }
     /// Render the open bound preset editor's custom UI right before `screen_render_post`.
-    pub(in crate::game) fn draw_preset_editor(&self, batch: &mut HudBatch) {
+    pub fn draw_preset_editor(&self, batch: &mut HudBatch) {
         let Some(session) = self
             .preset_editor_title()
             .and_then(|title| title.preset_editor_session())

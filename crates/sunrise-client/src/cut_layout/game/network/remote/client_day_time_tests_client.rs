@@ -12,7 +12,7 @@ fn client_day_time_reads_overworld_clock_across_packets_and_levels() {
     with_client_game(|game| {
         let (client, _server) = Pipe::pair();
         game.connect_local(client, "ClockReadTest").unwrap();
-        let mut registries = (*game.side.remote.as_ref().unwrap().registries).clone();
+        let mut registries = (*game.client.remote.as_ref().unwrap().registries).clone();
         let dimensions = vec![
             ("minecraft:overworld".into(), None),
             ("minecraft:the_end".into(), None),
@@ -147,13 +147,13 @@ fn client_day_time_reads_overworld_clock_across_packets_and_levels() {
         // Same-level respawn keeps the epoch and clocks, but replaces the
         // local player and its mood handler, with or without entity data.
         for keep in [0, 2] {
-            game.side.ambience.moodiness = 0.375;
+            game.client.ambience.moodiness = 0.375;
             game.handle_packet(C::Respawn(play::Respawn {
                 spawn: spawn.clone(),
                 keep,
             }))
             .unwrap();
-            assert_eq!(game.side.ambience.moodiness, 0.0);
+            assert_eq!(game.client.ambience.moodiness, 0.0);
             assert_eq!(end.day_time(game), Some(60_004));
         }
         spawn.dimension_type = 0;

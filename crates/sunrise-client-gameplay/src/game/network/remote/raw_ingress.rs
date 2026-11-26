@@ -33,7 +33,7 @@ pub(in crate::game) struct ListenerTurn {
 
 #[cfg(any(test, feature = "test-support"))]
 impl crate::game::ClientGame<'_> {
-    pub(in crate::game) fn wait_for_test_remote_event(&mut self, until: impl Fn(&Event) -> bool) {
+    pub fn wait_for_test_remote_event(&mut self, until: impl Fn(&Event) -> bool) {
         let deadline = Instant::now() + Duration::from_secs(5);
         let remote = self.client.remote.as_mut().unwrap();
         let mut backlog = std::mem::take(&mut remote.backlog);
@@ -58,7 +58,7 @@ impl crate::game::ClientGame<'_> {
 #[cfg(feature = "client")]
 #[cfg(any(test, feature = "test-support"))]
 impl crate::game::ClientGame<'_> {
-    pub(in crate::game) fn acknowledge_test_configuration(&mut self) {
+    pub fn acknowledge_test_configuration(&mut self) {
         self.wait_for_test_remote_event(|event| matches!(event, Event::FinishConfiguration(_)));
         self.poll_remote_events(true).unwrap();
     }

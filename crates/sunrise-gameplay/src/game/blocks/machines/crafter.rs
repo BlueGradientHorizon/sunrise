@@ -87,7 +87,7 @@ impl crate::game::ServerGame<'_> {
         }
     }
     /// `CrafterBlock.dispenseFrom` (the scheduled tick after a redstone pulse).
-    pub(in crate::game::server_side) fn crafter_dispense(
+    pub fn crafter_dispense(
         &mut self,
         pos: BlockPos,
         state: BlockStateId,

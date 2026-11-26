@@ -68,7 +68,7 @@ impl ClientGame<'_> {
     /// event for it, its data still there. Tells `client_chunk_unload` and,
     /// when the level stays (`level_stays`), `on_chunk_unloaded`: a level that
     /// goes takes its block entities with it. Its passages go with it.
-    pub(in crate::game) fn client_chunk_unload(&mut self, x: i32, z: i32, level_stays: bool) {
+    pub fn client_chunk_unload(&mut self, x: i32, z: i32, level_stays: bool) {
         self.forget_chunk_passages(x, z);
         if mod_api::__private::listened(mod_api::HookId::ClientChunkUnload)
             && let Some(dimension) = self.client_chunk_dimension()
@@ -93,7 +93,7 @@ impl ClientGame<'_> {
     /// `handleLevelChunkWithLight`: the column replaces any loaded one, and
     /// its block entities load their update tags. `decoded` is the column the
     /// decoder made with `format`; another format since means decode again.
-    pub(in crate::game) fn remote_chunk(
+    pub fn remote_chunk(
         &mut self,
         p: &play::LevelChunkWithLight,
         decoded: Option<(&Arc<ChunkFormat>, Result<Chunk, String>)>,
@@ -321,7 +321,7 @@ impl ClientGame<'_> {
     }
 
     /// `ClientLevel.pollLightUpdates`, before streaming takes the light inputs for meshes.
-    pub(in crate::game) fn poll_remote_light(&mut self) {
+    pub fn poll_remote_light(&mut self) {
         let Some(r) = &self.client.remote else { return };
         let size = r.chunk_light.queue.len();
         // `ClientLevel.pollLightUpdates`: under 1000 queued, the greater of 10 and a

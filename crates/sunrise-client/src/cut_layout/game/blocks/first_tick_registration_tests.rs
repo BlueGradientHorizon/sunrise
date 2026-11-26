@@ -69,7 +69,7 @@ fn water_placed_before_the_first_world_tick_keeps_its_flow_tick() {
     let mut game = game(&mut game_resources);
     let key = (80, 80);
     // Queue the ticket without a load barrier: the test supplies the worker result below.
-    assert!(game.side.streaming.set_forced(key.0, key.1, true));
+    assert!(game.server.streaming.set_forced(key.0, key.1, true));
     // The streaming worker's chunk, made resident as `streaming.update` does.
     game.world
         .chunks
@@ -111,7 +111,7 @@ fn early_registration_keeps_saved_ticks_and_ticks_nothing() {
     let mut game = game(&mut game_resources);
     let key = (80, 80);
     // Queue the ticket without a load barrier: the test supplies the worker result below.
-    assert!(game.side.streaming.set_forced(key.0, key.1, true));
+    assert!(game.server.streaming.set_forced(key.0, key.1, true));
     let saved = SavedTick {
         kind: TickTypeId(sunrise_world::fluid::FluidKind::Water.tick_id()),
         pos: sunrise_core::position::BlockPos::new(1285, 101, 1285),
@@ -165,7 +165,7 @@ fn saved_block_and_fluid_ticks_unpack_when_the_chunk_starts_ticking() {
     let mut game = game(&mut game_resources);
     let key = (80, 80);
     // Queue the ticket without a load barrier: the test supplies the worker result below.
-    assert!(game.side.streaming.set_forced(key.0, key.1, true));
+    assert!(game.server.streaming.set_forced(key.0, key.1, true));
     let at = |y| sunrise_core::position::BlockPos::new(1285, y, 1285);
     let block = SavedTick {
         kind: TickTypeId(1),
@@ -206,7 +206,7 @@ fn saved_block_and_fluid_ticks_unpack_when_the_chunk_starts_ticking() {
         "a ticking chunk"
     );
     assert!(
-        game.side.tickets.0.levels().loaded_ticking(key.0, key.1),
+        game.server.tickets.0.levels().loaded_ticking(key.0, key.1),
         "a ticking ticket level"
     );
     let pos = ChunkPos::new(key.0, key.1);
@@ -245,7 +245,7 @@ fn an_unloaded_chunk_saves_its_ticks_and_a_reloaded_one_gets_them_back() {
     let key = (80, 80);
     let pos = ChunkPos::new(key.0, key.1);
     // Queue the ticket without a load barrier: the test supplies the worker result below.
-    assert!(game.side.streaming.set_forced(key.0, key.1, true));
+    assert!(game.server.streaming.set_forced(key.0, key.1, true));
     game.world
         .chunks
         .insert(key, Arc::new(Chunk::empty(key.0, key.1)));

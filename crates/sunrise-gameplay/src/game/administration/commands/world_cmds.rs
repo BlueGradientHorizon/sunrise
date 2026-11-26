@@ -116,7 +116,7 @@ impl crate::game::ServerGame<'_> {
     /// always resolves back to that id. In particular, the engine's explosion
     /// factory chooses the type based on the attacker; an explicit registry
     /// type must not. Other registered types keep their id and tags as `Named`.
-    pub(in crate::game) fn damage_kind(catalog: &DamageCatalog, ty: &str) -> DamageKind {
+    pub fn damage_kind(catalog: &DamageCatalog, ty: &str) -> DamageKind {
         Self::builtin_damage_kind(ty)
             .or_else(|| NamedDamage::registered(catalog, ty).map(DamageKind::Named))
             .unwrap_or(DamageKind::Generic)
@@ -228,7 +228,7 @@ impl crate::game::ServerGame<'_> {
     /// to the causing one), the item, vehicle, dragon and crystal branches.
     /// False when the kind refuses the damage. `EntityRef::hurt` (#924)
     /// enters here too — there is no second damage pipeline.
-    pub(in crate::game) fn hurt_target(
+    pub fn hurt_target(
         &mut self,
         target: Target,
         amount: f32,
@@ -1112,7 +1112,7 @@ impl crate::game::ServerGame<'_> {
     /// `RideCommand.mount` once the targets are known: `target` (the player
     /// in place or a mob) rides `vehicle`, as `startRiding(vehicle, true,
     /// true)` forces it (also for `native_mount`).
-    pub(in crate::game) fn ride_mount(&mut self, target: Target, vehicle: Target) -> R<()> {
+    pub fn ride_mount(&mut self, target: Target, vehicle: Target) -> R<()> {
         let name = self.target_name(target);
         let vehicle_name = self.target_name(vehicle);
         if let Some(current) = self.ride_vehicle(target) {
@@ -1146,7 +1146,7 @@ impl crate::game::ServerGame<'_> {
     /// LivingEntity.stopRiding for a mob: off its vehicle
     /// (Entity.removePassenger), then to where the vehicle lets it out
     /// (LivingEntity.dismountVehicle).
-    pub(in crate::game) fn dismount_mob(&mut self, rider: u32) {
+    pub fn dismount_mob(&mut self, rider: u32) {
         self.dismount_mob_with_cart(rider, None, None, false);
     }
 

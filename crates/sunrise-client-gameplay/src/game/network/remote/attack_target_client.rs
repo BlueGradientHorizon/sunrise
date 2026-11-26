@@ -25,7 +25,7 @@ impl crate::game::ClientGame<'_> {
     }
 
     /// `Minecraft.startAttack`'s range check and `MultiPlayerGameMode.attack`'s send and prediction.
-    pub(in crate::game) fn remote_attack_entity(&mut self, id: i32, distance: f64) -> bool {
+    pub fn remote_attack_entity(&mut self, id: i32, distance: f64) -> bool {
         if !self.held_range_allows(distance) {
             return false;
         }

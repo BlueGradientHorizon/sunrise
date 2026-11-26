@@ -60,8 +60,8 @@ mod tests {
             .join()
             .unwrap();
             assert!(calls.lock().unwrap().is_empty());
-            assert!(game.side.remote.is_none());
-            game.side.focused = true;
+            assert!(game.client.remote.is_none());
+            game.client.focused = true;
             game.poll_remote().unwrap();
             assert_eq!(
                 *calls.lock().unwrap(),
@@ -113,7 +113,7 @@ mod tests {
 
             let (reply, completion) = std::sync::mpsc::channel();
             game.test_seed_pending_server_save(reply);
-            assert!(!game.side.pending_save.0.as_ref().unwrap().quit);
+            assert!(!game.client.pending_save.0.as_ref().unwrap().quit);
             game.options.headless = true;
             game.handle_window_event(
                 &TestLoop,
@@ -121,7 +121,7 @@ mod tests {
                 WindowEvent::CloseRequested,
                 InputOrigin::User,
             );
-            assert!(game.side.pending_save.0.as_ref().unwrap().quit);
+            assert!(game.client.pending_save.0.as_ref().unwrap().quit);
             assert!(matches!(
                 completion.try_recv(),
                 Err(std::sync::mpsc::TryRecvError::Empty)
@@ -147,7 +147,7 @@ mod tests {
     fn title_quit_discards_pending_and_late_client_tasks() {
         with_client_game(|game| {
             let saves = tempfile::tempdir().unwrap();
-            game.side.title.0 = Some(game.new_title(saves.path().to_path_buf()));
+            game.client.title.0 = Some(game.new_title(saves.path().to_path_buf()));
             let executor = executor(game, "producer");
             let (pending, pending_calls) = mpsc::channel();
             executor.execute(Box::new(move |_| pending.send(()).unwrap()));
@@ -157,7 +157,7 @@ mod tests {
                 pending_calls.try_recv(),
                 Err(mpsc::TryRecvError::Disconnected)
             );
-            assert!(game.side.pending_save.0.as_ref().unwrap().quit);
+            assert!(game.client.pending_save.0.as_ref().unwrap().quit);
 
             let (late, late_calls) = mpsc::channel();
             thread::spawn(move || executor.execute(Box::new(move |_| late.send(()).unwrap())))
@@ -183,13 +183,13 @@ mod tests {
         mod_platform::testing::with_mods(Default::default(), || {
             with_client_game(|game| {
                 game.init_remote_for_replay().unwrap();
-                game.side.remote.as_mut().unwrap().logged_in = true;
+                game.client.remote.as_mut().unwrap().logged_in = true;
                 game.spawn_entity(20, "minecraft:pig", [2.0, 64.0, 0.0], [0.0; 3]);
                 let entity = game.entity(20).unwrap();
-                game.side.audio.0.backend_live_for_bench();
+                game.client.audio.0.backend_live_for_bench();
                 let stream = |owner| {
                     Arc::new(AudioStreamRef::new(
-                        game.side
+                        game.client
                             .audio
                             .0
                             .open_stream(
@@ -298,7 +298,7 @@ mod tests {
         mod_platform::testing::with_mods(mods, || {
             with_client_game(|game| {
                 game.init_remote_for_replay().unwrap();
-                game.side
+                game.client
                     .remote
                     .as_ref()
                     .unwrap()
@@ -314,7 +314,7 @@ mod tests {
                 executor.execute(Box::new(move |_| record.send(1).unwrap()));
 
                 game.poll_remote().unwrap();
-                assert!(game.side.remote.is_none());
+                assert!(game.client.remote.is_none());
                 assert_eq!(calls.try_iter().collect::<Vec<_>>(), [2, 1, 3]);
             });
         });

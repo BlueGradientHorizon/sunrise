@@ -392,7 +392,7 @@ impl crate::game::ClientGame<'_> {
         allowed
     }
     /// The hovered slot and whether the cursor is outside the window.
-    pub(in crate::game::client_side) fn inventory_target(&self) -> (Option<usize>, bool) {
+    pub fn inventory_target(&self) -> (Option<usize>, bool) {
         let Some(r) = self.client.renderer.0.as_ref() else {
             return (None, false);
         };
@@ -403,7 +403,7 @@ impl crate::game::ClientGame<'_> {
         self.target_at(&batch)
     }
     /// `inventory_target` for the frame `batch` describes.
-    pub(in crate::game::client_side) fn target_at(
+    pub fn target_at(
         &self,
         batch: &HudBatch,
     ) -> (Option<usize>, bool) {
@@ -428,7 +428,7 @@ impl crate::game::ClientGame<'_> {
     /// on the way from the OS (a stuck Shift then kept every screen's Shift
     /// and a sneak the key no longer held: #4166's in-game report), so a
     /// cached key set is not vanilla's answer.
-    pub(in crate::game) fn has_shift_down(&self) -> bool {
+    pub fn has_shift_down(&self) -> bool {
         self.client.modifiers.shift_key()
     }
     /// The same live word for Control (`InputWithModifiers.hasControlDown`).
@@ -465,7 +465,7 @@ impl crate::game::ClientGame<'_> {
         )
     }
     /// The open container screen's window: its place and size.
-    pub(in crate::game) fn container_image(
+    pub fn container_image(
         &self,
         batch: &HudBatch,
     ) -> sunrise_client::container_screen::Image {
@@ -504,7 +504,7 @@ impl crate::game::ClientGame<'_> {
     /// A click outside the window (slot id -999): `THROW` does nothing; a
     /// `PICKUP` drops the carried stack (left) or one of it (right), thrown
     /// from the hand (`AbstractContainerMenu.doClick`, `LivingEntity.drop`).
-    pub(in crate::game::client_side) fn throw_click(
+    pub fn throw_click(
         &mut self,
         right: bool,
         input: sunrise_sim::menu::Input,

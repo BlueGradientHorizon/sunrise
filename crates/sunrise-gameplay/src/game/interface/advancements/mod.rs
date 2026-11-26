@@ -173,7 +173,7 @@ pub(in crate::game::server_side) fn now_text() -> String {
 }
 impl crate::game::ServerGame<'_> {
     /// `ItemPredicate.test` (the `item_filter` of a filtered item modifier).
-    pub(in crate::game) fn loot_item_filter(&self, predicate: &Value, s: &ItemStack) -> bool {
+    pub fn loot_item_filter(&self, predicate: &Value, s: &ItemStack) -> bool {
         adv::item(predicate, &item_view(s), &View(self))
     }
     /// `BaseContainerBlockEntity.canOpen`: whether the `lock` of the block
@@ -235,7 +235,7 @@ impl crate::game::ServerGame<'_> {
         self.common.options.dedicated.is_some() && self.server.lan_acting.is_none()
     }
     /// Load the local tree once; an empty server tree is still authoritative.
-    pub(in crate::game) fn advancement_tree(&mut self) -> Arc<Tree> {
+    pub fn advancement_tree(&mut self) -> Arc<Tree> {
         if self.common.adv.remote_tree.is_none() && self.common.adv.tree.list.is_empty() {
             let overlay = self.pack_files();
             self.common.adv.tree = Tree::shared(&self.common.options.resources.join("data"), &overlay);
@@ -289,7 +289,7 @@ impl crate::game::ServerGame<'_> {
             self.grant_rewards(&tree.list[index]);
         }
     }
-    pub(in crate::game::server_side) fn save_advancements(&self) {
+    pub fn save_advancements(&self) {
         if !self.common.adv.loaded
             || self.no_player_here()
             || self.server.crash_save.holds_interrupted(self.server.lan_acting)
@@ -309,7 +309,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// The player as predicates see it.
     /// The predicate view of a command target.
-    pub(in crate::game::server_side) fn entity_view_of(
+    pub fn entity_view_of(
         &self,
         t: super::commands::Target,
     ) -> EntityView {
@@ -356,7 +356,7 @@ impl crate::game::ServerGame<'_> {
         }
     }
     /// A `ContextAwarePredicate` for `this` at `origin`.
-    pub(in crate::game::server_side) fn conditions_hold(
+    pub fn conditions_hold(
         &self,
         v: &Value,
         this: Option<&EntityView>,
@@ -708,7 +708,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// `Entity.get`: the mob's live custom-name component and type variants,
     /// alongside the other state the entity predicate asks for.
-    pub(in crate::game) fn mob_entity(&self, m: &sunrise_sim::mobs::Mob) -> EntityView {
+    pub fn mob_entity(&self, m: &sunrise_sim::mobs::Mob) -> EntityView {
         // mainhand, offhand, head, chest, legs, feet.
         let slot = |i: Option<&str>| i.map(|id| item_view(&ItemStack::new(id, 1)));
         let mut equipment: [Option<ItemView>; 7] = Default::default();
@@ -895,7 +895,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// Lend the hub each guest turn's actual advancement storage, without
     /// moving it back into a record while that turn is still active.
-    pub(in crate::game::server_side) fn with_advancement_hub<R>(
+    pub fn with_advancement_hub<R>(
         &mut self,
         run: impl FnOnce(
             &mut sunrise_sim::lan::hub::Hub,
@@ -918,7 +918,7 @@ impl crate::game::ServerGame<'_> {
 
     /// Grant the hub's tick criteria one at a time: each hook sees the new
     /// progress before the completion's rewards and packets are applied.
-    pub(in crate::game) fn run_native_advancement_grants(&mut self) {
+    pub fn run_native_advancement_grants(&mut self) {
         let Some(host) = self.server.lan.as_mut() else {
             return;
         };
@@ -1235,7 +1235,7 @@ impl crate::game::ServerGame<'_> {
         unlocked
     }
     /// `InventoryChangeTrigger`, checked when the inventory changes.
-    pub(in crate::game) fn check_inventory_trigger(&mut self) {
+    pub fn check_inventory_trigger(&mut self) {
         use std::hash::{Hash, Hasher};
         // A player in another level than the one in place has their criteria and rewards
         // judged in their own level, from their own tick (`tick_advancements`, which sees the
@@ -1870,7 +1870,7 @@ impl crate::game::ServerGame<'_> {
         );
     }
     /// `EntityHurtPlayerTrigger`: the player and the damage it took.
-    pub(in crate::game::server_side) fn trigger_entity_hurt_player(
+    pub fn trigger_entity_hurt_player(
         &mut self,
         damage: &adv::DamageView,
     ) {

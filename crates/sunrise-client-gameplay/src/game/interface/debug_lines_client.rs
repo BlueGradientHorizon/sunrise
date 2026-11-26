@@ -158,7 +158,7 @@ impl ClientGame<'_> {
         ));
     }
     /// Every enabled entry's lines, by identifier.
-    pub(in crate::game) fn debug_entry_lines(&self, d: &mut Displayer, framebuffer: [i32; 2]) {
+    pub fn debug_entry_lines(&self, d: &mut Displayer, framebuffer: [i32; 2]) {
         let reduced = self.reduced_debug_info();
         let mut paths: Vec<&str> = ENTRIES
             .iter()

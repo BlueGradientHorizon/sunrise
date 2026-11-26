@@ -38,13 +38,13 @@ fn a_part_names_the_selected_stick_while_its_name_shows() {
             mod_platform::testing::with_mods(mods.clone(), || {
                 sunrise_gameplay_common::game::api_values::install_parts(&mods).unwrap();
                 crate::game::native_entity_refs::tests::with_client_game(|game| {
-                    game.side.settings.notification_display_time = 1.0;
+                    game.client.settings.notification_display_time = 1.0;
                     game.inventory[0] = Some(ItemStack::new("minecraft:stick", 1));
                     game.selected = 0;
                     game.tick_hud();
-                    assert_eq!(game.side.tool_highlight.timer, 40);
+                    assert_eq!(game.client.tool_highlight.timer, 40);
                     assert_eq!(
-                        game.side.tool_highlight.tip,
+                        game.client.tool_highlight.tip,
                         Some(Text::literal("Charge: 5"))
                     );
                     // Asked once a tick from 40 down to 1, then no more.
@@ -52,12 +52,12 @@ fn a_part_names_the_selected_stick_while_its_name_shows() {
                         game.tick_hud();
                     }
                     assert_eq!(ASKED.load(Ordering::Relaxed), 40);
-                    assert_eq!(game.side.tool_highlight.tip, None);
+                    assert_eq!(game.client.tool_highlight.tip, None);
                     // An apple has no part: vanilla's name, never asked.
                     game.inventory[0] = Some(ItemStack::new("minecraft:apple", 1));
                     game.tick_hud();
-                    assert_eq!(game.side.tool_highlight.timer, 40);
-                    assert_eq!(game.side.tool_highlight.tip, None);
+                    assert_eq!(game.client.tool_highlight.timer, 40);
+                    assert_eq!(game.client.tool_highlight.tip, None);
                     assert_eq!(ASKED.load(Ordering::Relaxed), 40);
                 });
             });

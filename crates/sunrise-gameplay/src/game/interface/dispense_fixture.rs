@@ -112,7 +112,7 @@ pub(in crate::game) enum Target {
 
 impl crate::game::ServerGame<'_> {
     /// Run every case of `spec` ("CASES,OUTPUT") and write the results.
-    pub(in crate::game::server_side) fn dispense_fixture(&mut self, spec: &str) -> Result<()> {
+    pub fn dispense_fixture(&mut self, spec: &str) -> Result<()> {
         assert!(
             !self.options.execution_role.is_client(),
             "fixture requires a server Game"

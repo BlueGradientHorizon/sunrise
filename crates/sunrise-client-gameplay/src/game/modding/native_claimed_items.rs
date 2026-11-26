@@ -26,12 +26,12 @@ pub(in crate::game) struct ActiveClientItemUse {
 
 impl crate::game::ClientGame<'_> {
     /// The first block along the view within `distance` (at most 1024), in loaded chunks only; `None` on a miss.
-    pub(in crate::game) fn raycast(&self, distance: f32) -> Option<mod_api::Hit> {
+    pub fn raycast(&self, distance: f32) -> Option<mod_api::Hit> {
         let (d, hit) = self.view_hit()?;
         (d <= distance.clamp(0.0, RAYCAST_MAX)).then_some(hit)
     }
     /// The first block along the view within `RAYCAST_MAX`, in loaded chunks only, and its distance; `None` on a miss.
-    pub(in crate::game) fn view_hit(&self) -> Option<(f32, mod_api::Hit)> {
+    pub fn view_hit(&self) -> Option<(f32, mod_api::Hit)> {
         self.common.player.as_ref()?;
         let eye = self.common.eye_position()?;
         let dir = super::view_vector(self.common.yaw, self.common.pitch);
@@ -149,7 +149,7 @@ impl crate::game::ClientGame<'_> {
         }
     }
 
-    pub(in crate::game) fn reset_client_item_use(&mut self) {
+    pub fn reset_client_item_use(&mut self) {
         self.end_client_item_use(false);
     }
 

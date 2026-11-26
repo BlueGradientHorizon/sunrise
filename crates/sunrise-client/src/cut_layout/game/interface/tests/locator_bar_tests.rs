@@ -32,7 +32,7 @@ fn connect(game: &mut sunrise_client_gameplay::game::ClientGame<'_>, position: V
         RemoteDimensionEntry::Login,
         Reason::Other,
     );
-    let remote = game.side.remote.as_mut().unwrap();
+    let remote = game.client.remote.as_mut().unwrap();
     remote.logged_in = true;
     remote.entity_id = 1;
     remote.level_load.finish();
@@ -58,7 +58,7 @@ fn add_armor_stand_facing(
     yaw: i8,
 ) {
     let kind = game
-        .side
+        .client
         .remote
         .as_ref()
         .unwrap()
@@ -106,8 +106,8 @@ fn spectated_locator_uses_camera_entity_for_identity_and_distance() {
 
                 // Keep all three witness waypoints visible by placing the render camera
                 // behind them; the entity itself still faces south at x = 100.
-                game.side.locator_camera = Some(([-10.0, 66.0, 0.0], -90.0, 45.0, 70.0));
-                game.side.waypoint_styles = WaypointStyles::load(&ResourceSource::indexed(
+                game.client.locator_camera = Some(([-10.0, 66.0, 0.0], -90.0, 45.0, 70.0));
+                game.client.waypoint_styles = WaypointStyles::load(&ResourceSource::indexed(
                     [(
                         "assets/minecraft/waypoint_style/test.json".into(),
                         Resource::bytes(
@@ -163,12 +163,12 @@ fn spectated_locator_uses_camera_entity_for_identity_and_distance() {
                     w: 9,
                     h: 9,
                 };
-                game.side
+                game.client
                     .gui
                     .atlas
                     .sprites
                     .insert("hud/locator_bar_dot/near".into(), near_rect);
-                game.side.gui.atlas.sprites.insert(
+                game.client.gui.atlas.sprites.insert(
                     "hud/locator_bar_dot/far".into(),
                     Rect {
                         u0: 0.75,
@@ -181,8 +181,8 @@ fn spectated_locator_uses_camera_entity_for_identity_and_distance() {
                 );
                 game.clear_waypoints();
                 track_block(game, 5, 5, [122, 64, 0]);
-                game.side.chat_ui.hide_gui = false;
-                game.side.locator_camera = Some(([0.0, 65.62, 0.0], 180.0, 0.0, 70.0));
+                game.client.chat_ui.hide_gui = false;
+                game.client.locator_camera = Some(([0.0, 65.62, 0.0], 180.0, 0.0, 70.0));
                 add_armor_stand_facing(game, 25, 25, [100.5, 64.0, 0.5], -64);
                 game.apply_packet(C::SetCamera(play::SetCamera { camera_id: 25 }))
                     .unwrap();
@@ -234,7 +234,7 @@ fn block_waypoints_use_live_non_player_eyes_within_manhattan_three() {
                     .previous = Vec3::new(119.2, 64.0, 5.8);
                 // Offset the witness yaw slightly so the two relevant angles land in
                 // different pixels, without changing the waypoint or entity positions.
-                game.side.locator_camera = Some(([96.0, 66.0, 0.0], -90.25, 0.0, 70.0));
+                game.client.locator_camera = Some(([96.0, 66.0, 0.0], -90.25, 0.0, 70.0));
                 game.clock.reset();
                 game.clock.set_frozen(false);
                 assert!(game.clock.tick_world_runs());

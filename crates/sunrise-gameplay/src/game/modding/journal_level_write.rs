@@ -26,7 +26,7 @@ pub struct JournalLevelWrite<'g, 'a> {
 }
 
 impl<'g, 'a> JournalLevelWrite<'g, 'a> {
-    pub(in crate::game) fn new(
+    pub fn new(
         game: &'g mut crate::game::ServerGame<'a>,
         level: LevelRef,
     ) -> Option<Self> {

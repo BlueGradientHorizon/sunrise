@@ -4,7 +4,7 @@ use sunrise_game_data::sound_source::ServerSound;
 
 impl ServerGame<'_> {
     #[inline(always)]
-    pub(in crate::game) fn start_audio_capture(&mut self) {
+    pub fn start_audio_capture(&mut self) {
         assert!(
             self.is_logical_server(),
             "start_audio_capture called on Client role"
@@ -14,7 +14,7 @@ impl ServerGame<'_> {
     }
 
     #[inline(always)]
-    pub(in crate::game) fn stop_audio_capture(&mut self) {
+    pub fn stop_audio_capture(&mut self) {
         self.server.audio_capture_active = false;
         self.server.pending_sounds.clear();
     }
@@ -31,7 +31,7 @@ impl ServerGame<'_> {
         self.server.pending_sounds.len()
     }
 
-    pub(in crate::game) fn server_play_sound(
+    pub fn server_play_sound(
         &mut self,
         event: &str,
         at: [f64; 3],
@@ -49,7 +49,7 @@ impl ServerGame<'_> {
         }
     }
 
-    pub(in crate::game) fn server_play_sound_on(
+    pub fn server_play_sound_on(
         &mut self,
         source: usize,
         event: &str,

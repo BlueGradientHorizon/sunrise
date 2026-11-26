@@ -105,7 +105,7 @@ impl ServerGame<'_> {
     /// `ShulkerBullet.hurtServer`, whatever hurt it: the hurt sound, fifteen
     /// crit particles (`sendParticles`, spread 0.2), then `destroy`
     /// (`discard` and `gameEvent(ENTITY_DAMAGE)` from the bullet).
-    pub(in crate::game) fn destroy_shulker_bullet(&mut self, i: usize) -> Projectile {
+    pub fn destroy_shulker_bullet(&mut self, i: usize) -> Projectile {
         let (id, at, owner, owner_uuid, silent) = {
             let p = &self.common.creatures.projectiles[i];
             (
@@ -208,7 +208,7 @@ impl ServerGame<'_> {
     /// ticks) the blow goes on as an ordinary attack, which a projectile does
     /// not take: `hurtOrSimulate` fails and `PLAYER_ATTACK_NODAMAGE` plays,
     /// the same sound. Either way the swing follows. True when it turned.
-    pub(in crate::game) fn deflect(&mut self, i: usize) -> bool {
+    pub fn deflect(&mut self, i: usize) -> bool {
         self.reset_attack_strength();
         let turned = self.turn_projectile(i);
         self.swing_arm();

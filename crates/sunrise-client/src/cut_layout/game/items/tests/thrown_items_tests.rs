@@ -25,13 +25,13 @@ pub(crate) fn standing_game<'a>(
     game.load_ticking_neighbourhood(0, 0);
     game.update_chunk_tickets();
     assert!(game.entity_ticking_area()(8, 8));
-    game.side.ticked_entities_through = u32::MAX;
+    game.server.ticked_entities_through = u32::MAX;
     game.start_audio_capture();
     game
 }
 
 fn server_sound(game: &mut sunrise_gameplay::game::ServerGame<'_>, event: &str) -> (f32, f32) {
-    let heard = std::mem::take(&mut game.side.pending_sounds);
+    let heard = std::mem::take(&mut game.server.pending_sounds);
     let sound = heard
         .iter()
         .find(|s| s.event == event)
@@ -141,7 +141,7 @@ fn a_pickup_pitch_is_not_drawn_from_the_levels_random() {
     with_guests(|game| {
         let at = [3.0, 64.0, 5.0];
         let (listener, rx) = guest(14, 14, at);
-        let hub = &mut game.side.lan.as_mut().unwrap().hub;
+        let hub = &mut game.server.lan.as_mut().unwrap().hub;
         hub.guests.push(listener);
         let C::Sound(pickup) = hub.sound_packet("minecraft:entity.item.pickup", at, 0.2, 2.0, 7, 0)
         else {

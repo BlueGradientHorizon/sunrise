@@ -161,7 +161,7 @@ impl ServerGame<'_> {
     }
 
     /// `Scoreboard.getObjective`.
-    pub(in crate::game) fn objective(&self, name: &str) -> Option<ObjectiveRef> {
+    pub fn objective(&self, name: &str) -> Option<ObjectiveRef> {
         if !self.common.is_logical_server() {
             return None;
         }

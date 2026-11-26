@@ -65,7 +65,7 @@ impl crate::game::ServerGame<'_> {
         Ok(())
     }
     /// `Player.sendBlockChange`: one `BlockUpdate` to that player's client, now.
-    pub(in crate::game) fn player_show_block(
+    pub fn player_show_block(
         &mut self,
         player: PlayerRef,
         pos: [i32; 3],

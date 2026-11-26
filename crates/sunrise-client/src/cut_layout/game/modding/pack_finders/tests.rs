@@ -578,7 +578,7 @@ fn registered_data_commands_respect_flags_required_packs_and_default_priority() 
                     b"say from-user\n",
                 )
                 .unwrap();
-                game.side.world_root = world;
+                game.server.world_root = world;
                 game.mods = fixture.sources();
                 game.set_allow_commands(true);
                 game.reload_datapacks(false, &[]).unwrap();
@@ -587,31 +587,31 @@ fn registered_data_commands_respect_flags_required_packs_and_default_priority() 
                 let disable = format!("datapack disable \"{}\"", fixture.data_id());
                 if feature {
                     assert!(!game.run_command(&enable));
-                    assert!(!game.side.fns.0.enabled().contains(&fixture.data_id()));
+                    assert!(!game.server.fns.0.enabled().contains(&fixture.data_id()));
                     let flags = vec![
                         "minecraft:vanilla".into(),
                         "minecraft:trade_rebalance".into(),
                     ];
                     game.level.enabled_features = flags.clone().into();
                     game.reload_datapacks(false, &flags).unwrap();
-                    assert!(game.side.fns.0.enabled().contains(&fixture.data_id()));
+                    assert!(game.server.fns.0.enabled().contains(&fixture.data_id()));
                     assert!(!game.run_command(&disable));
-                    assert!(game.side.fns.0.enabled().contains(&fixture.data_id()));
+                    assert!(game.server.fns.0.enabled().contains(&fixture.data_id()));
                 } else if required {
-                    assert!(game.side.fns.0.enabled().contains(&fixture.data_id()));
+                    assert!(game.server.fns.0.enabled().contains(&fixture.data_id()));
                     assert!(!game.run_command(&disable));
-                    assert!(game.side.fns.0.enabled().contains(&fixture.data_id()));
+                    assert!(game.server.fns.0.enabled().contains(&fixture.data_id()));
                 } else {
-                    assert!(!game.side.fns.0.enabled().contains(&fixture.data_id()));
+                    assert!(!game.server.fns.0.enabled().contains(&fixture.data_id()));
                     assert!(game.run_command(&enable));
                     assert_eq!(
-                        game.side.fns.0.store.functions["packmod:probe"].lines,
+                        game.server.fns.0.store.functions["packmod:probe"].lines,
                         [FunctionLine::Command("say from-user".into())]
                     );
                     assert!(game.run_command(&disable));
                     assert!(game.run_command(&format!("{enable} last")));
                     assert_eq!(
-                        game.side.fns.0.store.functions["packmod:probe"].lines,
+                        game.server.fns.0.store.functions["packmod:probe"].lines,
                         [FunctionLine::Command("say from-optional".into())]
                     );
                 }
@@ -645,7 +645,7 @@ fn a_mods_pack_is_on_the_screen_and_applies_through_client_reload() {
                 &game.pack.assets,
                 &game.res,
                 game.client_res(),
-                &game.side.client_pack.context,
+                &game.client.client_pack.context,
                 false,
                 false,
                 &sunrise_gameplay_common::game::Progress::new(),
@@ -668,12 +668,12 @@ fn a_mods_pack_is_on_the_screen_and_applies_through_client_reload() {
                     .iter()
                     .any(|info| info.id == fixture.asset_id())
             );
-            game.side.settings.resource_packs = vec![fixture.asset_id()];
+            game.client.settings.resource_packs = vec![fixture.asset_id()];
             for expected in ["first", "second"] {
                 let listeners = game.register_client_reload_listeners();
                 let staged = sunrise_client_gameplay::game::client_side::packs::stage_pack(
                     &game.vanilla_root(),
-                    &game.side.settings.resource_packs,
+                    &game.client.settings.resource_packs,
                     &[],
                     &game.mods,
                     listeners,
@@ -681,7 +681,7 @@ fn a_mods_pack_is_on_the_screen_and_applies_through_client_reload() {
                     &game.pack.assets,
                     &game.res,
                     game.client_res(),
-                    &game.side.client_pack.context,
+                    &game.client.client_pack.context,
                     false,
                     false,
                     &sunrise_gameplay_common::game::Progress::new(),

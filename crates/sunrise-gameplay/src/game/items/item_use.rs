@@ -55,7 +55,7 @@ impl crate::game::ServerGame<'_> {
     /// told, `ItemStack.finishUsingItem` (a consumable is eaten, a potion
     /// drunk, a spyglass lowered, anything else given back) with its use
     /// cooldown, then `LivingEntityUseItemEvent.Finish`.
-    pub(in crate::game) fn complete_using_item(
+    pub fn complete_using_item(
         &mut self,
         slot: usize,
         stack: &ItemStack,

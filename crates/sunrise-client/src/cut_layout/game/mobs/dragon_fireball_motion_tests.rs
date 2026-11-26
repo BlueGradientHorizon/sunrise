@@ -62,9 +62,9 @@ fn game<'a>(
 }
 
 fn pos(game: &mut sunrise_gameplay::game::ServerGame<'_>, uuid: &str) -> String {
-    game.side.chat_capture = Some(Vec::new());
+    game.server.chat_capture = Some(Vec::new());
     assert!(game.run_command(&format!("data get entity {uuid} Pos")));
-    let said = game.side.chat_capture.take().unwrap_or_default();
+    let said = game.server.chat_capture.take().unwrap_or_default();
     said.iter()
         .map(sunrise_game_data::text::Text::plain)
         .collect()

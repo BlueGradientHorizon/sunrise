@@ -468,7 +468,7 @@ impl ClientGame<'_> {
     }
 
     /// `ClientPacketListener.handleSetCamera`.
-    pub(in crate::game) fn remote_set_camera(&mut self, camera_id: i32) {
+    pub fn remote_set_camera(&mut self, camera_id: i32) {
         let id = camera_id as u32;
         let in_level = self.client.remote.as_ref().is_some_and(|r| {
             self.holds_camera_entity(id)
@@ -501,7 +501,7 @@ impl ClientGame<'_> {
     }
 
     /// `GameRenderer.toggleSpectatorPostEffect` (`key.toggleSpectatorShaderEffects` / F4).
-    pub(in crate::game::client_side) fn toggle_spectator_post_effect(&mut self) {
+    pub fn toggle_spectator_post_effect(&mut self) {
         self.client.spectated_post_effect_active = !self.client.spectated_post_effect_active;
     }
 
@@ -516,12 +516,12 @@ impl ClientGame<'_> {
     }
 
     /// The entity a server attached the view to, when it is not the player (live or detached).
-    pub(in crate::game) fn remote_camera_id(&self) -> Option<u32> {
+    pub fn remote_camera_id(&self) -> Option<u32> {
         self.client.remote.as_ref()?.camera.map(|id| id as u32)
     }
 
     /// The live entity id currently acting as the remote camera (`None` once removed or replaced).
-    pub(in crate::game) fn live_remote_camera_id(&self) -> Option<u32> {
+    pub fn live_remote_camera_id(&self) -> Option<u32> {
         self.client
             .remote
             .as_ref()
@@ -624,7 +624,7 @@ impl ClientGame<'_> {
     }
 
     /// `LocalPlayer.isControlledCamera`: the view is the player's own.
-    pub(in crate::game) fn controls_camera(&self) -> bool {
+    pub fn controls_camera(&self) -> bool {
         self.remote_camera_id().is_none()
     }
     /// Camera entity's UUID and feet position (`Minecraft.getCameraEntity`), borrowing
@@ -654,7 +654,7 @@ impl ClientGame<'_> {
     }
 
     /// `Minecraft.getCameraEntity`: local player, live tracked entity, or detached snapshot.
-    pub(in crate::game) fn camera_subject(&self) -> Option<ResolvedCameraEntity> {
+    pub fn camera_subject(&self) -> Option<ResolvedCameraEntity> {
         if let Some(r) = self.client.remote.as_ref()
             && let Some(id) = r.camera
         {
@@ -678,7 +678,7 @@ impl ClientGame<'_> {
     }
 
     /// `Camera.getCameraEntityPartialTicks`: `1.0` when frozen unless player or player-ridden.
-    pub(in crate::game) fn camera_partial_tick(&self) -> f64 {
+    pub fn camera_partial_tick(&self) -> f64 {
         let entity_frozen = !self.common.clock.runs_normally()
             && self
                 .camera_subject()
@@ -701,7 +701,7 @@ impl ClientGame<'_> {
     }
 
     /// `GameRenderer.shouldRenderBlockOutline` evaluated against an optional targeted block hit.
-    pub(in crate::game::client_side) fn should_render_block_outline_for_hit(
+    pub fn should_render_block_outline_for_hit(
         &self,
         hit: Option<&super::Hit>,
     ) -> bool {
@@ -1490,7 +1490,7 @@ impl ClientGame<'_> {
         Some(non_living_subject(camera, collision_kind, &tracked.kind))
     }
     /// `Hud.getCameraPlayer`: whose hotbar, bars and vehicle the HUD shows.
-    pub(in crate::game) fn camera_player(&mut self) -> CameraPlayer {
+    pub fn camera_player(&mut self) -> CameraPlayer {
         let Some(id) = self.remote_camera_id() else {
             return CameraPlayer::Own;
         };
@@ -1521,7 +1521,7 @@ impl ClientGame<'_> {
     }
 
     /// The view of the entity a server attached the camera to, live or detached.
-    pub(in crate::game) fn spectated_camera_snapshot(&self) -> Option<CameraEntity> {
+    pub fn spectated_camera_snapshot(&self) -> Option<CameraEntity> {
         self.camera_subject()
             .filter(|c| !c.is_local_player)
             .map(|c| c.camera)
@@ -1565,12 +1565,12 @@ impl ClientGame<'_> {
         self.remote_entity_living_values(a.id as i32)
     }
     /// The entity under a spectator's crosshair (`Minecraft.hitResult` as an `EntityHitResult`).
-    pub(in crate::game) fn spectator_click_target(&self) -> Option<i32> {
+    pub fn spectator_click_target(&self) -> Option<i32> {
         self.crosshair_entity_hit().map(|hit| hit.id)
     }
 
     /// `LevelRenderer`: the camera entity is not drawn from its own eyes, but a sleeping one is.
-    pub(in crate::game) fn hides_as_camera(&self, id: u32) -> bool {
+    pub fn hides_as_camera(&self, id: u32) -> bool {
         self.client.camera_type.is_first_person()
             && self.live_remote_camera_id() == Some(id)
             && !self

@@ -35,7 +35,7 @@ fn admitted_raid_loses_removed_loaded_bed_without_erasing_memory() {
         crate::game::profile_resolver,
     )
     .unwrap();
-    game.side.world_root =
+    game.server.world_root =
         std::path::PathBuf::from(std::env::var_os("SUNRISE_HOME").unwrap()).join("raid-unit-world");
     for x in -5..5 {
         for z in -5..5 {
@@ -74,15 +74,15 @@ fn admitted_raid_loses_removed_loaded_bed_without_erasing_memory() {
     villager.extra.bed = Some([2, 200, 1]);
     game.mobs.push(villager);
     assert!(game.raid_command_create([8, 200, 8], 1));
-    let id = game.side.raiding.0.raids.ids()[0];
+    let id = game.server.raiding.0.raids.ids()[0];
     for _ in 0..400 {
         game.world.game_time += 1;
         game.tick_raids();
-        if game.side.raiding.0.raids.get(id).unwrap().groups_spawned == 1 {
+        if game.server.raiding.0.raids.get(id).unwrap().groups_spawned == 1 {
             break;
         }
     }
-    let raid = game.side.raiding.0.raids.get(id).unwrap();
+    let raid = game.server.raiding.0.raids.get(id).unwrap();
     assert!(raid.started);
     assert_eq!(raid.groups_spawned, 1, "real first wave must be admitted");
     assert!(
@@ -93,7 +93,7 @@ fn admitted_raid_loses_removed_loaded_bed_without_erasing_memory() {
         game.tick_raids();
     }
     assert_eq!(
-        game.side.raiding.0.raids.get(id).unwrap().status,
+        game.server.raiding.0.raids.get(id).unwrap().status,
         Status::Ongoing
     );
     // Unavailable claims remain unknown rather than becoming known air.
@@ -109,7 +109,7 @@ fn admitted_raid_loses_removed_loaded_bed_without_erasing_memory() {
     assert_eq!(game.world.block(2, 200, 2), air);
     game.tick_raids();
     assert_eq!(
-        game.side.raiding.0.raids.get(id).unwrap().status,
+        game.server.raiding.0.raids.get(id).unwrap().status,
         Status::Loss
     );
     assert_eq!(

@@ -59,7 +59,7 @@ impl ServerGame<'_> {
     /// `PotentSulfurBlockEntity.SERVER_NAUSEA_EFFECT_TICKER`: every 10 ticks,
     /// the living entities near the source block that its gas reaches (at
     /// their eyes) get nausea for 4 seconds.
-    pub(in crate::game::server_side) fn server_nausea_effect_ticker(&mut self, pos: Pos) {
+    pub fn server_nausea_effect_ticker(&mut self, pos: Pos) {
         if self.common.world.game_time % EFFECT_APPLICATION_FREQUENCY_TICKS != 0 {
             return;
         }
@@ -117,7 +117,7 @@ impl ServerGame<'_> {
 
     /// The slots of the mobs whose box may meet `area`, from a grid kept for
     /// the block entity pass; false outside the pass: scan them all.
-    pub(in crate::game::server_side) fn mobs_in_pass(
+    pub fn mobs_in_pass(
         &mut self,
         area: Aabb,
         out: &mut Vec<u32>,

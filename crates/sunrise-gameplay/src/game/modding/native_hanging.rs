@@ -6,7 +6,7 @@ use sunrise_core::geometry::Direction;
 
 impl crate::game::ServerGame<'_> {
     /// `HangingEntity.setDirection`: the facing, from which the yaw, pitch and bounds follow.
-    pub(in crate::game) fn entity_set_hanging_direction(
+    pub fn entity_set_hanging_direction(
         &mut self,
         entity: EntityRef,
         direction: Direction,
@@ -36,7 +36,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// `ItemFrame.setRotation`: `rotation % 8`, then the comparators reading the frame.
-    pub(in crate::game) fn entity_set_item_frame_rotation(
+    pub fn entity_set_item_frame_rotation(
         &mut self,
         entity: EntityRef,
         rotation: u8,

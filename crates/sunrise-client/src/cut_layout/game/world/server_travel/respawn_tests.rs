@@ -15,12 +15,12 @@ use sunrise_gameplay_common::world_biomes;
 use sunrise_sim::lan::{Out, guest::InboxItem, hub::game_event};
 
 fn put_guest_in_end_exit(game: &mut sunrise_gameplay::game::ServerGame<'_>) {
-    game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+    game.server.lan.as_mut().unwrap().hub.guests.update(0, |g| {
         g.dimension = Dim::End.id().into();
         g.seen_credits = true;
     });
     game.enter_level(Dim::End).unwrap();
-    game.side
+    game.server
         .streaming
         .insert_remote(&mut game.world, Chunk::empty(0, 0));
     assert!(
@@ -164,7 +164,7 @@ fn credits_respawn_is_not_subject_to_the_end_travel_veto() {
         );
         assert!(!game.on_server_trip(2));
 
-        game.side
+        game.server
             .lan
             .as_mut()
             .unwrap()
@@ -172,7 +172,7 @@ fn credits_respawn_is_not_subject_to_the_end_travel_veto() {
             .guests
             .update(0, |g| g.seen_credits = false);
         game.handle_server_portal(2);
-        let host = game.side.lan.as_mut().unwrap();
+        let host = game.server.lan.as_mut().unwrap();
         assert!(host.hub.guests[0].won_game);
         assert!(!host.hub.guests[0].placed);
         assert!(
@@ -186,7 +186,7 @@ fn credits_respawn_is_not_subject_to_the_end_travel_veto() {
             ));
         });
         game.tick_lan_packets();
-        let host = game.side.lan.as_ref().unwrap();
+        let host = game.server.lan.as_ref().unwrap();
         let player = &host.hub.guests[0];
         assert!(!player.won_game);
         assert!(player.placed);
@@ -213,7 +213,7 @@ fn ordinary_end_exit(available: bool, veto: Option<Dim>, spectator: bool) {
         );
         put_guest_in_end_exit(game);
         if spectator {
-            game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+            game.server.lan.as_mut().unwrap().hub.guests.update(0, |g| {
                 g.game_mode = sunrise_sim::lan::guest::SPECTATOR;
             });
             assert!(game.spectator_use_portal(2, 0, [0, 100, 0]));
@@ -313,7 +313,7 @@ fn a_travel_veto_can_refuse_a_spectators_resolved_end_exit() {
 fn a_cold_end_exit_keeps_ticking_the_source_player_before_the_fallback_veto() {
     with_end_travel(Some(Dim::Overworld), |game, rx, heard| {
         // The saved Nether point is missing, and the fallback Overworld column is cold.
-        assert!(!game.side.streaming.is_lit(0, 0));
+        assert!(!game.server.streaming.is_lit(0, 0));
         game.enter_level(Dim::Nether).unwrap();
         light_spawn_chunks(game);
         put_guest_in_end_exit(game);
@@ -378,9 +378,9 @@ fn a_cold_end_exit_keeps_ticking_the_source_player_before_the_fallback_veto() {
 fn cold_legacy_end_exit(point: [f64; 3], floor: [i32; 3], landing: [f64; 3]) {
     with_end_travel(None, move |game, rx, heard| {
         game.level.world_spawn_angle = [20.0, 5.0];
-        assert!(!game.side.streaming.is_lit(0, 0));
+        assert!(!game.server.streaming.is_lit(0, 0));
         put_guest_in_end_exit(game);
-        game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+        game.server.lan.as_mut().unwrap().hub.guests.update(0, |g| {
             g.respawn_elsewhere = None;
             g.spawn = Some(point);
             (g.yaw, g.pitch) = (-67.0, 27.0);
@@ -456,7 +456,7 @@ fn an_end_exit_to_a_point_in_the_end_sends_no_respawn_packet() {
             game.set_state_named([9, 100, 9], "minecraft:glass", &[])
                 .unwrap()
         );
-        game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+        game.server.lan.as_mut().unwrap().hub.guests.update(0, |g| {
             g.respawn_elsewhere = Some((Dim::End.id().to_owned(), [9, 100, 9], 0.0, 0.0, false));
         });
         game.handle_server_portal(2);
@@ -576,7 +576,7 @@ fn with_anchor_death(
                 let anchor = registry.default_state("minecraft:respawn_anchor").unwrap();
                 let mut chunk = Chunk::with_layout(x >> 4, z >> 4, game.world.layout());
                 chunk.set(x & 15, y, z & 15, anchor.0);
-                game.side
+                game.server
                     .save
                     .0
                     .save(&[Arc::new(chunk)], registry, world_biomes!(game))
@@ -590,9 +590,9 @@ fn with_anchor_death(
             light_spawn_chunks(&mut game);
             charge_anchor(&mut game);
             let (bystander, other) = placed_guest(3, Dim::Nether, [11.5, 101.0, 10.5]);
-            game.side.lan.as_mut().unwrap().hub.guests.push(bystander);
+            game.server.lan.as_mut().unwrap().hub.guests.push(bystander);
             game.enter_level(Dim::Overworld).unwrap();
-            game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+            game.server.lan.as_mut().unwrap().hub.guests.update(0, |g| {
                 g.dead = true;
                 g.health = 0.0;
             });
@@ -605,7 +605,7 @@ fn with_anchor_death(
             }
             game.guest_respawn(2);
             assert!(!game.on_server_trip(2));
-            assert!(game.side.lan.as_ref().unwrap().hub.guests[0].placed);
+            assert!(game.server.lan.as_ref().unwrap().hub.guests[0].placed);
             test(&game, &rx, &other);
         });
     });
@@ -613,7 +613,7 @@ fn with_anchor_death(
 
 fn anchor_sounds(game: &sunrise_gameplay::game::ServerGame<'_>, rx: &mpsc::Receiver<Out>) -> Vec<play::Sound> {
     let registry_id = game
-        .side
+        .server
         .lan
         .as_ref()
         .unwrap()
@@ -644,7 +644,7 @@ fn a_forced_spawnpoint_on_a_respawn_anchor_still_depletes_with_its_sound() {
         game.build_registries();
         assert!(game.as_console(|g| g.run_command("spawnpoint Guest2 10 100 10")));
         let expected = (Dim::Nether.id().to_owned(), ANCHOR, 0.0, 0.0, true);
-        let hub = &mut game.side.lan.as_mut().unwrap().hub;
+        let hub = &mut game.server.lan.as_mut().unwrap().hub;
         assert_eq!(hub.guests[0].respawn_elsewhere.as_ref(), Some(&expected));
         hub.update_guest(2, |g| {
             g.dead = true;
@@ -668,7 +668,7 @@ fn a_forced_spawnpoint_on_a_respawn_anchor_still_depletes_with_its_sound() {
 #[ignore = "daily"]
 fn redirected_respawn_sends_the_anchor_sound_only_to_its_player() {
     with_anchor_death(AnchorRules::Redirect, |game, rx, other| {
-        let player = &game.side.lan.as_ref().unwrap().hub.guests[0];
+        let player = &game.server.lan.as_ref().unwrap().hub.guests[0];
         assert_eq!(player.dimension, Dim::Overworld.id());
         assert_eq!(player.position, REDIRECTED);
         let sounds = anchor_sounds(game, rx);
@@ -689,7 +689,7 @@ fn redirected_respawn_sends_the_anchor_sound_only_to_its_player() {
 #[ignore = "daily"]
 fn vetoing_the_spawn_copy_keeps_the_clone_point_and_suppresses_anchor_sound() {
     with_anchor_death(AnchorRules::VetoCopy, |game, rx, other| {
-        let player = &game.side.lan.as_ref().unwrap().hub.guests[0];
+        let player = &game.server.lan.as_ref().unwrap().hub.guests[0];
         assert_eq!(player.dimension, Dim::Nether.id());
         assert_eq!(player.position, [10.5, 101.0, 10.5]);
         assert_eq!(

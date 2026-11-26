@@ -51,10 +51,10 @@ pub(crate) fn install_dedicated_holders(
         seed: 0,
         max_players: 2,
         integrated: false,
-        levels: game.side.level_shapes,
-        level_seeds: game.side.levels.0.runtime.seeds(),
+        levels: game.server.level_shapes,
+        level_seeds: game.server.levels.0.runtime.seeds(),
     };
-    game.side.lan = Some(LanHost::for_test(Hub::new(
+    game.server.lan = Some(LanHost::for_test(Hub::new(
         lan,
         sync,
         encoder,

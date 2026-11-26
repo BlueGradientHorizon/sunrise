@@ -56,7 +56,7 @@ pub(crate) mod loot_mine_component_tests {
         assert!(game.run_command("forceload add 0 0"));
         assert!(game.run_command("fill 0 199 0 15 199 15 stone"));
 
-        game.side.command_source = Some(sunrise_gameplay::game::commands::execute::Source {
+        game.server.command_source = Some(sunrise_gameplay::game::commands::execute::Source {
             silent: false,
             ..game.server_source()
         });
@@ -168,10 +168,10 @@ pub(crate) mod loot_mine_location_tests {
                     .add_empty_chunk(ChunkPos::new(x, z))
                     .unwrap();
             }
-            game.side.world_root =
+            game.server.world_root =
                 std::path::PathBuf::from(std::env::var_os("SUNRISE_HOME").unwrap())
                     .join("h079-world");
-            let pack = game.side.world_root.join("datapacks/h079");
+            let pack = game.server.world_root.join("datapacks/h079");
             std::fs::create_dir_all(pack.join("data/minecraft/loot_table/blocks")).unwrap();
             std::fs::create_dir_all(pack.join("data/h079/function")).unwrap();
             std::fs::write(
@@ -190,16 +190,16 @@ pub(crate) mod loot_mine_location_tests {
             )
             .unwrap();
             std::fs::write(
-                game.side.world_root.join("datapacks.json"),
+                game.server.world_root.join("datapacks.json"),
                 r#"{"enabled":["vanilla","file/h079"],"disabled":[]}"#,
             )
             .unwrap();
             let stack = game.reload_datapacks(false, &[]).unwrap();
-            game.side.world_tables.0 = game
+            game.server.world_tables.0 = game
                 .stage_world_tables(&stack, false, &game.options.resources.clone())
                 .unwrap()
                 .tables;
-            assert!(game.side.world_tables.0.is_some());
+            assert!(game.server.world_tables.0.is_some());
             game.ensure_datapacks();
             assert!(game.run_command("scoreboard objectives add h079 dummy"));
             game.run_command("function h079:admit");

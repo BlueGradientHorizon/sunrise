@@ -30,7 +30,7 @@ impl Resources {
     pub fn biomes(&self) -> &Arc<Biomes> {
         &self.core.biomes
     }
-    pub(in crate::game) fn environment(&self) -> &Environment {
+    pub fn environment(&self) -> &Environment {
         &self.core.environment
     }
     /// The environment of a dimension type id; a type with no table of its own gets the overworld's.
@@ -55,7 +55,7 @@ impl Resources {
     pub fn providers(&self) -> &Providers {
         &self.rest().providers
     }
-    pub(in crate::game) fn nether_environment(&self) -> &Environment {
+    pub fn nether_environment(&self) -> &Environment {
         &self.rest().nether_environment
     }
     pub(in crate::game) fn end_environment(&self) -> &Environment {

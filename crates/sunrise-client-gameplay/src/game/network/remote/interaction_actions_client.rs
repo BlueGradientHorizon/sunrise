@@ -36,7 +36,7 @@ impl crate::game::ClientGame<'_> {
     /// `InteractionResult.CONSUME` for this click: the block keeps it and does nothing, so the
     /// item in hand never gets it either (an empty flower pot, a pressed button). For the
     /// guide's look, as `block_takes_click`.
-    pub(in crate::game) fn block_swallows_click(
+    pub fn block_swallows_click(
         &mut self,
         hit: &super::super::Hit,
         held: Option<&ItemStack>,
@@ -49,7 +49,7 @@ impl crate::game::ClientGame<'_> {
     /// Whether a main-hand right click with `held` would end on the block hit, for the gameplay
     /// guide: what `remote_block_reacts` answers on its dry level, by the templates' rules alone,
     /// so looking asks no mod's placement or survival hook.
-    pub(in crate::game) fn block_takes_click(
+    pub fn block_takes_click(
         &mut self,
         hit: &super::super::Hit,
         held: Option<&ItemStack>,
@@ -59,7 +59,7 @@ impl crate::game::ClientGame<'_> {
             .consumes_action()
     }
     /// The idle controller guide cannot know what these Parts will decide on a click.
-    pub(in crate::game) fn can_hint_block_placement(stack: &ItemStack) -> bool {
+    pub fn can_hint_block_placement(stack: &ItemStack) -> bool {
         use mod_api::{__private::item_listens, HookId};
         !item_listens(HookId::PlacementContext, &stack.item)
             && !item_listens(HookId::MustSurvive, &stack.item)
@@ -175,7 +175,7 @@ impl crate::game::ClientGame<'_> {
     /// than past them (the server would refuse it). Its place sound is the
     /// placer's own (`playSound(player, ...)`: the server sends it to the
     /// others only).
-    pub(in crate::game) fn predict_place(
+    pub fn predict_place(
         &mut self,
         placed: &DryPlace,
         stack: &ItemStack,
@@ -243,7 +243,7 @@ impl crate::game::ClientGame<'_> {
     /// building-blocking entities; random draws, scheduled ticks and events
     /// stay in the preview. `ItemStack.useOn` runs it in adventure mode only
     /// when the used stack's `can_place_on` names the clicked block.
-    pub(in crate::game) fn remote_can_place(
+    pub fn remote_can_place(
         &mut self,
         hit: &super::super::Hit,
         stack: &ItemStack,
@@ -313,7 +313,7 @@ impl crate::game::ClientGame<'_> {
             }
         }
     }
-    pub(in crate::game) fn remote_handle_input(&mut self) {
+    pub fn remote_handle_input(&mut self) {
         let Some(r) = self.client.remote.as_mut() else {
             return;
         };
@@ -518,7 +518,7 @@ impl crate::game::ClientGame<'_> {
     /// Whether a click would place `stack` (the controller guide's look): as
     /// `remote_can_place`, by the templates' rules alone, so looking asks no
     /// mod's placement or survival hook.
-    pub(in crate::game) fn remote_would_place(
+    pub fn remote_would_place(
         &mut self,
         hit: &super::super::Hit,
         stack: &ItemStack,
@@ -600,10 +600,10 @@ impl crate::game::ClientGame<'_> {
         result
     }
 
-    pub(in crate::game) fn remote_use(&mut self, attempt: mod_api::InteractionAttempt) {
+    pub fn remote_use(&mut self, attempt: mod_api::InteractionAttempt) {
         self.with_interaction_swing_scope(|game| game.remote_use_inner(attempt));
     }
-    pub(in crate::game) fn remote_start_attack(&mut self) -> bool {
+    pub fn remote_start_attack(&mut self) -> bool {
         // An agent's `attack ID` checks its entity against the pick its click is taken with,
         // and its click on another target is dropped before it acts.
         if self.agent_attack_click_refused() {
@@ -611,14 +611,14 @@ impl crate::game::ClientGame<'_> {
         }
         self.with_interaction_swing_scope(|game| game.remote_start_attack_inner())
     }
-    pub(in crate::game) fn remote_continue_attack(&mut self, down: bool) {
+    pub fn remote_continue_attack(&mut self, down: bool) {
         self.with_interaction_swing_scope(|game| game.remote_continue_attack_inner(down));
     }
     /// `MultiPlayerGameMode.releaseUsingItem`: sends `RELEASE_USE_ITEM` and
     /// runs the client half of `Item.releaseUsing` (a Riptide launch moves the
     /// player itself). Vanilla reaches it both when the use key is let go and,
     /// in the same tick, when a keybind opens a screen.
-    pub(in crate::game) fn release_remote_use(&mut self) {
+    pub fn release_remote_use(&mut self) {
         self.send_action(6);
         // a mod's Stop may skip the item's release, and a mod's own release follows.
         let hand = self.common.used_hand();

@@ -28,15 +28,15 @@ pub(crate) fn with_delayed_chat(
     in_own_process(&full, || {
         with_client_game(|game| {
             game.init_remote_for_replay().unwrap();
-            game.side.remote.as_mut().unwrap().has_logical_player = true;
-            game.side.settings.chat_delay = 1.0;
+            game.client.remote.as_mut().unwrap().has_logical_player = true;
+            game.client.settings.chat_delay = 1.0;
             check(game);
         });
     });
 }
 
 pub(crate) fn tracker_offset(game: &mut sunrise_client_gameplay::game::ClientGame<'_>) -> i32 {
-    game.side
+    game.client
         .remote
         .as_mut()
         .unwrap()
@@ -48,7 +48,7 @@ pub(crate) fn tracker_offset(game: &mut sunrise_client_gameplay::game::ClientGam
 pub(crate) fn take_seen_update(
     game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
 ) -> secure_chat::SeenUpdate {
-    game.side
+    game.client
         .remote
         .as_mut()
         .unwrap()
@@ -86,7 +86,7 @@ pub(crate) fn player_chat(
 }
 
 pub(crate) fn add_sender(game: &mut sunrise_client_gameplay::game::ClientGame<'_>, sender: u128) {
-    game.side
+    game.client
         .remote
         .as_mut()
         .unwrap()
@@ -113,7 +113,7 @@ pub(crate) fn add_signed_sender(
     let services_key = RsaPublicKey::from_der(&der).unwrap();
     let session =
         secure_chat::ChatSession::validate(SESSION, profile_key, &[services_key], sender).unwrap();
-    game.side
+    game.client
         .remote
         .as_mut()
         .unwrap()
@@ -146,13 +146,13 @@ fn disguised_chat_has_a_system_tag_but_is_player_chat() {
     with_delayed_chat(
         "disguised_chat_has_a_system_tag_but_is_player_chat",
         |game| {
-            game.side
+            game.client
                 .settings
                 .file
                 .set("onlyShowSecureChat", V::Bool(true));
 
             // Before a logical local player exists, disguised chat is rejected on accept.
-            game.side.remote.as_mut().unwrap().has_logical_player = false;
+            game.client.remote.as_mut().unwrap().has_logical_player = false;
             game.handle_packet(C::DisguisedChat(play::DisguisedChat {
                 message: Tag::String("before login".into()),
                 chat_type: bound(),
@@ -162,7 +162,7 @@ fn disguised_chat_has_a_system_tag_but_is_player_chat() {
             game.tick_chat_queue();
             assert_eq!(game.chat_queue_len(), 0);
             assert!(game.chat_ui_for_test().chat.recent_lines(1).is_empty());
-            game.side.remote.as_mut().unwrap().has_logical_player = true;
+            game.client.remote.as_mut().unwrap().has_logical_player = true;
 
             game.handle_packet(C::SystemChat(play::SystemChat {
                 content: Tag::String("server".into()),
@@ -264,14 +264,14 @@ fn delayed_chat_uses_only_show_secure_chat_from_receipt() {
         "delayed_chat_uses_only_show_secure_chat_from_receipt",
         |game| {
             add_sender(game, ALICE);
-            game.side
+            game.client
                 .settings
                 .file
                 .set("onlyShowSecureChat", V::Bool(true));
             game.handle_packet(C::PlayerChat(player_chat(ALICE, 0, "unsigned, hidden")))
                 .unwrap();
             assert_eq!(game.chat_queue_len(), 1);
-            game.side
+            game.client
                 .settings
                 .file
                 .set("onlyShowSecureChat", V::Bool(false));
@@ -281,7 +281,7 @@ fn delayed_chat_uses_only_show_secure_chat_from_receipt() {
 
             game.handle_packet(C::PlayerChat(player_chat(ALICE, 1, "unsigned, visible")))
                 .unwrap();
-            game.side
+            game.client
                 .settings
                 .file
                 .set("onlyShowSecureChat", V::Bool(true));
@@ -290,7 +290,7 @@ fn delayed_chat_uses_only_show_secure_chat_from_receipt() {
             assert!(game.chat_ui_for_test().chat.recent_lines(1)[0].contains("unsigned, visible"));
 
             // Language changes while queued re-evaluate decoration and trust on acceptance.
-            game.side
+            game.client
                 .settings
                 .file
                 .set("onlyShowSecureChat", V::Bool(false));

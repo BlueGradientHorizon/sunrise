@@ -206,12 +206,12 @@ fn open_grindstone(game: &mut sunrise_gameplay::game::ServerGame<'_>) -> i32 {
         .unwrap();
     game.world.set(1, 64, 1, state).unwrap();
     assert!(game.lan_open_station(12, &Station::new(StationKind::Grindstone, [1, 64, 1])));
-    let host = game.side.lan.as_ref().unwrap();
+    let host = game.server.lan.as_ref().unwrap();
     assert!(game.lan_station_valid(
         &host.hub.guests[0],
         host.menus[&12].station.as_ref().unwrap(),
     ));
-    game.side.lan.as_ref().unwrap().menus[&12]
+    game.server.lan.as_ref().unwrap().menus[&12]
         .station
         .as_ref()
         .unwrap()
@@ -232,7 +232,7 @@ fn disenchanted_sword(damage: u32) -> ItemStack {
 }
 
 fn slot(game: &sunrise_gameplay::game::ServerGame<'_>, index: usize) -> Option<ItemStack> {
-    game.side.lan.as_ref().unwrap().menus[&12]
+    game.server.lan.as_ref().unwrap().menus[&12]
         .station
         .as_ref()
         .unwrap()
@@ -246,7 +246,7 @@ fn count(stack: &Option<ItemStack>) -> u32 {
 }
 
 fn inventory(game: &sunrise_gameplay::game::ServerGame<'_>, index: usize) -> u32 {
-    count(&game.side.lan.as_ref().unwrap().hub.guests[0].inventory[index])
+    count(&game.server.lan.as_ref().unwrap().hub.guests[0].inventory[index])
 }
 
 fn total_orb_xp(game: &sunrise_gameplay::game::ServerGame<'_>) -> u32 {
@@ -283,7 +283,7 @@ fn placed(game: &mut sunrise_gameplay::game::ServerGame<'_>) -> (i32, ItemStack)
         place_xp: Some(5),
         ..Script::default()
     });
-    game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+    game.server.lan.as_mut().unwrap().hub.guests.update(0, |g| {
         g.carried = Some(sword);
     });
     click(game, window, 0, 0);
@@ -297,7 +297,7 @@ fn a_place_listener_sets_the_grindstone_result() {
         with_guests(|game| {
             let window = open_grindstone(game);
             let sword = enchanted_sword(game, 200);
-            game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+            game.server.lan.as_mut().unwrap().hub.guests.update(0, |g| {
                 g.carried = Some(sword);
             });
             script(Script {
@@ -311,7 +311,7 @@ fn a_place_listener_sets_the_grindstone_result() {
             click(game, window, 2, 0);
             assert_eq!(TAKE_XP.get(), Some(5));
             assert_eq!(
-                game.side.lan.as_ref().unwrap().hub.guests[0].carried,
+                game.server.lan.as_ref().unwrap().hub.guests[0].carried,
                 Some(ItemStack::new("minecraft:dirt", 1))
             );
         });
@@ -328,7 +328,7 @@ fn a_place_answer_does_not_validate_borrowed_inputs() {
             // Load a count above the sword's stack limit without the click's insertion rules.
             top.count = 2;
             let bottom = enchanted_sword(game, 150);
-            let host = game.side.lan.as_mut().unwrap();
+            let host = game.server.lan.as_mut().unwrap();
             host.menus
                 .get_mut(&12)
                 .unwrap()
@@ -364,7 +364,7 @@ fn a_cancelled_place_leaves_no_grindstone_result() {
         with_guests(|game| {
             let window = open_grindstone(game);
             let sword = enchanted_sword(game, 200);
-            game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+            game.server.lan.as_mut().unwrap().hub.guests.update(0, |g| {
                 g.carried = Some(sword);
             });
             // Cancel wins before validating edits.output or edits.xp, and keeps listener writes.
@@ -391,7 +391,7 @@ fn negative_place_xp_falls_through_to_vanilla_award() {
         with_guests(|game| {
             let window = open_grindstone(game);
             let sword = enchanted_sword(game, 200);
-            game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+            game.server.lan.as_mut().unwrap().hub.guests.update(0, |g| {
                 g.carried = Some(sword);
             });
             script(Script {
@@ -403,13 +403,13 @@ fn negative_place_xp_falls_through_to_vanilla_award() {
             assert_eq!(DISPATCHES.get(), 3);
             assert_eq!(slot(game, 2), Some(ItemStack::new("minecraft:dirt", 1)));
 
-            let events = game.side.lan_events.len();
+            let events = game.server.lan_events.len();
             script(Script::default());
             click(game, window, 2, 0);
             let resolved_xp = TAKE_XP.get().expect("take listener received resolved XP");
             assert!(resolved_xp > 0, "vanilla Sharpness III award is positive");
             assert_eq!(total_orb_xp(game), resolved_xp as u32);
-            assert_eq!(game.side.lan_events.len(), events + 1);
+            assert_eq!(game.server.lan_events.len(), events + 1);
             assert_eq!(slot(game, 0), None);
             assert!(game.transactions.is_empty());
         });
@@ -423,7 +423,7 @@ fn invalid_place_output_keeps_vanilla_result() {
         with_guests(|game| {
             let window = open_grindstone(game);
             let sword = enchanted_sword(game, 200);
-            game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+            game.server.lan.as_mut().unwrap().hub.guests.update(0, |g| {
                 g.carried = Some(sword);
             });
             // Dirt stacks to 64, so count 65 is ignored and vanilla's result stays intact.
@@ -454,16 +454,16 @@ fn a_grindstone_without_a_listener_keeps_the_vanilla_result() {
             let window = open_grindstone(game);
             let a = enchanted_sword(game, 200);
             let b = enchanted_sword(game, 150);
-            game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+            game.server.lan.as_mut().unwrap().hub.guests.update(0, |g| {
                 g.carried = Some(a);
             });
             click(game, window, 0, 0);
-            game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+            game.server.lan.as_mut().unwrap().hub.guests.update(0, |g| {
                 g.carried = Some(b);
             });
             click(game, window, 1, 0);
             assert!(
-                game.side
+                game.server
                     .lan
                     .as_ref()
                     .unwrap()
@@ -489,7 +489,7 @@ fn a_take_answer_validates_only_the_remainders() {
             // Model a resident stack that can be read but could not be written by a mod.
             top.count = 2;
             let menu = &mut game
-                .side
+                .server
                 .lan
                 .as_mut()
                 .unwrap()
@@ -518,7 +518,7 @@ fn a_take_answer_validates_only_the_remainders() {
             assert_eq!(slot(game, 1), None);
             assert_eq!(slot(game, 2), None);
             assert_eq!(
-                game.side.lan.as_ref().unwrap().hub.guests[0].carried,
+                game.server.lan.as_ref().unwrap().hub.guests[0].carried,
                 result
             );
             assert_eq!(total_orb_xp(game), 5);
@@ -533,7 +533,7 @@ fn a_cancelled_take_keeps_the_click_and_listener_writes() {
     with_mod(|| {
         with_guests(|game| {
             let (window, original) = placed(game);
-            let events = game.side.lan_events.len();
+            let events = game.server.lan_events.len();
             script(Script {
                 take_write: true,
                 take_cancel: true,
@@ -546,13 +546,13 @@ fn a_cancelled_take_keeps_the_click_and_listener_writes() {
             // The result stays taken and listener writes stay; XP, sound and input replacement
             // are skipped, and cancel runs before validating remainders.
             assert_eq!(
-                game.side.lan.as_ref().unwrap().hub.guests[0].carried,
+                game.server.lan.as_ref().unwrap().hub.guests[0].carried,
                 Some(ItemStack::new("minecraft:dirt", 1))
             );
             assert_eq!(slot(game, 0), Some(original));
             assert_eq!(inventory(game, 20), 2);
             assert!(game.orbs.is_empty());
-            assert_eq!(game.side.lan_events.len(), events);
+            assert_eq!(game.server.lan_events.len(), events);
             assert!(PLACE_OBSERVED.with(|seen| seen.borrow().is_empty()));
             assert!(game.transactions.is_empty());
         });
@@ -566,7 +566,7 @@ fn non_positive_take_xp_awards_no_orbs_and_fires_sound() {
         with_mod(|| {
             with_guests(|game| {
                 let (window, _) = placed(game);
-                let events = game.side.lan_events.len();
+                let events = game.server.lan_events.len();
                 script(Script {
                     take_xp: Some(xp),
                     take_new_top: Some(1),
@@ -574,11 +574,11 @@ fn non_positive_take_xp_awards_no_orbs_and_fires_sound() {
                 });
                 click(game, window, 2, 0);
                 assert_eq!(
-                    game.side.lan.as_ref().unwrap().hub.guests[0].carried,
+                    game.server.lan.as_ref().unwrap().hub.guests[0].carried,
                     Some(ItemStack::new("minecraft:dirt", 1))
                 );
                 assert!(game.orbs.is_empty());
-                assert_eq!(game.side.lan_events.len(), events + 1);
+                assert_eq!(game.server.lan_events.len(), events + 1);
                 assert_eq!(slot(game, 0), Some(ItemStack::new("minecraft:dirt", 1)));
                 assert_eq!(slot(game, 1), None);
                 assert!(game.transactions.is_empty());
@@ -603,17 +603,17 @@ fn an_outer_abort_undoes_an_accepted_grindstone_take() {
             // Five XP splits into 3, 1, 1. The 3-XP piece merges into this resident orb.
             let mut expected_random = LegacyRandom::new(23);
             let matching_id = 40 + expected_random.next_int_bound(40).unwrap() as u32;
-            game.side.next_entity = matching_id - 1;
+            game.server.next_entity = matching_id - 1;
             game.add_orb([1.5, 64.5, 1.5], 3);
             let orb = &mut game.orbs[0];
             orb.position = Vec3::new(1.5, 64.5, 1.5);
             orb.age = 42;
             let join = orb.join;
             let (tx, rx) = mpsc::channel();
-            game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+            game.server.lan.as_mut().unwrap().hub.guests.update(0, |g| {
                 g.sender = PlayerSender::new(tx, Arc::default());
             });
-            let events = game.side.lan_events.len();
+            let events = game.server.lan_events.len();
             script(Script::default());
 
             for commit in [false, true] {
@@ -622,7 +622,7 @@ fn an_outer_abort_undoes_an_accepted_grindstone_take() {
                     click(game, window, 2, 0);
                     assert_eq!(slot(game, 0), None);
                     assert_eq!(
-                        game.side.lan.as_ref().unwrap().hub.guests[0].carried,
+                        game.server.lan.as_ref().unwrap().hub.guests[0].carried,
                         Some(ItemStack::new("minecraft:dirt", 1))
                     );
                     assert_eq!(game.orbs[game.orbs.locate(join).unwrap()].count, 2);
@@ -631,7 +631,7 @@ fn an_outer_abort_undoes_an_accepted_grindstone_take() {
                         "published station content before commit"
                     );
                     assert_eq!(
-                        game.side.lan_events.len(),
+                        game.server.lan_events.len(),
                         events,
                         "published level event before commit"
                     );
@@ -640,7 +640,7 @@ fn an_outer_abort_undoes_an_accepted_grindstone_take() {
                 if !commit {
                     assert_eq!(slot(game, 0), Some(original.clone()));
                     assert_eq!(slot(game, 2), Some(ItemStack::new("minecraft:dirt", 1)));
-                    assert_eq!(game.side.lan.as_ref().unwrap().hub.guests[0].carried, None);
+                    assert_eq!(game.server.lan.as_ref().unwrap().hub.guests[0].carried, None);
                     assert_eq!(game.orbs.len(), 1);
                     let orb = &game.orbs[game.orbs.locate(join).unwrap()];
                     assert_eq!((orb.count, orb.age), (1, 42));
@@ -650,7 +650,7 @@ fn an_outer_abort_undoes_an_accepted_grindstone_take() {
                     );
                     assert!(rx.try_recv().is_err(), "published station content on abort");
                     assert_eq!(
-                        game.side.lan_events.len(),
+                        game.server.lan_events.len(),
                         events,
                         "published level event on abort"
                     );
@@ -660,7 +660,7 @@ fn an_outer_abort_undoes_an_accepted_grindstone_take() {
                         rx.try_recv().is_ok(),
                         "did not publish station content on commit"
                     );
-                    assert_eq!(game.side.lan_events.len(), events + 1);
+                    assert_eq!(game.server.lan_events.len(), events + 1);
                 }
             }
         });
@@ -700,7 +700,7 @@ fn panicking_grindstone_listeners_keep_vanilla_and_initial_behavior() {
         with_guests(|game| {
             let window = open_grindstone(game);
             let sword = enchanted_sword(game, 200);
-            game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+            game.server.lan.as_mut().unwrap().hub.guests.update(0, |g| {
                 g.carried = Some(sword.clone());
             });
             script(Script {
@@ -729,7 +729,7 @@ fn panicking_grindstone_listeners_keep_vanilla_and_initial_behavior() {
             let output = Some(ItemStack::new("minecraft:dirt", 1));
             assert_eq!(slot(game, 2), output);
 
-            let events = game.side.lan_events.len();
+            let events = game.server.lan_events.len();
             script(Script {
                 take_xp: Some(99),
                 take_new_top: Some(1),
@@ -740,13 +740,13 @@ fn panicking_grindstone_listeners_keep_vanilla_and_initial_behavior() {
             assert_eq!(DISPATCHES.get(), 1);
             assert_eq!(TAKE_XP.get(), Some(5));
             assert_eq!(
-                game.side.lan.as_ref().unwrap().hub.guests[0].carried,
+                game.server.lan.as_ref().unwrap().hub.guests[0].carried,
                 output
             );
             assert_eq!(slot(game, 0), None);
             assert_eq!(slot(game, 1), None);
             assert_eq!(total_orb_xp(game), 5);
-            assert_eq!(game.side.lan_events.len(), events + 1);
+            assert_eq!(game.server.lan_events.len(), events + 1);
             assert!(game.transactions.is_empty());
         });
     });
@@ -759,7 +759,7 @@ fn panicking_listener_aborts_scoped_transaction_and_keeps_committed_writes() {
         with_guests(|game| {
             let window = open_grindstone(game);
             let sword = enchanted_sword(game, 200);
-            game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+            game.server.lan.as_mut().unwrap().hub.guests.update(0, |g| {
                 g.carried = Some(sword);
             });
             script(Script {
@@ -801,7 +801,7 @@ fn equal_stack_swap_and_multi_slot_drag_fire_grindstone_place_live() {
             sticks.set_crafting_enchantments(vec![("minecraft:sharpness".into(), 1)]);
 
             // Each input in the multi-slot drag triggers a pair of live result notifications.
-            game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+            game.server.lan.as_mut().unwrap().hub.guests.update(0, |g| {
                 g.carried = Some(sticks);
             });
             script(Script::default());
@@ -822,7 +822,7 @@ fn equal_stack_swap_and_multi_slot_drag_fire_grindstone_place_live() {
             // A hotbar swap with an identical sword leaves the input equal, but still notifies
             // twice through Slot.setByPlayer and once through Slot.onTake.
             let sword = enchanted_sword(game, 200);
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()
@@ -834,13 +834,13 @@ fn equal_stack_swap_and_multi_slot_drag_fire_grindstone_place_live() {
                 .unwrap()
                 .menu
                 .load_slot(0, Some(sword.clone()));
-            game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+            game.server.lan.as_mut().unwrap().hub.guests.update(0, |g| {
                 g.inventory[0] = Some(sword.clone());
             });
             script(Script::default());
             game.lan_guest_packet(12, container_click(window, 0, 0, 2));
             assert_eq!(slot(game, 0).as_ref(), Some(&sword));
-            let guest = &game.side.lan.as_ref().unwrap().hub.guests[0];
+            let guest = &game.server.lan.as_ref().unwrap().hub.guests[0];
             assert_eq!(guest.inventory[0].as_ref(), Some(&sword));
             assert!(guest.carried.is_none());
             assert_eq!(
@@ -912,11 +912,11 @@ fn place_only_take_awards_xp_and_event_before_replacing_inputs() {
             let window = open_grindstone(game);
             let top = enchanted_sword(game, 200);
             let bottom = enchanted_sword(game, 150);
-            game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+            game.server.lan.as_mut().unwrap().hub.guests.update(0, |g| {
                 g.carried = Some(top);
             });
             click(game, window, 0, 0);
-            game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+            game.server.lan.as_mut().unwrap().hub.guests.update(0, |g| {
                 g.carried = Some(bottom);
             });
             click(game, window, 1, 0);
@@ -924,13 +924,13 @@ fn place_only_take_awards_xp_and_event_before_replacing_inputs() {
 
             // Taking the result without a GrindstoneTake listener must award XP before
             // clearing slot 0 and slot 1 and sending the final container notification.
-            let events = game.side.lan_events.len();
+            let events = game.server.lan_events.len();
             click(game, window, 2, 0);
             assert_eq!(
                 *seen.lock().unwrap(),
                 vec![(None, Some(1), 7), (None, None, 7), (None, None, 7)]
             );
-            assert_eq!(game.side.lan_events.len(), events + 1);
+            assert_eq!(game.server.lan_events.len(), events + 1);
             assert_eq!(total_orb_xp(game), 7);
         });
     });
@@ -943,7 +943,7 @@ fn grindstone_on_take_rebuilds_the_result_before_shift_click_or_throw_all_repeat
         with_mod(|| {
             with_guests(|game| {
                 let (window, _) = placed(game);
-                let events = game.side.lan_events.len();
+                let events = game.server.lan_events.len();
                 script(Script {
                     place_output: Some(1),
                     place_xp: Some(7),
@@ -970,7 +970,7 @@ fn grindstone_on_take_rebuilds_the_result_before_shift_click_or_throw_all_repeat
                     ]
                 );
                 assert_eq!(
-                    game.side.lan_events[events..]
+                    game.server.lan_events[events..]
                         .iter()
                         .map(|e| e.kind)
                         .collect::<Vec<_>>(),

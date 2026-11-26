@@ -385,7 +385,7 @@ impl crate::game::ServerGame<'_> {
     /// fire over a lent level (as `item_fall_on` lends one), and the flush of
     /// the queued writes into this item, its own tick. Nothing runs without a
     /// listening part: one `any_inside` test is the whole cost.
-    pub(in crate::game) fn sweep_item_inside(&mut self, item: &mut ItemEntity) {
+    pub fn sweep_item_inside(&mut self, item: &mut ItemEntity) {
         if !sunrise_sim::block_contact::HOOKS
             .get()
             .is_some_and(|hooks| (hooks.any_inside)())
@@ -455,7 +455,7 @@ impl crate::game::ServerGame<'_> {
     /// The projectile's `Entity.checkInsideBlocks`, the same batch sweep the
     /// item's is: the shared walk over its move, the staged fire over a lent
     /// level, and the flush into this projectile's own tick.
-    pub(in crate::game) fn sweep_projectile_inside(&mut self, shot: &mut Projectile) {
+    pub fn sweep_projectile_inside(&mut self, shot: &mut Projectile) {
         if !sunrise_sim::block_contact::HOOKS
             .get()
             .is_some_and(|hooks| (hooks.any_inside)())
@@ -1028,7 +1028,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// Loads a saved entity as the first kind in `entity_lists!` that claims
     /// its type id: `Err` hands the compound back when none does.
-    pub(in crate::game) fn load_listed(
+    pub fn load_listed(
         &mut self,
         kind: &str,
         uuid: Option<[i32; 4]>,
@@ -1040,7 +1040,7 @@ impl crate::game::ServerGame<'_> {
     /// Restore a live portal object with its explicitly captured runtime ownership.
     /// This dispatch covers only reconstructible portal kinds; ordinary disk loads
     /// continue through the canonical kind walk without transfer state.
-    pub(in crate::game::server_side) fn load_listed_transferred(
+    pub fn load_listed_transferred(
         &mut self,
         kind: &str,
         uuid: Option<[i32; 4]>,
@@ -1068,7 +1068,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// The ids of the entities that are not on the walk of `entity_lists!`.
-    pub(in crate::game) fn entity_ids_off_walk(&self) -> impl Iterator<Item = u32> + '_ {
+    pub fn entity_ids_off_walk(&self) -> impl Iterator<Item = u32> + '_ {
         self.common.cushions
             .iter()
             .map(|e| e.id)
@@ -1108,7 +1108,7 @@ impl crate::game::ServerGame<'_> {
         alive
     }
     /// Saves every entity of every kind that lies in `keys` into `out`, by chunk.
-    pub(in crate::game) fn save_every_entity(
+    pub fn save_every_entity(
         &mut self,
         keys: &HashSet<ChunkKey>,
         out: &mut HashMap<ChunkKey, Vec<(u32, JoinSeq, Tag)>>,

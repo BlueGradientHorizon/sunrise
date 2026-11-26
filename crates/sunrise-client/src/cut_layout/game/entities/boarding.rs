@@ -59,7 +59,7 @@ use super::*;
                 .push(Mob::new(vehicle, pig.clone(), Vec3::ZERO, 0.0));
             let order = game.boarding_order(vehicle, 12, true);
             let dimension = game.dim.id().to_owned();
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()
@@ -109,7 +109,7 @@ use super::*;
                 .push(Mob::new(vehicle, ghast, Vec3::new(8.5, 64.0, 8.5), 0.0));
             let order = game.boarding_order(vehicle, 12, true);
             let dimension = game.dim.id().to_owned();
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()

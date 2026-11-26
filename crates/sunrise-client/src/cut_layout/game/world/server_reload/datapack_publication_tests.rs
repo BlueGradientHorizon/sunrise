@@ -161,11 +161,11 @@ fn datapack_game_open_reload_and_exhaustion_are_atomic() {
                 game.pack.data_changes = source;
                 game.load_world(request(root)).unwrap();
                 assert_eq!(
-                    game.side.fns.0.store.predicates["registry_test:native"]["chance"],
+                    game.server.fns.0.store.predicates["registry_test:native"]["chance"],
                     1
                 );
                 assert_eq!(
-                    game.side.fns.0.store.item_modifiers["registry_test:native"]["count"],
+                    game.server.fns.0.store.item_modifiers["registry_test:native"]["count"],
                     3
                 );
                 assert_eq!(power(game), DatapackValue::Int(7));
@@ -229,7 +229,7 @@ fn datapack_game_open_reload_and_exhaustion_are_atomic() {
                 ));
                 assert_eq!(power(game), DatapackValue::Int(7));
                 let old_files = game
-                    .side
+                    .server
                     .world_tables
                     .0
                     .as_ref()
@@ -243,7 +243,7 @@ fn datapack_game_open_reload_and_exhaustion_are_atomic() {
                     &old
                 ));
                 assert_eq!(
-                    game.side
+                    game.server
                         .world_tables
                         .0
                         .as_ref()
@@ -347,7 +347,7 @@ fn world_open_and_wire_use_the_pack_biome_instead_of_the_bundled_file() {
         game.load_world(request(&world)).unwrap();
         let sync = sunrise_gameplay_common::game::lan_common::sync::cached_reload_sync().unwrap();
         let biome = sync
-            .registry_packets(true, &game.side.level_shapes)
+            .registry_packets(true, &game.server.level_shapes)
             .into_iter()
             .find(|registry| registry.registry == BIOME_REGISTRY)
             .unwrap()
@@ -467,7 +467,7 @@ fn with_membership_fixture(run: impl FnOnce(&mut sunrise_gameplay::game::ServerG
     );
 }
 fn weights<'game>(game: &'game sunrise_gameplay::game::ServerGame<'_>) -> &'game [(String, Tag)] {
-    game.side
+    game.server
         .world_tables
         .0
         .as_ref()

@@ -46,7 +46,7 @@ pub(in crate::game) struct MenuSnapshot {
     block: Option<(u32, Option<u64>, String, usize)>,
 }
 impl crate::game::ServerGame<'_> {
-    pub(in crate::game) fn mod_book_menu_snapshot(
+    pub fn mod_book_menu_snapshot(
         &mut self,
         conn: u32,
         window: i32,

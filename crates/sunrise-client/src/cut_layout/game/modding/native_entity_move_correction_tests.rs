@@ -154,8 +154,8 @@ fn hosted_guest_starting<R>(
             (guest.vehicle, guest.vehicle_order) = (Some(game.boats[0].id), 1);
             guest.vehicle_good = Some(at);
         }
-        game.side.lan.as_mut().unwrap().hub.guests.push(guest);
-        game.side
+        game.server.lan.as_mut().unwrap().hub.guests.push(guest);
+        game.server
             .lan
             .as_mut()
             .unwrap()
@@ -163,7 +163,7 @@ fn hosted_guest_starting<R>(
             .guests
             .update(0, |g| g.game_mode = mode);
         game.sync_tick_chunks();
-        game.side.ticked_entities_through = game.side.next_entity;
+        game.server.ticked_entities_through = game.server.next_entity;
         body(&mut game, rx, at)
     })
 }
@@ -171,8 +171,8 @@ fn hosted_guest_starting<R>(
 /// The guest's client walks `by` blocks east: one `MovePlayerPos` in its
 /// inbox, through the hub's own packet tick.
 fn guest_walks(game: &mut sunrise_gameplay::game::ServerGame<'_>, by: f64) {
-    let from = game.side.lan.as_ref().unwrap().hub.guests[0].position;
-    game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+    let from = game.server.lan.as_ref().unwrap().hub.guests[0].position;
+    game.server.lan.as_mut().unwrap().hub.guests.update(0, |g| {
         g.inbox.push_back(InboxItem::Packet(
             S::MovePlayerPos(sunrise_protocol::packets::play::MovePlayerPos {
                 x: from[0] + by,
@@ -189,8 +189,8 @@ fn guest_walks(game: &mut sunrise_gameplay::game::ServerGame<'_>, by: f64) {
 /// The driver's client moves its vehicle `by` blocks east: one
 /// `MoveVehicle` in its inbox, through the hub's own packet tick.
 fn driver_moves_vehicle(game: &mut sunrise_gameplay::game::ServerGame<'_>, by: f64) {
-    let from = game.side.lan.as_ref().unwrap().hub.guests[0].position;
-    game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+    let from = game.server.lan.as_ref().unwrap().hub.guests[0].position;
+    game.server.lan.as_mut().unwrap().hub.guests.update(0, |g| {
         g.inbox.push_back(InboxItem::Packet(
             S::MoveVehicle(sunrise_protocol::packets::play::MoveVehicleRequest {
                 position: [from[0] + by, from[1], from[2]],
@@ -207,7 +207,7 @@ fn driver_moves_vehicle(game: &mut sunrise_gameplay::game::ServerGame<'_>, by: f
 /// Whether the guest's client was sent a correction: the teleport the client
 /// must acknowledge (`awaiting_teleport`), for the guest's own packet.
 fn guest_corrected(game: &sunrise_gameplay::game::ServerGame<'_>) -> bool {
-    game.side.lan.as_ref().unwrap().hub.guests[0]
+    game.server.lan.as_ref().unwrap().hub.guests[0]
         .awaiting_teleport
         .is_some()
 }
@@ -221,7 +221,7 @@ fn vehicle_put_back(
     rx: &std::sync::mpsc::Receiver<Out>,
 ) -> bool {
     sunrise_sim::lan::flush_all(
-        game.side
+        game.server
             .lan
             .as_ref()
             .unwrap()
@@ -257,7 +257,7 @@ fn a_cancelled_small_step_sends_the_guest_a_correction() {
         mods(CancelAll),
         |game, _rx, at| {
             guest_walks(game, 0.2);
-            let g = &game.side.lan.as_ref().unwrap().hub.guests[0];
+            let g = &game.server.lan.as_ref().unwrap().hub.guests[0];
             assert_eq!(
                 g.position, at,
                 "the cancelled small step did not move the guest"
@@ -281,7 +281,7 @@ fn a_replaced_small_step_sends_the_guest_a_correction() {
         mods(ReplaceEach([0.1, 0.0, 0.0])),
         |game, _rx, at| {
             guest_walks(game, 0.2);
-            let g = &game.side.lan.as_ref().unwrap().hub.guests[0];
+            let g = &game.server.lan.as_ref().unwrap().hub.guests[0];
             assert_eq!(
                 g.position, at,
                 "the replaced small step did not move the guest"
@@ -312,7 +312,7 @@ fn a_replacement_equal_to_the_request_sends_no_correction() {
                 "nothing corrected the guest before its step"
             );
             guest_walks(game, 0.125);
-            let g = &game.side.lan.as_ref().unwrap().hub.guests[0];
+            let g = &game.server.lan.as_ref().unwrap().hub.guests[0];
             assert_eq!(
                 g.position,
                 [at[0] + 0.125, at[1], at[2]],
@@ -341,7 +341,7 @@ fn a_small_step_with_no_listener_sends_no_correction() {
                 "nothing corrected the guest before its step"
             );
             guest_walks(game, 0.2);
-            let g = &game.side.lan.as_ref().unwrap().hub.guests[0];
+            let g = &game.server.lan.as_ref().unwrap().hub.guests[0];
             assert_eq!(
                 g.position,
                 [at[0] + 0.2, at[1], at[2]],
@@ -454,7 +454,7 @@ fn a_cancelled_move_of_a_creative_guest_sends_the_correction() {
         mods(CancelAll),
         |game, _rx, at| {
             guest_walks(game, 0.2);
-            let g = &game.side.lan.as_ref().unwrap().hub.guests[0];
+            let g = &game.server.lan.as_ref().unwrap().hub.guests[0];
             assert_eq!(
                 g.position, at,
                 "the cancelled move of a creative guest did not move it"
@@ -481,7 +481,7 @@ fn a_replaced_move_of_a_creative_guest_sends_the_correction() {
         mods(ReplaceEach([0.1, 0.0, 0.0])),
         |game, _rx, at| {
             guest_walks(game, 0.2);
-            let g = &game.side.lan.as_ref().unwrap().hub.guests[0];
+            let g = &game.server.lan.as_ref().unwrap().hub.guests[0];
             assert_eq!(
                 g.position, at,
                 "the replaced move of a creative guest did not move it"
@@ -511,7 +511,7 @@ fn a_cancelled_move_from_an_obstructed_start_sends_the_correction() {
         mods(CancelAll),
         |game, _rx, at| {
             guest_walks(game, 0.2);
-            let g = &game.side.lan.as_ref().unwrap().hub.guests[0];
+            let g = &game.server.lan.as_ref().unwrap().hub.guests[0];
             assert_eq!(
                 g.position, at,
                 "the cancelled move of a stuck guest did not move it"
@@ -543,7 +543,7 @@ fn a_big_step_of_a_creative_guest_without_a_listener_sends_no_correction() {
                 "nothing corrected the guest before its step"
             );
             guest_walks(game, 5.0);
-            let g = &game.side.lan.as_ref().unwrap().hub.guests[0];
+            let g = &game.server.lan.as_ref().unwrap().hub.guests[0];
             assert_eq!(
                 g.position,
                 [at[0] + 5.0, at[1], at[2]],

@@ -2,14 +2,14 @@
 use super::*;
 impl crate::game::ServerGame<'_> {
     /// Install a replacement only after retiring the previous parts' sidecars.
-    pub(in crate::game::server_side) fn replace_resident_dragon(&mut self, dragon: Dragon) {
+    pub fn replace_resident_dragon(&mut self, dragon: Dragon) {
         self.discard_resident_dragon();
         self.common.dragon.replace(dragon);
     }
 
     /// Physical retirement must forget sidecar data before IDs can be reused,
     /// not merely unregister the attachment index when the parts are dropped.
-    pub(in crate::game::server_side) fn discard_resident_dragon(&mut self) {
+    pub fn discard_resident_dragon(&mut self) {
         if let Some(id) = self
             .common.dragon
             .as_ref()

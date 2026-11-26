@@ -46,7 +46,7 @@ impl crate::game::ClientGame<'_> {
         }
     }
     /// Once per frame: update frame timing and the extra HUD state.
-    pub(in crate::game) fn extras_frame(&mut self, elapsed: Duration) {
+    pub fn extras_frame(&mut self, elapsed: Duration) {
         // For mods (`render.frame-stats`, `native_frame_rate`).
         let now = self.extras_now();
         self.client

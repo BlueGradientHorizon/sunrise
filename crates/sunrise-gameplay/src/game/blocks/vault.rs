@@ -171,7 +171,7 @@ impl ServerGame<'_> {
     }
     /// The server tick of the vault at `key`, then its client tick when there
     /// is a window.
-    pub(in crate::game) fn tick_vault(&mut self, key: Pos) -> Result<()> {
+    pub fn tick_vault(&mut self, key: Pos) -> Result<()> {
         let pos = [key.0, key.1, key.2];
         let ticked = self.with_vault(key, None, |v, l, random, state, ominous, roll, events| {
             v.server_tick(l, random, pos, state, ominous, roll, events);

@@ -157,7 +157,7 @@ impl crate::game::ServerGame<'_> {
     /// A player's chat line, once `server_chat` has left it: `chat_recipient` is asked of each
     /// receiver (`shown` is what players read), the line goes to everyone it keeps nobody from,
     /// and the log keeps it. None when there is no hub.
-    pub(in crate::game::server_side) fn lan_broadcast_chat(
+    pub fn lan_broadcast_chat(
         &mut self,
         message: &ChatMessage,
         bound: &play::ChatTypeBound,
@@ -257,7 +257,7 @@ impl crate::game::ServerGame<'_> {
     /// unsigned command packet). False when the command is another one, or
     /// one this can't run (selectors other than `@s` and `@a`), for the
     /// game's dispatcher to handle.
-    pub(in crate::game::server_side) fn guest_message_command(
+    pub fn guest_message_command(
         &mut self,
         conn: u32,
         command: &str,

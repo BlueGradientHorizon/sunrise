@@ -68,13 +68,13 @@ impl crate::game::ClientGame<'_> {
         }
     }
     /// `BrushableBlockRenderer`: reveal the item from the first brushed face.
-    pub(in crate::game) fn brushable_geometry(&self, camera: glam::DVec3, out: &mut Vec<Vertex>) {
+    pub fn brushable_geometry(&self, camera: glam::DVec3, out: &mut Vec<Vertex>) {
         self.brushable_items(camera, |d| {
             self.submit_item_world(d.state, d.pose, d.light, out);
         });
     }
     /// The items [`Self::brushable_geometry`] draws.
-    pub(in crate::game) fn brushable_items(
+    pub fn brushable_items(
         &self,
         camera: glam::DVec3,
         mut draw: impl FnMut(BlockItemDraw),

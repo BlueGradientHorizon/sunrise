@@ -87,7 +87,7 @@ fn game_with_open_donkey<'a>(
     game.mobs[0].position.x = 8.5 + gap + f64::from(game.mobs[0].width()) / 2.0;
     game.open_mount_menu(0);
     assert_eq!(
-        game.side.mount_menu.opened_mob(),
+        game.client.mount_menu.opened_mob(),
         Some(DONKEY),
         "the donkey's menu did not open"
     );
@@ -104,19 +104,19 @@ fn a_mount_moved_five_blocks_away_keeps_its_menu_open() {
     let mut game = game_with_open_donkey(&mut resources, 5.0);
     game.tick_mount_menu();
     assert_eq!(
-        game.side.mount_menu.opened_mob(),
+        game.client.mount_menu.opened_mob(),
         Some(DONKEY),
         "the menu closed 5 blocks from the donkey's box"
     );
     game.mobs[0].position.x += 1.5;
     game.tick_mount_menu();
     assert_eq!(
-        game.side.mount_menu.opened_mob(),
+        game.client.mount_menu.opened_mob(),
         Some(DONKEY),
         "the menu closed 6.5 blocks from the donkey's box"
     );
     assert!(
-        game.side.screen == Screen::Inventory,
+        game.client.screen == Screen::Inventory,
         "the screen left the menu"
     );
 }
@@ -130,12 +130,12 @@ fn a_mount_past_seven_blocks_closes_its_menu() {
     let mut game = game_with_open_donkey(&mut resources, 7.5);
     game.tick_mount_menu();
     assert_eq!(
-        game.side.mount_menu.opened_mob(),
+        game.client.mount_menu.opened_mob(),
         None,
         "the menu stayed open 7.5 blocks from the donkey's box"
     );
     assert!(
-        game.side.screen == Screen::Playing,
+        game.client.screen == Screen::Playing,
         "the menu's screen stayed"
     );
 }

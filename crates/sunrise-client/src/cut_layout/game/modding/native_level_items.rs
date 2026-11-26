@@ -169,7 +169,7 @@ mod tests {
                 game.orbs.push(orb(40, 0.5, 3, 0));
                 game.orbs.push(orb(80, 0.5, 3, 1));
                 game.orbs.push(orb(120, 100.5, 3, 0));
-                game.side.next_entity = 159;
+                game.server.next_entity = 159;
                 // Only initial residents take turns; each scan sees hook-awarded residents.
                 let ticking: Vec<_> = game.orbs.iter().map(|orb| orb.join).collect();
                 for join in ticking {

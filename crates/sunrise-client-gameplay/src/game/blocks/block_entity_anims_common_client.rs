@@ -19,7 +19,7 @@ impl ClientGame<'_> {
         AnimTick { frames: None }
     }
     /// Renderer's view of the animated block entity at `pos`, including pot sherds.
-    pub(in crate::game) fn block_anim(&self, pos: [i32; 3], partial: f32) -> BlockAnim {
+    pub fn block_anim(&self, pos: [i32; 3], partial: f32) -> BlockAnim {
         let state = self.common.world.block(pos[0], pos[1], pos[2]);
         // A replacement may draw before its first ConduitBlockEntity.clientTick.
         if matches!(self.client.be_anims.ticker(state.0), Some(Ticker::Conduit))
@@ -58,12 +58,12 @@ impl ClientGame<'_> {
         }
     }
     /// Client chest ticker, also used when replaying a moved chest.
-    pub(in crate::game) fn tick_chest_lid(&mut self, pos: [i32; 3]) {
+    pub fn tick_chest_lid(&mut self, pos: [i32; 3]) {
         self.client.be_anims.chests.entry(pos).or_default().tick();
     }
 
     /// `BlockEntity.triggerEvent(a, b)` on the block entity at `pos`.
-    pub(in crate::game) fn block_entity_event(&mut self, pos: [i32; 3], a: i32, b: i32) {
+    pub fn block_entity_event(&mut self, pos: [i32; 3], a: i32, b: i32) {
         let state = self.common.world.block(pos[0], pos[1], pos[2]).0;
         let time = self.common.world.game_time;
         // PotentSulfurBlock.triggerEvent.

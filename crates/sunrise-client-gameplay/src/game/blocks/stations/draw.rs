@@ -3,7 +3,7 @@ use super::*;
 #[cfg(feature = "client")]
 impl crate::game::ClientGame<'_> {
     /// Draws the open station or brewing stand screen; false when none is open.
-    pub(in crate::game::client_side) fn draw_station(&mut self, batch: &mut HudBatch) -> bool {
+    pub fn draw_station(&mut self, batch: &mut HudBatch) -> bool {
         if let Some(kind) = self.common.station.as_ref().map(|s| s.kind) {
             if self.client.station_ui.is_none() {
                 debug_assert!(false, "open client station missing StationUi");

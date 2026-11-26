@@ -27,7 +27,7 @@ impl ServerGame<'_> {
     /// spawner keeps the place the game ticks it today (the phantom spawner runs with
     /// the stats, after the mobs: `spawn_phantoms`); a mod's spawner is the
     /// `custom_spawner_tick` hook for its key.
-    pub(in crate::game) fn tick_custom_spawners(&mut self) {
+    pub fn tick_custom_spawners(&mut self) {
         self.level_spawners();
         let dim = self.common.dim;
         let spawn_enemies = self

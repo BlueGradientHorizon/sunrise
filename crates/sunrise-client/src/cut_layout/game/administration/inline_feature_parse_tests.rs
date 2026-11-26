@@ -73,9 +73,9 @@ fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> sunrise_gameplay::
 
 /// Runs `command`: whether it succeeded and what it said first.
 fn run(game: &mut sunrise_gameplay::game::ServerGame<'_>, command: &str) -> (bool, Option<String>) {
-    game.side.chat_capture = Some(Vec::new());
+    game.server.chat_capture = Some(Vec::new());
     let ok = game.run_command(command);
-    let said = game.side.chat_capture.take().unwrap_or_default();
+    let said = game.server.chat_capture.take().unwrap_or_default();
     (ok, said.first().map(sunrise_game_data::text::Text::plain))
 }
 

@@ -274,7 +274,7 @@ impl ServerGame<'_> {
     /// Piglins notice wanted items on the ground within 9 blocks (`PiglinAi.wantsToPickup`:
     /// gold and other loved items, nuggets, food, gear), walk to them and
     /// take them (`GoToWantedItem`, `Piglin.pickUpItem`).
-    pub(in crate::game) fn piglin_pickups(&mut self) {
+    pub fn piglin_pickups(&mut self) {
         let griefing = self
             .common.ui
             .rules
@@ -400,7 +400,7 @@ impl ServerGame<'_> {
     }
     /// `PiglinAi.mobInteract`: hand a piglin the held `stack` (`canAdmire`: only
     /// piglin currency is accepted from the hand; other loved items are passed over).
-    pub(in crate::game::server_side) fn give_piglin(
+    pub fn give_piglin(
         &mut self,
         index: usize,
         stack: &ItemStack,
@@ -430,7 +430,7 @@ impl ServerGame<'_> {
     /// anything else. Babies equip the admired item, or hold it in the main hand
     /// after stashing or throwing the old item. An empty off hand (a second stop
     /// of the same hit) does nothing.
-    pub(in crate::game::server_side) fn finish_admiring(&mut self, mob: u32) {
+    pub fn finish_admiring(&mut self, mob: u32) {
         let Some(i) = self.common.mobs.iter().position(|m| m.id == mob) else {
             return;
         };
@@ -485,7 +485,7 @@ impl ServerGame<'_> {
     }
     /// `PiglinAi.throwItems`: barters and a baby's unwanted main-hand item
     /// use the same player-directed throw.
-    fn piglin_throw_items(&mut self, i: usize, items: Vec<ItemStack>) {
+    pub fn piglin_throw_items(&mut self, i: usize, items: Vec<ItemStack>) {
         if items.is_empty() {
             return;
         }

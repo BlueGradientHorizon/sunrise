@@ -38,7 +38,7 @@ impl crate::game::ServerGame<'_> {
 
     /// Narrows an entity to a minecart of any kind, or None for another kind of
     /// entity, a stale handle, a client, or an entity held out of storage.
-    pub(in crate::game) fn minecart(&self, entity: EntityRef) -> Option<MinecartRef> {
+    pub fn minecart(&self, entity: EntityRef) -> Option<MinecartRef> {
         let cart = MinecartRef::new(entity);
         self.native_minecart_index(cart).map(|_| cart)
     }
@@ -169,7 +169,7 @@ impl crate::game::ServerGame<'_> {
     /// A furnace minecart's push (`MinecartFurnace.push`): the way its fuel drives it on rails,
     /// x and z; its y part stays between ticks and sets the push's length. None for another
     /// kind of cart.
-    pub(in crate::game) fn minecart_push(&self, cart: MinecartRef) -> Option<[f64; 3]> {
+    pub fn minecart_push(&self, cart: MinecartRef) -> Option<[f64; 3]> {
         let cart = self.native_minecart(cart)?;
         (cart.kind == CartKind::Furnace).then_some([cart.push.x, cart.push.y, cart.push.z])
     }
@@ -177,7 +177,7 @@ impl crate::game::ServerGame<'_> {
     /// Sets a furnace minecart's push, as a player's click with fuel sets it toward them
     /// (`MinecartFurnace.interact`): a cart a mod drives runs that way while it has fuel. False
     /// for another kind of cart or a push that isn't finite.
-    pub(in crate::game) fn minecart_set_push(&mut self, cart: MinecartRef, push: [f64; 3]) -> bool {
+    pub fn minecart_set_push(&mut self, cart: MinecartRef, push: [f64; 3]) -> bool {
         if !push.iter().all(|v| v.is_finite()) {
             return false;
         }

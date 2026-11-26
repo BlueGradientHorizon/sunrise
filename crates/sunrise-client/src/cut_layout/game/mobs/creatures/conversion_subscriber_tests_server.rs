@@ -39,9 +39,9 @@ fn post_only_listener_is_subscribed_without_a_pre_listener() {
                 .unwrap()
                 .clone();
             for _ in 0..2 {
-                game.side.next_entity += 1;
+                game.server.next_entity += 1;
                 let from = Mob::new(
-                    game.side.next_entity,
+                    game.server.next_entity,
                     zombie.clone(),
                     Vec3::new(0.5, 64.0, 0.5),
                     0.0,

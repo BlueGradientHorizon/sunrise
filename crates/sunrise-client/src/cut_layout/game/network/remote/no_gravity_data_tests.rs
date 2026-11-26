@@ -12,7 +12,7 @@ use sunrise_protocol::{
 #[ignore = "daily"]
 fn a_client_follows_an_items_and_a_mobs_no_gravity() {
     with_remote_game(|game| {
-        let builtin = game.side.remote.as_ref().unwrap().builtin.clone();
+        let builtin = game.client.remote.as_ref().unwrap().builtin.clone();
         let types = builtin.get("minecraft:entity_type").unwrap();
         let stone = builtin
             .get("minecraft:item")

@@ -7,7 +7,7 @@ impl crate::game::ServerGame<'_> {
     /// (`ModConfigEvent.Unloading`), after `native_server_stopping`; the next
     /// world reads it again. `Client` and `Common` configs stay until the
     /// game quits. API 397.
-    pub(in crate::game) fn native_config_unloading(&mut self, config: &ConfigFile) {
+    pub fn native_config_unloading(&mut self, config: &ConfigFile) {
         self.fire_config_unloading(config);
     }
 }

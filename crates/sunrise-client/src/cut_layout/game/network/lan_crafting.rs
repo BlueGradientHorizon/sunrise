@@ -83,7 +83,7 @@ mod machine_recipe_placement_tests {
             guest.loaded = true;
             guest.selected = 1;
             guest.permission = 2;
-            game.side.lan.as_mut().unwrap().hub.guests.push(guest);
+            game.server.lan.as_mut().unwrap().hub.guests.push(guest);
             let clock = game.world.game_time;
             let planks = game
                 .stations()
@@ -122,7 +122,7 @@ mod machine_recipe_placement_tests {
                     }),
                 );
                 assert!(
-                    game.side
+                    game.server
                         .lan
                         .as_ref()
                         .unwrap()
@@ -133,7 +133,7 @@ mod machine_recipe_placement_tests {
                         .get()
                         >= 234
                 );
-                game.side
+                game.server
                     .lan
                     .as_ref()
                     .unwrap()
@@ -142,7 +142,7 @@ mod machine_recipe_placement_tests {
                     .and_then(|p| p.crafting.table.as_ref())
                     .map(|(window, ..)| *window)
                     .or_else(|| {
-                        game.side
+                        game.server
                             .lan
                             .as_ref()
                             .unwrap()
@@ -158,7 +158,7 @@ mod machine_recipe_placement_tests {
             command(game, "recipe give @s minecraft:oak_planks");
             command(game, "recipe give @s minecraft:charcoal");
             assert!(
-                game.side
+                game.server
                     .lan
                     .as_ref()
                     .unwrap()
@@ -171,7 +171,7 @@ mod machine_recipe_placement_tests {
             command(game, "item replace entity @s hotbar.0 with oak_log 3");
             place(game, 0, planks);
             assert_eq!(
-                game.side
+                game.server
                     .lan
                     .as_ref()
                     .unwrap()
@@ -182,7 +182,7 @@ mod machine_recipe_placement_tests {
                 Some(ItemStack::new("minecraft:oak_log", 1))
             );
             assert_eq!(
-                game.side
+                game.server
                     .lan
                     .as_ref()
                     .unwrap()
@@ -193,7 +193,7 @@ mod machine_recipe_placement_tests {
                 Some(ItemStack::new("minecraft:oak_planks", 4))
             );
             assert_eq!(
-                game.side
+                game.server
                     .lan
                     .as_ref()
                     .unwrap()
@@ -210,7 +210,7 @@ mod machine_recipe_placement_tests {
             assert!(game.run_command("setblock 10 200 8 crafting_table"));
             let window = open(game, [10, 200, 8]);
             place(game, window, planks);
-            let (_, _, table, _) = game.side.lan.as_ref().unwrap().menus[&2]
+            let (_, _, table, _) = game.server.lan.as_ref().unwrap().menus[&2]
                 .crafting
                 .table
                 .as_ref()
@@ -245,7 +245,7 @@ mod machine_recipe_placement_tests {
                     command(game, "recipe take @s minecraft:charcoal");
                 }
                 assert_eq!(
-                    game.side
+                    game.server
                         .lan
                         .as_ref()
                         .unwrap()
@@ -257,7 +257,7 @@ mod machine_recipe_placement_tests {
                     known
                 );
                 let before = game
-                    .side
+                    .server
                     .lan
                     .as_ref()
                     .unwrap()
@@ -288,7 +288,7 @@ mod machine_recipe_placement_tests {
                 };
                 if f.items[0] != input
                     || game
-                        .side
+                        .server
                         .lan
                         .as_ref()
                         .unwrap()
@@ -301,7 +301,7 @@ mod machine_recipe_placement_tests {
                     failures.push((
                         label,
                         f.items.clone(),
-                        game.side
+                        game.server
                             .lan
                             .as_ref()
                             .unwrap()
@@ -313,15 +313,15 @@ mod machine_recipe_placement_tests {
                     ));
                 }
                 assert_eq!(
-                    game.side.lan.as_ref().unwrap().hub.guest(2).unwrap().uuid,
+                    game.server.lan.as_ref().unwrap().hub.guest(2).unwrap().uuid,
                     234
                 );
                 assert_eq!(
-                    game.side.lan.as_ref().unwrap().hub.guest(2).unwrap().health,
+                    game.server.lan.as_ref().unwrap().hub.guest(2).unwrap().health,
                     20.0
                 );
                 assert_eq!(
-                    game.side
+                    game.server
                         .lan
                         .as_ref()
                         .unwrap()
@@ -364,7 +364,7 @@ mod recipe_check_tests {
             .world
             .modified
             .remove(&(STATION.0 >> 4, STATION.2 >> 4));
-        let host = game.side.lan.as_ref().unwrap();
+        let host = game.server.lan.as_ref().unwrap();
         let g = &host.hub.guests[0];
         format!(
             "{:?} {:?} {:?} {:?} {:?} {:?} {:?}",
@@ -531,7 +531,7 @@ mod recipe_check_tests {
                 opening_item: None,
                 slot_changed_seen: None,
             });
-            game.side.lan.as_mut().unwrap().hub.guests.push(guest);
+            game.server.lan.as_mut().unwrap().hub.guests.push(guest);
             sent(&rx);
             game.world.modified.clear();
             let before = state(game);
@@ -578,7 +578,7 @@ mod recipe_check_tests {
     fn checks_past_the_limit_go_unanswered() {
         sunrise_gameplay::game::native_guest_turn_tests::with_guests(|game| {
             let (tx, rx) = mpsc::channel();
-            let host = game.side.lan.as_mut().unwrap();
+            let host = game.server.lan.as_mut().unwrap();
             host.hub.guests.update(0, |g| {
                 g.brand = "sunrise".into();
                 g.sender = PlayerSender::new(tx, Arc::default());
@@ -687,7 +687,7 @@ mod empty_ingredient_placement_tests {
                         .to_string(),
                     )
                     .unwrap();
-                    game.side.world_root = dir.clone();
+                    game.server.world_root = dir.clone();
                     let resources = game.options.resources.clone();
                     let stack = sunrise_gameplay::game::functions::pack_stack(
                         &dir,
@@ -721,7 +721,7 @@ mod empty_ingredient_placement_tests {
                         );
                         std::fs::remove_file(path).unwrap();
                     }
-                    game.side.world_tables.0 = game
+                    game.server.world_tables.0 = game
                         .stage_world_tables(&stack, false, &resources)
                         .unwrap()
                         .tables;
@@ -813,7 +813,7 @@ mod empty_ingredient_placement_tests {
                     guest
                         .recipe_book
                         .add_recipes(index, &["empty_fixture:b_neighbor".to_owned()]);
-                    let sync = game.side.lan.as_ref().unwrap().hub.sync_data();
+                    let sync = game.server.lan.as_ref().unwrap().hub.sync_data();
                     assert!(sync.advancements.recipes_added(&ids, sync).is_none());
                     let display = index.first_display("empty_fixture:b_neighbor").unwrap();
                     assert_eq!(
@@ -844,7 +844,7 @@ mod empty_ingredient_placement_tests {
                                 .any(|recipe| &recipe.id == id)
                         );
                     }
-                    game.side.lan.as_mut().unwrap().hub.guests.push(guest);
+                    game.server.lan.as_mut().unwrap().hub.guests.push(guest);
                     for display in [-1, i32::MAX] {
                         game.lan_guest_packet(
                             2,
@@ -854,7 +854,7 @@ mod empty_ingredient_placement_tests {
                                 use_max: true,
                             }),
                         );
-                        let guest = game.side.lan.as_ref().unwrap().hub.guest(2).unwrap();
+                        let guest = game.server.lan.as_ref().unwrap().hub.guest(2).unwrap();
                         assert_eq!(
                             guest.inventory[0],
                             Some(ItemStack::new("minecraft:stone", 16))
@@ -878,7 +878,7 @@ mod empty_ingredient_placement_tests {
                             use_max: false,
                         }),
                     );
-                    let guest = game.side.lan.as_ref().unwrap().hub.guest(2).unwrap();
+                    let guest = game.server.lan.as_ref().unwrap().hub.guest(2).unwrap();
                     assert_eq!(guest.inventory[0].as_ref().unwrap().count, 15);
                     assert_eq!(
                         guest.craft_grid[0],

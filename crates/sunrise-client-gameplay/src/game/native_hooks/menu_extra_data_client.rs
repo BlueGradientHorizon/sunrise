@@ -2,7 +2,7 @@ use super::*;
 
 impl crate::game::ClientGame<'_> {
     /// The opener position for the currently shown mod menu, if known.
-    pub(in crate::game) fn screen_pos(&self) -> Option<[i32; 3]> {
+    pub fn screen_pos(&self) -> Option<[i32; 3]> {
         self.shown_native_screen()?.menu.pos
     }
     /// Applies the `sunrise:menu_extra` payload sent before `OpenScreen`, or disconnects on error.

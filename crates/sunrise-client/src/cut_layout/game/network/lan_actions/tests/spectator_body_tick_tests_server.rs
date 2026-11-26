@@ -16,7 +16,7 @@ use sunrise_level::chunk::Chunk;
 fn leftover_sleep_countdown_waits_at_the_unloaded_edge_then_resumes() {
     mod_platform::testing::with_mods(Vec::new().into(), || {
         with_game(|game| {
-            game.side.world_root = game.side.save.0.root.clone();
+            game.server.world_root = game.server.save.0.root.clone();
             open_to_lan(game);
             game.world
                 .chunks
@@ -26,7 +26,7 @@ fn leftover_sleep_countdown_waits_at_the_unloaded_edge_then_resumes() {
             loaded.sleep_timer = 105;
             edge.sleep_timer = 105;
             assert!(loaded.bed.is_none() && edge.bed.is_none());
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()
@@ -35,7 +35,7 @@ fn leftover_sleep_countdown_waits_at_the_unloaded_edge_then_resumes() {
                 .extend([loaded, edge]);
             game.tick_guests();
             let timers = |game: &sunrise_gameplay::game::ServerGame<'_>| -> Vec<u32> {
-                game.side
+                game.server
                     .lan
                     .as_ref()
                     .unwrap()
@@ -76,13 +76,13 @@ fn pre_teleport_to_unloaded_edge_keeps_the_resolved_body_tick() {
         vec![mod_api::ModEntry::new("move", Box::new(Move))].into(),
         || {
             with_game(|game| {
-                game.side.world_root = game.side.save.0.root.clone();
+                game.server.world_root = game.server.save.0.root.clone();
                 open_to_lan(game);
                 // The teleport's target is lit land (an in-level `tp` to land not lit yet holds the
                 // player and skips its body, #15727), yet chunk 1 is not loaded for the edge test.
                 for x in -2..=2 {
                     for z in -2..=2 {
-                        game.side
+                        game.server
                             .streaming
                             .insert_remote(&mut game.world, Chunk::empty(x, z));
                     }
@@ -105,8 +105,8 @@ fn pre_teleport_to_unloaded_edge_keeps_the_resolved_body_tick() {
                         ("Silent", sunrise_core::nbt::Tag::Byte(1)),
                     ]),
                 )]));
-                game.side.lan.as_mut().unwrap().hub.guests.push(watcher);
-                game.side
+                game.server.lan.as_mut().unwrap().hub.guests.push(watcher);
+                game.server
                     .lan
                     .as_mut()
                     .unwrap()
@@ -116,7 +116,7 @@ fn pre_teleport_to_unloaded_edge_keeps_the_resolved_body_tick() {
                     .cooldowns
                     .add("minecraft:ender_pearl".into(), 5);
                 game.tick_guests();
-                let watcher = game.side.lan.as_ref().unwrap().hub.guest(1).unwrap();
+                let watcher = game.server.lan.as_ref().unwrap().hub.guest(1).unwrap();
                 assert_eq!(watcher.position, [15.5, 64.0, 8.5]);
                 assert!(
                     !game.guest_body_ticks(watcher),
@@ -134,7 +134,7 @@ fn pre_teleport_to_unloaded_edge_keeps_the_resolved_body_tick() {
                         .is_none()
                 );
                 game.tick_guests();
-                let watcher = game.side.lan.as_ref().unwrap().hub.guest(1).unwrap();
+                let watcher = game.server.lan.as_ref().unwrap().hub.guest(1).unwrap();
                 assert_eq!(luck_left(game), [99]);
                 assert_eq!(pearl_left(game), [4]);
                 assert_eq!(watcher.motion.as_ref().unwrap().health.food.exhaustion, 1.0);

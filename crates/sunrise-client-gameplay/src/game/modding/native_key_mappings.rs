@@ -45,7 +45,7 @@ impl ClientGame<'_> {
                 }
             }));
     }
-    pub(in crate::game) fn mod_key_mapping(
+    pub fn mod_key_mapping(
         &self,
         owner: &str,
         id: &str,
@@ -149,7 +149,7 @@ impl ClientGame<'_> {
     /// One key event, the window's after it handled it or the control socket's: the mods'
     /// mappings bound to it hear it (`KeyMapping.set`, `KeyMapping.click`), then `input_key`
     /// fires. `key` is vanilla's name for it; the rest is what `native_input_key` takes.
-    pub(in crate::game::client_side) fn key_input(
+    pub fn key_input(
         &mut self,
         key: Option<&'static str>,
         layout_key: Option<&str>,
@@ -223,7 +223,7 @@ impl ClientGame<'_> {
             .input(input, action, mouse, screen_open, held);
     }
     /// A screen or overlay is open: the mappings hear no presses and are released.
-    pub(in crate::game) fn mod_mappings_screen_open(&self) -> bool {
+    pub fn mod_mappings_screen_open(&self) -> bool {
         !gameplay_has_keyboard(
             self.client.screen,
             self.client.title.0.is_some(),

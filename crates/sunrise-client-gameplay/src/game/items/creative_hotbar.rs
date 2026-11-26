@@ -9,7 +9,7 @@ use sunrise_sim::hotbar;
 
 impl ClientGame<'_> {
     /// Whether the live mapping is held, regardless of the device's current state.
-    pub(in crate::game) fn mapped_key_down(&self, mapping: &str) -> bool {
+    pub fn mapped_key_down(&self, mapping: &str) -> bool {
         keybinds::VanillaMappingSlot::by_name(mapping)
             .is_some_and(|slot| self.client.vanilla_mappings.is_down(slot))
     }

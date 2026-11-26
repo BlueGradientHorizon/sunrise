@@ -59,7 +59,7 @@ mod tests {
         with_guests(|game| {
             let (tx_near, near) = mpsc::channel();
             let (tx_far, far) = mpsc::channel();
-            let hub = &mut game.side.lan.as_mut().unwrap().hub;
+            let hub = &mut game.server.lan.as_mut().unwrap().hub;
             hub.update_guest(12, |guest| {
                 guest.sender = PlayerSender::new(tx_near, Arc::default());
                 guest.position = [0.9, 64.1, 0.9];
@@ -171,7 +171,7 @@ mod tests {
             // Both guests are now in range, but only one is in the requested dimension.
             game.enter_level(Dim::Nether).unwrap();
             game.enter_level(Dim::Overworld).unwrap();
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()

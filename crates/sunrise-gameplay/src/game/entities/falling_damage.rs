@@ -7,7 +7,7 @@ use sunrise_world::level::LevelEvent;
 impl crate::game::ServerGame<'_> {
     /// `FallingBlockEntity.causeFallDamage`: impact damage and anvil wear,
     /// before block effects and portal handling can transfer the entity.
-    pub(in crate::game::server_side) fn falling_block_impact(&mut self, block: &mut FallingBlock) {
+    pub fn falling_block_impact(&mut self, block: &mut FallingBlock) {
         let name = self.common.res.facts().get(block.state).name.clone();
         let anvil = name.ends_with("anvil");
         let stalactite = matches!(
@@ -129,7 +129,7 @@ impl crate::game::ServerGame<'_> {
 
     /// `FallingBlockEntity.tick`: finish a landing, including the placed block
     /// entity and the carried `TileEntityData` applied through loadWithComponents.
-    pub(in crate::game) fn finish_falling_block(
+    pub fn finish_falling_block(
         &mut self,
         block: FallingBlock,
         pos: [i32; 3],
@@ -256,7 +256,7 @@ impl crate::game::ServerGame<'_> {
         None
     }
     /// The falling block `entity` at `position`, whose box is `bounds`, hits the acting player.
-    fn falling_hurt_player(
+    pub fn falling_hurt_player(
         &mut self,
         entity: u32,
         position: Vec3,

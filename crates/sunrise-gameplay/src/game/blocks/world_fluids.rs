@@ -26,7 +26,7 @@ const BUCKET: u32 = 1000;
 impl crate::game::ServerGame<'_> {
     /// A normal player's bucket uses the same plan as a dispenser, but lends a
     /// transactional host to a subscribing container instead of the direct one.
-    pub(in crate::game) fn empty_player_bucket(
+    pub fn empty_player_bucket(
         &mut self,
         pos: BlockPos,
         beside: Option<BlockPos>,
@@ -98,7 +98,7 @@ impl crate::game::ServerGame<'_> {
     /// where water evaporates. `Ok(false)`, with nothing done, for a fluid without a world form,
     /// where it can't be placed, or if the level is not in place; `Err(TransactionError::InvalidContext)`
     /// if `tx` is not current.
-    pub(in crate::game) fn level_place_fluid(
+    pub fn level_place_fluid(
         &mut self,
         level: LevelRef,
         pos: [i32; 3],

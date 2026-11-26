@@ -92,7 +92,7 @@ fn early_server_game_rules_saved_and_creation_values() {
                                 game.res.clone(),
                                 game.pack.clone(),
                                 game.options.clone(),
-                                game.side.settings.clone(),
+                                game.server.settings.clone(),
                                 Arc::new(sunrise_world::datafix::progress::UpgradeProgress::new()),
                             )
                             .unwrap();

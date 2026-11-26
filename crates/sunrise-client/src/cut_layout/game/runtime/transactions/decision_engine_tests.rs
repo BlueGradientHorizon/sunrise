@@ -9,7 +9,7 @@ fn fixture(game: &mut sunrise_gameplay::game::ServerGame<'_>) -> (Target, Identi
     let mut menu = Box::new(EngineMenu::new(Kind::Inventory));
     menu.carried = Some(ItemStack::new("minecraft:stone", 3));
     *game
-        .side
+        .server
         .lan
         .as_mut()
         .unwrap()
@@ -142,7 +142,7 @@ fn actual_owner_replacement_is_stale_and_same_owner_reentry_is_busy() {
                     );
                     let same_menu = host
                         .game
-                        .side
+                        .server
                         .lan
                         .as_mut()
                         .unwrap()
@@ -155,7 +155,7 @@ fn actual_owner_replacement_is_stale_and_same_owner_reentry_is_busy() {
                     assert!(matches!(Target::admit(host.game, 12), Err(Admission::Busy)));
                     *host
                         .game
-                        .side
+                        .server
                         .lan
                         .as_mut()
                         .unwrap()

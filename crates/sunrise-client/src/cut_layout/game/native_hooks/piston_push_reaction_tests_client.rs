@@ -62,7 +62,7 @@ pub(crate) fn run_client_piston_case(root: std::path::PathBuf) {
             );
             game.world.set_container_stack_limit(from, 13);
             game.world.chest_openers.insert(from, (2, 4.0));
-            game.side.be_anims.chests.insert(
+            game.client.be_anims.chests.insert(
                 [3, 64, 2],
                 sunrise_client::block_entity_anim::ChestLid {
                     should_be_open: true,
@@ -89,7 +89,7 @@ pub(crate) fn run_client_piston_case(root: std::path::PathBuf) {
             assert!(game.world.block_lock(from).is_none());
             assert_eq!(game.world.container_stack_limit(from), None);
             assert!(!game.world.chest_openers.contains_key(&from));
-            assert!(!game.side.be_anims.chests.contains_key(&[3, 64, 2]));
+            assert!(!game.client.be_anims.chests.contains_key(&[3, 64, 2]));
             let at = BlockPos::new(4, 64, 2);
             let moving = game
                 .block_ticks
@@ -125,11 +125,11 @@ pub(crate) fn run_client_piston_case(root: std::path::PathBuf) {
             assert!(
                 matches!(game.world.block_entities.get(&to), Some(BlockEntity::Chest(after)) if after == &slots)
             );
-            game.side.be_anims.classify(registry);
+            game.client.be_anims.classify(registry);
             game.block_entity_event([4, 64, 2], 1, 1);
             game.tick_chest_lid([4, 64, 2]);
-            assert_eq!(game.side.be_anims.chests[&[4, 64, 2]].openness, 0.1);
-            assert!(!game.side.be_anims.chests.contains_key(&[3, 64, 2]));
+            assert_eq!(game.client.be_anims.chests[&[4, 64, 2]].openness, 0.1);
+            assert!(!game.client.be_anims.chests.contains_key(&[3, 64, 2]));
         },
     );
 }

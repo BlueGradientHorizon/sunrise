@@ -100,7 +100,7 @@ pub(crate) use crate::game::server_side::native_hooks_server::player_leave::play
         }
         first_of_two_leaves(
             |game| {
-                game.side
+                game.server
                     .lan
                     .as_mut()
                     .unwrap()

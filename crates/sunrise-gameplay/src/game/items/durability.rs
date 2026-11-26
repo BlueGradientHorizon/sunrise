@@ -61,7 +61,7 @@ impl DurabilityWorld for World<'_, '_> {
 impl crate::game::ServerGame<'_> {
     /// Compute the server durability update without firing equip effects:
     /// the acting player's stack when `player`, else one nobody holds.
-    pub(in crate::game) fn damage_stack(
+    pub fn damage_stack(
         &mut self,
         stack: &ItemStack,
         amount: i32,

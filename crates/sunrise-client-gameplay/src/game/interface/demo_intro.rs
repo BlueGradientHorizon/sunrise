@@ -185,7 +185,7 @@ impl crate::game::ClientGame<'_> {
         self.draw_screen_phase(batch, sunrise_client::screen_draw::RenderPhase::Foreground);
     }
 
-    pub(in crate::game::client_side) fn demo_intro_click(&mut self) -> bool {
+    pub fn demo_intro_click(&mut self) -> bool {
         let Some(intro) = &self.client.demo_intro else {
             return false;
         };

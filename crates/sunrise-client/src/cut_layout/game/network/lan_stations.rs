@@ -97,7 +97,7 @@ pub(crate) mod anvil_tests {
                     .default_state("minecraft:anvil")
                     .unwrap();
                 game.world.set(x, y, z, state).unwrap();
-                game.side
+                game.server
                     .lan
                     .as_mut()
                     .unwrap()
@@ -111,7 +111,7 @@ pub(crate) mod anvil_tests {
                     menu.set_slot(env, 0, Some(sword));
                     menu.set_slot(env, 1, Some(ItemStack::new("minecraft:iron_ingot", 2)));
                 }));
-                let window = game.side.lan.as_ref().unwrap().menus[&CONN]
+                let window = game.server.lan.as_ref().unwrap().menus[&CONN]
                     .station
                     .as_ref()
                     .unwrap()
@@ -129,7 +129,7 @@ pub(crate) mod anvil_tests {
                     }),
                 );
 
-                let host = game.side.lan.as_ref().unwrap();
+                let host = game.server.lan.as_ref().unwrap();
                 let menu = &host.menus[&CONN].station.as_ref().unwrap().menu;
                 assert!((0..=2).all(|slot| menu.slot(slot).is_none()));
                 let guest = &host.hub.guests[0];

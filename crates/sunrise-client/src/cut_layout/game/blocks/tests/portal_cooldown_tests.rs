@@ -90,7 +90,7 @@ pub(crate) fn run_portal_contact_and_waiting_handoff_match_vanilla_counters()
             ("PortalCooldown", Tag::Int(5)),
         ]);
         game.load_listed(kind, Some(uuid), None, tag).unwrap();
-        ids.push(game.side.next_entity);
+        ids.push(game.server.next_entity);
     }
     assert_eq!(game.boats.len(), 1);
     assert_eq!(game.carts.len(), 1);
@@ -98,7 +98,7 @@ pub(crate) fn run_portal_contact_and_waiting_handoff_match_vanilla_counters()
     assert_eq!(game.mobs.len(), 1);
     // Direct handler calls do not refresh the headless world's chunk tickets.
     // Frozen entities retain their counters across every group/phase pass.
-    game.side
+    game.server
         .tickets
         .0
         .update(Some(sunrise_sim::ticket_levels::Sources::default()));
@@ -106,9 +106,9 @@ pub(crate) fn run_portal_contact_and_waiting_handoff_match_vanilla_counters()
     game.handle_entity_portals();
     game.handle_portals(false, true);
     for id in &ids {
-        assert_eq!(game.side.portals.entities.get(id).unwrap().cooldown, 5);
+        assert_eq!(game.server.portals.entities.get(id).unwrap().cooldown, 5);
     }
-    game.side
+    game.server
         .tickets
         .0
         .update(Some(sunrise_sim::ticket_levels::Sources {
@@ -131,7 +131,7 @@ pub(crate) fn run_portal_contact_and_waiting_handoff_match_vanilla_counters()
         runtime.push(
             ids.iter()
                 .map(|id| {
-                    game.side
+                    game.server
                         .portals
                         .entities
                         .get(id)
@@ -149,7 +149,7 @@ pub(crate) fn run_portal_contact_and_waiting_handoff_match_vanilla_counters()
         .unwrap();
     game.world.set(entry.x, entry.y, entry.z, end).unwrap();
     for id in &ids {
-        game.side
+        game.server
             .portals
             .entities
             .insert(*id, PortalState::default());
@@ -158,14 +158,14 @@ pub(crate) fn run_portal_contact_and_waiting_handoff_match_vanilla_counters()
     game.handle_vehicle_portals();
     game.handle_entity_portals();
     assert_eq!(
-        game.side.portals.arrivals.len(),
+        game.server.portals.arrivals.len(),
         4,
         "all four production travellers departed"
     );
     let mut handoff = Vec::new();
     for kind in kinds {
         let arrival = game
-            .side
+            .server
             .portals
             .arrivals
             .iter()
@@ -174,9 +174,9 @@ pub(crate) fn run_portal_contact_and_waiting_handoff_match_vanilla_counters()
         let restored = arrival_from_tag(&arrival_tag(arrival)).unwrap();
         let counter = counter(&restored.tag);
         game.load_listed(kind, None, None, restored.tag).unwrap();
-        let id = game.side.next_entity;
+        let id = game.server.next_entity;
         assert_eq!(
-            game.side
+            game.server
                 .portals
                 .entities
                 .get(&id)

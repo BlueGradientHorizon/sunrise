@@ -46,7 +46,7 @@ pub struct ObservedScreen {
 }
 
 impl ObservedScreen {
-    pub(in crate::game) fn view(&self) -> ScreenView<'_> {
+    pub fn view(&self) -> ScreenView<'_> {
         ScreenView::from(mod_api::__private::built::ScreenView {
             id: self.id,
             mod_screen: self.mod_screen.as_deref(),
@@ -363,7 +363,7 @@ pub struct ScreenState {
 
 impl ScreenState {
     /// Advance the receiving screen's identity. Rebuilding children is not a replacement.
-    pub(in crate::game) fn bump_instance(&mut self) -> u64 {
+    pub fn bump_instance(&mut self) -> u64 {
         self.screen_instance = self.screen_instance.wrapping_add(1);
         self.last_click = None;
         self.screen_instance
@@ -372,7 +372,7 @@ impl ScreenState {
     /// Whether a press at `now` on `screen_instance` with `button` is a vanilla
     /// double-click (within 250ms on the same screen instance and button,
     /// `MouseHandler.java:101-106`).
-    pub(in crate::game) fn is_double_click(
+    pub fn is_double_click(
         &self,
         now: u64,
         screen_instance: u64,
@@ -389,7 +389,7 @@ impl ScreenState {
     }
 
     /// Record a handled mouse press for subsequent double-click detection.
-    pub(in crate::game) fn record_click(
+    pub fn record_click(
         &mut self,
         now: u64,
         screen_instance: u64,
@@ -612,11 +612,11 @@ impl crate::game::ClientGame<'_> {
     }
 
     /// `Screen.init`/`Screen.resize` builds the open screen, and drops it when it closes.
-    pub(in crate::game) fn build_screen(&mut self) {
+    pub fn build_screen(&mut self) {
         self.build_screen_at(self.gui_frame_now().0);
     }
 
-    fn build_screen_at(&mut self, framebuffer: [u32; 2]) {
+    pub fn build_screen_at(&mut self, framebuffer: [u32; 2]) {
         let shown = self.client.screen != Screen::Playing
             || self.client.title.0.is_some()
             || self.screen_over_playing();
@@ -794,7 +794,7 @@ impl crate::game::ClientGame<'_> {
 
     /// The last published draw's regions of `screen` (`ScreenView::regions`).
     /// Empty for another screen and when no screen hook listens.
-    pub(in crate::game) fn screen_regions(&self, screen: Screen) -> &[mod_api::ScreenRegion] {
+    pub fn screen_regions(&self, screen: Screen) -> &[mod_api::ScreenRegion] {
         match &self.client.screen_state.0.regions {
             (Some(of), regions) if *of == screen => regions,
             _ => &[],
@@ -802,7 +802,7 @@ impl crate::game::ClientGame<'_> {
     }
 
     /// The build's container layout, when it holds `batch`'s size.
-    pub(in crate::game) fn built_container(
+    pub fn built_container(
         &self,
         batch: &sunrise_client::hud::HudBatch,
     ) -> Option<&ContainerLayout> {
@@ -831,7 +831,7 @@ impl crate::game::ClientGame<'_> {
     }
 
     /// The build's chat layout, when it holds `(width, height)`.
-    pub(in crate::game::client_side) fn built_chat(
+    pub fn built_chat(
         &self,
         width: f32,
         height: f32,

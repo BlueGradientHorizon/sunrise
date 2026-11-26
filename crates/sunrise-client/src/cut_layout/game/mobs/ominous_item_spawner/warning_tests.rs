@@ -41,7 +41,7 @@ fn warning_dispatch_uses_neutral_at_tick_four() {
             .as_nanos()
     ));
     std::fs::create_dir_all(&scratch).unwrap();
-    game.side.world_root = scratch.clone();
+    game.server.world_root = scratch.clone();
     game.player = Some(PlayerMotion::new(game.motion, Vec3::new(4.5, 100.0, 4.5)).unwrap());
 
     const WARNING: &str = "minecraft:block.trial_spawner.about_to_spawn_item";
@@ -50,14 +50,14 @@ fn warning_dispatch_uses_neutral_at_tick_four() {
     game.server_play_sound("minecraft:block.stone.break", center, 1.0, 1.0);
     game.server_play_sound_on(6, "minecraft:block.note_block.pling", center, 1.0, 1.0);
     assert_eq!(
-        game.side
+        game.server
             .pending_sounds
             .iter()
             .map(|s| s.source)
             .collect::<Vec<_>>(),
         [4, 6]
     );
-    game.side.pending_sounds.clear();
+    game.server.pending_sounds.clear();
     let (tag, _) = sunrise_core::nbt::parse_snbt(r#"{id:"minecraft:ominous_item_spawner",UUID:[I;128,0,0,1],Pos:[6.25d,102.75d,4.875d],item:{id:"minecraft:diamond",count:1},spawn_item_after_ticks:40L}"#).unwrap();
     game.load_ominous_item_spawner(tag);
     assert_eq!(game.ominous_spawners.len(), 1);
@@ -72,7 +72,7 @@ fn warning_dispatch_uses_neutral_at_tick_four() {
         game.tick_ominous_item_spawners();
         assert_eq!(game.ominous_spawners[0].tick_count, tick);
         let warning: Vec<_> = game
-            .side
+            .server
             .pending_sounds
             .iter()
             .filter(|s| s.event == WARNING)
@@ -91,7 +91,7 @@ fn warning_dispatch_uses_neutral_at_tick_four() {
     }
     game.server_play_sound("minecraft:block.stone.break", center, 1.0, 1.0);
     assert_eq!(
-        game.side.pending_sounds.last().unwrap().source,
+        game.server.pending_sounds.last().unwrap().source,
         4,
         "the explicit warning source must not change later event-family inference"
     );
@@ -149,7 +149,7 @@ fn taken_spawner_tick_keeps_survivors_before_both_spawns() {
         }
         let first = game.ominous_spawners[0].id;
         let second = game.ominous_spawners[1].id;
-        let next = game.side.next_entity;
+        let next = game.server.next_entity;
         crate::game::server_side::entity_server::taken_pass_tests::with_spawn(
             |game| {
                 assert!(game.ominous_spawners.is_empty());
@@ -215,7 +215,7 @@ fn lifecycle_spawner_commands_unload_park_and_remote_metadata() {
             },
             apply: |game, remove, update| {
                 let item = game
-                    .side
+                    .client
                     .remote
                     .as_ref()
                     .unwrap()

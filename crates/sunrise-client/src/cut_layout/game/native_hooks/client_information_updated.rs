@@ -42,7 +42,7 @@ pub(crate) mod client_information_updated_tests {
             vec![ModEntry::new("info", Box::new(Listen(heard.clone())))].into();
         mod_platform::testing::with_mods(mods, || {
             sunrise_gameplay::game::native_guest_turn_tests::with_guests(|game| {
-                let host = game.side.lan.as_mut().unwrap();
+                let host = game.server.lan.as_mut().unwrap();
                 let (uuid, name) = host
                     .hub
                     .update_guest(12, |g| {

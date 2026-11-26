@@ -187,9 +187,9 @@ mod tests {
             // The fight: unloaded until the End loads it, and only the End's.
             assert_eq!(dragon.alive_crystals(game), None);
             assert_eq!(dragon.previously_killed(game), None);
-            game.side.fight.loaded = true;
-            game.side.fight.alive_crystals = 3;
-            game.side.fight.previously_killed = true;
+            game.server.fight.loaded = true;
+            game.server.fight.alive_crystals = 3;
+            game.server.fight.previously_killed = true;
             assert_eq!(dragon.alive_crystals(game), None, "not in the End");
             assert_eq!(dragon.previously_killed(game), None);
             game.dim = Dim::End;
@@ -418,7 +418,7 @@ mod tests {
         with_client_game(|game| {
             let (client, _server) = Pipe::pair();
             game.connect_local(client, "PartReadTest").unwrap();
-            let remote = game.side.remote.as_mut().unwrap();
+            let remote = game.client.remote.as_mut().unwrap();
             remote.logged_in = true;
             remote.entity_id = 7;
             remote.profile = 42;
@@ -441,7 +441,7 @@ mod tests {
             assert_eq!(game.entity(7).map(|e| e.id()), Some(7));
             let stale = EntityRef::new(WorldEpoch::new(dragon.epoch().get() + 1), parts[3].id());
             assert_eq!(game.entity_position(stale), None);
-            game.side.remote.as_mut().unwrap().logged_in = false;
+            game.client.remote.as_mut().unwrap().logged_in = false;
             assert_eq!(game.entity_position(parts[3]), None);
         });
     }

@@ -39,7 +39,7 @@ fn inventory_release_post_distinguishes_quick_craft_from_swallowed_release() {
         game.world
             .block_entities
             .insert(pos, BlockEntity::Chest(vec![None; 27]));
-        game.side
+        game.client
             .remote
             .as_mut()
             .unwrap()
@@ -71,11 +71,11 @@ fn inventory_release_post_distinguishes_quick_craft_from_swallowed_release() {
         // Start on a fresh slot so a click within 250ms does not trigger vanilla PickupAll.
         move_mouse(game, id, third.0, third.1);
         send_mouse_button(game, id, MouseButton::Left, true);
-        assert!(game.side.inv_drag.is_some());
+        assert!(game.client.inv_drag.is_some());
         take(state);
         send_mouse_button(game, id, MouseButton::Right, false);
         assert_eq!(take(state), [Seen::ReleasePost("inventory".into(), true)]);
-        assert!(game.side.inv_drag.is_none());
+        assert!(game.client.inv_drag.is_none());
         assert_eq!(game.carried.as_ref().unwrap().count, 6);
         send_mouse_button(game, id, MouseButton::Left, false);
         assert_eq!(take(state), [Seen::ReleasePost("inventory".into(), true)]);
@@ -93,7 +93,7 @@ fn native_and_mounted_press_tab_and_preedit_use_the_receiving_screen() {
         return;
     }
     with_input_game(|game, id, state| {
-        game.side.pause_menu = true;
+        game.client.pause_menu = true;
         game.set_screen(Screen::Paused);
         publish_frame(game, 1);
         assert_eq!(game.mounted_widget_targets().len(), 1);
@@ -101,7 +101,7 @@ fn native_and_mounted_press_tab_and_preedit_use_the_receiving_screen() {
         let (x, y, _, _, _, _) = game.pause_layout(w, h).buttons[0];
         move_mouse(game, id, f64::from(x + 10.0), f64::from(y + 10.0));
         send_mouse_button(game, id, MouseButton::Left, true);
-        assert_eq!(game.side.screen, Screen::Playing);
+        assert_eq!(game.client.screen, Screen::Playing);
         assert_eq!(
             take(state),
             [Seen::PressPre, Seen::PressPost("paused".into(), true)]
@@ -109,7 +109,7 @@ fn native_and_mounted_press_tab_and_preedit_use_the_receiving_screen() {
         send_mouse_button(game, id, MouseButton::Left, false);
 
         assert!(game.mod_screen_open("input_route"));
-        let focused = game.side.screen_state.0.widgets.focused_id().unwrap();
+        let focused = game.client.screen_state.0.widgets.focused_id().unwrap();
         move_mouse(game, id, 24.0, 30.0);
         send_mouse_button(game, id, MouseButton::Left, true);
         assert_eq!(
@@ -120,7 +120,7 @@ fn native_and_mounted_press_tab_and_preedit_use_the_receiving_screen() {
                 Seen::PressPost("mod".into(), true)
             ]
         );
-        assert_eq!(game.side.screen_state.0.widgets.focused_id(), Some(focused));
+        assert_eq!(game.client.screen_state.0.widgets.focused_id(), Some(focused));
         send_mouse_button(game, id, MouseButton::Left, false);
         take(state);
         move_mouse(game, id, 300.0, 100.0);
@@ -129,10 +129,10 @@ fn native_and_mounted_press_tab_and_preedit_use_the_receiving_screen() {
             take(state),
             [Seen::PressPre, Seen::PressPost("mod".into(), false)]
         );
-        assert_eq!(game.side.screen_state.0.widgets.focused_id(), Some(focused));
+        assert_eq!(game.client.screen_state.0.widgets.focused_id(), Some(focused));
         send_mouse_button(game, id, MouseButton::Left, false);
         game.mod_screen_close("input_route");
-        assert_eq!(game.side.screen, Screen::Playing);
+        assert_eq!(game.client.screen, Screen::Playing);
         take(state);
 
         let dialog = sunrise_command::snbt::parse_fully(
@@ -146,11 +146,11 @@ fn native_and_mounted_press_tab_and_preedit_use_the_receiving_screen() {
         tab(game); // Warning, tab group -10.
         tab(game); // Native field.
         assert!(game.dialog_typing());
-        assert!(!game.side.screen_state.0.widgets.has_focus());
+        assert!(!game.client.screen_state.0.widgets.has_focus());
         tab(game); // Native notice button.
         tab(game); // Appended mod button.
         assert!(!game.dialog_typing());
-        assert!(game.side.screen_state.0.widgets.has_focus());
+        assert!(game.client.screen_state.0.widgets.has_focus());
         key(game, KeyCode::Enter, ElementState::Pressed);
         assert_eq!(take(state), [Seen::Activation("after_dialog")]);
         game.clear_dialog();
@@ -178,7 +178,7 @@ fn native_and_mounted_press_tab_and_preedit_use_the_receiving_screen() {
         );
         assert!(!preedit::should_suppress_key());
         assert_eq!(
-            game.side.chat_ui.chat_screen.as_ref().unwrap().value(),
+            game.client.chat_ui.chat_screen.as_ref().unwrap().value(),
             "native draft"
         );
     });
@@ -188,7 +188,7 @@ pub(crate) fn publish_frame(
     game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
     frame: u64,
 ) {
-    let renderer = game.side.renderer.0.as_ref().unwrap();
+    let renderer = game.client.renderer.0.as_ref().unwrap();
     let size = [renderer.config.width, renderer.config.height];
     game.hud(size);
     widgets::set_action_screen(game.key_screen());
@@ -210,25 +210,25 @@ fn release_drag_and_wheel_cancellation_preserve_input_bookkeeping() {
         let cancel = |cancel| state.lock().unwrap().cancel = cancel;
         let forward = VanillaMappingSlot::by_default_key(KeyCode::KeyW).unwrap();
         let jump = VanillaMappingSlot::by_default_key(KeyCode::Space).unwrap();
-        game.side.settings.keys.set("key.jump", "key.keyboard.w");
+        game.client.settings.keys.set("key.jump", "key.keyboard.w");
         game.insert_device_key(KeyCode::KeyW);
         game.insert_device_key(KeyCode::Space);
         assert!(
-            game.side.vanilla_mappings.is_down(forward) && game.side.vanilla_mappings.is_down(jump)
+            game.client.vanilla_mappings.is_down(forward) && game.client.vanilla_mappings.is_down(jump)
         );
         cancel(Cancel::ReleasePre);
         key(game, KeyCode::KeyW, ElementState::Released);
         assert_eq!(take(state), [Seen::KeyPre("key.keyboard.w".into())]);
-        assert!(!game.side.keys.raw(&KeyCode::KeyW) && !game.side.keys.raw(&KeyCode::Space));
+        assert!(!game.client.keys.raw(&KeyCode::KeyW) && !game.client.keys.raw(&KeyCode::Space));
         assert!(
-            !game.side.vanilla_mappings.is_down(forward)
-                && !game.side.vanilla_mappings.is_down(jump)
+            !game.client.vanilla_mappings.is_down(forward)
+                && !game.client.vanilla_mappings.is_down(jump)
         );
 
         game.insert_device_key(KeyCode::KeyW);
         send_key_control(game, "key w up");
         assert_eq!(take(state), [Seen::KeyPre("key.keyboard.w".into())]);
-        assert!(game.side.keys.raw(&KeyCode::KeyW));
+        assert!(game.client.keys.raw(&KeyCode::KeyW));
         cancel(Cancel::ReleasePost);
         key(game, KeyCode::KeyW, ElementState::Released);
         assert_eq!(
@@ -238,19 +238,19 @@ fn release_drag_and_wheel_cancellation_preserve_input_bookkeeping() {
                 Seen::KeyPost("key.keyboard.w".into())
             ]
         );
-        assert!(game.side.keys.raw(&KeyCode::KeyW));
+        assert!(game.client.keys.raw(&KeyCode::KeyW));
         cancel(Cancel::None);
         send_key_control(game, "key w up");
-        assert!(!game.side.keys.raw(&KeyCode::KeyW));
+        assert!(!game.client.keys.raw(&KeyCode::KeyW));
         take(state);
 
         move_mouse(game, id, 24.0, 30.0);
         cancel(Cancel::Press);
         send_mouse_button(game, id, MouseButton::Left, true);
         assert_eq!(take(state), [Seen::PressPre]);
-        assert!(game.side.physical_buttons.contains(&MouseButton::Left));
+        assert!(game.client.physical_buttons.contains(&MouseButton::Left));
         send_mouse_button(game, id, MouseButton::Left, false);
-        assert!(!game.side.physical_buttons.contains(&MouseButton::Left));
+        assert!(!game.client.physical_buttons.contains(&MouseButton::Left));
         take(state);
 
         move_mouse(game, id, 300.0, 100.0);
@@ -274,16 +274,16 @@ fn release_drag_and_wheel_cancellation_preserve_input_bookkeeping() {
         take(state);
         move_mouse(game, id, 314.0, 126.0);
         assert!(take(state).is_empty());
-        assert!(game.side.physical_buttons.contains(&MouseButton::Right));
+        assert!(game.client.physical_buttons.contains(&MouseButton::Right));
         send_mouse_button(game, id, MouseButton::Left, true);
-        game.side.physical_keys.insert(KeyCode::ShiftLeft);
-        game.side.modifiers = winit::keyboard::ModifiersState::SHIFT;
+        game.client.physical_keys.insert(KeyCode::ShiftLeft);
+        game.client.modifiers = winit::keyboard::ModifiersState::SHIFT;
         take(state);
         send(game, id, WindowEvent::Focused(false));
         move_mouse(game, id, 316.0, 128.0);
         assert!(take(state).is_empty());
-        assert!(game.side.physical_buttons.is_empty() && game.side.physical_keys.is_empty());
-        assert!(game.side.modifiers.is_empty() && game.side.drag_button.is_none());
+        assert!(game.client.physical_buttons.is_empty() && game.client.physical_keys.is_empty());
+        assert!(game.client.modifiers.is_empty() && game.client.drag_button.is_none());
         send(game, id, WindowEvent::Focused(true));
         move_mouse(game, id, 24.0, 30.0);
 
@@ -300,15 +300,15 @@ fn release_drag_and_wheel_cancellation_preserve_input_bookkeeping() {
                 Seen::ScreenWheelPost([0.25, -0.75])
             ]
         );
-        game.side.pad.0.menu.synthetic = true;
+        game.client.pad.0.menu.synthetic = true;
         send_scroll(game, id, 0.25, -0.75);
-        game.side.pad.0.menu.synthetic = false;
+        game.client.pad.0.menu.synthetic = false;
         assert!(take(state).is_empty());
         game.mod_screen_close("input_route");
-        assert_eq!(game.side.screen, Screen::Playing);
+        assert_eq!(game.client.screen, Screen::Playing);
         game.selected = 4;
-        game.side.settings.mouse_wheel_sensitivity = 1.0;
-        game.side.settings.discrete_scroll = false;
+        game.client.settings.mouse_wheel_sensitivity = 1.0;
+        game.client.settings.discrete_scroll = false;
         move_mouse(game, id, 100.0, 110.0);
         send_scroll(game, id, 0.25, 0.0);
         assert_eq!(game.selected, 4);
@@ -359,7 +359,7 @@ fn release_drag_and_wheel_cancellation_preserve_input_bookkeeping() {
                 Seen::GameWheel([0.0, 0.75], [0, 1], [false; 3], [100.0, 110.0], 0),
             ]
         );
-        game.side.settings.mouse_wheel_sensitivity = 2.0;
+        game.client.settings.mouse_wheel_sensitivity = 2.0;
         let pixel_wheel = |game: &mut sunrise_client_gameplay::game::ClientGame<'_>| {
             send(
                 game,
@@ -382,7 +382,7 @@ fn release_drag_and_wheel_cancellation_preserve_input_bookkeeping() {
                 0
             )]
         );
-        game.side.settings.discrete_scroll = true;
+        game.client.settings.discrete_scroll = true;
         pixel_wheel(game);
         assert_eq!(
             take(state),

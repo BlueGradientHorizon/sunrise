@@ -85,7 +85,7 @@ impl LiveScenes {
     }
     /// Whether scene (`owner`, `id`) may animate in `frame`: the first
     /// `SCENE_MAX_ANIMATING` scenes a frame do, each as often as it is drawn.
-    pub(in crate::game::client_side) fn admit(
+    pub fn admit(
         &mut self,
         frame: u64,
         owner: &'static str,
@@ -208,7 +208,7 @@ impl crate::game::ClientGame<'_> {
     /// that fails `check`, an entity `DrawContext::entity` refuses or a particle; past the
     /// frame's animating budget the blocks and the scene's last state are drawn, its clock
     /// does not advance, and the call returns `TooManyScenes`.
-    pub(in crate::game) fn native_draw_scene(
+    pub fn native_draw_scene(
         &self,
         batch: &mut HudBatch,
         rect: [f32; 4],

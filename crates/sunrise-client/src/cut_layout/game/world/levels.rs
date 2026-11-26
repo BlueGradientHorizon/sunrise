@@ -103,7 +103,7 @@ use super::*;
         assert!(game.run_command("execute in minecraft:the_nether run worldborder set 100"));
         assert_eq!(game.dim, Dim::Overworld);
         assert_eq!(game.border.size(), 1000.0);
-        let nether = game.side.levels.0.parked_border(Dim::Nether).unwrap();
+        let nether = game.server.levels.0.parked_border(Dim::Nether).unwrap();
         assert_eq!(nether.size(), 100.0);
     }
 /// 300 slow ticks in ten seconds log no Sunrise slow-tick line, and the ring holds the last 256.
@@ -305,7 +305,7 @@ use super::*;
             let mut game = open_game(&mut resources, &root, home.path(), &world);
             assert!(!saw_end.load(Ordering::Relaxed), "validation has not run");
             assert!(
-                game.side.levels.0.parked[&end]
+                game.server.levels.0.parked[&end]
                     .streaming
                     .commanded()
                     .is_empty()
@@ -319,7 +319,7 @@ use super::*;
                 "Nether validator sees the End"
             );
             assert_eq!(game.dim, Dim::Overworld);
-            let nether_level = &game.side.levels.0.parked[&nether];
+            let nether_level = &game.server.levels.0.parked[&nether];
             assert_eq!(
                 nether_level
                     .streaming
@@ -328,7 +328,7 @@ use super::*;
                     .next(),
                 Some(&ticket)
             );
-            let end_level = &game.side.levels.0.parked[&end];
+            let end_level = &game.server.levels.0.parked[&end];
             assert!(end_level.streaming.commanded().contains(&commanded_chunk));
             let ticking = |game: &sunrise_gameplay::game::ServerGame<'_>, dim, (x, z)| {
                 let world = if dim == game.dim {
@@ -464,10 +464,10 @@ use super::*;
             game.options.execution_role =
                 sunrise_gameplay_common::game::execution_role::ExecutionRole::DedicatedServer;
             game.options.dedicated = Some(Vec::new());
-            game.side.settings.render_distance = 2;
-            game.side.settings.simulation_distance = 2;
-            game.side.streaming.radius = -1;
-            game.side.server_lists.0 = Some(Arc::new(Mutex::new(sunrise_gameplay::game::dedicated::Lists {
+            game.server.settings.render_distance = 2;
+            game.server.settings.simulation_distance = 2;
+            game.server.streaming.radius = -1;
+            game.server.server_lists.0 = Some(Arc::new(Mutex::new(sunrise_gameplay::game::dedicated::Lists {
                 ops: OpList::new(home.path().join("ops.json")),
                 white: WhiteList::new(home.path().join("whitelist.json")),
                 bans: BanList::new(home.path().join("banned-players.json")),
@@ -505,8 +505,8 @@ use super::*;
                     seed: game.level.seed,
                     max_players: 2,
                     integrated: false,
-                    levels: game.side.level_shapes,
-                    level_seeds: game.side.levels.0.runtime.seeds(),
+                    levels: game.server.level_shapes,
+                    level_seeds: game.server.levels.0.runtime.seeds(),
                 },
             )
             .unwrap();
@@ -523,8 +523,8 @@ use super::*;
                 address: "127.0.0.1:25565".parse().unwrap(),
                 expected: false,
             };
-            game.side.next_entity += 1;
-            let mut guest = Guest::new(joined, game.side.next_entity as i32, [0.5, 80.0, 0.5], 0);
+            game.server.next_entity += 1;
+            let mut guest = Guest::new(joined, game.server.next_entity as i32, [0.5, 80.0, 0.5], 0);
             guest.placed = true;
             guest.loaded = true;
             guest.dimension = Dim::Overworld.id().into();
@@ -538,7 +538,7 @@ use super::*;
                 .unwrap(),
             ));
             guest.max_unacknowledged = 1000;
-            game.side.lan.as_mut().unwrap().hub.guests.push(guest);
+            game.server.lan.as_mut().unwrap().hub.guests.push(guest);
 
             game.prepare_levels().unwrap();
             game.native_lifecycle_world_ready();
@@ -551,14 +551,14 @@ use super::*;
             for _ in 0..2000 {
                 game.tick_server(false).unwrap();
                 let nether_ready = game
-                    .side
+                    .server
                     .levels
                     .0
                     .parked
                     .get(&Dim::Nether)
                     .is_some_and(|p| p.world.chunks.contains_key(&(0, 0)));
                 let end_ready = game
-                    .side
+                    .server
                     .levels
                     .0
                     .parked
@@ -580,7 +580,7 @@ use super::*;
                 game.tick_server(true).unwrap();
             }
             assert!(
-                game.side.levels.0.parked[&Dim::Nether]
+                game.server.levels.0.parked[&Dim::Nether]
                     .world
                     .chunks
                     .contains_key(&(0, 0)),
@@ -593,7 +593,7 @@ use super::*;
                 game.tick_server(false).unwrap();
             }
             assert!(
-                game.side.levels.0.parked[&Dim::Nether]
+                game.server.levels.0.parked[&Dim::Nether]
                     .world
                     .chunks
                     .contains_key(&(0, 0)),
@@ -608,10 +608,10 @@ use super::*;
             for _ in 0..=IDLE_TICKS + 15 {
                 game.tick_server(false).unwrap();
             }
-            assert!(game.side.levels.0.parked.contains_key(&Dim::Nether));
-            assert!(game.side.levels.0.parked.contains_key(&Dim::End));
+            assert!(game.server.levels.0.parked.contains_key(&Dim::Nether));
+            assert!(game.server.levels.0.parked.contains_key(&Dim::End));
             assert!(
-                game.side.levels.0.parked[&Dim::Nether]
+                game.server.levels.0.parked[&Dim::Nether]
                     .world
                     .chunks
                     .is_empty(),
@@ -649,7 +649,7 @@ use super::*;
                 let mut arrived = false;
                 for _ in 0..2000 {
                     game.tick_server(false).unwrap();
-                    let guest = game.side.lan.as_ref().unwrap().hub.guest(1).unwrap();
+                    let guest = game.server.lan.as_ref().unwrap().hub.guest(1).unwrap();
                     if guest.dimension == dim.id() && !game.on_server_trip(1) {
                         arrived = true;
                         break;
@@ -704,12 +704,12 @@ use super::*;
         assert_eq!(game.dim, Dim::Overworld);
         let sizes = (
             game.border.size(),
-            game.side
+            game.server
                 .levels
                 .0
                 .parked_border(Dim::Nether)
                 .map(|b| b.size()),
-            game.side.levels.0.parked_border(Dim::End).map(|b| b.size()),
+            game.server.levels.0.parked_border(Dim::End).map(|b| b.size()),
         );
         if sizes != (70.0, Some(100.0), Some(59_999_968.0)) {
             failures.push(format!("after the first set and a tick: {sizes:?}"));
@@ -992,7 +992,7 @@ use super::*;
         let mut want = vec![f32::MAX.to_bits(); 12];
         want.extend([70.0f32, 70.0, 69.0, 68.0].map(f32::to_bits));
         let edge = game
-            .side
+            .server
             .save
             .0
             .calculated_blending(12, 0)
@@ -1002,13 +1002,13 @@ use super::*;
         assert_eq!(heights.map(|h| h.map(f32::to_bits).to_vec()), Some(want));
         // (11, 0) borders no new chunk: the generation's calculation adds no height
         // to it (it may have an entry), so it packs without heights, as vanilla's.
-        let inner = game.side.save.0.calculated_blending(11, 0);
+        let inner = game.server.save.0.calculated_blending(11, 0);
         assert!(
             inner.as_ref().is_none_or(|data| data.pack().2.is_none()),
             "{inner:?}"
         );
         // (0, 0) is far from the new chunks: nothing calculated it.
-        assert!(game.side.save.0.calculated_blending(0, 0).is_none());
+        assert!(game.server.save.0.calculated_blending(0, 0).is_none());
     }
 }
 
@@ -1021,13 +1021,13 @@ mod request_save_tests {
     #[ignore = "daily"]
     fn requested_save_waits_without_consuming_the_queue_while_lifted() {
         sunrise_gameplay::game::native_entity_refs::tests::with_game(|game| {
-            game.side.levels.0.request_save(Dim::Overworld);
+            game.server.levels.0.request_save(Dim::Overworld);
             let pass = game.dropped.lift();
             game.run_requested_saves();
-            assert_eq!(game.side.levels.0.requested_saves, [Dim::Overworld]);
+            assert_eq!(game.server.levels.0.requested_saves, [Dim::Overworld]);
             drop(pass);
             game.run_requested_saves();
-            assert!(game.side.levels.0.requested_saves.is_empty());
+            assert!(game.server.levels.0.requested_saves.is_empty());
         });
     }
 

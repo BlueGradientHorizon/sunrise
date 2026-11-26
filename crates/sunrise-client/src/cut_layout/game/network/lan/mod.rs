@@ -179,7 +179,7 @@ pub(crate) fn run_guest_respawn_without_a_known_world_spawn_never_advertises_the
             let guest_personal = [5.5, 81.0, 5.5];
             game.spawn = Some(host_personal);
             let rx = host(game);
-            let mut host = game.side.lan.take().unwrap();
+            let mut host = game.server.lan.take().unwrap();
             host.hub.guests.update(0, |guest| {
                 guest.dimension = "minecraft:overworld".into();
                 guest.spawn = Some(guest_personal);
@@ -187,9 +187,9 @@ pub(crate) fn run_guest_respawn_without_a_known_world_spawn_never_advertises_the
                 guest.dead = true;
                 guest.loaded = true;
             });
-            game.side.lan = Some(host);
+            game.server.lan = Some(host);
             game.guest_respawn(1);
-            let guest = &game.side.lan.as_ref().unwrap().hub.guests[0];
+            let guest = &game.server.lan.as_ref().unwrap().hub.guests[0];
             assert_eq!(
                 guest.position, guest_personal,
                 "the guest's landing stays personal"
@@ -230,9 +230,9 @@ pub(crate) mod world_spawn_join_tests {
     #[ignore = "daily"]
     fn a_returning_player_from_a_missing_level_joins_in_the_world_spawn_level() {
         sunrise_gameplay::game::native_guest_turn_tests::with_guests(|game| {
-            game.side.world_root = game.side.save.0.root.clone();
+            game.server.world_root = game.server.save.0.root.clone();
             game.level.world_spawn_dimension = Some("minecraft:the_nether".into());
-            let guests = &mut game.side.lan.as_mut().unwrap().hub.guests;
+            let guests = &mut game.server.lan.as_mut().unwrap().hub.guests;
             guests.update(0, |g| {
                 g.dimension = "example:gone".into();
                 g.position = [40.5, 70.0, -12.5];
@@ -241,12 +241,12 @@ pub(crate) mod world_spawn_join_tests {
             });
             sunrise_sim::lan::playerdata::save(
                 &guests[0],
-                &game.side.world_root,
+                &game.server.world_root,
                 &Default::default(),
             );
             guests.update(0, |g| g.placed = false);
             game.lan_guest_joined(12, &[], [0.5, 64.0, 0.5], None);
-            let g = &game.side.lan.as_ref().unwrap().hub.guests[0];
+            let g = &game.server.lan.as_ref().unwrap().hub.guests[0];
             assert_eq!(g.dimension, "minecraft:the_nether");
             assert_eq!(g.position, [40.5, 70.0, -12.5]);
             assert_eq!((g.yaw, g.pitch), (135.0, -20.0));
@@ -307,7 +307,7 @@ pub(crate) mod mob_pickup_sync_tests {
             2,
         );
         guest.placed = true;
-        game.side.lan.as_mut().unwrap().hub.guests.push(guest);
+        game.server.lan.as_mut().unwrap().hub.guests.push(guest);
         rx
     }
 
@@ -413,7 +413,7 @@ pub(crate) mod mob_swing_sync_tests {
             2,
         );
         guest.placed = true;
-        game.side.lan.as_mut().unwrap().hub.guests.push(guest);
+        game.server.lan.as_mut().unwrap().hub.guests.push(guest);
         rx
     }
 
@@ -451,11 +451,11 @@ pub(crate) mod mob_swing_sync_tests {
         let rx = guest_at(&mut game, [8.5, 80.0, 8.5]);
         game.mobs[0].swing_hand_modified(true, SwingAnimation::DEFAULT);
         game.mobs[1].swing_hand_modified(false, SwingAnimation::DEFAULT);
-        let host = game.side.lan.take().expect("the hub");
-        game.side.lan = Some(host);
+        let host = game.server.lan.take().expect("the hub");
+        game.server.lan = Some(host);
         game.lan_flush_effects();
-        let host = game.side.lan.take().unwrap();
-        game.side.lan = Some(host);
+        let host = game.server.lan.take().unwrap();
+        game.server.lan = Some(host);
         let sent = swings(&rx);
         assert!(
             sent.iter().any(|p| p.id == off as i32 && p.hand == 1),

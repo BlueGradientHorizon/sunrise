@@ -161,15 +161,15 @@ fn a_creative_blast_leaves_no_cushion_item() {
         game.dropped.clear();
         assert!(game.place_cushion(&top_hit(), &named_stack()));
         // `Explosion.getIndirectSourceEntity` of a player's TNT is the player.
-        game.side.combat.0 = Default::default();
-        game.side.combat.0.blast_owner = Some(if owner_player {
+        game.server.combat.0 = Default::default();
+        game.server.combat.0.blast_owner = Some(if owner_player {
             (1, Text::literal("Steve"))
         } else {
             (700, Text::literal("Zombie"))
         });
-        game.side.combat.0.blast_owner_player = owner_player;
-        game.side.combat.0.blast_guest = guest;
-        game.side.lan_acting = guest;
+        game.server.combat.0.blast_owner_player = owner_player;
+        game.server.combat.0.blast_guest = guest;
+        game.server.lan_acting = guest;
         game.server_explode(
             [4.5, 200.5, 4.5],
             2.0,
@@ -177,7 +177,7 @@ fn a_creative_blast_leaves_no_cushion_item() {
             false,
         )
         .unwrap();
-        game.side.lan_acting = None;
+        game.server.lan_acting = None;
         assert!(game.cushions.is_empty(), "the blast breaks the cushion");
         assert_eq!(
             game.dropped.len(),

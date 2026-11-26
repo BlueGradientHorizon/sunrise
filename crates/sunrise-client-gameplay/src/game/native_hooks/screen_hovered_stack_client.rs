@@ -24,7 +24,7 @@ impl crate::game::ClientGame<'_> {
     /// The full stack in the slot under the pointer on the open container or creative screen
     /// (`AbstractContainerScreen.getHoveredSlot().getItem()`), None over no slot, an empty one,
     /// or with no such screen open.
-    pub(in crate::game) fn screen_hovered_stack(&self) -> Option<ItemStack> {
+    pub fn screen_hovered_stack(&self) -> Option<ItemStack> {
         if !self.screen_hooks_open() {
             return None;
         }

@@ -88,7 +88,7 @@ fn visual_rotation_y_degrees(f: &ItemFrame) -> f32 {
 
 impl ClientGame<'_> {
     /// ItemFrameRenderer: the frame model, then the item half size on its face.
-    pub(in crate::game) fn frame_geometry(
+    pub fn frame_geometry(
         &mut self,
         camera: glam::DVec3,
         alpha: f64,

@@ -63,9 +63,9 @@ fn block_name(game: &sunrise_gameplay::game::ServerGame<'_>, pos: [i32; 3]) -> S
 
 fn add_sheep(game: &mut sunrise_gameplay::game::ServerGame<'_>, x: f64) -> usize {
     let kind = game.res.mob_types().get("minecraft:sheep").unwrap().clone();
-    game.side.next_entity += 1;
+    game.server.next_entity += 1;
     game.mobs.push(Mob::new(
-        game.side.next_entity,
+        game.server.next_entity,
         kind,
         Vec3::new(x, 64.0, 0.5),
         0.0,

@@ -166,7 +166,7 @@ impl crate::game::ServerGame<'_> {
             block.properties.get("ominous").is_some_and(|v| v == "true"),
         ))
     }
-    pub(in crate::game::server_side) fn server_tick_trial_spawner(
+    pub fn server_tick_trial_spawner(
         &mut self,
         key: Pos,
         spawner: &mut TrialSpawner,
@@ -356,7 +356,7 @@ impl crate::game::ServerGame<'_> {
         }
     }
     /// `sendBlockUpdated` of a block entity: the clients load its new update tag.
-    pub(in crate::game) fn mark_block_entity_updated(&mut self, key: Pos) {
+    pub fn mark_block_entity_updated(&mut self, key: Pos) {
         self.common.world
             .path_type_block_updated(sunrise_core::position::BlockPos::new(key.0, key.1, key.2));
         if let Some(log) = self.common.world.block_log.as_mut() {

@@ -45,7 +45,7 @@ impl crate::game::ServerGame<'_> {
     /// `LeashFenceKnotEntity.notifyLeasheeRemoved`: a fence no lead hangs on
     /// any more has lost its knot, with its id. Its UUID goes with the rest
     /// of the dead entities' memory (`prune_entity_memory`).
-    pub(in crate::game) fn forget_untied_knots(&mut self) {
+    pub fn forget_untied_knots(&mut self) {
         let fences = self.lead_fences();
         self.server.knot_ids.retain(|p, _| fences.contains(p));
         self.common.resident_entities
@@ -84,7 +84,7 @@ impl crate::game::ServerGame<'_> {
     /// shared `Entity.id` counter) and UUID, whether or not anyone tracks
     /// it. A fence that already has one keeps it. Call
     /// [`Self::forget_untied_knots`] before the tie.
-    pub(in crate::game) fn tie_knot(&mut self, fence: [i32; 3]) -> u32 {
+    pub fn tie_knot(&mut self, fence: [i32; 3]) -> u32 {
         if let Some(&id) = self.server.knot_ids.get(&fence) {
             return id;
         }
@@ -102,7 +102,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// The authoritative fence of an active natural knot, until a last-holder
     /// notification or the tracking cleanup retires its physical owner.
-    pub(in crate::game) fn natural_knot(&self, id: u32) -> Option<[i32; 3]> {
+    pub fn natural_knot(&self, id: u32) -> Option<[i32; 3]> {
         use sunrise_sim::join_seq::residency::table::EntityLookup;
         let EntityLookup::Found {
             location,
@@ -167,7 +167,7 @@ impl crate::game::ServerGame<'_> {
     /// `Leashable.canHaveALeashAttachedTo` for the mob at `index` and a
     /// holder whose box centre is `center`: within the species' snapping
     /// range and leashable.
-    pub(in crate::game) fn can_attach_lead(&self, index: usize, center: glam::DVec3) -> bool {
+    pub fn can_attach_lead(&self, index: usize, center: glam::DVec3) -> bool {
         leash::can_have_a_leash_attached(
             &self.common.mobs[index],
             sunrise_core::geometry::Vec3::new(center.x, center.y, center.z),
@@ -232,7 +232,7 @@ impl crate::game::ServerGame<'_> {
         self.spawn_item_own(ItemStack::new("minecraft:lead", 1), at, 10);
     }
     /// `Leashable.dropLeash` / `removeLeash`: the lead falls as an item.
-    pub(in crate::game) fn break_leash(&mut self, id: u32, drop: bool, sound: bool) {
+    pub fn break_leash(&mut self, id: u32, drop: bool, sound: bool) {
         self.drop_leash(id, drop, sound, false);
     }
     /// `Leashable.tickLeash` ending a lead: a dying mob's falls as an item only under
@@ -287,7 +287,7 @@ impl crate::game::ServerGame<'_> {
     /// `Leashable.setLeashedTo` on the mob or boat `target`: its lead goes to `holder` whatever
     /// held it, or was still waiting for a saved holder. `player` is a player holder's UUID.
     /// Taking the lead over is no removal, so no unleash hook hears it. False for anything else.
-    pub(in crate::game) fn set_leash(
+    pub fn set_leash(
         &mut self,
         target: Target,
         holder: Holder,
@@ -333,7 +333,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// `Leashable.dropLeash` (`drop`) or `removeLeash` on the mob or boat `target`. False when no
     /// holder has the lead: a holder still unresolved from a save stays, as in `dropLeash`.
-    pub(in crate::game::server_side) fn detach_leash(
+    pub fn detach_leash(
         &mut self,
         target: Target,
         drop: bool,
@@ -463,7 +463,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// Holders read from a save become real once the entity is found; a
     /// holder that never shows up drops the lead after 100 ticks.
-    pub(in crate::game::server_side) fn tick_leads(&mut self) {
+    pub fn tick_leads(&mut self) {
         if !self.server.broken_knots.is_empty() {
             let fences = std::mem::take(&mut self.server.broken_knots);
             let drop = self
@@ -702,7 +702,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// A click at the fence at `knot_pos`: `knot_hit` for `LeashFenceKnotEntity.interact`,
     /// otherwise `LeadItem.useOn`. Returns whether it was used.
-    pub(in crate::game) fn use_knot(&mut self, knot_pos: [i32; 3], knot_hit: bool) -> bool {
+    pub fn use_knot(&mut self, knot_pos: [i32; 3], knot_hit: bool) -> bool {
         let knot = leash::knot_state(knot_pos).center;
         let center = glam::DVec3::new(knot.x, knot.y, knot.z);
         let at = [center.x, center.y, center.z];

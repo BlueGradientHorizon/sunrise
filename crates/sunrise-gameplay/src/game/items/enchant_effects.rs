@@ -175,7 +175,7 @@ impl ServerGame<'_> {
     }
     /// `ItemStack.hurtAndBreak` for the player's `stack`: the wear Unbreaking
     /// leaves, and `ItemDurabilityTrigger` when some is left (`applyDamage`).
-    pub(in crate::game) fn wear(&mut self, stack: &ItemStack, amount: u32) -> u32 {
+    pub fn wear(&mut self, stack: &ItemStack, amount: u32) -> u32 {
         // ItemStack.isDamageableItem: an unbreakable stack, or one without
         // damage/max_damage, takes no wear before Unbreaking or mods are asked.
         let component = |id| stack.data().and_then(|data| data.other(id));
@@ -202,7 +202,7 @@ impl ServerGame<'_> {
     }
     /// `Player.getEnchantedDamage`: `base` run through the held weapon's
     /// damage effects against a mob type.
-    pub(in crate::game) fn enchanted_damage(
+    pub fn enchanted_damage(
         &mut self,
         target: &str,
         base: f32,
@@ -608,7 +608,7 @@ impl ServerGame<'_> {
     /// `attacker` hurt the player: Thorns on what the player holds or wears
     /// hurts the mob by `thorns` damage the player caused, so it is knocked
     /// back from the player, turns on them and is theirs to kill.
-    pub(in crate::game::server_side) fn thorns(&mut self, attacker: u32) {
+    pub fn thorns(&mut self, attacker: u32) {
         self.player_thorns(|g, min, max| {
             // DamageEntity: Mth.randomBetween from the hurt entity's own random.
             let Some(index) = g.common.mob_index.find(&g.common.mobs, attacker) else {
@@ -637,7 +637,7 @@ impl ServerGame<'_> {
     /// The victim's side of thorns when another player hit this one: the
     /// damage each piece deals that player, rolled from the attacker's own
     /// random (a player's, which no level draw shares).
-    pub(in crate::game::server_side) fn thorns_damage(&mut self) -> Vec<f32> {
+    pub fn thorns_damage(&mut self) -> Vec<f32> {
         let mut hits = Vec::new();
         self.player_thorns(|_, min, max| {
             hits.push(random_source::entity().next_float() * (max - min) + min);
@@ -922,7 +922,7 @@ impl ServerGame<'_> {
     /// `slot`: Unbreaking takes its share from the level's random, and a
     /// piece worn out leaves the slot with its break event
     /// (`LivingEntity.onEquippedItemBroken`).
-    pub(in crate::game::server_side) fn wear_mob_piece(
+    pub fn wear_mob_piece(
         &mut self,
         id: u32,
         slot: usize,
@@ -987,7 +987,7 @@ impl ServerGame<'_> {
         self.lan_entity_event(id as i32, event, at);
     }
     /// `ExperienceOrb.repairPlayerItems`: returns the experience left over.
-    pub(in crate::game) fn mending(&mut self, amount: u32) -> u32 {
+    pub fn mending(&mut self, amount: u32) -> u32 {
         let mut amount = amount;
         let player = (self.server.serving.is_some() || self.common.options.dedicated.is_some())
             .then(|| self.native_acting_id());
@@ -1221,7 +1221,7 @@ impl ServerGame<'_> {
     }
     /// `ItemStack.hurtAndBreak` on the worn boots (`change_item_damage`):
     /// Unbreaking applies, and they break when worn out.
-    pub(in crate::game::server_side) fn wear_boots(&mut self, amount: u32) {
+    pub fn wear_boots(&mut self, amount: u32) {
         self.damage_player_equipment(
             mod_api::EquipmentSlot::Feet,
             amount.min(i32::MAX as u32) as i32,
@@ -1269,7 +1269,7 @@ impl ServerGame<'_> {
     /// `LivingEntity.onChangedBlock`, landing and `collectEquipmentChanges`
     /// for an armor stand: run location effects before travel (including a
     /// piston push), on landing, and for newly equipped items.
-    pub(in crate::game) fn armor_stand_location_effects(&mut self, index: usize, landed: bool) {
+    pub fn armor_stand_location_effects(&mut self, index: usize, landed: bool) {
         let stand = &mut self.common.armor_stands[index];
         let block = BlockPos::containing(stand.position);
         let moved = !landed && stand.enchantment_block.replace(block) != Some(block);

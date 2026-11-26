@@ -180,7 +180,7 @@ fn with_owned_layout(
             || {
                 with_game(|game| {
                     let (rx, key) = mod_menu_guest(game);
-                    game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+                    game.server.lan.as_mut().unwrap().hub.guests.update(0, |g| {
                         g.sender.menu_extra_rev = sunrise_protocol::menu_extra::LIVE_DATA_REVISION;
                         g.offhand = Some(ItemStack::new("minecraft:paper", 2));
                     });
@@ -347,7 +347,7 @@ fn opening_an_owned_menu_with_crafting_keeps_the_old_window() {
 #[ignore = "daily"]
 fn a_cursor_cleared_outside_a_click_is_sent_once_on_the_next_broadcast() {
     with_owned_menu(false, |game, rx, key| {
-        game.side
+        game.server
             .lan
             .as_mut()
             .unwrap()
@@ -368,7 +368,7 @@ fn a_cursor_cleared_outside_a_click_is_sent_once_on_the_next_broadcast() {
         .unwrap();
 
         // Establish what the client sees through a full menu sync, not a click prediction.
-        let hub = &mut game.side.lan.as_mut().unwrap().hub;
+        let hub = &mut game.server.lan.as_mut().unwrap().hub;
         hub.resend_menu(1, window, &game.world);
         assert!(sent(&rx).iter().any(|p| matches!(p,
             C::ContainerSetContent(content) if content.container == window
@@ -387,7 +387,7 @@ fn a_cursor_cleared_outside_a_click_is_sent_once_on_the_next_broadcast() {
         .unwrap();
         assert!(sent(&rx).is_empty(), "nothing before the broadcast");
 
-        let hub = &mut game.side.lan.as_mut().unwrap().hub;
+        let hub = &mut game.server.lan.as_mut().unwrap().hub;
         // A repair of window 0 does not tell the open window about the clear.
         hub.send_inventory(0);
         assert!(matches!(&sent(&rx)[..], [C::ContainerSetContent(content)]
@@ -423,7 +423,7 @@ fn owned_click_prediction_applies_caps_and_the_server_corrects_an_override() {
             })
             .unwrap();
         let stack = |count| Some(ItemStack::new("minecraft:stick", count));
-        let hub = &mut game.side.lan.as_mut().unwrap().hub;
+        let hub = &mut game.server.lan.as_mut().unwrap().hub;
         let builtin = hub.sync_data().builtin.clone();
         let network = [1, 3, 4, 6, 7].map(|count| hub.stack(&stack(count)).unwrap());
         let [one, three, four, six, seven] = &network;
@@ -439,7 +439,7 @@ fn owned_click_prediction_applies_caps_and_the_server_corrects_an_override() {
             })
         };
         let set_server_cursor = |game: &mut sunrise_gameplay::game::ServerGame<'_>| {
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()
@@ -508,7 +508,7 @@ fn owned_click_prediction_applies_caps_and_the_server_corrects_an_override() {
         // packet claims. Matching item IDs and counts is not enough to skip correction.
         let mut named = stack(7).unwrap();
         named.data_mut().custom_name = Some(sunrise_core::nbt::Tag::String("Filter".into()));
-        let hub = &mut game.side.lan.as_mut().unwrap().hub;
+        let hub = &mut game.server.lan.as_mut().unwrap().hub;
         hub.guests.update(0, |g| {
             g.native_menu[1] = None;
             g.carried = Some(named.clone());
@@ -567,7 +567,7 @@ fn owned_click_prediction_applies_caps_and_the_server_corrects_an_override() {
         // know the declared caps; only the server executes the part's override.
         crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
             let _peer = sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client(game);
-            game.side.remote.as_mut().unwrap().builtin = std::sync::Arc::new(builtin);
+            game.client.remote.as_mut().unwrap().builtin = std::sync::Arc::new(builtin);
             for packet in opening {
                 game.handle_packet(packet).unwrap();
             }
@@ -637,7 +637,7 @@ fn closing_discards_owned_slots_unless_the_listener_returns_their_contents() {
             game.lan_guest_packet(1, S::ContainerClose(ContainerClose { container: window }));
             game.run_native_menu_events();
             assert_eq!(menu.slot(game, 1), None);
-            let guest = &game.side.lan.as_ref().unwrap().hub.guests[0];
+            let guest = &game.server.lan.as_ref().unwrap().hub.guests[0];
             assert_eq!(
                 guest
                     .inventory
@@ -661,7 +661,7 @@ fn closing_discards_owned_slots_unless_the_listener_returns_their_contents() {
                 game.load_ticking_neighbourhood(0, 0);
                 game.update_chunk_tickets();
                 assert!(game.entity_ticking_area()(0, 0));
-                game.side.ticked_entities_through = game.side.next_entity;
+                game.server.ticked_entities_through = game.server.next_entity;
                 game.tick_items();
             }
             assert!(game.dropped.is_empty());
@@ -710,7 +710,7 @@ fn abort_after_replacement_restores_only_committed_contents_to_the_old_close() {
         assert_eq!(old.slot(game, 1), None);
         assert_eq!(new.slot(game, 1), Some(None), "no leakage between windows");
         game.run_native_menu_events();
-        let guest = &game.side.lan.as_ref().unwrap().hub.guests[0];
+        let guest = &game.server.lan.as_ref().unwrap().hub.guests[0];
         assert_eq!(
             guest
                 .inventory
@@ -730,7 +730,7 @@ fn the_part_closes_the_menu_when_the_opening_stack_leaves_its_hand() {
     with_owned_menu(false, |game, rx, key| {
         let (window, menu) = open(game, key);
         let change_hand = |game: &mut sunrise_gameplay::game::ServerGame<'_>, change: fn(&mut ItemStack)| {
-            game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+            game.server.lan.as_mut().unwrap().hub.guests.update(0, |g| {
                 change(g.offhand.as_mut().unwrap());
             });
         };
@@ -753,7 +753,7 @@ fn the_part_closes_the_menu_when_the_opening_stack_leaves_its_hand() {
         )));
 
         let (window, menu) = open(game, key);
-        game.side
+        game.server
             .lan
             .as_mut()
             .unwrap()
@@ -796,7 +796,7 @@ fn scoped_owned_clicks_replace_or_continue_each_input_mode() {
                     )
                     .unwrap()
                     .unwrap();
-                let hub = &mut game.side.lan.as_mut().unwrap().hub;
+                let hub = &mut game.server.lan.as_mut().unwrap().hub;
                 hub.guests.update(0, |g| {
                     g.game_mode = i32::from(input == CLONE);
                     g.inventory.fill(None);
@@ -817,7 +817,7 @@ fn scoped_owned_clicks_replace_or_continue_each_input_mode() {
                 let before = game.dropped.len();
                 send_scoped_click(game, flow, window, slot, button, input);
                 let packets = sent(&rx);
-                let g = game.side.lan.as_ref().unwrap().hub.guest(1).unwrap();
+                let g = game.server.lan.as_ref().unwrap().hub.guest(1).unwrap();
                 let expected = if matches!(flow, Flow::Cancel) {
                     assert!(
                         packets.iter().any(
@@ -875,7 +875,7 @@ fn scoped_owned_clicks_replace_or_continue_each_input_mode() {
                     if button == 40 {
                         assert_eq!(g.offhand, expected);
                         assert_eq!(g.menu_sent[45], expected);
-                        let expected = game.side.lan.as_mut().unwrap().hub.stack(&expected);
+                        let expected = game.server.lan.as_mut().unwrap().hub.stack(&expected);
                         assert_eq!(packets.iter().filter(|p| matches!(p, C::SetPlayerInventory(p) if p.slot == 40 && p.item == expected)).count(), 1);
                     } else {
                         assert_eq!(g.inventory[button as usize], expected);
@@ -893,7 +893,7 @@ fn a_replaced_or_aborted_drag_step_keeps_the_existing_drag() {
     with_owned_menu(false, |game, rx, key| {
         let stack = |count| Some(ItemStack::new("minecraft:stone", count));
         let (window, _) = open(game, key);
-        game.side
+        game.server
             .lan
             .as_mut()
             .unwrap()
@@ -908,7 +908,7 @@ fn a_replaced_or_aborted_drag_step_keeps_the_existing_drag() {
                     .iter()
                     .any(|p| matches!(p, C::ContainerSetContent(p) if p.container == window))
             );
-            let g = game.side.lan.as_ref().unwrap().hub.guest(1).unwrap();
+            let g = game.server.lan.as_ref().unwrap().hub.guest(1).unwrap();
             assert_eq!(g.native_menu, [None, None]);
             assert_eq!(g.carried, stack(6));
             // An enclosing abort must discard this step and its publications as well.
@@ -921,7 +921,7 @@ fn a_replaced_or_aborted_drag_step_keeps_the_existing_drag() {
             send_scoped_click(game, Flow::Continue, window, slot, step, QUICK_CRAFT);
             sent(&rx);
         }
-        let g = game.side.lan.as_ref().unwrap().hub.guest(1).unwrap();
+        let g = game.server.lan.as_ref().unwrap().hub.guest(1).unwrap();
         assert_eq!(g.native_menu, [stack(1), stack(3)]);
         assert_eq!(g.carried, stack(2));
     });
@@ -936,7 +936,7 @@ fn send_scoped_click(
     input: i32,
 ) {
     let state = game
-        .side
+        .server
         .lan
         .as_ref()
         .unwrap()
@@ -971,7 +971,7 @@ fn a_click_refuses_opens_and_closes_only_on_commit() {
             let (window, menu) = open(game, key);
             let stored = ItemStack::new("minecraft:stick", 3);
             let carried = ItemStack::new("minecraft:dirt", 2);
-            let hub = &mut game.side.lan.as_mut().unwrap().hub;
+            let hub = &mut game.server.lan.as_mut().unwrap().hub;
             hub.guests.update(0, |g| {
                 g.inventory.fill(None);
                 g.native_menu[1] = Some(stored.clone());
@@ -990,7 +990,7 @@ fn a_click_refuses_opens_and_closes_only_on_commit() {
             });
             game.run_native_menu_events();
             assert_eq!(game.menu(123, window), Some(menu));
-            let guest = game.side.lan.as_ref().unwrap().hub.guest(1).unwrap();
+            let guest = game.server.lan.as_ref().unwrap().hub.guest(1).unwrap();
             assert_eq!(guest.native_menu, [None, Some(stored.clone())]);
             assert_eq!(guest.carried, Some(carried.clone()));
             assert!(guest.inventory.iter().all(Option::is_none));
@@ -1000,7 +1000,7 @@ fn a_click_refuses_opens_and_closes_only_on_commit() {
             click(game, window, 0);
             WINDOW_REQUEST.set(None);
             assert!(game.menu(123, window).is_none());
-            let guest = game.side.lan.as_ref().unwrap().hub.guest(1).unwrap();
+            let guest = game.server.lan.as_ref().unwrap().hub.guest(1).unwrap();
             assert!(guest.carried.is_none());
             assert!(guest.native_menu.is_empty());
             assert_eq!(
@@ -1028,7 +1028,7 @@ fn owned_slot_queries_use_the_rule_a_click_will_apply() {
     with_owned_menu(false, |game, _rx, key| {
         let (window, menu) = open(game, key);
         let stored = ItemStack::new("minecraft:stick", 1);
-        game.side
+        game.server
             .lan
             .as_mut()
             .unwrap()
@@ -1043,7 +1043,7 @@ fn owned_slot_queries_use_the_rule_a_click_will_apply() {
         assert_eq!(menu.slot_gives(game, 0), Some(false));
         click(game, window, 0);
         LOCK_FIRST_SLOT.set(false);
-        let guest = game.side.lan.as_ref().unwrap().hub.guest(1).unwrap();
+        let guest = game.server.lan.as_ref().unwrap().hub.guest(1).unwrap();
         assert_eq!(guest.native_menu[0], Some(stored));
         assert!(guest.carried.is_none());
     });
@@ -1248,7 +1248,7 @@ fn raw_click(
     input: i32,
 ) {
     let state = game
-        .side
+        .server
         .lan
         .as_ref()
         .unwrap()
@@ -1294,7 +1294,7 @@ fn processing_owned_menu_computes_results_via_slot_changed_and_rejects_invalid_w
         let stone = |n| Some(ItemStack::new("minecraft:stone", n));
 
         // Put stick in slot 0: fires once, slot 2 stays empty.
-        game.side
+        game.server
             .lan
             .as_mut()
             .unwrap()
@@ -1304,7 +1304,7 @@ fn processing_owned_menu_computes_results_via_slot_changed_and_rejects_invalid_w
         click(game, window, 0);
         assert_eq!(CHANGE_CALLS.get(), 1);
         assert_eq!(
-            game.side
+            game.server
                 .lan
                 .as_ref()
                 .unwrap()
@@ -1316,7 +1316,7 @@ fn processing_owned_menu_computes_results_via_slot_changed_and_rejects_invalid_w
         );
 
         // Placing directly into result slot 2 is refused (and does not fire menu_slot_changed).
-        game.side
+        game.server
             .lan
             .as_mut()
             .unwrap()
@@ -1326,7 +1326,7 @@ fn processing_owned_menu_computes_results_via_slot_changed_and_rejects_invalid_w
         click(game, window, 2);
         assert_eq!(CHANGE_CALLS.get(), 1);
         assert_eq!(
-            game.side
+            game.server
                 .lan
                 .as_ref()
                 .unwrap()
@@ -1345,7 +1345,7 @@ fn processing_owned_menu_computes_results_via_slot_changed_and_rejects_invalid_w
             2,
             "writing result slot via outputs must not re-fire menu_slot_changed"
         );
-        let guest = game.side.lan.as_ref().unwrap().hub.guest(1).unwrap();
+        let guest = game.server.lan.as_ref().unwrap().hub.guest(1).unwrap();
         assert_eq!(guest.native_menu, [stick(3), dirt(2), stone(2)]);
         assert_eq!(guest.carried, None);
         let packets = sent(&rx);
@@ -1360,7 +1360,7 @@ fn processing_owned_menu_computes_results_via_slot_changed_and_rejects_invalid_w
         // Removing slot 0 clears result slot 2.
         click(game, window, 0);
         assert_eq!(CHANGE_CALLS.get(), 3);
-        let guest = game.side.lan.as_ref().unwrap().hub.guest(1).unwrap();
+        let guest = game.server.lan.as_ref().unwrap().hub.guest(1).unwrap();
         assert_eq!(guest.native_menu, [None, dirt(2), None]);
         assert_eq!(guest.carried, stick(3));
 
@@ -1374,7 +1374,7 @@ fn processing_owned_menu_computes_results_via_slot_changed_and_rejects_invalid_w
             CHANGE_MODE.set(bad);
             sent(&rx);
             click(game, window, 0);
-            let guest = game.side.lan.as_ref().unwrap().hub.guest(1).unwrap();
+            let guest = game.server.lan.as_ref().unwrap().hub.guest(1).unwrap();
             assert_eq!(
                 guest.native_menu,
                 [None, dirt(2), None],
@@ -1462,9 +1462,9 @@ fn owned_menu_slot_changed_fires_on_item_place_writes_and_deduplicates_per_trans
         .unwrap();
         assert_eq!(CHANGE_CALLS.get(), 1);
         assert_eq!(LAST_CHANGED_SLOTS.with(|s| s.borrow().clone()), vec![0, 1]);
-        let guest = game.side.lan.as_ref().unwrap().hub.guest(1).unwrap();
+        let guest = game.server.lan.as_ref().unwrap().hub.guest(1).unwrap();
         assert_eq!(guest.native_menu, [stick(3), dirt(2), stone(2)]);
-        game.side
+        game.server
             .lan
             .as_mut()
             .unwrap()
@@ -1476,7 +1476,7 @@ fn owned_menu_slot_changed_fires_on_item_place_writes_and_deduplicates_per_trans
                 .any(|p| matches!(p, C::ContainerSetSlot(s) if s.container == window && s.slot == 2 && s.item.is_some())),
             "broadcastChanges sends the listener's result"
         );
-        game.side
+        game.server
             .lan
             .as_mut()
             .unwrap()
@@ -1506,7 +1506,7 @@ fn owned_menu_slot_changed_fires_on_item_place_writes_and_deduplicates_per_trans
         .unwrap();
         assert_eq!(CHANGE_CALLS.get(), 2);
         assert_eq!(
-            game.side
+            game.server
                 .lan
                 .as_ref()
                 .unwrap()
@@ -1526,7 +1526,7 @@ fn owned_menu_slot_changed_fires_on_item_place_writes_and_deduplicates_per_trans
             "Flow::Cancel menu_clicked edit must fire menu_slot_changed once"
         );
         assert_eq!(
-            game.side
+            game.server
                 .lan
                 .as_ref()
                 .unwrap()
@@ -1555,7 +1555,7 @@ fn owned_menu_slot_changed_fires_on_item_place_writes_and_deduplicates_per_trans
         CHANGE_MODE.set(ChangeMode::OverCap);
         click(game, window, 0);
         assert_eq!(
-            game.side
+            game.server
                 .lan
                 .as_ref()
                 .unwrap()
@@ -1590,7 +1590,7 @@ fn owned_menu_slot_changed_batches_multi_slot_drag_and_covers_swap_throw_pickup_
 
         // 1. Multi-slot drag across slots 0 and 1 (left drag: mode 5, start=0, add=1, end=2):
         // intermediate add steps do not fire; drag-end fires ONCE with [0, 1] in menu order.
-        game.side
+        game.server
             .lan
             .as_mut()
             .unwrap()
@@ -1605,7 +1605,7 @@ fn owned_menu_slot_changed_batches_multi_slot_drag_and_covers_swap_throw_pickup_
         assert_eq!(CHANGE_CALLS.get(), 1);
         assert_eq!(LAST_CHANGED_SLOTS.with(|s| s.borrow().clone()), vec![0, 1]);
         assert_eq!(
-            game.side
+            game.server
                 .lan
                 .as_ref()
                 .unwrap()
@@ -1617,7 +1617,7 @@ fn owned_menu_slot_changed_batches_multi_slot_drag_and_covers_swap_throw_pickup_
         );
 
         // 2. Number-key swap (mode 2, button 0 -> hotbar 0 into slot 0).
-        game.side
+        game.server
             .lan
             .as_mut()
             .unwrap()
@@ -1628,7 +1628,7 @@ fn owned_menu_slot_changed_batches_multi_slot_drag_and_covers_swap_throw_pickup_
         assert_eq!(CHANGE_CALLS.get(), 2);
         assert_eq!(LAST_CHANGED_SLOTS.with(|s| s.borrow().clone()), vec![0]);
         assert_eq!(
-            game.side
+            game.server
                 .lan
                 .as_ref()
                 .unwrap()
@@ -1643,7 +1643,7 @@ fn owned_menu_slot_changed_batches_multi_slot_drag_and_covers_swap_throw_pickup_
         raw_click(game, 1, window, 0, 0, 4);
         assert_eq!(CHANGE_CALLS.get(), 3);
         assert_eq!(
-            game.side
+            game.server
                 .lan
                 .as_ref()
                 .unwrap()
@@ -1658,14 +1658,14 @@ fn owned_menu_slot_changed_batches_multi_slot_drag_and_covers_swap_throw_pickup_
         // and clears result slot 2. Like a real double-click it lands on an empty slot (menu slot 3,
         // the first main inventory slot): `doClick` collects nothing when the clicked slot still
         // holds a stack it may pick up.
-        game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+        game.server.lan.as_mut().unwrap().hub.guests.update(0, |g| {
             g.carried = dirt(1);
             g.inventory[9] = None;
         });
         raw_click(game, 1, window, 3, 0, 6);
         assert_eq!(CHANGE_CALLS.get(), 4);
         assert_eq!(
-            game.side
+            game.server
                 .lan
                 .as_ref()
                 .unwrap()
@@ -1676,7 +1676,7 @@ fn owned_menu_slot_changed_batches_multi_slot_drag_and_covers_swap_throw_pickup_
             [None, stick(2), None]
         );
         assert_eq!(
-            game.side
+            game.server
                 .lan
                 .as_ref()
                 .unwrap()
@@ -1709,14 +1709,14 @@ fn owned_menu_slot_changed_rolls_back_listener_item_place_writes_on_invalid_outp
             ChangeMode::WriteItemPlaceThenInvalid,
             ChangeMode::WriteItemPlaceThenPanic,
         ] {
-            game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+            game.server.lan.as_mut().unwrap().hub.guests.update(0, |g| {
                 g.inventory.fill(None);
                 g.carried = stick(3);
             });
             CHANGE_MODE.set(bad);
             sent(&rx);
             click(game, window, 0);
-            let guest = game.side.lan.as_ref().unwrap().hub.guest(1).unwrap();
+            let guest = game.server.lan.as_ref().unwrap().hub.guest(1).unwrap();
             assert_eq!(
                 guest.native_menu,
                 [None, None, None],
@@ -1871,7 +1871,7 @@ fn hopper_above(game: &mut sunrise_gameplay::game::ServerGame<'_>, pos: (i32, i3
         sunrise_level::containers::BlockEntity::Chest(vec![Some(stack), None, None, None, None]),
     );
     // A fresh hopper: no transfer cooldown from an earlier move.
-    game.side.hoppers.remove(&hopper_pos);
+    game.server.hoppers.remove(&hopper_pos);
     game.hopper_try_move_items(hopper_pos);
 }
 
@@ -1903,7 +1903,7 @@ fn block_menu_slot_changed_costs_one_index_lookup_at_an_unviewed_block() {
         assert_eq!(probe::take(), (0, 0));
         assert_eq!(BLOCK_CHANGE_CALLS.get(), 0);
         // With a listening viewer the same writes are reported, through the counted path.
-        let host = game.side.lan.as_mut().unwrap();
+        let host = game.server.lan.as_mut().unwrap();
         host.hub.open_container(
             12,
             BLOCK_PROC_MENU,
@@ -1937,7 +1937,7 @@ fn block_menu_slot_changed_fires_on_external_container_writes_and_syncs_lan_view
         // the block-backed mod menu for both viewers.
         let (tx12, rx12) = mpsc::channel();
         let (tx13, rx13) = mpsc::channel();
-        let host = game.side.lan.as_mut().unwrap();
+        let host = game.server.lan.as_mut().unwrap();
         host.hub.guests.update(0, |g| {
             g.sender = PlayerSender::new(tx12, Arc::new(AtomicUsize::new(0)));
         });
@@ -1990,7 +1990,7 @@ fn block_menu_slot_changed_fires_on_external_container_writes_and_syncs_lan_view
         .unwrap();
         assert_eq!(BLOCK_CHANGE_CALLS.get(), 1);
         assert_eq!(BLOCK_LAST_SLOTS.with(|s| s.borrow().clone()), vec![0]);
-        game.side
+        game.server
             .lan
             .as_mut()
             .unwrap()
@@ -2006,7 +2006,7 @@ fn block_menu_slot_changed_fires_on_external_container_writes_and_syncs_lan_view
                             .iter()
                             .any(|p| matches!(p, C::ContainerSetSlot(s) if s.container == w13 && s.slot == 0 && s.item.is_some()))
                     );
-        game.side
+        game.server
             .lan
             .as_mut()
             .unwrap()
@@ -2044,7 +2044,7 @@ fn block_menu_slot_changed_fires_on_external_container_writes_and_syncs_lan_view
             panic!("expected mod block entity");
         };
         assert_eq!(be.items[2], Some(ItemStack::new("minecraft:stone", 1)));
-        game.side
+        game.server
             .lan
             .as_mut()
             .unwrap()
@@ -2060,7 +2060,7 @@ fn block_menu_slot_changed_fires_on_external_container_writes_and_syncs_lan_view
                             .iter()
                             .any(|p| matches!(p, C::ContainerSetSlot(s) if s.container == w13 && s.slot == 2 && s.item.is_some()))
                     );
-        game.side
+        game.server
             .lan
             .as_mut()
             .unwrap()
@@ -2087,7 +2087,7 @@ fn block_menu_slot_changed_fires_on_external_container_writes_and_syncs_lan_view
         };
         assert_eq!(be.items[0], Some(ItemStack::new("minecraft:stick", 2)));
         assert_eq!(be.items[2], Some(ItemStack::new("minecraft:stone", 2)));
-        game.side
+        game.server
             .lan
             .as_mut()
             .unwrap()
@@ -2103,7 +2103,7 @@ fn block_menu_slot_changed_fires_on_external_container_writes_and_syncs_lan_view
                             .iter()
                             .any(|p| matches!(p, C::ContainerSetSlot(s) if s.container == w13 && s.slot == 2 && s.item.is_some()))
                     );
-        game.side
+        game.server
             .lan
             .as_mut()
             .unwrap()
@@ -2243,7 +2243,7 @@ fn block_menu_slot_changed_gives_identical_context_for_click_and_hopper_writes()
                             },
                         ))),
                     );
-                    let host = game.side.lan.as_mut().unwrap();
+                    let host = game.server.lan.as_mut().unwrap();
                     host.hub.open_container(
                         12,
                         BLOCK_CRAFT_MENU,
@@ -2261,7 +2261,7 @@ fn block_menu_slot_changed_gives_identical_context_for_click_and_hopper_writes()
                         .unwrap();
 
                     // 1. Click places oak_log into crafting grid slot 0.
-                    game.side
+                    game.server
                         .lan
                         .as_mut()
                         .unwrap()
@@ -2322,7 +2322,7 @@ fn processing_owned_menu_returns_inputs_on_close_drops_overflow_and_discards_res
             .unwrap()
             .unwrap()
             .unwrap();
-        game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+        game.server.lan.as_mut().unwrap().hub.guests.update(0, |g| {
             g.inventory.fill(None);
             g.carried = None;
             g.native_menu = vec![stick(3), dirt(2), stone(2)];
@@ -2338,7 +2338,7 @@ fn processing_owned_menu_returns_inputs_on_close_drops_overflow_and_discards_res
         );
         game.run_native_menu_events();
         assert_eq!(CLOSED_OWNED_LEN.get(), Some(0));
-        let guest = game.side.lan.as_ref().unwrap().hub.guest(1).unwrap();
+        let guest = game.server.lan.as_ref().unwrap().hub.guest(1).unwrap();
         let count_inv = |g: &sunrise_sim::lan::guest::Guest, id: &str| -> u32 {
             g.inventory
                 .iter()
@@ -2367,7 +2367,7 @@ fn processing_owned_menu_returns_inputs_on_close_drops_overflow_and_discards_res
             .unwrap()
             .unwrap()
             .unwrap();
-        game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+        game.server.lan.as_mut().unwrap().hub.guests.update(0, |g| {
             for slot in g.inventory.iter_mut() {
                 *slot = Some(ItemStack::new("minecraft:cobblestone", 64));
             }
@@ -2406,7 +2406,7 @@ fn processing_owned_menu_returns_inputs_on_close_drops_overflow_and_discards_res
             .unwrap()
             .unwrap()
             .unwrap();
-        game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+        game.server.lan.as_mut().unwrap().hub.guests.update(0, |g| {
             g.inventory.fill(None);
             g.carried = None;
             g.native_menu = vec![stick(2), dirt(1), stone(1)];
@@ -2414,7 +2414,7 @@ fn processing_owned_menu_returns_inputs_on_close_drops_overflow_and_discards_res
         game.dropped.clear();
         game.guest_disconnected(1);
         game.run_native_menu_events();
-        let guest = game.side.lan.as_ref().unwrap().hub.guest(1).unwrap();
+        let guest = game.server.lan.as_ref().unwrap().hub.guest(1).unwrap();
         assert_eq!(count_inv(guest, "minecraft:stick"), 0);
         assert_eq!(count_inv(guest, "minecraft:dirt"), 0);
         assert_eq!(dropped_count(game, "minecraft:stick"), 2);
@@ -2460,7 +2460,7 @@ fn processing_owned_menu_close_on_death_drops_inputs_unlike_live_close() {
             .unwrap()
             .unwrap()
             .unwrap();
-        game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+        game.server.lan.as_mut().unwrap().hub.guests.update(0, |g| {
             g.inventory.fill(None);
             g.carried = None;
             g.dead = true;
@@ -2470,7 +2470,7 @@ fn processing_owned_menu_close_on_death_drops_inputs_unlike_live_close() {
         game.tick_level_guests();
         game.run_native_menu_events();
         assert!(
-            game.side
+            game.server
                 .lan
                 .as_ref()
                 .unwrap()
@@ -2480,7 +2480,7 @@ fn processing_owned_menu_close_on_death_drops_inputs_unlike_live_close() {
                 .menu
                 .is_none()
         );
-        let guest = game.side.lan.as_ref().unwrap().hub.guest(1).unwrap();
+        let guest = game.server.lan.as_ref().unwrap().hub.guest(1).unwrap();
         assert_eq!(count_inv(guest, "minecraft:stick"), 0);
         assert_eq!(count_inv(guest, "minecraft:dirt"), 0);
         assert_eq!(dropped_count(game, "minecraft:stick"), 3);
@@ -2490,7 +2490,7 @@ fn processing_owned_menu_close_on_death_drops_inputs_unlike_live_close() {
         // 2. Hub-side close_container while dead (e.g. respawn path before dead flag clears)
         // records drop_instead = true so inputs still drop even if g.dead clears before
         // run_native_menu_events runs.
-        game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+        game.server.lan.as_mut().unwrap().hub.guests.update(0, |g| {
             g.dead = false;
             g.inventory.fill(None);
         });
@@ -2504,17 +2504,17 @@ fn processing_owned_menu_close_on_death_drops_inputs_unlike_live_close() {
             .unwrap()
             .unwrap()
             .unwrap();
-        game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+        game.server.lan.as_mut().unwrap().hub.guests.update(0, |g| {
             g.dead = true;
             g.native_menu = vec![stick(5), dirt(4), stone(4)];
         });
         game.dropped.clear();
-        game.side.lan.as_mut().unwrap().hub.close_container(1);
-        game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+        game.server.lan.as_mut().unwrap().hub.close_container(1);
+        game.server.lan.as_mut().unwrap().hub.guests.update(0, |g| {
             g.dead = false;
         });
         game.run_native_menu_events();
-        let guest = game.side.lan.as_ref().unwrap().hub.guest(1).unwrap();
+        let guest = game.server.lan.as_ref().unwrap().hub.guest(1).unwrap();
         assert_eq!(count_inv(guest, "minecraft:stick"), 0);
         assert_eq!(count_inv(guest, "minecraft:dirt"), 0);
         assert_eq!(dropped_count(game, "minecraft:stick"), 5);

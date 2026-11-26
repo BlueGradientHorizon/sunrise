@@ -43,7 +43,7 @@ mod tests {
         player.selected = 0;
         player.inventory[0] = Some(ItemStack::new("minecraft:shulker_box", 1));
         player.inventory[9] = Some(ItemStack::new("minecraft:stone", 64));
-        game.side.lan.as_mut().unwrap().hub.guests.push(player);
+        game.server.lan.as_mut().unwrap().hub.guests.push(player);
     }
 
     /// A 27-slot mod chest menu opened for guest 1: its window.
@@ -146,7 +146,7 @@ mod tests {
         game: &mut sunrise_gameplay::game::ServerGame<'_>,
         edit: impl FnOnce(&mut sunrise_sim::lan::guest::Guest),
     ) {
-        let guests = &mut game.side.lan.as_mut().unwrap().hub.guests;
+        let guests = &mut game.server.lan.as_mut().unwrap().hub.guests;
         let index = guests.connection_index(1).unwrap();
         guests.update(index, edit);
     }
@@ -305,7 +305,7 @@ mod tests {
             let put = host.transaction(|host, tx| held_slot(4).insert(host, tx, &stone, 5));
             assert_eq!(put, Ok(5));
             let shown = |game: &sunrise_gameplay::game::ServerGame<'_>| {
-                let guest = game.side.lan.as_ref().unwrap().hub.guest(1).unwrap();
+                let guest = game.server.lan.as_ref().unwrap().hub.guest(1).unwrap();
                 guest.native_menu[4].as_ref().map(|s| s.count)
             };
             assert_eq!(shown(game), None, "mirrored after the write, not inside it");
@@ -361,7 +361,7 @@ mod tests {
                 .unwrap();
             assert_eq!(backed, Ok(()));
             let shown = |game: &sunrise_gameplay::game::ServerGame<'_>| {
-                let guest = game.side.lan.as_ref().unwrap().hub.guest(1).unwrap();
+                let guest = game.server.lan.as_ref().unwrap().hub.guest(1).unwrap();
                 guest.native_menu[4].as_ref().map(|s| s.count)
             };
             assert_eq!(shown(game), None, "mirrored after the turn, not inside it");
@@ -414,7 +414,7 @@ mod tests {
             game.menu_places_changed(123, old);
             game.notice_menu_place_write(&held_slot(1));
             let windows: Vec<_> = game
-                .side
+                .server
                 .lan
                 .as_ref()
                 .unwrap()
@@ -434,7 +434,7 @@ mod tests {
             game.run_native_menu_events();
             game.notice_menu_place_write(&held_slot(1));
             assert!(matches!(
-                game.side.lan.as_ref().unwrap().hub.native_menu_events.as_slice(),
+                game.server.lan.as_ref().unwrap().hub.native_menu_events.as_slice(),
                 [NativeMenuEvent::PlacesChanged { uuid: 123, window }] if *window == new
             ));
         });
@@ -602,7 +602,7 @@ mod tests {
         player.sender.menu_extra_rev = 1;
         player.inventory[0] = Some(ItemStack::new("minecraft:shulker_box", 1));
         player.inventory[9] = Some(ItemStack::new("minecraft:stone", 64));
-        game.side.lan.as_mut().unwrap().hub.guests.push(player);
+        game.server.lan.as_mut().unwrap().hub.guests.push(player);
         let key = super::super::native_guest_turn_tests::register_test_menu(game, SATCHEL_MENU);
         let player = game.player(123).unwrap();
         let window = game

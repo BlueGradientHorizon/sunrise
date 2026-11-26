@@ -121,7 +121,7 @@ fn registered_crafting_remainder_drops_through_server_item_toss() {
             )
             .unwrap();
             let scratch = tempfile::tempdir().unwrap();
-            game.side.world_root = scratch.path().to_path_buf();
+            game.server.world_root = scratch.path().to_path_buf();
             game.reload_datapacks(false, &[]).unwrap();
             game.test_set_world_recipes(recipes);
             let host: &dyn mod_api::Host = game;
@@ -185,7 +185,7 @@ fn registered_crafting_remainder_drops_through_server_item_toss() {
                     .recipes
                     .contains("recipe_probe:literal")
             );
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()
@@ -212,7 +212,7 @@ fn registered_crafting_remainder_drops_through_server_item_toss() {
                     },
                 ),
             );
-            let guest = &game.side.lan.as_ref().unwrap().hub.guests[0];
+            let guest = &game.server.lan.as_ref().unwrap().hub.guests[0];
             assert_eq!(
                 guest.carried.as_ref().map(|s| (&*s.item, s.count)),
                 Some(("minecraft:diamond", 3))

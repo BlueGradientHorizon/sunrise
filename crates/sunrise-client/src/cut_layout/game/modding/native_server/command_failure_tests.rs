@@ -152,7 +152,7 @@ fn executor_failure_respects_source_silence_and_stores_zero() {
                         // The original component fits on the wire; the red parent
                         // and its `extra` list put the formatted failure over the limit.
                         let (tx, rx) = std::sync::mpsc::channel();
-                        game.side
+                        game.server
                             .lan
                             .as_mut()
                             .unwrap()

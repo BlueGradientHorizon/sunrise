@@ -54,7 +54,7 @@ impl crate::game::ClientGame<'_> {
     }
 
     /// `handleAddEntity` for these types; false when `kind` isn't one.
-    pub(in crate::game) fn spawn_remote_projectile(
+    pub fn spawn_remote_projectile(
         &mut self,
         kind: &str,
         packet: &sunrise_protocol::packets::play::AddEntity,
@@ -93,7 +93,7 @@ impl crate::game::ClientGame<'_> {
     }
 
     /// `handleSetEntityData` for these types: what changes how they look.
-    pub(in crate::game) fn remote_projectile_data(&mut self, id: i32, values: &[(u8, i32, Value)]) {
+    pub fn remote_projectile_data(&mut self, id: i32, values: &[(u8, i32, Value)]) {
         let id = id as u32;
         self.remote_hook_data(id, values);
         if let Some(at) = self
@@ -344,7 +344,7 @@ impl crate::game::ClientGame<'_> {
     }
 
     /// One tick of interpolation, as `tick_remote_objects`.
-    pub(in crate::game) fn tick_remote_projectiles(
+    pub fn tick_remote_projectiles(
         &mut self,
         mut step: impl FnMut(u32, Vec3) -> Vec3,
     ) {
@@ -579,7 +579,7 @@ impl crate::game::ClientGame<'_> {
     }
 
     /// Every one a server sent (a new connection, level or dimension).
-    pub(in crate::game) fn clear_remote_projectiles(&mut self) {
+    pub fn clear_remote_projectiles(&mut self) {
         self.common.fangs.list.clear();
         self.common.tnts.clear();
         self.common.falling.clear();

@@ -40,7 +40,7 @@ fn client_host_hashes_plain_stacks_with_added_and_removed_components() {
         };
         let (client, _server) = Pipe::pair();
         game.connect_local(client, "PacketBuilder").unwrap();
-        game.side.remote.as_mut().unwrap().builtin = std::sync::Arc::new(Builtin::parse(r#"{"minecraft:item":{"entries":{"minecraft:stick":{"protocol_id":4}}},"minecraft:data_component_type":{"entries":{"minecraft:damage":{"protocol_id":3},"minecraft:lore":{"protocol_id":11}}}}"#).unwrap());
+        game.client.remote.as_mut().unwrap().builtin = std::sync::Arc::new(Builtin::parse(r#"{"minecraft:item":{"entries":{"minecraft:stick":{"protocol_id":4}}},"minecraft:data_component_type":{"entries":{"minecraft:damage":{"protocol_id":3},"minecraft:lore":{"protocol_id":11}}}}"#).unwrap());
         let got = NetworkClientHost::container_click(game, &request).unwrap();
         let network = Stack {
             added: vec![(3, Component::Int(7))],

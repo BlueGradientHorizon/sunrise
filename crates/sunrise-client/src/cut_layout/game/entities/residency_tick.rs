@@ -14,7 +14,7 @@ mod tests {
         with_client_game(|game| {
             let (client, server) = sunrise_protocol::connection::Pipe::pair();
             game.connect_local(client, "residency-client").unwrap();
-            game.side.remote.as_mut().unwrap().logged_in = true;
+            game.client.remote.as_mut().unwrap().logged_in = true;
             let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
             let journal = game.resident_entities.table.borrow().producer();
             for id in 800..820 {

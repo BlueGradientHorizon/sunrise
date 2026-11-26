@@ -462,9 +462,9 @@ fn block_parts_answer_explosion_resistance() {
         // A dangerous wither skull's cap still wins: (0.8 + 0.3) × 0.3 = 0.33 a step.
         *answers.dirt.0.lock().unwrap() = Some(1200.0);
         cube(game);
-        game.side.combat.0.blast_resistance_cap = Some(0.8);
+        game.server.combat.0.blast_resistance_cap = Some(0.8);
         explode(game, None);
-        game.side.combat.0.blast_resistance_cap = None;
+        game.server.combat.0.blast_resistance_cap = None;
         assert_eq!(game.world.block(2, 65, 3), game.world.air);
         // A negative or non-finite answer is refused for the block's own value.
         let pos = [2, 65, 3];
@@ -498,9 +498,9 @@ fn block_parts_answer_explosion_resistance() {
         // A TNT minecart's rails are spared without asking their parts.
         *answers.rail.0.lock().unwrap() = Some(0.0);
         game.world.set(2, 65, 3, rail).unwrap();
-        game.side.combat.0.rail_proof_blast = true;
+        game.server.combat.0.rail_proof_blast = true;
         explode(game, None);
-        game.side.combat.0.rail_proof_blast = false;
+        game.server.combat.0.rail_proof_blast = false;
         assert_eq!(game.world.block(2, 65, 3), rail);
         assert_eq!(answers.rail.1.load(Ordering::Relaxed), 0);
     });

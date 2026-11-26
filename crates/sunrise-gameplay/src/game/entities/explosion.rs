@@ -101,7 +101,7 @@ impl ExplosionSource {
         self
     }
     /// The exploding entity, which a default damage source also names as its direct entity.
-    pub(in crate::game::server_side) fn with_entity(
+    pub fn with_entity(
         mut self,
         id: u32,
         kind: &'static str,
@@ -589,7 +589,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// `ServerExplosion.calculateExplodedPositions`; `resists` overrides one
     /// block's resistance (`ExplosionDamageCalculator.getBlockExplosionResistance`).
-    fn exploded_positions(
+    pub fn exploded_positions(
         &mut self,
         center: [f64; 3],
         radius: f32,
@@ -1415,7 +1415,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// Decoration hurt checks use the damage source's cause (`instanceof Mob`),
     /// unlike vehicles, which use the explosion's indirect source.
-    pub(in crate::game::server_side) fn blast_spares_decorations(
+    pub fn blast_spares_decorations(
         &self,
         interaction: BlockInteraction,
     ) -> bool {
@@ -1608,7 +1608,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// `Level.explode` on the server: positions, entities, blocks, fire; then
     /// the client's explosion sound.
-    pub(in crate::game) fn server_explode(
+    pub fn server_explode(
         &mut self,
         center: [f64; 3],
         radius: f32,
@@ -1625,7 +1625,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// `ServerLevel.explode`: only the direct source's `isSilent` suppresses
     /// the sound; terrain, entity damage and the visual packet are unchanged.
-    pub(in crate::game) fn server_explode_from(
+    pub fn server_explode_from(
         &mut self,
         center: [f64; 3],
         radius: f32,
@@ -1637,7 +1637,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// An explicit `DamageSource` is independent of the blast's indirect owner.
     /// `Some(None)` is explicitly ownerless; `None` keeps the ordinary source.
-    pub(in crate::game::server_side) fn server_explode_from_cause(
+    pub fn server_explode_from_cause(
         &mut self,
         center: [f64; 3],
         radius: f32,
@@ -1701,7 +1701,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// `server_explode` with the damage type the player takes and a block
     /// whose explosion resistance the damage calculator overrides.
-    pub(in crate::game::server_side) fn server_explode_as(
+    pub fn server_explode_as(
         &mut self,
         center: [f64; 3],
         radius: f32,
@@ -1859,7 +1859,7 @@ impl crate::game::ServerGame<'_> {
         }
         Ok(hit)
     }
-    fn explosion_hit_block(
+    pub fn explosion_hit_block(
         &mut self,
         pos: [i32; 3],
         radius: f32,
@@ -2007,7 +2007,7 @@ impl crate::game::ServerGame<'_> {
     /// A mob explosion (`ServerLevel.explode` with `ExplosionInteraction.MOB`:
     /// blocks are kept without mobGriefing, else the mob_explosion_drop_decay
     /// rule picks decay).
-    pub(in crate::game::server_side) fn explode(
+    pub fn explode(
         &mut self,
         source: Option<u32>,
         center: [f64; 3],

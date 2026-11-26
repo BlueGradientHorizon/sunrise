@@ -113,7 +113,7 @@ mod tests {
         assert_eq!(read(&game, viewed, missing), (None, None));
         assert!(!game.world.chunks.contains_key(&(1, 0)));
         let world = &game
-            .side
+            .client
             .remote
             .as_ref()
             .unwrap()
@@ -200,7 +200,7 @@ mod tests {
         assert_eq!(viewed.collision_boxes(&game, across), None);
         assert_eq!(viewed.has_collisions(&game, across), None);
         let world = &game
-            .side
+            .client
             .remote
             .as_ref()
             .unwrap()

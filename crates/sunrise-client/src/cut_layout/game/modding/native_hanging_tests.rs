@@ -52,7 +52,7 @@ fn with_hanging_entities<S>(game: &mut sunrise_gameplay_common::game::Game<'_, S
 
 fn with_hanging_in(game: &mut sunrise_gameplay::game::ServerGame<'_>) {
     with_hanging_entities(game);
-    game.side.next_entity = game.side.next_entity.max(PAINTING);
+    game.server.next_entity = game.server.next_entity.max(PAINTING);
 }
 
 /// Which axes of a box are thin (a hanging entity's depth).

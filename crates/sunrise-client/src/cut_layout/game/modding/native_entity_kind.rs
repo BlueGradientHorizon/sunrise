@@ -44,7 +44,7 @@ mod tests {
         with_client_game(|game| {
             let (client, _server) = sunrise_protocol::connection::Pipe::pair();
             game.connect_local(client, "reaction").unwrap();
-            game.side.remote.as_mut().unwrap().logged_in = true;
+            game.client.remote.as_mut().unwrap().logged_in = true;
             use sunrise_protocol::packets::play::{self, Clientbound as C};
 
             for (id, key) in [
@@ -55,7 +55,7 @@ mod tests {
                 (14, "minecraft:block_display"),
             ] {
                 let kind = game
-                    .side
+                    .client
                     .remote
                     .as_ref()
                     .unwrap()

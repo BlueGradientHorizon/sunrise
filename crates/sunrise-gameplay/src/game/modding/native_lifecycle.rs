@@ -55,7 +55,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// `error_text` is the engine's own error text, unchanged.
-    pub(in crate::game) fn native_lifecycle_world_failed(&mut self, error_text: &str) {
+    pub fn native_lifecycle_world_failed(&mut self, error_text: &str) {
         // The server levels that opened before the failure close first.
         if self.common.is_logical_server() {
             self.native_levels_closing();
@@ -111,7 +111,7 @@ impl crate::game::ServerGame<'_> {
         )
     }
 
-    pub(in crate::game) fn native_lifecycle_server_tick_start(&mut self, world_running: bool) {
+    pub fn native_lifecycle_server_tick_start(&mut self, world_running: bool) {
         if let Some((context, phase)) = self.common.native_lifecycle.server_tick_start(world_running) {
             self.native_console_lines();
             self.common.native_lifecycle.read_scope = true;
@@ -127,7 +127,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// `schedule_task`: a delayed callable attributed to the current mod when called inside one.
-    pub(in crate::game) fn schedule_task(
+    pub fn schedule_task(
         &mut self,
         delay_ticks: u32,
         task: ServerTask,
@@ -145,7 +145,7 @@ impl crate::game::ServerGame<'_> {
 
     /// `cancel_task`: withdraws a waiting task by its opaque `TaskId`, disposing of its captures
     /// under the scheduling owner's panic policy when attributed.
-    pub(in crate::game) fn cancel_task(&mut self, id: TaskId) -> bool {
+    pub fn cancel_task(&mut self, id: TaskId) -> bool {
         let Some(task) = self.common.native_lifecycle.tasks.cancel(id) else {
             return false;
         };
@@ -154,7 +154,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// An errored tick returned at `result?` before this site.
-    pub(in crate::game) fn native_lifecycle_server_tick_end(&mut self, paused: bool) {
+    pub fn native_lifecycle_server_tick_end(&mut self, paused: bool) {
         if let Some((context, phase)) = self.common.native_lifecycle.server_tick_end(paused) {
             self.common.native_lifecycle.read_scope = true;
             self.native_server_tick(&context, phase);

@@ -17,7 +17,7 @@ fn watched_guest(game: &mut sunrise_gameplay::game::ServerGame<'_>) -> mpsc::Rec
     let (tx, rx) = mpsc::channel();
     let mut player = guest(1);
     player.sender = PlayerSender::new(tx, Arc::default());
-    game.side.lan.as_mut().unwrap().hub.guests.push(player);
+    game.server.lan.as_mut().unwrap().hub.guests.push(player);
     rx
 }
 
@@ -105,7 +105,7 @@ fn a_menu_closes_at_the_call_inside_its_players_own_turn() {
                 let rx = watched_guest(game);
                 let window = open(game);
                 let stone = ItemStack::new("minecraft:stone", 4);
-                game.side
+                game.server
                     .lan
                     .as_mut()
                     .unwrap()
@@ -134,7 +134,7 @@ fn a_menu_closes_at_the_call_inside_its_players_own_turn() {
                         .any(|p| matches!(p, C::ContainerClose(c) if c.container == window)),
                     "the client is told at the call: {packets:?}"
                 );
-                let guest = &game.side.lan.as_ref().unwrap().hub.guests[0];
+                let guest = &game.server.lan.as_ref().unwrap().hub.guests[0];
                 assert!(guest.menu.is_none());
                 assert_eq!(guest.carried, None);
                 assert!(

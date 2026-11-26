@@ -56,9 +56,9 @@ fn the_golems_preserved_equipment_and_a_broken_stand_reach_living_drops() {
                 .unwrap()
                 .clone();
             let spawn_golem = |game: &mut sunrise_gameplay::game::ServerGame<'_>| {
-                game.side.next_entity += 1;
+                game.server.next_entity += 1;
                 let mut golem = Mob::new(
-                    game.side.next_entity,
+                    game.server.next_entity,
                     golem_type.clone(),
                     Vec3::new(0.5, 64.0, 0.5),
                     0.0,

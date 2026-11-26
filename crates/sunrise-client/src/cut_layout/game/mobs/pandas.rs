@@ -72,7 +72,7 @@ pub(crate) mod pickup_tests {
         game.level.player_uuid = Some(THROWER);
         game.level.health = 20.0;
         game.creative = false;
-        game.side.world_root = world.path().to_owned();
+        game.server.world_root = world.path().to_owned();
         game.set_allow_commands(true);
         // Opening the world installs its staged advancement tree. Install the
         // custom tree afterwards so the first tick cannot replace it.

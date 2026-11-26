@@ -7,7 +7,7 @@ use sunrise_level::collisions::SceneCollisions;
 impl ServerGame<'_> {
     /// Entity.move for a cart: collisions zero the blocked components, the world border's walls
     /// among them (`CollisionGetter.borderCollision`, asked for every entity).
-    pub(in crate::game) fn move_cart(&mut self, c: &mut Minecart, delta: Vec3) -> bool {
+    pub fn move_cart(&mut self, c: &mut Minecart, delta: Vec3) -> bool {
         // The cart's own move is a self move (#2414: vanilla's
         // `AbstractMinecart.move` passes SELF for its own tick); PR 1a
         // records the movement unchanged.

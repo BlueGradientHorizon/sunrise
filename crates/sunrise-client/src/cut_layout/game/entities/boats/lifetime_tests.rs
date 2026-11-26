@@ -75,7 +75,7 @@ fn a_bound_ridden_boat_commits_the_server_leash_tick() {
 
 fn bound_boat_server_case(tick: impl Fn(&mut sunrise_gameplay::game::ServerGame<'_>, i32)) {
     super::super::native_entity_refs::tests::with_game(|game| {
-        game.side.tickets.0.update(None);
+        game.server.tickets.0.update(None);
         game.boats
             .push(Boat::new(71, "oak".into(), Vec3::new(0.5, 70.0, 0.5), 0.0));
         game.boats.update(0, |boat| boat.hurt_time = 6);
@@ -130,8 +130,8 @@ fn bound_boat_client_case(tick: impl Fn(&mut sunrise_client_gameplay::game::Clie
     super::super::native_entity_refs::tests::with_client_game(|game| {
         let (client, _server) = sunrise_protocol::connection::Pipe::pair();
         game.connect_local(client, "BoatLifetimeTest").unwrap();
-        game.side.remote.as_mut().unwrap().joined = true;
-        game.side.remote.as_mut().unwrap().first_passenger = true;
+        game.client.remote.as_mut().unwrap().joined = true;
+        game.client.remote.as_mut().unwrap().first_passenger = true;
         game.boats
             .push(Boat::new(71, "oak".into(), Vec3::new(0.5, 70.0, 0.5), 0.0));
         game.boats.update(0, |boat| boat.hurt_time = 6);

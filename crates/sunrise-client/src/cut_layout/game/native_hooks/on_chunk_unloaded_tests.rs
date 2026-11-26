@@ -94,9 +94,9 @@ pub(crate) fn prepared_root() -> std::path::PathBuf {
 /// nothing is left on its way (a ticket removed mid-generation is another matter).
 pub(crate) fn pump_until(game: &mut sunrise_gameplay::game::ServerGame<'_>, resident: bool) {
     let deadline = Instant::now() + Duration::from_secs(120);
-    while game.world.chunks.contains_key(&CHUNK) != resident || game.side.streaming.busy() {
+    while game.world.chunks.contains_key(&CHUNK) != resident || game.server.streaming.busy() {
         assert!(Instant::now() < deadline, "chunk {CHUNK:?} did not change");
-        game.side.streaming.wait(Duration::from_millis(5));
+        game.server.streaming.wait(Duration::from_millis(5));
         game.side_update_world();
     }
 }
@@ -123,10 +123,10 @@ fn a_client_tells_a_forgotten_column_but_not_its_level_going() {
         game.options.dedicated = None;
         let (client, _server) = Pipe::pair();
         game.connect_local(client, "UnloadProbe").unwrap();
-        game.side.remote.as_mut().unwrap().logged_in = true;
+        game.client.remote.as_mut().unwrap().logged_in = true;
         let other = [1620, 64, 1600];
         for (x, z) in [CHUNK, (101, 100)] {
-            game.side
+            game.client
                 .streaming
                 .insert_remote(&mut game.world, Chunk::empty(x, z));
         }

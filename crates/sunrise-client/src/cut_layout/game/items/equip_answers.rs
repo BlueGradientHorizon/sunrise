@@ -147,7 +147,7 @@ mod tests {
                 assert_eq!(contents.try_insert(game.items(), &mut helmet, true), 1);
                 contents.store(&mut bundle);
                 let held = |game: &sunrise_gameplay::game::ServerGame<'_>| {
-                    let guest = &game.side.lan.as_ref().unwrap().hub.guests[0];
+                    let guest = &game.server.lan.as_ref().unwrap().hub.guests[0];
                     let name = |s: &Option<ItemStack>| s.as_ref().map(|s| s.item.to_string());
                     let inside = (guest.carried.as_ref())
                         .and_then(|b| Contents::of(game.items(), b))
@@ -162,7 +162,7 @@ mod tests {
                 };
                 // Right clicks (button 1) of the pickup mode on menu slots 5 (head) and 8 (feet).
                 let click = |game: &mut sunrise_gameplay::game::ServerGame<'_>, slot: i16| {
-                    game.side
+                    game.server
                         .lan
                         .as_mut()
                         .unwrap()

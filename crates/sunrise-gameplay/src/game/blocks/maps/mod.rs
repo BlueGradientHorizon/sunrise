@@ -102,7 +102,7 @@ impl ServerGame<'_> {
     }
     /// The map's data, including new maps in the open transaction. Committed maps are
     /// loaded from `data/minecraft/maps/<id>.dat` on first use.
-    pub(in crate::game) fn map(&mut self, id: i32) -> Option<&mut MapData> {
+    pub fn map(&mut self, id: i32) -> Option<&mut MapData> {
         if let Some(data) = self
             .common.transactions
             .iter_mut()
@@ -130,7 +130,7 @@ impl ServerGame<'_> {
     }
     /// The next ID in this save, after any map reserved by an open transaction.
     /// Peeking must not dirty the persisted counter, even on a save with no maps.
-    pub(in crate::game) fn peek_map_id(&self) -> i32 {
+    pub fn peek_map_id(&self) -> i32 {
         if let Some(id) = self
             .common.transactions
             .iter()
@@ -163,7 +163,7 @@ impl ServerGame<'_> {
         }
     }
     /// Maps made by exploration map trades: (id, target, zoom, decoration).
-    pub(in crate::game) fn register_exploration_maps(
+    pub fn register_exploration_maps(
         &mut self,
         made: Vec<(i32, [i32; 3], u8, String)>,
     ) {
@@ -181,7 +181,7 @@ impl ServerGame<'_> {
     /// structure of the tag around `origin`, a new map centred on it with its
     /// biome preview and target decoration. False when nothing is found: the
     /// loot table's `filtered` map_id check would have discarded the item.
-    pub(in crate::game::server_side) fn resolve_pending_map(
+    pub fn resolve_pending_map(
         &mut self,
         item: &mut ItemStack,
         origin: [f64; 3],
@@ -229,7 +229,7 @@ impl ServerGame<'_> {
     }
     /// The unsearched exploration maps of a container being opened
     /// (`RandomizableContainer.unpackLootTable` runs the function then).
-    pub(in crate::game::server_side) fn resolve_container_maps(
+    pub fn resolve_container_maps(
         &mut self,
         key: (i32, i32, i32),
         origin: [f64; 3],
@@ -350,13 +350,13 @@ impl ServerGame<'_> {
         }
     }
     /// Registers `data` under a free map id.
-    pub(in crate::game) fn new_map_id(&mut self, data: MapData) -> i32 {
+    pub fn new_map_id(&mut self, data: MapData) -> i32 {
         let id = self.peek_map_id();
         self.store_new_map(id, data);
         id
     }
     /// `EmptyMapItem.use`: a new map centred around the player.
-    pub(in crate::game::server_side) fn use_empty_map(&mut self, stack: &ItemStack) -> bool {
+    pub fn use_empty_map(&mut self, stack: &ItemStack) -> bool {
         if &*stack.item != "minecraft:map" {
             return false;
         }
@@ -406,7 +406,7 @@ impl ServerGame<'_> {
     /// `MapItem.useOn`: a map used on a banner toggles that banner's marker
     /// on the map; when the map's data says no (`toggleBanner` fails) the use
     /// ends without a swing, and nothing else is done with the map either way.
-    pub(in crate::game::server_side) fn use_map_on_banner(
+    pub fn use_map_on_banner(
         &mut self,
         hit: &super::Hit,
         stack: &ItemStack,
@@ -439,7 +439,7 @@ impl ServerGame<'_> {
     /// `Inventory.tick` (and `EntityEquipment.tick` for the armour) ->
     /// `CompassItem.inventoryTick`: each compass the player carries whose
     /// lodestone is gone loses its target (`inventory_tick`).
-    pub(in crate::game) fn tick_lodestone_compasses(&mut self) {
+    pub fn tick_lodestone_compasses(&mut self) {
         let (world, facts, dim) = (&self.common.world, self.common.res.facts(), self.common.dim.id());
         let stacks = self.common.inventory.iter_mut().chain([&mut self.common.offhand]);
         for stack in stacks.chain(self.common.armor.iter_mut()).flatten() {
@@ -778,7 +778,7 @@ impl ServerGame<'_> {
         }
     }
     /// Writes changed maps and the id counter (`MapItemSavedData`, `MapIndex`).
-    pub(in crate::game::server_side) fn save_maps(&mut self) {
+    pub fn save_maps(&mut self) {
         for (id, m) in &mut self.common.maps.data {
             if m.dirty {
                 let path = self

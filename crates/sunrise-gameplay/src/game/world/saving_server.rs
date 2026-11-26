@@ -82,7 +82,7 @@ impl ServerGame<'_> {
     }
     /// Save the level's chunk tickets: `/forceload`'s in vanilla's `chunk_tickets.dat`, the
     /// mods' in Sunrise's own `mod_chunk_tickets.dat`.
-    pub(in crate::game::server_side) fn save_chunk_tickets(&self) -> Result<()> {
+    pub fn save_chunk_tickets(&self) -> Result<()> {
         if self.server.startup_ticket_restore_pending {
             return Ok(());
         }
@@ -98,7 +98,7 @@ impl ServerGame<'_> {
             })
     }
     /// Save the level in place: its changed chunks, its entities and its raids.
-    pub(in crate::game) fn save_level(&mut self, wait: bool) -> Result<()> {
+    pub fn save_level(&mut self, wait: bool) -> Result<()> {
         self.common.admit_level_save()?;
         // No save holds a player vehicle: a mob a mod seated on a player gets off first.
         self.eject_player_riders(None);
@@ -173,7 +173,7 @@ impl ServerGame<'_> {
 
     /// Advance a server-owned staged save by one step. Returns `Ok(true)` once finished.
     #[allow(dead_code)]
-    pub(in crate::game) fn poll_server_closing_save(
+    pub fn poll_server_closing_save(
         &mut self,
         save: &mut ClosingSave,
     ) -> Result<bool> {

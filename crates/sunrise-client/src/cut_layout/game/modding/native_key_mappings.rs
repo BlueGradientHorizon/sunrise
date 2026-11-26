@@ -7,7 +7,7 @@ mod tests {
     #[ignore = "daily"]
     fn opening_and_closing_a_direct_screen_discards_pending_clicks() {
         crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
-            game.side.title.0 = None;
+            game.client.title.0 = None;
             game.player = Some(
                 sunrise_sim::motion::PlayerMotion::new(
                     game.motion,
@@ -15,7 +15,7 @@ mod tests {
                 )
                 .unwrap(),
             );
-            game.side
+            game.client
                 .mod_keys
                 .bind([sunrise_client::keymapping::ModBinding {
                     owner: "test",
@@ -25,7 +25,7 @@ mod tests {
                     context: sunrise_client::keymapping::MappingContext::InGame,
                 }]);
             let pending = game.mod_key_mapping("test", "pending").unwrap();
-            game.side.mod_keys.input(
+            game.client.mod_keys.input(
                 "key.keyboard.k",
                 sunrise_client::keymapping::KeyAction::Press,
                 false,
@@ -33,7 +33,7 @@ mod tests {
                 0,
             );
             game.open_hud_editor(false);
-            assert!(matches!(game.side.screen, crate::game::Screen::HudEditor));
+            assert!(matches!(game.client.screen, crate::game::Screen::HudEditor));
             game.close_hud_editor();
             assert!(!pending.consume_click(game).unwrap());
         });

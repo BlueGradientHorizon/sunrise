@@ -37,7 +37,7 @@ impl crate::game::ServerGame<'_> {
             self.server.ticks_until_autosave = interval;
         }
     }
-    pub(in crate::game) fn save_game_metadata(&mut self) -> Result<()> {
+    pub fn save_game_metadata(&mut self) -> Result<()> {
         self.save_maps();
         self.save_random_sequences();
         self.save_fight();

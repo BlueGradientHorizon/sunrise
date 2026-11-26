@@ -22,7 +22,7 @@ pub(in crate::game::server_side) fn assign_entity_id(next: &mut u32, id: &mut u3
 
 impl ServerGame<'_> {
     /// `Entity.nextEntityId`: the id a new entity takes from the one counter.
-    pub(in crate::game) fn take_entity_id(&mut self) -> u32 {
+    pub fn take_entity_id(&mut self) -> u32 {
         self.server.next_entity += 1;
         self.server.next_entity
     }
@@ -224,7 +224,7 @@ impl ServerGame<'_> {
 
     /// Who rides what (`Entity.getPassengers`): the players in their vehicles and
     /// mobs on mobs.
-    pub(in crate::game) fn lan_riding(&mut self, guests: &[(u32, i32)], riding: &mut Riding) {
+    pub fn lan_riding(&mut self, guests: &[(u32, i32)], riding: &mut Riding) {
         riding.clear();
         // Players arrive in boarding order; the first rider drives.
         for &(vehicle, guest) in guests {
@@ -289,7 +289,7 @@ impl ServerGame<'_> {
 
     /// Boats, minecarts, armor stands, item frames, paintings and the
     /// entities kept unsimulated, as guests track them.
-    pub(in crate::game) fn lan_object_states(
+    pub fn lan_object_states(
         &mut self,
         out: &mut States,
         drain_minecart_steps: bool,
@@ -665,7 +665,7 @@ impl ServerGame<'_> {
     /// [`Self::lan_display_data`] for the display `id`, built again only when
     /// its compound changed: a server's holograms and menus are text displays
     /// whose text, item and transformation were parsed again every tick.
-    fn lan_display_data_kept(
+    pub fn lan_display_data_kept(
         &self,
         id: u32,
         tag: &Tag,
@@ -729,7 +729,7 @@ impl ServerGame<'_> {
     /// The synched data of a text, block or item display kept unsimulated,
     /// from its compound (`Display.readAdditionalSaveData`), with the
     /// defaults to send when a value goes back to one.
-    fn lan_display_data(
+    pub fn lan_display_data(
         &self,
         tag: &Tag,
         e: &mut EntityState,
@@ -800,7 +800,7 @@ impl ServerGame<'_> {
     /// own UUID (`Entity.getUUID`), the one `/data`, saves and UUID
     /// selectors use, so a client can name it back (the crosshair UUID that
     /// `ClientSuggestionProvider.getSelectedEntities` suggests).
-    pub(in crate::game) fn lan_entity_uuids(&mut self, states: &mut States) {
+    pub fn lan_entity_uuids(&mut self, states: &mut States) {
         // A bare state is never paired: its UUID is never read.
         for e in states.as_mut_slice().iter_mut().filter(|e| !e.bare) {
             e.uuid = ints_uuid(self.uuid_for(e.id as u32));
@@ -835,7 +835,7 @@ impl ServerGame<'_> {
 
     /// Gives the entities Sunrise keeps without an id one (`Entity.id`, from
     /// the same counter as the rest) before they are first tracked.
-    pub(in crate::game) fn lan_assign_ids(&mut self) {
+    pub fn lan_assign_ids(&mut self) {
         // LeashFenceKnotEntity: the tie made the knot of a fence post
         // (game/leads.rs `tie_knot`); the tracker shows that same entity.
         // `notifyLeasheeRemoved` discards it once the last lead is gone.

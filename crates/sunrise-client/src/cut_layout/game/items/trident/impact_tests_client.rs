@@ -74,7 +74,7 @@ fn a_discarded_trident_does_not_apply_its_captured_impact() {
         } else {
             assert_eq!(hits[0].block, [2, 64, 0]);
         }
-        let sounds = &game.side.pending_sounds;
+        let sounds = &game.server.pending_sounds;
         assert_eq!(
             sounds
                 .iter()
@@ -126,7 +126,7 @@ fn a_refused_trident_contact_keeps_the_contact_and_finishes_the_tick() {
         assert!(!live.in_ground);
         assert!(live.has_been_shot, "base tick still ran");
         assert_eq!(observed.lands.load(Ordering::Relaxed), 0);
-        assert!(!game.side.pending_sounds.iter().any(|sound| matches!(
+        assert!(!game.server.pending_sounds.iter().any(|sound| matches!(
             sound.event.as_str(),
             "minecraft:item.trident.hit" | "minecraft:item.trident.hit_ground"
         )));

@@ -20,7 +20,7 @@ impl ClientGame<'_> {
     }
     /// `TeleportToPlayerMenuCategory` starts from listed players;
     /// `TeleportToTeamMenuCategory.TeamSelectionItem.create` looks up every team member.
-    fn new_spectator_menu(&mut self) -> SpectatorMenu {
+    pub fn new_spectator_menu(&mut self) -> SpectatorMenu {
         let tab = self
             .remote_tab_players()
             .map_or_else(Vec::new, |(players, _, _)| players);
@@ -78,7 +78,7 @@ impl ClientGame<'_> {
             .collect();
         SpectatorMenu::new(players, teams)
     }
-    fn spectator_outcome(&mut self, outcome: Outcome) {
+    pub fn spectator_outcome(&mut self, outcome: Outcome) {
         if let Outcome::Teleport(uuid) = outcome {
             // PlayerMenuItem.selectItem.
             self.send(S::TeleportToEntity(play::TeleportToEntity { uuid }));

@@ -5,7 +5,7 @@ use sunrise_items::items::ItemStack;
 
 impl crate::game::ServerGame<'_> {
     /// The maps of `stacks` (loaded as needed) for a menu over this level.
-    pub(in crate::game) fn level_maps<'s>(
+    pub fn level_maps<'s>(
         &mut self,
         stacks: impl IntoIterator<Item = &'s ItemStack>,
     ) -> LevelMaps {
@@ -20,7 +20,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// The scaled and locked copies a menu made (`level.setMapData`), staged if a transaction is open.
-    pub(in crate::game) fn register_made_maps(&mut self, maps: LevelMaps) {
+    pub fn register_made_maps(&mut self, maps: LevelMaps) {
         for (id, source, scale) in maps.into_made() {
             let Some(data) = self
                 .map(source)

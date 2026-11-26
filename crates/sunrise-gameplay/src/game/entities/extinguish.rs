@@ -22,7 +22,7 @@ impl ServerGame<'_> {
     /// runBefore EXTINGUISH, `LayeredCauldronBlock.entityInside`) change
     /// first, then the hiss plays once, as vanilla plays it when the move
     /// left `wasOnFire && !isOnFire()`.
-    pub(in crate::game::server_side) fn block_extinguish_player(&mut self, events: &[MotionEvent]) {
+    pub fn block_extinguish_player(&mut self, events: &[MotionEvent]) {
         let mut out = false;
         for event in events {
             match event {

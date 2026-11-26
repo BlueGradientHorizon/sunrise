@@ -44,11 +44,11 @@ pub(crate) mod customize_chat_overlay_tests {
                 };
                 assert_eq!(*seen.lock().unwrap(), [(w, h, false, 0, h - 40)]);
                 // Hidden: F1 with the chat closed asks nothing.
-                game.side.chat_ui.hide_gui = true;
+                game.client.chat_ui.hide_gui = true;
                 chat_top(game);
                 assert_eq!(seen.lock().unwrap().len(), 1);
                 // Focused, the chat shows under F1 and is asked again.
-                game.side.screen = sunrise_gameplay_common::game::Screen::Chat;
+                game.client.screen = sunrise_gameplay_common::game::Screen::Chat;
                 chat_top(game);
                 let seen = seen.lock().unwrap();
                 assert_eq!(seen.len(), 2);

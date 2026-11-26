@@ -56,7 +56,7 @@ impl crate::game::ServerGame<'_> {
     /// spawn box of a cushion that may go there.
     /// `CushionItem.useOn`: spawn the cushion where `cushion_spawn` allows,
     /// unless another cushion is in the way.
-    pub(in crate::game::server_side) fn place_cushion(
+    pub fn place_cushion(
         &mut self,
         hit: &Hit,
         stack: &ItemStack,
@@ -155,10 +155,10 @@ impl crate::game::ServerGame<'_> {
 
     /// `BlockAttachedEntity.hurtServer`: `kill` (the `entity_die` event), then
     /// `Cushion.dropItem`.
-    pub(in crate::game::server_side) fn break_cushion(&mut self, index: usize, by_player: bool) {
+    pub fn break_cushion(&mut self, index: usize, by_player: bool) {
         self.break_cushion_by(index, by_player.then_some(super::commands::Target::Player));
     }
-    pub(in crate::game) fn break_cushion_by(
+    pub fn break_cushion_by(
         &mut self,
         index: usize,
         source: Option<super::commands::Target>,
@@ -250,7 +250,7 @@ impl crate::game::ServerGame<'_> {
 
     /// `Cushion.interact`: sit down unless sneaking or already occupied. The
     /// cushion under the crosshair, or the one a guest's interact packet named.
-    pub(in crate::game) fn interact_cushion(&mut self, target: Option<InteractTarget>) -> bool {
+    pub fn interact_cushion(&mut self, target: Option<InteractTarget>) -> bool {
         let Some((i, d, _)) = (match target {
             Some(t) => sunrise_gameplay_common::game::item_actions::named_entity(&self.common.cushions, t.id, |c| c.id)
                 .map(|i| (i, 0.0, [0.0; 3])),
@@ -342,7 +342,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// `BlockAttachedEntity.tick`: survive and burn checks after the post-increment reaches 100.
-    pub(in crate::game::server_side) fn tick_cushions(&mut self) {
+    pub fn tick_cushions(&mut self) {
         let ticking = self.entity_ticking_area();
         let mut i = 0;
         while i < self.common.cushions.len() {

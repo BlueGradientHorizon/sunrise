@@ -12,7 +12,7 @@ impl ClientGame<'_> {
     /// game's key-press path: `MultiPlayerGameMode.ensureHasSentCarriedItem` at the next tick's
     /// start at the latest, and before an attack, a use, an interact, a release, a drop and a
     /// continued block break.
-    pub(in crate::game) fn select_hotbar_slot(&mut self, slot: u8) -> Result<(), HotbarSlotError> {
+    pub fn select_hotbar_slot(&mut self, slot: u8) -> Result<(), HotbarSlotError> {
         if slot > 8 {
             return Err(HotbarSlotError::OutOfRange { slot });
         }

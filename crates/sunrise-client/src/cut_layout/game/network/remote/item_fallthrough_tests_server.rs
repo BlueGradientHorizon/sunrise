@@ -119,7 +119,7 @@ fn server_use_item_packet_fires_once_after_use_item_on_with_block_crosshair() {
                 .unwrap();
             game.world.set(0, 64, 0, stone).unwrap();
             game.set_test_forced_hit(Some(hit()));
-            game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+            game.server.lan.as_mut().unwrap().hub.guests.update(0, |g| {
                 g.inventory[g.selected] = Some(ItemStack::new("minecraft:apple", 1));
             });
             *observer.0.lock().unwrap() = Controls {

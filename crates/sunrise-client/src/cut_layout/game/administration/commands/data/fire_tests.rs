@@ -286,8 +286,8 @@ pub(crate) fn run_fire_changes_on_eyes_fangs_spawners_clouds_and_bullets() {
 
         // Fresh vs already-ticked bullet in lava, plus shoot -> hurt -> discard -> entity_damage order and Silent:1b.
         sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|e| *e.borrow_mut() = Some(Vec::new()));
-        game.side.audio_capture_active = true;
-        game.side.pending_sounds.clear();
+        game.server.audio_capture_active = true;
+        game.server.pending_sounds.clear();
         let fresh = summon_target_at(
             game,
             "minecraft:shulker_bullet",
@@ -302,7 +302,7 @@ pub(crate) fn run_fire_changes_on_eyes_fangs_spawners_clouds_and_bullets() {
                 .map(|(ev, ..)| ev)
                 .collect()
         });
-        let fresh_sounds: Vec<String> = std::mem::take(&mut game.side.pending_sounds)
+        let fresh_sounds: Vec<String> = std::mem::take(&mut game.server.pending_sounds)
             .into_iter()
             .map(|s| s.event)
             .collect();
@@ -343,10 +343,10 @@ pub(crate) fn run_fire_changes_on_eyes_fangs_spawners_clouds_and_bullets() {
         assert!(
             game.run_command("data merge entity 00000a7b-0000-0002-0000-000000000001 {Fire:40s}")
         );
-        game.side.pending_sounds.clear();
+        game.server.pending_sounds.clear();
         tick_fire_entities(game);
         assert!(!target_exists(game, ticked));
-        let ticked_sounds: Vec<String> = std::mem::take(&mut game.side.pending_sounds)
+        let ticked_sounds: Vec<String> = std::mem::take(&mut game.server.pending_sounds)
             .into_iter()
             .map(|s| s.event)
             .collect();
@@ -361,7 +361,7 @@ pub(crate) fn run_fire_changes_on_eyes_fangs_spawners_clouds_and_bullets() {
         );
 
         // Silent:1b suppresses shulker_bullet.hurt on both fire and attack paths.
-        game.side.pending_sounds.clear();
+        game.server.pending_sounds.clear();
         let silent_fire = summon_target_at(
             game,
             "minecraft:shulker_bullet",
@@ -371,11 +371,11 @@ pub(crate) fn run_fire_changes_on_eyes_fangs_spawners_clouds_and_bullets() {
         tick_fire_entities(game);
         assert!(!target_exists(game, silent_fire));
         assert!(
-            std::mem::take(&mut game.side.pending_sounds).is_empty(),
+            std::mem::take(&mut game.server.pending_sounds).is_empty(),
             "Silent:1b bullet must not play hurt sound on fire death"
         );
 
-        game.side.pending_sounds.clear();
+        game.server.pending_sounds.clear();
         let silent_attack = summon_target_at(
             game,
             "minecraft:shulker_bullet",
@@ -394,7 +394,7 @@ pub(crate) fn run_fire_changes_on_eyes_fangs_spawners_clouds_and_bullets() {
         let _ = game.destroy_shulker_bullet(sa_idx);
         assert!(!target_exists(game, silent_attack));
         assert!(
-            std::mem::take(&mut game.side.pending_sounds).is_empty(),
+            std::mem::take(&mut game.server.pending_sounds).is_empty(),
             "Silent:1b bullet must not play hurt sound on attack path"
         );
         sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|e| *e.borrow_mut() = None);
@@ -487,7 +487,7 @@ pub(crate) fn run_fire_changes_on_eyes_fangs_spawners_clouds_and_bullets() {
                 .synced_fire
         );
         assert!(
-            game.side
+            game.server
                 .others
                 .0
                 .iter()
@@ -525,7 +525,7 @@ pub(crate) fn run_fire_changes_on_eyes_fangs_spawners_clouds_and_bullets() {
         );
         assert!(
             !game
-                .side
+                .server
                 .others
                 .0
                 .iter()

@@ -19,8 +19,8 @@ fn guest_player_bow_death_keeps_the_connected_shooter_without_a_local_player() {
             observed(false, false, |game, seen| {
                 game.player = None;
                 sunrise_gameplay::game::native_player_death::tests::add_guest(game);
-                game.side.next_entity = 100;
-                game.side
+                game.server.next_entity = 100;
+                game.server
                     .lan
                     .as_mut()
                     .unwrap()
@@ -42,7 +42,7 @@ fn guest_player_bow_death_keeps_the_connected_shooter_without_a_local_player() {
                     game.player.is_none(),
                     "the impact runs in the dedicated-server context"
                 );
-                game.side
+                game.server
                     .lan
                     .as_mut()
                     .unwrap()
@@ -70,7 +70,7 @@ pub(crate) fn player(game: &mut sunrise_gameplay::game::ServerGame<'_>) {
     game.player = Some(PlayerMotion::new(game.motion, Vec3::new(4.5, 80.0, 4.5)).unwrap());
     bind_local_player(game, 11, 123);
     game.set_mode_id(0);
-    game.side.next_entity = 100;
+    game.server.next_entity = 100;
 }
 
 #[test]
@@ -86,7 +86,7 @@ fn zombie_ai_melee_armor_hurt_retains_the_real_source() {
                 assert!(game.run_command("difficulty normal"));
                 assert!(game.run_command("forceload add 0 0"));
                 game.update_chunk_tickets();
-                assert!(game.side.tickets.0.levels().entity_ticking_at(5, 4));
+                assert!(game.server.tickets.0.levels().entity_ticking_at(5, 4));
                 assert!(game.player.as_ref().unwrap().client_loaded);
                 game.armor[1] = Some(ItemStack::new("minecraft:iron_chestplate", 1));
                 game.apply_equipment();

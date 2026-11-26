@@ -43,7 +43,7 @@ pub(in crate::game) fn vec3_bits_expected(v: &Value) -> [u64; 3] {
 }
 
 pub(in crate::game) fn entity_type_id(game: &sunrise_client_gameplay::game::ClientGame<'_>, kind: &str) -> i32 {
-    game.side
+    game.client
         .remote
         .as_ref()
         .unwrap()
@@ -323,7 +323,7 @@ pub(in crate::game) fn run_culling_near_plane_uses_max_of_fov_and_option_fov_26_
 
         game.yaw = 0.0;
         game.pitch = 0.0;
-        game.side.settings.fov = 70.0;
+        game.client.settings.fov = 70.0;
         game.chat_ui_mut_for_test().hide_gui = true;
         let hand_proj = sunrise_client::camera::hand_projection(70.0, 1280.0, 800.0, 512.0);
         for _ in 0..20 {

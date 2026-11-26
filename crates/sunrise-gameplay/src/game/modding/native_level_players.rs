@@ -21,7 +21,7 @@ impl ServerGame<'_> {
 
     /// `ChunkMap.TrackedEntity.seenBy`: the players of the level in place whose tracker holds
     /// the entity, other than the entity itself.
-    pub(in crate::game) fn entity_trackers(&self, entity: EntityRef) -> Option<Vec<PlayerRef>> {
+    pub fn entity_trackers(&self, entity: EntityRef) -> Option<Vec<PlayerRef>> {
         let target = self.native_entity_target(entity)?;
         if self.target_level(target).key() != self.common.dim.key() {
             return None;

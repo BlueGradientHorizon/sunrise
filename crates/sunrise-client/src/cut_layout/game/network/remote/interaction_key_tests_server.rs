@@ -52,7 +52,7 @@ fn interaction_key_literal_matrix_preserves_actions_and_swing_independently() {
                     game.world.set(0, 63, 0, stone).unwrap();
                     game.world.set(0, 64, 0, lever).unwrap();
                     game.set_test_forced_hit(Some(hit()));
-                    let before = game.side.remote.as_ref().unwrap().sequence;
+                    let before = game.client.remote.as_ref().unwrap().sequence;
                     let before_swings = game.swings_started;
                     if key == InteractionKey::Attack && attempt == InteractionAttempt::Press {
                         game.remote_start_attack();
@@ -71,7 +71,7 @@ fn interaction_key_literal_matrix_preserves_actions_and_swing_independently() {
                         game.remote_use(attempt);
                     }
                     assert_eq!(
-                        game.side.remote.as_ref().unwrap().sequence - before,
+                        game.client.remote.as_ref().unwrap().sequence - before,
                         actions + i32::from(hand == Hand::Off),
                         "{key:?} {hand:?} {attempt:?} cancel={cancel} swing={swing}"
                     );
@@ -120,7 +120,7 @@ fn no_interaction_listener_attack_mining_offhand_and_pick() {
                 game.world.set(0, 63, 0, stone).unwrap();
                 game.world.set(0, 64, 0, stone).unwrap();
                 game.set_test_forced_hit(Some(hit()));
-                let sequence = game.side.remote.as_ref().unwrap().sequence;
+                let sequence = game.client.remote.as_ref().unwrap().sequence;
                 let swings = game.swings_started;
                 match path {
                     0 => {
@@ -138,7 +138,7 @@ fn no_interaction_listener_attack_mining_offhand_and_pick() {
                     }
                 }
                 assert_eq!(
-                    game.side.remote.as_ref().unwrap().sequence - sequence,
+                    game.client.remote.as_ref().unwrap().sequence - sequence,
                     if path == 3 {
                         0
                     } else if path == 2 {
@@ -154,7 +154,7 @@ fn no_interaction_listener_attack_mining_offhand_and_pick() {
                     "path {path}"
                 );
                 assert_eq!(
-                    game.side.remote.as_ref().unwrap().interaction_swing,
+                    game.client.remote.as_ref().unwrap().interaction_swing,
                     [true, true]
                 );
             })
@@ -182,12 +182,12 @@ fn no_listener_preserves_natural_swing_and_unsuccessful_use_stays_quiet() {
             game.world.set(0, 63, 0, stone).unwrap();
             game.world.set(0, 64, 0, lever).unwrap();
             game.set_test_forced_hit(Some(hit()));
-            let sequence = game.side.remote.as_ref().unwrap().sequence;
+            let sequence = game.client.remote.as_ref().unwrap().sequence;
             game.remote_use(InteractionAttempt::Press);
-            assert_eq!(game.side.remote.as_ref().unwrap().sequence - sequence, 1);
+            assert_eq!(game.client.remote.as_ref().unwrap().sequence - sequence, 1);
             assert_eq!(game.swings_started, 1);
             assert_eq!(
-                game.side.remote.as_ref().unwrap().interaction_swing,
+                game.client.remote.as_ref().unwrap().interaction_swing,
                 [true, true]
             );
         })
@@ -285,13 +285,13 @@ fn silent_policy_does_not_leak_into_next_ordinary_use() {
             game.remote_use(InteractionAttempt::Press);
             assert_eq!(game.swings_started, 0);
             assert_eq!(
-                game.side.remote.as_ref().unwrap().interaction_swing,
+                game.client.remote.as_ref().unwrap().interaction_swing,
                 [true, true]
             );
             game.remote_use(InteractionAttempt::Press);
             assert_eq!(game.swings_started, 1);
             assert_eq!(
-                game.side.remote.as_ref().unwrap().interaction_swing,
+                game.client.remote.as_ref().unwrap().interaction_swing,
                 [true, true]
             );
         })

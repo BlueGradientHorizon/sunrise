@@ -57,7 +57,7 @@ impl crate::game::ClientGame<'_> {
         self.set_screen(Screen::Social);
         self.capture(false);
     }
-    pub(in crate::game::client_side) fn close_social(&mut self) {
+    pub fn close_social(&mut self) {
         if self.client.social.from_pause {
             self.set_screen(Screen::Paused);
         } else {

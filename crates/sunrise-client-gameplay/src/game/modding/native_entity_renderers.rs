@@ -128,7 +128,7 @@ impl EntityRendererTable {
     /// whether an id is any other entity type; and the ids of the registrations for no entity
     /// type, which it leaves out. A registration for a known type no route reads yet is kept
     /// silently: the type keeps its own drawing.
-    pub(in crate::game) fn resolve(
+    pub fn resolve(
         registered: &BTreeMap<String, Arc<dyn EntityRenderer>>,
         thrown: &[ThrownType],
         mobs: &HashMap<String, Arc<MobType>>,
@@ -172,7 +172,7 @@ impl EntityRendererTable {
     }
 
     /// The renderer of the thrown type `t`, when a mod registered one.
-    pub(in crate::game) fn thrown(
+    pub fn thrown(
         &self,
         t: &ThrownType,
     ) -> Option<&Arc<Resolved<dyn EntityRenderer>>> {
@@ -185,7 +185,7 @@ impl EntityRendererTable {
     }
 
     /// The renderer of primed TNT, when a mod registered one for `minecraft:tnt`.
-    pub(in crate::game) fn tnt(&self) -> Option<&Arc<Resolved<dyn EntityRenderer>>> {
+    pub fn tnt(&self) -> Option<&Arc<Resolved<dyn EntityRenderer>>> {
         self.tnt.as_ref()
     }
 
@@ -200,7 +200,7 @@ impl EntityRendererTable {
     }
 
     /// The renderer of the general type in catalog slot `slot`, when a mod registered one.
-    pub(in crate::game) fn general(
+    pub fn general(
         &self,
         slot: usize,
     ) -> Option<&Arc<Resolved<dyn EntityRenderer>>> {
@@ -208,7 +208,7 @@ impl EntityRendererTable {
     }
 
     /// The general types of `catalog` no mod registered a renderer for: their rows draw nothing.
-    pub(in crate::game) fn unrendered_general<'c>(
+    pub fn unrendered_general<'c>(
         &self,
         catalog: &'c GeneralTypeCatalog,
     ) -> Vec<&'c str> {
@@ -303,7 +303,7 @@ impl crate::game::ClientGame<'_> {
     /// Resolves the registered renderers against the entity types of the resources now loaded, then
     /// asks for the living renderers' layers: at the first load and on every reload after it. A
     /// registration for no entity type is logged with its id.
-    pub(in crate::game) fn resolve_entity_renderers(&self) {
+    pub fn resolve_entity_renderers(&self) {
         let registered = REGISTERED.get().unwrap_or(&NO_RENDERERS);
         let rows = super::entity_type_rows::entity_type_rows(&self.common.options.resources);
         let catalog = general_type_catalog();

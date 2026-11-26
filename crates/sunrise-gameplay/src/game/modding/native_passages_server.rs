@@ -10,7 +10,7 @@ use sunrise_protocol::passage_sync::Message;
 impl crate::game::ServerGame<'_> {
     /// `LevelRef::register_passage`: checks `passage`, numbers it and keeps it under its
     /// chunk; the clients holding that chunk hear of it in `flush_passages`.
-    pub(in crate::game) fn level_register_passage(
+    pub fn level_register_passage(
         &mut self,
         level: LevelRef,
         passage: Passage,
@@ -52,7 +52,7 @@ impl crate::game::ServerGame<'_> {
     /// `LevelRef::remove_passage`: true when `id` was one of the level's passages. The
     /// clients holding its chunk hear it is gone in `flush_passages`, unless they were never
     /// told of it.
-    pub(in crate::game) fn level_remove_passage(&mut self, level: LevelRef, id: PassageId) -> bool {
+    pub fn level_remove_passage(&mut self, level: LevelRef, id: PassageId) -> bool {
         if self.native_level_world_result(level).is_err() {
             return false;
         }
@@ -82,7 +82,7 @@ impl crate::game::ServerGame<'_> {
     /// records the chunks it sends (`ChunkWatchLog::record_for_passages`), a new hub after
     /// the LAN reopens too, so a client that gets the chunk later hears of it with the
     /// chunk. Kept for the next call while the hub is lent out.
-    pub(in crate::game) fn flush_passages(&mut self) {
+    pub fn flush_passages(&mut self) {
         let Some(host) = self.server.lan.as_mut() else {
             return;
         };

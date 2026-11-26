@@ -158,7 +158,7 @@ pub(crate) fn run_a_cloud_in_water_resets_its_fall_distance_and_a_dry_one_keeps_
         let admitted_uuid = [2359, 1, 0, 1];
         game.persist.uuids.insert(admitted_id, admitted_uuid);
         game.breath_clouds.push(make_dragon_cloud(admitted_id));
-        game.side.ticked_entities_through = admitted_id;
+        game.server.ticked_entities_through = admitted_id;
 
         let late_id = game.take_entity_id();
         let late_uuid = [2359, 1, 0, 2];

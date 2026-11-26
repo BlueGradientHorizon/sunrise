@@ -5,7 +5,7 @@ use sunrise_gameplay_common::game::native_collision_exclusions::refused;
 impl crate::game::ClientGame<'_> {
     /// For a client mod: the local player's collision exclusions, in place of the last ones.
     /// Refused with no player of its own, and for boxes the set refuses; the set there was stays.
-    pub(in crate::game) fn set_collision_exclusions(
+    pub fn set_collision_exclusions(
         &mut self,
         boxes: &[[f64; 6]],
     ) -> Result<(), CollisionExclusionsError> {

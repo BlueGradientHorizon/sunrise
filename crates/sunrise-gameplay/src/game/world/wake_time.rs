@@ -49,7 +49,7 @@ impl crate::game::ServerGame<'_> {
 
     /// The level's clock, its time now and where sleeping moves it, after the mods; None when a
     /// mod canceled the move, or when no time fits (the clock is at the end of its range).
-    pub(in crate::game) fn sleep_finished_move(&mut self) -> Option<(String, i64, i64)> {
+    pub fn sleep_finished_move(&mut self) -> Option<(String, i64, i64)> {
         let clock = self.common.level_clock_name(self.common.dim);
         let current = self.common.command_clock_time(&clock);
         let morning = vanilla_morning(current);

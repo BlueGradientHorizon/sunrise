@@ -23,7 +23,7 @@ impl ServerGame<'_> {
     }
     /// The egg item at the parent (`Sniffer.spawnChildFromBreeding`; the
     /// brain already played the plop and dropped the experience).
-    pub(in crate::game) fn lay_sniffer_egg(&mut self, parent: &Mob) {
+    pub fn lay_sniffer_egg(&mut self, parent: &Mob) {
         let at = [parent.position.x, parent.position.y, parent.position.z];
         // new ItemEntity(level, x, y, z, stack): the little push is the item's
         // own random's, not the level's.
@@ -31,7 +31,7 @@ impl ServerGame<'_> {
     }
     /// The sniffer's server-side digging effects: `Sniffer.onDiggingStart`
     /// entity event 63 and periodic `minecraft:entity_action` vibrations.
-    pub(in crate::game) fn tick_sniffer_server(&mut self) {
+    pub fn tick_sniffer_server(&mut self) {
         assert!(
             self.is_logical_server(),
             "tick_sniffer_server called on Client role"

@@ -113,7 +113,7 @@ impl crate::game::ClientGame<'_> {
     }
     /// `MultiPlayerGameMode.handleCreativeModeItemAdd` for inventory slot `i` (0 to 35) or the
     /// off hand (36): the stack goes out now and counts as synced. Nothing without a server.
-    pub(in crate::game) fn remote_creative_slot_add(&mut self, i: usize) {
+    pub fn remote_creative_slot_add(&mut self, i: usize) {
         let stack = if i == 36 {
             self.common.offhand.clone()
         } else {
@@ -130,7 +130,7 @@ impl crate::game::ClientGame<'_> {
 
     /// A headless command oracle has a real connection but no movement tick.
     /// Acknowledge loaded terrain without predicting or sending movement.
-    pub(in crate::game) fn poll_stationary_client(&mut self) -> Result<()> {
+    pub fn poll_stationary_client(&mut self) -> Result<()> {
         self.poll_remote()?;
         let loaded = self.common.player.as_ref().is_some_and(|p| {
             self.client.streaming.is_lit(

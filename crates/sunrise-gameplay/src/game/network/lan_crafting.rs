@@ -146,7 +146,7 @@ fn place_back(menu: &mut Menu, items: &Items, stacks: impl IntoIterator<Item = I
 
 impl crate::game::ServerGame<'_> {
     /// Runs `op` on the guest's menu with their inventory copied in and back.
-    pub(in crate::game) fn guest_menu_op<R>(
+    pub fn guest_menu_op<R>(
         &mut self,
         gi: usize,
         menu: &mut Menu,
@@ -1392,7 +1392,7 @@ impl crate::game::ServerGame<'_> {
         self.menu_transfer_answer(player, &menu_id, pos, recipe, max, dry_run)
     }
 
-    pub(in crate::game::server_side) fn guest_recipe_transfer(&mut self, conn: u32, data: &[u8]) {
+    pub fn guest_recipe_transfer(&mut self, conn: u32, data: &[u8]) {
         use sunrise_core::vanilla_bytes::Writer;
         let Some(host) = self.server.lan.as_ref() else {
             return;
@@ -1440,7 +1440,7 @@ impl crate::game::ServerGame<'_> {
     /// written back: no slot, block entity or `container_changed`, and no
     /// packet but the reply. Each guest can burst ten checks, then gains one
     /// check per server tick (twenty per second at 20 TPS); more go unanswered.
-    pub(in crate::game::server_side) fn guest_recipe_check(&mut self, conn: u32, data: &[u8]) {
+    pub fn guest_recipe_check(&mut self, conn: u32, data: &[u8]) {
         use sunrise_protocol::buf::Reader;
         let Some(host) = self.server.lan.as_mut() else {
             return;
@@ -1505,7 +1505,7 @@ impl crate::game::ServerGame<'_> {
     /// grid, a crafting table's, or a mod crafting menu's over its block
     /// entity with its recipe sources. None when that window is none of them
     /// (the window must be the one the guest has open, as for a transfer).
-    fn lan_check_recipe(&mut self, gi: usize, container: i32, id: &str) -> Option<TransferCheck> {
+    pub fn lan_check_recipe(&mut self, gi: usize, container: i32, id: &str) -> Option<TransferCheck> {
         let conn = self.server.lan.as_ref()?.hub.guests[gi].conn;
         let menu = if let Some((pos, t)) = self.lan_mod_crafting_window(gi, container) {
             let Some(BlockEntity::Mod(m)) = self.common.world.block_entities.get(&pos) else {
@@ -1556,7 +1556,7 @@ impl crate::game::ServerGame<'_> {
         Some(menu.check_transfer(&env, id))
     }
 
-    fn lan_apply_recipe<R>(
+    pub fn lan_apply_recipe<R>(
         &mut self,
         gi: usize,
         container: i32,
@@ -1606,7 +1606,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// The guest opened a crafting table (`CraftingTableBlock.getMenuProvider`).
-    pub(in crate::game) fn lan_open_crafting(&mut self, conn: u32, pos: [i32; 3]) {
+    pub fn lan_open_crafting(&mut self, conn: u32, pos: [i32; 3]) {
         if self.guest_may_open(conn, "minecraft:crafting", Some(pos)) != Some(true) {
             return;
         }
@@ -1847,7 +1847,7 @@ impl crate::game::ServerGame<'_> {
     /// The containers recipe placement into guest `gi`'s mod crafting menu
     /// `t` at `pos` may also take from (`native_recipe_sources`): each block
     /// and its slots, chest-like or a mod's container, none twice, not `pos`.
-    pub(in crate::game) fn lan_recipe_sources(
+    pub fn lan_recipe_sources(
         &mut self,
         gi: usize,
         t: &ModMenuType,
@@ -1898,7 +1898,7 @@ impl crate::game::ServerGame<'_> {
     /// the containers behind them again (`native_menu_links`), before the
     /// hub sends the tick's slot changes, so a tab the player picked or a
     /// chest placed or broken shows in the same tick.
-    pub(in crate::game::server_side) fn lan_menu_links_tick(&mut self) {
+    pub fn lan_menu_links_tick(&mut self) {
         if !mod_api::__private::listened(mod_api::HookId::MenuLinks) {
             return;
         }
@@ -2019,7 +2019,7 @@ impl crate::game::ServerGame<'_> {
     /// result each is shown follows its block entity's grid, which another
     /// player, a hopper or the mod may have changed, made again only when
     /// the grid changed.
-    pub(in crate::game) fn lan_mod_crafting_tick(&mut self) {
+    pub fn lan_mod_crafting_tick(&mut self) {
         let Some(count) = self.server.lan.as_ref().map(|host| host.hub.guests.len()) else {
             return;
         };
@@ -2136,7 +2136,7 @@ impl crate::game::ServerGame<'_> {
         Some(menu.slot_count() - 36)
     }
 
-    pub(in crate::game) fn lan_crafting_closed(&mut self, conn: u32, window: Option<i32>) -> bool {
+    pub fn lan_crafting_closed(&mut self, conn: u32, window: Option<i32>) -> bool {
         let closed = self.lan_crafting_removed(conn, window, MenuRemoval::Live);
         if closed && window != Some(0) {
             self.player_menu_closing(conn);

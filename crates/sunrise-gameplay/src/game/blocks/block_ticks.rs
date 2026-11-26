@@ -8,7 +8,7 @@ impl crate::game::ServerGame<'_> {
     /// The length the block log had after the changed blocks went out
     /// (`ServerChunkCache.tick`'s broadcast), before the block events and the
     /// block entities ran.
-    pub(in crate::game) fn tick_blocks(&mut self) -> Result<Option<usize>> {
+    pub fn tick_blocks(&mut self) -> Result<Option<usize>> {
         let mut scratch = std::mem::take(&mut self.server.tick_scratch);
         let result = self.tick_blocks_with_scratch(&mut scratch);
         self.server.tick_scratch = scratch;
@@ -303,7 +303,7 @@ impl crate::game::ServerGame<'_> {
     /// blocks from one run of a world to the next (#15164). Chunk position
     /// order is the same every run; vanilla's exact order is its fastutil
     /// table's slot order, which follows that table's whole history.
-    pub(in crate::game) fn random_tick_chunks(&self, out: &mut Vec<(i32, i32)>) {
+    pub fn random_tick_chunks(&self, out: &mut Vec<(i32, i32)>) {
         let levels = self.server.tickets.0.levels();
         let bounds = levels.random_tick_bounds();
         out.clear();
@@ -318,7 +318,7 @@ impl crate::game::ServerGame<'_> {
         out.sort_unstable();
     }
     /// Track which chunks are ticking (Ticks needs chunk load/unload).
-    pub(in crate::game) fn sync_tick_chunks(&mut self) {
+    pub fn sync_tick_chunks(&mut self) {
         if !self.server.tick_chunks.synchronize(&self.common.world.chunks) {
             return;
         }
@@ -345,7 +345,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// `ServerLevel.tick`: moving block entities push after entity travel.
-    pub(in crate::game) fn tick_moving_pistons(&mut self) -> Result<()> {
+    pub fn tick_moving_pistons(&mut self) -> Result<()> {
         self.with_level(|b, level, ticks| b.tick_block_entities(level, ticks));
         let pushes = std::mem::take(&mut self.common.block_ticks.piston_pushes);
         self.push_piston_entities(pushes);
@@ -357,7 +357,7 @@ impl crate::game::ServerGame<'_> {
     /// `ServerLevel.tick`'s scheduled block then fluid ticks, one at a time:
     /// the side effects of each (a shrieker summoning a warden, drops, game
     /// events) happen before the next tick runs, as they do inline in vanilla.
-    pub(in crate::game) fn tick_scheduled(&mut self) -> Result<()> {
+    pub fn tick_scheduled(&mut self) -> Result<()> {
         for fluids in [false, true] {
             let mut laps = sunrise_level::spans::laps();
             let name = if fluids { "tb_fluids" } else { "tb_scheduled" };

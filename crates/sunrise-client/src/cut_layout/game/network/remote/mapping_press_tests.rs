@@ -74,7 +74,7 @@ fn holding_use_draws_a_bow_once_and_letting_go_releases_it() {
         game.inventory[game.selected] = Some(ItemStack::new("minecraft:bow", 1));
         let use_mapping = game.vanilla_key_mapping("key.use").unwrap();
         game.inventory[9] = Some(ItemStack::new("minecraft:arrow", 64));
-        let sequence = game.side.remote.as_ref().unwrap().sequence;
+        let sequence = game.client.remote.as_ref().unwrap().sequence;
         assert_eq!(use_mapping.set_down(game, true), Ok(()));
         assert!(game.mapped_key_down("key.use"));
         assert_eq!(
@@ -84,7 +84,7 @@ fn holding_use_draws_a_bow_once_and_letting_go_releases_it() {
         );
         game.remote_handle_input();
         assert_eq!(sent(packets), ["minecraft:use_item"]);
-        assert_eq!(game.side.remote.as_ref().unwrap().sequence - sequence, 1);
+        assert_eq!(game.client.remote.as_ref().unwrap().sequence - sequence, 1);
         assert!(game.using.is_some());
         assert_eq!(*triggered.lock().unwrap(), [Hand::Main]);
         for _ in 0..5 {
@@ -114,7 +114,7 @@ fn clicking_attack_on_a_block_starts_the_break_and_punches() {
     with_pressing_game(|game, packets, triggered| {
         let attack_mapping = game.vanilla_key_mapping("key.attack").unwrap();
         stone_under_the_crosshair(game);
-        let sequence = game.side.remote.as_ref().unwrap().sequence;
+        let sequence = game.client.remote.as_ref().unwrap().sequence;
         assert_eq!(attack_mapping.click(game), Ok(()));
         game.remote_handle_input();
         assert_eq!(
@@ -125,10 +125,10 @@ fn clicking_attack_on_a_block_starts_the_break_and_punches() {
                 "minecraft:player_action"
             ]
         );
-        assert_eq!(game.side.remote.as_ref().unwrap().sequence - sequence, 1);
+        assert_eq!(game.client.remote.as_ref().unwrap().sequence - sequence, 1);
         assert_eq!(*triggered.lock().unwrap(), [Hand::Main]);
 
-        let sequence = game.side.remote.as_ref().unwrap().sequence;
+        let sequence = game.client.remote.as_ref().unwrap().sequence;
         assert_eq!(attack_mapping.set_down(game, true), Ok(()));
         assert_eq!(attack_mapping.click(game), Ok(()));
         game.remote_handle_input();
@@ -141,7 +141,7 @@ fn clicking_attack_on_a_block_starts_the_break_and_punches() {
                 "minecraft:punch"
             ]
         );
-        assert_eq!(game.side.remote.as_ref().unwrap().sequence - sequence, 1);
+        assert_eq!(game.client.remote.as_ref().unwrap().sequence - sequence, 1);
         game.remote_handle_input();
         assert_eq!(sent(packets), ["minecraft:punch"], "the held key digs on");
         assert_eq!(attack_mapping.set_down(game, false), Ok(()));
@@ -180,7 +180,7 @@ fn a_screen_drops_the_clicks_and_holds_nothing() {
 fn the_host_presses_by_name_and_refuses_the_others() {
     with_pressing_game(|game, packets, _| {
         let hotbar = ClientInputClientHost::vanilla_key_mapping(game, "key.hotbar.3").unwrap();
-        game.side
+        game.client
             .settings
             .keys
             .set("key.hotbar.3", "key.keyboard.4");
@@ -214,9 +214,9 @@ fn the_host_presses_by_name_and_refuses_the_others() {
             assert_eq!(mapping.is_down(game), Ok(false));
             assert_eq!(mapping.click(game), Ok(()));
             if key == "key.chat" {
-                assert_eq!(game.side.screen, Screen::Playing);
+                assert_eq!(game.client.screen, Screen::Playing);
                 game.remote_handle_input();
-                assert_eq!(game.side.screen, Screen::Chat);
+                assert_eq!(game.client.screen, Screen::Chat);
                 game.set_screen(Screen::Playing);
             }
         }
@@ -229,7 +229,7 @@ fn the_host_presses_by_name_and_refuses_the_others() {
         game.test_show_title_screen();
         assert!(game.mod_mappings_screen_open());
         let hotbar_slot = game.vanilla_mapping_slot(hotbar).unwrap();
-        let before_clicks = game.side.vanilla_mappings.pending_clicks(hotbar_slot);
+        let before_clicks = game.client.vanilla_mappings.pending_clicks(hotbar_slot);
         {
             assert_eq!(forward.set_down(game, true), Ok(()));
             assert_eq!(forward.is_down(game), Ok(true));
@@ -238,10 +238,10 @@ fn the_host_presses_by_name_and_refuses_the_others() {
             assert_eq!(hotbar.click(game), Ok(()));
         }
         assert_eq!(
-            game.side.vanilla_mappings.pending_clicks(hotbar_slot),
+            game.client.vanilla_mappings.pending_clicks(hotbar_slot),
             before_clicks + 1
         );
-        assert!(game.side.vanilla_mappings.consume_click(hotbar_slot));
+        assert!(game.client.vanilla_mappings.consume_click(hotbar_slot));
     });
 }
 

@@ -13,11 +13,11 @@ mod tests {
     #[ignore = "daily"]
     fn a_server_has_time_until_its_tick_deadline_passes() {
         with_game(|game| {
-            game.side.server_tick_deadline = None;
+            game.server.server_tick_deadline = None;
             assert!(game.server_has_time());
-            game.side.server_tick_deadline = Some(Instant::now() + Duration::from_secs(60));
+            game.server.server_tick_deadline = Some(Instant::now() + Duration::from_secs(60));
             assert!(game.server_has_time());
-            game.side.server_tick_deadline = Some(Instant::now() - Duration::from_millis(1));
+            game.server.server_tick_deadline = Some(Instant::now() - Duration::from_millis(1));
             assert!(!game.server_has_time());
         });
     }
@@ -68,7 +68,7 @@ mod tests {
                     (Instant::now() + Duration::from_secs(60), true),
                     (Instant::now() - Duration::from_millis(1), false),
                 ] {
-                    game.side.server_tick_deadline = Some(deadline);
+                    game.server.server_tick_deadline = Some(deadline);
                     game.native_server_tick(
                         &context,
                         ServerTickPhase::ServerTickStart {

@@ -225,7 +225,7 @@ impl crate::game::ServerGame<'_> {
         self.integrated_tick_loop(&flags)
     }
 
-    pub(in crate::game::server_side) fn integrated_tick_loop(
+    pub fn integrated_tick_loop(
         &mut self,
         flags: &Flags,
     ) -> Result<()> {
@@ -689,7 +689,7 @@ impl crate::game::ServerGame<'_> {
     /// `IntegratedServer.publishServer`: listen on `settings.port` (0 picks
     /// one) and announce the world. The socket is bound at once so a busy
     /// port fails here; the hub starts listening once it is at hand.
-    pub(in crate::game) fn publish(
+    pub fn publish(
         &mut self,
         settings: LanSettings,
     ) -> std::result::Result<u16, String> {
@@ -714,7 +714,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// `IntegratedServer.unpublishServer`: stop listening and send every
     /// player but the owner away. False when it was not published.
-    pub(in crate::game) fn unpublish(&mut self) -> bool {
+    pub fn unpublish(&mut self) -> bool {
         let Some(s) = self.server.serving.as_mut() else {
             return false;
         };

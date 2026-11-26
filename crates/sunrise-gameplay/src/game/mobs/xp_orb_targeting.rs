@@ -13,7 +13,7 @@ impl ServerGame<'_> {
     /// The point orb `i` homes on this tick (`ExperienceOrb.followNearbyPlayer`):
     /// the nearest of `followed` within 8 blocks, unless the mods choose
     /// another player or none.
-    pub(in crate::game) fn orb_target(
+    pub fn orb_target(
         &mut self,
         i: usize,
         followed: &[OrbCandidate],

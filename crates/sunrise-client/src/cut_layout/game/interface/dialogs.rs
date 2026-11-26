@@ -24,7 +24,7 @@ mod warning_tests {
                     // The same client connection backs singleplayer, even after publishing to LAN.
                     for port in [0, 25565] {
                         let serving = Serving::fixture(port);
-                        game.side.integrated = Some(Integrated::fixture_for(&serving));
+                        game.client.integrated = Some(Integrated::fixture_for(&serving));
                         let (_, _, [disconnect, back]) = game.warning_texts();
                         assert_eq!(disconnect.translation_key(), Some("menu.returnToMenu"));
                         assert_eq!(back.translation_key(), Some("gui.back"));

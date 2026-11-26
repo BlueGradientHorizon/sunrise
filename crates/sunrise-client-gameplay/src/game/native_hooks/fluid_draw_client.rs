@@ -2,7 +2,7 @@ use super::*;
 
 impl crate::game::ClientGame<'_> {
     /// `stack`'s tooltip lines: the game's own, as `fluid_tooltip` listeners left them.
-    pub(in crate::game) fn fluid_tooltip_lines(&self, stack: &FluidStack) -> Vec<(Text, u32)> {
+    pub fn fluid_tooltip_lines(&self, stack: &FluidStack) -> Vec<(Text, u32)> {
         let mut lines =
             sunrise_client::fluid_tooltip::lines(stack, self.options_advanced_tooltips());
         if mod_api::__private::listened(mod_api::HookId::FluidTooltip) {

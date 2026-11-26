@@ -3,7 +3,7 @@ use sunrise_sim::mobs::happy_ghast;
 
 impl ServerGame<'_> {
     /// `HappyGhast.mobInteract`. Returns whether the click was used.
-    pub(in crate::game) fn interact_happy_ghast(&mut self, index: usize, item: &str) -> bool {
+    pub fn interact_happy_ghast(&mut self, index: usize, item: &str) -> bool {
         let m = &self.common.mobs[index];
         if !m.alive() || Some(m.id) == self.common.riding {
             return false;

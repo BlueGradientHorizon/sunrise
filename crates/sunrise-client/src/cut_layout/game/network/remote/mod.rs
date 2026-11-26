@@ -225,7 +225,7 @@ pub(crate) mod tests {
             crate::game::native_entity_refs::tests::with_client_game(|game| {
                 let (client, _server) = sunrise_protocol::connection::Pipe::pair();
                 game.connect_local(client, "avatar-tick-client").unwrap();
-                let remote = game.side.remote.as_mut().unwrap();
+                let remote = game.client.remote.as_mut().unwrap();
                 let kind = remote.player_type.as_ref().unwrap().clone();
                 assert!(
                     !kind.flags.tick_alone,
@@ -401,7 +401,7 @@ pub(crate) mod tests {
             sea_level: 63,
         };
         game.enter_remote_dimension(&spawn, RemoteDimensionEntry::Login, Reason::Other);
-        let remote = game.side.remote.as_mut().unwrap();
+        let remote = game.client.remote.as_mut().unwrap();
         remote.logged_in = true;
         remote.entity_id = 7;
         remote.profile = 42;
@@ -672,7 +672,7 @@ pub(crate) mod tests {
         .unwrap();
         game.init_remote_for_replay().unwrap();
         game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 0.5)).unwrap());
-        let me = game.side.remote.as_ref().unwrap().entity_id;
+        let me = game.client.remote.as_ref().unwrap().entity_id;
         let speed = game.remote_effect_network_id("speed").unwrap();
         let attribute = {
             let p = game.player.as_ref().unwrap();

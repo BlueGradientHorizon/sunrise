@@ -157,7 +157,7 @@ fn a_downward_shulker_box_lid_bounces_only_the_locally_driven_boat() {
                 sunrise_gameplay_common::game::native_hooks::install_block_contact_hooks();
                 with_client_game(|game| {
                     game.init_remote_for_replay().unwrap();
-                    game.side.remote.as_mut().unwrap().first_passenger = true;
+                    game.client.remote.as_mut().unwrap().first_passenger = true;
                     game.riding = Some(71);
                     boats_over_glass(game, &[(71, 4), (72, 7)]);
                     game.boats.update(0, |boat| boat.fall_distance = 5.0);
@@ -196,7 +196,7 @@ fn a_shulker_box_lid_stops_a_driven_boat_at_another_boat() {
         || {
             with_client_game(|game| {
                 game.init_remote_for_replay().unwrap();
-                game.side.remote.as_mut().unwrap().first_passenger = true;
+                game.client.remote.as_mut().unwrap().first_passenger = true;
                 game.riding = Some(71);
                 boats_over_glass(game, &[(71, 4), (72, 6)]);
                 game.boats.update(1, |boat| boat.position.x = 6.125);
@@ -219,7 +219,7 @@ fn a_shulker_box_lid_stops_a_driven_boat_at_another_boat() {
                     CartKind::Rideable,
                     Vec3::new(5.0, 67.0, 4.5),
                 ));
-                let remote = game.side.remote.as_mut().unwrap();
+                let remote = game.client.remote.as_mut().unwrap();
                 remote.passenger_vehicles.insert(
                     71,
                     PassengerSeat {

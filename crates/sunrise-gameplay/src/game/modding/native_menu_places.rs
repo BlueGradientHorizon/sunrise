@@ -61,7 +61,7 @@ impl ServerGame<'_> {
     /// showed never becomes the menu's own storage. In the player's own turn (an item's use
     /// that opened the menu), the record holds the outer player's inventory, so mirroring
     /// and resending wait until after the turn.
-    pub(in crate::game) fn player_back_mod_menu_slots(
+    pub fn player_back_mod_menu_slots(
         &mut self,
         player: mod_api::PlayerRef,
         window: i32,
@@ -192,7 +192,7 @@ impl ServerGame<'_> {
     }
 
     /// The backing of `conn`'s menu: its window, how many slots and the locked hotbar slot.
-    fn menu_places_of(&self, conn: u32) -> Option<(i32, usize, Option<usize>)> {
+    pub fn menu_places_of(&self, conn: u32) -> Option<(i32, usize, Option<usize>)> {
         let backed = self.active_menu_places(conn)?;
         Some((backed.window, backed.places.len(), backed.locked))
     }
@@ -292,7 +292,7 @@ impl ServerGame<'_> {
     /// menu's slots), queues one look at that menu's places for after the write
     /// (`NativeMenuEvent::PlacesChanged`). Any other write, and every write while no menu is
     /// backed, returns at the first checks.
-    pub(in crate::game::server_side) fn notice_menu_place_write(&mut self, place: &ItemPlace) {
+    pub fn notice_menu_place_write(&mut self, place: &ItemPlace) {
         let mut root = place;
         while let ItemPlace::Nested { parent, .. } = root {
             root = &**parent;
@@ -341,7 +341,7 @@ impl ServerGame<'_> {
 
     /// A change notice taken (`NativeMenuEvent::PlacesChanged`): the backed menu's places looked
     /// at again, or forgotten once that menu is no longer open.
-    pub(in crate::game::server_side) fn menu_places_changed(&mut self, uuid: u128, window: i32) {
+    pub fn menu_places_changed(&mut self, uuid: u128, window: i32) {
         let Some(conn) = self.native_conn(uuid) else {
             return;
         };
@@ -383,7 +383,7 @@ impl ServerGame<'_> {
     /// routing run, for a menu no mod backed or a click this backing does not handle. Before any
     /// click on a backed menu a held place's stack must still be the bound one; else the menu
     /// closes and the click does nothing.
-    pub(in crate::game) fn place_menu_click(
+    pub fn place_menu_click(
         &mut self,
         uuid: u128,
         window: i32,

@@ -19,7 +19,7 @@ fn a_boat_pushes_the_player_in_the_level_tick_order() {
         let after = game.remote_pushes(false);
         assert_eq!(game.remote_pushes(true), Vec3::ZERO);
         assert!(after.z > 0.0, "{after:?}");
-        game.side
+        game.client
             .remote
             .as_mut()
             .unwrap()

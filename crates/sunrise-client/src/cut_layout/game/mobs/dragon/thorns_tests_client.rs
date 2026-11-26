@@ -14,7 +14,7 @@ pub(crate) fn check_answer(g: &sunrise_gameplay::game::ServerGame<'_>, slot: usi
     );
     assert_eq!(f::item_stack(&g.mobs[0], f::MAINHAND).unwrap().damage, 0);
     let sounds: Vec<_> = g
-        .side
+        .server
         .pending_sounds
         .iter()
         .filter(|s| s.event == "minecraft:enchant.thorns.hit")
@@ -40,7 +40,7 @@ fn dragon_takes_player_thorns_through_its_body() {
             let mut d = Dragon::new(Vec3::new(0.0, 70.0, 0.0), 0.0, 1);
             d.id = SPECIAL;
             g.dragon.replace(d);
-            g.side.pending_sounds.clear();
+            g.server.pending_sounds.clear();
             if wing {
                 g.dragon_wing_knock_back(Vec3::ZERO, false);
             } else {
@@ -61,7 +61,7 @@ fn dragon_takes_player_thorns_through_its_body() {
                 if wing { 3 } else { 4 }
             );
             assert_eq!(
-                g.side
+                g.server
                     .pending_sounds
                     .iter()
                     .filter(|s| s.event == "minecraft:enchant.thorns.hit")
@@ -95,7 +95,7 @@ fn dragon_takes_player_thorns_through_its_body() {
         d.invulnerable = 0;
         d.last_source = None;
         let before = d.health;
-        g.side.pending_sounds.clear();
+        g.server.pending_sounds.clear();
         let p = g.player.as_mut().unwrap();
         p.health.sync_velocity = false;
         let velocity = Vec3::new(0.25, -0.125, 0.75);
@@ -115,7 +115,7 @@ fn dragon_takes_player_thorns_through_its_body() {
         // Attribution stores the dragon's age, not the world's game time.
         assert_eq!(d.hurt_by_player, Some((FightWho::Host, 0)));
         assert_eq!(
-            g.side
+            g.server
                 .pending_sounds
                 .iter()
                 .filter(|s| s.event == "minecraft:enchant.thorns.hit")
@@ -127,7 +127,7 @@ fn dragon_takes_player_thorns_through_its_body() {
 
 pub(crate) fn pair(g: &mut sunrise_gameplay::game::ServerGame<'_>, slot: usize) -> Damage {
     g.mobs.clear();
-    g.side.pending_sounds.clear();
+    g.server.pending_sounds.clear();
     let kind = g.res.mob_types().get("minecraft:husk").unwrap().clone();
     for (id, x) in [(41, 10.5), (42, 0.5)] {
         let mut m = Mob::new(id, kind.clone(), Vec3::new(x, 64.0, 0.5), 0.0);

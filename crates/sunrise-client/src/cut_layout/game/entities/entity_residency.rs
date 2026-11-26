@@ -243,7 +243,7 @@ mod tests {
                 Some(Dim::Overworld)
             );
             assert_eq!(game.dim, Dim::Nether);
-            game.side.levels.0.clear();
+            game.server.levels.0.clear();
             assert_eq!(game.server_resident_entity(410), EntityLookup::Missing);
             assert!(matches!(
                 game.server_resident_entity(411),

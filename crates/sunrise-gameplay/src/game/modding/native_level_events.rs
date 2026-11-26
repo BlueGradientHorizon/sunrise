@@ -27,7 +27,7 @@ impl ServerGame<'_> {
     /// block with state id `data`). No player is left out, the acting one
     /// included. False for an event that carries a block state (2001, 2014,
     /// 3008) when `data` isn't one.
-    pub(in crate::game) fn level_level_event(
+    pub fn level_level_event(
         &mut self,
         level: LevelRef,
         id: i32,
@@ -50,7 +50,7 @@ impl ServerGame<'_> {
     }
     /// Plays the break effect of `state` at `pos` (`Level.levelEvent(2001, pos,
     /// Block.getId(state))`); the state's id is resolved here, never by the mod.
-    pub(in crate::game) fn level_block_break_effect(
+    pub fn level_block_break_effect(
         &mut self,
         level: LevelRef,
         pos: [i32; 3],
@@ -61,7 +61,7 @@ impl ServerGame<'_> {
     /// Plays level event `id` for every player on the server
     /// (`ServerLevel.globalLevelEvent`), or for the players near `pos` when the
     /// `global_sound_events` rule is off. Refuses what `level_level_event` refuses.
-    pub(in crate::game) fn level_global_level_event(
+    pub fn level_global_level_event(
         &mut self,
         level: LevelRef,
         id: i32,
@@ -86,7 +86,7 @@ impl ServerGame<'_> {
     }
     /// Sends game event `event` (`minecraft:block_change`...) from `at`, as
     /// `Level.gameEvent(event, at, context)`, with validated source and state.
-    pub(in crate::game) fn level_game_event(
+    pub fn level_game_event(
         &mut self,
         level: LevelRef,
         event: &str,
@@ -136,7 +136,7 @@ impl ServerGame<'_> {
     /// `source`. Refused, with nothing exploded, for another level, a stale
     /// `source` or one in another level, once the entity ids are exhausted, and as
     /// `native_explode` refuses.
-    pub(in crate::game) fn level_explode(
+    pub fn level_explode(
         &mut self,
         level: LevelRef,
         source: Option<EntityRef>,

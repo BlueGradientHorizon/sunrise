@@ -125,7 +125,7 @@ impl SeeThroughCollector {
             self.submits.push((dist_sq, order, start..self.verts.len()));
         }
     }
-    pub(in crate::game::client_side) fn flush(&mut self, out: &mut Vec<Vertex>) {
+    pub fn flush(&mut self, out: &mut Vec<Vertex>) {
         if self.submits.is_empty() {
             return;
         }
@@ -328,13 +328,13 @@ impl RemoteTextDisplay {
         self
     }
     /// `Entity.setYRot(float)`: stores raw finite yaw without `% 360.0`; discards non-finite.
-    pub(in crate::game::client_side) fn set_y_rot_raw(&mut self, yaw: f32) {
+    pub fn set_y_rot_raw(&mut self, yaw: f32) {
         if yaw.is_finite() {
             self.rotation[0] = yaw;
         }
     }
     /// `Entity.setXRot(float)`: reduces `% 360.0` before clamping to `[-90, 90]`; discards non-finite.
-    pub(in crate::game::client_side) fn set_x_rot_raw(&mut self, pitch: f32) {
+    pub fn set_x_rot_raw(&mut self, pitch: f32) {
         if pitch.is_finite() {
             self.rotation[1] = (pitch % 360.0).clamp(-90.0, 90.0);
         }
@@ -360,7 +360,7 @@ impl RemoteTextDisplay {
         self.update_culling();
     }
     /// `Entity.snapTo(double, double, double, float, float)`.
-    pub(in crate::game::client_side) fn snap_to(&mut self, pos: glam::DVec3, yaw: f32, pitch: f32) {
+    pub fn snap_to(&mut self, pos: glam::DVec3, yaw: f32, pitch: f32) {
         self.position = pos;
         self.set_y_rot_raw(yaw);
         self.set_x_rot_raw(pitch);
@@ -384,7 +384,7 @@ impl RemoteTextDisplay {
         }
     }
     /// `Entity.getYRot(float)` and `Entity.getXRot(float)`: exact stored value at `partial == 1.0`.
-    pub(in crate::game::client_side) fn rotation_at(&self, partial: f32) -> [f32; 2] {
+    pub fn rotation_at(&self, partial: f32) -> [f32; 2] {
         if partial == 1.0 {
             self.rotation
         } else {
@@ -395,7 +395,7 @@ impl RemoteTextDisplay {
         }
     }
     /// `Display.getInterpolatedBoundingBox(float)`.
-    pub(in crate::game::client_side) fn interpolated_bounding_box(
+    pub fn interpolated_bounding_box(
         &self,
         partial: f32,
     ) -> (glam::DVec3, glam::DVec3) {
@@ -429,14 +429,14 @@ impl RemoteTextDisplay {
         (self.position, self.previous)
     }
     /// `Entity.positionRider` through `setPos`: seats the display without cancelling active interpolation.
-    pub(in crate::game::client_side) fn ride(&mut self, at: glam::DVec3) {
+    pub fn ride(&mut self, at: glam::DVec3) {
         self.set_pos(at);
     }
     pub(in crate::game) fn position(&self) -> glam::DVec3 {
         self.position
     }
     /// `Display.shouldRenderAtSqrDistance`: strict `<`, uninterpolated position, live `view_range`.
-    pub(in crate::game::client_side) fn in_range(
+    pub fn in_range(
         &self,
         camera: glam::DVec3,
         view_scale: f64,
@@ -490,14 +490,14 @@ impl RemoteTextDisplay {
             ((sky << 4) | block) as u8
         }
     }
-    pub(in crate::game::client_side) fn eval_render_state(&self, progress: f32) -> TextDisplayData {
+    pub fn eval_render_state(&self, progress: f32) -> TextDisplayData {
         if self.interpolated {
             self.shown.blend(&self.from, progress)
         } else {
             self.shown.clone()
         }
     }
-    pub(in crate::game::client_side) fn progress(&self, partial: f32) -> f32 {
+    pub fn progress(&self, partial: f32) -> f32 {
         if self.duration <= 0 {
             1.0
         } else {
@@ -506,7 +506,7 @@ impl RemoteTextDisplay {
         }
     }
     /// `Display.calculateInterpolationProgress`: only updates `last_progress` when `duration > 0`.
-    pub(in crate::game::client_side) fn calculate_interpolation_progress(
+    pub fn calculate_interpolation_progress(
         &mut self,
         partial: f32,
     ) -> f32 {
@@ -520,7 +520,7 @@ impl RemoteTextDisplay {
     /// The casters this display adds to the shadow pass: its interpolated
     /// shadow radius and strength (`DisplayRenderer.getShadowRadius` and
     /// `DisplayRenderer.getShadowStrength`), suppressed before first tick or when invisible.
-    pub(in crate::game::client_side) fn shadow(
+    pub fn shadow(
         &self,
         partial: f64,
     ) -> Option<(glam::DVec3, f32, f32)> {
@@ -584,7 +584,7 @@ impl RemoteTextDisplay {
             self.update_culling();
         }
     }
-    pub(in crate::game) fn tick(&mut self) {
+    pub fn tick(&mut self) {
         self.age = self.age.wrapping_add(1);
         self.previous = self.position;
         self.old_rotation = self.rotation;
@@ -645,7 +645,7 @@ impl RemoteTextDisplay {
     /// `AbstractInterpolationHandler.interpolateTo` / `LinearInterpolationHandler.startInterpolating`:
     /// resolves omitted components against the active target (or current pose) before checking
     /// `interp_length == 0`, and leaves an active matching target untouched even when `interp_length < 0`.
-    pub(in crate::game::client_side) fn move_to_opt(
+    pub fn move_to_opt(
         &mut self,
         position: Option<[f64; 3]>,
         rotation: Option<(f32, f32)>,
@@ -669,7 +669,7 @@ impl RemoteTextDisplay {
             self.last_rot = self.rotation;
         }
     }
-    pub(in crate::game) fn move_to(&mut self, position: [f64; 3], rotation: Option<(f32, f32)>) {
+    pub fn move_to(&mut self, position: [f64; 3], rotation: Option<(f32, f32)>) {
         self.move_to_opt(Some(position), rotation);
     }
     /// `ClientPacketListener.handleEntityPositionSync`: checks `isTicking` and distance `> 4096`
@@ -694,7 +694,7 @@ impl RemoteTextDisplay {
     /// resolves relatives against `getClientPositionAndRotation`, checks `> 4096` from it,
     /// and on a non-interpolated jump resolves `oldPosition`/`yRotO`/`xRotO` independently.
     /// Returns `(resolved_position, interpolated)`.
-    pub(in crate::game::client_side) fn apply_teleport_packet(
+    pub fn apply_teleport_packet(
         &mut self,
         position: [f64; 3],
         yaw: f32,
@@ -1025,7 +1025,7 @@ impl ClientGame<'_> {
         }
     }
 
-    pub(in crate::game::client_side) fn tick_text_displays(&mut self, running: bool) {
+    pub fn tick_text_displays(&mut self, running: bool) {
         let mut eligible = Vec::with_capacity(self.client.text_displays.0.len());
         for (&id, display) in &self.client.text_displays.0 {
             if self.display_should_tick(id, display, running) {
@@ -1085,7 +1085,7 @@ impl ClientGame<'_> {
     }
     /// Active render `Camera` yaw and pitch (`DisplayRenderer.extractRenderState`), sharing the
     /// same camera source of truth as `particle_rotation` (`ThirdPersonFront` already baked in).
-    pub(in crate::game::client_side) fn display_camera_angles(&self) -> [f32; 2] {
+    pub fn display_camera_angles(&self) -> [f32; 2] {
         if self.client.studio.flying() {
             return [self.client.studio.freecam.yaw, self.client.studio.freecam.pitch];
         }
@@ -1206,7 +1206,7 @@ impl ClientGame<'_> {
     /// `DisplayRenderer.BlockDisplayRenderer` and `ItemDisplayRenderer`: the
     /// block model or the item under the display's transformation, lit like
     /// any entity and never tinted by a hurt overlay.
-    pub(in crate::game::client_side) fn block_item_display_geometry(
+    pub fn block_item_display_geometry(
         &mut self,
         camera: glam::DVec3,
         partial: f64,
@@ -1365,7 +1365,7 @@ impl ClientGame<'_> {
         self.client.block_display_parts_scratch = slots;
         self.client.translucent_display_collector = translucent;
     }
-    pub(in crate::game::client_side) fn text_display_geometry(
+    pub fn text_display_geometry(
         &mut self,
         camera: glam::DVec3,
         partial: f64,

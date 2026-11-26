@@ -693,7 +693,7 @@ impl BlockEntityDraw {
         );
     }
     /// The vertices drawn in a level-less frame, with those it was made with first.
-    pub(in crate::game) fn into_vertices(self) -> Vec<Vertex> {
+    pub fn into_vertices(self) -> Vec<Vertex> {
         self.into_vertices_with_light(None)
     }
 
@@ -1732,7 +1732,7 @@ impl crate::game::ClientGame<'_> {
     /// Block state `state` as one model: what `native_draw_block` draws, the blockstate file's
     /// parts for its properties at seed 42, each tinted face holding the block's default tint
     /// (no position) in its colour. Resolved once per state in this generation.
-    pub(in crate::game) fn native_block_state_model(
+    pub fn native_block_state_model(
         &self,
         id: BlockStateId,
     ) -> Result<ModelRef, ModelError> {
@@ -1777,7 +1777,7 @@ impl crate::game::ClientGame<'_> {
 
     /// The baked faces a slot draws through the terrain materials: a standalone model's, or a
     /// block state's from `native_block_state_model`.
-    pub(in crate::game) fn model_faces(
+    pub fn model_faces(
         &self,
         slot: u32,
     ) -> Option<&[sunrise_client::models::catalog::BakedFace]> {
@@ -1837,7 +1837,7 @@ impl crate::game::ClientGame<'_> {
     /// `draw.scale([1.0, -1.0, -1.0])` then `draw.translate([0.0, -1.501,
     /// 0.0])` first, as `LivingEntityRenderer` does. False for an unknown
     /// sprite. API @API:model_layers@.
-    pub(in crate::game) fn native_draw_model_part(
+    pub fn native_draw_model_part(
         &self,
         draw: &mut BlockEntityDraw,
         part: &ModelPart,
@@ -1860,7 +1860,7 @@ impl crate::game::ClientGame<'_> {
     /// for a layer neither has. A vanilla layer no mob has (a player's, a
     /// chest's) is read from the resources each call, so slow. API
     /// @API:model_layers@.
-    pub(in crate::game) fn bake_layer(&self, layer: &str) -> Option<ModelPart> {
+    pub fn bake_layer(&self, layer: &str) -> Option<ModelPart> {
         if let Some(definition) = model_layers::registered(layer) {
             return Some(definition.bake_root());
         }

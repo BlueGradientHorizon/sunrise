@@ -35,7 +35,7 @@ impl ServerGame<'_> {
     }
 
     /// The server's unsimulated entities (`other_ticks`) of the types no mod named.
-    pub(in crate::game) fn native_others_tick_family(&mut self, told: Told, born: JoinSeq) {
+    pub fn native_others_tick_family(&mut self, told: Told, born: JoinSeq) {
         if !told.listening {
             return;
         }

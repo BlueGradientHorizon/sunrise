@@ -156,7 +156,7 @@ impl crate::game::ClientGame<'_> {
         Some((m, self.own_profile_name()))
     }
     /// The names the name tags show this frame (the control socket's status).
-    pub(in crate::game) fn shown_name_tags(&self, camera: glam::DVec3) -> Vec<String> {
+    pub fn shown_name_tags(&self, camera: glam::DVec3) -> Vec<String> {
         self.name_tags(camera, 1.0)
             .into_iter()
             .filter_map(|t| t.lines.last().map(|(t, _)| t.plain()))
@@ -606,7 +606,7 @@ impl crate::game::ClientGame<'_> {
     /// `SubmitNodeCollection.submitNameTag`: a discrete name is drawn once,
     /// faded, on its background; any other in full over the world, its faded
     /// copy and background in `see_through`, over everything.
-    pub(in crate::game::client_side) fn name_tag_geometry(
+    pub fn name_tag_geometry(
         &mut self,
         camera: glam::DVec3,
         alpha: f64,

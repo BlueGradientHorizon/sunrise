@@ -335,7 +335,7 @@ pub enum Shape {
     NorthEast,
 }
 impl Shape {
-    pub(in crate::game) fn parse(s: &str) -> Self {
+    pub fn parse(s: &str) -> Self {
         match s {
             "east_west" => Self::EastWest,
             "ascending_east" => Self::AscendingEast,

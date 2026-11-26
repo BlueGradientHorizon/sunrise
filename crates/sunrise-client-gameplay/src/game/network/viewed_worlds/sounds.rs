@@ -39,7 +39,7 @@ pub struct ViewedSound<'a> {
 
 impl<'a> ViewedSound<'a> {
     /// A sound at a position, from fixed-point eighths of a block.
-    pub(super) fn at_position(p: &'a play::Sound) -> Self {
+    pub fn at_position(p: &'a play::Sound) -> Self {
         Self {
             sound: &p.sound,
             source: p.source,
@@ -113,7 +113,7 @@ impl crate::game::ClientGame<'_> {
     /// level, with the volume and pitch the listeners left and the server's seed. None when they
     /// left `play_at` None, or left a position that is not finite, or a volume or pitch that is
     /// not finite and at least 0 (`level_sound_playable`).
-    pub(super) fn ask_viewed_level_sound(
+    pub fn ask_viewed_level_sound(
         &mut self,
         level: i32,
         p: ViewedSound<'_>,

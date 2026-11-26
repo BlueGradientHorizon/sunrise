@@ -32,13 +32,13 @@ fn stale(player: PlayerRef) -> PlayerRef {
 
 /// A fake player: no connection, not in the server's list.
 fn fake(game: &mut sunrise_gameplay::game::ServerGame<'_>) -> PlayerRef {
-    game.side.next_entity = 100;
+    game.server.next_entity = 100;
     let level = game.level(game.dim.id()).unwrap();
     game.fake_player(level, 1234, "machine").unwrap()
 }
 
 fn kept(game: &sunrise_gameplay::game::ServerGame<'_>) -> i32 {
-    game.side
+    game.server
         .lan
         .as_ref()
         .unwrap()
@@ -97,7 +97,7 @@ fn a_block_is_shown_to_one_player() {
     with_guests(|game| {
         let b = game.player(13).unwrap();
         let (tx, rx) = std::sync::mpsc::channel();
-        game.side
+        game.server
             .lan
             .as_mut()
             .unwrap()
@@ -136,7 +136,7 @@ fn each_show_block_refusal_has_its_own_name() {
     with_guests(|game| {
         let b = game.player(13).unwrap();
         let (tx, rx) = std::sync::mpsc::channel();
-        game.side
+        game.server
             .lan
             .as_mut()
             .unwrap()
@@ -207,11 +207,11 @@ fn player_sees_follows_the_trackers_rules() {
         assert!(game.player_hide(b, Some(3)));
         assert_eq!(a.sees(game, b), Ok(false));
         assert_eq!(b.sees(game, a), Ok(true));
-        let guests = &mut game.side.lan.as_mut().unwrap().hub.guests;
+        let guests = &mut game.server.lan.as_mut().unwrap().hub.guests;
         guests.update_connection(12, |g| g.permission = 3);
         assert_eq!(a.sees(game, b), Ok(true));
         assert!(game.player_hide(b, None));
-        let guests = &mut game.side.lan.as_mut().unwrap().hub.guests;
+        let guests = &mut game.server.lan.as_mut().unwrap().hub.guests;
         guests.update_connection(13, |g| g.game_mode = 3);
         assert_eq!(a.sees(game, b), Ok(false), "a spectator");
         assert_eq!(b.sees(game, a), Ok(true));
@@ -264,7 +264,7 @@ fn hide_level_and_nickname_read_back() {
         // A vanish is kept by UUID after the player leaves; a nickname needs them online.
         assert!(a.hide(game, Some(3)));
         assert!(a.set_nickname(game, Some("Cap")));
-        game.side.lan.as_mut().unwrap().hub.guests.clear();
+        game.server.lan.as_mut().unwrap().hub.guests.clear();
         assert_eq!(a.hidden(game), Ok(Some(3)));
         assert_eq!(a.nickname(game), Err(Refusal::Stale));
     });
@@ -278,12 +278,12 @@ fn hide_level_and_nickname_read_back() {
 fn an_unpublished_single_player_world_reads_the_stored_hide_level() {
     with_guests(|game| {
         let owner = game.player(12).unwrap();
-        game.side.serving = Some(sunrise_gameplay::game::server_side::integrated::Serving::fixture(0));
+        game.server.serving = Some(sunrise_gameplay::game::server_side::integrated::Serving::fixture(0));
         assert!(owner.hide(game, Some(2)));
         assert!(owner.set_nickname(game, Some("Cap")));
         assert_eq!(owner.hidden(game), Ok(Some(2)));
         assert_eq!(owner.nickname(game), Ok(Some("Cap")));
-        game.side.serving = Some(sunrise_gameplay::game::server_side::integrated::Serving::fixture(25565));
+        game.server.serving = Some(sunrise_gameplay::game::server_side::integrated::Serving::fixture(25565));
         assert_eq!(owner.hidden(game), Ok(Some(2)));
         assert_eq!(owner.nickname(game), Ok(Some("Cap")));
     });
@@ -297,7 +297,7 @@ fn latency_reads_what_the_keep_alives_measured() {
     with_guests(|game| {
         let (a, b) = (game.player(12).unwrap(), game.player(13).unwrap());
         assert_eq!((a.latency(game), b.latency(game)), (Ok(0), Ok(0)));
-        let guests = &game.side.lan.as_ref().unwrap().hub.guests;
+        let guests = &game.server.lan.as_ref().unwrap().hub.guests;
         for (conn, ms) in [(12, 45), (13, 120)] {
             guests
                 .iter()
@@ -339,7 +339,7 @@ fn player_support_uses_the_footprint_then_the_exact_feet_offset_on_both_sides() 
     }
 
     with_guests(|game| {
-        game.side
+        game.server
             .streaming
             .insert_remote(&mut game.world, Chunk::empty(0, 0));
         setup(game);
@@ -348,7 +348,7 @@ fn player_support_uses_the_footprint_then_the_exact_feet_offset_on_both_sides() 
         assert_eq!(player.supporting_block(game), Ok(None));
         assert_eq!(player.on_block(game), Ok(Some(BlockPos::new(3, 63, 5))));
         assert_eq!(player.entity().on_block(game), Some([3, 63, 5]));
-        game.side
+        game.server
             .lan
             .as_mut()
             .unwrap()
@@ -386,7 +386,7 @@ fn player_support_uses_the_footprint_then_the_exact_feet_offset_on_both_sides() 
             );
             assert_eq!(player.entity().on_block(game), Some([1, block_y, 0]));
         }
-        game.side
+        game.server
             .lan
             .as_mut()
             .unwrap()
@@ -405,7 +405,7 @@ fn player_support_uses_the_footprint_then_the_exact_feet_offset_on_both_sides() 
         let mut body = PlayerMotion::new(game.motion, Vec3::ZERO).unwrap();
         body.entity_id = player.entity().id() as i32;
         game.player = Some(body);
-        game.side
+        game.client
             .streaming
             .insert_remote(&mut game.world, Chunk::empty(0, 0));
         setup(game);

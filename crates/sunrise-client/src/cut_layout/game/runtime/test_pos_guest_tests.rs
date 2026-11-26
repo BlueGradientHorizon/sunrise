@@ -114,15 +114,15 @@ pub(crate) fn game(
     guest.loaded = true;
     // Its view, as the client sent it: straight down.
     guest.pitch = 90.0;
-    game.side.lan.as_mut().unwrap().hub.guests.push(guest);
+    game.server.lan.as_mut().unwrap().hub.guests.push(guest);
     game
 }
 
 /// Runs `command`: whether it succeeded and what the issuer was told.
 fn run(game: &mut sunrise_gameplay::game::ServerGame<'_>, command: &str) -> (bool, Vec<String>) {
-    game.side.chat_capture = Some(Vec::new());
+    game.server.chat_capture = Some(Vec::new());
     let ok = game.run_command(command);
-    let said = game.side.chat_capture.take().unwrap_or_default();
+    let said = game.server.chat_capture.take().unwrap_or_default();
     (
         ok,
         said.iter()
@@ -159,7 +159,7 @@ fn test_pos_as_a_guest_uses_the_guest_s_view() {
         ([p.x, p.y, p.z], game.yaw, game.pitch),
         ([4.5, 101.0, 6.5], 0.0, 90.0)
     );
-    let g = game.side.lan.as_ref().unwrap().hub.guest(2).unwrap();
+    let g = game.server.lan.as_ref().unwrap().hub.guest(2).unwrap();
     assert_eq!((g.position, g.pitch), ([22.5, 101.0, 9.5], 90.0));
     // At the guest, as the host: still the host's view.
     // (execute reports no failure of its own: the issuer is just told nothing.)
@@ -191,7 +191,7 @@ fn test_pos_refuses_other_sources_and_restores_the_views() {
     missing.entity = Some(commands_common::Target::Guest(99));
     assert!(key(game.execute_line("test pos", missing)).contains(requires));
     // The guest looking up: its own view finds no test.
-    game.side
+    game.server
         .lan
         .as_mut()
         .unwrap()
@@ -209,7 +209,7 @@ fn test_pos_refuses_other_sources_and_restores_the_views() {
         ([p.x, p.y, p.z], game.yaw, game.pitch),
         ([4.5, 101.0, 6.5], 0.0, 90.0)
     );
-    let g = game.side.lan.as_ref().unwrap().hub.guest(2).unwrap();
+    let g = game.server.lan.as_ref().unwrap().hub.guest(2).unwrap();
     assert_eq!((g.position, g.pitch), ([22.5, 101.0, 9.5], -90.0));
     assert_eq!(game.dim, Dim::Overworld);
 }

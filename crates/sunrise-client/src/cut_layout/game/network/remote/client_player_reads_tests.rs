@@ -30,7 +30,7 @@ fn client_player_reads_answer_from_the_local_players_copy() {
             sea_level: 63,
         };
         game.enter_remote_dimension(&spawn, RemoteDimensionEntry::Login, Reason::Other);
-        let remote = game.side.remote.as_mut().unwrap();
+        let remote = game.client.remote.as_mut().unwrap();
         remote.logged_in = true;
         remote.entity_id = 7;
         remote.profile = 42;
@@ -81,7 +81,7 @@ fn client_player_reads_answer_from_the_local_players_copy() {
         }))
         .unwrap();
         assert_eq!(game.mode_id(), 0);
-        assert_eq!(game.side.remote.as_ref().unwrap().game_mode, 0);
+        assert_eq!(game.client.remote.as_ref().unwrap().game_mode, 0);
 
         // Once ADD_PLAYER arrives, PlayerRef mode queries follow the entity's resolved PlayerInfo,
         // independent of controller mode (CHANGE_GAME_MODE) and abilities.

@@ -16,9 +16,9 @@ mod tests {
     fn server_resource_uses_the_higher_of_two_selected_world_packs() {
         sunrise_gameplay::game::native_entity_refs::tests::with_game(|game| {
             let scratch = tempfile::tempdir().unwrap();
-            game.side.world_root = scratch.path().to_owned();
+            game.server.world_root = scratch.path().to_owned();
             for (name, bytes) in [("low", "low"), ("high", "high")] {
-                let pack = game.side.world_root.join("datapacks").join(name);
+                let pack = game.server.world_root.join("datapacks").join(name);
                 std::fs::create_dir_all(pack.join("data/demo/value")).unwrap();
                 std::fs::write(
                     pack.join("pack.mcmeta"),

@@ -449,7 +449,7 @@ impl crate::game::ClientGame<'_> {
     /// `ChatComponent.createScreen`: T or / opens the chat with the draft kept
     /// last time, when this method can restore it (a command draft only for
     /// /), else with its prefix.
-    pub(in crate::game::client_side) fn open_chat_method(&mut self, prefix: &str) {
+    pub fn open_chat_method(&mut self, prefix: &str) {
         let command = prefix == "/";
         let draft = self
             .client
@@ -503,7 +503,7 @@ impl crate::game::ClientGame<'_> {
         self.set_screen(Screen::Chat);
         self.capture(false);
     }
-    pub(in crate::game::client_side) fn close_chat(&mut self, reason: ChatExit) {
+    pub fn close_chat(&mut self, reason: ChatExit) {
         // InBedChatScreen.onClose: leaving the screen means getting up; the
         // screen goes once the player has woken (`tick_in_bed_chat`).
         if self.client.chat_ui.in_bed_chat && self.common.sleeping.is_some() {
@@ -650,7 +650,7 @@ impl crate::game::ClientGame<'_> {
         }
     }
     /// A client-side system message written directly to `ui.chat`.
-    pub(in crate::game) fn client_system_message(&mut self, text: Text) {
+    pub fn client_system_message(&mut self, text: Text) {
         assert!(
             !self.is_logical_server(),
             "client_system_message called on server role"
@@ -703,7 +703,7 @@ impl crate::game::ClientGame<'_> {
         self.chat_key_code(key, None)
     }
     /// A key (and the text it typed) while the chat screen is open.
-    pub(in crate::game::client_side) fn chat_key_code(
+    pub fn chat_key_code(
         &mut self,
         key: KeyCode,
         typed_text: Option<&str>,
@@ -824,7 +824,7 @@ impl crate::game::ClientGame<'_> {
         }
     }
     /// Text typed into the chat box (control socket `chat`).
-    pub(in crate::game::client_side) fn chat_type(&mut self, text: &str) {
+    pub fn chat_type(&mut self, text: &str) {
         let m = Measure(&self.client.gui.atlas.font);
         let c = Commands {
             dispatcher: chat_tree(&self.client.remote),
@@ -894,7 +894,7 @@ impl crate::game::ClientGame<'_> {
         let amount = amount.clamp(-1.0, 1.0) * if shift { 1.0 } else { 7.0 };
         self.client.chat_ui.chat.scroll_by(amount as i32, true);
     }
-    pub(in crate::game::client_side) fn chat_click(&mut self) -> bool {
+    pub fn chat_click(&mut self) -> bool {
         let cursor = self.client.cursor;
         let height = self.client.renderer.0.as_ref().map_or(720.0, |r| {
             HudBatch::new(
@@ -1047,7 +1047,7 @@ impl crate::game::ClientGame<'_> {
     }
     /// `Screen.clickUrlAction`: nothing with Web Links off, else the link
     /// opens, after the confirmation unless Prompt on Links is off.
-    pub(in crate::game::client_side) fn click_url(&mut self, url: String) {
+    pub fn click_url(&mut self, url: String) {
         if !self.client.settings.chat_links {
             return;
         }
@@ -1106,7 +1106,7 @@ impl crate::game::ClientGame<'_> {
         self.draw_overlay_mounted_widgets(batch, "link_prompt");
     }
     /// The prompt's answer: the link opens on yes; either way the chat is back.
-    pub(in crate::game::client_side) fn answer_link_prompt(&mut self, yes: bool) {
+    pub fn answer_link_prompt(&mut self, yes: bool) {
         let Some(url) = self.client.link_prompt.take() else {
             return;
         };
@@ -1360,7 +1360,7 @@ impl crate::game::ClientGame<'_> {
     /// first and may cancel it. Then a text hover is split at half the screen's width (at
     /// least 200), an item hover draws its stack's tooltip, and an entity hover its name, type
     /// and UUID while advanced tooltips are on.
-    pub(in crate::game) fn component_hover_effect(
+    pub fn component_hover_effect(
         &mut self,
         batch: &mut HudBatch,
         style: &sunrise_game_data::text::Style,
@@ -1429,7 +1429,7 @@ impl crate::game::ClientGame<'_> {
         split.into_iter().map(|row| (row, u32::MAX)).collect()
     }
     /// F1 hides the HUD (see `hud`); the screenshot key still works.
-    pub(in crate::game) fn toggle_hide_gui(&mut self) {
+    pub fn toggle_hide_gui(&mut self) {
         self.client.chat_ui.toggle_hide_gui();
     }
     /// F2: ScreenShot.grab into `screenshots/` with vanilla's file name.

@@ -30,7 +30,7 @@ impl ServerGame<'_> {
         self.prepare_server_reload(stack)
     }
 
-    pub(in crate::game) fn prepare_pack_condition_reload(
+    pub fn prepare_pack_condition_reload(
         &mut self,
         stack: &sunrise_gameplay_common::game::function_pack_stack::PackStack,
     ) -> Result<

@@ -206,7 +206,7 @@ pub(crate) fn replace_client_definition(
     game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
     max_level: i32,
 ) {
-    let mut registries = (*game.side.remote.as_ref().unwrap().registries).clone();
+    let mut registries = (*game.client.remote.as_ref().unwrap().registries).clone();
     registries.registries.insert(
         "minecraft:enchantment".into(),
         vec![(

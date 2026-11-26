@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 impl crate::game::ServerGame<'_> {
     /// Answers one request of the window, on the server thread.
-    pub(in crate::game::server_side) fn serve_owner_request(&mut self, request: OwnerRequest) {
+    pub fn serve_owner_request(&mut self, request: OwnerRequest) {
         match request {
             OwnerRequest::Publish(settings, reply) => {
                 let _ = reply.send(self.publish(settings));

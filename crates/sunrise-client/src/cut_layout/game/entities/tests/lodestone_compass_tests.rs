@@ -106,7 +106,7 @@ fn drawn_needle(game: &mut sunrise_client_gameplay::game::ClientGame<'_>, frame:
     let near =
         |a: [f32; 2], b: [f32; 2]| (a[0] - b[0]).abs() < 1.0e-5 && (a[1] - b[1]).abs() < 1.0e-5;
     let drawn: Vec<&str> = game
-        .side
+        .client
         .gui
         .atlas
         .sprites

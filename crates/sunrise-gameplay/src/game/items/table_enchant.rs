@@ -24,7 +24,7 @@ impl crate::game::ServerGame<'_> {
     /// (`ItemPart::apply_enchantments`) with the list it chose. `None` when the row gives
     /// nothing. A result whose count isn't the input's is refused for vanilla's. An item with
     /// no such part costs one table lookup.
-    pub(in crate::game) fn table_enchant(
+    pub fn table_enchant(
         &self,
         seed: i32,
         row: usize,

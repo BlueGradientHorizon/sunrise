@@ -127,7 +127,7 @@ fn six_slot_menu_shift_click_uses_hotbar_zero_before_any_container_write() {
 
                     let stack = ItemStack::new("minecraft:stone", 10);
                     let untouched = ItemStack::new("minecraft:oak_log", 3);
-                    game.side
+                    game.server
                         .lan
                         .as_mut()
                         .unwrap()
@@ -141,7 +141,7 @@ fn six_slot_menu_shift_click_uses_hotbar_zero_before_any_container_write() {
                             guest.inventory[6] = Some(untouched.clone());
                         });
                     assert_eq!(game.open_block_menu(12, POS), MenuOpen::Opened);
-                    let window = game.side.lan.as_ref().unwrap().hub.guests[0]
+                    let window = game.server.lan.as_ref().unwrap().hub.guests[0]
                         .menu
                         .as_ref()
                         .unwrap()
@@ -149,7 +149,7 @@ fn six_slot_menu_shift_click_uses_hotbar_zero_before_any_container_write() {
                     game.lan_guest_packet(12, container_click(window, 33, 1));
 
                     assert_eq!(CLICK.get(), Some((6, 33)));
-                    let inventory = &game.side.lan.as_ref().unwrap().hub.guests[0].inventory;
+                    let inventory = &game.server.lan.as_ref().unwrap().hub.guests[0].inventory;
                     assert_eq!(inventory[0], None, "the clicked hotbar slot must empty");
                     assert_eq!(inventory[6].as_ref(), Some(&untouched));
                     let slots = game.world.block_entities.get(&POS).unwrap().slots();

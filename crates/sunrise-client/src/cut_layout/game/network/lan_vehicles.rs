@@ -130,7 +130,7 @@ pub(crate) mod controller_tests {
             },
         )
         .unwrap();
-        let mut host = game.side.lan.take().unwrap();
+        let mut host = game.server.lan.take().unwrap();
         // The second seat's player joined the server first; the driver got
         // into the boat first.
         let (mut passenger, mut driver) = (guest(2, 21), guest(3, 22));
@@ -164,7 +164,7 @@ pub(crate) mod controller_tests {
             pitch: 0.0,
             on_ground: true,
         };
-        game.side.lan = Some(host);
+        game.server.lan = Some(host);
         game.guest_move_vehicle(2, &move_to(start.x + 0.3));
         assert_eq!(
             game.boats[0].position, start,
@@ -295,7 +295,7 @@ pub(crate) mod controller_tests {
 
         let (mut rider, packets) = guest_with_packets(2, 21);
         (rider.vehicle, rider.vehicle_order) = (Some(horse), 1);
-        game.side.lan.as_mut().unwrap().hub.guests.push(rider);
+        game.server.lan.as_mut().unwrap().hub.guests.push(rider);
         (horse, packets)
     }
 
@@ -375,7 +375,7 @@ pub(crate) mod controller_tests {
         // propagateFallToPassengers: the rider's own causeFallDamage of the fall,
         // ceil((10 - 3) * 1) = 7.
         assert_eq!(
-            game.side.lan.as_mut().unwrap().hub.guests[0].health,
+            game.server.lan.as_mut().unwrap().hub.guests[0].health,
             13.0,
             "the rider takes the fall too"
         );

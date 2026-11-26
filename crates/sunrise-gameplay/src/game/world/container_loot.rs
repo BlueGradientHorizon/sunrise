@@ -56,7 +56,7 @@ impl ServerGame<'_> {
     }
     /// Consumes metadata before callbacks, so reentrant access cannot roll twice.
     /// A player context is captured from the admitted actor, also during as_guest.
-    pub(in crate::game) fn unpack_loot(
+    pub fn unpack_loot(
         &mut self,
         target: LootTarget,
         player: Option<mod_api::PlayerRef>,

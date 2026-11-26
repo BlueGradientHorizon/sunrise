@@ -24,7 +24,7 @@ fn the_item_event_names_this_client_on_a_predicted_use() {
     let (observer, mods) = item_observer();
     mod_platform::testing::with_mods(mods, || {
         with_interaction_client_game(|game| {
-            let remote = game.side.remote.as_mut().unwrap();
+            let remote = game.client.remote.as_mut().unwrap();
             remote.profile = 0xC0FF_EE00_0000_0000_0000_0000_0000_002A;
             remote.entity_id = 42;
             game.offhand = Some(ItemStack::new("minecraft:stick", 1));

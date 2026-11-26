@@ -18,7 +18,7 @@ pub(crate) fn scene<'a>(
     g.set_allow_commands(true);
     let folder = scratch.join("data/fall/advancement");
     std::fs::create_dir_all(&folder).unwrap();
-    g.side.world_root = scratch.to_path_buf();
+    g.server.world_root = scratch.to_path_buf();
     for (name, distance) in CRITERIA.into_iter().zip([
         serde_json::Value::Null,
         serde_json::json!({"max": 1.0}),
@@ -80,9 +80,9 @@ pub(crate) fn scene<'a>(
     guest.game_mode = 0;
     guest.on_ground = false;
     guest.load_timeout = 0;
-    g.side.lan.as_mut().unwrap().hub.guests.push(guest);
+    g.server.lan.as_mut().unwrap().hub.guests.push(guest);
     g.sync_tick_chunks();
-    g.side.ticked_entities_through = g.side.next_entity;
+    g.server.ticked_entities_through = g.server.next_entity;
     g
 }
 

@@ -22,7 +22,7 @@ pub(crate) mod tests {
 
         let bow = ItemStack::new("minecraft:bow", 1);
         game.release_bow(&bow, 20);
-        let shot = std::mem::take(&mut game.side.pending_sounds);
+        let shot = std::mem::take(&mut game.server.pending_sounds);
         let at: Vec<_> = shot
             .iter()
             .filter(|s| s.event == "minecraft:entity.arrow.shoot")
@@ -35,7 +35,7 @@ pub(crate) mod tests {
         crossbow.data_mut().charged = vec![ItemStack::new(ARROW, 1)];
         *game.held_mut() = Some(crossbow);
         game.shoot_crossbow();
-        let shot = std::mem::take(&mut game.side.pending_sounds);
+        let shot = std::mem::take(&mut game.server.pending_sounds);
         let at: Vec<_> = shot
             .iter()
             .filter(|s| s.event == "minecraft:item.crossbow.shoot")

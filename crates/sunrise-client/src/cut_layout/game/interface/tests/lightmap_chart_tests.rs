@@ -18,22 +18,22 @@ fn f3_and_4(game: &mut sunrise_client_gameplay::game::ClientGame<'_>) {
 #[ignore = "daily"]
 fn the_lightmap_readback_is_asked_for_only_while_f3_charts_the_lightmap() {
     sunrise_client_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
-        game.side.screen = Screen::Playing;
+        game.client.screen = Screen::Playing;
         assert!(!game.debug_shows_lightmap(), "F3 closed");
         f3_and_4(game);
-        assert!(game.side.debug && game.side.debug_charts.lightmap);
+        assert!(game.client.debug && game.client.debug_charts.lightmap);
         assert!(game.debug_shows_lightmap(), "the chart is on screen");
         // F1 hides the overlay, chart and all, with no screen open.
-        game.side.chat_ui.hide_gui = true;
+        game.client.chat_ui.hide_gui = true;
         assert!(!game.debug_shows_lightmap(), "hidden by F1");
-        game.side.chat_ui.hide_gui = false;
+        game.client.chat_ui.hide_gui = false;
         // F3 alone closes the overlay; the chart's switch stays, and comes back with it.
         game.debug_key(KeyCode::F3, KeyAction::Press);
         game.debug_key(KeyCode::F3, KeyAction::Release);
-        assert!(!game.side.debug);
+        assert!(!game.client.debug);
         assert!(!game.debug_shows_lightmap(), "F3 closed again");
         // An always-on entry keeps the overlay drawn with F3 closed: no charts come with it.
-        game.side
+        game.client
             .debug_entries
             .0
             .set_status("fps", sunrise_client::debug_entries::Status::AlwaysOn);
@@ -47,7 +47,7 @@ fn the_lightmap_readback_is_asked_for_only_while_f3_charts_the_lightmap() {
         );
         // F3+4 again turns the chart off with the overlay left open.
         f3_and_4(game);
-        assert!(!game.side.debug_charts.lightmap);
+        assert!(!game.client.debug_charts.lightmap);
         assert!(!game.debug_shows_lightmap(), "another chart, or none");
     });
 }

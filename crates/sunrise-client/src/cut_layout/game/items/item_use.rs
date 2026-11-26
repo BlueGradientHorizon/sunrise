@@ -492,7 +492,7 @@ pub(crate) mod interact_vibration_tests {
             sunrise_client_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
                 let (client, _server) = sunrise_protocol::connection::Pipe::pair();
                 game.connect_local(client, "CakeClient").unwrap();
-                let remote = game.side.remote.as_mut().unwrap();
+                let remote = game.client.remote.as_mut().unwrap();
                 remote.logged_in = true;
                 remote.entity_id = 41;
                 let mut player = sunrise_sim::motion::PlayerMotion::new(
@@ -590,7 +590,7 @@ pub(crate) mod interact_vibration_tests {
                 let (client, _server) = sunrise_protocol::connection::Pipe::pair();
                 game.connect_local(client, "Eater").unwrap();
                 game.level.player_uuid = None;
-                let remote = game.side.remote.as_mut().unwrap();
+                let remote = game.client.remote.as_mut().unwrap();
                 remote.logged_in = true;
                 remote.profile = REMOTE;
                 remote.entity_id = 55;
@@ -605,7 +605,7 @@ pub(crate) mod interact_vibration_tests {
                 );
                 assert_eq!(calls.load(Ordering::Relaxed), 1);
                 // Keep the body and food state, but no logged-in identity resolves.
-                game.side.remote.as_mut().unwrap().logged_in = false;
+                game.client.remote.as_mut().unwrap().logged_in = false;
                 assert!(!game.can_eat(Some(&food), false));
                 assert_eq!(calls.load(Ordering::Relaxed), 1, "no eater, no question");
             });
@@ -668,15 +668,15 @@ pub(crate) mod interact_vibration_tests {
                 r#"{"enabled":["file/rods"],"disabled":[]}"#,
             )
             .unwrap();
-            game.side.world_root = dir.clone();
+            game.server.world_root = dir.clone();
             let stack = game.reload_datapacks(false, &[]).unwrap();
             let root = game.options.resources.clone();
-            game.side.world_tables.0 = game
+            game.server.world_tables.0 = game
                 .stage_world_tables(&stack, false, &root)
                 .unwrap()
                 .tables;
             let items = &mut std::sync::Arc::make_mut(
-                &mut game.side.world_tables.0.as_mut().unwrap().items,
+                &mut game.server.world_tables.0.as_mut().unwrap().items,
             )
             .items;
             let mut info = items["minecraft:fishing_rod"].clone();
@@ -689,7 +689,7 @@ pub(crate) mod interact_vibration_tests {
             items.insert(info.id.clone(), info);
 
             let items = &mut std::sync::Arc::make_mut(
-                &mut game.side.world_tables.0.as_mut().unwrap().items,
+                &mut game.server.world_tables.0.as_mut().unwrap().items,
             )
             .items;
             let mut stick_info = items["minecraft:stick"].clone();

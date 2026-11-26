@@ -77,7 +77,7 @@ impl crate::game::ClientGame<'_> {
     /// A slot of the inventory (`OFFHAND_SLOT` for the off hand) was set to
     /// a new stack: the hand holding it compares it as another `ItemStack`
     /// (`shows_held_stack`) until the hand shows the held stack again.
-    pub(in crate::game) fn hand_stack_replaced(&mut self, slot: usize) {
+    pub fn hand_stack_replaced(&mut self, slot: usize) {
         if slot == self.common.selected {
             self.client.hands_replaced[0] = true;
         }
@@ -138,7 +138,7 @@ impl crate::game::ClientGame<'_> {
         true
     }
     /// The window tick already picked before key handling; simulation keeps its own ray.
-    pub(in crate::game::client_side) fn pick_tick_targets(&mut self) {
+    pub fn pick_tick_targets(&mut self) {
         if self.common.native_window() {
             return;
         }
@@ -172,7 +172,7 @@ impl crate::game::ClientGame<'_> {
         }
     }
     /// Releases the non-window simulation's tick-local pick caches.
-    pub(in crate::game::client_side) fn release_tick_targets(&mut self) {
+    pub fn release_tick_targets(&mut self) {
         self.client.tick_hit.set(None);
         self.client.tick_mob = None;
     }
@@ -322,7 +322,7 @@ impl crate::game::ClientGame<'_> {
         }
     }
     /// Whether an attack would hit an entity rather than the block behind it.
-    pub(in crate::game) fn entity_targeted(&self) -> bool {
+    pub fn entity_targeted(&self) -> bool {
         if self.uses_stored_pick() {
             return matches!(
                 self.crosshair_target(),
@@ -348,7 +348,7 @@ impl crate::game::ClientGame<'_> {
     /// `LocalPlayer.tick`: the swing (`LivingEntity.baseTick`), the attack
     /// strength and item swap tickers (`Player.tick`), then
     /// `FirstPersonHandsAndItems.tick`.
-    pub(in crate::game) fn tick_hand(&mut self) {
+    pub fn tick_hand(&mut self) {
         // LocalPlayer.applyInput (the camera is the player's own).
         if self.common.player.is_some() {
             self.client.sway.tick_wrapped(self.common.pitch, self.common.yaw);
@@ -450,7 +450,7 @@ impl crate::game::ClientGame<'_> {
 
     /// `Minecraft.crosshairPickEntity` when it is a `LivingEntity`: whether
     /// it is alive (the nearest entity under the crosshair, before any block).
-    pub(in crate::game) fn crosshair_living(&self) -> Option<bool> {
+    pub fn crosshair_living(&self) -> Option<bool> {
         if let Some(hit) = self.cached_entity_pick() {
             let (entity, distance, _) = hit?;
             if !self.common.mobs.iter().any(|mob| mob.id == entity.id())
@@ -512,7 +512,7 @@ impl crate::game::ClientGame<'_> {
         Some(true)
     }
     /// `Hud.canRenderCrosshairForSpectator`: MenuProvider entity or spectator-interactable block.
-    pub(in crate::game::client_side) fn spectator_crosshair(&self) -> bool {
+    pub fn spectator_crosshair(&self) -> bool {
         if let Some(hit) = self.crosshair_entity_hit() {
             return self.common.carts.iter().any(|c| {
                 c.id as i32 == hit.id && matches!(c.kind, CartKind::Chest | CartKind::Hopper)

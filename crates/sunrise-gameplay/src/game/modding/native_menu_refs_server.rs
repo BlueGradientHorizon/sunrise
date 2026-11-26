@@ -202,7 +202,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// The storage menu slot `slot` shows (`Slot.container` and `getContainerSlot`).
-    pub(in crate::game) fn menu_slot_backing(
+    pub fn menu_slot_backing(
         &self,
         menu: MenuRef,
         slot: usize,
@@ -462,7 +462,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// The game's own storage menu slot `slot` shows, for a write: the ender chest's, the
     /// crafting grid's or a mod's chest menu's slot, kept on the guest. None for any other.
-    pub(in crate::game) fn native_menu_storage(
+    pub fn native_menu_storage(
         &mut self,
         menu: MenuRef,
         slot: usize,

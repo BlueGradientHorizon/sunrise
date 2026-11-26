@@ -520,7 +520,7 @@ pub(crate) mod h255_mob_piston_ground_tests {
             game.world.random.set_seed(255);
             game.update_chunk_tickets();
             assert!(crate::game::ticking_chunk(&game.world, 0, 0));
-            assert!(game.side.tickets.0.levels().block_ticking(0, 0));
+            assert!(game.server.tickets.0.levels().block_ticking(0, 0));
             test(&mut game);
         });
     }

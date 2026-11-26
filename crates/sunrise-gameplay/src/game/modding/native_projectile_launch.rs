@@ -6,7 +6,7 @@ use sunrise_items::items::ItemStack;
 use sunrise_sim::projectiles::{Projectile, ProjectileKind};
 
 impl crate::game::ServerGame<'_> {
-    pub(in crate::game) fn spawn_projectile_from_rotation(
+    pub fn spawn_projectile_from_rotation(
         &mut self,
         owner: LivingRef,
         entity_type: &Identifier,

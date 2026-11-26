@@ -38,7 +38,7 @@ fn sidebar_routes_by_live_identity_and_publishes_only_valid_committed_changes() 
     with_guests(|game| {
         let [alpha_rx, beta_rx] = [12, 13].map(|conn| {
             let (tx, rx) = mpsc::channel();
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()

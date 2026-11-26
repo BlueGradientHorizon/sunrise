@@ -72,7 +72,7 @@ pub(crate) fn with_role_game(
     game.world.random.set_seed(169);
     game.update_chunk_tickets();
     assert!(crate::game::ticking_chunk(&game.world, 0, 0));
-    assert!(game.side.tickets.0.levels().block_ticking(0, 0));
+    assert!(game.server.tickets.0.levels().block_ticking(0, 0));
     test(&mut game);
 }
 

@@ -95,7 +95,7 @@ impl CartHit {
     /// The acting player's own hit (`Player.attack`'s `playerAttack`): its
     /// direct entity is the player in place (the host, or the guest whose turn
     /// it is), whose state `anger_piglins` reads.
-    pub(in crate::game) fn player() -> Self {
+    pub fn player() -> Self {
         Self {
             by: Some(Target::Player),
             by_player: true,
@@ -103,7 +103,7 @@ impl CartHit {
     }
     /// A projectile's hit: `getEntity()` is its owner, `getDirectEntity()` the
     /// projectile itself, so it angers no piglin.
-    pub(in crate::game) fn projectile(owner: Option<Who>, guest: Option<u32>) -> Self {
+    pub fn projectile(owner: Option<Who>, guest: Option<u32>) -> Self {
         let by = match owner {
             Some(Who::Player) => Some(guest.map_or(Target::Player, Target::Guest)),
             Some(Who::Mob(id)) => Some(Target::Mob(id)),
@@ -123,7 +123,7 @@ fn horizontal(c: &Minecart) -> f64 {
 impl CartIndex {
     /// The slots of the carts whose box may meet `area`, for the cart in slot
     /// `i` (just moved); false: scan them all.
-    pub(in crate::game) fn carts_near(
+    pub fn carts_near(
         &mut self,
         carts: &[Minecart],
         i: usize,
@@ -154,12 +154,12 @@ impl CartIndex {
         }
         true
     }
-    pub(in crate::game) fn forget_carts(&mut self) {
+    pub fn forget_carts(&mut self) {
         self.carts = None;
     }
     /// The slots of the mobs whose box may meet `area` into `out`;
     /// false means the caller must walk them all.
-    pub(in crate::game) fn mobs_near(
+    pub fn mobs_near(
         &mut self,
         mobs: &JoinList<Mob>,
         area: Aabb,
@@ -180,7 +180,7 @@ impl CartIndex {
             .is_some_and(|(_, grid)| grid.candidates(area, out))
     }
     /// The cart in slot `i` has these bounds now.
-    pub(in crate::game) fn moved(&mut self, i: usize, bounds: Aabb) {
+    pub fn moved(&mut self, i: usize, bounds: Aabb) {
         if let Some((grid, ids)) = &mut self.carts
             && i < ids.len()
         {
@@ -216,7 +216,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// Closing the cart's container open under `key` copies the items back.
-    pub(in crate::game) fn close_cart_container(&mut self, key: (i32, i32, i32)) {
+    pub fn close_cart_container(&mut self, key: (i32, i32, i32)) {
         if key.1 != CART_KEY_Y {
             return;
         }
@@ -231,7 +231,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// `activateMinecart` on an activator rail.
-    pub(in crate::game) fn activate_cart(&mut self, c: &mut Minecart, powered: bool) {
+    pub fn activate_cart(&mut self, c: &mut Minecart, powered: bool) {
         match c.kind {
             CartKind::Rideable if powered => {
                 // Minecart.activateMinecart: ejectPassengers.
@@ -323,7 +323,7 @@ impl crate::game::ServerGame<'_> {
     /// An arrow hit cart `i` (`MinecartTNT.hurtServer`, then
     /// `VehicleEntity.hurtServer`): a burning arrow sets off a TNT minecart.
     /// `owner` is `AbstractArrow.getOwner`, the hit's `DamageSource.getEntity`;
-    pub(in crate::game) fn arrow_hits_cart(
+    pub fn arrow_hits_cart(
         &mut self,
         i: usize,
         damage: f32,
@@ -538,7 +538,7 @@ impl crate::game::ServerGame<'_> {
     /// `interact`: ride, open or fuel the cart under the crosshair, or the one
     /// a guest's interact packet named. A TNT cart has no interact of its own
     /// (`Entity.interact` passes), so nothing here lights it.
-    pub(in crate::game) fn interact_cart(&mut self, target: Option<InteractTarget>) -> bool {
+    pub fn interact_cart(&mut self, target: Option<InteractTarget>) -> bool {
         let Some((i, d)) = (match target {
             Some(t) => sunrise_gameplay_common::game::item_actions::named_entity(&self.common.carts, t.id, |c| c.id)
                 .map(|i| (i, 0.0)),
@@ -901,7 +901,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// `applyNaturalSlowdown` (with `MinecartFurnace`'s push); `factor` is
     /// `getSlowdownFactor`: 0.997 riding, the empty cart's own by behavior.
-    pub(in crate::game) fn natural_slowdown(
+    pub fn natural_slowdown(
         &self,
         c: &mut Minecart,
         ridden: bool,
@@ -1074,7 +1074,7 @@ impl crate::game::ServerGame<'_> {
     /// `OldMinecartBehavior.pushAndPickupEntities` for living entities in cart
     /// `i`'s box (0.2 wider on each side): an eligible mob boards a moving
     /// rideable cart (`startRiding`); others get `Entity.push`.
-    pub(in crate::game) fn pickup_from_cart(&mut self, i: usize, index: &mut CartIndex) {
+    pub fn pickup_from_cart(&mut self, i: usize, index: &mut CartIndex) {
         let v = self.common.carts[i].velocity;
         if self.common.carts[i].kind != CartKind::Rideable || v.x * v.x + v.z * v.z < 0.01 {
             return;
@@ -1318,7 +1318,7 @@ impl crate::game::ServerGame<'_> {
     /// cart `i`'s own tick: each other cart in its box (0.2 wider on each
     /// side) gets `push(cart i)`. Running it per cart, after that cart moved
     /// and before the next one does, is what splits stacked carts apart.
-    pub(in crate::game) fn push_from_cart(&mut self, i: usize, index: &mut CartIndex) {
+    pub fn push_from_cart(&mut self, i: usize, index: &mut CartIndex) {
         let reach = f64::from(0.2f32);
         let hitbox = self.common.carts[i].bounds().inflate(Vec3::new(reach, 0.0, reach));
         let mut near = std::mem::take(&mut index.near);
@@ -1427,7 +1427,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// `AbstractMinecart.getRedstoneDirection` (over the old port's
     /// conductor proxy): which way a powered rail pushes a resting cart.
-    pub(in crate::game) fn redstone_direction(&self, pos: [i32; 3], shape: Shape) -> Vec3 {
+    pub fn redstone_direction(&self, pos: [i32; 3], shape: Shape) -> Vec3 {
         let (dx, dz) = match shape {
             Shape::NorthSouth => (0, 1),
             Shape::EastWest => (1, 0),
@@ -1459,7 +1459,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// `AbstractMinecart.tick` for one cart; returns false once it is gone.
     /// `slot` is where the cart is stored (where to look first).
-    pub(in crate::game) fn tick_cart(
+    pub fn tick_cart(
         &mut self,
         c: &mut Minecart,
         intent: [f64; 2],
@@ -1585,7 +1585,7 @@ impl crate::game::ServerGame<'_> {
         true
     }
     /// The rider's tick: the cart moves with the rider's input as its push.
-    pub(in crate::game) fn tick_cart_riding(&mut self, keys: Keys) -> bool {
+    pub fn tick_cart_riding(&mut self, keys: Keys) -> bool {
         let Some(i) = self.common.carts.iter().position(|c| Some(c.id) == self.common.riding) else {
             return false;
         };
@@ -1619,12 +1619,12 @@ impl crate::game::ServerGame<'_> {
         true
     }
     /// Every cart but the ridden one (which ticks with its rider).
-    pub(in crate::game) fn tick_carts(&mut self) {
+    pub fn tick_carts(&mut self) {
         self.vehicles_ticking(true);
         self.tick_carts_now();
         self.vehicles_ticking(false);
     }
-    pub(in crate::game) fn tick_carts_now(&mut self) {
+    pub fn tick_carts_now(&mut self) {
         self.push_carts();
         // ServerLevel.tick: only entities in entity-ticking chunks tick.
         let ticking = self.entity_ticking_area();

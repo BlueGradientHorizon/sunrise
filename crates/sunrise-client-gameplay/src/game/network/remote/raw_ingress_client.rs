@@ -25,7 +25,7 @@ impl crate::game::ClientGame<'_> {
         self.client.post_effects = p.effects;
         Ok(())
     }
-    pub(in crate::game) fn apply_staged_attachment_sync(
+    pub fn apply_staged_attachment_sync(
         &mut self,
         staged: sunrise_protocol::attachment_sync::StagedMessage,
     ) {
@@ -216,7 +216,7 @@ impl crate::game::ClientGame<'_> {
     }
     /// `ClientPacketListener.handleBundlePacket`: use one main-thread turn, so
     /// the chunk decoder/frame quota cannot split a bundle at a column packet.
-    pub(in crate::game) fn handle_play_bundle(
+    pub fn handle_play_bundle(
         &mut self,
         bundle: sunrise_client_lib::net::CompletedBundle,
         turn: &mut ListenerTurn,
@@ -512,7 +512,7 @@ impl crate::game::ClientGame<'_> {
     }
     /// `Minecraft.runTick`: exhaust the packet phase before starting client tasks. A
     /// worker-decoded column defers its position, every later packet and the task phase.
-    pub(in crate::game) fn poll_remote_events(&mut self, before_tick: bool) -> Result<()> {
+    pub fn poll_remote_events(&mut self, before_tick: bool) -> Result<()> {
         let mut receive = !before_tick;
         let mut chunks = Duration::ZERO;
         loop {

@@ -111,7 +111,7 @@ fn guest_ticks_before_player_loaded_and_after_its_timeout() {
             .unwrap();
             motion.health.food.exhaustion = 5.0;
             g.motion = Some(Box::new(motion));
-            let host = game.side.lan.as_mut().unwrap();
+            let host = game.server.lan.as_mut().unwrap();
             host.hub.guests.push(g);
             host.play
                 .entry(1)
@@ -122,7 +122,7 @@ fn guest_ticks_before_player_loaded_and_after_its_timeout() {
             // A new join/respawn waits 60 ticks. A dimension change preserves
             // the connection's load timer, including an already elapsed one.
             for (timeout, effect_ticks, cooldown) in [(60, 9, 2), (0, 8, 1)] {
-                game.side
+                game.server
                     .lan
                     .as_mut()
                     .unwrap()
@@ -141,7 +141,7 @@ fn guest_ticks_before_player_loaded_and_after_its_timeout() {
                 );
                 assert_eq!(observations[0].cooldown, Some(cooldown + 1));
                 assert_eq!(observations[1].cooldown, Some(cooldown));
-                let g = &game.side.lan.as_ref().unwrap().hub.guests[0];
+                let g = &game.server.lan.as_ref().unwrap().hub.guests[0];
                 assert!(!g.loaded);
                 assert_eq!(g.load_timeout, timeout);
                 assert_eq!(g.client_loaded(), timeout == 0);
@@ -173,7 +173,7 @@ fn guest_tick_brackets_sleep_cooldowns_pickups_and_death() {
             let mut other = guest(2);
             other.loaded = true;
             other.position = [50.0, 0.0, 50.0];
-            let host = game.side.lan.as_mut().unwrap();
+            let host = game.server.lan.as_mut().unwrap();
             host.hub.guests.extend([g, other]);
             host.play
                 .entry(1)
@@ -218,13 +218,13 @@ fn guest_tick_brackets_sleep_cooldowns_pickups_and_death() {
             assert_eq!(observations[2].diamonds, 0);
             drop(observations);
             // The missing bed is a living-entity continuation failure: immediate wake.
-            assert_eq!(game.side.lan.as_ref().unwrap().hub.guests[0].sleep_timer, 0);
-            assert!(game.side.lan.as_ref().unwrap().hub.guests[0].bed.is_none());
+            assert_eq!(game.server.lan.as_ref().unwrap().hub.guests[0].sleep_timer, 0);
+            assert!(game.server.lan.as_ref().unwrap().hub.guests[0].bed.is_none());
             assert!(game.inventory.iter().all(Option::is_none));
             heard.lock().unwrap().clear();
             // A real zero-health death-screen tick still gets both endpoints,
             // without use/cooldown/pickup work re-enabled.
-            game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+            game.server.lan.as_mut().unwrap().hub.guests.update(0, |g| {
                 g.dead = true;
                 g.health = 0.0;
             });
@@ -288,7 +288,7 @@ pub(crate) fn tags_over_steve(mods: mod_api::Mods) -> Vec<String> {
         crate::game::native_entity_refs::tests::with_client_game(|game| {
             let (client, _server) = sunrise_protocol::connection::Pipe::pair();
             game.connect_local(client, "name-tag").unwrap();
-            let remote = game.side.remote.as_mut().unwrap();
+            let remote = game.client.remote.as_mut().unwrap();
             remote.logged_in = true;
             remote.profile = 456;
             remote.entity_id = 42;

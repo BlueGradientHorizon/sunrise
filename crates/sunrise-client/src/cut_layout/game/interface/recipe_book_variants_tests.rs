@@ -120,15 +120,15 @@ fn game<'a>(
     guest.loaded = true;
     // Its view, as the client sent it: straight down.
     guest.pitch = 90.0;
-    game.side.lan.as_mut().unwrap().hub.guests.push(guest);
+    game.server.lan.as_mut().unwrap().hub.guests.push(guest);
     (game, rx)
 }
 
 /// Runs `command`: whether it succeeded and what the issuer was told.
 fn run(game: &mut sunrise_gameplay::game::ServerGame<'_>, command: &str) -> (bool, Vec<String>) {
-    game.side.chat_capture = Some(Vec::new());
+    game.server.chat_capture = Some(Vec::new());
     let ok = game.run_command(command);
-    let said = game.side.chat_capture.take().unwrap_or_default();
+    let said = game.server.chat_capture.take().unwrap_or_default();
     (
         ok,
         said.iter()
@@ -235,10 +235,10 @@ fn control_a_multi_display_recipe_still_has_no_ghost() {
     let mut resources = None;
     let (mut game, rx) = game(&mut resources);
     let _ = ghosts(&rx);
-    let hub = &mut game.side.lan.as_mut().unwrap().hub;
+    let hub = &mut game.server.lan.as_mut().unwrap().hub;
     hub.send_ghost_recipe(2, 0, "minecraft:map_cloning");
     assert_eq!(ghosts(&rx), 0, "no ghost for eight displays");
-    let hub = &mut game.side.lan.as_mut().unwrap().hub;
+    let hub = &mut game.server.lan.as_mut().unwrap().hub;
     hub.send_ghost_recipe(2, 0, "minecraft:crafting_table");
     assert_eq!(ghosts(&rx), 1, "the ordinary recipe's ghost");
 }

@@ -35,7 +35,7 @@ impl crate::game::ServerGame<'_> {
     /// Players are `Players`; `Monster`s, the dragon, hoglins, ghasts,
     /// phantoms, shulkers, slimes and a killer bunny are `Hostile`; dropped
     /// items and experience orbs `Ambient`; every other entity `Neutral`.
-    pub(in crate::game) fn entity_sound_source(&self, entity: EntityRef) -> Option<SoundSource> {
+    pub fn entity_sound_source(&self, entity: EntityRef) -> Option<SoundSource> {
         Some(match self.native_entity_target(entity)? {
             Target::Player | Target::Guest(_) => SoundSource::Players,
             Target::Mob(id) => {
@@ -63,7 +63,7 @@ impl crate::game::ServerGame<'_> {
     /// (`Player.playSound`) doesn't hear it themself, their own client plays
     /// it. True means queued, not heard; false for an unknown `minecraft:`
     /// event or a volume or pitch that isn't a finite non-negative number.
-    pub(in crate::game) fn entity_play_sound(
+    pub fn entity_play_sound(
         &mut self,
         entity: EntityRef,
         sound: &str,
@@ -108,7 +108,7 @@ impl crate::game::ServerGame<'_> {
     /// is the event's source entity; other entities retain their own id.
     /// False for an event vanilla doesn't have, a dead guest and a guest while
     /// another one acts.
-    pub(in crate::game) fn entity_game_event(&mut self, entity: EntityRef, event: &str) -> bool {
+    pub fn entity_game_event(&mut self, entity: EntityRef, event: &str) -> bool {
         let Some(target) = self.native_entity_target(entity) else {
             return false;
         };
@@ -142,7 +142,7 @@ impl crate::game::ServerGame<'_> {
     /// death, `35` a totem...) to the players tracking the entity and to the
     /// entity itself. True means queued; false for an entity outside the
     /// level in place.
-    pub(in crate::game) fn entity_broadcast_event(&mut self, entity: EntityRef, id: u8) -> bool {
+    pub fn entity_broadcast_event(&mut self, entity: EntityRef, id: u8) -> bool {
         let Some((entity_id, at)) = self.resolve_entity_broadcast_event(entity) else {
             return false;
         };
@@ -173,7 +173,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// `Entity.isSpectator`: true for a player in spectator mode, false for
     /// every other entity.
-    pub(in crate::game) fn entity_spectator(&self, entity: EntityRef) -> Option<bool> {
+    pub fn entity_spectator(&self, entity: EntityRef) -> Option<bool> {
         Some(match self.native_entity_target(entity)? {
             Target::Player => self.common.spectator(),
             Target::Guest(conn) => self.command_guest(conn)?.game_mode == 3,

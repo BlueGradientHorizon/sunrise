@@ -110,7 +110,7 @@ fn a_mods_host_upgrades_old_data_and_refuses_by_name() {
                     sea_level: 63,
                 };
                 game.enter_remote_dimension(&spawn, RemoteDimensionEntry::Login, Reason::Other);
-                game.side.remote.as_mut().unwrap().logged_in = true;
+                game.client.remote.as_mut().unwrap().logged_in = true;
                 game.tick_remote_level().unwrap();
             }),
             LogicalSide::Server => with_game(|game| {

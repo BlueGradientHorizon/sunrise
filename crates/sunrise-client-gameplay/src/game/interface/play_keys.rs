@@ -28,7 +28,7 @@ impl crate::game::ClientGame<'_> {
     /// is the vanilla default the pressed mapping translates to, `raw` the
     /// physical key as pressed (the same where the caller had no window key).
     /// The input dispatcher runs a receiving screen's key actions separately.
-    pub(in crate::game) fn key_pressed(&mut self, key: KeyCode, raw: KeyCode) -> Result<()> {
+    pub fn key_pressed(&mut self, key: KeyCode, raw: KeyCode) -> Result<()> {
         // Scripted presses and controller presses are delivered to the same mappings
         // as window input; direct screen keys remain immediate.
         if !self.mod_mappings_screen_open() && !self.client.replay.playing() {
@@ -185,7 +185,7 @@ impl crate::game::ClientGame<'_> {
     }
     /// Minecraft.handleKeybinds and Gui.handleKeybinds, in their polling order.
     /// Opening a screen releases the live mappings, including clicks not yet reached.
-    pub(in crate::game::client_side) fn handle_play_keybinds(&mut self) {
+    pub fn handle_play_keybinds(&mut self) {
         while self.consume_mapping_click("key.togglePerspective") {
             self.cycle_camera();
         }

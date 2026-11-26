@@ -7,7 +7,7 @@ use sunrise_client::hud::HudBatch;
 use sunrise_game_data::Result;
 
 impl crate::game::ClientGame<'_> {
-    pub(in crate::game) fn begin_closing_save(&mut self, quit: bool) -> Result<()> {
+    pub fn begin_closing_save(&mut self, quit: bool) -> Result<()> {
         if quit {
             self.client.client_quit.set(ClientQuit::Stopping);
             self.close_client_tasks();
@@ -102,7 +102,7 @@ impl crate::game::ClientGame<'_> {
     }
     /// `true` means the window can exit. The session lock stays in Game until
     /// every snapshot has been queued and every writer has synced its files.
-    pub(in crate::game::client_side) fn poll_closing_save(&mut self) -> Result<bool> {
+    pub fn poll_closing_save(&mut self) -> Result<bool> {
         let Some(mut save) = self.client.pending_save.0.take() else {
             return Ok(false);
         };
@@ -227,7 +227,7 @@ impl crate::game::ClientGame<'_> {
         Ok(())
     }
     /// `Minecraft.stop`: record the request without reentering the client from a hook.
-    pub(in crate::game) fn request_client_quit(&self) -> bool {
+    pub fn request_client_quit(&self) -> bool {
         if !self.common.native_window()
             || self.client.client_quit.get() != ClientQuit::Running
             || sunrise_threads::stop_requests() > 0

@@ -2,7 +2,7 @@ use super::*;
 
 impl crate::game::ServerGame<'_> {
     /// `CauldronInteractions` for the held item aimed at a cauldron.
-    pub(in crate::game) fn use_on_cauldron(
+    pub fn use_on_cauldron(
         &mut self,
         pos: [i32; 3],
     ) -> Result<sunrise_sim::cauldron::Outcome> {

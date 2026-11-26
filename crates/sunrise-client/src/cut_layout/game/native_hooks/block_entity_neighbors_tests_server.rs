@@ -23,7 +23,7 @@ fn installed_block_entity_neighbor_parts_dispatch_through_game() {
         mod_platform::__private::part_tests::install_parts_fixture(&mods).unwrap();
         with_game(|game| {
             let directory = tempfile::tempdir().unwrap();
-            game.side.save.0 = Arc::new(sunrise_sim::save::SaveDir::new(
+            game.server.save.0 = Arc::new(sunrise_sim::save::SaveDir::new(
                 directory.path().to_path_buf(),
                 sunrise_sim::save::LevelShape::OVERWORLD,
                 Some(Default::default()),

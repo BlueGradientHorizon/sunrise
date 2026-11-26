@@ -7,7 +7,7 @@ impl crate::game::ServerGame<'_> {
     /// `ServerGamePacketListenerImpl.tryPickItem` for the acting player (the host's own, or a
     /// guest swapped in): picks `stack` into the 36 main slots, `infinite` with infinite
     /// materials (creative). Returns whether anything changed.
-    pub(in crate::game) fn pick_into_inventory(
+    pub fn pick_into_inventory(
         &mut self,
         stack: &ItemStack,
         infinite: bool,

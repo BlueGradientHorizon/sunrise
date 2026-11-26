@@ -597,7 +597,7 @@ impl crate::game::ClientGame<'_> {
     }
 
     /// Files or replaces entity `id` at its current section in entry order.
-    pub(in crate::game) fn pick_section_sync_id(&mut self, id: u32) {
+    pub fn pick_section_sync_id(&mut self, id: u32) {
         if let Some((kind, pos)) = self.locate_pick_member(id) {
             let seq = self.pick_member_seq(kind, id);
             let mut storage = self.client.client_pick.sections.borrow_mut();
@@ -1217,7 +1217,7 @@ impl crate::game::ClientGame<'_> {
     /// `Level.getEntities(cameraEntity, search_box, EntitySelector.CAN_BE_PICKED)`:
     /// visits ordinary entities in `EntitySectionStorage` order (filtered by raw box),
     /// then appends live dragon parts (unless spectating that dragon).
-    pub(in crate::game::client_side) fn for_each_pickable_in_bounds(
+    pub fn for_each_pickable_in_bounds(
         &self,
         search_box: Aabb,
         mut visit: impl FnMut(u32, Aabb, f64),

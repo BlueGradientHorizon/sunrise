@@ -205,7 +205,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// An opening lid's push on the server (`ShulkerBoxBlockEntity` / `Shulker`).
-    pub(in crate::game) fn lid_push(&mut self, lid: Lid, area: Aabb, movement: Vec3) {
+    pub fn lid_push(&mut self, lid: Lid, area: Aabb, movement: Vec3) {
         let steps = self.push_step_heights();
         let root = self.lid_root(lid);
         // The armor stands' obstacles, built at the first stand the lid meets.
@@ -417,7 +417,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// A mod's `Entity.move(cause, movement)` for the listed entity `handle`.
-    pub(in crate::game) fn move_listed_entity(
+    pub fn move_listed_entity(
         &mut self,
         handle: EntityHandle,
         cause: MoverType,
@@ -768,7 +768,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// `Entity.move(MoverType.PISTON, movement)` for one pushed entity.
-    pub(in crate::game) fn move_pushed(
+    pub fn move_pushed(
         &mut self,
         target: MoveWho,
         before: Aabb,

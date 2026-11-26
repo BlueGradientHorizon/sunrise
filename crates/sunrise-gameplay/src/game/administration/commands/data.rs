@@ -72,12 +72,12 @@ impl crate::game::ServerGame<'_> {
 
     /// `NbtPredicate.getEntityTagToCompare`: the entity as saved. An entity
     /// in another level is read in the level that holds it.
-    pub(in crate::game) fn command_target_nbt(&mut self, t: Target) -> Option<Tag> {
+    pub fn command_target_nbt(&mut self, t: Target) -> Option<Tag> {
         self.in_target_level(t, |g| g.entity_nbt_in_level(t))
             .flatten()
     }
     /// [`Self::entity_nbt`] of the player whose turn it is.
-    pub(in crate::game) fn player_nbt(&mut self) -> Option<Tag> {
+    pub fn player_nbt(&mut self) -> Option<Tag> {
         self.common.player.as_ref()?;
         self.sync_level();
         let mut tag = self.common.level.player_tag(self.common.res.items());
@@ -101,7 +101,7 @@ impl crate::game::ServerGame<'_> {
         }
         Some(tag)
     }
-    pub(in crate::game) fn entity_nbt_in_level(&mut self, t: Target) -> Option<Tag> {
+    pub fn entity_nbt_in_level(&mut self, t: Target) -> Option<Tag> {
         self.entity_tag_in_level(t, true)
     }
 
@@ -208,7 +208,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// Writes `t`'s `Tags`; false when its kind keeps no saved compound to
     /// write them to.
-    pub(in crate::game) fn set_entity_tags(&mut self, t: Target, tags: &[String]) -> bool {
+    pub fn set_entity_tags(&mut self, t: Target, tags: &[String]) -> bool {
         if let Target::Falling(id) = t {
             let uuid = self.uuid_for(id);
             let Some(i) = self.common.falling.iter().position(|f| f.id == id) else {
@@ -402,7 +402,7 @@ impl crate::game::ServerGame<'_> {
             },
         }
     }
-    pub(in crate::game) fn data_of(&mut self, r: &DataRef) -> R<Tag> {
+    pub fn data_of(&mut self, r: &DataRef) -> R<Tag> {
         match r {
             // EntityDataAccessor.getData: Entity.saveWithoutId.
             DataRef::Entity(t) => self
@@ -418,7 +418,7 @@ impl crate::game::ServerGame<'_> {
     /// `BlockEntity.saveWithFullMetadata` of the block entity at `p`: no
     /// chunk-only keepPacked, and the lock and custom name the model does
     /// not hold. `None` where there is no block entity.
-    pub(in crate::game) fn block_entity_nbt(&self, p: [i32; 3]) -> Option<Tag> {
+    pub fn block_entity_nbt(&self, p: [i32; 3]) -> Option<Tag> {
         // A live moving piston is the level's block entity there (#9617).
         if let Some(tag) = self.moving_piston_data(p) {
             return Some(tag);
@@ -591,7 +591,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// `DataCommands.mergeData`: literal values keep the modern argument
     /// parser's decoded Tag contract through execution.
-    pub(in crate::game) fn cmd_data_in(
+    pub fn cmd_data_in(
         &mut self,
         id: &str,
         ctx: &Context,
@@ -912,7 +912,7 @@ impl crate::game::ServerGame<'_> {
     // ---- /summon ---------------------------------------------------------
 
     /// The `summon <entity> <pos> <nbt>` form.
-    pub(in crate::game) fn summon_with_nbt(
+    pub fn summon_with_nbt(
         &mut self,
         kind: &str,
         pos: [f64; 3],

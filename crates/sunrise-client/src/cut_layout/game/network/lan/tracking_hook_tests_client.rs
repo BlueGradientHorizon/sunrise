@@ -34,7 +34,7 @@ fn a_stop_waiting_for_a_sound_is_heard_after_its_removal() {
             except_entity: None,
         };
         game.start_audio_capture();
-        game.side.pending_sounds = vec![sound(fresh), sound(near)];
+        game.server.pending_sounds = vec![sound(fresh), sound(near)];
         let told = tick_until_heard(game, heard);
         assert_eq!(
             told.iter().filter(|h| **h == Heard::Stop(near)).count(),

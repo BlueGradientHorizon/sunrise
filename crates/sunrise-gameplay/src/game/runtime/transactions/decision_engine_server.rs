@@ -17,7 +17,7 @@ pub struct EnginePlan(pub Option<Snapshot>);
 impl ServerDecisionTarget {
     /// Check the active action before looking in a slot that an outer action
     /// might have lifted. A missing menu is never the reentrancy mechanism.
-    pub(in crate::game) fn admit(game: &ServerGame<'_>, conn: u32) -> Result<Self, Admission> {
+    pub fn admit(game: &ServerGame<'_>, conn: u32) -> Result<Self, Admission> {
         if game.transactions.iter().any(|level| {
             level
                 .action
@@ -39,11 +39,11 @@ impl ServerDecisionTarget {
         }))
     }
 
-    pub(in crate::game) fn owner_id(&self) -> MenuId {
+    pub fn owner_id(&self) -> MenuId {
         self.0.owner_id()
     }
 
-    pub(in crate::game) fn read<'a>(
+    pub fn read<'a>(
         &self,
         game: &'a ServerGame<'_>,
     ) -> Option<(OwnerStamp, &'a EngineMenu)> {
@@ -54,7 +54,7 @@ impl ServerDecisionTarget {
 
     /// Every route must use this boundary before taking or mutating its owner.
     /// First-write snapshots merge into the existing Host transaction journal.
-    pub(in crate::game) fn edit<R>(
+    pub fn edit<R>(
         &self,
         game: &mut ServerGame<'_>,
         edit: impl FnOnce(&mut EngineMenu) -> R,

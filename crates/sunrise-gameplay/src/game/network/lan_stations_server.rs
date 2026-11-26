@@ -32,7 +32,7 @@ impl ServerGame<'_> {
     }
     /// A station menu's `stillValid`: its block is still that station and the
     /// guest is within `isWithinBlockInteractionRange(pos, 4)`.
-    pub(in crate::game) fn lan_station_valid(
+    pub fn lan_station_valid(
         &self,
         g: &sunrise_sim::lan::guest::Guest,
         gs: &GuestStation,

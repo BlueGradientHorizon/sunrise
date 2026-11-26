@@ -56,7 +56,7 @@ mod tests {
             (46, "falling_block"),
         ] {
             let kind = game
-                .side
+                .client
                 .remote
                 .as_ref()
                 .unwrap()
@@ -86,7 +86,7 @@ mod tests {
             ids: vec![44, 40, 46],
         }))
         .unwrap();
-        let r = game.side.remote.as_ref().unwrap();
+        let r = game.client.remote.as_ref().unwrap();
         assert_eq!(r.entities[&42].vehicle, None);
         assert_eq!(game.armor_stands[0].vehicle, None);
         assert_eq!(r.entities[&43].vehicle, Some(41));
@@ -142,7 +142,7 @@ mod tests {
         let (client, _server) = sunrise_protocol::connection::Pipe::pair();
         game.connect_local(client, "SpawnTest").unwrap();
         let kind = game
-            .side
+            .client
             .remote
             .as_ref()
             .unwrap()

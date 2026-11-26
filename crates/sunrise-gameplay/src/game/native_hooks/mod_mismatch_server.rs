@@ -5,7 +5,7 @@ impl crate::game::ServerGame<'_> {
     /// A server opened a world: its saved code and content mods against the loaded ones.
     /// The mods hear the differences once (before the open, when a mod was missing and the
     /// open asked first: `ask_missing_mods`), and each one nobody resolved is a warning.
-    pub(in crate::game) fn check_mod_mismatch(&mut self) {
+    pub fn check_mod_mismatch(&mut self) {
         let (mismatches, resolved) = match level_mods::take_answer(&self.server.save.0.root) {
             Some(answer) => answer,
             None => {

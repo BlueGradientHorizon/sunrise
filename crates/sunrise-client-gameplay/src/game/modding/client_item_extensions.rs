@@ -299,7 +299,7 @@ fn bake_model(name: &str, model: &ModelPart) -> std::result::Result<Part, &'stat
 
 #[cfg(feature = "client")]
 impl crate::game::ClientGame<'_> {
-    pub(in crate::game::client_side) fn prepare_client_item_extensions(
+    pub fn prepare_client_item_extensions(
         gui: &UiResources,
     ) -> std::result::Result<ArmorExtensions, String> {
         use mod_api::__private::game::RegistrationContextNew;

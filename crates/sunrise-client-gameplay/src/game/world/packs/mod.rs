@@ -59,7 +59,7 @@ pub struct PackRoots {
 }
 
 impl PackRoots {
-    pub(in crate::game::client_side) fn for_selection(
+    pub fn for_selection(
         base: ResourceRoot,
         all: &[Pack],
         ids: &[String],
@@ -329,7 +329,7 @@ impl crate::game::ClientGame<'_> {
     }
     /// The packs the pack screen offers and the current selection
     /// (`PackSelectionScreen` makes its `PackSelectionModel` from them).
-    pub(in crate::game) fn refresh_pack_lists(&mut self) {
+    pub fn refresh_pack_lists(&mut self) {
         let infos = self.resource_pack_infos();
         let configs = pack_configs(&self.common.vanilla_root());
         let browsing = self.client.settings.extras.pack_browser;
@@ -392,7 +392,7 @@ impl crate::game::ClientGame<'_> {
     }
     /// NeoForge's `Minecraft.rollbackResourcePacks`: reset the selection and
     /// reload only if an optional pack was selected; otherwise show the error.
-    pub(in crate::game::client_side) fn selection_reload_failed(&mut self, error: &str) {
+    pub fn selection_reload_failed(&mut self, error: &str) {
         log::warn!("Sunrise: resource reload failed: {error}");
         let mut all = packs::discover(&self.common.vanilla_root(), &packs_dir());
         all.extend(
@@ -424,7 +424,7 @@ impl crate::game::ClientGame<'_> {
     /// worker (`createReload`'s background executor); the frame draws its
     /// progress meanwhile, and the overlay takes no input (`LoadingOverlay`),
     /// so what is held is released (`KeyMapping.releaseAll`).
-    pub(in crate::game::client_side) fn spawn_pack_reload(
+    pub fn spawn_pack_reload(
         &mut self,
         kind: ReloadKind,
     ) -> std::io::Result<()> {
@@ -541,7 +541,7 @@ impl crate::game::ClientGame<'_> {
     /// `LoadingOverlay.tick` once the reload is done: the staged pack is
     /// applied on the render thread, and its outcome goes to whoever asked
     /// (`reloadResourcePacks`' callback, or `PackReloadConfig.Callbacks`).
-    pub(in crate::game::client_side) fn drive_pack_reload(&mut self) {
+    pub fn drive_pack_reload(&mut self) {
         let Some((kind, staged)) = self
             .client
             .pack_reload
@@ -574,7 +574,7 @@ impl crate::game::ClientGame<'_> {
     }
     /// The render-thread half: the renderer on the new pack's textures, then
     /// the swap (`ReloadInstance`'s application listeners).
-    pub(in crate::game) fn apply_staged_pack(
+    pub fn apply_staged_pack(
         &mut self,
         staged: StagedPack,
     ) -> sunrise_game_data::Result<()> {
@@ -1000,14 +1000,14 @@ pub const OVERLAY_HOLD: Duration = Duration::from_millis(1000);
 #[cfg(feature = "client")]
 impl PackReload {
     /// Starts `stage` on its own thread and returns at once.
-    pub(in crate::game::client_side) fn spawn(
+    pub fn spawn(
         kind: ReloadKind,
         stage: impl FnOnce(&super::Progress) -> StageResult + Send + 'static,
     ) -> std::io::Result<Self> {
         Self::spawn_holding(kind, OVERLAY_HOLD, stage)
     }
     /// `spawn` with the overlay's hold spelled out, so a test need not wait it.
-    pub(in crate::game::client_side) fn spawn_holding(
+    pub fn spawn_holding(
         kind: ReloadKind,
         hold: Duration,
         stage: impl FnOnce(&super::Progress) -> StageResult + Send + 'static,
@@ -1031,7 +1031,7 @@ impl PackReload {
     }
     /// The staged pack once the worker is done and the overlay has had its
     /// second (taken once); none while either is outstanding.
-    pub(in crate::game::client_side) fn finished(&mut self) -> Option<(ReloadKind, StageResult)> {
+    pub fn finished(&mut self) -> Option<(ReloadKind, StageResult)> {
         if self.started.elapsed() < self.hold || !self.handle.as_ref()?.is_finished() {
             return None;
         }

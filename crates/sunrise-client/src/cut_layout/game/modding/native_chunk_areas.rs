@@ -35,7 +35,7 @@ mod tests {
 
     /// What `owner` holds for the viewer, as the hub keeps it.
     fn held(game: &sunrise_gameplay::game::ServerGame<'_>, owner: &str) -> Vec<engine::ChunkArea> {
-        game.side.lan.as_ref().unwrap().hub.viewed_areas(2, owner)
+        game.server.lan.as_ref().unwrap().hub.viewed_areas(2, owner)
     }
 
     /// Ticks the server until `done` holds of what the viewer was sent of the Nether since the
@@ -45,7 +45,7 @@ mod tests {
         rx: &Receiver<Out>,
         done: impl Fn(&Sent) -> bool,
     ) -> (Sent, u64) {
-        let start = game.side.lan.as_ref().unwrap().hub.ticks;
+        let start = game.server.lan.as_ref().unwrap().hub.ticks;
         let mut all = Sent::default();
         let deadline = Instant::now() + Duration::from_secs(120);
         while !done(&all) && Instant::now() < deadline {
@@ -59,7 +59,7 @@ mod tests {
         }
         all.chunks.sort_unstable();
         all.forgotten.sort_unstable();
-        (all, game.side.lan.as_ref().unwrap().hub.ticks - start)
+        (all, game.server.lan.as_ref().unwrap().hub.ticks - start)
     }
 
     /// A mod's `Loaded` Nether area reaches the viewer's client (`open`, then its chunks); every
@@ -212,9 +212,9 @@ mod tests {
                     },
                 ),
             ];
-            let caps = game.side.lan.as_ref().unwrap().hub.viewed.caps;
+            let caps = game.server.lan.as_ref().unwrap().hub.viewed.caps;
             for (why, who, areas, refused) in cases {
-                let hub = &mut game.side.lan.as_mut().unwrap().hub;
+                let hub = &mut game.server.lan.as_mut().unwrap().hub;
                 hub.viewed.caps = caps;
                 if why.contains("capped at 30") {
                     hub.viewed.caps.loaded_per_level = 30;
@@ -230,7 +230,7 @@ mod tests {
                     "{why} keeps the other mod's"
                 );
             }
-            game.side.lan.as_mut().unwrap().hub.viewed.caps = caps;
+            game.server.lan.as_mut().unwrap().hub.viewed.caps = caps;
         }
 
         let (seen, _) = tick_until(&mut game, &rx, |s| s.chunks.len() >= 9);

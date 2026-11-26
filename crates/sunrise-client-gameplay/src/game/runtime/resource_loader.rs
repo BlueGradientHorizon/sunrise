@@ -469,7 +469,7 @@ pub enum LoaderMsg {
 }
 
 impl LoaderMsg {
-    pub(in crate::game::client_side) fn done(result: Result<Loaded>) -> Self {
+    pub fn done(result: Result<Loaded>) -> Self {
         Self::Done(result.map_err(
             |error| match error.downcast::<mods::DeclarationFailures>() {
                 Ok(refusals) => LoaderFailure::Declarations(*refusals),

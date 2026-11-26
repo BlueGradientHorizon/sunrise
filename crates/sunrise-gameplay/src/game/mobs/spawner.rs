@@ -50,7 +50,7 @@ impl crate::game::ServerGame<'_> {
     /// The caller only reaches this for a `BlockEntity::Spawner`, and changing
     /// the block removes or replaces that entity, so the block is not read
     /// again here.
-    pub(in crate::game) fn tick_spawner(&mut self, key: Pos) -> Result<()> {
+    pub fn tick_spawner(&mut self, key: Pos) -> Result<()> {
         let Some((lease, BlockEntity::Spawner(mut spawner))) =
             self.common.world.block_entities.take(&key)
         else {
@@ -72,7 +72,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// `BaseSpawner.serverTick` at `key`: a spawner block's, or the spawner minecart
     /// `cart` is at (its `broadcastEvent` is an entity event on the cart).
-    pub(in crate::game) fn server_tick_spawner_of(
+    pub fn server_tick_spawner_of(
         &mut self,
         key: Pos,
         spawner: &mut Spawner,
@@ -134,7 +134,7 @@ impl crate::game::ServerGame<'_> {
     /// Creates the mobs a spawner tick planned; their provisional ids
     /// (counting down from u32::MAX) map to the mobs' ids.
     /// (counting down from `u32::MAX`) map to the mobs' ids.
-    pub(in crate::game) fn add_planned(
+    pub fn add_planned(
         &mut self,
         planned: Vec<Planned>,
         mut created: Vec<Mob>,
@@ -184,7 +184,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// The spawner's `loadEntityRecursive` and `tryAddFreshEntityWithPassengers`:
     /// make the accepted mobs visible to the next attempt before the tick inserts them.
-    pub(in crate::game) fn plan_spawner_mob(
+    pub fn plan_spawner_mob(
         &self,
         l: &super::natural_spawning::GameLevel,
         r: &SpawnerSpawn,

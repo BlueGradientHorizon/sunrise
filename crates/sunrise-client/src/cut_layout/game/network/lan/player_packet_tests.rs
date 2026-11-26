@@ -39,7 +39,7 @@ fn witness(rows: &mut Map<String, Value>, name: &str, actual: Value, expected: V
 fn join(game: &mut sunrise_gameplay::game::ServerGame<'_>, conn: u32, loaded: bool) -> mpsc::Receiver<Out> {
     let (tx, rx) = mpsc::channel();
     let id = 1000 + conn as i32;
-    game.side.next_entity = game.side.next_entity.max(id as u32 + 1);
+    game.server.next_entity = game.server.next_entity.max(id as u32 + 1);
     let mut guest = Guest::new(
         Joined {
             conn,
@@ -62,7 +62,7 @@ fn join(game: &mut sunrise_gameplay::game::ServerGame<'_>, conn: u32, loaded: bo
     guest.loaded = loaded;
     guest.load_timeout = if loaded { 0 } else { 60 };
     (guest.yaw, guest.pitch) = (17.0, -12.0);
-    game.side.lan.as_mut().unwrap().hub.guests.push(guest);
+    game.server.lan.as_mut().unwrap().hub.guests.push(guest);
     game.reset_entity_residency();
     rx
 }
@@ -75,7 +75,7 @@ fn packet_tick(
     let back = game.dim;
     let level = Dim::from_id(&guest(game, conn).dimension);
     game.enter_level(level).unwrap();
-    game.side
+    game.server
         .lan
         .as_mut()
         .unwrap()
@@ -88,7 +88,7 @@ fn packet_tick(
                 InboxItem::Packet(S::decode(id, reader.rest()).unwrap(), None)
             }));
         });
-    game.side.level_pass = Default::default();
+    game.server.level_pass = Default::default();
     game.tick_lan_packets();
     assert_eq!(
         game.dim, level,
@@ -99,7 +99,7 @@ fn packet_tick(
 }
 
 fn guest<'a>(game: &'a sunrise_gameplay::game::ServerGame<'_>, conn: u32) -> &'a Guest {
-    game.side.lan.as_ref().unwrap().hub.guest(conn).unwrap()
+    game.server.lan.as_ref().unwrap().hub.guest(conn).unwrap()
 }
 
 fn pose(guest: &Guest) -> Value {
@@ -130,7 +130,7 @@ fn receive(rx: &mpsc::Receiver<Out>) -> Vec<C> {
 
 fn credits(game: &mut sunrise_gameplay::game::ServerGame<'_>, rows: &mut Map<String, Value>) {
     game.enter_level(Dim::End).unwrap();
-    game.side
+    game.server
         .streaming
         .insert_remote(&mut game.world, Chunk::empty(0, 0));
     assert!(
@@ -144,7 +144,7 @@ fn credits(game: &mut sunrise_gameplay::game::ServerGame<'_>, rows: &mut Map<Str
             .iter()
             .any(|p| matches!(p, C::GameEvent(event) if event.event == 4))
     );
-    game.side
+    game.server
         .lan
         .as_mut()
         .unwrap()
@@ -225,7 +225,7 @@ fn credits(game: &mut sunrise_gameplay::game::ServerGame<'_>, rows: &mut Map<Str
 
 fn use_item(game: &mut sunrise_gameplay::game::ServerGame<'_>, rows: &mut Map<String, Value>) {
     for kind in ["empty", "disabled", "survival", "spectator"] {
-        game.side
+        game.server
             .lan
             .as_mut()
             .unwrap()
@@ -265,7 +265,7 @@ fn use_item(game: &mut sunrise_gameplay::game::ServerGame<'_>, rows: &mut Map<St
         );
         game.level.enabled_features = saved;
     }
-    game.side
+    game.server
         .lan
         .as_mut()
         .unwrap()
@@ -321,7 +321,7 @@ fn spectate(
 ) {
     let shoot = |uuid| S::TeleportToEntity(play::TeleportToEntity { uuid });
     let _peer = join(game, 2, true);
-    let host = game.side.lan.as_mut().unwrap();
+    let host = game.server.lan.as_mut().unwrap();
     host.hub.update_guest(VIEWER, |g| g.game_mode = 3);
     host.hub.update_guest(2, |g| {
         g.place([10.5, 104.0, 7.5]);
@@ -348,7 +348,7 @@ fn spectate(
             game.guest_set_camera(i, Some(boat as i32));
             assert!(guest(game, VIEWER).watching);
         }
-        game.side
+        game.server
             .lan
             .as_mut()
             .unwrap()
@@ -389,7 +389,7 @@ fn spectate(
             json!([
                 packets,
                 viewer.vehicle.is_none(),
-                !viewer.watching && !game.side.cmds.0.guest_cameras.contains_key(&VIEWER),
+                !viewer.watching && !game.server.cmds.0.guest_cameras.contains_key(&VIEWER),
                 body.fall_distance.to_bits() as i64,
                 vector_bits(body.velocity),
                 viewer.first_good == viewer.position,
@@ -607,7 +607,7 @@ fn resend(game: &mut sunrise_gameplay::game::ServerGame<'_>, rows: &mut Map<Stri
         let conn = 20 + n as u32;
         let rx = join(game, conn, !route.starts_with("loading_"));
         let i = game.guest_index(conn).unwrap();
-        game.side.lan.as_mut().unwrap().hub.teleport(i, Some(START));
+        game.server.lan.as_mut().unwrap().hub.teleport(i, Some(START));
         for elapsed in 1..=22 {
             let mut packet = None;
             if elapsed >= 19 {
@@ -656,7 +656,7 @@ fn resend(game: &mut sunrise_gameplay::game::ServerGame<'_>, rows: &mut Map<Stri
         let yaw: f32 = if conn == 24 { 17.0 } else { 270.0 };
         let pitch = -12.0_f32;
         let i = game.guest_index(conn).unwrap();
-        let hub = &mut game.side.lan.as_mut().unwrap().hub;
+        let hub = &mut game.server.lan.as_mut().unwrap().hub;
         hub.guests.update(i, |g| g.yaw = yaw);
         hub.teleport(i, Some(START));
         for _ in 0..20 {
@@ -701,7 +701,7 @@ fn resend(game: &mut sunrise_gameplay::game::ServerGame<'_>, rows: &mut Map<Stri
 
 fn crystal_round_trip(game: &mut sunrise_gameplay::game::ServerGame<'_>, rows: &mut Map<String, Value>) {
     let key = (1, 0);
-    game.side
+    game.server
         .streaming
         .insert_remote(&mut game.world, Chunk::empty(key.0, key.1));
     let tag = nbt::parse_snbt(
@@ -824,12 +824,12 @@ fn run_witness() {
                     seed: 0,
                     max_players: 16,
                     integrated: false,
-                    levels: game.side.level_shapes,
-                    level_seeds: game.side.levels.0.runtime.seeds(),
+                    levels: game.server.level_shapes,
+                    level_seeds: game.server.levels.0.runtime.seeds(),
                 },
             )
             .unwrap();
-            game.side
+            game.server
                 .streaming
                 .insert_remote(&mut game.world, Chunk::empty(0, 0));
             let rx = join(game, VIEWER, true);

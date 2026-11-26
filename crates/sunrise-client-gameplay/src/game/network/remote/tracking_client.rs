@@ -226,7 +226,7 @@ impl crate::game::ClientGame<'_> {
         }
         None
     }
-    pub(in crate::game) fn spawn_entity(
+    pub fn spawn_entity(
         &mut self,
         id: i32,
         kind: &str,

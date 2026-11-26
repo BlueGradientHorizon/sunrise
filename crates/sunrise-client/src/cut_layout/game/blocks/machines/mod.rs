@@ -106,7 +106,7 @@ pub(crate) mod brewing_fuel_transfer_tests {
                     );
                     assert_eq!(containers.get(&target, 0).unwrap().count, 1);
                     assert!(containers.is_empty(&containers.view(pos, false).unwrap()));
-                    assert_eq!(game.side.hoppers[&pos].cooldown, 8);
+                    assert_eq!(game.server.hoppers[&pos].cooldown, 8);
                 }
             })
         });
@@ -274,7 +274,7 @@ pub(crate) mod furnace_fuel_transfer_tests {
                     recipes_used: Default::default(),
                 }),
             );
-            game.side.hoppers.remove(&hopper);
+            game.server.hoppers.remove(&hopper);
 
             game.hopper_try_move_items(hopper);
 
@@ -597,8 +597,8 @@ pub(crate) mod hopper_cart_transfer_tests {
             game.adv.loaded = true;
             let ai = game.adv.tree.by_id["parity:boat_loot"];
             for player in [false, true] {
-                game.side.next_entity += 1;
-                let id = game.side.next_entity;
+                game.server.next_entity += 1;
+                let id = game.server.next_entity;
                 game.boats
                     .push(Boat::new(id, "oak".into(), Vec3::new(8.5, 65.0, 8.5), 0.0).with_chest());
                 game.persist.raw.insert(
@@ -631,8 +631,8 @@ pub(crate) mod hopper_cart_transfer_tests {
             let sentinel = Some(ItemStack::new("minecraft:diamond", 17));
             for open in [false, true] {
                 for occupied in [1, 24, 27] {
-                    game.side.next_entity += 1;
-                    let id = game.side.next_entity;
+                    game.server.next_entity += 1;
+                    let id = game.server.next_entity;
                     let mut boat =
                         Boat::new(id, "oak".into(), Vec3::new(8.5, 65.0, 8.5), 0.0).with_chest();
                     if occupied > 1 {
@@ -726,7 +726,7 @@ pub(crate) mod hopper_cart_transfer_tests {
                 (0, 0),
                 std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
             );
-            game.side.streaming.forced.insert((0, 0));
+            game.server.streaming.forced.insert((0, 0));
             let rail = game
                 .pack
                 .assets
@@ -747,8 +747,8 @@ pub(crate) mod hopper_cart_transfer_tests {
                 (8, 65, 8),
                 BlockEntity::Chest(vec![Some(ItemStack::new("minecraft:stone", 64)); 27]),
             );
-            game.side.next_entity += 1;
-            let id = game.side.next_entity;
+            game.server.next_entity += 1;
+            let id = game.server.next_entity;
             let mut cart = Minecart::new(id, CartKind::Hopper, Vec3::new(8.5, 64.0625, 8.5));
             cart.enabled = true;
             game.carts.push(cart);

@@ -11,7 +11,7 @@ use sunrise_level::random_source;
 
 impl ClientGame<'_> {
     /// `Minecraft.tick` -> `MusicManager.tick`, once per client tick.
-    pub(in crate::game::client_side) fn tick_music(&mut self) {
+    pub fn tick_music(&mut self) {
         let (mut music, mut volume) = self.situational_music();
         // A native mod's own choice of track and volume, then its layers.
         self.native_music(&mut music, &mut volume);
@@ -169,7 +169,7 @@ impl ClientGame<'_> {
     /// `Minecraft.tick` -> `SoundManager.tick(pause)`, after the music, with
     /// `pauseAllExcept(MUSIC, UI)` when the game pauses and `resume` when it
     /// carries on.
-    pub(in crate::game) fn tick_sound_engine(&mut self) {
+    pub fn tick_sound_engine(&mut self) {
         update_bound_entities(self.client.audio.0.engine.bound_entities(), |id| {
             self.sound_entity_state(id)
         });
@@ -234,7 +234,7 @@ impl ClientGame<'_> {
         self.client.mod_sounds.clear();
     }
     /// `getSituationalMusic` and `getMusicVolume`.
-    pub(in crate::game::client_side) fn situational_music(&self) -> (Option<Music>, f32) {
+    pub fn situational_music(&self) -> (Option<Music>, f32) {
         // Login creates the client level before its first player teleport;
         // reconfiguration clears it again. Use the render camera's probe
         // while the level is present, not the local player's eyes.
@@ -266,7 +266,7 @@ impl ClientGame<'_> {
         (situation.music(), situation.volume())
     }
     /// `BiomeManager.getNoiseBiomeAtPosition`: the quart cell holding a position.
-    pub(in crate::game::client_side) fn biome_at(&self, p: [f64; 3]) -> &str {
+    pub fn biome_at(&self, p: [f64; 3]) -> &str {
         let (x, y, z) = (
             p[0].floor() as i32,
             p[1].floor() as i32,

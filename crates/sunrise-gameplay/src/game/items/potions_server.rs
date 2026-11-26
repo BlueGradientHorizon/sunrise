@@ -69,7 +69,7 @@ impl crate::game::ServerGame<'_> {
     /// `LivingEntity.tickEffects` (server side) for `self.player`, the local
     /// player or a guest acting (`as_guest`), then its attribute modifiers
     /// and status flags.
-    pub(in crate::game) fn tick_mob_effects(&mut self) {
+    pub fn tick_mob_effects(&mut self) {
         self.clear_dead_player_target();
         let Some(player) = self.common.player.as_ref() else {
             return;
@@ -300,7 +300,7 @@ impl crate::game::ServerGame<'_> {
             }
         }
     }
-    pub(in crate::game) fn add_player_effect(&mut self, effect: EffectInstance) -> bool {
+    pub fn add_player_effect(&mut self, effect: EffectInstance) -> bool {
         // `LivingEntity.addEffect` refuses what cannot affect the entity;
         // players pass the tag check, but the `mob_effect_applicable` hook
         // is asked for every add.
@@ -351,7 +351,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// Removes one effect, or all effects, and refreshes the player's derived state.
-    pub(in crate::game) fn remove_player_effects(&mut self, effect: Option<usize>) -> bool {
+    pub fn remove_player_effects(&mut self, effect: Option<usize>) -> bool {
         let mut removed = Vec::new();
         let mut index = 0;
         while index < self.common.potions.effects.list.len() {
@@ -704,7 +704,7 @@ impl crate::game::ServerGame<'_> {
     /// `AreaEffectCloud.readAdditionalSaveData`: loaded clouds join the same
     /// simulation as lingering potions, with their own timing and potion data.
     /// The caller retains their UUID and original compound for command queries.
-    pub(in crate::game) fn load_potion_cloud(&mut self, tag: &Tag) -> Option<u32> {
+    pub fn load_potion_cloud(&mut self, tag: &Tag) -> Option<u32> {
         self.load_potion_cloud_transferred(tag, None)
     }
     pub(in crate::game) fn load_potion_cloud_transferred(
@@ -721,7 +721,7 @@ impl crate::game::ServerGame<'_> {
         self.common.breath_clouds.push(cloud);
         Some(id)
     }
-    pub(in crate::game) fn apply_effect_action(&mut self, action: EffectAction) {
+    pub fn apply_effect_action(&mut self, action: EffectAction) {
         let action = match action {
             EffectAction::Heal(mut amount) => {
                 if let Some(player) = self.common.player.as_ref() {
@@ -967,7 +967,7 @@ impl crate::game::ServerGame<'_> {
     /// What a cloud puts on one entity: instant effects at half strength
     /// (`applyInstantaneousEffect` with 0.5), the others at the cloud's duration
     /// scale (`PotionContents.forEachEffect`).
-    pub(in crate::game) fn cloud_affect(
+    pub fn cloud_affect(
         &mut self,
         victim: Victim,
         effects: &[(&'static str, i32, i32)],
@@ -1278,7 +1278,7 @@ impl crate::game::ServerGame<'_> {
     /// `Projectile.getOwner` of a thrown potion, as [`splash`](Self::splash)
     /// names it: a player's, a mob's (a witch keeps the kill credit), or
     /// nobody's (a dispenser's, a summoned potion's).
-    pub(in crate::game) fn potion_owner(&self, owner: Option<Who>) -> PotionOwner {
+    pub fn potion_owner(&self, owner: Option<Who>) -> PotionOwner {
         match owner {
             Some(Who::Player) => PotionOwner {
                 name: Some(self.player_display_text()),
@@ -1340,7 +1340,7 @@ impl crate::game::ServerGame<'_> {
     /// `Creeper.spawnLingeringCloud`: an `AreaEffectCloud` of radius 2.5, wait time 10, duration 300,
     /// shrinking by `-radius / duration` a tick and by 0.5 for each entity it affects, applying
     /// the creeper's effects at 0.25 of their remaining duration.
-    pub(in crate::game) fn spawn_creeper_cloud(
+    pub fn spawn_creeper_cloud(
         &mut self,
         at: [f64; 3],
         effects: Vec<(&'static str, i32, i32)>,
@@ -1382,7 +1382,7 @@ impl crate::game::ServerGame<'_> {
     /// `ThrownLingeringPotion.onHitAsPotion` for a lingering potion, read from
     /// the stack's `potion_contents`; `mob` is where it hit a mob, `hit` the
     /// block and face it hit, `age` its age, `silent` its Silent flag, `motion` its motion as it hit.
-    pub(in crate::game) fn splash(
+    pub fn splash(
         &mut self,
         stack: &ItemStack,
         at: Vec3,
@@ -1735,7 +1735,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// The authoritative `AreaEffectCloud.serverTick` for lingering potions' clouds.
     /// The logical client draws particles from tracked cloud data.
-    pub(in crate::game) fn tick_potion_clouds(&mut self) {
+    pub fn tick_potion_clouds(&mut self) {
         if self.common.breath_clouds.iter().all(|c| c.potion.is_none()) {
             return;
         }

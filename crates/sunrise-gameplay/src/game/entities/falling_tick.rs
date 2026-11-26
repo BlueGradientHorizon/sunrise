@@ -24,7 +24,7 @@ impl ServerGame<'_> {
 
     /// Deliver the recorded falling ticks in order, each to the parts of the falling block's
     /// state as it is now; one gone since is skipped.
-    pub(in crate::game) fn deliver_falling_ticks(&mut self) {
+    pub fn deliver_falling_ticks(&mut self) {
         if self.server.ordered.falling_ticked.is_empty() {
             return;
         }

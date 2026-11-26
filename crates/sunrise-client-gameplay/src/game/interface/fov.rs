@@ -94,7 +94,7 @@ impl ClientGame<'_> {
     }
     /// `Camera.tick`: the eye height and the field-of-view modifier ease
     /// halfway toward the camera player's each tick.
-    pub(in crate::game) fn tick_fov(&mut self) {
+    pub fn tick_fov(&mut self) {
         let first_person = self.client.camera_type.is_first_person();
         let effect = self.fov_effect_scale();
         let (fov_player, eye) = match self.camera_subject() {
@@ -140,7 +140,7 @@ impl ClientGame<'_> {
     /// reads may answer the state the camera sees there (`state_at_viewpoint`), and the mods may
     /// then replace the answer (`camera_submersion`). Every client reader of the camera's fluid
     /// reads it.
-    pub(in crate::game) fn camera_fog_type(&self, camera: [f64; 3]) -> FogType {
+    pub fn camera_fog_type(&self, camera: [f64; 3]) -> FogType {
         let mut fog_type = self.camera_fog_type_seen(camera);
         self.native_camera_submersion(camera, &mut fog_type);
         fog_type
@@ -170,7 +170,7 @@ impl ClientGame<'_> {
         fog_type(world, facts, camera, &near, &seen)
     }
     /// The fluid at the camera, as `Camera.getFluidInCamera` reports it.
-    pub(in crate::game) fn camera_fluid(&self, camera: [f64; 3]) -> CameraFluid {
+    pub fn camera_fluid(&self, camera: [f64; 3]) -> CameraFluid {
         match self.camera_fog_type(camera) {
             FogType::Water => CameraFluid::Water,
             FogType::Lava => CameraFluid::Lava,
@@ -179,7 +179,7 @@ impl ClientGame<'_> {
         }
     }
     /// `Camera.calculateFov` with `modifyFovBasedOnDeathOrFluid`.
-    pub(in crate::game) fn fov_degrees(&self, partial: f32, camera: [f64; 3]) -> f32 {
+    pub fn fov_degrees(&self, partial: f32, camera: [f64; 3]) -> f32 {
         if self.client.studio.flying() {
             return self.client.studio.freecam.fov.clamp(1.0, 179.0);
         }
@@ -235,7 +235,7 @@ impl ClientGame<'_> {
         )
     }
     /// `Camera.calculateHudFov`: the first-person hand's field of view.
-    pub(in crate::game::client_side) fn hud_fov_degrees(
+    pub fn hud_fov_degrees(
         &self,
         partial: f32,
         camera: [f64; 3],
@@ -249,7 +249,7 @@ impl ClientGame<'_> {
     }
     /// The pose `GameRenderer.renderLevel` multiplies into the projection:
     /// `bobHurt`, then `bobView` with the View Bobbing option.
-    pub(in crate::game::client_side) fn bob_matrix(&self, partial: f32) -> glam::Mat4 {
+    pub fn bob_matrix(&self, partial: f32) -> glam::Mat4 {
         let Some(cam) = self.camera_subject() else {
             return glam::Mat4::IDENTITY;
         };

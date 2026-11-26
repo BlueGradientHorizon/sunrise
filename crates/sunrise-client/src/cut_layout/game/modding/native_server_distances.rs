@@ -29,7 +29,7 @@ mod tests {
             assert!(!game.server_set_simulation_distance(33));
             assert_eq!(game.server_view_distance(), Some(6));
             assert_eq!(game.server_simulation_distance(), Some(5));
-            assert_eq!(game.side.settings.simulation_distance, 5);
+            assert_eq!(game.server.settings.simulation_distance, 5);
         });
     }
 
@@ -50,7 +50,7 @@ mod tests {
         with_guests(|game| {
             assert_eq!(game.options.execution_role, ExecutionRole::IntegratedServer);
             game.options.dedicated = Some(Vec::new());
-            game.side.serving = Some(sunrise_gameplay::game::server_side::integrated::Serving::fixture(0));
+            game.server.serving = Some(sunrise_gameplay::game::server_side::integrated::Serving::fixture(0));
             let published = |game: &mut sunrise_gameplay::game::ServerGame<'_>| {
                 let host: &dyn mod_api::ServerHost = game;
                 host.server_is_published()
@@ -65,7 +65,7 @@ mod tests {
             assert!(published(game), "opened to LAN");
             assert!(game.unpublish());
             assert!(!published(game), "the LAN closed");
-            game.side.serving = None;
+            game.server.serving = None;
             game.options.execution_role = ExecutionRole::DedicatedServer;
             assert!(published(game), "a dedicated server");
         });

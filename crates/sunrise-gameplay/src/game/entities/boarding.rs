@@ -32,7 +32,7 @@ impl ServerGame<'_> {
     /// `Entity.passengers` of `vehicle`, first passenger first: each one's place, id and whether
     /// it is a player. Places tie only for those that never boarded through `addPassenger` (a
     /// load keeps its list order), players ahead.
-    pub(in crate::game) fn seated_passengers(&self, vehicle: u32) -> Vec<(i64, u32, bool)> {
+    pub fn seated_passengers(&self, vehicle: u32) -> Vec<(i64, u32, bool)> {
         let mut seats = Vec::new();
         self.any_passenger_seat(vehicle, &[], |seat| {
             seats.push(seat);
@@ -43,7 +43,7 @@ impl ServerGame<'_> {
     }
 
     /// `Entity.isVehicle`: any kind of rider makes this a vehicle.
-    pub(in crate::game) fn has_seated_passengers(&self, vehicle: u32) -> bool {
+    pub fn has_seated_passengers(&self, vehicle: u32) -> bool {
         self.has_seated_passengers_with_lent_mobs(vehicle, &[])
     }
 
@@ -114,7 +114,7 @@ impl ServerGame<'_> {
     /// `Entity.startRiding` for the acting player: the rider link, then
     /// `CriteriaTriggers.START_RIDING_TRIGGER` for every server player the
     /// vehicle carries.
-    pub(in crate::game) fn start_riding(&mut self, vehicle: u32) {
+    pub fn start_riding(&mut self, vehicle: u32) {
         self.common.riding = Some(vehicle);
         self.seat_player(vehicle);
         self.note_started_riding(vehicle);
@@ -136,7 +136,7 @@ impl ServerGame<'_> {
     }
 
     /// `getPassengers().size()` without allocating or sorting the seats.
-    pub(in crate::game) fn seated_passenger_count(&self, vehicle: u32) -> usize {
+    pub fn seated_passenger_count(&self, vehicle: u32) -> usize {
         let mut count = 0;
         self.any_passenger_seat(vehicle, &[], |_| {
             count += 1;
@@ -147,7 +147,7 @@ impl ServerGame<'_> {
 
     /// `Entity.addPassenger`: the place of `rider` getting on `vehicle`. On a server a player
     /// goes ahead of a first passenger that is no player; everything else goes last.
-    pub(in crate::game) fn boarding_order(&self, vehicle: u32, rider: u32, player: bool) -> i64 {
+    pub fn boarding_order(&self, vehicle: u32, rider: u32, player: bool) -> i64 {
         let mut aboard = self.seated_passengers(vehicle);
         aboard.retain(|&(_, id, _)| id != rider);
         match (aboard.first(), aboard.last()) {
@@ -157,7 +157,7 @@ impl ServerGame<'_> {
         }
     }
     /// `addPassenger` for the mob `id`, linked to its vehicle just now.
-    pub(in crate::game) fn seat_mob(&mut self, id: u32) {
+    pub fn seat_mob(&mut self, id: u32) {
         let mount = self.common.mob_object(id);
         let Some(vehicle) = mount.and_then(|m| m.extra.mount) else {
             return;

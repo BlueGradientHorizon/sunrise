@@ -291,7 +291,7 @@ fn aborted_block_entity_edits_preserve_a_queued_client_update() {
         mod_api::__private::mark_game_thread();
         let root = sunrise_gameplay_common::game::mods::content_root(&fixture_root(), &Default::default()).unwrap();
         with_guests_at(root.prepared().to_owned(), |game| {
-            let hub = &mut game.side.lan.as_mut().unwrap().hub;
+            let hub = &mut game.server.lan.as_mut().unwrap().hub;
             let kind = hub
                 .registry_id("minecraft:block_entity_type", MACHINE)
                 .unwrap();
@@ -374,7 +374,7 @@ fn aborted_block_entity_edits_preserve_a_queued_client_update() {
                     });
                 assert_eq!(result, Err(mod_api::TransactionError::Aborted(())));
 
-                game.side
+                game.server
                     .lan
                     .as_mut()
                     .unwrap()
@@ -388,7 +388,7 @@ fn aborted_block_entity_edits_preserve_a_queued_client_update() {
 
                 // A later sync of the restored entity must not replay either batch.
                 game.block_entity_sync(AT);
-                game.side
+                game.server
                     .lan
                     .as_mut()
                     .unwrap()

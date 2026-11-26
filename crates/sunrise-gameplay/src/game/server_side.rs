@@ -1748,7 +1748,7 @@ pub(in crate::game) struct ServerConstructEffects {
 
 impl<'a> ServerGame<'a> {
     /// A logical server game (dedicated server or integrated server thread).
-    pub(in crate::game) fn new(
+    pub fn new(
         res: &'a Arc<Resources>,
         pack: PackResources,
         options: Options,

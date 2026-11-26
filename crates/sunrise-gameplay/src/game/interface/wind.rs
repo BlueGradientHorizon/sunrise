@@ -150,7 +150,7 @@ impl Source {
     }
     /// The `minecraft:explode` of the Wind Burst enchantment: the attacker is
     /// the source, so it makes the wind charge's sound and its blocks react.
-    pub(in crate::game) const WIND_BURST: Self = Self {
+    pub const WIND_BURST: Self = Self {
         sound: WIND_CHARGE_BURST,
         breeze: false,
         wind_charge: false,
@@ -274,7 +274,7 @@ impl ServerGame<'_> {
     }
 
     /// A wind charge meeting an entity or a block (or flying too high).
-    pub(in crate::game) fn wind_charge_hit(&mut self, p: &Projectile, hit: Hit) -> Result<()> {
+    pub fn wind_charge_hit(&mut self, p: &Projectile, hit: Hit) -> Result<()> {
         let breeze = p.kind == ProjectileKind::BreezeWindCharge;
         let (radius, knockback) = if breeze {
             (BREEZE_RADIUS, 1.0)
@@ -652,7 +652,7 @@ impl ServerGame<'_> {
     }
     /// The pushes `wind_knockback` held for entities that tick after the
     /// projectiles, applied once those entities have ticked.
-    pub(in crate::game::server_side) fn apply_late_wind_pushes(&mut self) {
+    pub fn apply_late_wind_pushes(&mut self) {
         let late = std::mem::take(&mut self.server.late_wind_pushes);
         if late.is_empty() {
             return;
@@ -746,7 +746,7 @@ impl ServerGame<'_> {
         (!flying).then_some(push)
     }
     /// The burst: knockback, the blocks that react, the gust and the sound.
-    pub(in crate::game) fn wind_burst(
+    pub fn wind_burst(
         &mut self,
         center: [f64; 3],
         radius: f32,
@@ -834,7 +834,7 @@ impl ServerGame<'_> {
     /// is not a wind charge's burst (a mod's `ExplosionInteraction::Trigger`):
     /// the blocks, shuffled, react and none breaks. `canTriggerBlocks`: with a
     /// breeze's charge as the source they react only under mob griefing.
-    pub(in crate::game) fn explosion_trigger_blocks(
+    pub fn explosion_trigger_blocks(
         &mut self,
         targets: &mut [[i32; 3]],
     ) -> Result<()> {

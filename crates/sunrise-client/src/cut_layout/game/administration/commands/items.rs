@@ -165,11 +165,11 @@ pub(crate) mod mob_equipment_command_tests {
         n: i32,
     ) -> (String, u32) {
         let uuid = format!("00000019-0000-0000-0000-{n:012x}");
-        let prev = game.side.chat_capture.replace(Vec::new());
+        let prev = game.server.chat_capture.replace(Vec::new());
         let ok = game.run_command(&format!(
             "summon {kind} 4.5 200 5.5 {{UUID:[I;25,0,0,{n}],NoAI:1b,NoGravity:1b,Silent:1b,h025_raw:7,Tags:[h025]}}"
         ));
-        let lines = std::mem::replace(&mut game.side.chat_capture, prev).unwrap_or_default();
+        let lines = std::mem::replace(&mut game.server.chat_capture, prev).unwrap_or_default();
         assert!(ok, "{kind}/{n}: {lines:?}");
         let mob = game
             .mobs
@@ -473,11 +473,11 @@ pub(crate) mod mob_equipment_stack_tests {
 
     fn actor(game: &mut sunrise_gameplay::game::ServerGame<'_>, kind: &str, n: i32) -> (String, u32) {
         let uuid = format!("00000017-0000-0000-0000-{n:012x}");
-        let prev = game.side.chat_capture.replace(Vec::new());
+        let prev = game.server.chat_capture.replace(Vec::new());
         let ok = game.run_command(&format!(
             "summon {kind} 4.5 200 5.5 {{UUID:[I;23,0,0,{n}],NoAI:1b,NoGravity:1b,Silent:1b,h023_raw:7,Tags:[h023]}}"
         ));
-        let lines = std::mem::replace(&mut game.side.chat_capture, prev).unwrap_or_default();
+        let lines = std::mem::replace(&mut game.server.chat_capture, prev).unwrap_or_default();
         assert!(ok, "{kind}/{n}: {lines:?}");
         let mob = game
             .mobs
@@ -691,7 +691,7 @@ pub(crate) mod builtin_component_delivery_tests {
             guest.loaded = true;
             guest.selected = 1;
             guest.permission = 2;
-            game.side.lan.as_mut().unwrap().hub.guests.push(guest);
+            game.server.lan.as_mut().unwrap().hub.guests.push(guest);
             let clock = game.world.game_time;
             let root =
                 std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
@@ -740,12 +740,12 @@ pub(crate) mod builtin_component_delivery_tests {
                 game,
                 "item replace entity @s inventory.0 with stone[minecraft:custom_name=\"H283 control\"] 3",
             );
-            let control = capture(game.side.lan.as_mut().unwrap());
+            let control = capture(game.server.lan.as_mut().unwrap());
             assert_eq!(control.item, id("minecraft:item", "minecraft:stone"));
             assert_eq!(control.count, 3);
             assert!(control.component(component::CUSTOM_NAME).is_some());
             command(game, "item replace entity @s inventory.0 with gold_ingot");
-            let plain = capture(game.side.lan.as_mut().unwrap());
+            let plain = capture(game.server.lan.as_mut().unwrap());
             assert!(
                 plain
                     .component(id(
@@ -790,7 +790,7 @@ pub(crate) mod builtin_component_delivery_tests {
                     &format!("item replace entity @s inventory.0 with {item}[{name}={value}]"),
                 );
                 let source: ItemStack = game
-                    .side
+                    .server
                     .lan
                     .as_ref()
                     .unwrap()
@@ -808,7 +808,7 @@ pub(crate) mod builtin_component_delivery_tests {
                     "actual registered command adoption"
                 );
                 assert!(source.wire_patch().is_none(), "no cached wire fallback");
-                let received = capture(game.side.lan.as_mut().unwrap());
+                let received = capture(game.server.lan.as_mut().unwrap());
                 assert_eq!(received.item, id("minecraft:item", item));
                 assert_eq!(received.count, 1);
                 assert!(received.removed.is_empty());
@@ -823,15 +823,15 @@ pub(crate) mod builtin_component_delivery_tests {
                     failures.push((name, received));
                 }
                 assert_eq!(
-                    game.side.lan.as_ref().unwrap().hub.guest(2).unwrap().uuid,
+                    game.server.lan.as_ref().unwrap().hub.guest(2).unwrap().uuid,
                     283
                 );
                 assert_eq!(
-                    game.side.lan.as_ref().unwrap().hub.guest(2).unwrap().health,
+                    game.server.lan.as_ref().unwrap().hub.guest(2).unwrap().health,
                     20.0
                 );
                 assert_eq!(
-                    game.side
+                    game.server
                         .lan
                         .as_ref()
                         .unwrap()

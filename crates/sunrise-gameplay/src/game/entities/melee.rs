@@ -71,7 +71,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// Player.attack with the attack-strength charge, crits and knockback.
-    pub(in crate::game) fn attack(&mut self) -> bool {
+    pub fn attack(&mut self) -> bool {
         if self.common.spectator() {
             return false;
         }
@@ -186,7 +186,7 @@ impl crate::game::ServerGame<'_> {
 impl crate::game::ServerGame<'_> {
     /// `Player.attack` on a mob: the damage, knockback, sweep, particles and
     /// sounds.
-    pub(in crate::game) fn attack_mob(&mut self, index: usize) {
+    pub fn attack_mob(&mut self, index: usize) {
         let attack = self.attack_of(self.common.player.as_ref().map_or(0, |p| p.entity_id));
         let target_kind = self.common.mobs[index].kind.id.clone();
         let target_kind = format!("minecraft:{}", target_kind.trim_start_matches("minecraft:"));

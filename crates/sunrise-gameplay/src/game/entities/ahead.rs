@@ -216,7 +216,7 @@ pub struct Moves(Vec<Option<Ahead>>);
 impl Moves {
     /// The moves of the items that will tick (`ticks`), on the helper threads; none while the
     /// parallel tick is off, for few items, or with a mod that could see an item's move.
-    pub(in crate::game::server_side) fn work_out(
+    pub fn work_out(
         game: &crate::game::ServerGame<'_>,
         items: &[ItemEntity],
         obstacles: &ObstacleGrid,
@@ -261,7 +261,7 @@ impl Moves {
     /// Item `i`'s move, put in place, when it was worked out and no merge changed the item since.
     /// Under `SUNRISE_PARALLEL_TICK=verify` the move is made again at its turn, on a copy, and a
     /// difference is logged.
-    pub(in crate::game::server_side) fn take(
+    pub fn take(
         &mut self,
         i: usize,
         item: &mut ItemEntity,

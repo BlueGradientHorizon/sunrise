@@ -52,9 +52,9 @@ fn guest_stonecutter_uses_packet_tags_components_and_authoritative_buttons() {
     );
     with_guests(|server| {
         let _serving = sunrise_gameplay::game::server_side::integrated::tests::install_serving(server, false);
-        server.side.world_root = root.to_owned();
+        server.server.world_root = root.to_owned();
         let (tx, rx) = std::sync::mpsc::channel();
-        let host = server.side.lan.as_mut().unwrap();
+        let host = server.server.lan.as_mut().unwrap();
         host.play.entry(12).or_default();
         host.hub.update_guest(12, |guest| {
             guest.sender = PlayerSender::new(tx, Arc::default());
@@ -62,7 +62,7 @@ fn guest_stonecutter_uses_packet_tags_components_and_authoritative_buttons() {
         server.reload_datapacks(true, &[]).unwrap();
         let station = place_stonecutter(server);
         assert!(server.lan_open_station(12, &station));
-        let window = server.side.lan.as_ref().unwrap().menus[&12]
+        let window = server.server.lan.as_ref().unwrap().menus[&12]
             .station
             .as_ref()
             .unwrap()
@@ -80,7 +80,7 @@ fn guest_stonecutter_uses_packet_tags_components_and_authoritative_buttons() {
         };
         // Opening the station returns anything already on the cursor to inventory.
         server
-            .side
+            .server
             .lan
             .as_mut()
             .unwrap()
@@ -127,7 +127,7 @@ fn guest_stonecutter_uses_packet_tags_components_and_authoritative_buttons() {
                 .expect("the guest placed its stack");
             assert_eq!((input.item.as_ref(), input.count), ("minecraft:stick", 3));
             assert!(
-                client.side.remote.as_ref().unwrap().tags.is_none(),
+                client.client.remote.as_ref().unwrap().tags.is_none(),
                 "no native tag view"
             );
             let shown = |client: &sunrise_client_gameplay::game::ClientGame<'_>| {
@@ -181,7 +181,7 @@ fn guest_stonecutter_uses_packet_tags_components_and_authoritative_buttons() {
             server.lan_guest_packet(12, click(1, 1)); // Quick-move all three cuts into inventory.
             deliver(client, false);
             assert_eq!(
-                server.side.lan.as_ref().unwrap().hub.guests[0]
+                server.server.lan.as_ref().unwrap().hub.guests[0]
                     .inventory
                     .iter()
                     .flatten()
@@ -192,7 +192,7 @@ fn guest_stonecutter_uses_packet_tags_components_and_authoritative_buttons() {
             );
 
             server
-                .side
+                .server
                 .lan
                 .as_mut()
                 .unwrap()
@@ -235,7 +235,7 @@ fn guest_stonecutter_uses_packet_tags_components_and_authoritative_buttons() {
             server.inventory[19] = Some(ItemStack::new("minecraft:gold_ingot", 4));
             server.carried = Some(ItemStack::new("minecraft:apple", 2));
             let outer = (server.inventory.clone(), server.carried.clone());
-            let hub = &mut server.side.lan.as_mut().unwrap().hub;
+            let hub = &mut server.server.lan.as_mut().unwrap().hub;
             hub.update_guest(12, |g| {
                 g.carried = Some(ItemStack::new("minecraft:iron_ingot", 3));
             });
@@ -252,7 +252,7 @@ fn guest_stonecutter_uses_packet_tags_components_and_authoritative_buttons() {
                 integrated: true,
                 quiet: false,
             }));
-            let hub = &server.side.lan.as_ref().unwrap().hub;
+            let hub = &server.server.lan.as_ref().unwrap().hub;
             let operator = hub.guest(12).unwrap();
             assert_eq!(operator.carried, None);
             for (item, count) in [("minecraft:stick", 1), ("minecraft:iron_ingot", 3)] {
@@ -284,7 +284,7 @@ fn guest_stonecutter_uses_packet_tags_components_and_authoritative_buttons() {
                 }),
             );
             assert!(
-                server.side.lan.as_ref().unwrap().menus[&12]
+                server.server.lan.as_ref().unwrap().menus[&12]
                     .station
                     .is_none()
             );
@@ -309,9 +309,9 @@ fn guest_stonecutter_waits_for_deferred_recipe_publication() {
     }
     with_guests(|server| {
         let _serving = sunrise_gameplay::game::server_side::integrated::tests::install_serving(server, false);
-        server.side.world_root = root.to_owned();
+        server.server.world_root = root.to_owned();
         let (tx, rx) = std::sync::mpsc::channel();
-        let host = server.side.lan.as_mut().unwrap();
+        let host = server.server.lan.as_mut().unwrap();
         host.play.entry(12).or_default();
         host.hub.update_guest(12, |guest| {
             guest.sender = PlayerSender::new(tx, Arc::default());
@@ -320,7 +320,7 @@ fn guest_stonecutter_waits_for_deferred_recipe_publication() {
         let station = place_stonecutter(server);
         assert!(server.lan_open_station(12, &station));
         let menu = |server: &sunrise_gameplay::game::ServerGame<'_>| {
-            server.side.lan.as_ref().unwrap().menus[&12]
+            server.server.lan.as_ref().unwrap().menus[&12]
                 .station
                 .as_ref()
                 .map(|station| {
@@ -368,9 +368,9 @@ fn guest_stonecutter_waits_for_deferred_recipe_publication() {
         );
         let prepared = server.prepare_world_reload(&stack, &resources).unwrap();
         // Simulate the mod-loaded hub's two real phases without running the second yet.
-        server.side.lan.as_mut().unwrap().hub.mods_loaded = true;
+        server.server.lan.as_mut().unwrap().hub.mods_loaded = true;
         server.install_world_tables(prepared);
-        let hub = &server.side.lan.as_ref().unwrap().hub;
+        let hub = &server.server.lan.as_ref().unwrap().hub;
         assert!(hub.native_reload_pending);
         assert_eq!(
             buttons(&hub.sync_data().stonecutter_buttons),
@@ -394,7 +394,7 @@ fn guest_stonecutter_waits_for_deferred_recipe_publication() {
         };
         assert_eq!(open.container, new_window);
         let items = server
-            .side
+            .server
             .lan
             .as_ref()
             .unwrap()

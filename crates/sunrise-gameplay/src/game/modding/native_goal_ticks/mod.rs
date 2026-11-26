@@ -127,7 +127,7 @@ impl GoalCx<'_, '_> {
 
     /// `Host::entity`: the id resolves in the tick's view — the ticking mob,
     /// the player it sees, a mob of the snapshot, the dragon — or none.
-    pub(in crate::game::server_side) fn lookup_entity(&self, id: u32) -> Option<EntityRef> {
+    pub fn lookup_entity(&self, id: u32) -> Option<EntityRef> {
         let host = self.w.goal_host?;
         let epoch = host.epoch()?;
         let entity = EntityRef::new(epoch, id);
@@ -146,7 +146,7 @@ impl GoalCx<'_, '_> {
     }
 
     /// `Host::living`: the handle resolves in the tick's view.
-    pub(in crate::game::server_side) fn lookup_living(
+    pub fn lookup_living(
         &self,
         entity: EntityRef,
     ) -> Option<LivingRef> {
@@ -170,7 +170,7 @@ impl GoalCx<'_, '_> {
 
     /// `Host::player`: resolve any online player, including the one the tick
     /// sees, by UUID.
-    pub(in crate::game::server_side) fn lookup_player(&self, uuid: u128) -> Option<PlayerRef> {
+    pub fn lookup_player(&self, uuid: u128) -> Option<PlayerRef> {
         self.host.player(uuid).or_else(|| {
             let (uuid_seen, id) = self.w.selected_player_identity()?;
             let epoch = self.w.goal_host?.epoch()?;
@@ -949,7 +949,7 @@ impl crate::game::ServerGame<'_> {
     /// Dispatch a target change against the mob tick's scoped read view. The
     /// game has lent its mob list to the tick, so using `Game` itself as the
     /// host here would make the actor and other mob handles unresolvable.
-    pub(in crate::game) fn native_mob_change_target_in_tick(
+    pub fn native_mob_change_target_in_tick(
         &self,
         mob: &mut Mob,
         world: &MobWorld<'_>,

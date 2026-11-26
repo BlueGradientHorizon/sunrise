@@ -45,7 +45,7 @@ macro_rules! settle_guest_hit {
 impl crate::game::ServerGame<'_> {
     /// `handlePlayerPositionChange`: complete the accepted movement before later
     /// packets and `ServerPlayer.tick` can observe the player.
-    pub(in crate::game) fn guest_accepted_move(&mut self, conn: u32, commit: CommittedMove) {
+    pub fn guest_accepted_move(&mut self, conn: u32, commit: CommittedMove) {
         let CommittedMove {
             movement: accepted,
             horizontal_collision,
@@ -342,7 +342,7 @@ impl crate::game::ServerGame<'_> {
     /// regeneration, food and travel (`ServerPlayer.doTick`). Accepted reports
     /// have already run their fall checks; the body still walks their history
     /// for `Entity.applyEffectsFromBlocks` and the movement a glide reads.
-    pub(in crate::game) fn guest_server_tick(&mut self, conn: u32, body: bool) {
+    pub fn guest_server_tick(&mut self, conn: u32, body: bool) {
         // The last move's fall stands in for the server's delta movement.
         let Some(host) = self.server.lan.as_mut() else {
             return;

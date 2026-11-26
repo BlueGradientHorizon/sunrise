@@ -50,16 +50,16 @@ fn integrated_enchant_updates_the_clients_selected_slot() {
         client.set_screen(Screen::Creative);
         // Supply the category's displayed stack, not a predicted or server slot.
         let category = client
-            .side
+            .client
             .creative_screen
             .0
             .tabs
             .iter()
             .position(|tab| !tab.search && !tab.inventory && !tab.hotbar)
             .unwrap();
-        client.side.creative_screen.0.select(category);
-        client.side.creative_screen.0.tabs[category].items = vec![ItemStack::new(TRIDENT, 1)];
-        client.side.creative_screen.0.forget_items();
+        client.client.creative_screen.0.select(category);
+        client.client.creative_screen.0.tabs[category].items = vec![ItemStack::new(TRIDENT, 1)];
+        client.client.creative_screen.0.forget_items();
         let display = Creative::DISPLAY;
         sent(&mut wire);
         match target {
@@ -111,11 +111,11 @@ fn integrated_enchant_updates_the_clients_selected_slot() {
         with_game(|game| {
             game.player = None;
             game.build_registries();
-            game.side.lan = Some(LanHost::for_test(hub));
+            game.server.lan = Some(LanHost::for_test(hub));
             for packet in outgoing {
                 game.lan_guest_packet(1, packet);
             }
-            let player = &game.side.lan.as_ref().unwrap().hub.guests[index];
+            let player = &game.server.lan.as_ref().unwrap().hub.guests[index];
             assert_eq!(player.selected, selected);
             assert_eq!(riptide(player.inventory[selected].as_ref()), 0);
             if console {
@@ -127,7 +127,7 @@ fn integrated_enchant_updates_the_clients_selected_slot() {
             } else {
                 game.run_guest_commands();
             }
-            let hub = &mut game.side.lan.as_mut().unwrap().hub;
+            let hub = &mut game.server.lan.as_mut().unwrap().hub;
             hub.sync_guest_after_tick(1);
             let mut feedback = Vec::new();
             for out in rx.try_iter() {

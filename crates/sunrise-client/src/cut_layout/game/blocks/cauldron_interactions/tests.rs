@@ -382,9 +382,9 @@ pub(crate) fn setup(
 ) {
     setup_common(game, block, level, item, count);
     bind_local_player(game, 7, 123);
-    game.side.pending_native_sounds.clear();
-    game.side.audio_capture_active = true;
-    game.side.pending_sounds.clear();
+    game.server.pending_native_sounds.clear();
+    game.server.audio_capture_active = true;
+    game.server.pending_sounds.clear();
 }
 pub(crate) fn state<S>(game: &Game<'_, S>) -> (String, Option<String>) {
     let state = game
@@ -445,7 +445,7 @@ fn cauldron_syrup_applies_once() {
         assert_eq!(game.stats.get("custom", "minecraft:use_cauldron"), 1);
         assert_eq!(game.stats.get("used", "test:syrup_bottle"), 1);
         assert_eq!(
-            game.side
+            game.server
                 .pending_native_sounds
                 .iter()
                 .filter(|sound| sound.sound == "minecraft:item.bucket.empty")
@@ -1656,7 +1656,7 @@ fn cauldron_packet_pass_resumes_item_use_once_without_client_prediction() {
         let mut read_uses = |client: &sunrise_client_gameplay::game::ClientGame<'_>| {
             // Use the same writer, outside the actor hold, to fence each burst.
             client
-                .side
+                .client
                 .remote
                 .as_ref()
                 .unwrap()
@@ -1677,7 +1677,7 @@ fn cauldron_packet_pass_resumes_item_use_once_without_client_prediction() {
             }
         };
         assert!(read_uses(client).is_empty());
-        client.side.remote.as_mut().unwrap().joined = true;
+        client.client.remote.as_mut().unwrap().joined = true;
         client.set_local_mode(sunrise_command::args::GameMode::Survival);
         setup_common(client, "minecraft:cauldron", None, item, 1);
         let aim = (35.0, -12.0);
@@ -1780,7 +1780,7 @@ fn cauldron_packet_pass_resumes_item_use_once_without_client_prediction() {
         if !already_sent {
             player.offhand = Some(ItemStack::new("minecraft:water_bucket", 1));
         }
-        server.side.lan.as_mut().unwrap().hub.guests.push(player);
+        server.server.lan.as_mut().unwrap().hub.guests.push(player);
         server.lan_guest_packet(1, block_use);
         assert_eq!(
             calls.load(Ordering::SeqCst),

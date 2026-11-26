@@ -51,7 +51,7 @@ impl ServerGame<'_> {
         Some(out)
     }
     /// `ItemCooldowns.isOnCooldown`: whether `group` still has time to run.
-    pub(in crate::game) fn player_has_item_cooldown(
+    pub fn player_has_item_cooldown(
         &self,
         player: PlayerRef,
         group: &str,
@@ -70,7 +70,7 @@ impl ServerGame<'_> {
     /// `ItemCooldowns.addCooldown(group, ticks)`: starts (or restarts) the
     /// group's cooldown, and the player's client draws it on every item of the
     /// group (`ServerItemCooldowns.onCooldownStarted`).
-    pub(in crate::game) fn player_set_item_cooldown(
+    pub fn player_set_item_cooldown(
         &mut self,
         player: PlayerRef,
         group: &str,
@@ -96,7 +96,7 @@ impl ServerGame<'_> {
     }
     /// `Player.takeXpDelay`: the ticks before the player can take the next
     /// experience orb.
-    pub(in crate::game) fn player_exp_cooldown(&self, player: PlayerRef) -> Option<u32> {
+    pub fn player_exp_cooldown(&self, player: PlayerRef) -> Option<u32> {
         match self.player_handle_read(player)? {
             sunrise_gameplay_common::game::native_server::PlayerRead::Acting { .. } => Some(self.server.xp_delay),
             sunrise_gameplay_common::game::native_server::PlayerRead::Guest(g) => Some(
@@ -111,7 +111,7 @@ impl ServerGame<'_> {
     }
     /// Sets `Player.takeXpDelay`: no orb is taken for `ticks` ticks. The
     /// change is not reported to `player_exp_cooldown_change`.
-    pub(in crate::game) fn player_set_exp_cooldown(
+    pub fn player_set_exp_cooldown(
         &mut self,
         player: PlayerRef,
         ticks: u32,
@@ -123,7 +123,7 @@ impl ServerGame<'_> {
     /// one tracker here, the integrated server owner's (the shriekers read it
     /// for whoever sets them off), so this is every player's.
     /// False, changing nothing, for anyone but the tracker's owner until each player has their own.
-    pub(in crate::game) fn player_set_warden_warning_cooldown(
+    pub fn player_set_warden_warning_cooldown(
         &mut self,
         player: PlayerRef,
         ticks: u32,

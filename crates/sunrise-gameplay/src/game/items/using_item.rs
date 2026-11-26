@@ -5,7 +5,7 @@ use super::*;
 
 impl crate::game::ServerGame<'_> {
     /// `Consumable.startConsuming` on the server for a held consumable.
-    pub(in crate::game) fn server_start_eating(
+    pub fn server_start_eating(
         &mut self,
         info: &sunrise_items::items::ItemInfo,
     ) -> bool {
@@ -68,7 +68,7 @@ impl crate::game::ServerGame<'_> {
         self.use_vibration(stack, "minecraft:item_interact_start");
         self.server.crossbow_sounds = [false; 2];
     }
-    pub(in crate::game) fn tick_using_server(&mut self) {
+    pub fn tick_using_server(&mut self) {
         assert!(
             self.is_logical_server(),
             "tick_using_server called on Client role"
@@ -252,7 +252,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// Ends the current use through [`Self::stop_using_item`]. With no stack left in
     /// the use's slot there is nothing to vibrate, but the use still ends.
-    pub(in crate::game) fn stop_active_item_use(&mut self) {
+    pub fn stop_active_item_use(&mut self) {
         match self.common.use_start.item.clone().or_else(|| {
             self.common.using
                 .and_then(|(slot, _)| self.common.stack_in(slot))
@@ -293,7 +293,7 @@ impl crate::game::ServerGame<'_> {
     /// its remaining ticks are cleared), and when the use effects of the stack
     /// ask for it, `ItemStack.causeUseVibration` sends an `ITEM_INTERACT_FINISH`
     /// game event from the player, at its feet.
-    pub(in crate::game) fn stop_using_item(&mut self, stack: &ItemStack) {
+    pub fn stop_using_item(&mut self, stack: &ItemStack) {
         self.common.using = None;
         self.common.use_start = Default::default();
         self.use_vibration(stack, "minecraft:item_interact_finish");

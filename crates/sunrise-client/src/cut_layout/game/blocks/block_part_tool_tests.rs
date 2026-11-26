@@ -31,7 +31,7 @@ fn a_block_part_allows_replaces_or_denies_a_tool_action_and_a_preview_changes_no
         let state = |name: &str| registry.default_state(name).unwrap();
         let axe = ItemStack::new("minecraft:iron_axe", 1);
         let value = Some(axe.clone());
-        game.side
+        game.server
             .lan
             .as_mut()
             .unwrap()

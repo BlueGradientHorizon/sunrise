@@ -32,7 +32,7 @@ impl crate::game::ServerGame<'_> {
     /// way `Minecraft.hitResult` does. `native_entity_interact_specific` and
     /// `native_interact_entity` hear it first; a claim swings the hand and
     /// ends the click.
-    pub(in crate::game) fn interact_entity(
+    pub fn interact_entity(
         &mut self,
         target: Option<InteractTarget>,
     ) -> Result<bool> {
@@ -121,7 +121,7 @@ impl crate::game::ServerGame<'_> {
         }
     }
     /// The player as a block's `useItemOn` / `useWithoutItem` sees them.
-    pub(in crate::game) fn use_context(&self) -> PlayerContext {
+    pub fn use_context(&self) -> PlayerContext {
         PlayerContext {
             yaw: self.common.yaw,
             pitch: self.common.pitch,
@@ -148,7 +148,7 @@ impl crate::game::ServerGame<'_> {
         self.with_player_actor(|game| game.use_item_as_player())
     }
     /// `Minecraft.startUseItem`: the main hand, then the off hand.
-    pub(in crate::game) fn use_item_as_player(&mut self) -> Result<Option<Hand>> {
+    pub fn use_item_as_player(&mut self) -> Result<Option<Hand>> {
         // Spectators only look (MultiPlayerGameMode.useItemOn/useItem pass),
         // but on a server a spectator's use on a block opens the block's
         // menu (ServerPlayerGameMode.useItemOn).

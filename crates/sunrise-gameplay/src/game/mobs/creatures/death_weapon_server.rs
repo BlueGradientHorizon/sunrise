@@ -1,7 +1,7 @@
 use super::*;
 
 impl crate::game::ServerGame<'_> {
-    pub(in crate::game) fn projectile_attack(&self, shot: &Projectile) -> Attack {
+    pub fn projectile_attack(&self, shot: &Projectile) -> Attack {
         let mut attack = match shot.owner {
             Some(Who::Player) => self
                 .player_entity_id_by_connection(shot.guest)
@@ -12,7 +12,7 @@ impl crate::game::ServerGame<'_> {
         sunrise_gameplay_common::game::CommonGame::set_projectile_attack(&mut attack, shot);
         attack
     }
-    pub(in crate::game) fn shot_damage(
+    pub fn shot_damage(
         &mut self,
         shot: &mut Projectile,
         victim: Option<&str>,
@@ -25,7 +25,7 @@ impl crate::game::ServerGame<'_> {
             shot.arrow_damage_with_base(base) + shot.bonus.damage
         }
     }
-    pub(in crate::game) fn drop_death_loot(
+    pub fn drop_death_loot(
         &mut self,
         m: &mut Mob,
         player_uuid: Option<u128>,
@@ -66,7 +66,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// Hurt and settle a living target before the projectile resumes its on-hit work.
     /// The weapon is committed only when hurtServer accepts this projectile's source.
-    pub(in crate::game) fn damage_projectile_with_weapon(
+    pub fn damage_projectile_with_weapon(
         &mut self,
         projectile: &Projectile,
         id: u32,

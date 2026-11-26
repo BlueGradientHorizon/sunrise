@@ -117,7 +117,7 @@ use sunrise_sim::lan::menu::Slots;
                 use sunrise_protocol::{buf::Reader, ids::play::clientbound};
                 use sunrise_sim::lan::{Out, PlayerSender};
                 let (tx, rx) = std::sync::mpsc::channel();
-                game.side
+                game.server
                     .lan
                     .as_mut()
                     .unwrap()
@@ -133,7 +133,7 @@ use sunrise_sim::lan::menu::Slots;
                     );
                     let other = game.block_entity(level, [5, 64, 0]).unwrap();
                     assert!(player.open_menu(game, other).unwrap());
-                    let host = game.side.lan.as_ref().unwrap();
+                    let host = game.server.lan.as_ref().unwrap();
                     Some(host.hub.guest(12).unwrap().menu.as_ref().unwrap().window)
                 } else {
                     None
@@ -144,7 +144,7 @@ use sunrise_sim::lan::menu::Slots;
                 assert_ne!(chest, replacement);
                 assert_eq!(chest.position(game), None);
                 let menu = game
-                    .side
+                    .server
                     .lan
                     .as_ref()
                     .unwrap()
@@ -194,7 +194,7 @@ use sunrise_sim::lan::menu::Slots;
                 .block_entities
                 .insert((0, 64, 0), BlockEntity::Chest(vec![None; 27]));
             let dimension = game
-                .side
+                .server
                 .lan
                 .as_mut()
                 .unwrap()
@@ -206,7 +206,7 @@ use sunrise_sim::lan::menu::Slots;
             assert!(!player.open_menu(game, chest).unwrap());
             {
                 let value = dimension;
-                game.side
+                game.server
                     .lan
                     .as_mut()
                     .unwrap()
@@ -214,19 +214,19 @@ use sunrise_sim::lan::menu::Slots;
                     .guests
                     .update(0, |guest| guest.dimension = value);
             }
-            let host = game.side.lan.take();
+            let host = game.server.lan.take();
             assert!(!player.open_menu(game, chest).unwrap());
             assert_eq!(game.open_block_menu(12, (0, 64, 0)), MenuOpen::Refused);
-            game.side.lan = host;
-            let mut guest = game.side.lan.as_mut().unwrap().hub.guests.remove(0);
+            game.server.lan = host;
+            let mut guest = game.server.lan.as_mut().unwrap().hub.guests.remove(0);
             guest.kind = sunrise_sim::lan::guest::GuestKind::Fake;
-            game.side.lan.as_mut().unwrap().hub.guests.insert(0, guest);
+            game.server.lan.as_mut().unwrap().hub.guests.insert(0, guest);
             // Fake players have no client menu. This is a refusal, not a hook cancellation.
             assert_eq!(game.open_block_menu(12, (0, 64, 0)), MenuOpen::Refused);
             assert!(!player.open_menu(game, chest).unwrap());
-            let mut guest = game.side.lan.as_mut().unwrap().hub.guests.remove(0);
+            let mut guest = game.server.lan.as_mut().unwrap().hub.guests.remove(0);
             guest.kind = sunrise_sim::lan::guest::GuestKind::Network;
-            game.side.lan.as_mut().unwrap().hub.guests.insert(0, guest);
+            game.server.lan.as_mut().unwrap().hub.guests.insert(0, guest);
             assert!(player.open_menu(game, chest).unwrap());
             assert_eq!(chest.lock(game), None);
             assert!(chest.set_lock(game, Some(Compound::new())).unwrap());
@@ -242,7 +242,7 @@ use sunrise_sim::lan::menu::Slots;
             assert!(!player.open_menu(game, chest).unwrap());
             {
                 let value = Some(sunrise_items::items::ItemStack::new("minecraft:stick", 1));
-                game.side
+                game.server
                     .lan
                     .as_mut()
                     .unwrap()
@@ -253,7 +253,7 @@ use sunrise_sim::lan::menu::Slots;
             assert!(player.open_menu(game, chest).unwrap());
             {
                 let value = None;
-                game.side
+                game.server
                     .lan
                     .as_mut()
                     .unwrap()
@@ -401,9 +401,9 @@ use sunrise_sim::lan::menu::Slots;
 
             // A fake player holding the same menu is not a viewer.
             assert!(guest13.open_menu(game, left).unwrap());
-            let mut fake = game.side.lan.as_mut().unwrap().hub.guests.remove(1);
+            let mut fake = game.server.lan.as_mut().unwrap().hub.guests.remove(1);
             fake.kind = sunrise_sim::lan::guest::GuestKind::Fake;
-            game.side.lan.as_mut().unwrap().hub.guests.insert(1, fake);
+            game.server.lan.as_mut().unwrap().hub.guests.insert(1, fake);
             assert_eq!(left.viewers(game), Some(vec![guest12]));
 
             // The same position in another level has none of these viewers.

@@ -173,7 +173,7 @@ impl OriginalPlayerAccess for RetainedOriginalPlayer {
 impl crate::game::ServerGame<'_> {
     /// Make the callback's player addressable without publishing it in a level's player list
     /// or entity table. This also covers construction and the post-clone set-spawn event.
-    pub(in crate::game) fn with_cloning_player<R>(
+    pub fn with_cloning_player<R>(
         &mut self,
         conn: u32,
         run: impl FnOnce(&mut Self) -> R,
@@ -263,7 +263,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// `ServerPlayer.restoreFrom`: retain the old player's state before replacing any data.
-    pub(in crate::game) fn retain_original_player(
+    pub fn retain_original_player(
         &self,
         conn: u32,
         detached_attachments: Attachments,

@@ -33,12 +33,12 @@ use serde_json::json;
                 focused: true,
                 adopt_regions: true,
             };
-            game.side.title.0 = Some(title);
+            game.client.title.0 = Some(title);
             assert_eq!(
                 game.title_value(),
                 json!({"mode":"edit-world", "folder":"Moor", "fields":{"name":"Typed name"}, "focus":"name", "adopt_biome_regions":true})
             );
-            game.side.title.0.as_mut().unwrap().mode = Mode::AdoptBiomeRegions {
+            game.client.title.0.as_mut().unwrap().mode = Mode::AdoptBiomeRegions {
                 world,
                 name: "Typed name".into(),
             };

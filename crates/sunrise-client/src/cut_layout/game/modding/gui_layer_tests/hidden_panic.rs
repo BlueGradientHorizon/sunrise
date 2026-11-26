@@ -83,9 +83,9 @@ fn a_panicking_hidden_status_replacement_leaves_other_rows() {
             .into(),
         );
         sunrise_client_gameplay::game::client_side::mods_client::register_gui_layers(ExecutionRole::Client);
-        game.side.title.0 = None;
-        game.side.screen = sunrise_gameplay_common::game::Screen::Playing;
-        game.side.chat_ui.hide_gui = true;
+        game.client.title.0 = None;
+        game.client.screen = sunrise_gameplay_common::game::Screen::Playing;
+        game.client.chat_ui.hide_gui = true;
         for (frame, expected) in [
             &["mount replacement", "air replacement"][..],
             &["air replacement"],
@@ -97,7 +97,7 @@ fn a_panicking_hidden_status_replacement_leaves_other_rows() {
             assert_eq!(take().as_slice(), expected);
             assert!(!batch.vertices.iter().any(|v| v.color == FAILED));
             assert!(batch.vertices.iter().any(|v| v.color == SIBLING));
-            assert_eq!(game.side.chat_ui.room.bottom(), 125.0);
+            assert_eq!(game.client.chat_ui.room.bottom(), 125.0);
             if frame == 0 {
                 // The shared queue retains the failure under F1.
                 let [
@@ -105,7 +105,7 @@ fn a_panicking_hidden_status_replacement_leaves_other_rows() {
                         toast: sunrise_client_gameplay::game::toast_manager::Toast::Diagnostic { toast, .. },
                         ..
                     },
-                ] = game.side.toast_manager.visible.as_slice()
+                ] = game.client.toast_manager.visible.as_slice()
                 else {
                     panic!("expected one mandatory mod error toast");
                 };

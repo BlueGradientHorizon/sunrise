@@ -162,7 +162,7 @@ impl ServerGame<'_> {
     /// `finalize::Ctx` world generation runs, over the live level, with the
     /// level's random (`world.random`). Mobs the call made (jockeys and
     /// mounts) join the level beside it.
-    pub(in crate::game::server_side) fn finalize_plain(
+    pub fn finalize_plain(
         &mut self,
         mob: &mut Mob,
         difficulty: &spawning::LocalDifficulty,

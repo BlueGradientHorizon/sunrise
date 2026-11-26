@@ -245,11 +245,11 @@ pub(crate) mod tests {
             seed: 0,
             max_players: 2,
             integrated: !dedicated,
-            levels: game.side.level_shapes,
-            level_seeds: game.side.levels.0.runtime.seeds(),
+            levels: game.server.level_shapes,
+            level_seeds: game.server.levels.0.runtime.seeds(),
         };
         game.lan_host(settings, net, config).unwrap();
-        game.side.lan.as_mut().unwrap().hub.singleplayer_owner = owner.then_some(12);
+        game.server.lan.as_mut().unwrap().hub.singleplayer_owner = owner.then_some(12);
         game.world.chunks.insert(
             (0, 0),
             std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
@@ -292,7 +292,7 @@ pub(crate) mod tests {
         // The test client's initial column has already arrived, so the
         // real tracker can pair the other guest and publish dirty flags.
         g.sent_chunks.insert((0, 0));
-        game.side.lan.as_mut().unwrap().hub.guests.push(g);
+        game.server.lan.as_mut().unwrap().hub.guests.push(g);
         let living = game.living(game.entity(conn).unwrap()).unwrap();
         (living, rx)
     }
@@ -324,7 +324,7 @@ pub(crate) mod tests {
         let mut ctx = TickCtx {
             world: &mut game.world,
             entities: &[],
-            next_entity: &mut game.side.next_entity,
+            next_entity: &mut game.server.next_entity,
             spawn: [0.0, 64.0, 0.0],
             spawn_angle: [0.0; 2],
             spawn_dimension: "minecraft:overworld",
@@ -339,7 +339,7 @@ pub(crate) mod tests {
             border: &game.border,
             streaming: None,
         };
-        game.side
+        game.server
             .lan
             .as_mut()
             .unwrap()
@@ -549,7 +549,7 @@ pub(crate) mod tests {
                     // This world's bed is independent of the foreign sleeper;
                     // no player-bed cleanup is pending from the fixture setup.
                     game.set_bed_occupied([5, 64, 5], sleeping);
-                    game.side
+                    game.server
                         .lan
                         .as_mut()
                         .unwrap()
@@ -567,7 +567,7 @@ pub(crate) mod tests {
                         let outer_guest_before = SleepState::guest(game, 12);
                         let foreign_bed = game.world.block(5, 64, 5);
                         let outer_bed = game.world.block(7, 64, 7);
-                        let player_beds = game.side.player_beds.clone();
+                        let player_beds = game.server.player_beds.clone();
                         for mutation in 0..4 {
                             let changed = match mutation {
                                 0 => game.living_start_sleeping(foreign, [5, 64, 5]),
@@ -582,7 +582,7 @@ pub(crate) mod tests {
                             );
                             // No wake marker or bed cleanup may be queued for
                             // the current world by the refused foreign write.
-                            assert_eq!(game.side.player_beds, player_beds);
+                            assert_eq!(game.server.player_beds, player_beds);
                             assert_eq!(SleepState::guest(game, 13), foreign_before);
                             assert_eq!(SleepState::acting(game), outer_before);
                             assert_eq!(SleepState::guest(game, 12), outer_guest_before);
@@ -614,7 +614,7 @@ pub(crate) mod tests {
                     assert_eq!(SleepState::guest(game, 13), foreign_before);
                     assert_eq!(game.world.block(5, 64, 5), foreign_bed);
                     assert_eq!(game.world.block(7, 64, 7), outer_bed);
-                    assert!(game.side.lan_guest_swaps.is_empty());
+                    assert!(game.server.lan_guest_swaps.is_empty());
                     assert_eq!(game.dim, sunrise_gameplay_common::game::Dim::Overworld);
                 });
             }
@@ -677,7 +677,7 @@ pub(crate) mod tests {
             guest_server(game, false, true);
             let (living, _rx) = guest(game, 12);
             let (_observer, observer_rx) = guest(game, 13);
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()
@@ -757,10 +757,10 @@ pub(crate) mod tests {
             let motion = PlayerMotion::new(game.motion, Vec3::ZERO).unwrap();
             let mut fake = Guest::connectionless(14, 14, "fake14".into(), 14, [0.0; 3], motion);
             fake.dimension = game.dim.id().to_owned();
-            game.side.lan.as_mut().unwrap().hub.guests.push(fake);
+            game.server.lan.as_mut().unwrap().hub.guests.push(fake);
             let fake = game.living(game.entity(14).unwrap()).unwrap();
             for conn in [12, 13, 14] {
-                game.side
+                game.server
                     .lan
                     .as_mut()
                     .unwrap()
@@ -812,7 +812,7 @@ pub(crate) mod tests {
             assert!(!game.command_guest(14).unwrap().fall_flying);
             assert_eq!(game.living_sleeping_pos(inner), Some([5, 64, 5]));
             assert_eq!(game.living_is_sleeping(fake), Some(false));
-            assert!(game.side.lan_guest_swaps.is_empty());
+            assert!(game.server.lan_guest_swaps.is_empty());
         });
     }
 

@@ -44,7 +44,7 @@ pub(crate) fn with_spectator(test: impl FnOnce(&mut sunrise_client_gameplay::gam
             sunrise_client_gameplay::game::client_side::remote_client::RemoteDimensionEntry::Login,
             Reason::Other,
         );
-        let remote = game.side.remote.as_mut().unwrap();
+        let remote = game.client.remote.as_mut().unwrap();
         remote.logged_in = true;
         remote.entity_id = OWN;
         game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 0.5)).unwrap());
@@ -82,7 +82,7 @@ pub(crate) fn registry_id(
     registry: &str,
     name: &str,
 ) -> i32 {
-    let remote = game.side.remote.as_ref().unwrap();
+    let remote = game.client.remote.as_ref().unwrap();
     remote.builtin.get(registry).unwrap().id(name).unwrap()
 }
 
@@ -274,7 +274,7 @@ pub(crate) fn ride(
 #[ignore = "daily"]
 fn the_camera_entitys_effect_lifecycle_is_vanillas() {
     with_spectator(|game| {
-        game.side
+        game.client
             .settings
             .file
             .set("darknessEffectScale", V::Double(0.5));
@@ -356,7 +356,7 @@ fn the_camera_entitys_effect_lifecycle_is_vanillas() {
 #[ignore = "daily"]
 fn the_view_drops_values_whose_source_is_gone_before_a_tick() {
     with_spectator(|game| {
-        game.side
+        game.client
             .settings
             .file
             .set("darknessEffectScale", V::Double(0.5));
@@ -448,7 +448,7 @@ fn effects_count_down_on_the_ticks_their_entity_ticks() {
         ride(game, PIG, vec![OTHER]);
         ride(game, OTHER, vec![RIDER]);
         ride(game, STAND, vec![OWN]);
-        (game.side.streaming).insert_remote(&mut game.world, Chunk::empty(0, 0));
+        (game.client.streaming).insert_remote(&mut game.world, Chunk::empty(0, 0));
         let water = game.pack.assets.registry.default_state("minecraft:water");
         game.world.set(3, 64, 3, water.unwrap()).unwrap();
         game.tick_remote_entities(false);
@@ -528,7 +528,7 @@ fn a_canceled_tick_counts_no_effect_down() {
         with_spectator(|game| {
             // The spectator views the zombie: it is the camera entity.
             set_camera(game, ZOMBIE);
-            assert_eq!(game.side.remote.as_ref().unwrap().camera, Some(ZOMBIE));
+            assert_eq!(game.client.remote.as_ref().unwrap().camera, Some(ZOMBIE));
             add(game, HUSK, "minecraft:husk", [6.0, 64.0, 6.0]);
             add(game, TICKING, "minecraft:zombie", [7.0, 64.0, 7.0]);
             for id in [ZOMBIE, HUSK, TICKING] {

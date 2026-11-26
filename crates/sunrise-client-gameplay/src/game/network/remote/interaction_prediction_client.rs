@@ -25,7 +25,7 @@ impl crate::game::ClientGame<'_> {
     /// firework rocket wherever it may be used, and the server launches it.
     /// Whether the item's use succeeded, which ends the click.
     /// The caller has selected Item.useOn after cooldown and adventure gates.
-    pub(in crate::game) fn predict_item_on_block(
+    pub fn predict_item_on_block(
         &mut self,
         stack: &ItemStack,
         hit: &sunrise_gameplay_common::game::Hit,
@@ -189,7 +189,7 @@ impl crate::game::ClientGame<'_> {
     /// `Minecraft.startUseItem`'s entity turn for `hand`: Interact goes to
     /// the server, and whether the click ends there is what this client's
     /// copy of the entity answers (`MultiPlayerGameMode.interact`).
-    pub(in crate::game) fn remote_use_entity(&mut self, hand: Hand) -> bool {
+    pub fn remote_use_entity(&mut self, hand: Hand) -> bool {
         // A menu this use opens (a chest minecart's) is no clicked block's.
         if let Some(r) = self.client.remote.as_mut() {
             r.use_target = None;
@@ -388,7 +388,7 @@ impl crate::game::ClientGame<'_> {
     }
     /// MultiPlayerGameMode.useItemOn for `hand`: whether the click ends there
     /// (the block reacts, or a block item is placed).
-    pub(in crate::game) fn remote_use_item_on(
+    pub fn remote_use_item_on(
         &mut self,
         hand: Hand,
         attempt: mod_api::InteractionAttempt,

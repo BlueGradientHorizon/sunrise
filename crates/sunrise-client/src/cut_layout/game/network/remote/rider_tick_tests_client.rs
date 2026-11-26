@@ -18,16 +18,16 @@ fn a_boat_clamps_the_riders_yaw_without_changing_the_previous_yaw() {
     with_client_game(|game| {
         let (client, server) = sunrise_protocol::connection::Pipe::pair();
         game.connect_local(client, "boat-clamp").unwrap();
-        game.side.remote.as_mut().unwrap().first_passenger = false;
+        game.client.remote.as_mut().unwrap().first_passenger = false;
         game.boats
             .push(Boat::new(71, "oak".into(), Vec3::new(2.5, 64.0, 2.5), 0.0));
         game.riding = Some(71);
         game.yaw = 200.0;
-        game.side.rope_rot_old.0 = 180.0;
+        game.client.rope_rot_old.0 = 180.0;
 
         assert!(game.remote_ride(Keys::default()));
         assert_eq!(game.yaw, 255.0);
-        assert_eq!(game.side.rope_rot_old.0, 180.0);
+        assert_eq!(game.client.rope_rot_old.0, 180.0);
         server.shutdown();
     });
 }
@@ -39,15 +39,15 @@ fn a_riders_move_takes_the_look_of_the_tick_and_leaves_it_off_the_ground() {
         with_client_game(|game| {
             let (client, server) = sunrise_protocol::connection::Pipe::pair();
             game.connect_local(client, "rider-tick").unwrap();
-            let remote = game.side.remote.as_mut().unwrap();
+            let remote = game.client.remote.as_mut().unwrap();
             remote.logged_in = true;
             remote.loaded_sent = true;
             remote.joined = true;
             remote.first_passenger = true;
             remote.entity_id = 42;
             remote.level_load.finish();
-            game.side.screen = Screen::Playing;
-            game.side
+            game.client.screen = Screen::Playing;
+            game.client
                 .streaming
                 .insert_remote(&mut game.world, sunrise_level::chunk::Chunk::empty(0, 0));
             let stone = game
@@ -111,7 +111,7 @@ fn mounted_local_spectator_forces_flight_and_sends_abilities() {
                 .unwrap();
             let uuid = 0x1122_3344_5566_7788_99aa_bbcc_ddee_ff00_u128;
             {
-                let remote = game.side.remote.as_mut().unwrap();
+                let remote = game.client.remote.as_mut().unwrap();
                 remote.logged_in = true;
                 remote.loaded_sent = true;
                 remote.joined = true;
@@ -121,7 +121,7 @@ fn mounted_local_spectator_forces_flight_and_sends_abilities() {
                 remote.profile_name = "SpectatorRider".into();
                 remote.level_load.finish();
             }
-            game.side.screen = Screen::Playing;
+            game.client.screen = Screen::Playing;
             game.boats
                 .push(Boat::new(71, "oak".into(), Vec3::new(2.5, 64.0, 2.5), 0.0));
             game.riding = Some(71);
@@ -160,7 +160,7 @@ fn mounted_local_spectator_forces_flight_and_sends_abilities() {
 
             assert!(game.player.as_ref().unwrap().flying);
             assert!(game.remote_abilities().unwrap().flying);
-            assert!(!game.side.remote.as_ref().unwrap().first_passenger);
+            assert!(!game.client.remote.as_ref().unwrap().first_passenger);
 
             game.send(S::ClientTickEnd(Empty));
             let mut sent_flying = Vec::new();

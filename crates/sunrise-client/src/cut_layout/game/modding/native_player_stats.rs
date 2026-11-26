@@ -56,7 +56,7 @@ mod tests {
         mod_platform::testing::with_mods(mods, || {
             with_guests(|game| {
                 let world = tempfile::tempdir().unwrap();
-                game.side.world_root = world.path().to_path_buf();
+                game.server.world_root = world.path().to_path_buf();
                 game.load_scoreboard();
                 assert!(mod_api::__private::listened(
                     mod_api::HookId::PlayerStatAward
@@ -77,7 +77,7 @@ mod tests {
                 assert_eq!(player.stat(game, StatType::Custom, "jump"), Some(6));
                 assert_eq!(serde_json::from_str::<Value>(&before).unwrap(), empty);
 
-                let host = game.side.lan.as_mut().unwrap();
+                let host = game.server.lan.as_mut().unwrap();
                 let stats = &mut host.play.get_mut(&12).unwrap().stats;
                 stats.add("mined", "minecraft:stone", 6);
                 stats.custom("jump", 3);
@@ -131,7 +131,7 @@ mod tests {
                 }
 
                 let (tx, rx) = std::sync::mpsc::channel();
-                game.side
+                game.server
                     .lan
                     .as_mut()
                     .unwrap()
@@ -141,7 +141,7 @@ mod tests {
                     })
                     .unwrap();
                 game.lan_guest_packet(12, Serverbound::ClientCommand(ClientCommand { action: 1 }));
-                let host = game.side.lan.as_ref().unwrap();
+                let host = game.server.lan.as_ref().unwrap();
                 let hub = &host.hub;
                 let id = |registry, key| hub.registry_id(registry, key).unwrap();
                 let mut responses = Vec::new();
@@ -269,7 +269,7 @@ mod tests {
             );
             guest.placed = true;
             guest.recipe_book.recipes.insert("minecraft:stick".into());
-            let host = game.side.lan.as_mut().unwrap();
+            let host = game.server.lan.as_mut().unwrap();
             host.hub.guests.push(guest);
             let mut play = sunrise_gameplay::game::server_side::lan_actions_server::GuestPlay::default();
             play.stats.add("custom", "minecraft:jump", 7);
@@ -294,13 +294,13 @@ mod tests {
                 Some(vec!["minecraft:stick".to_string()])
             );
             // In the guest's turn their state is in the game.
-            game.side.lan_acting_uuid = Some(123);
-            game.side.lan_acting_entity = Some(20);
+            game.server.lan_acting_uuid = Some(123);
+            game.server.lan_acting_entity = Some(20);
             assert_eq!(jump(game), Some(3));
-            game.side.lan_acting_uuid = None;
-            game.side.lan_acting_entity = None;
+            game.server.lan_acting_uuid = None;
+            game.server.lan_acting_entity = None;
             // A guest without play state yet has counted nothing.
-            game.side.lan.as_mut().unwrap().play.remove(&1);
+            game.server.lan.as_mut().unwrap().play.remove(&1);
             assert_eq!(jump(game), Some(0));
         });
     }

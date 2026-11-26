@@ -65,7 +65,7 @@ mod tests {
         mod_platform::testing::with_mods(mods, || {
             with_game(|game| {
                 open_to_lan(game);
-                let guests = &mut game.side.lan.as_mut().unwrap().hub.guests;
+                let guests = &mut game.server.lan.as_mut().unwrap().hub.guests;
                 for (conn, x) in [(1, 0.0), (2, 30.0)] {
                     let mut g = guest(conn);
                     g.loaded = true;
@@ -76,7 +76,7 @@ mod tests {
                     game.orbs.push(orb(id, [1.0, 64.0, 0.0]));
                 }
                 let followed = game.orb_followed();
-                let half = game.side.lan.as_ref().unwrap().hub.guests[0].eye_height() / 2.0;
+                let half = game.server.lan.as_ref().unwrap().hub.guests[0].eye_height() / 2.0;
                 let eye = |x: f64| [x, 64.0 + half, 0.0];
                 let targets: Vec<_> = (0..3).map(|i| game.orb_target(i, &followed)).collect();
                 assert_eq!(targets, [Some(eye(30.0)), None, Some(eye(0.0))]);

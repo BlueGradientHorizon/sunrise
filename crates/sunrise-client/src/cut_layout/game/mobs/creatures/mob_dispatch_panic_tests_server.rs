@@ -78,7 +78,7 @@ fn mob_despawn_listener_panic_preserves_owned_rows_and_lent_random() {
     let root = tempfile::tempdir().unwrap();
     mod_platform::testing::with_mods(mods, || {
         with_game(|game| {
-            game.side.world_root = root.path().to_owned();
+            game.server.world_root = root.path().to_owned();
             game.enter_level(dimension).unwrap();
             game.options.dedicated = Some(Vec::new());
             game.world
@@ -123,7 +123,7 @@ fn mob_despawn_listener_panic_preserves_owned_rows_and_lent_random() {
                     // A previously notified corpse is a valid retained
                     // death marker, unlike an orphan ID in this set.
                     mob.health = 0.0;
-                    game.side.died.insert(id);
+                    game.server.died.insert(id);
                 }
                 game.mobs.push(mob);
             }
@@ -170,9 +170,9 @@ fn mob_despawn_listener_panic_preserves_owned_rows_and_lent_random() {
                 Some(Vec::new()),
                 "the first pass did not consume collision writes"
             );
-            assert_eq!(game.side.died.contains(&71), case == Case::PendingDeath);
+            assert_eq!(game.server.died.contains(&71), case == Case::PendingDeath);
             assert_eq!(
-                game.side.died.contains(&74),
+                game.server.died.contains(&74),
                 case != Case::NormalRemoval,
                 "prior death notification was forgotten or a removed corpse retained"
             );

@@ -28,7 +28,7 @@ pub(crate) mod tests {
         with_client_game(|game| {
             let (_reader, _writer) = connect_play_test(game, |_, _| {});
             spawn_menu_test(game);
-            let remote = game.side.remote.as_mut().unwrap();
+            let remote = game.client.remote.as_mut().unwrap();
             let format = remote.chunk_format.clone();
             let publish = remote.session.received_event_probe();
             publish(Event::Status(String::new()));
@@ -50,7 +50,7 @@ pub(crate) mod tests {
             assert_eq!(entity.position(game), Some([2.0, 64.0, 0.0]));
 
             let (record, calls) = std::sync::mpsc::channel();
-            let executor = game.side.client_tasks.0.executor("producer").unwrap();
+            let executor = game.client.client_tasks.0.executor("producer").unwrap();
             executor.execute(Box::new(move |host| {
                 record.send(entity.position(host)).unwrap()
             }));
@@ -64,7 +64,7 @@ pub(crate) mod tests {
 
             // Retire the synthetic chunk slot without relying on worker timing.
             assert!(matches!(
-                game.side.remote.as_mut().unwrap().backlog.pop_front(),
+                game.client.remote.as_mut().unwrap().backlog.pop_front(),
                 Some(Received::Chunk(..))
             ));
             game.poll_remote_before_tick().unwrap();

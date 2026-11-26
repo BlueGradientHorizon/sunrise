@@ -147,7 +147,7 @@ pub(crate) mod render_tooltip_texture_tests {
                         .unwrap_or(&draw.sprite)
                         .to_owned();
                     let rect = sprite(index as f32 * 0.25);
-                    game.side.gui.atlas.sprites.insert(key.clone(), rect);
+                    game.client.gui.atlas.sprites.insert(key.clone(), rect);
                     inserted.push((key, rect));
                 }
 
@@ -178,7 +178,7 @@ pub(crate) mod render_tooltip_texture_tests {
                 assert_eq!(actual, expected, "{}", case.label);
 
                 for (key, _) in inserted {
-                    game.side.gui.atlas.sprites.remove(&key);
+                    game.client.gui.atlas.sprites.remove(&key);
                 }
             }
         });
@@ -208,7 +208,7 @@ pub(crate) mod render_tooltip_texture_tests {
                 for (first, then) in [(0.0, 0.5), (0.25, 0.75)] {
                     let rects = [sprite(first), sprite(then)];
                     for (name, rect) in names.iter().zip(rects) {
-                        game.side.gui.atlas.sprites.insert(name.clone(), rect);
+                        game.client.gui.atlas.sprites.insert(name.clone(), rect);
                     }
                     let quads = drawn(game, Some(&stick));
                     assert_ne!(quads, unheard[1]);

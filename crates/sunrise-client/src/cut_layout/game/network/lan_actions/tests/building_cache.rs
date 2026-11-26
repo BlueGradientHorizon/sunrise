@@ -109,7 +109,7 @@ pub(crate) fn game<'a>(
         );
         guest.placed = true;
         guest.loaded = true;
-        game.side.lan.as_mut().unwrap().hub.guests.push(guest);
+        game.server.lan.as_mut().unwrap().hub.guests.push(guest);
     }
     game
 }
@@ -126,7 +126,7 @@ pub(crate) fn the_mover_changed_mid_tick(
 ) -> (Boxes, Boxes, Boxes) {
     let mut resources = None;
     let mut game = game(&mut resources);
-    sunrise_gameplay::game::server_side::lan_actions_server::building_cache(game.side.lan.as_ref());
+    sunrise_gameplay::game::server_side::lan_actions_server::building_cache(game.server.lan.as_ref());
     let before = seen_by_builder(&mut game);
     assert!(game.run_command(command), "{command}");
     if turns {

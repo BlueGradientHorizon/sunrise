@@ -77,7 +77,7 @@ pub(crate) fn with_player(
             },
         )
         .unwrap();
-        game.side
+        game.server
             .streaming
             .insert_remote(&mut game.world, Chunk::empty(0, 0));
         let mut guest = online_guest(1);
@@ -91,7 +91,7 @@ pub(crate) fn with_player(
         ));
         let (tx, rx) = mpsc::channel();
         guest.sender = PlayerSender::new(tx, Arc::default());
-        let hub = &mut game.side.lan.as_mut().unwrap().hub;
+        let hub = &mut game.server.lan.as_mut().unwrap().hub;
         hub.ticks = 10;
         hub.singleplayer_owner = integrated.then_some(guest.uuid);
         hub.guests.push(guest);
@@ -122,7 +122,7 @@ pub(crate) fn report(game: &mut sunrise_gameplay::game::ServerGame<'_>, [x, y, z
 fn a_connected_players_report_never_exposes_stale_collision_flags() {
     for integrated in [true, false] {
         with_player(integrated, |game, _rx| {
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()
@@ -144,7 +144,7 @@ fn a_connected_players_report_never_exposes_stale_collision_flags() {
 }
 
 pub(crate) fn guest<'a>(game: &'a sunrise_gameplay::game::ServerGame<'_>) -> &'a Guest {
-    game.side.lan.as_ref().unwrap().hub.guest(1).unwrap()
+    game.server.lan.as_ref().unwrap().hub.guest(1).unwrap()
 }
 
 pub(crate) fn packets(rx: &mpsc::Receiver<Out>) -> Vec<(i32, Vec<u8>)> {
@@ -272,7 +272,7 @@ fn another_travel_replacement_waits_for_the_first_correction_acknowledgement() {
             assert_eq!(first.position, NEXT);
 
             for _ in 0..2 {
-                game.side.lan.as_mut().unwrap().hub.ticks += 1;
+                game.server.lan.as_mut().unwrap().hub.ticks += 1;
                 game.guest_server_tick(1, true);
             }
             report(game, [4.0, 64.0, 5.0]);
@@ -325,7 +325,7 @@ fn an_edit_absorbed_by_collision_still_sends_one_correction() {
             let mut at = START;
             let half_width = f64::from(guest(game).motion.as_ref().unwrap().dimensions.width) / 2.0;
             at[0] += half_width; // The player's west face is flush with the block at x=2.
-            game.side.lan.as_mut().unwrap().hub.update_guest(1, |g| {
+            game.server.lan.as_mut().unwrap().hub.update_guest(1, |g| {
                 g.position = at;
                 g.first_good = at;
                 g.last_reported.0 = at;
@@ -420,7 +420,7 @@ fn a_tiny_travel_edit_and_move_veto_leave_the_player_outcome_unchanged() {
         )];
         mod_platform::testing::with_mods(mods.into(), || {
             with_player(false, |game, rx| {
-                game.side.lan.as_mut().unwrap().hub.update_guest(1, |g| {
+                game.server.lan.as_mut().unwrap().hub.update_guest(1, |g| {
                     g.motion.as_mut().unwrap().velocity.x = 0.5;
                 });
                 game.guest_server_tick(1, true);

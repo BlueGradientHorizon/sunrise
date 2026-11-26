@@ -95,7 +95,7 @@ impl ClientGame<'_> {
         Some((piston.moved_state, None))
     }
     /// `PistonHeadRenderer.extractRenderState` and `submit`.
-    pub(in crate::game) fn moving_piston_geometry(
+    pub fn moving_piston_geometry(
         &self,
         camera: glam::DVec3,
         alpha: f64,

@@ -22,36 +22,36 @@ fn a_remote_non_grid_menu_can_request_a_recipe_check_only_in_an_eligible_screen(
         crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
             let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
             game.connect_local(pipe, "RecipeCheck").unwrap();
-            game.side
+            game.client
                 .remote
                 .as_mut()
                 .unwrap()
                 .menu
                 .set(Some((7, name.into())));
-            game.side.remote.as_mut().unwrap().recipe_viewer.check = true;
+            game.client.remote.as_mut().unwrap().recipe_viewer.check = true;
             let recipe = "minecraft:stick";
-            game.side.screen = Screen::Playing;
+            game.client.screen = Screen::Playing;
             assert!(game.transfer_recipe_check(recipe).is_none());
-            assert!(game.side.recipe_ui.0.checks.asked.is_none());
-            game.side.screen = Screen::Inventory;
+            assert!(game.client.recipe_ui.0.checks.asked.is_none());
+            game.client.screen = Screen::Inventory;
             game.mode = sunrise_command::args::GameMode::Spectator;
             assert!(game.transfer_recipe_check(recipe).is_none());
-            assert!(game.side.recipe_ui.0.checks.asked.is_none());
+            assert!(game.client.recipe_ui.0.checks.asked.is_none());
             game.mode = sunrise_command::args::GameMode::Survival;
             assert!(
                 !game.mod_recipe_screen(),
                 "the fixture has no crafting grid"
             );
-            game.side.remote.as_mut().unwrap().recipe_viewer.check = false;
+            game.client.remote.as_mut().unwrap().recipe_viewer.check = false;
             assert!(game.transfer_recipe_check(recipe).is_none());
-            assert!(game.side.recipe_ui.0.checks.asked.is_none());
-            game.side.remote.as_mut().unwrap().recipe_viewer.check = true;
+            assert!(game.client.recipe_ui.0.checks.asked.is_none());
+            game.client.remote.as_mut().unwrap().recipe_viewer.check = true;
             assert!(
                 game.transfer_recipe_check(recipe).is_none(),
                 "reply is asynchronous"
             );
             assert_eq!(
-                (game.side.recipe_ui.0.checks.asked.as_ref()).map(|(_, asked, _)| asked.as_str()),
+                (game.client.recipe_ui.0.checks.asked.as_ref()).map(|(_, asked, _)| asked.as_str()),
                 Some(recipe)
             );
         });
@@ -64,15 +64,15 @@ fn a_remote_crafting_table_has_the_crafting_book() {
     crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
         let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
         game.connect_local(pipe, "RecipeCheck").unwrap();
-        game.side.screen = Screen::Inventory;
-        game.side
+        game.client.screen = Screen::Inventory;
+        game.client
             .remote
             .as_mut()
             .unwrap()
             .menu
             .set(Some((7, "minecraft:generic_9x3".into())));
         assert_eq!(game.active_book(), None, "a chest has no crafting book");
-        game.side
+        game.client
             .remote
             .as_mut()
             .unwrap()

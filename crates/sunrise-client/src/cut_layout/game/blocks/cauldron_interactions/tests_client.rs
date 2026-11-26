@@ -31,7 +31,7 @@ fn cauldron_client_skips_custom_prediction() {
     fixture_mods_client(mods, |game| {
         let _server = sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client(game);
         setup_common(game, "minecraft:cauldron", None, "test:syrup_bottle", 2);
-        game.side.audio.0.capture = Some(Vec::new());
+        game.client.audio.0.capture = Some(Vec::new());
         let held = game.inventory[0].clone();
         let (outcome, proposed) = game.client_cauldron_prediction(POS, held.as_ref());
         assert_eq!(outcome, Outcome::Pass);
@@ -50,7 +50,7 @@ fn cauldron_client_skips_custom_prediction() {
         assert_eq!(seen.calls.load(Ordering::SeqCst), 0);
         assert_eq!(seen.actor.load(Ordering::SeqCst), 0);
         unchanged(game, &seen);
-        assert_eq!(game.side.audio.0.capture.as_ref().unwrap().len(), 0);
+        assert_eq!(game.client.audio.0.capture.as_ref().unwrap().len(), 0);
         assert_eq!(events(), 0);
         setup_common(
             game,
@@ -85,14 +85,14 @@ fn cauldron_outer_abort_discards_effects_and_drops() {
         game.storage_scope(|game, _| {
             assert_eq!(game.use_on_cauldron(POS).unwrap(), Outcome::Success);
             assert_eq!(events(), 0);
-            assert!(game.side.pending_native_sounds.is_empty());
-            assert!(game.side.pending_sounds.is_empty());
+            assert!(game.server.pending_native_sounds.is_empty());
+            assert!(game.server.pending_sounds.is_empty());
             ((), false)
         });
         unchanged(game, seen);
         assert_eq!(events(), 0);
-        assert!(game.side.pending_native_sounds.is_empty());
-        assert!(game.side.pending_sounds.is_empty());
+        assert!(game.server.pending_native_sounds.is_empty());
+        assert!(game.server.pending_sounds.is_empty());
     });
 }
 

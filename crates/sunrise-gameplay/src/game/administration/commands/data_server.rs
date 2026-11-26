@@ -18,7 +18,7 @@ impl crate::game::ServerGame<'_> {
     /// `Entity.load` of new data (`EntityDataAccessor.setData`): the entity is
     /// rebuilt from its compound, keeping its id and UUID. Also what
     /// `TypedEntityData.loadInto` is: a spawn egg's data on the mob it spawned.
-    pub(in crate::game) fn apply_entity_nbt(&mut self, t: Target, mut tag: Tag) -> R<()> {
+    pub fn apply_entity_nbt(&mut self, t: Target, mut tag: Tag) -> R<()> {
         let stale = || err("commands.data.merge.failed", &[]);
         // `Entity.load` keeps only the fields it reads, so vanilla drops a key it
         // does not know on `EntityDataAccessor.setData` (and on
@@ -1003,7 +1003,7 @@ impl crate::game::ServerGame<'_> {
             .map(sunrise_sim::lan::playerdata::uuid_ints)
             .or(self.common.level.player_uuid)
     }
-    pub(in crate::game) fn set_data_of(&mut self, r: &DataRef, tag: Tag) -> R<()> {
+    pub fn set_data_of(&mut self, r: &DataRef, tag: Tag) -> R<()> {
         match r {
             DataRef::Entity(t) => self.apply_entity_nbt(*t, tag),
             DataRef::Block(p) => {
@@ -1062,7 +1062,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// Spawn an entity from its compound (`EntityType.loadEntityRecursive`);
     /// returns what was created.
-    pub(in crate::game) fn spawn_entity_from_nbt(&mut self, tag: Tag) -> Option<Target> {
+    pub fn spawn_entity_from_nbt(&mut self, tag: Tag) -> Option<Target> {
         let key = {
             let p = entity_nbt::position(&tag)?;
             ((p.x.floor() as i32) >> 4, (p.z.floor() as i32) >> 4)

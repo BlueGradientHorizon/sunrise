@@ -57,7 +57,7 @@ impl LifecycleFixture {
                         }
                     };
                 }
-                lookup!(game.side.others.0);
+                lookup!(game.server.others.0);
                 lookup!(game.fangs.list);
                 lookup!(game.ominous_spawners);
                 lookup!(game.breath_clouds);
@@ -74,7 +74,7 @@ impl LifecycleFixture {
                 std::process::id(),
                 std::thread::current().id()
             )));
-            game.side.world_root = root.0.clone();
+            game.server.world_root = root.0.clone();
             let active = if singleton || self.unloads_with_chunk {
                 vec![103]
             } else {
@@ -199,9 +199,9 @@ fn lifecycle_fixture_walks_fangs_owners() {
 fn lifecycle_fixture_walks_other_owners() {
     LifecycleFixture {
         seed: |game, entries| {
-            game.side.others.0.clear();
+            game.server.others.0.clear();
             for &(id, at) in entries {
-                game.side.others.0.push(sunrise_gameplay_common::game::commands_common::OtherEntity {
+                game.server.others.0.push(sunrise_gameplay_common::game::commands_common::OtherEntity {
                     size_answer: None,
                     attachment_lifetime: Default::default(),
                     knot_check: None,
@@ -217,7 +217,7 @@ fn lifecycle_fixture_walks_other_owners() {
                 });
             }
         },
-        ids: |game| game.side.others.0.iter().map(|entity| entity.id).collect(),
+        ids: |game| game.server.others.0.iter().map(|entity| entity.id).collect(),
         target: sunrise_gameplay_common::game::commands_common::Target::Other,
         unloads_with_chunk: true,
         remote: None,
@@ -238,11 +238,11 @@ fn data_merge_preserves_two_distinct_other_joins_for_every_runtime_kind() {
             "text_display",
             "interaction",
         ] {
-            game.side.others.0.clear();
+            game.server.others.0.clear();
             for (tag, x) in [("first", 1), ("second", 8)] {
                 assert!(game.run_command(&format!("summon {kind} {x} 80 1 {{Tags:[\"{tag}\"]}}")));
             }
-            let expected: Vec<_> = game.side.others.0.iter().map(|e| (e.id, e.join)).collect();
+            let expected: Vec<_> = game.server.others.0.iter().map(|e| (e.id, e.join)).collect();
             assert_eq!(expected.len(), 2, "{kind}");
             assert_ne!(expected[0].1, expected[1].1);
             assert_ne!(expected[0].1, sunrise_sim::join_seq::JoinSeq::UNJOINED);
@@ -252,7 +252,7 @@ fn data_merge_preserves_two_distinct_other_joins_for_every_runtime_kind() {
                 )));
             }
             assert_eq!(
-                game.side
+                game.server
                     .others
                     .0
                     .iter()
@@ -263,7 +263,7 @@ fn data_merge_preserves_two_distinct_other_joins_for_every_runtime_kind() {
             );
             for (id, join) in expected {
                 assert_eq!(
-                    game.side.others.0[game.side.others.0.locate(join).unwrap()].id,
+                    game.server.others.0[game.server.others.0.locate(join).unwrap()].id,
                     id
                 );
             }

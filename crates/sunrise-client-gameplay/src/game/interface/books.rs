@@ -256,7 +256,7 @@ impl ClientGame<'_> {
     }
     /// `MultiPlayerGameMode.useItem`'s own use of a book and quill on a
     /// server's client: its editor opens here at once.
-    pub(in crate::game) fn remote_use_book(&mut self, stack: &ItemStack) -> bool {
+    pub fn remote_use_book(&mut self, stack: &ItemStack) -> bool {
         if &*stack.item != "minecraft:writable_book" {
             return false;
         }
@@ -277,7 +277,7 @@ impl ClientGame<'_> {
         }
     }
     /// Opens `screen` (through `open_screen_overlay`: a mod may keep it shut).
-    pub(in crate::game) fn open_book(&mut self, screen: BookScreen) {
+    pub fn open_book(&mut self, screen: BookScreen) {
         self.open_screen_overlay(screen.id(), |game| {
             game.client.book = Some(screen);
             game.clear_device_keys();
@@ -319,7 +319,7 @@ impl ClientGame<'_> {
     /// `BookEditScreen.saveChanges` and `BookSignScreen`'s Sign and Close:
     /// trailing empty pages dropped, the book in hand updated here and, on a
     /// server's client, sent (ServerboundEditBookPacket).
-    pub(in crate::game::client_side) fn save_book(&mut self, sign: bool) {
+    pub fn save_book(&mut self, sign: bool) {
         let Some(BookScreen::Edit {
             slot, pages, title, ..
         }) = self.client.book.take()
@@ -365,7 +365,7 @@ impl ClientGame<'_> {
     }
     /// A key and the text it typed in the open book (the keyboard, or a
     /// controller's on-screen keyboard).
-    pub(in crate::game::client_side) fn book_input(
+    pub fn book_input(
         &mut self,
         key: Option<KeyCode>,
         text: Option<&str>,
@@ -864,7 +864,7 @@ impl ClientGame<'_> {
     }
     /// The `book` control command: a button of the open book or lectern
     /// screen (the page arrows, Take Book, Done), then its page.
-    pub(in crate::game::client_side) fn book_control(
+    pub fn book_control(
         &mut self,
         action: Option<&str>,
     ) -> sunrise_game_data::Result<serde_json::Value> {
@@ -937,7 +937,7 @@ impl ClientGame<'_> {
         }
     }
     /// `LecternScreen.pageChanged`: the menu's page data slot.
-    pub(in crate::game) fn remote_lectern_page(&mut self, value: i32) {
+    pub fn remote_lectern_page(&mut self, value: i32) {
         if let Some(BookScreen::View {
             lectern: Some(_),
             pages,

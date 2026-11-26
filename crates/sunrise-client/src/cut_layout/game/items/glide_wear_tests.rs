@@ -26,7 +26,7 @@ fn glide(hand: usize, creative: bool, components: Option<&str>) -> u32 {
                 sunrise_core::geometry::Vec3::new(3.0, 80.0, 5.0),
             )
             .unwrap();
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()
@@ -49,7 +49,7 @@ fn glide(hand: usize, creative: bool, components: Option<&str>) -> u32 {
             for _ in 0..20 {
                 game.guest_glide_tick(12, -1.0);
             }
-            let g = game.side.lan.as_ref().unwrap().hub.guest(12).unwrap();
+            let g = game.server.lan.as_ref().unwrap().hub.guest(12).unwrap();
             let stack = if elytra {
                 g.armor[1].as_ref()
             } else if hand == 4 {

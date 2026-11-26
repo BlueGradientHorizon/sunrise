@@ -82,7 +82,7 @@ impl crate::game::ServerGame<'_> {
     /// to the level, then runs `applyOnProjectileSpawned` with `stack`, the
     /// item it was made from (the held or dispensed stack, an arrow's ammo).
     /// The projectile's id.
-    pub(in crate::game) fn spawn_projectile(
+    pub fn spawn_projectile(
         &mut self,
         projectile: Projectile,
         stack: &ItemStack,
@@ -96,7 +96,7 @@ impl crate::game::ServerGame<'_> {
     /// ammo, the mobs' other projectiles from fresh stacks with no
     /// enchantments. `Projectile.tick` posts on the first tick, through the
     /// shared arrow-state continuation for ordinary arrows and tridents.
-    pub(in crate::game::server_side) fn spawn_mob_projectile(&mut self, projectile: Projectile) {
+    pub fn spawn_mob_projectile(&mut self, projectile: Projectile) {
         let ammo = projectile.arrow.as_ref().map(|a| a.pickup_item.clone());
         let id = self.add_projectile(projectile);
         if let Some(ammo) = ammo {

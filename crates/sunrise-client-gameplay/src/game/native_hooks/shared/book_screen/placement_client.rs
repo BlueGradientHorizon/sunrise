@@ -19,7 +19,7 @@ impl crate::game::ClientGame<'_> {
                     .is_some_and(|key| key.as_str() == book)
         })
     }
-    pub(in crate::game) fn native_book_placement_window_matches(
+    pub fn native_book_placement_window_matches(
         &self,
         window: &sunrise_sim::recipe_book::placement_sync::Window,
     ) -> bool {
@@ -30,7 +30,7 @@ impl crate::game::ClientGame<'_> {
             window.book.as_str(),
         )
     }
-    pub(in crate::game) fn native_book_placement_catalog_matches(
+    pub fn native_book_placement_catalog_matches(
         &self,
         identity: &sunrise_sim::recipe_book::placement_sync::CatalogIdentity,
     ) -> bool {

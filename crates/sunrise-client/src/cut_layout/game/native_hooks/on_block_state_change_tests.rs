@@ -193,7 +193,7 @@ fn a_client_hears_each_block_the_server_sends_and_each_write_of_a_piston_replay(
                 sea_level: 63,
             };
             game.enter_remote_dimension(&spawn, RemoteDimensionEntry::Login, Reason::Other);
-            game.side.remote.as_mut().unwrap().logged_in = true;
+            game.client.remote.as_mut().unwrap().logged_in = true;
             game.world
                 .chunks
                 .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));

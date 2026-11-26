@@ -352,7 +352,7 @@ fn this_windows_player_is_told_its_own_entity_id() {
         "this_windows_player_is_told_its_own_entity_id",
         |game, scene| {
             // This window's own entity id, as the server gave it.
-            match game.side.remote.as_mut() {
+            match game.client.remote.as_mut() {
                 Some(remote) => remote.entity_id = 4321,
                 None => {
                     let at = sunrise_core::geometry::Vec3::ZERO;

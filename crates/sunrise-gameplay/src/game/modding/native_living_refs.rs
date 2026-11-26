@@ -393,7 +393,7 @@ impl ServerGame<'_> {
     /// Sets the attribute's base value (`AttributeInstance.setBaseValue`);
     /// the value stays within the attribute's range. False for a non-finite
     /// base, and in the cases `add_attribute_modifier` is.
-    pub(in crate::game) fn living_set_attribute_base(
+    pub fn living_set_attribute_base(
         &mut self,
         living: LivingRef,
         attribute: &str,
@@ -829,7 +829,7 @@ impl ServerGame<'_> {
     }
 
     /// Damage an equipped stack without an equip/unequip notification.
-    pub(in crate::game) fn living_hurt_and_break(
+    pub fn living_hurt_and_break(
         &mut self,
         living: LivingRef,
         slot: EquipmentSlot,
@@ -891,7 +891,7 @@ impl ServerGame<'_> {
         broken
     }
 
-    pub(in crate::game) fn damage_player_equipment(
+    pub fn damage_player_equipment(
         &mut self,
         slot: EquipmentSlot,
         amount: i32,
@@ -975,7 +975,7 @@ impl ServerGame<'_> {
     /// hand's slot or the off hand's, written as `set_equipment`
     /// writes them, with its equip events and sound. None, air or a zero count
     /// empties the hand. False means unsupported or stale.
-    pub(in crate::game) fn living_set_hand_item(
+    pub fn living_set_hand_item(
         &mut self,
         living: LivingRef,
         hand: Hand,
@@ -992,7 +992,7 @@ impl ServerGame<'_> {
     /// This is a direct write: it takes effect and is final immediately, even
     /// inside `host.transaction`. A mob's write makes any equip/unequip event
     /// and equip sound immediately; a stand's or the dragon's makes neither. API 382.
-    pub(in crate::game) fn living_set_equipment(
+    pub fn living_set_equipment(
         &mut self,
         living: LivingRef,
         slot: EquipmentSlot,
@@ -1157,7 +1157,7 @@ impl ServerGame<'_> {
     /// throw along the view then counts in its stats and fires `item_toss`.
     /// None for an empty stack, a stand or the dragon, a stale handle, or an
     /// item a mod kept out. API @API:living_refs@.
-    pub(in crate::game) fn living_drop(
+    pub fn living_drop(
         &mut self,
         living: LivingRef,
         stack: ItemStack,
@@ -1188,12 +1188,12 @@ impl ServerGame<'_> {
     }
     /// `TamableAnimal.isTame`, `AbstractHorse.isTamed`: None for a kind that
     /// can't be tamed or a stale handle. API @API:living_refs@.
-    pub(in crate::game) fn living_is_tamed(&self, living: LivingRef) -> Option<bool> {
+    pub fn living_is_tamed(&self, living: LivingRef) -> Option<bool> {
         self.native_tamable(living).map(|m| m.extra.tame)
     }
     /// The owner's UUID (`OwnableEntity.getOwnerReference`): None for a wild
     /// mob, a kind that can't be tamed, or a stale handle. API @API:living_refs@.
-    pub(in crate::game) fn living_owner(&self, living: LivingRef) -> Option<u128> {
+    pub fn living_owner(&self, living: LivingRef) -> Option<u128> {
         let owner = self.native_tamable(living)?.extra.owner?;
         Some(sunrise_sim::lan::playerdata::ints_uuid(owner))
     }
@@ -1222,7 +1222,7 @@ impl ServerGame<'_> {
         self.native_as_player(uuid, f)
     }
     /// The acting player's half of `living_drop`: the id of the item entity.
-    pub(in crate::game::server_side) fn native_player_drop(
+    pub fn native_player_drop(
         &mut self,
         stack: ItemStack,
         randomly: bool,

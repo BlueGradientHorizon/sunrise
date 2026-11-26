@@ -73,7 +73,7 @@ fn with_loopback(f: impl FnOnce(&mut sunrise_client_gameplay::game::ClientGame<'
                 RemoteDimensionEntry::Login,
                 sunrise_client::level_loading::Reason::Other,
             );
-            game.side.remote.as_mut().unwrap().logged_in = true;
+            game.client.remote.as_mut().unwrap().logged_in = true;
             take_calls();
             f(game);
         },
@@ -227,7 +227,7 @@ fn cache_packets_hide_replace_and_resize_slots() {
                 let radius = |distance| C::SetChunkCacheRadius(Distance { distance });
                 let center = |x| C::SetChunkCacheCenter(SetChunkCacheCenter { x, z: 0 });
                 let forget = |x| C::ForgetLevelChunk(ForgetLevelChunk { pos: [x, 0] });
-                game.side.settings.render_distance = 8;
+                game.client.settings.render_distance = 8;
                 game.apply_packet(radius(2)).unwrap();
                 let packet = stone_column(game, 0, 0);
                 game.apply_packet(C::LevelChunkWithLight(packet)).unwrap();
@@ -240,14 +240,14 @@ fn cache_packets_hide_replace_and_resize_slots() {
                 assert!(std::sync::Arc::ptr_eq(&origin, &game.world.chunks[&(0, 0)]));
                 game.apply_packet(radius(0)).unwrap();
                 assert_eq!(game.terrain_distance(), 8);
-                game.side.settings.render_distance = 10;
+                game.client.settings.render_distance = 10;
                 game.apply_settings();
-                assert_eq!(game.side.streaming.radius, 10);
+                assert_eq!(game.client.streaming.radius, 10);
                 game.apply_packet(radius(4)).unwrap();
-                game.side.settings.render_distance = 11;
+                game.client.settings.render_distance = 11;
                 game.apply_settings();
                 assert_eq!(game.terrain_distance(), 4);
-                assert_eq!(game.side.streaming.radius, 5);
+                assert_eq!(game.client.streaming.radius, 5);
                 game.apply_packet(radius(14)).unwrap();
                 assert_eq!(game.terrain_distance(), 11);
                 game.apply_packet(radius(2)).unwrap();

@@ -34,7 +34,7 @@ pub(in crate::game) fn shoulder_variants(extra: Option<&Tag>) -> [Option<i32>; 2
 impl ServerGame<'_> {
     /// `ServerPlayer.setEntityOnShoulder` for a parrot that touched its
     /// owner: stored in the first free slot, the parrot gone from the world.
-    pub(in crate::game::server_side) fn parrot_to_shoulder(&mut self, mob: u32) {
+    pub fn parrot_to_shoulder(&mut self, mob: u32) {
         let Some(i) = self
             .common.mobs
             .iter()
@@ -155,7 +155,7 @@ impl ServerGame<'_> {
     /// `ServerPlayer.removeEntitiesOnShoulder` (not within a second of the
     /// landing) and `respawnEntityOnShoulder`: the parrots come back at the
     /// player, still owned by them.
-    fn remove_entities_on_shoulder(&mut self) {
+    pub fn remove_entities_on_shoulder(&mut self) {
         let (uuid, now) = (self.acting_uuid(), self.common.world.game_time);
         if self
             .common.creatures

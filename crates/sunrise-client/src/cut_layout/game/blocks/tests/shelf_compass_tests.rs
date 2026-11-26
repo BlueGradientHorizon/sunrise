@@ -134,7 +134,7 @@ fn drawn_sprite(game: &sunrise_client_gameplay::game::ClientGame<'_>, vertices: 
     if vertices.is_empty() {
         return None;
     }
-    game.side
+    game.client
         .gui
         .atlas
         .sprites

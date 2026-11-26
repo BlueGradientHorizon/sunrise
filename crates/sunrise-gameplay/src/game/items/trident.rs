@@ -125,7 +125,7 @@ impl crate::game::ServerGame<'_> {
         );
     }
     /// `TridentItem.releaseUsing`.
-    pub(in crate::game) fn release_trident(&mut self, ticks: u32) {
+    pub fn release_trident(&mut self, ticks: u32) {
         if ticks < 10 {
             return;
         }
@@ -460,7 +460,7 @@ impl crate::game::ServerGame<'_> {
         None
     }
 
-    pub(in crate::game) fn tick_tridents(&mut self) {
+    pub fn tick_tridents(&mut self) {
         if !self.common.tridents.is_empty() {
             self.with_late_storage_scope(|game, transaction| {
                 game.tick_tridents_in_scope(transaction)

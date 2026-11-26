@@ -77,7 +77,7 @@ impl ServerGame<'_> {
 impl ServerGame<'_> {
     /// `AbstractChestedHorse.mobInteract` and `AbstractHorse.mobInteract` for
     /// llamas and trader llamas. Returns whether the click was used.
-    pub(in crate::game) fn interact_llama(&mut self, index: usize, item: &str) -> bool {
+    pub fn interact_llama(&mut self, index: usize, item: &str) -> bool {
         let m = &self.common.mobs[index];
         if !m.alive() || Some(m.id) == self.common.riding {
             return false;

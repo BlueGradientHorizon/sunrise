@@ -307,7 +307,7 @@ impl<'r> crate::game::ServerGame<'r> {
     }
 
     /// `AbstractArrow.canHitEntity`: player-on-player check (`owner.canHarmPlayer(target)`).
-    pub(in crate::game::server_side) fn can_arrow_harm_player(
+    pub fn can_arrow_harm_player(
         &self,
         owner: Who,
         owner_guest: Option<u32>,

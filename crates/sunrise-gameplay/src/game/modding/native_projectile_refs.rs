@@ -57,7 +57,7 @@ impl crate::game::ServerGame<'_> {
     /// Narrows an entity to a projectile: one in the projectile list, a trident
     /// a player threw or a firework rocket. None for another kind, a stale
     /// handle or a client.
-    pub(in crate::game) fn projectile(&self, entity: EntityRef) -> Option<ProjectileRef> {
+    pub fn projectile(&self, entity: EntityRef) -> Option<ProjectileRef> {
         let projectile = ProjectileRef::new(entity);
         self.native_projectile_backing(projectile)
             .map(|_| projectile)
@@ -74,7 +74,7 @@ impl crate::game::ServerGame<'_> {
 
     /// `Projectile.getOwner`: the owner as a resolved entity. None for no
     /// owner, one that is gone or in another level, or a stale handle.
-    pub(in crate::game) fn projectile_owner(&self, projectile: ProjectileRef) -> Option<EntityRef> {
+    pub fn projectile_owner(&self, projectile: ProjectileRef) -> Option<EntityRef> {
         self.native_projectile_backing(projectile)?;
         self.entity_owner(projectile.entity())
     }
@@ -82,7 +82,7 @@ impl crate::game::ServerGame<'_> {
     /// `TraceableEntity.getOwner`: a projectile's owner (`Projectile.getOwner`)
     /// or a general row's, as a resolved entity. None for no owner or a kind
     /// with none, one that is gone or in another level, or a stale handle.
-    pub(in crate::game) fn entity_owner(&self, entity: EntityRef) -> Option<EntityRef> {
+    pub fn entity_owner(&self, entity: EntityRef) -> Option<EntityRef> {
         let Some(backing) = self.native_projectile_backing(ProjectileRef::new(entity)) else {
             let Target::General(id) = self.native_entity_target(entity)? else {
                 return None;
@@ -171,7 +171,7 @@ impl crate::game::ServerGame<'_> {
     /// `Projectile.setOwner`. False for a stale projectile or owner, or an
     /// owner that is a fishing hook (a trident a player threw takes a player
     /// only). Does not touch `leftOwner`.
-    pub(in crate::game) fn projectile_set_owner(
+    pub fn projectile_set_owner(
         &mut self,
         projectile: ProjectileRef,
         owner: Option<EntityRef>,

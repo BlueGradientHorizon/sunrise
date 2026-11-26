@@ -154,7 +154,7 @@ impl crate::game::ServerGame<'_> {
 
     /// Narrows an entity to a display, or None for another kind, a stale
     /// handle or a client.
-    pub(in crate::game) fn display(&self, entity: EntityRef) -> Option<DisplayRef> {
+    pub fn display(&self, entity: EntityRef) -> Option<DisplayRef> {
         let display = DisplayRef::new(entity);
         self.display_entity(display).map(|_| display)
     }
@@ -185,7 +185,7 @@ impl crate::game::ServerGame<'_> {
     /// Sets the transformation. False for a value that isn't finite or a
     /// zero quaternion. Clients ease to it when the start delay is set
     /// (`set_start_interpolation`).
-    pub(in crate::game) fn display_set_transformation(
+    pub fn display_set_transformation(
         &mut self,
         display: DisplayRef,
         transformation: Transformation,
@@ -290,7 +290,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// `Display.setShadowRadius`. False for a value that isn't finite.
-    pub(in crate::game) fn display_set_shadow_radius(
+    pub fn display_set_shadow_radius(
         &mut self,
         display: DisplayRef,
         radius: f32,
@@ -355,7 +355,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// `Display.setTransformationInterpolationDuration`.
-    pub(in crate::game) fn display_set_interpolation_duration(
+    pub fn display_set_interpolation_duration(
         &mut self,
         display: DisplayRef,
         ticks: i32,
@@ -372,7 +372,7 @@ impl crate::game::ServerGame<'_> {
     /// `Display.setTransformationInterpolationDelay`. Like vanilla, every
     /// call is sent to the clients that track the display, even with the
     /// delay it already has, and each client restarts its interpolation.
-    pub(in crate::game) fn display_set_start_interpolation(
+    pub fn display_set_start_interpolation(
         &mut self,
         display: DisplayRef,
         ticks: i32,
@@ -392,7 +392,7 @@ impl crate::game::ServerGame<'_> {
 
     /// `Display.setPosRotInterpolationDuration`, kept from 0 to 59 as
     /// vanilla's load keeps it.
-    pub(in crate::game) fn display_set_teleport_duration(
+    pub fn display_set_teleport_duration(
         &mut self,
         display: DisplayRef,
         ticks: i32,

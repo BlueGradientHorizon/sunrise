@@ -549,7 +549,7 @@ pub(in crate::game) struct ClientMenu {
 }
 
 impl ClientMenu {
-    pub(in crate::game) fn set(&mut self, current: Option<(i32, String)>) {
+    pub fn set(&mut self, current: Option<(i32, String)>) {
         self.generation = self
             .generation
             .checked_add(1)
@@ -557,7 +557,7 @@ impl ClientMenu {
         self.current = current;
     }
 
-    pub(in crate::game) fn as_ref(&self) -> Option<&(i32, String)> {
+    pub fn as_ref(&self) -> Option<&(i32, String)> {
         self.current.as_ref()
     }
 }
@@ -602,7 +602,7 @@ pub(in crate::game) fn client_millis() -> u64 {
 #[cfg(feature = "client")]
 impl crate::game::ClientGame<'_> {
     // remote_effect_network_id: remote/sync.rs
-    pub(in crate::game) fn item_id(&self, name: &str) -> i32 {
+    pub fn item_id(&self, name: &str) -> i32 {
         let r = self.client.remote.as_ref().expect("remote");
         r.builtin
             .get("minecraft:item")
@@ -709,7 +709,7 @@ impl crate::game::ClientGame<'_> {
     /// server id `id` that an attack reaches `Player.attack`'s sweep check on,
     /// and whether it is living. A painting or item frame is not: on this
     /// client `skipAttackInteraction` hurts it and stops the attack there.
-    pub(in crate::game) fn remote_attacked_object(&self, id: i32) -> Option<(String, bool)> {
+    pub fn remote_attacked_object(&self, id: i32) -> Option<(String, bool)> {
         let id = id as u32;
         if let Some(b) = self.common.boats.iter().find(|b| b.id == id) {
             return Some((b.entity_type(), false));
@@ -738,7 +738,7 @@ impl crate::game::ClientGame<'_> {
 
     /// Connected or connecting with no player yet: `ConnectScreen`, then
     /// `LevelLoadingScreen`, over the panorama with its blur.
-    pub(in crate::game) fn remote_loading(&self) -> bool {
+    pub fn remote_loading(&self) -> bool {
         if self.client.replay.playing() {
             return false;
         }

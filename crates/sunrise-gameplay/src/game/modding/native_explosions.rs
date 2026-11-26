@@ -64,7 +64,7 @@ impl crate::game::ServerGame<'_> {
     /// client's copy of the world, for a chunk that isn't loaded, a centre or
     /// radius that isn't finite, or settings `native_blast_settings` refuses.
     /// A blast inside `native_explosion_detonate` starts that hook again.
-    pub(in crate::game) fn native_explode(
+    pub fn native_explode(
         &mut self,
         source: Option<(u32, Target)>,
         center: [f64; 3],

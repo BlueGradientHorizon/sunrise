@@ -70,7 +70,7 @@ impl ClientGame<'_> {
     }
     /// `LightmapRenderStateExtractor`: (brightness taken off the gamma
     /// option, the pulsing light scale).
-    pub(in crate::game::client_side) fn darkness_lighting(&self, partial: f32) -> (f32, f32) {
+    pub fn darkness_lighting(&self, partial: f32) -> (f32, f32) {
         let scale = self.darkness_effect_scale();
         let modifier = self.darkness_blend(partial) * scale;
         let pulse = ((self.visual_ticks() as f32 - partial) * std::f32::consts::PI * 0.025).cos()
@@ -86,7 +86,7 @@ impl ClientGame<'_> {
 
     /// `LightmapRenderStateExtractor`: the night vision effect's intensity
     /// (`GameRenderer.nightVisionScale`), or conduit power's water vision.
-    pub(in crate::game::client_side) fn night_vision_intensity(&self, partial: f32) -> f32 {
+    pub fn night_vision_intensity(&self, partial: f32) -> f32 {
         use mod_api::client::fog::FogType;
         if let Some(e) = self.common.potions.effects.get("night_vision") {
             // MobEffectInstance.endsWithin(200); -1 is infinite.

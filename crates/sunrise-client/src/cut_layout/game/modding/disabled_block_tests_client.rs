@@ -22,7 +22,7 @@ pub(crate) mod tests {
                     .unwrap()
                     .slots_mut()[0] = Some(ItemStack::new("minecraft:stick", 65));
                 game.start_audio_capture();
-                let particles = game.side.pending_particles.len();
+                let particles = game.server.pending_particles.len();
                 let notices = probe.dispenser_changes.load(Ordering::Relaxed);
                 for (enabled, count, writes) in [(false, 65, 0), (true, 64, 1)] {
                     assert!(mod_api::__private::set_mod_enabled("inert_test", enabled));
@@ -40,8 +40,8 @@ pub(crate) mod tests {
                         notices + writes
                     );
                     assert!(game.dropped.is_empty());
-                    assert!(game.side.pending_sounds.is_empty());
-                    assert_eq!(game.side.pending_particles.len(), particles);
+                    assert!(game.server.pending_sounds.is_empty());
+                    assert_eq!(game.server.pending_particles.len(), particles);
                 }
             },
         );
@@ -55,7 +55,7 @@ pub(crate) mod tests {
             |game, _, probe| {
                 let dispenser = place_dispenser(game);
                 game.start_audio_capture();
-                let particles = game.side.pending_particles.len();
+                let particles = game.server.pending_particles.len();
                 for enabled in [false, true] {
                     assert!(mod_api::__private::set_mod_enabled("inert_test", enabled));
                     for (input, remaining, writes) in [(65, 65, 0), (4, 2, 1)] {
@@ -82,8 +82,8 @@ pub(crate) mod tests {
                             game.dropped.is_empty(),
                             "vanilla must not run a second behaviour"
                         );
-                        assert!(game.side.pending_sounds.is_empty());
-                        assert_eq!(game.side.pending_particles.len(), particles);
+                        assert!(game.server.pending_sounds.is_empty());
+                        assert_eq!(game.server.pending_particles.len(), particles);
                     }
                 }
                 assert_eq!(probe.earlier_dispenses.load(Ordering::Relaxed), 4);

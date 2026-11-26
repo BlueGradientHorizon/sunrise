@@ -28,7 +28,7 @@ impl crate::game::ServerGame<'_> {
         Ok(0)
     }
     /// `MinecraftServer.setDifficulty(difficulty, true)`.
-    pub(in crate::game) fn set_difficulty_forced(&mut self, i: u8) {
+    pub fn set_difficulty_forced(&mut self, i: u8) {
         let from = self.common.ui.difficulty;
         self.common.ui.difficulty = i;
         // The level data holds the world's difficulty: it survives the

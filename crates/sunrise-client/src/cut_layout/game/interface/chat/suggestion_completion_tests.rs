@@ -93,12 +93,12 @@ fn chat_completion_reaches_mods_from_keyboard_and_mouse_isolated() {
     )]
     .into();
     mod_platform::testing::with_mods(mods, || {
-        game.side.screen = Screen::Chat;
+        game.client.screen = Screen::Chat;
         game.ui.registries.players = vec!["Steve".into(), "Steven".into()];
-        game.side.chat_ui.chat_screen = Some(ChatScreen::new(
-            &Measure(&game.side.gui.atlas.font),
+        game.client.chat_ui.chat_screen = Some(ChatScreen::new(
+            &Measure(&game.client.gui.atlas.font),
             &Commands {
-                dispatcher: chat_tree(&game.side.remote),
+                dispatcher: chat_tree(&game.client.remote),
                 registries: &game.ui.registries,
             },
             "",
@@ -116,8 +116,8 @@ fn chat_completion_reaches_mods_from_keyboard_and_mouse_isolated() {
         assert_eq!(*calls.lock().unwrap(), ["😀 hi Steve", "😀 hi Steven"]);
 
         // Click the suggestion's rendered text rather than assuming its coordinates.
-        let draws = game.side.chat_ui.chat_screen.as_mut().unwrap().draw(
-            &Measure(&game.side.gui.atlas.font),
+        let draws = game.client.chat_ui.chat_screen.as_mut().unwrap().draw(
+            &Measure(&game.client.gui.atlas.font),
             (-1, -1),
             0,
             0,
@@ -133,14 +133,14 @@ fn chat_completion_reaches_mods_from_keyboard_and_mouse_isolated() {
                 _ => None,
             })
             .expect("Steve is a visible suggestion");
-        game.side.cursor = at;
+        game.client.cursor = at;
         game.chat_click();
         assert_eq!(
             *calls.lock().unwrap(),
             ["😀 hi Steve", "😀 hi Steven", "😀 hi Steve"]
         );
         assert!(
-            game.side
+            game.client
                 .chat_ui
                 .chat_screen
                 .as_mut()

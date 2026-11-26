@@ -136,7 +136,7 @@ pub(crate) mod arrow_hit_sound_tests {
             let mut receivers = Vec::new();
             for conn in [12, 13] {
                 let (tx, rx) = mpsc::channel();
-                game.side
+                game.server
                     .lan
                     .as_mut()
                     .unwrap()
@@ -149,7 +149,7 @@ pub(crate) mod arrow_hit_sound_tests {
             }
             let mut body = PlayerMotion::new(game.motion, Vec3::new(3.0, 64.0, 5.0)).unwrap();
             body.entity_id = victim as i32;
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()
@@ -167,14 +167,14 @@ pub(crate) mod arrow_hit_sound_tests {
                 }
             })
             .unwrap();
-            for g in &game.side.lan.as_ref().unwrap().hub.guests {
+            for g in &game.server.lan.as_ref().unwrap().hub.guests {
                 g.sender.flush();
             }
             for rx in &receivers {
                 while rx.try_recv().is_ok() {}
             }
             let health_before = game
-                .side
+                .server
                 .lan
                 .as_ref()
                 .unwrap()
@@ -206,7 +206,7 @@ pub(crate) mod arrow_hit_sound_tests {
             game.projectile_hits_player(&arrow, hit, Victim::Guest(victim))
                 .unwrap();
             let health_after = game
-                .side
+                .server
                 .lan
                 .as_ref()
                 .unwrap()
@@ -214,7 +214,7 @@ pub(crate) mod arrow_hit_sound_tests {
                 .guest(victim)
                 .unwrap()
                 .health;
-            for g in &game.side.lan.as_ref().unwrap().hub.guests {
+            for g in &game.server.lan.as_ref().unwrap().hub.guests {
                 g.sender.flush();
             }
             outcome = Some(CaseOutcome {
@@ -264,7 +264,7 @@ mod tests {
         let mut body =
             sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::new(3.0, 64.0, 5.0)).unwrap();
         body.entity_id = conn as i32;
-        game.side
+        game.server
             .lan
             .as_mut()
             .unwrap()
@@ -284,7 +284,7 @@ mod tests {
     }
 
     fn health(game: &sunrise_gameplay::game::ServerGame<'_>, conn: u32) -> f32 {
-        let host = game.side.lan.as_ref().unwrap();
+        let host = game.server.lan.as_ref().unwrap();
         host.hub
             .guest(conn)
             .unwrap()
@@ -330,10 +330,10 @@ mod tests {
         let swept = health(game, 13) < before;
 
         fresh_body(game, 13);
-        game.side.combat.0.blast_owner =
+        game.server.combat.0.blast_owner =
             Some((12, sunrise_game_data::text::Text::literal("guest12")));
-        game.side.combat.0.blast_owner_player = true;
-        game.side.combat.0.blast_guest = Some(12);
+        game.server.combat.0.blast_owner_player = true;
+        game.server.combat.0.blast_guest = Some(12);
         let before = health(game, 13);
         game.server_explode(
             [3.0, 64.0, 8.0],
@@ -343,9 +343,9 @@ mod tests {
         )
         .unwrap();
         let blasted = health(game, 13) < before;
-        game.side.combat.0.blast_owner = None;
-        game.side.combat.0.blast_owner_player = false;
-        game.side.combat.0.blast_guest = None;
+        game.server.combat.0.blast_owner = None;
+        game.server.combat.0.blast_owner_player = false;
+        game.server.combat.0.blast_guest = None;
         [read, arrow, projectile, spear, melee, swept, blasted]
     }
 

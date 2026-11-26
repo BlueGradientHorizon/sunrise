@@ -41,7 +41,7 @@ fn items_fall_to_each_dimensions_own_void_floor() {
                 [0.0, 0.0, 0.0],
                 0,
             );
-            game.side.ticked_entities_through = u32::MAX;
+            game.server.ticked_entities_through = u32::MAX;
             game.tick_items();
             assert_eq!(
                 !game.dropped.is_empty(),

@@ -79,7 +79,7 @@ use mod_api::CommandInvocation;
         use sunrise_core::profile::AccountProperty;
 
         super::super::native_guest_turn_tests::with_guests(|game| {
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()

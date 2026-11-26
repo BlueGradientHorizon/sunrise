@@ -61,7 +61,7 @@ mod tests {
         super::super::native_guest_turn_tests::with_guests(|game| {
             let cow = spawn(game, 10, "minecraft:cow");
             assert!(game.entity_play_sound(cow, "minecraft:entity.cow.ambient", 0.5, 1.5));
-            let sound = &game.side.pending_native_sounds[0];
+            let sound = &game.server.pending_native_sounds[0];
             assert_eq!(sound.sound, "minecraft:entity.cow.ambient");
             assert_eq!(sound.at, [1.5, 64.0, 2.5]);
             assert_eq!(sound.source as usize, SoundSource::Neutral.index());
@@ -71,7 +71,7 @@ mod tests {
             assert!(!game.entity_play_sound(cow, "minecraft:entity.cow.ambient", 1.0, 1.0));
             game.mobs[0].silent = false;
             assert!(!game.entity_play_sound(cow, "minecraft:entity.cow.ambient", 1.0, f32::NAN));
-            assert_eq!(game.side.pending_native_sounds.len(), 1);
+            assert_eq!(game.server.pending_native_sounds.len(), 1);
             // A player doesn't hear their own sound, silent or not.
             game.as_guest(12, |game| {
                 let player = game.entity(12).unwrap();
@@ -83,7 +83,7 @@ mod tests {
             .expect("the sound's real guest turn runs");
             let stale = EntityRef::new(WorldEpoch::new(cow.epoch().get() + 1), 10);
             assert!(!game.entity_play_sound(stale, "minecraft:entity.cow.ambient", 1.0, 1.0));
-            assert_eq!(game.side.pending_native_sounds.len(), 2);
+            assert_eq!(game.server.pending_native_sounds.len(), 2);
         });
     }
 
@@ -100,11 +100,11 @@ mod tests {
                 ["G 1,64,2 minecraft:step"]
             );
             assert!(game.entity_broadcast_event(cow, 3));
-            assert_eq!(game.side.lan_entity_events, [(10, 3)]);
+            assert_eq!(game.server.lan_entity_events, [(10, 3)]);
             let stale = EntityRef::new(WorldEpoch::new(cow.epoch().get() + 1), 10);
             assert!(!game.entity_broadcast_event(stale, 3));
             assert!(!game.entity_game_event(stale, "minecraft:step"));
-            assert_eq!(game.side.lan_entity_events.len(), 1);
+            assert_eq!(game.server.lan_entity_events.len(), 1);
         });
     }
 

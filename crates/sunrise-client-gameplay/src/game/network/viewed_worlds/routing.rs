@@ -254,7 +254,7 @@ impl crate::game::ClientGame<'_> {
         Ok(())
     }
 
-    pub(in crate::game::client_side) fn route_viewed_levels(
+    pub fn route_viewed_levels(
         &mut self,
         data: &[u8],
     ) -> Result<(), RouteError> {

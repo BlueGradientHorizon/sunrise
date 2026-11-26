@@ -209,10 +209,10 @@ fn a_data_packs_mending_arrives_as_the_ratio() {
             serde_json::to_vec(&mending).unwrap(),
         )
         .unwrap();
-        game.side.world_root = root.clone();
+        game.server.world_root = root.clone();
         let stack = game.reload_datapacks(false, &[]).unwrap();
         let resources = game.options.resources.clone();
-        game.side.world_tables.0 = game
+        game.server.world_tables.0 = game
             .stage_world_tables(&stack, false, &resources)
             .unwrap()
             .tables;

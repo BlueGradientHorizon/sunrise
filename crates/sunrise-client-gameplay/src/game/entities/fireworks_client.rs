@@ -9,7 +9,7 @@ use sunrise_level::particle_options::{ParticleOptions, ParticleType};
 
 impl crate::game::ClientGame<'_> {
     /// `FireworkEntityRenderer.submit`: ground item facing camera, lit at the rocket's probe.
-    pub(in crate::game) fn rocket_geometry(
+    pub fn rocket_geometry(
         &self,
         camera: glam::DVec3,
         alpha: f64,

@@ -2,13 +2,13 @@ use crate::game::ServerGame;
 
 impl ServerGame<'_> {
     /// The projectiles tick ([`Game::tick_projectiles_now`]), and each one's move is filed.
-    pub(in crate::game) fn tick_projectiles(&mut self) -> super::Result<()> {
+    pub fn tick_projectiles(&mut self) -> super::Result<()> {
         self.tick_projectiles_now()
     }
 
     /// `Entity.teleport` placed as `/tp` places it ([`Game::place_teleport_in_level`]), then filed
     /// and told as one position update (`/tp`, a mob's ender pearl).
-    pub(in crate::game) fn place_teleport_filed(
+    pub fn place_teleport_filed(
         &mut self,
         t: super::commands::Target,
         pos: [f64; 3],

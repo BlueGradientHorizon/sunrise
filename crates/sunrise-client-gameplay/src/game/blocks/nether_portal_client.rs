@@ -30,7 +30,7 @@ impl crate::game::ClientGame<'_> {
     /// effect grows this tick. Entering a portal closes the screen only when
     /// it does not allow it (`Screen.isAllowedInPortal`), and plays
     /// `block.portal.trigger` when the effect starts from nothing.
-    pub(in crate::game::client_side) fn client_portal_effect(&mut self) -> bool {
+    pub fn client_portal_effect(&mut self) -> bool {
         let inside = std::mem::take(&mut self.client.client_inside);
         self.client.client_was_inside = inside;
         if !inside {

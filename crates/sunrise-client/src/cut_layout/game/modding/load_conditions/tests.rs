@@ -308,7 +308,7 @@ fn load_conditions_recipe_reload_counts_and_failed_candidates_keep_old_recipes()
                         "minecraft:stick",
                     );
                 }
-                let host = game.side.lan.take();
+                let host = game.server.lan.take();
                 sunrise_gameplay::game::lan::sync::forget_sync_data();
                 assert!(sunrise_gameplay::game::lan::sync::cached_reload_sync().is_none());
                 mode.store(5, Ordering::SeqCst);
@@ -330,7 +330,7 @@ fn load_conditions_recipe_reload_counts_and_failed_candidates_keep_old_recipes()
                         .collect::<Vec<_>>(),
                     old
                 );
-                game.side.lan = host;
+                game.server.lan = host;
                 mode.store(0, Ordering::SeqCst);
                 game.reload_datapacks(true, &game.level.enabled_features.clone())
                     .unwrap();

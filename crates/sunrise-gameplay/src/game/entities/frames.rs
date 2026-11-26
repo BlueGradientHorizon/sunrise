@@ -186,7 +186,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// `ItemFrame.interact` for the frame under the crosshair, or the one a
     /// guest's interact packet named.
-    pub(in crate::game::server_side) fn interact_frame(
+    pub fn interact_frame(
         &mut self,
         target: Option<InteractTarget>,
     ) -> bool {
@@ -256,7 +256,7 @@ impl crate::game::ServerGame<'_> {
         true
     }
     /// `ItemFrame.hurtServer` from the player: the item comes out first.
-    pub(in crate::game::server_side) fn attack_frame(&mut self) -> bool {
+    pub fn attack_frame(&mut self) -> bool {
         let Some((i, d)) = self.frame_hit() else {
             return false;
         };
@@ -518,7 +518,7 @@ impl crate::game::ServerGame<'_> {
     /// for the frame at `index`, the kill credited to `source`: the break
     /// sound, the frame and its item, then `BLOCK_CHANGE`. False when a mod
     /// kept it (`native_hanging_break`): it stays at `index`.
-    pub(in crate::game) fn break_frame_by(
+    pub fn break_frame_by(
         &mut self,
         index: usize,
         source: Option<super::commands::Target>,
@@ -574,7 +574,7 @@ impl crate::game::ServerGame<'_> {
         self.frame_output_changed(pos);
     }
     /// BlockAttachedEntity.tick for frames.
-    pub(in crate::game) fn tick_item_frames(&mut self) {
+    pub fn tick_item_frames(&mut self) {
         // ServerLevel.tick: only entities in entity-ticking chunks tick.
         let ticking = self.entity_ticking_area();
         let mut i = 0;

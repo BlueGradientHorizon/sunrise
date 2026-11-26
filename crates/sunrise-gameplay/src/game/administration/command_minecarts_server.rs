@@ -13,7 +13,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// `BaseCommandBlock.performCommand` for the cart: false when it already ran this game tick.
-    pub(in crate::game) fn perform_cart_command(&mut self, id: u32) -> bool {
+    pub fn perform_cart_command(&mut self, id: u32) -> bool {
         let game_time = self.common.world.game_time;
         let rules_work = self
             .common.ui

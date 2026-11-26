@@ -106,8 +106,8 @@ pub(crate) fn run_fangs_and_an_ominous_item_spawner_outside_the_ticking_chunks_d
     assert!(!witness.cases.is_empty());
 
     with_game(|game| {
-        game.side.settings.render_distance = witness.view_distance;
-        game.side.settings.simulation_distance = witness.simulation_distance;
+        game.server.settings.render_distance = witness.view_distance;
+        game.server.settings.simulation_distance = witness.simulation_distance;
         let [px, py, pz] = witness.player_pos;
         game.player = Some(PlayerMotion::new(game.motion, Vec3::new(px, py, pz)).unwrap());
 
@@ -115,7 +115,7 @@ pub(crate) fn run_fangs_and_an_ominous_item_spawner_outside_the_ticking_chunks_d
             game.fangs.list.clear();
             game.ominous_spawners.clear();
             game.dropped.clear();
-            game.side.streaming.forced.clear();
+            game.server.streaming.forced.clear();
 
             match case {
                 TickingGateCase::EvokerFangs {
@@ -128,7 +128,7 @@ pub(crate) fn run_fangs_and_an_ominous_item_spawner_outside_the_ticking_chunks_d
                     expected_warmup,
                 } => {
                     for &[cx, cz] in forced_chunks {
-                        game.side.streaming.forced.insert((cx, cz));
+                        game.server.streaming.forced.insert((cx, cz));
                     }
                     game.update_chunk_tickets();
                     game.add_fangs(*pos, 0.0, *initial_warmup, 0);
@@ -165,7 +165,7 @@ pub(crate) fn run_fangs_and_an_ominous_item_spawner_outside_the_ticking_chunks_d
                     expected_spawned_items,
                 } => {
                     for &[cx, cz] in forced_chunks {
-                        game.side.streaming.forced.insert((cx, cz));
+                        game.server.streaming.forced.insert((cx, cz));
                     }
                     game.update_chunk_tickets();
                     game.add_ominous_item_spawner(
@@ -224,8 +224,8 @@ pub(crate) fn run_fangs_and_an_ominous_item_spawner_pause_on_scheduled_ticket_re
     with_game(|game| {
         game.build_registries();
         game.set_allow_commands(true);
-        game.side.settings.render_distance = witness.view_distance;
-        game.side.settings.simulation_distance = witness.simulation_distance;
+        game.server.settings.render_distance = witness.view_distance;
+        game.server.settings.simulation_distance = witness.simulation_distance;
         let [px, py, pz] = witness.player_pos;
         game.player = Some(PlayerMotion::new(game.motion, Vec3::new(px, py, pz)).unwrap());
 

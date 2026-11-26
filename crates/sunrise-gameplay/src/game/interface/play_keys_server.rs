@@ -7,7 +7,7 @@ impl crate::game::ServerGame<'_> {
     /// Then setItemInHand for the off hand, then the main hand. The stacks are
     /// copied only for a listener: `heard` holds the old main and off hands.
     #[allow(dead_code)]
-    pub(in crate::game) fn own_swap_hands(&mut self) {
+    pub fn own_swap_hands(&mut self) {
         if self.common.spectator() {
             return;
         }

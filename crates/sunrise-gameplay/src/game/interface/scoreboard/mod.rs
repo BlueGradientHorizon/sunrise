@@ -95,7 +95,7 @@ impl crate::game::ServerGame<'_> {
         }
     }
     /// `ScoreboardSaveData` read from `data/minecraft/scoreboard.dat`.
-    pub(in crate::game) fn load_scoreboard(&mut self) {
+    pub fn load_scoreboard(&mut self) {
         if self.common.score.loaded || !self.common.is_logical_server() {
             return;
         }
@@ -110,7 +110,7 @@ impl crate::game::ServerGame<'_> {
         self.common.score.stopwatches = sunrise_sim::stopwatches::Stopwatches::load(&self.server.world_root);
         self.sync_score_registries();
     }
-    pub(in crate::game) fn save_scoreboard(&mut self) {
+    pub fn save_scoreboard(&mut self) {
         if !self.common.score.loaded || !self.common.is_logical_server() {
             return;
         }
@@ -162,7 +162,7 @@ impl crate::game::ServerGame<'_> {
     // ---- score holders ---------------------------------------------------
 
     /// `ScoreHolder.getScoreboardName`: the player's name, an entity's UUID.
-    pub(in crate::game) fn holder_name(&mut self, t: Target) -> Option<String> {
+    pub fn holder_name(&mut self, t: Target) -> Option<String> {
         match gives_uuid(t) {
             Some(id) => Some(uuid_text(self.uuid_for(id))),
             None => self.existing_holder_name(t),
@@ -264,7 +264,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// The lossy UTF-8 presentation used by `/tag` and its existing write paths.
-    pub(in crate::game) fn tags_of(&self, t: Target) -> Vec<String> {
+    pub fn tags_of(&self, t: Target) -> Vec<String> {
         self.saved_entity_tags(t)
             .iter_utf16()
             .map(String::from_utf16_lossy)
@@ -425,7 +425,7 @@ impl crate::game::ServerGame<'_> {
     /// `ServerScoreboard`'s packets: each placed player's client is sent
     /// what changed on the board since it was last sent it (all of it on
     /// joining), lan/scoreboard.rs.
-    pub(in crate::game) fn lan_sync_scoreboard(&mut self) {
+    pub fn lan_sync_scoreboard(&mut self) {
         if self
             .server
             .lan
@@ -448,7 +448,7 @@ impl crate::game::ServerGame<'_> {
         });
     }
     /// `ServerPlayer.doTick` score updates and the statistic criteria.
-    pub(in crate::game) fn tick_scoreboard(&mut self) {
+    pub fn tick_scoreboard(&mut self) {
         self.load_scoreboard();
         let events = std::mem::take(&mut self.common.stats.events);
         self.stat_criteria_changed(PLAYER_NAME, events);

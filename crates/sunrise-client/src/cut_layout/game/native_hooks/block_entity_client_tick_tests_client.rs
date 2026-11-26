@@ -51,14 +51,14 @@ fn a_clients_frames_tick_its_declared_copies_until_they_go() {
         assert!(take_events().is_empty(), "told without a client level");
 
         let (_sent, mut server) = crate::game::remote::tests::connect_menu_test(game);
-        let remote = game.side.remote.as_mut().unwrap();
+        let remote = game.client.remote.as_mut().unwrap();
         remote.logged_in = true;
         Arc::make_mut(&mut remote.builtin).registries.insert(
             "minecraft:block_entity_type".into(),
             sunrise_protocol::registry::Ids::from_names(types.map(str::to_owned).to_vec()),
         );
         for (x, z) in [CHUNK, (101, 100)] {
-            game.side
+            game.client
                 .streaming
                 .insert_remote(&mut game.world, Chunk::empty(x, z));
         }
@@ -123,12 +123,12 @@ fn a_clients_frames_tick_its_declared_copies_until_they_go() {
         // quiet type never. The spawner ticks between the second hum and the first, as it arrived:
         // its two particles come between their ticks.
         let all = |first| ticked(&[(HUMS[1], 10), (HUMS[0], first), (OTHER, 40), (CRATE_AT, 50)]);
-        game.side.particles.0.requested = Some(Vec::new());
+        game.client.particles.0.requested = Some(Vec::new());
         TICK_PARTICLES.lock().unwrap().clear();
         assert_eq!(frame(game, 1), all(30));
         let seen = std::mem::take(&mut *TICK_PARTICLES.lock().unwrap());
         assert_eq!([seen[1] - seen[0], seen[2] - seen[1]], [2, 0], "{seen:?}");
-        game.side.particles.0.requested = None;
+        game.client.particles.0.requested = None;
         assert_eq!(frame(game, 2), [all(30), all(30)].concat());
 
         // The server's update reaches the next frame's drain: the notice comes first, and both

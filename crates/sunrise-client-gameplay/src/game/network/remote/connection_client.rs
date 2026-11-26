@@ -26,7 +26,7 @@ impl crate::game::ClientGame<'_> {
     /// A stack to the server (`SetCreativeModeSlot`): the same component
     /// patch a Sunrise server sends its clients, with the registries' ids, so
     /// the server's echo doesn't hand back a bare item.
-    pub(in crate::game) fn to_network(&self, s: &Option<ItemStack>) -> Option<Stack> {
+    pub fn to_network(&self, s: &Option<ItemStack>) -> Option<Stack> {
         self.to_network_projecting(s, &|_| ())
     }
 
@@ -152,7 +152,7 @@ impl crate::game::ClientGame<'_> {
     }
     /// A connection to `address` as `name` starts over the network (`Hooks::connecting`). One
     /// still open closes first, as the player leaving it.
-    pub(in crate::game) fn connection_starts(&mut self, address: &str, name: &str, lan: bool) {
+    pub fn connection_starts(&mut self, address: &str, name: &str, lan: bool) {
         self.connection_left(Left::Disconnected);
         self.client.pending_retry = None;
         self.client.retry_due = None;
@@ -250,7 +250,7 @@ impl crate::game::ClientGame<'_> {
             .as_ref()
             .is_some_and(|server| server.lan)
     }
-    pub(in crate::game) fn set_registries(&mut self, registries: Arc<Dynamic>) {
+    pub fn set_registries(&mut self, registries: Arc<Dynamic>) {
         let entries: Vec<(&str, serde_json::Value)> = registries
             .registries
             .get("minecraft:enchantment")

@@ -28,11 +28,11 @@ fn client_menu_close_and_button_click_reach_the_server() {
             .local_player()
             .and_then(|player| game.player_container_menu(player))
             .unwrap();
-        assert_eq!(game.side.screen, Screen::Playing);
+        assert_eq!(game.client.screen, Screen::Playing);
         assert!(!inventory.close(game));
         assert!(!inventory.click_button(game, 0));
         let loom = game
-            .side
+            .client
             .remote
             .as_ref()
             .unwrap()
@@ -53,23 +53,23 @@ fn client_menu_close_and_button_click_reach_the_server() {
                 .unwrap()
         };
         let menu = open(game);
-        assert_eq!(game.side.screen, Screen::Inventory);
+        assert_eq!(game.client.screen, Screen::Inventory);
         // The old inventory handle is stale now that the loom replaced it.
         assert!(!inventory.close(game));
         assert!(!inventory.click_button(game, 0));
-        assert_eq!(game.side.screen, Screen::Inventory);
+        assert_eq!(game.client.screen, Screen::Inventory);
         assert!(menu.click_button(game, 3));
         let Some(play::Serverbound::ContainerButtonClick(click)) = sent(&mut reader) else {
             panic!("expected the button click, not a refused request");
         };
         assert_eq!((click.container, click.button), (5, 3));
         assert!(menu.close(game));
-        assert_eq!(game.side.screen, Screen::Playing);
+        assert_eq!(game.client.screen, Screen::Playing);
         let Some(play::Serverbound::ContainerClose(close)) = sent(&mut reader) else {
             panic!("expected the close");
         };
         assert_eq!(close.container, 5);
-        assert!(game.side.remote.as_ref().unwrap().menu.as_ref().is_none());
+        assert!(game.client.remote.as_ref().unwrap().menu.as_ref().is_none());
         // Closed: the handle is stale and nothing more is sent.
         assert!(!menu.close(game));
         assert!(!menu.click_button(game, 3));
@@ -155,11 +155,11 @@ fn client_menu_reads_follow_packets_and_lifetimes() {
             assert_eq!(menu.slot(game, 36).unwrap().unwrap().count(), 3);
             assert_eq!(menu.carried(game), Some(None));
         }
-        let screen = game.side.screen;
-        game.side.screen = Screen::Creative;
+        let screen = game.client.screen;
+        game.client.screen = Screen::Creative;
         assert!(!menu.click(game, &[pickup(36)]));
-        game.side.screen = screen;
-        game.side.remote.as_mut().unwrap().state_id = 17;
+        game.client.screen = screen;
+        game.client.remote.as_mut().unwrap().state_id = 17;
 
         // MapPostProcessing.SCALE has a stream codec but no persistent codec to hash.
         let mut unhashable = Stack::new(game.item_id("minecraft:filled_map"), 1);
@@ -286,7 +286,7 @@ fn client_menu_reads_follow_packets_and_lifetimes() {
         .unwrap();
         assert_eq!(game.menu_carried(menu).unwrap().unwrap().count, 3);
         let crafting_id = game
-            .side
+            .client
             .remote
             .as_ref()
             .unwrap()
@@ -346,7 +346,7 @@ fn client_menu_reads_follow_packets_and_lifetimes() {
             .unwrap();
         assert_ne!(inventory, menu);
         let chest_id = game
-            .side
+            .client
             .remote
             .as_ref()
             .unwrap()
@@ -426,7 +426,7 @@ fn client_menu_reads_follow_packets_and_lifetimes() {
             .set_read_timeout(Some(std::time::Duration::from_millis(20)))
             .unwrap();
         assert!(reader.recv().unwrap_err().is_timed_out());
-        game.side
+        game.client
             .remote
             .as_mut()
             .unwrap()
@@ -439,7 +439,7 @@ fn client_menu_reads_follow_packets_and_lifetimes() {
         );
         assert_eq!(game.menu_slot_count(inventory), None);
         assert_eq!(game.menu_slot_count(chest), None);
-        game.side.remote.as_mut().unwrap().menu.set(None);
+        game.client.remote.as_mut().unwrap().menu.set(None);
         let before_replacement = game
             .local_player()
             .and_then(|player| game.player_container_menu(player))
@@ -464,7 +464,7 @@ fn client_menu_reads_follow_packets_and_lifetimes() {
         let (client, _server) = Pipe::pair();
         game.connect_local(client, "MenuReadTest").unwrap();
         game.enter_remote_dimension(&other, RemoteDimensionEntry::Login, Reason::Other);
-        let remote = game.side.remote.as_mut().unwrap();
+        let remote = game.client.remote.as_mut().unwrap();
         remote.logged_in = true;
         remote.entity_id = 7;
         remote.profile = 42;

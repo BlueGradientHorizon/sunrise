@@ -26,9 +26,9 @@ fn game(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
 
 /// Runs `command`: whether it succeeded and what it said first.
 fn run(game: &mut sunrise_gameplay::game::ServerGame<'_>, command: &str) -> (bool, Option<String>) {
-    game.side.chat_capture = Some(Vec::new());
+    game.server.chat_capture = Some(Vec::new());
     let ok = game.run_command(command);
-    let said = game.side.chat_capture.take().unwrap_or_default();
+    let said = game.server.chat_capture.take().unwrap_or_default();
     (ok, said.first().map(sunrise_game_data::text::Text::plain))
 }
 
@@ -37,8 +37,8 @@ fn run(game: &mut sunrise_gameplay::game::ServerGame<'_>, command: &str) -> (boo
 fn data_edits_reach_the_same_live_interaction() {
     game(|game| {
         assert!(game.run_command("summon interaction 4.5 100 4.5 {UUID:[I;66,0,0,1]}"));
-        assert_eq!(game.side.others.0.len(), 1);
-        let id = game.side.others.0[0].id;
+        assert_eq!(game.server.others.0.len(), 1);
+        let id = game.server.others.0[0].id;
         let modified = Some("Modified entity data of Interaction".to_owned());
         assert_eq!(
             run(
@@ -77,11 +77,11 @@ fn data_edits_reach_the_same_live_interaction() {
         assert_eq!(tag.get("width"), Some(&Tag::Float(1.0f32.to_bits())));
         // The same entity: its id, UUID and place.
         assert_eq!(
-            (game.side.others.0.len(), game.side.others.0[0].id),
+            (game.server.others.0.len(), game.server.others.0[0].id),
             (1, id)
         );
         assert_eq!(tag.get("UUID"), Some(&Tag::IntArray(vec![66, 0, 0, 1])));
-        assert_eq!(game.side.others.0[0].position, Vec3::new(4.5, 100.0, 4.5));
+        assert_eq!(game.server.others.0[0].position, Vec3::new(4.5, 100.0, 4.5));
     });
 }
 
@@ -100,7 +100,7 @@ fn the_live_settings_are_what_the_interaction_saves() {
         "summon item_display 12.5 100 4.5 {UUID:[I;66,0,0,4],transformation:[1f,0f,0f,0f,0f,1f,0f,0f,0f,0f,1f,0f,0f,0f,0f,1f]}"
     ));
         let find = |g: &sunrise_gameplay::game::ServerGame<'_>, uuid: [i32; 4]| {
-            g.side
+            g.server
                 .others
                 .0
                 .iter()
@@ -190,7 +190,7 @@ fn the_live_settings_are_what_the_interaction_saves() {
                 format!("{:?}", display.item_transformation)
             )
         );
-        assert_eq!(game.side.others.0.len(), 3);
+        assert_eq!(game.server.others.0.len(), 3);
         assert_eq!(find(game, [66, 0, 0, 1]).id, interaction.id);
     });
 }

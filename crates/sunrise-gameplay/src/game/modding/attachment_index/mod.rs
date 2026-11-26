@@ -10,7 +10,7 @@ use sunrise_mod_runtime::attachments::{
 mod players;
 
 impl crate::game::ServerGame<'_> {
-    pub(in crate::game) fn attachment_validate_write(
+    pub fn attachment_validate_write(
         &self,
         token: mod_api::AttachmentWriteToken,
     ) -> Result<(), mod_api::AttachmentRowError> {
@@ -48,7 +48,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// Publish the dimension's saved maps before listeners observe its load.
-    pub(in crate::game) fn bind_dimension_attachments(&mut self, dim: Dim) {
+    pub fn bind_dimension_attachments(&mut self, dim: Dim) {
         let Some(level) = self.level(dim.id()) else {
             return;
         };

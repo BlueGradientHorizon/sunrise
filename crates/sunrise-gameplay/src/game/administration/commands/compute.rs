@@ -195,7 +195,7 @@ impl crate::game::ServerGame<'_> {
 
     // ---- evaluation ---------------------------------------------------------------
 
-    pub(in crate::game) fn provider_int(
+    pub fn provider_int(
         &mut self,
         v: &Value,
         c: &ComputeContext,
@@ -213,7 +213,7 @@ impl crate::game::ServerGame<'_> {
         result
     }
 
-    pub(in crate::game) fn provider_float(
+    pub fn provider_float(
         &mut self,
         v: &Value,
         c: &ComputeContext,

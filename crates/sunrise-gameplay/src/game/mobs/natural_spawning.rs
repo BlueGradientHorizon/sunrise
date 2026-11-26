@@ -1109,7 +1109,7 @@ impl<'a> crate::game::ServerGame<'a> {
             .copied()
             .unwrap_or_default()
     }
-    pub(in crate::game) fn natural_level(&self) -> GameLevel<'_, 'a> {
+    pub fn natural_level(&self) -> GameLevel<'_, 'a> {
         self.natural_level_with(self.level_players())
     }
     fn natural_level_with(&self, players: Vec<LevelPlayer>) -> GameLevel<'_, 'a> {
@@ -1182,7 +1182,7 @@ impl<'a> crate::game::ServerGame<'a> {
     /// (finalizeSpawn's mounts ride by id, and its chickens carry their
     /// zombie). Every mob arrives with a provisional id; real ones are
     /// assigned in spawn order and the links rewritten.
-    pub(in crate::game::server_side) fn add_spawned(
+    pub fn add_spawned(
         &mut self,
         pending: Vec<Mob>,
         created: Vec<Mob>,
@@ -1207,7 +1207,7 @@ impl<'a> crate::game::ServerGame<'a> {
     }
     /// Every player in the level in place: the local player, and the LAN
     /// guests or server players in it.
-    pub(in crate::game) fn level_players(&self) -> Vec<LevelPlayer> {
+    pub fn level_players(&self) -> Vec<LevelPlayer> {
         self.level_players_iter().collect()
     }
     /// `level_players` one at a time, without collecting them.
@@ -1282,7 +1282,7 @@ impl<'a> crate::game::ServerGame<'a> {
     }
     /// `Level.hasNearbyAlivePlayer` before a level is built for the spawn
     /// code: what a spawner asks first, every tick.
-    pub(in crate::game) fn alive_player_near(&self, x: f64, y: f64, z: f64, range: f64) -> bool {
+    pub fn alive_player_near(&self, x: f64, y: f64, z: f64, range: f64) -> bool {
         if self
             .local_level_player()
             .is_some_and(|p| p.alive_near(x, y, z, range))
@@ -1303,7 +1303,7 @@ impl<'a> crate::game::ServerGame<'a> {
     /// ticket that forces natural spawning (NeoForge's
     /// `shouldForceNaturalSpawning`). Also returns how many chunks the tracker
     /// holds (`getNaturalSpawnChunkCount`).
-    pub(in crate::game::server_side) fn spawning_chunks(
+    pub fn spawning_chunks(
         &self,
         players: &[LevelPlayer],
         scratch: &mut SpawnScratch,
@@ -1318,7 +1318,7 @@ impl<'a> crate::game::ServerGame<'a> {
     }
     /// `NaturalSpawner.createState` for a pass over the level in place, under
     /// its spawn limits (`SpawnPolicy`).
-    pub(in crate::game::server_side) fn natural_spawn_state(
+    pub fn natural_spawn_state(
         &self,
         level: &GameLevel<'_, '_>,
         spawnable: i32,
@@ -1335,7 +1335,7 @@ impl<'a> crate::game::ServerGame<'a> {
     /// `spawn_mobs` rule off, else `getFilteredSpawningCategories` with the
     /// `spawn_monsters` rule, the persistent ones every 400 ticks, and the
     /// level's spawn flags (`SpawnPolicy`) taking away.
-    pub(in crate::game::server_side) fn natural_categories(
+    pub fn natural_categories(
         &self,
         state: &SpawnState,
     ) -> Vec<Category> {
@@ -1355,7 +1355,7 @@ impl<'a> crate::game::ServerGame<'a> {
     /// of `ServerChunkCache.tickChunks`. A wave that lands this tick therefore
     /// joins before that tick's spawns, with the lower entity ids. Nothing spawns once the
     /// entity ids are exhausted (`entity_ids_exhausted`).
-    pub(in crate::game::server_side) fn tick_spawners(&mut self) {
+    pub fn tick_spawners(&mut self) {
         if self.entity_ids_exhausted() {
             return;
         }
@@ -1376,7 +1376,7 @@ impl<'a> crate::game::ServerGame<'a> {
     /// the categories under their global caps (creatures every 400 ticks),
     /// then `tickSpawningChunk` in the shuffled spawning chunks of every
     /// player: inhabited time, then `spawnForChunk`.
-    pub(in crate::game::server_side) fn spawn_natural(&mut self) {
+    pub fn spawn_natural(&mut self) {
         // `tickChunks` does nothing in a Debug world.
         if self.server.world_debug {
             return;

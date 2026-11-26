@@ -21,8 +21,8 @@ pub(crate) fn fresh_player(
 ) {
     game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
     bind_local_player(game, 7, 7);
-    game.side.lan_acting_name = Some("attempts".into());
-    game.side.lan_acting_permission = Some(4);
+    game.server.lan_acting_name = Some("attempts".into());
+    game.server.lan_acting_permission = Some(4);
     game.set_game_mode(GameMode::Survival);
     game.set_game_mode(mode);
     game.remove_player_effects(None);
@@ -121,12 +121,12 @@ fn remaining_hit_callers_observe_refusals_and_zero_damage() {
             fresh_player(game, GameMode::Spectator);
             game.build_registries();
             game.set_allow_commands(true);
-            game.side.chat_capture = Some(Vec::new());
+            game.server.chat_capture = Some(Vec::new());
             assert!(
                 !game
                     .run_command("damage 00000000-0000-0000-0000-000000000007 4 minecraft:generic")
             );
-            let feedback = game.side.chat_capture.take().unwrap();
+            let feedback = game.server.chat_capture.take().unwrap();
             assert_eq!(
                 count.swap(0, Ordering::Relaxed),
                 1,
@@ -221,7 +221,7 @@ fn remaining_hit_callers_observe_refusals_and_zero_damage() {
             )
             .unwrap();
             let (guest, _packets) = sunrise_gameplay_common::game::server_side::native_sound_refs::tests::guest(88, 88, [0.0; 3]);
-            game.side.lan.as_mut().unwrap().hub.guests.push(guest);
+            game.server.lan.as_mut().unwrap().hub.guests.push(guest);
             // The egg hits above may hatch chicks (`ThrownEgg.onHit`, drawn from the level's
             // random); they would be splash targets too, so only the guest stays near the blast.
             game.mobs.clear();
@@ -231,7 +231,7 @@ fn remaining_hit_callers_observe_refusals_and_zero_damage() {
                 if dead {
                     body.set_health(0.0, false).unwrap();
                 }
-                game.side
+                game.server
                     .lan
                     .as_mut()
                     .unwrap()

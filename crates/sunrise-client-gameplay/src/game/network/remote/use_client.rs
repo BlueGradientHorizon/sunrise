@@ -23,7 +23,7 @@ impl crate::game::ClientGame<'_> {
     /// container, and the blocks it changed. Vanilla's client runs it on its
     /// own level first; this runs it on a copy, and `predict_use` keeps the
     /// changes it predicts. `asks_mods` as for `DryLevel`.
-    pub(in crate::game) fn remote_block_reacts(
+    pub fn remote_block_reacts(
         &mut self,
         hit: &sunrise_gameplay_common::game::Hit,
         held: Option<&ItemStack>,
@@ -67,7 +67,7 @@ impl crate::game::ClientGame<'_> {
         }
         self.remote_block_template(hit, held, false, asks_mods)
     }
-    pub(in crate::game) fn remote_block_template(
+    pub fn remote_block_template(
         &mut self,
         hit: &sunrise_gameplay_common::game::Hit,
         held: Option<&ItemStack>,
@@ -156,7 +156,7 @@ impl crate::game::ClientGame<'_> {
     /// ConsumableListeners on both sides): the client's FoodData eats at once,
     /// so a held right click finds `Player.canEat` false instead of starting
     /// another bite before the server's ClientboundSetHealth arrives.
-    pub(in crate::game) fn remote_complete_using(&mut self) {
+    pub fn remote_complete_using(&mut self) {
         let Some((slot, _)) = self.common.using.take() else {
             return;
         };
@@ -352,7 +352,7 @@ impl crate::game::ClientGame<'_> {
     /// `Minecraft.startUseItem`'s block turn for `hand`: a use that swung drops
     /// the hand (`LocalPlayer.itemUsed`) when it spent the held item or the
     /// player has infinite materials.
-    pub(in crate::game) fn remote_use_block(
+    pub fn remote_use_block(
         &mut self,
         hand: Hand,
         attempt: mod_api::InteractionAttempt,
@@ -430,7 +430,7 @@ impl crate::game::ClientGame<'_> {
     /// Continue Minecraft.startUseItem after this hand's target passed:
     /// its item, then the off hand's target and item if this is the main hand.
     /// When resumed after a server answer, use the original block hit.
-    pub(in crate::game) fn remote_use_hands(
+    pub fn remote_use_hands(
         &mut self,
         hand: Hand,
         attempt: mod_api::InteractionAttempt,

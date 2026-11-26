@@ -2464,7 +2464,7 @@ pub(in crate::game) struct ClientConstructEffectsBundle {
 impl<'a> ClientGame<'a> {
     /// A client game with no world open, over the loaded resources.
     #[allow(dead_code)]
-    pub(in crate::game) fn new(
+    pub fn new(
         res: &'a Arc<Resources>,
         client_res: Arc<std::sync::OnceLock<ClientResources>>,
         pack: PackResources,

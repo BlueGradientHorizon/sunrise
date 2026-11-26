@@ -79,7 +79,7 @@ fn every_ordinary_resident_family_binds_its_actual_owned_slot() {
         summon!("painting", Painting, paintings);
         summon!("oak_boat", Boat, boats);
         summon!("minecart", Cart, carts);
-        summon!("marker", Other, side.others.0);
+        summon!("marker", Other, server.others.0);
         game.add_fangs([0.5, 70.0, 0.5], 0.0, 0, 0);
         let id = game.fangs.list[0].id;
         bind(game, id, Kind::Fangs);

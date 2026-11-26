@@ -23,7 +23,7 @@ pub(in crate::game) fn chest(game: &sunrise_client_gameplay::game::ClientGame<'_
     C::OpenScreen(play::OpenScreen {
         container: 12,
         menu: game
-            .side
+            .client
             .remote
             .as_ref()
             .unwrap()

@@ -46,7 +46,7 @@ impl ServerGame<'_> {
     /// player last left (`previousPlayerGameType`, saved with the player), or
     /// `Some(None)` when they never changed mode. None for a stale or
     /// unavailable player.
-    pub(in crate::game) fn player_previous_game_mode(
+    pub fn player_previous_game_mode(
         &self,
         player: PlayerRef,
     ) -> Option<Option<GameMode>> {

@@ -79,7 +79,7 @@ impl ClientGame<'_> {
         })
     }
     /// The title, action bar and selected-item parts of `Hud.tick`.
-    pub(in crate::game::client_side) fn tick_hud(&mut self) {
+    pub fn tick_hud(&mut self) {
         self.client.titles.tick();
         // Hud.tick: the vignette after the titles, before the held item's name. (A local world,
         // which has no `Gui.tick` here, eases it in its level tick, `tick_particles`.)

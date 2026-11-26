@@ -113,7 +113,7 @@ impl crate::game::ServerGame<'_> {
             game.stage_mod_book_place(&before, selection, &plan, use_max)
         })
     }
-    fn mod_book_placement_context(
+    pub fn mod_book_placement_context(
         &self,
         before: &MenuSnapshot,
         selection: &sync::Selection,
@@ -138,7 +138,7 @@ impl crate::game::ServerGame<'_> {
                         && authority.contains(selection.catalog.book.as_str())
                 })
     }
-    fn stage_mod_book_place(
+    pub fn stage_mod_book_place(
         &mut self,
         before: &MenuSnapshot,
         selection: &sync::Selection,

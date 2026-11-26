@@ -258,7 +258,7 @@ pub(crate) mod tests {
 
             let [actor, other] = [12, 13].map(|conn| {
                 let (tx, rx) = std::sync::mpsc::channel();
-                game.side
+                game.server
                     .lan
                     .as_mut()
                     .unwrap()
@@ -271,7 +271,7 @@ pub(crate) mod tests {
             });
             let sounds = |game: &sunrise_gameplay::game::ServerGame<'_>,
                           rx: &std::sync::mpsc::Receiver<Out>| {
-                let sync = game.side.lan.as_ref().unwrap().hub.sync_data();
+                let sync = game.server.lan.as_ref().unwrap().hub.sync_data();
                 rx.try_iter()
                     .flat_map(|out| match out {
                         Out::Packet(body) => vec![body],
@@ -357,7 +357,7 @@ pub(crate) mod tests {
                 );
             }
             let blast_count = |game: &sunrise_gameplay::game::ServerGame<'_>| {
-                game.side
+                game.server
                     .pending_sounds
                     .iter()
                     .filter(|s| s.event == blast_sound)

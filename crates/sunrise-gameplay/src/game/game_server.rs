@@ -21,7 +21,7 @@ pub(in crate::game) fn reset_world_progress(
 
 impl crate::game::ServerGame<'_> {
     /// The UUID of the player acting: the guest whose turn it is, else the host.
-    pub(crate) fn acting_player_uuid(&mut self) -> [i32; 4] {
+    pub fn acting_player_uuid(&mut self) -> [i32; 4] {
         match self.server.lan_acting_uuid {
             Some(guest) => sunrise_sim::lan::playerdata::uuid_ints(guest),
             None => self.common.level.ensure_player_uuid(),
@@ -80,7 +80,7 @@ impl crate::game::ServerGame<'_> {
             self.server.guest_cooldowns.push((group, 0));
         }
     }
-    pub(in crate::game::server_side) fn break_block_as_player(
+    pub fn break_block_as_player(
         &mut self,
         pos: [i32; 3],
     ) -> Result<bool> {
@@ -294,7 +294,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// Let go of every entity of the level (saved first): the next world
     /// opened must not inherit them, nor save them as its own.
-    pub(crate) fn clear_entities(&mut self) {
+    pub fn clear_entities(&mut self) {
         self.common.clear_shared_entities();
         self.clear_pending_mob_actions();
         self.server.others.0.clear();
@@ -373,7 +373,7 @@ impl crate::game::ServerGame<'_> {
     }
     #[allow(dead_code)]
     #[inline(always)]
-    pub(in crate::game::server_side) fn finish_close_world_server(&mut self) {
+    pub fn finish_close_world_server(&mut self) {
         self.clear_world_parts();
         self.server.server_loot.0.set(None);
         self.common.server_items = None;
@@ -382,7 +382,7 @@ impl crate::game::ServerGame<'_> {
         self.server.world_adopted = false;
         self.server.startup_ticket_restore_pending = false;
     }
-    pub(in crate::game) fn finish_open_world(
+    pub fn finish_open_world(
         &mut self,
         prepared: world_loading::PreparedWorld,
     ) -> Result<function_pack_stack::PackStack> {
@@ -653,7 +653,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// The saved player's hands, armor, body, saddle and ender chest go in
     /// their fields; the 36 inventory slots come back.
-    pub(in crate::game) fn load_saved_inventory(
+    pub fn load_saved_inventory(
         &mut self,
         level: &Level,
     ) -> Vec<Option<ItemStack>> {
@@ -686,7 +686,7 @@ impl crate::game::ServerGame<'_> {
         inventory
     }
     /// Menus opened by PlayerEffect::OpenMenu.
-    pub(in crate::game) fn open_block_effect_menu(&mut self, pos: [i32; 3]) {
+    pub fn open_block_effect_menu(&mut self, pos: [i32; 3]) {
         if self.fake_blocks(mod_api::FakeEffect::Menu) {
             return;
         }
@@ -825,7 +825,7 @@ impl crate::game::ServerGame<'_> {
     /// `ExperienceOrb.followNearbyPlayer`'s candidates: each orb goes for the
     /// nearest living player within 8 blocks, the host's own or a guest. Each
     /// is the player's feet, the point the orb homes on and the player's UUID.
-    pub(crate) fn orb_followed(&self) -> Vec<xp_orb_targeting::OrbCandidate> {
+    pub fn orb_followed(&self) -> Vec<xp_orb_targeting::OrbCandidate> {
         let spectator = self.common.spectator();
         let player = self
             .common.player
@@ -876,7 +876,7 @@ impl crate::game::ServerGame<'_> {
         }
         followed
     }
-    pub(in crate::game) fn server_process_level_events(&mut self) -> Result<()> {
+    pub fn server_process_level_events(&mut self) -> Result<()> {
         let events = std::mem::take(&mut self.common.level_events);
         self.lan_record_events(&events);
         dispense_fixture::record_events(&events);
@@ -1210,7 +1210,7 @@ impl crate::game::ServerGame<'_> {
     /// scheduled from the game time at which it becomes a ticking chunk
     /// (block ticking, with its neighbours loaded). Chunks become ticking
     /// between ticks in vanilla: before this tick's clock advanced.
-    pub(in crate::game::server_side) fn start_ticking_chunks(&mut self) {
+    pub fn start_ticking_chunks(&mut self) {
         let levels = self.server.tickets.0.levels();
         let world = &self.common.world;
         let started = self
@@ -1225,7 +1225,7 @@ impl crate::game::ServerGame<'_> {
         }
     }
     /// Copy the live player and world state into the `Level` that gets saved.
-    pub(crate) fn sync_level(&mut self) {
+    pub fn sync_level(&mut self) {
         self.common.level.player_impulse_grace = self.common.player.as_ref().map(|p| p.impulse.reset_grace_time);
         self.common.level.player_fall_particles = self
             .common.player
@@ -1541,7 +1541,7 @@ impl crate::game::ServerGame<'_> {
     /// ServerPlayer.startSleepInBed: in reach, not obstructed, night or thunder,
     /// and (outside creative) no monsters within 8 blocks; the bed becomes the
     /// respawn point either way.
-    pub(in crate::game::server_side) fn try_sleep(&mut self, pos: [i32; 3]) {
+    pub fn try_sleep(&mut self, pos: [i32; 3]) {
         if self.fake_blocks(mod_api::FakeEffect::Sleep) {
             return;
         }
@@ -1724,7 +1724,7 @@ impl crate::game::ServerGame<'_> {
         }
     }
     /// `BlockTransformer.transformBlock` for a held axe, hoe or shovel.
-    pub(in crate::game) fn use_block_transformer(
+    pub fn use_block_transformer(
         &mut self,
         stack: &ItemStack,
         hit: &Hit,
@@ -2037,7 +2037,7 @@ impl crate::game::ServerGame<'_> {
         Ok(UseResult::Pass)
     }
     /// `Player.stopSleepInBed`: preserve the flags of the owning wake caller.
-    pub(in crate::game) fn wake_up(&mut self, wake_immediately: bool, update_level: bool) {
+    pub fn wake_up(&mut self, wake_immediately: bool, update_level: bool) {
         // PlayerWakeUpEvent: heard at the start of stopSleepInBed, still in bed;
         // a listener may have woken the player, so the sleep is read after it.
         self.native_acting_bed_leave(wake_immediately, update_level);

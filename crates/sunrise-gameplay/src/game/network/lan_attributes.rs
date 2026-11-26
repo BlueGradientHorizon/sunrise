@@ -74,7 +74,7 @@ impl ServerGame<'_> {
     /// mob's attribute at each push. A worn or held stack is read again only when it changed
     /// (`ItemStack.matches`, as `collectEquipmentChanges` asks), so a tick
     /// with the same gear reads no item data and allocates nothing.
-    pub(in crate::game) fn refresh_gear_knockback_resistance(&mut self) {
+    pub fn refresh_gear_knockback_resistance(&mut self) {
         let items = self.common.res.items();
         for m in &mut self.common.mobs {
             let worn = GEAR.map(|(slot, _)| m.extra.slot_stack(slot));
@@ -124,7 +124,7 @@ impl ServerGame<'_> {
     /// of the other effects, Haste's and Luck's) — plus movement speed (its
     /// first `aiStep` reads it, `LivingEntity.removeFrost`, and no stack
     /// granted one) and the baby speed modifier, which no map holds.
-    pub(in crate::game) fn mob_attributes(
+    pub fn mob_attributes(
         &self,
         m: &Mob,
         speeds: &mut SpeedByType,

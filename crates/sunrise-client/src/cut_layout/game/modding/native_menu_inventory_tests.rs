@@ -92,7 +92,7 @@ fn exercise(reopen: bool) {
         sunrise_gameplay_common::game::api_values::install_parts(&mods).unwrap();
         with_guests(|game| {
             let root = tempfile::tempdir().unwrap();
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()
@@ -117,7 +117,7 @@ fn exercise(reopen: bool) {
                 })
                 .unwrap();
             let window = game
-                .side
+                .server
                 .lan
                 .as_mut()
                 .unwrap()
@@ -136,7 +136,7 @@ fn exercise(reopen: bool) {
             let give = ItemPlace::MenuSlot { menu, slot: 10 };
             let partial = ItemPlace::MenuSlot { menu, slot: 11 };
             // The hook runs without a guest swapped in; use that same Host state.
-            assert!(game.side.lan_acting.is_none());
+            assert!(game.server.lan_acting.is_none());
             let hand = ItemPlace::PlayerHand {
                 player: 12,
                 hand: mod_api::Hand::Main,
@@ -175,7 +175,7 @@ fn exercise(reopen: bool) {
                 });
             assert!(aborted.is_err());
             assert_eq!(give.with_stack(game, |stack| stack.count()).unwrap(), 5);
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()
@@ -273,7 +273,7 @@ mod owner {
             sunrise_gameplay_common::game::api_values::install_parts(&mods).unwrap();
             with_guests(|game| {
                 game.level.player_uuid = Some(playerdata::uuid_ints(12));
-                game.side
+                game.server
                     .lan
                     .as_mut()
                     .unwrap()
@@ -283,7 +283,7 @@ mod owner {
                     })
                     .unwrap();
                 let window = game
-                    .side
+                    .server
                     .lan
                     .as_mut()
                     .unwrap()
@@ -294,7 +294,7 @@ mod owner {
                 // Each extract takes 1, the own slot and the cursor take 1; then 0 left
                 // in the first slot's pair of reads (2 - 1 - 1).
                 assert_eq!(SEEN.with(|s| s.borrow().clone()), [1, 1, 1, 1, 0, 0]);
-                let guest = &game.side.lan.as_ref().unwrap().hub.guests[0];
+                let guest = &game.server.lan.as_ref().unwrap().hub.guests[0];
                 assert!(guest.inventory[0].is_none());
                 assert_eq!(guest.carried.as_ref().map(|s| s.count), Some(1));
                 assert_eq!(guest.native_menu[9].as_ref().map(|s| s.count), Some(1));
@@ -320,7 +320,7 @@ mod owner {
                 .unwrap(),
             );
             game.inventory.fill(None);
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()
@@ -342,7 +342,7 @@ mod owner {
             };
             // A diamond of another player moves to the owner, as a mod's transfer does: what
             // the owner can't take goes back, here by aborting the transaction.
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()
@@ -365,9 +365,9 @@ mod owner {
                 });
             assert!(moved.is_err());
             assert!(game.inventory.iter().all(Option::is_none));
-            let giver = game.side.lan.as_ref().unwrap().hub.guest(13).unwrap();
+            let giver = game.server.lan.as_ref().unwrap().hub.guest(13).unwrap();
             assert_eq!(giver.inventory[0].as_ref().map(|s| s.count), Some(1));
-            let guest = &game.side.lan.as_ref().unwrap().hub.guests[0];
+            let guest = &game.server.lan.as_ref().unwrap().hub.guests[0];
             assert!(guest.inventory.iter().all(|s| {
                 s.as_ref()
                     .is_some_and(|s| s.count == 64 && &*s.item == "minecraft:stone")
@@ -403,7 +403,7 @@ mod owner {
             };
             let stone = stack(game, r#"{id:"minecraft:stone",count:64}"#);
             let diamond = stack(game, r#"{id:"minecraft:diamond",count:1}"#);
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()
@@ -431,7 +431,7 @@ mod owner {
                 })
                 .unwrap();
 
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()

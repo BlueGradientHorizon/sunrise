@@ -125,12 +125,12 @@ mod tests {
                         "{spawn:?}"
                     );
                 }
-                let next_id = game.side.next_entity;
+                let next_id = game.server.next_entity;
                 assert_eq!(
                     game.level_spawn_mob(level, TRADER, at, mod_api::SpawnReason::Command),
                     None
                 );
-                assert_eq!(game.side.next_entity, next_id);
+                assert_eq!(game.server.next_entity, next_id);
                 assert_eq!(game.mobs.len(), mobs);
                 assert_eq!(heard.lock().unwrap().len(), 3, "no refusal told a mod");
             });

@@ -312,7 +312,7 @@ impl crate::game::ServerGame<'_> {
         }
     }
     /// A packet from a guest that the hub does not handle itself.
-    pub(in crate::game) fn lan_guest_packet(&mut self, conn: u32, packet: S) {
+    pub fn lan_guest_packet(&mut self, conn: u32, packet: S) {
         // The window's ordinary reply cannot fix a predicted swap in a player slot
         // it doesn't show. Prepare the repair even if menu validation closes the window.
         const OFFHAND_BUTTON: i8 = crate::game::shield::OFFHAND_SLOT as i8;
@@ -1397,7 +1397,7 @@ impl crate::game::ServerGame<'_> {
             }),
         );
     }
-    pub(in crate::game) fn spawn_protection_for(&self, host: &LanHost, uuid: u128) -> Option<i32> {
+    pub fn spawn_protection_for(&self, host: &LanHost, uuid: u128) -> Option<i32> {
         let radius = host.hub.spawn_protection;
         (self.common.is_dedicated_server()
             && radius > 0

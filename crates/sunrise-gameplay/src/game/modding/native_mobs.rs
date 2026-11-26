@@ -59,7 +59,7 @@ impl crate::game::ServerGame<'_> {
     /// too): each slot whose stack differs from what the mods last heard is told, the previous
     /// stack with it, so a hotbar selection that moves the main hand counts. A player new to the
     /// level counts from empty, as for mobs, and only while a mod listens.
-    pub(in crate::game) fn native_players_equipment(&mut self) {
+    pub fn native_players_equipment(&mut self) {
         let mut listened = false;
         self.native_living_equipment_listened(&mut listened);
         if !listened {

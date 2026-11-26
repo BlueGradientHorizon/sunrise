@@ -165,7 +165,7 @@ fn setup(game: &mut sunrise_gameplay::game::ServerGame<'_>) -> &'static ModMenuT
         opening_item: None,
         slot_changed_seen: None,
     });
-    game.side.lan.as_mut().unwrap().hub.guests.push(guest);
+    game.server.lan.as_mut().unwrap().hub.guests.push(guest);
     t
 }
 
@@ -292,7 +292,7 @@ fn menu_links_expose_chest_contents_in_the_answering_tick() {
             // Use the production tick entry point, so this also fails if links
             // are refreshed after the hub broadcasts the container slots.
             game.tick_lan(false);
-            let guest = &game.side.lan.as_ref().unwrap().hub.guests[0];
+            let guest = &game.server.lan.as_ref().unwrap().hub.guests[0];
             let menu = guest.menu.as_ref().unwrap();
             assert_eq!(menu.links, vec![CHEST]);
             // `sent` is the hub's client-visible snapshot, updated only when
@@ -304,7 +304,7 @@ fn menu_links_expose_chest_contents_in_the_answering_tick() {
         });
         // A subscriber-free tick must preserve links and perform no transient
         // allocations on its thread, even if an allocation would be freed immediately.
-        let before = game.side.lan.as_ref().unwrap().hub.guests[0]
+        let before = game.server.lan.as_ref().unwrap().hub.guests[0]
             .menu
             .as_ref()
             .unwrap()
@@ -327,7 +327,7 @@ fn menu_links_expose_chest_contents_in_the_answering_tick() {
             #[cfg(any(feature = "system-allocator", feature = "alloc-census"))]
             game.lan_menu_links_tick();
         });
-        let menu = game.side.lan.as_ref().unwrap().hub.guests[0]
+        let menu = game.server.lan.as_ref().unwrap().hub.guests[0]
             .menu
             .as_ref()
             .unwrap();
@@ -368,7 +368,7 @@ fn menu_links_skip_a_furnace_the_mod_names() {
             Arc::default(),
             || {
                 game.tick_lan(false);
-                let guest = &game.side.lan.as_ref().unwrap().hub.guests[0];
+                let guest = &game.server.lan.as_ref().unwrap().hub.guests[0];
                 let menu = guest.menu.as_ref().unwrap();
                 assert_eq!(menu.links, vec![CHEST]);
             },

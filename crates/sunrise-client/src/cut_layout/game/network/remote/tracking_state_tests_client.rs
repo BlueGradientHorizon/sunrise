@@ -51,11 +51,11 @@ fn tracking_emitters_follow_the_packet_target() {
     .unwrap();
     let (client, _server) = sunrise_protocol::connection::Pipe::pair();
     game.connect_local(client, "EmitterTest").unwrap();
-    let remote = game.side.remote.as_mut().unwrap();
+    let remote = game.client.remote.as_mut().unwrap();
     remote.entity_id = 7;
     remote.logged_in = true;
     game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.0, 64.0, 0.0)).unwrap());
-    game.side.particles.0.seed_randoms(42, 43, 44);
+    game.client.particles.0.seed_randoms(42, 43, 44);
 
     let check = |game: &Game<'_, sunrise_client_gameplay::game::client_side::ClientState>,
                  ty,
@@ -85,7 +85,7 @@ fn tracking_emitters_follow_the_packet_target() {
     let target = 40;
     let start = [5.0, 64.0, 7.0];
     game.spawn_entity(target, "minecraft:player", start, [0.0; 3]);
-    game.side.particles.0.requested = Some(Vec::new());
+    game.client.particles.0.requested = Some(Vec::new());
     for action in [1, 2] {
         game.handle_packet(C::Animate(play::Animate { id: target, action }))
             .unwrap();
@@ -100,7 +100,7 @@ fn tracking_emitters_follow_the_packet_target() {
     }
 
     let moved = [15.0, 65.0, -2.0];
-    game.side.particles.0.requested = Some(Vec::new());
+    game.client.particles.0.requested = Some(Vec::new());
     game.handle_packet(C::SetEntityData(play::SetEntityData {
         id: target,
         values: vec![(6, serializer::POSE, Value::Id(Pose::Crouching.id()))],
@@ -124,7 +124,7 @@ fn tracking_emitters_follow_the_packet_target() {
 
     // The old entity moved again before unpairing. Re-pairing its id before
     // the next particle tick keeps emitting at the old entity's final body.
-    game.side.particles.0.requested = Some(Vec::new());
+    game.client.particles.0.requested = Some(Vec::new());
     let last = [18.0, 65.0, -2.0];
     game.mob_index
         .get_mut(&mut game.mobs, target as u32)
@@ -140,15 +140,15 @@ fn tracking_emitters_follow_the_packet_target() {
         check(&game, ty, last, 1.5);
     }
 
-    game.side.particles.0.clear();
-    game.side.particles.0.requested = Some(Vec::new());
+    game.client.particles.0.clear();
+    game.client.particles.0.requested = Some(Vec::new());
     game.handle_packet(C::EntityEvent(play::EntityEvent {
         id: 7,
         event: TOTEM_EVENT,
     }))
     .unwrap();
     check(&game, ParticleType::TotemOfUndying, [0.0, 64.0, 0.0], 1.8);
-    game.side.particles.0.requested = Some(Vec::new());
+    game.client.particles.0.requested = Some(Vec::new());
     let player = game.player.as_mut().unwrap();
     player.position = Vec3::new(-4.0, 68.0, 8.0);
     player.set_pose(Pose::Swimming).unwrap();

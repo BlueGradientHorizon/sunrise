@@ -322,7 +322,7 @@ fn in_scene(test: &str, check: impl FnOnce(&mut sunrise_client_gameplay::game::C
             }
             snapshot(game, 5, 7);
             let row = game
-                .side
+                .client
                 .remote
                 .as_mut()
                 .unwrap()
@@ -347,7 +347,7 @@ fn a_row_is_drawn_by_its_types_renderer_at_the_frames_pose_reading_its_synced_fi
         "a_row_is_drawn_by_its_types_renderer_at_the_frames_pose_reading_its_synced_fields",
         |game, scene| {
             // A one-plane test frustum: +Z in camera space is in front.
-            game.side.view_frustum = Some(sunrise_client::gfx::test_frustum([glam::Vec4::Z; 6]));
+            game.client.view_frustum = Some(sunrise_client::gfx::test_frustum([glam::Vec4::Z; 6]));
             for (id, at) in [
                 (8, [0.0, 321.0, -8.0]),  // behind the camera
                 (9, [0.0, 321.0, 300.0]), // beyond the draw range
@@ -416,7 +416,7 @@ fn general_submission_keeps_lookup_order_across_removal_and_reentry() {
     in_scene(
         "general_submission_keeps_lookup_order_across_removal_and_reentry",
         |game, _| {
-            let builtin = game.side.remote.as_ref().unwrap().builtin.clone();
+            let builtin = game.client.remote.as_ref().unwrap().builtin.clone();
             let types = builtin.get("minecraft:entity_type").unwrap();
             let vanilla = |id, kind| {
                 C::AddEntity(play::AddEntity {
@@ -431,7 +431,7 @@ fn general_submission_keeps_lookup_order_across_removal_and_reentry() {
                     data: 0,
                 })
             };
-            game.side.pack_ids = Some(sunrise_client_gameplay::game::client_side::shader_packs::PackIds::with_entity_ids([(
+            game.client.pack_ids = Some(sunrise_client_gameplay::game::client_side::shader_packs::PackIds::with_entity_ids([(
                 "test:missile",
                 77,
             )]));
@@ -452,7 +452,7 @@ fn general_submission_keeps_lookup_order_across_removal_and_reentry() {
             snapshot(game, 12, 1);
             assert_eq!(submitted(game), [5, 71, 12, 42, 8]);
             let own_type_spans = game
-                .side
+                .client
                 .entity_spans
                 .borrow()
                 .windows(2)
@@ -467,7 +467,7 @@ fn general_submission_keeps_lookup_order_across_removal_and_reentry() {
             .unwrap();
             game.position_remote_general_passengers();
             assert_eq!(
-                game.side.remote.as_ref().unwrap().passenger_vehicle(12),
+                game.client.remote.as_ref().unwrap().passenger_vehicle(12),
                 Some(42)
             );
             assert_eq!(submitted(game), [5, 71, 12, 42, 8]);
@@ -525,7 +525,7 @@ fn a_failing_renderer_is_dropped_until_reload_and_a_type_without_one_draws_nothi
                 "asked again after it"
             );
             // The reload kept the rows.
-            assert_eq!(game.side.remote.as_ref().unwrap().general.rows.len(), 3);
+            assert_eq!(game.client.remote.as_ref().unwrap().general.rows.len(), 3);
         },
     );
 }
@@ -645,8 +645,8 @@ fn integrated_scene(test: &str, place: fn(&mut sunrise_gameplay::game::ServerGam
                 );
                 drop(registration);
                 game.resolve_entity_renderers();
-                game.side.settings.render_distance = 2;
-                game.side.settings.simulation_distance = 2;
+                game.client.settings.render_distance = 2;
+                game.client.settings.simulation_distance = 2;
                 let options = sunrise_sim::world_options::WorldOptions {
                     world_type: sunrise_sim::save::WorldPreset::Flat,
                     ..Default::default()
@@ -654,13 +654,13 @@ fn integrated_scene(test: &str, place: fn(&mut sunrise_gameplay::game::ServerGam
                 game.open_integrated("general_render", None, Some(1), true, Some(&options))
                     .unwrap();
                 poll_until(game, |g| {
-                    g.side
+                    g.client
                         .remote
                         .as_ref()
                         .is_some_and(|r| r.logged_in && r.joined)
                 });
                 let (id, at) = game
-                    .side
+                    .client
                     .integrated
                     .as_ref()
                     .unwrap()
@@ -678,7 +678,7 @@ fn integrated_scene(test: &str, place: fn(&mut sunrise_gameplay::game::ServerGam
                     .unwrap();
                 let camera = glam::DVec3::from_array(at) - glam::DVec3::Z * 5.0;
                 let ready = |g: &sunrise_client_gameplay::game::ClientGame<'_>| {
-                    g.side
+                    g.client
                         .remote
                         .as_ref()
                         .unwrap()

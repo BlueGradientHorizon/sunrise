@@ -406,7 +406,7 @@ impl ServerGame<'_> {
     /// clears them with None. Applied at once, to the queries that follow, and the block's
     /// neighbours are notified; clients get them with the block entity update. Inside a
     /// transaction an abort puts the old ones back.
-    pub(in crate::game) fn block_entity_set_shapes(
+    pub fn block_entity_set_shapes(
         &mut self,
         entity: BlockEntityRef,
         shapes: Option<BlockEntityShapes>,

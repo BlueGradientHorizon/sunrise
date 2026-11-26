@@ -78,7 +78,7 @@ use super::*;
                 );
             }
         }
-        game.side.streaming.forced.insert((0, 0));
+        game.server.streaming.forced.insert((0, 0));
         Some(game)
     }
 #[test]
@@ -148,7 +148,7 @@ pub(crate) fn source_silence_game(
         let mut game = server_game(resources)?;
         // Observe the server's real sound, level-event, and explosion broadcasts without a client.
         game.start_audio_capture();
-        game.side.lan_acting = Some(0);
+        game.server.lan_acting = Some(0);
         Some(game)
     }
 pub(crate) fn run_portal_blast_sulfur_cube_uses_only_positive_cooldown() {
@@ -184,7 +184,7 @@ pub(crate) fn run_portal_blast_sulfur_cube_uses_only_positive_cooldown() {
             // Fuse 1: explodes on this tick.
             cube.extra.sulfur_fuse = sunrise_sim::mobs::sulfur_cube::Fuse::set(1);
             game.mobs.push(cube);
-            game.side.portals.entities.insert(
+            game.server.portals.entities.insert(
                 9123,
                 PortalState {
                     cooldown,
@@ -192,7 +192,7 @@ pub(crate) fn run_portal_blast_sulfur_cube_uses_only_positive_cooldown() {
                 },
             );
             // The actual level tick orders the portal pass before the mob pass.
-            game.side.pending_sounds.clear();
+            game.server.pending_sounds.clear();
             game.handle_entity_portals();
             game.tick_creatures().unwrap();
             assert_eq!(
@@ -316,7 +316,7 @@ pub(crate) fn run_portal_blast_sulfur_cube_uses_only_positive_cooldown() {
         game.block_ticks
             .add_empty_chunk(sunrise_core::position::ChunkPos::new(0, 0))
             .unwrap();
-        assert!(game.side.streaming.forced.contains(&(0, 0)));
+        assert!(game.server.streaming.forced.contains(&(0, 0)));
         // The existing unit helper supplies a resident column. The paired
         // runtime harness separately admits actual ticket/streaming readiness.
         assert!(game.world.chunks.contains_key(&(0, 0)));
@@ -343,7 +343,7 @@ pub(crate) fn run_portal_blast_sulfur_cube_uses_only_positive_cooldown() {
         // Preserve a live owner referencing an actually registered mob.
         game.tnts[0].owner = Some(Who::Mob(pig));
         let before = game.tnts[0].clone();
-        let next_id = game.side.next_entity;
+        let next_id = game.server.next_entity;
         let clock = game.world.game_time;
         assert!(before.join.is_joined());
         let reference = Target::Tnt(id);
@@ -358,7 +358,7 @@ pub(crate) fn run_portal_blast_sulfur_cube_uses_only_positive_cooldown() {
         );
         assert!(game.run_command("data merge entity 00000059-0000-0000-0000-000000000001 {fuse:60s,Motion:[0.125d,0d,-0.25d],Tags:[adopted]}"), "valid TNT data must reach the existing live instance");
         assert_eq!(
-            game.side.next_entity, next_id,
+            game.server.next_entity, next_id,
             "adoption must not spawn another entity"
         );
         assert_eq!(game.tnts.len(), 1);
@@ -422,7 +422,7 @@ pub(crate) fn run_silent_tnt_keeps_the_blast_without_its_sound() {
                     .default_state("minecraft:glass")
                     .unwrap();
                 game.world.set(8, 64, 8, glass).unwrap();
-                game.side.pending_sounds.clear();
+                game.server.pending_sounds.clear();
                 game.add_primed_tnt(BlockPos::new(8, 64, 8), 0.0, 1, None, None);
                 game.tnts[0].no_gravity = true;
                 game.tnts[0].velocity = Vec3::ZERO;
@@ -446,7 +446,7 @@ pub(crate) fn run_silent_tnt_keeps_the_blast_without_its_sound() {
                     u32::from(!silent),
                     "direct source Silent={silent}"
                 );
-                game.side.pending_sounds.clear();
+                game.server.pending_sounds.clear();
                 game.server_explode(
                     [8.5, 64.0, 8.5],
                     0.0,
@@ -479,8 +479,8 @@ pub(crate) fn run_silent_potions_keep_the_splash_without_its_sound() {
             for kind in ["splash_potion", "lingering_potion"] {
                 for potion in ["awkward", "swiftness", "healing"] {
                     for silent in [false, true] {
-                        game.side.pending_sounds.clear();
-                        game.side.lan_events.clear();
+                        game.server.pending_sounds.clear();
+                        game.server.lan_events.clear();
                         let stack = ItemStack::new(&format!("minecraft:{kind}"), 1)
                             .with_potion(&format!("minecraft:{potion}"));
                         let mut projectile = Projectile::new(
@@ -554,7 +554,7 @@ pub(crate) fn run_silent_creeper_keeps_the_blast_after_its_source_is_removed() {
                 sunrise_sim::mobs::hostile::creeper_tick(mob, &mut events);
                 assert!(mob.removed);
                 game.mobs.retain(|m| m.id != id);
-                game.side.pending_sounds.clear();
+                game.server.pending_sounds.clear();
                 let particles = particle_count(&game);
                 game.handle_mob_events(events).unwrap();
                 assert!(particle_count(&game) > particles);
@@ -595,8 +595,8 @@ pub(crate) fn run_silent_launched_potions_and_bottles_keep_their_impact() {
                     game.add_projectile(shot);
                     let id = game.creatures.projectiles.last().unwrap().id;
                     set_silent(&mut game, id, silent);
-                    game.side.pending_sounds.clear();
-                    game.side.lan_events.clear();
+                    game.server.pending_sounds.clear();
+                    game.server.lan_events.clear();
                     let particles = particle_count(&game);
                     let clouds = game.breath_clouds.len();
                     let xp: u32 = game.orbs.iter().map(|o| o.points() * o.count).sum();

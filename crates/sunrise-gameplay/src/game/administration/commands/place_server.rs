@@ -20,7 +20,7 @@ impl crate::game::ServerGame<'_> {
         Ok(())
     }
     /// A saved world template, or the winning passive/world-pack resource.
-    pub(in crate::game::server_side) fn read_template_tag(&self, id: &str) -> Option<Tag> {
+    pub fn read_template_tag(&self, id: &str) -> Option<Tag> {
         use sunrise_assets::resource_source::{Resource, stays_inside};
         let (ns, path) = id.split_once(':').unwrap_or(("minecraft", id));
         if !stays_inside(ns) || !stays_inside(path) {

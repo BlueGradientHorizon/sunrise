@@ -311,7 +311,7 @@ impl crate::game::ClientGame<'_> {
     /// parent. For the demo intro's Buy that parent is the HUD, and `Gui.setScreen(null)`
     /// ends in `MouseHandler.grabMouse`, so the close asks for the grab when it
     /// lands there.
-    pub(in crate::game::client_side) fn close_confirm_link(&mut self) {
+    pub fn close_confirm_link(&mut self) {
         self.set_screen(self.confirm_link_back());
         if self.client.screen == Screen::Playing {
             self.capture(true);

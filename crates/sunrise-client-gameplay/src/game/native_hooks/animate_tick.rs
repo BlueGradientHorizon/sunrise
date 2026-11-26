@@ -4,12 +4,12 @@ use sunrise_gameplay_common::game::api_values::block_state::block_listens;
 impl crate::game::ClientGame<'_> {
     /// Whether `state`'s block has a part answering `animate_tick`: the per-block table's
     /// answer, no dispatch. The sampler asks it after each loaded pick's block effects.
-    pub(in crate::game) fn animate_part_listens(state: BlockStateId) -> bool {
+    pub fn animate_part_listens(state: BlockStateId) -> bool {
         block_listens(mod_api::HookId::AnimateTick, state)
     }
     /// Whether a client tick's sampling asks for the block parts' `animate_tick`: some part
     /// answers it and this is a window's client.
-    pub(in crate::game) fn mod_animate_parts(&self) -> bool {
+    pub fn mod_animate_parts(&self) -> bool {
         mod_api::__private::has_scoped_hook(mod_api::HookId::AnimateTick)
             && self.common.native_window()
     }
@@ -18,7 +18,7 @@ impl crate::game::ClientGame<'_> {
     /// `doAnimateTick` calls `Block.animateTick`: after the block's own effects, before its
     /// fluid's and the next pick. `event.random` is the level's random itself: the part's
     /// draws and the game's own during the call (`add_particle`'s limiter) move it in order.
-    pub(in crate::game) fn mod_animate_tick(&mut self, state: BlockStateId, pos: [i32; 3]) {
+    pub fn mod_animate_tick(&mut self, state: BlockStateId, pos: [i32; 3]) {
         let Some(level) = self.native_client_level() else {
             return;
         };

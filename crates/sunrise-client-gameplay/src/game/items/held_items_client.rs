@@ -4,7 +4,7 @@ use sunrise_items::items::ItemStack;
 
 impl ClientGame<'_> {
     /// `MultiPlayerGameMode.sameDestroyTarget`'s item half for `began`.
-    pub(in crate::game::client_side) fn same_destroying_item(
+    pub fn same_destroying_item(
         &self,
         began: &Option<ItemStack>,
     ) -> bool {

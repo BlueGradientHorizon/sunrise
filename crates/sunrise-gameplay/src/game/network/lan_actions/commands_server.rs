@@ -4,7 +4,7 @@ impl crate::game::ServerGame<'_> {
     /// Commands.performCommand for a guest, with the message arguments it
     /// signed (none after an unsigned command packet). The packet's command has no chat slash, and
     /// vanilla parses it as sent: a leading `/` is part of the command (a mod's `//set` is `/set`).
-    pub(in crate::game::server_side) fn guest_command(
+    pub fn guest_command(
         &mut self,
         conn: u32,
         command: &str,
@@ -103,7 +103,7 @@ impl crate::game::ServerGame<'_> {
             quiet: false,
         });
     }
-    pub(in crate::game) fn guest_suggestions(&mut self, conn: u32, payload: &[u8]) {
+    pub fn guest_suggestions(&mut self, conn: u32, payload: &[u8]) {
         let Some(host) = self.server.lan.as_ref() else {
             return;
         };
@@ -243,12 +243,12 @@ impl crate::game::ServerGame<'_> {
     }
     /// One guest's command as that guest, its feedback sent to them; false
     /// when it failed (or the guest is gone).
-    pub(in crate::game) fn run_guest_command(&mut self, c: GuestCommand) -> bool {
+    pub fn run_guest_command(&mut self, c: GuestCommand) -> bool {
         self.run_guest_command_told(c).is_some_and(|(ok, _)| ok)
     }
     /// `run_guest_command`, with the lines it sent the guest; None when the
     /// guest is gone.
-    pub(in crate::game) fn run_guest_command_told(
+    pub fn run_guest_command_told(
         &mut self,
         c: GuestCommand,
     ) -> Option<(bool, Vec<sunrise_game_data::text::Text>)> {
@@ -293,7 +293,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// The guests' queued commands, run with the hub in `self.lan` so that
     /// they reach the other players too (`/give Bob`, `/tp Bob`, `/kick`).
-    pub(in crate::game) fn run_guest_commands(&mut self) {
+    pub fn run_guest_commands(&mut self) {
         loop {
             let Some(host) = self.server.lan.as_mut() else {
                 return;
@@ -311,7 +311,7 @@ impl crate::game::ServerGame<'_> {
     /// drains the queue reaches that guest too). The server's log already has
     /// them (`broadcast_to_admins`). Without a server open to players they are
     /// dropped: no one else can hear them.
-    pub(in crate::game) fn send_admin_feedback(&mut self) {
+    pub fn send_admin_feedback(&mut self) {
         let lines = std::mem::take(&mut self.server.admin_feedback);
         let Some(host) = self.server.lan.as_ref() else {
             return;

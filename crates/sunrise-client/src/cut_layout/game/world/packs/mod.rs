@@ -80,12 +80,12 @@ pub(crate) mod tests {
                     |game| {
                         game.ui.vanilla_root = vanilla;
                         game.mods = sources;
-                        game.side.settings.mods.enabled = enabled;
+                        game.client.settings.mods.enabled = enabled;
                         // Drive the real entry point and join its CPU staging worker, without
                         // applying the staged textures (which would need a window/GPU).
                         let mut reload = |expected: Option<&str>| {
                             game.spawn_pack_reload(ReloadKind::Selection).unwrap();
-                            let mut pending = game.side.pack_reload.0.take().unwrap();
+                            let mut pending = game.client.pack_reload.0.take().unwrap();
                             let staged = pending.handle.take().unwrap().join().unwrap().unwrap();
                             let layers = &staged.client_pack.render.sprite_layers;
                             for id in ["reload_boundary:block/oil_0", "reload_boundary:block/oil_1"]

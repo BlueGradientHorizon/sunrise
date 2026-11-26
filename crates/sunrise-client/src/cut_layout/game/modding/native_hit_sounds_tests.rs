@@ -122,8 +122,8 @@ fn check(attacker: i32, expected_at: [f64; 3], hit: impl FnOnce(&mut sunrise_gam
                     seed: 0,
                     max_players: 2,
                     integrated: true,
-                    levels: game.side.level_shapes,
-                    level_seeds: game.side.levels.0.runtime.seeds(),
+                    levels: game.server.level_shapes,
+                    level_seeds: game.server.levels.0.runtime.seeds(),
                 },
             )
             .unwrap();
@@ -155,18 +155,18 @@ fn check(attacker: i32, expected_at: [f64; 3], hit: impl FnOnce(&mut sunrise_gam
             let expected_pitch = 0.8 + attacker_random.next_float() * 0.4;
             let mut seeds = LegacyRandom::new(0x5eed);
             let expected_seeds = [seeds.next_long(), seeds.next_long()];
-            game.side
+            game.server
                 .lan
                 .as_ref()
                 .unwrap()
                 .hub
                 .set_sound_seeds(LegacyRandom::new(0x5eed));
             let mut level_random = game.world.random.clone();
-            game.side.pending_native_sounds.clear();
+            game.server.pending_native_sounds.clear();
 
             hit(game);
 
-            let sounds = &game.side.pending_native_sounds;
+            let sounds = &game.server.pending_native_sounds;
             assert_eq!(sounds.len(), 2);
             assert_eq!(sounds[0].sound, "minecraft:entity.player.attack.strong");
             assert_eq!(sounds[0].at, [1.0, 64.0, 2.0]);

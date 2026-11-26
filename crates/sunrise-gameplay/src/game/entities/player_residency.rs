@@ -49,7 +49,7 @@ impl crate::game::ServerGame<'_> {
         (at.owner.dimension == dimension).then_some(uuid).flatten()
     }
 
-    pub(in crate::game::server_side) fn resident_target_id(&self, target: Target) -> Option<u32> {
+    pub fn resident_target_id(&self, target: Target) -> Option<u32> {
         match target {
             Target::Player => match self.server.lan_acting {
                 Some(conn) => self
@@ -84,7 +84,7 @@ impl crate::game::ServerGame<'_> {
             )
     }
 
-    pub(in crate::game) fn install_fishing_hook(&mut self, mut hook: Hook) {
+    pub fn install_fishing_hook(&mut self, mut hook: Hook) {
         hook.caster = self.server.lan_acting;
         hook.caster_generation = self.acting_player_join();
         self.common.hook.discard();

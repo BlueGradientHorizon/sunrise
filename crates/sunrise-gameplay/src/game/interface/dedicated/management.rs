@@ -802,7 +802,7 @@ impl ServerGame<'_> {
     }
 
     /// `PlayerListService.getPlayer(id, name)`: an online player, by id first; their address.
-    fn management_online(&self, player: &Value) -> Option<(u128, String)> {
+    pub fn management_online(&self, player: &Value) -> Option<(u128, String)> {
         let id = player["id"]
             .as_str()
             .and_then(|s| u128::from_str_radix(s, 16).ok());

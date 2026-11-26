@@ -77,7 +77,7 @@ mod interaction_saved_defaults_tests {
         assert!(game.run_command("summon marker 10.5 200 7.5 {UUID:[I;109,0,0,4],data:{audit:7}}"));
         assert!(game.run_command("summon pig 10.5 200 8.5 {UUID:[I;109,0,0,5],NoAI:1b,NoGravity:1b,PersistenceRequired:1b,Health:10f}"));
         let marker_id = game
-            .side
+            .server
             .others
             .0
             .iter()
@@ -96,7 +96,7 @@ mod interaction_saved_defaults_tests {
         ] {
             assert!(game.run_command(&format!("summon interaction {} 200 4.5 {{UUID:[I;109,0,0,{n}],Rotation:[15f,-30f],CustomName:\"audit\",Tags:[\"audit\"]{fields}}}", 1.5+3.0*f64::from(n-1))));
             let o = game
-                .side
+                .server
                 .others
                 .0
                 .iter()
@@ -523,7 +523,7 @@ mod item_display_saved_transform_tests {
             .unwrap_or_default();
         assert!(game.run_command(&format!("summon item_display 6.5 200 6.5 {{UUID:[I;132,0,0,{n}],Rotation:[12.5f,-20f],NoGravity:1b,CustomName:\"display\",Tags:[\"h132\"],item:{{id:\"minecraft:diamond\",count:2,components:{{\"minecraft:custom_data\":{{h132:7}}}}}}{suffix}}}")));
         let o = game
-            .side
+            .server
             .others
             .0
             .iter()
@@ -677,7 +677,7 @@ mod item_display_saved_transform_tests {
             ] {
                 assert!(game.run_command(&format!("summon item_display 6.5 200 6.5 {{UUID:[I;132,0,0,{n}],transformation:{form},item:{{id:\"minecraft:diamond\",count:1}}}}")));
                 let id = game
-                    .side
+                    .server
                     .others
                     .0
                     .iter()
@@ -697,7 +697,7 @@ mod item_display_saved_transform_tests {
                     "summon {kind} 10.5 200 10.5 {{UUID:[I;132,0,0,{n}]{extra}}}"
                 )));
                 let id = game
-                    .side
+                    .server
                     .others
                     .0
                     .iter()
@@ -2196,7 +2196,7 @@ mod summoned_knot_tests {
         test(&mut game);
     }
     fn knot_id(game: &sunrise_gameplay::game::ServerGame<'_>, n: i32) -> u32 {
-        game.side
+        game.server
             .others
             .0
             .iter()
@@ -2220,7 +2220,7 @@ mod summoned_knot_tests {
             let clock = game.world.game_time;
             let ids = summon_knots(game);
             for (i, id) in ids.into_iter().enumerate() {
-                let o = game.side.others.0.iter().find(|o| o.id == id).unwrap();
+                let o = game.server.others.0.iter().find(|o| o.id == id).unwrap();
                 assert_eq!(o.kind, "minecraft:leash_knot");
                 assert_eq!(game.persist.uuid_of(id), Some([129, 0, 0, i as i32 + 1]));
                 let expected = Vec3::new(6.5 + 4.0 * i as f64, 200.375, 6.5);
@@ -2273,7 +2273,7 @@ mod summoned_knot_tests {
                 )
             );
             let marker = game
-                .side
+                .server
                 .others
                 .0
                 .iter()
@@ -2290,21 +2290,21 @@ mod summoned_knot_tests {
                 if tick <= 100 {
                     assert!(
                         ids.iter()
-                            .all(|id| game.side.others.0.iter().any(|o| o.id == *id)),
+                            .all(|id| game.server.others.0.iter().any(|o| o.id == *id)),
                         "alive through tick{tick}"
                     );
                 }
             }
             assert!(
-                game.side.others.0.iter().any(|o| o.id == ids[0]),
+                game.server.others.0.iter().any(|o| o.id == ids[0]),
                 "actual fence survives"
             );
             assert!(
-                !game.side.others.0.iter().any(|o| o.id == ids[1]),
+                !game.server.others.0.iter().any(|o| o.id == ids[1]),
                 "unsupported actual entity gone at101"
             );
             assert!(
-                !game.side.others.0.iter().any(|o| o.id == ids[2]),
+                !game.server.others.0.iter().any(|o| o.id == ids[2]),
                 "removed support actual entity gone at101"
             );
             assert_eq!(
@@ -2323,7 +2323,7 @@ mod summoned_knot_tests {
             assert!(game.run_command("kill @e[type=leash_knot]"));
             assert!(
                 !game
-                    .side
+                    .server
                     .others
                     .0
                     .iter()
@@ -2342,7 +2342,7 @@ mod summoned_knot_tests {
             assert!(game.run_command("summon leash_knot -1.2 200.8 -2.1 {UUID:[I;129,0,0,5]}"));
             let id = knot_id(game, 5);
             assert_eq!(
-                game.side
+                game.server
                     .others
                     .0
                     .iter()
@@ -2364,7 +2364,7 @@ mod summoned_knot_tests {
             }
             assert!(
                 ids.iter()
-                    .all(|id| game.side.others.0.iter().any(|o| o.id == *id))
+                    .all(|id| game.server.others.0.iter().any(|o| o.id == *id))
             );
             assert!(game.run_command("tick freeze"));
             for _ in 0..3 {
@@ -2373,7 +2373,7 @@ mod summoned_knot_tests {
             assert_eq!(game.world.game_time, clock + 100);
             assert!(
                 ids.iter()
-                    .all(|id| game.side.others.0.iter().any(|o| o.id == *id))
+                    .all(|id| game.server.others.0.iter().any(|o| o.id == *id))
             );
             assert!(game.run_command("gamerule spectators_generate_chunks false"));
             assert!(game.run_command("gamemode spectator @s"));
@@ -2386,15 +2386,15 @@ mod summoned_knot_tests {
             assert_eq!(game.world.game_time, clock + 103);
             assert!(
                 ids.iter()
-                    .all(|id| game.side.others.0.iter().any(|o| o.id == *id))
+                    .all(|id| game.server.others.0.iter().any(|o| o.id == *id))
             );
             assert!(game.run_command("gamemode creative @s"));
             assert!(game.run_command("forceload add 0 0"));
             game.tick().unwrap();
             assert!(game.entity_ticking_area()(10, 6));
-            assert!(game.side.others.0.iter().any(|o| o.id == ids[0]));
+            assert!(game.server.others.0.iter().any(|o| o.id == ids[0]));
             assert!(
-                !game.side.others.0.iter().any(|o| o.id == ids[1]),
+                !game.server.others.0.iter().any(|o| o.id == ids[1]),
                 "101 eligible ticks, not elapsed world time"
             );
         });
@@ -2416,20 +2416,20 @@ mod summoned_knot_tests {
             assert!(game.use_knot([14, 200, 2], false));
             assert_eq!(game.mobs[pig].extra.leash, Some(Holder::Knot([14, 200, 2])));
             game.lan_assign_ids();
-            let natural = game.side.knot_ids[&[14, 200, 2]];
+            let natural = game.server.knot_ids[&[14, 200, 2]];
             let ids = summon_knots(game);
             for _ in 0..101 {
                 game.tick().unwrap();
             }
             game.lan_assign_ids();
-            assert_eq!(game.side.knot_ids[&[14, 200, 2]], natural);
+            assert_eq!(game.server.knot_ids[&[14, 200, 2]], natural);
             let pig = game
                 .mobs
                 .iter()
                 .find(|m| game.persist.uuid_of(m.id) == Some([129, 0, 0, 99]))
                 .unwrap();
             assert_eq!(pig.extra.leash, Some(Holder::Knot([14, 200, 2])));
-            assert!(!game.side.others.0.iter().any(|o| o.id == ids[1]));
+            assert!(!game.server.others.0.iter().any(|o| o.id == ids[1]));
         });
     }
 }
@@ -2796,9 +2796,9 @@ mod restored_vehicle_transfer_tests {
                     game.load_mob(destination_tag.clone(), None),
                     Some(destination)
                 );
-                let before = game.side.next_entity;
+                let before = game.server.next_entity;
                 game.spawn_loaded_entity((0, 0), destination_tag, None);
-                assert_eq!(game.side.next_entity, before);
+                assert_eq!(game.server.next_entity, before);
 
                 let arrived = if generic {
                     game.spawn_loaded_entity((0, 0), incoming, state);

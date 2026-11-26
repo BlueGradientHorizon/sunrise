@@ -142,7 +142,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// What a capture of `plan` records of the server as it starts: the typed allowlists, the world and the connections.
-    fn capture_options(
+    pub fn capture_options(
         &self,
         plan: &Plan,
         (view, max_players, compression): ((u32, u32), usize, i32),
@@ -200,7 +200,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// Health samples count every typed family using lengths only.
-    pub(in crate::game::server_side) fn perf_world_counts(&self) -> WorldCounts {
+    pub fn perf_world_counts(&self) -> WorldCounts {
         let (mut chunks, mut entities) = (self.common.world.chunks.len(), self.perf_entity_count());
         for (_, world, view) in self.server.levels.0.parked_perf_views() {
             chunks += world.chunks.len();
@@ -247,7 +247,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// Each player's connection: wire bytes (in, out), name, brand and view distance.
-    pub(in crate::game::server_side) fn wire_bytes(&self) -> Wire {
+    pub fn wire_bytes(&self) -> Wire {
         self.server.lan.as_ref().map_or_else(Vec::new, |h| {
             h.hub
                 .guests
@@ -308,7 +308,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// What a finished recording leaves for the capture: the world as it stands, the sampled mob costs and the workers' time.
-    pub(in crate::game::server_side) fn capture_end(&self, recording: &Recording) -> CaptureEnd {
+    pub fn capture_end(&self, recording: &Recording) -> CaptureEnd {
         let span_ns = span_cost_nanos();
         let mob_ns = tick_profile::sample_cost_nanos();
         // Release this recording's span request; other recordings or SUNRISE_SPIKES may remain.

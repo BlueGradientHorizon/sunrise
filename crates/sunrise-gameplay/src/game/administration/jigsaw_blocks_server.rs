@@ -38,7 +38,7 @@ impl ServerGame<'_> {
         Some((key, entity))
     }
 
-    pub(in crate::game) fn apply_set_jigsaw_block(&mut self, p: &play::SetJigsawBlock) {
+    pub fn apply_set_jigsaw_block(&mut self, p: &play::SetJigsawBlock) {
         let pos = (p.pos[0], p.pos[1], p.pos[2]);
         let Some(b) = self.jigsaw_block_mut(pos) else {
             return;

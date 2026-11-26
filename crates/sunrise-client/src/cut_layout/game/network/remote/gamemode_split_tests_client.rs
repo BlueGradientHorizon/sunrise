@@ -67,11 +67,11 @@ pub(crate) fn run_resolved_player_info_retains_identity_across_remove_and_readd_
                 game.handle_packet(position_packet(2, [0.5, 64.0, 0.5]))
                     .unwrap();
                 {
-                    let remote = game.side.remote.as_mut().unwrap();
+                    let remote = game.client.remote.as_mut().unwrap();
                     remote.loaded_sent = true;
                     remote.level_load.finish();
                 }
-                game.side.screen = Screen::Playing;
+                game.client.screen = Screen::Playing;
                 run_local_tick(game);
                 let sent = drain_sent_abilities(game, &mut peer);
                 assert_row_core(game, &rows[4], true, Some(&sent));
@@ -85,7 +85,7 @@ pub(crate) fn run_resolved_player_info_retains_identity_across_remove_and_readd_
                 }))
                 .unwrap();
                 assert!(
-                    game.side
+                    game.client
                         .remote
                         .as_ref()
                         .unwrap()
@@ -97,7 +97,7 @@ pub(crate) fn run_resolved_player_info_retains_identity_across_remove_and_readd_
                 game.handle_packet(position_packet(3, [0.5, 64.0, 0.5]))
                     .unwrap();
                 assert!(
-                    game.side
+                    game.client
                         .remote
                         .as_ref()
                         .unwrap()
@@ -107,11 +107,11 @@ pub(crate) fn run_resolved_player_info_retains_identity_across_remove_and_readd_
                     "PlayerPosition must not eagerly resolve PlayerInfo before first read"
                 );
                 {
-                    let remote = game.side.remote.as_mut().unwrap();
+                    let remote = game.client.remote.as_mut().unwrap();
                     remote.loaded_sent = true;
                     remote.level_load.finish();
                 }
-                game.side.screen = Screen::Playing;
+                game.client.screen = Screen::Playing;
                 game.handle_packet(C::PlayerInfoRemove(play::PlayerInfoRemove {
                     uuids: vec![SELF_UUID],
                 }))
@@ -160,7 +160,7 @@ pub(crate) fn run_split_local_and_player_info_physics_matrix_26_3() {
                     for info in info_modes {
                         for may_fly in [false, true] {
                             {
-                                let remote = game.side.remote.as_mut().unwrap();
+                                let remote = game.client.remote.as_mut().unwrap();
                                 remote.profile = SELF_UUID;
                                 remote.profile_name = SELF_NAME.into();
                                 remote.tab_players.clear();
@@ -191,11 +191,11 @@ pub(crate) fn run_split_local_and_player_info_physics_matrix_26_3() {
                             ))
                             .unwrap();
                             {
-                                let remote = game.side.remote.as_mut().unwrap();
+                                let remote = game.client.remote.as_mut().unwrap();
                                 remote.loaded_sent = true;
                                 remote.level_load.finish();
                             }
-                            game.side.screen = Screen::Playing;
+                            game.client.screen = Screen::Playing;
                             let _ = drain_sent_abilities(game, &mut peer);
 
                             for _ in 0..3 {
@@ -212,7 +212,7 @@ pub(crate) fn run_split_local_and_player_info_physics_matrix_26_3() {
                 for local in modes {
                     for info_name in ["adventure", "spectator"] {
                         {
-                            let remote = game.side.remote.as_mut().unwrap();
+                            let remote = game.client.remote.as_mut().unwrap();
                             remote.profile = SELF_UUID;
                             remote.profile_name = SELF_NAME.into();
                             remote.tab_players.clear();
@@ -237,11 +237,11 @@ pub(crate) fn run_split_local_and_player_info_physics_matrix_26_3() {
                             .unwrap();
                         game.player.as_mut().unwrap().velocity = Vec3::new(0.0, -0.1, 0.0);
                         {
-                            let remote = game.side.remote.as_mut().unwrap();
+                            let remote = game.client.remote.as_mut().unwrap();
                             remote.loaded_sent = true;
                             remote.level_load.finish();
                         }
-                        game.side.screen = Screen::Playing;
+                        game.client.screen = Screen::Playing;
                         let _ = drain_sent_abilities(game, &mut peer);
 
                         run_local_tick(game);
@@ -266,7 +266,7 @@ pub(crate) fn setup_client(
     peer.set_read_timeout(Some(std::time::Duration::from_secs(5)))
         .unwrap();
     {
-        let remote = game.side.remote.as_mut().unwrap();
+        let remote = game.client.remote.as_mut().unwrap();
         remote.profile = SELF_UUID;
         remote.profile_name = SELF_NAME.into();
     }
@@ -275,10 +275,10 @@ pub(crate) fn setup_client(
     install_stone_floor(game);
     game.handle_packet(position_packet(1, pos)).unwrap();
     {
-        let remote = game.side.remote.as_mut().unwrap();
+        let remote = game.client.remote.as_mut().unwrap();
         remote.loaded_sent = true;
         remote.level_load.finish();
     }
-    game.side.screen = Screen::Playing;
+    game.client.screen = Screen::Playing;
     (peer, writer)
 }

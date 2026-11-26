@@ -472,7 +472,7 @@ pub fn freeze_declarations() {
 pub struct DeclarationFailures(pub Vec<DeclarationRefusal>);
 
 impl DeclarationFailures {
-    pub(in crate::game) fn new(refusals: Vec<DeclarationRefusal>) -> Self {
+    pub fn new(refusals: Vec<DeclarationRefusal>) -> Self {
         Self(refusals)
     }
 
@@ -1797,7 +1797,7 @@ impl crate::game::CommonGame<'_> {
 
     /// Stage a fresh root when admission changes or registered conditions need reevaluation.
     /// The caller publishes it after every server reload listener prepared.
-    pub(in crate::game) fn stage_enabled_inventory(
+    pub fn stage_enabled_inventory(
         &self,
     ) -> sunrise_game_data::Result<Option<sunrise_assets::resource_source::ResourceRoot>> {
         let previous = sunrise_mod_package::enabled::EnabledMods::read(&self.options.resources)?;

@@ -183,7 +183,7 @@ pub(crate) mod tests {
                     game.adv.progress.revoke("tag_reload:damage_probe", "probe"),
                     !expect_empty
                 );
-                let loot = game.side.server_loot.0.get().unwrap();
+                let loot = game.server.server_loot.0.get().unwrap();
                 for (registry, values) in members {
                     let expected: Vec<_> = values[..keep].iter().map(|id| id.to_string()).collect();
                     assert_eq!(loot.members(registry, "tag_reload:probe"), Some(expected));
@@ -236,7 +236,7 @@ pub(crate) mod tests {
                 with_client_game(|game| {
                     let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
                     game.connect_local(pipe, "Steve").unwrap();
-                    let remote = game.side.remote.as_mut().unwrap();
+                    let remote = game.client.remote.as_mut().unwrap();
                     remote.registries = Arc::new(snapshots[0].dynamic.clone());
                     Arc::make_mut(&mut remote.registries).add_tags(&snapshots[0].tags);
                     game.handle_packet(login()).unwrap();
@@ -245,7 +245,7 @@ pub(crate) mod tests {
                         .1
                         .map(|id| snapshots[0].id("minecraft:damage_type", id).unwrap());
                     assert_eq!(
-                        game.side
+                        game.client
                             .remote
                             .as_ref()
                             .unwrap()
@@ -257,7 +257,7 @@ pub(crate) mod tests {
                         .unwrap();
                     check_host(game, 0);
                     assert_eq!(
-                        game.side
+                        game.client
                             .remote
                             .as_ref()
                             .unwrap()

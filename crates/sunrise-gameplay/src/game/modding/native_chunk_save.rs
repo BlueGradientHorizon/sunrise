@@ -93,11 +93,11 @@ impl crate::game::ServerGame<'_> {
 
     /// `ChunkMap.saveChunksEagerly`: snapshot only while the tick and writer
     /// have room. NBT encoding, compression and durable writes stay on workers.
-    pub(in crate::game::server_side) fn save_chunks_eagerly(&mut self) {
+    pub fn save_chunks_eagerly(&mut self) {
         self.save_chunks_eagerly_at(Instant::now());
     }
 
-    fn save_chunks_eagerly_at(&mut self, now: Instant) {
+    pub fn save_chunks_eagerly_at(&mut self, now: Instant) {
         // No world open (`world_root` is set by `finish_open_world`): the save
         // is `Game::new`'s placeholder under the working directory.
         if self.common.world.carrier_fences.is_broken()

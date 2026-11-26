@@ -317,7 +317,7 @@ pub(crate) fn enchant_particles(game: &sunrise_client_gameplay::game::ClientGame
     engine.camera = [8.5, 65.0, 8.5];
     engine.created_requests = Some(Vec::new());
     let ctx = AnimateContext {
-        enchant_power: &game.side.ambience.enchant_power,
+        enchant_power: &game.client.ambience.enchant_power,
         world: &game.world,
         facts: game.res.facts(),
         collision: game.res.collision(),

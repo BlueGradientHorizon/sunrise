@@ -169,7 +169,7 @@ use sunrise_protocol::packets::play::{self, Clientbound as C};
                     keep: 0,
                 }))
                 .unwrap();
-                assert_eq!(game.side.remote.as_ref().unwrap().ghast_dismount, None);
+                assert_eq!(game.client.remote.as_ref().unwrap().ghast_dismount, None);
                 game.handle_packet(position(2)).unwrap();
                 assert_eq!(game.entity(7), Some(me));
                 assert_eq!(ghast.position(game), Some([2.5, 70.0, 0.5]));
@@ -214,7 +214,7 @@ use sunrise_protocol::packets::play::{self, Clientbound as C};
                 game.remote_attachment_sync(attachment_message(5, false, Some(99)));
                 assert!(
                     !game
-                        .side
+                        .client
                         .remote
                         .as_ref()
                         .unwrap()
@@ -244,7 +244,7 @@ use sunrise_protocol::packets::play::{self, Clientbound as C};
                 assert_eq!(row_ids(game), [5]);
                 assert_eq!(rows(game)[&5].render_attachments.get(&FUEL), Ok(Some(&9)));
                 let fuel = |game: &sunrise_client_gameplay::game::ClientGame<'_>, id: u32| {
-                    let held = game.side.remote.as_ref().unwrap();
+                    let held = game.client.remote.as_ref().unwrap();
                     let map = held.attachments.get(&Holder::Entity(id))?;
                     let value = map
                         .synced()
@@ -286,7 +286,7 @@ use sunrise_protocol::packets::play::{self, Clientbound as C};
                 // A client holds rows only here: none is a resident row, ticked by mod code.
                 assert!(game.resident_entities.general.rows.is_empty());
                 let holder = Holder::Entity(5);
-                game.side
+                game.client
                     .remote
                     .as_mut()
                     .unwrap()
@@ -297,7 +297,7 @@ use sunrise_protocol::packets::play::{self, Clientbound as C};
                 assert!(rows(game).is_empty());
                 assert!(
                     !game
-                        .side
+                        .client
                         .remote
                         .as_ref()
                         .unwrap()
@@ -374,7 +374,7 @@ use sunrise_protocol::packets::play::{self, Clientbound as C};
                     name: "fuel".into(),
                     value: Some([("n".into(), sunrise_core::nbt::Tag::Int(77))].into()),
                 });
-                game.side
+                game.client
                     .remote
                     .as_mut()
                     .unwrap()

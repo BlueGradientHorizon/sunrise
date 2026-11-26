@@ -40,7 +40,7 @@ fn a_falling_rocket_hits_the_ground_and_one_in_water_splashes() {
             [("minecraft:splash", 20), ("minecraft:hit_ground", 6)]
         );
         assert_eq!(
-            game.side
+            game.server
                 .pending_sounds
                 .iter()
                 .filter(|s| s.event == "minecraft:entity.generic.splash")
@@ -84,7 +84,7 @@ fn a_rocket_posts_its_shot_once_and_a_silent_one_launches_quietly() {
         assert!(game.rockets.iter().all(|r| r.has_been_shot));
         // Only the rocket that isn't silent launches with a sound.
         assert_eq!(
-            game.side
+            game.server
                 .pending_sounds
                 .iter()
                 .filter(|s| s.event == launch)

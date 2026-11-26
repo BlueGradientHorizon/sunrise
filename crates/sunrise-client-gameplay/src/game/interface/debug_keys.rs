@@ -98,7 +98,7 @@ impl crate::game::ClientGame<'_> {
     /// A physical key event (already in `physical_keys`) before the game's
     /// own handling. Returns true when it is used up (a debug combination,
     /// F3 itself, F3+Escape).
-    pub(in crate::game::client_side) fn debug_key(
+    pub fn debug_key(
         &mut self,
         key: KeyCode,
         action: KeyAction,
@@ -350,7 +350,7 @@ impl crate::game::ClientGame<'_> {
         }
     }
     /// Whether this client's debug overlay passes the draw gate this frame.
-    pub(in crate::game) fn debug_overlay_visible(&self) -> bool {
+    pub fn debug_overlay_visible(&self) -> bool {
         let screen_open = self.client.title.0.is_some() || self.client.screen != Screen::Playing;
         self.client.debug_entries.0.any_enabled(
             &self.client.registered_debug_entries.0,
@@ -363,7 +363,7 @@ impl crate::game::ClientGame<'_> {
     /// (`debug-profile.json`), at the debug GUI scale, and the charts while
     /// the overlay is open. F1 hides it unless a screen is open. Sunrise paints
     /// it 20 times a second and copies those vertices in between.
-    pub(in crate::game::client_side) fn draw_debug_overlay_under(
+    pub fn draw_debug_overlay_under(
         &self,
         batch: &mut HudBatch,
         size: [u32; 2],
@@ -443,7 +443,7 @@ impl crate::game::ClientGame<'_> {
     /// Whether F3's lightmap chart (F3+4) is on screen: the overlay drawn, open and charting
     /// the lightmap. Only then does the renderer read a pack-drawn light texture back for it
     /// (`Renderer::set_lightmap_readback`).
-    pub(in crate::game::client_side) fn debug_shows_lightmap(&self) -> bool {
+    pub fn debug_shows_lightmap(&self) -> bool {
         self.debug_overlay_visible() && self.client.debug && self.client.debug_charts.lightmap
     }
     /// Whether the overlay is listing GPU pass times (its `system_specs` lines), the only reason
@@ -1106,7 +1106,7 @@ impl crate::game::ClientGame<'_> {
         self.client.clipboard.0.set(text);
     }
     /// The debug renderers' gizmos for a frame (`DebugRenderer.emitGizmos`).
-    pub(in crate::game::client_side) fn debug_gizmos(
+    pub fn debug_gizmos(
         &self,
         alpha: f32,
         camera: [f64; 3],

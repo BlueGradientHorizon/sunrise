@@ -126,7 +126,7 @@ pub(crate) mod conduit_target_tests {
         );
         client.persist.uuids.insert(watched, uuid);
         let kind = client
-            .side
+            .client
             .remote
             .as_ref()
             .and_then(|r| r.builtin.get("minecraft:block_entity_type"))

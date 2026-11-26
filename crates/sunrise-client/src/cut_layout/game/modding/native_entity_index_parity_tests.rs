@@ -15,7 +15,7 @@ fn live_mob_ids(game: &sunrise_gameplay::game::ServerGame<'_>, expected: usize) 
         "minecraft:the_nether",
         "minecraft:the_end",
     ] {
-        if let Some(parked) = game.side.levels.0.parked_of(dimension) {
+        if let Some(parked) = game.server.levels.0.parked_of(dimension) {
             ids.extend(parked.mobs.iter().map(|mob| mob.id));
         }
     }

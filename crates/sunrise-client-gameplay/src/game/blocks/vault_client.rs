@@ -24,7 +24,7 @@ impl crate::game::ClientGame<'_> {
     }
     /// The items [`Self::vault_geometry`] draws: each copy of a display item's
     /// cluster (`ItemEntityRenderer.renderMultipleFromCount`).
-    pub(in crate::game) fn vault_items(
+    pub fn vault_items(
         &self,
         camera: glam::DVec3,
         alpha: f64,

@@ -5,7 +5,7 @@ impl crate::game::ServerGame<'_> {
     /// `AbstractArrow.playerTouch` for a guest, as `touch_arrows` does for the
     /// host's player. The guest's own client plays the pickup sound
     /// (`handleTakeItemEntity`).
-    pub(in crate::game) fn guest_arrows(&mut self, gi: usize) {
+    pub fn guest_arrows(&mut self, gi: usize) {
         use sunrise_sim::arrows::Touch;
         let Some(host) = self.server.lan.as_ref() else {
             return;
@@ -78,7 +78,7 @@ impl crate::game::ServerGame<'_> {
         }
     }
     /// `Player.tick`'s takeXpDelay and `Player.aiStep`'s touch of experience orbs.
-    pub(in crate::game) fn guest_orbs(&mut self, gi: usize) {
+    pub fn guest_orbs(&mut self, gi: usize) {
         let Some(host) = self.server.lan.as_mut() else {
             return;
         };
@@ -196,7 +196,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// Dropped items touching a guest go into their inventory
     /// (`ItemEntity.playerTouch`, then `ServerPlayer.onItemPickup`).
-    pub(in crate::game) fn guest_pickups(&mut self, gi: usize) {
+    pub fn guest_pickups(&mut self, gi: usize) {
         let Some(host) = self.server.lan.as_ref() else {
             return;
         };

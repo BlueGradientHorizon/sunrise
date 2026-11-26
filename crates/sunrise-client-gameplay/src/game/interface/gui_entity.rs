@@ -82,7 +82,7 @@ fn pose(mob: &mut Mob, (body, head, pitch, _): (f32, f32, f32, f32)) {
 
 impl ClientGame<'_> {
     /// `DrawContext::entity` on a screen's `batch`.
-    pub(in crate::game) fn native_draw_entity(
+    pub fn native_draw_entity(
         &self,
         batch: &mut HudBatch,
         entity: &GuiEntity,
@@ -241,7 +241,7 @@ impl ClientGame<'_> {
     /// `mob`'s geometry around its feet, as the world draws it: a mod's
     /// renderer for its type in place of its model, else the model; then the
     /// mods' layers. Full bright, seen from its own position.
-    pub(in crate::game) fn gui_entity_geometry(&self, mob: &Mob, out: &mut Vec<Vertex>) {
+    pub fn gui_entity_geometry(&self, mob: &Mob, out: &mut Vec<Vertex>) {
         let p = mob.position;
         self.gui_entity_geometry_at(mob, 1.0, DVec3::new(p.x, p.y, p.z), out);
     }

@@ -461,7 +461,7 @@ fn summon_refuses_a_tree_holding_a_live_uuid() {
         ];
         for (tag, n, children, fresh) in conflicts {
             let mobs = game.mobs.len();
-            let next = game.side.next_entity;
+            let next = game.server.next_entity;
             let hooks = (game.persist.joins_canceled, game.persist.joined_seq);
             let draw = game.world.random.clone().next_long();
             if summon(game, tag, n, &children) {
@@ -473,10 +473,10 @@ fn summon_refuses_a_tree_holding_a_live_uuid() {
                     game.mobs.len()
                 ));
             }
-            if game.side.next_entity != next {
+            if game.server.next_entity != next {
                 failures.push(format!(
                     "{tag}: entity id {} expected {next}",
-                    game.side.next_entity
+                    game.server.next_entity
                 ));
             }
             if (game.persist.joins_canceled, game.persist.joined_seq) != hooks {
@@ -692,7 +692,7 @@ fn removed_root_retains_its_geometry_until_offlevel_passengers_dismount() {
 fn dimension_travel_admits_the_duplicate_child_before_the_copied_root() {
     with_game(|game, _| {
         game.options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
-        game.side.world_root = game.side.save.0.root.clone();
+        game.server.world_root = game.server.save.0.root.clone();
         game.enter_level(sunrise_gameplay_common::game::Dim::Nether).unwrap();
         assert_eq!(game.dim, sunrise_gameplay_common::game::Dim::Nether);
         game.world
@@ -903,7 +903,7 @@ fn reload_chunk(game: &mut sunrise_gameplay::game::ServerGame<'_>) {
 fn vehicle_root_travel(expected: &RootTravel, dismount: Option<&str>) {
     with_game(|game, _| {
         game.options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
-        game.side.world_root = game.side.save.0.root.clone();
+        game.server.world_root = game.server.save.0.root.clone();
         let ticking = sunrise_gameplay::game::native_entity_refs::tests::prepare_entity_ticking_neighborhood;
         ticking(game, ChunkPos::new(0, 0));
         game.enter_level(sunrise_gameplay_common::game::Dim::Nether).unwrap();

@@ -11,9 +11,9 @@ pub(crate) fn heard_stone_fall(silent: bool) -> Vec<(f32, f32)> {
     mod_platform::testing::with_mods(Vec::new().into(), || {
         with_client_game(|game| {
             let _server = logged_client(game);
-            game.side.remote.as_mut().unwrap().loaded_sent = true;
-            game.side.remote.as_mut().unwrap().local_entity_silent = silent;
-            game.side
+            game.client.remote.as_mut().unwrap().loaded_sent = true;
+            game.client.remote.as_mut().unwrap().local_entity_silent = silent;
+            game.client
                 .streaming
                 .insert_remote(&mut game.world, Chunk::empty(0, 0));
             let stone = game
@@ -27,10 +27,10 @@ pub(crate) fn heard_stone_fall(silent: bool) -> Vec<(f32, f32)> {
             player.fall_distance = 5.0;
             player.velocity = Vec3::new(0.0, -0.2, 0.0);
             game.player = Some(player);
-            game.side.audio.0.capture = Some(Vec::new());
+            game.client.audio.0.capture = Some(Vec::new());
             game.tick_remote().unwrap();
             out = game
-                .side
+                .client
                 .audio
                 .0
                 .capture

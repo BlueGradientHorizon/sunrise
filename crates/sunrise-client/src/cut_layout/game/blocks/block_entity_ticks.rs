@@ -689,7 +689,7 @@ pub(crate) mod furnace_changed_tests {
         request.save_root = root.to_owned();
         game.load_world(request).unwrap();
         assert!(
-            game.side
+            game.server
                 .fns
                 .0
                 .enabled()
@@ -992,7 +992,7 @@ pub(crate) mod slot_mutation_tests {
                 );
                 assert!(game.dropped.is_empty());
                 assert_eq!(game.spawner_tick_positions, [B]);
-                assert!(game.side.item_columns.is_none());
+                assert!(game.server.item_columns.is_none());
             },
         );
     }
@@ -1042,7 +1042,7 @@ pub(crate) mod slot_mutation_tests {
                     "the outer pass's hopper took the item"
                 );
                 assert_eq!(game.spawner_tick_positions, [A]);
-                assert!(game.side.item_columns.is_none());
+                assert!(game.server.item_columns.is_none());
             },
         );
     }

@@ -12,11 +12,11 @@ use sunrise_protocol::packets::play::TrackedWaypoint;
 
 impl ClientGame<'_> {
     /// `ClientPacketListener.handleWaypoint`.
-    pub(in crate::game::client_side) fn handle_waypoint(&mut self, packet: &TrackedWaypoint) {
+    pub fn handle_waypoint(&mut self, packet: &TrackedWaypoint) {
         self.client.waypoints.apply(packet);
     }
     /// A new connection or world starts with no waypoints.
-    pub(in crate::game::client_side) fn clear_waypoints(&mut self) {
+    pub fn clear_waypoints(&mut self) {
         self.client.waypoints = ClientWaypoints::default();
     }
     /// `LocalPlayer.setExperienceValues`: a change of progress shows the
@@ -50,7 +50,7 @@ impl ClientGame<'_> {
         start != 0 && start + 100 > self.visual_ticks()
     }
     /// `Hud.nextContextualInfoState`: jump bar reads `LocalPlayer.jumpableVehicle`, not `getCameraPlayer`.
-    pub(in crate::game) fn contextual_bar(&self) -> sunrise_client::locator_bar::ContextualBar {
+    pub fn contextual_bar(&self) -> sunrise_client::locator_bar::ContextualBar {
         sunrise_client::locator_bar::ContextualBar::next(
             self.has_waypoints(),
             self.jumpable_mount().is_some(),
@@ -68,7 +68,7 @@ impl ClientGame<'_> {
         self.client.waypoints.has_waypoints()
     }
     /// `Vec3iWaypoint.position`: a live client's entity, with `Entity.getEyePosition` at its own partial tick.
-    fn waypoint_entity(&self, uuid: u128) -> Option<([i32; 3], [f64; 3])> {
+    pub fn waypoint_entity(&self, uuid: u128) -> Option<([i32; 3], [f64; 3])> {
         let (position, previous, eye_height, frozen) = if let Some(p) = &self.common.player
             && self.own_profile_uuid() == Some(uuid)
         {
@@ -105,7 +105,7 @@ impl ClientGame<'_> {
     }
     /// `LocatorBar.extractRenderState`: distance and self-exclusion from the camera entity,
     /// angles and projection from the last frame's render camera.
-    pub(in crate::game::client_side) fn locator_bar_draws(
+    pub fn locator_bar_draws(
         &self,
         gui_width: i32,
         gui_height: i32,

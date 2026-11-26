@@ -20,7 +20,7 @@ impl crate::game::ClientGame<'_> {
         true
     }
     /// Where the mouse is, in GUI pixels.
-    pub(in crate::game) fn cursor(&self) -> [f32; 2] {
+    pub fn cursor(&self) -> [f32; 2] {
         [self.client.cursor.0, self.client.cursor.1]
     }
     /// A small local vanilla particle; caller should rate-limit emission.
@@ -47,7 +47,7 @@ impl crate::game::ClientGame<'_> {
     }
     /// Creative mode only: `stack` into the player's inventory as `Inventory.add` does, each
     /// changed slot sent at once (`ServerboundSetCreativeModeSlotPacket`); what did not fit.
-    pub(in crate::game) fn give_stack(
+    pub fn give_stack(
         &mut self,
         stack: &mod_api::ItemStack,
     ) -> Result<Option<mod_api::ItemStack>, mod_api::CreativeGiveError> {
@@ -63,14 +63,14 @@ impl crate::game::ClientGame<'_> {
     }
     /// The mod whose own screen is open, if one is (Escape, or another screen
     /// replacing it, closes it).
-    pub(in crate::game) fn mod_screen(&self) -> Option<&str> {
+    pub fn mod_screen(&self) -> Option<&str> {
         self.client
             .native_mod_screen
             .as_deref()
             .filter(|_| self.client.screen == Screen::Mod)
     }
     /// Closes mod `mod_id`'s own screen, if it is open.
-    pub(in crate::game) fn mod_screen_close(&mut self, mod_id: &str) {
+    pub fn mod_screen_close(&mut self, mod_id: &str) {
         if self.mod_screen().is_some_and(|id| id == mod_id) {
             self.close_mod_screen();
         }
@@ -91,7 +91,7 @@ impl crate::game::ClientGame<'_> {
     /// client window (a headless/dedicated server, the server thread, or
     /// guest-acting contexts). A gamepad can close it (B, Start) but not click on
     /// it: its clicks don't reach the mouse hooks.
-    pub(in crate::game) fn mod_screen_open(&mut self, mod_id: &str) -> bool {
+    pub fn mod_screen_open(&mut self, mod_id: &str) -> bool {
         let unavailable = self.client.renderer.0.is_none()
             || (self.common.player.is_none() && self.client.title.0.is_none())
             || self.remote_loading();
@@ -243,7 +243,7 @@ impl crate::game::ClientGame<'_> {
     /// Atlas, models, renderer and client caches already refer to the new resources.
     /// Selection/F3+T and server-pack reloads share this point; initial startup does not
     /// (`client_setup` is the once-only moment after the initial load).
-    pub(in crate::game) fn native_client_resources_reloaded(&mut self) {
+    pub fn native_client_resources_reloaded(&mut self) {
         native_client_resources_reloaded(self);
     }
     /// A command typed or clicked in chat, without its slash, before the
@@ -335,7 +335,7 @@ impl crate::game::ClientGame<'_> {
     /// (the damage bar, or a bundle's fullness already applied) and may be
     /// replaced (width `0..=13`, colour `rgb`) or set to `None` to hide it.
     /// Asked each frame a stack is drawn. Client-side.
-    pub(in crate::game) fn native_item_bar(&self, stack: &ItemStack, bar: &mut Option<(i32, u32)>) {
+    pub fn native_item_bar(&self, stack: &ItemStack, bar: &mut Option<(i32, u32)>) {
         self.fire_item_bar(stack, bar);
     }
     /// Append an item's custom decorations after its default bar, cooldown and count.
@@ -591,7 +591,7 @@ impl crate::game::ClientGame<'_> {
     /// game's own. A cancelled press's release still runs, and its characters
     /// are GLFW's separate char callback and still come; see
     /// `native_screen_char_typed_pre`.
-    pub(in crate::game) fn native_screen_key_pressed_pre(
+    pub fn native_screen_key_pressed_pre(
         &self,
         screen: &ScreenView<'_>,
         key: &str,
@@ -733,7 +733,7 @@ impl crate::game::ClientGame<'_> {
     /// (`title`, `world_select`, `world_create`, `multiplayer`…) fire it too,
     /// their `screen.id` from the title state machine and the whole window
     /// their `rect`, and no dialog or prompt over them.
-    pub(in crate::game) fn native_screen_render_post(
+    pub fn native_screen_render_post(
         &self,
         draw: &mut HudBatch,
         screen: &ScreenView<'_>,
@@ -764,7 +764,7 @@ impl crate::game::ClientGame<'_> {
     /// `create_dynamic_texture`), drawn stretched into `dst` (`[x, y, w, h]` in GUI
     /// pixels), every texel multiplied by `tint` (`0xAARRGGBB`, a fluid's colour)
     /// when there is one. False when there is no such sprite.
-    pub(in crate::game) fn native_sprite(
+    pub fn native_sprite(
         &self,
         batch: &mut HudBatch,
         name: &str,
@@ -860,7 +860,7 @@ impl crate::game::ClientGame<'_> {
     /// player's clicks, searches and keys over items come back as
     /// `native_panel_event`. The panel is the last mod's to show one; empty
     /// items and no recipe page take yours away.
-    pub(in crate::game) fn panel_items(&mut self, mod_id: &str, items: Vec<mod_api::Stack>) {
+    pub fn panel_items(&mut self, mod_id: &str, items: Vec<mod_api::Stack>) {
         self.client.panel.show_items(mod_id, items);
     }
     /// The particles alive in the client's level (`ParticleEngine.countParticles`): 0 once
@@ -904,7 +904,7 @@ impl crate::game::ClientGame<'_> {
     }
     /// The open menu's title (the block's name, or the one it was given),
     /// as plain text.
-    pub(in crate::game) fn screen_title(&self) -> Option<String> {
+    pub fn screen_title(&self) -> Option<String> {
         self.remote_menu_title().map(|t| t.plain())
     }
     /// Transfer a viewer recipe without learning it.

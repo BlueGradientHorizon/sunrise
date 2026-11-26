@@ -12,7 +12,7 @@ impl ClientGame<'_> {
     }
 
     /// A `sunrise:passage_sync` payload the server sent the window.
-    pub(in crate::game) fn remote_passage_sync(&mut self, data: &[u8]) -> Vec<(u64, HeldRefusal)> {
+    pub fn remote_passage_sync(&mut self, data: &[u8]) -> Vec<(u64, HeldRefusal)> {
         let message = match sunrise_protocol::passage_sync::decode(data) {
             Ok(message) => message,
             Err(e) => {

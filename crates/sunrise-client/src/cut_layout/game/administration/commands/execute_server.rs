@@ -115,14 +115,14 @@ pub(crate) mod passenger_relation_tests {
                     }
                 }
                 let nested = if depth == 2 { " on passengers" } else { "" };
-                game.side.cmds.0.results = Some(Vec::new());
-                game.side.chat_capture = Some(Vec::new());
+                game.server.cmds.0.results = Some(Vec::new());
+                game.server.chat_capture = Some(Vec::new());
                 assert!(game.run_command(&format!(
                 "execute as {} on passengers{nested} store result score @s h150ur store success score @s h150us run scoreboard players add @s h150u 1", actor(parent)
             )));
-                let callbacks = game.side.cmds.0.results.take().unwrap();
+                let callbacks = game.server.cmds.0.results.take().unwrap();
                 let messages: Vec<_> = game
-                    .side
+                    .server
                     .chat_capture
                     .take()
                     .unwrap()

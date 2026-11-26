@@ -51,8 +51,8 @@ fn serve(game: &mut sunrise_gameplay::game::ServerGame<'_>) {
         seed: 0,
         max_players: 2,
         integrated: true,
-        levels: game.side.level_shapes,
-        level_seeds: game.side.levels.0.runtime.seeds(),
+        levels: game.server.level_shapes,
+        level_seeds: game.server.levels.0.runtime.seeds(),
     };
     game.lan_host(settings, net, config).unwrap();
 }
@@ -131,7 +131,7 @@ fn a_client_answers_its_own_connections_registries() {
                 })
                 .collect(),
         });
-        game.side.remote.as_mut().unwrap().registries = std::sync::Arc::new(synced);
+        game.client.remote.as_mut().unwrap().registries = std::sync::Arc::new(synced);
         assert_eq!(
             lookup(game, "minecraft:damage_type", "minecraft:in_fire"),
             Some(0)

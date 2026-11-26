@@ -22,7 +22,7 @@ fn selector_reads_independent_host_and_guest_progress() {
                 .as_nanos()
         ));
         std::fs::create_dir_all(&scratch).unwrap();
-        game.side.world_root = scratch.clone();
+        game.server.world_root = scratch.clone();
         game.player = Some(PlayerMotion::new(game.motion, Vec3::new(10.5, 64.0, 0.5)).unwrap());
         let net = NetConfig {
             announce: false,
@@ -73,14 +73,14 @@ fn selector_reads_independent_host_and_guest_progress() {
         guest.dimension = Dim::Overworld.id().into();
         guest.placed = true;
         guest.loaded = true;
-        game.side.lan.as_mut().unwrap().hub.guests.push(guest);
+        game.server.lan.as_mut().unwrap().hub.guests.push(guest);
 
         const ROOT: &str = "minecraft:story/root";
         const CRITERION: &str = "crafting_table";
         game.advancement_tree();
         assert!(game.adv.tree.get(ROOT).is_some());
         assert!(
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()
@@ -116,7 +116,7 @@ fn selector_reads_independent_host_and_guest_progress() {
                 .grant(ROOT, CRITERION, "2026-11-05 00:00:00 +0000")
         );
         assert!(
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()

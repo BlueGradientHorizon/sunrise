@@ -63,7 +63,7 @@ impl ServerGame<'_> {
     pub(in crate::game::server_side) fn boat_leash_player(&self, b: &Boat) -> Option<[i32; 4]> {
         b.leash_player.or(self.common.level.player_uuid)
     }
-    pub(in crate::game::server_side) fn boat_holder(
+    pub fn boat_holder(
         &self,
         holder: Holder,
         player: Option<[i32; 4]>,
@@ -195,7 +195,7 @@ impl ServerGame<'_> {
         }
     }
 
-    pub(in crate::game) fn release_stored_boat_leash(&mut self, i: usize, drop: bool) {
+    pub fn release_stored_boat_leash(&mut self, i: usize, drop: bool) {
         let (holder, id) = (self.common.boats[i].leash, self.common.boats[i].id);
         let at = self.common.boats.update(i, |b| Self::take_boat_leash(b, drop));
         self.notify_knot_leashee_removed(holder, id);
@@ -220,7 +220,7 @@ impl ServerGame<'_> {
     }
 
     /// Release a boat already extracted by a fixture.
-    pub(in crate::game::server_side) fn boat_removed(&mut self, b: &Boat) {
+    pub fn boat_removed(&mut self, b: &Boat) {
         self.notify_knot_leashee_removed(b.leash, b.id);
         if b.leash.is_some() || b.leash_pending.is_some() {
             self.drop_lead_item(b.position.components());
@@ -383,7 +383,7 @@ impl ServerGame<'_> {
     }
 
     /// The boat with this UUID (`ServerLevel.getEntity`).
-    pub(in crate::game::server_side) fn boat_by_uuid(&self, uuid: [i32; 4]) -> Option<u32> {
+    pub fn boat_by_uuid(&self, uuid: [i32; 4]) -> Option<u32> {
         self.common.persist
             .uuids
             .iter()
@@ -484,7 +484,7 @@ impl ServerGame<'_> {
     }
 
     /// `Leashable.dropLeash` for each boat in `list`.
-    pub(in crate::game) fn drop_boat_leashes(&mut self, list: &[usize]) {
+    pub fn drop_boat_leashes(&mut self, list: &[usize]) {
         let ids: Vec<_> = list.iter().map(|&i| self.common.boats[i].id).collect();
         for id in ids {
             if let Some(i) = self.common.boats.iter().position(|boat| boat.id == id) {

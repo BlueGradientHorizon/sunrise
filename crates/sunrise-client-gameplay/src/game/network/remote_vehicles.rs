@@ -74,7 +74,7 @@ pub(in crate::game) struct ObjectHit {
 #[cfg(feature = "client")]
 impl crate::game::ClientGame<'_> {
     /// Whether a use starts on an entity (`Minecraft.hitResult` is an `EntityHitResult`).
-    pub(in crate::game) fn remote_use_targets_entity(&self) -> bool {
+    pub fn remote_use_targets_entity(&self) -> bool {
         self.entity_targeted()
     }
 
@@ -153,7 +153,7 @@ impl crate::game::ClientGame<'_> {
     /// `ClientPacketListener.handleSetEntityPassengersPacket`: who rides
     /// `vehicle` now. The local player gets in or out; mobs and other
     /// players sit where the server keeps them.
-    pub(in crate::game) fn remote_set_passengers(
+    pub fn remote_set_passengers(
         &mut self,
         vehicle: i32,
         mut passengers: Vec<i32>,
@@ -254,7 +254,7 @@ impl crate::game::ClientGame<'_> {
     }
 
     /// Apply the admitted list to the presentation and simulation copies too.
-    fn apply_remote_passengers(&mut self, vehicle: i32, passengers: &[i32]) {
+    pub fn apply_remote_passengers(&mut self, vehicle: i32, passengers: &[i32]) {
         let Some(me) = self.client.remote.as_ref().map(|r| r.entity_id) else {
             return;
         };
@@ -408,7 +408,7 @@ impl crate::game::ClientGame<'_> {
 
     /// Tick the local player's vehicle before the player tick:
     /// false when it rides nothing.
-    pub(in crate::game) fn remote_ride(&mut self, keys: Keys) -> bool {
+    pub fn remote_ride(&mut self, keys: Keys) -> bool {
         let Some(id) = self.common.riding else {
             return false;
         };
@@ -555,7 +555,7 @@ impl crate::game::ClientGame<'_> {
 
     /// `LocalPlayer.tick` for a passenger: the boat it controls goes to the
     /// server every tick with its paddles (the rider's own position does not).
-    pub(in crate::game) fn remote_vehicle_packets(&self) -> Vec<S> {
+    pub fn remote_vehicle_packets(&self) -> Vec<S> {
         if let Some(m) = self.driven_mount() {
             return vec![mount_move(m, self.driven_mount_heading(m))];
         }
@@ -798,7 +798,7 @@ impl crate::game::ClientGame<'_> {
     }
 
     /// The mount this client moves, if the player rides one.
-    pub(in crate::game) fn driven_mount(&self) -> Option<&Mob> {
+    pub fn driven_mount(&self) -> Option<&Mob> {
         let id = self.common.riding?;
         self.common.mobs.iter().find(|m| m.id == id && self.drives(m))
     }
@@ -823,7 +823,7 @@ impl crate::game::ClientGame<'_> {
     /// aiStep read the keys, send a released jump (`sendRidingJump`) and run
     /// `onPlayerJump`, for the mount's next tick. Moving on this tick's keys
     /// put every ridden move a tick ahead of the server's view of the input.
-    fn drive_mount(&mut self, i: usize, keys: Keys, jump: f32) {
+    pub fn drive_mount(&mut self, i: usize, keys: Keys, jump: f32) {
         let old_pose = self.interpolate_driven_mount(i);
         let steer = self.steers_mount(&self.common.mobs[i]);
         let (yaw, pitch) = (self.common.yaw, self.common.pitch);
@@ -907,7 +907,7 @@ impl crate::game::ClientGame<'_> {
 
     /// The level a mount this client predicts is hurt in, with the client's hooks (`hooks`)
     /// and the tags its server sent, so its tag view answers the server's membership.
-    pub(in crate::game::client_side) fn predicting_damage_level<'a>(
+    pub fn predicting_damage_level<'a>(
         &'a self,
         lent: &'a mut sunrise_sim::health::LentLevel,
         hooks: &'a sunrise_sim::health::DamageHooks,

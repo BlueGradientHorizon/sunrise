@@ -24,7 +24,7 @@ fn target_point(eye: [f64; 3], bounds: [[f64; 3]; 2], reach: f64) -> Option<([f6
 }
 
 impl ClientGame<'_> {
-    pub(in crate::game) fn targeting_entity_hit(
+    pub fn targeting_entity_hit(
         &self,
         entity: EntityRef,
     ) -> Option<([f64; 3], f64)> {
@@ -78,7 +78,7 @@ impl ClientGame<'_> {
         Some((point, distance))
     }
     /// The optional batch is resolved once for this click, then each hit uses vanilla's send path.
-    pub(in crate::game::client_side) fn mod_attack_targets(&mut self) -> bool {
+    pub fn mod_attack_targets(&mut self) -> bool {
         if !mod_api::__private::listened(mod_api::HookId::ClientAttackTarget) {
             return false;
         }

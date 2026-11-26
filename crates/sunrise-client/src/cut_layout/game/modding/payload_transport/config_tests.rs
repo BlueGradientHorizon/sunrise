@@ -192,8 +192,8 @@ fn tcp_configuration_reply_precedes_finish() {
     .into();
     mod_platform::testing::with_mods(mods, || {
         crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
-            game.side.settings.render_distance = 2;
-            game.side.settings.simulation_distance = 2;
+            game.client.settings.render_distance = 2;
+            game.client.settings.simulation_distance = 2;
             let options = sunrise_sim::world_options::WorldOptions {
                 world_type: sunrise_sim::save::WorldPreset::Flat,
                 ..Default::default()
@@ -208,7 +208,7 @@ fn tcp_configuration_reply_precedes_finish() {
             .unwrap();
             let deadline = Instant::now() + Duration::from_secs(60);
             while !game
-                .side
+                .client
                 .remote
                 .as_ref()
                 .is_some_and(|r| r.logged_in && r.joined)
@@ -219,7 +219,7 @@ fn tcp_configuration_reply_precedes_finish() {
             }
             // Publication belongs to the serving Game, not the window's client Game.
             let port = game
-                .side
+                .client
                 .integrated
                 .as_ref()
                 .unwrap()
@@ -348,7 +348,7 @@ fn controlled_peer(port: u16, expected: &[u8], game: &sunrise_client_gameplay::g
     let release = Release(release);
     if network {
         let (entered, ready) = std::sync::mpsc::channel();
-        assert!(game.side.integrated.as_ref().unwrap().post(move |_| {
+        assert!(game.client.integrated.as_ref().unwrap().post(move |_| {
             entered.send(()).unwrap();
             held.recv_timeout(Duration::from_secs(30)).unwrap();
         }));

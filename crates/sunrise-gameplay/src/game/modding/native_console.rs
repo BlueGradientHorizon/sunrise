@@ -12,7 +12,7 @@ impl ServerGame<'_> {
         self.dispatch_console_lines(logging::take_tapped(listened));
     }
 
-    pub(in crate::game) fn dispatch_console_lines(&mut self, lines: Vec<logging::TappedLine>) {
+    pub fn dispatch_console_lines(&mut self, lines: Vec<logging::TappedLine>) {
         for line in lines {
             let level = line.level.as_str();
             logging::untapped(|| {
@@ -23,7 +23,7 @@ impl ServerGame<'_> {
 
     /// `Commands::run_command_with_output`: `native_run_command` with its feedback kept as
     /// plain text, at most `MAX_FEEDBACK_LINES` lines of `MAX_FEEDBACK_LINE_BYTES` bytes each.
-    pub(in crate::game) fn native_run_command_with_output(&mut self, line: &str) -> CommandResult {
+    pub fn native_run_command_with_output(&mut self, line: &str) -> CommandResult {
         let line = line.trim();
         let line = line.strip_prefix('/').unwrap_or(line);
         if line.trim().is_empty() {

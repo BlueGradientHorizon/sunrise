@@ -3,7 +3,7 @@ use super::*;
 #[cfg(feature = "client")]
 impl crate::game::ClientGame<'_> {
     /// Change the active menu without losing window 0's cursor or state counter.
-    pub(in crate::game) fn remote_set_menu(
+    pub fn remote_set_menu(
         &mut self,
         menu: Option<(i32, String)>,
         title: Option<sunrise_game_data::text::Text>,
@@ -42,7 +42,7 @@ impl crate::game::ClientGame<'_> {
     }
 
     /// The type of the menu a server opened (`MenuType`'s id).
-    pub(in crate::game) fn remote_menu_type(&self) -> Option<&str> {
+    pub fn remote_menu_type(&self) -> Option<&str> {
         Some(self.client.remote.as_ref()?.menu.as_ref()?.1.as_str())
     }
     /// A server's chest-like menu (`MenuType.GENERIC_9xN`): its rows and title.
@@ -121,7 +121,7 @@ impl crate::game::ClientGame<'_> {
     /// the menu the server opened goes to it (`ContainerButtonClick`), whose
     /// menu decides what it does (`clickMenuButton`). No sound: that is the
     /// screen's. False while no such menu is open.
-    pub(in crate::game) fn remote_button_click(&self, button: i32) -> bool {
+    pub fn remote_button_click(&self, button: i32) -> bool {
         let Some(container) = self
             .client
             .remote
@@ -162,14 +162,14 @@ impl crate::game::ClientGame<'_> {
     }
     /// `MultiPlayerGameMode.handleCreativeModeItemDrop`: the click site, not
     /// this sender, checks the threshold. Only an accepted send incurs a charge.
-    pub(in crate::game) fn remote_creative_throw(&mut self, thrown: ItemStack) {
+    pub fn remote_creative_throw(&mut self, thrown: ItemStack) {
         if self.try_send_creative_drop_packet(&thrown) {
             self.client.drop_spam_throttler.increment();
         }
     }
     /// The server's open menu: its window id and menu type (0, "inventory"
     /// when none is open).
-    pub(in crate::game) fn remote_menu(&self) -> (i32, String) {
+    pub fn remote_menu(&self) -> (i32, String) {
         match self
             .client
             .remote
@@ -187,7 +187,7 @@ impl crate::game::ClientGame<'_> {
     /// after it; the server corrects anything it sees differently. A menu the
     /// engine doesn't model sends the clicks unpredicted. False when the batch
     /// cannot be submitted.
-    pub(in crate::game) fn remote_menu_ops(&mut self, ops: &[(Option<usize>, i32, Input)]) -> bool {
+    pub fn remote_menu_ops(&mut self, ops: &[(Option<usize>, i32, Input)]) -> bool {
         // A displayed native screen whose server menu was already closed stays
         // visible until removed, but cannot submit clicks to window 0.
         if self.shown_native_screen().is_some() && self.active_native_screen().is_none() {
@@ -277,7 +277,7 @@ impl crate::game::ClientGame<'_> {
     }
     /// `AbstractContainerMenu.setItem`/`initializeContents`: the state id a
     /// click answers with is the open menu's, not another window's.
-    pub(in crate::game) fn remote_menu_state(&mut self, container: i32, state: i32) {
+    pub fn remote_menu_state(&mut self, container: i32, state: i32) {
         if let Some(r) = self.client.remote.as_mut() {
             let open = r.menu.as_ref().map_or(0, |m| m.0);
             if container == open {
@@ -288,7 +288,7 @@ impl crate::game::ClientGame<'_> {
         }
     }
     /// The title the server gave the menu it opened.
-    pub(in crate::game) fn remote_menu_title(&self) -> Option<sunrise_game_data::text::Text> {
+    pub fn remote_menu_title(&self) -> Option<sunrise_game_data::text::Text> {
         self.client.remote.as_ref()?.menu_title.clone()
     }
     /// ClientboundMerchantOffersPacket.
@@ -334,7 +334,7 @@ impl crate::game::ClientGame<'_> {
         }
     }
     /// A server's trading window (MerchantScreen over a ClientSideMerchant).
-    pub(in crate::game) fn remote_open_merchant(
+    pub fn remote_open_merchant(
         &mut self,
         container: i32,
         title: String,
@@ -664,7 +664,7 @@ impl crate::game::ClientGame<'_> {
         self.send_unpredicted_clicks(container, [(slot as i16, 0, Input::QuickMove)]);
         true
     }
-    pub(in crate::game) fn remote_reject_container(&mut self, container: i32) {
+    pub fn remote_reject_container(&mut self, container: i32) {
         self.remote_close_local();
         if self.client.screen == Screen::Inventory {
             self.set_screen(Screen::Playing);
@@ -1020,7 +1020,7 @@ impl crate::game::ClientGame<'_> {
         }))
     }
 
-    pub(in crate::game) fn remote_close_container(&mut self) {
+    pub fn remote_close_container(&mut self) {
         let id = self
             .client
             .remote
@@ -1031,7 +1031,7 @@ impl crate::game::ClientGame<'_> {
         self.remote_close_local();
     }
 
-    pub(in crate::game) fn remote_close_local(&mut self) {
+    pub fn remote_close_local(&mut self) {
         self.remote_set_menu(None, None);
         self.remove_remote_menu_screen();
     }

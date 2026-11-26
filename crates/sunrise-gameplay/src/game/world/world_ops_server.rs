@@ -312,7 +312,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// Copies of a save batch carrying its live block entities and save data.
-    pub(in crate::game) fn with_entities<'a>(
+    pub fn with_entities<'a>(
         &self,
         chunks: impl IntoIterator<Item = &'a Arc<sunrise_level::chunk::Chunk>>,
     ) -> Vec<Arc<sunrise_level::chunk::Chunk>> {
@@ -475,14 +475,14 @@ impl crate::game::ServerGame<'_> {
         self.tracked_special_box(id as i32)
     }
 
-    pub(in crate::game) fn save_game(&mut self) -> Result<()> {
+    pub fn save_game(&mut self) -> Result<()> {
         self.save_game_with(true)
     }
 
     /// The autosave doesn't `wait` for the chunks to be on disk: every
     /// generated chunk is saved, hundreds at a time, encoded and written on
     /// the region writer meanwhile.
-    pub(in crate::game) fn save_game_with(&mut self, wait: bool) -> Result<()> {
+    pub fn save_game_with(&mut self, wait: bool) -> Result<()> {
         assert!(
             self.is_logical_server(),
             "save_game_with called on Client role"

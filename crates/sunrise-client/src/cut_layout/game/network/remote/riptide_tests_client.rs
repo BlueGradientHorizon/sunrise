@@ -25,8 +25,8 @@ fn riptide_ground_release_keeps_launch_velocity() {
                 with_client_game(|client| {
                     let (mut peer, _writer) = tests::connect_menu_test(client);
                     tests::spawn_menu_test(client);
-                    client.side.screen = Screen::Playing;
-                    let remote = client.side.remote.as_mut().unwrap();
+                    client.client.screen = Screen::Playing;
+                    let remote = client.client.remote.as_mut().unwrap();
                     remote.loaded_sent = true;
                     remote.entity_id = OWNER as i32;
                     remote.profile = u128::from(OWNER);
@@ -37,10 +37,10 @@ fn riptide_ground_release_keeps_launch_velocity() {
                     stack.enchant("minecraft:riptide", 3);
                     for (grounded, roof) in [(true, false), (false, false), (true, true)] {
                         arena(server, roof, |g, c| {
-                            g.side.streaming.insert_remote(&mut g.world, c);
+                            g.server.streaming.insert_remote(&mut g.world, c);
                         });
                         arena(client, roof, |g, c| {
-                            g.side.streaming.insert_remote(&mut g.world, c);
+                            g.client.streaming.insert_remote(&mut g.world, c);
                         });
                         let start = if grounded {
                             START
@@ -59,7 +59,7 @@ fn riptide_ground_release_keeps_launch_velocity() {
                         );
                         client.using.as_mut().unwrap().1 = 20;
 
-                        let hub = &mut server.side.lan.as_mut().unwrap().hub;
+                        let hub = &mut server.server.lan.as_mut().unwrap().hub;
                         hub.singleplayer_owner = Some(u128::from(OWNER));
                         hub.update_guest(OWNER, |g| {
                             g.sender = PlayerSender::new(tx.clone(), Arc::default());
@@ -105,7 +105,7 @@ fn riptide_ground_release_keeps_launch_velocity() {
                         };
                         assert_eq!(body.position.y, y_after_lift);
                         assert!(!body.ground.on_ground);
-                        let guest = server.side.lan.as_ref().unwrap().hub.guest(OWNER).unwrap();
+                        let guest = server.server.lan.as_ref().unwrap().hub.guest(OWNER).unwrap();
                         assert_eq!(guest.position, body.position.components());
                         assert_eq!(guest.motion.as_ref().unwrap().velocity, body.velocity);
                         assert!(!guest.on_ground && !guest.rests_on_ground);
@@ -128,7 +128,7 @@ fn riptide_ground_release_keeps_launch_velocity() {
                             if tick == 0 && !roof {
                                 assert_eq!(body.position.z, START.z + 3.0);
                             }
-                            let guest = server.side.lan.as_ref().unwrap().hub.guest(OWNER).unwrap();
+                            let guest = server.server.lan.as_ref().unwrap().hub.guest(OWNER).unwrap();
                             assert_eq!(guest.position, body.position.components());
                             assert_eq!(guest.on_ground, body.ground.on_ground);
                         }

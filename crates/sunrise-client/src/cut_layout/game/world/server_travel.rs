@@ -37,7 +37,7 @@ use std::sync::Arc;
                 (true, true, false, false, 4),
                 (false, false, false, false, 4),
             ] {
-                game.side.lan.as_mut().unwrap().hub.update_guest(12, |g| {
+                game.server.lan.as_mut().unwrap().hub.update_guest(12, |g| {
                     g.position = [3.5, 64.0, 5.5];
                     g.sleeping = sleeping;
                     g.vehicle = riding.then_some(99);
@@ -94,8 +94,8 @@ use std::sync::Arc;
         mod_platform::testing::with_mods(mods, || {
             super::super::native_entity_refs::tests::with_game(|game| {
                 game.native_joins_skip();
-                let base = game.side.next_entity;
-                game.side.next_entity += 2;
+                let base = game.server.next_entity;
+                game.server.next_entity += 2;
                 game.carts.push(minecarts::Minecart::new(
                     base + 1,
                     minecarts::CartKind::Rideable,
@@ -108,13 +108,13 @@ use std::sync::Arc;
                     .off_level
                     .insert(base + 10, OffLevel::Mob(child));
                 // It left with 7; the source level has run it down to 3 since.
-                game.side
+                game.server
                     .portals
                     .entities
                     .entry(base + 1)
                     .or_default()
                     .cooldown = 3;
-                game.side.portals.carried_cooldown.insert(base + 1, 7);
+                game.server.portals.carried_cooldown.insert(base + 1, 7);
                 let source = game.dim;
                 game.enter_level(Dim::Nether).unwrap();
                 game.carts.push(minecarts::Minecart::new(
@@ -128,10 +128,10 @@ use std::sync::Arc;
                     game.mob_object(base + 10).is_some(),
                     "natural carrier arrival must transfer retained passenger"
                 );
-                assert_eq!(game.side.portals.entities[&(base + 1)].cooldown, 7);
+                assert_eq!(game.server.portals.entities[&(base + 1)].cooldown, 7);
                 assert!(
                     !game
-                        .side
+                        .server
                         .levels
                         .0
                         .parked_mut(source)
@@ -199,7 +199,7 @@ use std::sync::Arc;
                     assert!(game.persist.off_level.contains_key(&sibling));
                     STATE.set(game, Holder::Entity(leaf), 77).unwrap();
                     game.persist.forced_meta.insert(leaf, [5, 6, 7, 8]);
-                    game.side.portals.entities.entry(leaf).or_default().cooldown = 19;
+                    game.server.portals.entities.entry(leaf).or_default().cooldown = 19;
                     let source = game.dim;
                     game.enter_level(Dim::Nether).unwrap();
                     let owner = conflict.then(|| {
@@ -239,7 +239,7 @@ use std::sync::Arc;
                         Vec3::new(32.0, 91.0, 48.0)
                     );
                     assert_eq!(game.persist.forced_meta.get(&leaf), Some(&[5, 6, 7, 8]));
-                    assert_eq!(game.side.portals.entities[&leaf].cooldown, 19);
+                    assert_eq!(game.server.portals.entities[&leaf].cooldown, 19);
                     assert_eq!(STATE.get(game, Holder::Entity(leaf)), Ok(77));
                     if !conflict {
                         assert_eq!(STATE.get(game, Holder::Entity(held)), Ok(41));
@@ -338,7 +338,7 @@ use std::sync::Arc;
             let root = game.load_mob(tag, None).unwrap();
             let held = game.mob_passenger_ids(root)[0];
             assert!(game.persist.off_level.contains_key(&held));
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()
@@ -351,13 +351,13 @@ use std::sync::Arc;
                 game,
                 sunrise_core::position::ChunkPos::new(0, 0),
             );
-            game.side.tickets.0.add_portal((0, 0));
+            game.server.tickets.0.add_portal((0, 0));
             game.update_chunk_tickets();
             assert!(game.entity_ticking_area()(1, 2));
             // Supply the block's real inside notification, then exercise the actual
             // entity portal processor, carrier routing and server trip scheduler.
             let delay = sunrise_sim::nether_portal::ENTITY_DELAY;
-            game.side
+            game.server
                 .portals
                 .entities
                 .entry(root)
@@ -369,8 +369,8 @@ use std::sync::Arc;
                 "route through the player carrier path"
             );
             game.carry_riders_through_portals();
-            assert_eq!(game.side.server_trips.len(), 1);
-            let trip = &game.side.server_trips[0];
+            assert_eq!(game.server.server_trips.len(), 1);
+            let trip = &game.server.server_trips[0];
             assert_eq!(trip.source, source);
             assert_eq!(trip.dim, Dim::Nether);
             assert_eq!(
@@ -385,7 +385,7 @@ use std::sync::Arc;
             assert!(game.mob_object(held).is_some());
             assert_eq!(game.mob_object(held).unwrap().extra.mount, Some(root));
             assert_eq!(
-                game.side.lan.as_ref().unwrap().hub.guests[0].vehicle,
+                game.server.lan.as_ref().unwrap().hub.guests[0].vehicle,
                 Some(held)
             );
         });
@@ -411,7 +411,7 @@ use sunrise_mod_runtime::attachments::{
         for kind in ["minecraft:minecart", "minecraft:oak_boat", "minecraft:pig"] {
             for bound in [true, false] {
                 super::super::native_entity_refs::tests::with_game(|game| {
-                    game.side.tickets.0.update(None);
+                    game.server.tickets.0.update(None);
                     let target = game
                         .summon_with_nbt(kind, [0.5, 70.0, 0.5], "{}")
                         .unwrap()
@@ -468,7 +468,7 @@ use sunrise_mod_runtime::attachments::{
                     game.arrive_vehicle(source, id, Vec3::ZERO, 0.0);
                     macro_rules! transferred {
                         ($list:ident) => {{
-                            let parked = game.side.levels.0.parked_mut(source).unwrap();
+                            let parked = game.server.levels.0.parked_mut(source).unwrap();
                             assert!(
                                 !parked
                                     .$list
@@ -576,7 +576,7 @@ use sunrise_sim::lan::{
     fn the_credits_respawn_waits_for_the_client_to_load() {
         let mut resources = None;
         let (_scratch, mut game, rx) = server_with_a_nether_anchor(&mut resources);
-        let host = game.side.lan.as_mut().unwrap();
+        let host = game.server.lan.as_mut().unwrap();
         host.hub.guests.update(0, |g| {
             g.spawn = Some([0.5, 100.0, 0.5]);
             g.respawn_elsewhere = None;
@@ -603,7 +603,7 @@ use sunrise_sim::lan::{
         rx.try_iter().for_each(drop);
 
         game.remove_old_player_for_clone(2, false);
-        let host = game.side.lan.as_mut().unwrap();
+        let host = game.server.lan.as_mut().unwrap();
         host.hub.guests.update(0, |g| {
             g.won_game = true;
             g.inbox.push_back(InboxItem::Packet(
@@ -612,7 +612,7 @@ use sunrise_sim::lan::{
             ));
         });
         game.tick_lan_packets();
-        let host = game.side.lan.as_mut().unwrap();
+        let host = game.server.lan.as_mut().unwrap();
         host.hub.sync_guest_after_tick(2);
         let delivered: Vec<_> = received_packets(&rx).collect();
         assert!(delivered.iter().any(|packet| matches!(packet,
@@ -647,7 +647,7 @@ use sunrise_sim::lan::{
     ) {
         let scratch = tempfile::tempdir().unwrap();
         let mut game = sunrise_gameplay::game::game_tests::tests::server_game(resources);
-        game.side.world_root = scratch.path().to_owned();
+        game.server.world_root = scratch.path().to_owned();
         // The world spawn a player without a point of its own comes back to.
         game.level.world_spawn = Some([0, 100, 0]);
         game.lan_host(
@@ -680,7 +680,7 @@ use sunrise_sim::lan::{
         .unwrap();
         let (mut guest, rx) = placed_guest(2, Dim::Overworld, [0.5, 100.0, 0.5]);
         guest.respawn_elsewhere = Some((Dim::Nether.id().into(), ANCHOR, 0.0, 0.0, false));
-        game.side.lan.as_mut().unwrap().hub.guests.push(guest);
+        game.server.lan.as_mut().unwrap().hub.guests.push(guest);
         (scratch, game, rx)
     }
 /// A player whose own point is a charged Nether anchor and who has seen the
@@ -694,7 +694,7 @@ use sunrise_sim::lan::{
         let mut resources = None;
         let (_scratch, mut game, _rx) = server_with_a_nether_anchor(&mut resources);
         game.remove_old_player_for_clone(2, false);
-        game.side
+        game.server
             .lan
             .as_mut()
             .unwrap()
@@ -702,7 +702,7 @@ use sunrise_sim::lan::{
             .update_guest(2, |guest| guest.won_game = true);
         game.guest_respawn(2);
         assert_eq!(
-            game.side.lan.as_ref().unwrap().hub.guests[0].dimension,
+            game.server.lan.as_ref().unwrap().hub.guests[0].dimension,
             "minecraft:overworld",
             "the credits respawn doesn't place a replacement before checking the anchor"
         );
@@ -715,7 +715,7 @@ use sunrise_sim::lan::{
 
         // RespawnAnchorBlock.findStandUpPosition: the block's top is the only
         // spot with a floor under it here (`DismountHelper.findSafeDismountLocation`).
-        let guest = &game.side.lan.as_ref().unwrap().hub.guests[0];
+        let guest = &game.server.lan.as_ref().unwrap().hub.guests[0];
         assert_eq!(
             guest.position,
             [10.5, 101.0, 10.5],
@@ -744,13 +744,13 @@ use sunrise_sim::lan::{
     fn a_spectator_leaves_the_end_for_its_nether_point() {
         let mut resources = None;
         let (_scratch, mut game, _rx) = server_with_a_nether_anchor(&mut resources);
-        game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+        game.server.lan.as_mut().unwrap().hub.guests.update(0, |g| {
             g.game_mode = SPECTATOR;
             g.seen_credits = true;
             g.dimension = "minecraft:the_end".into();
         });
         game.enter_level(Dim::End).unwrap();
-        game.side
+        game.server
             .streaming
             .insert_remote(&mut game.world, Chunk::empty(0, 0));
         let portal = [0, 100, 0];

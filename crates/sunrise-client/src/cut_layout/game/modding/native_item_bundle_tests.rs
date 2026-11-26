@@ -84,7 +84,7 @@ fn bundle_items_place_handler_reads_and_rolls_back() {
         open_to_lan(game);
         let mut player = guest(1);
         player.inventory[0] = Some(bundle.clone());
-        game.side.lan.as_mut().unwrap().hub.guests.push(player);
+        game.server.lan.as_mut().unwrap().hub.guests.push(player);
         let place = ItemPlace::PlayerHand {
             player: 123,
             hand: mod_api::Hand::Main,
@@ -114,7 +114,7 @@ fn bundle_items_place_handler_reads_and_rolls_back() {
         });
         assert_eq!(result, Err(()));
         assert_eq!(
-            game.side.lan.as_ref().unwrap().hub.guests[0].inventory[0],
+            game.server.lan.as_ref().unwrap().hub.guests[0].inventory[0],
             Some(bundle)
         );
     });
@@ -157,7 +157,7 @@ fn stacked_bundle_insertion_splits_one_and_restores_inventory_on_abort() {
         let mut player = guest(1);
         player.inventory[0] = Some(ItemStack::new("minecraft:bundle", 2));
         let original = player.inventory.clone();
-        game.side.lan.as_mut().unwrap().hub.guests.push(player);
+        game.server.lan.as_mut().unwrap().hub.guests.push(player);
         let place = ItemPlace::PlayerHand {
             player: 123,
             hand: mod_api::Hand::Main,
@@ -174,7 +174,7 @@ fn stacked_bundle_insertion_splits_one_and_restores_inventory_on_abort() {
             Err(())
         );
         assert_eq!(
-            game.side.lan.as_ref().unwrap().hub.guests[0].inventory,
+            game.server.lan.as_ref().unwrap().hub.guests[0].inventory,
             original
         );
         assert_eq!(
@@ -183,7 +183,7 @@ fn stacked_bundle_insertion_splits_one_and_restores_inventory_on_abort() {
         );
         let mut changed = ItemStack::new("minecraft:bundle", 1);
         changed.data_mut().bundle_contents = vec![ItemStack::new("minecraft:arrow", 3)];
-        let inventory = &game.side.lan.as_ref().unwrap().hub.guests[0].inventory;
+        let inventory = &game.server.lan.as_ref().unwrap().hub.guests[0].inventory;
         let stacks: Vec<_> = inventory.iter().flatten().cloned().collect();
         assert_eq!(stacks.len(), 2);
         assert!(stacks.contains(&ItemStack::new("minecraft:bundle", 1)));
@@ -221,7 +221,7 @@ fn mod_registered_bundle_items_uses_weight_and_front_extraction() {
             open_to_lan(game);
             let mut player = guest(1);
             player.inventory[0] = Some(bundle.clone());
-            game.side.lan.as_mut().unwrap().hub.guests.push(player);
+            game.server.lan.as_mut().unwrap().hub.guests.push(player);
             let place = ItemPlace::PlayerHand {
                 player: 123,
                 hand: mod_api::Hand::Main,
@@ -233,7 +233,7 @@ fn mod_registered_bundle_items_uses_weight_and_front_extraction() {
                 Ok(0)
             );
             assert_eq!(
-                game.side.lan.as_ref().unwrap().hub.guests[0].inventory[0],
+                game.server.lan.as_ref().unwrap().hub.guests[0].inventory[0],
                 Some(bundle)
             );
             assert_eq!(
@@ -424,7 +424,7 @@ mod custom_bundle_integration_tests {
                 let mut player = guest(1);
                 player.inventory[0] = Some(empty_pouch(2));
                 let original = player.inventory.clone();
-                game.side.lan.as_mut().unwrap().hub.guests.push(player);
+                game.server.lan.as_mut().unwrap().hub.guests.push(player);
                 let place = ItemPlace::PlayerHand {
                     player: 123,
                     hand: mod_api::Hand::Main,
@@ -443,7 +443,7 @@ mod custom_bundle_integration_tests {
                     Err(())
                 );
                 assert_eq!(
-                    game.side.lan.as_ref().unwrap().hub.guests[0].inventory,
+                    game.server.lan.as_ref().unwrap().hub.guests[0].inventory,
                     original
                 );
 
@@ -453,7 +453,7 @@ mod custom_bundle_integration_tests {
                     ),
                     Ok(20)
                 );
-                let inventory = &game.side.lan.as_ref().unwrap().hub.guests[0].inventory;
+                let inventory = &game.server.lan.as_ref().unwrap().hub.guests[0].inventory;
                 let stacks: Vec<_> = inventory.iter().flatten().cloned().collect();
                 assert_eq!(stacks.len(), 2);
                 assert!(stacks.contains(&empty_pouch(1)));
@@ -496,7 +496,7 @@ mod custom_bundle_integration_tests {
                     game.bundle_metrics(&compound_pouch, &arrow_pouch),
                     Err(mod_api::BundleReadError::UnsupportedFormat)
                 );
-                game.side
+                game.server
                     .lan
                     .as_mut()
                     .unwrap()
@@ -515,7 +515,7 @@ mod custom_bundle_integration_tests {
                     Ok(0)
                 );
                 assert_eq!(
-                    game.side.lan.as_ref().unwrap().hub.guests[0].inventory[0]
+                    game.server.lan.as_ref().unwrap().hub.guests[0].inventory[0]
                         .as_ref()
                         .and_then(|s| s.data())
                         .and_then(|d| d.other(POUCH_COMPONENT)),
@@ -627,7 +627,7 @@ mod custom_bundle_integration_tests {
                     assert_eq!(game.bundle_extract(stack, 0, 1, config).err(), refused);
                     assert_eq!(game.bundle_metrics(stack, config).err(), refused);
                 }
-                game.side
+                game.server
                     .lan
                     .as_mut()
                     .unwrap()
@@ -645,7 +645,7 @@ mod custom_bundle_integration_tests {
                     Ok(0)
                 );
                 assert_eq!(
-                    game.side.lan.as_ref().unwrap().hub.guests[0].inventory[0].as_ref(),
+                    game.server.lan.as_ref().unwrap().hub.guests[0].inventory[0].as_ref(),
                     Some(&excessive)
                 );
             });
@@ -766,7 +766,7 @@ mod custom_bundle_integration_tests {
             sunrise_gameplay_common::game::api_values::install_parts(&mods).unwrap();
             with_guests(|game| {
                 // 1. Server inventory click: carried pouch inserts clicked arrows (`CarriedOnOther`).
-                game.side
+                game.server
                     .lan
                     .as_mut()
                     .unwrap()
@@ -790,7 +790,7 @@ mod custom_bundle_integration_tests {
                     }),
                 );
                 let pouch = {
-                    let guest = &game.side.lan.as_ref().unwrap().hub.guests[0];
+                    let guest = &game.server.lan.as_ref().unwrap().hub.guests[0];
                     assert!(guest.inventory[9].is_none());
                     guest.carried.clone().unwrap()
                 };
@@ -798,7 +798,7 @@ mod custom_bundle_integration_tests {
                 assert_eq!(slots, vec![Some(ItemStack::new("minecraft:arrow", 12))]);
 
                 // 2. LAN guest click: carried arrows into clicked pouch (`OtherStackedOnMe`).
-                game.side
+                game.server
                     .lan
                     .as_mut()
                     .unwrap()
@@ -821,7 +821,7 @@ mod custom_bundle_integration_tests {
                         carried: None,
                     }),
                 );
-                let guest = &game.side.lan.as_ref().unwrap().hub.guests[0];
+                let guest = &game.server.lan.as_ref().unwrap().hub.guests[0];
                 assert!(guest.carried.is_none());
                 let updated = guest.inventory[9].clone().unwrap();
                 assert_eq!(
@@ -833,7 +833,7 @@ mod custom_bundle_integration_tests {
                 // successful clicks because a panicking callback is retired for the session).
                 panic_stack.store(true, Ordering::Relaxed);
                 let before_carried = Some(pouch);
-                game.side
+                game.server
                     .lan
                     .as_mut()
                     .unwrap()
@@ -855,7 +855,7 @@ mod custom_bundle_integration_tests {
                         carried: None,
                     }),
                 );
-                let guest = &game.side.lan.as_ref().unwrap().hub.guests[0];
+                let guest = &game.server.lan.as_ref().unwrap().hub.guests[0];
                 assert_eq!(guest.carried, before_carried);
                 assert_eq!(
                     guest.inventory[10].as_ref().map(|s| (&*s.item, s.count)),

@@ -92,7 +92,7 @@ impl ServerGame<'_> {
     /// `AnvilMenu.onTake`'s level part: out of creative a 12% chance
     /// (`AnvilBlock.damage`) to wear the anvil a stage, or break a damaged one
     /// (level event 1029); otherwise level event 1030. True when it broke.
-    pub(in crate::game) fn anvil_used(&mut self, pos: [i32; 3], creative: bool) -> bool {
+    pub fn anvil_used(&mut self, pos: [i32; 3], creative: bool) -> bool {
         let state = self.common.world.block(pos[0], pos[1], pos[2]);
         let name = self.common.res.facts().get(state).name.clone();
         let anvil = matches!(
@@ -275,7 +275,7 @@ impl ServerGame<'_> {
 
     /// `BrewingStandBlockEntity.serverTick` of the brewing stand at `pos`, in
     /// its place among the level's block entity tickers.
-    pub(in crate::game) fn tick_brewing_stand(
+    pub fn tick_brewing_stand(
         &mut self,
         pos: (i32, i32, i32),
     ) -> sunrise_game_data::Result<()> {

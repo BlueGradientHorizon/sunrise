@@ -63,7 +63,7 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
             open_to_lan(game);
             let mut player = guest(1);
             player.inventory[3] = Some(ItemStack::new("minecraft:paper", 16));
-            game.side.lan.as_mut().unwrap().hub.guests.push(player);
+            game.server.lan.as_mut().unwrap().hub.guests.push(player);
             let host_before = game.inventory.clone();
             let dropped_before = game.dropped.len();
             let inventory = |game: &sunrise_gameplay::game::ServerGame<'_>| {
@@ -161,7 +161,7 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
             player.selected = 3;
             player.inventory[3] = Some(ItemStack::new("minecraft:paper", 16));
             player.inventory[1] = Some(ItemStack::new("minecraft:paper", 16));
-            game.side.lan.as_mut().unwrap().hub.guests.push(player);
+            game.server.lan.as_mut().unwrap().hub.guests.push(player);
             let inventory = |game: &sunrise_gameplay::game::ServerGame<'_>| {
                 game.server.lan.as_ref().unwrap().hub.guests[0]
                     .inventory
@@ -203,7 +203,7 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
             let mut actor = guest(2);
             actor.selected = 1;
             actor.inventory[1] = Some(ItemStack::new("minecraft:paper", 16));
-            game.side.lan.as_mut().unwrap().hub.guests.push(actor);
+            game.server.lan.as_mut().unwrap().hub.guests.push(actor);
             let hand = ItemPlace::PlayerHand {
                 player: 123,
                 hand: Hand::Main,
@@ -278,7 +278,7 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
             let mut player = guest(1);
             player.inventory[0] = Some(ItemStack::new("minecraft:bucket", 3));
             player.inventory[5] = Some(ItemStack::new("minecraft:lava_bucket", 1));
-            game.side.lan.as_mut().unwrap().hub.guests.push(player);
+            game.server.lan.as_mut().unwrap().hub.guests.push(player);
             let slot = |slot| ItemPlace::PlayerSlot { player: 123, slot };
             // Up to a bucket from the cauldron at `at` into the bucket in `slot`, or back.
             let moved =
@@ -341,7 +341,7 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
             open_to_lan(game);
             let mut guest = guest(1);
             guest.inventory[0] = Some(ItemStack::new("minecraft:bucket", 3));
-            game.side.lan.as_mut().unwrap().hub.guests.push(guest);
+            game.server.lan.as_mut().unwrap().hub.guests.push(guest);
             let host_before = game.inventory.clone();
             let guest_inventory = |game: &sunrise_gameplay::game::ServerGame<'_>| {
                 game.server.lan.as_ref().unwrap().hub.guests[0]
@@ -389,7 +389,7 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
     fn an_armour_slot_holds_one() {
         with_game(|game| {
             open_to_lan(game);
-            game.side.lan.as_mut().unwrap().hub.guests.push(guest(1));
+            game.server.lan.as_mut().unwrap().hub.guests.push(guest(1));
             let host: &mut dyn ServerHost = game;
             let items = host
                 .entity(20)
@@ -423,11 +423,11 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
             viewer.loaded = true;
             viewer.load_timeout = 0;
             viewer.sent_chunks.insert((0, 0));
-            game.side.lan.as_mut().unwrap().hub.guests.push(viewer);
+            game.server.lan.as_mut().unwrap().hub.guests.push(viewer);
 
             // With no tickets every chunk is entity-ticking; the zombie must lie outside that
             // range for the tracker to describe it idle (`ChunkMap.tick`).
-            game.side
+            game.server
                 .tickets
                 .0
                 .update(Some(sunrise_sim::ticket_levels::Sources {
@@ -453,11 +453,11 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
             game.mobs[0].first_tick = false;
             // Track once to pair, again to cache a full idle state, then confirm it can go bare.
             for _ in 0..3 {
-                game.side.level_pass.packets_drained = true;
+                game.server.level_pass.packets_drained = true;
                 game.mobs[0].needs_sync = false;
                 game.tick_lan(false);
             }
-            let host = game.side.lan.as_ref().unwrap();
+            let host = game.server.lan.as_ref().unwrap();
             assert!(host.hub.guests[0].tracker.is_tracking(id as i32));
             assert!(
                 host.states
@@ -479,7 +479,7 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
                 })
             })
             .unwrap();
-            assert!(game.side.pending_sounds.is_empty());
+            assert!(game.server.pending_sounds.is_empty());
             assert!(sunrise_gameplay::game::server_side::dispense_fixture::stop_recording().is_empty());
 
             let tracked = |game: &mut sunrise_gameplay::game::ServerGame<'_>| {
@@ -566,7 +566,7 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
         super::super::native_guest_turn_tests::with_guests(|game| {
             let stick = ItemStack::new("minecraft:stick", 32);
             let cursor_stack = ItemStack::new("minecraft:paper", 1);
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()
@@ -605,7 +605,7 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
                 assert!(!edited);
                 assert_eq!(mismatch, Err(ItemPlaceEditError::InvalidContext));
             }
-            let guest = &game.side.lan.as_ref().unwrap().hub.guests[0];
+            let guest = &game.server.lan.as_ref().unwrap().hub.guests[0];
             assert_eq!(guest.inventory[0].as_ref(), Some(&stick));
             assert_eq!(guest.carried.as_ref(), Some(&cursor_stack));
         });
@@ -619,7 +619,7 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
             open_to_lan(game);
             let mut player_guest = guest(1);
             player_guest.carried = Some(ItemStack::new("minecraft:paper", 16));
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()
@@ -655,7 +655,7 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
                 Ok(())
             );
             assert_eq!(
-                game.side.lan.as_ref().unwrap().hub.guests[0]
+                game.server.lan.as_ref().unwrap().hub.guests[0]
                     .carried
                     .as_ref(),
                 Some(&expected)
@@ -684,7 +684,7 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
                 )))
             );
             assert_eq!(
-                game.side.lan.as_ref().unwrap().hub.guests[0]
+                game.server.lan.as_ref().unwrap().hub.guests[0]
                     .carried
                     .as_ref(),
                 Some(&expected)
@@ -711,7 +711,7 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
                 Err(())
             );
             assert_eq!(
-                game.side.lan.as_ref().unwrap().hub.guests[0]
+                game.server.lan.as_ref().unwrap().hub.guests[0]
                     .carried
                     .as_ref(),
                 Some(&expected)
@@ -759,14 +759,14 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
             })
             .unwrap();
             assert_eq!(
-                game.side.lan.as_ref().unwrap().hub.guests[0]
+                game.server.lan.as_ref().unwrap().hub.guests[0]
                     .carried
                     .as_ref(),
                 Some(&acting_expected)
             );
 
             // Empty cursor refuses with NotHeld before calling the editor.
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()
@@ -797,7 +797,7 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
                 let host: &mut dyn ServerHost = game;
                 host.menu(123, window).unwrap()
             };
-            game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+            game.server.lan.as_mut().unwrap().hub.guests.update(0, |g| {
                 g.carried = Some(ItemStack::new("minecraft:paper", 2));
             });
             assert_eq!(
@@ -810,7 +810,7 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
                 let host: &mut dyn ServerHost = game;
                 host.close_menu(123);
             }
-            game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+            game.server.lan.as_mut().unwrap().hub.guests.update(0, |g| {
                 g.carried = Some(ItemStack::new("minecraft:paper", 2));
             });
             assert_eq!(
@@ -858,7 +858,7 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
             let mut player_guest = guest(1);
             player_guest.sender = PlayerSender::new(tx, Arc::default());
             player_guest.carried = Some(ItemStack::new("minecraft:stick", 1));
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()
@@ -867,9 +867,9 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
                 .push(player_guest);
 
             // Sync initial inventory + cursor; subsequent tick sync sends no SetCursorItem.
-            game.side.lan.as_mut().unwrap().hub.send_inventory(0);
+            game.server.lan.as_mut().unwrap().hub.send_inventory(0);
             let _ = cursor_packets(&rx);
-            game.side.lan.as_mut().unwrap().hub.sync_guest_after_tick(1);
+            game.server.lan.as_mut().unwrap().hub.sync_guest_after_tick(1);
             assert!(cursor_packets(&rx).is_empty());
 
             let direct_instrument = Tag::compound([
@@ -922,7 +922,7 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
                 })
             })
             .unwrap();
-            game.side.lan.as_mut().unwrap().hub.sync_guest_after_tick(1);
+            game.server.lan.as_mut().unwrap().hub.sync_guest_after_tick(1);
             let updates = cursor_packets(&rx);
             let [Some(parked)] = updates.as_slice() else {
                 panic!("expected one carried stack update, got {updates:?}");
@@ -941,7 +941,7 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
                 Some(&Component::Int(0))
             );
             let client = game
-                .side
+                .server
                 .lan
                 .as_ref()
                 .unwrap()
@@ -984,12 +984,12 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
                     rest: Vec::new(),
                 })
             );
-            game.side.lan.as_mut().unwrap().hub.sync_guest_after_tick(1);
+            game.server.lan.as_mut().unwrap().hub.sync_guest_after_tick(1);
             assert!(cursor_packets(&rx).is_empty());
 
             // A resident component whose registry reference cannot be represented for
             // this connection must not block an independent cursor edit or cause a retry.
-            let hub = &mut game.side.lan.as_mut().unwrap().hub;
+            let hub = &mut game.server.lan.as_mut().unwrap().hub;
             hub.guests.update(0, |guest| {
                 let stack = guest.carried.as_mut().unwrap();
                 stack.data_mut().set_other(
@@ -1023,17 +1023,17 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
                 .unwrap()
                 .unwrap()
             };
-            game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+            game.server.lan.as_mut().unwrap().hub.guests.update(0, |g| {
                 g.carried = Some(ItemStack::new("minecraft:paper", 4));
             });
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()
                 .hub
                 .resend_menu(1, window, &game.world);
             let _ = cursor_packets(&rx);
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()
@@ -1062,26 +1062,26 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
             })
             .unwrap();
             let acting_net = game
-                .side
+                .server
                 .lan
                 .as_mut()
                 .unwrap()
                 .hub
                 .stack(&Some(acting_expected));
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()
                 .hub
                 .sync_containers(&game.world);
             assert_eq!(cursor_packets(&rx), vec![acting_net]);
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()
                 .hub
                 .sync_containers(&game.world);
-            game.side.lan.as_mut().unwrap().hub.sync_guest_after_tick(1);
+            game.server.lan.as_mut().unwrap().hub.sync_guest_after_tick(1);
             assert!(cursor_packets(&rx).is_empty());
         });
     }
@@ -1160,14 +1160,14 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
             player_guest.sender = PlayerSender::new(tx, Arc::default());
             let plain_paper = Some(ItemStack::new("minecraft:paper", 4));
             player_guest.carried = plain_paper.clone();
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()
                 .hub
                 .guests
                 .push(player_guest);
-            game.side.lan.as_mut().unwrap().hub.send_inventory(0);
+            game.server.lan.as_mut().unwrap().hub.send_inventory(0);
             let _ = drain_packets(&rx);
 
             // Answer-click path: mod renames the carried paper (same item and count), then a
@@ -1187,7 +1187,7 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
                 })
             })
             .unwrap();
-            let inv_state = game.side.lan.as_ref().unwrap().hub.guests[0].menu_state;
+            let inv_state = game.server.lan.as_ref().unwrap().hub.guests[0].menu_state;
             game.lan_guest_packet(
                 1,
                 S::ContainerClick(ContainerClick {
@@ -1201,19 +1201,19 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
                 }),
             );
             let renamed_net = game
-                .side
+                .server
                 .lan
                 .as_mut()
                 .unwrap()
                 .hub
                 .stack(&Some(renamed_paper.clone()));
             assert_eq!(cursor_updates(&rx), vec![renamed_net]);
-            game.side.lan.as_mut().unwrap().hub.sync_guest_after_tick(1);
+            game.server.lan.as_mut().unwrap().hub.sync_guest_after_tick(1);
             assert!(cursor_updates(&rx).is_empty());
 
             // A follow-up click with the exact current component hash agrees silently.
             let fresh_inv_hash = hash_stack(game, &Some(renamed_paper.clone()));
-            let inv_state = game.side.lan.as_ref().unwrap().hub.guests[0].menu_state;
+            let inv_state = game.server.lan.as_ref().unwrap().hub.guests[0].menu_state;
             game.lan_guest_packet(
                 1,
                 S::ContainerClick(ContainerClick {
@@ -1227,7 +1227,7 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
                 }),
             );
             assert!(cursor_updates(&rx).is_empty());
-            game.side.lan.as_mut().unwrap().hub.sync_guest_after_tick(1);
+            game.server.lan.as_mut().unwrap().hub.sync_guest_after_tick(1);
             assert!(cursor_updates(&rx).is_empty());
 
             // Crafting-table path: open table (syncing renamed_paper), then change carried's
@@ -1237,11 +1237,11 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
             let table_tag = Tag::String("table renamed paper".into());
             let mut table_paper = ItemStack::new("minecraft:paper", 4);
             table_paper.data_mut().custom_name = Some(table_tag);
-            game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+            game.server.lan.as_mut().unwrap().hub.guests.update(0, |g| {
                 g.carried = Some(table_paper.clone());
             });
             let (table_window, table_state) = game
-                .side
+                .server
                 .lan
                 .as_ref()
                 .unwrap()
@@ -1263,7 +1263,7 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
                 }),
             );
             let table_net = game
-                .side
+                .server
                 .lan
                 .as_mut()
                 .unwrap()
@@ -1284,13 +1284,13 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
                 })
                 .collect();
             assert_eq!(corrected_cursor, vec![table_net]);
-            game.side.lan.as_mut().unwrap().hub.sync_guest_after_tick(1);
+            game.server.lan.as_mut().unwrap().hub.sync_guest_after_tick(1);
             assert!(cursor_updates(&rx).is_empty());
 
             // A crafting click with the exact component hash agrees and sends no resync.
             let fresh_table_hash = hash_stack(game, &Some(table_paper));
             let (table_window, table_state) = game
-                .side
+                .server
                 .lan
                 .as_ref()
                 .unwrap()
@@ -1316,7 +1316,7 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
                 .filter(|packet| matches!(packet, C::SetCursorItem(_) | C::ContainerSetContent(_)))
                 .collect();
             assert!(resyncs.is_empty());
-            game.side.lan.as_mut().unwrap().hub.sync_guest_after_tick(1);
+            game.server.lan.as_mut().unwrap().hub.sync_guest_after_tick(1);
             assert!(cursor_updates(&rx).is_empty());
         });
     }
@@ -1341,7 +1341,7 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
                 player: 123,
                 slot: 3,
             };
-            game.side.lan.as_mut().unwrap().hub.guests.push(player);
+            game.server.lan.as_mut().unwrap().hub.guests.push(player);
 
             let name = Tag::String("live contents".into());
             game.storage_transaction(|host, tx| {
@@ -1367,7 +1367,7 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
                 })
             })
             .unwrap();
-            let bundle = game.side.lan.as_ref().unwrap().hub.guests[0].inventory[3]
+            let bundle = game.server.lan.as_ref().unwrap().hub.guests[0].inventory[3]
                 .as_ref()
                 .unwrap();
             assert_eq!(bundle.villager_food(None), Some(7));
@@ -1386,7 +1386,7 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
                 })
             })
             .unwrap();
-            let bundle = game.side.lan.as_ref().unwrap().hub.guests[0].inventory[3]
+            let bundle = game.server.lan.as_ref().unwrap().hub.guests[0].inventory[3]
                 .as_ref()
                 .unwrap();
             assert_eq!(bundle.villager_food(None), None);
@@ -1413,7 +1413,7 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
             let original = encode_extra_components(&banner).unwrap();
             let mut player = guest(1);
             player.inventory[3] = Some(banner);
-            game.side.lan.as_mut().unwrap().hub.guests.push(player);
+            game.server.lan.as_mut().unwrap().hub.guests.push(player);
             let place = ItemPlace::PlayerSlot {
                 player: 123,
                 slot: 3,
@@ -1934,7 +1934,7 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
             || {
                 with_game(|game| {
                     open_to_lan(game);
-                    game.side.lan.as_mut().unwrap().hub.guests.push(guest(1));
+                    game.server.lan.as_mut().unwrap().hub.guests.push(guest(1));
                     let slot = ItemPlace::PlayerSlot {
                         player: 123,
                         slot: 3,
@@ -1955,7 +1955,7 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
                         (paper.clone(), explicit_default.clone()),
                         (explicit_default, paper),
                     ] {
-                        game.side
+                        game.server
                             .lan
                             .as_mut()
                             .unwrap()
@@ -1970,7 +1970,7 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
                             .transaction(|host, tx| slot.extract(host, tx, &different_damage, 1));
                         assert_eq!(removed, Ok(0));
                         assert_eq!(
-                            game.side.lan.as_ref().unwrap().hub.guests[0].inventory[3],
+                            game.server.lan.as_ref().unwrap().hub.guests[0].inventory[3],
                             Some(resident.clone()),
                         );
 
@@ -1980,7 +1980,7 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
                         assert_eq!(removed, Ok(1));
                         resident.count = 1;
                         assert_eq!(
-                            game.side.lan.as_ref().unwrap().hub.guests[0].inventory[3],
+                            game.server.lan.as_ref().unwrap().hub.guests[0].inventory[3],
                             Some(resident),
                         );
                     }
@@ -1996,7 +1996,7 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
             let mut player = guest(1);
             player.game_mode = 1;
             player.inventory[0] = Some(ItemStack::new("minecraft:stick", 60));
-            game.side.lan.as_mut().unwrap().hub.guests.push(player);
+            game.server.lan.as_mut().unwrap().hub.guests.push(player);
             let host: &mut dyn ServerHost = game;
             let items = host
                 .entity(20)
@@ -2010,7 +2010,7 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
                 Ok(4)
             );
             assert_eq!(
-                game.side.lan.as_ref().unwrap().hub.guests[0].inventory[0]
+                game.server.lan.as_ref().unwrap().hub.guests[0].inventory[0]
                     .as_ref()
                     .unwrap()
                     .count,
@@ -2054,7 +2054,7 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
                 .enchantments
                 .push(("minecraft:binding_curse".into(), 1));
             player.armor[0] = Some(helmet.clone());
-            game.side.lan.as_mut().unwrap().hub.guests.push(player);
+            game.server.lan.as_mut().unwrap().hub.guests.push(player);
             let host: &mut dyn ServerHost = game;
             let items = host
                 .entity(20)
@@ -2070,7 +2070,7 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
             // A creative player takes it off (`ArmorSlot.mayPickup`'s `isCreative`).
             {
                 let value = 1;
-                game.side
+                game.server
                     .lan
                     .as_mut()
                     .unwrap()
@@ -2079,7 +2079,7 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
                     .update(0, |guest| guest.game_mode = value);
             }
             assert_eq!(take(game), Ok(1));
-            assert_eq!(game.side.lan.as_ref().unwrap().hub.guests[0].armor[0], None);
+            assert_eq!(game.server.lan.as_ref().unwrap().hub.guests[0].armor[0], None);
         });
     }
 #[test]
@@ -2088,7 +2088,7 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
         use mod_api::{ComponentId, Tag};
         with_game(|game| {
             open_to_lan(game);
-            game.side.lan.as_mut().unwrap().hub.guests.push(guest(1));
+            game.server.lan.as_mut().unwrap().hub.guests.push(guest(1));
             let host: &mut dyn ServerHost = game;
             let items = host
                 .entity(20)
@@ -2153,7 +2153,7 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
             let mut map = ItemStack::new("minecraft:filled_map", 1);
             map.data_mut().map_id = Some(source);
             map.data_mut().map_post_processing = Some(1);
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()
@@ -2181,11 +2181,11 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
                 aborted,
                 Err(TransactionError::Aborted(CraftedByError::Unavailable))
             );
-            let guest = &game.side.lan.as_ref().unwrap().hub.guests[0];
+            let guest = &game.server.lan.as_ref().unwrap().hub.guests[0];
             assert_eq!(guest.carried, Some(map.clone()));
             let conn = guest.conn;
             assert_eq!(
-                game.side
+                game.server
                     .lan
                     .as_ref()
                     .unwrap()
@@ -2203,7 +2203,7 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
                 host.transaction(|host, tx| cursor.on_crafted_by(host, tx, 3)),
                 Ok(())
             );
-            let guest = &game.side.lan.as_ref().unwrap().hub.guests[0];
+            let guest = &game.server.lan.as_ref().unwrap().hub.guests[0];
             let carried = guest.carried.as_ref().unwrap();
             assert_eq!(
                 carried.data().and_then(|data| data.map_id),
@@ -2215,7 +2215,7 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
             );
             assert_eq!(game.map(source + 1).unwrap().scale, 1);
             assert_eq!(
-                game.side
+                game.server
                     .lan
                     .as_ref()
                     .unwrap()
@@ -2227,7 +2227,7 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
                 3
             );
 
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()
@@ -2242,11 +2242,11 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
                 Ok(())
             );
             assert_eq!(
-                game.side.lan.as_ref().unwrap().hub.guests[0].carried,
+                game.server.lan.as_ref().unwrap().hub.guests[0].carried,
                 Some(ItemStack::new("minecraft:stick", 2))
             );
             assert_eq!(
-                game.side
+                game.server
                     .lan
                     .as_ref()
                     .unwrap()
@@ -2269,7 +2269,7 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
 
         super::super::native_guest_turn_tests::with_guests(|game| {
             let save = tempfile::tempdir().unwrap();
-            game.side.world_root = save.path().to_owned();
+            game.server.world_root = save.path().to_owned();
             let maps_dir = save.path().join("data/minecraft/maps");
             let source = game.new_map_id(MapData::fresh(0.0, 0.0, 0, "minecraft:overworld"));
             let map = |directive| {
@@ -2278,7 +2278,7 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
                 stack.data_mut().map_post_processing = Some(directive);
                 stack
             };
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()
@@ -2585,7 +2585,7 @@ pub(crate) fn with_crafted_by_handler_map(
             assert_eq!(game.map(source + 1).unwrap().scale, 2);
             assert_eq!(game.map(source).unwrap().scale, 1);
             assert_eq!(
-                game.side.lan.as_ref().unwrap().play[&12]
+                game.server.lan.as_ref().unwrap().play[&12]
                     .stats
                     .get("crafted", "minecraft:filled_map"),
                 3
@@ -2615,7 +2615,7 @@ pub(crate) fn with_crafted_by_handler_map(
             assert!(game.map(source + 1).is_none());
             assert_eq!(game.peek_map_id(), source + 1);
             let crafted = game
-                .side
+                .server
                 .lan
                 .as_ref()
                 .unwrap()
@@ -2651,7 +2651,7 @@ pub(crate) fn with_crafted_by_handler_map(
                 original.data_mut().map_id = Some(source);
                 original.data_mut().map_post_processing = Some(1);
                 game.as_guest(12, |_| {}).unwrap(); // Initialize the parked guest's body.
-                game.side
+                game.server
                     .lan
                     .as_mut()
                     .unwrap()
@@ -2686,7 +2686,7 @@ pub(crate) fn with_crafted_by_handler_map(
                 assert!(game.map(source + 1).is_none());
                 assert_eq!(game.peek_map_id(), source + 1);
                 assert_eq!(
-                    game.side.lan.as_ref().unwrap().play[&12]
+                    game.server.lan.as_ref().unwrap().play[&12]
                         .stats
                         .get("crafted", "minecraft:filled_map"),
                     0
@@ -2718,7 +2718,7 @@ pub(crate) fn with_crafted_by_handler_map(
             assert!(game.map(source + 1).is_none());
             assert_eq!(game.peek_map_id(), source + 1);
             let crafted = game
-                .side
+                .server
                 .lan
                 .as_ref()
                 .unwrap()
@@ -2747,7 +2747,7 @@ pub(crate) fn with_crafted_by_handler_map(
                 game.level_set_block(level, [0, 64, 0], chest.unwrap(), flags),
                 Ok(true)
             );
-            let host = game.side.lan.as_mut().unwrap();
+            let host = game.server.lan.as_mut().unwrap();
             host.hub.guests.push(guest(1));
             let title = sunrise_core::nbt::Tag::String("chest".into());
             host.hub.open_container(
@@ -2844,9 +2844,9 @@ pub(crate) fn with_crafted_by_handler_map(
             );
             let mut player = guest(1);
             player.inventory[8] = Some(ItemStack::new("minecraft:stick", 4));
-            game.side.lan.as_mut().unwrap().hub.guests.push(player);
+            game.server.lan.as_mut().unwrap().hub.guests.push(player);
             let title = sunrise_core::nbt::Tag::String("chest".into());
-            game.side.lan.as_mut().unwrap().hub.open_container(
+            game.server.lan.as_mut().unwrap().hub.open_container(
                 1,
                 "minecraft:generic_9x3",
                 title,
@@ -2875,7 +2875,7 @@ pub(crate) fn with_crafted_by_handler_map(
                 let swapped = host.transaction(|host, tx| place.exchange(host, tx, &stick, 1));
                 assert_eq!(swapped, Ok(0));
             }
-            let g = &game.side.lan.as_ref().unwrap().hub.guests[0];
+            let g = &game.server.lan.as_ref().unwrap().hub.guests[0];
             assert_eq!(g.inventory[8], Some(ItemStack::new("minecraft:stick", 4)));
             let Some(BlockEntity::Furnace(f)) = game.world.block_entities.get(&(0, 64, 0)) else {
                 panic!("no furnace")
@@ -2890,7 +2890,7 @@ pub(crate) fn with_crafted_by_handler_map(
             open_to_lan(game);
             let mut player = guest(1);
             player.craft_result = Some(ItemStack::new("minecraft:oak_planks", 4));
-            game.side.lan.as_mut().unwrap().hub.guests.push(player);
+            game.server.lan.as_mut().unwrap().hub.guests.push(player);
             let menu = menu_of(game);
             // `InventoryMenu`: 0 the result, 5 the head, 8 the feet.
             let (result, head, feet) = (
@@ -2903,7 +2903,7 @@ pub(crate) fn with_crafted_by_handler_map(
             assert_eq!(write(game, &head, "minecraft:iron_helmet", 2, true), 1);
             assert_eq!(write(game, &result, "minecraft:oak_planks", 1, true), 0);
             assert_eq!(write(game, &result, "minecraft:oak_planks", -4, true), 0);
-            let g = &game.side.lan.as_ref().unwrap().hub.guests[0];
+            let g = &game.server.lan.as_ref().unwrap().hub.guests[0];
             assert_eq!(g.armor[0], Some(ItemStack::new("minecraft:iron_helmet", 1)));
             assert_eq!(
                 g.craft_result,
@@ -2916,7 +2916,7 @@ pub(crate) fn with_crafted_by_handler_map(
     fn a_crafting_grid_write_makes_its_result_at_the_commit() {
         with_game(|game| {
             open_to_lan(game);
-            game.side.lan.as_mut().unwrap().hub.guests.push(guest(1));
+            game.server.lan.as_mut().unwrap().hub.guests.push(guest(1));
             let menu = menu_of(game);
             let grid = ItemPlace::MenuSlot { menu, slot: 1 };
             let log = ItemResource::of(
@@ -2935,7 +2935,7 @@ pub(crate) fn with_crafted_by_handler_map(
                 Err::<(), ()>(())
             });
             assert!(aborted.is_err());
-            let g = &game.side.lan.as_ref().unwrap().hub.guests[0];
+            let g = &game.server.lan.as_ref().unwrap().hub.guests[0];
             assert_eq!((g.craft_grid[0].clone(), result(game)), (None, None));
             let host: &mut dyn ServerHost = game;
             let committed = host.transaction(|host, tx| {
@@ -2957,7 +2957,7 @@ pub(crate) fn with_crafted_by_handler_map(
     fn a_mods_chest_menu_is_written_by_slot_and_a_replaced_menu_writes_nothing() {
         with_game(|game| {
             open_to_lan(game);
-            game.side.lan.as_mut().unwrap().hub.guests.push(guest(1));
+            game.server.lan.as_mut().unwrap().hub.guests.push(guest(1));
             let title = sunrise_core::nbt::Tag::String("shop".into());
             let open = |game: &mut sunrise_gameplay::game::ServerGame<'_>| {
                 let hub = &mut game.server.lan.as_mut().unwrap().hub;
@@ -3006,8 +3006,8 @@ pub(crate) fn with_crafted_by_handler_map(
                 game.level_set_block(level, [0, 64, 0], furnace.unwrap(), flags),
                 Ok(true)
             );
-            game.side.lan.as_mut().unwrap().hub.guests.push(guest(1));
-            game.side.lan.as_mut().unwrap().hub.open_container(
+            game.server.lan.as_mut().unwrap().hub.guests.push(guest(1));
+            game.server.lan.as_mut().unwrap().hub.open_container(
                 1,
                 "minecraft:furnace",
                 sunrise_core::nbt::Tag::String("furnace".into()),
@@ -3044,10 +3044,10 @@ pub(crate) fn with_crafted_by_handler_map(
     fn a_stale_menus_cursor_reaches_nothing_of_the_next_ones() {
         with_game(|game| {
             open_to_lan(game);
-            game.side.lan.as_mut().unwrap().hub.guests.push(guest(1));
+            game.server.lan.as_mut().unwrap().hub.guests.push(guest(1));
             let stale = menu_of(game);
             let title = sunrise_core::nbt::Tag::String("new".into());
-            let hub = &mut game.side.lan.as_mut().unwrap().hub;
+            let hub = &mut game.server.lan.as_mut().unwrap().hub;
             hub.open_native_menu(1, 1, title, vec![]).unwrap();
             {
                 let value = Some(ItemStack::new("minecraft:stick", 1));
@@ -3067,7 +3067,7 @@ pub(crate) fn with_crafted_by_handler_map(
     fn a_grid_written_in_and_around_an_aborted_child_makes_its_result_from_what_stays() {
         with_game(|game| {
             open_to_lan(game);
-            game.side.lan.as_mut().unwrap().hub.guests.push(guest(1));
+            game.server.lan.as_mut().unwrap().hub.guests.push(guest(1));
             let menu = menu_of(game);
             let (grid, other) = (
                 ItemPlace::MenuSlot { menu, slot: 1 },
@@ -3092,7 +3092,7 @@ pub(crate) fn with_crafted_by_handler_map(
             });
             assert_eq!(committed, Ok(Some(None)));
             // Two logs in one slot: one craft's planks; the child's second log never landed.
-            let g = &game.side.lan.as_ref().unwrap().hub.guests[0];
+            let g = &game.server.lan.as_ref().unwrap().hub.guests[0];
             assert_eq!(g.craft_grid[1], None);
             assert_eq!(
                 g.craft_result,
@@ -3110,7 +3110,7 @@ pub(crate) fn with_crafted_by_handler_map(
             player.inventory[4] = Some(ItemStack::new("minecraft:stick", 60));
             player.inventory[7] = Some(ItemStack::new("minecraft:stick", 10));
             player.inventory[2] = Some(ItemStack::new("minecraft:stone", 1));
-            game.side.lan.as_mut().unwrap().hub.guests.push(player);
+            game.server.lan.as_mut().unwrap().hub.guests.push(player);
             let before = inventories(game);
             let host: &mut dyn ServerHost = game;
             let entity = host.entity(20).unwrap();
@@ -3177,14 +3177,14 @@ pub(crate) fn with_crafted_by_handler_map(
             let (diamonds, emeralds) = offers();
             // The seller used a diamond after offering three, and the buyer moved the emeralds
             // to another slot: each offer no longer matches its index.
-            let guests = &mut game.side.lan.as_mut().unwrap().hub.guests;
+            let guests = &mut game.server.lan.as_mut().unwrap().hub.guests;
             guests.update(0, |g| {
                 g.inventory[0] = Some(ItemStack::new("minecraft:diamond", 2))
             });
             let before = inventories(game);
             assert_eq!(trade(game, &diamonds, &emeralds), Err(()));
             assert_eq!(inventories(game), before);
-            let guests = &mut game.side.lan.as_mut().unwrap().hub.guests;
+            let guests = &mut game.server.lan.as_mut().unwrap().hub.guests;
             guests.update(0, |g| {
                 g.inventory[0] = Some(ItemStack::new("minecraft:diamond", 3))
             });
@@ -3409,7 +3409,7 @@ pub(crate) fn with_crafted_by_handler_map(
             player.dead = true;
             player.health = 0.0;
             player.carried = Some(paper.clone());
-            game.side.lan.as_mut().unwrap().hub.guests.push(player);
+            game.server.lan.as_mut().unwrap().hub.guests.push(player);
 
             let menu = menu_of(game);
             let cursor = ItemPlace::PlayerCursor { menu };
@@ -3429,7 +3429,7 @@ pub(crate) fn with_crafted_by_handler_map(
             assert_eq!(acting_read, Some(paper.try_into_api().unwrap()));
 
             // Empty cursor and air stack both read as None.
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()
@@ -3437,7 +3437,7 @@ pub(crate) fn with_crafted_by_handler_map(
                 .guests
                 .update(0, |guest| guest.carried = None);
             assert_eq!(cursor.with_stack(game, |_| ()), None);
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()
@@ -3450,7 +3450,7 @@ pub(crate) fn with_crafted_by_handler_map(
 
             // Closed/stale menu still reads as None even when the guest carries a stack.
             let title = sunrise_core::nbt::Tag::String("new".into());
-            let hub = &mut game.side.lan.as_mut().unwrap().hub;
+            let hub = &mut game.server.lan.as_mut().unwrap().hub;
             hub.open_native_menu(1, 1, title, vec![]).unwrap();
             hub.guests.update(0, |guest| {
                 guest.carried = Some(ItemStack::new("minecraft:stick", 2))
@@ -3675,7 +3675,7 @@ pub(crate) fn with_crafted_by_handler_map(
             // A guest standing in the same cell, and no pig anywhere.
             let mut player = guest(1);
             player.position = [0.5, 63.0, 0.5];
-            game.side.lan.as_mut().unwrap().hub.guests.push(player);
+            game.server.lan.as_mut().unwrap().hub.guests.push(player);
             let host: &mut dyn ServerHost = game;
             let player = host.entity(20).unwrap();
             assert!(
@@ -4099,7 +4099,7 @@ pub(crate) fn with_crafted_by_handler_map(
             open_to_lan(game);
             let mut player = guest(1);
             player.inventory[0] = Some(ItemStack::new("minecraft:bucket", 10));
-            game.side.lan.as_mut().unwrap().hub.guests.push(player);
+            game.server.lan.as_mut().unwrap().hub.guests.push(player);
             let api = |name, count| ItemStack::new(name, count).try_into_api().unwrap();
             let bucket = api("minecraft:bucket", 1);
             let buckets = ItemResource::of(&bucket);
@@ -4306,7 +4306,7 @@ pub(crate) fn with_crafted_by_handler_map(
             let level = with_cauldron(game);
             let mut player = guest(1);
             player.inventory[0] = Some(ItemStack::new("minecraft:bucket", 16));
-            game.side.lan.as_mut().unwrap().hub.guests.push(player);
+            game.server.lan.as_mut().unwrap().hub.guests.push(player);
             let slot = ItemPlace::PlayerSlot {
                 player: 123,
                 slot: 0,
@@ -4327,7 +4327,7 @@ pub(crate) fn with_crafted_by_handler_map(
                 move_resources(host, &block, &bucket, |_| true, 1000, Some(tx))
             });
             assert_eq!(moved, Ok(1000));
-            let held = game.side.lan.as_ref().unwrap().hub.guests[0]
+            let held = game.server.lan.as_ref().unwrap().hub.guests[0]
                 .inventory
                 .clone();
             assert_eq!(held[0], Some(ItemStack::new("minecraft:bucket", 15)));

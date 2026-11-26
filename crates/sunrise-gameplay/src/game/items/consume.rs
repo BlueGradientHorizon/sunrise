@@ -90,7 +90,7 @@ impl crate::game::ServerGame<'_> {
             .map(|p| [p.position.x, p.position.y, p.position.z])
     }
     /// `TeleportRandomlyConsumeEffect.apply` for the local player.
-    pub(in crate::game::server_side) fn teleport_randomly(
+    pub fn teleport_randomly(
         &mut self,
         teleport: &TeleportConsume,
         consumed: &ItemStack,
@@ -105,7 +105,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// Apply the paused fox item use with the full host, then leave its tick
     /// continuation to the owning mob loop. Callback writes and apply share a transaction.
-    pub(in crate::game) fn apply_fox_consumption(
+    pub fn apply_fox_consumption(
         &mut self,
         decision: &sunrise_sim::mobs::fox::Consumption,
     ) -> bool {
@@ -400,7 +400,7 @@ impl crate::game::ServerGame<'_> {
             .is_some_and(|s| s.contains(&**name))
     }
     /// `LivingEntity.stopRiding`.
-    pub(in crate::game) fn stop_riding(&mut self) {
+    pub fn stop_riding(&mut self) {
         let Some(id) = self.common.riding else {
             return;
         };
@@ -461,7 +461,7 @@ impl crate::game::ServerGame<'_> {
 
     /// `LivingEntity.completeUsingItem` for a consumable: `Consumable.onConsume`,
     /// then `ItemStack.applyAfterUseComponentSideEffects`' use remainder.
-    pub(in crate::game) fn finish_consuming(
+    pub fn finish_consuming(
         &mut self,
         info: &ItemInfo,
         consumable: &ItemConsumable,

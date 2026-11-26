@@ -93,13 +93,13 @@ fn local_swim_eligibility_replaces_entry_and_the_shallow_sprint_query() {
                         RemoteDimensionEntry::Login,
                         sunrise_client::level_loading::Reason::Other,
                     );
-                    let remote = game.side.remote.as_mut().unwrap();
+                    let remote = game.client.remote.as_mut().unwrap();
                     remote.logged_in = true;
                     remote.loaded_sent = true;
                     remote.entity_id = 42;
                     remote.profile = 42;
                     remote.level_load.finish();
-                    game.side
+                    game.client
                         .streaming
                         .insert_remote(&mut game.world, Chunk::empty(0, 0));
                     water_column(game);
@@ -201,7 +201,7 @@ fn swim_entry_reads_each_authoritative_guests_own_equipment() {
             mod_platform::testing::with_mods(mods, || {
                 with_game(|game| {
                     open_to_lan(game);
-                    game.side
+                    game.server
                         .streaming
                         .insert_remote(&mut game.world, Chunk::empty(0, 0));
                     water_column(game);
@@ -222,9 +222,9 @@ fn swim_entry_reads_each_authoritative_guests_own_equipment() {
                         ));
                         body.armor[3] = Some(ItemStack::new(boots, 1));
                         ids.push(body.entity_id as u32);
-                        game.side.lan.as_mut().unwrap().hub.guests.push(body);
+                        game.server.lan.as_mut().unwrap().hub.guests.push(body);
                         game.guest_server_tick(conn, true);
-                        game.side
+                        game.server
                             .lan
                             .as_mut()
                             .unwrap()
@@ -234,7 +234,7 @@ fn swim_entry_reads_each_authoritative_guests_own_equipment() {
                     }
                     for (conn, swims) in [(1, false), (2, true)] {
                         game.guest_server_tick(conn, true);
-                        let body = game.side.lan.as_ref().unwrap().hub.guest(conn).unwrap();
+                        let body = game.server.lan.as_ref().unwrap().hub.guest(conn).unwrap();
                         assert_eq!(body.motion.as_ref().unwrap().swimming, swims);
                         assert!(body.sprinting);
                     }
@@ -245,7 +245,7 @@ fn swim_entry_reads_each_authoritative_guests_own_equipment() {
                             (LogicalSide::Server, SwimmingCheck::Entry, ids[1]),
                         ]
                     );
-                    game.side
+                    game.server
                         .lan
                         .as_mut()
                         .unwrap()
@@ -253,7 +253,7 @@ fn swim_entry_reads_each_authoritative_guests_own_equipment() {
                         .update_guest(1, |g| g.armor[3] = None)
                         .unwrap();
                     game.guest_server_tick(1, true);
-                    let body = game.side.lan.as_ref().unwrap().hub.guest(1).unwrap();
+                    let body = game.server.lan.as_ref().unwrap().hub.guest(1).unwrap();
                     assert!(body.motion.as_ref().unwrap().swimming);
                 });
             });

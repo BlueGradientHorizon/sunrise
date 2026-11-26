@@ -137,7 +137,7 @@ impl ClientGame<'_> {
     }
     /// The options a server's particle stands for (None for a type or data
     /// this client doesn't draw).
-    pub(in crate::game) fn received_particle(
+    pub fn received_particle(
         &mut self,
         p: &Particle,
         at: [f64; 3],

@@ -36,7 +36,7 @@ impl ServerGame<'_> {
     }
     /// Commands the game issues itself (the server console, harnesses, the
     /// control socket) run at the owner's level whatever Allow Commands says.
-    pub(in crate::game) fn as_console<T>(&mut self, f: impl FnOnce(&mut Self) -> T) -> T {
+    pub fn as_console<T>(&mut self, f: impl FnOnce(&mut Self) -> T) -> T {
         let level = std::mem::replace(&mut self.common.ui.registries.permission, 4);
         let out = f(self);
         self.common.ui.registries.permission = level;
@@ -46,7 +46,7 @@ impl ServerGame<'_> {
     /// Overworld state when a world opens; clear the other command-state cache.
     /// The carrier store's open-time state settles here too, before the
     /// first tick and any player: a refusal fails the open.
-    pub(in crate::game::server_side) fn load_world_state(
+    pub fn load_world_state(
         &mut self,
     ) -> sunrise_game_data::Result<()> {
         self.common.ui.dispatcher =
@@ -107,7 +107,7 @@ impl ServerGame<'_> {
     /// Save the clock beside level.dat (Level.write saves the game rules: a
     /// second writer of game_rules.dat could leave it with the rules loaded
     /// when the world opened).
-    pub(in crate::game::server_side) fn save_world_state(&mut self) {
+    pub fn save_world_state(&mut self) {
         if self.server.world_root.as_os_str().is_empty() {
             return;
         }

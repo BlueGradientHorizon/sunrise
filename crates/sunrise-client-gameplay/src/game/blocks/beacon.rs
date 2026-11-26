@@ -416,7 +416,7 @@ impl crate::game::ClientGame<'_> {
         }
     }
     /// `BeaconRenderer`: each section's rotating solid beam and its glow.
-    pub(in crate::game) fn beacon_geometry(
+    pub fn beacon_geometry(
         &mut self,
         camera: glam::DVec3,
         alpha: f64,

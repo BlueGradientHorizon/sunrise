@@ -433,7 +433,7 @@ fn a_panicking_part_does_not_leave_its_contents_notice_guarded() {
                 }],
                 "the same-position notice does not re-enter, and the Part stays disabled"
             );
-            assert!(game.side.contents_changing.is_empty());
+            assert!(game.server.contents_changing.is_empty());
             assert_eq!(
                 mod_api::__private::take_hook_panics(),
                 [mod_api::__private::HookPanicReport {
@@ -923,7 +923,7 @@ fn a_panicking_root_commit_notice_leaves_the_phase_none() {
                 }],
                 "the Part is skipped at the next root commit"
             );
-            assert!(game.side.contents_changing.is_empty());
+            assert!(game.server.contents_changing.is_empty());
             assert!(game.world.modified.contains(&chunk));
             assert_eq!(
                 mod_api::__private::take_hook_panics(),

@@ -908,7 +908,7 @@ impl crate::game::ServerGame<'_> {
         })
     }
     /// `EnderDragonFight.tick`, before the level ticks its entities.
-    pub(in crate::game) fn tick_fight(&mut self) {
+    pub fn tick_fight(&mut self) {
         self.load_fight();
         // updatePlayers, every 20 ticks.
         self.server.fight.player_scan += 1;
@@ -957,7 +957,7 @@ impl crate::game::ServerGame<'_> {
         self.assign_dragon_and_crystal_ids();
     }
 
-    pub(in crate::game::server_side) fn assign_dragon_and_crystal_ids(&mut self) {
+    pub fn assign_dragon_and_crystal_ids(&mut self) {
         // EnderDragon's constructor takes its id and its parts' from the
         // entity counter (a dragon loaded from the save gets them here too).
         if let Some(d) = self.common.dragon.as_mut()
@@ -1127,13 +1127,13 @@ impl crate::game::ServerGame<'_> {
     }
     /// `ServerLevel.dragonParts`: where the part with that entity id is
     /// and its box.
-    pub(in crate::game::server_side) fn dragon_part(&self, id: u32) -> Option<(Vec3, Aabb)> {
+    pub fn dragon_part(&self, id: u32) -> Option<(Vec3, Aabb)> {
         let (d, i) = self.resident_dragon_part(id)?;
         d.alive().then(|| d.part_geometry(i))
     }
     /// Damage to a special id (from projectiles and melee): what the
     /// dragon part or crystal made of it. `direct` is the projectile that hit.
-    pub(in crate::game) fn hit_special(
+    pub fn hit_special(
         &mut self,
         id: u32,
         amount: f32,
@@ -1255,7 +1255,7 @@ impl crate::game::ServerGame<'_> {
     /// `by` is the direct entity, `cause` the causing one (`by` without `from`), and `from`
     /// the source position (`at`, else the direct entity's), which `dealDefaultKnockback`
     /// pushes away from for a type not in `#no_knockback`.
-    pub(in crate::game::server_side) fn command_damage_dragon(
+    pub fn command_damage_dragon(
         &mut self,
         id: u32,
         amount: f32,
@@ -1467,7 +1467,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// The dragon's `getAttributeValue(KNOCKBACK_RESISTANCE)` now, which both knockback entries
     /// read: its saved attributes over the type's default. 0 without a dragon.
-    pub(in crate::game::server_side) fn dragon_knockback_resistance(&self) -> f64 {
+    pub fn dragon_knockback_resistance(&self) -> f64 {
         self.common.dragon
             .as_ref()
             .and_then(|d| {
@@ -1482,7 +1482,7 @@ impl crate::game::ServerGame<'_> {
             .unwrap_or(0.0)
     }
     /// `hurt_dragon_part` with the position a full hit's knockback pushes away from.
-    pub(in crate::game::server_side) fn hurt_dragon_part_at(
+    pub fn hurt_dragon_part_at(
         &mut self,
         part: usize,
         damage: f32,
@@ -2166,7 +2166,7 @@ impl crate::game::ServerGame<'_> {
         }
     }
     /// `EnderDragon.aiStep` (and `tickDeath`) for the dragon's own entity tick.
-    pub(in crate::game::server_side) fn tick_dragon(&mut self) {
+    pub fn tick_dragon(&mut self) {
         // updateDragon runs when the fight dragon ticks or dies, but not with NoAI.
         let ticks = self.common.dragon.as_ref().is_some_and(|d| !d.alive() || !d.no_ai);
         if ticks && self.is_fight_dragon() {
@@ -2457,7 +2457,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// `Entity.isSilent` of the dragon: its `Silent`, kept with the fields
     /// Sunrise models nowhere (`remember_tags`: `/summon`, a load).
-    pub(in crate::game::server_side) fn dragon_silent(&self) -> bool {
+    pub fn dragon_silent(&self) -> bool {
         let raw = self
             .common.dragon
             .as_ref()
@@ -2568,7 +2568,7 @@ impl crate::game::ServerGame<'_> {
             self.retain_breath_clouds(|c| !c.from_dragon);
         }
     }
-    pub(in crate::game::server_side) fn tick_breath(&mut self) {
+    pub fn tick_breath(&mut self) {
         // What instant damage reaches: neither creative nor spectator players.
         let players: Vec<FightPlayer> = self
             .fight_players()
@@ -2663,7 +2663,7 @@ impl crate::game::ServerGame<'_> {
     /// from the body, and hurt for 5 unless the dragon is perched
     /// (`isSitting`) or a mob hurt the player within the last 2 ticks
     /// (`getLastHurtByMobTimestamp() < tickCount - 2`).
-    pub(in crate::game) fn dragon_wing_knock_back(&mut self, push: Vec3, sitting: bool) {
+    pub fn dragon_wing_knock_back(&mut self, push: Vec3, sitting: bool) {
         let now = self.common.world.game_time;
         let hurt_lately = self.player_hurt_by().is_some_and(|(_, at)| at >= now - 2);
         let hurts = !sitting && !hurt_lately && !self.common.creative;
@@ -2748,7 +2748,7 @@ impl crate::game::ServerGame<'_> {
     /// Damage from the dragon, which is its causing entity
     /// (`DamageSources.mobAttack(dragon)`, `indirectMagic(cloud, dragon)`): the
     /// death message names it, or the cloud once the dragon is gone.
-    pub(in crate::game) fn dragon_hurts_player(&mut self, damage_type: &str, amount: f32) {
+    pub fn dragon_hurts_player(&mut self, damage_type: &str, amount: f32) {
         self.note_dragon_attacker(damage_type);
         self.hurt_player_by(damage_type, amount);
         // EnderDragon.hurt(List) runs effects even when hurtServer refused.
@@ -2939,7 +2939,7 @@ impl crate::game::ServerGame<'_> {
     /// the synched data that differs from the defaults: its health, defined
     /// as 1, and `DATA_PHASE`, defined as hovering). Vanilla pairs it with no
     /// attribute instances.
-    pub(in crate::game::server_side) fn lan_dragon_state(
+    pub fn lan_dragon_state(
         &self,
     ) -> Option<sunrise_sim::lan::entity::EntityState> {
         use sunrise_protocol::entity_data::{Value, serializer};
@@ -3377,7 +3377,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// `EnderDragonFight.createNewDragon`: over the podium, holding pattern, a random yaw.
     /// It becomes the fight's dragon (`dragonUUID = dragon.getUUID()`).
-    pub(in crate::game::server_side) fn create_new_dragon(&mut self) {
+    pub fn create_new_dragon(&mut self) {
         let yaw = self.common.world.random.next_float() * 360.0;
         let seed = random_source::unique_seed();
         let mut dragon = Dragon::new(Vec3::new(0.0, 128.0, 0.0), yaw, seed);
@@ -3413,7 +3413,7 @@ impl crate::game::ServerGame<'_> {
     /// saved: an active exit portal means the dragon was killed before. A
     /// living dragon there is the fight's, unless there is no active portal:
     /// then it is removed for a new one.
-    pub(in crate::game::server_side) fn scan_state(&mut self) {
+    pub fn scan_state(&mut self) {
         let active = self.end_portal_active();
         self.server.fight.previously_killed = active;
         match self.common.dragon.as_ref().filter(|d| d.alive()).map(|d| d.id) {
@@ -3530,7 +3530,7 @@ impl crate::game::ServerGame<'_> {
     /// one is not the fight's (`EnderDragon.aiStep` adopts it only when its UUID is the fight's),
     /// so it can be spawned in any dimension. Sunrise keeps one dragon per level, as `/summon`
     /// and loading do: with one already there, nothing spawns and the egg stays.
-    pub(in crate::game) fn spawn_dragon_spawned(
+    pub fn spawn_dragon_spawned(
         &mut self,
         at: [f64; 3],
         site: SpawnSite,
@@ -3539,7 +3539,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// [`spawn_dragon_spawned`](Self::spawn_dragon_spawned) snapped to `fixed_yaw` when
     /// given (`snapTo(pos, yaw, 0)`), which takes no draw from the level.
-    pub(in crate::game) fn spawn_dragon_facing(
+    pub fn spawn_dragon_facing(
         &mut self,
         at: [f64; 3],
         site: SpawnSite,

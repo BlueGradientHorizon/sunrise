@@ -32,7 +32,7 @@ pub(crate) fn placed(conn: u32, x: f64, game_mode: i32) -> sunrise_sim::lan::gue
 }
 
 pub(crate) fn luck_left(game: &sunrise_gameplay::game::ServerGame<'_>) -> Vec<i32> {
-    let host = game.side.lan.as_ref().unwrap();
+    let host = game.server.lan.as_ref().unwrap();
     host.hub
         .guests
         .iter()
@@ -42,7 +42,7 @@ pub(crate) fn luck_left(game: &sunrise_gameplay::game::ServerGame<'_>) -> Vec<i3
 
 /// Each guest's ender pearl cooldown, in ticks left.
 pub(crate) fn pearl_left(game: &sunrise_gameplay::game::ServerGame<'_>) -> Vec<i32> {
-    let host = game.side.lan.as_ref().unwrap();
+    let host = game.server.lan.as_ref().unwrap();
     host.hub
         .guests
         .iter()
@@ -80,14 +80,14 @@ fn a_spectator_touching_an_unloaded_chunk_skips_its_tick_and_its_hooks() {
             let edge = placed(3, 15.5, SPECTATOR);
             // A survival player touching the same unloaded chunk still ticks.
             let survivor_at_edge = placed(4, 15.5, 0);
-            game.side.lan.as_mut().unwrap().hub.guests.extend([
+            game.server.lan.as_mut().unwrap().hub.guests.extend([
                 survivor,
                 watcher,
                 edge,
                 survivor_at_edge,
             ]);
             for conn in 1..=4 {
-                game.side
+                game.server
                     .lan
                     .as_mut()
                     .unwrap()
@@ -163,7 +163,7 @@ fn a_dead_spectator_touching_an_unloaded_chunk_does_not_tick_its_death() {
                 g.dead = true;
                 g
             };
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()
@@ -171,7 +171,7 @@ fn a_dead_spectator_touching_an_unloaded_chunk_does_not_tick_its_death() {
                 .guests
                 .extend([dead(1, 8.5), dead(2, 15.5)]);
             let death_times = |game: &sunrise_gameplay::game::ServerGame<'_>| -> Vec<u32> {
-                let host = game.side.lan.as_ref().unwrap();
+                let host = game.server.lan.as_ref().unwrap();
                 host.hub.guests.iter().map(|g| g.death_time).collect()
             };
 
@@ -212,7 +212,7 @@ fn guest_body_projects_spectator_flags_on_init_and_hub_mode_change() {
             let switcher = placed(2, 8.5, 0);
             assert!(spectator.motion.is_none());
             assert!(switcher.motion.is_none());
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()
@@ -225,7 +225,7 @@ fn guest_body_projects_spectator_flags_on_init_and_hub_mode_change() {
                 let p = g.player.as_ref().unwrap();
                 assert!(p.spectator && p.local_spectator);
             });
-            let g1 = game.side.lan.as_ref().unwrap().hub.guest(1).unwrap();
+            let g1 = game.server.lan.as_ref().unwrap().hub.guest(1).unwrap();
             let m1 = g1.motion.as_ref().unwrap();
             assert!(m1.spectator && m1.local_spectator);
 
@@ -236,7 +236,7 @@ fn guest_body_projects_spectator_flags_on_init_and_hub_mode_change() {
             });
             let world = &game.world;
             let collision = game.collision;
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()
@@ -248,7 +248,7 @@ fn guest_body_projects_spectator_flags_on_init_and_hub_mode_change() {
             });
             let world = &game.world;
             let collision = game.collision;
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()

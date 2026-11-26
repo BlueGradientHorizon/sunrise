@@ -17,7 +17,7 @@ impl crate::game::ServerGame<'_> {
     /// The entity's data as `/data get entity` shows it
     /// (`Entity.saveWithoutId`): its compound without `id`. An entity with no
     /// UUID yet gets the one it will be saved with. API 386.
-    pub(in crate::game) fn entity_nbt(&mut self, entity: EntityRef) -> Option<Compound> {
+    pub fn entity_nbt(&mut self, entity: EntityRef) -> Option<Compound> {
         if !self.common.is_logical_server() {
             return None;
         }
@@ -212,7 +212,7 @@ impl crate::game::ServerGame<'_> {
         named_id(self.native_entity_target(entity)?)
     }
     /// Sets (or with `None` removes) `key` in entity `id`'s saved compound.
-    fn put_saved(&mut self, id: u32, key: &str, value: Option<Tag>) {
+    pub fn put_saved(&mut self, id: u32, key: &str, value: Option<Tag>) {
         match value {
             Some(v) => {
                 let raw = (self.common.persist.raw)

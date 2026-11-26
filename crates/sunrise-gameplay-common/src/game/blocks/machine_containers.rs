@@ -174,7 +174,7 @@ pub(in crate::game) enum PlacementSnapshot {
 }
 
 impl PlacementAttempt {
-    pub(in crate::game) fn ask(
+    pub fn ask(
         &mut self,
         world: &World,
         pos: Pos,

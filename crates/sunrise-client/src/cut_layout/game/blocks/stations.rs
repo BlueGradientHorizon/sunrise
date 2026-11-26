@@ -212,7 +212,7 @@ use super::*;
         sunrise_gameplay_common::game::api_values::install_parts(&mods).unwrap();
         mod_platform::testing::with_mods(mods, || {
             with_client_game(|game| {
-                game.side.settings.file.set(
+                game.client.settings.file.set(
                     "advancedItemTooltips",
                     sunrise_client::options_file::V::Bool(true),
                 );
@@ -327,7 +327,7 @@ use super::*;
         .into();
         mod_platform::testing::with_mods(mods, || {
             with_client_game(|game| {
-                game.side.settings.file.set(
+                game.client.settings.file.set(
                     "advancedItemTooltips",
                     sunrise_client::options_file::V::Bool(false),
                 );

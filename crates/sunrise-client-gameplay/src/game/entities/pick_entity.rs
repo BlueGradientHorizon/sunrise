@@ -93,7 +93,7 @@ impl ClientGame<'_> {
     }
 
     /// The stored frame decision on a window; original during dispatch.
-    pub(in crate::game) fn crosshair_target(&self) -> Option<CrosshairTarget> {
+    pub fn crosshair_target(&self) -> Option<CrosshairTarget> {
         if !self.common.native_window() || self.client.title.0.is_some() {
             return None;
         }
@@ -242,7 +242,7 @@ impl ClientGame<'_> {
         self.crosshair_entity_hit()
             .map(|hit| (hit.distance, hit.pickable.then_some(hit.id)))
     }
-    pub(in crate::game::client_side) fn pick_entity_hit(&self) -> Option<Option<i32>> {
+    pub fn pick_entity_hit(&self) -> Option<Option<i32>> {
         self.pick_entity_hit_at().map(|hit| hit.1)
     }
     /// Returns the wire entity id under the crosshair before any block.

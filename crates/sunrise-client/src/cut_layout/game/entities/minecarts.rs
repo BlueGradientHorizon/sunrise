@@ -206,8 +206,8 @@ pub(crate) mod tnt_impact_tests {
         ));
         // Scheduled ticks and carts only run in lit, surrounded chunks near a
         // player.
-        game.side.settings.simulation_distance = 4;
-        game.side.settings.render_distance = 12;
+        game.server.settings.simulation_distance = 4;
+        game.server.settings.render_distance = 12;
         game.player = Some(
             sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::new(8.5, 70.0, 12.5))
                 .unwrap(),
@@ -843,8 +843,8 @@ pub(crate) mod cart_cost_bench {
         let (parked, moving) = (n("CARTS_PARKED", 600), n("CARTS_MOVING", 100));
         let mut resources = None;
         let mut game = server_game(&mut resources);
-        game.side.settings.simulation_distance = 6;
-        game.side.settings.render_distance = 12;
+        game.server.settings.simulation_distance = 6;
+        game.server.settings.render_distance = 12;
         game.player = Some(
             sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::new(8.5, 80.0, 12.5))
                 .unwrap(),

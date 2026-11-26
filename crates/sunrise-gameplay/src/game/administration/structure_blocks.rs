@@ -54,7 +54,7 @@ impl ServerGame<'_> {
 
     /// `StructureTemplateManager.get`: the cache (misses included), else the
     /// world's saved structures, else the game's own.
-    pub(in crate::game) fn template_entry(&mut self, name: &str) -> Option<TemplateEntry> {
+    pub fn template_entry(&mut self, name: &str) -> Option<TemplateEntry> {
         if let Some(cached) = self.server.structure_templates.get(name) {
             return cached.clone();
         }
@@ -214,7 +214,7 @@ impl ServerGame<'_> {
     /// `fillFromWorld`, which leaves a template alone when a side of the area
     /// is empty; `ignore_air` is `ignoreBlocks = [AIR]`.
     #[allow(clippy::too_many_arguments)]
-    pub(in crate::game::server_side) fn save_structure_area(
+    pub fn save_structure_area(
         &mut self,
         name: &str,
         origin: [i32; 3],
@@ -278,7 +278,7 @@ impl ServerGame<'_> {
     /// `StructureTemplate.placeInWorld` of a template at `at`: the entities
     /// it brings are spawned and the block entities it loaded sent to the
     /// clients. Returns whether it placed.
-    pub(in crate::game) fn place_template_entry(
+    pub fn place_template_entry(
         &mut self,
         entry: &TemplateEntry,
         at: BlockPos,
@@ -298,7 +298,7 @@ impl ServerGame<'_> {
     /// already read, whichever way it was read: the level's own placement, the
     /// entities it brings spawned, and the block entities it loaded sent to the
     /// clients. Returns whether it placed.
-    pub(in crate::game) fn place_template_object(
+    pub fn place_template_object(
         &mut self,
         template: &StructureTemplate,
         at: BlockPos,

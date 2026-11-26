@@ -43,7 +43,7 @@ pub(crate) mod tests {
                         "far knot outside reach+3 must fail server reach"
                     );
                     // Cross the signed i32 boundary so later dragon parts carry negative wire IDs.
-                    game.side.next_entity = (i32::MAX as u32) - 3;
+                    game.server.next_entity = (i32::MAX as u32) - 3;
                     let dragon = game
                         .spawn_dragon_facing([0.5, 65.0, 3.5], SpawnSite::Plain, Some(0.0))
                         .unwrap();
@@ -74,7 +74,7 @@ pub(crate) mod tests {
                         g.inventory[0] = None;
                         g.selected = 0;
                     });
-                    game.side.lan = Some(sunrise_gameplay::game::server_side::lan::LanHost::for_test(hub));
+                    game.server.lan = Some(sunrise_gameplay::game::server_side::lan::LanHost::for_test(hub));
 
                     for (id, expected) in [
                         (far_knot as i32, None),
@@ -82,7 +82,7 @@ pub(crate) mod tests {
                         (explicit_knot as i32, Some("minecraft:lead")),
                         (body_part_id, Some("minecraft:ender_dragon_spawn_egg")),
                     ] {
-                        game.side.lan.as_mut().unwrap().hub.guests.update(gi, |g| {
+                        game.server.lan.as_mut().unwrap().hub.guests.update(gi, |g| {
                             g.inventory[0] = None;
                             g.selected = 0;
                         });
@@ -95,7 +95,7 @@ pub(crate) mod tests {
                                 },
                             ),
                         );
-                        let held = game.side.lan.as_ref().unwrap().hub.guests[gi].inventory[0]
+                        let held = game.server.lan.as_ref().unwrap().hub.guests[gi].inventory[0]
                             .as_ref()
                             .map(|s| &*s.item);
                         assert_eq!(held, expected, "PickItemFromEntity({id})");

@@ -190,7 +190,7 @@ impl crate::game::ClientGame<'_> {
     /// `fall_flying_before_hooks` is the flag from before the tick's hooks when the caller
     /// took it before them: a glide a `player_tick_pre` listener starts is then reported as
     /// this tick's start, as a jump-started glide is.
-    pub(in crate::game) fn tick_local_player(
+    pub fn tick_local_player(
         &mut self,
         entity_collisions: Vec<sunrise_core::geometry::Aabb>,
         sprint_window: i32,
@@ -612,7 +612,7 @@ impl crate::game::ClientGame<'_> {
         self.client.fog.tick(in_water, self.own_player_is_spectator());
     }
     /// One client tick while connected (Minecraft.tick with a ClientLevel).
-    pub(in crate::game) fn tick_remote(&mut self) -> Result<()> {
+    pub fn tick_remote(&mut self) -> Result<()> {
         self.tick_remote_level()?;
         // The rockets boosting this player tick after it, also while it waits
         // for chunks.
@@ -630,7 +630,7 @@ impl crate::game::ClientGame<'_> {
         Ok(())
     }
     /// Humanoid held arm poses, once the tick has set equipment and use state.
-    pub(in crate::game) fn tick_remote_arm_poses(&mut self) {
+    pub fn tick_remote_arm_poses(&mut self) {
         for i in 0..self.common.mobs.len() {
             let m = &self.common.mobs[i];
             if !sunrise_sim::mobs::anim::extracts_humanoid(m) {
@@ -670,7 +670,7 @@ impl crate::game::ClientGame<'_> {
     }
     /// `Level.tickBlockEntities` on a client: the block entities' animations
     /// and client ticks, and the moving pistons' pushes.
-    pub(in crate::game) fn tick_remote_block_entities(&mut self) {
+    pub fn tick_remote_block_entities(&mut self) {
         self.tick_client_block_entities();
         self.with_level(|b, level, ticks| {
             b.client_tick_block_entities(level, ticks);
@@ -680,7 +680,7 @@ impl crate::game::ClientGame<'_> {
         self.sync_moving_pistons();
     }
     /// `ClientLevel.tickEntities`: the section index takes each crossing at its entity's turn.
-    pub(in crate::game) fn tick_remote_entities(&mut self, running: bool) {
+    pub fn tick_remote_entities(&mut self, running: bool) {
         self.client
             .client_pick
             .sections
@@ -1603,7 +1603,7 @@ impl crate::game::ClientGame<'_> {
     }
     /// The local player's `LocalPlayer.tick`, once the client has loaded. The
     /// input `sendChanges` sends after the block entities ticked, if it runs.
-    pub(in crate::game::client_side) fn tick_remote_own_player(&mut self) -> Result<Option<u8>> {
+    pub fn tick_remote_own_player(&mut self) -> Result<Option<u8>> {
         // ClientLevel.tickEntities skips a removed entity. Keep the last player state
         // for LevelExtractor.extractPlayerState, which still sees it on the death screen.
         let removed = self.local_player_removed_by_death();
@@ -1666,7 +1666,7 @@ impl crate::game::ClientGame<'_> {
         self.apply_remote_push(after);
         result
     }
-    pub(in crate::game) fn tick_remote_player(&mut self, running: bool, hold: bool) -> Result<()> {
+    pub fn tick_remote_player(&mut self, running: bool, hold: bool) -> Result<()> {
         // Inventory.tick's ItemStack.inventoryTick: the pop time runs down.
         if !hold {
             for pop in &mut self.client.hotbar_pop {

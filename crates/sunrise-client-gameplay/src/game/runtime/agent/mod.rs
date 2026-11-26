@@ -626,7 +626,7 @@ impl crate::game::ClientGame<'_> {
         state
     }
 
-    pub(in crate::game::client_side) fn title_value(&self) -> Value {
+    pub fn title_value(&self) -> Value {
         use sunrise_client::title::Mode;
         let Some(title) = &self.client.title.0 else {
             return Value::Null;
@@ -1033,7 +1033,7 @@ impl crate::game::ClientGame<'_> {
     }
 
     /// A left or right click, as the mouse would.
-    pub(in crate::game::client_side) fn agent_mouse(
+    pub fn agent_mouse(
         &mut self,
         button: MouseButton,
         pressed: bool,
@@ -1147,7 +1147,7 @@ impl crate::game::ClientGame<'_> {
     }
 
     /// Agent commands; `Handled::No` when `words[0]` is not one of them.
-    pub(in crate::game::client_side) fn agent_command(
+    pub fn agent_command(
         &mut self,
         words: &[&str],
         line: &str,
@@ -2050,7 +2050,7 @@ impl crate::game::ClientGame<'_> {
     }
 
     /// Advance the running agent task; reply when it ends.
-    pub(in crate::game::client_side) fn advance_agent(&mut self) {
+    pub fn advance_agent(&mut self) {
         self.advance_glide();
         let timed_out = self
             .client

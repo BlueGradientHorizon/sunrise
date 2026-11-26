@@ -298,7 +298,7 @@ impl crate::game::ServerGame<'_> {
     /// occurs, including when the visitor unwinds. Logical visibility is a caller
     /// policy, just as for the underlying owner resolver. The visitor must not
     /// call entity lookup or recursively enter this seam.
-    pub(in crate::game) fn with_resident_slot<R>(
+    pub fn with_resident_slot<R>(
         &mut self,
         dimension: &mod_api::DimensionKey,
         id: std::num::NonZeroU32,
@@ -456,7 +456,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// A new epoch invalidates every old producer before rebinding retained levels.
-    pub(in crate::game) fn reset_entity_residency(&mut self) {
+    pub fn reset_entity_residency(&mut self) {
         let table = self.common.resident_entities.table.get_mut();
         table.reset();
         let journal = table.producer();
@@ -507,7 +507,7 @@ impl crate::game::ServerGame<'_> {
             })
     }
 
-    pub(in crate::game) fn server_resident_entity(&self, id: u32) -> EntityLookup<Target> {
+    pub fn server_resident_entity(&self, id: u32) -> EntityLookup<Target> {
         let found = self
             .common.resident_entities
             .table
@@ -615,7 +615,7 @@ impl Levels {
 
     /// Queue `dim` to be saved at the start of the next server tick; a level already queued is
     /// not queued twice.
-    pub(in crate::game::server_side) fn request_save(&mut self, dim: Dim) {
+    pub fn request_save(&mut self, dim: Dim) {
         if !self.requested_saves.contains(&dim) {
             self.requested_saves.push(dim);
         }
@@ -712,7 +712,7 @@ impl Levels {
     }
 
     /// Clear every parked level and dimensions recorded as heard open.
-    pub(in crate::game::server_side) fn clear(&mut self) {
+    pub fn clear(&mut self) {
         self.parked.clear();
         self.heard_open.clear();
         self.requested_saves.clear();
@@ -1128,7 +1128,7 @@ impl crate::game::ServerGame<'_> {
     /// (`ChunkLoadCounter`). The first tick finds them ticking and unpacks
     /// their saved block and fluid ticks at the saved game time
     /// (`startTickingChunk`), not at whichever tick they finish streaming in.
-    pub(in crate::game::server_side) fn prepare_levels(&mut self) -> Result<()> {
+    pub fn prepare_levels(&mut self) -> Result<()> {
         if self.common.options.execution_role.is_client() {
             return Ok(());
         }
@@ -1309,7 +1309,7 @@ impl crate::game::ServerGame<'_> {
     /// Put `target`'s level in place, opening it first if it is not loaded.
     /// The level that was in place is kept with the others; the shared
     /// clock and weather go with the swap.
-    pub(in crate::game) fn enter_level(&mut self, target: Dim) -> Result<()> {
+    pub fn enter_level(&mut self, target: Dim) -> Result<()> {
         // A client holds no levels.
         if self.common.options.execution_role.is_client() {
             return Ok(());
@@ -1490,7 +1490,7 @@ impl crate::game::ServerGame<'_> {
     /// (`execute in`, `execute at` a player in another level), opening it if
     /// nobody is in it; returns the level to put back afterwards. Only a
     /// server holds other levels.
-    pub(in crate::game) fn enter_command_level(&mut self, dim: Dim) -> Option<Dim> {
+    pub fn enter_command_level(&mut self, dim: Dim) -> Option<Dim> {
         if self.common.options.execution_role.is_client() || dim == self.common.dim {
             return None;
         }
@@ -1511,7 +1511,7 @@ impl crate::game::ServerGame<'_> {
     /// the next ones only their level. Connection player ticks follow all
     /// levels. While `paused`, the network runs but player bodies do not.
     /// `ServerTickStart` and `ServerTickEnd` bracket the whole tick.
-    pub(in crate::game) fn tick_server(&mut self, paused: bool) -> Result<()> {
+    pub fn tick_server(&mut self, paused: bool) -> Result<()> {
         self.with_residency_tick(|game| game.tick_server_body(paused))
     }
 
@@ -1740,7 +1740,7 @@ impl crate::game::ServerGame<'_> {
 
     /// Return the time in `tick_server` itself, and hand its detailed timing to `record`
     /// while spans are on. The recording and thread-work bookkeeping are outside that time.
-    pub(in crate::game::server_side) fn tick_server_spans(
+    pub fn tick_server_spans(
         &mut self,
         paused: bool,
         record: impl FnOnce(TickTiming),
@@ -1873,7 +1873,7 @@ impl crate::game::ServerGame<'_> {
     /// The levels this server tick runs, in `MinecraftServer.levels` order
     /// (the Overworld, the Nether, the End): every level with a player in
     /// it, forced chunks or a `/pregen` task, or the Overworld while idle.
-    pub(in crate::game::server_side) fn levels_to_tick(&self) -> Vec<Dim> {
+    pub fn levels_to_tick(&self) -> Vec<Dim> {
         let guests = self
             .server
             .lan
@@ -2079,7 +2079,7 @@ impl crate::game::ServerGame<'_> {
     /// Save the parked custom level `dim` and drop it: the mods hear its chunks
     /// and the level unload. A level a mod opened at run time stays known, and
     /// opens again when entered, as any other custom level.
-    pub(in crate::game::server_side) fn close_parked_level(&mut self, dim: Dim) -> Result<()> {
+    pub fn close_parked_level(&mut self, dim: Dim) -> Result<()> {
         debug_assert!(
             !dim.is_builtin(),
             "built-in levels stay open until server shutdown"
@@ -2110,7 +2110,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// The mods hear `dim`'s level open (`LevelEvent.Load`), on a server.
-    pub(in crate::game) fn native_level_opened(&mut self, dim: Dim) {
+    pub fn native_level_opened(&mut self, dim: Dim) {
         if !self.common.is_logical_server() || self.server.levels.0.has_heard_open(dim) {
             return;
         }
@@ -2145,7 +2145,7 @@ impl crate::game::ServerGame<'_> {
     /// Every level still open closes with the server, however it ends
     /// (`MinecraftServer.stopServer`'s `level.close()` loop), in vanilla's
     /// order of its levels: the Overworld, the Nether, the End.
-    pub(in crate::game) fn native_levels_closing(&mut self) {
+    pub fn native_levels_closing(&mut self) {
         for dim in Dim::all() {
             self.native_level_closed(dim);
         }
@@ -2154,7 +2154,7 @@ impl crate::game::ServerGame<'_> {
     /// Run the requested level save passes. `level_save` fires after a pass even if an
     /// individual record failed and was reported. A failed awaited flush ends the pass with
     /// an error and no hook. Reopen levels as needed, then restore the active one.
-    pub(in crate::game::server_side) fn run_requested_saves(&mut self) {
+    pub fn run_requested_saves(&mut self) {
         if sunrise_gameplay_common::game::CommonGame::admit_entity_save().is_err() {
             return;
         }
@@ -2178,7 +2178,7 @@ impl crate::game::ServerGame<'_> {
 
     /// Save every parked level (`MinecraftServer.saveAllChunks`); the level
     /// in place is the caller's to save.
-    pub(in crate::game) fn save_parked_levels(&mut self, wait: bool) -> Result<()> {
+    pub fn save_parked_levels(&mut self, wait: bool) -> Result<()> {
         if self.server.levels.0.parked.is_empty() {
             return Ok(());
         }
@@ -2299,7 +2299,7 @@ impl crate::game::ServerGame<'_> {
 impl crate::game::ServerGame<'_> {
     /// Rebind only an already-owning transfer, before installing it in this level.
     /// Memory still belongs to the parked source until the caller moves it.
-    pub(in crate::game::server_side) fn rebind_transferred_entity(
+    pub fn rebind_transferred_entity(
         &mut self,
         id: u32,
         entity: &mut impl sunrise_mod_runtime::attachments::HasAttachmentLifetime,

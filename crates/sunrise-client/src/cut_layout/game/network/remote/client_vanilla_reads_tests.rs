@@ -53,7 +53,7 @@ pub(in crate::game) fn join(game: &mut sunrise_client_gameplay::game::ClientGame
 /// The server adds entity `id` of `kind` beside the player.
 pub(in crate::game) fn add(game: &mut sunrise_client_gameplay::game::ClientGame<'_>, id: u32, kind: &str) {
     let kind = game
-        .side
+        .client
         .remote
         .as_ref()
         .unwrap()
@@ -186,10 +186,10 @@ fn the_client_count_follows_the_entity_tick_not_the_motion() {
                         [PLAYER, 20, 21].map(|id| tick_count(game, id))
                     };
                     // Before the client has loaded: the player counts, its tick does not run.
-                    game.side.remote.as_mut().unwrap().loaded_sent = false;
+                    game.client.remote.as_mut().unwrap().loaded_sent = false;
                     game.tick_remote().unwrap();
                     assert_eq!(counts(game), [Some(1); 3]);
-                    game.side.remote.as_mut().unwrap().loaded_sent = true;
+                    game.client.remote.as_mut().unwrap().loaded_sent = true;
                     // Asleep.
                     game.sleeping = Some([0, 64, 0]);
                     game.tick_remote().unwrap();

@@ -32,7 +32,7 @@ use sunrise_sim::merchant;
             offer.uses = 3;
             let window = {
                 let gm = game
-                    .side
+                    .server
                     .lan
                     .as_mut()
                     .unwrap()
@@ -47,11 +47,11 @@ use sunrise_sim::merchant;
                 gm.slots[1] = Some(ItemStack::new("minecraft:coal", 2));
                 gm.window
             };
-            game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+            game.server.lan.as_mut().unwrap().hub.guests.update(0, |g| {
                 g.carried = Some(ItemStack::new("minecraft:apple", 3))
             });
             let wheat = ItemStack::new("minecraft:wheat", 1);
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()
@@ -78,7 +78,7 @@ use sunrise_sim::merchant;
             game.apply_entity_nbt(sunrise_gameplay_common::game::commands_common::Target::Mob(40), tag)
                 .unwrap();
             assert!(
-                game.side.lan.as_ref().unwrap().menus[&12]
+                game.server.lan.as_ref().unwrap().menus[&12]
                     .merchant
                     .is_none()
             );
@@ -110,7 +110,7 @@ use sunrise_sim::merchant;
                 ),
                 _ => false,
             }));
-            assert_eq!(game.side.missing_professions.len(), 1);
+            assert_eq!(game.server.missing_professions.len(), 1);
             let tag = sunrise_sim::entity_nbt::mob_to_nbt(
                 &game.mobs[0],
                 [0; 4],
@@ -121,7 +121,7 @@ use sunrise_sim::merchant;
             );
             game.apply_entity_nbt(sunrise_gameplay_common::game::commands_common::Target::Mob(40), tag)
                 .unwrap();
-            assert_eq!(game.side.missing_professions.len(), 1);
+            assert_eq!(game.server.missing_professions.len(), 1);
             let second = spawn(game, 41, "minecraft:villager");
             let mut tag = sunrise_sim::entity_nbt::mob_to_nbt(
                 &game.mobs[1],
@@ -146,19 +146,19 @@ use sunrise_sim::merchant;
                 tag.clone(),
             )
             .unwrap();
-            assert_eq!(game.side.missing_professions.len(), 1);
-            game.side.missing_professions.clear();
+            assert_eq!(game.server.missing_professions.len(), 1);
+            game.server.missing_professions.clear();
             game.apply_entity_nbt(
                 sunrise_gameplay_common::game::commands_common::Target::Mob(second.entity().id()),
                 tag,
             )
             .unwrap();
-            assert_eq!(game.side.missing_professions.len(), 1);
+            assert_eq!(game.server.missing_professions.len(), 1);
             assert_eq!(
                 game.mobs[0].extra.trade.as_ref().unwrap().offers,
                 vec![offer]
             );
-            let inventory = &game.side.lan.as_ref().unwrap().hub.guests[0].inventory;
+            let inventory = &game.server.lan.as_ref().unwrap().hub.guests[0].inventory;
             for (id, count) in [
                 ("minecraft:wheat", 1),
                 ("minecraft:coal", 2),
@@ -183,7 +183,7 @@ use sunrise_sim::merchant;
         with_game(|game| {
             let (_, _, _) = open_trade(game, 1);
             let session = &mut game
-                .side
+                .server
                 .lan
                 .as_mut()
                 .unwrap()
@@ -285,7 +285,7 @@ use sunrise_sim::merchant;
             assert_eq!(villager.xp(game), Some(40));
             assert_eq!(villager.level(game), Some(3));
             {
-                let gm = game.side.lan.as_ref().unwrap().menus[&12]
+                let gm = game.server.lan.as_ref().unwrap().menus[&12]
                     .merchant
                     .as_ref()
                     .unwrap();
@@ -294,7 +294,7 @@ use sunrise_sim::merchant;
                 assert_eq!(gm.merchant.session.offers, live);
             }
             assert!(villager.remove_offer(game, 1));
-            let gm = game.side.lan.as_ref().unwrap().menus[&12]
+            let gm = game.server.lan.as_ref().unwrap().menus[&12]
                 .merchant
                 .as_ref()
                 .unwrap();
@@ -303,7 +303,7 @@ use sunrise_sim::merchant;
 
             // Closing the screen gives the mob the edited trades.
             let mut gm = game
-                .side
+                .server
                 .lan
                 .as_mut()
                 .unwrap()
@@ -332,7 +332,7 @@ use sunrise_sim::merchant;
             assert_eq!(game.lan_trade_session(12).unwrap().sequences.len(), 4);
             // The trade makes 12 experience: past level 1's 10, so level 2 is rolled.
             let mut gm = game
-                .side
+                .server
                 .lan
                 .as_mut()
                 .unwrap()
@@ -354,7 +354,7 @@ use sunrise_sim::merchant;
             assert_eq!(session.level, 2);
             assert!(session.offers.len() > 1, "level 2 offers were added");
             assert_eq!(session.offers[0].uses, first.uses + 1);
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()

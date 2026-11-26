@@ -228,7 +228,7 @@ impl ServerGame<'_> {
         }
     }
     /// The saved tanks of the mod block entity at `pos`, `n` of them.
-    fn tank_state(&self, pos: [i32; 3], n: usize) -> Option<Vec<Tank>> {
+    pub fn tank_state(&self, pos: [i32; 3], n: usize) -> Option<Vec<Tank>> {
         match self.common.world.block_entities.get(&(pos[0], pos[1], pos[2]))? {
             BlockEntity::Mod(m) => Some(read_tanks(&m.nbt, n)),
             _ => None,
@@ -265,7 +265,7 @@ impl ServerGame<'_> {
     }
 
     /// `tank_state`'s writer.
-    fn set_tank_state(&mut self, pos: [i32; 3], state: &[Tank]) {
+    pub fn set_tank_state(&mut self, pos: [i32; 3], state: &[Tank]) {
         let key = (pos[0], pos[1], pos[2]);
         self.journal_block_entity(key);
         if let Some(BlockEntity::Mod(m)) = self.common.world.block_entities.get_mut(&key) {

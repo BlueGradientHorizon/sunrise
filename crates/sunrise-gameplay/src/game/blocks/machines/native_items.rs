@@ -86,12 +86,12 @@ impl crate::game::ServerGame<'_> {
     }
     /// Whether this game simulates a world, as `native_set_block` asks
     /// (the fluid helpers ask it too).
-    pub(in crate::game::server_side) fn native_simulates(&self) -> bool {
+    pub fn native_simulates(&self) -> bool {
         self.common.is_logical_server()
     }
     /// The level in place, as a handle: where the game's capability lookups (a hopper's) are.
     /// None where no world is simulated.
-    pub(in crate::game) fn native_level_here(&self) -> Option<LevelRef> {
+    pub fn native_level_here(&self) -> Option<LevelRef> {
         let epoch = self.common.native_lifecycle.epoch()?;
         self.native_simulates()
             .then(|| self.level_ref(epoch, self.common.dim.key()))

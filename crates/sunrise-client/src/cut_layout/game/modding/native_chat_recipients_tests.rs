@@ -111,8 +111,8 @@ fn two_guests(
         seed: 0,
         max_players: 3,
         integrated: true,
-        levels: game.side.level_shapes,
-        level_seeds: game.side.levels.0.runtime.seeds(),
+        levels: game.server.level_shapes,
+        level_seeds: game.server.levels.0.runtime.seeds(),
     };
     let settings = sunrise_gameplay::game::server_side::lan::LanSettings {
         port: 0,
@@ -141,7 +141,7 @@ fn two_guests(
         );
         guest.placed = true;
         guest.permission = 4;
-        game.side.lan.as_mut().unwrap().hub.guests.push(guest);
+        game.server.lan.as_mut().unwrap().hub.guests.push(guest);
         rx
     };
     (join(12), join(13))
@@ -299,7 +299,7 @@ fn console_and_command_block_say_can_be_hidden_per_receiver() {
             game.command_block_tick(block);
             assert_eq!(lines(&first), 1);
             assert_eq!(lines(&second), 0);
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()

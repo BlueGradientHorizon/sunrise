@@ -16,7 +16,7 @@ mod tests {
                 stonecutter: vec![],
             });
             // Closing a menu is not leaving the connection.
-            game.side.recipe_ui.0.reset_screen();
+            game.client.recipe_ui.0.reset_screen();
             assert!(
                 game.recipe_tables
                     .server_properties

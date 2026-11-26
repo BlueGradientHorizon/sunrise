@@ -107,7 +107,7 @@ impl crate::game::ServerGame<'_> {
             self.play_container_sound(sound, at);
         }
     }
-    pub(in crate::game) fn guest_disconnected(&mut self, conn: u32) {
+    pub fn guest_disconnected(&mut self, conn: u32) {
         self.guest_remove_menus(conn, MenuRemoval::Disconnected);
     }
     /// Whether the mods let the guest open the menu `kind` (`native_container_opened`),

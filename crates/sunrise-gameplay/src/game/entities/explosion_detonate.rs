@@ -17,7 +17,7 @@ impl ServerGame<'_> {
     /// Order controls only the ordinary-storage walk, not the separate crystal,
     /// dragon, player and decoration passes. Without a listener nothing is listed, and the walks
     /// enumerate the storages as before.
-    pub(in crate::game::server_side) fn explosion_detonate(
+    pub fn explosion_detonate(
         &mut self,
         center: [f64; 3],
         radius: f32,

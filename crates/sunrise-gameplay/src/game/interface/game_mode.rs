@@ -13,11 +13,11 @@ pub(in crate::game) use sunrise_gameplay_common::game::game_mode_common::{
 };
 
 impl crate::game::ServerGame<'_> {
-    pub(in crate::game) fn set_mode_id(&mut self, id: i32) {
+    pub fn set_mode_id(&mut self, id: i32) {
         self.set_mode(mode_from_id(id));
     }
     /// `ServerPlayer.setGameMode` on a local/server world.
-    pub(in crate::game) fn set_mode(&mut self, mode: GameMode) {
+    pub fn set_mode(&mut self, mode: GameMode) {
         debug_assert!(
             self.is_logical_server(),
             "set_mode is server-only; remote clients use set_local_mode"

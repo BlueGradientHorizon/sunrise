@@ -12,7 +12,7 @@ use sunrise_sim::item_models::stack_view;
 impl ClientGame<'_> {
     /// `ItemParticleOption(ITEM, stack)`: the layer particle sprites of the
     /// stack's model resolved for the ground, with seed 0.
-    pub(in crate::game) fn item_particle(&self, stack: &ItemStack) -> ParticleOptions {
+    pub fn item_particle(&self, stack: &ItemStack) -> ParticleOptions {
         let state = self.resolve_item(stack, DisplayContext::Ground, None, 0);
         ParticleOptions::item(
             state

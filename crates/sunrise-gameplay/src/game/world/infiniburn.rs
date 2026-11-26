@@ -2,7 +2,7 @@
 use super::*;
 
 impl crate::game::ServerGame<'_> {
-    pub(in crate::game) fn refresh_infiniburn(&mut self) {
+    pub fn refresh_infiniburn(&mut self) {
         self.common.world.infiniburn = Some(self.resolve_level_infiniburn(self.dimension_type()));
         let parked: Vec<_> = self
             .server

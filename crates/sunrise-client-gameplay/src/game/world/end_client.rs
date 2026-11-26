@@ -95,7 +95,7 @@ impl crate::game::ClientGame<'_> {
     /// current dimension's, when a pack has some. Gameplay keeps `dim_environment`. A client of a
     /// server draws the type its server sent, with the packs' layers over it where they have a
     /// stack of that type.
-    pub(in crate::game) fn view_environment(&self) -> &Environment {
+    pub fn view_environment(&self) -> &Environment {
         if let Some(own) = self.client.remote.as_ref().and_then(|r| {
             r.level_pack_environment
                 .as_deref()

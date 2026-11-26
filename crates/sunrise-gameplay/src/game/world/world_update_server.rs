@@ -14,7 +14,7 @@ impl crate::game::ServerGame<'_> {
         })
     }
     pub(in crate::game) fn server_clear_lod(&mut self) {}
-    pub(in crate::game) fn server_update_world(&mut self) {
+    pub fn server_update_world(&mut self) {
         self.ask_edited_light_emission();
         sunrise_level::spans::time("tick_pregen", || self.tick_pregen());
         if self.defer_chunk_disk_save() {

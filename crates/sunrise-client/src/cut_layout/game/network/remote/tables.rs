@@ -68,7 +68,7 @@ pub(crate) mod tests {
             || {
                 let mut resources = None;
                 let mut game = client(&mut resources);
-                let builtin = game.side.remote.as_ref().unwrap().builtin.clone();
+                let builtin = game.client.remote.as_ref().unwrap().builtin.clone();
                 let registry = "minecraft:entity_type";
                 let tag = "minecraft:can_equip_saddle";
                 let update = |entity: &str| UpdateTags {
@@ -99,7 +99,7 @@ pub(crate) mod tests {
                 };
 
                 // Configuration stores the tags before the client installs the server tables.
-                Arc::make_mut(&mut game.side.remote.as_mut().unwrap().registries)
+                Arc::make_mut(&mut game.client.remote.as_mut().unwrap().registries)
                     .add_tags(&update(horse));
                 game.install_server_items();
                 assert_equips(&game, horse, camel);
@@ -118,7 +118,7 @@ pub(crate) mod tests {
         let mut resources = None;
         let mut game = client(&mut resources);
         assert!(!game.items().block_tags["minecraft:climbable"].contains("minecraft:stone"));
-        let builtin = game.side.remote.as_ref().unwrap().builtin.clone();
+        let builtin = game.client.remote.as_ref().unwrap().builtin.clone();
         let id = |registry: &str, name: &str| builtin.get(registry).unwrap().id(name).unwrap();
         let tag = |registry: &str, name: &str, members: &[&str]| RegistryTags {
             registry: registry.into(),

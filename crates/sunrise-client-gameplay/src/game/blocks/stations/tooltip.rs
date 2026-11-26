@@ -256,7 +256,7 @@ impl crate::game::ClientGame<'_> {
     /// Prepare a [`mod_api::TooltipComponent`] into a [`PreparedTooltipItem`]
     /// (`ClientTooltipComponent.create`): built-in bundles are prepared directly with `Items`,
     /// custom components go through the registered client factory table.
-    pub(in crate::game::client_side) fn prepare_tooltip_component(
+    pub fn prepare_tooltip_component(
         &self,
         component: &mod_api::TooltipComponent,
     ) -> Result<PreparedTooltipItem, TooltipComponentPrepareError> {
@@ -298,7 +298,7 @@ impl crate::game::ClientGame<'_> {
     }
 
     /// Initially measure width and height in encounter order, as `GuiGraphicsExtractor.tooltip`.
-    fn measure_prepared_item(
+    pub fn measure_prepared_item(
         &self,
         item: &PreparedTooltipItem,
         font: &EngineTooltipFont<'_>,
@@ -339,7 +339,7 @@ impl crate::game::ClientGame<'_> {
     /// `RenderTooltipEvent.GatherComponents` followed by wrapping in the item's tooltip font
     /// (`ClientHooks.getTooltipFont` -> `ClientItemExtensions::tooltip_font`) and component
     /// preparation (`ClientHooks.gatherTooltipComponentsFromElements`).
-    pub(in crate::game::client_side) fn gather_tooltip_components(
+    pub fn gather_tooltip_components(
         &self,
         stack: &ItemStack,
         lines: Vec<(sunrise_game_data::text::Text, u32)>,
@@ -494,7 +494,7 @@ impl crate::game::ClientGame<'_> {
     /// `at`. Query the item font again here: Gather may have changed the provider's answer, but
     /// its line breaks are already fixed. Return the final anchor and font, or `None` when a
     /// listener cancels drawing (custom Pre draws stay in `batch`).
-    pub(in crate::game::client_side) fn tooltip_pre_components(
+    pub fn tooltip_pre_components(
         &self,
         batch: &mut HudBatch,
         stack: Option<&ItemStack>,
@@ -604,7 +604,7 @@ impl crate::game::ClientGame<'_> {
     /// position with the caller's positioner, draw background (`render_tooltip_texture`), then
     /// run Pass 1 (`draw_text`) and Pass 2 (`draw_image`). Returns the drawn content rect
     /// `[x, y, w, h]` when drawn.
-    pub(in crate::game::client_side) fn draw_prepared_tooltip(
+    pub fn draw_prepared_tooltip(
         &self,
         batch: &mut HudBatch,
         stack: Option<&ItemStack>,
@@ -737,7 +737,7 @@ impl crate::game::ClientGame<'_> {
     /// A stack's tooltip: its ordered lines and a bundle's contents
     /// (`ClientBundleTooltip`: the 4 wide grid, the `+N` of what it leaves
     /// out, and the weight bar).
-    pub(in crate::game) fn draw_stack_tooltip(
+    pub fn draw_stack_tooltip(
         &mut self,
         batch: &mut HudBatch,
         stack: &ItemStack,
@@ -750,7 +750,7 @@ impl crate::game::ClientGame<'_> {
     /// [`Self::draw_stack_tooltip`] with `TooltipFlag.isCreative` set when
     /// `creative` (a creative tab's own slot), and `after_name` inserted from
     /// line 1, as the creative screen adds its tab names.
-    pub(in crate::game::client_side) fn draw_stack_tooltip_with(
+    pub fn draw_stack_tooltip_with(
         &mut self,
         batch: &mut HudBatch,
         stack: &ItemStack,
@@ -771,7 +771,7 @@ impl crate::game::ClientGame<'_> {
     }
 
     /// Draw already-built item lines, keeping the stack's image, style and gather hooks.
-    pub(in crate::game::client_side) fn draw_stack_tooltip_lines(
+    pub fn draw_stack_tooltip_lines(
         &mut self,
         batch: &mut HudBatch,
         stack: &ItemStack,

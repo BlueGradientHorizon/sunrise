@@ -85,7 +85,7 @@ fn consuming_cancellation_has_one_outer_on_local_and_packet_routes() {
             ] {
                 mode.store(answer, Ordering::SeqCst);
                 g.world.set(3, 64, 4, state).unwrap();
-                g.side
+                g.server
                     .lan
                     .as_mut()
                     .unwrap()
@@ -99,7 +99,7 @@ fn consuming_cancellation_has_one_outer_on_local_and_packet_routes() {
                 SEEN.with_borrow_mut(Vec::clear);
                 if packet {
                     let gi = g
-                        .side
+                        .server
                         .lan
                         .as_ref()
                         .unwrap()
@@ -129,7 +129,7 @@ fn consuming_cancellation_has_one_outer_on_local_and_packet_routes() {
             let initial = g.pack.assets.registry.default_state(block).unwrap();
             for packet in [false, true] {
                 g.world.set(3, 64, 4, initial).unwrap();
-                g.side
+                g.server
                     .lan
                     .as_mut()
                     .unwrap()
@@ -141,7 +141,7 @@ fn consuming_cancellation_has_one_outer_on_local_and_packet_routes() {
                 SEEN.with_borrow_mut(Vec::clear);
                 if packet {
                     let gi = g
-                        .side
+                        .server
                         .lan
                         .as_ref()
                         .unwrap()
@@ -180,7 +180,7 @@ fn consuming_cancellation_has_one_outer_on_local_and_packet_routes() {
                 if original_item == "minecraft:water_bucket" {
                     g.world.set(3, 64, 4, cauldron).unwrap();
                 }
-                g.side
+                g.server
                     .lan
                     .as_mut()
                     .unwrap()
@@ -192,7 +192,7 @@ fn consuming_cancellation_has_one_outer_on_local_and_packet_routes() {
                 SEEN.with_borrow_mut(Vec::clear);
                 if packet {
                     let gi = g
-                        .side
+                        .server
                         .lan
                         .as_ref()
                         .unwrap()
@@ -262,7 +262,7 @@ fn resource_gated_block_use_order_and_stacks_on_server_and_guest() {
             let after = ItemStack::new("minecraft:glowstone", 4);
             SEEN.with_borrow_mut(Vec::clear);
             if packet {
-                g.side
+                g.server
                     .lan
                     .as_mut()
                     .unwrap()
@@ -273,7 +273,7 @@ fn resource_gated_block_use_order_and_stacks_on_server_and_guest() {
                     })
                     .unwrap();
                 let gi = g
-                    .side
+                    .server
                     .lan
                     .as_ref()
                     .unwrap()
@@ -294,9 +294,9 @@ fn resource_gated_block_use_order_and_stacks_on_server_and_guest() {
                 g.set_mode_id(0);
                 g.inventory[g.selected] = Some(before.clone());
                 g.offhand = None;
-                g.side.forced_hit = Some(hit);
+                g.server.forced_hit = Some(hit);
                 assert_eq!(g.use_item_as_player().unwrap(), Some(Hand::Main));
-                g.side.forced_hit = None;
+                g.server.forced_hit = None;
                 assert_eq!(g.held(), Some(&after));
             }
             SEEN.with_borrow(|seen| {
@@ -350,7 +350,7 @@ fn resource_gated_map_on_banner_fires_once_and_toggles_the_real_marker() {
         );
         let mut stack = ItemStack::new("minecraft:filled_map", 1);
         stack.data_mut().map_id = Some(42);
-        g.side
+        g.server
             .lan
             .as_mut()
             .unwrap()
@@ -369,7 +369,7 @@ fn resource_gated_map_on_banner_fires_once_and_toggles_the_real_marker() {
         for marked in [true, false] {
             SEEN.with_borrow_mut(Vec::clear);
             let gi = g
-                .side
+                .server
                 .lan
                 .as_ref()
                 .unwrap()
@@ -507,7 +507,7 @@ fn block_use_listener_replacements_keep_original_on_both_routes() {
                         .default_state("minecraft:respawn_anchor")
                         .unwrap();
                     g.world.set(3, 64, 4, anchor).unwrap();
-                    g.side
+                    g.server
                         .lan
                         .as_mut()
                         .unwrap()
@@ -521,7 +521,7 @@ fn block_use_listener_replacements_keep_original_on_both_routes() {
                     SEEN.with_borrow_mut(Vec::clear);
                     if packet {
                         let gi = g
-                            .side
+                            .server
                             .lan
                             .as_ref()
                             .unwrap()
@@ -599,7 +599,7 @@ fn block_use_nested_originals_and_replacements_are_isolated() {
                 ItemStack::new("minecraft:glowstone", 4)
             ]
         );
-        assert!(g.side.block_use_original.is_empty());
+        assert!(g.server.block_use_original.is_empty());
     });
 }
 
@@ -641,9 +641,9 @@ fn block_use_registry_guard_final_hand_matches_original() {
             g.inventory[g.selected] = Some(ItemStack::new(&item, 5));
             g.offhand = None;
             SEEN.with_borrow_mut(Vec::clear);
-            g.side.forced_hit = Some(hit);
+            g.server.forced_hit = Some(hit);
             g.use_hand(Some(&hit)).unwrap();
-            g.side.forced_hit = None;
+            g.server.forced_hit = None;
             for reported in any_block_use_stacks() {
                 reports += 1;
                 let final_stack = g
@@ -673,7 +673,7 @@ fn run_block_use_regression(g: &mut sunrise_gameplay::game::ServerGame<'_>, pack
         point: [3.5, 65.0, 4.5],
         inside: false,
     };
-    g.side
+    g.server
         .lan
         .as_mut()
         .unwrap()
@@ -686,7 +686,7 @@ fn run_block_use_regression(g: &mut sunrise_gameplay::game::ServerGame<'_>, pack
     SEEN.with_borrow_mut(Vec::clear);
     if packet {
         let gi = g
-            .side
+            .server
             .lan
             .as_ref()
             .unwrap()

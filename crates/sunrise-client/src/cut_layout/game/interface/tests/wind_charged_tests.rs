@@ -50,21 +50,21 @@ pub(crate) fn with_game<R>(
     )
     .unwrap();
     game.options.dedicated = Some(Vec::new());
-    game.side.audio_capture_active = true;
+    game.server.audio_capture_active = true;
     game.build_registries();
     game.set_allow_commands(true);
     game.world.health_rules.difficulty = Difficulty::Normal;
     game.world
         .chunks
         .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-    game.side.streaming.forced.insert((0, 0));
+    game.server.streaming.forced.insert((0, 0));
     assert!(game.run_command("fill 0 63 0 15 63 15 stone"));
     Some(f(&mut game))
 }
 
 /// How many times `sound` was queued as a server sound.
 pub(crate) fn heard(game: &sunrise_gameplay::game::ServerGame<'_>, sound: &str) -> u32 {
-    game.side
+    game.server
         .pending_sounds
         .iter()
         .filter(|s| s.event == sound)

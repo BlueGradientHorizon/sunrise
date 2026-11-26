@@ -85,7 +85,7 @@ fn pig(game: &mut sunrise_gameplay::game::ServerGame<'_>) -> usize {
 fn commands_see_the_knot_a_restored_fence_leash_ties() {
     let mut resources = None;
     let mut game = game(&mut resources);
-    assert!(game.side.lan.is_none(), "no server tracks the level");
+    assert!(game.server.lan.is_none(), "no server tracks the level");
     // Before restoration: only the pending tag, no knot at the fence; the
     // explicit knot is found.
     let i = pig(&mut game);

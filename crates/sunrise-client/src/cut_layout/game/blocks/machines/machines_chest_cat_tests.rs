@@ -47,7 +47,7 @@ fn game<'a>(resources: &'a mut Option<Arc<sunrise_gameplay_common::game::Resourc
         assert!(game.run_command(command), "{command}");
     }
     game.update_chunk_tickets();
-    assert!(game.side.tickets.0.levels().block_ticking(0, 0));
+    assert!(game.server.tickets.0.levels().block_ticking(0, 0));
     game
 }
 

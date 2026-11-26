@@ -32,7 +32,7 @@ fn a_mod_halves_a_guests_visibility() {
             open_to_lan(game);
             let mut seen = guest(5);
             seen.loaded = true;
-            game.side.lan.as_mut().unwrap().hub.guests.push(seen);
+            game.server.lan.as_mut().unwrap().hub.guests.push(seen);
             let view = game.lan_guest_views()[0].1.clone();
             let world = game.mob_world_base(&[]);
             assert!(world.mob_hooks.is_some(), "asked only while a mod listens");

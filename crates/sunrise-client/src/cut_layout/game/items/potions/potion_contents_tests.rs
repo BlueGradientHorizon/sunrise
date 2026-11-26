@@ -66,7 +66,7 @@ fn a_splash_potion_applies_its_custom_effects_and_duration_scale() {
         .potion_extra
         .push(("custom_color".into(), Tag::Int(0x0020_4080)));
     game.start_audio_capture();
-    game.side.lan_events.clear();
+    game.server.lan_events.clear();
     let at = Vec3::new(0.5, 64.0, 0.5);
     game.splash(
         &stack,
@@ -91,7 +91,7 @@ fn a_splash_potion_applies_its_custom_effects_and_duration_scale() {
         "the custom effect, scaled"
     );
     let splash: Vec<_> = game
-        .side
+        .server
         .lan_events
         .iter()
         .filter(|e| e.kind == 2002)

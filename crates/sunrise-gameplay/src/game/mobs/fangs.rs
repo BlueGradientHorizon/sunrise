@@ -6,12 +6,12 @@ use sunrise_core::geometry::Vec3;
 use sunrise_sim::mobs::Species;
 
 impl ServerGame<'_> {
-    pub(in crate::game) fn add_fangs(&mut self, at: [f64; 3], yaw: f32, delay: i32, owner: u32) {
+    pub fn add_fangs(&mut self, at: [f64; 3], yaw: f32, delay: i32, owner: u32) {
         self.server.next_entity += 1;
         self.common.insert_fangs(self.server.next_entity, at, yaw, delay, owner);
     }
 
-    pub(in crate::game::server_side) fn fangs_to_nbt(
+    pub fn fangs_to_nbt(
         &self,
         f: &Fangs,
         uuid: [i32; 4],
@@ -40,7 +40,7 @@ impl ServerGame<'_> {
     }
 
     /// `EvokerFangs.tick`.
-    pub(in crate::game) fn tick_fangs(&mut self) {
+    pub fn tick_fangs(&mut self) {
         sunrise_threads::work::clear_work();
         // ServerLevel.tick: only entities in entity-ticking chunks that joined before the pass tick.
         let ticking = self.entity_ticking_area();

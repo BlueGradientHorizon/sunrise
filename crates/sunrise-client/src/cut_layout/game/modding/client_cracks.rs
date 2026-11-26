@@ -124,12 +124,12 @@ pub(crate) mod tests {
                 for p in four {
                     game.world.set(p[0], p[1], p[2], stone).unwrap();
                 }
-                game.side.settings.improved_transparency = false;
+                game.client.settings.improved_transparency = false;
                 let camera = glam::DVec3::new(4.5, 65.0, 4.5);
                 game.destroy_block_progress(10, pos, 2);
                 let rendered = game.cracks(camera);
                 assert_eq!(rendered.len(), 4);
-                let sprite = &game.side.gui.atlas.sprites["block/destroy_stage_2"];
+                let sprite = &game.client.gui.atlas.sprites["block/destroy_stage_2"];
                 assert!(rendered.iter().all(|(_, uv)| *uv == [sprite.u0, sprite.v0]));
                 let mut expected = four.map(|p| (p, 2)).to_vec();
                 expected.sort_unstable();
@@ -149,7 +149,7 @@ pub(crate) mod tests {
                 assert!(game.crack_stages().iter().all(|(_, stage)| *stage == 7));
                 let rendered = game.cracks(camera);
                 assert_eq!(rendered.len(), 4);
-                let sprite = &game.side.gui.atlas.sprites["block/destroy_stage_7"];
+                let sprite = &game.client.gui.atlas.sprites["block/destroy_stage_7"];
                 assert!(rendered.iter().all(|(_, uv)| *uv == [sprite.u0, sprite.v0]));
                 assert_eq!(*calls.lock().unwrap(), [2, 7]);
                 for clear in [-1, 10] {
@@ -177,7 +177,7 @@ pub(crate) mod tests {
                 game.set_client_mining(mining(0.45));
                 assert!(game.crack_stages().iter().all(|(_, stage)| *stage == 4));
                 game.set_client_mining(None);
-                assert!(game.side.mining_crack.is_none());
+                assert!(game.client.mining_crack.is_none());
                 assert!(game.crack_stages().is_empty());
                 game.world.set(9, 64, 4, dirt).unwrap();
                 game.destroy_block_progress(11, [9, 64, 4], 1);
@@ -213,19 +213,19 @@ pub(crate) mod tests {
                 assert_eq!(calls.lock().unwrap().len(), calls_before);
                 game.world.game_time += 400;
                 game.expire_client_cracks();
-                assert_eq!(game.side.destroying.len(), 1, "400 ticks is still live");
+                assert_eq!(game.client.destroying.len(), 1, "400 ticks is still live");
                 game.world.game_time += 1;
                 game.expire_client_cracks();
                 assert!(
-                    game.side.destroying.is_empty(),
+                    game.client.destroying.is_empty(),
                     "expiry drops the stored extras too"
                 );
                 game.destroy_block_progress(10, pos, 0);
                 game.set_client_mining(mining(0.25));
                 game.reset_client_world(0);
-                assert!(game.side.destroying.is_empty());
+                assert!(game.client.destroying.is_empty());
                 assert!(game.mining.is_none());
-                assert!(game.side.mining_crack.is_none());
+                assert!(game.client.mining_crack.is_none());
                 assert!(game.crack_stages().is_empty());
             })
         });
@@ -260,7 +260,7 @@ pub(crate) mod tests {
                 game.world.set(pos[0], pos[1], pos[2], stone).unwrap();
                 game.destroy_block_progress(-1, pos, 3);
                 assert_eq!(*calls.lock().unwrap(), [3]);
-                let crack = &game.side.destroying[&-1];
+                let crack = &game.client.destroying[&-1];
                 assert_eq!((crack.pos, crack.stage), (pos, 3));
                 assert_eq!(crack.positions, [[5, 64, 4], [4, 64, 5], [5, 64, 5]]);
             })
@@ -273,20 +273,20 @@ pub(crate) mod tests {
         super::super::native_entity_refs::tests::with_client_game(|game| {
             game.destroy_block_progress(-10, [1, 64, 1], 4);
             game.destroy_block_progress(-11, [2, 64, 1], 9);
-            assert_eq!(game.side.destroying.len(), 2);
+            assert_eq!(game.client.destroying.len(), 2);
             game.destroy_block_progress(-10, [1, 64, 1], -1);
-            assert!(!game.side.destroying.contains_key(&-10));
-            assert!(game.side.destroying.contains_key(&-11));
+            assert!(!game.client.destroying.contains_key(&-10));
+            assert!(game.client.destroying.contains_key(&-11));
             game.world.game_time += 401;
             game.tick().unwrap();
             assert_eq!(
                 game.ticks, 0,
                 "a client without a remote must not tick a server level"
             );
-            assert!(game.side.destroying.is_empty());
+            assert!(game.client.destroying.is_empty());
             game.destroy_block_progress(-11, [2, 64, 1], 3);
             game.reset_client_world(0);
-            assert!(game.side.destroying.is_empty());
+            assert!(game.client.destroying.is_empty());
         });
     }
 }

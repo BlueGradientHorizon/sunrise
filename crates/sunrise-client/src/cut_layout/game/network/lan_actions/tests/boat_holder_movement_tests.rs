@@ -15,7 +15,7 @@ pub(in crate::game) struct Snapshot {
     pub(in crate::game) hand: Option<ItemStack>,
 }
 pub(in crate::game) fn snapshot(g: &sunrise_gameplay::game::ServerGame<'_>) -> Snapshot {
-    let h = g.side.lan.as_ref().unwrap();
+    let h = g.server.lan.as_ref().unwrap();
     let p = &h.hub.guests[0];
     Snapshot {
         known: p.known_movement,
@@ -29,7 +29,7 @@ pub(in crate::game) fn snapshot(g: &sunrise_gameplay::game::ServerGame<'_>) -> S
     }
 }
 pub(in crate::game) fn group(g: &mut sunrise_gameplay::game::ServerGame<'_>, packets: Vec<S>, token: i32) {
-    g.side.lan.as_mut().unwrap().hub.guests.update(0, |p| {
+    g.server.lan.as_mut().unwrap().hub.guests.update(0, |p| {
         for packet in packets {
             p.inbox
                 .push_back(sunrise_sim::lan::guest::InboxItem::Packet(packet, None));
@@ -37,14 +37,14 @@ pub(in crate::game) fn group(g: &mut sunrise_gameplay::game::ServerGame<'_>, pac
     });
     // Real Hub queue/collision/event dispatch, before the receipt marker.
     g.tick_lan_packets();
-    assert!(g.side.lan.as_ref().unwrap().hub.guests[0].inbox.is_empty());
+    assert!(g.server.lan.as_ref().unwrap().hub.guests[0].inbox.is_empty());
     let before = snapshot(g);
     assert!(before.hand.is_none(), "original lead was consumed");
     assert!(before.using.is_none());
 
     let (yaw, pitch) = (
-        g.side.lan.as_ref().unwrap().hub.guests[0].yaw,
-        g.side.lan.as_ref().unwrap().hub.guests[0].pitch,
+        g.server.lan.as_ref().unwrap().hub.guests[0].yaw,
+        g.server.lan.as_ref().unwrap().hub.guests[0].pitch,
     );
     g.lan_guest_packet(
         1,
@@ -103,7 +103,7 @@ pub(in crate::game) fn walk_stop(assert_trajectory: bool) {
             tick + 1,
         );
         assert_eq!(
-            g.side.lan.as_ref().unwrap().hub.guests[0].position,
+            g.server.lan.as_ref().unwrap().hub.guests[0].position,
             [x, 100.0, 0.5]
         );
         g.tick_boats();
@@ -115,13 +115,13 @@ pub(in crate::game) fn walk_stop(assert_trajectory: bool) {
             31 + tick,
         );
         assert_eq!(
-            g.side.lan.as_ref().unwrap().hub.guests[0].known_movement,
+            g.server.lan.as_ref().unwrap().hub.guests[0].known_movement,
             [0.; 3]
         );
         g.tick_boats();
     }
     assert!(g.boats[0].leash.is_some());
-    assert!(g.side.lan.as_ref().unwrap().play[&1].using.is_none());
+    assert!(g.server.lan.as_ref().unwrap().play[&1].using.is_none());
     if assert_trajectory {
         let p = g.boats[0].position;
         let rounded = [p.x, p.y, p.z].map(|v| format!("{v:.4}").parse::<f64>().unwrap());

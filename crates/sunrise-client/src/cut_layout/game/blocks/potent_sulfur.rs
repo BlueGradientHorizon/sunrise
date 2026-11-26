@@ -93,7 +93,7 @@ pub(crate) mod pass_tests {
             let mods: mod_api::Mods =
                 vec![ModEntry::new("move-on-nausea", Box::new(MoveMob(moved)))].into();
             mod_platform::testing::with_mods(mods, || {
-                game.side.pass_mobs = Some(PassMobs::default());
+                game.server.pass_mobs = Some(PassMobs::default());
                 game.server_nausea_effect_ticker((1, 63, 1));
                 assert_eq!(game.mobs[1].position, Vec3::new(33.5, 64.0, 1.5));
                 assert!(game.mobs[1].extra.effects.is_empty());
@@ -140,7 +140,7 @@ pub(crate) mod pass_tests {
                     Aabb::new(c, Vec3::new(c.x + w, c.y + h, c.z + w))
                 })
                 .collect();
-            game.side.pass_mobs = Some(PassMobs::default());
+            game.server.pass_mobs = Some(PassMobs::default());
             let check = |game: &mut sunrise_gameplay::game::ServerGame<'_>, what: &str| {
                 for &area in &areas {
                     assert_eq!(from_grid(game, area), scan(game, area), "{what}");
@@ -157,7 +157,7 @@ pub(crate) mod pass_tests {
             check(game, "some removed");
             // A geyser's own write leaves the boxes as they were.
             game.mobs[3].velocity.y += 0.2;
-            game.side.pass_mobs.as_mut().unwrap().wrote(&game.mobs);
+            game.server.pass_mobs.as_mut().unwrap().wrote(&game.mobs);
             check(game, "a push");
         });
     }

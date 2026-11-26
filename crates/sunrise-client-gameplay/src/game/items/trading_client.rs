@@ -11,7 +11,7 @@ use sunrise_sim::merchant::{self, MerchantOffer, TradeContext};
 
 impl ClientGame<'_> {
     /// `MerchantScreen` rendering.
-    pub(in crate::game::client_side) fn draw_merchant(&mut self, batch: &mut HudBatch) -> bool {
+    pub fn draw_merchant(&mut self, batch: &mut HudBatch) -> bool {
         let (ox, oy) = self.inventory_origin(batch);
         let local = (self.client.cursor.0 - ox, self.client.cursor.1 - oy);
         let Some(m) = self.common.station.as_ref().and_then(|s| s.merchant.as_ref()) else {
@@ -431,7 +431,7 @@ impl ClientGame<'_> {
         });
     }
     /// A server's trading window (no mob here: the server keeps it).
-    pub(in crate::game) fn open_remote_merchant(
+    pub fn open_remote_merchant(
         &mut self,
         session: merchant::Session,
         name: Option<Text>,
@@ -446,7 +446,7 @@ impl ClientGame<'_> {
         });
     }
     /// `MerchantScreen.postButtonClick`: predict payment move locally and send SelectTrade.
-    pub(in crate::game::client_side) fn try_move_items(&mut self, index: usize) {
+    pub fn try_move_items(&mut self, index: usize) {
         self.menu_session(|menu, env, _| {
             menu.merchant_select(env, index);
             Some(true)

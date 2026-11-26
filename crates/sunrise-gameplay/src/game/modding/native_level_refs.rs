@@ -191,7 +191,7 @@ impl<'g> ServerGame<'g> {
         Some(self.common.border.bounds())
     }
     /// Whether this chunk is loaded; false on a client or for a stale handle.
-    pub(in crate::game) fn chunk_loaded(&self, chunk: ChunkRef) -> bool {
+    pub fn chunk_loaded(&self, chunk: ChunkRef) -> bool {
         self.chunk(chunk.level(), chunk.pos()).is_some()
     }
     /// The status of a loaded chunk. Proto chunks are not exposed here.
@@ -202,7 +202,7 @@ impl<'g> ServerGame<'g> {
     /// A handle for chunk `pos` of an open level, loaded or not, so a mod can
     /// force an unloaded chunk. None for a stale handle, on a client, and for
     /// a chunk outside the world (`ChunkPos` past 30 million blocks).
-    pub(in crate::game) fn level_chunk_ref(
+    pub fn level_chunk_ref(
         &self,
         level: LevelRef,
         pos: [i32; 2],
@@ -227,7 +227,7 @@ impl<'g> ServerGame<'g> {
     }
     /// Whether `/forceload` holds the chunk (`ServerLevel.getForcedChunks`),
     /// loaded or not; a mod's own ticket on it does not count. None for a stale handle or on a client.
-    pub(in crate::game) fn chunk_forced(&self, chunk: ChunkRef) -> Option<bool> {
+    pub fn chunk_forced(&self, chunk: ChunkRef) -> Option<bool> {
         let [x, z] = chunk.pos();
         Some(
             self.native_level_streaming(chunk.level())?
@@ -245,7 +245,7 @@ impl<'g> ServerGame<'g> {
     /// returning, or when streaming starts if it is still paused.
     /// False for a stale handle, on a client, outside the world, or when
     /// adding after generation has stopped.
-    pub(in crate::game) fn chunk_set_forced(&mut self, chunk: ChunkRef, forced: bool) -> bool {
+    pub fn chunk_set_forced(&mut self, chunk: ChunkRef, forced: bool) -> bool {
         if self.native_level_streaming(chunk.level()).is_none() || !chunk_in_world(chunk.pos()) {
             return false;
         }
@@ -276,7 +276,7 @@ impl<'g> ServerGame<'g> {
     /// `level_load`, say) are not candidates, and a controller registered
     /// without a validator keeps all of its tickets. Nothing is built while no
     /// mod listens.
-    pub(in crate::game::server_side) fn validate_mod_chunk_tickets(&mut self, dim: super::Dim) {
+    pub fn validate_mod_chunk_tickets(&mut self, dim: super::Dim) {
         let Some(streaming) = self.mod_ticket_streaming_mut(dim) else {
             return;
         };
@@ -324,7 +324,7 @@ impl<'g> ServerGame<'g> {
     /// discarded. False outside a mod's hook, for another mod's controller, on
     /// a client, for a chunk outside the world and for a level the server has
     /// not opened.
-    pub(in crate::game) fn chunk_set_mod_forced(
+    pub fn chunk_set_mod_forced(
         &mut self,
         chunk: ChunkRef,
         controller: TicketController,
@@ -358,7 +358,7 @@ impl<'g> ServerGame<'g> {
     /// The chunk tickets `controller` holds in the level, as (owner, chunk
     /// position, natural_spawning), in order. None for a stale handle, on a
     /// client, outside a mod's hook and for another mod's controller.
-    pub(in crate::game) fn level_mod_forced_chunks(
+    pub fn level_mod_forced_chunks(
         &self,
         level: LevelRef,
         controller: TicketController,
@@ -376,7 +376,7 @@ impl<'g> ServerGame<'g> {
     }
     /// The level's force-loaded chunks (`/forceload query`), sorted as
     /// the command lists them. None for a stale handle or on a client.
-    pub(in crate::game) fn level_forced_chunks(&self, level: LevelRef) -> Option<Vec<[i32; 2]>> {
+    pub fn level_forced_chunks(&self, level: LevelRef) -> Option<Vec<[i32; 2]>> {
         let mut forced: Vec<(i32, i32)> = self
             .native_level_streaming(level)?
             .commanded()
@@ -552,7 +552,7 @@ impl<'g> ServerGame<'g> {
     /// itself. A check already queued there since the last ask queues nothing, as vanilla's
     /// queue is a set. False off the level in place, for a stale handle, on a client and for a
     /// position that isn't loaded.
-    pub(in crate::game) fn level_check_light(&mut self, level: LevelRef, pos: [i32; 3]) -> bool {
+    pub fn level_check_light(&mut self, level: LevelRef, pos: [i32; 3]) -> bool {
         if !self.native_level_write_allowed(level, pos) || self.common.dim.key() != level.dimension() {
             return false;
         }
@@ -754,7 +754,7 @@ impl<'g> ServerGame<'g> {
     /// The time of the level's own clock (its dimension type's `default_clock`) in ticks: what the
     /// level's sky, spawning and beds go by, and what `/time` sets there. None for a level without
     /// a default clock, a stale handle and a client.
-    pub(in crate::game) fn level_clock_time(&self, level: LevelRef) -> Option<i64> {
+    pub fn level_clock_time(&self, level: LevelRef) -> Option<i64> {
         self.native_level_read_world(level)?;
         if !self.common.is_logical_server() {
             return None;

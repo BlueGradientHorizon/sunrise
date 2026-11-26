@@ -132,7 +132,7 @@ impl crate::game::ClientGame<'_> {
             }
         }
     }
-    pub(in crate::game) fn resume_world_entry(&mut self) -> Result<()> {
+    pub fn resume_world_entry(&mut self) -> Result<()> {
         self.poll_integrated_start()?;
         self.common.poll_world_rest()?;
         self.poll_world_creation();

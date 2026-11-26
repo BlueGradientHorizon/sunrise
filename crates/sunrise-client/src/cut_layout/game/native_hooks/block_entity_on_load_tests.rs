@@ -118,7 +118,7 @@ mod tests {
                     .unwrap();
                 game.world.install_chunk_block_entities(&mut chunk);
                 game.world.chunks.insert((0, 0), Arc::new(chunk));
-                assert!(game.side.streaming.set_forced(0, 0, true));
+                assert!(game.server.streaming.set_forced(0, 0, true));
                 game.update_chunk_tickets();
                 game.tick_block_entities().unwrap();
                 assert_eq!(*log.lock().unwrap(), [(2, 9), (1, 7), (2, -1), (1, -1)]);
@@ -186,7 +186,7 @@ mod tests {
                         sea_level: 63,
                     };
                     game.enter_remote_dimension(&spawn, RemoteDimensionEntry::Login, Reason::Other);
-                    game.side.remote.as_mut().unwrap().logged_in = true;
+                    game.client.remote.as_mut().unwrap().logged_in = true;
                     game.world
                         .chunks
                         .insert((0, 0), Arc::new(Chunk::empty(0, 0)));

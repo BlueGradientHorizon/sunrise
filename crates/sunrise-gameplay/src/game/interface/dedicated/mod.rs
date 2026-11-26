@@ -603,7 +603,7 @@ impl std::error::Error for DatapacksRefused {}
 impl crate::game::ServerGame<'_> {
     /// Add the adopted packs' English at the dedicated server-starting notice.
     /// World and registry-load listeners still see only the built-in language.
-    fn start_loaded_dedicated_world(
+    pub fn start_loaded_dedicated_world(
         &mut self,
         packs: &sunrise_gameplay_common::game::function_pack_stack::PackStack,
     ) {
@@ -630,7 +630,7 @@ impl crate::game::ServerGame<'_> {
     /// existing world. Let world loading recover it instead of replacing the
     /// world's saved generator settings with server.properties. Returns whether
     /// the world is new.
-    fn prepare_world_metadata(
+    pub fn prepare_world_metadata(
         &mut self,
         dir: &std::path::Path,
         props: &ServerProperties,
@@ -1562,7 +1562,7 @@ impl crate::game::ServerGame<'_> {
         }
     }
 
-    pub(in crate::game::server_side) fn ban_ip_target(&self, target: &str) -> Option<String> {
+    pub fn ban_ip_target(&self, target: &str) -> Option<String> {
         if target.parse::<std::net::IpAddr>().is_ok() {
             Some(target.to_owned())
         } else {
@@ -1578,7 +1578,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// Network players `BanIpCommands` and the management service disconnect for an address.
-    fn ip_ban_players(&self, ip: &str) -> Vec<u128> {
+    pub fn ip_ban_players(&self, ip: &str) -> Vec<u128> {
         self.server.lan.as_ref().map_or_else(Vec::new, |h| {
             h.hub
                 .guests
@@ -1591,7 +1591,7 @@ impl crate::game::ServerGame<'_> {
 
     /// ServerGamePacketListenerImpl.tick: players idle longer than the
     /// timeout are kicked.
-    pub(in crate::game::server_side) fn kick_idle(&mut self, minutes: i32) {
+    pub fn kick_idle(&mut self, minutes: i32) {
         let Some(host) = self.server.lan.as_mut() else {
             return;
         };
@@ -1660,7 +1660,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// A player on the server, by name.
-    pub(in crate::game::server_side) fn online_player(&self, name: &str) -> Option<NameAndId> {
+    pub fn online_player(&self, name: &str) -> Option<NameAndId> {
         let hub = &self.server.lan.as_ref()?.hub;
         let g = hub
             .guests
@@ -1758,7 +1758,7 @@ impl crate::game::ServerGame<'_> {
     /// level the last server tick left in place (the last one ticked, often
     /// the nether). Its commands run there and the level in place is put back
     /// afterwards.
-    pub(in crate::game::server_side) fn as_console_in_spawn_level<T>(
+    pub fn as_console_in_spawn_level<T>(
         &mut self,
         f: impl FnOnce(&mut Self) -> T,
     ) -> T {
@@ -1778,7 +1778,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// A console or RCON announcement, logged without adding to the source's command output.
-    pub(in crate::game::server_side) fn dedicated_console_say(&mut self, message: String) {
+    pub fn dedicated_console_say(&mut self, message: String) {
         let name = if self.server.rcon_source {
             "Rcon"
         } else {
@@ -2156,7 +2156,7 @@ impl crate::game::ServerGame<'_> {
     /// (`MinecraftServer.sendSystemMessage`), logged once; `send_success` has
     /// already told the operators of what it broadcasts, so it is not filtered
     /// through `console_reply` again.
-    pub(in crate::game::server_side) fn console_dispatch(&mut self, line: &str) {
+    pub fn console_dispatch(&mut self, line: &str) {
         // The game's dispatcher, captured for the console.
         self.server.chat_capture = Some(Vec::new());
         // A command a native mod registered goes to the mods first,
@@ -2497,7 +2497,7 @@ fn console_level(active: super::Dim, spawn: super::Dim) -> Option<super::Dim> {
 
 impl crate::game::ServerGame<'_> {
     /// The count is diagnostic; only hard failures stop the lifecycle.
-    fn save_dedicated_checkpoint(&mut self, phase: &str) -> Result<u64> {
+    pub fn save_dedicated_checkpoint(&mut self, phase: &str) -> Result<u64> {
         let before = self.server.save.0.record_save_failures();
         self.save_game()?;
         let failed = self.server.save.0.record_save_failures() - before;
@@ -2507,7 +2507,7 @@ impl crate::game::ServerGame<'_> {
         Ok(failed)
     }
 
-    pub(in crate::game::server_side) fn stop_after_crash(&mut self, message: &str) -> Result<()> {
+    pub fn stop_after_crash(&mut self, message: &str) -> Result<()> {
         // Single player's server thread (`integrated.rs`) has no console: it logs to the game's log.
         let integrated = self.server.serving.is_some();
         let warn = |message: &str| {

@@ -5,7 +5,7 @@ use super::*;
 
 impl crate::game::ClientGame<'_> {
     /// `LevelRenderer.destroyBlockProgress`: any stage outside 0..10 clears the breaker.
-    pub(crate) fn destroy_block_progress(&mut self, breaker: i32, pos: [i32; 3], progress: i32) {
+    pub fn destroy_block_progress(&mut self, breaker: i32, pos: [i32; 3], progress: i32) {
         self.expire_client_cracks();
         if (0..10).contains(&progress) {
             let stage = progress as u8;

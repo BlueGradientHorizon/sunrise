@@ -146,7 +146,7 @@ use sunrise_protocol::packets::play::{self, Clientbound as C};
 
         with_guests(|game| {
             // Players keep their own state: in place during their turn, beside the hub otherwise.
-            let host = game.side.lan.as_mut().unwrap();
+            let host = game.server.lan.as_mut().unwrap();
             host.play.entry(12).or_default().portal.cooldown = 7;
             host.play.entry(13).or_default().portal.cooldown = 4;
             game.portal_player.cooldown = 99;
@@ -253,8 +253,8 @@ use sunrise_protocol::packets::play::{self, Clientbound as C};
                 .registry
                 .default_state("minecraft:sand")
                 .unwrap();
-            game.side.next_entity += 1;
-            let falling = game.side.next_entity;
+            game.server.next_entity += 1;
+            let falling = game.server.next_entity;
             game.falling.push(FallingBlock {
                 size_answer: None,
                 ground: Default::default(),
@@ -310,12 +310,12 @@ use sunrise_protocol::packets::play::{self, Clientbound as C};
         use super::super::native_guest_turn_tests::with_guests;
 
         with_guests(|game| {
-            let host = game.side.lan.as_mut().unwrap();
+            let host = game.server.lan.as_mut().unwrap();
             host.play.entry(12).or_default().portal.cooldown = 7;
             let guest = game.entity(12).unwrap();
             assert!(!guest.set_portal_cooldown(game, 40));
             assert_eq!(
-                game.side
+                game.server
                     .lan
                     .as_ref()
                     .unwrap()
@@ -361,7 +361,7 @@ use sunrise_protocol::packets::play::{self, Clientbound as C};
                 // Spawn actual renderable client copies through the normal packet path.
                 for (id, name) in [(15, "minecraft:armor_stand"), (16, "minecraft:zombie")] {
                     let kind = g
-                        .side
+                        .client
                         .remote
                         .as_ref()
                         .unwrap()
@@ -511,7 +511,7 @@ use sunrise_protocol::packets::play::{self, Clientbound as C};
             game.connect_local(client, "SneakReadTest").unwrap();
             // The joined client's state; the local-player and entity constructors must both
             // resolve it, not just a hand-built entity id accepted by an unreachable stub.
-            let remote = game.side.remote.as_mut().unwrap();
+            let remote = game.client.remote.as_mut().unwrap();
             remote.logged_in = true;
             remote.entity_id = 7;
             remote.profile = 42;
@@ -531,7 +531,7 @@ use sunrise_protocol::packets::play::{self, Clientbound as C};
             );
             let stale = EntityRef::new(mod_api::WorldEpoch::new(0), 7);
             assert_eq!(stale.is_shift_key_down(game), None);
-            game.side.remote.as_mut().unwrap().logged_in = false;
+            game.client.remote.as_mut().unwrap().logged_in = false;
             assert!(game.local_player().is_none());
             assert_eq!(entity.is_shift_key_down(game), None);
         });
@@ -622,7 +622,7 @@ use sunrise_protocol::packets::play::{self, Clientbound as C};
                 None
             );
             assert_eq!(zombie.eye_fluid(&*game as &dyn mod_api::ClientHost), None);
-            game.side.remote.as_mut().unwrap().logged_in = false;
+            game.client.remote.as_mut().unwrap().logged_in = false;
             assert_eq!(
                 local.fluid_heights(&*game as &dyn mod_api::ClientHost),
                 None
@@ -651,7 +651,7 @@ use sunrise_protocol::packets::play::{self, Clientbound as C};
             with_client_game(|game| {
                 let _server = logged_client(game);
                 game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
-                let types = game.side.remote.as_ref().unwrap().builtin.clone();
+                let types = game.client.remote.as_ref().unwrap().builtin.clone();
                 let kind = |name: &str| {
                     types
                         .get("minecraft:entity_type")
@@ -711,7 +711,7 @@ use sunrise_protocol::packets::play::{self, Clientbound as C};
                         values: vec![(15, serializer::HUMANOID_ARM, Value::Id(i32::from(!left)))],
                     }))
                     .unwrap();
-                    game.side.settings.main_hand_left = left;
+                    game.client.settings.main_hand_left = left;
                     let arm = if left {
                         MainHand::Left
                     } else {
@@ -740,7 +740,7 @@ use sunrise_protocol::packets::play::{self, Clientbound as C};
         }
         with_guests(|game| {
             let (a, b) = (game.player(12).unwrap(), game.player(13).unwrap());
-            let host = game.side.lan.as_mut().unwrap();
+            let host = game.server.lan.as_mut().unwrap();
             host.hub.update_guest(12, |g| g.info.main_hand = 0).unwrap();
             let read = |game: &sunrise_gameplay::game::ServerGame<'_>, entity: EntityRef| {
                 let host: &dyn mod_api::ServerHost = game;

@@ -100,11 +100,11 @@ pub(crate) mod tests {
         )
         .unwrap();
         let summoned = |game: &mut sunrise_gameplay::game::ServerGame<'_>, command: &str| {
-            let before = game.side.next_entity;
+            let before = game.server.next_entity;
             assert!(game.run_command(command), "{command}");
             game.lan_assign_ids();
-            assert!(game.side.next_entity > before, "{command}");
-            game.side.next_entity as i32
+            assert!(game.server.next_entity > before, "{command}");
+            game.server.next_entity as i32
         };
         let pig = summoned(
             &mut game,
@@ -149,14 +149,14 @@ pub(crate) mod tests {
             guest.load_timeout = 0;
             guest
         };
-        game.side.next_entity += 1;
-        game.side
+        game.server.next_entity += 1;
+        game.server
             .lan
             .as_mut()
             .unwrap()
             .hub
             .guests
-            .push(fresh_guest(2, game.side.next_entity as i32));
+            .push(fresh_guest(2, game.server.next_entity as i32));
         let attack = |game: &mut sunrise_gameplay::game::ServerGame<'_>, conn, id: i32| {
             game.lan_guest_packet(conn, S::Attack(play::Attack { id }));
         };
@@ -174,7 +174,7 @@ pub(crate) mod tests {
         assert!(hp(&game) < full, "the pig is not hurt: {full} health left");
         attack(&mut game, 2, far_item);
         assert_eq!(disconnects(&rx), vec![], "an item out of reach");
-        game.side
+        game.server
             .lan
             .as_mut()
             .unwrap()
@@ -186,7 +186,7 @@ pub(crate) mod tests {
             });
         attack(&mut game, 2, item);
         assert_eq!(disconnects(&rx), vec![], "a spear in hand");
-        game.side
+        game.server
             .lan
             .as_mut()
             .unwrap()
@@ -195,7 +195,7 @@ pub(crate) mod tests {
             .update(0, |guest| {
                 guest.inventory[0] = None;
             });
-        game.side.lan.as_mut().unwrap().hub.guests.remove(0);
+        game.server.lan.as_mut().unwrap().hub.guests.remove(0);
         for (case, (what, target)) in [
             ("an item", Some(item)),
             ("an experience orb", Some(orb)),
@@ -208,10 +208,10 @@ pub(crate) mod tests {
         {
             // Each kick ends a connection. A later invalid target needs a new
             // guest, not another packet from the already disconnected player.
-            game.side.next_entity += 1;
-            let me = game.side.next_entity as i32;
+            game.server.next_entity += 1;
+            let me = game.server.next_entity as i32;
             let conn = 3 + case as u32;
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()
@@ -220,7 +220,7 @@ pub(crate) mod tests {
                 .push(fresh_guest(conn, me));
             attack(&mut game, conn, target.unwrap_or(me));
             assert_eq!(disconnects(&rx), kicked, "{what}");
-            game.side.lan.as_mut().unwrap().hub.guests.remove(0);
+            game.server.lan.as_mut().unwrap().hub.guests.remove(0);
         }
     }
 }

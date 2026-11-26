@@ -61,7 +61,7 @@ fn finish_hit_uses_registered_guest_context_and_restores_the_host() {
         guest.placed = true;
         guest.loaded = true;
         guest.permission = 4;
-        game.side.lan.as_mut().unwrap().hub.guests.push(guest);
+        game.server.lan.as_mut().unwrap().hub.guests.push(guest);
         let host_uuid = game.acting_player_uuid();
         game.as_guest(2,|g| {
             assert_eq!(g.side.lan_acting,Some(2));
@@ -70,7 +70,7 @@ fn finish_hit_uses_registered_guest_context_and_restores_the_host() {
             let bow=g.held().unwrap().clone();assert!(g.use_crossbow(&bow));
         }).unwrap();
         assert_eq!(game.acting_player_uuid(), host_uuid);
-        assert_eq!(game.side.lan_acting, None);
+        assert_eq!(game.server.lan_acting, None);
         let arrow = game.creatures.projectiles.pop().unwrap();
         assert_eq!(arrow.guest, Some(2));
         assert_eq!(arrow.owner, Some(Who::Player));
@@ -82,8 +82,8 @@ fn finish_hit_uses_registered_guest_context_and_restores_the_host() {
         game.finish_arrow_hit(arrow, sunrise_sim::arrows::EntityHit::Deflected);
         let first = take_shots();
         assert_eq!(game.acting_player_uuid(), host_uuid);
-        assert_eq!(game.side.lan_acting, None);
-        assert_eq!(game.side.lan.as_ref().unwrap().hub.guests[0].uuid, 114);
+        assert_eq!(game.server.lan_acting, None);
+        assert_eq!(game.server.lan.as_ref().unwrap().hub.guests[0].uuid, 114);
         assert!(
             game.creatures
                 .projectiles

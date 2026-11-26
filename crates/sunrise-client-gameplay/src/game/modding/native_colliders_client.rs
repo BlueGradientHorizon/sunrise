@@ -155,7 +155,7 @@ impl ClientGame<'_> {
     }
 
     /// The client level in place for moving-collider scoping.
-    pub(in crate::game) fn client_collider_level(&self) -> Option<mod_api::LevelRef> {
+    pub fn client_collider_level(&self) -> Option<mod_api::LevelRef> {
         self.native_client_level()
     }
 

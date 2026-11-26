@@ -31,7 +31,7 @@ impl crate::game::ServerGame<'_> {
     /// `super.tick()` (Player.tick: its effects, death ticks, cooldowns, attack
     /// strength, inventory ticks and PlayerTickEvent.Pre/Post) and doTick's food tick
     /// and statistics; everything else the server does for it still runs.
-    pub(in crate::game) fn guest_body_ticks(&self, g: &sunrise_sim::lan::guest::Guest) -> bool {
+    pub fn guest_body_ticks(&self, g: &sunrise_sim::lan::guest::Guest) -> bool {
         !g.spectator()
             || !touching_unloaded_chunk(g.position, g.dimensions(), |x, z| {
                 self.common.world.chunks.contains_key(&(x, z))
@@ -39,7 +39,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// `handlePlayerPositionChange` jumps from the pre-move position and yaw.
     /// A later attack packet reads the resulting velocity even before travel.
-    pub(in crate::game::server_side) fn guest_jump(&mut self, conn: u32, from: [f64; 3], yaw: f32) {
+    pub fn guest_jump(&mut self, conn: u32, from: [f64; 3], yaw: f32) {
         let identity = if !mod_api::__private::listened(mod_api::HookId::PlayerJump) {
             None
         } else {
@@ -377,7 +377,7 @@ impl crate::game::ServerGame<'_> {
     /// Tick each connection once, in hub order. Resolve its level at dispatch
     /// time: a preceding player tick can move a later player to another level.
     /// `across_levels` is false for standalone ticks of the level in place.
-    pub(in crate::game::server_side) fn tick_guest_connections(
+    pub fn tick_guest_connections(
         &mut self,
         across_levels: bool,
     ) -> sunrise_game_data::Result<()> {
@@ -473,7 +473,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// The level path: `ServerLevel.tick` calls `ServerPlayer.tick` before the
     /// server starts its connection ticks.
-    pub(in crate::game) fn tick_level_guests(&mut self) {
+    pub fn tick_level_guests(&mut self) {
         building_cache(self.server.lan.as_ref());
         self.tick_level_guests_inner();
         building_cache(None);

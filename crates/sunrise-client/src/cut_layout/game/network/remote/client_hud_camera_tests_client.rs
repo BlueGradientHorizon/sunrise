@@ -34,8 +34,8 @@ fn a_watched_rider_gets_hearts_for_the_dragon_and_local_player_but_not_a_boat() 
             with_client_game(|game| {
                 let (_reader, _writer) = super::connect_menu_test(game);
                 super::spawn_menu_test(game);
-                game.side.remote.as_mut().unwrap().level_load.finish();
-                game.side.screen = Screen::Playing;
+                game.client.remote.as_mut().unwrap().level_load.finish();
+                game.client.screen = Screen::Playing;
                 game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
                 // LivingEntity.getMaxHealth converts to f32 before Hud adds the half point.
                 attributes(game, LOCAL, &[("minecraft:max_health", 31.499_999_9)]);

@@ -4,7 +4,7 @@ use sunrise_core::random::RandomSource;
 
 impl crate::game::ServerGame<'_> {
     /// EntitySelector.findEntities.
-    pub(in crate::game) fn select(&mut self, s: &Selector) -> Vec<Target> {
+    pub fn select(&mut self, s: &Selector) -> Vec<Target> {
         if let Some(name) = &s.player_name {
             return self.player_named(name).into_iter().collect();
         }

@@ -55,10 +55,10 @@ mod tests {
     #[ignore = "daily"]
     fn custom_spawners_tick_in_list_order_and_a_removed_one_never_ticks() {
         with_game(|game| {
-            game.side.cat.next_tick = 5;
+            game.server.cat.next_tick = 5;
             game.tick_custom_spawners();
             assert_eq!(
-                game.side.cat.next_tick, 4,
+                game.server.cat.next_tick, 4,
                 "no listener: vanilla's cat spawner ticks"
             );
             assert_eq!(
@@ -80,11 +80,11 @@ mod tests {
             .into();
         mod_platform::testing::with_mods(mods, || {
             with_game(|game| {
-                game.side.cat.next_tick = 5;
+                game.server.cat.next_tick = 5;
                 game.tick_custom_spawners();
                 game.tick_custom_spawners();
                 assert_eq!(
-                    game.side.cat.next_tick, 5,
+                    game.server.cat.next_tick, 5,
                     "the removed cat spawner never ticks"
                 );
             });

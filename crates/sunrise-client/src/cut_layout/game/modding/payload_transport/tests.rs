@@ -396,8 +396,8 @@ fn integrated_memory_delivers_registered_raw_payload_and_reply() {
     .into();
     mod_platform::testing::with_mods(mods, || {
         crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
-            game.side.settings.render_distance = 2;
-            game.side.settings.simulation_distance = 2;
+            game.client.settings.render_distance = 2;
+            game.client.settings.simulation_distance = 2;
             let options = sunrise_sim::world_options::WorldOptions {
                 world_type: sunrise_sim::save::WorldPreset::Flat,
                 ..Default::default()
@@ -413,7 +413,7 @@ fn integrated_memory_delivers_registered_raw_payload_and_reply() {
             .unwrap();
             let ready = drive_until(Instant::now() + WAIT_BUDGET, || {
                 game.poll_remote().unwrap();
-                game.side.remote.as_ref().is_some_and(|remote| {
+                game.client.remote.as_ref().is_some_and(|remote| {
                     // The first position packet creates and binds the local player
                     // after Login. A NETWORK reply can run before the next main poll.
                     remote.logged_in
@@ -430,11 +430,11 @@ fn integrated_memory_delivers_registered_raw_payload_and_reply() {
             );
             timeline.mark(1);
             assert!(
-                game.side.integrated.is_some(),
+                game.client.integrated.is_some(),
                 "production integrated server handle"
             );
             let wire_timeline = timeline.clone();
-            game.side.remote.as_ref().unwrap().session.start_recording(
+            game.client.remote.as_ref().unwrap().session.start_recording(
                 WireReceipt {
                     channel: CHANNEL,
                     expected: expected.clone(),

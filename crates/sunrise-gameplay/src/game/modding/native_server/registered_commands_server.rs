@@ -9,7 +9,7 @@ impl crate::game::ServerGame<'_> {
     /// `Commands`' constructor with `RegisterCommandsEvent`: asks the mods for their commands and
     /// builds the session's tree, vanilla's for `features` with the mods' on top. Called before
     /// functions are admitted (world open and each reload), so both function checks see them.
-    pub(in crate::game) fn build_native_commands(&mut self, features: &[String]) {
+    pub fn build_native_commands(&mut self, features: &[String]) {
         // A server hook: a client's tree is the one its server sends.
         if !self.common.is_logical_server() {
             return;
@@ -78,7 +78,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// Gives the hub the session's mod commands when it lacks them; first asks the mods again
     /// when one asked (`native_refresh_commands`), and then sends every player their tree.
-    pub(in crate::game) fn register_native_commands(&mut self) {
+    pub fn register_native_commands(&mut self) {
         let refresh = std::mem::take(&mut self.server.native_commands.0.refresh);
         if self.server.lan.is_none() {
             return;

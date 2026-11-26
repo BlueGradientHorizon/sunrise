@@ -3,7 +3,7 @@ use super::*;
 
 impl crate::game::ServerGame<'_> {
     /// Keep a held-out entity inaccessible until its copy has been stored back.
-    pub(in crate::game) fn with_entity_held_out<R>(
+    pub fn with_entity_held_out<R>(
         &mut self,
         id: u32,
         action: impl FnOnce(&mut Self) -> R,

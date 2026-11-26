@@ -53,12 +53,12 @@ pub(crate) mod tests {
         )
         .unwrap();
 
-        game.side.focused = true;
-        game.side.screen = Screen::Paused;
-        game.side.physical_keys.insert(KeyCode::KeyW);
+        game.client.focused = true;
+        game.client.screen = Screen::Paused;
+        game.client.physical_keys.insert(KeyCode::KeyW);
         assert!(!game.movement_key_held(KeyCode::KeyW));
 
-        game.side.screen = Screen::Playing;
+        game.client.screen = Screen::Playing;
         game.capture(true);
         assert_eq!(
             game.movement_key_held(KeyCode::KeyW),

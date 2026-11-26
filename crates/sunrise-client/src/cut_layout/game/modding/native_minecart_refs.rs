@@ -193,7 +193,7 @@ mod tests {
             assert_eq!(tnt.fuse(game), Some(80));
             // MinecartTNT.primeFuse broadcasts entity event 70 for clients.
             assert!(
-                game.side
+                game.server
                     .lan_entity_events
                     .iter()
                     .any(|e| (e.0, e.1) == (tnt.entity().id() as i32, 70))

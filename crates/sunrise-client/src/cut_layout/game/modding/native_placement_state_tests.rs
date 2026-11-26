@@ -195,7 +195,7 @@ fn placement_read_leaves_queued_spill_untouched() {
         let pos = [8.5, 70.5, 8.5];
         let motion = Some([0.0, 0.25, 0.0]);
         let delay = 10;
-        game.side
+        game.server
             .spill
             .0
             .spawns
@@ -212,7 +212,7 @@ fn placement_read_leaves_queued_spill_untouched() {
             Ok(Some(_))
         ));
         assert_eq!(game.dropped.len(), dropped);
-        let [queued] = game.side.spill.0.spawns.as_slice() else {
+        let [queued] = game.server.spill.0.spawns.as_slice() else {
             panic!("the spill must still contain the original item");
         };
         assert_eq!(queued.stack, stack);

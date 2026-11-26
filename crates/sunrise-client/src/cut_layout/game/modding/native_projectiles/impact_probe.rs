@@ -250,7 +250,7 @@ pub(crate) fn with_probe(
             bind_local_player(game, 7, 7);
             game.selected = 0;
             game.inventory[0] = Some(ItemStack::new("minecraft:fishing_rod", 1));
-            game.side.next_entity = 100;
+            game.server.next_entity = 100;
             test(game, &observed);
         };
         if matches!(action, Action::SaveOnImpact) {

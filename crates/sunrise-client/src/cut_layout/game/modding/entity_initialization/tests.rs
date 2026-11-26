@@ -301,7 +301,7 @@ fn client_login_tracking_and_retracking_initialize_the_client_store_once() {
                 enforces_secure_chat: false,
             }))
             .unwrap();
-            let profile = game.side.remote.as_ref().unwrap().profile;
+            let profile = game.client.remote.as_ref().unwrap().profile;
             assert_eq!(VALUE.get(game, Holder::Player(profile)), Ok(41));
             game.handle_packet(C::PlayerInfoUpdate(play::PlayerInfoUpdate {
                 actions: 1,
@@ -313,7 +313,7 @@ fn client_login_tracking_and_retracking_initialize_the_client_store_once() {
             }))
             .unwrap();
             let registry = game
-                .side
+                .client
                 .remote
                 .as_ref()
                 .unwrap()
@@ -406,8 +406,8 @@ fn server_players_initialize_on_join_and_new_respawn_but_not_rebind() {
     observe(|calls| {
         sunrise_gameplay::game::native_guest_turn_tests::with_guests(|game| {
             game.options.dedicated = Some(Vec::new());
-            game.side.world_root = game.side.save.0.root.clone();
-            game.side
+            game.server.world_root = game.server.save.0.root.clone();
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()
@@ -422,7 +422,7 @@ fn server_players_initialize_on_join_and_new_respawn_but_not_rebind() {
                 calls.lock().unwrap().as_slice(),
                 &[(false, Holder::Player(12))]
             );
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()

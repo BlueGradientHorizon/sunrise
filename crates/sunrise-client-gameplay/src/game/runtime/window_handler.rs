@@ -127,7 +127,7 @@ fn held_modifiers(
 impl crate::game::ClientGame<'_> {
     /// winit's `window_event`. The control socket and the pad menu call it too, with the
     /// input they make up.
-    pub(in crate::game) fn handle_window_event(
+    pub fn handle_window_event(
         &mut self,
         event_loop: &dyn EventLoopCtl,
         id: WindowId,
@@ -296,7 +296,7 @@ impl crate::game::ClientGame<'_> {
     }
 
     /// The loop ended: close the pads' output, save the world.
-    pub(in crate::game) fn shut_down(&mut self) {
+    pub fn shut_down(&mut self) {
         self.client.client_quit.set(ClientQuit::Stopping);
         self.close_client_tasks();
         if self.common.error.is_none()
@@ -319,7 +319,7 @@ impl crate::game::ClientGame<'_> {
 
     /// winit's `about_to_wait`: what happens between frames (stop requests, the closing
     /// save, world entry, the control socket, pads), then the next frame.
-    pub(in crate::game) fn idle(&mut self, event_loop: &dyn EventLoopCtl) {
+    pub fn idle(&mut self, event_loop: &dyn EventLoopCtl) {
         let quit_requested = match self.client.client_quit.get() {
             ClientQuit::Running => sunrise_threads::stop_requests() > 0,
             ClientQuit::Requested => true,

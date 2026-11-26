@@ -54,19 +54,19 @@ use std::sync::{
             let child = game.mob_passenger_ids(root)[0];
             let leaf = game.mob_passenger_ids(child)[0];
             assert!(!game.mobs.iter().any(|m| m.id == child));
-            game.side.tickets.0.add_portal((0, 0));
+            game.server.tickets.0.add_portal((0, 0));
             game.update_chunk_tickets();
             assert!(game.entity_ticking_area()(0, 0));
             game.set_portal_cooldown(leaf);
-            let cooldown = game.side.portals.entities[&leaf].cooldown;
+            let cooldown = game.server.portals.entities[&leaf].cooldown;
             game.handle_entity_portals();
-            assert_eq!(game.side.portals.entities[&leaf].cooldown, cooldown);
+            assert_eq!(game.server.portals.entities[&leaf].cooldown, cooldown);
             game.send_through_portal(root, BlockPos::new(0, 64, 0));
             assert!(game.mob_object(root).is_none());
             assert!(game.mob_object(child).is_none());
             assert!(game.mob_object(leaf).is_none());
             // Land the queued payload through the real arrival transform/adoption path.
-            game.side.portals.arrivals[0].plan = Plan::end_portal(
+            game.server.portals.arrivals[0].plan = Plan::end_portal(
                 Dim::Overworld,
                 Dim::Overworld,
                 BlockPos::new(0, 64, 0),
@@ -76,16 +76,16 @@ use std::sync::{
             assert_eq!(game.dim, Dim::Overworld);
             game.enter_level(Dim::End).unwrap();
             assert_eq!(game.dim, Dim::End);
-            let target = game.side.portals.arrivals[0].plan.approximate;
+            let target = game.server.portals.arrivals[0].plan.approximate;
             for z in (target.z >> 4) - 1..=(target.z >> 4) + 1 {
                 for x in (target.x >> 4) - 1..=(target.x >> 4) + 1 {
-                    game.side
+                    game.server
                         .streaming
                         .insert_remote(&mut game.world, sunrise_level::chunk::Chunk::empty(x, z));
                 }
             }
             game.resolve_arrivals();
-            assert!(game.side.portals.arrivals.is_empty());
+            assert!(game.server.portals.arrivals.is_empty());
             let new_root = game
                 .mob_objects()
                 .find(|m| m.extra.mount.is_none())
@@ -97,7 +97,7 @@ use std::sync::{
             assert!(game.mobs.iter().any(|m| m.id == new_child));
             assert!(game.mobs_below_off_level().contains(&new_child));
             assert!(game.mobs_below_off_level().contains(&new_leaf));
-            assert_eq!(game.side.portals.entities[&new_root].cooldown, ENTITY_DELAY);
+            assert_eq!(game.server.portals.entities[&new_root].cooldown, ENTITY_DELAY);
             assert!(
                 game.persist_raw(new_root)
                     .unwrap()
@@ -252,7 +252,7 @@ fn with_gate_mode(
                     (true, Some(-10), 300),
                 ] {
                     let expected = if by_class { 10 } else { by_rider };
-                    game.side.lan.as_mut().unwrap().hub.update_guest(12, |g| {
+                    game.server.lan.as_mut().unwrap().hub.update_guest(12, |g| {
                         g.vehicle = player.then_some(vehicle);
                         g.vehicle_order = 0;
                     });
@@ -310,10 +310,10 @@ fn with_gate_mode(
             }
             let left: Vec<u32> = game.dropped.iter().map(|d| d.id).collect();
             assert_eq!(left, [ids[0]]);
-            assert_eq!(game.side.portals.arrivals.len(), 1);
-            assert_eq!(game.side.portals.arrivals[0].plan.dim, Dim::Nether);
+            assert_eq!(game.server.portals.arrivals.len(), 1);
+            assert_eq!(game.server.portals.arrivals[0].plan.dim, Dim::Nether);
             assert_eq!(
-                game.side.portals.arrivals[0].tag.get("PortalCooldown"),
+                game.server.portals.arrivals[0].tag.get("PortalCooldown"),
                 Some(&Tag::Int(300))
             );
             let nether = || "minecraft:the_nether".to_owned();
@@ -336,7 +336,7 @@ fn with_gate_mode(
             );
             let id = game.dropped[0].id;
             game.send_through_portal(id, BlockPos::new(0, 64, 0));
-            assert!(game.side.portals.arrivals.is_empty());
+            assert!(game.server.portals.arrivals.is_empty());
             assert_eq!(heard.lock().unwrap().len(), 1);
             assert!(game.level_entity(id as i32).is_none());
             assert_eq!(game.persist.removals.len(), 1);
@@ -364,7 +364,7 @@ fn with_gate_mode(
                 game.send_through_portal(id, BlockPos::new(0, 64, 0));
                 assert!(game.level_entity(id as i32).is_none());
             }
-            assert!(game.side.portals.arrivals.is_empty());
+            assert!(game.server.portals.arrivals.is_empty());
             assert_eq!(heard.lock().unwrap().len(), 2);
         });
     }
@@ -383,7 +383,7 @@ fn with_gate_mode(
             }
             spare.store(102, Ordering::Relaxed);
             game.send_through_portal(101, BlockPos::new(0, 64, 0));
-            assert_eq!(game.side.portals.arrivals.len(), 1);
+            assert_eq!(game.server.portals.arrivals.len(), 1);
             assert_eq!(game.mobs.iter().map(|m| m.id).collect::<Vec<_>>(), [102]);
             assert_eq!(game.mobs[0].extra.mount, None);
             assert_eq!(
@@ -453,7 +453,7 @@ fn with_gate_mode(
                 game.mobs.push(mob);
             }
             for (conn, order) in [(12, 30), (13, 10)] {
-                game.side.lan.as_mut().unwrap().hub.update_guest(conn, |g| {
+                game.server.lan.as_mut().unwrap().hub.update_guest(conn, |g| {
                     g.vehicle = Some(101);
                     g.vehicle_order = order;
                 });
@@ -491,7 +491,7 @@ fn with_gate_mode(
                 game.send_through_portal(transient.id(), at);
                 game.send_through_portal(persistent.id(), at);
                 let world = tempfile::tempdir().unwrap();
-                game.side.world_root = world.path().to_path_buf();
+                game.server.world_root = world.path().to_path_buf();
                 let path = game.arrivals_path();
                 std::fs::create_dir_all(path.parent().unwrap()).unwrap();
                 game.save_portal_arrivals();
@@ -506,7 +506,7 @@ fn with_gate_mode(
                     Some([0, 0, 0, 584])
                 );
 
-                let waiting = std::mem::take(&mut game.side.portals.arrivals);
+                let waiting = std::mem::take(&mut game.server.portals.arrivals);
                 assert_eq!(waiting.len(), 2);
                 for pending in waiting {
                     let Some(TransferredArrivalState::Entity(state)) = pending.transferred else {

@@ -916,7 +916,7 @@ impl crate::game::ClientGame<'_> {
     }
     /// Draw the browser's contents once, leaving its tooltip for the screen's
     /// overlay phase. The carried stack belongs to the enclosing screen.
-    pub(in crate::game::client_side) fn draw_mod_browser(
+    pub fn draw_mod_browser(
         &mut self,
         batch: &mut HudBatch,
     ) -> Option<BrowserTooltip> {
@@ -1050,7 +1050,7 @@ impl crate::game::ClientGame<'_> {
     /// A mouse press on a container screen: true when the panel took it
     /// (its search box, page arrows, items or empty space; a click there
     /// never throws the carried stack).
-    pub(in crate::game) fn mod_browser_press(&mut self, right: bool) -> bool {
+    pub fn mod_browser_press(&mut self, right: bool) -> bool {
         // A left press whose release never came (the pointer left the window)
         // ends here; a right press cancels the held one.
         self.client.panel.other_press(!right);
@@ -1266,7 +1266,7 @@ impl crate::game::ClientGame<'_> {
     }
 
     /// Whether keys go to the panel's search box.
-    pub(in crate::game::client_side) fn mod_browser_typing(&self) -> bool {
+    pub fn mod_browser_typing(&self) -> bool {
         matches!(self.client.screen, Screen::Inventory | Screen::Creative)
             && self.client.panel.of.is_some()
             && self.client.panel.search.as_ref().is_some_and(|s| s.focused)
@@ -1292,7 +1292,7 @@ impl crate::game::ClientGame<'_> {
         handled
     }
     /// Text typed (or one backspace) into the search box (`sunrise-ctl type`).
-    pub(in crate::game::client_side) fn mod_browser_text(
+    pub fn mod_browser_text(
         &mut self,
         text: Option<&str>,
         backspace: bool,
@@ -1327,7 +1327,7 @@ impl crate::game::ClientGame<'_> {
         }
     }
     /// The container screen closed: the search box lets go of the keys.
-    pub(in crate::game) fn mod_browser_closed(&mut self) {
+    pub fn mod_browser_closed(&mut self) {
         self.client.panel.transfer_warning = None;
         // Closing the screen cancels a press on the panel; its release stays
         // the panel's.

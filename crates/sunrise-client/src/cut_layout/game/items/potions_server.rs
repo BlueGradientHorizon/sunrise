@@ -34,7 +34,7 @@ pub(crate) mod tests {
             }
             let first = game.breath_clouds[0].id;
             let second = game.breath_clouds[1].id;
-            let next = game.side.next_entity;
+            let next = game.server.next_entity;
             crate::game::server_side::entity_server::taken_pass_tests::with_spawn(
                 |game| {
                     assert!(game.breath_clouds.is_empty());
@@ -95,7 +95,7 @@ pub(crate) mod tests {
                 });
             }
             game.add_remote_ominous_item_spawner(0, [0.0, 80.0, 0.0]);
-            let before = game.side.next_entity;
+            let before = game.server.next_entity;
             assert_eq!(game.breath_clouds[1].id, 0);
             game.lan_assign_ids();
             assert_eq!(game.ominous_spawners[0].id, before + 1);
@@ -184,7 +184,7 @@ pub(crate) mod tests {
                 vec!["minecraft:entity_effect".into()],
                 None,
             );
-            game.side.lan = Some(sunrise_gameplay::game::lan::LanHost::for_test(hub));
+            game.server.lan = Some(sunrise_gameplay::game::lan::LanHost::for_test(hub));
             let (tag, _) = sunrise_core::nbt::parse_snbt(
                 r#"{Pos:[0d,80d,0d],Duration:200,WaitTime:0,Radius:3f,custom_particle:{type:"test:measured",measure:257,ignored:42}}"#,
             ).unwrap();
@@ -587,7 +587,7 @@ pub(crate) mod sound_on_added_tests {
             ] {
                 game.add_player_effect(EffectInstance::new(id, 2400, amplifier));
             }
-            let played: Vec<(String, [f64; 3])> = std::mem::take(&mut game.side.pending_sounds)
+            let played: Vec<(String, [f64; 3])> = std::mem::take(&mut game.server.pending_sounds)
                 .into_iter()
                 .map(|s| (s.event, s.position))
                 .collect();

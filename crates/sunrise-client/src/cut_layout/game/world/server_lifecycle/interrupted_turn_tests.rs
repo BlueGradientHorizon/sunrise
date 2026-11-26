@@ -53,21 +53,21 @@ fn scenario(interruption: Interruption) {
         game.options.execution_role = ExecutionRole::DedicatedServer;
         let root = tempfile::tempdir().unwrap();
         let root = root.path().to_path_buf();
-        game.side.world_root = root.clone();
-        game.side.save.0 = std::sync::Arc::new(sunrise_sim::save::SaveDir::new(
+        game.server.world_root = root.clone();
+        game.server.save.0 = std::sync::Arc::new(sunrise_sim::save::SaveDir::new(
             root.clone(),
             sunrise_sim::save::LevelShape::OVERWORLD,
             Some(Default::default()),
         ));
         game.level.name = "interrupted turn".into();
-        game.side.session_lock.0 = Some(sunrise_sim::save::SessionLock::acquire(&root).unwrap());
-        game.side.world_adopted = true;
+        game.server.session_lock.0 = Some(sunrise_sim::save::SessionLock::acquire(&root).unwrap());
+        game.server.world_adopted = true;
         assert!(
             !game.advancement_tree().list.is_empty(),
             "the advancement tree is loaded, so a save would write advancement files"
         );
         for conn in [12, 13] {
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()
@@ -100,7 +100,7 @@ fn scenario(interruption: Interruption) {
             sunrise_core::geometry::Vec3::ZERO,
             0.0,
         ));
-        game.side
+        game.server
             .lan
             .as_mut()
             .unwrap()
@@ -120,26 +120,26 @@ fn scenario(interruption: Interruption) {
             crate::game::dedicated::panic_message(panic.as_ref()),
             "engine panic in a turn"
         );
-        assert!(game.side.lan_guest_swaps.is_empty() && game.side.lan_acting.is_none());
+        assert!(game.server.lan_guest_swaps.is_empty() && game.server.lan_acting.is_none());
 
         let initially_interrupted: &[u32] = match interruption {
             Interruption::Nested => &[12, 13],
             _ => &[12],
         };
-        assert_eq!(game.side.interrupted_turns, initially_interrupted);
+        assert_eq!(game.server.interrupted_turns, initially_interrupted);
 
         if matches!(interruption, Interruption::AfterFirstCheckpoint) {
             // Reproduce the state left by an engine error in a new turn after the first
             // shutdown checkpoint. The final save must refresh the earlier exclusion.
             game.exclude_interrupted_players(false, |_| {});
-            assert!(game.side.crash_save.excludes(12));
-            assert!(!game.side.crash_save.excludes(13));
+            assert!(game.server.crash_save.excludes(12));
+            assert!(!game.server.crash_save.excludes(13));
             let panic = catch_unwind(AssertUnwindSafe(|| game.as_guest(13, taking_turn)))
                 .expect_err("the later turn must also unwind");
             let message = sunrise_gameplay::game::dedicated::panic_message(panic.as_ref());
             assert_eq!(message, "engine panic in a turn");
-            assert!(game.side.lan_guest_swaps.is_empty() && game.side.lan_acting.is_none());
-            assert_eq!(game.side.interrupted_turns, [12, 13]);
+            assert!(game.server.lan_guest_swaps.is_empty() && game.server.lan_acting.is_none());
+            assert_eq!(game.server.interrupted_turns, [12, 13]);
             game.finish_server_save(false, Some(&message)).unwrap();
         } else {
             let logouts = std::sync::Arc::new(Mutex::new(Vec::new()));

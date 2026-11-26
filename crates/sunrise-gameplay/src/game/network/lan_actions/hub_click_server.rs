@@ -129,7 +129,7 @@ impl crate::game::ServerGame<'_> {
     /// path, including a panic in `f`, which is then propagated: no borrow of the host outlives
     /// the call and the game is not left without it. `None` when there is no host to lift,
     /// which includes a call made while the host is already lifted.
-    pub(in crate::game) fn with_lan_lifted<R>(
+    pub fn with_lan_lifted<R>(
         &mut self,
         f: impl FnOnce(&mut Self, &mut LanHost) -> R,
     ) -> Option<R> {

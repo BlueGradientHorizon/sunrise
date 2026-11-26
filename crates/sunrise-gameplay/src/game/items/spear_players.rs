@@ -86,7 +86,7 @@ impl crate::game::ServerGame<'_> {
     /// alive and no spectators (`canBeHitByProjectile`), allowed by
     /// `canHarmPlayer` (the `pvp` game rule and the victim's team), and not
     /// on the attacker's vehicle.
-    pub(in crate::game::server_side) fn stab_players_for(&self, actor: u32) -> Vec<StabPlayer> {
+    pub fn stab_players_for(&self, actor: u32) -> Vec<StabPlayer> {
         let Some(host) = self.server.lan.as_ref() else {
             return Vec::new();
         };

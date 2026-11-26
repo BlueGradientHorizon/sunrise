@@ -4,7 +4,7 @@
 use super::*;
 
 impl crate::game::ClientGame<'_> {
-    pub(in crate::game) fn client_update_world(&mut self) {
+    pub fn client_update_world(&mut self) {
         debug_assert!(
             !self.is_logical_server(),
             "client_update_world called on server"

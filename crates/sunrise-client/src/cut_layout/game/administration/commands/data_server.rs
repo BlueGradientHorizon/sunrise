@@ -30,7 +30,7 @@ pub(crate) mod tests {
             );
             game.persist.raw.insert(12, Tag::Compound(raw));
             game.persist.uuids.insert(12, [1, 2, 3, 4]);
-            game.side.others.0.push(sunrise_gameplay::game::server_side::commands_server::OtherEntity {
+            game.server.others.0.push(sunrise_gameplay::game::server_side::commands_server::OtherEntity {
                 size_answer: None,
                 attachment_lifetime: Default::default(),
                 join: Default::default(),
@@ -134,7 +134,7 @@ pub(crate) mod modern_literal_tests {
         game.build_registries();
         game.set_allow_commands(true);
         let run = |g: &mut sunrise_gameplay::game::ServerGame<'_>, line: &str| {
-            g.side.exec.0 = ExecState::default();
+            g.server.exec.0 = ExecState::default();
             let source = g.player_source();
             g.execute_line(line, source)
         };

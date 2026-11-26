@@ -31,7 +31,7 @@ use {
 #[cfg(feature = "client")]
 impl sunrise_client_gameplay::game::ClientGame<'_> {
     pub(crate) fn set_sent_sneak_for_test(&mut self) {
-        self.side.remote.as_mut().unwrap().last_input |= sunrise_gameplay_common::game::remote::SHIFT_INPUT;
+        self.client.remote.as_mut().unwrap().last_input |= sunrise_gameplay_common::game::remote::SHIFT_INPUT;
     }
 }
 
@@ -291,7 +291,7 @@ pub(crate) fn with_interaction_client_game_at(
         |game| {
             let (client, _server) = Pipe::pair();
             game.connect_local(client, "InteractionTest").unwrap();
-            game.side.remote.as_mut().unwrap().logged_in = true;
+            game.client.remote.as_mut().unwrap().logged_in = true;
             game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 3.5)).unwrap());
             game.set_local_mode(sunrise_command::args::GameMode::Creative);
             game.world

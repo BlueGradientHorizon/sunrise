@@ -5,7 +5,7 @@ use sunrise_items::items::ItemStack;
 impl crate::game::ServerGame<'_> {
     /// `CampfireBlock.useItemOn` with `held` in the hand that acts, the block
     /// at `pos` clicked: true when it doused a lit campfire (SUCCESS).
-    pub(in crate::game) fn use_campfire_douse(
+    pub fn use_campfire_douse(
         &mut self,
         hit: &Hit,
         held: Option<&ItemStack>,

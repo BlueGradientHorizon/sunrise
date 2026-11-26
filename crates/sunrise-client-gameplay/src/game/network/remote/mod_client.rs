@@ -361,7 +361,7 @@ impl sunrise_client::interaction_input::InteractionWorld for RemoteInputWorld<'_
 
 #[cfg(feature = "client")]
 impl crate::game::ClientGame<'_> {
-    pub(in crate::game) fn apply_packet(&mut self, packet: C) -> Result<()> {
+    pub fn apply_packet(&mut self, packet: C) -> Result<()> {
         self.observe_client_packet(&packet);
         match packet {
             // ClientCommonPacketListenerImpl.handlePing runs on the game
@@ -741,7 +741,7 @@ impl crate::game::ClientGame<'_> {
     }
     /// `HashedStack.create` with the connection's registries (the client's
     /// `decoratedHashOpsGenerator`).
-    pub(in crate::game) fn hashed_stack(
+    pub fn hashed_stack(
         &self,
         s: &Option<ItemStack>,
     ) -> sunrise_protocol::Result<Option<Hashed>> {
@@ -853,7 +853,7 @@ impl crate::game::ClientGame<'_> {
     /// the next chunk packet on wait for the next frame, unless they have
     /// already waited `BACKLOG_LIMIT`. A chunk packet still decoding holds
     /// back what follows it.
-    pub(in crate::game) fn poll_remote(&mut self) -> Result<()> {
+    pub fn poll_remote(&mut self) -> Result<()> {
         self.poll_remote_with(false)
     }
     /// `Minecraft.runTick` handles every packet that came (`runAllTasks`)
@@ -862,7 +862,7 @@ impl crate::game::ClientGame<'_> {
     /// when a tick is about to run, so the tick moves through those chunks, as
     /// vanilla's does. A batch's `ChunkBatchReceived` is not among them: the
     /// network thread answers it (`net::receive_play`).
-    pub(in crate::game) fn poll_remote_before_tick(&mut self) -> Result<()> {
+    pub fn poll_remote_before_tick(&mut self) -> Result<()> {
         if self
             .client
             .remote
@@ -935,7 +935,7 @@ impl crate::game::ClientGame<'_> {
         )
     }
     /// Live client `Abilities` (`LocalPlayer.abilities`) when connected to a server.
-    pub(in crate::game) fn remote_abilities(
+    pub fn remote_abilities(
         &self,
     ) -> Option<&sunrise_sim::lan::abilities::PlayerAbilities> {
         self.client.remote.as_ref().map(|r| &r.abilities)
@@ -1179,7 +1179,7 @@ impl crate::game::ClientGame<'_> {
     }
     // remote_player_eating: remote/use.rs
     /// Inventory as the server last described it.
-    pub(in crate::game) fn remote_synced(&mut self) {
+    pub fn remote_synced(&mut self) {
         let stacks = self.creative_stacks();
         if let Some(r) = self.client.remote.as_mut() {
             r.synced = stacks;
@@ -1247,11 +1247,11 @@ impl crate::game::ClientGame<'_> {
     }
     /// A stack from the server, decoded as the saved and command item NBT
     /// are, so tooltips and models see every field.
-    pub(in crate::game) fn to_stack(&self, s: &Option<Stack>) -> Option<ItemStack> {
+    pub fn to_stack(&self, s: &Option<Stack>) -> Option<ItemStack> {
         self.decode_remote_stack(s.as_ref()?)
     }
 
-    pub(in crate::game) fn send(&self, packet: S) {
+    pub fn send(&self, packet: S) {
         if self.client.remote.is_some() {
             // MultiPlayerGameMode's attack, interact, useItem, useItemOn, releaseUsingItem, dropItem and
             // piercingAttack run ensureHasSentCarriedItem before their packet: a slot the number keys

@@ -23,13 +23,13 @@ use sunrise_gameplay_common::game::in_own_process;
                     game.player = Some(
                         sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 0.5)).unwrap(),
                     );
-                    game.side.camera_type = CameraType::FirstPerson;
-                    game.side.chat_ui.hide_gui = false;
-                    game.side.gui.atlas.sprites.clear();
+                    game.client.camera_type = CameraType::FirstPerson;
+                    game.client.chat_ui.hide_gui = false;
+                    game.client.gui.atlas.sprites.clear();
                     let expected = [0.0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875];
                     let mut stack = |slot: &str, u0: f32| {
                         let overlay = format!("misc/test_{slot}");
-                        game.side.gui.atlas.sprites.insert(
+                        game.client.gui.atlas.sprites.insert(
                             overlay.clone(),
                             Rect {
                                 u0,
@@ -85,12 +85,12 @@ use sunrise_gameplay_common::game::in_own_process;
                         assert_eq!(q.vertices[2].pos[..2], [1.0, -1.0]);
                     }
 
-                    game.side.camera_type = CameraType::ThirdPersonBack;
+                    game.client.camera_type = CameraType::ThirdPersonBack;
                     assert!(
                         quads(game).is_empty(),
                         "third-person suppresses equipment overlays"
                     );
-                    game.side.camera_type = CameraType::FirstPerson;
+                    game.client.camera_type = CameraType::FirstPerson;
                     game.inventory[4] = Some(ItemStack::new("minecraft:spyglass", 1));
                     assert_eq!(
                         quads(game).len(),
@@ -106,7 +106,7 @@ use sunrise_gameplay_common::game::in_own_process;
                     // SetPlayerInventory slots 41 and 42 sync body armor and saddle.
                     game.init_remote_for_replay().unwrap();
                     let item_id = |name: &str| {
-                        game.side
+                        game.client
                             .remote
                             .as_ref()
                             .unwrap()

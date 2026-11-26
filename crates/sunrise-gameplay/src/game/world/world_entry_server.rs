@@ -13,7 +13,7 @@ impl crate::game::ServerGame<'_> {
     /// `/reload` reloads a server's (`ReloadableServerResources`).
     /// Publish tables before function admission, leaving advancement rewards queued
     /// until the reload's new function store is available.
-    pub(in crate::game) fn install_world_tables(&mut self, prepared: PreparedWorldReload) {
+    pub fn install_world_tables(&mut self, prepared: PreparedWorldReload) {
         let PreparedWorldReload {
             structure_spawns,
             tables,
@@ -94,7 +94,7 @@ impl crate::game::ServerGame<'_> {
         self.announce_data_maps_updated(mod_api::DataMapsUpdateCause::ServerReload);
     }
     /// Build and publish one server snapshot for this world load or reload.
-    pub(in crate::game) fn load_server_loot(&mut self) {
+    pub fn load_server_loot(&mut self) {
         if let Some(tables) = &self.server.world_tables.0 {
             self.common.server_items = Some(tables.items.clone());
             self.copy_loot_enchantment_answers(&tables.loot);
@@ -153,7 +153,7 @@ impl crate::game::ServerGame<'_> {
         self.server.server_loot.0.set(loot);
     }
     /// A world open's tables, and the first generation of the registries the mods declared.
-    pub(in crate::game) fn open_world_tables(
+    pub fn open_world_tables(
         &mut self,
         staged: super::condition_reload_state::StagedWorldTables,
     ) -> Result<()> {
@@ -179,7 +179,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// Reload the content tables with the world's packs, as
     /// `/reload` reloads a server's (`ReloadableServerResources`).
-    pub(in crate::game) fn prepare_world_reload(
+    pub fn prepare_world_reload(
         &mut self,
         stack: &sunrise_gameplay_common::game::function_pack_stack::PackStack,
         root: &std::path::Path,
@@ -293,7 +293,7 @@ impl crate::game::ServerGame<'_> {
     /// Load the world's data packs' content tables (`None`: the world has no
     /// packs, and `Resources.rest` stays in use). This re-reads the tables,
     /// so it runs once per world open and on `/reload`.
-    pub(in crate::game) fn stage_world_tables(
+    pub fn stage_world_tables(
         &mut self,
         stack: &sunrise_gameplay_common::game::function_pack_stack::PackStack,
         reload: bool,

@@ -540,7 +540,7 @@ impl crate::game::ClientGame<'_> {
             && self.client.pad.0.in_use
     }
 
-    pub(in crate::game::client_side) fn pad_button(
+    pub fn pad_button(
         &mut self,
         event_loop: &dyn EventLoopCtl,
         button: Button,
@@ -600,7 +600,7 @@ impl crate::game::ClientGame<'_> {
 
     /// A bound action: a vanilla mapping acts as its default key or mouse
     /// button, like a rebound keyboard key.
-    pub(in crate::game::client_side) fn pad_action(
+    pub fn pad_action(
         &mut self,
         action: &str,
         down: bool,
@@ -732,7 +732,7 @@ impl crate::game::ClientGame<'_> {
     }
 
     /// B and Start: what Escape does where the pad is.
-    pub(in crate::game::client_side) fn pad_back(&mut self) -> Result<()> {
+    pub fn pad_back(&mut self) -> Result<()> {
         // The death confirm's buttons wait a second, as its Escape does.
         if self
             .client
@@ -770,7 +770,7 @@ impl crate::game::ClientGame<'_> {
     }
 
     /// The left stick as the move vector, while playing.
-    pub(in crate::game::client_side) fn pad_move(&self) -> Option<[f32; 2]> {
+    pub fn pad_move(&self) -> Option<[f32; 2]> {
         let settings = &self.client.settings.controller;
         if !settings.enabled
             || self.pad_in_menu()
@@ -784,7 +784,7 @@ impl crate::game::ClientGame<'_> {
 
     /// A changed stick component is input for that direction, even below the digital
     /// threshold. Positive and negative travel take over their own mappings only.
-    pub(in crate::game::client_side) fn resume_stick_mappings(
+    pub fn resume_stick_mappings(
         &mut self,
         previous: Option<[f32; 2]>,
     ) {

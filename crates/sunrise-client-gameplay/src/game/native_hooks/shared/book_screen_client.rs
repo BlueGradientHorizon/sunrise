@@ -9,7 +9,7 @@ pub(in crate::game) mod placement;
 impl crate::game::ClientGame<'_> {
     /// The mod screen showing now, if any, including a server-closed screen
     /// kept displayed through `screen_closing` or a veto until removal runs.
-    pub(in crate::game) fn shown_native_screen(&self) -> Option<&OpenNativeScreen> {
+    pub fn shown_native_screen(&self) -> Option<&OpenNativeScreen> {
         let screen = self.client.mod_screen.0.as_ref()?;
         if !screen.shown
             || self.client.screen != Screen::Inventory
@@ -24,7 +24,7 @@ impl crate::game::ClientGame<'_> {
         (active || (screen.detached && remote.as_ref().is_none())).then_some(screen)
     }
     /// Whether a mod's screen places the current container and player slots.
-    pub(in crate::game) fn native_screen_shown(&self) -> bool {
+    pub fn native_screen_shown(&self) -> bool {
         self.shown_native_screen().is_some()
     }
     /// The open mod screen's height.

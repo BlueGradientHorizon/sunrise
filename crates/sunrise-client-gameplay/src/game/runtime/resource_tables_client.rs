@@ -10,7 +10,7 @@ use sunrise_level::chunk_streamer::ChunkWorkerContext;
 #[cfg(feature = "client")]
 impl crate::game::ClientGame<'_> {
     /// A title screen over the current resources and their splash pool.
-    pub(crate) fn new_title(&self, saves: PathBuf) -> Title {
+    pub fn new_title(&self, saves: PathBuf) -> Title {
         Title::new(
             saves,
             &self.common.options.resources,
@@ -193,7 +193,7 @@ impl UiResources {
 }
 
 impl UiResources {
-    pub(in crate::game) fn fonts_only(
+    pub fn fonts_only(
         root: &sunrise_assets::resource_source::ResourceSource,
     ) -> Result<Self> {
         Ok(Self {
@@ -399,7 +399,7 @@ impl crate::game::client_side::ClientState {
 
 impl crate::game::ClientGame<'_> {
     #[inline]
-    pub(in crate::game) fn client_res(&self) -> &ClientResources {
+    pub fn client_res(&self) -> &ClientResources {
         self.client.client_res()
     }
 }

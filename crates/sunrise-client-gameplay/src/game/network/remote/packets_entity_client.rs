@@ -587,7 +587,7 @@ impl crate::game::ClientGame<'_> {
     }
     /// `ClientPacketListener.handleSetEntityData`: require an active level, ignore absent entities,
     /// and validate/assign each entry in wire order (`SynchedEntityData.assignValues`).
-    pub(in crate::game) fn apply_set_entity_data_packet(
+    pub fn apply_set_entity_data_packet(
         &mut self,
         p: play::SetEntityData,
     ) -> Result<()> {

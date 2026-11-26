@@ -264,7 +264,7 @@ impl ClientGame<'_> {
     /// window's player has its own effects, a server's mobs and players the
     /// list the server sent, and the mobs and guests of a game in the frame
     /// theirs.
-    fn effect_swirls(&mut self) {
+    pub fn effect_swirls(&mut self) {
         // `ITEM_SLIME` and `ITEM_COBWEB` crumbs draw the item's model, which
         // `BreakingItemParticle`'s providers resolve as they spawn: the sprites
         // are kept per type here, and this resolves them once (it returns at

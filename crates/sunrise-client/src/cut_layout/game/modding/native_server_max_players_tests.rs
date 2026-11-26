@@ -10,7 +10,7 @@ fn a_mod_reads_and_sets_the_player_limit() {
         let before = game.server_max_players().unwrap();
         assert_eq!(game.server_set_max_players(before + 40), Ok(()));
         assert_eq!(game.server_max_players(), Some(before + 40));
-        let shared = &game.side.lan.as_ref().unwrap().hub.lan.shared;
+        let shared = &game.server.lan.as_ref().unwrap().hub.lan.shared;
         assert_eq!(shared.max_players(), before as usize + 40);
         assert_eq!(game.server_set_max_players(i32::MAX as u32), Ok(()));
         assert_eq!(game.server_max_players(), Some(i32::MAX as u32));
@@ -40,7 +40,7 @@ fn each_player_limit_refusal_has_its_own_name_and_changes_nothing() {
             })
         );
         assert_eq!(game.server_max_players(), Some(7), "nothing was written");
-        let host = game.side.lan.take();
+        let host = game.server.lan.take();
         assert_eq!(game.server_max_players(), None);
         assert_eq!(
             game.server_set_max_players(9),
@@ -51,7 +51,7 @@ fn each_player_limit_refusal_has_its_own_name_and_changes_nothing() {
             Err(PlayerLimitRefusal::NotOpen),
             "no server is the first reason"
         );
-        game.side.lan = host;
+        game.server.lan = host;
         assert_eq!(game.server_max_players(), Some(7));
     });
 }

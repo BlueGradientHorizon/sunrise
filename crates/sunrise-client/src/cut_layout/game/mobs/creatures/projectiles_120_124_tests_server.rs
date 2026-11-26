@@ -20,7 +20,7 @@ pub(crate) fn alive_124(
         Target124::Frame(id) => game.item_frames.iter().any(|f| f.id == id),
         Target124::Painting(id) => game.paintings.iter().any(|p| p.id == id),
         Target124::Falling(id) => game.falling.iter().any(|f| f.id == id),
-        Target124::Knot(id) => game.side.others.0.iter().any(|o| o.id == id),
+        Target124::Knot(id) => game.server.others.0.iter().any(|o| o.id == id),
         Target124::Cushion(id) => game.cushions.iter().any(|c| c.id == id),
         Target124::Crystal(id) => game.crystals.iter().any(|c| c.id == id),
         Target124::Tnt(id) => game.tnts.iter().any(|t| t.id == id),
@@ -96,7 +96,7 @@ pub(crate) fn run_witness_firework_rocket_targets_124() {
                 assert!(game.run_command("summon minecraft:leash_knot 3.5 64.375 4.5 {}"));
                 targets.insert(
                     "knot".into(),
-                    Target124::Knot(game.side.others.0.last().unwrap().id),
+                    Target124::Knot(game.server.others.0.last().unwrap().id),
                 );
             }
             "cushion" => {
@@ -287,5 +287,5 @@ pub(crate) fn run_witness_firework_rocket_targets_124() {
 }
 
 pub(crate) fn clear_others(game: &mut sunrise_gameplay::game::ServerGame<'_>) {
-    game.side.others.0.clear();
+    game.server.others.0.clear();
 }

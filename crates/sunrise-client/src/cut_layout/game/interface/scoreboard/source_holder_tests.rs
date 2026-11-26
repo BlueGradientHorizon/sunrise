@@ -66,7 +66,7 @@ fn game_with_guest<'a>(
     );
     guest.dimension = "minecraft:overworld".into();
     guest.placed = true;
-    game.side.lan.as_mut().unwrap().hub.guests.push(guest);
+    game.server.lan.as_mut().unwrap().hub.guests.push(guest);
     (game, rx)
 }
 
@@ -83,9 +83,9 @@ fn a_score_for_another_player_uses_their_team_formatted_name() {
     ] {
         assert!(game.run_command(command), "{command}");
     }
-    game.side.chat_capture = Some(Vec::new());
+    game.server.chat_capture = Some(Vec::new());
     assert!(game.run_command("scoreboard players set Alex o 5"));
-    let lines = game.side.chat_capture.take().unwrap();
+    let lines = game.server.chat_capture.take().unwrap();
     assert_eq!(lines.len(), 1);
     assert_eq!(lines[0].plain(), "Set [o] for [R] Alex to 5");
 }

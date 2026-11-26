@@ -13,7 +13,7 @@ impl crate::game::CommonGame<'_> {
     /// before the axe's transform table: the derived `neoforge:oxidizables` inverse
     /// (`DataMapHooks.getPreviousOxidizedStage`), then the `neoforge:waxables` inverse
     /// (`getBlockUnwaxed`). None for another tool or a block the maps leave out.
-    pub(in crate::game) fn axe_mapped(
+    pub fn axe_mapped(
         &self,
         transformer: &str,
         block: BlockStateId,

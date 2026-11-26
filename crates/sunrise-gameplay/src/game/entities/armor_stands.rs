@@ -221,7 +221,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// `ArmorStand.interactAt` for the stand under the crosshair, or for the
     /// stand a guest's interact packet named (its client's click point).
-    pub(in crate::game) fn interact_armor_stand(&mut self, target: Option<InteractTarget>) -> bool {
+    pub fn interact_armor_stand(&mut self, target: Option<InteractTarget>) -> bool {
         let Some((mut i, d, point)) = (match target {
             // interactAt gets the packet's location, measured from the stand's
             // position, so getClickedSlot reads the height the client clicked.
@@ -460,7 +460,7 @@ impl crate::game::ServerGame<'_> {
     /// `ArmorStand.hurtServer` for a player's attack (also a sweep's): a
     /// creative player breaks it, otherwise the first hit wobbles it and a
     /// second within five ticks breaks it.
-    pub(in crate::game::server_side) fn punch_armor_stand(&mut self, i: usize) -> bool {
+    pub fn punch_armor_stand(&mut self, i: usize) -> bool {
         // `Entity.isInvulnerableTo` before ArmorStand's own branches (#916):
         // the saved flag or window refuses the hit — past only for
         // #bypasses_invulnerability damage and a creative player's hit
@@ -1130,7 +1130,7 @@ impl crate::game::ServerGame<'_> {
     /// `#can_break_armor_stand` or `#always_kills_armor_stands` hurts the
     /// stand as a player's hit does and returns true; every other source is
     /// refused (false), as `/damage` fails for it in vanilla.
-    pub(in crate::game) fn command_damage_stand(
+    pub fn command_damage_stand(
         &mut self,
         id: u32,
         damage_type: &str,
@@ -1350,7 +1350,7 @@ impl crate::game::ServerGame<'_> {
         }
     }
     /// `ArmorStand.brokenByAnything`, then `kill`.
-    pub(in crate::game) fn break_armor_stand_by_anything(
+    pub fn break_armor_stand_by_anything(
         &mut self,
         i: usize,
         damage_type: &str,

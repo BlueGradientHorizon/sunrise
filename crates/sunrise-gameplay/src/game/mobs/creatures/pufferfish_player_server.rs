@@ -10,7 +10,7 @@ use sunrise_sim::mobs::Species;
 impl crate::game::ServerGame<'_> {
     /// `Pufferfish.playerTouch`: accepted player damage, the sting game event, then poison with
     /// this fish as source.
-    pub(in crate::game) fn touch_pufferfish(&mut self) {
+    pub fn touch_pufferfish(&mut self) {
         if self.common.spectator() {
             return;
         }

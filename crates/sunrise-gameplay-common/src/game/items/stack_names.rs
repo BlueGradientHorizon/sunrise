@@ -12,7 +12,7 @@ impl crate::game::CommonGame<'_> {
     }
 
     /// `ItemStack.getItemName` as a component, without custom name or book title.
-    pub(in crate::game) fn stack_item_name_text(
+    pub fn stack_item_name_text(
         &self,
         stack: &ItemStack,
     ) -> sunrise_game_data::text::Text {

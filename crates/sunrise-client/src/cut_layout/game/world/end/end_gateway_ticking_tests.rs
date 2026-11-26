@@ -52,8 +52,8 @@ fn items_past_the_simulation_distance_enter_no_end_gateway() {
     let mut resources = None;
     let mut game = server_game(&mut resources);
     game.dim = Dim::End;
-    game.side.settings.simulation_distance = 4;
-    game.side.settings.render_distance = 12;
+    game.server.settings.simulation_distance = 4;
+    game.server.settings.render_distance = 12;
     let gateway = game
         .pack
         .assets

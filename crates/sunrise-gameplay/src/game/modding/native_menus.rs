@@ -147,7 +147,7 @@ impl crate::game::ServerGame<'_> {
     /// block: the type's container slots show empty and their clicks reach the mods, as
     /// `open_menu`'s do; `extra` and `pos` go first in its `sunrise:menu_extra` payload, and
     /// `replace` is the provider's choice of the client's close, as for `open_menu`.
-    pub(in crate::game) fn player_open_mod_menu(
+    pub fn player_open_mod_menu(
         &mut self,
         player: mod_api::PlayerRef,
         request: ModMenuOpen,
@@ -248,7 +248,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// The native menu the player has open as window `window`, for its slots;
     /// None for another window, a menu the game opened, or a player not here.
-    pub(in crate::game) fn menu(&self, uuid: u128, window: i32) -> Option<MenuRef> {
+    pub fn menu(&self, uuid: u128, window: i32) -> Option<MenuRef> {
         let conn = self.native_conn(uuid)?;
         self.server
             .lan
@@ -298,7 +298,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// Closes the player's native menu (a `native_menu_closed` follows). An active click
     /// stages the close for its current window and sends it only once the transaction commits.
-    pub(in crate::game) fn close_menu(&mut self, uuid: u128) {
+    pub fn close_menu(&mut self, uuid: u128) {
         if let Some(conn) = self.native_conn(uuid)
             && let Some(guest) = self
                 .server
@@ -378,7 +378,7 @@ impl crate::game::ServerGame<'_> {
     /// `ServerPlayer.openMenu` / `openHorseInventory`: called only after
     /// constructing the menu, queuing its open packet and sending full contents.
     /// Remember it before dispatch so a hook can close it synchronously.
-    pub(in crate::game) fn player_menu_opening(&mut self, conn: u32) {
+    pub fn player_menu_opening(&mut self, conn: u32) {
         let Some(host) = self.server.lan.as_mut() else {
             return;
         };
@@ -419,7 +419,7 @@ impl crate::game::ServerGame<'_> {
     /// `conn`'s tracked menu closes with the guest's state in place
     /// (`ServerPlayer.doCloseContainer`). Close listeners are checked independently
     /// of open listeners.
-    pub(in crate::game) fn player_menu_closing(&mut self, conn: u32) {
+    pub fn player_menu_closing(&mut self, conn: u32) {
         let heard = self
             .server
             .lan
@@ -494,7 +494,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// The notices the hub collected, dispatched with the hub in `self.lan` and no guest turn active.
-    pub(in crate::game) fn run_native_menu_events(&mut self) {
+    pub fn run_native_menu_events(&mut self) {
         loop {
             let Some(host) = self.server.lan.as_mut() else {
                 return;

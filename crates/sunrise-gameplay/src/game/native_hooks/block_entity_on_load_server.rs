@@ -45,7 +45,7 @@ impl crate::game::ServerGame<'_> {
     /// A replacement can inherit a ticker slot later in the current pass.
     /// Deliver its attachment notice before lending its resident row to that tick.
     /// Returns whether the resident ticker was dispatched.
-    pub(in crate::game) fn tick_mod_block_entity(&mut self, pos: Pos) -> bool {
+    pub fn tick_mod_block_entity(&mut self, pos: Pos) -> bool {
         if mod_api::__private::any_mod_disabled()
             && let Some(BlockEntity::Mod(entity)) = self.common.world.block_entities.get(&pos)
             && mod_api::__private::content_owner_disabled(entity.id())

@@ -47,7 +47,7 @@ pub(crate) fn dependent_entity_bundle_body() {
         game.enter_remote_dimension(&spawn, RemoteDimensionEntry::Login, Reason::Other);
         game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
         let (session, mut peer) = Session::play_loop_probe();
-        let remote = game.side.remote.as_mut().unwrap();
+        let remote = game.client.remote.as_mut().unwrap();
         remote.session = session;
         remote.joined = true;
         remote.logged_in = true;
@@ -79,7 +79,7 @@ pub(crate) fn dependent_entity_bundle_body() {
         while Instant::now() < hold_until {
             game.poll_remote().unwrap();
             assert_eq!(
-                game.side.interactions.contains_key(&expected_cam_after),
+                game.client.interactions.contains_key(&expected_cam_after),
                 expected_exists_before,
                 "unclosed bundle spawned entity before closing delimiter"
             );
@@ -117,11 +117,11 @@ pub(crate) fn dependent_entity_bundle_body() {
         let mut applied = false;
         while Instant::now() < deadline {
             game.poll_remote().unwrap();
-            let exists = game.side.interactions.contains_key(&expected_cam_after);
+            let exists = game.client.interactions.contains_key(&expected_cam_after);
             let cam = game.remote_camera_id().map(|id| id as i32);
             if exists || cam.is_some() {
                 assert!(exists && expected_exists_after);
-                let interaction = game.side.interactions.get(&expected_cam_after).unwrap();
+                let interaction = game.client.interactions.get(&expected_cam_after).unwrap();
                 assert_eq!(interaction.width.to_bits(), expected_width_bits);
                 assert_eq!(interaction.height.to_bits(), expected_height_bits);
                 assert_eq!(cam, Some(expected_cam_after));
@@ -172,8 +172,8 @@ pub(crate) fn dependent_entity_bundle_body() {
             std::thread::yield_now();
         }
         assert_eq!(game.remote_camera_id(), Some(creeper_id as u32));
-        assert_eq!(game.side.spectated_post_effect, Some("minecraft:creeper"));
-        assert!(game.side.spectated_post_effect_active);
+        assert_eq!(game.client.spectated_post_effect, Some("minecraft:creeper"));
+        assert!(game.client.spectated_post_effect_active);
 
         peer.send(
             &C::SetCamera(play::SetCamera {
@@ -191,8 +191,8 @@ pub(crate) fn dependent_entity_bundle_body() {
             std::thread::yield_now();
         }
         assert_eq!(game.remote_camera_id(), Some(expected_cam_after as u32));
-        assert_eq!(game.side.spectated_post_effect, None);
-        assert!(!game.side.spectated_post_effect_active);
+        assert_eq!(game.client.spectated_post_effect, None);
+        assert!(!game.client.spectated_post_effect_active);
     });
 }
 
@@ -207,11 +207,11 @@ pub(crate) fn entity_data_validation_inline_painting_and_pre_login_bundle_case(
         "before_login_metadata" => {
             // 1. SetEntityData before Login disconnects with disconnect.packetError.
             with_client_game(|game| {
-                game.side.title.0 = None;
+                game.client.title.0 = None;
                 let (client, _server) = Pipe::pair();
                 game.connect_local(client, "MetadataBeforeLogin").unwrap();
                 let (session, mut peer) = Session::play_loop_probe();
-                let remote = game.side.remote.as_mut().unwrap();
+                let remote = game.client.remote.as_mut().unwrap();
                 remote.session = session;
                 remote.joined = true;
                 remote.logged_in = false;
@@ -227,16 +227,16 @@ pub(crate) fn entity_data_validation_inline_painting_and_pre_login_bundle_case(
                 )
                 .unwrap();
                 let deadline = Instant::now() + Duration::from_secs(5);
-                while game.side.remote.is_some() && Instant::now() < deadline {
+                while game.client.remote.is_some() && Instant::now() < deadline {
                     game.poll_remote().unwrap();
                     std::thread::yield_now();
                 }
                 assert!(
-                    game.side.remote.is_none(),
+                    game.client.remote.is_none(),
                     "SetEntityData before Login must disconnect"
                 );
                 let Some(Mode::Multiplayer(multiplayer::Screen::Disconnected { reason, .. })) =
-                    game.side.title.0.as_ref().map(|t| &t.mode)
+                    game.client.title.0.as_ref().map(|t| &t.mode)
                 else {
                     panic!("missing Disconnected screen for SetEntityData before Login");
                 };
@@ -249,7 +249,7 @@ pub(crate) fn entity_data_validation_inline_painting_and_pre_login_bundle_case(
         "metadata_validation_and_inline_painting" => {
             // 2. Absent entity, repeated valid flags, valid prefix before invalid entry, bundle failure, and inline painting.
             with_client_game(|game| {
-                game.side.title.0 = None;
+                game.client.title.0 = None;
                 let (client, _server) = Pipe::pair();
                 game.connect_local(client, "MetadataValidation").unwrap();
                 let spawn = SpawnInfo {
@@ -266,7 +266,7 @@ pub(crate) fn entity_data_validation_inline_painting_and_pre_login_bundle_case(
                 };
                 game.enter_remote_dimension(&spawn, RemoteDimensionEntry::Login, Reason::Other);
                 let (session, mut peer) = Session::play_loop_probe();
-                let remote = game.side.remote.as_mut().unwrap();
+                let remote = game.client.remote.as_mut().unwrap();
                 remote.session = session;
                 remote.joined = true;
                 remote.logged_in = true;
@@ -292,8 +292,8 @@ pub(crate) fn entity_data_validation_inline_painting_and_pre_login_bundle_case(
                 )
                 .unwrap();
                 wait_pong_in_game(game, &mut peer, 1);
-                assert!(game.side.remote.is_some());
-                assert!(!game.side.remote.as_ref().unwrap().glowing.contains(&77_777));
+                assert!(game.client.remote.is_some());
+                assert!(!game.client.remote.as_ref().unwrap().glowing.contains(&77_777));
 
                 // Spawn an Interaction and a Painting.
                 peer.send(
@@ -361,7 +361,7 @@ pub(crate) fn entity_data_validation_inline_painting_and_pre_login_bundle_case(
                 .unwrap();
                 wait_pong_in_game(game, &mut peer, 2);
                 assert_eq!(
-                    game.side.remote.as_ref().unwrap().glowing.contains(&1001),
+                    game.client.remote.as_ref().unwrap().glowing.contains(&1001),
                     assignment["repeated_flags_last_wins"]["glowing_after"]
                         .as_bool()
                         .unwrap()
@@ -385,12 +385,12 @@ pub(crate) fn entity_data_validation_inline_painting_and_pre_login_bundle_case(
                     .unwrap_err();
                 assert!(err.is::<sunrise_client_gameplay::game::client_side::remote_client::ingress_state::PacketError>());
                 assert_eq!(
-                    game.side.remote.as_ref().unwrap().glowing.contains(&1001),
+                    game.client.remote.as_ref().unwrap().glowing.contains(&1001),
                     assignment["out_of_range_preserves_prefix"]["glowing_after"]
                         .as_bool()
                         .unwrap()
                 );
-                game.side.remote.as_mut().unwrap().glowing.remove(&1001);
+                game.client.remote.as_mut().unwrap().glowing.remove(&1001);
 
                 // Mismatched serializer preserves valid prefix and raises PacketError.
                 let err = game
@@ -404,7 +404,7 @@ pub(crate) fn entity_data_validation_inline_painting_and_pre_login_bundle_case(
                     .unwrap_err();
                 assert!(err.is::<sunrise_client_gameplay::game::client_side::remote_client::ingress_state::PacketError>());
                 assert_eq!(
-                    game.side.remote.as_ref().unwrap().glowing.contains(&1001),
+                    game.client.remote.as_ref().unwrap().glowing.contains(&1001),
                     assignment["mismatched_serializer_preserves_prefix"]["glowing_after"]
                         .as_bool()
                         .unwrap()
@@ -427,7 +427,7 @@ pub(crate) fn entity_data_validation_inline_painting_and_pre_login_bundle_case(
                 }
                 let mut saw_pong = false;
                 let deadline = Instant::now() + Duration::from_secs(5);
-                while game.side.remote.is_some() && Instant::now() < deadline {
+                while game.client.remote.is_some() && Instant::now() < deadline {
                     game.poll_remote().unwrap();
                     while let Ok((id, body)) = peer.recv() {
                         if matches!(S::decode(id, &body), Ok(S::Pong(p)) if p.id == 55) {
@@ -437,12 +437,12 @@ pub(crate) fn entity_data_validation_inline_painting_and_pre_login_bundle_case(
                     std::thread::yield_now();
                 }
                 assert!(
-                    game.side.remote.is_none(),
+                    game.client.remote.is_none(),
                     "invalid SetEntityData in bundle must disconnect"
                 );
                 assert!(!saw_pong, "bundle must stop before trailing Ping(55)");
                 let Some(Mode::Multiplayer(multiplayer::Screen::Disconnected { reason, .. })) =
-                    game.side.title.0.as_ref().map(|t| &t.mode)
+                    game.client.title.0.as_ref().map(|t| &t.mode)
                 else {
                     panic!("missing Disconnected screen after bundle metadata error");
                 };
@@ -473,7 +473,7 @@ pub(crate) fn entity_data_validation_inline_painting_and_pre_login_bundle_case(
             );
             let registries = std::sync::Arc::new(reg);
             with_client_game(|game| {
-                game.side.title.0 = None;
+                game.client.title.0 = None;
                 let (client, _server) = Pipe::pair();
                 game.connect_local(client, "SyncedPaintingOverride")
                     .unwrap();
@@ -492,7 +492,7 @@ pub(crate) fn entity_data_validation_inline_painting_and_pre_login_bundle_case(
                 game.enter_remote_dimension(&spawn, RemoteDimensionEntry::Login, Reason::Other);
                 let (session, mut peer) =
                     Session::play_loop_probe_with_registries(registries.clone());
-                let remote = game.side.remote.as_mut().unwrap();
+                let remote = game.client.remote.as_mut().unwrap();
                 remote.session = session;
                 remote.joined = true;
                 remote.logged_in = true;
@@ -551,7 +551,7 @@ pub(crate) fn entity_data_validation_inline_painting_and_pre_login_bundle_case(
                 );
 
                 // Default spawn variant (index 0) also prefers synced data over same-name local variant.
-                game.side.remote.as_mut().unwrap().registries = registries.clone();
+                game.client.remote.as_mut().unwrap().registries = registries.clone();
                 peer.send(
                     &C::AddEntity(play::AddEntity {
                         id: 2003,
@@ -587,13 +587,13 @@ pub(crate) fn entity_data_validation_inline_painting_and_pre_login_bundle_case(
         "pre_login_disconnect_bundle" => {
             // 4. Pre-Login bundle [Disconnect("server kick"), PostEffects, Ping(88)] preserves first reason and stops.
             with_client_game(|game| {
-                game.side.title.0 = None;
-                game.side.post_effects.clear();
+                game.client.title.0 = None;
+                game.client.post_effects.clear();
                 let (client, _server) = Pipe::pair();
                 game.connect_local(client, "PreLoginDisconnectBundle")
                     .unwrap();
                 let (session, mut peer) = Session::play_loop_probe();
-                let remote = game.side.remote.as_mut().unwrap();
+                let remote = game.client.remote.as_mut().unwrap();
                 remote.session = session;
                 remote.joined = true;
                 remote.logged_in = false;
@@ -615,7 +615,7 @@ pub(crate) fn entity_data_validation_inline_painting_and_pre_login_bundle_case(
                 }
                 let mut saw_pong = false;
                 let deadline = Instant::now() + Duration::from_secs(5);
-                while game.side.remote.is_some() && Instant::now() < deadline {
+                while game.client.remote.is_some() && Instant::now() < deadline {
                     game.poll_remote().unwrap();
                     while let Ok((id, body)) = peer.recv() {
                         if matches!(S::decode(id, &body), Ok(S::Pong(p)) if p.id == 88) {
@@ -624,11 +624,11 @@ pub(crate) fn entity_data_validation_inline_painting_and_pre_login_bundle_case(
                     }
                     std::thread::yield_now();
                 }
-                assert!(game.side.remote.is_none());
+                assert!(game.client.remote.is_none());
                 assert!(!saw_pong, "bundle must stop before Ping(88)");
-                assert!(game.side.post_effects.is_empty());
+                assert!(game.client.post_effects.is_empty());
                 let Some(Mode::Multiplayer(multiplayer::Screen::Disconnected { reason, .. })) =
-                    game.side.title.0.as_ref().map(|t| &t.mode)
+                    game.client.title.0.as_ref().map(|t| &t.mode)
                 else {
                     panic!("missing Disconnected screen");
                 };
@@ -642,13 +642,13 @@ pub(crate) fn entity_data_validation_inline_painting_and_pre_login_bundle_case(
         "pre_login_post_effects_bundle" => {
             // 5. Pre-Login bundle [PostEffects, Ping(89)] stops before Ping(89) with disconnect.packetError.
             with_client_game(|game| {
-                game.side.title.0 = None;
-                game.side.post_effects.clear();
+                game.client.title.0 = None;
+                game.client.post_effects.clear();
                 let (client, _server) = Pipe::pair();
                 game.connect_local(client, "PreLoginPostEffectsBundle")
                     .unwrap();
                 let (session, mut peer) = Session::play_loop_probe();
-                let remote = game.side.remote.as_mut().unwrap();
+                let remote = game.client.remote.as_mut().unwrap();
                 remote.session = session;
                 remote.joined = true;
                 remote.logged_in = false;
@@ -667,7 +667,7 @@ pub(crate) fn entity_data_validation_inline_painting_and_pre_login_bundle_case(
                 }
                 let mut saw_pong = false;
                 let deadline = Instant::now() + Duration::from_secs(5);
-                while game.side.remote.is_some() && Instant::now() < deadline {
+                while game.client.remote.is_some() && Instant::now() < deadline {
                     game.poll_remote().unwrap();
                     while let Ok((id, body)) = peer.recv() {
                         if matches!(S::decode(id, &body), Ok(S::Pong(p)) if p.id == 89) {
@@ -676,11 +676,11 @@ pub(crate) fn entity_data_validation_inline_painting_and_pre_login_bundle_case(
                     }
                     std::thread::yield_now();
                 }
-                assert!(game.side.remote.is_none());
+                assert!(game.client.remote.is_none());
                 assert!(!saw_pong, "bundle must stop before Ping(89)");
-                assert!(game.side.post_effects.is_empty());
+                assert!(game.client.post_effects.is_empty());
                 let Some(Mode::Multiplayer(multiplayer::Screen::Disconnected { reason, .. })) =
-                    game.side.title.0.as_ref().map(|t| &t.mode)
+                    game.client.title.0.as_ref().map(|t| &t.mode)
                 else {
                     panic!("missing Disconnected screen");
                 };
@@ -731,12 +731,12 @@ pub(crate) fn entity_data_validation_inline_painting_and_pre_login_bundle_case(
             let expected = &bundle["disconnect_notify_after_shutdown"];
             let expected_reason = expected["reason_text"].as_str().unwrap();
             with_client_game(|game| {
-                game.side.title.0 = None;
+                game.client.title.0 = None;
                 let (client, _server) = Pipe::pair();
                 game.connect_local(client, "ShutdownOrder").unwrap();
                 game.connection_starts("play.example.test", "ShutdownOrder", false);
                 let (session, mut peer) = Session::play_loop_probe();
-                let remote = game.side.remote.as_mut().unwrap();
+                let remote = game.client.remote.as_mut().unwrap();
                 remote.session = session;
                 remote.joined = true;
                 remote.logged_in = true;
@@ -756,11 +756,11 @@ pub(crate) fn entity_data_validation_inline_painting_and_pre_login_bundle_case(
                 *PEER.lock().unwrap() = Some(peer);
 
                 let deadline = Instant::now() + Duration::from_secs(5);
-                while game.side.remote.is_some() && Instant::now() < deadline {
+                while game.client.remote.is_some() && Instant::now() < deadline {
                     game.poll_remote().unwrap();
                     std::thread::yield_now();
                 }
-                assert!(game.side.remote.is_none());
+                assert!(game.client.remote.is_none());
             });
             *PEER.lock().unwrap() = None;
             assert_eq!(

@@ -176,7 +176,7 @@ use sunrise_sim::mobs::Mob;
             guest_server(game, false, true);
             let (spinner, _rx) = guest(game, 12);
             let (_, observer) = guest(game, 13);
-            let host = game.side.lan.as_mut().unwrap();
+            let host = game.server.lan.as_mut().unwrap();
             for conn in [12, 13] {
                 host.hub.update_guest(conn, |g| g.ticks = 5).unwrap();
             }
@@ -286,8 +286,8 @@ use sunrise_sim::mobs::Mob;
                 seed: 0,
                 max_players: 2,
                 integrated: true,
-                levels: game.side.level_shapes,
-                level_seeds: game.side.levels.0.runtime.seeds(),
+                levels: game.server.level_shapes,
+                level_seeds: game.server.levels.0.runtime.seeds(),
             };
             game.lan_host(settings, net, config).unwrap();
             let (tx, _rx) = std::sync::mpsc::channel();
@@ -309,7 +309,7 @@ use sunrise_sim::mobs::Mob;
                 10,
             );
             guest.placed = true;
-            game.side.lan.as_mut().unwrap().hub.guests.push(guest);
+            game.server.lan.as_mut().unwrap().hub.guests.push(guest);
             // A first turn starts a fresh combat record: take it first.
             game.as_guest(12, |_| {}).unwrap();
             let player = game.living(game.entity(12).unwrap()).unwrap();
@@ -320,7 +320,7 @@ use sunrise_sim::mobs::Mob;
             assert!(game.living_set_stinger_count(player, 2));
             assert!(game.living_set_arrow_removal_ticks(player, 7));
             assert!(game.living_set_stinger_removal_ticks(player, 9));
-            let stuck = &game.side.guest_combat.0[&12].stuck;
+            let stuck = &game.server.guest_combat.0[&12].stuck;
             assert_eq!((stuck.arrows, stuck.stingers), (4, 2));
             assert_eq!((stuck.remove_arrow_time, stuck.remove_stinger_time), (7, 9));
             assert_eq!(game.living_arrow_count(player), Some(4));
@@ -402,8 +402,8 @@ use sunrise_sim::mobs::Mob;
                 seed: 0,
                 max_players: 2,
                 integrated: true,
-                levels: game.side.level_shapes,
-                level_seeds: game.side.levels.0.runtime.seeds(),
+                levels: game.server.level_shapes,
+                level_seeds: game.server.levels.0.runtime.seeds(),
             };
             game.lan_host(settings, net, config).unwrap();
             let (tx, rx) = std::sync::mpsc::channel();
@@ -425,7 +425,7 @@ use sunrise_sim::mobs::Mob;
                 10,
             );
             guest.placed = true;
-            game.side.lan.as_mut().unwrap().hub.guests.push(guest);
+            game.server.lan.as_mut().unwrap().hub.guests.push(guest);
             let kind = game
                 .res
                 .mob_types()

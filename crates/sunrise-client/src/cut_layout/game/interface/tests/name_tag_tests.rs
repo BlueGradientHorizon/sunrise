@@ -171,7 +171,7 @@ fn client_game<'a>(
         .chunks
         .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
     game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 0.5)).unwrap());
-    game.side.screen = Screen::Playing;
+    game.client.screen = Screen::Playing;
     game.selected = 0;
     game
 }
@@ -265,7 +265,7 @@ fn an_armour_stands_name_ignores_f1_and_team_visibility() {
     let camera = glam::DVec3::new(0.5, 65.0, 0.5);
     assert_eq!(game.shown_name_tags(camera), vec!["Holo".to_owned()]);
     // F1 hides the HUD: `ArmorStandRenderer.shouldShowName` never asks.
-    game.side.chat_ui.hide_gui = true;
+    game.client.chat_ui.hide_gui = true;
     assert_eq!(
         game.shown_name_tags(camera),
         vec!["Holo".to_owned()],
@@ -303,13 +303,13 @@ fn a_trades_title_draws_the_names_style() {
     let mut resources = None;
     let mut game = client_game(&mut resources);
     // This test draws the merchant screen; load full UI resources for glyph metrics.
-    game.side.gui = UiResources::load(&game.pack.source, &game.options.resources).unwrap();
+    game.client.gui = UiResources::load(&game.pack.source, &game.options.resources).unwrap();
     // `MerchantScreen.extractLabels` draws the menu's title, the merchant's
     // `getDisplayName()`: a name with a colour keeps it, instead of coming out
     // in the screen's grey (-12566464).
     let session = sunrise_sim::merchant::Session::new(Vec::new(), true);
     game.open_remote_merchant(session, Some(Text::colored("Bob", 0xFF_0000)));
-    let mut batch = HudBatch::new([854, 480], game.side.settings.gui_scale_inputs());
+    let mut batch = HudBatch::new([854, 480], game.client.settings.gui_scale_inputs());
     assert!(game.draw_merchant(&mut batch));
     let (_, oy) = game.inventory_origin(&batch);
     // The title's row: glyphs only, its own line (`oy + 6`, 8 px tall).

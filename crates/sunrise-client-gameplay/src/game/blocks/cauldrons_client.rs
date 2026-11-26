@@ -5,7 +5,7 @@ impl crate::game::ClientGame<'_> {
     /// asks (`CauldronInteractions` acts `if (!level.isClientSide())`). A
     /// sneak with something in hand skips `useItemOn`
     /// (`Player.isSecondaryUseActive`).
-    pub(in crate::game::client_side) fn cauldron_outcome(
+    pub fn cauldron_outcome(
         &self,
         pos: [i32; 3],
         held: Option<&ItemStack>,

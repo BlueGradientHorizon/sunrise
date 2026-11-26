@@ -127,7 +127,7 @@ pub(crate) fn player_info_mode(uuid: u128, game_mode: i32) -> C {
 }
 
 pub(crate) fn install_stone_floor(game: &mut sunrise_client_gameplay::game::ClientGame<'_>) {
-    game.side
+    game.client
         .streaming
         .insert_remote(&mut game.world, Chunk::empty(0, 0));
     let stone = game
@@ -171,7 +171,7 @@ pub(crate) fn run_local_tick(game: &mut sunrise_client_gameplay::game::ClientGam
 pub(crate) fn player_info_mode_name(
     game: &sunrise_client_gameplay::game::ClientGame<'_>,
 ) -> Option<&'static str> {
-    let r = game.side.remote.as_ref()?;
+    let r = game.client.remote.as_ref()?;
     let t = r.tab_players.get(&r.profile)?;
     Some(mode_from_id(t.game_mode).name())
 }
@@ -826,7 +826,7 @@ pub(crate) fn run_split_mode_hud_rendering_reach_miss_inventory_and_input_rules(
                 // #10: camera_entity_is_spectator reads the attached camera entity's PlayerInfo.
                 let other_uuid = 0x2222_3333_4444_5555_6666_7777_8888_9999_u128;
                 let player_type = game
-                    .side
+                    .client
                     .remote
                     .as_ref()
                     .unwrap()
@@ -849,12 +849,12 @@ pub(crate) fn run_split_mode_hud_rendering_reach_miss_inventory_and_input_rules(
                     data: 0,
                 }))
                 .unwrap();
-                game.side.remote.as_mut().unwrap().camera = Some(99);
+                game.client.remote.as_mut().unwrap().camera = Some(99);
                 assert!(game.own_player_is_spectator());
                 assert!(!game.camera_entity_is_spectator());
                 game.handle_packet(player_info_mode(other_uuid, 3)).unwrap();
                 assert!(game.camera_entity_is_spectator());
-                game.side.remote.as_mut().unwrap().camera = None;
+                game.client.remote.as_mut().unwrap().camera = None;
 
                 // #10: underwater vision decides underwater from the local body's sampled eye fluid
                 // (`Entity.baseTick` -> `EntityFluidInteraction.update` -> `LocalPlayer.aiStep`),
@@ -871,7 +871,7 @@ pub(crate) fn run_split_mode_hud_rendering_reach_miss_inventory_and_input_rules(
                     .registry
                     .default_state("minecraft:air")
                     .unwrap();
-                game.side.fog.water_vision_time = 0;
+                game.client.fog.water_vision_time = 0;
                 game.handle_packet(abilities_packet(0x06, 0.05, 0.10))
                     .unwrap();
                 for y in 64..=66 {
@@ -887,17 +887,17 @@ pub(crate) fn run_split_mode_hud_rendering_reach_miss_inventory_and_input_rules(
                 // stays false even while `camera_fog_type` is Water.
                 game.tick_remote_level().unwrap();
                 assert!(!game.player.as_ref().unwrap().is_eye_in_fluid(WATER));
-                assert_eq!(game.side.fog.water_vision_time, 0);
+                assert_eq!(game.client.fog.water_vision_time, 0);
 
                 // Load the neighbor chunks required by `EntityFluidInteraction.hasFluidAndLoaded`
                 // (`x0 - 1 ..= x1 + 1`, `z0 - 1 ..= z1 + 1`), then attach the camera to entity 99
                 // in air while the local body is in water.
                 for (cx, cz) in [(-1, -1), (-1, 0), (0, -1)] {
-                    game.side
+                    game.client
                         .streaming
                         .insert_remote(&mut game.world, Chunk::empty(cx, cz));
                 }
-                game.side.remote.as_mut().unwrap().camera = Some(99);
+                game.client.remote.as_mut().unwrap().camera = Some(99);
                 assert_eq!(
                     game.camera_fog_type(game.aim().unwrap().0),
                     FogType::Atmospheric
@@ -907,7 +907,7 @@ pub(crate) fn run_split_mode_hud_rendering_reach_miss_inventory_and_input_rules(
                 game.tick_remote_level().unwrap();
                 assert!(game.player.as_ref().unwrap().is_eye_in_fluid(WATER));
                 assert_eq!(
-                    game.side.fog.water_vision_time,
+                    game.client.fog.water_vision_time,
                     water_rows[0]["water_vision_time"].as_i64().unwrap() as i32
                 );
                 game.handle_packet(change_mode_packet(2.0)).unwrap();
@@ -915,7 +915,7 @@ pub(crate) fn run_split_mode_hud_rendering_reach_miss_inventory_and_input_rules(
                 game.tick_remote_level().unwrap();
                 assert!(game.player.as_ref().unwrap().is_eye_in_fluid(WATER));
                 assert_eq!(
-                    game.side.fog.water_vision_time,
+                    game.client.fog.water_vision_time,
                     water_rows[1]["water_vision_time"].as_i64().unwrap() as i32
                 );
 
@@ -929,17 +929,17 @@ pub(crate) fn run_split_mode_hud_rendering_reach_miss_inventory_and_input_rules(
                 game.tick_remote_level().unwrap();
                 assert!(!game.player.as_ref().unwrap().is_eye_in_fluid(WATER));
                 assert_eq!(
-                    game.side.fog.water_vision_time,
+                    game.client.fog.water_vision_time,
                     water_rows[2]["water_vision_time"].as_i64().unwrap() as i32
                 );
                 game.handle_packet(change_mode_packet(3.0)).unwrap();
                 game.tick_remote_level().unwrap();
                 assert!(!game.player.as_ref().unwrap().is_eye_in_fluid(WATER));
                 assert_eq!(
-                    game.side.fog.water_vision_time,
+                    game.client.fog.water_vision_time,
                     water_rows[3]["water_vision_time"].as_i64().unwrap() as i32
                 );
-                game.side.remote.as_mut().unwrap().camera = None;
+                game.client.remote.as_mut().unwrap().camera = None;
                 for y in 64..=66 {
                     game.world.set(0, y, 0, air).unwrap();
                     game.world.set(2, y, 2, air).unwrap();
@@ -1000,7 +1000,7 @@ pub(crate) fn run_split_mode_hud_rendering_reach_miss_inventory_and_input_rules(
                 game.handle_packet(abilities_packet(0x08, 0.05, 0.10))
                     .unwrap();
                 let chest_menu = game
-                    .side
+                    .client
                     .remote
                     .as_ref()
                     .unwrap()
@@ -1015,16 +1015,16 @@ pub(crate) fn run_split_mode_hud_rendering_reach_miss_inventory_and_input_rules(
                     title: Tag::String("Chest".into()),
                 }))
                 .unwrap();
-                assert_eq!(game.side.screen, Screen::Inventory);
+                assert_eq!(game.client.screen, Screen::Inventory);
                 assert_eq!(game.remote_menu_type(), Some("minecraft:generic_9x3"));
                 assert!(!game.is_player_inventory_screen());
                 game.tick_remote_level().unwrap();
-                assert_eq!(game.side.screen, Screen::Inventory);
+                assert_eq!(game.client.screen, Screen::Inventory);
                 assert_eq!(game.remote_menu_type(), Some("minecraft:generic_9x3"));
                 assert!(game.container.is_some());
 
                 let crafting_menu = game
-                    .side
+                    .client
                     .remote
                     .as_ref()
                     .unwrap()
@@ -1039,10 +1039,10 @@ pub(crate) fn run_split_mode_hud_rendering_reach_miss_inventory_and_input_rules(
                     title: Tag::String("Crafting".into()),
                 }))
                 .unwrap();
-                assert_eq!(game.side.screen, Screen::Inventory);
+                assert_eq!(game.client.screen, Screen::Inventory);
                 assert!(!game.is_player_inventory_screen());
                 game.tick_remote_level().unwrap();
-                assert_eq!(game.side.screen, Screen::Inventory);
+                assert_eq!(game.client.screen, Screen::Inventory);
                 assert_eq!(game.remote_menu_type(), Some("minecraft:crafting"));
                 assert_eq!(game.craft_size, 3);
 
@@ -1054,7 +1054,7 @@ pub(crate) fn run_split_mode_hud_rendering_reach_miss_inventory_and_input_rules(
                 game.handle_packet(abilities_packet(0x00, 0.05, 0.10))
                     .unwrap();
                 game.tick_remote_level().unwrap();
-                assert_eq!(game.side.screen, Screen::Inventory);
+                assert_eq!(game.client.screen, Screen::Inventory);
                 assert_eq!(
                     game.carried.as_ref().map(|s| (&*s.item, s.count)),
                     Some(("minecraft:diamond", 5))
@@ -1062,7 +1062,7 @@ pub(crate) fn run_split_mode_hud_rendering_reach_miss_inventory_and_input_rules(
                 game.handle_packet(abilities_packet(0x08, 0.05, 0.10))
                     .unwrap();
                 game.tick_remote_level().unwrap();
-                assert_eq!(game.side.screen, Screen::Creative);
+                assert_eq!(game.client.screen, Screen::Creative);
                 assert_eq!(
                     game.carried.as_ref().map(|s| (&*s.item, s.count)),
                     Some(("minecraft:diamond", 5))
@@ -1070,7 +1070,7 @@ pub(crate) fn run_split_mode_hud_rendering_reach_miss_inventory_and_input_rules(
                 game.handle_packet(abilities_packet(0x00, 0.05, 0.10))
                     .unwrap();
                 game.tick_remote_level().unwrap();
-                assert_eq!(game.side.screen, Screen::Inventory);
+                assert_eq!(game.client.screen, Screen::Inventory);
                 assert_eq!(
                     game.carried.as_ref().map(|s| (&*s.item, s.count)),
                     Some(("minecraft:diamond", 5))
@@ -1112,17 +1112,17 @@ pub(crate) fn run_split_mode_hud_rendering_reach_miss_inventory_and_input_rules(
                 // Rebind movement (key.forward), keyboard toggle (key.sneak), mouse toggle
                 // (key.attack), and plain action (key.drop) onto key.mouse.middle alongside the
                 // default middle pair: every binding triggers exactly once.
-                game.side.settings.toggle_crouch = true;
-                game.side
+                game.client.settings.toggle_crouch = true;
+                game.client
                     .settings
                     .keys
                     .set("key.forward", "key.mouse.middle");
-                game.side.settings.keys.set("key.sneak", "key.mouse.middle");
-                game.side
+                game.client.settings.keys.set("key.sneak", "key.mouse.middle");
+                game.client
                     .settings
                     .keys
                     .set("key.attack", "key.mouse.middle");
-                game.side.settings.keys.set("key.drop", "key.mouse.middle");
+                game.client.settings.keys.set("key.drop", "key.mouse.middle");
                 let before = [
                     game.pending_mapping_clicks("key.forward"),
                     game.pending_mapping_clicks("key.sneak"),
@@ -1163,10 +1163,10 @@ pub(crate) fn run_split_mode_hud_rendering_reach_miss_inventory_and_input_rules(
 
                 // Rebinding key.mouse.left away from key.attack to key.forward dispatches only
                 // key.forward and not key.attack.
-                game.side.settings.keys.reset_all();
-                game.side.settings.toggle_crouch = false;
-                game.side.settings.keys.set("key.attack", "key.keyboard.r");
-                game.side.settings.keys.set("key.forward", "key.mouse.left");
+                game.client.settings.keys.reset_all();
+                game.client.settings.toggle_crouch = false;
+                game.client.settings.keys.set("key.attack", "key.keyboard.r");
+                game.client.settings.keys.set("key.forward", "key.mouse.left");
                 let fwd_before = game.pending_mapping_clicks("key.forward");
                 let atk_before = game.pending_mapping_clicks("key.attack");
                 game.control_command("mouse left click", &reply, &NoopLoop)
@@ -1177,15 +1177,15 @@ pub(crate) fn run_split_mode_hud_rendering_reach_miss_inventory_and_input_rules(
                 // Rebinding key.pickItem, key.drop, key.forward, key.sneak, and key.attack onto
                 // one keyboard key dispatches each binding exactly once (never double-queueing
                 // key.drop or skipping movement/toggle actions).
-                game.side.settings.keys.reset_all();
-                game.side
+                game.client.settings.keys.reset_all();
+                game.client
                     .settings
                     .keys
                     .set("key.pickItem", "key.keyboard.g");
-                game.side.settings.keys.set("key.drop", "key.keyboard.g");
-                game.side.settings.keys.set("key.forward", "key.keyboard.g");
-                game.side.settings.keys.set("key.sneak", "key.keyboard.g");
-                game.side.settings.keys.set("key.attack", "key.keyboard.g");
+                game.client.settings.keys.set("key.drop", "key.keyboard.g");
+                game.client.settings.keys.set("key.forward", "key.keyboard.g");
+                game.client.settings.keys.set("key.sneak", "key.keyboard.g");
+                game.client.settings.keys.set("key.attack", "key.keyboard.g");
                 let key_before = [
                     game.pending_mapping_clicks("key.pickItem"),
                     game.pending_mapping_clicks("key.drop"),
@@ -1208,7 +1208,7 @@ pub(crate) fn run_split_mode_hud_rendering_reach_miss_inventory_and_input_rules(
                         "{name} after key g tap"
                     );
                 }
-                game.side.settings.keys.reset_all();
+                game.client.settings.keys.reset_all();
             });
         },
     );
@@ -1221,7 +1221,7 @@ pub(crate) fn add_entity_packet(
     kind_name: &str,
 ) -> C {
     let kind = game
-        .side
+        .client
         .remote
         .as_ref()
         .unwrap()

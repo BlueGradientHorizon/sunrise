@@ -42,14 +42,14 @@ fn a_mount_chest_beyond_the_slot_range_ends_the_connection() {
                         entity: 41,
                     }))
                     .unwrap();
-                    assert!(game.side.mount_menu.opened_mob().is_none());
+                    assert!(game.client.mount_menu.opened_mob().is_none());
                     let deadline = Instant::now() + Duration::from_secs(5);
-                    while game.side.remote.is_some() && Instant::now() < deadline {
+                    while game.client.remote.is_some() && Instant::now() < deadline {
                         game.poll_remote().unwrap();
                         std::thread::yield_now();
                     }
                     assert!(
-                        game.side.remote.is_none(),
+                        game.client.remote.is_none(),
                         "a mount chest of {columns} columns for {species:?} must disconnect"
                     );
                 });
@@ -66,7 +66,7 @@ fn rejected_menu_packets_retire_the_previous_client_menu() {
         || {
             with_client_game(|game| {
                 let (mut reader, _writer) = connect_menu_test(game);
-                let remote = game.side.remote.as_mut().unwrap();
+                let remote = game.client.remote.as_mut().unwrap();
                 remote.menu.set(Some((7, "minecraft:generic_9x3".into())));
                 let generation = remote.menu.generation;
                 game.set_screen(Screen::Inventory);
@@ -77,11 +77,11 @@ fn rejected_menu_packets_retire_the_previous_client_menu() {
                     title: Tag::String("unsupported".into()),
                 }))
                 .unwrap();
-                let remote = game.side.remote.as_ref().unwrap();
+                let remote = game.client.remote.as_ref().unwrap();
                 assert!(remote.menu.as_ref().is_none());
                 assert_ne!(remote.menu.generation, generation);
                 assert!(game.carried.is_none());
-                assert_eq!(game.side.screen, Screen::Playing);
+                assert_eq!(game.client.screen, Screen::Playing);
                 assert!(
                     packets_through_pong(game, &mut reader)
                         .into_iter()
@@ -109,7 +109,7 @@ fn rejected_mounts_preserve_the_previous_client_menu_without_sending_close() {
                     .clone();
                 game.mobs.push(Mob::new(41, zombie, Vec3::ZERO, 0.0));
                 let previous = (7, "minecraft:generic_9x3".to_owned());
-                let remote = game.side.remote.as_mut().unwrap();
+                let remote = game.client.remote.as_mut().unwrap();
                 remote.menu.set(Some(previous.clone()));
                 let generation = remote.menu.generation;
                 game.set_screen(Screen::Inventory);
@@ -122,11 +122,11 @@ fn rejected_mounts_preserve_the_previous_client_menu_without_sending_close() {
                         entity,
                     }))
                     .unwrap();
-                    let remote = game.side.remote.as_ref().unwrap();
+                    let remote = game.client.remote.as_ref().unwrap();
                     assert_eq!(remote.menu.as_ref(), Some(&previous));
                     assert_eq!(remote.menu.generation, generation);
                     assert_eq!(game.carried.as_ref(), Some(&carried));
-                    assert_eq!(game.side.screen, Screen::Inventory);
+                    assert_eq!(game.client.screen, Screen::Inventory);
                     assert!(
                         !packets_through_pong(game, &mut reader)
                             .into_iter()
@@ -181,7 +181,7 @@ fn remote_mount_is_installed_before_screen_init_and_keeps_all_columns() {
                         relatives: 0,
                     }))
                     .unwrap();
-                    game.side.remote.as_mut().unwrap().level_load.finish();
+                    game.client.remote.as_mut().unwrap().level_load.finish();
                     let open = |game: &mut Game<'_, sunrise_client_gameplay::game::client_side::ClientState>,
                                 container,
                                 entity,

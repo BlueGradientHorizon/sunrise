@@ -53,7 +53,7 @@ impl crate::game::ServerGame<'_> {
         self.server_play_sound("minecraft:entity.generic.burn", at, 0.4, pitch);
     }
 
-    pub(in crate::game) fn server_tick_boat_leash(&mut self, b: &mut Boat) {
+    pub fn server_tick_boat_leash(&mut self, b: &mut Boat) {
         self.tick_boat_leash(b);
     }
 
@@ -67,7 +67,7 @@ impl crate::game::ServerGame<'_> {
         })
     }
     /// Every boat but the ridden one (which ticks with its rider).
-    pub(in crate::game) fn tick_boats(&mut self) {
+    pub fn tick_boats(&mut self) {
         self.vehicles_ticking(true);
         self.tick_boats_now();
         self.vehicles_ticking(false);
@@ -237,7 +237,7 @@ impl crate::game::ServerGame<'_> {
     /// `Entity.ejectPassengers`: the mobs get out here, this window's player
     /// gets out, and a server's player is asked to
     /// (`guest_vehicle_tick` lets it out through its client).
-    pub(in crate::game::server_side) fn eject_boat_riders(&mut self, i: usize) {
+    pub fn eject_boat_riders(&mut self, i: usize) {
         self.eject_boat_mobs(i);
         let id = self.common.boats[i].id;
         if self.common.riding == Some(id) && self.common.player.is_some() {
@@ -804,7 +804,7 @@ impl crate::game::ServerGame<'_> {
     /// reason that destroys the boat (DISCARDED included), while the boat item
     /// itself only drops on the death path (`VehicleEntity.destroy`), not when
     /// a creative hit discards it. True when the boat was removed.
-    pub(in crate::game) fn hurt_boat(&mut self, i: usize, damage: f32, creative: bool) -> bool {
+    pub fn hurt_boat(&mut self, i: usize, damage: f32, creative: bool) -> bool {
         self.hurt_boat_result(i, damage, creative).unwrap_or(false)
     }
     /// Whether a spectator must be refused this boat's menu.
@@ -824,7 +824,7 @@ impl crate::game::ServerGame<'_> {
         );
     }
 
-    pub(in crate::game) fn hurt_boat_result(
+    pub fn hurt_boat_result(
         &mut self,
         i: usize,
         mut damage: f32,

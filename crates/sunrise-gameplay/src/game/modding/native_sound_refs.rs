@@ -41,7 +41,7 @@ impl crate::game::ServerGame<'_> {
     /// `StopSoundCommand` for one player: their client stops the playing
     /// sounds that match `sound` (an event id) and `source`; `None` matches
     /// any. True means accepted, not delivered.
-    pub(in crate::game) fn player_stop_sound(
+    pub fn player_stop_sound(
         &mut self,
         player: PlayerRef,
         sound: Option<&str>,
@@ -70,7 +70,7 @@ impl crate::game::ServerGame<'_> {
     /// player, for them only, under `source`'s volume slider. The seed is the
     /// level random's `nextLong`, drawn when the sound publishes. True means
     /// accepted, not delivered.
-    pub(in crate::game) fn player_play_sound(
+    pub fn player_play_sound(
         &mut self,
         player: PlayerRef,
         sound: &str,
@@ -110,7 +110,7 @@ impl crate::game::ServerGame<'_> {
     /// the players within range (16 blocks, times the volume above 1) of
     /// where it is now, the entity's own player too. True means queued, not
     /// heard; false for an entity outside the level in place.
-    pub(in crate::game) fn entity_play_bound_sound(
+    pub fn entity_play_bound_sound(
         &mut self,
         entity: EntityRef,
         sound: &str,

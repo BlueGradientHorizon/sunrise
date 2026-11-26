@@ -84,15 +84,15 @@ fn caster(game: &mut sunrise_gameplay::game::ServerGame<'_>) {
     game.player =
         Some(PlayerMotion::new(game.motion, Vec3::new(FEET[0], FEET[1], FEET[2])).unwrap());
     game.inventory[game.selected] = Some(ItemStack::new("minecraft:fishing_rod", 1));
-    game.side.lan_acting_uuid = Some(7);
-    game.side.lan_acting_entity = Some(20);
+    game.server.lan_acting_uuid = Some(7);
+    game.server.lan_acting_entity = Some(20);
     let loot = sunrise_world::loot::LootData::load(
         &game.options.resources,
         &Default::default(),
         game.res.item_defaults(),
     )
     .unwrap();
-    game.side.server_loot.0.set(Some(Arc::new(loot)));
+    game.server.server_loot.0.set(Some(Arc::new(loot)));
 }
 /// Cast a bobber at (5.5, 66, 0.5), over the air, and tick it `ticks` times: its id.
 fn cast(game: &mut sunrise_gameplay::game::ServerGame<'_>, ticks: usize) -> u32 {
@@ -139,7 +139,7 @@ fn a_mods_medium_floats_the_bobber_and_its_catch_rolls_the_checked_table() {
     mod_platform::testing::with_mods(mods(&[("medium", &medium)]), || {
         with_game(|game| {
             let scratch = tempfile::tempdir().unwrap();
-            game.side.world_root = scratch.path().into();
+            game.server.world_root = scratch.path().into();
             caster(game);
 
             // Answered None: asked, and the bobber falls as vanilla's.
@@ -252,7 +252,7 @@ fn a_client_keeps_only_the_surface_and_draws_the_bobber_floating() {
         with_client_game(|game| {
             let (client, _server) = sunrise_protocol::connection::Pipe::pair();
             game.connect_local(client, "Fisher").unwrap();
-            game.side.remote.as_mut().unwrap().logged_in = true;
+            game.client.remote.as_mut().unwrap().logged_in = true;
             game.world
                 .chunks
                 .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));

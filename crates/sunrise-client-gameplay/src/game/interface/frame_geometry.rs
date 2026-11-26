@@ -9,7 +9,7 @@ use sunrise_client::{gfx::CelestialBody, mobs::ModelNormals};
 
 impl crate::game::ClientGame<'_> {
     /// Stored local and remote display positions, keeping the furthest stage on each cell.
-    pub(in crate::game::client_side) fn crack_stages(&self) -> Vec<([i32; 3], u32)> {
+    pub fn crack_stages(&self) -> Vec<([i32; 3], u32)> {
         let mut stages: Vec<([i32; 3], u32)> = Vec::new();
         let mut add = |pos: [i32; 3], stage: u32| match stages.iter_mut().find(|c| c.0 == pos) {
             Some(c) => c.1 = c.1.max(stage),
@@ -35,7 +35,7 @@ impl crate::game::ClientGame<'_> {
 
     /// `renderBlockDestroyAnimation`: eligible cells within 32 blocks of the camera,
     /// with each stage sprite's atlas origin. No hook is asked during extraction.
-    pub(in crate::game::client_side) fn cracks(
+    pub fn cracks(
         &self,
         camera: glam::DVec3,
     ) -> Vec<([i32; 3], [f32; 2])> {
@@ -174,7 +174,7 @@ impl crate::game::ClientGame<'_> {
     /// both hands in view space, converted to camera-relative world space,
     /// and where the arm and each item start, with the `currentRenderedItemId`
     /// a shader pack reads for them.
-    pub(in crate::game) fn hand_geometry(&mut self, alpha: f64) -> (Vec<Vertex>, Vec<(u32, i32)>) {
+    pub fn hand_geometry(&mut self, alpha: f64) -> (Vec<Vertex>, Vec<(u32, i32)>) {
         let mut out = Vec::new();
         let mut runs = Vec::new();
         // F1 hides both; a native HUD mode may keep the hands visible. The

@@ -95,7 +95,7 @@ impl crate::game::ServerGame<'_> {
     /// Whether the entity sprints (`Entity.isSprinting`): a player, or a
     /// cat or ocelot dashing after its target (their shared sprinting flag);
     /// false for the other kinds.
-    pub(in crate::game) fn entity_is_sprinting(&self, entity: EntityRef) -> Option<bool> {
+    pub fn entity_is_sprinting(&self, entity: EntityRef) -> Option<bool> {
         Some(match self.native_entity_body(entity)? {
             Body::Player(p) => p.sprinting,
             Body::Mob(m) => m.extra.sprinting,
@@ -104,7 +104,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// `Entity.setSprinting` for a player (the flag and the speed modifier) or a mob (the
     /// flag, sent to the clients). False for other kinds, a stale handle and a client.
-    pub(in crate::game) fn entity_set_sprinting(
+    pub fn entity_set_sprinting(
         &mut self,
         entity: EntityRef,
         sprinting: bool,

@@ -134,7 +134,7 @@ fn scoped_host_resolves_other_real_players_from_the_game() {
                 10,
             );
             guest.placed = true;
-            game.side.lan.as_mut().unwrap().hub.guests.push(guest);
+            game.server.lan.as_mut().unwrap().hub.guests.push(guest);
         }
         let kind = game
             .res
@@ -200,7 +200,7 @@ fn body_yaw_is_the_raw_mob_yaw_and_none_for_others() {
         for player in &players {
             assert_eq!(player.body_yaw(game), None);
         }
-        game.side.others.0.push(sunrise_gameplay_common::game::commands_common::OtherEntity {
+        game.server.others.0.push(sunrise_gameplay_common::game::commands_common::OtherEntity {
             size_answer: None,
             attachment_lifetime: Default::default(),
             knot_check: None,

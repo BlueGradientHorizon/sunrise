@@ -34,7 +34,7 @@ impl crate::game::ServerGame<'_> {
     /// `rotation` (yaw, pitch in degrees) it also turns. False for a position
     /// outside the world's bounds, for wall-mounted entities or dragon parts, or when the
     /// requested rotation cannot be stored.
-    pub(in crate::game) fn entity_teleport_to(
+    pub fn entity_teleport_to(
         &mut self,
         entity: EntityRef,
         pos: [f64; 3],
@@ -54,7 +54,7 @@ impl crate::game::ServerGame<'_> {
     /// level it is `entity_teleport_to` with the motion kept. False for what
     /// `entity_teleport_to` refuses, a dimension that isn't registered, and
     /// kinds that cannot change level here (`teleport_target_across`).
-    pub(in crate::game) fn entity_teleport_to_level(
+    pub fn entity_teleport_to_level(
         &mut self,
         entity: EntityRef,
         dimension: &str,
@@ -76,7 +76,7 @@ impl crate::game::ServerGame<'_> {
     /// falling blocks, ...; `teleport_target_across`), a player who is not a
     /// server guest, or a transfer the game could not make. A fake player
     /// stays, and the call is true.
-    pub(in crate::game::server_side) fn teleport_to_level(
+    pub fn teleport_to_level(
         &mut self,
         t: Target,
         level: Dim,
@@ -127,7 +127,7 @@ impl crate::game::ServerGame<'_> {
     /// through the `entity_move` hook. How far it moved; None for a stale handle, on a client,
     /// for an entity outside the entity walk, and for an unknown cause and for a delta that is
     /// not finite or beyond 64 blocks on an axis. A player is moved by `move_player_by`.
-    pub(in crate::game) fn entity_move_by(
+    pub fn entity_move_by(
         &mut self,
         entity: EntityRef,
         delta: [f64; 3],
@@ -237,7 +237,7 @@ impl crate::game::ServerGame<'_> {
     /// Turns a mob's head to `yaw` (`Entity.setYHeadRot`); its body follows
     /// as its AI turns it. Players' heads can turn too; false for other kinds
     /// or an unavailable player.
-    pub(in crate::game) fn entity_set_head_yaw(&mut self, entity: EntityRef, yaw: f32) -> bool {
+    pub fn entity_set_head_yaw(&mut self, entity: EntityRef, yaw: f32) -> bool {
         if !yaw.is_finite() {
             return false;
         }

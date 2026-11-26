@@ -47,7 +47,7 @@ impl crate::game::ServerGame<'_> {
     /// `LivingEntity.startFallFlying`: sets the glide flag, so the next tick glides.
     /// The raw flag write: the caller owns the canGlide checks. True for a player, a
     /// guest or a mob; false for an armor stand or the dragon.
-    pub(in crate::game) fn living_start_gliding(&mut self, living: LivingRef) -> bool {
+    pub fn living_start_gliding(&mut self, living: LivingRef) -> bool {
         match self.native_living_target(living) {
             Some(Target::Player) => {
                 let Some(p) = self.common.player.as_mut() else {
@@ -78,7 +78,7 @@ impl crate::game::ServerGame<'_> {
     /// learn it with the entity's next flag sync, as they do when a glide
     /// ends on its own. True for a player, a guest or a mob; false for an
     /// armor stand or the dragon.
-    pub(in crate::game) fn living_stop_gliding(&mut self, living: LivingRef) -> bool {
+    pub fn living_stop_gliding(&mut self, living: LivingRef) -> bool {
         match self.native_living_target(living) {
             Some(Target::Player) => {
                 let Some(p) = self.common.player.as_mut() else {
@@ -112,7 +112,7 @@ impl crate::game::ServerGame<'_> {
     /// inside or outside their own turn, in the level in place. False for
     /// a guest in another level, a fake player, another
     /// mob, an armor stand or the dragon, or a bed without a sleep shape.
-    pub(in crate::game) fn living_start_sleeping(
+    pub fn living_start_sleeping(
         &mut self,
         living: LivingRef,
         pos: [i32; 3],
@@ -162,7 +162,7 @@ impl crate::game::ServerGame<'_> {
     /// entity slept; false for a fake player, another mob, an armor stand
     /// or the dragon. Normal server guests in the level in place use the
     /// same wake-up path; guests in another level are refused.
-    pub(in crate::game) fn living_stop_sleeping(&mut self, living: LivingRef) -> bool {
+    pub fn living_stop_sleeping(&mut self, living: LivingRef) -> bool {
         match self.native_living_target(living) {
             Some(target @ (Target::Player | Target::Guest(_))) => {
                 self.native_player_sleep_write(target, |game| {
@@ -204,7 +204,7 @@ impl crate::game::ServerGame<'_> {
     /// are supported; guests in another level, fake players, mobs, armor
     /// stands and the dragon are refused. This only
     /// changes the sleeping position/pose, not bed occupancy.
-    pub(in crate::game) fn living_set_sleeping_pos(
+    pub fn living_set_sleeping_pos(
         &mut self,
         living: LivingRef,
         pos: [i32; 3],
@@ -226,7 +226,7 @@ impl crate::game::ServerGame<'_> {
     /// another level, fake players, mobs, armor stands and the dragon are
     /// refused. This does not run the wake-up animation
     /// or move the player; use `stop_sleeping` to stand beside the bed.
-    pub(in crate::game) fn living_clear_sleeping_pos(&mut self, living: LivingRef) -> bool {
+    pub fn living_clear_sleeping_pos(&mut self, living: LivingRef) -> bool {
         let Some(target) = self.native_living_target(living) else {
             return false;
         };
@@ -242,7 +242,7 @@ impl crate::game::ServerGame<'_> {
     /// jumps, as their own key does. False for a guest outside its turn,
     /// whose client holds its own jump, a mob, an armor stand or the
     /// dragon.
-    pub(in crate::game) fn living_set_is_jumping(
+    pub fn living_set_is_jumping(
         &mut self,
         living: LivingRef,
         jumping: bool,

@@ -18,7 +18,7 @@ fn rail_world(game: &mut sunrise_gameplay::game::ServerGame<'_>) -> std::path::P
         std::thread::current().id()
     ));
     std::fs::create_dir_all(&scratch).unwrap();
-    game.side.world_root = scratch.clone();
+    game.server.world_root = scratch.clone();
     game.player = Some(PlayerMotion::new(game.motion, Vec3::new(8.5, 64.0, 12.5)).unwrap());
     game.build_registries();
     game.set_allow_commands(true);

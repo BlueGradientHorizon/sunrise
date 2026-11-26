@@ -100,7 +100,7 @@ pub(in crate::game) fn visit_server_section_members(
 
 impl ServerGame<'_> {
     /// Authoritative server entity hit from `server_pick_ray_decision`.
-    pub(in crate::game) fn server_crosshair_entity_hit(&self) -> Option<CrosshairEntityHit> {
+    pub fn server_crosshair_entity_hit(&self) -> Option<CrosshairEntityHit> {
         let CrosshairDecision::Entity(hit) = self.server_pick_ray_decision() else {
             return None;
         };

@@ -72,24 +72,24 @@ mod transient_entities {
         with_server(|game| {
             let display = display(game);
             game.save_entities(true).unwrap();
-            assert_eq!(game.side.save.0.load_entities(0, 0).unwrap().len(), 1);
+            assert_eq!(game.server.save.0.load_entities(0, 0).unwrap().len(), 1);
             assert_eq!(display.set_persistent(game, false), Ok(true));
             assert_eq!(
-                game.side.save.0.load_entities(0, 0).unwrap().len(),
+                game.server.save.0.load_entities(0, 0).unwrap().len(),
                 1,
                 "setting the flag does not rewrite an old snapshot"
             );
 
             let chunk = game.world.chunks.remove(&(0, 0)).unwrap();
             game.unload_entities(std::slice::from_ref(&chunk));
-            game.side.save.0.flush().unwrap();
+            game.server.save.0.flush().unwrap();
             assert_eq!(game.entity(display.id()), None);
-            let records = game.side.save.0.load_entities(0, 0).unwrap();
+            let records = game.server.save.0.load_entities(0, 0).unwrap();
             assert!(records.is_empty());
             game.world.chunks.insert((0, 0), chunk);
             game.world.queue_entity_nbt((0, 0), records);
             game.spawn_loaded_entities();
-            assert!(game.side.others.0.is_empty());
+            assert!(game.server.others.0.is_empty());
         });
     }
 
@@ -271,7 +271,7 @@ fn neutral_load_restores_only_the_saved_live_target_with_or_without_listeners() 
 #[ignore = "daily"]
 fn resident_other_and_fangs_load_tick_and_reset() {
     super::super::native_entity_refs::tests::with_game(|game| {
-        game.side.others.0.clear();
+        game.server.others.0.clear();
         game.fangs.list.clear();
         let tag = |kind| {
             let mut tag = entity(kind);
@@ -291,9 +291,9 @@ fn resident_other_and_fangs_load_tick_and_reset() {
         let id = game
             .load_other(tag("minecraft:marker"), "minecraft:marker")
             .unwrap();
-        assert_eq!(game.side.others.0[0].id, id);
-        let snapshot = game.side.others.0.to_vec();
-        game.side.others.0.update(0, |o| o.yaw = 90.0);
+        assert_eq!(game.server.others.0[0].id, id);
+        let snapshot = game.server.others.0.to_vec();
+        game.server.others.0.update(0, |o| o.yaw = 90.0);
         assert_eq!(snapshot[0].yaw, 0.0);
         game.load_unlisted(
             (0, 0),
@@ -312,9 +312,9 @@ fn resident_other_and_fangs_load_tick_and_reset() {
         assert_eq!(game.fangs.list.len(), 1);
         assert_eq!(game.fangs.list[0].id, survivor);
         assert_eq!(game.fangs.list[0].warmup, 39);
-        game.side.others.0.clear();
+        game.server.others.0.clear();
         game.fangs.list.clear();
-        assert!(game.side.others.0.is_empty() && game.fangs.list.is_empty());
+        assert!(game.server.others.0.is_empty() && game.fangs.list.is_empty());
     });
 }
 
@@ -553,9 +553,9 @@ pub(crate) fn run_comparator_and_hopper_live_state_survives_chunk_reload() {
         game.world.block_entities.insert(*p, entity.clone());
     }
     game.world.chunks.insert((0, 0), Arc::new(restored));
-    game.side.hoppers.clear();
+    game.server.hoppers.clear();
     game.block_ticks = sunrise_world::level::Ticks::new(0);
-    game.side.tick_chunks.clear();
+    game.server.tick_chunks.clear();
     // Frozen: data must already show the saved values before any tick.
     assert_eq!(
         game.block_entity_nbt([1, 64, 1])
@@ -592,7 +592,7 @@ pub(crate) fn run_comparator_and_hopper_live_state_survives_chunk_reload() {
     }
     game.world.chunks.clear();
     game.sync_tick_chunks();
-    assert!(!game.side.hoppers.contains_key(&hopper));
+    assert!(!game.server.hoppers.contains_key(&hopper));
     assert!(
         !game
             .block_ticks
@@ -1226,8 +1226,8 @@ fn an_orb_saves_its_live_portal_cooldown() {
         let id = game.orbs[0].id;
         // One tick: the orb's own (ordered) tick, then Entity.handlePortal's
         // pass over the entities.
-        game.side.ordered.announced = sunrise_sim::join_seq::JoinSeq::MAX;
-        game.side.tickets.0.update(None);
+        game.server.ordered.announced = sunrise_sim::join_seq::JoinSeq::MAX;
+        game.server.tickets.0.update(None);
         game.begin_ordered_ticks();
         game.run_ordered_ticks(sunrise_sim::join_seq::JoinSeq::MAX, false)
             .unwrap();
@@ -1235,7 +1235,7 @@ fn an_orb_saves_its_live_portal_cooldown() {
         assert_eq!(game.orbs[0].fire_ticks, 39, "one tick of Fire");
         assert_eq!(game.orbs[0].air, 299, "the stored air does not tick");
         assert_eq!(
-            game.side.portals.entities.get(&id).map(|p| p.cooldown),
+            game.server.portals.entities.get(&id).map(|p| p.cooldown),
             Some(19),
             "the tick's portal cooldown"
         );

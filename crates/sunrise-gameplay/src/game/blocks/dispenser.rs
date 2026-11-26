@@ -331,7 +331,7 @@ impl crate::game::ServerGame<'_> {
     /// dispenser (`insertItem`) or drops what does not fit with the dispenser click and smoke.
     /// Journals each slot write and defers dropped items and level events while a storage
     /// transaction is open.
-    pub(in crate::game) fn add_to_inventory_or_dispense(
+    pub fn add_to_inventory_or_dispense(
         &mut self,
         pos: Pos,
         facing: Direction,
@@ -426,7 +426,7 @@ impl crate::game::ServerGame<'_> {
         Some(stack)
     }
     /// `ItemStack.hurtAndBreak(amount)` without an entity.
-    pub(in crate::game) fn hurt_and_break(
+    pub fn hurt_and_break(
         &mut self,
         stack: ItemStack,
         amount: u32,
@@ -439,7 +439,7 @@ impl crate::game::ServerGame<'_> {
 
     /// `DispenserBlock.getDispenseMethod(..).dispense(source, stack)`: the replacement
     /// for the slot, or `Break` when the slot must not be written at all.
-    pub(in crate::game) fn dispense_item(
+    pub fn dispense_item(
         &mut self,
         pos: Pos,
         facing: Direction,
@@ -577,7 +577,7 @@ impl crate::game::ServerGame<'_> {
         Ok(ControlFlow::Continue(left))
     }
     /// `DispenserBlock.getDefaultDispenseMethod`: equipment, spawn eggs, or a drop.
-    pub(in crate::game::server_side) fn dispense_default_method(
+    pub fn dispense_default_method(
         &mut self,
         pos: Pos,
         facing: Direction,
@@ -725,7 +725,7 @@ impl crate::game::ServerGame<'_> {
         1.0 + amount
     }
     /// `EntityType.spawn(.., pos, reason, tryMoveDown, false)` for a mob.
-    pub(in crate::game) fn spawn_mob_at(
+    pub fn spawn_mob_at(
         &mut self,
         kind: &str,
         p: Pos,
@@ -819,7 +819,7 @@ impl crate::game::ServerGame<'_> {
     /// data can make it persistent, not the spawn: `spawn_mob_at` creates a
     /// persistent mob. A tadpole's setter does nothing: its `fromBucket` is
     /// always true.
-    pub(in crate::game) fn mob_placed(&mut self, id: u32, stack: &ItemStack) -> Result<()> {
+    pub fn mob_placed(&mut self, id: u32, stack: &ItemStack) -> Result<()> {
         if let Some(m) = self.common.mobs.iter_mut().find(|m| m.id == id) {
             m.persistent = false;
             sunrise_sim::entity_nbt::apply_item_components(m, stack);
@@ -935,7 +935,7 @@ impl crate::game::ServerGame<'_> {
 
     /// `ProjectileItem.asProjectile` and `Projectile.spawnProjectileUsingShoot`:
     /// one of `stack` fired from `at` along `dir`.
-    pub(in crate::game::server_side) fn shoot_projectile_item(
+    pub fn shoot_projectile_item(
         &mut self,
         at: Vec3,
         dir: [f64; 3],
@@ -1572,7 +1572,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// `Entity.spawnAtLocation(level, stack, offset)`: an item at the entity's
     /// feet plus the offset, moving as `new ItemEntity` makes it.
-    pub(in crate::game) fn spawn_at_location(
+    pub fn spawn_at_location(
         &mut self,
         at: Vec3,
         y_offset: f64,
@@ -1890,7 +1890,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// `EquipmentDispenseItemBehavior.dispenseEquipment`: the first living
     /// entity in front that `canEquipWithDispenser` gets one of the item.
-    pub(in crate::game) fn dispense_equipment(
+    pub fn dispense_equipment(
         &mut self,
         pos: Pos,
         facing: Direction,
@@ -2231,7 +2231,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// `ShearsDispenseItemBehavior.tryShearEntity`: the first live, ready
     /// `Shearable` in the block is sheared (an entity part's `IShearable` answer comes first).
-    pub(in crate::game) fn shear_entity(&mut self, target: Pos) -> Result<bool> {
+    pub fn shear_entity(&mut self, target: Pos) -> Result<bool> {
         let shears = ItemStack::new("minecraft:shears", 1);
         for t in self.targets_at(target) {
             // Entity.shearOffAllLeashConnections comes first, for any entity.
@@ -2446,7 +2446,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// `SulfurCubeBlockDispenseItemBehavior.dispenseBlock`: the first sulfur
     /// cube in the block that `equipItem`s the stack swallows one.
-    pub(in crate::game) fn sulfur_cube_swallow(&mut self, target: Pos, stack: &ItemStack) -> bool {
+    pub fn sulfur_cube_swallow(&mut self, target: Pos, stack: &ItemStack) -> bool {
         let cubes: Vec<usize> = self
             .targets_at(target)
             .into_iter()

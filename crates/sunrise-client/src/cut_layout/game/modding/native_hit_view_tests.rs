@@ -141,8 +141,8 @@ fn handle_read(game: &mut sunrise_gameplay::game::ServerGame<'_>, id: u32) -> Re
     let living = game.living(game.entity(id).unwrap()).unwrap();
     let stick = mod_api::__private::item_key("minecraft:stick");
     let mob = game.mob(living.entity());
-    let holder = if Some(id) == game.side.lan_acting_entity {
-        game.side.lan_acting_uuid.map(Holder::Player)
+    let holder = if Some(id) == game.server.lan_acting_entity {
+        game.server.lan_acting_uuid.map(Holder::Player)
     } else {
         Some(Holder::Entity(id))
     };
@@ -438,7 +438,7 @@ fn the_acting_guest_is_read_with_its_holder() {
     .into();
     mod_platform::testing::with_mods(mods, || {
         super::native_guest_turn_tests::with_guests(|game| {
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()

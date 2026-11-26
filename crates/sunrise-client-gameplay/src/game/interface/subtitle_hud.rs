@@ -18,7 +18,7 @@ pub(in crate::game) struct SubtitleState {
 impl ClientGame<'_> {
     /// Feed the sounds the engine reported since the last tick
     /// (`SoundEventListener.onPlaySound`) while the overlay listens.
-    pub(in crate::game) fn tick_subtitles(&mut self) {
+    pub fn tick_subtitles(&mut self) {
         let mut overlay = self.client.subtitles.overlay.borrow_mut();
         let listening = overlay.listening();
         self.client.audio.0.record_heard = listening;

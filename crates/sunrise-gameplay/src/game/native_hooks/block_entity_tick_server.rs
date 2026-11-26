@@ -46,7 +46,7 @@ pub struct ResidentBlockEntityAccess<'g, 'w> {
 }
 
 impl<'g, 'w> ResidentBlockEntityAccess<'g, 'w> {
-    pub(in crate::game) fn new(
+    pub fn new(
         game: &'g mut crate::game::ServerGame<'w>,
         subject: Option<BlockEntityRef>,
         loan: Loan,
@@ -344,7 +344,7 @@ impl BlockEntityAccess for ResidentBlockEntityAccess<'_, '_> {
 
 impl crate::game::ServerGame<'_> {
     /// The resident mod block entity and admitted block state behind a menu callback.
-    pub(in crate::game) fn resident_block_entity_target(
+    pub fn resident_block_entity_target(
         &self,
         pos: Pos,
     ) -> Option<(BlockEntityRef, BlockStateId)> {
@@ -398,17 +398,17 @@ impl crate::game::ServerGame<'_> {
 }
 
 impl<'g, 'w> ResidentBlockEntityAccess<'g, 'w> {
-    pub(in crate::game) fn blockless(game: &'g mut crate::game::ServerGame<'w>) -> Self {
+    pub fn blockless(game: &'g mut crate::game::ServerGame<'w>) -> Self {
         Self::new(game, None, Loan::OnLoad)
     }
-    pub(in crate::game) fn for_handle(
+    pub fn for_handle(
         game: &'g mut crate::game::ServerGame<'w>,
         subject: BlockEntityRef,
         state: BlockStateId,
     ) -> Self {
         Self::new(game, Some(subject), Loan::Menu(state))
     }
-    pub(in crate::game) fn items_changed(&self) -> bool {
+    pub fn items_changed(&self) -> bool {
         self.items_changed
     }
 }

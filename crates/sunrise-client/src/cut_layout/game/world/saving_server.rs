@@ -38,9 +38,9 @@ pub(crate) mod tests {
         mod_platform::testing::with_mods(Vec::new().into(), || {
             with_game(|game| {
                 let dir = tempfile::tempdir().unwrap();
-                game.side.world_root = dir.path().to_path_buf();
-                game.side.save.0 = Arc::new(SaveDir::new(
-                    game.side.world_root.clone(),
+                game.server.world_root = dir.path().to_path_buf();
+                game.server.save.0 = Arc::new(SaveDir::new(
+                    game.server.world_root.clone(),
                     LevelShape::OVERWORLD,
                     Some(Default::default()),
                 ));
@@ -57,7 +57,7 @@ pub(crate) mod tests {
                         close: false,
                         reply: None,
                         started: Instant::now(),
-                        stage: Stage::Writes(Some(game.side.save.0.flush_later().unwrap())),
+                        stage: Stage::Writes(Some(game.server.save.0.flush_later().unwrap())),
                     };
                     assert!(!finish_server_staged_save(game, &mut save));
                     let incremental = sunrise_game_data::lang::get("commands.save.success");
@@ -77,26 +77,26 @@ pub(crate) mod tests {
             with_game(|game| {
                 for quit in [false, true] {
                     let dir = tempfile::tempdir().unwrap();
-                    game.side.save.0 = Arc::new(SaveDir::new(
+                    game.server.save.0 = Arc::new(SaveDir::new(
                         dir.path().to_path_buf(),
                         LevelShape::OVERWORLD,
                         None,
                     ));
                     let invalid = (0..=DISK_WRITE_NESTING_GUARD)
                         .fold(Tag::Int(0), |nested, _| Tag::List(vec![nested]));
-                    game.side
+                    game.server
                         .save
                         .0
                         .save_entities(vec![((2, 0), vec![invalid])])
                         .unwrap();
-                    assert_eq!(game.side.save.0.record_save_failures(), 1);
+                    assert_eq!(game.server.save.0.record_save_failures(), 1);
                     let (send, receive) = mpsc::channel();
                     let mut save = ClosingSave {
                         quit,
                         close: quit,
                         reply: (!quit).then_some(send),
                         started: Instant::now(),
-                        stage: Stage::Writes(Some(game.side.save.0.flush_later().unwrap())),
+                        stage: Stage::Writes(Some(game.server.save.0.flush_later().unwrap())),
                     };
                     assert_eq!(finish_server_staged_save(game, &mut save), quit);
                     if !quit {

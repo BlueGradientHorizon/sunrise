@@ -193,7 +193,7 @@ impl crate::game::ServerGame<'_> {
         self.server.world_root.join("datapacks.json")
     }
     /// Discover and load the data packs of the world (once, or on `/reload`).
-    pub(in crate::game::server_side) fn ensure_datapacks(&mut self) {
+    pub fn ensure_datapacks(&mut self) {
         if self.server.fns.0.loaded || self.server.world_root.as_os_str().is_empty() {
             return;
         }
@@ -201,7 +201,7 @@ impl crate::game::ServerGame<'_> {
             log::warn!("Sunrise: {}", error.diagnostic());
         }
     }
-    pub(in crate::game::server_side) fn open_world_datapacks(
+    pub fn open_world_datapacks(
         &mut self,
         enabled_features: &[String],
     ) -> Result<PackStack, ReloadStageError> {
@@ -211,7 +211,7 @@ impl crate::game::ServerGame<'_> {
         self.reload_datapacks(false, enabled_features)
     }
 
-    pub(in crate::game) fn reload_datapacks(
+    pub fn reload_datapacks(
         &mut self,
         run_load: bool,
         enabled_features: &[String],
@@ -409,7 +409,7 @@ impl crate::game::ServerGame<'_> {
         self.server.fns.0.store = store;
         self.sync_function_registries(stack);
     }
-    fn save_datapack_settings(&self) {
+    pub fn save_datapack_settings(&self) {
         let disabled: Vec<&String> = self
             .server
             .fns
@@ -422,7 +422,7 @@ impl crate::game::ServerGame<'_> {
         let json = serde_json::json!({"enabled": self.server.fns.0.enabled, "disabled": disabled});
         let _ = std::fs::write(self.datapack_settings_path(), json.to_string());
     }
-    pub(in crate::game::server_side) fn sync_function_registries(&mut self, stack: &PackStack) {
+    pub fn sync_function_registries(&mut self, stack: &PackStack) {
         self.sync_schedule_registry();
         self.sync_enchantment_registries();
         let reg = &mut self.common.ui.registries;
@@ -565,7 +565,7 @@ impl crate::game::ServerGame<'_> {
             });
         }
     }
-    pub(in crate::game::server_side) fn save_schedule(&self) {
+    pub fn save_schedule(&self) {
         if !self.server.fns.0.loaded || !self.common.is_logical_server() {
             return;
         }
@@ -626,7 +626,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// `ServerLevel.tickTime`'s `getScheduledEvents().tick`: the scheduled
     /// functions due at the game time this tick has just reached.
-    pub(in crate::game::server_side) fn run_scheduled_functions(&mut self) {
+    pub fn run_scheduled_functions(&mut self) {
         self.ensure_datapacks();
         if !self.common.is_logical_server() {
             return;
@@ -711,7 +711,7 @@ impl crate::game::ServerGame<'_> {
     // ---- running -----------------------------------------------------------------
 
     /// Run one function with `source`: its commands in order, until a `return`.
-    pub(in crate::game::server_side) fn run_function(
+    pub fn run_function(
         &mut self,
         f: &Function,
         args: Option<&Tag>,
@@ -1134,7 +1134,7 @@ impl crate::game::ServerGame<'_> {
         Ok((tick_time.rem_euclid(i64::from(i32::MAX))) as i32)
     }
     /// ReloadCommand: the message, then the (asynchronous) reload; returns 0.
-    pub(in crate::game) fn cmd_reload(&mut self) -> R<i32> {
+    pub fn cmd_reload(&mut self) -> R<i32> {
         self.feedback(Text::translate("commands.reload.success", &[]));
         self.reload_datapacks(true, &self.common.level.enabled_features.clone())
             .map_err(Self::reload_failure)?;
@@ -1540,7 +1540,7 @@ impl crate::game::ServerGame<'_> {
 
     /// `ResourceOrIdArgument.getLootPredicate`: accept the inline or named
     /// predicate, then test it with the existing source entity and origin.
-    pub(in crate::game::server_side) fn check_predicate(&mut self, id: &str) -> R<bool> {
+    pub fn check_predicate(&mut self, id: &str) -> R<bool> {
         self.ensure_datapacks();
         // ResourceOrIdArgument retains either an inline value or a named id.
         // Both use the same evaluator and command-source context below.

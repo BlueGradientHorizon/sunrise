@@ -151,7 +151,7 @@ fn physical_hold_orders_engine_and_mod_packets_and_bypasses_network_keepalive() 
         let (client, _server) = Pipe::pair();
         game.connect_local(client, "HoldTest").unwrap();
         let (session, mut peer, keepalive) = sunrise_client::net::Session::packet_hold_probe();
-        let remote = game.side.remote.as_mut().unwrap();
+        let remote = game.client.remote.as_mut().unwrap();
         remote.session = session;
         remote.joined = true;
         let id = game.hold_packets().unwrap();
@@ -201,7 +201,7 @@ fn physical_hold_orders_engine_and_mod_packets_and_bypasses_network_keepalive() 
         );
         let disconnected = game.hold_packets().unwrap();
         game.send_play(S::Pong(Ping { id: 7 }));
-        let mut old = game.side.remote.take().unwrap();
+        let mut old = game.client.remote.take().unwrap();
         old.session.disconnect();
         assert_eq!(game.release_held(disconnected), Err(HoldError::Unknown));
     });

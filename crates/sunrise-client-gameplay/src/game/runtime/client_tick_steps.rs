@@ -7,7 +7,7 @@ impl crate::game::ClientGame<'_> {
     /// paused or on the title screen (the level, its block entities' client tickers included),
     /// does the client's own per-tick work and tells `client_tick_post`. With `event_loop`, an
     /// armed tick script plays its step before the game ticks.
-    pub(in crate::game) fn client_tick_steps(
+    pub fn client_tick_steps(
         &mut self,
         steps: u32,
         event_loop: Option<&dyn EventLoopCtl>,

@@ -37,7 +37,7 @@ fn client_camera_entity_returns_to_player_after_removal() {
             sea_level: 63,
         };
         game.enter_remote_dimension(&spawn, RemoteDimensionEntry::Login, Reason::Other);
-        let remote = game.side.remote.as_mut().unwrap();
+        let remote = game.client.remote.as_mut().unwrap();
         remote.logged_in = true;
         remote.entity_id = 7;
         assert!(camera(game).is_none(), "a level alone has no player");
@@ -51,7 +51,7 @@ fn client_camera_entity_returns_to_player_after_removal() {
         assert_eq!(local.position(game), Some([0.0; 3]));
 
         let creeper = game
-            .side
+            .client
             .remote
             .as_ref()
             .unwrap()
@@ -75,7 +75,7 @@ fn client_camera_entity_returns_to_player_after_removal() {
         game.remote_set_camera(31);
         assert!(!game.controls_camera());
         assert!(game.hides_as_camera(31));
-        assert!(game.side.spectated_post_effect.is_some());
+        assert!(game.client.spectated_post_effect.is_some());
         let attached = camera(game).unwrap();
         game.handle_packet(C::RemoveEntities(play::RemoveEntities { ids: vec![99] }))
             .unwrap();
@@ -103,7 +103,7 @@ fn client_camera_entity_returns_to_player_after_removal() {
             "movement stays paused while camera remains detached"
         );
         assert!(!game.hides_as_camera(31));
-        assert!(game.side.spectated_post_effect.is_some());
+        assert!(game.client.spectated_post_effect.is_some());
         game.handle_packet(C::SetCamera(play::SetCamera { camera_id: 7 }))
             .unwrap();
         assert_eq!(camera(game), Some(local));
@@ -111,15 +111,15 @@ fn client_camera_entity_returns_to_player_after_removal() {
             game.controls_camera(),
             "movement input and position packets are enabled after SetCamera restores player"
         );
-        assert!(game.side.spectated_post_effect.is_none());
+        assert!(game.client.spectated_post_effect.is_none());
 
-        game.side.title.0 =
+        game.client.title.0 =
             Some(game.new_title(std::env::current_dir().unwrap_or_default().join("saves")));
         assert!(
             camera(game).is_none(),
             "the title screen has no camera entity"
         );
-        game.side.title.0 = None;
+        game.client.title.0 = None;
         assert_eq!(camera(game), Some(local));
 
         spawn.dimension = "test:other_overworld".into();
@@ -177,12 +177,12 @@ pub(crate) fn run_a_named_mob_the_server_camera_is_attached_to_shows_no_name_tag
             sea_level: 63,
         };
         game.enter_remote_dimension(&spawn, RemoteDimensionEntry::Login, Reason::Other);
-        let remote = game.side.remote.as_mut().unwrap();
+        let remote = game.client.remote.as_mut().unwrap();
         remote.logged_in = true;
         remote.entity_id = 7;
         game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
         let creeper = game
-            .side
+            .client
             .remote
             .as_ref()
             .unwrap()

@@ -198,8 +198,8 @@ fn typed_payloads_follow_the_raw_routes() {
     let mods = vec![ModEntry::new("typed_probe", Box::new(Registration))].into();
     mod_platform::testing::with_mods(mods, || {
         crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
-            game.side.settings.render_distance = 2;
-            game.side.settings.simulation_distance = 2;
+            game.client.settings.render_distance = 2;
+            game.client.settings.simulation_distance = 2;
             let options = sunrise_sim::world_options::WorldOptions {
                 world_type: sunrise_sim::save::WorldPreset::Flat,
                 ..Default::default()
@@ -208,7 +208,7 @@ fn typed_payloads_follow_the_raw_routes() {
                 .unwrap();
             let deadline = Instant::now() + Duration::from_secs(60);
             while !game
-                .side
+                .client
                 .remote
                 .as_ref()
                 .is_some_and(|r| r.logged_in && r.joined)
@@ -230,7 +230,7 @@ fn typed_payloads_follow_the_raw_routes() {
 
 /// Exercise enumeration and a handle-addressed send, not a reply to the sender.
 fn singleplayer_list(game: &mut sunrise_client_gameplay::game::ClientGame<'_>) {
-    assert_eq!(game.side.integrated.as_ref().unwrap().published(), None);
+    assert_eq!(game.client.integrated.as_ref().unwrap().published(), None);
     let owner = game.local_player().expect("logged-in local player");
     *OWNER.lock().unwrap() = Some((owner.uuid(), owner.entity().id()));
     let token = TOKENS.lock().unwrap().as_ref().unwrap().up.clone();
@@ -248,7 +248,7 @@ fn singleplayer_list(game: &mut sunrise_client_gameplay::game::ClientGame<'_>) {
         std::thread::yield_now();
     }
     assert_eq!(*CLIENT.lock().unwrap(), [22]);
-    assert_eq!(game.side.integrated.as_ref().unwrap().published(), None);
+    assert_eq!(game.client.integrated.as_ref().unwrap().published(), None);
 }
 
 fn integrated(game: &mut sunrise_client_gameplay::game::ClientGame<'_>) {
@@ -321,7 +321,7 @@ fn integrated(game: &mut sunrise_client_gameplay::game::ClientGame<'_>) {
 
 fn lan(game: &mut sunrise_client_gameplay::game::ClientGame<'_>) {
     let port = game
-        .side
+        .client
         .integrated
         .as_ref()
         .unwrap()

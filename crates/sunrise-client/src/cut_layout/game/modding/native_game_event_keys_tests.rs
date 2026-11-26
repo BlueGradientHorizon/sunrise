@@ -17,7 +17,7 @@ fn game_event_key_registry_data_reload_and_unavailable_sides() {
     mod_platform::testing::with_mods(Default::default(), || {
         sunrise_gameplay::game::native_entity_refs::tests::with_game(|game| {
             let root = tempfile::tempdir().unwrap();
-            game.side.world_root = root.path().to_owned();
+            game.server.world_root = root.path().to_owned();
             game.options.dedicated = Some(Vec::new());
             let step = game.game_event_key("minecraft:step").unwrap();
             assert_eq!(step.id(game).as_deref(), Ok("minecraft:step"));
@@ -43,7 +43,7 @@ fn game_event_key_registry_data_reload_and_unavailable_sides() {
                 std::fs::write(&file, format!(r#"{{"replace":true,"values":{{"minecraft:step":{{"frequency":{frequency}}}}}}}"#)).unwrap();
                 let packs = game.reload_datapacks(false, &[]).unwrap();
                 let resources = game.options.resources.clone();
-                game.side.world_tables.0 = game
+                game.server.world_tables.0 = game
                     .stage_world_tables(&packs, frequency == 12, &resources)
                     .unwrap()
                     .tables;
@@ -68,7 +68,7 @@ fn game_event_key_registry_data_reload_and_unavailable_sides() {
                 Err(DataMapError::Unavailable)
             );
             game.options.dedicated = Some(Vec::new());
-            game.side.world_tables.0 = None;
+            game.server.world_tables.0 = None;
             assert_eq!(
                 step.data(game, &Frequencies),
                 Err(DataMapError::Unavailable)

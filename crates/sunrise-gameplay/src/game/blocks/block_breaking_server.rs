@@ -1,7 +1,7 @@
 use super::*;
 
 impl crate::game::ServerGame<'_> {
-    pub(in crate::game) fn break_block(&mut self, pos: [i32; 3]) -> Result<()> {
+    pub fn break_block(&mut self, pos: [i32; 3]) -> Result<()> {
         self.carrier_break_block(pos)
     }
     /// `ServerPlayerGameMode.tick` while a player digs: level event 2020 every
@@ -59,7 +59,7 @@ impl crate::game::ServerGame<'_> {
     /// mined the block `name`: an item with a `tool` component counts as used
     /// and loses its `damage_per_block` on a block that doesn't break
     /// instantly (`ShearsItem`: on any block but fire).
-    pub(in crate::game) fn mine_block_with_held(
+    pub fn mine_block_with_held(
         &mut self,
         name: &str,
         hardness: f32,
@@ -88,7 +88,7 @@ impl crate::game::ServerGame<'_> {
     /// `ServerPlayerGameMode.destroyBlock`: whether the block was removed.
     /// A break inside another (a mod breaking more blocks from its
     /// `native_destroy_block`) keeps the outer break's own events.
-    pub(in crate::game) fn player_break_block(&mut self, pos: [i32; 3]) -> Result<bool> {
+    pub fn player_break_block(&mut self, pos: [i32; 3]) -> Result<bool> {
         let outer = self.server.lan_break_pos.replace(pos);
         let broken = self.with_player_actor(|game| game.break_block_as_player(pos));
         self.server.lan_break_pos = outer;

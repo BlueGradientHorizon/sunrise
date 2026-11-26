@@ -282,9 +282,9 @@ fn health_extraction_runs_only_in_the_vanilla_layer_body() {
             .into(),
         );
         sunrise_client_gameplay::game::client_side::mods_client::register_gui_layers(ExecutionRole::Client);
-        game.side.title.0 = None;
-        game.side.screen = Screen::Playing;
-        game.side.chat_ui.hide_gui = false;
+        game.client.title.0 = None;
+        game.client.screen = Screen::Playing;
+        game.client.chat_ui.hide_gui = false;
         game.set_local_mode(sunrise_command::args::GameMode::Survival);
         let mut player = PlayerMotion::new(game.motion, Vec3::new(2.0, 64.0, 2.0)).unwrap();
         player.set_health(12.0, false).unwrap();
@@ -312,7 +312,7 @@ fn health_extraction_runs_only_in_the_vanilla_layer_body() {
             } else {
                 sunrise_command::args::GameMode::Survival
             });
-            game.side.chat_ui.hide_gui = hidden;
+            game.client.chat_ui.hide_gui = hidden;
             if under_water && !game.player.as_ref().unwrap().is_eye_in_fluid(WATER) {
                 let water = game
                     .pack
@@ -352,9 +352,9 @@ fn health_extraction_runs_only_in_the_vanilla_layer_body() {
                 &[(true, false), (true, true), (false, false), (false, true)]
             };
             for &(cancel_health, cancel_air) in vetoes {
-                game.side.health_hud.last_health = 17;
-                game.side.health_hud.last_bubble_pop_sound = 3;
-                game.side.audio.0.heard.remove(BUBBLE_POP);
+                game.client.health_hud.last_health = 17;
+                game.client.health_hud.last_bubble_pop_sound = 3;
+                game.client.audio.0.heard.remove(BUBBLE_POP);
                 *trace.lock().unwrap() = HealthTrace {
                     cancel_health,
                     cancel_air,
@@ -390,18 +390,18 @@ fn health_extraction_runs_only_in_the_vanilla_layer_body() {
                     painted_replacement,
                 );
                 if painted_replacement {
-                    assert_eq!(game.side.chat_ui.room.bottom(), 100.0);
+                    assert_eq!(game.client.chat_ui.room.bottom(), 100.0);
                 } else if !vanilla_eligible {
                     assert_eq!(
-                        game.side.chat_ui.room.bottom(),
+                        game.client.chat_ui.room.bottom(),
                         batch.height,
                         "no vanilla status paint"
                     );
                 } else {
-                    assert!(game.side.chat_ui.room.bottom() > 100.0);
+                    assert!(game.client.chat_ui.room.bottom() > 100.0);
                 }
                 assert_eq!(
-                    game.side.health_hud.last_health,
+                    game.client.health_hud.last_health,
                     if cancel_health || replace || !vanilla_eligible {
                         17
                     } else {
@@ -411,7 +411,7 @@ fn health_extraction_runs_only_in_the_vanilla_layer_body() {
                 let draws_air = !cancel_air && vanilla_eligible;
                 let pops = draws_air && under_water;
                 assert_eq!(
-                    game.side.health_hud.last_bubble_pop_sound,
+                    game.client.health_hud.last_bubble_pop_sound,
                     if !draws_air {
                         3
                     } else if pops {
@@ -422,7 +422,7 @@ fn health_extraction_runs_only_in_the_vanilla_layer_body() {
                 );
                 // The sound is local-only; `heard` counts it even with the device disabled.
                 assert_eq!(
-                    game.side.audio.0.heard.get(BUBBLE_POP).copied(),
+                    game.client.audio.0.heard.get(BUBBLE_POP).copied(),
                     pops.then_some(1)
                 );
             }
@@ -459,11 +459,11 @@ fn mod_layers_draw_in_their_place_and_hide_like_vanilla_layers() {
             .into(),
         );
         sunrise_client_gameplay::game::client_side::mods_client::register_gui_layers(ExecutionRole::Client);
-        let mut batch = HudBatch::new([320, 240], game.side.settings.gui_scale_inputs());
+        let mut batch = HudBatch::new([320, 240], game.client.settings.gui_scale_inputs());
 
         // Simulate the HUD paint sites with the crosshair skipped (third person).
         // Its wrapper doesn't draw, but both neighboring layers still do.
-        game.side.hud_layer_next = Some(0);
+        game.client.hud_layer_next = Some(0);
         for (layer, paint) in [
             (VanillaGuiLayer::Hotbar, "hotbar paint"),
             (VanillaGuiLayer::Effects, "effects paint"),
@@ -474,7 +474,7 @@ fn mod_layers_draw_in_their_place_and_hide_like_vanilla_layers() {
             game.gui_layer(layer, &mut batch, &mut |_, _| log(paint));
         }
         game.draw_mod_gui_layers(None, &mut batch);
-        game.side.hud_layer_next = None;
+        game.client.hud_layer_next = None;
         assert_eq!(current_native_mod(), None);
         assert_eq!(
             take(),
@@ -600,7 +600,7 @@ fn a_gui_wrapper_panic_is_contained_but_delegated_engine_paint_is_fatal() {
             let green = rgba(0, 255, 0, 255);
             let yellow = rgba(255, 255, 0, 255);
             let mut paint_calls = 0;
-            batch.fill(&game.side.gui.atlas, 0.0, 0.0, 4.0, 4.0, white);
+            batch.fill(&game.client.gui.atlas, 0.0, 0.0, 4.0, 4.0, white);
             game.gui_layer(VanillaGuiLayer::Hotbar, &mut batch, &mut |g, batch| {
                 log("vanilla paint");
                 let start = batch.vertices.len();
@@ -653,7 +653,7 @@ fn a_gui_wrapper_panic_is_contained_but_delegated_engine_paint_is_fatal() {
 }
 
 fn enter_test_world(game: &mut sunrise_client_gameplay::game::ClientGame<'_>) {
-    game.side.title.0 = None;
+    game.client.title.0 = None;
     game.set_screen(Screen::Playing);
     game.player = Some(
         sunrise_sim::motion::PlayerMotion::new(
@@ -889,7 +889,7 @@ fn hotbar_attack_indicator_progress_edits_only_stock_hotbar_paint() {
     with_client_game(|game| {
         sunrise_client_gameplay::game::client_side::mods_client::register_gui_layers(ExecutionRole::Client);
         enter_test_world(game);
-        game.side.settings.main_hand_left = false;
+        game.client.settings.main_hand_left = false;
         game.selected = 0;
         game.inventory[1] = Some(ItemStack::new("minecraft:stick", 1));
         game.clock
@@ -951,7 +951,7 @@ fn hotbar_attack_indicator_progress_edits_only_stock_hotbar_paint() {
         for frame in frames {
             if frame.variant == Variant::Mob {
                 server = Some(sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client(game));
-                game.side.remote.as_mut().unwrap().level_load.finish();
+                game.client.remote.as_mut().unwrap().level_load.finish();
                 enter_test_world(game);
                 let cow = game.res.mob_types().get("minecraft:cow").unwrap().clone();
                 game.mobs.push(Mob::new(31, cow, Vec3::ZERO, 0.0));
@@ -968,13 +968,13 @@ fn hotbar_attack_indicator_progress_edits_only_stock_hotbar_paint() {
             };
             // A client of a server takes its mode from the server: only its local mode changes.
             game.set_local_mode(mode);
-            game.side.chat_ui.hide_gui = frame.variant == Variant::Hidden;
-            game.side.settings.attack_indicator = match frame.variant {
+            game.client.chat_ui.hide_gui = frame.variant == Variant::Hidden;
+            game.client.settings.attack_indicator = match frame.variant {
                 Variant::Off => 0,
                 Variant::Crosshair => 1,
                 _ => 2,
             };
-            game.side.hand_strength.ticker = frame.ticker;
+            game.client.hand_strength.ticker = frame.ticker;
             let cancel = frame.variant == Variant::Veto;
             *trace.lock().unwrap() = Trace {
                 cancel,
@@ -1014,14 +1014,14 @@ fn hotbar_attack_indicator_progress_edits_only_stock_hotbar_paint() {
                 frame.name
             );
             assert_eq!(
-                game.side.hand_strength.ticker, frame.ticker,
+                game.client.hand_strength.ticker, frame.ticker,
                 "paint must not change attack charge"
             );
 
             // Read screen and source rectangles, keyed by the sprite atlas coordinates.
             type Quad = ([[f32; 2]; 2], [[i32; 2]; 2]);
             let assert_sprite = |sprite, expected: Option<Quad>| {
-                let r = *game.side.gui.atlas.gui_rect(sprite).unwrap();
+                let r = *game.client.gui.atlas.gui_rect(sprite).unwrap();
                 // Integer atlas pixels come back exactly once the f32 UV quantisation is rounded off.
                 let source = |[u, v]: [f32; 2]| {
                     [
@@ -1176,13 +1176,13 @@ fn f1_hides_vanilla_paint_without_skipping_the_hud_walk() {
             let size = [640, 480];
             let screen_events = ["screen pre", "screen background", "screen post"];
             let saves = tempfile::tempdir().unwrap();
-            game.side.title.0 = Some(game.new_title(saves.path().to_path_buf()));
+            game.client.title.0 = Some(game.new_title(saves.path().to_path_buf()));
             game.open_options(true);
             game.hud_layers(size);
             assert_eq!(take(), screen_events, "title Options has no HUD walk");
 
             enter_test_world(game);
-            let rect = game.side.gui.atlas.gui_rect("hud/hotbar").unwrap();
+            let rect = game.client.gui.atlas.gui_rect("hud/hotbar").unwrap();
             let hotbar_uv = [rect.u0, rect.v0];
             let has_hotbar = |frame: &HudBatch| {
                 frame
@@ -1266,7 +1266,7 @@ fn f1_hides_vanilla_paint_without_skipping_the_hud_walk() {
                     .chain(after_hud.iter().copied())
                     .collect();
                 for hidden in [false, true] {
-                    game.side.chat_ui.hide_gui = hidden;
+                    game.client.chat_ui.hide_gui = hidden;
                     let frame = game.hud_layers(size);
                     assert_eq!(take(), expected, "{screen:?}, F1 hidden: {hidden}");
                     assert_eq!(has_hotbar(&frame), !hidden);
@@ -1332,19 +1332,19 @@ fn f1_subtitles_paint_in_the_container_background_without_redispatch() {
                     vec![ModEntry::new("observer", Box::new(Observer))].into(),
                 );
                 enter_test_world(game);
-                game.side.settings.show_subtitles = true;
-                game.side
+                game.client.settings.show_subtitles = true;
+                game.client
                     .settings
                     .file
                     .set("backgroundForChatOnly", V::Bool(false));
-                game.side.settings.text_background_opacity = 0.4;
+                game.client.settings.text_background_opacity = 0.4;
                 let size = [640, 480];
                 game.hud(size); // Start listening before the sound plays.
                 assert_eq!(take(), ["subtitle pre", "subtitle post"]);
-                game.side.audio.0.engine.notifications.push(Notification {
+                game.client.audio.0.engine.notifications.push(Notification {
                     identifier: "minecraft:entity.player.levelup".into(),
                     subtitle: Some("subtitles.entity.player.levelup".into()),
-                    position: game.side.view.position,
+                    position: game.client.view.position,
                     relative: false,
                     looping: false,
                     range: 16.0,
@@ -1425,7 +1425,7 @@ fn options_controller_notice_paints_after_screen_post_despite_hud_cancel() {
                 game.toggle_hide_gui();
                 game.set_screen(Screen::Paused);
                 game.open_options(false);
-                game.side
+                game.client
                     .controller_notice
                     .raise(Notice::new("Controller disconnected", "Use the keyboard"));
                 let frame = game.hud([640, 480]);
@@ -1507,7 +1507,7 @@ fn panicking_hud_listeners_under_f1_disable_only_themselves_and_report_their_own
                 );
                 enter_test_world(game);
                 game.toggle_hide_gui();
-                assert!(game.side.chat_ui.player_hides_gui && game.side.chat_ui.hide_gui);
+                assert!(game.client.chat_ui.player_hides_gui && game.client.chat_ui.hide_gui);
                 let size = [640, 480];
                 let _ = game.hud(size);
                 assert_eq!(
@@ -1529,11 +1529,11 @@ fn panicking_hud_listeners_under_f1_disable_only_themselves_and_report_their_own
                         "same mod hud post"
                     ]
                 );
-                let [whole, layer] = game.side.toast_manager.visible.as_mut_slice() else {
+                let [whole, layer] = game.client.toast_manager.visible.as_mut_slice() else {
                     panic!("one shared error toast per panicking listener");
                 };
                 let rect = *game
-                    .side
+                    .client
                     .gui
                     .atlas
                     .sprites
@@ -1581,7 +1581,7 @@ fn panicking_hud_listeners_under_f1_disable_only_themselves_and_report_their_own
                         "same mod hud post"
                     ]
                 );
-                assert_eq!(game.side.toast_manager.visible.len(), 2);
+                assert_eq!(game.client.toast_manager.visible.len(), 2);
             });
         },
     );
@@ -1623,7 +1623,7 @@ fn a_panicking_hud_painter_shows_its_error_toast_under_f1() {
             sunrise_client_gameplay::game::client_side::mods_client::register_gui_layers(ExecutionRole::Client);
             enter_test_world(game);
             game.toggle_hide_gui();
-            assert!(game.side.chat_ui.player_hides_gui && game.side.chat_ui.hide_gui);
+            assert!(game.client.chat_ui.player_hides_gui && game.client.chat_ui.hide_gui);
             use {sunrise_client_gameplay::game::toast_manager::SystemToastId, sunrise_client_gameplay::game::toast_manager::Toast};
             game.add_system_toast(
                 Some(SystemToastId::PackLoadFailure),
@@ -1635,7 +1635,7 @@ fn a_panicking_hud_painter_shows_its_error_toast_under_f1() {
             // Backdate the slide to test fully visible toasts without waiting for animation.
             let slide_started = Instant::now() - Duration::from_millis(700);
             let _ = game.hud(size); // Start both slides after promotion.
-            let [ordinary, error] = game.side.toast_manager.visible.as_mut_slice() else {
+            let [ordinary, error] = game.client.toast_manager.visible.as_mut_slice() else {
                 panic!("expected an ordinary toast and one panic diagnostic");
             };
             let Toast::Diagnostic { toast, .. } = &mut error.toast else {
@@ -1658,7 +1658,7 @@ fn a_panicking_hud_painter_shows_its_error_toast_under_f1() {
             assert_ne!(ordinary_y, error_y);
             toast.slide.origin = Some(slide_started);
             let rect = *game
-                .side
+                .client
                 .gui
                 .atlas
                 .sprites

@@ -13,7 +13,7 @@ impl ServerGame<'_> {
     }
     /// Damage whose causing mob is known (`cause`, or none): not guessed
     /// from the mob nearest to `from`.
-    pub(in crate::game) fn mob_hits_player_caused(
+    pub fn mob_hits_player_caused(
         &mut self,
         amount: f32,
         from: [f64; 3],
@@ -22,7 +22,7 @@ impl ServerGame<'_> {
     ) {
         self.hurt_player_from(amount, Some(from), kind, Some(cause), false);
     }
-    pub(in crate::game) fn mob_hits_player(
+    pub fn mob_hits_player(
         &mut self,
         amount: f32,
         from: [f64; 3],
@@ -33,7 +33,7 @@ impl ServerGame<'_> {
     /// [`mob_hits_player`](Self::mob_hits_player) whose hit was a creative
     /// player's, which passes the victim's invulnerability
     /// (`DamageSource.isCreativePlayer`, #916).
-    pub(in crate::game) fn mob_hits_player_from(
+    pub fn mob_hits_player_from(
         &mut self,
         amount: f32,
         from: [f64; 3],

@@ -14,7 +14,7 @@ fn a_guest_stonecutter_take_counts_the_item_crafted() {
     let mut resources = None;
     let mut game = sunrise_gameplay::game::game_tests::tests::server_game(&mut resources);
     let _rx = sunrise_gameplay::game::server_side::lan::world_spawn_sync_tests::host_for(&mut game);
-    let conn = game.side.lan.as_ref().expect("a LAN host").hub.guests[0].conn;
+    let conn = game.server.lan.as_ref().expect("a LAN host").hub.guests[0].conn;
     let mut menu = Menu::new(Kind::Stonecutter);
     let took = game.guest_menu_op(0, &mut menu, |menu, env| {
         menu.set_slot(env, 0, Some(ItemStack::new("minecraft:stone", 4)));
@@ -31,7 +31,7 @@ fn a_guest_stonecutter_take_counts_the_item_crafted() {
         menu.slot(0).map(|s| s.count)
     });
     let stats = &game
-        .side
+        .server
         .lan
         .as_ref()
         .expect("the host back")

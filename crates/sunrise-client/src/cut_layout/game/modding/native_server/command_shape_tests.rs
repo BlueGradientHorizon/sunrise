@@ -59,7 +59,7 @@ fn with_shaped_commands(
             with_guests(|game| {
                 game.build_registries();
                 let (tx, rx) = std::sync::mpsc::channel();
-                game.side
+                game.server
                     .lan
                     .as_mut()
                     .unwrap()

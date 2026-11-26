@@ -15,7 +15,7 @@ fn a_server_that_starts_tracking_later_shows_the_same_knot() {
     let mut game = game(&mut resources);
     summon_pig(&mut game, 1, 16.5);
     step(&mut game);
-    assert!(game.side.lan.is_none());
+    assert!(game.server.lan.is_none());
     let [id] = knots(&game)[..] else {
         panic!("{:?}", knots(&game));
     };
@@ -28,10 +28,10 @@ fn a_server_that_starts_tracking_later_shows_the_same_knot() {
     host(&mut game);
     step(&mut game);
     step(&mut game);
-    assert!(game.side.lan.is_some());
+    assert!(game.server.lan.is_some());
     game.lan_assign_ids();
     assert_eq!(
-        game.side.knot_ids.get(&[8, 201, 0]),
+        game.server.knot_ids.get(&[8, 201, 0]),
         Some(&id),
         "the tracker's id"
     );
@@ -74,8 +74,8 @@ pub(crate) fn host(game: &mut sunrise_gameplay::game::ServerGame<'_>) {
     )
     .unwrap();
     // Existing mobs and knots already own runtime IDs when hosting starts.
-    game.side.next_entity += 1;
-    let guest_id = game.side.next_entity;
+    game.server.next_entity += 1;
+    let guest_id = game.server.next_entity;
     let (tx, _rx) = mpsc::channel();
     let mut guest = Guest::new(
         Joined {
@@ -96,5 +96,5 @@ pub(crate) fn host(game: &mut sunrise_gameplay::game::ServerGame<'_>) {
     );
     guest.placed = true;
     guest.loaded = true;
-    game.side.lan.as_mut().unwrap().hub.guests.push(guest);
+    game.server.lan.as_mut().unwrap().hub.guests.push(guest);
 }

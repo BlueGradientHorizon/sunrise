@@ -524,7 +524,7 @@ mod tests {
                     RemoteDimensionEntry::Login,
                     sunrise_client::level_loading::Reason::Other,
                 );
-                let remote = game.side.remote.as_mut().unwrap();
+                let remote = game.client.remote.as_mut().unwrap();
                 remote.logged_in = true;
                 let mut builtin = (*remote.builtin).clone();
                 builtin.registries.extend(Builtin::parse(r#"{"minecraft:block_entity_type":{"entries":{"test:holder":{"protocol_id":0}}}}"#).unwrap().registries);

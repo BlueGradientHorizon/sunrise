@@ -62,7 +62,7 @@ impl ServerGame<'_> {
     /// `BlockItem.updateCustomBlockEntityTag` and `updateBlockEntityComponents`
     /// for the block entity just placed at `pos` from `stack`; `game_master`:
     /// the placer can use game master blocks (a dispenser can't).
-    pub(in crate::game) fn apply_placed_item(
+    pub fn apply_placed_item(
         &mut self,
         pos: [i32; 3],
         stack: &ItemStack,

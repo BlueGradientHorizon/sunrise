@@ -5,7 +5,7 @@ impl crate::game::ServerGame<'_> {
     /// Returns false for another dimension, an invalid state, or no change.
     /// `flags` selects vanilla's neighbour, shape and client updates. A block
     /// entity block gets its block entity.
-    pub(in crate::game) fn native_set_block(
+    pub fn native_set_block(
         &mut self,
         dimension: &str,
         pos: [i32; 3],

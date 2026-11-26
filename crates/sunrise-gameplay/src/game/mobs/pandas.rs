@@ -140,7 +140,7 @@ impl ServerGame<'_> {
         true
     }
     /// `Panda.afterSneeze`: the grown pandas within 10 blocks of a cub jump.
-    pub(in crate::game::server_side) fn panda_sneezed(&mut self, id: u32) {
+    pub fn panda_sneezed(&mut self, id: u32) {
         let Some(area) = self
             .common.mobs
             .iter()

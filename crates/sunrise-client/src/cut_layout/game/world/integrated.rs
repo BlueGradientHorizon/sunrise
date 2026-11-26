@@ -196,7 +196,7 @@ use super::*;
             });
             let (tasks, _requests) = channel::<OwnerRequest>();
             let (_ready, ready) = channel();
-            game.side.integrated_starting = Some(Starting {
+            game.client.integrated_starting = Some(Starting {
                 handle: Integrated {
                     emergency_save: None,
                     flags: flags.clone(),
@@ -246,7 +246,7 @@ use super::*;
             let request =
                 WorldRequest::new("test", None, None, true, None, registry.clone()).unwrap();
             let (tasks, _receiver) = channel();
-            game.side.integrated = Some(Integrated {
+            game.client.integrated = Some(Integrated {
                 emergency_save: None,
                 flags: Arc::new(Flags::default()),
                 thread: None,
@@ -257,7 +257,7 @@ use super::*;
             });
             assert!(Arc::ptr_eq(
                 &request.rule_registry,
-                &game.side.integrated.as_ref().unwrap().rule_registry
+                &game.client.integrated.as_ref().unwrap().rule_registry
             ));
             assert!(game.test_open_remote_rules(Vec::new()));
             assert!(
@@ -291,7 +291,7 @@ use super::*;
                     &window.res,
                     window.pack.clone(),
                     options,
-                    window.side.settings.sim_settings(),
+                    window.client.settings.sim_settings(),
                     crate::game::profile_resolver,
                 )
                 .unwrap();
@@ -356,7 +356,7 @@ use super::*;
                 let stopping = flags.clone();
                 let (tasks, _waiting_server) = channel();
                 let (observed, probe) = channel();
-                game.side.integrated = Some(Integrated {
+                game.client.integrated = Some(Integrated {
                     emergency_save: None,
                     flags,
                     thread: Some(std::thread::spawn(move || {
@@ -397,7 +397,7 @@ use super::*;
         super::super::native_entity_refs::tests::with_client_game(|game| {
             let _pipe = sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client(game);
             let (tasks, _waiting_server) = channel();
-            game.side.integrated = Some(Integrated {
+            game.client.integrated = Some(Integrated {
                 emergency_save: None,
                 flags: Arc::new(Flags::default()),
                 thread: None,
@@ -411,11 +411,11 @@ use super::*;
             assert_eq!(local.name, Some("First world"));
             assert_eq!(local.address, None);
             assert_eq!(local.save_folder, Some("first_world"));
-            game.side.integrated.as_mut().unwrap().world_name = "Renamed world".into();
+            game.client.integrated.as_mut().unwrap().world_name = "Renamed world".into();
             let renamed = game.client_session().client_server().unwrap();
             assert_eq!(renamed.name, Some("Renamed world"));
             assert_eq!(renamed.save_folder, Some("first_world"));
-            game.side.integrated.take();
+            game.client.integrated.take();
             let guest = game.client_session().client_server().unwrap();
             assert!(!guest.integrated_local);
             assert_eq!(guest.name, None);
@@ -472,11 +472,11 @@ use super::*;
                     Some(Default::default()),
                 )
             };
-            game.side.world_root = root.to_path_buf();
-            game.side.save.0 = Arc::new(open());
+            game.server.world_root = root.to_path_buf();
+            game.server.save.0 = Arc::new(open());
             // Crash shutdown only saves an adopted world whose storage is owned.
-            game.side.session_lock.0 = Some(SessionLock::acquire(root).unwrap());
-            game.side.world_adopted = true;
+            game.server.session_lock.0 = Some(SessionLock::acquire(root).unwrap());
+            game.server.world_adopted = true;
             game.native_level_opened(Dim::Overworld);
             game.native_lifecycle_world_ready();
 
@@ -555,7 +555,7 @@ use super::*;
             flags.fail_tick.store(true, Ordering::Relaxed);
             flags.published.store(1234, Ordering::Relaxed);
             let (_sender, tasks) = channel();
-            game.side.serving = Some(Serving {
+            game.server.serving = Some(Serving {
                 flags: flags.clone(),
                 tasks,
                 owner: 1,
@@ -604,7 +604,7 @@ use super::*;
             // No hub: players are not saved, so the owner's file keeps what it had.
             assert_eq!(owner_xp(), Some(11));
             assert_eq!(flags.published.load(Ordering::Relaxed), 0);
-            assert!(game.side.session_lock.0.is_none());
+            assert!(game.server.session_lock.0.is_none());
         });
     }
 }

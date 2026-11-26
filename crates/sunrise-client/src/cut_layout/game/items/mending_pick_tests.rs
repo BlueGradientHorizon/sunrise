@@ -41,14 +41,14 @@ fn repair(id: &str, chest: bool, table: &Enchantments) -> (u32, u32) {
                 r#"{"enabled":["file/mending"],"disabled":[]}"#,
             )
             .unwrap();
-            game.side.world_root = root.path().to_path_buf();
+            game.server.world_root = root.path().to_path_buf();
             let packs = game.reload_datapacks(false, &[]).unwrap();
             let resources = game.options.resources.clone();
-            game.side.world_tables.0 = game
+            game.server.world_tables.0 = game
                 .stage_world_tables(&packs, false, &resources)
                 .unwrap()
                 .tables;
-            game.side
+            game.server
                 .world_tables
                 .0
                 .as_mut()

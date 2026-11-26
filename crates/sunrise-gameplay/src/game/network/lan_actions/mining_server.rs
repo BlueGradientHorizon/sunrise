@@ -56,7 +56,7 @@ impl crate::game::ServerGame<'_> {
         Ok(())
     }
     /// ServerPlayerGameMode.incrementDestroyProgress, including the first hit.
-    pub(in crate::game) fn guest_dig_feedback(&mut self, conn: u32) {
+    pub fn guest_dig_feedback(&mut self, conn: u32) {
         let Some(host) = self.server.lan.as_mut() else {
             return;
         };

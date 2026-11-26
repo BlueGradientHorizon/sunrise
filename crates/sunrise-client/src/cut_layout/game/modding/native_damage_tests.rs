@@ -664,14 +664,14 @@ fn guest_strike_posts_before_returning_from_the_authoritative_death() {
     mod_platform::testing::with_mods(mods, || {
         with_game(|game| {
             add_guest(game);
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()
                 .hub
                 .guests
                 .update(0, |guest| guest.load_timeout = 0);
-            let entity = i64::from(game.side.lan.as_ref().unwrap().hub.guests[0].entity_id);
+            let entity = i64::from(game.server.lan.as_ref().unwrap().hub.guests[0].entity_id);
             game.guest_struck_by(1, |game| {
                 assert!(game.hurt_player_from(100.0, None, "minecraft:generic", Some(None), false));
                 assert_eq!(game.player.as_ref().unwrap().health.health(), 5.0);
@@ -781,7 +781,7 @@ fn projectile_killing_hit_posts_before_its_follow_up() {
     mod_platform::testing::with_mods(mods, || {
         with_game(|game| {
             game.build_registries();
-            game.side
+            game.server
                 .streaming
                 .insert_remote(&mut game.world, sunrise_level::chunk::Chunk::empty(0, 0));
             let center = Vec3::new(4.5, 80.0, 4.5);
@@ -851,7 +851,7 @@ fn mounted_fall_posts_before_the_next_rider() {
         with_game(|game| {
             let (horse, _packets) = guest_horse_at_start_of_fall(game);
             game.mobs[0].health = 0.5;
-            let rider = game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+            let rider = game.server.lan.as_mut().unwrap().hub.guests.update(0, |g| {
                 g.health = 0.5;
                 g.entity_id
             });
@@ -887,7 +887,7 @@ fn mounted_fall_posts_before_the_next_rider() {
                 ],
                 "the horse settles its own hurt before calling causeFallDamage on its rider",
             );
-            assert_eq!(game.side.lan.as_ref().unwrap().hub.guests[0].health, 5.0);
+            assert_eq!(game.server.lan.as_ref().unwrap().hub.guests[0].health, 5.0);
             assert_eq!(game.mobs[0].health, 5.0);
             assert_eq!(game.mobs[0].fall_distance, 0.0);
         });
@@ -1229,7 +1229,7 @@ fn borrowed_pufferfish_posts_before_poison_and_the_next_sting() {
         with_game(|game| {
             game.options.dedicated = Some(Vec::new());
             game.build_registries();
-            game.side
+            game.server
                 .streaming
                 .insert_remote(&mut game.world, sunrise_level::chunk::Chunk::empty(0, 0));
             // Same chunk/section, in the order the contact query visits them.
@@ -1388,7 +1388,7 @@ fn borrowed_bee_posts_at_both_server_ai_hurts() {
         with_game(|game| {
             game.options.dedicated = Some(Vec::new());
             game.build_registries();
-            game.side
+            game.server
                 .streaming
                 .insert_remote(&mut game.world, sunrise_level::chunk::Chunk::empty(0, 0));
             let water = game
@@ -1621,7 +1621,7 @@ fn guest_protection_consumes_the_item_and_posts_inside_the_hit() {
     mod_platform::testing::with_mods(mods, || {
         with_game(|game| {
             add_guest(game);
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()
@@ -1632,7 +1632,7 @@ fn guest_protection_consumes_the_item_and_posts_inside_the_hit() {
                     guest.inventory[guest.selected] =
                         Some(ItemStack::new("minecraft:totem_of_undying", 1));
                 });
-            let entity = i64::from(game.side.lan.as_ref().unwrap().hub.guests[0].entity_id);
+            let entity = i64::from(game.server.lan.as_ref().unwrap().hub.guests[0].entity_id);
             game.guest_struck_by(1, |game| {
                 assert!(game.hurt_player_from(100.0, None, "minecraft:generic", Some(None), false));
                 assert!(game.inventory[game.selected].is_none());
@@ -1648,7 +1648,7 @@ fn guest_protection_consumes_the_item_and_posts_inside_the_hit() {
                 );
             })
             .unwrap();
-            assert!(!game.side.lan.as_ref().unwrap().hub.guests[0].dead);
+            assert!(!game.server.lan.as_ref().unwrap().hub.guests[0].dead);
         });
     });
 }
@@ -1672,7 +1672,7 @@ fn guest_burning_hit_posts_before_the_void_hurt_in_the_same_tick() {
             let at = Vec3::new(1.0, game.world.below_world_y() - 1.0, 1.0);
             let mut body = PlayerMotion::new(game.motion, at).unwrap();
             body.fire_ticks = 20;
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()
@@ -1687,7 +1687,7 @@ fn guest_burning_hit_posts_before_the_void_hurt_in_the_same_tick() {
                     guest.inventory[guest.selected] =
                         Some(ItemStack::new("minecraft:totem_of_undying", 1));
                 });
-            let entity = i64::from(game.side.lan.as_ref().unwrap().hub.guests[0].entity_id);
+            let entity = i64::from(game.server.lan.as_ref().unwrap().hub.guests[0].entity_id);
             game.guest_server_tick(1, true);
             assert!(trace.heard.lock().unwrap().starts_with(&[
                 ("incoming", entity),
@@ -1696,7 +1696,7 @@ fn guest_burning_hit_posts_before_the_void_hurt_in_the_same_tick() {
                 ("post", entity),
                 ("incoming", entity),
             ]));
-            let guest = &game.side.lan.as_ref().unwrap().hub.guests[0];
+            let guest = &game.server.lan.as_ref().unwrap().hub.guests[0];
             assert!(guest.inventory[guest.selected].is_none());
         });
     });
@@ -1835,7 +1835,7 @@ fn borrowed_mob_landing_posts_before_the_travel_tail() {
         with_game(|game| {
             game.options.dedicated = Some(Vec::new());
             game.build_registries();
-            game.side
+            game.server
                 .streaming
                 .insert_remote(&mut game.world, sunrise_level::chunk::Chunk::empty(0, 0));
             let registry = game.pack.assets.registry;
@@ -2006,7 +2006,7 @@ fn a_dolphin_goal_move_posts_before_the_next_goal() {
         with_game(|game| {
             game.options.dedicated = Some(Vec::new());
             game.build_registries();
-            game.side
+            game.server
                 .streaming
                 .insert_remote(&mut game.world, sunrise_level::chunk::Chunk::empty(0, 0));
             let stone = game
@@ -2176,7 +2176,7 @@ fn guest_landing_posts_before_its_ground_hit() {
         with_game(|game| {
             add_guest(game);
             for x in [0, 1] {
-                game.side
+                game.server
                     .streaming
                     .insert_remote(&mut game.world, Chunk::empty(x, 0));
             }
@@ -2192,7 +2192,7 @@ fn guest_landing_posts_before_its_ground_hit() {
             let next = [16.5, landing.y, landing.z];
             let mut body = PlayerMotion::new(game.motion, start).unwrap();
             body.fall_distance = 10.0;
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()
@@ -2206,14 +2206,14 @@ fn guest_landing_posts_before_its_ground_hit() {
                     guest.health = 0.5;
                     guest.motion = Some(Box::new(body));
                 });
-            let entity = game.side.lan.as_ref().unwrap().hub.guests[0].entity_id;
+            let entity = game.server.lan.as_ref().unwrap().hub.guests[0].entity_id;
             game.entity_section_joined(entity as u32, start.components());
             // Fall handling belongs to each accepted packet, not to the body tick's move history.
             for (from, position, on_ground) in [
                 (start.components(), landing.components(), true),
                 (landing.components(), next, false),
             ] {
-                game.side
+                game.server
                     .lan
                     .as_mut()
                     .unwrap()
@@ -2251,7 +2251,7 @@ fn guest_landing_posts_before_its_ground_hit() {
                 ],
                 "death sees the landing before its fall reset; the next move sees the finished tail",
             );
-            let guest = &game.side.lan.as_ref().unwrap().hub.guests[0];
+            let guest = &game.server.lan.as_ref().unwrap().hub.guests[0];
             assert_eq!(guest.position, next);
             assert_eq!(guest.motion.as_ref().unwrap().fall_distance, 0.0);
         });
@@ -2282,7 +2282,7 @@ fn ordinary_guest_move_settles_fall_before_resuming() {
     mod_platform::testing::with_mods(mods, || {
         with_game(|game| {
             add_guest(game);
-            game.side
+            game.server
                 .streaming
                 .insert_remote(&mut game.world, Chunk::empty(0, 0));
             let honey = game
@@ -2296,7 +2296,7 @@ fn ordinary_guest_move_settles_fall_before_resuming() {
             let landing = Vec3::new(1.5, 78.9375, 1.5);
             let mut body = PlayerMotion::new(game.motion, start).unwrap();
             body.fall_distance = 10.0;
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()
@@ -2309,7 +2309,7 @@ fn ordinary_guest_move_settles_fall_before_resuming() {
                     guest.health = 0.5;
                     guest.motion = Some(Box::new(body));
                 });
-            let entity = game.side.lan.as_ref().unwrap().hub.guests[0].entity_id;
+            let entity = game.server.lan.as_ref().unwrap().hub.guests[0].entity_id;
             game.as_guest(1, |game| {
                 let moved = game
                     .move_local_player(MoverType::SelfMovement, Vec3::new(0.0, -1.0, 0.0), false)
@@ -2551,7 +2551,7 @@ fn guest_projectile_uses_current_main_hand_or_none_after_departure() {
         .into();
         mod_platform::testing::with_mods(mods, || {
             super::native_guest_turn_tests::with_guests(|game| {
-                game.side
+                game.server
                     .lan
                     .as_mut()
                     .unwrap()
@@ -2576,7 +2576,7 @@ fn guest_projectile_uses_current_main_hand_or_none_after_departure() {
                 arrow.arrow.as_mut().unwrap().fired_from_weapon =
                     Some(ItemStack::new("minecraft:crossbow", 1));
                 arrow.velocity = Vec3::new(0.0, 0.0, -2.0);
-                game.side
+                game.server
                     .lan
                     .as_mut()
                     .unwrap()
@@ -2587,7 +2587,7 @@ fn guest_projectile_uses_current_main_hand_or_none_after_departure() {
                     .unwrap();
                 if gone {
                     // Model the departed connection being absent when its projectile lands.
-                    game.side
+                    game.server
                         .lan
                         .as_mut()
                         .unwrap()

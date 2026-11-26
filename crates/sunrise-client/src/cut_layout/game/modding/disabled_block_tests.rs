@@ -337,7 +337,7 @@ pub(crate) mod tests {
         with_inert_block(
             "reenabled_owner_resumes_held_scheduled_tick",
             |game, state, probe| {
-                game.side
+                game.server
                     .tickets
                     .0
                     .update(Some(sunrise_sim::ticket_levels::Sources {
@@ -531,7 +531,7 @@ pub(crate) mod tests {
                 .map(|(block, source, target)| {
                     (target, state(block), state(source), state(target))
                 });
-                game.side
+                game.server
                     .tickets
                     .0
                     .update(Some(sunrise_sim::ticket_levels::Sources {

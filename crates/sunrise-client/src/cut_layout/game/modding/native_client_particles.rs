@@ -44,8 +44,8 @@ use sunrise_client::particles::ParticleLevel;
                 ),
                 (false, vec![]),
             ] {
-                game.side.particles.0.clear();
-                game.side.particles.0.sounds.clear();
+                game.client.particles.0.clear();
+                game.client.particles.0.sounds.clear();
                 let host: &mut dyn ClientHost = game;
                 assert!(host.create_fireworks(&request(audible)));
                 for _ in 0..20 {
@@ -56,10 +56,10 @@ use sunrise_client::particles::ParticleLevel;
                         player: None,
                         cached_chunk: std::cell::Cell::new(None),
                     };
-                    game.side.particles.0.tick(&level);
+                    game.client.particles.0.tick(&level);
                 }
                 let heard: Vec<_> = game
-                    .side
+                    .client
                     .particles
                     .0
                     .sounds
@@ -70,7 +70,7 @@ use sunrise_client::particles::ParticleLevel;
                 let expected: Vec<_> = expected.into_iter().map(|s| (s, at)).collect();
                 assert_eq!(heard, expected, "audible {audible}");
                 assert!(
-                    !game.side.particles.0.is_empty(),
+                    !game.client.particles.0.is_empty(),
                     "the sparks drew, audible {audible}"
                 );
             }

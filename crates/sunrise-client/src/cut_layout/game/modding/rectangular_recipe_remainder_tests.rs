@@ -80,9 +80,9 @@ fn rectangular_recipe_for_preserves_two_custom_remainder_cells() {
             )
             .unwrap();
             let scratch = tempfile::tempdir().unwrap();
-            game.side.world_root = scratch.path().to_path_buf();
+            game.server.world_root = scratch.path().to_path_buf();
             game.reload_datapacks(false, &[]).unwrap();
-            game.side.world_tables.0.as_mut().unwrap().recipes = recipes;
+            game.server.world_tables.0.as_mut().unwrap().recipes = recipes;
             let stack =
                 |name, count| ItemStack::new(mod_api::__private::item_key(name).unwrap(), count);
             let input = mod_api::RecipeInput::Crafting {

@@ -14,18 +14,18 @@ pub(crate) mod menu_extra_data_tests {
     #[ignore = "daily"]
     fn malformed_menu_extra_payload_disconnects_client() {
         crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
-            game.side.title.0 = None;
+            game.client.title.0 = None;
             let (pipe, _server) = Pipe::pair();
             game.connect_local(pipe, "Malformed menu extra").unwrap();
-            assert!(game.side.remote.is_some());
+            assert!(game.client.remote.is_some());
             game.handle_packet(C::CustomPayload(CustomPayload {
                 channel: CHANNEL.into(),
                 data: vec![1, 1, 0],
             }))
             .unwrap();
-            assert!(game.side.remote.is_none());
+            assert!(game.client.remote.is_none());
             let mode = &game
-                .side
+                .client
                 .title
                 .0
                 .as_ref()

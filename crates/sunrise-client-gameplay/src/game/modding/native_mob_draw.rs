@@ -267,7 +267,7 @@ impl crate::game::ClientGame<'_> {
     /// whose answer also decided whether the draw kept its model. `who` is set for a player, and
     /// `model` lends the final model as the vanilla draw posed it, if one ran.
     #[allow(clippy::too_many_arguments)]
-    pub(in crate::game) fn mod_layer_geometry(
+    pub fn mod_layer_geometry(
         &self,
         mob: &Mob,
         who: Option<PlayerRender<'_>>,

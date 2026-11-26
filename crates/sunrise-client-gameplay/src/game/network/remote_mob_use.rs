@@ -14,13 +14,13 @@ use sunrise_sim::mobs::{Species, armadillo, equine, llama, nautilus, panda, vill
 impl ClientGame<'_> {
     /// Whether mob `i` takes a right click with `hand`'s item on this
     /// client (`Mob.interact`'s result consumes the action).
-    pub(in crate::game) fn remote_mob_takes(&mut self, i: usize, hand: Hand) -> bool {
+    pub fn remote_mob_takes(&mut self, i: usize, hand: Hand) -> bool {
         self.remote_mob_answers(i, hand, true)
     }
 
     /// The same answer, changing nothing: an allay's and a dyed sheep's answer is the
     /// interaction itself, and the controller's guide asks every frame.
-    pub(in crate::game) fn remote_mob_would_take(&mut self, i: usize, hand: Hand) -> bool {
+    pub fn remote_mob_would_take(&mut self, i: usize, hand: Hand) -> bool {
         self.remote_mob_answers(i, hand, false)
     }
 

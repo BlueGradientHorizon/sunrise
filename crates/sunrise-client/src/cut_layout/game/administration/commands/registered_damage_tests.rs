@@ -450,7 +450,7 @@ pub(crate) fn run_live_damage_and_blast_creaking_reactions_and_timed_player_cred
         );
         assert_eq!(creaking_state(game), (start_health, 8, 100));
         assert_eq!(heart_emitter(game), 100);
-        assert_eq!(game.side.lan_entity_events, [(creaking_id as i32, 66)]);
+        assert_eq!(game.server.lan_entity_events, [(creaking_id as i32, 66)]);
         let events = TEST_POSTED_EVENTS.with(|events| events.borrow_mut().take().unwrap());
         assert_eq!(
             events.first(),
@@ -466,7 +466,7 @@ pub(crate) fn run_live_damage_and_blast_creaking_reactions_and_timed_player_cred
                 .iter()
                 .all(|(event, _, source)| *event == "minecraft:block_place" && source.is_none())
         );
-        let sounds = &game.side.pending_sounds;
+        let sounds = &game.server.pending_sounds;
         assert_eq!(
             sounds.last().unwrap().event,
             "minecraft:entity.creaking.sway"
@@ -492,7 +492,7 @@ pub(crate) fn run_live_damage_and_blast_creaking_reactions_and_timed_player_cred
             .unwrap()
             .ai
             .last_hurt_by_player = 0;
-        game.side.last_hurt_by_player.remove(&creaking_id);
+        game.server.last_hurt_by_player.remove(&creaking_id);
         assert!(
             !game.run_command("damage 00000055-0000-0000-0000-000000000001 1 minecraft:generic")
         );
@@ -515,7 +515,7 @@ pub(crate) fn run_live_damage_and_blast_creaking_reactions_and_timed_player_cred
         // remembered player credit, and player-lit TNT replaces stale offline player credit.
         clear_anim(game);
         clear_emitter(game);
-        game.side.last_hurt_by_player.remove(&creaking_id);
+        game.server.last_hurt_by_player.remove(&creaking_id);
         game.native_explode(
             Some((unowned_tnt_id, Target::Tnt(unowned_tnt_id))),
             [4.5, 64.0, 4.5],
@@ -555,7 +555,7 @@ pub(crate) fn run_live_damage_and_blast_creaking_reactions_and_timed_player_cred
             .unwrap()
             .ai
             .last_hurt_by_player = 50;
-        game.side
+        game.server
             .last_hurt_by_player
             .insert(creaking_id, PlayerCredit(777));
         game.add_primed_tnt(BlockPos::new(4, 64, 4), 0.0, 80, Some(Who::Player), None);
@@ -584,18 +584,18 @@ pub(crate) fn run_live_damage_and_blast_creaking_reactions_and_timed_player_cred
                 p.velocity = Vec3::new(-1.0, 0.0, 0.0);
             }
         });
-        game.side.pending_sounds.clear();
-        game.side.lan_entity_events.clear();
+        game.server.pending_sounds.clear();
+        game.server.lan_entity_events.clear();
         TEST_POSTED_EVENT_ORDER.with(|order| *order.borrow_mut() = Some(Vec::new()));
         let reaction = |game: &sunrise_gameplay::game::ServerGame<'_>| {
-            let sounds = &game.side.pending_sounds;
+            let sounds = &game.server.pending_sounds;
             let is_hit_sound = |event: &str| {
                 matches!(
                     event,
                     "minecraft:entity.creaking.sway" | "minecraft:entity.arrow.hit"
                 )
             };
-            let flashes = game.side.lan_entity_events.as_slice();
+            let flashes = game.server.lan_entity_events.as_slice();
             let is_flash = |event: &(i32, i8)| *event == (creaking_id as i32, 66);
             let action = TEST_POSTED_EVENT_ORDER.with(|order| {
                 order

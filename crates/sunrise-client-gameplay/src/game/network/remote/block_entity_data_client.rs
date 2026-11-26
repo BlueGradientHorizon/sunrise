@@ -6,7 +6,7 @@ impl crate::game::ClientGame<'_> {
     /// `handleBlockEntityData`: the block entity at `pos`, when it is of the
     /// packet's type, loads the tag (`loadWithComponents`). An empty compound
     /// leaves stored fields unchanged; update packets still send a notice.
-    pub(in crate::game) fn remote_block_entity_data(
+    pub fn remote_block_entity_data(
         &mut self,
         pos: [i32; 3],
         kind: i32,
@@ -126,7 +126,7 @@ impl crate::game::ClientGame<'_> {
     /// `previous`: the block's state before, when it changed. A column sent again has
     /// none, and keeps its block entities' synced attachments: the server does not send
     /// them again (`remote_chunk` drops those of block entities the column lost).
-    pub(in crate::game) fn sync_block_entity(
+    pub fn sync_block_entity(
         &mut self,
         pos: (i32, i32, i32),
         previous: Option<BlockStateId>,

@@ -135,8 +135,8 @@ pub(crate) fn with_batch(
                 .default_state("minecraft:stone")
                 .unwrap();
             game.world.set(2, 64, 0, stone).unwrap();
-            let ids = std::array::from_fn(|i| game.side.next_entity + i as u32 + 1);
-            game.side.next_entity += 3;
+            let ids = std::array::from_fn(|i| game.server.next_entity + i as u32 + 1);
+            game.server.next_entity += 3;
             // Snowballs leave on impact; arrows stay in their slot, stuck in the wall.
             // The third projectile misses, so its survivor order must be preserved.
             for (i, kind) in [
@@ -167,7 +167,7 @@ pub(crate) fn with_batch(
             game.start_audio_capture();
             game.tick_projectiles().unwrap();
             assert!(
-                game.side
+                game.server
                     .pending_sounds
                     .iter()
                     .all(|sound| { sound.event != "minecraft:entity.arrow.hit" })

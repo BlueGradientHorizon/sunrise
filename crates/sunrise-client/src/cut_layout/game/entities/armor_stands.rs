@@ -79,7 +79,7 @@ pub(crate) mod pumpkin_equippable_use_tests {
             guest.loaded = true;
             guest.selected = 0;
             guest.permission = 2;
-            game.side.lan.as_mut().unwrap().hub.guests.push(guest);
+            game.server.lan.as_mut().unwrap().hub.guests.push(guest);
             let clock = game.world.game_time;
             let eq = "minecraft:equippable={slot:\"head\"}";
             let marker = "minecraft:custom_data={h207:207}";
@@ -119,7 +119,7 @@ pub(crate) mod pumpkin_equippable_use_tests {
             }).unwrap();
             let sequence = 207 + i as i32;
             game.lan_guest_packet(2, Serverbound::UseItem(UseItem { hand: 0, yaw: 0.0, pitch: 0.0, sequence }));
-            assert!(game.side.lan.as_ref().unwrap().hub.guest(2).unwrap().ack_up_to.get() >= sequence);
+            assert!(game.server.lan.as_ref().unwrap().hub.guest(2).unwrap().ack_up_to.get() >= sequence);
             game.as_guest(2, |g| {
                 let mut expected_inventory = before.0.clone();
                 let mut expected_armor = before.1.clone();
@@ -402,7 +402,7 @@ pub(crate) mod postbaseline_lodestone_controls {
         let (all, mixed, inactive) = (id(100), id(101), id(102));
         // Direct class ticks do not refresh the headless fixture's tickets.
         // Use the existing ticket model: only chunk zero is forced to tick.
-        game.side
+        game.server
             .tickets
             .0
             .update(Some(sunrise_sim::ticket_levels::Sources {

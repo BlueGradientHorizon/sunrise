@@ -55,13 +55,13 @@ pub(crate) mod tests {
             "client" => with_client_game(|game| {
                 let (client, _server) = Pipe::pair();
                 game.connect_local(client, "DisplayBoxTest").unwrap();
-                let remote = game.side.remote.as_mut().unwrap();
+                let remote = game.client.remote.as_mut().unwrap();
                 remote.logged_in = true;
                 remote.entity_id = 7;
                 chunks(game);
                 for (id, name, position) in ADMISSIONS {
                     let kind = game
-                        .side
+                        .client
                         .remote
                         .as_ref()
                         .unwrap()
@@ -108,7 +108,7 @@ pub(crate) mod tests {
                 assert_eq!(seen, [92, 55, 11, 31]);
 
                 let block = game.entity(92).unwrap();
-                game.side.text_displays.0.get_mut(&92).unwrap().metadata(&[
+                game.client.text_displays.0.get_mut(&92).unwrap().metadata(&[
                     (10, 1, Value::Int(3)),
                     (20, 2, Value::Float(4.0)),
                     (21, 2, Value::Float(4.0)),
@@ -143,7 +143,7 @@ pub(crate) mod tests {
                 let culling_only_lo = [16.5, 67.0, 2.5];
                 let culling_only_hi = [16.75, 68.0, 3.5];
                 assert!(ids(game, level, culling_only_lo, culling_only_hi).is_empty());
-                let (lo, hi) = game.side.text_displays.0[&92].interpolated_bounding_box(1.0);
+                let (lo, hi) = game.client.text_displays.0[&92].interpolated_bounding_box(1.0);
                 let culling = sunrise_client_gameplay::game::client_side::native_entity_refs_client::aabb_extents((lo.to_array(), hi.to_array()));
                 let culling_only = sunrise_client_gameplay::game::client_side::native_entity_refs_client::aabb_extents((culling_only_lo, culling_only_hi));
                 assert!(culling.intersects(culling_only));
@@ -236,7 +236,7 @@ pub(crate) mod tests {
             let (client, server) = Pipe::pair();
             std::mem::forget(server);
             game.connect_local(client, "CrossingTest").unwrap();
-            let remote = game.side.remote.as_mut().unwrap();
+            let remote = game.client.remote.as_mut().unwrap();
             remote.logged_in = true;
             remote.entity_id = 7;
             for x in -1..=4 {
@@ -248,7 +248,7 @@ pub(crate) mod tests {
         let add =
             |game: &mut sunrise_client_gameplay::game::ClientGame<'_>, id: i32, name: &str, position: [f64; 3]| {
                 let kind = game
-                    .side
+                    .client
                     .remote
                     .as_ref()
                     .unwrap()
@@ -296,7 +296,7 @@ pub(crate) mod tests {
                         // on this tick, the pig ahead of the display the display loop moved.
                         add(game, 70, "minecraft:pig", [14.5, 65.5, 3.0]);
                         add(game, 71, "minecraft:block_display", [13.5, 65.5, 3.0]);
-                        game.side.text_displays.0.get_mut(&71).unwrap().metadata(&[(
+                        game.client.text_displays.0.get_mut(&71).unwrap().metadata(&[(
                             10,
                             1,
                             Value::Int(3),
@@ -312,7 +312,7 @@ pub(crate) mod tests {
                     }
                     "tracked_player" => {
                         let player = game
-                            .side
+                            .client
                             .remote
                             .as_ref()
                             .unwrap()

@@ -188,7 +188,7 @@ use sunrise_protocol::passage_sync::encode;
                     game.world.chunks.insert((cx, cz), Arc::new(chunk));
                 }
             }
-            let hub = &mut game.side.lan.as_mut().unwrap().hub;
+            let hub = &mut game.server.lan.as_mut().unwrap().hub;
             hub.ticks = 10;
             hub.guests.update_all(|g| g.max_unacknowledged = 64);
             let mut sent = Vec::new();
@@ -226,7 +226,7 @@ use sunrise_protocol::passage_sync::encode;
                     game.world.chunks.insert((cx, cz), Arc::new(chunk));
                 }
             }
-            let hub = &mut game.side.lan.as_mut().unwrap().hub;
+            let hub = &mut game.server.lan.as_mut().unwrap().hub;
             hub.ticks = 10;
             hub.guests.update_all(|g| g.max_unacknowledged = 64);
             let mut sent: Vec<Vec<Clientbound>> = vec![Vec::new(), Vec::new()];
@@ -275,7 +275,7 @@ use sunrise_protocol::passage_sync::encode;
         with_guests(|game| {
             game.native_lifecycle.world_open_ready().unwrap();
             let receivers = listen(game, ["sunrise", "sunrise"]);
-            let hub = &mut game.side.lan.as_mut().unwrap().hub;
+            let hub = &mut game.server.lan.as_mut().unwrap().hub;
             hub.guests.update_all(|g| {
                 g.center = Some((0, 0));
                 g.sent_chunks.insert((0, 0));
@@ -351,12 +351,12 @@ use sunrise_protocol::passage_sync::encode;
                 seed: 0,
                 max_players: 2,
                 integrated: true,
-                levels: game.side.level_shapes,
-                level_seeds: game.side.levels.0.runtime.seeds(),
+                levels: game.server.level_shapes,
+                level_seeds: game.server.levels.0.runtime.seeds(),
             };
             game.lan_host(settings, net, config).unwrap();
             assert!(
-                game.side
+                game.server
                     .lan
                     .as_ref()
                     .unwrap()
@@ -391,7 +391,7 @@ use sunrise_protocol::passage_sync::encode;
             );
             guest.placed = true;
             guest.max_unacknowledged = 64;
-            let hub = &mut game.side.lan.as_mut().unwrap().hub;
+            let hub = &mut game.server.lan.as_mut().unwrap().hub;
             hub.ticks = 10;
             hub.guests.push(guest);
             // One tick: its level pass sends the chunks, its end flushes the passages.
@@ -422,7 +422,7 @@ use sunrise_protocol::passage_sync::encode;
         with_guests(|game| {
             game.native_lifecycle.world_open_ready().unwrap();
             let receivers = listen(game, ["sunrise", "vanilla"]);
-            let hub = &mut game.side.lan.as_mut().unwrap().hub;
+            let hub = &mut game.server.lan.as_mut().unwrap().hub;
             hub.guests.update_all(|g| {
                 g.placed = false;
                 g.held = true;
@@ -465,7 +465,7 @@ use sunrise_protocol::passage_sync::encode;
                     .chunks
                     .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
                 let dimension = game.dim.id().to_owned();
-                let hub = &mut game.side.lan.as_mut().unwrap().hub;
+                let hub = &mut game.server.lan.as_mut().unwrap().hub;
                 hub.guests.update_all(|g| {
                     g.center = Some((0, 0));
                     g.sent_chunks.insert((0, 0));
@@ -625,7 +625,7 @@ mod cross_tests {
         }
         let dimension = game.dim.id().to_owned();
         let mut receivers = listen(game, ["sunrise", "sunrise"]);
-        game.side.lan.as_mut().unwrap().hub.guests.update_all(|g| {
+        game.server.lan.as_mut().unwrap().hub.guests.update_all(|g| {
             g.dimension = dimension.clone();
             g.loaded = true;
             g.load_timeout = 0;
@@ -648,7 +648,7 @@ mod cross_tests {
 
     /// Guest 12's next tick: `inbox`, then the rest of the server's tick.
     fn tick(game: &mut sunrise_gameplay::game::ServerGame<'_>, inbox: Vec<S>) {
-        game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+        game.server.lan.as_mut().unwrap().hub.guests.update(0, |g| {
             g.inbox
                 .extend(inbox.into_iter().map(|p| InboxItem::Packet(p, None)));
         });
@@ -680,7 +680,7 @@ mod cross_tests {
     }
 
     fn guest<'a>(game: &'a sunrise_gameplay::game::ServerGame<'_>) -> &'a sunrise_sim::lan::guest::Guest {
-        &game.side.lan.as_ref().unwrap().hub.guests[0]
+        &game.server.lan.as_ref().unwrap().hub.guests[0]
     }
 
     const ALL: i32 = relative::X
@@ -866,7 +866,7 @@ mod cross_tests {
             refused(game, 1, Refusal::MoveRefused, here);
 
             let far = [0.5, 65.0, 29.0];
-            game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+            game.server.lan.as_mut().unwrap().hub.guests.update(0, |g| {
                 g.awaiting_teleport = None;
                 g.position = far;
                 g.previous_position = far;

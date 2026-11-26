@@ -24,7 +24,7 @@ fn actual_guest_membership_and_lifetime_survive_nested_body_loans_and_reset() {
         let index = Arc::new(Mutex::new(AttachmentIndex::default()));
         let dimension = game.dim.key();
         let id = NonZeroU32::new(12).unwrap();
-        let host = game.side.lan.as_mut().unwrap();
+        let host = game.server.lan.as_mut().unwrap();
         host.hub.guests.update(0, |guest| guest.placed = false);
         let attachments = host.hub.guests.attachments_mut(12).unwrap();
         VALUE.set(attachments, Holder::Level, 7).unwrap();
@@ -44,7 +44,7 @@ fn actual_guest_membership_and_lifetime_survive_nested_body_loans_and_reset() {
                 .same_registration(&registration)),
             SlotAccess::Done(true)
         );
-        game.side
+        game.server
             .lan
             .as_mut()
             .unwrap()
@@ -103,7 +103,7 @@ fn actual_guest_membership_and_lifetime_survive_nested_body_loans_and_reset() {
                 .same_registration(&registration)),
             SlotAccess::Done(true)
         );
-        let removed = game.side.lan.as_mut().unwrap().hub.guests.remove(0);
+        let removed = game.server.lan.as_mut().unwrap().hub.guests.remove(0);
         assert_eq!(game.server_resident_entity(12), EntityLookup::Missing);
         assert_eq!(
             index
@@ -151,7 +151,7 @@ fn refused_body_construction_does_not_begin_guest_or_hook_loans() {
         assert!(sunrise_sim::motion::PlayerMotion::new(&bad, Vec3::ZERO).is_err());
         let original = game.motion;
         game.motion = Box::leak(Box::new(bad));
-        game.side
+        game.server
             .lan
             .as_mut()
             .unwrap()
@@ -162,7 +162,7 @@ fn refused_body_construction_does_not_begin_guest_or_hook_loans() {
         assert!(game.as_guest(12, |_| panic!("refused turn ran")).is_none());
         game.motion = original;
         assert_eq!(game.ui.registries.permission, permission);
-        assert!(game.side.lan_guest_swaps.is_empty());
+        assert!(game.server.lan_guest_swaps.is_empty());
         assert!(matches!(
             game.server_resident_entity(12),
             EntityLookup::Found {
@@ -183,7 +183,7 @@ fn refused_body_construction_does_not_begin_guest_or_hook_loans() {
                 .unwrap();
         })
         .expect("same connection can enter after refusal");
-        assert!(game.side.lan_guest_swaps.is_empty());
+        assert!(game.server.lan_guest_swaps.is_empty());
         assert!(matches!(
             game.server_resident_entity(900),
             EntityLookup::Found { .. }
@@ -253,7 +253,7 @@ fn production_login_and_local_body_constructor_admit_profile_and_real_loan() {
     sunrise_client_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
         let (pipe, _server) = Pipe::pair();
         game.connect_local(pipe, "SourceProfile").unwrap();
-        profile = game.side.remote.as_ref().unwrap().profile();
+        profile = game.client.remote.as_ref().unwrap().profile();
         game.handle_packet(C::Login(play::Login {
             player_id: 7,
             hardcore: false,
@@ -374,14 +374,14 @@ fn production_login_and_local_body_constructor_admit_profile_and_real_loan() {
             seed: 0,
             max_players: 2,
             integrated: true,
-            levels: game.side.level_shapes,
-            level_seeds: game.side.levels.0.runtime.seeds(),
+            levels: game.server.level_shapes,
+            level_seeds: game.server.levels.0.runtime.seeds(),
         };
         game.lan_host(settings, net, config).unwrap();
         let motion = sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::ZERO).unwrap();
         let mut guest = Guest::connectionless(12, 12, "SourceGuest".into(), 12, [0.0; 3], motion);
         guest.placed = true;
-        game.side.lan.as_mut().unwrap().hub.guests.push(guest);
+        game.server.lan.as_mut().unwrap().hub.guests.push(guest);
         game.as_guest(12, |acting| {
             assert_eq!(acting.server_resident_entity(7), EntityLookup::Taken);
             assert_eq!(acting.uuid_for(7), expected);

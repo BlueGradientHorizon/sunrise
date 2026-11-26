@@ -32,7 +32,7 @@ fn frame_pick_is_shared_ordered_and_refuses_stale_or_invalid_output() {
             finish_login(game, &mut server);
             game.native_lifecycle
                 .begin_open(mod_api::Authority::RemoteClient);
-            game.side.title.0 = None;
+            game.client.title.0 = None;
             game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 1.0, 0.5)).unwrap());
             game.yaw = -90.0;
             game.pitch = 0.0;
@@ -42,7 +42,7 @@ fn frame_pick_is_shared_ordered_and_refuses_stale_or_invalid_output() {
                 .chunks
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
             let kind = game
-                .side
+                .client
                 .remote
                 .as_ref()
                 .unwrap()
@@ -181,7 +181,7 @@ fn frame_pick_without_listeners_keeps_the_vanilla_result() {
             finish_login(game, &mut server);
             game.native_lifecycle
                 .begin_open(mod_api::Authority::RemoteClient);
-            game.side.title.0 = None;
+            game.client.title.0 = None;
             game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 1.0, 0.5)).unwrap());
             game.yaw = -90.0;
             game.pitch = 0.0;
@@ -226,7 +226,7 @@ fn rider_pick_rejects_shared_passengers_unless_their_part_allows_them() {
         mod_platform::testing::with_mods(mods.into(), || {
             with_pick_game("minecraft:pig", 1.5, |game, _| {
                 let kind = game
-                    .side
+                    .client
                     .remote
                     .as_ref()
                     .unwrap()
@@ -261,11 +261,11 @@ fn rider_pick_rejects_shared_passengers_unless_their_part_allows_them() {
                 assert_eq!(game.mobs[mob].id, 31);
                 assert_eq!(*calls.lock().unwrap(), usize::from(subscribed));
                 if !subscribed {
-                    assert_eq!(game.side.client_pick.rider_candidates.capacity(), 0);
+                    assert_eq!(game.client.client_pick.rider_candidates.capacity(), 0);
                 }
-                let capacity = game.side.client_pick.rider_candidates.capacity();
+                let capacity = game.client.client_pick.rider_candidates.capacity();
                 game.refresh_client_pick(1.0);
-                assert_eq!(game.side.client_pick.rider_candidates.capacity(), capacity);
+                assert_eq!(game.client.client_pick.rider_candidates.capacity(), capacity);
 
                 game.remote_set_passengers(32, vec![]);
                 game.refresh_client_pick(1.0);
@@ -316,7 +316,7 @@ pub(crate) fn with_pick_game(
         finish_login(game, &mut server);
         game.native_lifecycle
             .begin_open(mod_api::Authority::RemoteClient);
-        game.side.title.0 = None;
+        game.client.title.0 = None;
         game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 1.0, 0.5)).unwrap());
         game.previous_position = Vec3::new(0.5, 1.0, 0.5);
         game.yaw = -90.0;
@@ -327,7 +327,7 @@ pub(crate) fn with_pick_game(
             .chunks
             .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
         let kind = game
-            .side
+            .client
             .remote
             .as_ref()
             .unwrap()

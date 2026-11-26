@@ -23,7 +23,7 @@ use sunrise_protocol::packets::play::{self, Clientbound as C};
 #[ignore = "daily"]
 fn a_view_on_another_entity_has_none_of_the_players_values() {
     with_spectator(|game| {
-        game.side.ambience.moodiness = 0.375;
+        game.client.ambience.moodiness = 0.375;
         update(game, OWN, "minecraft:blindness", 100, 0);
         // Not kept: a boat is not a LivingEntity.
         update(game, BOAT, "minecraft:blindness", 100, 0);
@@ -83,7 +83,7 @@ fn the_frame_reads_the_eye_light_in_first_and_third_person() {
     }
     with_client_game(|game| {
         let _event_loop = sunrise_client_gameplay::game::native_hooks::particle_count_tests::frame_scene(game);
-        game.side.screen = sunrise_gameplay_common::game::Screen::Playing;
+        game.client.screen = sunrise_gameplay_common::game::Screen::Playing;
         // The view's uniforms are worked out while a pack is picked: an empty Sunrise pack.
         let packs = tempfile::tempdir().unwrap();
         let pack = packs.path().join("eye_light");
@@ -93,7 +93,7 @@ fn the_frame_reads_the_eye_light_in_first_and_third_person() {
             "schema = 1\nid = \"eye_light\"\nname = \"Eye light\"\nversion = \"1\"\napi = \"0.1\"\n",
         )
         .unwrap();
-        game.side.settings.sunrise.shader_pack = pack.to_string_lossy().into_owned();
+        game.client.settings.sunrise.shader_pack = pack.to_string_lossy().into_owned();
         for camera_type in [CameraType::FirstPerson, CameraType::ThirdPersonBack] {
             game.apply_camera_type(camera_type);
             let (camera, eye, _) = framed(game);
@@ -123,7 +123,7 @@ fn the_view_light_is_at_the_camera_entitys_eye() {
         set_camera(game, ZOMBIE);
         game.apply_camera_type(CameraType::ThirdPersonBack);
         let (camera, _, _) = game.camera_view(0.0).unwrap();
-        let eye = glam::DVec3::from_array(game.side.view.eye);
+        let eye = glam::DVec3::from_array(game.client.view.eye);
         let (at_eye, at_camera) = (eye.floor().as_ivec3(), camera.floor().as_ivec3());
         assert_ne!(at_eye, at_camera);
         // Sky 5, block 12 at the eye; sky 3, block 0 at the camera.
@@ -142,8 +142,8 @@ fn the_view_light_is_at_the_camera_entitys_eye() {
 #[ignore = "daily"]
 fn the_view_reads_the_spectated_entitys_effects() {
     with_spectator(|game| {
-        game.side.ambience.moodiness = 0.375;
-        game.side
+        game.client.ambience.moodiness = 0.375;
+        game.client
             .settings
             .file
             .set("darknessEffectScale", V::Double(0.5));

@@ -178,26 +178,26 @@ fn typed_particle_command_encoder_refusal_does_not_deliver_to_a_guest() {
             g.position = [0.5, 100.5, 0.5];
         }
     });
-    game.side.lan = Some(sunrise_gameplay::game::lan::LanHost::for_test(hub));
-    game.side.lan_acting = Some(1);
+    game.server.lan = Some(sunrise_gameplay::game::lan::LanHost::for_test(hub));
+    game.server.lan_acting = Some(1);
     assert!(game.run_command("particle test:measured{measure:1} 0.5 100.5 0.5 0 0 0 0 1 force @s"));
-    assert!(game.side.guest_packets.iter().any(|p| matches!(
+    assert!(game.server.guest_packets.iter().any(|p| matches!(
         p,
         sunrise_protocol::packets::play::Clientbound::LevelParticles(_)
     )));
-    game.side.guest_packets.clear();
-    game.side.pending_particles.clear();
+    game.server.guest_packets.clear();
+    game.server.pending_particles.clear();
     let (ok, outcome) = game.recording_command_outcome(|game| {
         game.run_command("particle test:measured{measure:-1} 0.5 100.5 0.5 0 0 0 0 1 force @s")
     });
     assert!(!ok);
     assert_eq!(outcome, Some((false, 0)));
-    assert!(game.side.guest_packets.iter().all(|p| !matches!(
+    assert!(game.server.guest_packets.iter().all(|p| !matches!(
         p,
         sunrise_protocol::packets::play::Clientbound::LevelParticles(_)
     )));
     assert!(receiver.try_recv().is_err());
-    assert!(game.side.pending_particles.is_empty());
+    assert!(game.server.pending_particles.is_empty());
 }
 
 use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

@@ -33,7 +33,7 @@ impl ServerGame<'_> {
     }
     /// `ShieldItem.use` (ItemUtils.startUsingInstantly) for the hand at `slot`;
     /// false when that hand holds no blocking item or it is on cooldown.
-    pub(in crate::game) fn raise_shield(&mut self, slot: usize) -> bool {
+    pub fn raise_shield(&mut self, slot: usize) -> bool {
         let Some(stack) = self.common.stack_in(slot) else {
             return false;
         };
@@ -47,7 +47,7 @@ impl ServerGame<'_> {
     }
     /// `LivingEntity.getItemBlockingWith` and the inputs of `applyItemBlocking`
     /// for an attack from `from` (`DamageSource.getSourcePosition`).
-    pub(in crate::game) fn player_blocking(
+    pub fn player_blocking(
         &self,
         from: Option<[f64; 3]>,
         damage_type: &str,
@@ -102,7 +102,7 @@ impl ServerGame<'_> {
     }
     /// After a hurt with the shield raised: `hurtBlockingItem`, `onBlocked`
     /// and, for melee from a mob, `blockUsingItem`. `source` is the hit's.
-    pub(in crate::game) fn after_block(
+    pub fn after_block(
         &mut self,
         outcome: BlockOutcome,
         (attacker, projectile): (Option<u32>, bool),

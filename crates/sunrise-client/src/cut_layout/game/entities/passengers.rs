@@ -845,7 +845,7 @@ fn with_vehicle_tree(
                 std::path::PathBuf::from(std::env::var_os("SUNRISE_HOME").unwrap())
                     .join(format!("guard-{:?}", std::thread::current().id())),
             );
-            game.side.world_root = game.options.game_dir.as_ref().unwrap().join("world");
+            game.server.world_root = game.options.game_dir.as_ref().unwrap().join("world");
             let at = Vec3::new(10.0, 200.0, 20.0);
             if cart {
                 game.carts.push(sunrise_gameplay_common::game::minecarts::Minecart::new(
@@ -870,7 +870,7 @@ fn with_vehicle_tree(
             game.mobs.push(child);
             // These manually installed owners bypass the normal allocator.
             // Destruction drops must not reuse the removed vehicle's ID.
-            game.side.next_entity = game.side.next_entity.max(73);
+            game.server.next_entity = game.server.next_entity.max(73);
             test(game);
         });
     }
@@ -897,8 +897,8 @@ fn with_vehicle_tree(
             .into();
             mod_platform::testing::with_mods(mods, || {
                 with_vehicle_tree(cart, false, |game| {
-                    game.side.settings.simulation_distance = 4;
-                    game.side.settings.render_distance = 12;
+                    game.server.settings.simulation_distance = 4;
+                    game.server.settings.render_distance = 12;
                     game.player = Some(
                         sunrise_sim::motion::PlayerMotion::new(
                             game.motion,
@@ -1023,7 +1023,7 @@ fn with_vehicle_tree(
                 with_vehicle_tree(cart, false, |game| {
                     game.mobs.clear();
                     crate::game::native_player_death::tests::add_guest(game);
-                    game.side
+                    game.server
                         .lan
                         .as_mut()
                         .unwrap()
@@ -1039,14 +1039,14 @@ fn with_vehicle_tree(
                     game.guest_vehicle_tick(1);
                     assert_eq!(calls.load(Ordering::Relaxed), 2);
                     assert_eq!(
-                        game.side.lan.as_ref().unwrap().hub.guests[0].vehicle,
+                        game.server.lan.as_ref().unwrap().hub.guests[0].vehicle,
                         Some(71)
                     );
                     assert!(game.persist.removed_vehicles.contains_key(&71));
                     cancel.store(false, Ordering::Relaxed);
                     game.guest_vehicle_tick(1);
                     assert_eq!(calls.load(Ordering::Relaxed), 3);
-                    assert_eq!(game.side.lan.as_ref().unwrap().hub.guests[0].vehicle, None);
+                    assert_eq!(game.server.lan.as_ref().unwrap().hub.guests[0].vehicle, None);
                     assert!(!game.persist.removed_vehicles.contains_key(&71));
                 });
             });
@@ -1247,7 +1247,7 @@ fn with_vehicle_tree(
                 .into();
                 mod_platform::testing::with_mods(mods, || {
                     with_vehicle_tree(cart, true, |game| {
-                        game.side.next_entity = game.side.next_entity.max(100);
+                        game.server.next_entity = game.server.next_entity.max(100);
                         let items = vec![Some(sunrise_items::items::ItemStack::new(
                             "minecraft:diamond",
                             5,
@@ -1668,7 +1668,7 @@ fn live_cancels(cross_level: bool) {
                 if cross_level {
                     assert_eq!(game.border.size(), 1000.0);
                     assert_eq!(
-                        game.side
+                        game.server
                             .levels
                             .0
                             .parked_border(sunrise_gameplay_common::game::Dim::Nether)

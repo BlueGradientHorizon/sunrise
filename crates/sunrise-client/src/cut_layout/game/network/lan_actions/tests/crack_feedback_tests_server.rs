@@ -42,7 +42,7 @@ pub(crate) fn run_crack_packets_follow_start_clock_and_strict_observer_radius() 
     let scratch =
         std::env::temp_dir().join(format!("sunrise-crack-feedback-{}", std::process::id()));
     std::fs::create_dir_all(&scratch).unwrap();
-    game.side.world_root = scratch.clone();
+    game.server.world_root = scratch.clone();
     game.world
         .chunks
         .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
@@ -96,7 +96,7 @@ pub(crate) fn run_crack_packets_follow_start_clock_and_strict_observer_radius() 
     .enumerate()
     {
         let (guest, rx) = observer(index as u32 + 1, position, dimension);
-        game.side.lan.as_mut().unwrap().hub.guests.push(guest);
+        game.server.lan.as_mut().unwrap().hub.guests.push(guest);
         receivers.push(rx);
     }
     let action = |action| {
@@ -107,13 +107,13 @@ pub(crate) fn run_crack_packets_follow_start_clock_and_strict_observer_radius() 
             sequence: 1,
         })
     };
-    game.side.lan.as_mut().unwrap().hub.ticks = 100;
+    game.server.lan.as_mut().unwrap().hub.ticks = 100;
     game.lan_guest_packet(1, action(0));
     let mut trace = cracks(&receivers[1]);
     assert_eq!(trace, [(1, pos, 0)], "START sends stage zero immediately");
     for tick in 101..=103 {
-        game.side.lan.as_mut().unwrap().hub.ticks = tick;
-        game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+        game.server.lan.as_mut().unwrap().hub.ticks = tick;
+        game.server.lan.as_mut().unwrap().hub.guests.update(0, |g| {
             g.inventory[0] = (tick != 102).then(|| ItemStack::new("minecraft:diamond_pickaxe", 1))
         });
         game.as_guest(1, |g| {
@@ -139,7 +139,7 @@ pub(crate) fn run_crack_packets_follow_start_clock_and_strict_observer_radius() 
     assert_eq!(stop, [(1, pos, 255)], "accepted STOP clears the crack");
     trace.extend(stop);
     game.world.set(pos[0], pos[1], pos[2], stone).unwrap();
-    game.side
+    game.server
         .lan
         .as_mut()
         .unwrap()
@@ -159,8 +159,8 @@ pub(crate) fn run_crack_packets_follow_start_clock_and_strict_observer_radius() 
     // a different target, nor replace its START clock.
     game.lan_guest_packet(1, action(0));
     assert_eq!(cracks(&receivers[1]), [(1, pos, 0)]);
-    let start = game.side.lan.as_ref().unwrap().play[&1].dig_start;
-    game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+    let start = game.server.lan.as_ref().unwrap().play[&1].dig_start;
+    game.server.lan.as_mut().unwrap().hub.guests.update(0, |g| {
         g.game_mode = 2;
         g.abilities.update_for_mode(2);
     });
@@ -177,23 +177,23 @@ pub(crate) fn run_crack_packets_follow_start_clock_and_strict_observer_radius() 
     );
     assert!(cracks(&receivers[1]).is_empty());
     assert_eq!(
-        game.side.lan.as_ref().unwrap().play[&1]
+        game.server.lan.as_ref().unwrap().play[&1]
             .digging
             .map(|(pos, _)| pos),
         Some(pos)
     );
-    assert_eq!(game.side.lan.as_ref().unwrap().play[&1].dig_start, start);
+    assert_eq!(game.server.lan.as_ref().unwrap().play[&1].dig_start, start);
     game.lan_guest_packet(1, action(2));
     assert_eq!(cracks(&receivers[1]), [(1, pos, 255)]);
     game.lan_guest_packet(1, action(0));
     assert!(cracks(&receivers[1]).is_empty(), "fresh restricted START");
-    game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+    game.server.lan.as_mut().unwrap().hub.guests.update(0, |g| {
         g.game_mode = 1;
         g.abilities.update_for_mode(1);
     });
     game.lan_guest_packet(1, action(0));
     assert!(cracks(&receivers[1]).is_empty(), "creative START");
-    game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+    game.server.lan.as_mut().unwrap().hub.guests.update(0, |g| {
         g.game_mode = 0;
         g.abilities.update_for_mode(0);
     });

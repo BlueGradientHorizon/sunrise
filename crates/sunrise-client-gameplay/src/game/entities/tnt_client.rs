@@ -5,7 +5,7 @@ use sunrise_core::position::BlockPos;
 
 impl ClientGame<'_> {
     /// `TntRenderer`: swelling over the last 10 ticks and flashing white every 5 ticks.
-    pub(in crate::game) fn tnt_geometry(
+    pub fn tnt_geometry(
         &self,
         camera: glam::DVec3,
         alpha: f64,
@@ -157,7 +157,7 @@ impl ClientGame<'_> {
         }
     }
     /// The sprites of the TNT block's six faces (up, down, north, south, west, east).
-    pub(in crate::game) fn tnt_face_sprites(
+    pub fn tnt_face_sprites(
         &self,
     ) -> Option<[Option<sunrise_client_render::hud::Rect>; 6]> {
         let state = self.common.pack.assets.registry.default_state("minecraft:tnt")?;

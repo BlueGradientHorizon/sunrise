@@ -73,7 +73,7 @@ impl ServerGame<'_> {
     }
     /// `EnchantmentsByCostWithDifficulty.enchant` on the stack the mob holds
     /// in a `finalize` slot: nothing is drawn when the slot is empty.
-    pub(in crate::game::server_side) fn enchant_item(
+    pub fn enchant_item(
         &mut self,
         id: u32,
         slot: usize,

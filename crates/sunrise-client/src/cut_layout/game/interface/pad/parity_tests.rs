@@ -53,8 +53,8 @@ fn playing(test: impl FnOnce(&mut sunrise_client_gameplay::game::ClientGame<'_>)
         crate::game::profile_resolver,
     )
     .unwrap();
-    game.side.title.0 = None;
-    game.side.screen = Screen::Playing;
+    game.client.title.0 = None;
+    game.client.screen = Screen::Playing;
     test(&mut game);
 }
 
@@ -74,13 +74,13 @@ impl sunrise_client_gameplay::game::event_loop::EventLoopCtl for NoEventLoop {
 /// Hold `button` through the real press dispatcher, including its action ownership.
 fn pad_press(game: &mut sunrise_client_gameplay::game::ClientGame<'_>, button: Button, action: &str) {
     assert!(
-        game.side
+        game.client
             .settings
             .controller
             .actions_of(button)
             .contains(&action)
     );
-    game.side.pad.0.virtual_input = true;
+    game.client.pad.0.virtual_input = true;
     let mut state = PadState::default();
     // A trigger is held by how far it's pulled, not by a button bit.
     match button {
@@ -88,13 +88,13 @@ fn pad_press(game: &mut sunrise_client_gameplay::game::ClientGame<'_>, button: B
         Button::RightTrigger => state.triggers[1] = 1.0,
         _ => state.set(button, true),
     }
-    game.side.pad.0.edges.update(&state, 0.4);
+    game.client.pad.0.edges.update(&state, 0.4);
     game.pad_button(&NoEventLoop, button, true).unwrap();
 }
 
 /// Release the sole held test button through the same dispatcher as its press.
 fn pad_release(game: &mut sunrise_client_gameplay::game::ClientGame<'_>, button: Button) {
-    game.side.pad.0.edges.update(&PadState::default(), 0.4);
+    game.client.pad.0.edges.update(&PadState::default(), 0.4);
     game.pad_button(&NoEventLoop, button, false).unwrap();
 }
 
@@ -103,7 +103,7 @@ fn pad_release(game: &mut sunrise_client_gameplay::game::ClientGame<'_>, button:
 fn a_keyboard_release_keeps_the_sneak_the_pad_went_on_to_hold() {
     playing(|game| {
         // Hold mode: toggling, the pad's press would flip it.
-        game.side.settings.controller.toggle_sneak = false;
+        game.client.settings.controller.toggle_sneak = false;
         let shift = KeyCode::ShiftLeft;
         game.mapped_key(shift, true, false, shift, Source::Keyboard)
             .unwrap();
@@ -126,39 +126,39 @@ fn pad_smooth_camera_binding_toggles_the_cinematic_camera() {
     }
 
     playing(|game| {
-        game.side
+        game.client
             .settings
             .controller
             .bind("key.togglePerspective", None);
-        game.side
+        game.client
             .settings
             .controller
             .bind("key.smoothCamera", Some(Button::Select));
-        assert!(!game.side.smooth_camera);
+        assert!(!game.client.smooth_camera);
         pad_press(game, Button::Select, "key.smoothCamera");
         pad_release(game, Button::Select);
         assert!(
-            !game.side.smooth_camera,
+            !game.client.smooth_camera,
             "the pad click waits for keybind polling"
         );
         game.handle_play_keybinds();
-        assert!(game.side.smooth_camera);
+        assert!(game.client.smooth_camera);
         game.handle_play_keybinds();
-        assert!(game.side.smooth_camera, "the pad click was consumed");
+        assert!(game.client.smooth_camera, "the pad click was consumed");
 
-        game.side
+        game.client
             .settings
             .keys
             .set("key.smoothCamera", "key.keyboard.k");
         game.mapped_key_event(KeyCode::KeyK, true, false).unwrap();
         game.mapped_key_event(KeyCode::KeyK, false, false).unwrap();
         assert!(
-            game.side.smooth_camera,
+            game.client.smooth_camera,
             "the keyboard click also waits for polling"
         );
         game.handle_play_keybinds();
         assert!(
-            !game.side.smooth_camera,
+            !game.client.smooth_camera,
             "the keyboard toggles the same camera"
         );
     });
@@ -183,7 +183,7 @@ fn bumpers_step_the_hotbar_where_the_wheel_does() {
         assert_eq!(game.selected, 8, "and back");
         game.pad_action("pad.hotbarNext", false).unwrap();
         assert_eq!(game.selected, 8, "a release does nothing");
-        game.side.screen = Screen::Paused;
+        game.client.screen = Screen::Paused;
         game.pad_action("pad.hotbarNext", true).unwrap();
         assert_eq!(game.selected, 8, "a screen keeps the wheel from the hotbar");
     });
@@ -195,7 +195,7 @@ fn a_spectators_bumpers_set_the_flying_speed_as_the_wheel_does() {
     use sunrise_protocol::packets::play::{self, Clientbound as C};
     playing(|game| {
         let _server = sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client(game);
-        game.side.screen = Screen::Playing;
+        game.client.screen = Screen::Playing;
         with_player(game);
         game.mode = GameMode::Spectator;
         game.handle_packet(C::PlayerInfoUpdate(play::PlayerInfoUpdate {
@@ -228,10 +228,10 @@ fn readers_of_the_movement_keys_see_the_stick() {
         let back_mapping = game.vanilla_key_mapping("key.back").unwrap();
         let right_mapping = game.vanilla_key_mapping("key.right").unwrap();
         let jump_mapping = game.vanilla_key_mapping("key.jump").unwrap();
-        game.side.focused = true;
+        game.client.focused = true;
         assert!(!forward_mapping.is_down(game).unwrap());
         // Up and to the left, on a diagonal: two keys, as a keyboard would hold.
-        game.side.pad.0.state.left = [-0.7, 0.7];
+        game.client.pad.0.state.left = [-0.7, 0.7];
         assert!(forward_mapping.is_down(game).unwrap());
         assert!(left_mapping.is_down(game).unwrap());
         assert!(!back_mapping.is_down(game).unwrap());
@@ -243,7 +243,7 @@ fn readers_of_the_movement_keys_see_the_stick() {
         // Forward is inside the eight-direction sector, left outside it. A direct
         // write on forward must not reclassify what remains of the stick.
         with_player(game);
-        game.side.pad.0.state.left = [-0.34, 0.93];
+        game.client.pad.0.state.left = [-0.34, 0.93];
         let before = game.sample_movement_keys(game.pad_move());
         assert!(forward_mapping.is_down(game).unwrap());
         assert!(!left_mapping.is_down(game).unwrap());
@@ -258,7 +258,7 @@ fn readers_of_the_movement_keys_see_the_stick() {
         assert_eq!(after.left, before.left);
         assert_eq!(after.direction(), [left, 0.0]);
 
-        game.side.pad.0.state.left = [-0.85, 0.0];
+        game.client.pad.0.state.left = [-0.85, 0.0];
         let [left, _] = game.pad_move().unwrap();
         forward_mapping.set_down(game, true).unwrap();
         let after = game.sample_movement_keys(game.pad_move());
@@ -268,22 +268,22 @@ fn readers_of_the_movement_keys_see_the_stick() {
 
         // A tilt below the digital threshold is new analog input and still
         // takes over. A changed left component does not take over forward.
-        game.side.pad.0.state.left = [0.0, 0.0];
+        game.client.pad.0.state.left = [0.0, 0.0];
         let before = game.pad_move();
         forward_mapping.set_down(game, false).unwrap();
-        game.side.pad.0.state.left = [-0.4, 0.0];
+        game.client.pad.0.state.left = [-0.4, 0.0];
         game.resume_stick_mappings(before);
-        assert_eq!(game.side.keys.override_for(&KeyCode::KeyW), Some(false));
-        game.side.pad.0.state.left = [0.0, 0.0];
+        assert_eq!(game.client.keys.override_for(&KeyCode::KeyW), Some(false));
+        game.client.pad.0.state.left = [0.0, 0.0];
         let before = game.pad_move();
-        game.side.pad.0.state.left = [0.0, game.side.settings.controller.move_deadzone + 0.01];
+        game.client.pad.0.state.left = [0.0, game.client.settings.controller.move_deadzone + 0.01];
         game.resume_stick_mappings(before);
         let after = game.sample_movement_keys(game.pad_move());
         assert!(!after.forward);
         assert!(after.direction()[1] > 0.0);
 
         // A screen takes the stick away.
-        game.side.screen = Screen::Paused;
+        game.client.screen = Screen::Paused;
         assert!(!forward_mapping.is_down(game).unwrap());
     });
 }
@@ -292,22 +292,22 @@ fn readers_of_the_movement_keys_see_the_stick() {
 #[ignore = "daily"]
 fn resolved_mapping_reads_live_state_and_binding() {
     playing(|game| {
-        game.side.focused = true;
+        game.client.focused = true;
         let forward = game.vanilla_key_mapping("key.forward").unwrap();
         assert_eq!(forward.binding(game), Ok("key.keyboard.w"));
         assert_eq!(forward.is_down(game), Ok(false));
 
-        game.side.pad.0.state.left = [-0.7, 0.7];
+        game.client.pad.0.state.left = [-0.7, 0.7];
         assert_eq!(forward.is_down(game), Ok(true));
         assert_eq!(forward.binding(game), Ok("key.keyboard.w"));
 
         let mut bindings = sunrise_client::keybinds::KeyBinds::default();
         bindings.set("key.forward", "key.keyboard.up");
-        game.side.settings.keys = bindings;
+        game.client.settings.keys = bindings;
         assert_eq!(forward.binding(game), Ok("key.keyboard.up"));
         assert_eq!(forward.is_down(game), Ok(true));
 
-        game.side.pad.0.state.left = [0.0, 0.0];
+        game.client.pad.0.state.left = [0.0, 0.0];
         assert_eq!(forward.is_down(game), Ok(false));
         assert_eq!(forward.binding(game), Ok("key.keyboard.up"));
     });
@@ -318,7 +318,7 @@ fn resolved_mapping_reads_live_state_and_binding() {
 fn pad_number_actions_select_the_hotbar_as_their_keys_do() {
     playing(|game| {
         with_player(game);
-        game.side
+        game.client
             .settings
             .controller
             .bind("key.hotbar.3", Some(Button::DPadUp));
@@ -333,7 +333,7 @@ fn pad_number_actions_select_the_hotbar_as_their_keys_do() {
 #[ignore = "daily"]
 fn a_held_pad_toolbar_action_counts_as_the_toolbar_key() {
     playing(|game| {
-        game.side
+        game.client
             .settings
             .controller
             .bind("key.saveToolbarActivator", Some(Button::DPadUp));
@@ -380,7 +380,7 @@ fn the_mouse_letting_go_leaves_what_the_pad_holds_and_back() {
         assert!(!game.mapped_key_down("key.attack"));
 
         // The other way round: the mouse button is physically down.
-        game.side.physical_buttons.insert(MouseButton::Right);
+        game.client.physical_buttons.insert(MouseButton::Right);
         game.mouse_mapping(MouseButton::Right, true, Source::Keyboard)
             .unwrap();
         pad_press(game, Button::LeftTrigger, "key.use");
@@ -389,7 +389,7 @@ fn the_mouse_letting_go_leaves_what_the_pad_holds_and_back() {
             game.mapped_key_down("key.use"),
             "the mouse still holds the use"
         );
-        game.side.physical_buttons.remove(&MouseButton::Right);
+        game.client.physical_buttons.remove(&MouseButton::Right);
         game.mouse_mapping(MouseButton::Right, false, Source::Keyboard)
             .unwrap();
         assert!(!game.mapped_key_down("key.use"));
@@ -398,7 +398,7 @@ fn the_mouse_letting_go_leaves_what_the_pad_holds_and_back() {
         // the keyboard source path, not the default attack/use path above.
         with_player(game);
         let binding = "key.mouse.left";
-        game.side.settings.keys.set("key.forward", binding);
+        game.client.settings.keys.set("key.forward", binding);
         let forward_mapping = game.vanilla_key_mapping("key.forward").unwrap();
         for mouse_releases_first in [true, false] {
             game.mapped_mouse_event(MouseButton::Left, binding, true)

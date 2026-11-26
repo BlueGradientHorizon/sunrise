@@ -53,15 +53,15 @@ pub(crate) mod enchantment_snapshot_tests {
             r#"{"enabled":["file/model"],"disabled":[]}"#,
         )
         .unwrap();
-        game.side.world_root = dir;
+        game.server.world_root = dir;
         let stack = game.reload_datapacks(false, &[]).unwrap();
         let root = game.options.resources.clone();
-        game.side.world_tables.0 = game
+        game.server.world_tables.0 = game
             .stage_world_tables(&stack, false, &root)
             .unwrap()
             .tables;
         assert!(
-            game.side.world_tables.0.is_some(),
+            game.server.world_tables.0.is_some(),
             "the real active table container must be available"
         );
         let base = game.stations().enchantments.clone();
@@ -76,14 +76,14 @@ pub(crate) mod enchantment_snapshot_tests {
                 .unwrap()
                 .unwrap(),
         );
-        game.side
+        game.server
             .world_tables
             .0
             .as_mut()
             .unwrap()
             .stations
             .enchantments = synced.clone();
-        std::sync::Arc::make_mut(&mut game.side.world_tables.0.as_mut().unwrap().items)
+        std::sync::Arc::make_mut(&mut game.server.world_tables.0.as_mut().unwrap().items)
             .enchantments = synced;
         assert!(
             game.active_enchantment_definitions()
@@ -127,14 +127,14 @@ pub(crate) mod enchantment_snapshot_tests {
             assert_eq!(reg.ids("minecraft:item"), item_ids);
             assert_eq!(reg.effects, effects);
         }
-        game.side
+        game.server
             .world_tables
             .0
             .as_mut()
             .unwrap()
             .stations
             .enchantments = base.clone();
-        std::sync::Arc::make_mut(&mut game.side.world_tables.0.as_mut().unwrap().items)
+        std::sync::Arc::make_mut(&mut game.server.world_tables.0.as_mut().unwrap().items)
             .enchantments = base;
         assert!(
             game.active_enchantment_definitions()
@@ -218,10 +218,10 @@ pub(crate) mod damage_type_registry_tests {
             r#"{"enabled":["file/model"],"disabled":[]}"#,
         )
         .unwrap();
-        game.side.world_root = dir;
+        game.server.world_root = dir;
         let stack = game.reload_datapacks(false, &[]).unwrap();
         let staged = game.stage_world_tables(&stack, false, &root).unwrap();
-        game.side.world_tables.0 = staged.tables;
+        game.server.world_tables.0 = staged.tables;
         game.health_resources = staged.health;
         game.level.allow_commands = Some(true);
         game.build_registries();

@@ -68,7 +68,7 @@ impl ClientGame<'_> {
     }
 
     /// `Hud.getPlayerVehicleWithHealth`: the camera player's vehicle as its max health and health.
-    pub(in crate::game::client_side) fn camera_vehicle(
+    pub fn camera_vehicle(
         &mut self,
         camera: CameraPlayer,
     ) -> Option<(f32, f32)> {
@@ -115,7 +115,7 @@ impl ClientGame<'_> {
     }
 
     /// `Hud.extractVehicleHealth`: `(max_hearts, health)` of `camera_vehicle`, when positive.
-    pub(in crate::game) fn camera_vehicle_health(
+    pub fn camera_vehicle_health(
         &mut self,
         camera: CameraPlayer,
     ) -> Option<(i32, f32)> {

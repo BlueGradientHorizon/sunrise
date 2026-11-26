@@ -530,7 +530,7 @@ impl crate::game::ClientGame<'_> {
     }
 
     /// Whether Init.Post removed this native PauseScreen action from the current build.
-    pub(in crate::game::client_side) fn pause_child_removed(&self, action: u8) -> bool {
+    pub fn pause_child_removed(&self, action: u8) -> bool {
         self.client
             .screen_state
             .0
@@ -551,7 +551,7 @@ impl crate::game::ClientGame<'_> {
     }
 
     /// Remove focus from any currently focused mounted widget.
-    pub(in crate::game::client_side) fn clear_mounted_widget_focus(&mut self) {
+    pub fn clear_mounted_widget_focus(&mut self) {
         self.set_mounted_widget_focus(None);
     }
 
@@ -604,7 +604,7 @@ impl crate::game::ClientGame<'_> {
     }
 
     /// All visible, active mounted widgets as unified focus/pad targets.
-    pub(in crate::game::client_side) fn mounted_widget_targets(&self) -> Vec<Target> {
+    pub fn mounted_widget_targets(&self) -> Vec<Target> {
         let mut inner = self.client.screen_state.0.widgets.inner.borrow_mut();
         let mut out = Vec::new();
         let mut disabled = Vec::new();
@@ -625,7 +625,7 @@ impl crate::game::ClientGame<'_> {
     }
 
     /// Synchronize with the selected child, not whichever widget overlaps its bounds.
-    pub(in crate::game::client_side) fn sync_mounted_focus(&mut self, target: Target) {
+    pub fn sync_mounted_focus(&mut self, target: Target) {
         let idx = match target.kind {
             Kind::Mounted { id, .. } => self
                 .client
@@ -642,7 +642,7 @@ impl crate::game::ClientGame<'_> {
     /// and execute screen transitions synchronously (`Gui.setScreen` / `Button.onPress`).
     /// If the screen's widget generation changed during `f`, the extracted entry is disposed
     /// instead of restored onto the new screen.
-    pub(in crate::game::client_side) fn with_mounted_widget<R>(
+    pub fn with_mounted_widget<R>(
         &mut self,
         idx: usize,
         f: impl FnOnce(&mut Self, &mut MountedWidgetEntry) -> R,
@@ -692,11 +692,11 @@ impl crate::game::ClientGame<'_> {
     /// Draw every visible mounted widget inside the receiving screen's
     /// Pre-guarded contents pass, before Foreground and tooltips
     /// (`Screen.extractRenderState`).
-    pub(in crate::game::client_side) fn draw_mounted_screen_widgets(&self, batch: &mut HudBatch) {
+    pub fn draw_mounted_screen_widgets(&self, batch: &mut HudBatch) {
         self.draw_mounted_screen_widgets_at(batch, Instant::now());
     }
 
-    pub(in crate::game::client_side) fn draw_mounted_screen_widgets_at(
+    pub fn draw_mounted_screen_widgets_at(
         &self,
         batch: &mut HudBatch,
         now: Instant,
@@ -859,7 +859,7 @@ impl crate::game::ClientGame<'_> {
     /// Dispatch a mouse click to the first hit mounted child in insertion order.
     /// A hit consumes the click independently of whether the child takes focus
     /// (`ContainerEventHandler.mouseClicked`). A miss leaves focus alone.
-    pub(in crate::game::client_side) fn mounted_widget_mouse_clicked(
+    pub fn mounted_widget_mouse_clicked(
         &mut self,
         mouse: [f32; 2],
         button: i32,
@@ -1044,7 +1044,7 @@ impl crate::game::ClientGame<'_> {
     }
 
     /// Dispatch a mouse release to the mounted widget currently being dragged.
-    pub(in crate::game::client_side) fn mounted_widget_mouse_released(
+    pub fn mounted_widget_mouse_released(
         &mut self,
         mouse: [f32; 2],
         button: i32,
@@ -1197,7 +1197,7 @@ impl crate::game::ClientGame<'_> {
     /// Tab/Shift+Tab and arrow traversal are handled by the unified screen
     /// focus path (`key_focus_key`), and Escape is never swallowed so vanilla
     /// `Screen.keyPressed`'s `shouldCloseOnEsc` always wins.
-    pub(in crate::game::client_side) fn mounted_widget_key_pressed(
+    pub fn mounted_widget_key_pressed(
         &mut self,
         key: KeyCode,
         repeat: bool,
@@ -1318,7 +1318,7 @@ impl crate::game::ClientGame<'_> {
     }
 
     /// Dispatch a key release to the focused mounted custom widget.
-    pub(in crate::game::client_side) fn mounted_widget_key_released(
+    pub fn mounted_widget_key_released(
         &mut self,
         key: KeyCode,
         modifiers: u32,
@@ -1436,7 +1436,7 @@ impl crate::game::ClientGame<'_> {
     /// Read and optionally apply a `TextEdit` rewrite from
     /// `screen_char_typed_pre` for a focused mounted built-in `TextField`.
     /// Custom `ScreenWidget`s own their own state and return `None`.
-    pub(in crate::game::client_side) fn mounted_focused_text_edit(
+    pub fn mounted_focused_text_edit(
         &mut self,
         edited: Option<&TextEdit>,
     ) -> Option<TextEdit> {
@@ -1478,7 +1478,7 @@ impl crate::game::ClientGame<'_> {
 
     /// Whether the focused mounted widget captures text input (`Screen.isInputCaptured` /
     /// `EditBox.canConsumeInput`).
-    pub(in crate::game::client_side) fn mounted_widget_captures_input(&self) -> bool {
+    pub fn mounted_widget_captures_input(&self) -> bool {
         let inner = self.client.screen_state.0.widgets.inner.borrow();
         let Some(idx) = inner.focused else {
             return false;

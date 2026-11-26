@@ -142,7 +142,7 @@ impl crate::game::ServerGame<'_> {
         true
     }
     /// `LecternBlock.useItemOn`: a book goes onto an empty lectern.
-    pub(in crate::game::server_side) fn use_lectern(
+    pub fn use_lectern(
         &mut self,
         pos: [i32; 3],
         held: Option<&ItemStack>,
@@ -200,7 +200,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// The book and quill at `slot` takes the pages, or with a title becomes
     /// the written book its writer signed.
-    pub(in crate::game) fn write_book(
+    pub fn write_book(
         &mut self,
         slot: usize,
         pages: Vec<String>,
@@ -271,7 +271,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// `LecternBlock.resetBookState`: the property with the block change event.
-    pub(in crate::game) fn set_lectern_has_book(
+    pub fn set_lectern_has_book(
         &mut self,
         key: (i32, i32, i32),
         has_book: bool,
@@ -287,7 +287,7 @@ impl crate::game::ServerGame<'_> {
         );
     }
 
-    pub(in crate::game) fn set_lectern_property(
+    pub fn set_lectern_property(
         &mut self,
         key: (i32, i32, i32),
         name: &str,

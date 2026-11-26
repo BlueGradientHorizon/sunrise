@@ -20,7 +20,7 @@ impl crate::game::ServerGame<'_> {
     /// chest boat or a minecart with a chest still drops what it holds, and
     /// a boat its lead, as vanilla's `remove` does. False for a player, a dragon part,
     /// or a stale handle.
-    pub(in crate::game) fn entity_discard(&mut self, entity: EntityRef) -> bool {
+    pub fn entity_discard(&mut self, entity: EntityRef) -> bool {
         self.entity_remove(entity, RemovalReason::Discarded)
     }
     /// Removes the entity for `reason` (`Entity.remove`): `Discarded`, as
@@ -28,7 +28,7 @@ impl crate::game::ServerGame<'_> {
     /// removal (Oozing's slimes, Weaving's cobwebs, Wind Charged's burst),
     /// still with no death and no loot. False for a player, a dragon part, or a stale
     /// handle.
-    pub(in crate::game) fn entity_remove(
+    pub fn entity_remove(
         &mut self,
         entity: EntityRef,
         reason: RemovalReason,
@@ -136,7 +136,7 @@ impl crate::game::ServerGame<'_> {
             .then(|| EntityRef::new(entity.epoch(), id))
     }
     /// A mob leaves the level: its effects act first when it was killed.
-    pub(in crate::game) fn remove_mob_now(&mut self, id: u32, killed: bool) {
+    pub fn remove_mob_now(&mut self, id: u32, killed: bool) {
         self.remove_mob_after(id, killed, |_| {});
     }
 
@@ -208,7 +208,7 @@ impl crate::game::ServerGame<'_> {
         }
     }
     /// Takes out the entities mods removed since the last sweep.
-    pub(in crate::game) fn native_removals_flush(&mut self) {
+    pub fn native_removals_flush(&mut self) {
         if self.common.persist.removals.is_empty() {
             return;
         }

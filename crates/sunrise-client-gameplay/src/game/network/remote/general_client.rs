@@ -164,7 +164,7 @@ impl crate::game::ClientGame<'_> {
 
     /// `ClientLevel.tickPassenger` for the general rows in an applied passenger
     /// list. Seat a nested general vehicle before its own general passengers.
-    pub(in crate::game) fn position_remote_general_passengers(&mut self) {
+    pub fn position_remote_general_passengers(&mut self) {
         let Some(remote) = self.client.remote.as_mut() else {
             return;
         };

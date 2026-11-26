@@ -22,7 +22,7 @@ impl crate::game::ServerGame<'_> {
 
     /// One hand's turn in `startUseItem`: `useItemOn` the block aimed at,
     /// then `useItem`. Whether the click ends here (it acted or failed).
-    pub(in crate::game) fn use_hand(&mut self, block_hit: Option<&Hit>) -> Result<bool> {
+    pub fn use_hand(&mut self, block_hit: Option<&Hit>) -> Result<bool> {
         if self.server.guest_use.is_none()
             && let Some(hit) = block_hit
         {
@@ -816,7 +816,7 @@ impl crate::game::ServerGame<'_> {
     /// BowItem.releaseUsing: power from charge time, arrows at power * 3, as
     /// many as the weapon's `projectile_count` says, fanned by its
     /// `projectile_spread`.
-    pub(in crate::game) fn release_bow(&mut self, stack: &ItemStack, ticks: u32) {
+    pub fn release_bow(&mut self, stack: &ItemStack, ticks: u32) {
         let ammo = self.get_projectile(stack);
         let mut charge = i32::try_from(ticks).unwrap_or(i32::MAX);
         let mut canceled = false;

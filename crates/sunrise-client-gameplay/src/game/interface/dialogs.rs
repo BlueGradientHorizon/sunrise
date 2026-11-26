@@ -128,7 +128,7 @@ fn cycle(open: &mut Open, input: usize, delta: i32) {
 #[cfg(feature = "client")]
 impl ClientGame<'_> {
     /// `DialogScreen.WarningScreen` uses the local-server disconnect label.
-    fn warning_texts(&self) -> (Text, Text, [Text; 2]) {
+    pub fn warning_texts(&self) -> (Text, Text, [Text; 2]) {
         let t = |key: &str| Text::translate(key, &[]);
         let disconnect = if self.external_server() {
             "menu.disconnect"
@@ -143,7 +143,7 @@ impl ClientGame<'_> {
     }
 
     /// Whether a dialog screen takes the input.
-    pub(in crate::game) fn dialog_open(&self) -> bool {
+    pub fn dialog_open(&self) -> bool {
         let d = &self.client.dialogs.0;
         d.open.is_some() || d.waiting.is_some() || d.warning
     }
@@ -158,7 +158,7 @@ impl ClientGame<'_> {
         )
     }
     /// The warning icon in the dialog's corner, while the dialog itself shows.
-    pub(in crate::game::client_side) fn dialog_warning_icon(&self) -> Option<[f32; 4]> {
+    pub fn dialog_warning_icon(&self) -> Option<[f32; 4]> {
         let d = &self.client.dialogs.0;
         if d.warning || d.waiting.is_some() {
             return None;
@@ -242,7 +242,7 @@ impl ClientGame<'_> {
     }
     /// Whether the dialog's focus is one of its text inputs, which takes the
     /// keys.
-    pub(in crate::game::client_side) fn dialog_typing(&self) -> bool {
+    pub fn dialog_typing(&self) -> bool {
         let d = &self.client.dialogs.0;
         !d.warning
             && d.waiting.is_none()
@@ -253,7 +253,7 @@ impl ClientGame<'_> {
             })
     }
 
-    pub(in crate::game::client_side) fn decode_dialog(
+    pub fn decode_dialog(
         &self,
         tag: &Tag,
         dynamic: Option<&Dynamic>,
@@ -276,7 +276,7 @@ impl ClientGame<'_> {
         )
     }
 
-    pub(in crate::game) fn show_dialog(&mut self, tag: &Tag) {
+    pub fn show_dialog(&mut self, tag: &Tag) {
         self.show_dialog_in_phase(tag, None);
     }
 
@@ -381,7 +381,7 @@ impl ClientGame<'_> {
 
     /// `clearDialog`: the dialog closes (under the warning screen, Back then
     /// returns to what was open before it).
-    pub(in crate::game) fn clear_dialog(&mut self) {
+    pub fn clear_dialog(&mut self) {
         if self.client.dialogs.0.open.take().is_some() && !self.dialog_open() {
             self.dialog_receiver_changed();
         }
@@ -957,7 +957,7 @@ impl ClientGame<'_> {
     }
 
     /// A left click on a dialog screen.
-    pub(in crate::game::client_side) fn dialog_click(&mut self) -> Result<bool> {
+    pub fn dialog_click(&mut self) -> Result<bool> {
         let cursor = self.client.cursor;
         if self.client.dialogs.0.warning {
             let (title, message, _) = self.warning_texts();
@@ -1266,7 +1266,7 @@ impl ClientGame<'_> {
     /// A key pressed on a dialog screen: Escape closes what allows it, the
     /// rest goes to the focused input before the screen's shared navigation
     /// (`shortcut`: the press as an edit shortcut).
-    pub(in crate::game::client_side) fn dialog_key(
+    pub fn dialog_key(
         &mut self,
         key: KeyCode,
         shortcut: Option<EditShortcut>,
@@ -1369,7 +1369,7 @@ impl ClientGame<'_> {
 
     /// What `state` reports: the open dialog and its values, or the waiting
     /// and warning screens.
-    pub(in crate::game::client_side) fn dialog_status(&self) -> serde_json::Value {
+    pub fn dialog_status(&self) -> serde_json::Value {
         let d = &self.client.dialogs.0;
         let screen = if d.warning {
             Some("warning")

@@ -35,7 +35,7 @@ fn values(game: &sunrise_client_gameplay::game::ClientGame<'_>) -> Vec<i32> {
         .collect()
 }
 fn client<'a>(game: &'a mut sunrise_client_gameplay::game::ClientGame<'_>) -> &'a mut Remote {
-    game.side.remote.as_mut().unwrap()
+    game.client.remote.as_mut().unwrap()
 }
 fn sync(game: &mut sunrise_client_gameplay::game::ClientGame<'_>, holder: Holder, value: i32) {
     game.remote_attachment_sync(Message {
@@ -114,7 +114,7 @@ fn synced_client_queries_follow_replacement_retirement_and_level_changes() {
             sunrise_client::level_loading::Reason::Other,
         );
         assert!(values(game).is_empty());
-        assert!(game.side.remote.as_ref().unwrap().attachments.is_empty());
+        assert!(game.client.remote.as_ref().unwrap().attachments.is_empty());
         sync(game, Holder::Level, 81);
         assert_eq!(values(game), [81]);
     });

@@ -75,7 +75,7 @@ impl crate::game::ClientGame<'_> {
     /// A screen open over gameplay while `screen` stays `Playing`: a book or
     /// lectern, a sign, a server dialog, the code of conduct, a link or
     /// server pack prompt (vanilla's `Minecraft.screen` is set for each).
-    pub(in crate::game) fn screen_over_playing(&self) -> bool {
+    pub fn screen_over_playing(&self) -> bool {
         self.client.book.is_some() || self.client.sign_edit.is_some() || self.prompt_open()
     }
     /// A prompt is up: over the world or over another open screen, it takes the input and is
@@ -151,7 +151,7 @@ impl crate::game::ClientGame<'_> {
     /// already released does nothing, so moving from screen to screen keeps
     /// the cursor where it is. Like GLFW's `glfwSetCursorPos`, nothing warps
     /// while the window is unfocused (losing focus releases the pointer).
-    pub(in crate::game) fn capture(&mut self, capture: bool) {
+    pub fn capture(&mut self, capture: bool) {
         // MouseHandler.grabMouse never captures an inactive window, and vanilla
         // grabs only on `setScreen(null)`: the pack prompt and server dialogs
         // are screens over the world that keep the pointer, as does a screen a

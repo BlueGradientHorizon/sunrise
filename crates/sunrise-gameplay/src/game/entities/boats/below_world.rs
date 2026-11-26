@@ -17,7 +17,7 @@ pub(in crate::game::server_side) fn below_world(y: f64, min_y: i32) -> bool {
 impl ServerGame<'_> {
     /// `Entity.checkBelowWorld` for the boat at `i`: true when it fell out of
     /// the world and is gone.
-    pub(in crate::game::server_side) fn boat_below_world(&mut self, i: usize) -> bool {
+    pub fn boat_below_world(&mut self, i: usize) -> bool {
         if !below_world(self.common.boats[i].position.y, self.common.world.shape.min_y) {
             return false;
         }
@@ -28,7 +28,7 @@ impl ServerGame<'_> {
     /// The minecart `id` at or after `slot`, unless `AbstractMinecart.tick`'s
     /// `checkBelowWorld` discards it: then its tick is over and the round's
     /// post hook runs for it.
-    pub(in crate::game) fn cart_in_world(
+    pub fn cart_in_world(
         &mut self,
         id: u32,
         slot: usize,

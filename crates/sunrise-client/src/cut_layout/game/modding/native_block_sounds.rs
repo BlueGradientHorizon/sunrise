@@ -145,7 +145,7 @@ pub(crate) mod tests {
 
             let mut placed = Vec::new();
             for acting in [Some(7), None] {
-                game.side.lan_acting_entity = acting;
+                game.server.lan_acting_entity = acting;
                 placed.extend(game.with_level(|behaviours, level, _| {
                     // None when the level's own sound type is kept.
                     let place = |state| {

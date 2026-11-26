@@ -87,7 +87,7 @@ impl crate::game::ServerGame<'_> {
     /// keeps no such field yet), the other kinds in the saved `Invulnerable`
     /// tag of their entity data (#916) — the tag the item damage path
     /// already refuses by.
-    pub(in crate::game) fn entity_permanently_invulnerable(
+    pub fn entity_permanently_invulnerable(
         &self,
         entity: EntityRef,
     ) -> Option<bool> {
@@ -103,7 +103,7 @@ impl crate::game::ServerGame<'_> {
     /// [`entity_permanently_invulnerable`](Self::entity_permanently_invulnerable):
     /// a mob's flag (saved with it), a player's body, the saved tag for the
     /// other kinds. False where the entity is gone.
-    pub(in crate::game) fn entity_set_invulnerable(
+    pub fn entity_set_invulnerable(
         &mut self,
         entity: EntityRef,
         invulnerable: bool,
@@ -159,7 +159,7 @@ impl crate::game::ServerGame<'_> {
     /// cooldown — and the saved `invulnerable_time` tag for the other kinds.
     /// Counted down by the base tick; `isTemporarilyInvulnerable` is it above
     /// zero. None for a stale handle or a kind that keeps none.
-    pub(in crate::game) fn entity_invulnerable_time(&self, entity: EntityRef) -> Option<i32> {
+    pub fn entity_invulnerable_time(&self, entity: EntityRef) -> Option<i32> {
         match self.native_entity_target(entity)? {
             Target::Mob(id) => Some(self.common.mobs.iter().find(|m| m.id == id)?.invulnerable_time),
             t @ (Target::Player | Target::Guest(_)) => {
@@ -171,7 +171,7 @@ impl crate::game::ServerGame<'_> {
     /// `Entity.setInvulnerableTime` (#916): the write side of
     /// [`native_entity_invulnerable_time`](Self::native_entity_invulnerable_time).
     /// False where the entity is gone or keeps no such field.
-    pub(in crate::game) fn entity_set_invulnerable_time(
+    pub fn entity_set_invulnerable_time(
         &mut self,
         entity: EntityRef,
         ticks: i32,
@@ -296,7 +296,7 @@ impl crate::game::ServerGame<'_> {
     /// `invulnerable_time` (#916): one less each tick while it runs, so the
     /// window an entity carries in its saved data closes like a mob's and a
     /// player's do.
-    pub(in crate::game::server_side) fn tick_saved_invulnerable_time(&mut self, id: u32) {
+    pub fn tick_saved_invulnerable_time(&mut self, id: u32) {
         use sunrise_core::nbt::Tag;
         let ticks = self.saved_invulnerability(id).1;
         if ticks <= 0 {
@@ -360,7 +360,7 @@ impl crate::game::ServerGame<'_> {
 
     /// `Entity.isInvulnerableTo` asked of `mob` outside a hit, for a source of `damage_type`:
     /// the vanilla answer, which `entity_invulnerability_check` listeners may change.
-    pub(in crate::game::server_side) fn mob_query_invulnerable(
+    pub fn mob_query_invulnerable(
         &self,
         mob: &sunrise_sim::mobs::Mob,
         damage_type: &str,
@@ -461,7 +461,7 @@ impl crate::game::ServerGame<'_> {
     /// `LivingEntity.damageCooldownTime`: 20 after a hit, counting down;
     /// while it is above 10 a hit does only what it deals beyond the last
     /// one. Mobs and players.
-    pub(in crate::game) fn entity_damage_cooldown_time(&self, entity: EntityRef) -> Option<i32> {
+    pub fn entity_damage_cooldown_time(&self, entity: EntityRef) -> Option<i32> {
         match self.native_entity_target(entity)? {
             Target::Mob(id) => Some(self.common.mobs.iter().find(|m| m.id == id)?.invulnerable),
             t => Some(self.native_player_body(t)?.health.hurt.cooldown),
@@ -469,7 +469,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// Sets `LivingEntity.damageCooldownTime`, as mods do to let rapid hits
     /// through (0). Mobs and players.
-    pub(in crate::game) fn entity_set_damage_cooldown_time(
+    pub fn entity_set_damage_cooldown_time(
         &mut self,
         entity: EntityRef,
         ticks: i32,

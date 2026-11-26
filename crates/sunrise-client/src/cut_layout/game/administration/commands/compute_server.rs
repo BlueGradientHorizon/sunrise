@@ -63,7 +63,7 @@ pub(crate) mod tests {
             crate::game::profile_resolver,
         )
         .unwrap();
-        game.side.fns.0.store.predicates.insert(
+        game.server.fns.0.store.predicates.insert(
             "minecraft:nested/true".into(),
             json!({"condition": "minecraft:all_of", "terms": []}),
         );
@@ -121,7 +121,7 @@ pub(crate) mod tests {
         assert!(game.run_command("scoreboard players set @s points 5"));
         let mut source = game.player_source();
         source.entity = None;
-        game.side.command_source = Some(source);
+        game.server.command_source = Some(source);
         let on_target = |kind: &str| {
             json!({
                 "type": "minecraft:conditional",

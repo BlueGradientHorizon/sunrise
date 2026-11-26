@@ -21,7 +21,7 @@ fn client_modifier_snapshot_tracks_focus_loss() {
         fn set_control_flow(&self, _: ControlFlow) {}
     }
     super::native_entity_refs::tests::with_client_game(|game| {
-        game.side.modifiers = ModifiersState::SHIFT | ModifiersState::ALT;
+        game.client.modifiers = ModifiersState::SHIFT | ModifiersState::ALT;
         let snapshot = (game as &dyn ClientHost).modifiers();
         assert!(snapshot.shift());
         assert!(snapshot.alt());
@@ -76,13 +76,13 @@ pub(crate) fn exercise_blank_inventory_presses() {
                     (Screen::Creative, "creative"),
                 ] {
                     game.set_screen(screen);
-                    let renderer = game.side.renderer.0.as_ref().unwrap();
+                    let renderer = game.client.renderer.0.as_ref().unwrap();
                     let batch = HudBatch::new(
                         [renderer.config.width, renderer.config.height],
-                        game.side.settings.gui_scale_inputs(),
+                        game.client.settings.gui_scale_inputs(),
                     );
                     let (x, y) = game.inventory_origin(&batch);
-                    game.side.cursor = (x + 3.0, y + 3.0);
+                    game.client.cursor = (x + 3.0, y + 3.0);
                     assert_eq!(game.inventory_target(), (None, false));
                     for button in [
                         MouseButton::Left,

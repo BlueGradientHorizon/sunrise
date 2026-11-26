@@ -76,7 +76,7 @@ mod item_destroyed_tests {
             game,
             ChunkPos::new(0, 0),
         );
-        game.side.streaming.forced.insert((0, 0));
+        game.server.streaming.forced.insert((0, 0));
         game.update_chunk_tickets();
         assert!(game.entity_ticking_area()(4, 4));
         let stone = game

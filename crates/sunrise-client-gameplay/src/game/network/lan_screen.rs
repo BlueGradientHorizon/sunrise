@@ -639,7 +639,7 @@ impl crate::game::ClientGame<'_> {
         }
         o.rules = Some(RulesScreen::new(&rules));
     }
-    pub(in crate::game) fn open_world_options(&mut self) {
+    pub fn open_world_options(&mut self) {
         let hint = sunrise_sim::lan::available_port();
         let mut port = EditBox::new(0.0, 0.0, 150.0, 20.0);
         port.message = super::screen_info::tr("lanServer.port", &[]);
@@ -703,7 +703,7 @@ impl crate::game::ClientGame<'_> {
         self.set_screen(Screen::WorldOptions);
     }
 
-    pub(in crate::game) fn close_world_options(&mut self) {
+    pub fn close_world_options(&mut self) {
         self.client.world_options.0 = None;
         self.set_screen(Screen::Paused);
     }

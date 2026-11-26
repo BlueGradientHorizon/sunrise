@@ -1826,13 +1826,13 @@ pub mod tests {
 
     pub struct Fixture(pub(in crate::game) PathBuf);
     impl Fixture {
-        pub(in crate::game) fn new(label: &str) -> Self {
+        pub fn new(label: &str) -> Self {
             let dir = std::env::temp_dir()
                 .join(format!("sunrise-game-mods-{}-{label}", std::process::id()));
             std::fs::create_dir_all(&dir).unwrap();
             Self(dir)
         }
-        pub(in crate::game) fn runtime(&self) -> Runtime {
+        pub fn runtime(&self) -> Runtime {
             let dir = self.0.join("compiled");
             let package = dir.join(mod_list::NATIVE_DIR).join("machine_sample");
             let file = std::fs::File::open(self.0.join("machine_sample.smod")).unwrap();

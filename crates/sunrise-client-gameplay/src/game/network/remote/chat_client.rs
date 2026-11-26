@@ -23,7 +23,7 @@ impl crate::game::ClientGame<'_> {
     /// A line in the connection's chat, with its styles, click and hover
     /// events (ChatComponent.addMessage). The lines the Chat option hides
     /// are dropped there (its `visibleMessageFilter`).
-    pub(in crate::game) fn add_chat_line(&mut self, content: Text, source: ChatSource) -> bool {
+    pub fn add_chat_line(&mut self, content: Text, source: ChatSource) -> bool {
         if !self.client.chat_ui.chat.shows(source) {
             return false;
         }

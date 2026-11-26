@@ -9,7 +9,7 @@ use sunrise_sim::{
 
 impl crate::game::ServerGame<'_> {
     /// The attacking entity's canonical UUID, already assigned on creation or admission.
-    pub(in crate::game) fn known_attacker_uuid(&self, id: u32) -> Option<[i32; 4]> {
+    pub fn known_attacker_uuid(&self, id: u32) -> Option<[i32; 4]> {
         self.known_resident_entity_uuid_at(self.common.dim.key(), id)
             .or_else(|| self.common.persist.uuids.get(&id).copied())
     }
@@ -43,7 +43,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// Capture only this victim's possible credit holders, not a table of every entity.
     /// UUID responsibility is committed by the loan at the accepted-hit memory point.
-    pub(in crate::game) fn prepare_knockback_credit(
+    pub fn prepare_knockback_credit(
         &self,
         victim: i32,
         attacker: Option<Who>,

@@ -297,7 +297,7 @@ impl ServerGame<'_> {
     /// and always answers; an entity that changes level alone answers; a
     /// vehicle tree answers only when it moved. `None` leaves the target to
     /// the caller's player path.
-    pub(in crate::game) fn teleport_target_across(
+    pub fn teleport_target_across(
         &mut self,
         target: Target,
         destination: super::Dim,
@@ -455,7 +455,7 @@ impl ServerGame<'_> {
     /// `Entity.teleportCrossDimension`: carry a command's entire vehicle tree
     /// into the destination level, retaining UUIDs and the passengers' mounts,
     /// the root's motion as `motion` says.
-    pub(in crate::game::server_side) fn teleport_vehicle_across(
+    pub fn teleport_vehicle_across(
         &mut self,
         target: Target,
         destination: super::Dim,

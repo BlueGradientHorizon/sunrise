@@ -193,8 +193,8 @@ use sunrise_core::geometry::Vec3;
             armor[2] = Some(leggings);
             for guest in [false, true] {
                 game.armor = armor.clone();
-                game.side.lan_acting = guest.then_some(1);
-                game.side.guest_equipment_breaks.clear();
+                game.server.lan_acting = guest.then_some(1);
+                game.server.guest_equipment_breaks.clear();
                 let random = game.world.random.clone();
                 // Player.hurtArmor supplies FEET, LEGS, CHEST, HEAD;
                 // LivingEntity.doHurtEquipment finishes hurtAndBreak (including
@@ -219,7 +219,7 @@ use sunrise_core::geometry::Vec3;
                     }
                 }
                 let expected_armor = game.armor.clone();
-                let expected_events = game.side.guest_equipment_breaks.clone();
+                let expected_events = game.server.guest_equipment_breaks.clone();
                 let expected_random = game.world.random.next_float();
                 assert_eq!(broken, [1, 0]);
                 if guest {
@@ -228,11 +228,11 @@ use sunrise_core::geometry::Vec3;
                     assert!(expected_events.is_empty());
                 }
                 game.armor = armor.clone();
-                game.side.guest_equipment_breaks.clear();
+                game.server.guest_equipment_breaks.clear();
                 game.world.random = random;
                 game.hurt_armor(&source, 4.0);
                 assert_eq!(game.armor, expected_armor);
-                assert_eq!(game.side.guest_equipment_breaks, expected_events);
+                assert_eq!(game.server.guest_equipment_breaks, expected_events);
                 assert_eq!(game.world.random.next_float(), expected_random);
             }
         });
@@ -458,8 +458,8 @@ use sunrise_core::geometry::Vec3;
             assert_eq!(dragon_handle.alive(game), Some(false));
             // The entities gone: every read answers None.
             game.player = None;
-            game.side.lan_acting_uuid = None;
-            game.side.lan_acting_entity = None;
+            game.server.lan_acting_uuid = None;
+            game.server.lan_acting_entity = None;
             game.mobs[0].removed = true;
             game.armor_stands.clear();
             game.dragon.discard();
@@ -500,7 +500,7 @@ use sunrise_core::geometry::Vec3;
             assert_eq!(living.kill_credit(game).map(|e| e.id()), Some(12));
             {
                 let value = "minecraft:the_nether".into();
-                game.side
+                game.server
                     .lan
                     .as_mut()
                     .unwrap()
@@ -511,7 +511,7 @@ use sunrise_core::geometry::Vec3;
             assert_eq!(living.kill_credit(game).map(|e| e.id()), Some(12));
             {
                 let value = false;
-                game.side
+                game.server
                     .lan
                     .as_mut()
                     .unwrap()
@@ -522,7 +522,7 @@ use sunrise_core::geometry::Vec3;
             assert_eq!(living.kill_credit(game), None);
 
             // Once the player reference expires, the mob can be credited.
-            game.side.last_hurt_by_player.remove(&100);
+            game.server.last_hurt_by_player.remove(&100);
             assert_eq!(living.kill_credit(game).map(|e| e.id()), Some(101));
             // A mob that has left this level is no longer resolvable by its old ID.
             game.mobs[1].removed = true;
@@ -652,8 +652,8 @@ use sunrise_core::geometry::Vec3;
             send_to_the_nether(game, zombie);
             let living = game.living(game.entity(pig).unwrap()).unwrap();
             credited = living.kill_credit(game).unwrap().id() as i32;
-            let plan = game.prepare_knockback_credit(pig as i32, None, game.side.combat.0.attack());
-            let mut credit = plan.lend(&mut game.side.last_hurt_by_player);
+            let plan = game.prepare_knockback_credit(pig as i32, None, game.server.combat.0.attack());
+            let mut credit = plan.lend(&mut game.server.last_hurt_by_player);
             let i = game.mobs.iter().position(|m| m.id == pig).unwrap();
             let mob = &mut game.mobs[i];
             mob.knockback(
@@ -702,14 +702,14 @@ use sunrise_core::geometry::Vec3;
             assert_eq!(pig_living.last_attacker(game).map(|a| a.id()), Some(15));
             // The host's hit, read in the host's own turn: the host's handle.
             game.mobs[0].ai.last_hurt_by = Some(Who::Player);
-            game.side
+            game.server
                 .last_hurt_by_player
                 .insert(12, sunrise_gameplay_common::game::combat_common::PlayerCredit(123));
             assert_eq!(pig_living.last_attacker(game).map(|a| a.id()), Some(20));
             // The same record inside a guest's turn: the host's displaced
             // body is out of reach, so the attacker reads None.
-            game.side.lan_acting = Some(7);
-            game.side.lan_acting_uuid = Some(456);
+            game.server.lan_acting = Some(7);
+            game.server.lan_acting_uuid = Some(456);
             assert_eq!(pig_living.last_attacker(game), None);
         });
     }
@@ -871,7 +871,7 @@ use sunrise_core::geometry::Vec3;
             let mut attackers = Vec::new();
             let mut health = Vec::new();
             for absorption in [0.0, 8.0] {
-                game.side.combat.0 = Default::default();
+                game.server.combat.0 = Default::default();
                 let mut player = PlayerMotion::new(game.motion, Vec3::ZERO).unwrap();
                 player.entity_id = 20;
                 player
@@ -1631,7 +1631,7 @@ use sunrise_core::geometry::Vec3;
         super::super::native_guest_turn_tests::with_guests(|game| {
             // The fixture leaves the guest without a body: give one, as a
             // joined player's server record keeps.
-            game.side.lan.as_mut().unwrap().hub.update_guest(12, |g| {
+            game.server.lan.as_mut().unwrap().hub.update_guest(12, |g| {
                 g.motion = Some(Box::new(
                     sunrise_sim::motion::PlayerMotion::new(
                         game.motion,
@@ -1643,7 +1643,7 @@ use sunrise_core::geometry::Vec3;
             let living = game.living(game.entity(12).unwrap()).unwrap();
             let host: &dyn Host = game;
             assert_eq!(living.can_use_portal(host), Some(true));
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()
@@ -1651,14 +1651,14 @@ use sunrise_core::geometry::Vec3;
                 .update_guest(12, |g| g.vehicle = Some(99));
             let host: &dyn Host = game;
             assert_eq!(living.can_use_portal(host), Some(false));
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()
                 .hub
                 .update_guest(12, |g| g.vehicle = None);
             // Asleep: the rule's sleep half answers, over their body.
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()
@@ -1668,13 +1668,13 @@ use sunrise_core::geometry::Vec3;
             assert_eq!(living.can_use_portal(host), Some(false));
             // A passenger crosses with its vehicle, not as its own
             // traveller: the rule's riding half answers false.
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()
                 .hub
                 .update_guest(12, |g| g.sleeping = false);
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()
@@ -1734,7 +1734,7 @@ use sunrise_core::geometry::Vec3;
                         "real listener/handle write control",
                     );
                     assert!(!game.armor_stands[0].first_tick);
-                    let sounds = game.side.pending_sounds.len();
+                    let sounds = game.server.pending_sounds.len();
                     let equips = events
                         .iter()
                         .filter(|e| e.ends_with("minecraft:equip"))
@@ -1763,12 +1763,12 @@ use sunrise_core::geometry::Vec3;
             let helmet = ItemStack::new("minecraft:iron_helmet", 1);
             assert!(game.living_set_equipment(living, EquipmentSlot::Head, Some(helmet.clone())));
             assert!(game.living_set_equipment(living, EquipmentSlot::Head, None));
-            assert!(game.side.pending_sounds.is_empty());
+            assert!(game.server.pending_sounds.is_empty());
             game.mobs[0].first_tick = false;
             assert!(game.living_set_equipment(living, EquipmentSlot::Head, Some(helmet.clone())));
-            assert_eq!(game.side.pending_sounds.len(), 1);
+            assert_eq!(game.server.pending_sounds.len(), 1);
             assert!(game.living_set_equipment(living, EquipmentSlot::Head, Some(helmet)));
-            assert_eq!(game.side.pending_sounds.len(), 1);
+            assert_eq!(game.server.pending_sounds.len(), 1);
             game.mobs[0].silent = true;
             assert!(game.living_set_equipment(
                 living,
@@ -1782,7 +1782,7 @@ use sunrise_core::geometry::Vec3;
                 EquipmentSlot::Chest,
                 Some(ItemStack::new("minecraft:iron_helmet", 1))
             ));
-            assert_eq!(game.side.pending_sounds.len(), 1);
+            assert_eq!(game.server.pending_sounds.len(), 1);
             let events = sunrise_gameplay::game::server_side::dispense_fixture::stop_recording();
             assert_eq!(
                 events
@@ -1822,7 +1822,7 @@ use sunrise_core::geometry::Vec3;
             let helmet = ItemStack::new("minecraft:iron_helmet", 1);
             assert!(game.living_set_equipment(stand, EquipmentSlot::Head, Some(helmet.clone())));
             assert!(game.living_set_equipment(stand, EquipmentSlot::Head, None));
-            assert!(game.side.pending_sounds.is_empty());
+            assert!(game.server.pending_sounds.is_empty());
             game.tick_armor_stands().unwrap();
             game.dragon.as_mut().unwrap().ticks = 1;
             for _ in 0..2 {
@@ -1839,7 +1839,7 @@ use sunrise_core::geometry::Vec3;
             let chest = ItemStack::new("minecraft:iron_chestplate", 1);
             assert!(game.living_set_equipment(dragon, EquipmentSlot::Chest, Some(chest)));
             assert!(game.living_set_equipment(dragon, EquipmentSlot::Saddle, Some(stone)));
-            assert_eq!(game.side.pending_sounds.len(), 3);
+            assert_eq!(game.server.pending_sounds.len(), 3);
             let events = sunrise_gameplay::game::server_side::dispense_fixture::stop_recording();
             let count = |name: &str| events.iter().filter(|e| e.ends_with(name)).count();
             assert_eq!(count("minecraft:equip"), 3);
@@ -1872,7 +1872,7 @@ use sunrise_core::geometry::Vec3;
                 (game.equipment.get(6), game.equipment.get(7)),
                 (Some(&body), Some(&saddle))
             );
-            assert_eq!(game.side.pending_sounds.len(), 2);
+            assert_eq!(game.server.pending_sounds.len(), 2);
             game.sync_level();
             let tag = game.level.player_tag(&Default::default());
             let equipment = tag.get("equipment").unwrap();

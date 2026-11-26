@@ -31,7 +31,7 @@ impl crate::game::ServerGame<'_> {
         }
     }
     /// `PlayerAdvancements.save` and `ServerStatsCounter.save` of a network player.
-    pub(in crate::game::server_side) fn save_guest_records(
+    pub fn save_guest_records(
         &self,
         host: &LanHost,
         guest: &sunrise_sim::lan::guest::Guest,

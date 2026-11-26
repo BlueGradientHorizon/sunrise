@@ -24,7 +24,7 @@ use sunrise_level::{chunk::Chunk, effects::EffectInstance};
         };
         with_client_game(|game| {
             let _server = logged_client(game);
-            let own = game.side.remote.as_ref().unwrap().entity_id;
+            let own = game.client.remote.as_ref().unwrap().entity_id;
             stand_player(game);
             let flags = |game: &mut sunrise_client_gameplay::game::ClientGame<'_>, flags: i8| {
                 game.handle_packet(C::SetEntityData(play::SetEntityData {
@@ -50,7 +50,7 @@ use sunrise_level::{chunk::Chunk, effects::EffectInstance};
             assert!(!game.pack_player_status().glowing, "flag 6 cleared");
 
             let kind = |game: &sunrise_client_gameplay::game::ClientGame<'_>, name: &str| {
-                let remote = game.side.remote.as_ref().unwrap();
+                let remote = game.client.remote.as_ref().unwrap();
                 let types = remote.builtin.get("minecraft:entity_type").unwrap();
                 types.id(name).unwrap()
             };

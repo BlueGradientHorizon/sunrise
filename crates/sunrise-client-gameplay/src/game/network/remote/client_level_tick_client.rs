@@ -5,7 +5,7 @@ pub(in crate::game::client_side) use sunrise_gameplay_common::game::remote::clie
 /// No level means no event; failed ticks never emit the post event.
 #[cfg(feature = "client")]
 impl crate::game::ClientGame<'_> {
-    pub(in crate::game) fn tick_remote_level(&mut self) -> Result<()> {
+    pub fn tick_remote_level(&mut self) -> Result<()> {
         self.tick_remote_level_with(Self::tick_remote_level_body)
     }
     pub(in crate::game::client_side) fn tick_remote_level_body(&mut self) -> Result<()> {
@@ -73,7 +73,7 @@ impl crate::game::ClientGame<'_> {
         self.remote_handle_input();
         self.tick_remote_player(running, hold)
     }
-    pub(in crate::game) fn tick_remote_level_with(
+    pub fn tick_remote_level_with(
         &mut self,
         body: impl FnOnce(&mut Self) -> Result<()>,
     ) -> Result<()> {

@@ -33,9 +33,9 @@ fn a_special_dropped_item_outlines_only_its_committed_world_vertices() {
                 const ID: u32 = 1_900_000_101;
                 let (client, _server) = Pipe::pair();
                 game.connect_local(client, "SpecialOutlineTest").unwrap();
-                game.side.remote.as_mut().unwrap().glowing.insert(ID as i32);
+                game.client.remote.as_mut().unwrap().glowing.insert(ID as i32);
                 install_special_stick(game);
-                game.side.gui.atlas.sprites.insert(
+                game.client.gui.atlas.sprites.insert(
                     "block/stone".into(),
                     Rect {
                         u0: 0.0,
@@ -46,7 +46,7 @@ fn a_special_dropped_item_outlines_only_its_committed_world_vertices() {
                         h: 16,
                     },
                 );
-                game.side.glint_frame = GlintFrame {
+                game.client.glint_frame = GlintFrame {
                     millis: 0,
                     speed: 0.5,
                     alpha: 0.75,
@@ -100,7 +100,7 @@ fn a_special_dropped_item_outlines_only_its_committed_world_vertices() {
                 assert!(drawn.iter().all(|v| v.layer & 0xFFFF == 7)); // solid foil overlay
                 assert_ne!(drawn[1].glint_uv, [0.0; 2]);
 
-                let outline = game.side.glowing_vertices.borrow();
+                let outline = game.client.glowing_vertices.borrow();
                 assert_eq!(outline.len(), 4);
                 for (outline, vertex) in outline.iter().zip(drawn) {
                     assert_eq!(outline.pos, vertex.pos);
@@ -172,14 +172,14 @@ pub(crate) fn install_special_stick(game: &mut sunrise_client_gameplay::game::Cl
             ),
         ),
     )]);
-    let definition = game.side.client_pack.item_renderer.decode_definition(
+    let definition = game.client.client_pack.item_renderer.decode_definition(
         r#"{"model":{"type":"minecraft:special","base":"minecraft:builtin/missing","model":{"type":"test:stick"}}}"#,
         &sunrise_client::item_render::ItemProviderTables {
             special: Some(&factories),
             ..Default::default()
         },
     ).unwrap();
-    let renderer = Arc::get_mut(&mut game.side.client_pack.item_renderer)
+    let renderer = Arc::get_mut(&mut game.client.client_pack.item_renderer)
         .expect("the game's item renderer is shared");
     Arc::make_mut(&mut renderer.models)
         .definitions

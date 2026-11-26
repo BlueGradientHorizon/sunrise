@@ -12,14 +12,14 @@ fn explosion_validates_impulse_and_result_without_suppressing_effects() {
         "sunrise_client::game::client_side::remote_client::tests::client_explosion_tests::explosion_validates_impulse_and_result_without_suppressing_effects",
         |game| {
             let _reader = logged_in(game);
-            game.side
+            game.client
                 .streaming
                 .insert_remote(&mut game.world, sunrise_level::chunk::Chunk::empty(0, 0));
-            game.side.particles.0.particle_level = 0;
-            game.side.particles.0.seed_randoms(719, 11, 12);
-            game.side.particles.0.seed_particle_randoms(719);
+            game.client.particles.0.particle_level = 0;
+            game.client.particles.0.seed_randoms(719, 11, 12);
+            game.client.particles.0.seed_particle_randoms(719);
             let center = [8.5, 65.0, 8.5];
-            game.side.particles.0.camera = center;
+            game.client.particles.0.camera = center;
             let particle = |key| sunrise_protocol::entity_data::Particle {
                 id: registry_id(game, "minecraft:particle_type", key),
                 data: None,
@@ -49,8 +49,8 @@ fn explosion_validates_impulse_and_result_without_suppressing_effects() {
                 (start, Some([1.0, 0.0, -2.0]), [3.0, 0.0, -0.5], true),
                 (large, Some([f64::MAX, -1.0, 1.0]), large, true),
             ] {
-                game.side.particles.0.clear();
-                game.side.audio.0.capture = Some(Vec::new());
+                game.client.particles.0.clear();
+                game.client.audio.0.capture = Some(Vec::new());
                 let player = game.player.as_mut().unwrap();
                 let [x, y, z] = initial;
                 player.velocity = Vec3::new(x, y, z);
@@ -75,21 +75,21 @@ fn explosion_validates_impulse_and_result_without_suppressing_effects() {
                     "impulse {impulse:?}"
                 );
                 assert_eq!(player.needs_sync, sync, "impulse {impulse:?}");
-                let sound = &game.side.audio.0.capture.as_ref().unwrap()[..];
+                let sound = &game.client.audio.0.capture.as_ref().unwrap()[..];
                 assert!(
                     matches!(sound, [sound] if sound.event == "minecraft:entity.generic.explode" && sound.position == center)
                 );
-                assert!(game.side.particles.0.pending_len() > 0);
+                assert!(game.client.particles.0.pending_len() > 0);
                 game.tick_particle_engine();
                 assert!(
-                    game.side
+                    game.client
                         .particles
                         .0
                         .live()
                         .any(|p| p.ty == ParticleType::Explosion)
                 );
                 assert!(
-                    game.side
+                    game.client
                         .particles
                         .0
                         .live()

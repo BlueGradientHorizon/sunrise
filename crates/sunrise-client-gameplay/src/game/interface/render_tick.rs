@@ -134,7 +134,7 @@ impl crate::game::ClientGame<'_> {
     /// Polytone GPU particles, before the frame's quads are built: any pending clear, the
     /// renderer's verdict on each shader and on the quads drawn here, then the heightmap for the readers that draw (a custom shader's `Sampler1`,
     /// and the surface rain drawn as quads dies under), every half second.
-    pub(in crate::game::client_side) fn polytone_gpu_decide(&mut self, camera: glam::DVec3) {
+    pub fn polytone_gpu_decide(&mut self, camera: glam::DVec3) {
         // A mod's clear asked since the last frame goes first: cleared records read nothing.
         self.apply_mod_particle_clear();
         let (world, properties) = (&self.common.world, &self.common.pack.assets.properties);
@@ -173,15 +173,15 @@ impl crate::game::ClientGame<'_> {
         self.dimension_type().cardinal_light == CardinalLight::Nether
     }
     /// `SkyRenderer`'s overworld skybox: sun, moon and stars.
-    pub(in crate::game::client_side) fn overworld_skybox(&self) -> bool {
+    pub fn overworld_skybox(&self) -> bool {
         self.dimension_type().skybox == Skybox::Overworld
     }
     /// `SkyRenderer`'s End skybox and its flashes.
-    pub(in crate::game::client_side) fn end_skybox(&self) -> bool {
+    pub fn end_skybox(&self) -> bool {
         self.dimension_type().skybox == Skybox::End
     }
     /// `LevelRenderer.prepareTranslucents`: prepare the clouds the frame draws.
-    pub(in crate::game::client_side) fn frame_cloud_uv(
+    pub fn frame_cloud_uv(
         &self,
         title: bool,
         sky: &sunrise_level::environment::Sky,
@@ -220,7 +220,7 @@ impl crate::game::ClientGame<'_> {
         )
     }
     /// `FogRenderer.setupFog` for the frame's camera, and Sunrise's Fog option.
-    pub(in crate::game::client_side) fn frame_fog(
+    pub fn frame_fog(
         &self,
         camera: glam::DVec3,
         sky: &sunrise_level::environment::Sky,
@@ -388,7 +388,7 @@ impl crate::game::ClientGame<'_> {
             .map_or(self.common.world.shape.min_y, |r| r.dimension.min_y)
     }
     /// `SkyRenderer.shouldRenderDarkDisc`: uses `minecraft.player` eye and water state, not camera.
-    pub(in crate::game::client_side) fn dark_disc(&self, _camera: glam::DVec3) -> bool {
+    pub fn dark_disc(&self, _camera: glam::DVec3) -> bool {
         let Some(p) = self.common.player.as_ref() else {
             return false;
         };
@@ -403,7 +403,7 @@ impl crate::game::ClientGame<'_> {
     /// `ScreenEffectRenderer` + `Hud` camera overlays for this frame.
     /// `scale` is the player's `LivingEntity.getScale`.
     /// `hand_projection` is the frame's `camera::hand_projection`, which mods draw under.
-    pub(in crate::game) fn screen_quads(
+    pub fn screen_quads(
         &self,
         partial: f32,
         size: [u32; 2],
@@ -774,7 +774,7 @@ impl crate::game::ClientGame<'_> {
     }
 
     /// `Hud.updateVignetteBrightness` from the camera entity's eye, running even while frozen.
-    pub(in crate::game::client_side) fn tick_vignette(&mut self) {
+    pub fn tick_vignette(&mut self) {
         if let Some(e) = self.camera_eye_position() {
             let brightness = self.eye_brightness(e);
             self.client.screen_fx.tick_vignette(brightness);
@@ -783,7 +783,7 @@ impl crate::game::ClientGame<'_> {
 
     /// The client level's particle sources and the engine's tick, in one go.
     #[allow(dead_code)]
-    pub(in crate::game) fn tick_particles(&mut self) {
+    pub fn tick_particles(&mut self) {
         self.tick_particle_sources();
         self.tick_particle_engine();
     }
@@ -1083,7 +1083,7 @@ impl crate::game::ClientGame<'_> {
     }
 
     /// The ambient options whose providers need the game's model or overlay state.
-    fn emit_model_ambient(&mut self, particle: &PersistentOptions, at: [f64; 3]) {
+    pub fn emit_model_ambient(&mut self, particle: &PersistentOptions, at: [f64; 3]) {
         let override_limiter = match particle {
             PersistentOptions::Block(ty, _) => ty.override_limiter(),
             PersistentOptions::Item(_) => ParticleType::Item.override_limiter(),
@@ -1125,7 +1125,7 @@ impl crate::game::ClientGame<'_> {
 
     /// `ParticleEngine.tick` (and the pickups and sounds it raises): in `Minecraft.tick` after
     /// `Level.tickBlockEntities`, so a particle a block entity just added ages with the rest.
-    pub(in crate::game) fn tick_particle_engine(&mut self) {
+    pub fn tick_particle_engine(&mut self) {
         let mut laps = sunrise_level::spans::laps();
         let world = &self.common.world;
         let facts = self.common.res.facts();

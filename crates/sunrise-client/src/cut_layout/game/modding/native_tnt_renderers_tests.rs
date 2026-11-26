@@ -124,7 +124,7 @@ fn expected_cube(
         return Vec::new();
     };
     let Ok(models) = game
-        .side
+        .client
         .client_pack
         .render
         .model_catalog
@@ -144,11 +144,11 @@ fn expected_cube(
         };
         if sprites[index].is_none() {
             sprites[index] = game
-                .side
+                .client
                 .client_pack
                 .layer_names
                 .get(&face.layer)
-                .and_then(|name| game.side.gui.atlas.sprites.get(name).copied());
+                .and_then(|name| game.client.gui.atlas.sprites.get(name).copied());
         }
     }
     let remaining = remaining_fuse(tnt.fuse, alpha);

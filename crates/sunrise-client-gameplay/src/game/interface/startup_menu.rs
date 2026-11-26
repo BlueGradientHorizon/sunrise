@@ -479,7 +479,7 @@ pub(in crate::game::client_side) fn spawn_loader(
 }
 
 impl Loading {
-    pub(in crate::game::client_side) fn poll_menu_resources(&mut self) -> Result<()> {
+    pub fn poll_menu_resources(&mut self) -> Result<()> {
         // Once `Done` arrived the generation is over: the caller may have taken
         // its result, and the finished loader's channel is closed.
         if self.loaded.is_none() && !self.delivered {
@@ -533,7 +533,7 @@ impl Loading {
                 .save(&sunrise_gameplay_common::game::options_path());
         }
     }
-    pub(in crate::game::client_side) fn apply_menu_settings(&mut self) {
+    pub fn apply_menu_settings(&mut self) {
         if let Some(renderer) = &mut self.renderer {
             renderer.gamma = self.settings.gamma as f32;
             renderer.set_present_mode(self.settings.vsync, self.settings.sunrise.present_mode);
@@ -571,7 +571,7 @@ impl Loading {
         self.update_menu_cursor();
     }
 
-    fn menu_pointer_projection(&self) -> PointerProjection {
+    pub fn menu_pointer_projection(&self) -> PointerProjection {
         let inputs = self.settings.gui_scale_inputs();
         let size = self.menu_size();
         let window = self.window.as_deref().map_or_else(
@@ -598,7 +598,7 @@ impl Loading {
         self.menu.cursor = self.projected_menu_pointer().subpixel();
     }
 
-    fn menu_size(&self) -> [u32; 2] {
+    pub fn menu_size(&self) -> [u32; 2] {
         self.renderer
             .as_ref()
             .map_or([1280, 720], |r| [r.config.width, r.config.height])
@@ -629,7 +629,7 @@ impl Loading {
             .save(&sunrise_gameplay_common::game::options_path());
     }
 
-    fn open_menu_options(&mut self, page: Page) {
+    pub fn open_menu_options(&mut self, page: Page) {
         self.menu.options.open_at(false, page);
         self.menu.options.languages = sunrise_game_data::lang::available(&[
             &sunrise_assets::resource_source::ResourceSource::directory(self.menu.root.clone()),
@@ -647,7 +647,7 @@ impl Loading {
         self.menu.options_open = true;
     }
 
-    fn menu_option_events(&mut self, events: Vec<Event>) {
+    pub fn menu_option_events(&mut self, events: Vec<Event>) {
         for event in events {
             match event {
                 // No world debug list exists before Game construction.
@@ -1176,7 +1176,7 @@ impl Loading {
         self.menu.key_synthetic = was;
     }
 
-    pub(in crate::game::client_side) fn menu_event(
+    pub fn menu_event(
         &mut self,
         event_loop: &dyn EventLoopCtl,
         event: WindowEvent,
@@ -1441,7 +1441,7 @@ impl Loading {
         Ok(())
     }
 
-    pub(in crate::game::client_side) fn draw_menu(&mut self, batch: &mut HudBatch) {
+    pub fn draw_menu(&mut self, batch: &mut HudBatch) {
         // The buttons crates add to the title screen show by what is installed now
         // (`sunrise_hooks::title`), as on the game's own title screen.
         self.sync_title_mods();

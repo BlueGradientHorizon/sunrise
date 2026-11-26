@@ -15,8 +15,8 @@ fn a_mob_presses_a_plate_only_inside_the_simulation_distance() {
         game.world
             .chunks
             .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-        game.side.settings.simulation_distance = 4;
-        game.side.settings.render_distance = 12;
+        game.server.settings.simulation_distance = 4;
+        game.server.settings.render_distance = 12;
         let registry = game.pack.assets.registry;
         let stone = registry.default_state("minecraft:stone").unwrap();
         let plate = registry

@@ -34,7 +34,7 @@ fn a_lan_hub_click_is_decided_the_same_way() {
                     pos,
                     sunrise_level::containers::BlockEntity::Chest(vec![None; 27]),
                 );
-                let host = game.side.lan.as_mut().unwrap();
+                let host = game.server.lan.as_mut().unwrap();
                 host.hub.open_container(
                     12,
                     "minecraft:generic_9x3",
@@ -67,7 +67,7 @@ fn a_lan_hub_click_is_decided_the_same_way() {
                 let slot = game.world.block_entities.get(&pos).unwrap().slots()[0]
                     .as_ref()
                     .map_or(0, |s| s.count);
-                let host = game.side.lan.as_ref().unwrap();
+                let host = game.server.lan.as_ref().unwrap();
                 let guest = &host.hub.guests[0];
                 (slot, count(&guest.carried), count(&guest.inventory[20]))
             };
@@ -80,7 +80,7 @@ fn a_lan_hub_click_is_decided_the_same_way() {
             // Placement and capacity are separate live slot queries.
             assert_eq!(ASKS.get(), 2);
             assert_eq!(SEEN.with(|s| s.borrow().clone()), [(3, 0)]);
-            assert!(game.side.lan.is_some());
+            assert!(game.server.lan.is_some());
 
             // The listener proposes dirt, not the stone a plain click would place. Both a
             // permission refusal and an undersized limit keep the cursor and the container.
@@ -116,8 +116,8 @@ fn a_lan_hub_click_is_decided_the_same_way() {
             });
             assert_eq!(click(game, window), (0, 3, 0));
             assert_eq!(dispatches(), 1);
-            assert!(game.side.lan.is_some());
-            assert!(game.side.lan_guest_swaps.is_empty());
+            assert!(game.server.lan.is_some());
+            assert!(game.server.lan_guest_swaps.is_empty());
             let window = open(game);
             script(Script::default());
             assert_eq!(click(game, window), (3, 0, 0));

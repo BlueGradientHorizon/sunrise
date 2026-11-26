@@ -111,14 +111,14 @@ pub(in crate::game) const TITLE_FRAME_WAIT: Duration = Duration::from_secs(1);
 #[cfg(feature = "client")]
 impl Loading {
     /// Reconstitute the main-thread error without erasing declaration refusals.
-    pub(in crate::game::client_side) fn take_worker_result(&mut self) -> Option<Result<Loaded>> {
+    pub fn take_worker_result(&mut self) -> Option<Result<Loaded>> {
         self.loaded.take().map(|result| result.map_err(Into::into))
     }
 
     /// The world renderer is built on the main thread, so building it before
     /// the title is on the screen holds the title back by that build. Wait for
     /// one title frame first, unless a world is waiting to open.
-    pub(in crate::game::client_side) fn ready_for_handoff(&self) -> bool {
+    pub fn ready_for_handoff(&self) -> bool {
         self.title_drawn
             || self.menu.pending.is_some()
             || self.ui_at.is_none_or(|at| at.elapsed() >= TITLE_FRAME_WAIT)
@@ -238,7 +238,7 @@ impl Loading {
     }
     /// The menu bundle arrived: rebuild the loading screen with the real atlas
     /// and title panorama.
-    pub(in crate::game::client_side) fn set_ui(&mut self, gui: UiResources, root: PathBuf) {
+    pub fn set_ui(&mut self, gui: UiResources, root: PathBuf) {
         log::info!(
             "Sunrise: loading the title artwork after {} ms",
             self.started.elapsed().as_millis()

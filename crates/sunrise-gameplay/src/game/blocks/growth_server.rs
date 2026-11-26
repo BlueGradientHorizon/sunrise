@@ -9,7 +9,7 @@ impl ServerGame<'_> {
     /// Load the configured/placed feature registry used by saplings, fungi
     /// and bone meal (for fixtures: the plain bundle, unless one is installed; worlds install
     /// their own in `prepare_world`).
-    pub(in crate::game) fn install_live_features(&self) {
+    pub fn install_live_features(&self) {
         if self.common.res.behaviours().live_features().is_some() {
             return;
         }

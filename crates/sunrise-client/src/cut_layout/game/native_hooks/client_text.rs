@@ -124,7 +124,7 @@ mod tests {
                     ),
                 )]),
             );
-            game.side.gui.atlas.font = sunrise_client::font::Font::metrics(&source);
+            game.client.gui.atlas.font = sunrise_client::font::Font::metrics(&source);
             let host: &dyn mod_api::ClientHost = game;
             assert_eq!(host.text_width(&mod_api::Text::literal("AA")), 8);
             assert_eq!(host.text_split(&mod_api::Text::literal("AA"), 8).len(), 1);

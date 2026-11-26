@@ -39,23 +39,23 @@ fn schedule_game<'a>(
     )
     .unwrap();
     let mut game = sunrise_gameplay::game::game_tests::tests::server_game(resources);
-    game.side.world_root = dir.clone();
+    game.server.world_root = dir.clone();
     game.build_registries();
     game.set_allow_commands(true);
     game.reload_datapacks(false, &game.level.enabled_features.clone())
         .unwrap();
-    assert!(game.side.fns.0.enabled.contains(&"file/hs".to_owned()));
+    assert!(game.server.fns.0.enabled.contains(&"file/hs".to_owned()));
     assert!(
-        game.side.fns.0.store.errors.is_empty(),
+        game.server.fns.0.store.errors.is_empty(),
         "{:?}",
-        game.side.fns.0.store.errors
+        game.server.fns.0.store.errors
     );
     game.run_command("scoreboard objectives add hs dummy");
     (game, dir)
 }
 
 fn run(game: &mut sunrise_gameplay::game::ServerGame<'_>, line: &str) {
-    game.side.exec.0 = ExecState::default();
+    game.server.exec.0 = ExecState::default();
     let source = game.player_source();
     game.execute_line(line, source).unwrap();
 }
@@ -76,7 +76,7 @@ fn a_fired_or_cleared_event_stays_gone_across_a_reload() {
     game.world.game_time = due;
     game.run_scheduled_functions();
     assert_eq!(fired(&game), 1);
-    assert!(game.side.fns.0.schedule.is_empty());
+    assert!(game.server.fns.0.schedule.is_empty());
     run(&mut game, "reload");
     game.run_scheduled_functions();
     assert_eq!(fired(&game), 1, "a fired event must not come back");
@@ -84,7 +84,7 @@ fn a_fired_or_cleared_event_stays_gone_across_a_reload() {
     run(&mut game, "schedule function hs:hello 100t");
     game.save_schedule();
     run(&mut game, "schedule clear hs:hello");
-    assert!(game.side.fns.0.schedule.is_empty());
+    assert!(game.server.fns.0.schedule.is_empty());
     run(&mut game, "reload");
     game.world.game_time = due + 100;
     game.run_scheduled_functions();
@@ -102,19 +102,19 @@ fn a_pending_event_survives_a_save_and_a_reload() {
     let due = game.world.game_time + 40;
     // A reload keeps the live queue: the event still fires at its time.
     run(&mut game, "reload");
-    assert_eq!(game.side.fns.0.schedule.len(), 1);
+    assert_eq!(game.server.fns.0.schedule.len(), 1);
     game.world.game_time = due;
     game.run_scheduled_functions();
     assert_eq!(fired(&game), 1);
-    assert!(game.side.fns.0.schedule.is_empty());
+    assert!(game.server.fns.0.schedule.is_empty());
     // A pending event of a saved world is read back when a session opens it.
     run(&mut game, "schedule function hs:hello 60t");
     game.save_schedule();
     let due = game.world.game_time + 60;
-    game.side.fns.0 = Default::default();
+    game.server.fns.0 = Default::default();
     game.ensure_datapacks();
     let loaded: Vec<_> = game
-        .side
+        .server
         .fns
         .0
         .schedule

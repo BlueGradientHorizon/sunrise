@@ -10,7 +10,7 @@ impl crate::game::ClientGame<'_> {
     }
     /// `ChatListener.queueSize`: the messages Chat Delay holds, for the chat's
     /// `chat.queue` row.
-    pub(in crate::game) fn chat_queue_len(&self) -> usize {
+    pub fn chat_queue_len(&self) -> usize {
         self.client.remote.as_ref().map_or(0, |r| r.chat_queue.len())
     }
 
@@ -48,7 +48,7 @@ impl crate::game::ClientGame<'_> {
     /// `ChatListener.tick`: while paused the wait does not run down; with no
     /// Chat Delay the queue flushes; otherwise the next message the chat takes
     /// shows once the delay has passed since the last shown one.
-    pub(in crate::game) fn tick_chat_queue(&mut self) {
+    pub fn tick_chat_queue(&mut self) {
         let delay = self.chat_delay_ms();
         // Minecraft.isPaused: a single-player pausing screen, not every pause menu.
         if self.common.pause {
@@ -111,7 +111,7 @@ impl crate::game::ClientGame<'_> {
 
     /// `ChatListener.acceptNextDelayedMessage`: the queue row's click shows the
     /// next held-back message now, even before the delay has elapsed.
-    pub(in crate::game) fn accept_next_delayed_message(&mut self) {
+    pub fn accept_next_delayed_message(&mut self) {
         if let Some(chat) = self
             .client
             .remote

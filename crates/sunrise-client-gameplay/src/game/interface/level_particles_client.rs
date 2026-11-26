@@ -8,7 +8,7 @@ use sunrise_world::registry::BlockStateId;
 
 impl ClientGame<'_> {
     /// Queue and replay level event `id` at `pos` on the client.
-    pub(in crate::game) fn client_level_event_at(&mut self, id: i32, pos: [i32; 3], data: i32) {
+    pub fn client_level_event_at(&mut self, id: i32, pos: [i32; 3], data: i32) {
         self.common.level_events.push(LevelEvent::LevelEvent {
             id,
             pos: BlockPos::new(pos[0], pos[1], pos[2]),
@@ -81,7 +81,7 @@ impl ClientGame<'_> {
                 .is_some_and(|d| d == "down")
     }
     /// `ClientLevel.addBreakingBlockEffects`: hit sound and mining crumb on the hit face.
-    pub(in crate::game) fn breaking_block_effects(
+    pub fn breaking_block_effects(
         &mut self,
         pos: [i32; 3],
         face: [i32; 3],

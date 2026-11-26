@@ -572,7 +572,7 @@ mod tests {
             let (client, _server) = sunrise_protocol::connection::Pipe::pair();
             game.connect_local(client, "WeatherTest").unwrap();
             assert_eq!(level.weather(game), None, "login has not completed");
-            game.side.remote.as_mut().unwrap().logged_in = true;
+            game.client.remote.as_mut().unwrap().logged_in = true;
             game.world.weather.rain_level = (0.0, 0.5);
             game.world.weather.thunder_level = (0.0, 0.75);
             assert_eq!(level.weather(game), Some((0.5, 0.375)));

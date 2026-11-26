@@ -193,7 +193,7 @@ fn a_block_part_reads_a_block_entity_through_its_owning_level() {
         // A second loaded dimension has a chest of its own at the same position:
         // the level host answers from that level's block entity, not a fixed one.
         let scratch = tempfile::tempdir().unwrap();
-        game.side.world_root = scratch.path().to_path_buf();
+        game.server.world_root = scratch.path().to_path_buf();
         game.enter_level(sunrise_gameplay_common::game::Dim::Nether).unwrap();
         game.world.chunks.insert(
             (0, 0),

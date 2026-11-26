@@ -60,7 +60,7 @@ pub(in crate::game) struct Env<'a, 'g> {
 #[cfg(feature = "client")]
 impl crate::game::ClientGame<'_> {
     /// Before a frame is drawn: drop the model draws prepared for the last one.
-    pub(in crate::game::client_side) fn begin_frame_draws(&self) {
+    pub fn begin_frame_draws(&self) {
         self.client.prepared_model_draws.borrow_mut().clear();
     }
 }
@@ -474,7 +474,7 @@ fn use_duration(components: ComponentsView<'_>) -> i32 {
 
 #[cfg(feature = "client")]
 impl crate::game::ClientGame<'_> {
-    pub(in crate::game) fn item_env(&self) -> Env<'_, '_> {
+    pub fn item_env(&self) -> Env<'_, '_> {
         Env { game: self }
     }
     pub(in crate::game::client_side) fn item_host(&self) -> Host<'_> {
@@ -505,7 +505,7 @@ impl crate::game::ClientGame<'_> {
         *cached = Some((key, level.clone()));
         level
     }
-    fn level_state_now(&self, dimension: &'static str) -> LevelState {
+    pub fn level_state_now(&self, dimension: &'static str) -> LevelState {
         let sky = self
             .dim_environment()
             .sample(&sunrise_level::environment::Sample {
@@ -577,7 +577,7 @@ impl crate::game::ClientGame<'_> {
         owner
     }
     /// `ItemModelResolver.updateForTopItem`.
-    pub(in crate::game) fn resolve_item(
+    pub fn resolve_item(
         &self,
         stack: &ItemStack,
         display: DisplayContext,
@@ -691,7 +691,7 @@ impl crate::game::ClientGame<'_> {
         state
     }
     /// `GuiGraphics.renderItem(player, level, stack, x, y, 0)`.
-    pub(in crate::game) fn draw_item_model(
+    pub fn draw_item_model(
         &self,
         batch: &mut HudBatch,
         stack: &ItemStack,
@@ -828,7 +828,7 @@ impl crate::game::ClientGame<'_> {
         );
     }
     /// [`Self::submit_item_world`] without the level's diffuse shading.
-    pub(in crate::game::client_side) fn submit_item_unlit(
+    pub fn submit_item_unlit(
         &self,
         state: &ItemRenderState,
         pose: glam::Mat4,
@@ -918,7 +918,7 @@ impl crate::game::ClientGame<'_> {
         true
     }
     /// `ItemEntityRenderer.submit` for every dropped item.
-    pub(in crate::game::client_side) fn dropped_item_geometry(
+    pub fn dropped_item_geometry(
         &self,
         camera: glam::DVec3,
         alpha: f64,

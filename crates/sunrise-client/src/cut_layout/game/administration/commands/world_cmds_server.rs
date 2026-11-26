@@ -27,14 +27,14 @@ pub(crate) mod allay_owner_damage_tests {
             game.player = Some(player);
             game.level.player_uuid = Some(actual);
             assert_eq!(game.attack_of(7).player_uuid, Some(actual));
-            game.side.lan_acting = Some(12);
-            game.side.lan_acting_uuid = Some(sunrise_sim::lan::playerdata::ints_uuid(other));
+            game.server.lan_acting = Some(12);
+            game.server.lan_acting_uuid = Some(sunrise_sim::lan::playerdata::ints_uuid(other));
             assert_eq!(
                 game.attack_of(7).player_uuid,
                 Some(other),
                 "the acting guest is the causing player"
             );
-            game.side.lan_acting_uuid = None;
+            game.server.lan_acting_uuid = None;
             game.level.player_uuid = None;
             assert_eq!(
                 game.attack_of(7).player_uuid,
@@ -42,7 +42,7 @@ pub(crate) mod allay_owner_damage_tests {
                 "no invented UUID for an unknown source"
             );
             game.level.player_uuid = Some(actual);
-            game.side.lan_acting = None;
+            game.server.lan_acting = None;
             let kind = game.res.mob_types().get("minecraft:allay").unwrap().clone();
             let before = game.world.game_time;
             for melee in [true, false] {
@@ -146,8 +146,8 @@ pub(crate) mod vehicle_damage_command_tests {
         use std::sync::{atomic::AtomicI32, mpsc};
         use sunrise_protocol::packets::configuration::ClientInformation;
         use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
-        game.side.world_root = game.options.game_dir.as_ref().unwrap().join("h082-world");
-        std::fs::create_dir_all(&game.side.world_root).unwrap();
+        game.server.world_root = game.options.game_dir.as_ref().unwrap().join("h082-world");
+        std::fs::create_dir_all(&game.server.world_root).unwrap();
         game.lan_host(
             sunrise_gameplay::game::lan::LanSettings {
                 port: 0,
@@ -202,10 +202,10 @@ pub(crate) mod vehicle_damage_command_tests {
             guest.placed = true;
             guest.loaded = true;
             guest.game_mode = 1;
-            game.side.lan.as_mut().unwrap().hub.guests.push(guest);
+            game.server.lan.as_mut().unwrap().hub.guests.push(guest);
             receivers.push(rx);
         }
-        let host = game.side.lan.as_mut().unwrap();
+        let host = game.server.lan.as_mut().unwrap();
         for name in ["Bob", "Carol"] {
             host.hub
                 .ops

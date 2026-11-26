@@ -219,13 +219,13 @@ pub(in crate::game::client_side) fn stonecutter_scroll_to(
 }
 
 impl ClientGame<'_> {
-    pub(in crate::game) fn open_station_client(&mut self, station: Station) {
+    pub fn open_station_client(&mut self, station: Station) {
         self.common.station = Some(station);
         self.client.station_ui = Some(StationUi::new());
         self.client.station_loom = Default::default();
     }
 
-    pub(in crate::game::client_side) fn clear_station_client(&mut self) {
+    pub fn clear_station_client(&mut self) {
         self.common.station = None;
         self.client.station_ui = None;
         self.client.station_loom = Default::default();

@@ -134,8 +134,8 @@ pub(crate) mod tests {
                 seed: 0,
                 max_players: 2,
                 integrated: true,
-                levels: game.side.level_shapes,
-                level_seeds: game.side.levels.0.runtime.seeds(),
+                levels: game.server.level_shapes,
+                level_seeds: game.server.levels.0.runtime.seeds(),
             };
             game.lan_host(settings, net, config).unwrap();
             let (tx, _rx) = std::sync::mpsc::channel();
@@ -157,7 +157,7 @@ pub(crate) mod tests {
                 10,
             );
             guest.placed = true;
-            game.side.lan.as_mut().unwrap().hub.guests.push(guest);
+            game.server.lan.as_mut().unwrap().hub.guests.push(guest);
             let cow = add_mob(game, 12, "minecraft:cow");
             let other = add_mob(game, 13, "minecraft:cow");
             game.boats
@@ -168,7 +168,7 @@ pub(crate) mod tests {
                 Some(LeashHolder::Unleashed)
             );
             let motion = sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::ZERO).unwrap();
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()
@@ -376,10 +376,10 @@ pub(crate) mod tests {
             ));
             assert_eq!(stale.requires_custom_persistence(game), None);
             assert!(!stale.set_baby(game, true));
-            game.side.held_out.push(14);
+            game.server.held_out.push(14);
             assert_eq!(mob.requires_custom_persistence(game), None);
             assert!(!mob.set_baby(game, true));
-            game.side.held_out.pop();
+            game.server.held_out.pop();
             game.mobs.last_mut().unwrap().removed = true;
             assert_eq!(mob.requires_custom_persistence(game), None);
             assert!(!mob.set_baby(game, true));
@@ -452,7 +452,7 @@ pub(crate) mod tests {
                 8,
             );
             guest.placed = true;
-            game.side.lan.as_mut().unwrap().hub.guests.push(guest);
+            game.server.lan.as_mut().unwrap().hub.guests.push(guest);
             let zombie = game
                 .res
                 .mob_types()
@@ -465,7 +465,7 @@ pub(crate) mod tests {
             assert!(mob.set_target(game, Some(player)));
             assert_eq!(mob.target(game), Some(player));
             assert_eq!(
-                game.side.lan.as_ref().unwrap().mob_players.get(&12),
+                game.server.lan.as_ref().unwrap().mob_players.get(&12),
                 Some(&1)
             );
             // `ZombifiedPiglin.setTarget` does not impersonate a player hit:
@@ -490,7 +490,7 @@ pub(crate) mod tests {
                     .last_hurt_by_player,
                 42
             );
-            assert!(!game.side.last_hurt_by_player.contains_key(&13));
+            assert!(!game.server.last_hurt_by_player.contains_key(&13));
             assert!(piglin.set_target(game, None));
             assert_eq!(
                 game.mobs
@@ -548,7 +548,7 @@ pub(crate) mod tests {
             assert_eq!(recipient.target(game), None);
             {
                 let value = 1;
-                game.side
+                game.server
                     .lan
                     .as_mut()
                     .unwrap()
@@ -561,7 +561,7 @@ pub(crate) mod tests {
             assert_eq!(game.mobs[0].ai.target, Some(Who::Player));
             {
                 let value = 0;
-                game.side
+                game.server
                     .lan
                     .as_mut()
                     .unwrap()
@@ -571,7 +571,7 @@ pub(crate) mod tests {
             }
             {
                 let value = "minecraft:the_nether".into();
-                game.side
+                game.server
                     .lan
                     .as_mut()
                     .unwrap()
@@ -581,7 +581,7 @@ pub(crate) mod tests {
             }
             assert!(!mob.set_target(game, Some(player)));
             assert_eq!(game.mobs[0].ai.target, Some(Who::Player));
-            game.side.lan.as_mut().unwrap().mob_players.clear();
+            game.server.lan.as_mut().unwrap().mob_players.clear();
             assert_eq!(mob.target(game), None);
             assert_eq!(game.mobs[0].ai.target, Some(Who::Player));
         });

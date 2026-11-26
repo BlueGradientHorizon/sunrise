@@ -397,7 +397,7 @@ impl crate::game::ServerGame<'_> {
             || self.common.offhand.as_ref().is_some_and(|s| self.is_rod(s))
     }
     /// `FishingRodItem.use`.
-    pub(in crate::game::server_side) fn use_fishing_rod(&mut self, stack: &ItemStack) -> bool {
+    pub fn use_fishing_rod(&mut self, stack: &ItemStack) -> bool {
         if !self.is_rod(stack) {
             return false;
         }
@@ -500,7 +500,7 @@ impl crate::game::ServerGame<'_> {
         true
     }
     /// `FishingHook.retrieve`: the rod damage it costs.
-    pub(in crate::game) fn retrieve_hook(&mut self, rod: &ItemStack) -> u32 {
+    pub fn retrieve_hook(&mut self, rod: &ItemStack) -> u32 {
         let Some(mut hook) = self.common.hook.extract() else {
             return 0;
         };
@@ -509,7 +509,7 @@ impl crate::game::ServerGame<'_> {
         self.common.hook.retire_extracted(id, join);
         damage
     }
-    pub(in crate::game::server_side) fn retrieve_hook_extracted(
+    pub fn retrieve_hook_extracted(
         &mut self,
         rod: &ItemStack,
         hook: &mut Hook,
@@ -725,7 +725,7 @@ impl crate::game::ServerGame<'_> {
         damage
     }
     /// getOpenWaterTypeForBlock: 0 above water, 1 inside water, 2 invalid.
-    pub(in crate::game::server_side) fn open_water_type(&self, x: i32, y: i32, z: i32) -> u8 {
+    pub fn open_water_type(&self, x: i32, y: i32, z: i32) -> u8 {
         let state = self.common.world.block(x, y, z);
         let f = self.common.res.facts().get(state);
         // `!state.isAir()`: cave_air and void_air are air too.
@@ -744,7 +744,7 @@ impl crate::game::ServerGame<'_> {
         }
     }
     /// calculateOpenWater over the 5x4x5 area around the hook.
-    pub(in crate::game::server_side) fn calculate_open_water(&self, b: [i32; 3]) -> bool {
+    pub fn calculate_open_water(&self, b: [i32; 3]) -> bool {
         let mut previous = 2u8;
         for dy in -1..=2 {
             let mut layer = None;
@@ -887,7 +887,7 @@ impl crate::game::ServerGame<'_> {
         &*self.common.res.facts().get(state).name == "minecraft:water"
     }
     /// `FishingHook.tick`.
-    pub(in crate::game::server_side) fn tick_fishing(&mut self) {
+    pub fn tick_fishing(&mut self) {
         let Some(hook) = self.common.hook.extract() else {
             return;
         };
@@ -1486,7 +1486,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// Takes a cast hook out of the level (`Entity.discard`).
-    pub(in crate::game::server_side) fn remove_fishing_hook(&mut self, id: u32) {
+    pub fn remove_fishing_hook(&mut self, id: u32) {
         use sunrise_sim::join_seq::residency::{Kind, Source, table::EntityLookup};
         let found = self
             .common.resident_entities
@@ -1514,7 +1514,7 @@ impl crate::game::ServerGame<'_> {
 
 impl crate::game::ServerGame<'_> {
     /// The cast hook with an entity id, and who cast it.
-    pub(in crate::game) fn fishing_hook_by_id(
+    pub fn fishing_hook_by_id(
         &self,
         id: u32,
     ) -> Option<(&Hook, sunrise_gameplay_common::game::commands_common::Target)> {

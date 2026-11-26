@@ -145,7 +145,7 @@ fn game_gateway_phases() -> [[i32; 2]; 4] {
             ("NoGravity", Tag::Byte(1)),
         ]);
         game.load_listed(kind, Some(uuid), None, tag).unwrap();
-        ids.push(game.side.next_entity);
+        ids.push(game.server.next_entity);
     }
     assert_eq!(game.boats.len(), 1);
     assert_eq!(game.creatures.projectiles.len(), 1);
@@ -153,7 +153,7 @@ fn game_gateway_phases() -> [[i32; 2]; 4] {
         game.creatures.projectiles[0].kind,
         ProjectileKind::EnderPearl
     ));
-    game.side
+    game.server
         .tickets
         .0
         .update(Some(sunrise_sim::ticket_levels::Sources {

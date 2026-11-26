@@ -23,15 +23,15 @@ pub(crate) fn client_tick_to_server(
             break;
         }
     }
-    let hub = &mut server.side.lan.as_mut().unwrap().hub;
+    let hub = &mut server.server.lan.as_mut().unwrap().hub;
     hub.update_guest(OWNER, |g| {
         g.inbox
             .extend(packets.iter().cloned().map(|p| InboxItem::Packet(p, None)));
     })
     .unwrap();
-    server.side.level_pass = Default::default();
+    server.server.level_pass = Default::default();
     server.tick_lan_packets();
-    let hub = &mut server.side.lan.as_mut().unwrap().hub;
+    let hub = &mut server.server.lan.as_mut().unwrap().hub;
     hub.end_tick();
     hub.guest(OWNER).unwrap().sender.flush();
     packets

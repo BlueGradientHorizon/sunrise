@@ -7,7 +7,7 @@ use sunrise_sim::mobs::{Mob, Species, sniffer};
 impl ClientGame<'_> {
     /// The sniffer's client-side effects: `Sniffer.emitDiggingParticles`
     /// and `playSearchingSound`.
-    pub(in crate::game) fn tick_sniffer_client(&mut self) {
+    pub fn tick_sniffer_client(&mut self) {
         assert!(
             !self.is_logical_server(),
             "tick_sniffer_client called on Server role"

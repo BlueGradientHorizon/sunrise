@@ -221,7 +221,7 @@ impl crate::game::ClientGame<'_> {
             self.common.adv.selected_tab = None;
         }
     }
-    pub(in crate::game::client_side) fn close_advancements(&mut self) {
+    pub fn close_advancements(&mut self) {
         // AdvancementsScreen.removed: the server hears the screen closed.
         self.send(sunrise_protocol::packets::play::Serverbound::SeenAdvancements(closed_screen()));
         if self.client.adv_ui.0.from_pause {
@@ -232,7 +232,7 @@ impl crate::game::ClientGame<'_> {
         }
     }
     /// `ClientAdvancements.setSelectedTab` with `tellServer` enabled.
-    fn select_advancement_tab(&mut self, tab: usize) {
+    pub fn select_advancement_tab(&mut self, tab: usize) {
         let id = &self.common.adv.tree.list[tab].id;
         self.send(sunrise_protocol::packets::play::Serverbound::SeenAdvancements(opened_tab(id)));
         self.client.adv_ui.0.tab = Some(id.clone());
@@ -352,7 +352,7 @@ impl crate::game::ClientGame<'_> {
             remote,
         });
     }
-    fn adv_counts(&self, i: usize) -> Option<(usize, usize)> {
+    pub fn adv_counts(&self, i: usize) -> Option<(usize, usize)> {
         let a = &self.common.adv.tree.list[i];
         if self.common.adv.remote_tree.is_some() {
             self.common.adv.progress.remote_counts(&a.id)
@@ -360,14 +360,14 @@ impl crate::game::ClientGame<'_> {
             (!a.criteria.is_empty()).then(|| self.common.adv.progress.counts(a))
         }
     }
-    fn adv_done(&self, i: usize) -> bool {
+    pub fn adv_done(&self, i: usize) -> bool {
         if self.common.adv.remote_tree.is_some() {
             self.adv_counts(i).is_some_and(|(got, total)| got == total)
         } else {
             self.common.adv.progress.done(&self.common.adv.tree.list[i])
         }
     }
-    fn adv_view(&mut self) -> View {
+    pub fn adv_view(&mut self) -> View {
         self.adv_cache();
         let c = self
             .client
@@ -530,7 +530,7 @@ impl crate::game::ClientGame<'_> {
         }
         (title, desc, longest + 3.0 + 5.0)
     }
-    pub(in crate::game::client_side) fn draw_advancements(&mut self, batch: &mut HudBatch) {
+    pub fn draw_advancements(&mut self, batch: &mut HudBatch) {
         sunrise_client::widgets::begin_screen(|| {
             sunrise_client::widgets::ScreenInfo::new(
                 "advancements",
@@ -795,7 +795,7 @@ impl crate::game::ClientGame<'_> {
         }
     }
     /// `AdvancementTab.tick`, run per frame at the tick rate's pace.
-    fn adv_tick_hover(&mut self, view: &View, sx: i32, sy: i32, left: f32, top: f32) {
+    pub fn adv_tick_hover(&mut self, view: &View, sx: i32, sy: i32, left: f32, top: f32) {
         let now = Instant::now();
         let ticks = self
             .client
@@ -1097,7 +1097,7 @@ impl crate::game::ClientGame<'_> {
     /// `AdvancementsScreen.mouseScrolled`: returns `true` only when a tab is
     /// selected; with no selected tab vanilla returns `false` so NeoForge
     /// fires `MouseScrolled.Post`.
-    pub(in crate::game::client_side) fn advancements_scroll(&mut self, x: f32, y: f32) -> bool {
+    pub fn advancements_scroll(&mut self, x: f32, y: f32) -> bool {
         if self.adv_view().tab.is_none() {
             return false;
         }

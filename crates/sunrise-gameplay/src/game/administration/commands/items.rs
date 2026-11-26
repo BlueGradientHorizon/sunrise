@@ -84,7 +84,7 @@ impl crate::game::ServerGame<'_> {
         Ok(targets.into_iter().map(Owner::Entity).collect())
     }
     /// The slots a name (or wildcard group) addresses on an owner.
-    pub(in crate::game) fn slots_named(&mut self, owner: &Owner, name: &str) -> Vec<Slot> {
+    pub fn slots_named(&mut self, owner: &Owner, name: &str) -> Vec<Slot> {
         if let Owner::Entity(Target::Guest(conn)) = *owner {
             let slots = self.for_player(Target::Guest(conn), |g| {
                 g.slots_named(&Owner::Entity(Target::Player), name)
@@ -500,7 +500,7 @@ impl crate::game::ServerGame<'_> {
         self.equipment_slot_accepts(slot, &stack) && self.slot_set(slot, stack)
     }
     /// Put a stack (or nothing) in a slot; false when the slot cannot take it.
-    pub(in crate::game) fn slot_set(&mut self, s: &Slot, stack: Option<ItemStack>) -> bool {
+    pub fn slot_set(&mut self, s: &Slot, stack: Option<ItemStack>) -> bool {
         self.slot_set_with_effects(s, stack, true)
     }
 
@@ -576,7 +576,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// ItemInput.createItemStack: read-only view of the two prototype components used by this command
     /// validation, with all typed patch operations (including removals).
-    pub(in crate::game) fn item_validation_components(
+    pub fn item_validation_components(
         &self,
         id: &str,
         components: Option<&str>,

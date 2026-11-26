@@ -15,7 +15,7 @@ fn raid_bars(game: &sunrise_gameplay::game::ServerGame<'_>) -> usize {
 fn the_raid_bar_keeps_a_viewer_until_the_next_twenty_tick_beat() {
     let mut resources = None;
     let mut game = sunrise_gameplay::game::game_tests::tests::server_game(&mut resources);
-    game.side.world_root =
+    game.server.world_root =
         std::path::PathBuf::from(std::env::var_os("SUNRISE_HOME").unwrap()).join("raid-bar-world");
     for x in -5..5 {
         for z in -5..5 {

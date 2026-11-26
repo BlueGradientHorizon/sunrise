@@ -6,7 +6,7 @@ impl ServerGame<'_> {
     /// `minecraft:water` tag; a data pack may edit both), then native mods' declarations, then
     /// content mods' files in load order and file name. Tags are read again on each call. An
     /// id that names no fluid or block refuses the world by name.
-    pub(in crate::game) fn install_fluid_interactions(&self) -> Result<(), String> {
+    pub fn install_fluid_interactions(&self) -> Result<(), String> {
         let items = self
             .server
             .world_tables

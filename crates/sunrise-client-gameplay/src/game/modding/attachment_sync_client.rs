@@ -5,7 +5,7 @@ use sunrise_protocol::attachment_sync::Message;
 
 impl ClientGame<'_> {
     /// Apply an already decoded sync in play packet order, when its holder should exist.
-    pub(in crate::game) fn remote_attachment_sync(&mut self, message: Message) {
+    pub fn remote_attachment_sync(&mut self, message: Message) {
         let Some(remote) = self.client.remote.as_ref() else {
             return;
         };

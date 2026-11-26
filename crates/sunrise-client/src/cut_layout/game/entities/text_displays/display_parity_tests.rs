@@ -84,11 +84,11 @@ fn collect_text_display_geometry(
     normal: &mut Vec<Vertex>,
     see_through: &mut Vec<Vertex>,
 ) {
-    let mut collector = std::mem::take(&mut game.side.see_through_collector);
+    let mut collector = std::mem::take(&mut game.client.see_through_collector);
     collector.clear();
     game.text_display_geometry(camera, partial, normal, &mut collector);
     collector.flush(see_through);
-    game.side.see_through_collector = collector;
+    game.client.see_through_collector = collector;
 }
 
 #[test]
@@ -293,7 +293,7 @@ fn display_camera_angles_and_billboard_use_active_camera_not_player_26_3() {
     }
     let w = parity_witness();
     with_client_game(|game| {
-        game.side.view_frustum = None;
+        game.client.view_frustum = None;
         let stone = game
             .pack
             .assets
@@ -304,7 +304,7 @@ fn display_camera_angles_and_billboard_use_active_camera_not_player_26_3() {
         game.yaw = 123.0;
         game.pitch = 45.0;
         for case in w["billboard_camera_angles"]["cases"].as_array().unwrap() {
-            game.side.camera_type = match case["camera_type"].as_str().unwrap() {
+            game.client.camera_type = match case["camera_type"].as_str().unwrap() {
                 "THIRD_PERSON_BACK" => CameraType::ThirdPersonBack,
                 "THIRD_PERSON_FRONT" => CameraType::ThirdPersonFront,
                 _ => CameraType::FirstPerson,
@@ -314,9 +314,9 @@ fn display_camera_angles_and_billboard_use_active_camera_not_player_26_3() {
             let ent_yaw = hex_f32(&case["entity_yRot_bits"]);
             let ent_pitch = hex_f32(&case["entity_xRot_bits"]);
             let bb = case["billboard"].as_i64().unwrap() as i8;
-            game.side.posed_rotation = Some((cam_yaw, cam_pitch));
-            game.side.view.y_rot = cam_yaw;
-            game.side.view.x_rot = cam_pitch;
+            game.client.posed_rotation = Some((cam_yaw, cam_pitch));
+            game.client.view.y_rot = cam_yaw;
+            game.client.view.x_rot = cam_pitch;
             let got = game.display_camera_angles();
             assert_eq!(
                 [got[0].to_bits(), got[1].to_bits()],
@@ -330,7 +330,7 @@ fn display_camera_angles_and_billboard_use_active_camera_not_player_26_3() {
             );
 
             // Verify a block display renders with the witnessed active-camera pose (not player yaw/pitch).
-            game.side.text_displays.0.clear();
+            game.client.text_displays.0.clear();
             let pos = [0.5, 301.62, 0.5];
             assert!(game.spawn_remote_object(
                 83083,
@@ -339,7 +339,7 @@ fn display_camera_angles_and_billboard_use_active_camera_not_player_26_3() {
                 (ent_yaw, ent_pitch),
                 0
             ));
-            let d = game.side.text_displays.0.get_mut(&83083).unwrap();
+            let d = game.client.text_displays.0.get_mut(&83083).unwrap();
             d.show(&[(23, 0, Value::Id(stone.0 as i32))], None);
             d.metadata(&[
                 (11, 0, Value::Floats(vec![-1.395, 0.3885, -4.2])),
@@ -393,13 +393,13 @@ fn no_culling_text_displays_are_not_frustum_culled_26_3() {
     }
     with_client_game(|game| {
         let cam = DVec3::new(0.5, 301.620015, 0.5);
-        game.side.camera_type = CameraType::FirstPerson;
+        game.client.camera_type = CameraType::FirstPerson;
         game.yaw = 0.0;
         game.pitch = 0.0;
-        game.side.posed_rotation = Some((0.0, 0.0));
-        game.side.view.y_rot = 0.0;
-        game.side.view.x_rot = 0.0;
-        game.side.view_frustum = Some(looking_south_frustum(70.0, 1280.0 / 800.0));
+        game.client.posed_rotation = Some((0.0, 0.0));
+        game.client.view.y_rot = 0.0;
+        game.client.view.x_rot = 0.0;
+        game.client.view_frustum = Some(looking_south_frustum(70.0, 1280.0 / 800.0));
 
         // width == 0 && height == 0 (noCulling): translation=(50,0,-50) behind camera still renders.
         assert!(game.spawn_remote_object(
@@ -409,7 +409,7 @@ fn no_culling_text_displays_are_not_frustum_culled_26_3() {
             (0.0, 0.0),
             0,
         ));
-        game.side
+        game.client
             .text_displays
             .0
             .get_mut(&1001)
@@ -425,7 +425,7 @@ fn no_culling_text_displays_are_not_frustum_culled_26_3() {
         assert!(!normal.is_empty());
 
         // Finite culling box behind the camera must be frustum-culled.
-        game.side.text_displays.0.clear();
+        game.client.text_displays.0.clear();
         assert!(game.spawn_remote_object(
             1002,
             "minecraft:text_display",
@@ -433,7 +433,7 @@ fn no_culling_text_displays_are_not_frustum_culled_26_3() {
             (0.0, 0.0),
             0,
         ));
-        game.side
+        game.client
             .text_displays
             .0
             .get_mut(&1002)
@@ -451,7 +451,7 @@ fn no_culling_text_displays_are_not_frustum_culled_26_3() {
         assert!(normal.is_empty());
 
         // Infinite width alone must be frustum-culled (no +/-2 fallback) via JOML NaN rejection.
-        game.side.text_displays.0.clear();
+        game.client.text_displays.0.clear();
         assert!(game.spawn_remote_object(
             1003,
             "minecraft:text_display",
@@ -459,7 +459,7 @@ fn no_culling_text_displays_are_not_frustum_culled_26_3() {
             (0.0, 0.0),
             0,
         ));
-        game.side
+        game.client
             .text_displays
             .0
             .get_mut(&1003)
@@ -491,13 +491,13 @@ fn display_lifecycle_pre_tick_deferred_swap_live_culling_and_culled_progress_26_
     let lc = &w["lifecycle"];
     let live = &w["live_culling_and_no_culling"];
     with_client_game(|game| {
-        game.side.view_frustum = None;
-        game.side.posed_rotation = Some((0.0, 0.0));
-        game.side.view.y_rot = 0.0;
-        game.side.view.x_rot = 0.0;
+        game.client.view_frustum = None;
+        game.client.posed_rotation = Some((0.0, 0.0));
+        game.client.view.y_rot = 0.0;
+        game.client.view.x_rot = 0.0;
         // Match VanillaDisplayParityOracle's `Entity.setViewScale(1.0)`.
-        game.side.settings.render_distance = 8;
-        game.side.settings.entity_distance = 1.0;
+        game.client.settings.render_distance = 8;
+        game.client.settings.entity_distance = 1.0;
         let stone = game
             .pack
             .assets
@@ -529,7 +529,7 @@ fn display_lifecycle_pre_tick_deferred_swap_live_culling_and_culled_progress_26_
                 .unwrap()
         );
         {
-            let d = game.side.text_displays.0.get_mut(&2001).unwrap();
+            let d = game.client.text_displays.0.get_mut(&2001).unwrap();
             d.show(&[(23, 0, Value::Id(stone.0 as i32))], None);
             d.metadata(&[
                 (8, 1, Value::Int(0)),
@@ -565,7 +565,7 @@ fn display_lifecycle_pre_tick_deferred_swap_live_culling_and_culled_progress_26_
         );
         // Swap block without ticking: must still render stone until next tick.
         {
-            let d = game.side.text_displays.0.get_mut(&2001).unwrap();
+            let d = game.client.text_displays.0.get_mut(&2001).unwrap();
             d.show(&[(23, 0, Value::Id(blue_terra.0 as i32))], None);
             d.metadata(&[(11, 0, Value::Floats(vec![6.0, 3.0, 4.0]))]);
         }
@@ -586,10 +586,10 @@ fn display_lifecycle_pre_tick_deferred_swap_live_culling_and_culled_progress_26_
         );
 
         // 2. ItemDisplay: pre-tick renders nothing; item & context swap defers to tick.
-        game.side.text_displays.0.clear();
+        game.client.text_displays.0.clear();
         let id_case = &lc["item_display_pre_tick_and_swap"];
         assert!(game.spawn_remote_object(2002, "minecraft:item_display", [0.0; 3], (0.0, 0.0), 0));
-        game.side.text_displays.0.get_mut(&2002).unwrap().show(
+        game.client.text_displays.0.get_mut(&2002).unwrap().show(
             &[(24, 0, Value::Byte(6))],
             Some(Some(ItemStack::new("minecraft:end_crystal", 1))),
         );
@@ -603,7 +603,7 @@ fn display_lifecycle_pre_tick_deferred_swap_live_culling_and_culled_progress_26_
         let mut crystal_verts = Vec::new();
         game.block_item_display_geometry(DVec3::ZERO, 1.0, &mut crystal_verts);
         assert!(!crystal_verts.is_empty());
-        game.side.text_displays.0.get_mut(&2002).unwrap().show(
+        game.client.text_displays.0.get_mut(&2002).unwrap().show(
             &[(24, 0, Value::Byte(8))],
             Some(Some(ItemStack::new("minecraft:diamond_sword", 1))),
         );
@@ -616,7 +616,7 @@ fn display_lifecycle_pre_tick_deferred_swap_live_culling_and_culled_progress_26_
         );
 
         // 3. Live view_range without tick + uninterpolated distance check.
-        game.side.text_displays.0.clear();
+        game.client.text_displays.0.clear();
         assert!(game.spawn_remote_object(
             2003,
             "minecraft:text_display",
@@ -624,7 +624,7 @@ fn display_lifecycle_pre_tick_deferred_swap_live_culling_and_culled_progress_26_
             (0.0, 0.0),
             0,
         ));
-        game.side
+        game.client
             .text_displays
             .0
             .get_mut(&2003)
@@ -632,7 +632,7 @@ fn display_lifecycle_pre_tick_deferred_swap_live_culling_and_culled_progress_26_
             .metadata(&[(23, 0, Value::Text(Tag::String("VR".into())))]);
         game.tick_text_displays(game.clock.runs_normally());
         // Standalone view_range update (no render state id, no tick): range = 1.92.
-        game.side
+        game.client
             .text_displays
             .0
             .get_mut(&2003)
@@ -665,7 +665,7 @@ fn display_lifecycle_pre_tick_deferred_swap_live_culling_and_culled_progress_26_
 
         // Moving display: distance uses uninterpolated `position`, not `previous.lerp(position, 0.0)`.
         {
-            let d = game.side.text_displays.0.get_mut(&2003).unwrap();
+            let d = game.client.text_displays.0.get_mut(&2003).unwrap();
             d.previous = DVec3::new(0.5, 301.62, 0.5);
             d.position = DVec3::new(2.5, 301.62, 0.5);
         }
@@ -684,7 +684,7 @@ fn display_lifecycle_pre_tick_deferred_swap_live_culling_and_culled_progress_26_
                 .unwrap()
         );
         {
-            let d = game.side.text_displays.0.get_mut(&2003).unwrap();
+            let d = game.client.text_displays.0.get_mut(&2003).unwrap();
             d.previous = DVec3::new(2.5, 301.62, 0.5);
             d.position = DVec3::new(0.5, 301.62, 0.5);
         }
@@ -704,10 +704,10 @@ fn display_lifecycle_pre_tick_deferred_swap_live_culling_and_culled_progress_26_
         );
 
         // 4. last_progress must NOT advance during frames where the display is culled.
-        game.side.text_displays.0.clear();
+        game.client.text_displays.0.clear();
         let culled_case = &lc["last_progress_while_culled"];
         assert!(game.spawn_remote_object(2004, "minecraft:text_display", [0.0; 3], (0.0, 0.0), 0));
-        game.side
+        game.client
             .text_displays
             .0
             .get_mut(&2004)
@@ -718,7 +718,7 @@ fn display_lifecycle_pre_tick_deferred_swap_live_culling_and_culled_progress_26_
                 (17, 2, Value::Float(0.05)), // range = 3.2
             ]);
         game.tick_text_displays(game.clock.runs_normally()); // tick 1
-        game.side
+        game.client
             .text_displays
             .0
             .get_mut(&2004)
@@ -734,7 +734,7 @@ fn display_lifecycle_pre_tick_deferred_swap_live_culling_and_culled_progress_26_
         collect_text_display_geometry(game, DVec3::ZERO, 0.0, &mut normal, &mut see_through);
         assert!(!normal.is_empty());
         assert_eq!(
-            game.side.text_displays.0[&2004].last_progress.to_bits(),
+            game.client.text_displays.0[&2004].last_progress.to_bits(),
             hex_u32(&culled_case["visible_progress_bits"])
         );
         game.tick_text_displays(game.clock.runs_normally()); // tick 4: culled (camera 100 blocks away)
@@ -748,7 +748,7 @@ fn display_lifecycle_pre_tick_deferred_swap_live_culling_and_culled_progress_26_
         );
         assert!(normal.is_empty());
         // Tick 5: retarget to 20; must start from 0.25 * 10 = 2.5, not 7.5.
-        game.side
+        game.client
             .text_displays
             .0
             .get_mut(&2004)
@@ -759,7 +759,7 @@ fn display_lifecycle_pre_tick_deferred_swap_live_culling_and_culled_progress_26_
                 (11, 0, Value::Floats(vec![20.0, 0.0, 0.0])),
             ]);
         game.tick_text_displays(game.clock.runs_normally());
-        let d = &game.side.text_displays.0[&2004];
+        let d = &game.client.text_displays.0[&2004];
         let p = d.progress(0.0);
         assert_eq!(
             p.to_bits(),
@@ -775,10 +775,10 @@ fn display_lifecycle_pre_tick_deferred_swap_live_culling_and_culled_progress_26_
         );
 
         // 5. Rendering during duration == 0 must return 1.0 without overwriting last_progress.
-        game.side.text_displays.0.clear();
+        game.client.text_displays.0.clear();
         let dur_case = &lc["duration_zero_and_negative"];
         assert!(game.spawn_remote_object(2005, "minecraft:text_display", [0.0; 3], (0.0, 0.0), 0));
-        game.side
+        game.client
             .text_displays
             .0
             .get_mut(&2005)
@@ -788,7 +788,7 @@ fn display_lifecycle_pre_tick_deferred_swap_live_culling_and_culled_progress_26_
                 (11, 0, Value::Floats(vec![0.0, 0.0, 0.0])),
             ]);
         game.tick_text_displays(game.clock.runs_normally()); // tick 1
-        game.side
+        game.client
             .text_displays
             .0
             .get_mut(&2005)
@@ -803,10 +803,10 @@ fn display_lifecycle_pre_tick_deferred_swap_live_culling_and_culled_progress_26_
         normal.clear();
         collect_text_display_geometry(game, DVec3::ZERO, 0.0, &mut normal, &mut see_through);
         assert_eq!(
-            game.side.text_displays.0[&2005].last_progress.to_bits(),
+            game.client.text_displays.0[&2005].last_progress.to_bits(),
             hex_u32(&dur_case["progress_before_zero_bits"])
         );
-        game.side
+        game.client
             .text_displays
             .0
             .get_mut(&2005)
@@ -815,7 +815,7 @@ fn display_lifecycle_pre_tick_deferred_swap_live_culling_and_culled_progress_26_
         game.tick_text_displays(game.clock.runs_normally()); // tick 4: duration = 0
         normal.clear();
         collect_text_display_geometry(game, DVec3::ZERO, 0.5, &mut normal, &mut see_through);
-        game.side
+        game.client
             .text_displays
             .0
             .get_mut(&2005)
@@ -826,7 +826,7 @@ fn display_lifecycle_pre_tick_deferred_swap_live_culling_and_culled_progress_26_
                 (11, 0, Value::Floats(vec![20.0, 0.0, 0.0])),
             ]);
         game.tick_text_displays(game.clock.runs_normally()); // tick 5: must start from 0.25 * 8 = 2.0, not 8.0
-        let dz = &game.side.text_displays.0[&2005];
+        let dz = &game.client.text_displays.0[&2005];
         let p_after = dz.progress(0.0);
         assert_eq!(
             p_after.to_bits(),
@@ -856,16 +856,16 @@ fn text_display_render_order_solid_split_and_see_through_sort_26_3() {
     let w = parity_witness();
     let phases = &w["text_submit_phases_and_sorting"];
     with_client_game(|game| {
-        game.side.view_frustum = None;
-        game.side.posed_rotation = Some((0.0, 0.0));
-        game.side.view.y_rot = 0.0;
-        game.side.view.x_rot = 0.0;
+        game.client.view_frustum = None;
+        game.client.posed_rotation = Some((0.0, 0.0));
+        game.client.view.y_rot = 0.0;
+        game.client.view.x_rot = 0.0;
         // Match VanillaDisplayParityOracle's `Entity.setViewScale(1.0)`.
-        game.side.settings.render_distance = 8;
-        game.side.settings.entity_distance = 1.0;
+        game.client.settings.render_distance = 8;
+        game.client.settings.entity_distance = 1.0;
 
         // 1. Deterministic insertion order (including ID inversions and shift_remove), matching EntityLookup.byId.
-        game.side.text_displays.0.clear();
+        game.client.text_displays.0.clear();
         let initial_ids = [83226, 83191, 83242, 83102, 83249, 83232, 83100, 83250];
         let mut expected_bgs = Vec::new();
         for (idx, &eid) in initial_ids.iter().enumerate() {
@@ -880,14 +880,14 @@ fn text_display_render_order_solid_split_and_see_through_sort_26_3() {
             let abgr =
                 0xFF00_0000u32 | ((argb & 0xFF) << 16) | (argb & 0xFF00) | ((argb >> 16) & 0xFF);
             expected_bgs.push((eid, abgr));
-            game.side.text_displays.0.get_mut(&eid).unwrap().metadata(&[
+            game.client.text_displays.0.get_mut(&eid).unwrap().metadata(&[
                 (23, 0, Value::Text(Tag::String(" ".into()))),
                 (25, 1, Value::Int(argb as i32)),
                 (26, 0, Value::Byte(-1)),
             ]);
         }
         // Removing a middle display must preserve the remaining displays' insertion order.
-        game.side.text_displays.0.shift_remove(&83242);
+        game.client.text_displays.0.shift_remove(&83242);
         expected_bgs.retain(|&(eid, _)| eid != 83242);
         game.tick_text_displays(game.clock.runs_normally());
         let (mut normal, mut see_through) = (Vec::new(), Vec::new());
@@ -925,7 +925,7 @@ fn text_display_render_order_solid_split_and_see_through_sort_26_3() {
             ("translucent_text_and_bg", "Fade", 0x8000_0000, 128u8 as i8),
         ];
         for (name, text, bg, opacity) in cases {
-            game.side.text_displays.0.clear();
+            game.client.text_displays.0.clear();
             assert!(game.spawn_remote_object(
                 3001,
                 "minecraft:text_display",
@@ -933,7 +933,7 @@ fn text_display_render_order_solid_split_and_see_through_sort_26_3() {
                 (0.0, 0.0),
                 0
             ));
-            game.side
+            game.client
                 .text_displays
                 .0
                 .get_mut(&3001)
@@ -998,7 +998,7 @@ fn text_display_render_order_solid_split_and_see_through_sort_26_3() {
         }
 
         // 3. See-through per-submit far-to-near sort (stable on ties).
-        game.side.text_displays.0.clear();
+        game.client.text_displays.0.clear();
         let st_specs: [(&str, f64, u32); 4] = [
             ("near_2", -2.0, 0xFF00_0001),
             ("tie_first_4", -4.0, 0xFF00_0002),
@@ -1014,7 +1014,7 @@ fn text_display_render_order_solid_split_and_see_through_sort_26_3() {
                 (0.0, 0.0),
                 0
             ));
-            game.side.text_displays.0.get_mut(&id).unwrap().metadata(&[
+            game.client.text_displays.0.get_mut(&id).unwrap().metadata(&[
                 (23, 0, Value::Text(Tag::String("T".into()))),
                 (25, 1, Value::Int(argb as i32)),
                 (26, 0, Value::Byte(-1)),
@@ -1079,15 +1079,15 @@ fn text_display_resolves_inline_player_head_profiles_26_3() {
     let want_skin = resolved["default_skin"].as_str().unwrap();
 
     with_client_game(|game| {
-        game.side.view_frustum = None;
-        game.side.posed_rotation = Some((0.0, 0.0));
-        game.side.view.y_rot = 0.0;
-        game.side.view.x_rot = 0.0;
+        game.client.view_frustum = None;
+        game.client.posed_rotation = Some((0.0, 0.0));
+        game.client.view.y_rot = 0.0;
+        game.client.view.x_rot = 0.0;
         // Match VanillaDisplayParityOracle's `Entity.setViewScale(1.0)`.
-        game.side.settings.render_distance = 8;
-        game.side.settings.entity_distance = 1.0;
-        assert!(!game.side.gui.atlas.object_skins.contains_key(&id_key));
-        assert!(!game.side.gui.atlas.object_skins.contains_key(&name_key));
+        game.client.settings.render_distance = 8;
+        game.client.settings.entity_distance = 1.0;
+        assert!(!game.client.gui.atlas.object_skins.contains_key(&id_key));
+        assert!(!game.client.gui.atlas.object_skins.contains_key(&name_key));
 
         assert!(game.spawn_remote_object(
             83225,
@@ -1096,7 +1096,7 @@ fn text_display_resolves_inline_player_head_profiles_26_3() {
             (0.0, 0.0),
             0,
         ));
-        game.side
+        game.client
             .text_displays
             .0
             .get_mut(&83225)
@@ -1107,7 +1107,7 @@ fn text_display_resolves_inline_player_head_profiles_26_3() {
         let (mut normal, mut see_through) = (Vec::new(), Vec::new());
         collect_text_display_geometry(game, cam, 1.0, &mut normal, &mut see_through);
         assert_eq!(
-            game.side
+            game.client
                 .gui
                 .atlas
                 .object_skins
@@ -1117,7 +1117,7 @@ fn text_display_resolves_inline_player_head_profiles_26_3() {
             "inline object:player profile must resolve to vanilla default skin (key: {id_key})"
         );
         assert_eq!(
-            game.side
+            game.client
                 .gui
                 .atlas
                 .object_skins
@@ -1140,19 +1140,19 @@ fn block_display_backface_culling_translucent_pass_and_light_emission_26_3() {
         return;
     }
     with_client_game(|game| {
-        game.side.view_frustum = None;
-        game.side.posed_rotation = Some((0.0, 0.0));
-        game.side.view.y_rot = 0.0;
-        game.side.view.x_rot = 0.0;
-        game.side.settings.render_distance = 8;
-        game.side.settings.entity_distance = 1.0;
+        game.client.view_frustum = None;
+        game.client.posed_rotation = Some((0.0, 0.0));
+        game.client.view.y_rot = 0.0;
+        game.client.view.x_rot = 0.0;
+        game.client.settings.render_distance = 8;
+        game.client.settings.entity_distance = 1.0;
         let chunk = sunrise_level::chunk::Chunk::empty(0, 0);
         game.world.chunks.insert((0, 0), std::sync::Arc::new(chunk));
 
         let emit_block =
             |game: &mut sunrise_client_gameplay::game::ClientGame<'_>, id: i32, block: &str| -> Vec<Vertex> {
-                game.side.text_displays.0.clear();
-                game.side.glowing_vertices.borrow_mut().clear();
+                game.client.text_displays.0.clear();
+                game.client.glowing_vertices.borrow_mut().clear();
                 let state = game.pack.assets.registry.default_state(block).unwrap();
                 assert!(game.spawn_remote_object(
                     id,
@@ -1161,7 +1161,7 @@ fn block_display_backface_culling_translucent_pass_and_light_emission_26_3() {
                     (0.0, 0.0),
                     0,
                 ));
-                game.side
+                game.client
                     .text_displays
                     .0
                     .get_mut(&id)
@@ -1217,27 +1217,27 @@ fn block_display_backface_culling_translucent_pass_and_light_emission_26_3() {
         );
 
         // Glowing block display submits live glow_color_override (red -> blue without ticking).
-        game.side
+        game.client
             .text_displays
             .0
             .get_mut(&5005)
             .unwrap()
             .metadata(&[(0, 0, Value::Byte(0x40)), (22, 1, Value::Int(0xFF0000))]);
-        game.side.glowing_vertices.borrow_mut().clear();
+        game.client.glowing_vertices.borrow_mut().clear();
         let mut out = Vec::new();
         game.block_item_display_geometry(DVec3::new(0.5, 64.0, 3.5), 1.0, &mut out);
-        assert!(!game.side.glowing_vertices.borrow().is_empty());
-        assert_eq!(game.side.glowing_vertices.borrow()[0].color, 0xFF00_00FF);
-        game.side
+        assert!(!game.client.glowing_vertices.borrow().is_empty());
+        assert_eq!(game.client.glowing_vertices.borrow()[0].color, 0xFF00_00FF);
+        game.client
             .text_displays
             .0
             .get_mut(&5005)
             .unwrap()
             .metadata(&[(22, 1, Value::Int(0x0000FF))]);
-        game.side.glowing_vertices.borrow_mut().clear();
+        game.client.glowing_vertices.borrow_mut().clear();
         out.clear();
         game.block_item_display_geometry(DVec3::new(0.5, 64.0, 3.5), 1.0, &mut out);
-        assert_eq!(game.side.glowing_vertices.borrow()[0].color, 0xFFFF_0000);
+        assert_eq!(game.client.glowing_vertices.borrow()[0].color, 0xFFFF_0000);
     });
 }
 
@@ -1252,18 +1252,18 @@ fn display_name_tags_and_fire_block_light_match_vanilla_26_3() {
         return;
     }
     with_client_game(|game| {
-        game.side.view_frustum = None;
-        game.side.posed_rotation = Some((0.0, 0.0));
-        game.side.view.y_rot = 0.0;
-        game.side.view.x_rot = 0.0;
-        game.side.settings.render_distance = 8;
-        game.side.settings.entity_distance = 1.0;
+        game.client.view_frustum = None;
+        game.client.posed_rotation = Some((0.0, 0.0));
+        game.client.view.y_rot = 0.0;
+        game.client.view.x_rot = 0.0;
+        game.client.settings.render_distance = 8;
+        game.client.settings.entity_distance = 1.0;
         let chunk = sunrise_level::chunk::Chunk::empty(0, 0);
         game.world.chunks.insert((0, 0), std::sync::Arc::new(chunk));
 
         // 1. Display name tags.
         assert!(game.spawn_remote_object(6001, "minecraft:text_display", [0.0; 3], (0.0, 0.0), 0));
-        game.side
+        game.client
             .text_displays
             .0
             .get_mut(&6001)
@@ -1275,7 +1275,7 @@ fn display_name_tags_and_fire_block_light_match_vanilla_26_3() {
         // Pre-first-tick: DisplayRenderer.submit does not submit name tag.
         assert!(game.shown_name_tags(DVec3::new(0.0, 0.0, 5.0)).is_empty());
         // Post-first-tick with empty text: hasSubState() is true -> submits name tag.
-        game.side
+        game.client
             .text_displays
             .0
             .get_mut(&6001)
@@ -1285,14 +1285,14 @@ fn display_name_tags_and_fire_block_light_match_vanilla_26_3() {
         let tags = game.shown_name_tags(DVec3::new(0.0, 0.0, 5.0));
         assert!(tags.iter().any(|t| t == "DisplayTag"));
         // Zero view_range suppresses tag through the unified visibility decision.
-        game.side
+        game.client
             .text_displays
             .0
             .get_mut(&6001)
             .unwrap()
             .metadata(&[(17, 2, Value::Float(0.0))]);
         assert!(game.shown_name_tags(DVec3::new(0.0, 0.0, 5.0)).is_empty());
-        game.side
+        game.client
             .text_displays
             .0
             .get_mut(&6001)
@@ -1306,7 +1306,7 @@ fn display_name_tags_and_fire_block_light_match_vanilla_26_3() {
                 .any(|t| t == "DisplayTag")
         );
         // Display brightness override lights the solid name tag; shift key (discrete) suppresses see-through copy.
-        game.side
+        game.client
             .text_displays
             .0
             .get_mut(&6001)
@@ -1317,7 +1317,7 @@ fn display_name_tags_and_fire_block_light_match_vanilla_26_3() {
             ]);
         game.tick_text_displays(game.clock.runs_normally());
         let (mut solid_tag, mut faded_tag) = (Vec::new(), Vec::new());
-        let mut tag_collector = std::mem::take(&mut game.side.see_through_collector);
+        let mut tag_collector = std::mem::take(&mut game.client.see_through_collector);
         tag_collector.clear();
         game.name_tag_geometry(
             DVec3::new(0.0, 0.0, 5.0),
@@ -1326,7 +1326,7 @@ fn display_name_tags_and_fire_block_light_match_vanilla_26_3() {
             &mut tag_collector,
         );
         tag_collector.flush(&mut faded_tag);
-        game.side.see_through_collector = tag_collector;
+        game.client.see_through_collector = tag_collector;
         assert!(!solid_tag.is_empty());
         assert!(
             faded_tag.is_empty(),
@@ -1335,7 +1335,7 @@ fn display_name_tags_and_fire_block_light_match_vanilla_26_3() {
         assert!(solid_tag.iter().all(|v| v.light == 0xF0F0));
 
         // CustomNameVisible = false (not crosshair pick): suppressed.
-        game.side
+        game.client
             .text_displays
             .0
             .get_mut(&6001)
@@ -1349,7 +1349,7 @@ fn display_name_tags_and_fire_block_light_match_vanilla_26_3() {
         );
 
         // 2. Burning display block light = 15 without brightness override; override wins when set.
-        game.side.text_displays.0.clear();
+        game.client.text_displays.0.clear();
         let stone = game
             .pack
             .assets
@@ -1364,7 +1364,7 @@ fn display_name_tags_and_fire_block_light_match_vanilla_26_3() {
             0,
         ));
         {
-            let d = game.side.text_displays.0.get_mut(&6002).unwrap();
+            let d = game.client.text_displays.0.get_mut(&6002).unwrap();
             d.show(&[(23, 0, Value::Id(stone.0 as i32))], None);
             d.metadata(&[(0, 0, Value::Byte(0x01))]); // FLAG_ONFIRE
         }
@@ -1375,7 +1375,7 @@ fn display_name_tags_and_fire_block_light_match_vanilla_26_3() {
         assert_eq!((out[0].light >> 8) & 0xff, 15 * 16);
 
         // Brightness override (block=3, sky=5) beats fire light 15.
-        game.side
+        game.client
             .text_displays
             .0
             .get_mut(&6002)
@@ -1400,10 +1400,10 @@ fn section_compiled_and_visible_gates_displays_and_mobs_26_3() {
     }
     with_client_game(|game| {
         let _event_loop = frame_scene(game);
-        game.side.view_frustum = None;
-        game.side.posed_rotation = Some((0.0, 0.0));
-        game.side.view.y_rot = 0.0;
-        game.side.view.x_rot = 0.0;
+        game.client.view_frustum = None;
+        game.client.posed_rotation = Some((0.0, 0.0));
+        game.client.view.y_rot = 0.0;
+        game.client.view.x_rot = 0.0;
         let stone = game
             .pack
             .assets
@@ -1420,7 +1420,7 @@ fn section_compiled_and_visible_gates_displays_and_mobs_26_3() {
             (0.0, 0.0),
             0,
         ));
-        game.side
+        game.client
             .text_displays
             .0
             .get_mut(&7001)
@@ -1433,7 +1433,7 @@ fn section_compiled_and_visible_gates_displays_and_mobs_26_3() {
             (0.0, 0.0),
             0,
         ));
-        game.side
+        game.client
             .text_displays
             .0
             .get_mut(&7002)
@@ -1442,7 +1442,7 @@ fn section_compiled_and_visible_gates_displays_and_mobs_26_3() {
         game.tick_text_displays(game.clock.runs_normally());
         let mob_start = game.mobs.len();
         let zombie_kind = game
-            .side
+            .client
             .remote
             .as_ref()
             .unwrap()
@@ -1474,15 +1474,15 @@ fn section_compiled_and_visible_gates_displays_and_mobs_26_3() {
         game.begin_skinning();
         let mob_frame = game.begin_mob_geometry(cam, 1.0);
         game.mob_run_geometry(&mob_frame, mob_range.clone(), &mut mob_verts);
-        let mob_drawn = !mob_verts.is_empty() || game.side.skin_frame.borrow().vertices > 0;
+        let mob_drawn = !mob_verts.is_empty() || game.client.skin_frame.borrow().vertices > 0;
         assert!(normal.is_empty(), "text display in uncompiled section");
         assert!(blocks.is_empty(), "block display in uncompiled section");
         assert!(!mob_drawn, "mob in uncompiled section");
 
         // Compiled empty section while fading (< 0.3 visibility) stays hidden; fade = 0 renders.
         let sy = game.world.shape.column().section_index(65).unwrap() as i32;
-        game.side.settings.chunk_fade = 10.0;
-        game.side
+        game.client.settings.chunk_fade = 10.0;
+        game.client
             .renderer
             .0
             .as_mut()
@@ -1496,12 +1496,12 @@ fn section_compiled_and_visible_gates_displays_and_mobs_26_3() {
         game.begin_skinning();
         let mob_frame = game.begin_mob_geometry(cam, 1.0);
         game.mob_run_geometry(&mob_frame, mob_range.clone(), &mut mob_verts);
-        let mob_drawn = !mob_verts.is_empty() || game.side.skin_frame.borrow().vertices > 0;
+        let mob_drawn = !mob_verts.is_empty() || game.client.skin_frame.borrow().vertices > 0;
         assert!(normal.is_empty(), "text display in fading empty section");
         assert!(blocks.is_empty(), "block display in fading empty section");
         assert!(!mob_drawn, "mob in fading empty section");
 
-        game.side.settings.chunk_fade = 0.0;
+        game.client.settings.chunk_fade = 0.0;
         normal.clear();
         blocks.clear();
         mob_verts.clear();
@@ -1510,7 +1510,7 @@ fn section_compiled_and_visible_gates_displays_and_mobs_26_3() {
         game.begin_skinning();
         let mob_frame = game.begin_mob_geometry(cam, 1.0);
         game.mob_run_geometry(&mob_frame, mob_range, &mut mob_verts);
-        let mob_drawn = !mob_verts.is_empty() || game.side.skin_frame.borrow().vertices > 0;
+        let mob_drawn = !mob_verts.is_empty() || game.client.skin_frame.borrow().vertices > 0;
         assert!(!normal.is_empty(), "text display in visible empty section");
         assert!(!blocks.is_empty(), "block display in visible empty section");
         assert!(mob_drawn, "mob in visible empty section");
@@ -1520,7 +1520,7 @@ fn section_compiled_and_visible_gates_displays_and_mobs_26_3() {
             (7003, 340.0, "above_build_height_uncompiled"),
             (7004, -80.0, "below_build_height_uncompiled"),
         ] {
-            game.side.text_displays.0.clear();
+            game.client.text_displays.0.clear();
             assert!(game.spawn_remote_object(
                 id,
                 "minecraft:text_display",
@@ -1528,7 +1528,7 @@ fn section_compiled_and_visible_gates_displays_and_mobs_26_3() {
                 (0.0, 0.0),
                 0,
             ));
-            game.side.text_displays.0.get_mut(&id).unwrap().metadata(&[(
+            game.client.text_displays.0.get_mut(&id).unwrap().metadata(&[(
                 23,
                 0,
                 Value::Text(Tag::String("Out".into())),
@@ -1569,13 +1569,13 @@ fn bold_missing_glyph_displays_and_block_display_83224_match_vanilla_26_3() {
     };
 
     with_client_game(|game| {
-        game.side.view_frustum = None;
-        game.side.camera_type = CameraType::FirstPerson;
-        game.side.posed_rotation = Some((0.0, 0.0));
-        game.side.view.y_rot = 0.0;
-        game.side.view.x_rot = 0.0;
-        game.side.settings.render_distance = 8;
-        game.side.settings.entity_distance = 1.0;
+        game.client.view_frustum = None;
+        game.client.camera_type = CameraType::FirstPerson;
+        game.client.posed_rotation = Some((0.0, 0.0));
+        game.client.view.y_rot = 0.0;
+        game.client.view.x_rot = 0.0;
+        game.client.settings.render_distance = 8;
+        game.client.settings.entity_distance = 1.0;
 
         // 1. Bold missing cursor in world TextDisplays matches vanilla TextDisplayRenderer bit-for-bit.
         for case_name in ["origin_fixed", "angled_billboard_transformed"] {
@@ -1589,10 +1589,10 @@ fn bold_missing_glyph_displays_and_block_display_83224_match_vanilla_26_3() {
             let billboard = case["billboard"].as_i64().unwrap() as i8;
             let cursor_tag = decode_network_nbt_hex(&case["component_nbt_hex"]);
 
-            game.side.posed_rotation = Some((cam_yaw, cam_pitch));
-            game.side.view.y_rot = cam_yaw;
-            game.side.view.x_rot = cam_pitch;
-            game.side.text_displays.0.clear();
+            game.client.posed_rotation = Some((cam_yaw, cam_pitch));
+            game.client.view.y_rot = cam_yaw;
+            game.client.view.x_rot = cam_pitch;
+            game.client.text_displays.0.clear();
             assert!(game.spawn_remote_object(
                 83100,
                 "minecraft:text_display",
@@ -1600,7 +1600,7 @@ fn bold_missing_glyph_displays_and_block_display_83224_match_vanilla_26_3() {
                 (ent_yaw, ent_pitch),
                 0,
             ));
-            game.side
+            game.client
                 .text_displays
                 .0
                 .get_mut(&83100)
@@ -1663,9 +1663,9 @@ fn bold_missing_glyph_displays_and_block_display_83224_match_vanilla_26_3() {
         }
 
         // 2. EID 83224 (minecraft:lime_concrete): exact 6-face vertex parity + opaque atlas padding.
-        game.side.posed_rotation = Some((0.0, 0.0));
-        game.side.view.y_rot = 0.0;
-        game.side.view.x_rot = 0.0;
+        game.client.posed_rotation = Some((0.0, 0.0));
+        game.client.view.y_rot = 0.0;
+        game.client.view.x_rot = 0.0;
         let ent_pos = [
             f64::from_bits(0x3fe0_0000_0000_0000),
             f64::from_bits(0x4072_d9eb_851e_b852),
@@ -1682,12 +1682,12 @@ fn bold_missing_glyph_displays_and_block_display_83224_match_vanilla_26_3() {
             .registry
             .default_state("minecraft:lime_concrete")
             .unwrap();
-        game.side.text_displays.0.clear();
+        game.client.text_displays.0.clear();
         assert!(
             game.spawn_remote_object(83224, "minecraft:block_display", ent_pos, (0.0, 0.0), 0,)
         );
         {
-            let d = game.side.text_displays.0.get_mut(&83224).unwrap();
+            let d = game.client.text_displays.0.get_mut(&83224).unwrap();
             d.show(&[(23, 0, Value::Id(lime.0 as i32))], None);
             d.metadata(&[
                 (15, 0, Value::Byte(3)),
@@ -1737,10 +1737,10 @@ fn bold_missing_glyph_displays_and_block_display_83224_match_vanilla_26_3() {
                 "EID 83224 missing exact vanilla face {dir}: expected {want_pos:08x?}"
             );
         }
-        let sprite = game.side.gui.atlas.sprites["block/lime_concrete"];
-        let px = (sprite.u0 * game.side.gui.atlas.width as f32).round() as u32;
-        let py = (sprite.v0 * game.side.gui.atlas.height as f32).round() as u32;
-        let pixels = game.side.gui.atlas.pixels();
+        let sprite = game.client.gui.atlas.sprites["block/lime_concrete"];
+        let px = (sprite.u0 * game.client.gui.atlas.width as f32).round() as u32;
+        let py = (sprite.v0 * game.client.gui.atlas.height as f32).round() as u32;
+        let pixels = game.client.gui.atlas.pixels();
         assert!(px >= 1 && py >= 1);
         for (label, bx, by) in [
             ("left", px - 1, py),
@@ -1748,7 +1748,7 @@ fn bold_missing_glyph_displays_and_block_display_83224_match_vanilla_26_3() {
             ("top", px, py - 1),
             ("bottom", px, py + 16),
         ] {
-            let a = pixels[((by * game.side.gui.atlas.width + bx) * 4 + 3) as usize];
+            let a = pixels[((by * game.client.gui.atlas.width + bx) * 4 + 3) as usize];
             assert_eq!(
                 a, 255,
                 "block/lime_concrete {label} border pixel ({bx},{by}) must be padded opaque, not transparent gutter"
@@ -1789,7 +1789,7 @@ fn set_camera_on_display_and_unbobbed_culling_match_vanilla_26_3() {
             sea_level: 63,
         };
         game.enter_remote_dimension(&spawn, RemoteDimensionEntry::Login, Reason::Other);
-        let remote = game.side.remote.as_mut().unwrap();
+        let remote = game.client.remote.as_mut().unwrap();
         remote.logged_in = true;
         remote.entity_id = 7;
 
@@ -1801,7 +1801,7 @@ fn set_camera_on_display_and_unbobbed_culling_match_vanilla_26_3() {
         }
 
         let td_kind = game
-            .side
+            .client
             .remote
             .as_ref()
             .unwrap()
@@ -1822,7 +1822,7 @@ fn set_camera_on_display_and_unbobbed_culling_match_vanilla_26_3() {
             data: 0,
         }))
         .unwrap();
-        game.side
+        game.client
             .text_displays
             .0
             .get_mut(&9001)
@@ -1840,11 +1840,11 @@ fn set_camera_on_display_and_unbobbed_culling_match_vanilla_26_3() {
         assert_eq!(snap.position, [0.5, 64.0, 0.5]);
         assert_eq!(snap.eye_height, 0.0);
 
-        game.side.view_frustum = None;
-        game.side.posed_rotation = Some((0.0, 0.0));
-        game.side.view.y_rot = 0.0;
-        game.side.view.x_rot = 0.0;
-        game.side.camera_type = CameraType::FirstPerson;
+        game.client.view_frustum = None;
+        game.client.posed_rotation = Some((0.0, 0.0));
+        game.client.view.y_rot = 0.0;
+        game.client.view.x_rot = 0.0;
+        game.client.camera_type = CameraType::FirstPerson;
         let (mut normal, mut see_through) = (Vec::new(), Vec::new());
         collect_text_display_geometry(
             game,
@@ -1858,7 +1858,7 @@ fn set_camera_on_display_and_unbobbed_culling_match_vanilla_26_3() {
             "camera display must be hidden in first person"
         );
 
-        game.side.camera_type = CameraType::ThirdPersonBack;
+        game.client.camera_type = CameraType::ThirdPersonBack;
         collect_text_display_geometry(
             game,
             DVec3::new(0.5, 64.0, 0.5),
@@ -1875,8 +1875,8 @@ fn set_camera_on_display_and_unbobbed_culling_match_vanilla_26_3() {
         game.handle_packet(C::SetCamera(play::SetCamera { camera_id: 7 }))
             .unwrap();
         assert_eq!(game.remote_camera_id(), None);
-        game.side.camera_type = CameraType::FirstPerson;
-        game.side.text_displays.0.clear();
+        game.client.camera_type = CameraType::FirstPerson;
+        game.client.text_displays.0.clear();
         assert!(game.spawn_remote_object(
             9002,
             "minecraft:text_display",
@@ -1884,7 +1884,7 @@ fn set_camera_on_display_and_unbobbed_culling_match_vanilla_26_3() {
             (0.0, 0.0),
             0,
         ));
-        game.side
+        game.client
             .text_displays
             .0
             .get_mut(&9002)
@@ -1901,7 +1901,7 @@ fn set_camera_on_display_and_unbobbed_culling_match_vanilla_26_3() {
             (0.0, 0.0),
             0,
         ));
-        game.side
+        game.client
             .text_displays
             .0
             .get_mut(&9003)

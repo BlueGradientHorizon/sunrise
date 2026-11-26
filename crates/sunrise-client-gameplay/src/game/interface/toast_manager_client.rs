@@ -18,7 +18,7 @@ impl ClientGame<'_> {
             self.add_system_toast(Some(id), new)
         }
     }
-    pub(in crate::game) fn add_system_toast(
+    pub fn add_system_toast(
         &mut self,
         id: Option<SystemToastId>,
         mut toast: SystemToast,
@@ -37,7 +37,7 @@ impl ClientGame<'_> {
         true
     }
     /// `ToastManager.extractRenderState`: F1 hides the draw, not the update.
-    pub(in crate::game) fn draw_every_toast(&mut self, batch: &mut HudBatch) {
+    pub fn draw_every_toast(&mut self, batch: &mut HudBatch) {
         let replay = self.client.replay.playing();
         let hidden = self.client.chat_ui.player_hides_gui || replay;
         let diagnostic_hidden = replay || self.overlay_holds_view();

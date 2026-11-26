@@ -53,7 +53,7 @@ impl SideLevel for crate::game::ServerGame<'_> {
 }
 
 impl crate::game::ServerGame<'_> {
-    pub(in crate::game) fn mob_world_base<'s>(&'s self, others: &'s [Seen]) -> MobWorld<'s> {
+    pub fn mob_world_base<'s>(&'s self, others: &'s [Seen]) -> MobWorld<'s> {
         self.common.world.enable_path_type_cache();
         self.mob_world_base_with(
             others,

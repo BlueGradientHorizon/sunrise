@@ -65,7 +65,7 @@ impl ServerGame<'_> {
         }
     }
     /// `CopperGolem.mobInteract`; true when handled.
-    pub(in crate::game) fn interact_copper_golem(&mut self, index: usize, item: &str) -> bool {
+    pub fn interact_copper_golem(&mut self, index: usize, item: &str) -> bool {
         if self.common.mobs[index].species() != Species::CopperGolem || !self.common.mobs[index].alive() {
             return false;
         }
@@ -159,7 +159,7 @@ impl ServerGame<'_> {
     }
     /// `OfferFlowerGoal.stop` (`MobEvent::Gift`): the item on the target's
     /// empty antenna, as a guaranteed drop.
-    pub(in crate::game) fn receive_gift(&mut self, target: u32, item: &'static str) {
+    pub fn receive_gift(&mut self, target: u32, item: &'static str) {
         if let Some(m) = self.common.mobs.iter_mut().find(|m| m.id == target)
             && m.saddle_item().is_none()
         {
@@ -247,7 +247,7 @@ impl ServerGame<'_> {
         self.server_play_sound(&format!("minecraft:block.{kind}.{side}"), at, 0.5, pitch);
     }
     /// `CopperGolem.turnToStatue`, which its weathering asked for.
-    pub(in crate::game) fn golem_become_statue(&mut self, id: u32) {
+    pub fn golem_become_statue(&mut self, id: u32) {
         let Some(i) = self.common.mobs.iter().position(|m| m.id == id && !m.removed) else {
             return;
         };

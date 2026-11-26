@@ -291,7 +291,7 @@ pub(crate) mod structure_tag_tests {
             id_matches(&set(tag), "worldgen/structure", id, &View(game))
         };
         // A world without packs: the game's own tags.
-        assert!(game.side.world_tables.0.is_none());
+        assert!(game.server.world_tables.0.is_none());
         assert!(holds(
             &game,
             "#minecraft:village",
@@ -327,7 +327,7 @@ pub(crate) mod structure_tag_tests {
         .unwrap();
         let settings = json!({"enabled": ["file/mypack"], "disabled": []});
         std::fs::write(dir.join("datapacks.json"), settings.to_string()).unwrap();
-        game.side.world_root = dir.clone();
+        game.server.world_root = dir.clone();
         let stack = sunrise_gameplay::game::functions::pack_stack(
             &dir,
             &root,
@@ -337,11 +337,11 @@ pub(crate) mod structure_tag_tests {
             &[],
             &[],
         );
-        game.side.world_tables.0 = game
+        game.server.world_tables.0 = game
             .stage_world_tables(&stack, false, &root)
             .unwrap()
             .tables;
-        assert!(game.side.world_tables.0.is_some());
+        assert!(game.server.world_tables.0.is_some());
         assert!(holds(&game, "#mypack:village", "minecraft:igloo"));
         assert!(holds(&game, "#mypack:village", "minecraft:village_plains"));
         assert!(!holds(&game, "#mypack:village", "minecraft:shipwreck"));
@@ -421,7 +421,7 @@ pub(crate) mod random_chance_command_tests {
             .unwrap();
         }
         std::fs::write(folder.join("pig.json"),r#"{"type":"minecraft:entity_properties","entity":"this","predicate":{"minecraft:entity_type":"minecraft:pig"}}"#).unwrap();
-        game.side.world_root = dir.clone();
+        game.server.world_root = dir.clone();
         game.reload_datapacks(false, &[]).unwrap();
         assert!(game.run_command("scoreboard objectives add h122 dummy"));
         assert!(game.run_command("function h122:admit"));
@@ -450,10 +450,10 @@ pub(crate) mod random_chance_command_tests {
         for row in &rows {
             let seed = row["seed"].as_i64().unwrap();
             let name = format!("h122:case_{}", row["case"]);
-            assert!(game.side.fns.0.store.predicates.contains_key(&name));
+            assert!(game.server.fns.0.store.predicates.contains_key(&name));
             game.world.random.set_seed(seed);
             game.run_command("scoreboard players set branch h122 -99");
-            game.side.exec.0 = Default::default();
+            game.server.exec.0 = Default::default();
             let source = game.player_source();
             game.execute_line(&format!("execute as 0000007a-0000-0000-0000-000000000001 if predicate {name} run scoreboard players set branch h122 1"),source).unwrap();
             assert_eq!(
@@ -681,7 +681,7 @@ pub(crate) mod movement_predicate_tests {
             r#"{"type":"minecraft:all_of","terms":[]}"#,
         )
         .unwrap();
-        game.side.world_root = root;
+        game.server.world_root = root;
         game.reload_datapacks(false, &[]).unwrap();
         assert!(game.run_command("scoreboard objectives add motion dummy"));
         assert!(game.run_command("execute if predicate motion:always"));
@@ -707,7 +707,7 @@ pub(crate) mod movement_predicate_tests {
         let mut failures = Vec::new();
         for (name, p, want) in probes {
             assert!(
-                game.side
+                game.server
                     .fns
                     .0
                     .store

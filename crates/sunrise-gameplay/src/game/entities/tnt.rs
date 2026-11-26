@@ -51,7 +51,7 @@ impl ServerGame<'_> {
         }
     }
     /// Adds primed TNT at the block's bottom centre, pushed along `rot`.
-    pub(in crate::game) fn add_primed_tnt(
+    pub fn add_primed_tnt(
         &mut self,
         pos: BlockPos,
         rot: f64,
@@ -160,7 +160,7 @@ impl ServerGame<'_> {
     /// One primed TNT's `tick`: it moves, and explodes when its fuse is out.
     /// `i` is its place in the list; the caller has checked it is ticking.
     /// `entities` are the boxes that stop its move (`Game::entity_collisions` with `Mover::Passive`).
-    pub(in crate::game) fn tick_one_tnt(&mut self, i: usize, entities: &[Aabb]) -> Result<()> {
+    pub fn tick_one_tnt(&mut self, i: usize, entities: &[Aabb]) -> Result<()> {
         let t = &mut self.common.tnts[i];
         let motion = sunrise_sim::motion::BodyMotion {
             world: &self.common.world,
@@ -284,7 +284,7 @@ impl ServerGame<'_> {
         Ok(())
     }
     /// The saved compound of primed TNT `i`: chunk saves, `/data get`, portals.
-    pub(in crate::game::server_side) fn tnt_nbt(&mut self, i: usize) -> sunrise_core::nbt::Tag {
+    pub fn tnt_nbt(&mut self, i: usize) -> sunrise_core::nbt::Tag {
         let id = self.common.tnts[i].id;
         let uuid = self.uuid_for(id);
         let owner = self.tnt_owner_uuid(self.common.tnts[i].owner, self.common.tnts[i].guest);
@@ -476,7 +476,7 @@ pub(in crate::game::server_side) fn tnt_blast_owner(
 impl ServerGame<'_> {
     /// `new PrimedTnt(level, x + 0.5, y, z + 0.5, owner)`; `short` applies
     /// `wasExploded`'s random short fuse. Plays `entity.tnt.primed` for primes.
-    pub(in crate::game) fn spawn_primed_tnt(
+    pub fn spawn_primed_tnt(
         &mut self,
         pos: BlockPos,
         short: bool,

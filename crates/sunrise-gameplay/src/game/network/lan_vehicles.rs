@@ -164,7 +164,7 @@ impl crate::game::ServerGame<'_> {
 
     /// `Player.rideTick` for a server player, before its moves this tick:
     /// it stays in its seat, steers its minecart, or gets out.
-    pub(in crate::game::server_side) fn guest_vehicle_tick(&mut self, conn: u32) {
+    pub fn guest_vehicle_tick(&mut self, conn: u32) {
         let Some(host) = self.server.lan.as_ref() else {
             return;
         };
@@ -287,7 +287,7 @@ impl crate::game::ServerGame<'_> {
 
     /// After an interaction: a player that got into a vehicle sits in it,
     /// and its last good vehicle position is where the vehicle is.
-    pub(in crate::game) fn guest_boarded(&mut self, conn: u32, before: Option<u32>) {
+    pub fn guest_boarded(&mut self, conn: u32, before: Option<u32>) {
         let Some(host) = self.server.lan.as_mut() else {
             return;
         };
@@ -360,7 +360,7 @@ impl crate::game::ServerGame<'_> {
     /// saddled horse its rider drives goes where the client says, unless it
     /// moved too quickly or wrongly; then it stays, and the client is told
     /// where it is.
-    pub(in crate::game::server_side) fn guest_move_vehicle(
+    pub fn guest_move_vehicle(
         &mut self,
         conn: u32,
         p: &play::MoveVehicleRequest,

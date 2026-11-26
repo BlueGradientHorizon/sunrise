@@ -169,7 +169,7 @@ impl crate::game::ClientGame<'_> {
             }
         }
     }
-    pub(in crate::game) fn mob_run_geometry(
+    pub fn mob_run_geometry(
         &self,
         frame: &MobDrawFrame<'_>,
         range: std::ops::Range<usize>,
@@ -191,7 +191,7 @@ impl crate::game::ClientGame<'_> {
             self.living_geometry::<PRECHECK>(mob, frame, out);
         }
     }
-    pub(in crate::game) fn begin_mob_geometry(
+    pub fn begin_mob_geometry(
         &self,
         camera: glam::DVec3,
         alpha: f64,
@@ -247,7 +247,7 @@ impl crate::game::ClientGame<'_> {
     /// The renderer's models for the GPU path (`mobs::skin`) this frame, if it
     /// poses entities: a new frame of draws, the store restarted when the
     /// renderer's no longer matches. Once per frame, before any entity draws.
-    pub(in crate::game::client_side) fn begin_skinning(&self) {
+    pub fn begin_skinning(&self) {
         let renderer = self.client.renderer.0.as_ref().filter(|r| r.skins_entities());
         match renderer.and_then(|r| r.skinned_models()) {
             Some(stored) => {
@@ -399,7 +399,7 @@ impl crate::game::ClientGame<'_> {
         }
     }
     /// Handle client-produced `MobEvent` visuals and local movement effects.
-    pub(in crate::game) fn handle_client_mob_events(
+    pub fn handle_client_mob_events(
         &mut self,
         events: &mut Vec<sunrise_sim::mobs::MobEvent>,
     ) {

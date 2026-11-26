@@ -142,8 +142,8 @@ fn a_payload_handler_disconnects_once_and_the_poll_logs_out_once() {
     .into();
     mod_platform::testing::with_mods(mods, || {
         crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
-            game.side.settings.render_distance = 2;
-            game.side.settings.simulation_distance = 2;
+            game.client.settings.render_distance = 2;
+            game.client.settings.simulation_distance = 2;
             let options = sunrise_sim::world_options::WorldOptions {
                 world_type: sunrise_sim::save::WorldPreset::Flat,
                 ..Default::default()
@@ -158,7 +158,7 @@ fn a_payload_handler_disconnects_once_and_the_poll_logs_out_once() {
             .unwrap();
             let deadline = Instant::now() + Duration::from_secs(60);
             while !game
-                .side
+                .client
                 .remote
                 .as_ref()
                 .is_some_and(|r| r.logged_in && r.joined)
@@ -168,7 +168,7 @@ fn a_payload_handler_disconnects_once_and_the_poll_logs_out_once() {
                 std::thread::yield_now();
             }
             let port = game
-                .side
+                .client
                 .integrated
                 .as_ref()
                 .unwrap()

@@ -152,7 +152,7 @@ impl crate::game::ServerGame<'_> {
     /// the server, else their file's. Err while they are logging in, dead,
     /// swapped in or displaced by an inner turn, or when they have never
     /// played here. Other guests' live inventories remain available.
-    pub(in crate::game::server_side) fn native_inventory(
+    pub fn native_inventory(
         &self,
         uuid: u128,
         kind: NativeInventoryKind,

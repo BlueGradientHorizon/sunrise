@@ -75,7 +75,7 @@ fn wind_charged_mob_removal_cannot_reenter_through_its_own_burst() {
         assert_eq!(events.bursts.load(Ordering::Relaxed), 1);
         assert_eq!(events.leaves.load(Ordering::Relaxed), 1);
         assert_eq!(
-            game.side
+            game.server
                 .pending_sounds
                 .iter()
                 .filter(|s| s.event == "minecraft:entity.breeze.wind_burst")

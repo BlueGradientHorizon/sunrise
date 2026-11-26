@@ -95,14 +95,14 @@ pub(crate) mod tests {
                 || game.open_block_menu(12, POS),
             );
             assert_eq!(result, MenuOpen::Opened);
-            let guest = game.side.lan.as_ref().unwrap().hub.guest(12).unwrap();
+            let guest = game.server.lan.as_ref().unwrap().hub.guest(12).unwrap();
             let menu = guest.menu.as_ref().unwrap();
             assert_eq!(menu.window, 1);
             assert_eq!(&*menu.registry_id, "minecraft:generic_9x1");
             let heard = heard.lock().unwrap();
             assert_eq!(heard.len(), 100);
             assert!(heard.iter().all(|kind| kind == "minecraft:generic_9x1"));
-            assert!(!game.side.lid_openers.contains_key(&POS));
+            assert!(!game.server.lid_openers.contains_key(&POS));
         });
     }
 
@@ -177,7 +177,7 @@ pub(crate) mod tests {
                 );
                 let start = game.world.game_time;
                 for conn in [12, 13] {
-                    game.side.lan.as_mut().unwrap().hub.open_container(
+                    game.server.lan.as_mut().unwrap().hub.open_container(
                         conn,
                         "minecraft:generic_3x3",
                         Tag::String("box".into()),
@@ -196,7 +196,7 @@ pub(crate) mod tests {
                 game.guest_disconnected(12);
                 assert_eq!(notices.lock().unwrap().last(), Some(&(2, 1)));
                 // A lost menu is repaired by the scheduled recheck, not each tick.
-                game.side.lan.as_mut().unwrap().hub.guests.update_all(|g| {
+                game.server.lan.as_mut().unwrap().hub.guests.update_all(|g| {
                     if g.conn == 13 {
                         g.menu = None;
                     }
@@ -211,12 +211,12 @@ pub(crate) mod tests {
                     events.lock().unwrap().last(),
                     Some(&("minecraft:container_close".into(), None))
                 );
-                assert!(game.side.mod_container_viewers.is_empty());
+                assert!(game.server.mod_container_viewers.is_empty());
 
                 // Native menus can send a position as extra data without opening its container.
                 let before = notices.lock().unwrap().len();
                 for (conn, slots) in [(13, Slots::Block(pos)), (12, Slots::Native)] {
-                    game.side.lan.as_mut().unwrap().hub.open_container(
+                    game.server.lan.as_mut().unwrap().hub.open_container(
                         conn,
                         "minecraft:generic_3x3",
                         Tag::String("box".into()),
@@ -242,12 +242,12 @@ pub(crate) mod tests {
                 game.player_menu_closing(13);
                 assert_eq!(notices.lock().unwrap().len(), before_notices);
                 assert_eq!(events.lock().unwrap().len(), before_events);
-                assert!(game.side.mod_container_viewers.is_empty());
+                assert!(game.server.mod_container_viewers.is_empty());
 
                 // If a second player opens the replacement, the first player's stale menu
                 // cannot close it, count on a recheck, or appear in its viewer list.
                 let open = |game: &mut sunrise_gameplay::game::ServerGame<'_>, conn| {
-                    game.side.lan.as_mut().unwrap().hub.open_container(
+                    game.server.lan.as_mut().unwrap().hub.open_container(
                         conn,
                         "minecraft:generic_3x3",
                         Tag::String("box".into()),
@@ -300,7 +300,7 @@ pub(crate) mod tests {
                 let entity = game.world.block_entities.get(&pos).unwrap().clone();
                 game.world.block_entities.insert(other, entity);
                 let before = notices.lock().unwrap().len();
-                game.side.lan.as_mut().unwrap().hub.open_container(
+                game.server.lan.as_mut().unwrap().hub.open_container(
                     13,
                     "minecraft:generic_3x3",
                     Tag::String("box".into()),
@@ -359,7 +359,7 @@ pub(crate) mod tests {
         with_container("minecraft:shulker_box", |game| {
             game.open_block_menu(12, POS);
             assert!(
-                game.side
+                game.server
                     .lan
                     .as_ref()
                     .unwrap()
@@ -375,15 +375,15 @@ pub(crate) mod tests {
                 .registry
                 .default_state("minecraft:barrel")
                 .unwrap();
-            game.side.audio_capture_active = true;
-            game.side.pending_sounds.clear();
+            game.server.audio_capture_active = true;
+            game.server.pending_sounds.clear();
             mod_platform::testing::with_mods(
                 vec![ModEntry::new("replace_shulker", Box::new(Replace))].into(),
                 || game.guest_close_all(12),
             );
             assert_eq!(game.world.block(POS.0, POS.1, POS.2), barrel);
             let sounds = game
-                .side
+                .server
                 .pending_sounds
                 .iter()
                 .map(|s| (s.event.as_str(), s.position))

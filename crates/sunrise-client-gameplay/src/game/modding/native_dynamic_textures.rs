@@ -10,7 +10,7 @@ use sunrise_client::hud::dynamic_textures::ImagePatch;
 impl ClientGame<'_> {
     /// The calling mod's image `id` made from `rgba` (`width * height` pixels of four bytes) in
     /// a slot of the atlas's pool, its pixels uploaded with the next frame.
-    pub(in crate::game) fn create_dynamic_texture(
+    pub fn create_dynamic_texture(
         &mut self,
         id: &Identifier,
         width: u32,
@@ -38,7 +38,7 @@ impl ClientGame<'_> {
             .update(pool, &mut names, owner, id, [width, height], rgba)
     }
     /// The calling mod's image `id` freed: its name and slot go at once.
-    pub(in crate::game) fn free_dynamic_texture(
+    pub fn free_dynamic_texture(
         &mut self,
         id: &Identifier,
     ) -> Result<(), DynamicTextureError> {
@@ -57,7 +57,7 @@ impl ClientGame<'_> {
     }
     /// The images created, updated or lost by a rebuilt atlas texture since the last frame, as
     /// patches into their slots for this frame's batch.
-    pub(in crate::game) fn dynamic_texture_patches(&mut self, patches: &mut Vec<ImagePatch>) {
+    pub fn dynamic_texture_patches(&mut self, patches: &mut Vec<ImagePatch>) {
         self.client
             .dynamic_textures
             .patches(self.client.gui.atlas.dynamic_texture_pool.as_ref(), patches);

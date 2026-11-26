@@ -21,7 +21,7 @@ impl ServerGame<'_> {
     }
 
     /// `FoodData.eat(nutrition, saturationModifier)`.
-    pub(in crate::game) fn player_feed(
+    pub fn player_feed(
         &mut self,
         player: PlayerRef,
         nutrition: i32,
@@ -48,7 +48,7 @@ impl ServerGame<'_> {
     }
 
     /// `FoodData.setFoodLevel`.
-    pub(in crate::game) fn player_set_food_level(&mut self, player: PlayerRef, level: i32) -> bool {
+    pub fn player_set_food_level(&mut self, player: PlayerRef, level: i32) -> bool {
         self.native_player_write(player, |game| {
             if let Some(food) = game.native_food_mut() {
                 food.food = level;
@@ -102,7 +102,7 @@ impl ServerGame<'_> {
     }
 
     /// `ServerPlayer.setExperienceLevels`.
-    pub(in crate::game) fn player_set_experience_levels(
+    pub fn player_set_experience_levels(
         &mut self,
         player: PlayerRef,
         levels: i32,
@@ -111,7 +111,7 @@ impl ServerGame<'_> {
     }
 
     /// `Player.totalExperience`.
-    pub(in crate::game) fn player_set_total_experience(
+    pub fn player_set_total_experience(
         &mut self,
         player: PlayerRef,
         total: i32,
@@ -120,7 +120,7 @@ impl ServerGame<'_> {
     }
 
     /// `ExperienceOrb.playerTouch`: Mending first, then `Player.giveExperiencePoints`.
-    pub(in crate::game) fn player_give_experience_points(
+    pub fn player_give_experience_points(
         &mut self,
         player: PlayerRef,
         points: u32,
@@ -141,7 +141,7 @@ impl ServerGame<'_> {
     }
 
     /// `Player.giveExperienceLevels`.
-    pub(in crate::game) fn player_give_levels(&mut self, player: PlayerRef, levels: i32) -> bool {
+    pub fn player_give_levels(&mut self, player: PlayerRef, levels: i32) -> bool {
         self.native_player_write(player, |game| game.give_levels(levels))
     }
 }

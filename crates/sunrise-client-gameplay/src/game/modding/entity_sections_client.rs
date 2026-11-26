@@ -16,7 +16,7 @@ impl ClientGame<'_> {
 
     /// A client's entities after its tick: each one where its interpolation or its own move
     /// put it (its live position, not the packet's), and this window's player.
-    pub(in crate::game) fn client_entity_sections_stepped(&mut self) {
+    pub fn client_entity_sections_stepped(&mut self) {
         let Some(scope) = self.entity_section_scope() else {
             return;
         };
@@ -44,7 +44,7 @@ impl ClientGame<'_> {
     /// `handleTeleportEntity`, `handleMovePlayer`'s `PlayerPosition`, a vehicle's) is told when
     /// it put the entity in another section, and `handleRespawn`'s new player starts over.
     /// An entity a move only starts interpolating moves at the client's entity tick.
-    pub(in crate::game) fn handle_packet(
+    pub fn handle_packet(
         &mut self,
         packet: sunrise_protocol::packets::play::Clientbound,
     ) -> super::Result<()> {

@@ -46,7 +46,7 @@ impl ServerGame<'_> {
     /// empty stack or an unknown item, with the `block_drops` rule off, on a client,
     /// for a stale handle, a level not in place, once the entity ids run out (the level random is
     /// not drawn from), or an item a mod kept out (`native_entity_join_level`).
-    pub(in crate::game) fn level_pop_resource(
+    pub fn level_pop_resource(
         &mut self,
         level: LevelRef,
         pos: [i32; 3],
@@ -76,7 +76,7 @@ impl ServerGame<'_> {
     /// spawned, for an empty stack or an unknown item, a value that isn't
     /// finite, on a client, for a stale handle, a level not in place, or an
     /// item a mod kept out (`native_entity_join_level`).
-    pub(in crate::game) fn level_spawn_item(
+    pub fn level_spawn_item(
         &mut self,
         level: LevelRef,
         x: f64,
@@ -92,7 +92,7 @@ impl ServerGame<'_> {
     /// deltaX, deltaY, deltaZ)`, and the same `pickup_delay` ticks before it
     /// can be picked up (`ItemEntity.setPickupDelay`). None in the same
     /// cases, and for a motion that isn't finite.
-    pub(in crate::game) fn level_spawn_item_with_motion(
+    pub fn level_spawn_item_with_motion(
         &mut self,
         level: LevelRef,
         x: f64,
@@ -136,7 +136,7 @@ impl ServerGame<'_> {
     /// one out (`native_entity_join_level`). False, with no orbs, for 0, a
     /// value that isn't finite, on a client, for a stale handle or a level
     /// not in place.
-    pub(in crate::game) fn level_award_experience(
+    pub fn level_award_experience(
         &mut self,
         level: LevelRef,
         x: f64,

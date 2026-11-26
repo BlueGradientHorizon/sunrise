@@ -168,7 +168,7 @@ impl crate::game::ServerGame<'_> {
     /// attacker holds (the player's selected and off-hand stacks, a mob's main hand) for
     /// `living_knockback` and the weapon of `living_incoming_damage`; without one it is the
     /// id alone, two `None`s and no allocation. Taken before the level's borrows of the game.
-    pub(in crate::game) fn attack_of(&self, attacker: i32) -> Attack {
+    pub fn attack_of(&self, attacker: i32) -> Attack {
         let held = if mod_api::__private::mods().is_empty() {
             [None, None]
         } else if self
@@ -362,7 +362,7 @@ impl crate::game::ServerGame<'_> {
     /// menu lends its live resident block entity through `BlockEntityScope`;
     /// a blockless menu lends no view while keeping `host()` and
     /// `transaction(...)` usable.
-    pub(in crate::game) fn mod_menu_button(
+    pub fn mod_menu_button(
         &mut self,
         menu: &str,
         context: mod_api::item::menu::MenuButtonContext,
@@ -492,7 +492,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// [`Self::attack_of`] for the attacker a damage source names: the player, a mob, or (none)
     /// the attack the enclosing [`Self::with_attack`] lends.
-    pub(in crate::game) fn attack_of_who(&self, attacker: Option<Who>) -> Attack {
+    pub fn attack_of_who(&self, attacker: Option<Who>) -> Attack {
         match attacker {
             Some(Who::Player) => self.attack_of(self.common.player.as_ref().map_or(0, |p| p.entity_id)),
             Some(Who::Mob(id)) => self.attack_of(id as i32),
@@ -505,7 +505,7 @@ impl crate::game::ServerGame<'_> {
     /// its position is no longer the state it touched, as vanilla never sees
     /// a stale one. The parts' own `entity_inside` contacts fire mid-walk now,
     /// on the shared inside sweep, not here.
-    pub(in crate::game) fn drain_entity_inside(&mut self) {
+    pub fn drain_entity_inside(&mut self) {
         for contact in sunrise_sim::block_contact::take_pending() {
             let (state, pos) = match &contact {
                 Pending::Landed(landed) => (landed.state, landed.position),
@@ -543,7 +543,7 @@ impl crate::game::ServerGame<'_> {
         }
     }
     /// The mobs from index `from` on are new in the world.
-    pub(in crate::game) fn native_mobs_joined(&mut self, from: usize, natural: bool) {
+    pub fn native_mobs_joined(&mut self, from: usize, natural: bool) {
         // Preserve saved/constructed UUIDs. Natural spawns built with provisional
         // IDs get their persistent identity when admitted, not on their first hit.
         for mob in self.common.mobs.iter().skip(from) {
@@ -681,7 +681,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// The players still here leave with the server (`PlayerList.removeAll`):
     /// the mods hear it once, whichever path closes it.
-    pub(in crate::game) fn native_players_leaving(&mut self) {
+    pub fn native_players_leaving(&mut self) {
         let Some(host) = self.server.lan.as_mut() else {
             return;
         };
@@ -700,14 +700,14 @@ impl crate::game::ServerGame<'_> {
         }
     }
     /// The acting player's blow killed mob `index`.
-    pub(in crate::game) fn native_kill_event(&mut self, index: usize) {
+    pub fn native_kill_event(&mut self, index: usize) {
         let (entity, kind) = (self.common.mobs[index].id, mob_kind(&self.common.mobs[index]));
         let player = self.native_acting_id();
         self.native_mob_killed(player, entity, &kind);
     }
     /// The containers of the mod blocks' block entities, by block state
     /// (`native_block_entity_container`), checked.
-    pub(in crate::game) fn native_containers(&self) -> FxHashMap<u32, Arc<ModContainer>> {
+    pub fn native_containers(&self) -> FxHashMap<u32, Arc<ModContainer>> {
         let registry = self.common.pack.assets.registry;
         let mut by_block: FxHashMap<String, Option<Arc<ModContainer>>> = FxHashMap::default();
         let mut out = FxHashMap::default();
@@ -839,7 +839,7 @@ impl crate::game::ServerGame<'_> {
         }
     }
     /// Whether a native mod's block `name` has a ticking block entity.
-    pub(in crate::game) fn native_ticks(&self, name: &str) -> bool {
+    pub fn native_ticks(&self, name: &str) -> bool {
         let mut ticks = false;
         self.native_block_entity_ticks(name, &mut ticks);
         ticks
@@ -877,7 +877,7 @@ impl crate::game::ServerGame<'_> {
     /// Whether a mod canceled `placer` writing `state` at `pos` (`entity_place`):
     /// `placer` is an entity id, `placed_against` the block it goes against and
     /// `companion` the second half of a bed, door or tall plant.
-    pub(in crate::game) fn place_canceled(
+    pub fn place_canceled(
         &mut self,
         placer: u32,
         pos: BlockPos,

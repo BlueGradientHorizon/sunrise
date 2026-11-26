@@ -4,7 +4,7 @@ use crate::game::server_side::potions_server::swap_player;
 impl crate::game::ServerGame<'_> {
     /// `as_guest`, with the system messages the guest's action earns (the
     /// `player::sendSystemMessage` of a packet handler) sent to that guest.
-    pub(in crate::game) fn as_guest_messaged<R>(
+    pub fn as_guest_messaged<R>(
         &mut self,
         conn: u32,
         f: impl FnOnce(&mut Self) -> R,
@@ -998,7 +998,7 @@ impl crate::game::ServerGame<'_> {
 
     /// Run `f` as the guest `conn`: the host's player state is swapped for theirs.
     /// Returns `None` if the guest is missing or already active in a nested turn.
-    pub(in crate::game) fn as_guest<R>(
+    pub fn as_guest<R>(
         &mut self,
         conn: u32,
         f: impl FnOnce(&mut Self) -> R,
@@ -1010,7 +1010,7 @@ impl crate::game::ServerGame<'_> {
     /// `as_guest` for the guest at `gi` in the hub's list, which a caller that already found it
     /// passes with its `conn`: the turn starts without another scan, and is refused when the
     /// guest there isn't `conn`.
-    pub(in crate::game) fn as_guest_at<R>(
+    pub fn as_guest_at<R>(
         &mut self,
         gi: usize,
         conn: u32,
@@ -1039,14 +1039,14 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// Where guest `conn` is in the hub's list.
-    pub(in crate::game) fn guest_index(&self, conn: u32) -> Option<usize> {
+    pub fn guest_index(&self, conn: u32) -> Option<usize> {
         self.server.lan.as_ref()?.hub.guests.connection_index(conn)
     }
 
     /// Run a command or fixture with the guest's player state in place, without the
     /// packet/tick turn's block-contact scope or handling a panic from `f`. When the caller
     /// has changed levels, the outer body is still in `outer_dimension`.
-    pub(in crate::game) fn with_guest_swap<R>(
+    pub fn with_guest_swap<R>(
         &mut self,
         conn: u32,
         outer_dimension: Dim,

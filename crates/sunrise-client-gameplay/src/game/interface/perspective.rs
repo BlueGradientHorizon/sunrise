@@ -249,7 +249,7 @@ pub(in crate::game::client_side) fn wrap(d: f32) -> f32 {
 #[cfg(feature = "client")]
 impl crate::game::ClientGame<'_> {
     /// `key.togglePerspective`: the next camera type, as a mod's `camera_type_cycle` leaves it.
-    pub(in crate::game::client_side) fn cycle_camera(&mut self) {
+    pub fn cycle_camera(&mut self) {
         self.apply_requested_camera_type();
         let previous = self.client.camera_type;
         let mut next = previous.cycle();
@@ -258,7 +258,7 @@ impl crate::game::ClientGame<'_> {
     }
     /// `Options.setCameraType`, then `Minecraft.handleKeybinds`' check: the chain
     /// follows the first-person view.
-    pub(in crate::game::client_side) fn apply_camera_type(&mut self, camera_type: CameraType) {
+    pub fn apply_camera_type(&mut self, camera_type: CameraType) {
         self.client.requested_camera_type.take();
         let previous = self.client.camera_type;
         self.client.camera_type = camera_type;
@@ -279,7 +279,7 @@ impl crate::game::ClientGame<'_> {
     /// interpolated eye, or a point up to the camera distance behind (or in
     /// front of) it, pulled in where visual shapes are in the way. Returns the
     /// position, yaw and pitch to render from.
-    pub(in crate::game) fn camera_view(&mut self, partial: f32) -> Option<(glam::DVec3, f32, f32)> {
+    pub fn camera_view(&mut self, partial: f32) -> Option<(glam::DVec3, f32, f32)> {
         if self.client.studio.flying() {
             return Some((
                 self.client.studio.freecam.position,
@@ -443,7 +443,7 @@ impl crate::game::ClientGame<'_> {
     }
     /// Keep the player's model in step with the player (`LivingEntity.tick`
     /// body turning, `WalkAnimationState`, the swing and the pose).
-    pub(in crate::game) fn tick_player_model(&mut self) {
+    pub fn tick_player_model(&mut self) {
         let (scale, nameplate) = self.common.player.as_mut().map_or_else(
             || (1.0, NameplateDistances::default()),
             |p| {
@@ -745,7 +745,7 @@ impl crate::game::ClientGame<'_> {
     }
     /// Whether the player's own model shows in the world view (its body or,
     /// while invisible, only its armour and held items).
-    pub(in crate::game) fn player_model_shown(&self) -> bool {
+    pub fn player_model_shown(&self) -> bool {
         (self.own_body_in_view()
             || (self.controls_camera()
                 && shadow_pass_takes_own_model(
@@ -1317,7 +1317,7 @@ impl crate::game::ClientGame<'_> {
     }
     /// Decide in the render layer, fire with a ClientHost, then stage the answer
     /// on this tick's model. Stack snapshots are converted only with subscribers.
-    pub(in crate::game) fn held_arm_poses(
+    pub fn held_arm_poses(
         &self,
         entity_id: u32,
         m: &Mob,

@@ -42,7 +42,7 @@ fn a_mod_denies_one_entity_griefing() {
             // by the guest the mod denies lights none and another guest's
             // does. A gone owner, or none, reads the rule without asking.
             use sunrise_gameplay::game::server_side::creatures_server::Who;
-            let hub = &mut game.side.lan.as_mut().unwrap().hub;
+            let hub = &mut game.server.lan.as_mut().unwrap().hub;
             hub.guests.push(guest(5));
             hub.guests.push(guest(6));
             heard.lock().unwrap().clear();
@@ -65,12 +65,12 @@ fn a_mod_denies_one_entity_griefing() {
             // blast that keeps blocks spares decorations when the mod denies
             // it, and reaches them for another exploding entity.
             use {sunrise_gameplay::game::server_side::explosion::BlockInteraction::Destroy, sunrise_gameplay::game::server_side::explosion::BlockInteraction::Keep};
-            game.side.combat.0.explosion_source = Some(denied);
+            game.server.combat.0.explosion_source = Some(denied);
             assert!(game.blast_spares_decorations(Keep));
             assert!(!game.blast_spares_decorations(Destroy));
-            game.side.combat.0.explosion_source = Some(other);
+            game.server.combat.0.explosion_source = Some(other);
             assert!(!game.blast_spares_decorations(Keep));
-            game.side.combat.0.explosion_source = None;
+            game.server.combat.0.explosion_source = None;
         });
     });
 }

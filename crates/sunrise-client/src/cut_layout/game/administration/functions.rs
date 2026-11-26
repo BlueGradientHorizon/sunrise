@@ -21,7 +21,7 @@ use super::*;
             || {
                 sunrise_gameplay::game::native_entity_refs::tests::with_game(|game| {
                     let world = tempfile::tempdir().unwrap();
-                    game.side.world_root = world.path().to_owned();
+                    game.server.world_root = world.path().to_owned();
                     let pack = world.path().join("datapacks/snow_walkers");
                     let tags = pack.join("data/minecraft/tags/entity_type");
                     std::fs::create_dir_all(&tags).unwrap();
@@ -95,18 +95,18 @@ use super::*;
             .unwrap();
             game.load_world(request).unwrap();
             assert!(
-                game.side
+                game.server
                     .fns
                     .0
                     .store
                     .functions
                     .contains_key("first_open:block"),
                 "first-open admission errors: {:?}",
-                game.side.fns.0.store.errors
+                game.server.fns.0.store.errors
             );
             assert!(
                 !game
-                    .side
+                    .server
                     .fns
                     .0
                     .store
@@ -114,7 +114,7 @@ use super::*;
                     .contains_key("first_open:invalid")
             );
             assert!(
-                game.side
+                game.server
                     .fns
                     .0
                     .store
@@ -207,7 +207,7 @@ use super::*;
                         .unwrap();
                         request.save_root = world;
                         game.load_world(request).unwrap();
-                        let store = &game.side.fns.0.store;
+                        let store = &game.server.fns.0.store;
                         assert!(
                             store.functions.contains_key("fnmod:plain"),
                             "{:?}",
@@ -241,7 +241,7 @@ use super::*;
                         offered.store(false, Ordering::Relaxed);
                         let features = game.level.enabled_features.clone();
                         game.reload_datapacks(false, &features).unwrap();
-                        assert!(!game.side.fns.0.store.functions.contains_key("fnmod:plain"));
+                        assert!(!game.server.fns.0.store.functions.contains_key("fnmod:plain"));
                         assert!(
                             refusal(game, "fnmod:plain")
                                 .unwrap()
@@ -289,7 +289,7 @@ use super::*;
             )
             .unwrap();
             let modifier_id = mod_api::Identifier::parse("reload_test:append").unwrap();
-            game.side.world_root = root.clone();
+            game.server.world_root = root.clone();
             game.set_allow_commands(true);
             // Establish the live pack generation before injecting a refused candidate.
             // Mod declarations are load-bound; replacing them cannot be used to test
@@ -304,7 +304,7 @@ use super::*;
             assert_eq!(first.id_of(&first_instance), Some(&modifier_id));
             assert_eq!(first.modifiers().len(), 1);
             let first_generation = Arc::downgrade(
-                game.side
+                game.server
                     .world_tables
                     .0
                     .as_ref()
@@ -365,13 +365,13 @@ use super::*;
             let old_root = game.options.resources.clone();
             let old_data = game.pack.data_source.clone();
             let old_tables = game
-                .side
+                .server
                 .world_tables
                 .0
                 .as_ref()
                 .map(|tables| tables as *const _);
             let old_generation = game.damage_tag_generation;
-            let old_enabled = game.side.fns.0.enabled.clone();
+            let old_enabled = game.server.fns.0.enabled.clone();
             std::fs::write(&modifier_file, br#"{"type":"neoforge:add_table","table":"minecraft:blocks/stone","priority":1003}"#).unwrap();
             let error = game.reload_datapacks(true, &[]).err().unwrap();
             assert!(error.to_string().contains("reload_test:missing"));
@@ -389,25 +389,25 @@ use super::*;
             assert!(Arc::ptr_eq(&game.loop_context, &old_context));
             assert_eq!(
                 old_tables,
-                game.side
+                game.server
                     .world_tables
                     .0
                     .as_ref()
                     .map(|tables| tables as *const _)
             );
             assert_eq!(game.damage_tag_generation, old_generation);
-            assert_eq!(game.side.fns.0.enabled, old_enabled);
+            assert_eq!(game.server.fns.0.enabled, old_enabled);
             assert_eq!(
                 sunrise_gameplay_common::game::native_world_read_common::block_in_tag(stone, "reload_test:candidate"),
                 old_tag
             );
             game.save_datapack_settings();
             let settings = std::fs::read(root.join("datapacks.json")).unwrap();
-            let enabled = game.side.fns.0.enabled.clone();
+            let enabled = game.server.fns.0.enabled.clone();
             let context = game.loop_context.clone();
             let generation = game.damage_tag_generation;
             assert!(!game.run_command("datapack disable \"file/candidate\""));
-            assert_eq!(game.side.fns.0.enabled, enabled);
+            assert_eq!(game.server.fns.0.enabled, enabled);
             assert_eq!(
                 std::fs::read(root.join("datapacks.json")).unwrap(),
                 settings
@@ -469,7 +469,7 @@ use super::*;
         let mut ran = false;
         sunrise_gameplay::game::native_entity_refs::tests::with_game(|game| {
             ran = true;
-            game.side.world_root = scratch.0.clone();
+            game.server.world_root = scratch.0.clone();
             game.set_allow_commands(true);
             game.reload_datapacks(false, &[]).unwrap();
             let marker = |game: &sunrise_gameplay::game::ServerGame<'_>| {
@@ -565,7 +565,7 @@ use super::*;
         ] {
             std::fs::write(functions.join(format!("{name}.mcfunction")), text).unwrap();
         }
-        game.side.world_root = dir.clone();
+        game.server.world_root = dir.clone();
         let run = |game: &mut sunrise_gameplay::game::ServerGame<'_>, line: &str| {
             game.server.exec.0 = ExecState::default();
             let source = game.player_source();
@@ -592,7 +592,7 @@ use super::*;
         for name in ["bad", "forbidden", "macro_bad", "slash"] {
             assert!(
                 !game
-                    .side
+                    .server
                     .fns
                     .0
                     .store
@@ -607,7 +607,7 @@ use super::*;
                     .contains(&format!("h144:{name}"))
             );
             assert!(
-                game.side
+                game.server
                     .fns
                     .0
                     .store
@@ -617,8 +617,8 @@ use super::*;
             );
         }
         assert!(run(&mut game, "function h144:forbidden").is_err());
-        assert!(game.side.fns.0.store.functions.contains_key("h144:macro"));
-        assert!(game.side.fns.0.store.functions["h144:macro"].is_macro());
+        assert!(game.server.fns.0.store.functions.contains_key("h144:macro"));
+        assert!(game.server.fns.0.store.functions["h144:macro"].is_macro());
         run(&mut game, "function h144:good").unwrap();
         assert_eq!(game.score.board.score("good", "h144").unwrap().value, -98);
         run(&mut game, "function h144:sequence").unwrap();
@@ -640,10 +640,10 @@ use super::*;
         .unwrap();
         game.reload_datapacks(true, &game.level.enabled_features.clone())
             .unwrap();
-        assert!(game.side.fns.0.store.functions.contains_key("h144:good"));
+        assert!(game.server.fns.0.store.functions.contains_key("h144:good"));
         assert!(
             !game
-                .side
+                .server
                 .fns
                 .0
                 .store
@@ -731,7 +731,7 @@ use super::*;
         ] {
             std::fs::write(functions.join(format!("{name}.mcfunction")), text).unwrap();
         }
-        game.side.world_root = dir.clone();
+        game.server.world_root = dir.clone();
         let run = |game: &mut sunrise_gameplay::game::ServerGame<'_>, line: &str| {
             game.server.exec.0 = ExecState::default();
             let source = game.player_source();
@@ -741,9 +741,9 @@ use super::*;
         run(&mut game, "scoreboard players set #ran h166 -99").unwrap();
         game.reload_datapacks(false, &game.level.enabled_features.clone())
             .unwrap();
-        assert!(!game.side.fns.0.store.functions.contains_key("h166:novar"));
+        assert!(!game.server.fns.0.store.functions.contains_key("h166:novar"));
         assert!(
-            game.side
+            game.server
                 .fns
                 .0
                 .store
@@ -810,7 +810,7 @@ use super::*;
         .unwrap();
         game.build_registries();
         game.set_allow_commands(true);
-        game.side.fns.0.loaded = true;
+        game.server.fns.0.loaded = true;
         let run = |game: &mut sunrise_gameplay::game::ServerGame<'_>, line: &str| {
             game.server.exec.0 = ExecState::default();
             let source = game.player_source();
@@ -831,7 +831,7 @@ use super::*;
             if let Some(tail) = tail {
                 lines.push(FunctionLine::Command(tail.into()));
             }
-            game.side.fns.0.store.functions.insert(
+            game.server.fns.0.store.functions.insert(
                 id.clone(),
                 Function {
                     id,
@@ -906,7 +906,7 @@ mod entity_score_tests {
 
         game.set_allow_commands(true);
         game.ensure_datapacks();
-        game.side.fns.0.store.predicates.insert(
+        game.server.fns.0.store.predicates.insert(
             "h270:min2".into(),
             serde_json::json!({
                 "type": "minecraft:entity_scores", "entity": "this", "scores": {"pts": {"min": 2}}
@@ -949,9 +949,9 @@ mod entity_score_tests {
             let mut source = game.player_source();
             source.entity = Some(Target::Mob(id));
             source.pos = game.target_position(Target::Mob(id)).unwrap();
-            game.side.command_source = Some(source);
+            game.server.command_source = Some(source);
             let result = game.check_predicate("h270:min2").unwrap();
-            game.side.command_source = None;
+            game.server.command_source = None;
             result
         };
         assert!(!matches(&mut game, actors[0].0));
@@ -1041,9 +1041,9 @@ mod entity_score_tests {
                 std::fs::write(pack.join("pack.mcmeta"), metadata).unwrap();
             }
         }
-        game.side.world_root = dir.clone();
+        game.server.world_root = dir.clone();
         let run = |game: &mut sunrise_gameplay::game::ServerGame<'_>, line: &str| {
-            game.side.exec.0 = ExecState::default();
+            game.server.exec.0 = ExecState::default();
             let source = game.player_source();
             game.execute_line(line, source)
         };
@@ -1069,7 +1069,7 @@ mod entity_score_tests {
                     if valid { 17 } else { -99 }
                 );
                 assert_eq!(
-                    game.side
+                    game.server
                         .fns
                         .0
                         .store
@@ -1085,7 +1085,7 @@ mod entity_score_tests {
                     valid
                 );
                 assert_eq!(
-                    game.side
+                    game.server
                         .fns
                         .0
                         .packs
@@ -1186,11 +1186,11 @@ mod required_tag_tests {
                 &serde_json::json!({"values": values}).to_string(),
             );
         }
-        game.side.world_root = dir.clone();
+        game.server.world_root = dir.clone();
         game.build_registries();
         game.set_allow_commands(true);
         let run = |game: &mut sunrise_gameplay::game::ServerGame<'_>, line: &str| {
-            game.side.exec.0 = ExecState::default();
+            game.server.exec.0 = ExecState::default();
             let source = game.player_source();
             if let Err(error) = game.execute_line(line, source) {
                 assert!(line.contains("function #h145:"), "{line}: {error:?}");
@@ -1206,15 +1206,15 @@ mod required_tag_tests {
             game.score.board.score("sentinel", "h145").unwrap().value,
             73
         );
-        assert!(game.side.fns.0.enabled.contains(&"file/h145".to_owned()));
+        assert!(game.server.fns.0.enabled.contains(&"file/h145".to_owned()));
         assert!(
-            game.side.fns.0.store.errors.is_empty(),
+            game.server.fns.0.store.errors.is_empty(),
             "{:?}",
-            game.side.fns.0.store.errors
+            game.server.fns.0.store.errors
         );
         for name in ["a", "b", "c"] {
             assert!(
-                game.side
+                game.server
                     .fns
                     .0
                     .store
@@ -1224,7 +1224,7 @@ mod required_tag_tests {
         }
         for name in tags.as_object().unwrap().keys() {
             assert!(
-                game.side
+                game.server
                     .fns
                     .0
                     .store
@@ -1301,7 +1301,7 @@ mod required_tag_tests {
             if actual != expected {
                 failures.push(format!("{name}: {actual:?} expected {expected:?}"));
             }
-            let ids = game.side.fns.0.store.tag_functions(&format!("h145:{name}"));
+            let ids = game.server.fns.0.store.tag_functions(&format!("h145:{name}"));
             let expected_ids: Vec<String> = if name == "optional_invalid_child" {
                 vec!["h145:a".into(), "h145:b".into()]
             } else {
@@ -1383,10 +1383,10 @@ mod required_tag_tests {
                     serde_json::json!({"type":"minecraft:all_of","terms":[next]}),
                 );
             }
-            game.side.world_root = dir.clone();
+            game.server.world_root = dir.clone();
             game.reload_datapacks(false, &[]).unwrap();
             assert!(
-                game.side
+                game.server
                     .fns
                     .0
                     .store
@@ -1400,7 +1400,7 @@ mod required_tag_tests {
                     .contains(&"h121:reference".into())
             );
             let run = |game: &mut sunrise_gameplay::game::ServerGame<'_>, line: &str| {
-                game.side.exec.0 = ExecState::default();
+                game.server.exec.0 = ExecState::default();
                 let source = game.player_source();
                 game.execute_line(line, source).unwrap();
             };
@@ -1465,15 +1465,15 @@ mod required_tag_tests {
                     }
                 }
             }
-            let previous = game.side.command_source;
+            let previous = game.server.command_source;
             let server = game.server_source();
             assert!(server.entity.is_none());
-            game.side.command_source = Some(server);
+            game.server.command_source = Some(server);
             assert!(!game.check_predicate("h121:pig").unwrap());
             assert!(!game.check_predicate("h121:reference").unwrap());
             assert!(game.check_predicate("h121:inverted").unwrap());
             assert!(game.check_predicate("h121:absent").is_err());
-            game.side.command_source = previous;
+            game.server.command_source = previous;
             // Defensive evaluator controls only. Java rejects these graphs at
             // world load (a reload refuses a dangling or cyclic reference, so they cannot come from a
             // pack): they are put in the loaded store directly. This does not establish
@@ -1524,11 +1524,11 @@ mod required_tag_tests {
                 "minecraft:h121_canonical",
                 serde_json::json!({"type":"minecraft:all_of","terms":["h121_canonical"]}),
             );
-            game.side.fns.0.store.predicates.extend(defensive_graphs);
+            game.server.fns.0.store.predicates.extend(defensive_graphs);
             let mut source = game.player_source();
             source.entity = Some(Target::Mob(actors[0].0));
             source.pos = game.target_position(Target::Mob(actors[0].0)).unwrap();
-            game.side.command_source = Some(source);
+            game.server.command_source = Some(source);
             for name in [
                 "missing",
                 "nested_missing",
@@ -1545,7 +1545,7 @@ mod required_tag_tests {
                 "all_reach_cycle_a",
             ] {
                 assert!(
-                    game.side
+                    game.server
                         .fns
                         .0
                         .store
@@ -1559,7 +1559,7 @@ mod required_tag_tests {
             }
             assert!(!game.check_predicate("minecraft:h121_canonical").unwrap());
             assert!(game.check_predicate("h121:reference").unwrap());
-            game.side.command_source = previous;
+            game.server.command_source = previous;
             assert_eq!(game.world.game_time, clock);
             std::fs::remove_dir_all(dir).unwrap();
         });

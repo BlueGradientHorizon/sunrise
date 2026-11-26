@@ -3,7 +3,7 @@ use super::*;
 
 impl crate::game::ServerGame<'_> {
     /// Spawn the entities of chunks that finished loading.
-    pub(in crate::game) fn spawn_loaded_entities(&mut self) {
+    pub fn spawn_loaded_entities(&mut self) {
         let _save_lease = sunrise_sim::join_seq::visibility::PassLease::enter();
         let loaded = std::mem::take(&mut self.common.world.loaded_entities);
         for (key, tags) in loaded {

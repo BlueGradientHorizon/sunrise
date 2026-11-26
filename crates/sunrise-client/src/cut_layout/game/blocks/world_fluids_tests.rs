@@ -119,7 +119,7 @@ fn a_committed_pour_breaks_what_it_replaces_then_sends_its_events_in_order() {
         game.world.set(AT[0], AT[1], AT[2], poppy).unwrap();
         let items = game.dropped.len();
         game.world.block_log = Some(Vec::new());
-        game.side.pending_native_sounds.clear();
+        game.server.pending_native_sounds.clear();
         dispense_fixture::start_recording();
         let host: &mut dyn ServerHost = game;
         let placed: Result<bool, TransactionError<()>> = host.transaction(|host, tx| {
@@ -134,7 +134,7 @@ fn a_committed_pour_breaks_what_it_replaces_then_sends_its_events_in_order() {
         assert_eq!(told.iter().filter(|p| **p == (2, 65, 2)).count(), 1);
         // The bucket's empty sound, queued once at the commit.
         let sounds: Vec<_> = game
-            .side
+            .server
             .pending_native_sounds
             .iter()
             .map(|s| (s.sound.clone(), s.at))

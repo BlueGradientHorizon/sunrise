@@ -212,7 +212,7 @@ fn a_hand_egg_checks_and_spawns_the_type_named_by_its_component() {
 impl crate::game::ServerGame<'_> {
     /// Adds a projectile, giving it an id from the entity counter
     /// (`Entity.id`, the same counter as the rest) when it has none. Its id.
-    pub(in crate::game) fn add_projectile(
+    pub fn add_projectile(
         &mut self,
         mut p: sunrise_sim::projectiles::Projectile,
     ) -> u32 {
@@ -563,7 +563,7 @@ impl crate::game::ServerGame<'_> {
         Ok(arrow_miss(dodged))
     }
     /// Animal.spawnChildFromBreeding
-    pub(in crate::game) fn breed(
+    pub fn breed(
         &mut self,
         parent: u32,
         partner: u32,
@@ -1175,7 +1175,7 @@ impl crate::game::ServerGame<'_> {
     /// Whether the chunk's own status is entity-ticking (block coordinates), whatever the
     /// simulation distance: the chunks whose entities are on `ServerLevel`'s entity tick list
     /// (`Visibility.fromFullChunkStatus`), so they check despawning.
-    pub(in crate::game::server_side) fn entity_tick_listed_area(
+    pub fn entity_tick_listed_area(
         &self,
     ) -> impl Fn(i32, i32) -> bool + use<> {
         let levels = self.server.tickets.0.levels();
@@ -1183,7 +1183,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// `DistanceManager.inEntityTickingRange` in an entity-ticking chunk
     /// (block coordinates), from every player's tickets (`update_chunk_tickets`).
-    pub(in crate::game) fn entity_ticking_area(&self) -> impl Fn(i32, i32) -> bool + use<> {
+    pub fn entity_ticking_area(&self) -> impl Fn(i32, i32) -> bool + use<> {
         let levels = self.server.tickets.0.levels();
         move |x, z| levels.entity_ticking_at(x, z)
     }
@@ -2894,7 +2894,7 @@ impl crate::game::ServerGame<'_> {
             }
         }
     }
-    pub(in crate::game) fn hurt_player_by(&mut self, damage_type: &str, amount: f32) {
+    pub fn hurt_player_by(&mut self, damage_type: &str, amount: f32) {
         let mut canceled = false;
         let attack = self.current_attack();
         if self.common.player.is_some()
@@ -2910,7 +2910,7 @@ impl crate::game::ServerGame<'_> {
     /// `hurtServer` on the player. `from` is the source's position (none: no
     /// direction), `known`: the causing mob when it is given (`/damage`),
     /// else the melee attacker is the mob nearest to `from`.
-    pub(in crate::game) fn hurt_player_from(
+    pub fn hurt_player_from(
         &mut self,
         amount: f32,
         from: Option<[f64; 3]>,
@@ -3134,7 +3134,7 @@ impl crate::game::ServerGame<'_> {
     /// Right click on a mob (Mob.interact / mobInteract), on the mob under the
     /// crosshair or on the one a guest's interact packet named: returns true
     /// when consumed.
-    pub(in crate::game) fn interact_mob(&mut self, target: Option<InteractTarget>) -> Result<bool> {
+    pub fn interact_mob(&mut self, target: Option<InteractTarget>) -> Result<bool> {
         let Some(mut index) = self.mob_interaction_target(target) else {
             return Ok(false);
         };
@@ -4084,13 +4084,13 @@ impl crate::game::ServerGame<'_> {
         }
     }
     /// A mob's projectile enters the level.
-    pub(in crate::game) fn launch_mob_projectile(&mut self, mut p: Projectile) {
+    pub fn launch_mob_projectile(&mut self, mut p: Projectile) {
         self.server.next_entity += 1;
         p.id = self.server.next_entity;
         self.spawn_mob_projectile(p);
     }
     /// `LivingEntity.die` / `dropAllDeathLoot`. Does not finish a hurt.
-    pub(in crate::game) fn mob_die(&mut self, m: &Mob) {
+    pub fn mob_die(&mut self, m: &Mob) {
         // Death reads the remembered player without consuming it. A body
         // still in the level can answer getKillCredit after this call.
         let source = (!mod_api::__private::mods().is_empty()).then(|| self.mob_damage_source(m));
@@ -4198,7 +4198,7 @@ impl crate::game::ServerGame<'_> {
         self.finish_mob_death(m, &mut dying, source);
     }
     /// Melee or ranged damage to another mob; whether the hit landed.
-    pub(in crate::game) fn mob_hits_mob(
+    pub fn mob_hits_mob(
         &mut self,
         target: u32,
         amount: f32,
@@ -4357,7 +4357,7 @@ impl crate::game::ServerGame<'_> {
         let id = u32::try_from(self.common.player.as_ref()?.entity_id).ok()?;
         Some((uuid, id))
     }
-    pub(in crate::game) fn player_view(&self) -> Option<PlayerView> {
+    pub fn player_view(&self) -> Option<PlayerView> {
         if self.server.lan_acting_fake {
             return None;
         }
@@ -5222,7 +5222,7 @@ impl crate::game::ServerGame<'_> {
         }
     }
     /// Remember the acting player for a mob's `lastHurtByPlayer`.
-    pub(in crate::game) fn remember_mob_player_credit(&mut self, victim: u32) {
+    pub fn remember_mob_player_credit(&mut self, victim: u32) {
         if let Some(uuid) = self.player_uuid_of(self.server.lan_acting) {
             self.server.last_hurt_by_player.insert(
                 victim,
@@ -5232,7 +5232,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// Resolve `EntityReference.getEntity` across levels. None inside means
     /// the player in place; Some is a guest connection.
-    pub(in crate::game::server_side) fn resolve_player_credit(
+    pub fn resolve_player_credit(
         &self,
         credit: PlayerCredit,
     ) -> Option<Option<u32>> {
@@ -5357,7 +5357,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// The entity phase of `tick_creatures`: every mob's tick, deaths, and the
     /// projectiles and effects that follow from them.
-    pub(in crate::game) fn tick_creature_entities(&mut self) -> Result<()> {
+    pub fn tick_creature_entities(&mut self) -> Result<()> {
         // Its steps as spans for `sunrise-report` (nothing is read while spans are off).
         let mut laps = sunrise_level::spans::laps();
         let blocked = self.mobs_below_off_level();
@@ -5604,7 +5604,7 @@ impl crate::game::ServerGame<'_> {
         self.finish_creature_entities(&mut laps, &primable)
     }
     /// Advance every mob one tick, then apply their events.
-    pub(in crate::game) fn tick_creatures(&mut self) -> Result<()> {
+    pub fn tick_creatures(&mut self) -> Result<()> {
         // Hurts dealt since the last creature tick (explosions, commands, the
         // systems after it) teleport an enderman before it ticks, not in its AI step.
         self.settle_hurt_teleports()?;
@@ -5638,7 +5638,7 @@ impl crate::game::ServerGame<'_> {
         let same = no_spawns && self.common.creatures.projectiles.stamp() == restored;
         (self.common.creatures.projectiles.lift(), same)
     }
-    pub(in crate::game) fn tick_projectiles_now(&mut self) -> Result<()> {
+    pub fn tick_projectiles_now(&mut self) -> Result<()> {
         if self.common.creatures.projectiles.is_empty() {
             self.flush_lan_explosions();
             return self.flush_wind_bursts();
@@ -6058,7 +6058,7 @@ impl crate::game::ServerGame<'_> {
         self.native_tick_post_batch(round);
         flushed
     }
-    pub(in crate::game) fn touch_arrows(&mut self) {
+    pub fn touch_arrows(&mut self) {
         use sunrise_sim::arrows::Touch;
         let Some(p) = self.common.player.as_ref() else {
             return;
@@ -6282,7 +6282,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// The level as server arrows see it.
-    pub(in crate::game) fn arrow_scene<'s>(
+    pub fn arrow_scene<'s>(
         &'s self,
         rain: &'s dyn Fn(BlockPos) -> bool,
     ) -> sunrise_sim::arrows::ArrowScene<'s, 's> {
@@ -6416,7 +6416,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// Create a mob of `kind` at a position, finalized like a natural spawn.
-    pub(in crate::game) fn spawn_mob(
+    pub fn spawn_mob(
         &mut self,
         kind: &str,
         at: [f64; 3],
@@ -6441,7 +6441,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// Create a mob of `kind` at a position without `finalizeSpawn`'s rolls,
     /// matching vanilla `EntityType.create(level, reason)`.
-    pub(in crate::game) fn spawn_mob_raw(
+    pub fn spawn_mob_raw(
         &mut self,
         kind: &str,
         at: [f64; 3],
@@ -6453,7 +6453,7 @@ impl crate::game::ServerGame<'_> {
     /// never calls `Mob.setPersistenceRequired` for it, so the mob is not
     /// persistent: the despawn rule holds it like any other mob, and only
     /// its NBT can make it persistent.
-    pub(in crate::game) fn spawn_mob_spawned(
+    pub fn spawn_mob_spawned(
         &mut self,
         kind: &str,
         at: [f64; 3],
@@ -6516,7 +6516,7 @@ impl crate::game::ServerGame<'_> {
     /// nautilus): `hurtAndBreak(random.nextInt(2))` on a damageable item, and
     /// when it breaks the slot empties and `onEquippedItemBroken` broadcasts
     /// the break event.
-    pub(in crate::game) fn wear_sun_protection(&mut self, id: u32) {
+    pub fn wear_sun_protection(&mut self, id: u32) {
         use sunrise_core::equipment_slot::EquipmentSlot;
         let Some(m) = self.common.mobs.iter().find(|m| m.id == id) else {
             return;
@@ -6555,7 +6555,7 @@ impl crate::game::ServerGame<'_> {
     /// level's random, `Enchantment.modifyItemFilteredCount`) may save it, and
     /// the rest goes on the stack where it is worn. Only a part's `break_now`
     /// breaks one (`canGlideUsing` picks none a point would break): emptied, with its event.
-    pub(in crate::game) fn wear_mob_glider(
+    pub fn wear_mob_glider(
         &mut self,
         id: u32,
         slot: sunrise_core::equipment_slot::EquipmentSlot,
@@ -6591,7 +6591,7 @@ impl crate::game::ServerGame<'_> {
     /// body — 49 to 52 are the four armour slots, which only a player's own
     /// pieces reach). A fire hit leaves a fire-resistant piece alone
     /// (`ItemStack.canBeHurtBy`).
-    pub(in crate::game) fn hurt_mob_armor(
+    pub fn hurt_mob_armor(
         &mut self,
         id: u32,
         damage: f32,
@@ -6701,7 +6701,7 @@ impl crate::game::ServerGame<'_> {
     /// `postConversionStep` of its `ConversionTracker`). `pre_checked` skips
     /// `LivingConversionEvent.Pre`, which the lightning asks before it picks
     /// its outcome.
-    pub(in crate::game) fn convert_to(
+    pub fn convert_to(
         &mut self,
         from: &Mob,
         kind: &str,
@@ -6746,7 +6746,7 @@ impl crate::game::ServerGame<'_> {
     /// the mobs the game spawns where vanilla calls `finalizeSpawn`. The class's
     /// follow-ups (raider flags and the like) are part of `finalizeSpawn`, so a
     /// site skips them on [`Finalized::Skipped`].
-    pub(in crate::game) fn finalize_with(
+    pub fn finalize_with(
         &mut self,
         mob: &mut Mob,
         reason: SpawnReason,
@@ -6965,7 +6965,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// `AbstractCubeMob.remove`: split only as the dead body is removed.
-    pub(in crate::game) fn split_dead_cube(&mut self, mut dying: Mob) {
+    pub fn split_dead_cube(&mut self, mut dying: Mob) {
         if matches!(
             dying.species(),
             Species::Slime | Species::MagmaCube | Species::SulfurCube
@@ -7237,7 +7237,7 @@ impl crate::game::ServerGame<'_> {
     /// `TurtleEggBlock.randomTick` at the last hatch stage: one baby turtle
     /// per egg, a day from grown, with the egg as its home (the sound, the
     /// crumbs and the block's removal came from the level).
-    pub(in crate::game) fn hatch_turtles(
+    pub fn hatch_turtles(
         &mut self,
         pos: [i32; 3],
         state: sunrise_world::registry::BlockStateId,
@@ -7270,7 +7270,7 @@ impl crate::game::ServerGame<'_> {
 
     /// `Animal.finalizeSpawnChildFromBreeding`'s single experience orb, drawn
     /// from the breeding parent after the rule check.
-    pub(in crate::game) fn award_breeding_experience(&mut self, parent: u32, at: [f64; 3]) {
+    pub fn award_breeding_experience(&mut self, parent: u32, at: [f64; 3]) {
         let mob_drops = self
             .common.ui
             .rules
@@ -7385,7 +7385,7 @@ impl crate::game::ServerGame<'_> {
         }
     }
     /// A status effect from a mob, arrow or splash potion (`addEffect`).
-    pub(in crate::game) fn give_player_effect(
+    pub fn give_player_effect(
         &mut self,
         effect: &'static str,
         ticks: i32,
@@ -7885,7 +7885,7 @@ impl crate::game::ServerGame<'_> {
     /// (`canBreakBlockInAdventureMode`: a resolved mob's arrow needs its
     /// actual projectile predicate and mob_griefing). Other owner/kind paths
     /// retain their existing policy. A pot is cracked first (flags 260).
-    pub(in crate::game) fn projectile_breaks_block(&mut self, p: &Projectile, pos: [i32; 3]) {
+    pub fn projectile_breaks_block(&mut self, p: &Projectile, pos: [i32; 3]) {
         use sunrise_command::args::GameMode;
         let impact = matches!(
             p.kind,
@@ -7987,7 +7987,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// The rest of the tick of an arrow that hit an entity (`arrows::finish_entity_hit`).
-    pub(in crate::game) fn finish_arrow_hit(&mut self, mut arrow: Projectile, outcome: EntityHit) {
+    pub fn finish_arrow_hit(&mut self, mut arrow: Projectile, outcome: EntityHit) {
         let keep = {
             let rain = self.arrow_rain();
             sunrise_sim::arrows::finish_entity_hit(&mut arrow, &self.arrow_scene(&rain), outcome)
@@ -8101,7 +8101,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// A projectile's hit, landed in the attack of its owner.
-    pub(in crate::game) fn projectile_hit(&mut self, p: &Projectile, hit: Hit) -> Result<()> {
+    pub fn projectile_hit(&mut self, p: &Projectile, hit: Hit) -> Result<()> {
         let attack = self.projectile_attack(p);
         let result = self.with_attack(attack, |g| g.projectile_hit_landed(p, hit));
         self.settle_dealt_absorbed(p.owner == Some(Who::Player));
@@ -8295,7 +8295,7 @@ impl crate::game::ServerGame<'_> {
     /// `EventHooks.canEntityGrief(level, entity)`: the `mob_griefing` rule,
     /// which a mod may change for `entity` (`EntityMobGriefingEvent`). No
     /// entity: the rule alone, as NeoForge.
-    pub(in crate::game) fn can_entity_grief(&self, entity: Option<u32>) -> bool {
+    pub fn can_entity_grief(&self, entity: Option<u32>) -> bool {
         let rule = self
             .common.ui
             .rules
@@ -8306,7 +8306,7 @@ impl crate::game::ServerGame<'_> {
     /// [`Self::can_entity_grief`] for its owner, as `getOwner()` gives it. That
     /// is the mob that shot it, or the player who owns it (the guest on `guest`,
     /// else the player in place). An owner that is gone, or none, reads the rule.
-    pub(in crate::game) fn large_fireball_fire(
+    pub fn large_fireball_fire(
         &self,
         owner: Option<Who>,
         guest: Option<u32>,

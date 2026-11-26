@@ -54,7 +54,7 @@ fn give_every_quad_a_sprite(game: &mut sunrise_client_gameplay::game::ClientGame
         w: 16,
         h: 16,
     };
-    game.side
+    game.client
         .gui
         .atlas
         .sprites
@@ -190,14 +190,14 @@ fn special_item_draw_cost() {
     )]);
     crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
         // Dirt becomes a special model drawing stone's cube under stone's display transforms.
-        let special = game.side.client_pack.item_renderer.decode_definition(
+        let special = game.client.client_pack.item_renderer.decode_definition(
             r#"{"model":{"type":"minecraft:special","base":"minecraft:block/stone","model":{"type":"test:stone"}}}"#,
             &sunrise_client::item_render::ItemProviderTables {
                 special: Some(&factories),
                 ..Default::default()
             },
         ).unwrap();
-        let renderer = Arc::get_mut(&mut game.side.client_pack.item_renderer)
+        let renderer = Arc::get_mut(&mut game.client.client_pack.item_renderer)
             .expect("the game's item renderer is shared");
         Arc::make_mut(&mut renderer.models)
             .definitions

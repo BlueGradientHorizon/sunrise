@@ -38,7 +38,7 @@ impl ClientGame<'_> {
     /// `handleAddEntity` for an object type; false when `kind` isn't one.
     /// Hanging entities come at their block, with their direction as the
     /// spawn data (`Direction.from3DDataValue`).
-    pub(in crate::game) fn spawn_remote_object(
+    pub fn spawn_remote_object(
         &mut self,
         id: i32,
         kind: &str,
@@ -185,7 +185,7 @@ impl ClientGame<'_> {
     }
 
     /// `handleSetEntityData` for an object: what changes how it looks.
-    pub(in crate::game) fn remote_object_data(&mut self, id: i32, values: &[(u8, i32, Value)]) {
+    pub fn remote_object_data(&mut self, id: i32, values: &[(u8, i32, Value)]) {
         if self.client.text_displays.0.contains_key(&id) {
             // ItemDisplay.DATA_ITEM_STACK, read with the server's registries.
             let item = values
@@ -426,7 +426,7 @@ impl ClientGame<'_> {
     /// the entity's last sent one, if it has a move in progress. A minecart
     /// on `NewMinecartBehavior` is moved by `lerp_cart` (true when it did)
     /// instead.
-    pub(in crate::game::client_side) fn tick_remote_objects(
+    pub fn tick_remote_objects(
         &mut self,
         mut step: impl FnMut(u32, Vec3) -> Vec3,
         mut turn: impl FnMut(u32, f32) -> f32,
@@ -604,7 +604,7 @@ impl ClientGame<'_> {
         self.pick_section_clear();
     }
 
-    pub(in crate::game) fn remove_remote_object(&mut self, id: u32) {
+    pub fn remove_remote_object(&mut self, id: u32) {
         self.client.text_displays.0.shift_remove(&(id as i32));
         self.client.interactions.remove(&(id as i32));
         self.common.ominous_spawners.retain(|s| s.id != id);

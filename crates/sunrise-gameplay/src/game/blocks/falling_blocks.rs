@@ -31,7 +31,7 @@ impl crate::game::ServerGame<'_> {
     /// so a block falling onto one that just landed lands on top of it. `i` is
     /// its place in the list; the caller has checked it is ticking.
     /// `entities` are the boxes that stop its move.
-    pub(in crate::game) fn tick_one_falling(&mut self, i: usize, entities: &[Aabb]) -> Result<()> {
+    pub fn tick_one_falling(&mut self, i: usize, entities: &[Aabb]) -> Result<()> {
         let entity_drops = self
             .common.ui
             .rules

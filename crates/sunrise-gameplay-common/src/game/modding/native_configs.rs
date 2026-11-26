@@ -66,7 +66,7 @@ impl NativeConfigs {
     /// Reads `configs` of `kinds` (a duplicate path, or a file outside the
     /// mod's own in `config/` as `Host::config_files` reads them, is skipped)
     /// and answers each loaded file.
-    pub(in crate::game) fn load(
+    pub fn load(
         &mut self,
         configs: Vec<mod_api::Config>,
         kinds: &[mod_api::ConfigKind],
@@ -127,7 +127,7 @@ impl NativeConfigs {
     /// compared, not the file's modification time: a save inside the same
     /// timestamp tick as the load (a mod writing its config from
     /// `config_loading`) keeps the time and the length and still changed.
-    pub(in crate::game) fn changed(&mut self) -> Vec<ConfigFile> {
+    pub fn changed(&mut self) -> Vec<ConfigFile> {
         let mut changed = Vec::new();
         for tracked in &mut self.files {
             let Ok(text) = fs::read_to_string(&tracked.path) else {
@@ -142,7 +142,7 @@ impl NativeConfigs {
     }
 
     /// Whether a second passed since the last look at the files.
-    pub(in crate::game) fn due(&mut self, now: Instant) -> bool {
+    pub fn due(&mut self, now: Instant) -> bool {
         if self.files.is_empty() || self.next_check.is_some_and(|t| now < t) {
             return false;
         }

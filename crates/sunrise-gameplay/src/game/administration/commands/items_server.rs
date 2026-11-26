@@ -18,7 +18,7 @@ pub(in crate::game) mod slot_sources;
 impl crate::game::ServerGame<'_> {
     /// One item modifier (a typed object, a list or a datapack reference)
     /// applied to a stack; `None` when the stack ends up empty.
-    pub(in crate::game) fn apply_item_modifier(
+    pub fn apply_item_modifier(
         &mut self,
         m: &serde_json::Value,
         stack: Option<ItemStack>,
@@ -729,7 +729,7 @@ impl crate::game::ServerGame<'_> {
                 )
             })
     }
-    pub(in crate::game) fn slot_get(&mut self, s: &Slot) -> Option<ItemStack> {
+    pub fn slot_get(&mut self, s: &Slot) -> Option<ItemStack> {
         match s {
             Slot::Contents(..) => None,
             Slot::ContentItem(parent, component, index) => {

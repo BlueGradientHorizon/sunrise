@@ -517,7 +517,7 @@ impl crate::game::ClientGame<'_> {
     /// A lid's mover is simulated on both sides: the client displaces its
     /// player and all boats the lid meets, not only the boat it drives.
     /// Restitution still belongs to the side simulating each boat.
-    pub(in crate::game) fn lid_push_local(&mut self, lid: Lid, area: Aabb, movement: Vec3) {
+    pub fn lid_push_local(&mut self, lid: Lid, area: Aabb, movement: Vec3) {
         let root = self.client_lid_root(lid);
         let boats: Vec<_> = self
             .common.boats
@@ -697,7 +697,7 @@ impl crate::game::ClientGame<'_> {
     }
 
     /// [`Self::lid_push_local`] for this tick's shulker box lids.
-    pub(in crate::game) fn push_shulker_local(&mut self, pushes: Vec<ShulkerPush>) {
+    pub fn push_shulker_local(&mut self, pushes: Vec<ShulkerPush>) {
         for (_, facing, lid) in pushes {
             let (movement, area) = shulker_lid(facing, lid);
             self.lid_push_local(Lid::Box, area, movement);

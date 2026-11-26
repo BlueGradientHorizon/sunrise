@@ -25,7 +25,7 @@ use sunrise_core::position::BlockPos;
             assert_eq!(player.last_death_location(&*game), None);
 
             // A death records the level and block (`ServerPlayer.die`).
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()
@@ -39,7 +39,7 @@ use sunrise_core::position::BlockPos;
             // The setter stores it, and None forgets it.
             assert!(player.set_last_death_location(game, Some(at([1, 2, 3]))));
             assert_eq!(
-                game.side.lan.as_ref().unwrap().hub.guests[0].last_death,
+                game.server.lan.as_ref().unwrap().hub.guests[0].last_death,
                 Some(("minecraft:overworld".into(), [1, 2, 3]))
             );
             assert_eq!(player.last_death_location(&*game), Some(at([1, 2, 3])));
@@ -57,7 +57,7 @@ use sunrise_core::position::BlockPos;
             );
             {
                 let value = Some(("minecraft:overworld".into(), [1, 2, 3]));
-                game.side
+                game.server
                     .lan
                     .as_mut()
                     .unwrap()
@@ -69,7 +69,7 @@ use sunrise_core::position::BlockPos;
             assert!(!stale.set_last_death_location(game, None));
             {
                 let value = false;
-                game.side
+                game.server
                     .lan
                     .as_mut()
                     .unwrap()
@@ -80,7 +80,7 @@ use sunrise_core::position::BlockPos;
             assert_eq!(player.last_death_location(&*game), None);
             {
                 let value = true;
-                game.side
+                game.server
                     .lan
                     .as_mut()
                     .unwrap()
@@ -92,7 +92,7 @@ use sunrise_core::position::BlockPos;
             // Raw saved data crosses the Identifier boundary only here.
             {
                 let value = Some(("not a dimension key".into(), [1, 2, 3]));
-                game.side
+                game.server
                     .lan
                     .as_mut()
                     .unwrap()
@@ -110,7 +110,7 @@ use sunrise_core::position::BlockPos;
             let player = add_guest(game);
             {
                 let value = Some(("minecraft:overworld".into(), [4, 70, -9]));
-                game.side
+                game.server
                     .lan
                     .as_mut()
                     .unwrap()
@@ -128,7 +128,7 @@ use sunrise_core::position::BlockPos;
                 .unwrap();
             assert_eq!(seen, (Some(at([4, 70, -9])), true, Some(at([1, 2, 3]))));
             assert_eq!(
-                game.side.lan.as_ref().unwrap().hub.guests[0].last_death,
+                game.server.lan.as_ref().unwrap().hub.guests[0].last_death,
                 Some(("minecraft:overworld".into(), [1, 2, 3]))
             );
         });
@@ -149,7 +149,7 @@ use sunrise_core::position::BlockPos;
             ));
             std::fs::create_dir_all(&world).unwrap();
             playerdata::save(
-                &game.side.lan.as_ref().unwrap().hub.guests[0],
+                &game.server.lan.as_ref().unwrap().hub.guests[0],
                 &world,
                 &Default::default(),
             );
@@ -164,7 +164,7 @@ use sunrise_core::position::BlockPos;
             );
 
             // Put in place of the saved one, it reads through the handle.
-            game.side.lan.as_mut().unwrap().hub.guests.replace(0, fresh);
+            game.server.lan.as_mut().unwrap().hub.guests.replace(0, fresh);
             assert_eq!(player.last_death_location(&*game), Some(at([4, 70, -9])));
             std::fs::remove_dir_all(&world).unwrap();
         });
@@ -176,7 +176,7 @@ use sunrise_core::position::BlockPos;
             let player = add_guest(game);
             {
                 // Dying in the Nether at a fractional position.
-                game.side
+                game.server
                     .lan
                     .as_mut()
                     .unwrap()
@@ -190,7 +190,7 @@ use sunrise_core::position::BlockPos;
             }
             game.guest_die(0, 1);
 
-            let guest = &game.side.lan.as_ref().unwrap().hub.guests[0];
+            let guest = &game.server.lan.as_ref().unwrap().hub.guests[0];
             assert!(guest.dead);
             assert_eq!(
                 guest.last_death,

@@ -10,7 +10,7 @@ impl crate::game::ClientGame<'_> {
     /// lighting an unlit campfire, candle or candle cake, or placing fire at the hit face.
     /// True when it succeeded (SUCCESS, swings and ends the click); false when
     /// placement is rejected (FAIL, no swing, ends the click).
-    pub(in crate::game) fn predict_fire_starter(
+    pub fn predict_fire_starter(
         &mut self,
         stack: &ItemStack,
         hit: &super::super::Hit,

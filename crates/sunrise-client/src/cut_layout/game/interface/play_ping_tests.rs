@@ -42,7 +42,7 @@ fn pass(game: &mut sunrise_gameplay::game::ServerGame<'_>, conn: u32, packet: S)
             p.time, p.time as u64
         );
     }
-    let hub = &game.side.lan.as_ref().unwrap().hub;
+    let hub = &game.server.lan.as_ref().unwrap().hub;
     assert_eq!(hub.guests.len(), 2);
     assert_ne!(hub.guests[0].uuid, hub.guests[1].uuid);
     assert_ne!(hub.guests[0].conn, hub.guests[1].conn);
@@ -51,7 +51,7 @@ fn pass(game: &mut sunrise_gameplay::game::ServerGame<'_>, conn: u32, packet: S)
     assert!(!registered.is_fake());
     assert!(registered.left_reason.is_empty());
     assert_eq!(registered.dimension, "minecraft:overworld");
-    game.side
+    game.server
         .lan
         .as_mut()
         .unwrap()
@@ -67,7 +67,7 @@ fn pass(game: &mut sunrise_gameplay::game::ServerGame<'_>, conn: u32, packet: S)
     let world_clock = game.world.game_time;
     println!("actual sender completion conn={conn} world_clock={world_clock}");
     assert!(
-        game.side
+        game.server
             .lan
             .as_ref()
             .unwrap()
@@ -82,13 +82,13 @@ fn pass(game: &mut sunrise_gameplay::game::ServerGame<'_>, conn: u32, packet: S)
 
 fn complete_sender_tick(game: &mut sunrise_gameplay::game::ServerGame<'_>) {
     // Already registered connections: this is a second level pass, without polling sockets.
-    game.side.level_pass.first = false;
-    game.side.level_pass.packets_drained = false;
+    game.server.level_pass.first = false;
+    game.server.level_pass.packets_drained = false;
     let clock_before = game.world.game_time;
     game.tick_lan_packets();
     // tick_lan_packets has ended its Holding scope; production flushes these senders later.
     sunrise_sim::lan::flush_all(
-        game.side
+        game.server
             .lan
             .as_ref()
             .unwrap()
@@ -102,7 +102,7 @@ fn complete_sender_tick(game: &mut sunrise_gameplay::game::ServerGame<'_>) {
         "sender completion adds no world tick"
     );
     assert!(
-        game.side.level_pass.packets_drained,
+        game.server.level_pass.packets_drained,
         "real Game packet phase completed"
     );
 }
@@ -165,10 +165,10 @@ pub(crate) fn fixture(
         guest.loading = false;
         guest.load_timeout = 0;
         guest.last_action_tick = 7;
-        game.side.lan.as_mut().unwrap().hub.guests.push(guest);
+        game.server.lan.as_mut().unwrap().hub.guests.push(guest);
         rx
     });
-    game.side.lan.as_mut().unwrap().hub.ticks = 123;
+    game.server.lan.as_mut().unwrap().hub.ticks = 123;
     (game, receivers)
 }
 
@@ -240,7 +240,7 @@ fn player_pong_observes_order_and_sends_typed_ping() {
 
     let mut resources = None;
     let (mut game, receivers) = fixture(&mut resources);
-    let guests = &mut game.side.lan.as_mut().unwrap().hub.guests;
+    let guests = &mut game.server.lan.as_mut().unwrap().hub.guests;
     guests
         .update_connection(2, |guest| guest.disconnect_pending = true)
         .unwrap();
@@ -285,7 +285,7 @@ fn player_pong_observes_order_and_sends_typed_ping() {
         if ping.id == -123 && pong.time == i64::MIN)
     );
     assert!(output(&receivers[1]).is_empty());
-    let guest = game.side.lan.as_ref().unwrap().hub.guest(1).unwrap();
+    let guest = game.server.lan.as_ref().unwrap().hub.guest(1).unwrap();
     assert_eq!(guest.latency.load(Ordering::Relaxed), 37);
     let respawning = std::env::var(CHILD).as_deref() == Ok("respawning");
     assert_eq!(guest.selected, if respawning { 0 } else { 4 });
@@ -328,7 +328,7 @@ fn registered_play_ping_echoes_exact_long_to_only_its_connection() {
         );
         assert_eq!(packets.len(), 1, "one request produces exactly one reply");
         assert_eq!(
-            game.side
+            game.server
                 .lan
                 .as_ref()
                 .unwrap()
@@ -351,7 +351,7 @@ fn registered_play_ping_echoes_exact_long_to_only_its_connection() {
 fn dead_guest_play_ping_is_transport_not_an_action() {
     let mut resources = None;
     let (mut game, receivers) = fixture(&mut resources);
-    game.side
+    game.server
         .lan
         .as_mut()
         .unwrap()
@@ -368,7 +368,7 @@ fn dead_guest_play_ping_is_transport_not_an_action() {
     assert!(matches!(packets.as_slice(), [C::PongResponse(p)] if p.time == i64::MIN));
     assert!(output(&receivers[1]).is_empty());
     assert_eq!(
-        game.side
+        game.server
             .lan
             .as_ref()
             .unwrap()
@@ -385,7 +385,7 @@ fn dead_guest_play_ping_is_transport_not_an_action() {
 fn held_guest_play_ping_survives_the_acknowledgement_filter() {
     let mut resources = None;
     let (mut game, receivers) = fixture(&mut resources);
-    game.side
+    game.server
         .lan
         .as_mut()
         .unwrap()
@@ -400,7 +400,7 @@ fn held_guest_play_ping_survives_the_acknowledgement_filter() {
     assert!(matches!(output(&receivers[0]).as_slice(), [C::PongResponse(p)] if p.time == -1));
     assert!(output(&receivers[1]).is_empty());
     assert_eq!(
-        game.side
+        game.server
             .lan
             .as_ref()
             .unwrap()
@@ -422,7 +422,7 @@ fn handover_guest_play_ping_survives_the_acknowledgement_filter() {
         since: 123,
         record: serde_json::json!({"fixture": "handover-state-sentinel"}),
     };
-    game.side
+    game.server
         .lan
         .as_mut()
         .unwrap()
@@ -444,7 +444,7 @@ fn handover_guest_play_ping_survives_the_acknowledgement_filter() {
         "missing matching handover play-Ping reply"
     );
     assert!(output(&receivers[1]).is_empty());
-    let guest = game.side.lan.as_ref().unwrap().hub.guest(1).unwrap();
+    let guest = game.server.lan.as_ref().unwrap().hub.guest(1).unwrap();
     assert_eq!(guest.last_action_tick, 7);
     assert_eq!(guest.handover.as_ref(), Some(&handover));
 }

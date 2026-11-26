@@ -5,7 +5,7 @@ use sunrise_client::cit::Hand as CitHand;
 
 impl crate::game::ClientGame<'_> {
     /// `ItemStackRenderState.usesBlockLight` of `stack` resolved for `context`.
-    pub(in crate::game) fn item_uses_block_light(
+    pub fn item_uses_block_light(
         &self,
         stack: &ItemStack,
         context: mod_api::ItemDisplayContext,

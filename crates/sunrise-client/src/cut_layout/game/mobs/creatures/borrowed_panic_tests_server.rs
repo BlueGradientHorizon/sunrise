@@ -65,7 +65,7 @@ pub(crate) fn breathing_tick(meddle: bool) -> (Vec<i32>, i32, i32) {
         .into(),
         || {
             sunrise_gameplay::game::native_entity_refs::tests::with_game(|game| {
-                game.side.world_root = scratch.0.clone();
+                game.server.world_root = scratch.0.clone();
                 game.enter_level(Dim::Overworld).unwrap();
                 game.options.dedicated = Some(Vec::new());
                 game.world
@@ -113,7 +113,7 @@ fn retained_breathing_tail() {
         .into(),
         || {
             sunrise_gameplay::game::native_entity_refs::tests::with_game(|game| {
-                game.side.world_root = scratch.0.clone();
+                game.server.world_root = scratch.0.clone();
                 game.enter_level(Dim::Overworld).unwrap();
                 game.options.dedicated = Some(Vec::new());
                 game.world
@@ -163,7 +163,7 @@ fn retained_stale_push_target() {
     let scratch =
         Scratch(std::env::temp_dir().join(format!("sunrise-stale-push-{}", std::process::id())));
     sunrise_gameplay::game::native_entity_refs::tests::with_game(|game| {
-        game.side.world_root = scratch.0.clone();
+        game.server.world_root = scratch.0.clone();
         game.options.dedicated = Some(Vec::new());
         game.world
             .chunks
@@ -236,7 +236,7 @@ pub(crate) fn run_fixture(family: Family, output: Output, dim: Dim) {
     mod_platform::testing::with_mods(entries().into(), || {
         sunrise_gameplay_common::game::api_values::install_parts(&entries()).unwrap();
         fixture_game(output, |game| {
-            game.side.world_root = scratch.path().to_path_buf();
+            game.server.world_root = scratch.path().to_path_buf();
             game.enter_level(dim).unwrap();
             game.options.dedicated = Some(Vec::new());
             if output != Output::Quiet {
@@ -245,7 +245,7 @@ pub(crate) fn run_fixture(family: Family, output: Output, dim: Dim) {
             let guests = matches!(output, Output::Guest | Output::Mixed);
             if guests {
                 game.world.health_rules.difficulty = sunrise_world::food::Difficulty::Normal;
-                let host = game.side.lan.as_mut().unwrap();
+                let host = game.server.lan.as_mut().unwrap();
                 for i in 0..host.hub.guests.len() {
                     host.hub.guests.update(i, |g| {
                         g.dimension = dim.id().to_owned();
@@ -298,7 +298,7 @@ pub(crate) fn run_fixture(family: Family, output: Output, dim: Dim) {
                         guests: vec![(12, 71, MobEvent::AttackPlayer(2.0, [1.0, 80.0, 0.5], None))],
                     });
             }
-            game.side
+            game.server
                 .last_hurt_by_player
                 .insert(71, sunrise_gameplay_common::game::combat_common::PlayerCredit(99));
             let rows: Vec<_> = game.mobs.iter().map(|m| (m.id, m.join)).collect();
@@ -442,7 +442,7 @@ pub(crate) fn run_fixture(family: Family, output: Output, dim: Dim) {
                 Some(expected_value)
             );
             assert_eq!(
-                game.side.last_hurt_by_player.get(&71).map(|c| c.0),
+                game.server.last_hurt_by_player.get(&71).map(|c| c.0),
                 Some(99)
             );
             assert_eq!(game.world.attachment_syncs, syncs);
@@ -628,7 +628,7 @@ pub(crate) fn with_consumer_game(
     .into();
     mod_platform::testing::with_mods(mods, || {
         with_game(|game| {
-            game.side.world_root = scratch.path().to_path_buf();
+            game.server.world_root = scratch.path().to_path_buf();
             game.enter_level(dim).unwrap();
             game.options.dedicated = Some(Vec::new());
             game.load_server_loot();

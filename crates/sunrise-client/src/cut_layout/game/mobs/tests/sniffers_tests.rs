@@ -98,10 +98,10 @@ fn a_silent_sniffer_still_plays_the_local_searching_and_hit_sounds() {
         game.mobs[0].silent = true;
         game.mobs[0].age = 20;
         sniffer::set_state(&mut game.mobs[0], sniffer::SEARCHING);
-        game.side.audio.0.heard.clear();
+        game.client.audio.0.heard.clear();
         game.tick_sniffer_client();
         assert_eq!(
-            game.side
+            game.client
                 .audio
                 .0
                 .heard
@@ -111,10 +111,10 @@ fn a_silent_sniffer_still_plays_the_local_searching_and_hit_sounds() {
         sniffer::set_state(&mut game.mobs[0], sniffer::DIGGING);
         game.mobs[0].age = 40;
         game.mobs[0].anim.states[3].start(0.0);
-        game.side.audio.0.heard.clear();
+        game.client.audio.0.heard.clear();
         game.tick_sniffer_client();
         assert_eq!(
-            game.side.audio.0.heard.get("minecraft:block.stone.hit"),
+            game.client.audio.0.heard.get("minecraft:block.stone.hit"),
             Some(&1)
         );
     });

@@ -7,7 +7,7 @@ impl crate::game::ServerGame<'_> {
     /// this hook aren't saved: as in vanilla, the chunk is saved before it unloads.
     /// Not told when the world closes, which `native_world_lifecycle` tells.
     /// Server-side.
-    pub(in crate::game) fn native_chunk_unload(&mut self, dimension: &str, chunk: [i32; 2]) {
+    pub fn native_chunk_unload(&mut self, dimension: &str, chunk: [i32; 2]) {
         self.fire_chunk_unload(dimension, chunk);
         if let Some(level) = self.level(dimension) {
             self.forget_composter_chunk(level.dimension(), chunk);

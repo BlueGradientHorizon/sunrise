@@ -754,7 +754,7 @@ pub(crate) mod falling_live_adoption_tests {
             .add_empty_chunk(ChunkPos::new(0, 0))
             .unwrap();
         assert!(game.run_command("difficulty normal"));
-        if !game.side.streaming.forced.contains(&(0, 0)) {
+        if !game.server.streaming.forced.contains(&(0, 0)) {
             assert!(game.run_command("forceload add 0 0"));
         }
         test(&mut game);

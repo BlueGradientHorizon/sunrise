@@ -201,7 +201,7 @@ fn with_lights_sides(
             let _server = logged_client(game);
             game.native_lifecycle.begin_open(Authority::RemoteClient);
             // The remote dimension's key, not the client's legacy Dim field, names its level.
-            let remote = game.side.remote.as_mut().unwrap();
+            let remote = game.client.remote.as_mut().unwrap();
             remote.level = "lights:remote".into();
             remote.level_key = mod_api::__private::dimension_key(&remote.level);
             let states = init_lights_world(game);

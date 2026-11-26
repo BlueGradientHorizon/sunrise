@@ -51,7 +51,7 @@ fn plugin_player_stack_follows_network_moves_and_local_carriers() {
     .unwrap();
     let (client, _server) = sunrise_protocol::connection::Pipe::pair();
     game.connect_local(client, "SeatTest").unwrap();
-    game.side.remote.as_mut().unwrap().entity_id = 7;
+    game.client.remote.as_mut().unwrap().entity_id = 7;
     game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
     game.spawn_entity(40, "minecraft:player", [2.0, 64.0, 3.0], [0.0; 3]);
     game.spawn_entity(41, "minecraft:player", [0.0, 64.0, 0.0], [0.0; 3]);
@@ -100,7 +100,7 @@ fn plugin_player_stack_follows_network_moves_and_local_carriers() {
     );
     // The intermediary's packet position must remain unchanged for relative decoding.
     assert_eq!(
-        game.side.remote.as_ref().unwrap().tracked(42).unwrap().1,
+        game.client.remote.as_ref().unwrap().tracked(42).unwrap().1,
         [0.0; 3]
     );
     // A remote player riding the local player must follow our own movement too.

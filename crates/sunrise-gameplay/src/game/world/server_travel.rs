@@ -300,7 +300,7 @@ impl crate::game::ServerGame<'_> {
     /// A server player's `tp` inside their level, where the chunks round `target` have not loaded: vanilla loads
     /// them before the player arrives, so the player is held as a trip holds them (their body is left alone, their
     /// client's moves ignored) until the chunks are lit, then placed there again (#15727).
-    pub(in crate::game) fn hold_for_chunks(&mut self, conn: u32, target: Vec3) {
+    pub fn hold_for_chunks(&mut self, conn: u32, target: Vec3) {
         // The arrival the player was waiting for elsewhere is abandoned.
         self.server.server_trips.retain(|t| !t.is(conn));
         let (cx, cz) = (
@@ -388,7 +388,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// Whether the server leaves the player's body alone until arrival. A player whose
     /// End exit is still being resolved hasn't traveled yet and ticks in the source level.
-    pub(in crate::game) fn on_server_trip(&self, conn: u32) -> bool {
+    pub fn on_server_trip(&self, conn: u32) -> bool {
         self.server
             .server_trips
             .iter()
@@ -396,13 +396,13 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// Portal processing does not start another trip while one is already being resolved.
-    fn has_pending_travel(&self, conn: u32) -> bool {
+    pub fn has_pending_travel(&self, conn: u32) -> bool {
         self.server.server_trips.iter().any(|t| t.is(conn))
     }
 
     /// Whether a vehicle waits in `dim` for its rider to arrive elsewhere:
     /// that level stays open until it has moved.
-    pub(in crate::game::server_side) fn vehicle_waits_in(&self, dim: Dim) -> bool {
+    pub fn vehicle_waits_in(&self, dim: Dim) -> bool {
         self.server
             .server_trips
             .iter()
@@ -413,7 +413,7 @@ impl crate::game::ServerGame<'_> {
     /// the trips into this level, then `Entity.handlePortal` for each player
     /// in it (Nether portals count up their transition time, End portals
     /// take them at once).
-    pub(in crate::game) fn tick_server_travel(&mut self) {
+    pub fn tick_server_travel(&mut self) {
         if self.server.lan.is_none() {
             return;
         }
@@ -456,7 +456,7 @@ impl crate::game::ServerGame<'_> {
     /// destination (`getPortalDestination`, `Entity.teleportToPortalDestination`)
     /// after the camera goes back to the player, or says `spectator.cannot_teleport`
     /// when it has none. Returns whether the block was a portal (`CONSUME`).
-    pub(in crate::game::server_side) fn spectator_use_portal(
+    pub fn spectator_use_portal(
         &mut self,
         conn: u32,
         gi: usize,
@@ -564,7 +564,7 @@ impl crate::game::ServerGame<'_> {
 
     /// Whether this guest's dimension change may start
     /// (`entity_may_travel`).
-    pub(in crate::game) fn server_player_travel_allowed(
+    pub fn server_player_travel_allowed(
         &mut self,
         conn: u32,
         target: Dim,
@@ -580,7 +580,7 @@ impl crate::game::ServerGame<'_> {
     /// `EntityTravelToDimensionEvent`: whether the entity `id` (the network
     /// id its handle names) may travel to the level `to`, asked before
     /// anything of it moves. Only a server asks, and only when a mod listens.
-    pub(in crate::game::server_side) fn entity_may_travel(
+    pub fn entity_may_travel(
         &mut self,
         id: u32,
         to: Dim,
@@ -671,7 +671,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// `Entity.handlePortal` for one player, whose portal state is in place.
-    pub(in crate::game) fn handle_server_portal(&mut self, conn: u32) {
+    pub fn handle_server_portal(&mut self, conn: u32) {
         let Some(host) = self.server.lan.as_ref() else {
             return;
         };
@@ -794,7 +794,7 @@ impl crate::game::ServerGame<'_> {
     /// a portal (a vehicle's transition time is 0): the riders travel with
     /// it and ride it again on arrival (`Entity.teleportCrossDimension`), so
     /// a rider never waits for its own portal delay.
-    pub(in crate::game::server_side) fn carry_riders_through_portals(&mut self) {
+    pub fn carry_riders_through_portals(&mut self) {
         for (vehicle, entry) in self.take_carrying(self.common.dim) {
             let Some(plan) = self.vehicle_plan(vehicle, entry) else {
                 continue;
@@ -870,7 +870,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// The player moves to `target`'s level at the approximate exit while its chunks load.
-    pub(in crate::game) fn start_server_trip(
+    pub fn start_server_trip(
         &mut self,
         conn: u32,
         target: Dim,
@@ -1234,7 +1234,7 @@ impl crate::game::ServerGame<'_> {
     /// the End (keeping the player's motion and look): straight to an exact
     /// exit, else once the destination has loaded around the player, who
     /// waits there (its exit is found among those blocks, or built).
-    fn start_gateway_trip(&mut self, conn: u32, gateway: [i32; 3]) {
+    pub fn start_gateway_trip(&mut self, conn: u32, gateway: [i32; 3]) {
         let Some(i) = self
             .server
             .lan
@@ -1411,7 +1411,7 @@ impl crate::game::ServerGame<'_> {
     /// arrives: it keeps its entity id, so the ride is never broken
     /// (`Entity.teleportCrossDimension` recreates the vehicle in the other
     /// dimension, and its passengers ride it again).
-    pub(in crate::game::server_side) fn arrive_vehicle(
+    pub fn arrive_vehicle(
         &mut self,
         source: Dim,
         id: u32,
@@ -1519,7 +1519,7 @@ impl crate::game::ServerGame<'_> {
     /// (`ServerPlayer.teleport` from TeleportCommand): a Respawn packet
     /// keeping all data and the teleport, with no portal sound. The server
     /// leaves the body alone until the level has loaded around it.
-    pub(in crate::game::server_side) fn run_level_teleports(&mut self) {
+    pub fn run_level_teleports(&mut self) {
         if self.server.lan.is_none() {
             return;
         }

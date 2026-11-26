@@ -52,9 +52,9 @@ pub(crate) mod tests {
                         .unwrap();
                     game.player =
                         Some(PlayerMotion::new(game.motion, Vec3::new(4.5, 64.0, 4.5)).unwrap());
-                    game.side.lan_acting_uuid = Some(123);
-                    game.side.lan_acting_entity = Some(20);
-                    game.side.lan_acting_permission = Some(0);
+                    game.server.lan_acting_uuid = Some(123);
+                    game.server.lan_acting_entity = Some(20);
+                    game.server.lan_acting_permission = Some(0);
                     let place = |game: &mut sunrise_gameplay::game::ServerGame<'_>, name| {
                         let pos = (7, 64, 4);
                         let state = game.pack.assets.registry.default_state(name).unwrap();
@@ -141,20 +141,20 @@ pub(crate) mod tests {
                         ))),
                     ));
                 }
-                game.side
+                game.server
                     .save
                     .0
                     .save(&[Arc::new(chunk)], registry, game.res.biomes())
                     .unwrap();
                 let mut chunk = game
-                    .side
+                    .server
                     .save
                     .0
                     .load(0, 0, registry, game.res.biomes())
                     .unwrap();
                 game.world.install_chunk_block_entities(&mut chunk);
                 game.world.chunks.insert((0, 0), Arc::new(chunk));
-                assert!(game.side.streaming.set_forced(0, 0, true));
+                assert!(game.server.streaming.set_forced(0, 0, true));
                 game.update_chunk_tickets();
                 game.tick_block_entities().unwrap();
                 let stone = saved_stack("minecraft:stone");
@@ -192,14 +192,14 @@ pub(crate) mod tests {
                 }
 
                 let capture = game.with_entities([&game.world.chunks[&(0, 0)]]);
-                game.side
+                game.server
                     .save
                     .0
                     .save_later(&capture, registry, game.res.biomes())
                     .unwrap();
-                game.side.save.0.flush().unwrap();
+                game.server.save.0.flush().unwrap();
                 let reloaded = game
-                    .side
+                    .server
                     .save
                     .0
                     .load(0, 0, registry, game.res.biomes())
@@ -241,7 +241,7 @@ pub(crate) mod tests {
                 )
                 .unwrap();
                 let scratch = tempfile::tempdir().unwrap();
-                game.side.world_root = scratch.path().to_path_buf();
+                game.server.world_root = scratch.path().to_path_buf();
                 game.world
                     .chunks
                     .insert((0, 0), Arc::new(Chunk::empty(0, 0)));

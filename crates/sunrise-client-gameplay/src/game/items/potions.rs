@@ -65,14 +65,14 @@ impl crate::game::ClientGame<'_> {
     /// `MobEffectInstance.tickClient`): they count down and blend, and the
     /// server removes them. Their modifiers and flags move the predicted
     /// player.
-    pub(in crate::game) fn tick_client_effects(&mut self) {
+    pub fn tick_client_effects(&mut self) {
         client_tick_effects(&mut self.common.potions.effects, &mut self.client.darkness_blend);
         self.apply_effect_status();
     }
     /// `ThrowableProjectile.tick` on a server's client: it falls and moves
     /// by itself between the server's updates and stops at a block; only
     /// the server breaks it.
-    pub(in crate::game) fn step_remote_thrown(&mut self) {
+    pub fn step_remote_thrown(&mut self) {
         let mut thrown = std::mem::take(&mut self.common.potions.thrown);
         for t in &mut thrown {
             t.previous = t.position;

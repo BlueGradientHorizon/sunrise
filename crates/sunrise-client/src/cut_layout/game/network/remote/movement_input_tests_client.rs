@@ -9,13 +9,13 @@ pub(crate) fn connect(
 ) -> sunrise_protocol::connection::Pipe {
     let (client, server) = sunrise_protocol::connection::Pipe::pair();
     game.connect_local(client, "movement-client").unwrap();
-    let remote = game.side.remote.as_mut().unwrap();
+    let remote = game.client.remote.as_mut().unwrap();
     remote.logged_in = true;
     remote.loaded_sent = true;
     remote.entity_id = 42;
     remote.level_load.finish();
-    game.side.screen = Screen::Playing;
-    game.side
+    game.client.screen = Screen::Playing;
+    game.client
         .streaming
         .insert_remote(&mut game.world, sunrise_level::chunk::Chunk::empty(0, 0));
     server

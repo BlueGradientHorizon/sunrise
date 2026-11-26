@@ -142,7 +142,7 @@ impl crate::game::ClientGame<'_> {
         Ok(())
     }
 
-    pub(in crate::game) fn apply_settings(&mut self) {
+    pub fn apply_settings(&mut self) {
         self.apply_client_settings();
     }
 
@@ -247,7 +247,7 @@ impl crate::game::ClientGame<'_> {
     }
 
     /// Only enabled LOD worlds extend the renderer's range, never simulation.
-    pub(in crate::game) fn terrain_distance(&self) -> i32 {
+    pub fn terrain_distance(&self) -> i32 {
         let distance = self.effective_render_distance();
         if self.client.lod.0.is_some() {
             distance.max(self.lod_distance() as i32)
@@ -272,7 +272,7 @@ impl crate::game::ClientGame<'_> {
         sunrise_client::ui_theme::reset_atlas();
     }
 
-    pub(in crate::game) fn new_renderer(&self, window: Arc<Window>) -> Result<Box<Renderer>> {
+    pub fn new_renderer(&self, window: Arc<Window>) -> Result<Box<Renderer>> {
         self.renderer_for(window, &self.common.pack, &self.client.client_pack, &self.client.gui)
     }
 

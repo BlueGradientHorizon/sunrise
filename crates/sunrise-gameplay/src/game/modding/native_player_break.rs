@@ -46,7 +46,7 @@ impl ServerGame<'_> {
     /// `into_inventory`, the drops `block_drops` leaves go to the player's inventory, and what
     /// doesn't fit drops from them as `Inventory.placeItemBackInInventory` drops it. Refused
     /// (false) once [`MAX_NESTED_BREAKS`] breaks are inside one another.
-    pub(in crate::game) fn player_destroy_block(
+    pub fn player_destroy_block(
         &mut self,
         player: PlayerRef,
         pos: [i32; 3],

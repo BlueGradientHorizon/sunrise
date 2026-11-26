@@ -51,7 +51,7 @@ fn transactional_bucket_hands_reach_the_owning_client() {
     with_guests(|server| {
         let (tx, rx) = std::sync::mpsc::channel();
         server
-            .side
+            .server
             .lan
             .as_mut()
             .unwrap()
@@ -138,7 +138,7 @@ fn transactional_bucket_hands_reach_the_owning_client() {
                     Some(ItemStack::new(held, 1))
                 );
                 assert_eq!(client.offhand, Some(ItemStack::new(other, 1)));
-                let guest = &server.side.lan.as_ref().unwrap().hub.guests[0];
+                let guest = &server.server.lan.as_ref().unwrap().hub.guests[0];
                 assert_eq!(guest.inventory[2], client.inventory[2]);
                 assert_eq!(guest.offhand, client.offhand);
             }

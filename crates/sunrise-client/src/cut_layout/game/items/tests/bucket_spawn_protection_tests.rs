@@ -102,7 +102,7 @@ fn a_guest_without_build_rights_neither_empties_nor_fills_a_bucket_under_spawn_p
     guest.placed = true;
     guest.loaded = true;
     guest.selected = 0;
-    let host = game.side.lan.as_mut().unwrap();
+    let host = game.server.lan.as_mut().unwrap();
     host.hub.guests.push(guest);
     // `spawn-protection` in server.properties, and someone else is an
     // operator: `PlayerList.getOps()` is not empty, so the radius holds.
@@ -116,12 +116,12 @@ fn a_guest_without_build_rights_neither_empties_nor_fills_a_bucket_under_spawn_p
         game.world.block(pos[0], pos[1], pos[2]).0
     };
     let held = |game: &sunrise_gameplay::game::ServerGame<'_>| {
-        game.side.lan.as_ref().unwrap().hub.guests[0].inventory[0]
+        game.server.lan.as_ref().unwrap().hub.guests[0].inventory[0]
             .as_ref()
             .map(|s| s.item.to_string())
     };
     let give = |game: &mut sunrise_gameplay::game::ServerGame<'_>, item: &str| {
-        game.side
+        game.server
             .lan
             .as_mut()
             .unwrap()
@@ -130,13 +130,13 @@ fn a_guest_without_build_rights_neither_empties_nor_fills_a_bucket_under_spawn_p
             .update(0, |g| g.inventory[0] = Some(ItemStack::new(item, 1)));
     };
     let move_to = |game: &mut sunrise_gameplay::game::ServerGame<'_>, at: [f64; 3]| {
-        game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+        game.server.lan.as_mut().unwrap().hub.guests.update(0, |g| {
             g.position = at;
             g.previous_position = at;
         });
     };
     let op = |game: &mut sunrise_gameplay::game::ServerGame<'_>, on: bool| {
-        let ops = &mut game.side.lan.as_mut().unwrap().hub.ops;
+        let ops = &mut game.server.lan.as_mut().unwrap().hub.ops;
         if on {
             ops.insert(GUEST_UUID, 4);
         } else {

@@ -2,7 +2,7 @@ use super::*;
 
 impl crate::game::ClientGame<'_> {
     /// Join single player's integrated server through memory.
-    pub(in crate::game) fn connect_local(
+    pub fn connect_local(
         &mut self,
         pipe: sunrise_protocol::connection::Pipe,
         name: &str,

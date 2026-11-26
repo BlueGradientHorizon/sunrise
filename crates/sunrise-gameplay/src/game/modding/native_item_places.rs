@@ -95,7 +95,7 @@ impl ServerGame<'_> {
     /// minecart's (the open menu's copy while one shows it, as `cart_slots`), a chest boat's, or
     /// a chested donkey's, mule's or llama's (`AbstractHorse.inventory`, `getInventoryColumns`
     /// rows of three). With where it stands, for what a split throws.
-    pub(in crate::game) fn edit_entity_slots<R>(
+    pub fn edit_entity_slots<R>(
         &mut self,
         id: u32,
         edit: impl FnOnce(&mut [Option<ItemStack>], [f64; 3]) -> R,

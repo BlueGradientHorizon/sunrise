@@ -9,7 +9,7 @@ impl ServerGame<'_> {
     /// Closing it copies the items back and keeps the block entity, as vanilla's
     /// `EnderChestBlockEntity` persists across open/close (`close_ender_chest`
     /// must not remove it, or `/data get block` loses it after a use).
-    pub(in crate::game::server_side) fn close_ender_chest(&mut self) {
+    pub fn close_ender_chest(&mut self) {
         let Some(key) = self.server.ender_open.take() else {
             return;
         };
@@ -20,7 +20,7 @@ impl ServerGame<'_> {
         }
     }
     /// Opening an ender chest shows the player's ender inventory in its place.
-    pub(in crate::game::server_side) fn open_ender_chest(&mut self, key: (i32, i32, i32)) {
+    pub fn open_ender_chest(&mut self, key: (i32, i32, i32)) {
         self.common.world
             .block_entities
             .insert(key, BlockEntity::Chest(self.server.ender_items.clone()));
@@ -36,7 +36,7 @@ impl ServerGame<'_> {
     /// Only the block containers whose clicks the server takes back from a
     /// spectator (`handleContainerClick`) open here: storage, the furnaces,
     /// the brewing stand and the crafter.
-    pub(in crate::game) fn spectator_open_menu(&mut self, pos: [i32; 3]) {
+    pub fn spectator_open_menu(&mut self, pos: [i32; 3]) {
         if self.fake_blocks(mod_api::FakeEffect::Menu) {
             return;
         }
@@ -92,7 +92,7 @@ impl ServerGame<'_> {
     }
     /// `Container.stillValidBlockEntity`: the open block container closes once
     /// the player's eyes are out of reach of any of its blocks (a 4-block buffer).
-    pub(in crate::game) fn tick_container_reach(&mut self) {
+    pub fn tick_container_reach(&mut self) {
         // A server's menu ends when the server closes it.
         if !self.common.is_logical_server() {
             return;
@@ -148,7 +148,7 @@ impl ServerGame<'_> {
     /// cannot unlock refuses the menu with `sendChestLockedNotifications` -
     /// the action bar names the container and one chest-locked sound plays.
     /// True when the open is refused.
-    pub(in crate::game) fn refuse_locked_container(
+    pub fn refuse_locked_container(
         &mut self,
         key: (i32, i32, i32),
         name: &str,
@@ -225,7 +225,7 @@ impl ServerGame<'_> {
     /// `ChestBlock.getMenuProvider` (`combine(.., false)`) and
     /// `EnderChestBlock.useWithoutItem`: a blocked chest, or a double chest
     /// with either half blocked, opens no menu.
-    pub(in crate::game) fn chest_menu_blocked(&self, key: (i32, i32, i32), name: &str) -> bool {
+    pub fn chest_menu_blocked(&self, key: (i32, i32, i32), name: &str) -> bool {
         match name {
             n if is_chest_block(n) => {
                 self.chest_blocked_at(key)
@@ -305,7 +305,7 @@ impl ServerGame<'_> {
 
     /// Play the current block's sound when its opener count crosses zero
     /// (`ContainerOpenersCounter.onOpen` / `onClose`).
-    pub(in crate::game) fn container_edge_sound(&mut self, key: (i32, i32, i32), open: bool) {
+    pub fn container_edge_sound(&mut self, key: (i32, i32, i32), open: bool) {
         let state = self.common.world.block(key.0, key.1, key.2);
         let name = &self.common.res.facts().get(state).name;
         if let Some((sound, at)) = self.resolve_container_sound(key, name, open) {

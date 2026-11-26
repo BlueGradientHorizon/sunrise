@@ -144,9 +144,9 @@ fn a_handled_child_abort_rolls_back_work_but_still_reports_the_panicking_owner()
             // The client drains the shared queue, not the server action that aborted.
             crate::game::server_side::native_entity_refs::tests::with_client_game(|client| {
                 client.test_add_hook_panic_toasts();
-                assert_eq!(client.side.toast_manager.queued.len(), 1);
+                assert_eq!(client.client.toast_manager.queued.len(), 1);
                 let Some(Toast::Diagnostic { toast, .. }) =
-                    client.side.toast_manager.queued.front()
+                    client.client.toast_manager.queued.front()
                 else {
                     panic!("expected exactly one shared panic toast");
                 };

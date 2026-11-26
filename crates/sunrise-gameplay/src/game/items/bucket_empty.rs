@@ -11,7 +11,7 @@ impl crate::game::ServerGame<'_> {
     /// item's `empty_contents` Part answered, `None` for vanilla's pour. The
     /// Part is asked in a transaction with the use's apply: one that changed
     /// the hand it was asked about is refused and undone, never re-decided.
-    pub(in crate::game) fn player_empty_contents(
+    pub fn player_empty_contents(
         &mut self,
         stack: &ItemStack,
         target: [i32; 3],

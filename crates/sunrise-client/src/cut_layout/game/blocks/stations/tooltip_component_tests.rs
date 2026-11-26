@@ -288,8 +288,8 @@ fn gather_wrapping_fixtures_preserve_empty_lines_and_exclude_components() {
     with_mod_factories(mods, |game| {
         let stick = ItemStack::new("minecraft:stick", 1);
         *config.bundle.lock().unwrap() = Some(populated_bundle().try_into_api().unwrap());
-        game.side.gui.atlas.font = synthetic_ascii_fonts([("default", 5)]);
-        let font = &game.side.gui.atlas.font;
+        game.client.gui.atlas.font = synthetic_ascii_fonts([("default", 5)]);
+        let font = &game.client.gui.atlas.font;
         let long_text = sunrise_game_data::text::Text::literal(
             "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu nu xi omicron",
         );
@@ -815,7 +815,7 @@ fn render_tooltip_pre_observes_components_replaces_font_without_rewrap_and_cance
     with_mod_factories(mods, |game| {
         let stick = ItemStack::new("minecraft:stick", 1);
         *state.bundle_stack.lock().unwrap() = Some(populated_bundle().try_into_api().unwrap());
-        game.side.gui.atlas.font = synthetic_ascii_fonts([("default", 5), ("alt", 14)]);
+        game.client.gui.atlas.font = synthetic_ascii_fonts([("default", 5), ("alt", 14)]);
         let line = sunrise_game_data::text::Text::literal("one two three four five six");
 
         let mut prepared = game
@@ -1124,9 +1124,9 @@ fn show_tooltip_with_item_in_hand_controls_carried_visibility() {
         let (ox, oy) = game.inventory_origin(&batch);
 
         let (sx, sy) = game.slot_position(9);
-        game.side.cursor = (ox + sx + 8.0, oy + sy + 8.0);
+        game.client.cursor = (ox + sx + 8.0, oy + sy + 8.0);
         assert_eq!(
-            game.slot_at(&batch, game.side.cursor.0, game.side.cursor.1),
+            game.slot_at(&batch, game.client.cursor.0, game.client.cursor.1),
             Some(9)
         );
         game.draw_slot_tooltip(&mut batch);
@@ -1137,9 +1137,9 @@ fn show_tooltip_with_item_in_hand_controls_carried_visibility() {
 
         batch.vertices.clear();
         let (ax, ay) = game.slot_position(10);
-        game.side.cursor = (ox + ax + 8.0, oy + ay + 8.0);
+        game.client.cursor = (ox + ax + 8.0, oy + ay + 8.0);
         assert_eq!(
-            game.slot_at(&batch, game.side.cursor.0, game.side.cursor.1),
+            game.slot_at(&batch, game.client.cursor.0, game.client.cursor.1),
             Some(10)
         );
         game.draw_slot_tooltip(&mut batch);
@@ -1167,7 +1167,7 @@ fn audit_88_no_listener_fast_path_and_deep_local_text() {
     const WIDE: &str = "long item name near a screen edge";
     let assert_unwrapped = |game: &mut sunrise_client_gameplay::game::ClientGame<'_>, stack: &ItemStack| {
         let original_font = std::mem::replace(
-            &mut game.side.gui.atlas.font,
+            &mut game.client.gui.atlas.font,
             synthetic_ascii_fonts([("default", 6)]),
         );
         let gathered = game
@@ -1179,7 +1179,7 @@ fn audit_88_no_listener_fast_path_and_deep_local_text() {
             )
             .unwrap_ready();
         assert_eq!(text_lines(&gathered), [WIDE]);
-        game.side.gui.atlas.font = original_font;
+        game.client.gui.atlas.font = original_font;
         gathered
     };
     let stick = ItemStack::new("minecraft:stick", 1);
@@ -2424,9 +2424,9 @@ fn item_tooltip_font_wraps_in_gather_pre_replaces_without_rewrap_and_anchor_quan
                 ),
             ]),
         );
-        game.side.gui.atlas.font = sunrise_client::font::Font::metrics(&source);
-        game.side.armor_stand_assets.0.extensions =
-            sunrise_client_gameplay::game::ClientGame::prepare_client_item_extensions(&game.side.gui).unwrap();
+        game.client.gui.atlas.font = sunrise_client::font::Font::metrics(&source);
+        game.client.armor_stand_assets.0.extensions =
+            sunrise_client_gameplay::game::ClientGame::prepare_client_item_extensions(&game.client.gui).unwrap();
 
         let stick = ItemStack::new("minecraft:stick", 1);
         let text = sunrise_game_data::text::Text::literal("aa aa");
@@ -2493,7 +2493,7 @@ fn gather_wraps_logical_arabic_advances_but_measures_visual_lines() {
             Vec::new()
         };
         with_mod_factories(mods.into(), |game| {
-            game.side.gui.atlas.font = sunrise_client::font::Font::metrics(&source);
+            game.client.gui.atlas.font = sunrise_client::font::Font::metrics(&source);
             let stack = ItemStack::new("minecraft:stick", 1);
             let line = sunrise_game_data::text::Text::literal("\u{644}\u{627} \u{644}\u{627}");
             // The listener uses max_width; the fast path gets the same 25px from the screen edge.
@@ -2622,9 +2622,9 @@ fn only_hovered_slots_check_show_tooltip_with_item_in_hand() {
             })
             .expect("stick should be visible in station player inventory");
         let (sx, sy) = game.slot_position_any(slot).unwrap();
-        game.side.cursor = (ox + sx + 8.0, oy + sy + 8.0);
+        game.client.cursor = (ox + sx + 8.0, oy + sy + 8.0);
         assert_eq!(
-            game.slot_at(&batch, game.side.cursor.0, game.side.cursor.1),
+            game.slot_at(&batch, game.client.cursor.0, game.client.cursor.1),
             Some(slot)
         );
 
@@ -2658,7 +2658,7 @@ fn only_hovered_slots_check_show_tooltip_with_item_in_hand() {
         game.carried = Some(ItemStack::new("minecraft:stone", 1));
         let mut batch = HudBatch::scratch([512, 512]);
         let (ox, oy) = game.inventory_origin(&batch);
-        game.side.cursor = (ox + 60.0, oy + 25.0);
+        game.client.cursor = (ox + 60.0, oy + 25.0);
         assert!(game.draw_station(&mut batch));
         assert_eq!(hand_calls.load(Ordering::Relaxed), 1);
         assert_eq!(
@@ -2692,7 +2692,7 @@ fn only_hovered_slots_check_show_tooltip_with_item_in_hand() {
         let mut batch = HudBatch::scratch([512, 512]);
         let (ox, oy) = game.inventory_origin(&batch);
         // Merchant screen is shifted left 50px; hover the first payment in the first offer.
-        game.side.cursor = (ox - 40.0, oy + 26.0);
+        game.client.cursor = (ox - 40.0, oy + 26.0);
         assert!(game.draw_station(&mut batch));
         assert_eq!(hand_calls.load(Ordering::Relaxed), 1);
         assert_eq!(

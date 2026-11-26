@@ -45,7 +45,7 @@ fn a_first_shot_listener_can_clear_the_eggs_captured_block_before_landing() {
             assert_eq!(hits[0].block, [2, 64, 0]);
             assert_ne!(game.world.block(2, 64, 0), stone);
             assert_eq!(observed.lands.load(Ordering::Relaxed), 0);
-            assert!(game.side.lan_entity_events.is_empty());
+            assert!(game.server.lan_entity_events.is_empty());
             assert_eq!(game.entity(71), Some(handle));
             assert_eq!(game.creatures.projectiles[0].join, join);
             assert_eq!(
@@ -92,7 +92,7 @@ pub(crate) fn run_continuing_wind_charge_keeps_tick_order_and_skips_relaunch_in_
             game.build_registries();
             game.set_allow_commands(true);
             assert!(game.run_command("forceload add 0 0 15 47"));
-            game.side.next_entity = 100;
+            game.server.next_entity = 100;
             let (z, breakers, boat_tag, w6_tag, a2_tag) = match case.as_str() {
                 "ctrl4" => (24.5, 4_u32, "boat_ctrl4", "w6_ctrl4", None),
                 "reversed" => (40.5, 5_u32, "boat_rev", "w6_rev", Some("a2_rev")),
@@ -154,7 +154,7 @@ pub(crate) fn run_continuing_wind_charge_keeps_tick_order_and_skips_relaunch_in_
             };
             game.native_joins_skip();
             assert_boat_matches_witness(&witness, game, 0, boat_tag);
-            game.side.ticked_entities_through = u32::MAX;
+            game.server.ticked_entities_through = u32::MAX;
             game.tick_projectiles().unwrap();
             if case != "reversed" {
                 assert!(
@@ -167,7 +167,7 @@ pub(crate) fn run_continuing_wind_charge_keeps_tick_order_and_skips_relaunch_in_
                 assert!(game.creatures.projectiles.is_empty());
                 assert_boat_matches_witness(&witness, game, 1, boat_tag);
                 for tick in 2..=4 {
-                    game.side.ticked_entities_through = u32::MAX;
+                    game.server.ticked_entities_through = u32::MAX;
                     game.tick_projectiles().unwrap();
                     assert!(wind_continuation_witness_26_3(&witness, tick, w6_tag).is_none());
                     assert!(game.creatures.projectiles.is_empty());
@@ -234,7 +234,7 @@ pub(crate) fn run_continuing_wind_charge_keeps_tick_order_and_skips_relaunch_in_
             };
             check_tick(game, 1);
             for tick in 2..=4 {
-                game.side.ticked_entities_through = u32::MAX;
+                game.server.ticked_entities_through = u32::MAX;
                 game.tick_projectiles().unwrap();
                 check_tick(game, tick);
             }

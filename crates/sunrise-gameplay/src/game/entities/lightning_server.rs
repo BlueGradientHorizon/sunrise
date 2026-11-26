@@ -146,7 +146,7 @@ impl crate::game::ServerGame<'_> {
         }
         Some([x, top.y, z])
     }
-    pub(in crate::game) fn spawn_bolt(&mut self, at: [f64; 3], visual_only: bool) {
+    pub fn spawn_bolt(&mut self, at: [f64; 3], visual_only: bool) {
         let id = self.take_entity_id();
         let (bolt, uuid) = Bolt::new(id, at, visual_only);
         self.common.persist.uuids.insert(id, uuid);
@@ -332,7 +332,7 @@ impl crate::game::ServerGame<'_> {
         set
     }
     /// Server-side `LightningBolt.tick` for every bolt.
-    pub(in crate::game) fn server_tick_bolts(&mut self) {
+    pub fn server_tick_bolts(&mut self) {
         let _save_lease = sunrise_sim::join_seq::visibility::PassLease::enter();
         let ticking = self.entity_ticking_area();
         let ids: Vec<u32> = self.common.bolts.iter().map(|b| b.id).collect();
@@ -480,7 +480,7 @@ impl crate::game::ServerGame<'_> {
         }
     }
     /// `LightningRodBlock.onLightningStrike`: powered for 8 ticks.
-    pub(in crate::game) fn strike_rod(&mut self, at: [f64; 3]) {
+    pub fn strike_rod(&mut self, at: [f64; 3]) {
         let p = [
             at[0].floor() as i32,
             (at[1] - 1.0e-6).floor() as i32,

@@ -3,7 +3,7 @@ use {crate::game::load_resources, crate::settings::Settings, sunrise_client_lib:
 /// The one sound `event` played since the last call, with its volume.
 pub(crate) fn sound(game: &mut sunrise_client_gameplay::game::ClientGame<'_>, event: &str) -> (f32, f32) {
     let heard = game
-        .side
+        .client
         .audio
         .0
         .capture
@@ -58,6 +58,6 @@ pub(crate) fn with_remote_game<R>(
     .unwrap();
     let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
     game.connect_local(pipe, "Steve").unwrap();
-    game.side.audio.0.capture = Some(Vec::new());
+    game.client.audio.0.capture = Some(Vec::new());
     f(&mut game)
 }

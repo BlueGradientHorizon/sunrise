@@ -26,7 +26,7 @@ impl ServerGame<'_> {
     }
 
     /// For a server mod: `below` blocks under and `above` blocks from each column's height.
-    pub(in crate::game) fn read_columns(
+    pub fn read_columns(
         &self,
         dimension: &str,
         columns: &[(i32, i32)],
@@ -43,7 +43,7 @@ impl ServerGame<'_> {
         Ok(out)
     }
 
-    pub(in crate::game) fn terrain_surface(
+    pub fn terrain_surface(
         &self,
         dimension: &str,
         columns: &[(i32, i32)],

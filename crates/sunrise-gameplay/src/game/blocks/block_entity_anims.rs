@@ -37,7 +37,7 @@ impl ServerGame<'_> {
         !self.common.spectator() && self.container_openers_changed(key, open)
     }
     /// `container_opener_event` for a player who is not a spectator (a guest).
-    pub(in crate::game::server_side) fn container_openers_changed(
+    pub fn container_openers_changed(
         &mut self,
         key: (i32, i32, i32),
         open: bool,
@@ -567,7 +567,7 @@ impl ServerGame<'_> {
     }
     /// `ConduitBlockEntity.selectNewTarget`: one of the enemies in water or
     /// rain whose box meets the conduit's block inflated by 8.
-    pub(in crate::game::server_side) fn conduit_new_target(
+    pub fn conduit_new_target(
         &mut self,
         pos: [i32; 3],
     ) -> Option<u32> {
@@ -607,7 +607,7 @@ impl ServerGame<'_> {
     /// which `/data get block` and the chunk save read; the cooldown an entry
     /// started runs out, and every 2400 ticks `triggerCooldown` sends its
     /// block event.
-    pub(in crate::game) fn tick_end_gateway(&mut self, pos: (i32, i32, i32)) {
+    pub fn tick_end_gateway(&mut self, pos: (i32, i32, i32)) {
         let key = [pos.0, pos.1, pos.2];
         let initial = self.common.gateway_loaded(key);
         let server = self
@@ -635,7 +635,7 @@ impl ServerGame<'_> {
         }
     }
     /// Whether the gateway at `pos` can be entered (`!isCoolingDown`).
-    pub(in crate::game::server_side) fn gateway_available(&self, pos: [i32; 3]) -> bool {
+    pub fn gateway_available(&self, pos: [i32; 3]) -> bool {
         self.server
             .be_anims
             .gateway_servers
@@ -648,7 +648,7 @@ impl ServerGame<'_> {
 
     /// `EndGatewayBlock.entityInside` on the server: whether the gateway at
     /// `pos` let the entity in (`triggerCooldown`, with its block event).
-    pub(in crate::game::server_side) fn gateway_enter(&mut self, pos: [i32; 3]) -> bool {
+    pub fn gateway_enter(&mut self, pos: [i32; 3]) -> bool {
         let initial = self.common.gateway_loaded(pos);
         let entered = self
             .server

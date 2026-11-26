@@ -107,7 +107,7 @@ fn game_with_two_guests<'a>(
         );
         guest.placed = true;
         guest.loaded = true;
-        game.side.lan.as_mut().unwrap().hub.guests.push(guest);
+        game.server.lan.as_mut().unwrap().hub.guests.push(guest);
     }
     game
 }

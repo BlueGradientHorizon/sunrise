@@ -60,7 +60,7 @@ fn resident_new_family_lifetimes_bind_move_and_retire() {
         game.summon_with_nbt("minecraft:marker", [0.5, 70.0, 0.5], "{}")
             .unwrap();
         game.lan_assign_ids();
-        check_list!(game, side.others.0);
+        check_list!(game, server.others.0);
 
         game.add_fangs([0.5, 70.0, 0.5], 0.0, 0, 0);
         check_list!(game, fangs.list);
@@ -75,10 +75,10 @@ fn resident_new_family_lifetimes_bind_move_and_retire() {
         game.lan_assign_ids();
         check_list!(game, tnts);
 
-        game.side.next_entity += 1;
+        game.server.next_entity += 1;
         game.resident_entities.knots.push(sunrise_gameplay::game::leads::Knot {
             attachment_lifetime: Default::default(),
-            id: game.side.next_entity,
+            id: game.server.next_entity,
             join: Default::default(),
             fence: [0, 70, 0],
         });

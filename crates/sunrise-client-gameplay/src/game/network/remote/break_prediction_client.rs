@@ -101,7 +101,7 @@ impl crate::game::ClientGame<'_> {
     }
 
     /// MultiPlayerGameMode.destroyBlock: the predicted break.
-    pub(in crate::game) fn predict_break(
+    pub fn predict_break(
         &mut self,
         pos: [i32; 3],
         state: BlockStateId,
@@ -153,7 +153,7 @@ impl crate::game::ClientGame<'_> {
     }
 
     /// The blocks a use changed, kept under its sequence until acknowledgement.
-    pub(in crate::game) fn predict_blocks(
+    pub fn predict_blocks(
         &mut self,
         changes: &[(BlockPos, BlockStateId)],
         seq: i32,
@@ -191,7 +191,7 @@ impl crate::game::ClientGame<'_> {
 
     /// ClientLevel.setServerVerifiedBlockState: a predicted block keeps its on-screen
     /// state until acknowledgement, but remembers the server's update for then.
-    pub(in crate::game) fn server_block(
+    pub fn server_block(
         &mut self,
         pos: [i32; 3],
         state: i32,
@@ -230,7 +230,7 @@ impl crate::game::ClientGame<'_> {
 
     /// BlockStatePredictionHandler.endPredictionsUpTo: settle the server's known
     /// state and restore data before the correction notice. Confirmations are silent.
-    pub(in crate::game) fn end_predictions(&mut self, sequence: i32) -> Result<()> {
+    pub fn end_predictions(&mut self, sequence: i32) -> Result<()> {
         let Some(r) = self.client.remote.as_mut() else {
             return Ok(());
         };

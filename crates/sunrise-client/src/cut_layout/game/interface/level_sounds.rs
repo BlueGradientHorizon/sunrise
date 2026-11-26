@@ -73,8 +73,8 @@ pub(crate) mod tests {
             seed: 0,
             max_players: 3,
             integrated: true,
-            levels: game.side.level_shapes,
-            level_seeds: game.side.levels.0.runtime.seeds(),
+            levels: game.server.level_shapes,
+            level_seeds: game.server.levels.0.runtime.seeds(),
         };
         let settings = LanSettings {
             port: 0,
@@ -101,7 +101,7 @@ pub(crate) mod tests {
             with_game(|game| {
                 host(game);
                 let (a, rx) = guest(21, 21, [1.0, 64.0, 2.0]);
-                game.side.lan.as_mut().unwrap().hub.guests.push(a);
+                game.server.lan.as_mut().unwrap().hub.guests.push(a);
                 let mob = |game: &mut sunrise_gameplay::game::ServerGame<'_>, id, kind: &str, x| {
                     let kind = game.res.mob_types().get(kind).unwrap().clone();
                     game.mobs
@@ -127,7 +127,7 @@ pub(crate) mod tests {
                     "asked at the end of the tick"
                 );
                 assert!(
-                    game.side.pending_sounds.is_empty(),
+                    game.server.pending_sounds.is_empty(),
                     "not also sent as a positional sound"
                 );
 
@@ -159,7 +159,7 @@ pub(crate) mod tests {
                     sources,
                     [SoundSource::Neutral as i32, SoundSource::Blocks as i32]
                 );
-                assert!(game.side.bound_sounds.is_empty());
+                assert!(game.server.bound_sounds.is_empty());
             });
         });
     }
@@ -196,8 +196,8 @@ pub(crate) mod tests {
                     seed: 0,
                     max_players: 3,
                     integrated: true,
-                    levels: game.side.level_shapes,
-                    level_seeds: game.side.levels.0.runtime.seeds(),
+                    levels: game.server.level_shapes,
+                    level_seeds: game.server.levels.0.runtime.seeds(),
                 };
                 let settings = LanSettings {
                     port: 0,
@@ -206,13 +206,13 @@ pub(crate) mod tests {
                 };
                 game.lan_host(settings, net, config).unwrap();
                 let (a, rx) = guest(21, 21, [1.0, 64.0, 2.0]);
-                game.side.lan.as_mut().unwrap().hub.guests.push(a);
+                game.server.lan.as_mut().unwrap().hub.guests.push(a);
                 let (b, rx_b) = guest(22, 22, [1.0, 64.0, 3.0]);
-                game.side.lan.as_mut().unwrap().hub.guests.push(b);
+                game.server.lan.as_mut().unwrap().hub.guests.push(b);
                 let at = [2.0, 64.0, 2.0];
 
                 // The tick's sounds, at their positions.
-                game.side.pending_sounds.extend(
+                game.server.pending_sounds.extend(
                     [
                         "minecraft:block.chest.locked",
                         "minecraft:entity.pig.ambient",
@@ -259,7 +259,7 @@ pub(crate) mod tests {
                     panic!("expected a bound sound")
                 };
                 assert_eq!(p.id, 40);
-                let cow_ambient = game.side.lan.as_ref().unwrap().hub.sound_packet(
+                let cow_ambient = game.server.lan.as_ref().unwrap().hub.sound_packet(
                     "minecraft:entity.cow.ambient",
                     at,
                     1.0,

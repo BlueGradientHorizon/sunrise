@@ -137,7 +137,7 @@ impl crate::game::ClientGame<'_> {
     }
     /// The cursor moved while a button is held: true when the tweaks own
     /// the drag (vanilla's quick craft drag doesn't grow).
-    pub(in crate::game::client_side) fn tweak_drag_move(&mut self, slot: Option<usize>) -> bool {
+    pub fn tweak_drag_move(&mut self, slot: Option<usize>) -> bool {
         let Some(mut drag) = self.client.tweaks.drag.take() else {
             return false;
         };
@@ -231,7 +231,7 @@ impl crate::game::ClientGame<'_> {
         true
     }
     /// `slot` is a result slot of the open menu.
-    fn tweak_result(&mut self, slot: usize) -> bool {
+    pub fn tweak_result(&mut self, slot: usize) -> bool {
         let mut result = false;
         self.menu_session(|menu, _, to_menu| {
             result = to_menu(slot).is_some_and(|i| menu.is_result(i));

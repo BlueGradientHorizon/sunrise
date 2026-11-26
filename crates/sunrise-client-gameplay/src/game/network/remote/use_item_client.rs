@@ -10,7 +10,7 @@ impl crate::game::ClientGame<'_> {
     /// use (`held_until_released`), and a consumable's eating animation and
     /// its crumbs until the server's USE_ITEM_COMPLETE. The server sends the
     /// stack, its hunger and the sounds.
-    pub(in crate::game) fn remote_tick_using(&mut self) {
+    pub fn remote_tick_using(&mut self) {
         self.side_tick_client_item_use();
         let Some((slot, ticks)) = self.common.using else {
             return;
@@ -101,7 +101,7 @@ impl crate::game::ClientGame<'_> {
     }
     /// MultiPlayerGameMode.useItem for `hand`, if it holds something: whether
     /// the click ends there, as far as this client can tell (`use_ends_click`).
-    pub(in crate::game) fn remote_use_item(&mut self, hand: Hand) -> bool {
+    pub fn remote_use_item(&mut self, hand: Hand) -> bool {
         // MultiPlayerGameMode.useItem: spectators pass before sending or predicting.
         if self.common.spectator() {
             return false;

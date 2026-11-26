@@ -78,7 +78,7 @@ fn loading(receiver: Receiver<LoaderMsg>) -> Loading {
         assert_eq!(view(&first), (3.0, 320.0, 240.0));
         assert_eq!(view(&second), (4.0, 240.0, 180.0));
         super::super::native_entity_refs::tests::with_client_game(|server| {
-            server.side.settings.gui_scale = 1;
+            server.client.settings.gui_scale = 1;
             server.apply_ui_settings();
             assert_eq!(view(&first), (3.0, 320.0, 240.0));
             assert_eq!(view(&second), (4.0, 240.0, 180.0));
@@ -177,7 +177,7 @@ fn loading(receiver: Receiver<LoaderMsg>) -> Loading {
         assert!(loading.settings.resource_packs.is_empty());
 
         super::super::native_entity_refs::tests::with_client_game(|game| {
-            game.side.title.0 = Some(game.new_title(PathBuf::from("saves")));
+            game.client.title.0 = Some(game.new_title(PathBuf::from("saves")));
             game.open_options_at(true, Page::Packs);
             game.handle_window_event_inner(
                 &Loop,
@@ -186,7 +186,7 @@ fn loading(receiver: Receiver<LoaderMsg>) -> Loading {
                 None,
             );
             assert!(
-                game.side
+                game.client
                     .chat_ui
                     .options
                     .pack_screen
@@ -196,9 +196,9 @@ fn loading(receiver: Receiver<LoaderMsg>) -> Loading {
             );
             assert!(!packs::packs_dir().join("Game pack").exists());
             let size = game.gui_size();
-            let events = game.side.chat_ui.options.click(
-                &mut game.side.settings,
-                &game.side.gui.atlas,
+            let events = game.client.chat_ui.options.click(
+                &mut game.client.settings,
+                &game.client.gui.atlas,
                 size.0 / 2.0 - 150.0,
                 size.1 / 2.0 + 20.0,
                 size,
@@ -210,14 +210,14 @@ fn loading(receiver: Receiver<LoaderMsg>) -> Loading {
             game.handle_option_events(events).unwrap();
             assert!(packs::packs_dir().join("Game pack/pack.mcmeta").is_file());
             assert!(
-                game.side
+                game.client
                     .chat_ui
                     .options
                     .pack_infos
                     .iter()
                     .any(|p| p.id == "file/Game pack")
             );
-            assert!(game.side.settings.resource_packs.is_empty());
+            assert!(game.client.settings.resource_packs.is_empty());
         });
         std::env::set_current_dir(previous_dir).unwrap();
     }

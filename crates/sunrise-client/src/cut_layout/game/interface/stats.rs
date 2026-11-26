@@ -30,7 +30,7 @@ use sunrise_gameplay_common::stats::player_json;
             sunrise_gameplay::game::server_side::bossbars::audience_tests::add_real_and_fake(game);
             game.player = None;
             game.world.day_time = 18000;
-            let host = game.side.lan.as_mut().unwrap();
+            let host = game.server.lan.as_mut().unwrap();
             let guests = &mut host.hub.guests;
             let index = guests.iter().position(|g| g.uuid == 2).unwrap();
             guests.update(index, |g| g.position = [1000.0, 100.0, 0.0]);
@@ -53,7 +53,7 @@ use sunrise_gameplay_common::stats::player_json;
                 sunrise_core::random::LegacyRandom::new(12345),
             );
             game.stats.set_phantom_tick(0);
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()
@@ -78,7 +78,7 @@ use sunrise_gameplay_common::stats::player_json;
                 std::thread::current().id()
             ));
             let _ = std::fs::remove_dir_all(&world);
-            game.side.world_root = world.clone();
+            game.server.world_root = world.clone();
             game.level.player_uuid = Some([0, 0, 0, 5]);
             game.stats.loaded = true;
             game.adv.loaded = true;
@@ -100,7 +100,7 @@ use sunrise_gameplay_common::stats::player_json;
                 std::fs::write(file, "last saved").unwrap();
                 std::fs::create_dir(beside(file)).unwrap();
             }
-            let host = game.side.lan.as_mut().unwrap();
+            let host = game.server.lan.as_mut().unwrap();
             host.play.insert(
                 12,
                 sunrise_gameplay::game::server_side::lan_actions_server::GuestPlay::default(),

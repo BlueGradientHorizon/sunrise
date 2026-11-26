@@ -113,7 +113,7 @@ fn added_issuer_actor_missing_guest_and_restoration_controls() {
         guest.placed = true;
         guest.loaded = true;
         guest.permission = 2;
-        game.side.lan.as_mut().unwrap().hub.guests.push(guest);
+        game.server.lan.as_mut().unwrap().hub.guests.push(guest);
         receivers.push(rx);
     }
     // Added actor/issuer separation: actual execute-as, with the issuer unchanged.
@@ -121,7 +121,7 @@ fn added_issuer_actor_missing_guest_and_restoration_controls() {
         conn: 2, command: "execute as 00000000-0000-0000-0000-000000000063 store result score result context store success score success context run test run minecraft:always_pass".into(),
         permission: 2, integrated: false, quiet: false }));
     let context = game
-        .side
+        .server
         .game_tests
         .0
         .runner
@@ -142,7 +142,7 @@ fn added_issuer_actor_missing_guest_and_restoration_controls() {
     for _ in 0..8 {
         game.tick_game_tests();
     }
-    for g in &game.side.lan.as_ref().unwrap().hub.guests {
+    for g in &game.server.lan.as_ref().unwrap().hub.guests {
         g.sender.flush();
     }
     let _ = chats(&receivers[0]);
@@ -157,7 +157,7 @@ fn added_issuer_actor_missing_guest_and_restoration_controls() {
         })
     );
     assert_eq!(
-        game.side
+        game.server
             .game_tests
             .0
             .runner
@@ -171,7 +171,7 @@ fn added_issuer_actor_missing_guest_and_restoration_controls() {
         "added transient Player-alias normalization control"
     );
     game.flush_game_test_output();
-    for g in &game.side.lan.as_ref().unwrap().hub.guests {
+    for g in &game.server.lan.as_ref().unwrap().hub.guests {
         g.sender.flush();
     }
     let _ = chats(&receivers[0]);
@@ -183,34 +183,34 @@ fn added_issuer_actor_missing_guest_and_restoration_controls() {
         silent: true,
         ..game.player_source()
     };
-    game.side.command_source = Some(outer);
-    game.side.chat_capture = Some(Vec::new());
-    let before = (game.side.exec.0.commands, game.side.exec.0.callback);
+    game.server.command_source = Some(outer);
+    game.server.chat_capture = Some(Vec::new());
+    let before = (game.server.exec.0.commands, game.server.exec.0.callback);
     let marker = Text::literal("issuer-only-context-control");
     let component = component_nbt(&marker.component());
     game.test_source_output(context, marker.clone(), false);
-    for g in &game.side.lan.as_ref().unwrap().hub.guests {
+    for g in &game.server.lan.as_ref().unwrap().hub.guests {
         g.sender.flush();
     }
     assert_eq!(chats(&receivers[0]), [component]);
     assert!(chats(&receivers[1]).is_empty());
-    assert!(game.side.chat_capture.as_ref().unwrap().is_empty());
+    assert!(game.server.chat_capture.as_ref().unwrap().is_empty());
     assert_eq!(game.dim, Dim::Nether);
-    assert_eq!(game.side.lan_acting, None);
+    assert_eq!(game.server.lan_acting, None);
     assert_eq!(
         game.player.as_ref().unwrap().position,
         Vec3::new(1.5, 200.0, 1.5)
     );
     assert_eq!(
-        format!("{:?}", game.side.command_source.unwrap()),
+        format!("{:?}", game.server.command_source.unwrap()),
         format!("{outer:?}")
     );
     assert_eq!(
         before,
-        (game.side.exec.0.commands, game.side.exec.0.callback)
+        (game.server.exec.0.commands, game.server.exec.0.callback)
     );
     // Added missing-recipient control: no host fallback or operator broadcast.
-    game.side
+    game.server
         .lan
         .as_mut()
         .unwrap()
@@ -218,26 +218,26 @@ fn added_issuer_actor_missing_guest_and_restoration_controls() {
         .guests
         .retain(|g| g.conn != 2);
     game.test_source_output(context, marker, true);
-    game.side
+    game.server
         .game_tests
         .0
         .outbox
         .push(Out::Coordinates(context, vec![Dim::Overworld]));
     game.flush_game_test_output();
-    for g in &game.side.lan.as_ref().unwrap().hub.guests {
+    for g in &game.server.lan.as_ref().unwrap().hub.guests {
         g.sender.flush();
     }
     assert!(chats(&receivers[1]).is_empty());
-    assert!(game.side.chat_capture.as_ref().unwrap().is_empty());
+    assert!(game.server.chat_capture.as_ref().unwrap().is_empty());
     assert_eq!(game.dim, Dim::Nether);
-    assert_eq!(game.side.lan_acting, None);
+    assert_eq!(game.server.lan_acting, None);
     assert_eq!(
-        format!("{:?}", game.side.command_source.unwrap()),
+        format!("{:?}", game.server.command_source.unwrap()),
         format!("{outer:?}")
     );
     assert_eq!(
         before,
-        (game.side.exec.0.commands, game.side.exec.0.callback)
+        (game.server.exec.0.commands, game.server.exec.0.callback)
     );
     assert_eq!(
         game.score.board.score("result", "context").unwrap().value,
@@ -263,7 +263,7 @@ fn added_issuer_actor_missing_guest_and_restoration_controls() {
     );
     game.track_and_start_runner(vec![info], false, None, false);
     assert!(
-        game.side
+        game.server
             .game_tests
             .0
             .runner

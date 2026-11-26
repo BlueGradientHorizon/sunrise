@@ -19,7 +19,7 @@ mod tests {
 
     fn push(game: &mut sunrise_gameplay::game::ServerGame<'_>, id: u32, kind: &str) -> DisplayRef {
         game.options.dedicated = Some(Vec::new());
-        game.side.others.0.push(OtherEntity {
+        game.server.others.0.push(OtherEntity {
             size_answer: None,
             attachment_lifetime: Default::default(),
             knot_check: None,
@@ -48,7 +48,7 @@ mod tests {
             assert_eq!(block.kind(game), Some(DisplayKind::Block));
             assert_eq!(item.kind(game), Some(DisplayKind::Item));
             assert_eq!(text.entity(), game.entity(21).unwrap());
-            game.side.others.0.push(OtherEntity {
+            game.server.others.0.push(OtherEntity {
                 size_answer: None,
                 attachment_lifetime: Default::default(),
                 knot_check: None,
@@ -244,7 +244,7 @@ mod tests {
             assert!(data.iter().any(|e| e.0 == 17 && e.2 == Value::Float(2.5)));
             assert!(text_display_data(&raw, false).iter().any(|e| e.0 == 23));
             // The saved entity is the compound `/data get entity` shows.
-            let o = game.side.others.0.iter().find(|o| o.id == 21).unwrap();
+            let o = game.server.others.0.iter().find(|o| o.id == 21).unwrap();
             let saved = game.other_to_nbt(o, [1, 2, 3, 4]);
             assert_eq!(
                 saved.get("billboard"),

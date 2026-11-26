@@ -62,7 +62,7 @@ fn the_dragon_boss_bar_takes_the_dragons_custom_name() {
     // The chunks `EnderDragonFight.isArenaLoaded` waits for, lit as received
     // chunks are, so the fight's next player scan adopts or makes its dragon.
     {
-        let streaming = &mut game.side.streaming;
+        let streaming = &mut game.server.streaming;
         let world = &mut game.world;
         for z in -2..=1 {
             for x in -2..=1 {
@@ -82,7 +82,7 @@ fn the_dragon_boss_bar_takes_the_dragons_custom_name() {
         guest.dimension = "minecraft:the_end".into();
         guest.position = [0.5, 128.0, 0.5];
     });
-    game.side.lan = Some(sunrise_gameplay::game::lan::LanHost::for_test(hub));
+    game.server.lan = Some(sunrise_gameplay::game::lan::LanHost::for_test(hub));
     let mut overlay = sunrise_client::boss_overlay::BossOverlay::default();
     let drain = |rx: &std::sync::mpsc::Receiver<sunrise_sim::lan::Out>,
                  overlay: &mut sunrise_client::boss_overlay::BossOverlay| {
@@ -139,7 +139,7 @@ fn the_dragon_boss_bar_takes_the_dragons_custom_name() {
         .pop()
         .expect("the dragon's bar");
     assert_eq!(still.name.plain(), "Bob");
-    game.side.lan = None;
+    game.server.lan = None;
 }
 
 use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

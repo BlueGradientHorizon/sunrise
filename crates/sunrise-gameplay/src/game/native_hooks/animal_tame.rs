@@ -8,7 +8,7 @@ impl crate::game::ServerGame<'_> {
     /// a horse, donkey, mule or llama the player rides). Set `cancel` for the
     /// attempt to fail instead, as a failed roll does: smoke for a pet, and
     /// a horse bucks its rider off. Before `entity_tame`. Server-side.
-    pub(in crate::game) fn native_animal_tame(
+    pub fn native_animal_tame(
         &mut self,
         tamer: u128,
         tamer_entity_id: i32,

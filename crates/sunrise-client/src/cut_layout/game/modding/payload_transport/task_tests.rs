@@ -392,8 +392,8 @@ fn vanilla_peer(
 }
 
 fn publish_task_server(game: &mut sunrise_client_gameplay::game::ClientGame<'_>) -> u16 {
-    game.side.settings.render_distance = 2;
-    game.side.settings.simulation_distance = 2;
+    game.client.settings.render_distance = 2;
+    game.client.settings.simulation_distance = 2;
     let options = sunrise_sim::world_options::WorldOptions {
         world_type: sunrise_sim::save::WorldPreset::Flat,
         ..Default::default()
@@ -408,7 +408,7 @@ fn publish_task_server(game: &mut sunrise_client_gameplay::game::ClientGame<'_>)
     .unwrap();
     let deadline = Instant::now() + Duration::from_secs(60);
     while !game
-        .side
+        .client
         .remote
         .as_ref()
         .is_some_and(|r| r.logged_in && r.joined)
@@ -417,7 +417,7 @@ fn publish_task_server(game: &mut sunrise_client_gameplay::game::ClientGame<'_>)
         assert!(Instant::now() < deadline);
         std::thread::yield_now();
     }
-    game.side
+    game.client
         .integrated
         .as_ref()
         .unwrap()
@@ -907,7 +907,7 @@ fn peer_completion_rejects_other_connections() {
             // The play Login is sent in the same tick as the join announcement.
             // Read the hook's record between ticks, while both connections are still open.
             let joins = game
-                .side
+                .client
                 .integrated
                 .as_ref()
                 .unwrap()
@@ -956,7 +956,7 @@ fn retained_configuration_host_send_refuses_play_while_session_is_registered() {
                     }
                 }
                 let connection = fixture.connection.lock().unwrap().unwrap();
-                game.side
+                game.client
                     .integrated
                     .as_ref()
                     .unwrap()

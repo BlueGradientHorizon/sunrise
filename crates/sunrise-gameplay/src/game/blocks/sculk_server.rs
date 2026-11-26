@@ -330,7 +330,7 @@ impl crate::game::ServerGame<'_> {
         }
     }
     /// `Level.gameEvent`: tell the listeners within reach.
-    pub(in crate::game) fn post_game_event(
+    pub fn post_game_event(
         &mut self,
         event: &'static str,
         pos: [f64; 3],
@@ -519,7 +519,7 @@ impl crate::game::ServerGame<'_> {
             self.step_on_redstone_ore(at, false);
         }
     }
-    pub(in crate::game) fn tick_mob_sculk_events(&mut self) {
+    pub fn tick_mob_sculk_events(&mut self) {
         let snapshot: Vec<(
             u32,
             [f64; 3],
@@ -778,7 +778,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// Run `f` with the player as the cause of the block changes it makes.
-    pub(in crate::game) fn with_player_actor<T>(&mut self, f: impl FnOnce(&mut Self) -> T) -> T {
+    pub fn with_player_actor<T>(&mut self, f: impl FnOnce(&mut Self) -> T) -> T {
         let prior = self.server.sculk.actor.replace(Who::Player);
         let out = f(self);
         self.server.sculk.actor = prior;
@@ -930,7 +930,7 @@ impl crate::game::ServerGame<'_> {
 
     // ---- setup and the block entity index ----
 
-    pub(in crate::game) fn sculk_prepare(&mut self) {
+    pub fn sculk_prepare(&mut self) {
         if self.server.sculk.tables.built {
             return;
         }
@@ -1008,7 +1008,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// Find the sculk blocks of chunks that just became resident, and apply
     /// the block writes recorded since the last tick.
-    pub(in crate::game) fn sculk_sync_index(&mut self) {
+    pub fn sculk_sync_index(&mut self) {
         // Chunks that arrived or left (every half second is plenty).
         // Nothing to do while no chunk came or went.
         let revision = self.common.world.chunks.membership_revision();
@@ -1448,7 +1448,7 @@ impl crate::game::ServerGame<'_> {
     pub(in crate::game::server_side) fn shrieker_shrieking(&self, state: BlockStateId) -> bool {
         self.state_property(state, "shrieking") == Some("true")
     }
-    pub(in crate::game) fn state_property(&self, state: BlockStateId, key: &str) -> Option<&str> {
+    pub fn state_property(&self, state: BlockStateId, key: &str) -> Option<&str> {
         self.common.pack
             .assets
             .registry
@@ -1512,7 +1512,7 @@ impl crate::game::ServerGame<'_> {
     /// The entity phase of a tick for sculk: the player's warden spawn
     /// tracker (`ServerPlayer.tick`), and the events of entities standing on
     /// and moving over blocks.
-    pub(in crate::game) fn tick_sculk_entities(&mut self) {
+    pub fn tick_sculk_entities(&mut self) {
         self.server.sculk.ticks = self.server.sculk.ticks.wrapping_add(1);
         // Its steps as spans for `sunrise-report` (nothing is read while spans are off).
         let mut laps = sunrise_level::spans::laps();

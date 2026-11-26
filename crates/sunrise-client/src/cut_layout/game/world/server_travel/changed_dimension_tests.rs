@@ -88,8 +88,8 @@ fn with_server(role: ExecutionRole, test: impl FnOnce(&mut sunrise_gameplay::gam
             seed: 0,
             max_players: 2,
             integrated: role == ExecutionRole::IntegratedServer,
-            levels: game.side.level_shapes,
-            level_seeds: game.side.levels.0.runtime.seeds(),
+            levels: game.server.level_shapes,
+            level_seeds: game.server.levels.0.runtime.seeds(),
         };
         game.lan_host(
             LanSettings {
@@ -132,7 +132,7 @@ fn with_server(role: ExecutionRole, test: impl FnOnce(&mut sunrise_gameplay::gam
         guest.motion = Some(Box::new(
             sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::new(3.5, 64.0, 5.5)).unwrap(),
         ));
-        game.side.lan.as_mut().unwrap().hub.guests.push(guest);
+        game.server.lan.as_mut().unwrap().hub.guests.push(guest);
         test(game);
     });
 }
@@ -142,7 +142,7 @@ fn with_server(role: ExecutionRole, test: impl FnOnce(&mut sunrise_gameplay::gam
 fn light(game: &mut sunrise_gameplay::game::ServerGame<'_>, cx: i32, cz: i32) {
     for x in cx - 2..=cx + 2 {
         for z in cz - 2..=cz + 2 {
-            game.side
+            game.server
                 .streaming
                 .insert_remote(&mut game.world, Chunk::empty(x, z));
         }
@@ -154,7 +154,7 @@ fn light(game: &mut sunrise_gameplay::game::ServerGame<'_>, cx: i32, cz: i32) {
 fn finish_trip(game: &mut sunrise_gameplay::game::ServerGame<'_>, dim: Dim) {
     let home = game.dim;
     for _ in 0..20 {
-        let Some(trip) = game.side.server_trips.iter().find(|trip| trip.conn == CONN) else {
+        let Some(trip) = game.server.server_trips.iter().find(|trip| trip.conn == CONN) else {
             break;
         };
         let (target_dim, target) = (trip.dim, trip.target);
@@ -179,7 +179,7 @@ fn finish_trip(game: &mut sunrise_gameplay::game::ServerGame<'_>, dim: Dim) {
         !game.has_pending_travel(CONN),
         "the trip into {dim:?} never ended (current {:?}, trips {:?})",
         game.dim,
-        game.side
+        game.server
             .server_trips
             .iter()
             .map(|trip| (
@@ -217,14 +217,14 @@ fn run_as_player(game: &mut sunrise_gameplay::game::ServerGame<'_>, role: Execut
 
 fn prepare_end_exit(game: &mut sunrise_gameplay::game::ServerGame<'_>, credits: bool) {
     game.enter_level(Dim::End).unwrap();
-    game.side
+    game.server
         .streaming
         .insert_remote(&mut game.world, Chunk::empty(0, 0));
     assert!(
         game.set_state_named([3, 64, 5], "minecraft:end_portal", &[])
             .unwrap()
     );
-    game.side
+    game.server
         .lan
         .as_mut()
         .unwrap()
@@ -265,7 +265,7 @@ fn a_cross_level_teleport_returns_both_cursors_before_arrival() {
     with_server(ExecutionRole::DedicatedServer, |game| {
         let inventory_cursor = ItemStack::new("minecraft:iron_ingot", 3);
         let open_cursor = ItemStack::new("minecraft:gold_ingot", 5);
-        let hub = &mut game.side.lan.as_mut().unwrap().hub;
+        let hub = &mut game.server.lan.as_mut().unwrap().hub;
         hub.guests
             .update(0, |g| g.carried = Some(inventory_cursor.clone()));
         hub.open_native_menu(
@@ -277,7 +277,7 @@ fn a_cross_level_teleport_returns_both_cursors_before_arrival() {
         .unwrap();
         hub.guests
             .update(0, |g| g.carried = Some(open_cursor.clone()));
-        game.side.level_teleports.push(sunrise_gameplay::game::server_side::server_travel::LevelTeleport {
+        game.server.level_teleports.push(sunrise_gameplay::game::server_side::server_travel::LevelTeleport {
             conn: CONN,
             dim: Dim::Nether,
             at: [8.5, 70.0, 8.5],
@@ -286,7 +286,7 @@ fn a_cross_level_teleport_returns_both_cursors_before_arrival() {
         });
         game.run_level_teleports();
 
-        let guest = &game.side.lan.as_ref().unwrap().hub.guests[0];
+        let guest = &game.server.lan.as_ref().unwrap().hub.guests[0];
         assert_eq!(guest.dimension, Dim::Nether.id());
         assert!(guest.menu.is_none());
         assert!(guest.carried.is_none());
@@ -332,10 +332,10 @@ fn a_cross_level_teleport_survives_cursor_overflow_removing_an_earlier_guest() {
     )];
     mod_platform::testing::with_mods(mods.into(), || {
         with_server(ExecutionRole::DedicatedServer, |game| {
-            let traveller = game.side.lan.as_mut().unwrap().hub.guests.remove(0);
+            let traveller = game.server.lan.as_mut().unwrap().hub.guests.remove(0);
             let level = game.level(Dim::Overworld.id()).unwrap();
             *fake.lock().unwrap() = Some(game.fake_player(level, 121, "Automation").unwrap());
-            let hub = &mut game.side.lan.as_mut().unwrap().hub;
+            let hub = &mut game.server.lan.as_mut().unwrap().hub;
             assert!(hub.guests[0].is_fake());
             hub.guests.push(traveller);
             assert_eq!(hub.guests[1].conn, CONN);
@@ -359,7 +359,7 @@ fn a_cross_level_teleport_survives_cursor_overflow_removing_an_earlier_guest() {
                 "execute in minecraft:the_nether run tp @s 8.5 70 8.5",
             );
 
-            let guests = &game.side.lan.as_ref().unwrap().hub.guests;
+            let guests = &game.server.lan.as_ref().unwrap().hub.guests;
             assert_eq!(guests.len(), 1);
             assert_eq!(guests[0].conn, CONN);
             assert_eq!(guests[0].dimension, Dim::Nether.id());
@@ -410,7 +410,7 @@ fn a_failed_cross_level_trip_closes_the_retired_client_window() {
             // Opening an unloaded destination refuses an unreadable saved biome layout.
             // Set a world path: the constructor-only fixture otherwise reads the process's cwd.
             let world = tempfile::tempdir().unwrap();
-            game.side.world_root = world.path().to_path_buf();
+            game.server.world_root = world.path().to_path_buf();
             let record = world.path().join("data/sunrise/biome_regions.dat");
             std::fs::create_dir_all(record.parent().unwrap()).unwrap();
             std::fs::write(record, b"not a biome layout").unwrap();
@@ -426,13 +426,13 @@ fn a_failed_cross_level_trip_closes_the_retired_client_window() {
                 Ok(true)
             );
             let (tx, rx) = std::sync::mpsc::channel();
-            game.side.lan.as_mut().unwrap().hub.update_guest(CONN, |g| {
+            game.server.lan.as_mut().unwrap().hub.update_guest(CONN, |g| {
                 g.sender = PlayerSender::new(tx, Arc::default());
                 g.inventory
                     .fill(Some(ItemStack::new("minecraft:stone", 64)));
             });
             for via_portal in [false, true] {
-                game.side.lan.as_mut().unwrap().hub.update_guest(CONN, |g| {
+                game.server.lan.as_mut().unwrap().hub.update_guest(CONN, |g| {
                     assert!(g.menu.is_none());
                     g.carried = Some(ItemStack::new("minecraft:gold_ingot", 5));
                 });
@@ -463,7 +463,7 @@ fn a_failed_cross_level_trip_closes_the_retired_client_window() {
                     ),
                     "via portal: {via_portal}, packets: {windows:?}"
                 );
-                let guest = game.side.lan.as_ref().unwrap().hub.guest(CONN).unwrap();
+                let guest = game.server.lan.as_ref().unwrap().hub.guest(CONN).unwrap();
                 assert_eq!(guest.dimension, Dim::Overworld.id());
                 assert!(guest.menu.is_none());
             }
@@ -526,7 +526,7 @@ fn a_command_teleport_into_the_nether_is_heard_once_on_every_server() {
 fn player_tick_count_survives_teleports_and_deferred_arrivals() {
     with_server(ExecutionRole::DedicatedServer, |game| {
         let entity = game.entity(CONN).unwrap();
-        game.side
+        game.server
             .lan
             .as_mut()
             .unwrap()
@@ -571,7 +571,7 @@ fn player_tick_count_survives_teleports_and_deferred_arrivals() {
 fn ordinary_end_exit_with_configured_respawn_keeps_player_tick_count() {
     with_server(ExecutionRole::DedicatedServer, |game| {
         let entity = game.entity(CONN).unwrap();
-        game.side
+        game.server
             .lan
             .as_mut()
             .unwrap()
@@ -635,7 +635,7 @@ fn credits_respawn_position_unchanged_resets_player_tick_count() {
 fn credits_missing_respawn_point_resets_player_tick_count() {
     with_server(ExecutionRole::DedicatedServer, |game| {
         let entity = game.entity(CONN).unwrap();
-        game.side
+        game.server
             .lan
             .as_mut()
             .unwrap()
@@ -710,7 +710,7 @@ fn credits_configured_respawn_keeps_permanent_player_attributes() {
     use sunrise_world::attributes::{Modifier, Operation};
 
     with_server(ExecutionRole::DedicatedServer, |game| {
-        game.side
+        game.server
             .lan
             .as_mut()
             .unwrap()
@@ -762,7 +762,7 @@ fn death_respawn_starts_a_new_player_tick_count() {
             game.player.as_mut().unwrap().health.tick_count = 41;
         })
         .unwrap();
-        game.side
+        game.server
             .lan
             .as_mut()
             .unwrap()
@@ -788,7 +788,7 @@ fn an_end_gateway_jump_within_the_level_is_not_heard_on_any_server() {
             game.start_gateway_trip(CONN, [3, 64, 5]);
             finish_trip(game, Dim::Overworld);
             let at = game
-                .side
+                .server
                 .lan
                 .as_ref()
                 .unwrap()

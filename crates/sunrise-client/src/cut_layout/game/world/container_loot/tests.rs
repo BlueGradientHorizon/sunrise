@@ -80,7 +80,7 @@ fn level_container_reads_preserve_snapshot_and_unpack_comparator_once() {
             let (chunk, chest) = snapshot.take().unwrap();
             let (client, _server) = sunrise_protocol::connection::Pipe::pair();
             game.connect_local(client, "ContainerReadTest").unwrap();
-            game.side.remote.as_mut().unwrap().logged_in = true;
+            game.client.remote.as_mut().unwrap().logged_in = true;
             game.world.chunks.insert((0, 0), chunk);
             game.world.block_entities.insert(POS, chest);
             let client_level = game.level(game.dim.id()).unwrap();
@@ -180,7 +180,7 @@ fn with_game(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
         )
         .unwrap();
         assert!(loot.has_table(TABLE));
-        game.side.server_loot.0.set(Some(Arc::new(loot)));
+        game.server.server_loot.0.set(Some(Arc::new(loot)));
         test(game);
     });
 }
@@ -287,7 +287,7 @@ fn hopper_pull_unpacks_source_once() {
         g.hopper_try_move_items((8, 63, 8));
         consumed(g, POS);
         assert_eq!(count(g, (8, 63, 8), "minecraft:diamond"), 1);
-        g.side.hoppers.insert(
+        g.server.hoppers.insert(
             (8, 63, 8),
             sunrise_gameplay_common::hoppers::HopperState::with_cooldown(0),
         );
@@ -308,7 +308,7 @@ fn hopper_push_unpacks_destination_once() {
         assert_eq!(count(g, POS, "minecraft:diamond"), 1);
         assert_eq!(count(g, POS, "minecraft:cobblestone"), 1);
         assert!(g.run_command("item replace block 7 64 8 container.0 with minecraft:cobblestone"));
-        g.side.hoppers.insert(
+        g.server.hoppers.insert(
             (7, 64, 8),
             sunrise_gameplay_common::hoppers::HopperState::with_cooldown(0),
         );
@@ -414,8 +414,8 @@ fn double_chest_rolls_each_half_once() {
 }
 
 fn cart(g: &mut sunrise_gameplay::game::ServerGame<'_>) -> u32 {
-    g.side.next_entity += 1;
-    let id = g.side.next_entity;
+    g.server.next_entity += 1;
+    let id = g.server.next_entity;
     let mut c = Minecart::new(id, CartKind::Chest, Vec3::new(8.5, 64.0, 8.5));
     c.loot = Some(PendingContainerLoot {
         table: Tag::String(TABLE.into()),
@@ -605,7 +605,7 @@ fn double_chest_hopper_pull_reads_only_needed_half() {
         consumed(g, (9, 64, 8));
         pending(g, POS);
         assert_eq!(count(g, (8, 63, 8), "minecraft:emerald"), 1);
-        g.side.hoppers.insert(
+        g.server.hoppers.insert(
             (8, 63, 8),
             sunrise_gameplay_common::hoppers::HopperState::with_cooldown(0),
         );
@@ -613,7 +613,7 @@ fn double_chest_hopper_pull_reads_only_needed_half() {
         pending(g, POS);
         assert_eq!(count(g, (8, 63, 8), "minecraft:emerald"), 2);
         for _ in 0..2 {
-            g.side.hoppers.insert(
+            g.server.hoppers.insert(
                 (8, 63, 8),
                 sunrise_gameplay_common::hoppers::HopperState::with_cooldown(0),
             );
@@ -635,7 +635,7 @@ fn double_chest_hopper_push_keeps_other_half_pending() {
         assert_eq!(count(g, (9, 64, 8), "minecraft:emerald"), 2);
         assert_eq!(count(g, (9, 64, 8), "minecraft:cobblestone"), 1);
         assert!(g.run_command("item replace block 7 64 8 container.0 with minecraft:cobblestone"));
-        g.side.hoppers.insert(
+        g.server.hoppers.insert(
             (7, 64, 8),
             sunrise_gameplay_common::hoppers::HopperState::with_cooldown(0),
         );
@@ -704,7 +704,7 @@ fn structure_capture_disk_round_trip_keeps_pending_loot() {
         place(g, POS, TABLE, 37);
         let original = pending_bytes(g, POS);
         // fresh() supplies a unique scratch working directory for this world.
-        g.side.world_root = std::env::current_dir().unwrap().join("world");
+        g.server.world_root = std::env::current_dir().unwrap().join("world");
         assert!(g.save_structure_area(
             "test:pending",
             [8, 64, 8],
@@ -721,7 +721,7 @@ fn structure_capture_disk_round_trip_keeps_pending_loot() {
         let nbt = blocks[0].get("nbt").expect("captured block entity");
         assert_eq!(nbt.get("LootTable"), Some(&Tag::String(TABLE.into())));
         assert_eq!(nbt.get("LootTableSeed"), Some(&Tag::Long(37)));
-        g.side.structure_templates.clear();
+        g.server.structure_templates.clear();
         let entry = g
             .template_entry("test:pending")
             .expect("read saved structure from disk");
@@ -921,7 +921,7 @@ fn explicit_seed_is_position_independent() {
                 "setblock {} {} {} minecraft:chest{{LootTable:\"test:sequence_position\"}}",
                 pos.0, pos.1, pos.2
             )));
-            g.side.rand_sequences = Default::default();
+            g.server.rand_sequences = Default::default();
             g.unpack_loot(LootTarget::Block(pos), None);
         }
         assert_eq!(snapshot(g, POS), snapshot(g, other));

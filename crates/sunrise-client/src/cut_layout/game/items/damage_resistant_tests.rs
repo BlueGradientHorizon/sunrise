@@ -49,7 +49,7 @@ fn drop_stack(game: &mut sunrise_gameplay::game::ServerGame<'_>, input: &str, po
     let item = game.dropped.last_mut().unwrap();
     item.no_gravity = true;
     let id = item.id;
-    game.side.ticked_entities_through = game.side.next_entity;
+    game.server.ticked_entities_through = game.server.next_entity;
     id
 }
 

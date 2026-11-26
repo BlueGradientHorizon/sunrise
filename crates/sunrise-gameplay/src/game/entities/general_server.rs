@@ -39,7 +39,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// A general row's own record. Passengers are written by the shared tree walker.
-    pub(in crate::game) fn general_row_record(
+    pub fn general_row_record(
         &self,
         id: u32,
         transferring: bool,
@@ -104,7 +104,7 @@ impl crate::game::ServerGame<'_> {
     /// unknown-kind path holds the compound untouched (`persist.raw`),
     /// never ticks it (an `OtherEntity` has no tick) and writes it back
     /// from that store.
-    pub(in crate::game) fn general_quarantine_admits(
+    pub fn general_quarantine_admits(
         &self,
         tag: &Tag,
         kind: &str,
@@ -195,7 +195,7 @@ impl crate::game::ServerGame<'_> {
     /// in the source, at its place and with the join identity it had; a
     /// failure before leaves the tree untouched. The root lands at `at`, and
     /// each rider takes its own vehicle's transition on arrival.
-    pub(in crate::game) fn teleport_general_tree_across(
+    pub fn teleport_general_tree_across(
         &mut self,
         root_id: u32,
         destination: sunrise_gameplay_common::game::Dim,

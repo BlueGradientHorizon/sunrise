@@ -195,11 +195,11 @@ fn live_damage_and_blast_warden_reactions_follow_source_entities_and_cooldown() 
                 Some(_) => "@s[type=minecraft:ender_dragon]",
                 None => "@s",
             };
-            game.side.cmds.0.results = Some(Vec::new());
+            game.server.cmds.0.results = Some(Vec::new());
             assert!(game.run_command(&format!(
                 "execute as {WARDEN} on target if entity {selector}"
             )));
-            let results = game.side.cmds.0.results.take().unwrap();
+            let results = game.server.cmds.0.results.take().unwrap();
             if expected.is_some() {
                 assert_eq!(results, [(true, 1)], "{selector}");
             } else {
@@ -226,7 +226,7 @@ fn live_damage_and_blast_warden_reactions_follow_source_entities_and_cooldown() 
         assert!(hurt(game, 1.0, Some(Target::Guest(22))));
         assert!(hurt(game, 5.0, Some(Target::Guest(23))));
         assert_eq!(
-            game.side.lan.as_ref().unwrap().mob_players.get(&warden_id),
+            game.server.lan.as_ref().unwrap().mob_players.get(&warden_id),
             Some(&23)
         );
         check_target(game, Some(first));
@@ -313,7 +313,7 @@ pub(crate) fn setup_live_damage_world(game: &mut sunrise_gameplay::game::ServerG
     game.player = Some(PlayerMotion::new(game.motion, Vec3::new(14.5, 64.0, 14.5)).unwrap());
     sunrise_gameplay::game::native_entity_refs::tests::bind_local_player(game, 1, 99);
     game.set_mode_id(0);
-    game.side.next_entity = 100;
+    game.server.next_entity = 100;
 }
 
 pub(crate) fn spawn_test_projectile(
@@ -324,8 +324,8 @@ pub(crate) fn spawn_test_projectile(
     uuid: [i32; 4],
 ) -> u32 {
     use sunrise_sim::projectiles::Projectile;
-    game.side.next_entity += 1;
-    let id = game.side.next_entity;
+    game.server.next_entity += 1;
+    let id = game.server.next_entity;
     let mut shot = Projectile::new(kind, at, owner);
     shot.id = id;
     shot.previous = at;

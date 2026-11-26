@@ -8,7 +8,7 @@ impl crate::game::ServerGame<'_> {
     /// with the guest's state swapped in, in their level, as their own turn.
     /// What `f` tells the player (`system_message`) goes to their chat; the
     /// command's own feedback is the caller's to send.
-    pub(in crate::game) fn for_player<T>(
+    pub fn for_player<T>(
         &mut self,
         t: Target,
         f: impl FnOnce(&mut Self) -> T,
@@ -149,7 +149,7 @@ impl crate::game::ServerGame<'_> {
     /// The entity the command runs as (`CommandSourceStack.getEntity`): a
     /// command typed by the player in place runs as them, the server
     /// console's as nobody.
-    pub(in crate::game) fn source_entity(&self) -> Option<Target> {
+    pub fn source_entity(&self) -> Option<Target> {
         match self.server.command_source {
             Some(s) => s.entity,
             None => self.common.player.is_some().then_some(Target::Player),

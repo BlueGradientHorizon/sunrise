@@ -237,7 +237,7 @@ fn dead_guest_leaves_at_e_but_reaches_a_registered_selector() {
     mod_platform::testing::with_mods(mods, || {
         sunrise_gameplay::game::native_guest_turn_tests::with_guests(|game| {
             game.build_registries();
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()

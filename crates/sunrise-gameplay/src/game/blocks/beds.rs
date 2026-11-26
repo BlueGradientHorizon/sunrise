@@ -11,7 +11,7 @@ use sunrise_gameplay_common::game::native_hooks::SleepProblem;
 
 impl crate::game::ServerGame<'_> {
     /// `BedRule.canSleep` of the current dimension's bed rule.
-    pub(in crate::game) fn bed_can_sleep_now(&self) -> bool {
+    pub fn bed_can_sleep_now(&self) -> bool {
         self.dimension_type()
             .bed_rule
             .can_sleep
@@ -35,7 +35,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// `setBlockAndUpdate(head, state.setValue(OCCUPIED, occupied))`, when
     /// the block at `head` is still a bed and not already so.
-    pub(in crate::game::server_side) fn set_bed_occupied(
+    pub fn set_bed_occupied(
         &mut self,
         head: [i32; 3],
         occupied: bool,
@@ -84,7 +84,7 @@ impl crate::game::ServerGame<'_> {
     /// this level nobody sleeps in any more are free again. Runs in each
     /// level's tick, after the players' packets and sleep ticks, never inside
     /// a guest's turn.
-    pub(in crate::game::server_side) fn free_left_beds(&mut self) {
+    pub fn free_left_beds(&mut self) {
         let dim = self.common.dim;
         let left: Vec<[i32; 3]> = self
             .server

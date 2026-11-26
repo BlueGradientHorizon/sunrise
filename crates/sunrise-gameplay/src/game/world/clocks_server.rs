@@ -4,7 +4,7 @@ use sunrise_gameplay::world_clock::WorldClock;
 
 impl crate::game::ServerGame<'_> {
     /// Advance every world clock (`ServerClockManager.tick`) when `advance_time` allows it.
-    pub(in crate::game) fn advance_clock(&mut self) {
+    pub fn advance_clock(&mut self) {
         if !self
             .common.ui
             .rules

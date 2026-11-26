@@ -137,7 +137,7 @@ mod tests {
                     sea_level: 63,
                 };
                 game.enter_remote_dimension(&spawn, RemoteDimensionEntry::Login, Reason::Other);
-                game.side.remote.as_mut().unwrap().logged_in = true;
+                game.client.remote.as_mut().unwrap().logged_in = true;
                 let level = game.level("minecraft:overworld").unwrap();
 
                 // Login alone is no tick, and neither is a level with no tick.

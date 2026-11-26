@@ -53,8 +53,8 @@ mod tests {
                 seed: 0,
                 max_players: 10,
                 integrated: true,
-                levels: game.side.level_shapes,
-                level_seeds: game.side.levels.0.runtime.seeds(),
+                levels: game.server.level_shapes,
+                level_seeds: game.server.levels.0.runtime.seeds(),
             };
             let mut net = NetConfig::lan(0, "test".into(), 10);
             net.listen = false;
@@ -64,7 +64,7 @@ mod tests {
                 force_game_mode: false,
             };
             game.lan_host(settings, net, config).unwrap();
-            let hub = &mut game.side.lan.as_mut().unwrap().hub;
+            let hub = &mut game.server.lan.as_mut().unwrap().hub;
             hub.guests.push(guest(123, 1));
             hub.guests.push(guest(456, 2));
             let (a, b) = (game.player(123).unwrap(), game.player(456).unwrap());
@@ -109,7 +109,7 @@ mod tests {
 
             // Nobody sees it until a player is added.
             let seen = |game: &sunrise_gameplay::game::ServerGame<'_>, uuid: u128| {
-                game.side.bosses.sent_state(uuid, bar_uuid(game, bar))
+                game.server.bosses.sent_state(uuid, bar_uuid(game, bar))
             };
             assert_eq!(seen(game, 123), None);
             assert!(bar.add_player(game, a));
@@ -197,7 +197,7 @@ mod tests {
             // fields and the players' UUIDs.
             assert!(bar.add_player(game, a));
             let dir = std::env::temp_dir().join(format!("boss-save-{}", std::process::id()));
-            game.side.world_root = dir.clone();
+            game.server.world_root = dir.clone();
             game.save_bossbars();
             let root = sunrise_sim::save::read_dat(&game.bossbar_path()).unwrap();
             let loaded = sunrise_game_data::bossbar::BossBars::unpack(root.get("data").unwrap());
@@ -314,7 +314,7 @@ mod tests {
     fn saved_bars_are_found_before_any_tick() {
         with_game(|game| {
             let dir = std::env::temp_dir().join(format!("boss-early-{}", std::process::id()));
-            game.side.world_root = dir.clone();
+            game.server.world_root = dir.clone();
             let bar = mod_api::prelude::BossBarsServerHost::create_boss_bar(
                 game,
                 "mod:saved",
@@ -325,7 +325,7 @@ mod tests {
             assert!(bar.set_value(game, 7));
             game.save_bossbars();
             // The world opens again and loads the bars, as `finish_open_world` does.
-            game.side.bosses = Default::default();
+            game.server.bosses = Default::default();
             game.load_bossbars();
             let found = game.boss_bar("mod:saved").unwrap();
             assert_eq!(found.value(game), Some(7));

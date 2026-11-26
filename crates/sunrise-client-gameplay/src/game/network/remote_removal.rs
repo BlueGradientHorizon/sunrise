@@ -3,7 +3,7 @@
 use crate::game::ClientGame;
 
 impl ClientGame<'_> {
-    pub(in crate::game) fn remove_entity(&mut self, id: i32) {
+    pub fn remove_entity(&mut self, id: i32) {
         self.remove_entities(&[id]);
     }
 

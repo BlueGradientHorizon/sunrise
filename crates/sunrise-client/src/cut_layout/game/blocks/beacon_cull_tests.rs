@@ -67,7 +67,7 @@ pub(crate) fn game_as_client<'a>(
         w: 16,
         h: 16,
     };
-    game.side
+    game.client
         .gui
         .atlas
         .sprites
@@ -88,11 +88,11 @@ fn a_beam_draws_inside_the_render_distance_only_and_leaves_with_its_column() {
     let mut resources = None;
     let mut game = game(&mut resources);
     // The streaming radius keeps a chunk past the render distance, as a server's view distance can.
-    game.side.settings.render_distance = 4;
-    game.side.streaming.radius = 5;
-    game.side.settings.sunrise.lod_distance = 256;
-    game.side.lod.0 = Some(sunrise_client::lod::Lod::new(
-        game.side.streaming.lod_source(),
+    game.client.settings.render_distance = 4;
+    game.client.streaming.radius = 5;
+    game.client.settings.sunrise.lod_distance = 256;
+    game.client.lod.0 = Some(sunrise_client::lod::Lod::new(
+        game.client.streaming.lod_source(),
         game.worker_context(),
     ));
     let beacon = || {

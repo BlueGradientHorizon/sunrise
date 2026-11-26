@@ -75,7 +75,7 @@ use sunrise_protocol::packets::{
                     game.res.clone(),
                     game.pack.clone(),
                     game.options.clone(),
-                    game.side.settings.clone(),
+                    game.server.settings.clone(),
                     Arc::new(sunrise_world::datafix::progress::UpgradeProgress::new()),
                 )
                 .unwrap();
@@ -156,7 +156,7 @@ use sunrise_protocol::packets::{
                 // A client's view of a server's tags: the login applies them.
                 let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
                 game.connect_local(pipe, "BoundLogin").unwrap();
-                let builtin = game.side.remote.as_ref().unwrap().builtin.clone();
+                let builtin = game.client.remote.as_ref().unwrap().builtin.clone();
                 let id = |name: &str| builtin.get("minecraft:item").unwrap().id(name).unwrap();
                 let registries = UpdateTags {
                     registries: vec![RegistryTags {

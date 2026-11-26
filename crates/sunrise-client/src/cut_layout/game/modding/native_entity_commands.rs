@@ -42,7 +42,7 @@ mod tests {
                 .into_iter()
                 .map(|conn| {
                     let (tx, rx) = std::sync::mpsc::channel();
-                    game.side
+                    game.server
                         .lan
                         .as_mut()
                         .unwrap()
@@ -114,7 +114,7 @@ mod tests {
             let player = game.player(12).unwrap();
             assert_eq!(player.game_mode(game), Some(GameMode::Survival));
             for permission in [0, 2] {
-                game.side
+                game.server
                     .lan
                     .as_mut()
                     .unwrap()
@@ -180,7 +180,7 @@ mod tests {
             let player = game.player(12).unwrap();
             let entity = player.entity();
             let (tx, rx) = mpsc::channel();
-            let hub = &mut game.side.lan.as_mut().unwrap().hub;
+            let hub = &mut game.server.lan.as_mut().unwrap().hub;
             hub.ops.insert(13, 2);
             hub.update_guest(13, |guest| {
                 guest.permission = 2;

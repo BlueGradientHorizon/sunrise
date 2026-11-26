@@ -31,7 +31,7 @@ pub(crate) mod tests {
                 game.fire_client_tick_pre();
                 assert_eq!(game.hud_mode(), HudMode::NoHud);
                 assert!(
-                    game.side
+                    game.client
                         .chat_ui
                         .hands_drawn(false, false, true, true, false)
                 );

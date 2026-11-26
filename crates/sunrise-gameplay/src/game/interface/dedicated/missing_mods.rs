@@ -55,7 +55,7 @@ impl crate::game::ServerGame<'_> {
     /// Refuses to open the world in `dir` while a mod it was saved with is missing and no
     /// `mod_mismatch` listener resolved it, unless `flag` (`--allowMissingMods`) or `server.toml`
     /// allows it; then the same list is a warning and the world opens.
-    pub(super) fn check_missing_mods(&mut self, dir: &std::path::Path, flag: bool) -> Result<()> {
+    pub fn check_missing_mods(&mut self, dir: &std::path::Path, flag: bool) -> Result<()> {
         let allowed = flag || allowed_by_server_toml()?;
         let missing = self.ask_missing_mods(dir);
         if missing.is_empty() {

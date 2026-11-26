@@ -199,7 +199,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// `ServerPlayer.die` for a guest whose health has run out: the death
     /// message, the loot and experience, the death screen.
-    pub(in crate::game) fn guest_die(&mut self, gi: usize, conn: u32) {
+    pub fn guest_die(&mut self, gi: usize, conn: u32) {
         let Some(host) = self.server.lan.as_ref() else {
             return;
         };
@@ -509,7 +509,7 @@ impl crate::game::ServerGame<'_> {
             .filter(|d| d.id == id)
             .map(|_| "minecraft:ender_dragon".into())
     }
-    pub(in crate::game) fn guest_respawn(&mut self, conn: u32) {
+    pub fn guest_respawn(&mut self, conn: u32) {
         self.after_commit(sunrise_gameplay_common::game::transactions::After::PlayerRespawn(conn));
     }
     /// PlayerList.respawn, after its TeleportTransition and NeoForge's redirect are final.
@@ -743,7 +743,7 @@ impl crate::game::ServerGame<'_> {
         }
     }
     /// Player.remove in the source level. The close hook still writes the old player's map.
-    pub(in crate::game) fn remove_old_player_for_clone(&mut self, conn: u32, was_death: bool) {
+    pub fn remove_old_player_for_clone(&mut self, conn: u32, was_death: bool) {
         let Some(entity) = self
             .server
             .lan

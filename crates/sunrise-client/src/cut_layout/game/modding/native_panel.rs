@@ -32,34 +32,34 @@ use sunrise_client_gameplay::game::client_side::native_panel::tests::stack;
             mod_platform::testing::with_mods(mods, || {
                 let many = vec![stack("minecraft:stone"); 300];
                 game.panel_items("jei", many.clone());
-                game.side.screen = Screen::Inventory;
-                assert!(game.side.title.0.is_none());
+                game.client.screen = Screen::Inventory;
+                assert!(game.client.title.0.is_none());
                 assert_eq!(frame(game, WINDOW), [], "nothing typed, nothing heard");
 
                 // Another mod naming the owner's id changes nothing.
                 search_as(game, "ae2", "iron");
-                assert_eq!(game.side.panel.pending, None);
+                assert_eq!(game.client.panel.pending, None);
                 // The owner's call is queued: the box and the page are as they were.
-                game.side.panel.page = 3;
+                game.client.panel.page = 3;
                 search_as(game, "jei", "iron");
                 assert_eq!(std::mem::take(&mut *HEARD.lock().unwrap()), []);
-                assert_eq!(game.side.panel.search.as_ref().unwrap().value, "");
+                assert_eq!(game.client.panel.search.as_ref().unwrap().value, "");
 
                 // Closed, the panel doesn't draw and the text waits; reopened,
                 // the owner hears it on the first page.
-                game.side.screen = Screen::Playing;
+                game.client.screen = Screen::Playing;
                 game.mod_browser_closed();
                 assert_eq!(frame(game, WINDOW), []);
-                game.side.screen = Screen::Inventory;
+                game.client.screen = Screen::Inventory;
                 assert_eq!(frame(game, WINDOW), heard("jei", "iron"));
-                assert_eq!(game.side.panel.page, 0);
-                assert_eq!(game.side.panel.search.as_ref().unwrap().value, "iron");
+                assert_eq!(game.client.panel.page, 0);
+                assert_eq!(game.client.panel.search.as_ref().unwrap().value, "iron");
                 assert_eq!(frame(game, WINDOW), [], "heard once");
 
                 // A window too narrow for the panel draws no box: the text waits.
                 search_as(game, "jei", "gold");
                 assert_eq!(frame(game, [200, 300]), []);
-                assert_eq!(game.side.panel.search.as_ref().unwrap().value, "iron");
+                assert_eq!(game.client.panel.search.as_ref().unwrap().value, "iron");
                 assert_eq!(frame(game, WINDOW), heard("jei", "gold"));
 
                 // Another mod takes the panel before a frame: neither hears the
@@ -69,7 +69,7 @@ use sunrise_client_gameplay::game::client_side::native_panel::tests::stack;
                 assert_eq!(frame(game, WINDOW), []);
                 game.panel_items("jei", many);
                 assert_eq!(frame(game, WINDOW), []);
-                assert_eq!(game.side.panel.search.as_ref().unwrap().value, "gold");
+                assert_eq!(game.client.panel.search.as_ref().unwrap().value, "gold");
 
                 // Input before the frame sends only what the player typed, and
                 // that newer edit wins over the queued text.
@@ -80,7 +80,7 @@ use sunrise_client_gameplay::game::client_side::native_panel::tests::stack;
                     heard("jei", "golds")
                 );
                 assert_eq!(frame(game, WINDOW), []);
-                assert_eq!(game.side.panel.search.as_ref().unwrap().value, "golds");
+                assert_eq!(game.client.panel.search.as_ref().unwrap().value, "golds");
             });
         });
     }

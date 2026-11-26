@@ -6,9 +6,9 @@ use sunrise_sim::motion::PlayerMotion;
 
 /// What `command` told the player.
 pub(crate) fn say(game: &mut sunrise_gameplay::game::ServerGame<'_>, command: &str) -> Vec<Text> {
-    game.side.chat_capture = Some(Vec::new());
+    game.server.chat_capture = Some(Vec::new());
     assert!(game.run_command(command), "{command}");
-    game.side.chat_capture.take().unwrap_or_default()
+    game.server.chat_capture.take().unwrap_or_default()
 }
 
 /// `TagCommand.listTags` sends through `sendFeedback(source, false, …)`,
@@ -22,15 +22,15 @@ fn tag_list_is_not_repeated_to_the_operators() {
             "summon pig 4.5 200 4.5 {UUID:[I;329,0,0,4],NoAI:1b,Silent:1b,NoGravity:1b}"
         ));
         // The summon's own line (a player informs the operators), sent on a tick.
-        game.side.admin_feedback.clear();
+        game.server.admin_feedback.clear();
         // A source that informs the operators (`shouldInformAdmins`).
-        game.side.console_broadcast = Some(true);
+        game.server.console_broadcast = Some(true);
         assert!(game.run_command("tag 00000149-0000-0000-0000-000000000004 add audit"));
-        assert_eq!(game.side.admin_feedback.len(), 1);
-        game.side.admin_feedback.clear();
+        assert_eq!(game.server.admin_feedback.len(), 1);
+        game.server.admin_feedback.clear();
         let said = say(game, "tag @e[type=minecraft:pig] list");
         assert_eq!(said.len(), 1);
-        assert_eq!(game.side.admin_feedback.len(), 0);
+        assert_eq!(game.server.admin_feedback.len(), 0);
     });
 }
 
@@ -75,7 +75,7 @@ pub(crate) fn with_command_game(
             .as_nanos()
     ));
     std::fs::create_dir_all(&scratch).unwrap();
-    game.side.world_root = scratch.clone();
+    game.server.world_root = scratch.clone();
     game.player = Some(PlayerMotion::new(game.motion, Vec3::new(10.5, 200.0, 0.5)).unwrap());
     game.reset_entity_residency();
     game.native_lifecycle

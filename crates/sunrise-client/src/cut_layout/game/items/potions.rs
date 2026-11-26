@@ -52,14 +52,14 @@ use super::*;
                 (0.0, 0.0),
             );
             assert_eq!(
-                game.side.remote_clouds[0].particle.ty,
+                game.client.remote_clouds[0].particle.ty,
                 ParticleType::EntityEffect
             );
             game.remote_projectile_data(
                 id,
                 &[(10, serializer::PARTICLE, Value::Particle(particle.clone()))],
             );
-            let original = game.side.remote_clouds[0].particle.typed_particle.clone();
+            let original = game.client.remote_clouds[0].particle.typed_particle.clone();
             assert!(original.is_some());
             let mut bad = particle;
             let Some(ParticleData::Mod { options, .. }) = &mut bad.data else {
@@ -67,7 +67,7 @@ use super::*;
             };
             options.truncate(1);
             game.remote_projectile_data(id, &[(10, serializer::PARTICLE, Value::Particle(bad))]);
-            assert_eq!(game.side.remote_clouds[0].particle.typed_particle, original);
+            assert_eq!(game.client.remote_clouds[0].particle.typed_particle, original);
         });
     }
 }

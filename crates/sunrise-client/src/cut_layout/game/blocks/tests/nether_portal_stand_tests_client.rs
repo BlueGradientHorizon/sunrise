@@ -8,22 +8,22 @@ fn the_portal_effect_keeps_the_screens_that_allow_it() {
         // `Screen.isAllowedInPortal` is `isPauseScreen` for these: the pause menu,
         // the options over it and the chat stay open while the effect grows.
         for screen in [Screen::Paused, Screen::Options, Screen::Chat] {
-            game.side.screen = screen;
-            game.side.client_inside = true;
+            game.client.screen = screen;
+            game.client.client_inside = true;
             assert!(game.client_portal_effect(), "the effect grows");
-            assert!(game.side.screen == screen, "{} stayed open", screen.id());
+            assert!(game.client.screen == screen, "{} stayed open", screen.id());
         }
         // A container screen does not: `Gui.setScreen(null)` closes it.
-        game.side.screen = Screen::Inventory;
-        game.side.client_inside = true;
+        game.client.screen = Screen::Inventory;
+        game.client.client_inside = true;
         assert!(game.client_portal_effect(), "the effect grows");
         assert!(
-            game.side.screen == Screen::Playing,
+            game.client.screen == Screen::Playing,
             "the inventory closed in the portal"
         );
         // And no screen at all is nothing to close.
-        game.side.client_inside = true;
+        game.client.client_inside = true;
         assert!(game.client_portal_effect(), "the effect grows");
-        assert!(game.side.screen == Screen::Playing, "playing stays playing");
+        assert!(game.client.screen == Screen::Playing, "playing stays playing");
     });
 }

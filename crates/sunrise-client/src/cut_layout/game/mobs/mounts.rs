@@ -113,7 +113,7 @@ use super::*;
             (0, 0),
             std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
         );
-        game.side.streaming.forced.insert((0, 0));
+        game.server.streaming.forced.insert((0, 0));
         Some(Box::new(game))
     }
 /// `AbstractChestedHorse.equipChest`: a tamed donkey or mule given a chest
@@ -138,7 +138,7 @@ use super::*;
             sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS
                 .with(|events| *events.borrow_mut() = Some(Vec::new()));
             assert!(game.interact_mount(0, "minecraft:chest"), "{kind}");
-            let sounds: Vec<_> = std::mem::take(&mut game.side.pending_sounds)
+            let sounds: Vec<_> = std::mem::take(&mut game.server.pending_sounds)
                 .into_iter()
                 .map(|s| (s.event, s.position, s.volume, s.pitch))
                 .collect();

@@ -67,7 +67,7 @@ impl ServerGame<'_> {
     /// `AbstractThrownPotion.douseFire`: a fire block is destroyed without
     /// drops, a lit candle or candle cake goes out, and a lit campfire goes
     /// out after level event 1009 and its block-change game event.
-    fn douse_fire(&mut self, pos: [i32; 3], owner: Option<Who>) {
+    pub fn douse_fire(&mut self, pos: [i32; 3], owner: Option<Who>) {
         let at = BlockPos::new(pos[0], pos[1], pos[2]);
         let state = self.common.world.block(pos[0], pos[1], pos[2]);
         let name = self.common.res.facts().get(state).name.clone();
@@ -96,7 +96,7 @@ impl ServerGame<'_> {
 
     /// `CampfireBlock.isLitCampfire`: the state of a lit block in
     /// `#minecraft:campfires`.
-    fn lit_campfire(&self, state: BlockStateId, name: &str) -> Option<BlockState> {
+    pub fn lit_campfire(&self, state: BlockStateId, name: &str) -> Option<BlockState> {
         if !self.named_block_in_tag("minecraft:campfires", name) {
             return None;
         }
@@ -116,7 +116,7 @@ impl ServerGame<'_> {
     /// (`Enderman.hurtServer`); one in `#extinguishes_entities` puts out
     /// those that burn; one in `#rehydrates_axolotls` refills the air of
     /// the axolotls in the box.
-    pub(in crate::game::server_side) fn affect_entities_around(
+    pub fn affect_entities_around(
         &mut self,
         stack: &ItemStack,
         at: Vec3,

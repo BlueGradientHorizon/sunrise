@@ -537,7 +537,7 @@ pub(crate) fn fixture_mob(
 }
 
 pub(crate) fn guest_health(game: &sunrise_gameplay::game::ServerGame<'_>) -> [f32; 2] {
-    let guests = &game.side.lan.as_ref().unwrap().hub.guests;
+    let guests = &game.server.lan.as_ref().unwrap().hub.guests;
     [guests[0].health, guests[1].health]
 }
 

@@ -123,7 +123,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// Reads the collider a saved entity carried. A malformed one is dropped with a log line.
-    pub(in crate::game::server_side) fn load_saved_collider(&mut self, id: u32, tag: &Tag) {
+    pub fn load_saved_collider(&mut self, id: u32, tag: &Tag) {
         let Some(saved) = tag.get(SAVE_KEY) else {
             return;
         };
@@ -144,13 +144,13 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// Where the collider entity `id` is, in the server level in place.
-    pub(in crate::game) fn collider_origin(&self, id: u32) -> Option<Vec3> {
+    pub fn collider_origin(&self, id: u32) -> Option<Vec3> {
         let at = self.target_position(self.level_entity(id as i32)?)?;
         Some(Vec3::new(at[0], at[1], at[2]))
     }
 
     /// Every entity in the vehicle stack the entity `id` is in on the server.
-    pub(in crate::game::server_side) fn vehicle_stack(&self, id: u32) -> Vec<u32> {
+    pub fn vehicle_stack(&self, id: u32) -> Vec<u32> {
         let Some(epoch) = self.common.native_lifecycle.epoch() else {
             return vec![id];
         };
@@ -217,7 +217,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// The colliders of the server level in place, where they stand now.
-    pub(in crate::game) fn placed_moving_colliders(
+    pub fn placed_moving_colliders(
         &mut self,
     ) -> sunrise_world::moving_colliders::Prepared {
         use sunrise_world::moving_colliders::{Placed, Prepared};
@@ -289,12 +289,12 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// The server level in place, including the world lifetime and runtime level generation.
-    pub(in crate::game) fn collider_level(&self) -> Option<mod_api::LevelRef> {
+    pub fn collider_level(&self) -> Option<mod_api::LevelRef> {
         Some(self.level_ref(self.common.native_lifecycle.epoch()?, self.common.dim.key()))
     }
 
     /// Runs `f` with this server level's moving colliders and history.
-    pub(in crate::game) fn in_this_levels_colliders<R>(
+    pub fn in_this_levels_colliders<R>(
         &mut self,
         f: impl FnOnce(&mut Self) -> R,
     ) -> R {

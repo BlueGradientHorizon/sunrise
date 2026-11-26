@@ -335,7 +335,7 @@ impl Fits {
             ];
             let mut stack = helmet_with(Some(fields));
             assert!(!game.dispense_equipment((8, 201, 8), Direction::Down, &mut stack));
-            assert!(game.side.lan.as_ref().unwrap().hub.guest(2).unwrap().armor[0].is_none());
+            assert!(game.server.lan.as_ref().unwrap().hub.guest(2).unwrap().armor[0].is_none());
         }
         let fits = Fits::new("minecraft:armor_stand");
         fits.installed(|| {
@@ -346,7 +346,7 @@ impl Fits {
                 .begin_open(mod_api::Authority::IntegratedServer);
             game.reset_entity_residency();
             let guest = game
-                .side
+                .server
                 .lan
                 .as_ref()
                 .unwrap()
@@ -569,7 +569,7 @@ impl Fits {
         guest.dimension = "minecraft:overworld".into();
         guest.placed = true;
         guest.loaded = true;
-        game.side.lan.as_mut().unwrap().hub.guests.push(guest);
+        game.server.lan.as_mut().unwrap().hub.guests.push(guest);
         game
     }
 /// `EquipmentDispenseItemBehavior`: a server's player, the integrated
@@ -585,7 +585,7 @@ impl Fits {
         let mut stack = ItemStack::new("minecraft:carved_pumpkin", 3);
         assert!(game.dispense_equipment((8, 201, 8), Direction::Down, &mut stack));
         assert_eq!(stack.count, 2);
-        let guest = game.side.lan.as_ref().unwrap().hub.guest(2).unwrap();
+        let guest = game.server.lan.as_ref().unwrap().hub.guest(2).unwrap();
         assert_eq!(
             guest.armor[0].as_ref().map(|s| (&*s.item, s.count)),
             Some(("minecraft:carved_pumpkin", 1))
@@ -596,7 +596,7 @@ impl Fits {
         // A boots piece still has its own empty slot.
         let (done, left) = dispense_at_guest(&mut game, "minecraft:iron_boots");
         assert_eq!((done, left), (true, 1), "boots go on the free feet slot");
-        let guest = game.side.lan.as_ref().unwrap().hub.guest(2).unwrap();
+        let guest = game.server.lan.as_ref().unwrap().hub.guest(2).unwrap();
         assert!(guest.armor[3].is_some() && guest.armor[1].is_none());
     }
 /// A spectator is not a target (`canEquipWithDispenser`: `!isSpectator()`).
@@ -606,7 +606,7 @@ impl Fits {
         let mut resources = None;
         let mut game = server_with_guest(&mut resources);
         for spectate in [true, false] {
-            game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+            game.server.lan.as_mut().unwrap().hub.guests.update(0, |g| {
                 g.game_mode = if spectate { 3 } else { 0 };
                 g.dead = !spectate;
             });
@@ -624,7 +624,7 @@ impl Fits {
         use sunrise_sim::entities::ArmorStand;
         let mut resources = None;
         let mut game = server_with_guest(&mut resources);
-        game.side.lan.as_mut().unwrap().hub.guests.clear();
+        game.server.lan.as_mut().unwrap().hub.guests.clear();
         let at = sunrise_core::geometry::Vec3::new(8.5, 200.0, 8.5);
         let mut stands = [(1, 1u32 << 4), (2, 0)].map(|(id, locked)| {
             let mut s = ArmorStand::new(id, at, 0.0);
@@ -659,12 +659,12 @@ impl Fits {
     fn a_dispenser_equips_a_player_whose_client_is_still_loading() {
         let mut resources = None;
         let mut game = server_with_guest(&mut resources);
-        game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+        game.server.lan.as_mut().unwrap().hub.guests.update(0, |g| {
             (g.loaded, g.loading) = (false, true);
         });
         let (done, left) = dispense_at_guest(&mut game, "minecraft:iron_helmet");
         assert_eq!((done, left), (true, 1));
-        let guest = game.side.lan.as_ref().unwrap().hub.guest(2).unwrap();
+        let guest = game.server.lan.as_ref().unwrap().hub.guest(2).unwrap();
         let head = guest.armor[0].as_ref().map(|s| &*s.item);
         assert_eq!(head, Some("minecraft:iron_helmet"));
     }
@@ -677,7 +677,7 @@ impl Fits {
         for (stand_id, guest_id, guest_first) in [(7, 5, true), (3, 5, false)] {
             let mut resources = None;
             let mut game = server_with_guest(&mut resources);
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()
@@ -688,7 +688,7 @@ impl Fits {
             game.armor_stands.extend(vec![stand_at(stand_id, 8.5, 8.5)]);
             let (done, _) = dispense_at_guest(&mut game, "minecraft:iron_helmet");
             assert!(done);
-            let guest = game.side.lan.as_ref().unwrap().hub.guest(2).unwrap();
+            let guest = game.server.lan.as_ref().unwrap().hub.guest(2).unwrap();
             assert_eq!(
                 guest.armor[0].is_some(),
                 guest_first,
@@ -705,7 +705,7 @@ impl Fits {
     fn a_dispenser_walks_entity_sections_before_ids() {
         let mut resources = None;
         let mut game = server_with_guest(&mut resources);
-        game.side.lan.as_mut().unwrap().hub.guests.clear();
+        game.server.lan.as_mut().unwrap().hub.guests.clear();
         // Stand boxes are 0.5 wide: x 16.2 spans 15.95..16.45.
         game.armor_stands.clear();
         game.armor_stands

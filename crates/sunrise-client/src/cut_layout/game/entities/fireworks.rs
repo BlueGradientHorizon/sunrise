@@ -106,8 +106,8 @@ pub(crate) mod tests {
             .expect("cow")
             .clone();
         // A server action keeps the guest identity while its hub is swapped out.
-        game.side.lan_acting = Some(11);
-        game.side.lan_acting_entity = Some(37);
+        game.server.lan_acting = Some(11);
+        game.server.lan_acting_entity = Some(37);
         let me = game.acting_uuid();
         let someone_else = [me[0].wrapping_add(1), me[1], me[2], me[3]];
         let mut leashed = |id, at: Vec3, owner: [i32; 4]| {
@@ -127,7 +127,7 @@ pub(crate) mod tests {
         assert!(!game.boost_firework(&stack));
         assert_eq!(game.mobs[0].extra.leash, Some(Holder::Player));
         assert!(game.dropped.is_empty());
-        assert!(game.side.pending_sounds.is_empty());
+        assert!(game.server.pending_sounds.is_empty());
 
         game.player.as_mut().unwrap().fall_flying = true;
         assert!(game.boost_firework(&stack));
@@ -143,7 +143,7 @@ pub(crate) mod tests {
             .filter(|d| &*d.stack.item == "minecraft:lead")
             .collect();
         assert_eq!(leads.len(), 1);
-        let heard = std::mem::take(&mut game.side.pending_sounds);
+        let heard = std::mem::take(&mut game.server.pending_sounds);
         let snaps: Vec<_> = heard
             .iter()
             .filter(|s| s.event == "minecraft:item.lead.break")

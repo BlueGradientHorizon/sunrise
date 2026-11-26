@@ -181,7 +181,7 @@ impl ServerGame<'_> {
         offers
     }
     /// `AbstractVillager.getOffers`: generated on first use.
-    pub(in crate::game) fn ensure_offers(&mut self, index: usize) {
+    pub fn ensure_offers(&mut self, index: usize) {
         let species = self.common.mobs[index].species();
         if species == Species::Villager
             && self
@@ -232,7 +232,7 @@ impl ServerGame<'_> {
     }
     /// `Villager.mobInteract` / `WanderingTrader.mobInteract`: shake the
     /// head without offers, else open the trading screen.
-    pub(in crate::game) fn interact_trader(
+    pub fn interact_trader(
         &mut self,
         index: usize,
         item: &str,
@@ -342,7 +342,7 @@ impl ServerGame<'_> {
     }
     /// `Villager.setTradingPlayer(null)`: the session goes back to the mob
     /// (special prices stay as they were), the borrowed sequences to the world.
-    pub(in crate::game) fn merchant_closed(&mut self, state: &mut MerchantState) {
+    pub fn merchant_closed(&mut self, state: &mut MerchantState) {
         let session = &mut state.session;
         for (id, r) in std::mem::take(&mut session.sequences) {
             self.server.rand_sequences.give_back(id, r);

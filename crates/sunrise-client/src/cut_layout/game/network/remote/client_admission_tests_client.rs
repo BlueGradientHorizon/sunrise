@@ -19,10 +19,10 @@ fn add_player_requires_info_before_replacing_a_tracked_entity() {
             let cart_at = [2.0, 64.0, 2.0];
             let player = add_entity(game, id, uuid, "minecraft:player", player_at);
             deliver(game, player.clone());
-            assert_eq!(game.side.remote.as_ref().unwrap().tracked(id), None);
+            assert_eq!(game.client.remote.as_ref().unwrap().tracked(id), None);
             assert!(
                 !game
-                    .side
+                    .client
                     .remote
                     .as_ref()
                     .unwrap()
@@ -43,7 +43,7 @@ fn add_player_requires_info_before_replacing_a_tracked_entity() {
                 .unwrap()
                 .join;
             let sound = SoundEntity::new(id as u32, cart_at, false);
-            game.side.audio.0.engine.add(
+            game.client.audio.0.engine.add(
                 SoundInstance::entity_bound(
                     "minecraft:fixture.bound",
                     6,
@@ -58,7 +58,7 @@ fn add_player_requires_info_before_replacing_a_tracked_entity() {
             assert_eq!(game.live_remote_camera_id(), Some(id as u32));
             assert!(!sound.state().removed);
             assert_eq!(
-                game.side.remote.as_ref().unwrap().tracked(id),
+                game.client.remote.as_ref().unwrap().tracked(id),
                 Some(("minecraft:minecart", cart_at))
             );
             assert_eq!(
@@ -82,13 +82,13 @@ fn add_player_requires_info_before_replacing_a_tracked_entity() {
                     }],
                 }),
             );
-            let remote = game.side.remote.as_ref().unwrap();
+            let remote = game.client.remote.as_ref().unwrap();
             assert!(!remote.listed.contains(&uuid));
             assert_eq!(remote.tracked(id), Some(("minecraft:minecart", cart_at)));
             assert!(!remote.level_players.contains_key(&id));
 
             deliver(game, player.clone());
-            let remote = game.side.remote.as_ref().unwrap();
+            let remote = game.client.remote.as_ref().unwrap();
             assert_eq!(remote.tracked(id), Some(("minecraft:player", player_at)));
             assert!(sound.state().removed);
             assert_eq!(remote.level_player(id), Some((uuid, Some("Unlisted"))));
@@ -105,7 +105,7 @@ fn add_player_requires_info_before_replacing_a_tracked_entity() {
                 C::PlayerInfoRemove(play::PlayerInfoRemove { uuids: vec![uuid] }),
             );
             deliver(game, player);
-            assert_eq!(game.side.remote.as_ref().unwrap().tracked(id), None);
+            assert_eq!(game.client.remote.as_ref().unwrap().tracked(id), None);
         },
     );
 }

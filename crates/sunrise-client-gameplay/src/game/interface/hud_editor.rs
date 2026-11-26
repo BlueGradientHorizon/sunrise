@@ -55,7 +55,7 @@ fn buttons((w, h): (f32, f32)) -> [(f32, f32); 6] {
 
 impl crate::game::ClientGame<'_> {
     /// Opens the editor over the game, from the page (`from_options`) or the key.
-    pub(in crate::game::client_side) fn open_hud_editor(&mut self, from_options: bool) {
+    pub fn open_hud_editor(&mut self, from_options: bool) {
         if self.common.player.is_none() || self.client.title.0.is_some() {
             return;
         }
@@ -69,7 +69,7 @@ impl crate::game::ClientGame<'_> {
         self.commit_screen_transition();
         self.capture(false);
     }
-    pub(in crate::game::client_side) fn close_hud_editor(&mut self) {
+    pub fn close_hud_editor(&mut self) {
         let from_options = self.client.pvp.editor.take().is_some_and(|e| e.from_options);
         self.client.settings.save(&sunrise_gameplay_common::game::options_path());
         if from_options {

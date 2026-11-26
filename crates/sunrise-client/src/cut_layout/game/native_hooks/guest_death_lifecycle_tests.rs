@@ -64,7 +64,7 @@ fn lifecycle(heal: bool) {
                     .chunks
                     .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
                 sunrise_gameplay::game::native_player_death::tests::add_guest(game);
-                game.side
+                game.server
                     .lan
                     .as_mut()
                     .unwrap()
@@ -83,7 +83,7 @@ fn lifecycle(heal: bool) {
                     if tick == 8 {
                         // A same-entity level restore has replaced the motion before
                         // the hook borrows it; entering the turn resets CombatTracker.
-                        game.side
+                        game.server
                             .lan
                             .as_mut()
                             .unwrap()
@@ -94,7 +94,7 @@ fn lifecycle(heal: bool) {
                             });
                     }
                     game.tick_guests();
-                    let guest = &game.side.lan.as_ref().unwrap().hub.guests[0];
+                    let guest = &game.server.lan.as_ref().unwrap().hub.guests[0];
                     assert_eq!(guest.death_time, if heal { 0 } else { tick });
                     assert_eq!(guest.body_present(), heal || tick < 20);
                     assert_eq!(seen.lock().unwrap().deaths, 1);
@@ -106,9 +106,9 @@ fn lifecycle(heal: bool) {
                     assert!(game.dropped.is_empty());
                 }
                 assert_eq!(seen.lock().unwrap().ticks, 20);
-                let guest = &game.side.lan.as_ref().unwrap().hub.guests[0];
+                let guest = &game.server.lan.as_ref().unwrap().hub.guests[0];
                 assert_eq!(guest.position, [8.5, 80.0, 8.5]);
-                game.side
+                game.server
                     .lan
                     .as_mut()
                     .unwrap()

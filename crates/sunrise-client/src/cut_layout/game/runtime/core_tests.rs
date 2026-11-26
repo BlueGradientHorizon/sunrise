@@ -8,14 +8,14 @@ use sunrise_gameplay::game::server_side::autosave_server::autosave_interval;
 #[ignore = "daily"]
 fn client_option_snapshots_follow_settings() {
     crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
-        game.side.settings.fov = 90.0;
-        game.side.settings.render_distance = 12;
-        game.side.settings.gamma = 0.75;
-        game.side.settings.gui_scale = 3;
-        game.side.settings.show_subtitles = true;
-        game.side.settings.chat_visibility = 1;
-        game.side.settings.chat_delay = 1.5;
-        game.side.settings.master_volume = 0.25;
+        game.client.settings.fov = 90.0;
+        game.client.settings.render_distance = 12;
+        game.client.settings.gamma = 0.75;
+        game.client.settings.gui_scale = 3;
+        game.client.settings.show_subtitles = true;
+        game.client.settings.chat_visibility = 1;
+        game.client.settings.chat_delay = 1.5;
+        game.client.settings.master_volume = 0.25;
         let host: &dyn mod_api::ClientHost = game;
         let (graphics, gui, chat, audio) = (
             host.graphics_options(),
@@ -32,7 +32,7 @@ fn client_option_snapshots_follow_settings() {
         assert_eq!(chat.delay, 1.5);
         assert_eq!(audio.master_volume, 0.25);
 
-        game.side.settings.fov = 70.0;
+        game.client.settings.fov = 70.0;
         let host: &dyn mod_api::ClientHost = game;
         assert_eq!(host.graphics_options().fov, 70.0);
         assert_eq!(graphics.fov, 90.0, "an older snapshot stays unchanged");
@@ -43,14 +43,14 @@ fn client_option_snapshots_follow_settings() {
 #[ignore = "daily"]
 fn client_input_options_follow_settings() {
     crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
-        game.side.settings.sensitivity = 0.25;
-        game.side.settings.invert_x = true;
-        game.side.settings.invert_y = false;
-        game.side.settings.mouse_wheel_sensitivity = 0.75;
-        game.side.settings.discrete_scroll = true;
-        game.side.settings.toggle_crouch = false;
-        game.side.settings.toggle_sprint = true;
-        game.side.settings.auto_jump = false;
+        game.client.settings.sensitivity = 0.25;
+        game.client.settings.invert_x = true;
+        game.client.settings.invert_y = false;
+        game.client.settings.mouse_wheel_sensitivity = 0.75;
+        game.client.settings.discrete_scroll = true;
+        game.client.settings.toggle_crouch = false;
+        game.client.settings.toggle_sprint = true;
+        game.client.settings.auto_jump = false;
         let host: &dyn mod_api::ClientHost = game;
         let first = host.input_options();
         assert_eq!(first.sensitivity, 0.25);
@@ -62,14 +62,14 @@ fn client_input_options_follow_settings() {
         assert!(first.toggle_sprint);
         assert!(!first.auto_jump);
 
-        game.side.settings.sensitivity = 0.5;
-        game.side.settings.invert_x = false;
-        game.side.settings.invert_y = true;
-        game.side.settings.mouse_wheel_sensitivity = 1.5;
-        game.side.settings.discrete_scroll = false;
-        game.side.settings.toggle_crouch = true;
-        game.side.settings.toggle_sprint = false;
-        game.side.settings.auto_jump = true;
+        game.client.settings.sensitivity = 0.5;
+        game.client.settings.invert_x = false;
+        game.client.settings.invert_y = true;
+        game.client.settings.mouse_wheel_sensitivity = 1.5;
+        game.client.settings.discrete_scroll = false;
+        game.client.settings.toggle_crouch = true;
+        game.client.settings.toggle_sprint = false;
+        game.client.settings.auto_jump = true;
         let host: &dyn mod_api::ClientHost = game;
         let second = host.input_options();
         assert_eq!(second.sensitivity, 0.5);
@@ -1056,10 +1056,10 @@ pub(crate) mod wind_charge_burst_tests {
                 at,
                 Some(Who::Player),
             ));
-            game.side.ticked_entities_through = game.side.next_entity;
+            game.server.ticked_entities_through = game.server.next_entity;
             let id = game.creatures.projectiles.last().unwrap().id;
             game.tick_projectiles().unwrap();
-            let bursts: Vec<_> = std::mem::take(&mut game.side.pending_sounds)
+            let bursts: Vec<_> = std::mem::take(&mut game.server.pending_sounds)
                 .into_iter()
                 .filter(|s| s.event == "minecraft:entity.wind_charge.wind_burst")
                 .collect();

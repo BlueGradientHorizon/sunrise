@@ -42,7 +42,7 @@ impl ServerGame<'_> {
         }
     }
 
-    pub(in crate::game) fn release_removed_vehicle(&mut self, id: u32) {
+    pub fn release_removed_vehicle(&mut self, id: u32) {
         if self.common.persist.removed_vehicles.contains_key(&id)
             && self.common.riding != Some(id)
             && !self.ridden_by_guest(id)
@@ -58,7 +58,7 @@ impl ServerGame<'_> {
 
     /// Resident passengers below an object that never joined cannot be reached
     /// by ServerLevel's recursive passenger tick. Empty on the normal path.
-    pub(in crate::game) fn mobs_below_off_level(&self) -> std::collections::HashSet<u32> {
+    pub fn mobs_below_off_level(&self) -> std::collections::HashSet<u32> {
         if self.common.persist.off_level.is_empty() {
             return Default::default();
         }
@@ -88,7 +88,7 @@ impl ServerGame<'_> {
         self.try_mount_mob(rider, vehicle);
     }
     /// `Entity.startRiding` for two mobs: false when a mod canceled it.
-    pub(in crate::game) fn try_mount_mob(&mut self, rider: u32, vehicle: u32) -> bool {
+    pub fn try_mount_mob(&mut self, rider: u32, vehicle: u32) -> bool {
         let vehicle = if self.common.boats.iter().any(|b| b.id == vehicle) {
             super::commands::Target::Boat(vehicle)
         } else if self.common.carts.iter().any(|c| c.id == vehicle) {
@@ -100,7 +100,7 @@ impl ServerGame<'_> {
     }
     /// Riders sit on their vehicles (`Entity.positionRider`), mobs or boats,
     /// and let go when the vehicle dies or is gone.
-    pub(in crate::game) fn sync_riders(&mut self) {
+    pub fn sync_riders(&mut self) {
         if !self.common.persist.off_level.is_empty() || !self.common.persist.removed_vehicles.is_empty() {
             self.sync_retained_riders();
             self.position_riders();
@@ -510,7 +510,7 @@ impl ServerGame<'_> {
             self.spring_skeleton_trap(id);
         }
     }
-    pub(in crate::game::server_side) fn spring_skeleton_trap(&mut self, id: u32) {
+    pub fn spring_skeleton_trap(&mut self, id: u32) {
         let Some(horse) = self.common.mobs.iter_mut().find(|m| m.id == id) else {
             return;
         };

@@ -513,7 +513,7 @@ impl ServerGame<'_> {
     /// `Villager.tellWitnessesThatIWasMurdered`: the villagers that saw a
     /// player kill one remember it as a major wrong.
     /// `killer` is the guest connection that last hurt it (None: the host).
-    pub(in crate::game::server_side) fn villager_murdered(
+    pub fn villager_murdered(
         &mut self,
         victim: &Mob,
         by_player: bool,
@@ -615,7 +615,7 @@ impl ServerGame<'_> {
         self.villager_reputation_of(id, uuid)
     }
     /// `Villager.getPlayerReputation` of the player `uuid`.
-    pub(in crate::game::server_side) fn villager_reputation_of(
+    pub fn villager_reputation_of(
         &self,
         id: u32,
         uuid: [i32; 4],

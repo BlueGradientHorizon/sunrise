@@ -156,7 +156,7 @@ fn piston_push_reaction_position_state_opens_ticks_and_saves() {
                     game.res.item_defaults(),
                 )
                 .unwrap();
-                game.side.server_loot.0.set(Some(Arc::new(loot)));
+                game.server.server_loot.0.set(Some(Arc::new(loot)));
                 let mut extras = game.world.block_entity_extras(from);
                 extras.pending_loot = Some(PendingContainerLoot {
                     table: Tag::String("test:carry".into()),
@@ -165,18 +165,18 @@ fn piston_push_reaction_position_state_opens_ticks_and_saves() {
                 game.world.set_block_entity_extras(from, extras);
             }
             if case == "hopper" || case == "same-scope" {
-                game.side
+                game.server
                     .hoppers
                     .insert(from, sunrise_gameplay_common::hoppers::HopperState::with_cooldown(40));
             }
-            game.side.lid_openers.insert(from, 2);
+            game.server.lid_openers.insert(from, 2);
             game.world.chest_openers.insert(from, (2, 4.0));
-            game.side.be_anims.bells.insert(
+            game.server.be_anims.bells.insert(
                 [3, 64, 2],
                 sunrise_level::block_entity_ticks::Bell::default(),
             );
             game.container = Some(from);
-            game.side.open_container_slots = Some((from, 27));
+            game.server.open_container_slots = Some((from, 27));
             if case == "same-scope" {
                 let far = (5, 64, 2);
                 let air = registry.default_state("minecraft:air").unwrap();
@@ -192,7 +192,7 @@ fn piston_push_reaction_position_state_opens_ticks_and_saves() {
                 });
                 assert_eq!(game.hopper_cooldown(far), 40);
                 assert!(
-                    !game.side.hoppers.contains_key(&from) && !game.side.hoppers.contains_key(&to)
+                    !game.server.hoppers.contains_key(&from) && !game.server.hoppers.contains_key(&to)
                 );
                 assert!(
                     matches!(game.world.block_entities.get(&far),Some(BlockEntity::Chest(after)) if after==&slots)
@@ -220,9 +220,9 @@ fn piston_push_reaction_position_state_opens_ticks_and_saves() {
             assert!(!game.world.block_names.contains_key(&from));
             assert!(game.world.block_lock(from).is_none());
             assert_eq!(game.world.container_stack_limit(from), None);
-            assert!(!game.side.lid_openers.contains_key(&from));
+            assert!(!game.server.lid_openers.contains_key(&from));
             assert!(!game.world.chest_openers.contains_key(&from));
-            assert!(!game.side.be_anims.bells.contains_key(&[3, 64, 2]));
+            assert!(!game.server.be_anims.bells.contains_key(&[3, 64, 2]));
             // Save/reload in flight also keeps the position-owned fields.
             let at = BlockPos::new(4, 64, 2);
             let moving = game
@@ -282,7 +282,7 @@ fn piston_push_reaction_position_state_opens_ticks_and_saves() {
                     matches!(game.world.block_entities.get(&to),Some(BlockEntity::Chest(after)) if after==&slots)
                 );
                 if case == "hopper" {
-                    assert!(!game.side.hoppers.contains_key(&from));
+                    assert!(!game.server.hoppers.contains_key(&from));
                     assert_eq!(game.hopper_cooldown(to), 40);
                 } else if case != "loot" && case != "mixed-loot" {
                     game.spectator_open_menu([4, 64, 2]);

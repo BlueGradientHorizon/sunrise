@@ -110,7 +110,7 @@ fn last_hurt_mob_follows_the_attacking_entity() {
             }
             "melee" => {
                 game.mobs[0].invulnerable_flag = true;
-                game.side.attack_ticks = 20;
+                game.server.attack_ticks = 20;
                 game.attack_mob(0);
                 assert_eq!(
                     player.last_hurt_mob(game),
@@ -118,7 +118,7 @@ fn last_hurt_mob_follows_the_attacking_entity() {
                     "a refused hit cannot set it"
                 );
                 game.mobs[0].invulnerable_flag = false;
-                game.side.attack_ticks = 20;
+                game.server.attack_ticks = 20;
                 game.attack_mob(0);
                 assert_eq!(player.last_hurt_mob(game), Some((pig, PLAYER_AGE)));
 
@@ -160,7 +160,7 @@ fn last_hurt_mob_follows_the_attacking_entity() {
                     .unwrap();
                 assert_eq!(zombie.last_hurt_mob(game), Some((pig, MOB_AGE as i32)));
                 // A later contact whose only effect was a refused hurt writes nothing.
-                game.side.combat.0.hit_landed = false;
+                game.server.combat.0.hit_landed = false;
                 game.handle_mob_events(stab(Who::Player, 2, true, false))
                     .unwrap();
                 assert_eq!(zombie.last_hurt_mob(game), Some((pig, MOB_AGE as i32)));
@@ -173,7 +173,7 @@ fn last_hurt_mob_follows_the_attacking_entity() {
                 );
             }
             "other_level" => {
-                game.side.attack_ticks = 20;
+                game.server.attack_ticks = 20;
                 game.attack_mob(0);
                 assert_eq!(player.last_hurt_mob(game), Some((pig, PLAYER_AGE)));
                 game.enter_level(Dim::Nether).unwrap();

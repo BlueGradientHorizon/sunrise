@@ -23,7 +23,7 @@ pub(crate) mod tests {
         with_client_game(|game| {
             let (client, _server) = Pipe::pair();
             game.connect_local(client, "BlendReadTest").unwrap();
-            let remote = game.side.remote.as_mut().unwrap();
+            let remote = game.client.remote.as_mut().unwrap();
             remote.logged_in = true;
             remote.entity_id = 7;
             remote.profile = 42;
@@ -44,7 +44,7 @@ pub(crate) mod tests {
                 .effects
                 .list
                 .push(EffectInstance::new("darkness", 200, 0));
-            game.side.darkness_blend = (0.0, 0.0);
+            game.client.darkness_blend = (0.0, 0.0);
             // The same effect reads whole on the client: `getEffect`, `getActiveEffects`, `hasEffect`.
             let darkness = mod_platform::__private::part_tests::effect_key("minecraft:darkness");
             assert!(me.potion_affected(game, darkness));
@@ -86,7 +86,7 @@ pub(crate) mod tests {
                 .effects
                 .list
                 .push(EffectInstance::new("nausea", 600, 0));
-            game.side.screen_fx.tick_spinning(Some(true));
+            game.client.screen_fx.tick_spinning(Some(true));
             assert!(close(
                 me.effect_blend_factor(
                     game,

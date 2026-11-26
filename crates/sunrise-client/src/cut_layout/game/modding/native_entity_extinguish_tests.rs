@@ -92,14 +92,14 @@ fn extinguish_fire_preserves_player_guest_stand_and_item_sound_routes() {
                     entity.set_remaining_fire_ticks(game, ticks),
                     "entity {id}, ticks {ticks}"
                 );
-                game.side.effect_rng = LegacyRandom::new(1234);
+                game.server.effect_rng = LegacyRandom::new(1234);
                 game.dropped[0].random = LegacyRandom::new(1234);
                 game.start_audio_capture();
-                let actor = game.side.lan_acting;
+                let actor = game.server.lan_acting;
                 assert!(entity.extinguish_fire(game));
-                assert_eq!(game.side.lan_acting, actor);
+                assert_eq!(game.server.lan_acting, actor);
                 assert_eq!(entity.fire_ticks(game), Some(ticks.min(0)));
-                let captured = &game.side.pending_sounds;
+                let captured = &game.server.pending_sounds;
                 if ticks > 0 {
                     assert_eq!(captured.len(), 1);
                     let sound = &captured[0];
@@ -112,7 +112,7 @@ fn extinguish_fire_preserves_player_guest_stand_and_item_sound_routes() {
                     assert!(captured.is_empty());
                 }
                 assert_eq!(
-                    game.side.effect_rng.next_float(),
+                    game.server.effect_rng.next_float(),
                     if ticks > 0 && id != 23 { THIRD } else { FIRST }
                 );
                 assert_eq!(
@@ -126,13 +126,13 @@ fn extinguish_fire_preserves_player_guest_stand_and_item_sound_routes() {
         item.stack = ItemStack::new("minecraft:netherite_ingot", 1);
         item.fire_ticks = 72;
         item.random = LegacyRandom::new(1234);
-        game.side.effect_rng = LegacyRandom::new(1234);
+        game.server.effect_rng = LegacyRandom::new(1234);
         game.start_audio_capture();
         assert!(entity.extinguish_fire(game));
         assert_eq!(game.dropped[0].fire_ticks, 0);
-        assert!(game.side.pending_sounds.is_empty());
+        assert!(game.server.pending_sounds.is_empty());
         assert_eq!(game.dropped[0].random.next_float(), FIRST);
-        assert_eq!(game.side.effect_rng.next_float(), FIRST);
+        assert_eq!(game.server.effect_rng.next_float(), FIRST);
     });
 }
 

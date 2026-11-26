@@ -5,14 +5,14 @@ use mod_api::PlayerLimitRefusal;
 
 impl ServerGame<'_> {
     /// `PlayerList.getMaxPlayers`: the live login limit; None where no server is open to players.
-    pub(in crate::game) fn server_max_players(&self) -> Option<u32> {
+    pub fn server_max_players(&self) -> Option<u32> {
         let host = self.server.lan.as_ref()?;
         Some(u32::try_from(host.hub.lan.shared.max_players()).unwrap_or(u32::MAX))
     }
 
     /// Paper's `Server.setMaxPlayers`: the live login limit, not `server.properties`. Players
     /// already on stay, whatever the new limit.
-    pub(in crate::game) fn server_set_max_players(
+    pub fn server_set_max_players(
         &mut self,
         max_players: u32,
     ) -> Result<(), PlayerLimitRefusal> {

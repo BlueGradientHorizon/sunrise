@@ -35,7 +35,7 @@ impl ServerGame<'_> {
         }
     }
     /// ChunkGenerator.getOrigin and getSpawnHeight of the overworld.
-    pub(in crate::game::server_side) fn spawn_origin(&self) -> Result<((i32, i32), i32)> {
+    pub fn spawn_origin(&self) -> Result<((i32, i32), i32)> {
         if let Some(flat) = self.common.level.generator.as_ref().and_then(|g| {
             sunrise_sim::flatgen::FlatTerrain::from_settings(
                 g.settings(),

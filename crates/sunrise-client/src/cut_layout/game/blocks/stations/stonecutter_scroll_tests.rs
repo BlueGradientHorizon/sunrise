@@ -17,7 +17,7 @@ fn deepslate(count: u32) -> ItemStack {
 /// recipes' rows (`startIndex` 8).
 fn scroll_to_bottom(game: &mut sunrise_client_gameplay::game::ClientGame<'_>) {
     game.station_scroll(-2.0);
-    let ui = game.side.station_ui.as_ref().unwrap();
+    let ui = game.client.station_ui.as_ref().unwrap();
     assert_eq!(
         (ui.start, ui.scroll),
         (8, 1.0),
@@ -26,7 +26,7 @@ fn scroll_to_bottom(game: &mut sunrise_client_gameplay::game::ClientGame<'_>) {
 }
 
 fn shown(game: &sunrise_client_gameplay::game::ClientGame<'_>) -> (usize, f32) {
-    let ui = game.side.station_ui.as_ref().unwrap();
+    let ui = game.client.station_ui.as_ref().unwrap();
     (ui.start, ui.scroll)
 }
 

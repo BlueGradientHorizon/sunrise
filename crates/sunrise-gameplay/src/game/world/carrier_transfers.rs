@@ -175,7 +175,7 @@ impl ServerGame<'_> {
     /// recovery at open. The carrier file and the chunks go out through
     /// the flush barrier, the journal commits, the fences drop.
     #[cfg_attr(not(test), allow(dead_code))]
-    pub(in crate::game::server_side) fn carrier_assemble(
+    pub fn carrier_assemble(
         &mut self,
         uuid: u128,
         cells: &[BlockPos],
@@ -492,7 +492,7 @@ impl ServerGame<'_> {
     /// neighbour updates run. One synchronous server call: no tick runs
     /// between `prepared` and `committed`.
     #[cfg_attr(not(test), allow(dead_code))]
-    pub(in crate::game::server_side) fn carrier_disassemble(
+    pub fn carrier_disassemble(
         &mut self,
         uuid: u128,
         generation: u32,
@@ -773,7 +773,7 @@ impl ServerGame<'_> {
 
     /// Whether every destination still holds what the images recorded:
     /// replaceable, with no block entity.
-    fn revalidate_destinations(
+    pub fn revalidate_destinations(
         &mut self,
         cells: &[sunrise_sim::carrier_store::OperationCell],
     ) -> Result<(), TransferError> {
@@ -827,7 +827,7 @@ impl ServerGame<'_> {
 
     /// Whether every cell still holds exactly its image's state and
     /// entity, read straight from the live world.
-    fn revalidate_cells(
+    pub fn revalidate_cells(
         &self,
         cells: &[sunrise_sim::carrier_store::OperationCell],
         registry: &sunrise_world::registry::BlockRegistry,
@@ -881,7 +881,7 @@ impl ServerGame<'_> {
     /// does not pass for an old one — and a transfer that never
     /// finished recovers before the first tick and any player. A
     /// refusal fails the open, and no save runs after it.
-    pub(in crate::game::server_side) fn carrier_world_opened(
+    pub fn carrier_world_opened(
         &mut self,
     ) -> sunrise_game_data::Result<()> {
         self.common.world.carrier_data_existed_at_open = self.server.world_root.join("data").is_dir();
@@ -918,7 +918,7 @@ impl ServerGame<'_> {
     /// autosave uses. A refusal fails the world's load with a clear
     /// message — and nothing saves after it: the open itself aborts,
     /// while the store stays exactly as recovery found it.
-    pub(in crate::game::server_side) fn carrier_recover_all_levels(
+    pub fn carrier_recover_all_levels(
         &mut self,
     ) -> sunrise_game_data::Result<()> {
         // No pending operation: no level is touched at all.

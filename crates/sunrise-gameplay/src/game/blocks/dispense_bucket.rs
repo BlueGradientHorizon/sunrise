@@ -20,7 +20,7 @@ impl ServerGame<'_> {
     /// the empty bucket; not, the stack is dispensed as an item. A Part that
     /// changed the dispenser's slots while it emptied is refused and undone:
     /// the slots stay as they were and the dispenser fails.
-    pub(in crate::game) fn dispense_filled_bucket(
+    pub fn dispense_filled_bucket(
         &mut self,
         pos: Pos,
         facing: Direction,

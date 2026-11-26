@@ -81,7 +81,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// `Player.tick`'s sleep counter, and `LivingEntity.tick`'s wake-up of a
     /// sleeper who died or whose bed is gone.
-    pub(crate) fn guest_sleep_tick(&mut self, gi: usize, body: bool) {
+    pub fn guest_sleep_tick(&mut self, gi: usize, body: bool) {
         let Some(host) = self.server.lan.as_mut() else {
             return;
         };
@@ -159,7 +159,7 @@ impl crate::game::ServerGame<'_> {
     /// `SleepStatus.update`'s counts over the host's player and the guests:
     /// the players not in spectator mode, how many are in bed, and how many
     /// of those have slept 100 ticks.
-    pub(in crate::game) fn sleep_counts(&self) -> (i64, i64, i64) {
+    pub fn sleep_counts(&self) -> (i64, i64, i64) {
         let (mut active, mut sleeping, mut deep) = (0i64, 0i64, 0i64);
         let mut count = |in_bed: bool, timer: u32| {
             active += 1;
@@ -266,7 +266,7 @@ impl crate::game::ServerGame<'_> {
         }
     }
     /// `ServerLevel.wakeUpAllPlayers` for the guests.
-    pub(in crate::game) fn wake_guests(&mut self) {
+    pub fn wake_guests(&mut self) {
         let Some(host) = self.server.lan.as_ref() else {
             return;
         };
@@ -275,7 +275,7 @@ impl crate::game::ServerGame<'_> {
             self.wake_guest(i, false, false);
         }
     }
-    pub(in crate::game) fn wake_woken_guests(&mut self) {
+    pub fn wake_woken_guests(&mut self) {
         let Some(host) = self.server.lan.as_ref() else {
             return;
         };

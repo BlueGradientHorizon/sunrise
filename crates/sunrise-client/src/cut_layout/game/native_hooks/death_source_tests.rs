@@ -376,7 +376,7 @@ fn cancelled_unhealed_mob_is_removed_at_twenty_ticks_without_loot_or_redispatch(
 pub(crate) fn cancelled_player(heal: bool) {
     observed(true, heal, |game, seen| {
         sunrise_gameplay::game::native_player_death::tests::add_guest(game);
-        game.side
+        game.server
             .lan
             .as_mut()
             .unwrap()
@@ -392,10 +392,10 @@ pub(crate) fn cancelled_player(heal: bool) {
         game.guest_die(0, 1);
         assert_eq!(seen.lock().unwrap().deaths.len(), 1);
         assert_eq!(
-            game.side.lan.as_ref().unwrap().hub.guests[0].health,
+            game.server.lan.as_ref().unwrap().hub.guests[0].health,
             if heal { 5.0 } else { 0.0 }
         );
-        let entity = game.side.lan.as_ref().unwrap().hub.guests[0].entity_id as u32;
+        let entity = game.server.lan.as_ref().unwrap().hub.guests[0].entity_id as u32;
         for tick in 1..=20 {
             // The ordinary server loop asks each tick; cancellation must not redispatch.
             game.guest_die(0, 1);
@@ -410,7 +410,7 @@ pub(crate) fn cancelled_player(heal: bool) {
                 );
             }
         }
-        let guest = &game.side.lan.as_ref().unwrap().hub.guests[0];
+        let guest = &game.server.lan.as_ref().unwrap().hub.guests[0];
         assert_eq!(guest.health, if heal { 5.0 } else { 0.0 });
         assert_eq!(
             guest.inventory[0],
@@ -621,7 +621,7 @@ fn later_cancelled_player_revival_is_transactional_and_a_second_kill_drops_inven
         || {
             observed(true, false, |game, seen| {
                 sunrise_gameplay::game::native_player_death::tests::add_guest(game);
-                game.side
+                game.server
                     .lan
                     .as_mut()
                     .unwrap()
@@ -636,21 +636,21 @@ fn later_cancelled_player_revival_is_transactional_and_a_second_kill_drops_inven
                     });
                 game.guest_die(0, 1);
                 game.tick_guests();
-                let id = game.side.lan.as_ref().unwrap().hub.guests[0].entity_id as u32;
+                let id = game.server.lan.as_ref().unwrap().hub.guests[0].entity_id as u32;
                 let living = {
                     let host: &mut dyn ServerHost = game;
                     host.living(host.entity(id).unwrap()).unwrap()
                 };
                 game.storage_scope(|game, _| {
                     assert!(living.set_health(game, 5.0));
-                    let guest = &game.side.lan.as_ref().unwrap().hub.guests[0];
+                    let guest = &game.server.lan.as_ref().unwrap().hub.guests[0];
                     assert_eq!(
                         (guest.health, guest.death_time, guest.death_canceled),
                         (5.0, 0, false)
                     );
                     ((), false)
                 });
-                let guest = &game.side.lan.as_ref().unwrap().hub.guests[0];
+                let guest = &game.server.lan.as_ref().unwrap().hub.guests[0];
                 assert_eq!(
                     (guest.health, guest.death_time, guest.death_canceled),
                     (0.0, 1, true)
@@ -663,7 +663,7 @@ fn later_cancelled_player_revival_is_transactional_and_a_second_kill_drops_inven
                 );
                 assert!(game.dropped.is_empty());
                 assert!(living.set_health(game, 5.0));
-                let guest = &game.side.lan.as_ref().unwrap().hub.guests[0];
+                let guest = &game.server.lan.as_ref().unwrap().hub.guests[0];
                 assert_eq!(
                     (guest.health, guest.death_time, guest.death_canceled),
                     (5.0, 0, false)
@@ -672,20 +672,20 @@ fn later_cancelled_player_revival_is_transactional_and_a_second_kill_drops_inven
                 assert!(game.run_command("kill @a"));
                 game.guest_die(0, 1);
                 assert_eq!(seen.lock().unwrap().deaths.len(), 2);
-                assert!(game.side.lan.as_ref().unwrap().hub.guests[0].dead);
+                assert!(game.server.lan.as_ref().unwrap().hub.guests[0].dead);
                 // Inventory drops in die; the cursor belongs to tickDeath at the
                 // ordinary twentieth tick, not to the earlier cancelled attempt.
                 for tick in 1..20 {
                     game.world.game_time += 1;
                     game.tick_guests();
-                    let guest = &game.side.lan.as_ref().unwrap().hub.guests[0];
+                    let guest = &game.server.lan.as_ref().unwrap().hub.guests[0];
                     assert_eq!(guest.death_time, tick);
                     assert!(guest.body_present());
                     assert_eq!(guest.carried, Some(ItemStack::new("minecraft:diamond", 2)));
                 }
                 game.world.game_time += 1;
                 game.tick_guests();
-                let guest = &game.side.lan.as_ref().unwrap().hub.guests[0];
+                let guest = &game.server.lan.as_ref().unwrap().hub.guests[0];
                 assert_eq!(guest.death_time, 20);
                 assert!(!guest.body_present());
                 assert!(guest.carried.is_none());
@@ -712,7 +712,7 @@ fn a_killed_guest_with_no_combat_entry_reports_its_drops() {
         || {
             observed(false, false, |game, seen| {
                 sunrise_gameplay::game::native_player_death::tests::add_guest(game);
-                game.side
+                game.server
                     .lan
                     .as_mut()
                     .unwrap()
@@ -725,7 +725,7 @@ fn a_killed_guest_with_no_combat_entry_reports_its_drops() {
                     });
                 assert!(game.run_command("kill @a"));
                 game.guest_die(0, 1);
-                let id = game.side.lan.as_ref().unwrap().hub.guests[0].entity_id as u32;
+                let id = game.server.lan.as_ref().unwrap().hub.guests[0].entity_id as u32;
                 let kill = Hit {
                     entity: id,
                     kind: "minecraft:player".into(),
@@ -750,7 +750,7 @@ pub(crate) fn standing_guest(
     health: f32,
 ) -> u32 {
     sunrise_gameplay::game::native_player_death::tests::add_guest(game);
-    game.side
+    game.server
         .lan
         .as_mut()
         .unwrap()
@@ -763,7 +763,7 @@ pub(crate) fn standing_guest(
             guest.health = health;
             guest.inventory[0] = Some(ItemStack::new("minecraft:diamond", 3));
         });
-    game.side.lan.as_ref().unwrap().hub.guests[0].entity_id as u32
+    game.server.lan.as_ref().unwrap().hub.guests[0].entity_id as u32
 }
 
 /// A skeleton (42) at x 2.5 and its arrow from x 4.5 flying east along z 4.5, through a
@@ -799,7 +799,7 @@ fn an_arrow_killed_guest_reports_the_arrow_to_living_drops() {
                 let id = standing_guest(game, [6.0, 80.0, 4.5], 1.0);
                 skeleton_shot_at_guest(game);
                 game.tick_projectiles().unwrap();
-                assert!(game.side.lan.as_ref().unwrap().hub.guests[0].health <= 0.0);
+                assert!(game.server.lan.as_ref().unwrap().hub.guests[0].health <= 0.0);
                 game.guest_die(0, 1);
                 let seen = seen.lock().unwrap();
                 assert_eq!(seen.deaths.len(), 1, "one death");
@@ -828,7 +828,7 @@ fn a_guest_killed_after_a_hit_reports_generic_kill() {
                 let id = standing_guest(game, [6.0, 80.0, 4.5], 20.0);
                 skeleton_shot_at_guest(game);
                 game.tick_projectiles().unwrap();
-                let health = game.side.lan.as_ref().unwrap().hub.guests[0].health;
+                let health = game.server.lan.as_ref().unwrap().hub.guests[0].health;
                 assert!(
                     health > 0.0 && health < 20.0,
                     "the arrow hurt the guest: {health}"

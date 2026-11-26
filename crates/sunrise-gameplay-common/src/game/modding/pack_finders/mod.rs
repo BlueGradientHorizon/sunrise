@@ -22,7 +22,7 @@ pub struct Registry {
     pub(in crate::game) packs: Vec<DiscoveredPack>,
 }
 impl Registry {
-    pub(in crate::game) fn new(kind: PackType, mods: ModsState) -> Self {
+    pub fn new(kind: PackType, mods: ModsState) -> Self {
         Self {
             kind,
             mods,
@@ -30,7 +30,7 @@ impl Registry {
         }
     }
 
-    pub(in crate::game) fn register_listener(
+    pub fn register_listener(
         &mut self,
         listen: &mut dyn FnMut(&mut dyn PackFinders) -> bool,
     ) {

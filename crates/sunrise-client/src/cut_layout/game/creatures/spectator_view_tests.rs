@@ -61,7 +61,7 @@ fn game<'a>(
     .unwrap();
     let server = sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client(&mut game);
     // The atlas the game bakes at startup: `mob_geometry` finds a body's texture in it.
-    game.side.gui.atlas = sunrise_client::hud::HudAtlas::build(
+    game.client.gui.atlas = sunrise_client::hud::HudAtlas::build(
         &sunrise_assets::resource_source::ResourceSource::directory(root.clone()),
     )
     .unwrap();
@@ -92,7 +92,7 @@ fn game<'a>(
 fn a_spectator_sees_the_invisible_body() {
     let mut resources = None;
     let (mut game, _server) = game(&mut resources);
-    let profile = game.side.remote.as_ref().unwrap().profile();
+    let profile = game.client.remote.as_ref().unwrap().profile();
     let types = MobTypes::load(&root()).unwrap();
     let kind = Arc::new(types.types["minecraft:pig"].clone());
     let mut pig = Mob::new(1, kind, Vec3::new(0.5, 64.0, 0.5), 0.0);

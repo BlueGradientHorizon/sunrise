@@ -86,7 +86,7 @@ use super::*;
 
                 // The spawn search sees the pack's flat layers before the first save.
                 game.level = prepared.level.clone();
-                game.side.level_shapes = prepared.shapes;
+                game.server.level_shapes = prepared.shapes;
                 assert_eq!(
                     game.spawn_origin().unwrap(),
                     ((0, 0), prepared.world.shape.min_y + 3)

@@ -99,7 +99,7 @@ mod tests {
             with_game(|game| {
                 zombie(game, 900, 2.0);
                 zombie(game, 910, -2.0);
-                game.side.combat.0.explosion_direct = Some(900);
+                game.server.combat.0.explosion_direct = Some(900);
                 explode(game);
                 let source = game.mobs.iter().find(|m| m.id == 900).unwrap();
                 assert_eq!(source.health, 20.0);
@@ -276,7 +276,7 @@ mod tests {
                 let mut blocks = Vec::new();
                 game.explosion_detonate([0.0, 1.0, 0.0], 3.0, &mut blocks);
                 assert!(
-                    game.side.combat.0.blast_hit_list.is_some(),
+                    game.server.combat.0.blast_hit_list.is_some(),
                     "the outer list is set"
                 );
                 let before = health_of(game, SPARED);
@@ -297,8 +297,8 @@ mod tests {
                 );
                 // The outer's list is back: its walk still spares the zombie.
                 assert!(
-                    game.side.combat.0.blast_hit_list.is_some()
-                        && !game.side.combat.0.visits(SPARED),
+                    game.server.combat.0.blast_hit_list.is_some()
+                        && !game.server.combat.0.visits(SPARED),
                     "the outer's list is restored"
                 );
             });
@@ -379,7 +379,7 @@ mod tests {
                     explode(game);
                     assert!(game.boats.iter().all(|boat| ![920, 921].contains(&boat.id)));
                     assert!(game.carts.iter().all(|cart| ![930, 931].contains(&cart.id)));
-                    assert_eq!(game.side.combat.0.blast_hit_list, None);
+                    assert_eq!(game.server.combat.0.blast_hit_list, None);
                 })
             });
         }
@@ -400,7 +400,7 @@ mod tests {
                     ));
                 }
                 game.explosion_detonate([0.0, 1.0, 0.0], 3.0, &mut Vec::new());
-                let listed = game.side.combat.0.blast_hit_list.as_ref().unwrap();
+                let listed = game.server.combat.0.blast_hit_list.as_ref().unwrap();
                 assert!(!listed.contains(&940));
                 assert!(listed.contains(&941));
             })

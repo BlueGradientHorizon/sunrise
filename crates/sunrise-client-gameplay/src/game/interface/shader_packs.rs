@@ -632,7 +632,7 @@ impl crate::game::ClientGame<'_> {
     /// ones the lightmap, the HUD and the cave ambience have; another living entity's are the
     /// effects the server sent for it (its `CameraFogEffects`, the same the fog reads); an
     /// entity that isn't living has none and looks nowhere.
-    pub(in crate::game) fn pack_view_entity(&self, eye: glam::DVec3, partial: f32) -> ViewEntity {
+    pub fn pack_view_entity(&self, eye: glam::DVec3, partial: f32) -> ViewEntity {
         let at = eye.floor().as_ivec3();
         let light = self.common.world.light(at.x, at.y, at.z);
         let eye_light = [i32::from(light & 15), i32::from(light >> 4)];
@@ -671,7 +671,7 @@ impl crate::game::ClientGame<'_> {
     /// custom uniforms read (D-2 in `docs/cleanroom/decisions.md`), each as its vanilla method
     /// answers on a client. Asked only while a pack is picked ([`Self::shader_pack_inputs`]
     /// returns before it otherwise).
-    pub(in crate::game) fn pack_player_status(&mut self) -> PlayerStatus {
+    pub fn pack_player_status(&mut self) -> PlayerStatus {
         let spectator = self.common.spectator();
         let survival = !self.common.creative && !spectator;
         let invisible = self.own_invisible();

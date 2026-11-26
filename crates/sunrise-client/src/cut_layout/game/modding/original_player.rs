@@ -267,7 +267,7 @@ mod tests {
                     "keep_inventory",
                     sunrise_game_data::gamerules::Value::Bool(keep),
                 );
-                let host = game.side.lan.as_mut().unwrap();
+                let host = game.server.lan.as_mut().unwrap();
                 host.hub.guests.update(0, |guest| {
                     guest.dimension = dimension.id().to_owned();
                     guest.position = [7.0, 64.0, -9.0];
@@ -468,7 +468,7 @@ mod tests {
                         game.options.dedicated = Some(Vec::new());
                         let dim = if death { Dim::Overworld } else { Dim::End };
                         game.enter_level(dim).unwrap();
-                        game.side.streaming.insert_remote(
+                        game.server.streaming.insert_remote(
                             &mut game.world,
                             sunrise_level::chunk::Chunk::empty(0, 0),
                         );
@@ -478,7 +478,7 @@ mod tests {
                                     .unwrap()
                             );
                         }
-                        let host = game.side.lan.as_mut().unwrap();
+                        let host = game.server.lan.as_mut().unwrap();
                         host.hub.guests.update(0, |guest| {
                             guest.dimension = dim.id().to_owned();
                             guest.position = [0.5, 64.0, 0.5];
@@ -501,7 +501,7 @@ mod tests {
                         assert_eq!(game.attachment_validate_write(token.clone()), Ok(()));
                         *source.lock().unwrap() = Some((index, token));
                         game.lan_open_crafting(12, [0, 64, 0]);
-                        let host = game.side.lan.as_mut().unwrap();
+                        let host = game.server.lan.as_mut().unwrap();
                         host.menus
                             .get_mut(&12)
                             .unwrap()
@@ -547,10 +547,10 @@ mod tests {
                             game.tick_guests();
                             let guest = game.command_guest(12).unwrap();
                             assert_eq!(guest.motion.as_ref().map(|m| m.health.tick_count), before);
-                            assert!(!game.side.lan.as_ref().unwrap().hub.here(guest));
+                            assert!(!game.server.lan.as_ref().unwrap().hub.here(guest));
                             game.guest_respawn(12);
                         }
-                        let guest = game.side.lan.as_ref().unwrap().hub.guest(12).unwrap();
+                        let guest = game.server.lan.as_ref().unwrap().hub.guest(12).unwrap();
                         assert_eq!(
                             guest
                                 .inventory
@@ -629,13 +629,13 @@ mod tests {
                         if missing {
                             for x in -2..=2 {
                                 for z in -2..=2 {
-                                    game.side
+                                    game.server
                                         .streaming
                                         .insert_remote(&mut game.world, Chunk::empty(x, z));
                                 }
                             }
                         }
-                        game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+                        game.server.lan.as_mut().unwrap().hub.guests.update(0, |g| {
                             g.dead = true;
                             g.health = 0.0;
                             g.spawn = (!missing).then_some([7.5, 64.0, 5.5]);
@@ -655,7 +655,7 @@ mod tests {
                             game.enter_level(Dim::Nether).unwrap();
                             for x in -2..=2 {
                                 for z in -2..=2 {
-                                    game.side
+                                    game.server
                                         .streaming
                                         .insert_remote(&mut game.world, Chunk::empty(x, z));
                                 }
@@ -664,7 +664,7 @@ mod tests {
                         }
                         let wanted = if missing { Dim::End } else { Dim::Overworld };
                         assert_eq!(*heard.lock().unwrap(), [wanted.id().to_owned()]);
-                        let guest = game.side.lan.as_ref().unwrap().hub.guest(12).unwrap();
+                        let guest = game.server.lan.as_ref().unwrap().hub.guest(12).unwrap();
                         assert_eq!(guest.dimension, wanted.id());
                         assert_eq!(
                             guest.position,
@@ -701,7 +701,7 @@ mod tests {
                 with_guests(|game| {
                     game.options.dedicated = Some(Vec::new());
                     game.enter_level(Dim::End).unwrap();
-                    let host = game.side.lan.as_mut().unwrap();
+                    let host = game.server.lan.as_mut().unwrap();
                     host.hub.guests.update(0, |guest| {
                         guest.dimension = Dim::End.id().to_owned();
                         guest.spawn = Some([3.5, 64.0, 5.5]);
@@ -765,7 +765,7 @@ mod tests {
                 }
                 mod_platform::testing::with_mods(mods.into(), || {
                     with_guests(|game| {
-                        game.side.lan.as_mut().unwrap().hub.update_guest(12, |g| {
+                        game.server.lan.as_mut().unwrap().hub.update_guest(12, |g| {
                             g.spawn = Some([3.5, 64.0, 5.5]);
                             g.dead = true;
                             g.health = 0.0;
@@ -891,7 +891,7 @@ mod tests {
             mod_platform::testing::with_mods(mods, || {
                 with_guests(|game| {
                     game.options.dedicated = Some(Vec::new());
-                    let host = game.side.lan.as_mut().unwrap();
+                    let host = game.server.lan.as_mut().unwrap();
                     host.hub.guests.update(0, |guest| {
                         guest.dead = true;
                         guest.health = 0.0;

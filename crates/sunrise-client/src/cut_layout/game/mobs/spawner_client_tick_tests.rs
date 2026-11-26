@@ -112,10 +112,10 @@ fn run_in_child(test: &str) -> bool {
 /// A client of a server with the block entity types of `TYPES`, for `test`.
 fn with_remote_game(test: impl FnOnce(&mut sunrise_client_gameplay::game::ClientGame<'_>)) {
     sunrise_client_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
-        game.side.settings.render_distance = 32;
+        game.client.settings.render_distance = 32;
         let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
         game.connect_local(pipe, "ClientTick").unwrap();
-        let remote = game.side.remote.as_mut().unwrap();
+        let remote = game.client.remote.as_mut().unwrap();
         remote.logged_in = true;
         Arc::make_mut(&mut remote.builtin).registries.insert(
             "minecraft:block_entity_type".into(),
@@ -353,7 +353,7 @@ fn send_column(
             block: Vec::new(),
         },
     };
-    let format = game.side.remote.as_ref().unwrap().chunk_format.clone();
+    let format = game.client.remote.as_ref().unwrap().chunk_format.clone();
     game.remote_chunk(&packet, Some((&format, Ok(chunk))));
     let order: Vec<Pos> = listed.iter().map(|&i| entities[i].0).collect();
     sunrise_level::block_entities::chunk_map_order(order.iter().copied()) != order
@@ -366,8 +366,8 @@ fn event_stream(
     game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
     particles_at_start: u64,
 ) -> Vec<serde_json::Value> {
-    let particles = game.side.particles.0.requested.replace(Vec::new()).unwrap();
-    let sounds = game.side.audio.0.capture.replace(Vec::new()).unwrap();
+    let particles = game.client.particles.0.requested.replace(Vec::new()).unwrap();
+    let sounds = game.client.audio.0.capture.replace(Vec::new()).unwrap();
     let mut out = Vec::new();
     let mut particles = particles.into_iter();
     let mut taken = 0;
@@ -408,7 +408,7 @@ fn start_case(
 ) -> Vec<(Pos, BlockStateId, i32, BlockEntity)> {
     game.forget_all_remote_columns();
     // The last case's animation state: a level starts with none.
-    game.side.be_anims.retain_present(&[]);
+    game.client.be_anims.retain_present(&[]);
     let entities: Vec<_> = case["entities"]
         .as_array()
         .unwrap()
@@ -430,14 +430,14 @@ fn start_case(
     } else {
         sunrise_command::args::GameMode::Survival
     };
-    game.side.remote.as_mut().unwrap().profile = sunrise_sim::lan::playerdata::ints_uuid(PLAYER);
+    game.client.remote.as_mut().unwrap().profile = sunrise_sim::lan::playerdata::ints_uuid(PLAYER);
     game.level.player_uuid = Some(PLAYER);
-    game.side
+    game.client
         .particles
         .0
         .seed_randoms(0, case["seed"].as_i64().unwrap(), 0);
     // `EnchantingTableBlockEntity.RANDOM`, shared by every table: one stream per case.
-    game.side.be_anims.book_random =
+    game.client.be_anims.book_random =
         sunrise_core::random::LegacyRandom::new(case["seed"].as_i64().unwrap());
     game.world.game_time = case["gameTime"].as_i64().unwrap();
     // The columns arrive in the order their first block entity is listed, each listing its
@@ -452,8 +452,8 @@ fn start_case(
     for (at, listed) in &columns {
         *reordered |= send_column(game, &entities, *at, listed, &case["fills"]);
     }
-    game.side.particles.0.requested = Some(Vec::new());
-    game.side.audio.0.capture = Some(Vec::new());
+    game.client.particles.0.requested = Some(Vec::new());
+    game.client.audio.0.capture = Some(Vec::new());
     entities
 }
 
@@ -465,7 +465,7 @@ fn animation_states(game: &sunrise_client_gameplay::game::ClientGame<'_>) -> Vec
         .into_iter()
         .filter_map(|(k, e)| {
             let pos = [k.0, k.1, k.2];
-            let anims = &game.side.be_anims;
+            let anims = &game.client.be_anims;
             let colour = |sections: &[(u32, i32)]| -> Vec<_> {
                 sections
                     .iter()
@@ -629,14 +629,14 @@ fn client_tick_case(
         // Keys in their sorted order, as the harness hashes vanilla's log.
         ticks.push(serde_json::json!({
             "events": events,
-            "random": format!("{:x}", game.side.particles.0.level_random().state()),
+            "random": format!("{:x}", game.client.particles.0.level_random().state()),
             "states": states,
             "spins": spins.into_iter().map(|(_, s)| s).collect::<Vec<_>>(),
         }));
         game.world.game_time += 1;
     }
-    game.side.particles.0.requested = None;
-    game.side.audio.0.capture = None;
+    game.client.particles.0.requested = None;
+    game.client.audio.0.capture = None;
     serde_json::json!({ "ticks": ticks })
 }
 
@@ -769,7 +769,7 @@ fn a_decorated_pots_wobble_survives_the_client_ticks() {
         let case = case_of(1000, [6.5, 64.0, 2.5], serde_json::json!([]), fills);
         start_case(game, &case, &mut false);
         send_column(game, &[], (0, 0), &[], &case["fills"]);
-        let remote = game.side.remote.as_mut().unwrap();
+        let remote = game.client.remote.as_mut().unwrap();
         Arc::make_mut(&mut remote.builtin).registries.insert(
             "minecraft:block".into(),
             sunrise_protocol::registry::Ids::from_names(vec!["minecraft:decorated_pot".into()]),
@@ -937,18 +937,18 @@ fn a_campfires_smoke_joins_the_engine_in_the_tick_that_made_it() {
         );
         start_case(game, &case, &mut false);
         // The engine makes the particles, not the harness's log.
-        game.side.particles.0.requested = None;
-        game.side.remote.as_mut().unwrap().loaded_sent = true;
+        game.client.particles.0.requested = None;
+        game.client.remote.as_mut().unwrap().loaded_sent = true;
         for _ in 0..40 {
             game.tick_remote().unwrap();
             assert_eq!(
-                game.side.particles.0.pending_len(),
+                game.client.particles.0.pending_len(),
                 0,
                 "particles wait a tick to join the engine"
             );
         }
         assert!(
-            !game.side.particles.0.is_empty(),
+            !game.client.particles.0.is_empty(),
             "the campfire made no smoke"
         );
     });

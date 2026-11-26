@@ -132,7 +132,7 @@ impl crate::game::ClientGame<'_> {
         );
     }
     /// AbstractBoatRenderer.
-    pub(in crate::game) fn boat_geometry(
+    pub fn boat_geometry(
         &self,
         camera: glam::DVec3,
         alpha: f64,

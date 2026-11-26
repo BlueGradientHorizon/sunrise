@@ -145,10 +145,10 @@ pub(crate) mod registered_slot_source_read_tests {
             definition,
         )
         .unwrap();
-        game.side.world_root = root;
+        game.server.world_root = root;
         game.ensure_datapacks();
         assert_eq!(
-            game.side
+            game.server
                 .fns
                 .0
                 .data_resource("data/parity/slot_source/first_three.json")
@@ -242,7 +242,7 @@ use sunrise_gameplay::game::server_side::commands::items::registered_slot_source
             )
             .unwrap(),
         );
-        assert!(game.side.command_source.is_none());
+        assert!(game.server.command_source.is_none());
         assert!(game.run_command(
             r#"item replace entity @s {type:"slot_range",source:"this",slots:"weapon.mainhand"} with minecraft:stone"#
         ));
@@ -256,7 +256,7 @@ use sunrise_gameplay::game::server_side::commands::items::registered_slot_source
         let mut resources = None;
         let (mut game, _) = scene(&mut resources, "slot-source-unsupported-world");
         let path = game
-            .side
+            .server
             .world_root
             .join("datapacks/parity/data/parity/slot_source/this.json");
         std::fs::write(
@@ -323,7 +323,7 @@ use sunrise_gameplay::game::server_side::commands::items::registered_slot_source
             std::fs::write(&path, serde_json::json!({"type":"minecraft:limit_slots","limit":limit,"slot_source":{"type":"minecraft:slot_range","slots":"container.*"}}).to_string()).unwrap();
             high = path;
         }
-        game.side.world_root = root;
+        game.server.world_root = root;
         game.ensure_datapacks();
         assert!(game.run_command("setblock 0 100 0 chest{Items:[{Slot:0b,id:\"stone\",count:5},{Slot:1b,id:\"dirt\",count:2},{Slot:3b,id:\"stone\",count:7}]}"));
         assert!(game.run_command("scoreboard objectives add slotprobe dummy"));

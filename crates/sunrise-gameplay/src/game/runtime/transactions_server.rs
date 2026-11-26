@@ -35,7 +35,7 @@ impl Drop for Telling<'_, '_> {
 impl crate::game::ServerGame<'_> {
     /// Abort any storage transactions left open above `depth` (for example when a
     /// an engine decision unwinds before it can close its savepoint).
-    pub(in crate::game) fn abort_abandoned_transactions(&mut self, depth: usize) {
+    pub fn abort_abandoned_transactions(&mut self, depth: usize) {
         while self.common.transactions.len() > depth {
             let _ = self.close_storage_transaction(false);
         }

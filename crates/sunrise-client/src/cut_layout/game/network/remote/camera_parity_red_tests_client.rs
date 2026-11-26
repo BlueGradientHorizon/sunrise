@@ -64,7 +64,7 @@ pub(in crate::game) fn run_any_tracked_entity_resolves_as_camera_26_3() {
                 ));
             }
 
-            game.side.view = Default::default();
+            game.client.view = Default::default();
             game.tick_fov();
             let (pos1, y1, p1) = game.camera_view(1.0).expect("camera view");
             if pos1.to_array().map(f64::to_bits)
@@ -87,7 +87,7 @@ pub(in crate::game) fn run_any_tracked_entity_resolves_as_camera_26_3() {
                     row["camera_xRot_bits"]
                 ));
             }
-            let fw = game.side.view.forwards.map(f32::to_bits);
+            let fw = game.client.view.forwards.map(f32::to_bits);
             let want_fw = [
                 hex_f32(&row["camera_forwards_bits"][0]),
                 hex_f32(&row["camera_forwards_bits"][1]),
@@ -130,13 +130,13 @@ pub(in crate::game) fn run_camera_consumers_bob_fog_dark_disc_and_vignette_26_3(
             p.health.hurt.hurt_duration = 10;
             p.health.hurt_dir = 45.0;
         }
-        game.side.avatar.walk_dist = 1.75;
-        game.side.avatar.walk_dist_o = 1.75;
-        game.side.avatar.bob = 0.08;
-        game.side.avatar.bob_o = 0.04;
-        game.side.settings.view_bobbing = true;
+        game.client.avatar.walk_dist = 1.75;
+        game.client.avatar.walk_dist_o = 1.75;
+        game.client.avatar.bob = 0.08;
+        game.client.avatar.bob_o = 0.04;
+        game.client.settings.view_bobbing = true;
         game.set_local_mode(sunrise_command::args::GameMode::Spectator);
-        let profile = game.side.remote.as_ref().unwrap().profile;
+        let profile = game.client.remote.as_ref().unwrap().profile;
         game.handle_packet(C::PlayerInfoUpdate(play::PlayerInfoUpdate {
             actions: 0x01 | 0x04 | 0x08,
             entries: vec![play::PlayerInfo {
@@ -157,7 +157,7 @@ pub(in crate::game) fn run_camera_consumers_bob_fog_dark_disc_and_vignette_26_3(
         game.potions
             .effects
             .add(EffectInstance::new("night_vision", 300, 0));
-        game.side.fog.water_vision_time = 0;
+        game.client.fog.water_vision_time = 0;
 
         add_entity(
             game,
@@ -170,7 +170,7 @@ pub(in crate::game) fn run_camera_consumers_bob_fog_dark_disc_and_vignette_26_3(
         sync_interaction_size(game, 2, 0.1, 1.9059);
         game.handle_packet(C::SetCamera(play::SetCamera { camera_id: 2 }))
             .unwrap();
-        game.side.view = Default::default();
+        game.client.view = Default::default();
         for _ in 0..40 {
             game.tick_fov();
         }
@@ -304,10 +304,10 @@ pub(in crate::game) fn run_camera_consumers_bob_fog_dark_disc_and_vignette_26_3(
         sync_interaction_size(game, 3, 0.1, 1.9059);
         game.handle_packet(C::SetCamera(play::SetCamera { camera_id: 3 }))
             .unwrap();
-        game.side.screen_fx.vignette_brightness = 0.0;
+        game.client.screen_fx.vignette_brightness = 0.0;
         game.tick_vignette();
         assert_eq!(
-            game.side.screen_fx.vignette_brightness.to_bits(),
+            game.client.screen_fx.vignette_brightness.to_bits(),
             hex_f32(&consumers["vignette"]["interaction_vignette_after_1_tick_bits"]),
             "vignette must sample light at camera entity eye"
         );
@@ -315,8 +315,8 @@ pub(in crate::game) fn run_camera_consumers_bob_fog_dark_disc_and_vignette_26_3(
         game.border.set_center([0.0, 0.0]);
         game.border.set_size(200.0);
         game.border.warning_distance = 10;
-        game.side.settings.vignette = true;
-        game.side.chat_ui.hide_gui = false;
+        game.client.settings.vignette = true;
+        game.client.chat_ui.hide_gui = false;
         let hand_proj = sunrise_client::camera::hand_projection(70.0, 1280.0, 800.0, 512.0);
         let quads_shown = game.screen_quads(1.0, [1280, 800], 1.0, hand_proj);
         let vignette_quad = quads_shown
@@ -329,7 +329,7 @@ pub(in crate::game) fn run_camera_consumers_bob_fog_dark_disc_and_vignette_26_3(
             "border warning at camera x=95.5 must tint vignette green/blue channels (subtracting into red): {color:?}"
         );
 
-        game.side.chat_ui.hide_gui = true;
+        game.client.chat_ui.hide_gui = true;
         let quads_hidden = game.screen_quads(1.0, [1280, 800], 1.0, hand_proj);
         assert!(
             quads_hidden.iter().all(|q| q.blend != Blend::Vignette),
@@ -389,7 +389,7 @@ pub(in crate::game) fn run_camera_consumers_streaming_particles_debug_and_specta
         sync_interaction_size(game, 31, 0.1, 1.9059);
         game.handle_packet(C::SetCamera(play::SetCamera { camera_id: 31 }))
             .unwrap();
-        game.side.view = Default::default();
+        game.client.view = Default::default();
         for _ in 0..40 {
             game.tick_fov();
         }
@@ -398,33 +398,33 @@ pub(in crate::game) fn run_camera_consumers_streaming_particles_debug_and_specta
         // 1. Streaming center follows camera entity.
         game.client_update_world();
         assert_eq!(
-            game.side.streaming.center, want_chunk,
+            game.client.streaming.center, want_chunk,
             "streaming.center must follow camera"
         );
         assert_eq!(
-            game.side.streaming.center_y, want_block_y,
+            game.client.streaming.center_y, want_block_y,
             "streaming.center_y must follow camera"
         );
 
         // 2. Particle camera follows camera entity eye (exact 26.3 camera.position() bits).
         game.tick_particles();
         assert_eq!(
-            game.side.particles.0.camera.map(f64::to_bits),
+            game.client.particles.0.camera.map(f64::to_bits),
             want_cam_pos_bits,
             "particles.camera must match 26.3 camera.position() bits"
         );
 
         // 3. F3 debug entries report camera entity position, biome, and light.
-        game.side.debug = true;
-        game.side
+        game.client.debug = true;
+        game.client
             .debug_entries
             .0
             .set_status("player_position", Status::InOverlay);
-        game.side
+        game.client
             .debug_entries
             .0
             .set_status("biome", Status::InOverlay);
-        game.side
+        game.client
             .debug_entries
             .0
             .set_status("light_levels", Status::InOverlay);
@@ -447,11 +447,11 @@ pub(in crate::game) fn run_camera_consumers_streaming_particles_debug_and_specta
         );
 
         // 4. F3 gizmos: chunk_borders bounds match 26.3 ChunkBorderRenderer; hitboxes follow EntityHitboxDebugRenderer.
-        game.side
+        game.client
             .debug_entries
             .0
             .set_status("chunk_borders", Status::AlwaysOn);
-        game.side
+        game.client
             .debug_entries
             .0
             .set_status("entity_hitboxes", Status::Never);
@@ -469,11 +469,11 @@ pub(in crate::game) fn run_camera_consumers_streaming_particles_debug_and_specta
         assert_eq!(min_z.to_bits(), want_min_z, "chunk_borders min_z");
         assert_eq!(max_z.to_bits(), want_max_z, "chunk_borders max_z");
 
-        game.side
+        game.client
             .debug_entries
             .0
             .set_status("chunk_borders", Status::Never);
-        game.side
+        game.client
             .debug_entries
             .0
             .set_status("entity_hitboxes", Status::AlwaysOn);
@@ -560,9 +560,9 @@ pub(in crate::game) fn run_camera_entity_hidden_in_first_person_for_all_kinds_an
             game.world
                 .chunks
                 .insert((0, 0), Arc::new(make_chunk(0, 0, 0, 0xF0)));
-            game.side.view_frustum = None;
-            game.side.settings.entity_shadows = false;
-            game.side.settings.extras.own_name_tag = false;
+            game.client.view_frustum = None;
+            game.client.settings.entity_shadows = false;
+            game.client.settings.extras.own_name_tag = false;
             game.tick_player_model();
             game.sleeping = local_sleeping.then_some([0, 64, 0]);
 
@@ -579,7 +579,7 @@ pub(in crate::game) fn run_camera_entity_hidden_in_first_person_for_all_kinds_an
                     .unwrap()
                     .0 as i32;
                 let stone_item = game
-                    .side
+                    .client
                     .remote
                     .as_ref()
                     .unwrap()
@@ -656,7 +656,7 @@ pub(in crate::game) fn run_camera_entity_hidden_in_first_person_for_all_kinds_an
                 let want_cam = tc["views"][ct_name]["camera_entity_extracted"]
                     .as_bool()
                     .unwrap();
-                game.side.camera_type = ct;
+                game.client.camera_type = ct;
                 if game.player_model_shown() != want_local {
                     failures.push(format!(
                         "{name} {ct_name}: player_model_shown={} want {want_local}",
@@ -666,7 +666,7 @@ pub(in crate::game) fn run_camera_entity_hidden_in_first_person_for_all_kinds_an
                 let mut additive = Vec::new();
                 let (verts, _, _, _) =
                     game.entity_geometry(cam, 1.0, None, Vec::new(), &mut additive);
-                let has_local_run = game.side.entity_runs.iter().any(|r| {
+                let has_local_run = game.client.entity_runs.iter().any(|r| {
                     r.family == sunrise_client_gameplay::game::client_side::entity_client::DrawFamily::LocalPlayer
                 });
                 if has_local_run != want_local {
@@ -677,13 +677,13 @@ pub(in crate::game) fn run_camera_entity_hidden_in_first_person_for_all_kinds_an
                 if !camera_on_self {
                     let drew = !verts.is_empty()
                         || !additive.is_empty()
-                        || !game.side.see_through_vertices.is_empty();
+                        || !game.client.see_through_vertices.is_empty();
                     if drew != want_cam {
                         failures.push(format!(
                             "{name} ({kind}, id={cam_id}) {ct_name}: drew={drew} (verts={}, additive={}, see_through={}) want {want_cam}",
                             verts.len(),
                             additive.len(),
-                            game.side.see_through_vertices.len(),
+                            game.client.see_through_vertices.len(),
                         ));
                     }
                 }
@@ -691,8 +691,8 @@ pub(in crate::game) fn run_camera_entity_hidden_in_first_person_for_all_kinds_an
 
             // Local player own_name_tag must never show while camera is on another entity.
             if !camera_on_self && name == "creeper" {
-                game.side.camera_type = CameraType::ThirdPersonBack;
-                game.side.settings.extras.own_name_tag = true;
+                game.client.camera_type = CameraType::ThirdPersonBack;
+                game.client.settings.extras.own_name_tag = true;
                 let own_name = game.own_profile_name();
                 let tags = game.shown_name_tags(glam::DVec3::new(0.5, 65.5, 4.5));
                 if tags.iter().any(|t| t == &own_name) {
@@ -717,13 +717,13 @@ pub(in crate::game) fn run_camera_entity_hidden_in_first_person_for_all_kinds_an
             .chunks
             .insert((0, 0), Arc::new(make_chunk(0, 0, 0, 0xF0)));
         game.world.set(5, 63, 5, stone).unwrap();
-        game.side.view_frustum = None;
-        game.side.settings.entity_shadows = true;
-        game.side.settings.extras.own_name_tag = false;
+        game.client.view_frustum = None;
+        game.client.settings.entity_shadows = true;
+        game.client.settings.extras.own_name_tag = false;
         game.tick_player_model();
 
         let stone_item = game
-            .side
+            .client
             .remote
             .as_ref()
             .unwrap()
@@ -784,25 +784,25 @@ pub(in crate::game) fn run_camera_entity_hidden_in_first_person_for_all_kinds_an
             game.handle_packet(C::SetCamera(play::SetCamera { camera_id: id }))
                 .unwrap();
 
-            game.side.camera_type = CameraType::ThirdPersonBack;
+            game.client.camera_type = CameraType::ThirdPersonBack;
             let mut add_tp = Vec::new();
             let (tp_verts, _, _, _) = game.entity_geometry(cam, 1.0, None, Vec::new(), &mut add_tp);
-            if tp_verts.is_empty() && game.side.see_through_vertices.is_empty() {
+            if tp_verts.is_empty() && game.client.see_through_vertices.is_empty() {
                 failures.push(format!("{label}: third person drew nothing"));
             }
 
-            game.side.camera_type = CameraType::FirstPerson;
+            game.client.camera_type = CameraType::FirstPerson;
             let mut add_fp = Vec::new();
             let (fp_verts, _, _, _) = game.entity_geometry(cam, 1.0, None, Vec::new(), &mut add_fp);
             if !fp_verts.is_empty()
                 || !add_fp.is_empty()
-                || !game.side.see_through_vertices.is_empty()
+                || !game.client.see_through_vertices.is_empty()
             {
                 failures.push(format!(
                     "{label}: first person leaked geometry (verts={}, additive={}, see_through={})",
                     fp_verts.len(),
                     add_fp.len(),
-                    game.side.see_through_vertices.len(),
+                    game.client.see_through_vertices.len(),
                 ));
             }
 
@@ -854,7 +854,7 @@ pub(in crate::game) fn run_camera_player_fov_modifier_and_death_isolation_26_3()
         let tc = find_case("sprinting_speed_scale_1_0");
         with_client_game(|game| {
             let _server = setup_remote_overworld(game, 1, [0.5, 64.0, 0.5], true);
-            game.side
+            game.client
                 .settings
                 .file
                 .set("fovEffectScale", OptV::Double(1.0));
@@ -875,7 +875,7 @@ pub(in crate::game) fn run_camera_player_fov_modifier_and_death_isolation_26_3()
             .unwrap();
             game.handle_packet(C::SetCamera(play::SetCamera { camera_id: 20 }))
                 .unwrap();
-            game.side.view = Default::default();
+            game.client.view = Default::default();
             game.tick_fov();
             let cam_pos = [5.5, 65.62, 5.5];
             assert_eq!(
@@ -914,7 +914,7 @@ pub(in crate::game) fn run_camera_player_fov_modifier_and_death_isolation_26_3()
         let tc = find_case("speed_0_2_scale_0_5");
         with_client_game(|game| {
             let _server = setup_remote_overworld(game, 1, [0.5, 64.0, 0.5], true);
-            game.side
+            game.client
                 .settings
                 .file
                 .set("fovEffectScale", OptV::Double(0.5));
@@ -931,7 +931,7 @@ pub(in crate::game) fn run_camera_player_fov_modifier_and_death_isolation_26_3()
             .unwrap();
             game.handle_packet(C::SetCamera(play::SetCamera { camera_id: 21 }))
                 .unwrap();
-            game.side.view = Default::default();
+            game.client.view = Default::default();
             for _ in 0..40 {
                 game.tick_fov();
             }
@@ -954,7 +954,7 @@ pub(in crate::game) fn run_camera_player_fov_modifier_and_death_isolation_26_3()
         let tc = find_case("bow_draw_mainhand");
         with_client_game(|game| {
             let _server = setup_remote_overworld(game, 1, [0.5, 64.0, 0.5], true);
-            game.side
+            game.client
                 .settings
                 .file
                 .set("fovEffectScale", OptV::Double(1.0));
@@ -979,7 +979,7 @@ pub(in crate::game) fn run_camera_player_fov_modifier_and_death_isolation_26_3()
                     game.tick_remote_entities(true);
                     elapsed += 1;
                 }
-                game.side.view = Default::default();
+                game.client.view = Default::default();
                 for _ in 0..40 {
                     game.tick_fov();
                 }
@@ -1000,11 +1000,11 @@ pub(in crate::game) fn run_camera_player_fov_modifier_and_death_isolation_26_3()
         let tc = find_case(name);
         with_client_game(|game| {
             let _server = setup_remote_overworld(game, 1, [0.5, 64.0, 0.5], true);
-            game.side
+            game.client
                 .settings
                 .file
                 .set("fovEffectScale", OptV::Double(0.5));
-            game.side.camera_type = ct;
+            game.client.camera_type = ct;
             add_entity_with_data(game, 23, "minecraft:player", [5.5, 64.0, 5.5], 0.0, 0.0, 0);
             let spyglass = WireStack::new(item_id(game, "minecraft:spyglass"), 1);
             game.handle_packet(C::SetEquipment(play::SetEquipment {
@@ -1019,7 +1019,7 @@ pub(in crate::game) fn run_camera_player_fov_modifier_and_death_isolation_26_3()
             .unwrap();
             game.handle_packet(C::SetCamera(play::SetCamera { camera_id: 23 }))
                 .unwrap();
-            game.side.view = Default::default();
+            game.client.view = Default::default();
             for _ in 0..40 {
                 game.tick_fov();
             }
@@ -1053,14 +1053,14 @@ pub(in crate::game) fn run_camera_player_fov_modifier_and_death_isolation_26_3()
         let tc = find_case(name);
         with_client_game(|game| {
             let _server = setup_remote_overworld(game, 1, [0.5, 64.0, 0.5], true);
-            game.side
+            game.client
                 .settings
                 .file
                 .set("fovEffectScale", OptV::Double(1.0));
             let local = game.player.as_mut().unwrap();
             local.set_health(0.0, false).unwrap();
             local.speed = 0.3;
-            game.side.chat_ui.death_time = 10;
+            game.client.chat_ui.death_time = 10;
             game.inventory[0] = Some(ItemStack::new("minecraft:spyglass", 1));
             game.selected = 0;
             assert!(game.start_using_item());
@@ -1068,7 +1068,7 @@ pub(in crate::game) fn run_camera_player_fov_modifier_and_death_isolation_26_3()
             add_entity_with_data(game, id, kind, [5.5, 64.0, 5.5], 0.0, 0.0, 0);
             game.handle_packet(C::SetCamera(play::SetCamera { camera_id: id }))
                 .unwrap();
-            game.side.view = Default::default();
+            game.client.view = Default::default();
             for _ in 0..40 {
                 game.tick_fov();
             }
@@ -1091,7 +1091,7 @@ pub(in crate::game) fn run_camera_player_fov_modifier_and_death_isolation_26_3()
         let tc = find_case("local_healthy_spectating_dying_sprinting_remote_player");
         with_client_game(|game| {
             let _server = setup_remote_overworld(game, 1, [0.5, 64.0, 0.5], true);
-            game.side
+            game.client
                 .settings
                 .file
                 .set("fovEffectScale", OptV::Double(1.0));
@@ -1122,7 +1122,7 @@ pub(in crate::game) fn run_camera_player_fov_modifier_and_death_isolation_26_3()
                 .death_time = 10;
             game.handle_packet(C::SetCamera(play::SetCamera { camera_id: 26 }))
                 .unwrap();
-            game.side.view = Default::default();
+            game.client.view = Default::default();
             for _ in 0..40 {
                 game.tick_fov();
             }
@@ -1224,7 +1224,7 @@ pub(in crate::game) fn run_interaction_camera_eye_rotation_move_and_teleport_26_
         sync_interaction_size(game, 210, 0.1, 1.9059);
         game.handle_packet(C::SetCamera(play::SetCamera { camera_id: 210 }))
             .unwrap();
-        game.side.view = Default::default();
+        game.client.view = Default::default();
         for _ in 0..40 {
             game.tick_fov();
         }
@@ -1381,9 +1381,9 @@ pub(in crate::game) fn run_particle_camera_before_first_frame_and_after_reset_26
         game.world.weather.raining = true;
         game.world.weather.rain_level = (1.0, 1.0);
         game.world.game_time = 1;
-        game.side.settings.particles = 0;
-        game.side.settings.weather_radius = 10;
-        game.side.settings.sunrise.weather = true;
+        game.client.settings.particles = 0;
+        game.client.settings.weather_radius = 10;
+        game.client.settings.sunrise.weather = true;
 
         add_entity(
             game,
@@ -1398,29 +1398,29 @@ pub(in crate::game) fn run_particle_camera_before_first_frame_and_after_reset_26
             .unwrap();
 
         // Phase 1: tick before the first frame (Camera.update / alignWithEntity has never run).
-        game.side.view = Default::default();
-        game.side.fog.rain_fog_multiplier = 0.0;
-        game.side.particles.0.clear();
+        game.client.view = Default::default();
+        game.client.fog.rain_fog_multiplier = 0.0;
+        game.client.particles.0.clear();
         game.tick_fov();
         game.tick_particles();
 
         assert_eq!(
-            game.side.view.initialized,
+            game.client.view.initialized,
             before["initialized"].as_bool().unwrap(),
             "before_first_frame: initialized"
         );
         assert_eq!(
-            game.side.particles.0.camera.map(f64::to_bits),
+            game.client.particles.0.camera.map(f64::to_bits),
             vec3_bits_expected(&before["camera_pos_bits"]),
             "before_first_frame: particles.camera must be Vec3.ZERO (no camera_eye_position fallback)"
         );
         assert_eq!(
-            game.side.fog.rain_fog_multiplier.to_bits(),
+            game.client.fog.rain_fog_multiplier.to_bits(),
             hex_f32(&before["rain_fog_multiplier_bits"]),
             "before_first_frame: rain_fog_multiplier must sample Camera.blockPosition() == (0,0,0)"
         );
         assert_eq!(
-            game.side.particles.0.len() as u64,
+            game.client.particles.0.len() as u64,
             before["rain_splash_count"].as_u64().unwrap(),
             "before_first_frame: rain splashes must center on (0,0,0)"
         );
@@ -1445,28 +1445,28 @@ pub(in crate::game) fn run_particle_camera_before_first_frame_and_after_reset_26
             game.tick_fov();
         }
         game.camera_view(1.0);
-        game.side.fog.rain_fog_multiplier = 0.0;
-        game.side.particles.0.clear();
+        game.client.fog.rain_fog_multiplier = 0.0;
+        game.client.particles.0.clear();
         game.world.game_time = 1;
         game.tick_particles();
 
         assert_eq!(
-            game.side.view.initialized,
+            game.client.view.initialized,
             after["initialized"].as_bool().unwrap(),
             "after_first_frame: initialized"
         );
         assert_eq!(
-            game.side.particles.0.camera.map(f64::to_bits),
+            game.client.particles.0.camera.map(f64::to_bits),
             vec3_bits_expected(&after["camera_pos_bits"]),
             "after_first_frame: particles.camera"
         );
         assert_eq!(
-            game.side.fog.rain_fog_multiplier.to_bits(),
+            game.client.fog.rain_fog_multiplier.to_bits(),
             hex_f32(&after["rain_fog_multiplier_bits"]),
             "after_first_frame: rain_fog_multiplier"
         );
         assert_eq!(
-            game.side.particles.0.len() as u64,
+            game.client.particles.0.len() as u64,
             after["rain_splash_count"].as_u64().unwrap(),
             "after_first_frame: rain_splash_count"
         );
@@ -1490,7 +1490,7 @@ pub(in crate::game) fn run_particle_camera_before_first_frame_and_after_reset_26
         // `initialized` is false and `Camera.position()` keeps the last aligned position.
         game.client_logging_out();
         assert_eq!(
-            game.side.view.initialized,
+            game.client.view.initialized,
             after_reset["initialized"].as_bool().unwrap(),
             "after_camera_reset_before_next_frame: initialized after disconnect"
         );
@@ -1499,12 +1499,12 @@ pub(in crate::game) fn run_particle_camera_before_first_frame_and_after_reset_26
         game.tick_particles();
 
         assert_eq!(
-            game.side.view.initialized,
+            game.client.view.initialized,
             after_reset["initialized"].as_bool().unwrap(),
             "after_camera_reset_before_next_frame: initialized before next frame"
         );
         assert_eq!(
-            game.side.particles.0.camera.map(f64::to_bits),
+            game.client.particles.0.camera.map(f64::to_bits),
             vec3_bits_expected(&after_reset["camera_pos_bits"]),
             "after_camera_reset_before_next_frame: particles.camera must keep last aligned position"
         );
@@ -1540,7 +1540,7 @@ pub(in crate::game) fn run_removing_camera_entity_keeps_detached_camera_26_3() {
             }
             game.handle_packet(C::SetCamera(play::SetCamera { camera_id: 31 }))
                 .unwrap();
-            game.side.view = Default::default();
+            game.client.view = Default::default();
             for _ in 0..40 {
                 game.tick_fov();
             }
@@ -1553,7 +1553,7 @@ pub(in crate::game) fn run_removing_camera_entity_keeps_detached_camera_26_3() {
                 "{kind} before remove"
             );
             assert_eq!(
-                game.side.spectated_post_effect,
+                game.client.spectated_post_effect,
                 case["after_set_camera"]["post_effect"].as_str(),
                 "{kind} post effect before remove"
             );
@@ -1575,7 +1575,7 @@ pub(in crate::game) fn run_removing_camera_entity_keeps_detached_camera_26_3() {
                 "{kind} must stay detached after removal"
             );
             assert_eq!(
-                game.side.spectated_post_effect,
+                game.client.spectated_post_effect,
                 case["after_remove_entities"]["post_effect"].as_str(),
                 "{kind} post effect must persist after removal"
             );
@@ -1605,7 +1605,7 @@ pub(in crate::game) fn run_removing_camera_entity_keeps_detached_camera_26_3() {
                 "{kind} controls_camera after restore"
             );
             assert_eq!(
-                game.side.spectated_post_effect,
+                game.client.spectated_post_effect,
                 case["after_set_camera_player"]["post_effect"].as_str(),
                 "{kind} post effect after restore"
             );
@@ -1639,7 +1639,7 @@ pub(in crate::game) fn run_review_followup_camera_parity_26_3() {
             .no_gravity = true;
         game.handle_packet(C::SetCamera(play::SetCamera { camera_id: 401 }))
             .unwrap();
-        game.side.view = Default::default();
+        game.client.view = Default::default();
         for _ in 0..40 {
             game.tick_fov();
         }
@@ -1681,14 +1681,14 @@ pub(in crate::game) fn run_review_followup_camera_parity_26_3() {
 
         // Finding 3: SetCamera(creeper) while already in third person installs post effect.
         add_entity(game, 403, "minecraft:creeper", [5.0, 64.0, 5.0], 0.0, 0.0);
-        game.side.camera_type = sunrise_level::camera_math::CameraType::ThirdPersonBack;
+        game.client.camera_type = sunrise_level::camera_math::CameraType::ThirdPersonBack;
         game.handle_packet(C::SetCamera(play::SetCamera { camera_id: 403 }))
             .unwrap();
         assert_eq!(
-            game.side.spectated_post_effect,
+            game.client.spectated_post_effect,
             rf["third_person_post_effect"]["third_person_creeper_post_effect"].as_str()
         );
-        game.side.camera_type = sunrise_level::camera_math::CameraType::FirstPerson;
+        game.client.camera_type = sunrise_level::camera_math::CameraType::FirstPerson;
 
         // Finding 4: should_render_block_outline_for_hit with spectator/interactable and remote player.
         let craft_state = game
@@ -1710,7 +1710,7 @@ pub(in crate::game) fn run_review_followup_camera_parity_26_3() {
             param: 3.0,
         }))
         .unwrap();
-        game.side.chat_ui.hide_gui = false;
+        game.client.chat_ui.hide_gui = false;
         game.handle_packet(C::SetCamera(play::SetCamera { camera_id: 1 }))
             .unwrap();
         let craft_hit = sunrise_gameplay_common::game::Hit {
@@ -1768,7 +1768,7 @@ pub(in crate::game) fn run_review_followup_camera_parity_26_3() {
         add_entity(game, 407, "minecraft:player", [0.0, 64.0, 0.0], 0.0, 0.0);
         game.handle_packet(C::SetCamera(play::SetCamera { camera_id: 407 }))
             .unwrap();
-        game.side.view = Default::default();
+        game.client.view = Default::default();
         for _ in 0..40 {
             game.tick_fov();
         }
@@ -1826,7 +1826,7 @@ pub(in crate::game) fn run_review_followup_camera_parity_26_3() {
             on_ground: false,
         }))
         .unwrap();
-        let inter = game.side.interactions.get(&409).unwrap();
+        let inter = game.client.interactions.get(&409).unwrap();
         assert_eq!(
             [inter.previous.x, inter.previous.y, inter.previous.z].map(f64::to_bits),
             vec3_bits_expected(&rf["relative_teleport_old_pose"]["old_pos_bits"])
@@ -1894,7 +1894,7 @@ pub(in crate::game) fn run_review_followup_camera_parity_26_3() {
         // Finding 12: Watched living entity blindness blocks sky.
         add_entity(game, 450, "minecraft:creeper", [5.0, 64.0, 5.0], 0.0, 0.0);
         let blindness_id = game
-            .side
+            .client
             .remote
             .as_ref()
             .unwrap()
@@ -2120,7 +2120,7 @@ pub(in crate::game) fn run_sleeping_spectated_living_entity_bed_view_and_visibil
             game.handle_packet(C::SetCamera(play::SetCamera { camera_id: id }))
                 .unwrap();
 
-            game.side.view = Default::default();
+            game.client.view = Default::default();
             game.tick_fov();
             let (pos1, _, _) = game.camera_view(1.0).expect("1-tick camera view");
             assert_eq!(
@@ -2148,7 +2148,7 @@ pub(in crate::game) fn run_sleeping_spectated_living_entity_bed_view_and_visibil
                 hex_f32(&tc["camera_xRot_bits"]),
                 "{name}: camera_xRot_bits"
             );
-            let q = game.side.view.rotation;
+            let q = game.client.view.rotation;
             assert_eq!(
                 [q.x.to_bits(), q.y.to_bits(), q.z.to_bits(), q.w.to_bits()],
                 [

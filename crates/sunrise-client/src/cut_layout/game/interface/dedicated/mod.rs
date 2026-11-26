@@ -54,9 +54,9 @@ use std::{
                 game.native_lifecycle.begin_open(Authority::DedicatedServer);
                 game.native_lifecycle.world_open_ready().unwrap();
                 let dir = tempfile::tempdir().unwrap();
-                game.side.world_root = dir.path().to_path_buf();
-                game.side.save.0 = Arc::new(SaveDir::new(
-                    game.side.world_root.clone(),
+                game.server.world_root = dir.path().to_path_buf();
+                game.server.save.0 = Arc::new(SaveDir::new(
+                    game.server.world_root.clone(),
                     LevelShape::OVERWORLD,
                     Some(Default::default()),
                 ));
@@ -80,7 +80,7 @@ use std::{
                     fail_next_save(game);
                     assert_eq!(game.save_dedicated_checkpoint(phase).unwrap(), 1);
                 }
-                assert_eq!(game.side.save.0.record_save_failures(), 2);
+                assert_eq!(game.server.save.0.record_save_failures(), 2);
                 assert_eq!(game.save_dedicated_checkpoint("no new edits").unwrap(), 0);
 
                 fail_next_save(game);
@@ -93,7 +93,7 @@ use std::{
                     assert_eq!(events[0].0, WorldPhase::WorldCloseFailed);
                     assert!(events[0].1.contains(cause));
                 }
-                assert_eq!(game.side.save.0.record_save_failures(), 3);
+                assert_eq!(game.server.save.0.record_save_failures(), 3);
 
                 let blocked = dir.path().join("level.dat_new");
                 std::fs::create_dir(&blocked).unwrap();
@@ -145,7 +145,7 @@ use std::{
             assert!(game.online_player("robot").is_none());
             assert_eq!(game.online_player("GUEST12").unwrap().id, 12);
             // A fake with the same name must not hide a real player later in join order.
-            let guests = &mut game.side.lan.as_mut().unwrap().hub.guests;
+            let guests = &mut game.server.lan.as_mut().unwrap().hub.guests;
             let index = guests.iter().position(|g| g.uuid == 12).unwrap();
             guests.update(index, |g| g.name = "robot".into());
             guests.reverse();
@@ -161,7 +161,7 @@ use std::{
             assert!(game.ip_ban_players("0.0.0.0").is_empty());
             assert_eq!(game.ip_ban_players("127.0.0.1"), [12, 13]);
             // Even with a matching real peer, the fake is not counted as affected.
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()
@@ -221,9 +221,9 @@ mod console_source_tests {
 
     /// Runs `command` as the console does and returns whether it worked and every message it printed.
     fn console(game: &mut sunrise_gameplay::game::ServerGame<'_>, command: &str) -> (bool, String) {
-        game.side.chat_capture = Some(Vec::new());
+        game.server.chat_capture = Some(Vec::new());
         let ok = game.as_console_in_spawn_level(|g| g.run_command(command));
-        let said = game.side.chat_capture.take().unwrap_or_default();
+        let said = game.server.chat_capture.take().unwrap_or_default();
         let said = said
             .iter()
             .map(|t| t.component().to_string())
@@ -280,17 +280,17 @@ mod console_source_tests {
             ok && said.contains("chat.type.emote") && said.contains("\"Server\""),
             "{said}"
         );
-        game.side.rcon_source = true;
+        game.server.rcon_source = true;
         let (ok, said) = console(&mut game, "me waves");
         assert!(ok && said.contains("\"Rcon\""), "{said}");
-        game.side.rcon_source = false;
+        game.server.rcon_source = false;
         let (ok, said) = console(&mut game, "teammsg hi");
         assert!(
             !ok && said.contains("permissions.requires.entity"),
             "{said}"
         );
         // The console's source is put back after each line.
-        assert!(game.side.command_source.is_none());
+        assert!(game.server.command_source.is_none());
     }
 }
 use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

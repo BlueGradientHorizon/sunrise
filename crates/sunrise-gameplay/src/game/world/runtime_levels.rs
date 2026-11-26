@@ -89,13 +89,13 @@ impl RuntimeTable {
         self.queue.clear();
     }
 
-    pub(in crate::game::server_side) fn set_cap(&mut self, cap: usize) {
+    pub fn set_cap(&mut self, cap: usize) {
         self.cap = cap;
     }
 
     /// Queue the open of `id`, which the caller has checked except against the table: the cap and
     /// a repeat. Returns the generation of this open.
-    pub(in crate::game::server_side) fn queue_open(
+    pub fn queue_open(
         &mut self,
         owner: &'static str,
         id: &str,
@@ -126,7 +126,7 @@ impl RuntimeTable {
     }
 
     /// Queue the close of `id`: it must be open, not waiting to open or to close.
-    pub(in crate::game::server_side) fn queue_unload(
+    pub fn queue_unload(
         &mut self,
         id: &str,
     ) -> Result<(), RuntimeLevelError> {
@@ -143,7 +143,7 @@ impl RuntimeTable {
     /// Queue the removal of `id`, which the caller has checked except against the table. A level
     /// that is open is marked closing until the removal is applied; one that is not in the table
     /// has only files to remove. A level waiting to open is refused: its open comes first.
-    pub(in crate::game::server_side) fn queue_delete(
+    pub fn queue_delete(
         &mut self,
         owner: &'static str,
         id: &str,
@@ -160,19 +160,19 @@ impl RuntimeTable {
 
     /// Whether `id` is open: a level waiting to open is not, one waiting to close still is, and so
     /// is one the idle close dropped from memory (it opens again when entered).
-    pub(in crate::game::server_side) fn is_open(&self, id: &str) -> bool {
+    pub fn is_open(&self, id: &str) -> bool {
         self.entries
             .get(id)
             .is_some_and(|entry| entry.state != State::Opening)
     }
 
     /// Whether `id` is a runtime level, open or not yet.
-    pub(in crate::game::server_side) fn holds(&self, id: &str) -> bool {
+    pub fn holds(&self, id: &str) -> bool {
         self.entries.contains_key(id)
     }
 
     /// The generation a handle to the level `id` must carry: 0 for a level every world has.
-    pub(in crate::game::server_side) fn generation_of(&self, id: &str) -> u32 {
+    pub fn generation_of(&self, id: &str) -> u32 {
         self.entries.get(id).map_or(0, |entry| entry.generation)
     }
 
@@ -244,11 +244,11 @@ impl RuntimeTable {
     }
 
     /// Forget `id`: it is closed, or never opened.
-    pub(in crate::game::server_side) fn remove(&mut self, id: &str) {
+    pub fn remove(&mut self, id: &str) {
         self.entries.remove(id);
     }
 
-    pub(in crate::game::server_side) fn mark_open(&mut self, id: &str) {
+    pub fn mark_open(&mut self, id: &str) {
         if let Some(entry) = self.entries.get_mut(id) {
             entry.state = State::Open;
         }
@@ -646,7 +646,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// `RuntimeLevels::unload`: check the request now, queue it for after the level loop.
-    pub(in crate::game) fn runtime_level_unload(
+    pub fn runtime_level_unload(
         &mut self,
         id: &str,
     ) -> Result<(), RuntimeLevelError> {
@@ -667,7 +667,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// `RuntimeLevels::delete`: check the request now, queue it for after the level loop.
-    pub(in crate::game) fn runtime_level_delete(
+    pub fn runtime_level_delete(
         &mut self,
         id: &str,
     ) -> Result<(), RuntimeLevelError> {
@@ -717,7 +717,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// `RuntimeLevels::is_open`.
-    pub(in crate::game) fn runtime_level_is_open(&self, id: &str) -> bool {
+    pub fn runtime_level_is_open(&self, id: &str) -> bool {
         self.server.levels.0.runtime.is_open(id)
     }
 
@@ -740,7 +740,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// A handle to the server level `key`, of the generation it is open with.
-    pub(in crate::game) fn level_ref(
+    pub fn level_ref(
         &self,
         epoch: mod_api::WorldEpoch,
         key: mod_api::DimensionKey,
@@ -752,7 +752,7 @@ impl crate::game::ServerGame<'_> {
     /// Apply the requests mods made since the last time, in order. Runs after the level loop of a
     /// server tick, on the server thread, with no level in the middle of a tick. A request
     /// that no longer holds is dropped, with a line in the log.
-    pub(in crate::game::server_side) fn apply_runtime_levels(&mut self) {
+    pub fn apply_runtime_levels(&mut self) {
         for request in self.server.levels.0.runtime.take_queue() {
             match request {
                 Request::Open(id) => {

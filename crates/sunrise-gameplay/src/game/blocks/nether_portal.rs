@@ -91,7 +91,7 @@ impl Plan {
     /// `EndPortalBlock.getPortalDestination` for an entity other than a
     /// player in `from`: the End's spawn point, or out of the End the
     /// world spawn `world_spawn` in its level `spawn_level` (`respawnData.dimension()`).
-    pub(in crate::game::server_side) fn end_portal(
+    pub fn end_portal(
         from: Dim,
         spawn_level: Dim,
         world_spawn: BlockPos,
@@ -401,7 +401,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// The loaded level of `dim` as a side of the portal search: the level in place or a
     /// parked one, None for a level that is not open. Reads no saved data.
-    pub(in crate::game) fn portal_side(&self, dim: Dim) -> Option<PortalSide<'_>> {
+    pub fn portal_side(&self, dim: Dim) -> Option<PortalSide<'_>> {
         if dim == self.common.dim {
             return Some(self.in_place_side());
         }
@@ -422,7 +422,7 @@ impl crate::game::ServerGame<'_> {
     /// The plan of an entity of `width` by `height` at `at` going through the
     /// portal at `entry` (`getDimensionTransitionFromExit` and the scaled,
     /// clamped exit of `getPortalDestination`).
-    pub(in crate::game::server_side) fn portal_plan(
+    pub fn portal_plan(
         &self,
         entry: BlockPos,
         at: Vec3,
@@ -634,7 +634,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// The exit portal of `plan` in the loaded dimension: the closest one
     /// within reach, else one built by `PortalForcer.createPortal`.
-    pub(in crate::game::server_side) fn nether_exit_portal(
+    pub fn nether_exit_portal(
         &mut self,
         plan: &Plan,
     ) -> Option<FoundRectangle> {
@@ -692,7 +692,7 @@ impl crate::game::ServerGame<'_> {
 
     /// `NetherPortalBlock.createDimensionTransition`: the arrival position
     /// and the yaw turned by.
-    pub(in crate::game::server_side) fn arrival(
+    pub fn arrival(
         &self,
         plan: &Plan,
         exit: FoundRectangle,
@@ -763,16 +763,16 @@ impl crate::game::ServerGame<'_> {
     /// Positions before the entities move this tick, and `Entity.handlePortal`
     /// at the start of their tick: an item or mob that stayed in a portal
     /// goes through (transition time 0) and waits for its dimension.
-    pub(in crate::game) fn handle_entity_portals(&mut self) {
+    pub fn handle_entity_portals(&mut self) {
         self.handle_portals(false, false);
     }
     /// `Entity.handlePortal` of the boats and minecarts, which `tick_boats`
     /// and `tick_carts` move: it runs before them, from the position they
     /// ended the last tick at, as the start of a vehicle's own tick does.
-    pub(in crate::game::server_side) fn handle_vehicle_portals(&mut self) {
+    pub fn handle_vehicle_portals(&mut self) {
         self.handle_portals(true, false);
     }
-    pub(in crate::game::server_side) fn handle_portals(
+    pub fn handle_portals(
         &mut self,
         vehicles: bool,
         after_move: bool,
@@ -948,7 +948,7 @@ impl crate::game::ServerGame<'_> {
     /// (`VehicleEntity`) always 10, projectiles (`Projectile`) 2; any other
     /// entity takes its first passenger's delay when that is a server player
     /// (`Player.getDimensionChangingDelay`), else 300.
-    pub(in crate::game::server_side) fn dimension_changing_delay(&self, id: u32) -> i32 {
+    pub fn dimension_changing_delay(&self, id: u32) -> i32 {
         if self.common.boats.iter().any(|b| b.id == id)
             || self.common.carts.iter().any(|c| c.id == id)
             || self.server.lan_acting_entity == Some(id)
@@ -993,7 +993,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// `Entity.setPortalCooldown`: assign the passenger-dependent delay,
     /// leaving the existing portal process intact.
-    pub(in crate::game) fn set_portal_cooldown(&mut self, id: u32) {
+    pub fn set_portal_cooldown(&mut self, id: u32) {
         let delay = self.dimension_changing_delay(id);
         self.server.portals.entities.entry(id).or_default().cooldown = delay;
     }
@@ -1001,7 +1001,7 @@ impl crate::game::ServerGame<'_> {
     /// player close enough for spawning, a zombified piglin spawns on the block
     /// under the portal column when it is a valid spawn, plays its ambient
     /// sound (`EntityType.spawn`) and waits out a portal cooldown.
-    pub(in crate::game) fn portal_spawn(&mut self, pos: [i32; 3]) {
+    pub fn portal_spawn(&mut self, pos: [i32; 3]) {
         // ChunkMap.anyPlayerCloseEnoughForSpawning: a non-spectator within 128
         // blocks of the chunk centre.
         let centre = [
@@ -1109,7 +1109,7 @@ impl crate::game::ServerGame<'_> {
     /// for the items, mobs, empty boats and minecarts, and arrows that moved
     /// this tick: the portal blocks their box swept through (an End portal's
     /// transition time is 0 too).
-    pub(in crate::game) fn find_entity_portals(&mut self) {
+    pub fn find_entity_portals(&mut self) {
         self.find_portals(None);
         // AbstractArrow, ThrowableProjectile and AbstractHurtingProjectile apply
         // block effects before calling Entity.tick, so their refreshed cooldown
@@ -1120,7 +1120,7 @@ impl crate::game::ServerGame<'_> {
     /// moved them: a ridden vehicle moves with its rider, after the other
     /// entities were swept, so without this pass its portal is found a tick
     /// late, from where it has already moved on to.
-    pub(in crate::game::server_side) fn find_ridden_vehicle_portals(&mut self, ridden: &[u32]) {
+    pub fn find_ridden_vehicle_portals(&mut self, ridden: &[u32]) {
         if !ridden.is_empty() {
             self.find_portals(Some(ridden));
         }
@@ -1541,7 +1541,7 @@ impl crate::game::ServerGame<'_> {
         Some((tag, state))
     }
 
-    pub(in crate::game::server_side) fn send_through_portal(&mut self, id: u32, entry: BlockPos) {
+    pub fn send_through_portal(&mut self, id: u32, entry: BlockPos) {
         let arrivals = self.server.portals.arrivals.len();
         // `Entity.handlePortal`: setPortalCooldown before the teleport, which
         // restoreFrom copies to the arriving entity.
@@ -1686,7 +1686,7 @@ impl crate::game::ServerGame<'_> {
     /// Entities waiting for the loaded dimension whose exit area is loaded:
     /// their exit portal (found or built) or End destination, position,
     /// turned yaw and motion, and portal cooldown; they join the world with the chunk entities.
-    pub(in crate::game::server_side) fn resolve_arrivals(&mut self) {
+    pub fn resolve_arrivals(&mut self) {
         if !self.common.is_logical_server() {
             return;
         }
@@ -1774,7 +1774,7 @@ impl crate::game::ServerGame<'_> {
 
     /// `ItemEntity.teleport` / `PrimedTnt.teleport`: after the recreated server
     /// entity joins, merge its stack now or select the portal-safe blast calculator.
-    pub(in crate::game::server_side) fn spawn_teleported_entity(
+    pub fn spawn_teleported_entity(
         &mut self,
         key: (i32, i32),
         pending: PendingEntity,
@@ -1933,7 +1933,7 @@ impl crate::game::ServerGame<'_> {
 
     // ---- persistence ----
 
-    pub(in crate::game::server_side) fn arrivals_path(&self) -> std::path::PathBuf {
+    pub fn arrivals_path(&self) -> std::path::PathBuf {
         self.server
             .world_root
             .join("data")
@@ -1957,7 +1957,7 @@ impl crate::game::ServerGame<'_> {
             .extend(list.iter().filter_map(arrival_from_tag));
     }
     /// Write the waiting entities when they changed.
-    pub(in crate::game::server_side) fn save_portal_arrivals(&mut self) {
+    pub fn save_portal_arrivals(&mut self) {
         if !self.server.portals.dirty || !self.common.is_logical_server() {
             return;
         }

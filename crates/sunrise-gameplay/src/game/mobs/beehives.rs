@@ -132,7 +132,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// `BeehiveBlockEntity.serverTick` of the hive at `key`, after an
     /// emergency exit if fire is beside it (`BeehiveBlock.updateShape`).
-    pub(in crate::game) fn tick_beehive(&mut self, key: (i32, i32, i32)) {
+    pub fn tick_beehive(&mut self, key: (i32, i32, i32)) {
         let at = [key.0, key.1, key.2];
         let Some((honey, facing)) = self.common.hive_state(at) else {
             return;
@@ -165,7 +165,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// `BeehiveBlockEntity.addOccupant` for a bee its `BeeEnterHiveGoal`
     /// sent in: off its lead, its tag stored, the bee gone.
-    pub(in crate::game::server_side) fn bee_enter_hive(&mut self, mob: u32, at: [i32; 3]) {
+    pub fn bee_enter_hive(&mut self, mob: u32, at: [i32; 3]) {
         let key = (at[0], at[1], at[2]);
         if !self
             .common.mobs
@@ -275,7 +275,7 @@ impl crate::game::ServerGame<'_> {
     /// the honeycombs and a glass bottle a honey bottle from a full hive
     /// (honey level 5), then the honey level resets and, unless a campfire
     /// smokes the hive, the bees come out angry. True when it took the click.
-    pub(in crate::game::server_side) fn use_beehive(
+    pub fn use_beehive(
         &mut self,
         pos: [i32; 3],
         held: Option<&ItemStack>,

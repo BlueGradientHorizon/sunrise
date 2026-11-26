@@ -34,7 +34,7 @@ pub(crate) fn fixture(
                     Some(PlayerMotion::new(game.motion, Vec3::new(4.5, 80.0, 4.5)).unwrap());
                 bind_local_player(game, 11, 123);
                 game.set_mode_id(0);
-                game.side.next_entity = 100;
+                game.server.next_entity = 100;
                 run(game, &seen);
             })
         },

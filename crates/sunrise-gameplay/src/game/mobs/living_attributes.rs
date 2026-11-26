@@ -112,7 +112,7 @@ impl ServerGame<'_> {
     /// holds swaps the old item's attribute modifiers for the new one's. An
     /// entity that changed nothing costs a compare of its eight slots, and
     /// one that wears nothing and never wore anything is skipped outright.
-    pub(in crate::game::server_side) fn tick_equipment_attributes(&mut self) {
+    pub fn tick_equipment_attributes(&mut self) {
         if !self.common.is_logical_server() {
             return;
         }
@@ -382,7 +382,7 @@ impl ServerGame<'_> {
     /// None when the entity has no such attribute or takes no attribute writes
     /// (the dragon, as `/attribute` refuses it); `Some(false)` when an add
     /// finds the id taken or a remove finds none.
-    pub(in crate::game) fn write_attribute(
+    pub fn write_attribute(
         &mut self,
         t: Target,
         name: &str,

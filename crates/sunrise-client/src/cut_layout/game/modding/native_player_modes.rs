@@ -14,7 +14,7 @@ mod tests {
     use sunrise_level::chunk::Chunk;
 
     fn set_mode(game: &mut sunrise_gameplay::game::ServerGame<'_>, uuid: u128, mode: i32) {
-        game.side.lan.as_mut().unwrap().hub.guests.update_all(|g| {
+        game.server.lan.as_mut().unwrap().hub.guests.update_all(|g| {
             if g.uuid == uuid {
                 g.game_mode = mode;
                 g.abilities.update_for_mode(mode);

@@ -48,7 +48,7 @@ impl crate::game::ServerGame<'_> {
     /// previous tick's). Every list the walk keeps has a previous position.
     /// A frame, painting, crystal, spawner, cloud, fangs or marker never
     /// moves, so zero; the dragon uses its own previous position.
-    pub(in crate::game::server_side) fn native_entity_known_speed(
+    pub fn native_entity_known_speed(
         &self,
         entity: EntityRef,
     ) -> Option<Vec3> {
@@ -76,7 +76,7 @@ impl crate::game::ServerGame<'_> {
     /// first passenger, or a mount's rider as `equine::controlled` decides
     /// (saddled; a pig or strider's rider holding the stick; a harnessed
     /// happy ghast), the rule the mount code steers by.
-    pub(in crate::game::server_side) fn native_steered(&self, t: Target) -> bool {
+    pub fn native_steered(&self, t: Target) -> bool {
         match t {
             Target::Boat(_) => true,
             Target::Mob(id) => self
@@ -141,7 +141,7 @@ impl crate::game::ServerGame<'_> {
     /// landing hurts it as a step does (a fan's or a launcher's push, a mod's soft block).
     /// Players too, the acting one and guests. False for a stale handle or an entity not in
     /// the level in place; true for a kind that keeps no fall distance, which has none to forget.
-    pub(in crate::game) fn entity_reset_fall_distance(&mut self, entity: EntityRef) -> bool {
+    pub fn entity_reset_fall_distance(&mut self, entity: EntityRef) -> bool {
         let Some(target) = self.native_entity_target(entity) else {
             return false;
         };
@@ -332,7 +332,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// The unit vector the entity looks along (`Entity.getViewVector`, from
     /// its pitch and yaw). API 379.
-    pub(in crate::game) fn entity_view_vector(&self, entity: EntityRef) -> Option<[f64; 3]> {
+    pub fn entity_view_vector(&self, entity: EntityRef) -> Option<[f64; 3]> {
         let [yaw, pitch] = self.entity_rotation(entity)?;
         Some(turned_view_vector(yaw, pitch, 0.0))
     }
@@ -367,7 +367,7 @@ impl crate::game::ServerGame<'_> {
         self.supporting_block(position, bounds)
     }
     /// The block the entity stands on (`Entity.getOnPos`). API 379.
-    pub(in crate::game) fn entity_on_block(&self, entity: EntityRef) -> Option<[i32; 3]> {
+    pub fn entity_on_block(&self, entity: EntityRef) -> Option<[i32; 3]> {
         let t = self.native_entity_target(entity)?;
         let [x, y, z] = self.entity_position(entity)?;
         Some(on_block_position(

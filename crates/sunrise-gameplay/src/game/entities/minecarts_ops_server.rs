@@ -32,7 +32,7 @@ impl ServerGame<'_> {
     /// `setChestVehicleItem` first unpack its loot table with no player, so
     /// no `player_generates_container_loot` fires later. While its menu is
     /// open the live slots are the placeholder copy (`open_cart_container`).
-    pub(in crate::game) fn edit_cart_slots<R>(
+    pub fn edit_cart_slots<R>(
         &mut self,
         id: u32,
         edit: impl FnOnce(&mut Vec<Option<ItemStack>>) -> R,
@@ -106,7 +106,7 @@ impl ServerGame<'_> {
     /// `VehicleEntity.hurtServer`: shake, add the damage, break past 40 (at
     /// once for creative players); TNT minecarts prime instead when moving
     /// or hurt by fire or an explosion (`damageSourceIgnitesTnt`).
-    pub(in crate::game) fn hurt_cart(
+    pub fn hurt_cart(
         &mut self,
         i: usize,
         damage: f32,
@@ -140,7 +140,7 @@ impl ServerGame<'_> {
     }
 
     /// Accepted damage is distinct from survival, destruction, or TNT priming.
-    pub(in crate::game) fn hurt_cart_result(
+    pub fn hurt_cart_result(
         &mut self,
         i: usize,
         mut damage: f32,

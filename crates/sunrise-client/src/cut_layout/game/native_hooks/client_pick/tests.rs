@@ -608,7 +608,7 @@ fn rider_pick_refuses_a_camera_changed_by_its_listener() {
     mod_platform::testing::with_mods(mods.into(), || {
         with_pick_game("minecraft:pig", 1.5, |game, _| {
             let kind = game
-                .side
+                .client
                 .remote
                 .as_ref()
                 .unwrap()

@@ -126,7 +126,7 @@ pub(crate) mod tests {
                 add_guest(game);
                 let at = Vec3::new(0.5, 65.0, 0.5);
                 let mut body = PlayerMotion::new(game.motion, at).unwrap();
-                game.side
+                game.server
                     .lan
                     .as_mut()
                     .unwrap()

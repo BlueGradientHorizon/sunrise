@@ -44,7 +44,7 @@ fn play_hit_sound_helper_and_eight_mining_ticks() {
                     Some(PlayerMotion::new(game.motion, Vec3::new(4.5, 62.0, 4.5)).unwrap());
                 game.player.as_mut().unwrap().ground.on_ground = true;
                 game.creative = false;
-                game.side.screen = Screen::Playing;
+                game.client.screen = Screen::Playing;
                 *game.test_title_mut() = None;
                 game.set_mapping_held("key.attack", true);
                 game.set_test_forced_hit(Some(Hit {

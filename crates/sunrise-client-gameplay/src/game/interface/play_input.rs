@@ -49,11 +49,11 @@ impl crate::game::ClientGame<'_> {
         self.client.smooth_camera = !self.client.smooth_camera;
     }
 
-    pub(in crate::game) fn held_mapping(&self, action: sunrise_client::actions::Action) -> bool {
+    pub fn held_mapping(&self, action: sunrise_client::actions::Action) -> bool {
         self.mapped_key_down(action.name())
     }
 
-    pub(in crate::game) fn press_device_key(&mut self, key: KeyCode, source: Source) -> bool {
+    pub fn press_device_key(&mut self, key: KeyCode, source: Source) -> bool {
         let edge = self.client.keys.press(key, source);
         self.sync_device_key(key, true);
         edge
@@ -65,19 +65,19 @@ impl crate::game::ClientGame<'_> {
         up
     }
 
-    pub(in crate::game) fn insert_device_key(&mut self, key: KeyCode) -> bool {
+    pub fn insert_device_key(&mut self, key: KeyCode) -> bool {
         let edge = self.client.keys.insert(key);
         self.sync_device_key(key, true);
         edge
     }
 
-    pub(in crate::game) fn remove_device_key(&mut self, key: &KeyCode) -> bool {
+    pub fn remove_device_key(&mut self, key: &KeyCode) -> bool {
         let held = self.client.keys.remove(key);
         self.sync_device_key(*key, false);
         held
     }
 
-    pub(in crate::game) fn clear_device_keys(&mut self) {
+    pub fn clear_device_keys(&mut self) {
         self.client.keys.clear();
         let options = self.toggle_options();
         self.client
@@ -91,7 +91,7 @@ impl crate::game::ClientGame<'_> {
         }
     }
 
-    pub(in crate::game::client_side) fn update_modifiers(
+    pub fn update_modifiers(
         &mut self,
         state: winit::keyboard::ModifiersState,
     ) {
@@ -139,7 +139,7 @@ impl crate::game::ClientGame<'_> {
     /// drop. Those do not care what sneak and sprint are bound to. A modifier
     /// says nothing about which side is down, so one being up means both
     /// Shifts, or both Controls, are.
-    pub(in crate::game::client_side) fn heal_hold_latches(&mut self) {
+    pub fn heal_hold_latches(&mut self) {
         self.update_modifiers(self.client.modifiers);
     }
     /// Whether the other device still holds the sneak or sprint mapping `source` released.
@@ -170,7 +170,7 @@ impl crate::game::ClientGame<'_> {
         }
     }
     /// Apply a physical key to every mapping bound to it.
-    pub(in crate::game) fn mapped_key_event(
+    pub fn mapped_key_event(
         &mut self,
         key: KeyCode,
         pressed: bool,
@@ -224,7 +224,7 @@ impl crate::game::ClientGame<'_> {
         Ok(())
     }
     /// Apply a physical mouse button to every mapping bound to it.
-    pub(in crate::game::client_side) fn mapped_mouse_event(
+    pub fn mapped_mouse_event(
         &mut self,
         button: MouseButton,
         input: &str,
@@ -264,7 +264,7 @@ impl crate::game::ClientGame<'_> {
     /// `key`, the vanilla default the mapping translated to, may itself be
     /// another mapping's rebound key. `source` is the device the event came
     /// from: a key stays held while any device holds it.
-    pub(in crate::game::client_side) fn mapped_key(
+    pub fn mapped_key(
         &mut self,
         key: KeyCode,
         pressed: bool,
@@ -452,7 +452,7 @@ impl crate::game::ClientGame<'_> {
     /// A mouse mapping pressed or let go by `source`. A release waits while another device holds
     /// the mapping, so letting go of one can't end what the other still presses, as for keys
     /// (`HeldKeys`).
-    pub(in crate::game::client_side) fn mouse_mapping(
+    pub fn mouse_mapping(
         &mut self,
         button: MouseButton,
         pressed: bool,
@@ -514,7 +514,7 @@ impl crate::game::ClientGame<'_> {
         }
     }
     /// A translated mouse mapping (`Left` = attack, `Right` = use, `Middle` = middle pair) while playing.
-    pub(in crate::game) fn play_mouse(&mut self, button: MouseButton, pressed: bool) -> Result<()> {
+    pub fn play_mouse(&mut self, button: MouseButton, pressed: bool) -> Result<()> {
         if pressed {
             self.pvp_click(button);
         }
@@ -545,7 +545,7 @@ impl crate::game::ClientGame<'_> {
     /// Asks the mods about each gameplay mapping a physical input (a key's or a mouse button's
     /// name) is bound to, before the game acts on it: true when one cancels a press. Only while
     /// playing, and nothing is asked with no mod listening.
-    pub(in crate::game::client_side) fn key_mapping_canceled(
+    pub fn key_mapping_canceled(
         &mut self,
         input: Option<&str>,
         pressed: bool,
@@ -580,7 +580,7 @@ impl crate::game::ClientGame<'_> {
     /// press that is cancelled never happened, so `restore_held_keys` must not hold it (nor its
     /// repeats); a cancelled repeat only drops its own action and keeps the hold an accepted
     /// press made.
-    pub(in crate::game) fn key_press_canceled(
+    pub fn key_press_canceled(
         &mut self,
         key: KeyCode,
         pressed: bool,
@@ -630,7 +630,7 @@ impl crate::game::ClientGame<'_> {
 
     /// KeyboardInput.tick: classify the original stick first; a direct write changes only
     /// its own flag and analog component, never a different direction's classification.
-    pub(in crate::game::client_side) fn sample_movement_keys(
+    pub fn sample_movement_keys(
         &self,
         stick: Option<[f32; 2]>,
     ) -> sunrise_sim::sprint::Keys {

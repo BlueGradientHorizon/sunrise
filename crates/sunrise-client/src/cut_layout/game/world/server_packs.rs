@@ -108,12 +108,12 @@ mod tests {
                         .set_modified(std::time::UNIX_EPOCH)
                         .unwrap();
                     let old_modified = file.metadata().unwrap().modified().unwrap();
-                    game.side.server_packs.0.packs.record_feedback();
+                    game.client.server_packs.0.packs.record_feedback();
                     game.answer_pack_prompt(false).unwrap();
 
-                    assert!(game.side.remote.is_none());
+                    assert!(game.client.remote.is_none());
                     assert!(matches!(
-                        &game.side.title.0.as_ref().unwrap().mode,
+                        &game.client.title.0.as_ref().unwrap().mode,
                         sunrise_client::title::Mode::Multiplayer(multiplayer::Screen::Disconnected {
                             reason, retry: None, ..
                         }) if reason.translation_key() == Some("multiplayer.requiredTexturePrompt.disconnect")
@@ -129,11 +129,11 @@ mod tests {
                         }
                     }
                     assert_eq!(
-                        game.side.server_packs.0.packs.take_recorded_feedback(),
+                        game.client.server_packs.0.packs.take_recorded_feedback(),
                         PACK_IDS.map(|id| (id, action::DECLINED))
                     );
-                    assert_eq!(game.side.server_packs.0.packs.prompt(), Prompt::Pending);
-                    assert!(game.side.server_packs.0.packs.take_replies().is_empty());
+                    assert_eq!(game.client.server_packs.0.packs.prompt(), Prompt::Pending);
+                    assert!(game.client.server_packs.0.packs.take_replies().is_empty());
                     assert_ne!(file.metadata().unwrap().modified().unwrap(), old_modified);
                     assert_eq!(std::fs::read(&backup).unwrap(), original_bytes);
                     // Read the saved raw NBT directly to prove Disabled policies were not cleared.
@@ -239,18 +239,18 @@ mod tests {
                     vec![ModEntry::new(OWNER, Box::new(HideHud))].into(),
                     || {
                         crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
-                            game.side.title.0 = None;
-                            game.side.screen = sunrise_gameplay_common::game::Screen::Playing;
-                            game.side.audio.0.backend_live_for_bench();
+                            game.client.title.0 = None;
+                            game.client.screen = sunrise_gameplay_common::game::Screen::Playing;
+                            game.client.audio.0.backend_live_for_bench();
                             let spec = StreamSpec::new(SoundSource::Voice, 2, 48_000);
                             let (dropped, retired) = mpsc::channel();
                             let _handle = game
-                                .side
+                                .client
                                 .audio
                                 .0
                                 .open_stream(OWNER, &spec, None, Box::new(BrokenSource(dropped)))
                                 .unwrap();
-                            game.side.audio.0.mix_buffer(&mut [0.0; 2], 2, 48_000);
+                            game.client.audio.0.mix_buffer(&mut [0.0; 2], 2, 48_000);
                             // The worker queues the notice before dropping the failed source.
                             retired.recv_timeout(Duration::from_secs(1)).unwrap();
 
@@ -261,7 +261,7 @@ mod tests {
                             let size = [640, 480];
                             let _ = game.hud(size);
                             let _ = game.hud(size);
-                            let [regular, error] = game.side.toast_manager.visible.as_mut_slice()
+                            let [regular, error] = game.client.toast_manager.visible.as_mut_slice()
                             else {
                                 panic!("expected two visible notices")
                             };
@@ -288,7 +288,7 @@ mod tests {
                             error_toast.slide.origin = Some(past);
 
                             let rect = *game
-                                .side
+                                .client
                                 .gui
                                 .atlas
                                 .sprites
@@ -353,10 +353,10 @@ mod tests {
                 mod_platform::testing::with_mods(mods.into(), || {
                     with_client_game(|window| {
                         let serving =
-                            Serving::fixture_with_reports(0, window.side.client_reports.0.clone());
-                        window.side.integrated = Some(Integrated::fixture_for(&serving));
+                            Serving::fixture_with_reports(0, window.client.client_reports.0.clone());
+                        window.client.integrated = Some(Integrated::fixture_for(&serving));
                         window.begin_closing_save(false).unwrap();
-                        assert!(window.side.pending_save.0.is_some());
+                        assert!(window.client.pending_save.0.is_some());
                         let dir = tempfile::tempdir().unwrap();
                         let reporter = sunrise_sim::chunk_io::SaveFailureReporter::new(
                             true,
@@ -375,18 +375,18 @@ mod tests {
                         drop(serving);
 
                         assert!(!window.poll_closing_save().unwrap());
-                        assert!(window.side.integrated.is_none());
-                        assert!(window.side.title.0.is_some());
+                        assert!(window.client.integrated.is_none());
+                        assert!(window.client.title.0.is_some());
                         assert!(
                             window
-                                .side
+                                .client
                                 .toast_manager
                                 .system_mut(SystemToastId::ChunkIo(2))
                                 .is_none()
                         );
                         let mut batch = HudBatch::scratch([640, 480]);
                         window.draw_every_toast(&mut batch);
-                        let [entry] = window.side.toast_manager.visible.as_slice() else {
+                        let [entry] = window.client.toast_manager.visible.as_slice() else {
                             panic!("expected a visible toast")
                         };
                         let Toast::System(Some(SystemToastId::ChunkIo(2)), toast) = &entry.toast
@@ -461,10 +461,10 @@ mod tests {
                 mod_platform::testing::with_mods(mods.into(), || {
                     with_client_game(|window| {
                         let serving =
-                            Serving::fixture_with_reports(0, window.side.client_reports.0.clone());
-                        window.side.integrated = Some(Integrated::fixture_for(&serving));
+                            Serving::fixture_with_reports(0, window.client.client_reports.0.clone());
+                        window.client.integrated = Some(Integrated::fixture_for(&serving));
                         with_game(|server| {
-                            server.side.serving = Some(serving);
+                            server.server.serving = Some(serving);
                             server.native_lifecycle.world_open_ready().unwrap();
                             for id in [ACCEPTED, CANCELLED] {
                                 let _owner = mod_api::__private::enter(id, "schedule fixture");
@@ -486,7 +486,7 @@ mod tests {
                         let mut batch = HudBatch::scratch([640, 480]);
                         with_client_game(|other| {
                             other.draw_every_toast(&mut batch);
-                            assert!(other.side.toast_manager.visible.is_empty());
+                            assert!(other.client.toast_manager.visible.is_empty());
                             assert!(
                                 observed.lock().unwrap().is_empty(),
                                 "not sent to another window"
@@ -494,7 +494,7 @@ mod tests {
                         });
 
                         window.draw_every_toast(&mut batch);
-                        let [entry] = window.side.toast_manager.visible.as_slice() else {
+                        let [entry] = window.client.toast_manager.visible.as_slice() else {
                             panic!("only the accepted notice should reach the queue");
                         };
                         let Toast::System(None, toast) = &entry.toast else {
@@ -649,15 +649,15 @@ mod tests {
                         // Dedicated/server instances do not drain the client toast queue.
                         game.options.dedicated = Some(Vec::new());
                         game.add_hook_panic_toasts();
-                        assert!(game.side.toast_manager.queued.is_empty());
+                        assert!(game.client.toast_manager.queued.is_empty());
                         // The client drains and queues the toast directly without firing toast_add.
                         game.options.dedicated = None;
                         let _ = lang::scoped(lang::Language::load(&[], lang::DEFAULT), || {
                             game.add_hook_panic_toasts();
                         });
-                        assert_eq!(game.side.toast_manager.queued.len(), 1);
+                        assert_eq!(game.client.toast_manager.queued.len(), 1);
                         let Some(Toast::Diagnostic { toast, .. }) =
-                            game.side.toast_manager.queued.front()
+                            game.client.toast_manager.queued.front()
                         else {
                             panic!("expected a queued diagnostic")
                         };
@@ -681,7 +681,7 @@ mod tests {
                         let mut first = HudBatch::scratch([640, 480]);
                         game.draw_every_toast(&mut first);
                         game.draw_every_toast(&mut first);
-                        let entry = &mut game.side.toast_manager.visible[0];
+                        let entry = &mut game.client.toast_manager.visible[0];
                         assert_eq!(entry.slot, 0);
                         let Toast::Diagnostic { toast, .. } = &mut entry.toast else {
                             panic!("expected a visible diagnostic")
@@ -707,7 +707,7 @@ mod tests {
                         );
 
                         game.set_hud_mode(mod_api::HudMode::NoHud);
-                        assert!(game.side.chat_ui.hide_gui);
+                        assert!(game.client.chat_ui.hide_gui);
                         let mut mod_hidden = HudBatch::scratch([640, 480]);
                         game.draw_every_toast(&mut mod_hidden);
                         assert!(
@@ -717,7 +717,7 @@ mod tests {
 
                         game.toggle_hide_gui();
                         game.set_hud_mode(mod_api::HudMode::AllVisible);
-                        assert!(game.side.chat_ui.player_hides_gui);
+                        assert!(game.client.chat_ui.player_hides_gui);
                         let mut player_hidden = HudBatch::scratch([640, 480]);
                         game.draw_every_toast(&mut player_hidden);
                         assert!(

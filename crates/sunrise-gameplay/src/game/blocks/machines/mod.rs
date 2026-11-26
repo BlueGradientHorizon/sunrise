@@ -65,7 +65,7 @@ pub(in crate::game::server_side) fn wake_hoppers_reaching(
 }
 
 impl ServerGame<'_> {
-    pub(in crate::game) fn hopper_cooldown(&self, pos: Pos) -> i32 {
+    pub fn hopper_cooldown(&self, pos: Pos) -> i32 {
         hopper_cooldown_in(&self.server.hoppers, &self.common.world, pos)
     }
 }
@@ -101,7 +101,7 @@ impl ViewTestSlots for View {
 }
 
 impl ServerGame<'_> {
-    pub(in crate::game) fn containers(&self) -> Containers<'_> {
+    pub fn containers(&self) -> Containers<'_> {
         Containers {
             world: &self.common.world,
             behaviours: self.common.res.behaviours(),
@@ -137,7 +137,7 @@ impl ServerGame<'_> {
                 PlacementQuery::Offer(&mut PlacementAttempt::default()),
             )
     }
-    pub(in crate::game::server_side) fn slot_mut_at(
+    pub fn slot_mut_at(
         &mut self,
         view: &View,
         slot: usize,
@@ -153,7 +153,7 @@ impl ServerGame<'_> {
         entity.slot_mut(i)
     }
     /// `BlockEntity.setChanged` for every block entity of a container.
-    pub(in crate::game::server_side) fn view_changed(&mut self, view: &View) {
+    pub fn view_changed(&mut self, view: &View) {
         // A composter's containers change its block state instead.
         if let Kind::Composter(_) = view.kind {
             return;
@@ -177,7 +177,7 @@ impl ServerGame<'_> {
         }
     }
     /// `BlockEntity.setChanged` at `pos`: comparators re-read the container.
-    pub(in crate::game) fn container_changed(&mut self, pos: Pos) {
+    pub fn container_changed(&mut self, pos: Pos) {
         if pos.1 == super::minecarts::CART_KEY_Y {
             return;
         }
@@ -396,7 +396,7 @@ impl ServerGame<'_> {
         ((stack.count > 0).then_some(stack), result)
     }
     /// `HopperBlockEntity.addItem(from, container, stack, direction)`; the remainder.
-    pub(in crate::game::server_side) fn add_item(
+    pub fn add_item(
         &mut self,
         from_hopper: Option<Pos>,
         view: &View,
@@ -521,7 +521,7 @@ impl ServerGame<'_> {
     }
     /// `HopperBlockEntity.pushItemsTick` of the hopper at `pos`, if its block
     /// is still a hopper (`BlockEntityType.isValid`).
-    pub(in crate::game) fn tick_hopper(&mut self, pos: Pos) {
+    pub fn tick_hopper(&mut self, pos: Pos) {
         let time = self.common.world.game_time;
         // Every hopper keeps its cooldown and the tick it last ticked
         // (`HopperBlockEntity.tickedGameTime`), idle ones too: a hopper that
@@ -578,7 +578,7 @@ impl ServerGame<'_> {
         });
     }
     /// `HopperBlockEntity.tryMoveItems` with `suckInItems`.
-    pub(in crate::game) fn hopper_try_move_items(&mut self, pos: Pos) {
+    pub fn hopper_try_move_items(&mut self, pos: Pos) {
         let state = self.common.world.block(pos.0, pos.1, pos.2);
         self.hopper_try_move_items_with_state(pos, state);
     }
@@ -1054,7 +1054,7 @@ impl ServerGame<'_> {
         cancel
     }
     /// The rest of `HopperBlockEntity.ejectItems`: one item into `target`.
-    pub(in crate::game::server_side) fn eject_into(
+    pub fn eject_into(
         &mut self,
         pos: Pos,
         hopper: &View,
@@ -1131,7 +1131,7 @@ impl ServerGame<'_> {
     /// there, from a container entity whose box meets the one around `at`
     /// (`getSourceContainerOrHandler`). `None` when there is no container. A capability part
     /// above takes the container's place.
-    pub(in crate::game::server_side) fn suck_from_container(
+    pub fn suck_from_container(
         &mut self,
         above: Pos,
         at: [f64; 3],
@@ -1339,7 +1339,7 @@ impl ServerGame<'_> {
     /// Runs `f` on a container entity's items as a container, under the
     /// placeholder key its menu uses (the open menu's copy when it is open),
     /// then hands the items back to the entity.
-    pub(in crate::game::server_side) fn with_entity_container<R>(
+    pub fn with_entity_container<R>(
         &mut self,
         id: u32,
         f: impl FnOnce(&mut Self, &View) -> R,
@@ -1498,7 +1498,7 @@ impl ServerGame<'_> {
     /// entities over it or touching it, each tick without a cooldown.
     /// `consumedItemThisFrame` in 26.3 caps a tick at one item: the tick tries
     /// once, and `makeStepAlongTrack` may try again, but only one succeeds.
-    pub(in crate::game::server_side) fn hopper_cart_suck(
+    pub fn hopper_cart_suck(
         &mut self,
         cart: &mut super::minecarts::Minecart,
     ) {
@@ -1543,7 +1543,7 @@ impl ServerGame<'_> {
     // ---- dispensers and droppers ----
 
     /// `DispenserBlock.dispenseFrom` / `DropperBlock.dispenseFrom`.
-    pub(in crate::game) fn dispense_from(
+    pub fn dispense_from(
         &mut self,
         pos: BlockPos,
         state: BlockStateId,

@@ -41,7 +41,7 @@ mod tests {
             .unwrap();
             game.end.set_locator(Some(Arc::new(terrain)));
             let dimension = game.dim.id();
-            let before = (game.world.chunks.len(), game.side.streaming.pending());
+            let before = (game.world.chunks.len(), game.server.streaming.pending());
             let columns = [(100000, -100000), (0, 0), (-1, 31), (100000, -100000)];
             let answer = game.terrain_surface(dimension, &columns).unwrap();
             assert_eq!(answer.len(), columns.len());
@@ -58,7 +58,7 @@ mod tests {
             assert_eq!(game.terrain_surface(dimension, &columns).unwrap(), answer);
             assert_eq!(
                 before,
-                (game.world.chunks.len(), game.side.streaming.pending())
+                (game.world.chunks.len(), game.server.streaming.pending())
             );
         });
     }

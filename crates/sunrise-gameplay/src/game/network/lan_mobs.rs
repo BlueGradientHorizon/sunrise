@@ -19,7 +19,7 @@ use sunrise_sim::{
 impl ServerGame<'_> {
     /// How mobs see each guest in play (`player_view` with the guest swapped
     /// in).
-    pub(in crate::game) fn lan_guest_views(&mut self) -> GuestViews {
+    pub fn lan_guest_views(&mut self) -> GuestViews {
         let Some(host) = self.server.lan.as_ref() else {
             return Vec::new();
         };
@@ -45,7 +45,7 @@ impl ServerGame<'_> {
     /// The guest `conn`'s real identity — the uuid its lent view carries and
     /// its entity id — when the guest is a player the tick can name: a fake
     /// guest resolves as none, as the write handle refuses it (#1077).
-    pub(in crate::game::server_side) fn guest_identity(
+    pub fn guest_identity(
         &self,
         conn: u32,
     ) -> Option<([i32; 4], u32)> {
@@ -98,7 +98,7 @@ impl ServerGame<'_> {
 
     /// One mob event, with the guest swapped in. A hit knows the mob that
     /// swung, so nothing guesses it from where the hit came from.
-    pub(in crate::game::server_side) fn guest_mob_event(&mut self, mob: u32, e: MobEvent) {
+    pub fn guest_mob_event(&mut self, mob: u32, e: MobEvent) {
         if matches!(
             e,
             MobEvent::AttackPlayer(..)
@@ -219,7 +219,7 @@ impl ServerGame<'_> {
     /// A player's melee hit on a guest (Player.causeExtraKnockback on a
     /// ServerPlayer): a hurt that marked the velocity sends it at once, and
     /// the server's copy goes back to the velocity it had before the hit.
-    pub(in crate::game::server_side) fn guest_struck_by<R>(
+    pub fn guest_struck_by<R>(
         &mut self,
         conn: u32,
         f: impl FnOnce(&mut Self) -> R,

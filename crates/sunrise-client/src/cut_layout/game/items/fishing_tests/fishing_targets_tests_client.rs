@@ -236,7 +236,7 @@ pub(crate) fn run_extra_case(
             .filter(|s| s.as_str() == "minecraft:entity.breeze.deflect")
             .count();
         let got_deflect = game
-            .side
+            .server
             .pending_sounds
             .iter()
             .filter(|s| s.event == "minecraft:entity.breeze.deflect")

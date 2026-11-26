@@ -18,7 +18,7 @@ impl crate::game::ServerGame<'_> {
     /// ServerRecipeBook.addRecipes/removeRecipes for the player in place: how
     /// many recipe book displays changed (a transmute recipe has one per
     /// material count).
-    pub(in crate::game) fn change_recipes(&mut self, give: bool, recipes: &[String]) -> i32 {
+    pub fn change_recipes(&mut self, give: bool, recipes: &[String]) -> i32 {
         let (recipes, custom_count) = self.change_mod_crafting_recipes(give, recipes);
         if give {
             return custom_count + self.award_recipes(&recipes) as i32;
@@ -750,7 +750,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// The attribute map of a living entity whose attributes Sunrise does
     /// not model, created from its type's defaults on first use.
-    pub(in crate::game) fn generic_attributes(
+    pub fn generic_attributes(
         &mut self,
         t: Target,
         attribute: &str,

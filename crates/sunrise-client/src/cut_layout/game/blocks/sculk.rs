@@ -97,7 +97,7 @@ pub(crate) mod shriek_capture_tests {
             world_random.next_long(),
             "level random continuation"
         );
-        let shared = &game.side.pending_sounds;
+        let shared = &game.server.pending_sounds;
         assert_eq!(
             shared.iter().map(|s| s.event.as_str()).collect::<Vec<_>>(),
             vec![before, after],
@@ -155,9 +155,9 @@ pub(crate) mod shriek_capture_tests {
             .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
         client.world.set(4, 200, 4, dry_state).unwrap();
         client.world.set(7, 200, 4, wet_state).unwrap();
-        client.side.particles.0.requested = Some(Vec::new());
-        client.side.particles.0.seed_randoms(6500, 6501, 6502);
-        client.side.audio.0.capture = Some(Vec::new());
+        client.client.particles.0.requested = Some(Vec::new());
+        client.client.particles.0.seed_randoms(6500, 6501, 6502);
+        client.client.audio.0.capture = Some(Vec::new());
         let mut random = LegacyRandom::new(6500);
         let mut client_world_random = client.world.random.clone();
         client.level_events.push(LevelEvent::LevelEvent {
@@ -168,13 +168,13 @@ pub(crate) mod shriek_capture_tests {
         });
         client.client_process_level_events().unwrap();
         assert_eq!(
-            client.side.audio.0.heard.get(effect),
+            client.client.audio.0.heard.get(effect),
             Some(&1),
             "dry effect must play locally on client"
         );
         random.next_float();
         assert_eq!(
-            client.side.particles.0.random().next_long(),
+            client.client.particles.0.random().next_long(),
             random.next_long(),
             "dry random continuation"
         );
@@ -186,16 +186,16 @@ pub(crate) mod shriek_capture_tests {
         });
         client.client_process_level_events().unwrap();
         assert_eq!(
-            client.side.audio.0.heard.get(effect),
+            client.client.audio.0.heard.get(effect),
             Some(&1),
             "waterlogged effect stays silent"
         );
         assert_eq!(
-            client.side.particles.0.random().next_long(),
+            client.client.particles.0.random().next_long(),
             random.next_long(),
             "wet branch consumes no pitch draw"
         );
-        let requests = client.side.particles.0.requested.as_ref().unwrap();
+        let requests = client.client.particles.0.requested.as_ref().unwrap();
         assert_eq!(requests.len(), 20);
         for (i, (options, position, velocity)) in requests.iter().enumerate() {
             assert_eq!(options.ty, ParticleType::Shriek);
@@ -209,7 +209,7 @@ pub(crate) mod shriek_capture_tests {
             "client level random untouched"
         );
         assert!(
-            client.side.audio.0.capture.as_ref().unwrap().is_empty(),
+            client.client.audio.0.capture.as_ref().unwrap().is_empty(),
             "client local shriek must not enter capture"
         );
     }

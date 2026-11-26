@@ -13,7 +13,7 @@ impl ClientGame<'_> {
     /// Refuses stale menus, invalid slots/hotbar indices, spectators, non-client hosts,
     /// the creative inventory screen and empty batches without changing items.
     /// True means submitted, not accepted by the server: its corrections win.
-    pub(in crate::game) fn menu_click(&mut self, menu: MenuRef, clicks: &[MenuClick]) -> bool {
+    pub fn menu_click(&mut self, menu: MenuRef, clicks: &[MenuClick]) -> bool {
         if self.common.is_logical_server()
             || self.client.screen == super::Screen::Creative
             || self.common.spectator()

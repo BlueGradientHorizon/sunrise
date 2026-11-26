@@ -3,7 +3,7 @@ use super::*;
 #[cfg(feature = "client")]
 impl crate::game::ClientGame<'_> {
     /// Connecting / loading screens; true when it covered the frame.
-    pub(in crate::game::client_side) fn remote_overlay(&mut self, batch: &mut HudBatch) -> bool {
+    pub fn remote_overlay(&mut self, batch: &mut HudBatch) -> bool {
         if !self.remote_screen_up() {
             return false;
         }

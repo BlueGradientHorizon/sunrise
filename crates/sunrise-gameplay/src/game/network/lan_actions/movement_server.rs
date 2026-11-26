@@ -18,7 +18,7 @@ impl crate::game::ServerGame<'_> {
     /// 20th tick wears the glider by one, and every 10th is an
     /// `elytra_glide` game event. Entity.checkFallDistanceAccumulation runs
     /// first: a glide that isn't diving keeps the fall distance at 1.
-    pub(in crate::game) fn guest_glide_tick(&mut self, conn: u32, fell: f64) {
+    pub fn guest_glide_tick(&mut self, conn: u32, fell: f64) {
         let Some(creative) = self.server.lan.as_mut().and_then(|host| {
             host.hub
                 .update_guest(conn, |g| {
@@ -72,7 +72,7 @@ impl crate::game::ServerGame<'_> {
     /// (`BlockBehaviour.isSuffocating`'s default; glass and the like opt
     /// out), as the mobs' check has it. A block sharing volume with one of
     /// guest `conn`'s collision exclusions is no wall (#3717).
-    pub(in crate::game) fn in_wall(&self, conn: u32, at: [f64; 3], body: Dimensions) -> bool {
+    pub fn in_wall(&self, conn: u32, at: [f64; 3], body: Dimensions) -> bool {
         let y = (at[1] + f64::from(body.eye_height)).floor() as i32;
         let [xs, zs] = eye_columns(at, body);
         let guest = self.server.lan.as_ref().and_then(|host| host.hub.guest(conn));

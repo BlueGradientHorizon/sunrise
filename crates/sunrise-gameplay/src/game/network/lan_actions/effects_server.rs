@@ -107,7 +107,7 @@ impl crate::game::ServerGame<'_> {
         }
     }
     /// Positional sounds and level events of the tick, for the guests.
-    pub(in crate::game) fn lan_broadcast_effects(&mut self) {
+    pub fn lan_broadcast_effects(&mut self) {
         let Some(host) = self.server.lan.as_mut() else {
             return;
         };
@@ -144,7 +144,7 @@ impl crate::game::ServerGame<'_> {
     /// The guests' items in use and Riptide spins, for the players around
     /// (`LivingEntity.startUsingItem`, `stopUsingItem` and `startAutoSpinAttack`
     /// set DATA_LIVING_ENTITY_FLAGS).
-    pub(in crate::game) fn lan_living_flags(&mut self) {
+    pub fn lan_living_flags(&mut self) {
         let Some(host) = self.server.lan.as_mut() else {
             return;
         };
@@ -217,7 +217,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// The tick's arm swings for the players around (each guest's to everyone
     /// else), and `LivingEntity.updateSwingTime` for the guests' bodies here.
-    pub(in crate::game) fn lan_swings(&mut self) {
+    pub fn lan_swings(&mut self) {
         let Some(host) = self.server.lan.as_mut() else {
             return;
         };

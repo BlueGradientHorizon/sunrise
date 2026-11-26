@@ -894,7 +894,7 @@ impl crate::game::ClientGame<'_> {
         shown(self) != before
     }
     /// `StonecutterScreen.mouseScrolled`.
-    pub(in crate::game::client_side) fn station_scroll(&mut self, d: f32) -> bool {
+    pub fn station_scroll(&mut self, d: f32) -> bool {
         let mut handled = if let Some(m) = self
             .common
             .station
@@ -1216,7 +1216,7 @@ impl crate::game::ClientGame<'_> {
     ) {
         self.galactic(batch, text, x, y, max, color);
     }
-    pub(in crate::game::client_side) fn slot_position_any(&self, i: usize) -> Option<(f32, f32)> {
+    pub fn slot_position_any(&self, i: usize) -> Option<(f32, f32)> {
         self.station_slot_position(i)
             .or_else(|| (i < 36).then(|| self.slot_position(i)))
     }
@@ -1225,7 +1225,7 @@ impl crate::game::ClientGame<'_> {
 
     /// `ItemStack.getTooltipLines` subset: name in rarity colour, lore,
     /// potion effects, enchantments (gray, curses red), stored enchantments, trims.
-    pub(in crate::game) fn stack_tooltip(
+    pub fn stack_tooltip(
         &self,
         stack: &ItemStack,
     ) -> Vec<(sunrise_game_data::text::Text, u32)> {
@@ -1240,7 +1240,7 @@ impl crate::game::ClientGame<'_> {
     /// projectile: `ChargedProjectiles.addProjectileTooltip` takes its details
     /// without the name, the player and the advanced flag. `creative` is
     /// `TooltipFlag.isCreative`: a creative tab's own slot.
-    pub(in crate::game::client_side) fn stack_tooltip_lines(
+    pub fn stack_tooltip_lines(
         &self,
         stack: &ItemStack,
         nested: bool,
@@ -1779,7 +1779,7 @@ impl crate::game::ClientGame<'_> {
         lines
     }
     /// Menu state for the control socket.
-    pub(in crate::game) fn station_info(&self) -> serde_json::Value {
+    pub fn station_info(&self) -> serde_json::Value {
         let Some(s) = self.common.station.as_ref() else {
             return match self.common.container_kind() {
                 Some(BlockEntity::Brewing(b)) => {
@@ -1801,11 +1801,11 @@ impl crate::game::ClientGame<'_> {
         })
     }
     /// Options.advancedItemTooltips (F3+H).
-    pub(in crate::game) fn options_advanced_tooltips(&self) -> bool {
+    pub fn options_advanced_tooltips(&self) -> bool {
         self.client.settings.file.bool("advancedItemTooltips")
     }
     /// `TooltipRenderUtil`: dark box with the purple border, first line spaced.
-    pub(in crate::game) fn draw_tooltip_lines<T: Clone + Into<sunrise_game_data::text::Text>>(
+    pub fn draw_tooltip_lines<T: Clone + Into<sunrise_game_data::text::Text>>(
         &self,
         batch: &mut HudBatch,
         lines: &[(T, u32)],
@@ -1820,7 +1820,7 @@ impl crate::game::ClientGame<'_> {
         )
     }
 
-    pub(in crate::game::client_side) fn draw_tooltip_lines_positioned<
+    pub fn draw_tooltip_lines_positioned<
         T: Clone + Into<sunrise_game_data::text::Text>,
     >(
         &self,
@@ -1849,7 +1849,7 @@ impl crate::game::ClientGame<'_> {
     }
     /// The box around a tooltip's contents at `x`, `y`, `w` × `h`: solid fills, or the
     /// background and frame sprites of the tooltip style a mod names.
-    pub(in crate::game) fn tooltip_box(
+    pub fn tooltip_box(
         &self,
         batch: &mut HudBatch,
         stack: Option<&ItemStack>,
@@ -2058,14 +2058,14 @@ impl crate::game::ClientGame<'_> {
     /// `AbstractContainerScreen.showTooltipWithItemInHand`: a hovered stack's
     /// tooltip shows while a stack is carried only when its prepared tooltip
     /// component says so, as a bundle's contents do (`ClientBundleTooltip`).
-    pub(in crate::game::client_side) fn tooltip_with_carried(&self, stack: &ItemStack) -> bool {
+    pub fn tooltip_with_carried(&self, stack: &ItemStack) -> bool {
         if self.common.carried.is_none() {
             return true;
         }
         self.tooltip_image_shows_with_carried(stack)
     }
     /// Hovered-slot tooltip on the plain inventory, crafting and container screens.
-    pub(in crate::game) fn draw_slot_tooltip(&mut self, batch: &mut HudBatch) {
+    pub fn draw_slot_tooltip(&mut self, batch: &mut HudBatch) {
         // An item dragged off the item panel covers the slot under it.
         if self.mod_browser_dragging() {
             return;

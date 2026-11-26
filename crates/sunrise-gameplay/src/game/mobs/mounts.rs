@@ -78,7 +78,7 @@ pub fn dismounts_underwater(
 
 impl ServerGame<'_> {
     /// `FoodOnAStickItem.use` while riding: boost the mount, wear the stick.
-    pub(in crate::game) fn use_steering_stick(&mut self, item: &str) -> bool {
+    pub fn use_steering_stick(&mut self, item: &str) -> bool {
         let (species, wear) = match item {
             "minecraft:carrot_on_a_stick" => (Species::Pig, 7),
             "minecraft:warped_fungus_on_a_stick" => (Species::Strider, 1),
@@ -118,7 +118,7 @@ impl ServerGame<'_> {
         true
     }
     /// `AbstractHorse.mobInteract`. Returns whether the click was used.
-    pub(in crate::game) fn interact_mount(&mut self, index: usize, item: &str) -> bool {
+    pub fn interact_mount(&mut self, index: usize, item: &str) -> bool {
         let held = self.common.held().cloned();
         let m = &self.common.mobs[index];
         let species = m.species();
@@ -482,7 +482,7 @@ impl ServerGame<'_> {
     }
     /// Whether the rider's eyes are in water (`Entity.updateFluidOnEyes` then `isEyeInFluid(WATER)`),
     /// and not in a bubble column, as `LivingEntity.baseTick` asks before it lets a rider stay.
-    pub(in crate::game::server_side) fn rider_eyes_in_water(&self) -> bool {
+    pub fn rider_eyes_in_water(&self) -> bool {
         let Some([x, y, z]) = self.common.eye_position() else {
             return false;
         };
@@ -494,7 +494,7 @@ impl ServerGame<'_> {
             .is_some_and(|(height, _)| f64::from(by) + f64::from(height) > y)
     }
     /// The rider's input for this tick; returns false when not on a mount.
-    pub(in crate::game) fn tick_mount_riding(&mut self, keys: Keys) -> bool {
+    pub fn tick_mount_riding(&mut self, keys: Keys) -> bool {
         let Some(i) = self.common.mount_index() else {
             return false;
         };
@@ -560,7 +560,7 @@ impl ServerGame<'_> {
     }
     /// `LivingEntity.baseTick` for the mobs that ride a mount of the `dismounts_underwater` tag (a baby
     /// zombie on a chicken): with their eyes in water they get off it.
-    pub(in crate::game::server_side) fn dismount_underwater_mob_riders(&mut self) {
+    pub fn dismount_underwater_mob_riders(&mut self) {
         let blocked = self.mobs_below_off_level();
         let tags = &self.items().entity_type_tags;
         let swimmers: Vec<u32> = self

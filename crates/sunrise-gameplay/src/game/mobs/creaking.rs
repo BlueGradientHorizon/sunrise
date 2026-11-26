@@ -98,7 +98,7 @@ impl crate::game::ServerGame<'_> {
     /// mob world, which is then built with the other mobs (`f` gets None
     /// otherwise: the world reads every player, the teams and the weather, and
     /// most heart ticks need none of it).
-    pub(in crate::game::server_side) fn with_heart(
+    pub fn with_heart(
         &mut self,
         key: Pos,
         heart: &mut CreakingHeart,
@@ -183,7 +183,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// After `Creaking.hurtServer` posts ENTITY_ACTION, check the live protector, let
     /// a player-credited hit reach the heart, then play the mob's hurt sound.
-    pub(in crate::game) fn creaking_hurt(&mut self, home: [i32; 3], id: u32, by_player: bool) {
+    pub fn creaking_hurt(&mut self, home: [i32; 3], id: u32, by_player: bool) {
         let Some(join) = self.common.mob_object(id).map(|m| m.join) else {
             return;
         };
@@ -298,7 +298,7 @@ impl crate::game::ServerGame<'_> {
     /// `CreakingHeartBlockEntity.serverTick` of the heart at `key`. Its slot
     /// stays while uprooted, so that a heart whose block went away is still
     /// found here and lets go of its protector.
-    pub(in crate::game) fn tick_creaking_heart(&mut self, key: Pos) -> Result<()> {
+    pub fn tick_creaking_heart(&mut self, key: Pos) -> Result<()> {
         let Some((lease, BlockEntity::CreakingHeart(mut heart))) =
             self.common.world.block_entities.take(&key)
         else {

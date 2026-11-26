@@ -43,7 +43,7 @@ fn live_guest(window: MountClickWindow, host: &LanHost) -> Option<usize> {
 impl crate::game::ServerGame<'_> {
     /// `ServerPlayer.openHorseInventory` for mount `mob`: the open menu
     /// closes, the client gets the mount screen and the menu's slots.
-    pub(in crate::game) fn lan_open_mount(&mut self, conn: u32, mob: u32) {
+    pub fn lan_open_mount(&mut self, conn: u32, mob: u32) {
         let Some(index) = self.common.mobs.iter().position(|m| m.id == mob) else {
             return;
         };
@@ -73,7 +73,7 @@ impl crate::game::ServerGame<'_> {
 
     /// `HorseInventoryMenu` over mount `index`, with the player's inventory
     /// loaded by the caller.
-    pub(in crate::game) fn mount_engine_menu(&self, index: usize, columns: usize) -> Menu {
+    pub fn mount_engine_menu(&self, index: usize, columns: usize) -> Menu {
         let env = self.menu_env();
         let mut menu = Menu::new(Kind::Mount(columns));
         menu.set_registry_id(Some("sunrise:mount_inventory"));
@@ -225,7 +225,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// The engine menu's mount slots back on mount `index`.
-    pub(in crate::game) fn lan_mount_store(&mut self, index: usize, columns: usize, menu: &Menu) {
+    pub fn lan_mount_store(&mut self, index: usize, columns: usize, menu: &Menu) {
         let body = shows_body(self.common.mobs[index].species()).then(|| menu.slot(1).cloned());
         let items = (0..columns * 3)
             .map(|k| menu.slot(2 + k).cloned())

@@ -146,7 +146,7 @@ impl crate::game::ServerGame<'_> {
         )
     }
     /// `BlockAttachedEntity.kill`: `ENTITY_DIE` at the painting, then `dropItem`.
-    pub(in crate::game) fn break_painting_by(
+    pub fn break_painting_by(
         &mut self,
         index: usize,
         by_player: bool,
@@ -229,7 +229,7 @@ impl crate::game::ServerGame<'_> {
         Some((p, at))
     }
     /// BlockAttachedEntity.tick: check survival every 100 ticks.
-    pub(in crate::game::server_side) fn tick_paintings(&mut self) {
+    pub fn tick_paintings(&mut self) {
         // ServerLevel.tick: only entities in entity-ticking chunks tick.
         let ticking = self.entity_ticking_area();
         let mut i = 0;

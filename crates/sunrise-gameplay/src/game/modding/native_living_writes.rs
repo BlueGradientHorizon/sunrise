@@ -64,7 +64,7 @@ impl crate::game::ServerGame<'_> {
     /// `send_to_self`. True when a swing started. Mobs and players; false
     /// for armor stands and the dragon, and for a player other than the
     /// acting one while another player acts.
-    pub(in crate::game) fn living_swing(
+    pub fn living_swing(
         &mut self,
         living: LivingRef,
         hand: Hand,
@@ -109,12 +109,12 @@ impl crate::game::ServerGame<'_> {
     /// `LivingEntity.getArrowCount`: the arrows stuck in a player or a mob.
     /// None for armor stands and the dragon, which Sunrise keeps no count
     /// for.
-    pub(in crate::game) fn living_arrow_count(&mut self, living: LivingRef) -> Option<i32> {
+    pub fn living_arrow_count(&mut self, living: LivingRef) -> Option<i32> {
         Some(self.native_living_stuck(living)?.arrows)
     }
     /// `LivingEntity.setArrowCount`: players around see the arrows (vanilla
     /// does not limit the count). False for armor stands and the dragon.
-    pub(in crate::game) fn living_set_arrow_count(
+    pub fn living_set_arrow_count(
         &mut self,
         living: LivingRef,
         count: i32,
@@ -125,12 +125,12 @@ impl crate::game::ServerGame<'_> {
     }
     /// `LivingEntity.getStingerCount`: the bee stingers stuck in a player or
     /// a mob. None for armor stands and the dragon.
-    pub(in crate::game) fn living_stinger_count(&mut self, living: LivingRef) -> Option<i32> {
+    pub fn living_stinger_count(&mut self, living: LivingRef) -> Option<i32> {
         Some(self.native_living_stuck(living)?.stingers)
     }
     /// `LivingEntity.setStingerCount`: players around see the stingers. False
     /// for armor stands and the dragon.
-    pub(in crate::game) fn living_set_stinger_count(
+    pub fn living_set_stinger_count(
         &mut self,
         living: LivingRef,
         count: i32,
@@ -142,7 +142,7 @@ impl crate::game::ServerGame<'_> {
     /// `LivingEntity.removeArrowTime`: the ticks until the next arrow falls
     /// out of a player or a mob; at 0 or less it restarts at
     /// `20 * (30 - arrows)`. False for armor stands and the dragon.
-    pub(in crate::game) fn living_set_arrow_removal_ticks(
+    pub fn living_set_arrow_removal_ticks(
         &mut self,
         living: LivingRef,
         ticks: i32,
@@ -153,7 +153,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// `LivingEntity.removeStingerTime`, as `set_arrow_removal_ticks` for the
     /// stingers.
-    pub(in crate::game) fn living_set_stinger_removal_ticks(
+    pub fn living_set_stinger_removal_ticks(
         &mut self,
         living: LivingRef,
         ticks: i32,
@@ -167,7 +167,7 @@ impl crate::game::ServerGame<'_> {
     /// player or a mob uses, 0 when it uses none. A mob's is the item's use
     /// duration less the ticks its use counter has run. None for armor stands
     /// and the dragon.
-    pub(in crate::game) fn living_item_use_remaining(&self, living: LivingRef) -> Option<i32> {
+    pub fn living_item_use_remaining(&self, living: LivingRef) -> Option<i32> {
         match self.native_living_target(living)? {
             Target::Player => Some(
                 sunrise_gameplay_common::game::item_use_common::remaining_of(
@@ -192,7 +192,7 @@ impl crate::game::ServerGame<'_> {
     /// `ticks` are left; what reads the counter (a spear's stabs, a bow's draw)
     /// follows it. False when the entity uses nothing, and for armor stands and
     /// the dragon.
-    pub(in crate::game) fn living_set_item_use_remaining(
+    pub fn living_set_item_use_remaining(
         &mut self,
         living: LivingRef,
         ticks: i32,
@@ -227,7 +227,7 @@ impl crate::game::ServerGame<'_> {
     /// `release_using_item` or a goal ends it. False for a piglin with
     /// something in its off hand and a drinking witch, whose counter is their
     /// own timer.
-    pub(in crate::game) fn living_start_using_item(
+    pub fn living_start_using_item(
         &mut self,
         living: LivingRef,
         hand: Hand,
@@ -249,7 +249,7 @@ impl crate::game::ServerGame<'_> {
     /// false when none runs, for armor stands and the dragon, and for a player
     /// other than the acting one while another player acts. A mob's bow or
     /// trident has no release of its own, as in vanilla.
-    pub(in crate::game) fn living_release_using_item(&mut self, living: LivingRef) -> bool {
+    pub fn living_release_using_item(&mut self, living: LivingRef) -> bool {
         match self.native_living_target(living) {
             Some(Target::Mob(id)) => self.release_mob_using_item(id),
             Some(Target::Player | Target::Guest(_)) => self
@@ -265,7 +265,7 @@ impl crate::game::ServerGame<'_> {
     /// players around see the spin (living flag 4). A `ticks` of 0 or less ends
     /// the spin and clears its damage. False for the other kinds, a dead
     /// player and a non-finite `damage`.
-    pub(in crate::game) fn living_set_riptiding(
+    pub fn living_set_riptiding(
         &mut self,
         living: LivingRef,
         ticks: i32,
@@ -306,7 +306,7 @@ impl crate::game::ServerGame<'_> {
     /// `Waypoint.Icon.style` of the waypoint a handle names, as
     /// `/waypoint modify <entity> style` sets it: a player's reaches the
     /// players it transmits to. False for the dragon.
-    pub(in crate::game) fn living_set_waypoint_style(
+    pub fn living_set_waypoint_style(
         &mut self,
         living: LivingRef,
         style: &Identifier,
@@ -315,7 +315,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// `Waypoint.Icon.color` of the waypoint a handle names: the RGB colour,
     /// or none to show a player in their team's colour. False for the dragon.
-    pub(in crate::game) fn living_set_waypoint_color(
+    pub fn living_set_waypoint_color(
         &mut self,
         living: LivingRef,
         rgb: Option<u32>,

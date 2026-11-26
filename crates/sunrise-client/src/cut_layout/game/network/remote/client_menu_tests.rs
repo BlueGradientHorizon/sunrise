@@ -14,7 +14,7 @@ fn inventory_repair_does_not_replace_an_open_menus_predicted_cursor() {
         let (mut reader, _writer) = connect_menu_test(game);
         spawn_menu_test(game);
         let table = game
-            .side
+            .client
             .remote
             .as_ref()
             .unwrap()
@@ -84,7 +84,7 @@ fn inventory_repair_does_not_replace_an_open_menus_predicted_cursor() {
             game.carried.as_ref().unwrap().item.as_ref(),
             "minecraft:stick"
         );
-        assert_eq!(game.side.remote.as_ref().unwrap().state_id, 45);
+        assert_eq!(game.client.remote.as_ref().unwrap().state_id, 45);
         let inventory = game
             .player_container_menu(game.local_player().unwrap())
             .unwrap();
@@ -185,7 +185,7 @@ fn retained_effects_rebind_on_reconfiguration_and_refusals_do_not_block_clicks()
             );
             let expected_hash = |stack, game: &sunrise_client_gameplay::game::ClientGame<'_>| {
                 let names = SyncedNames {
-                    builtin: &game.side.remote.as_ref().unwrap().builtin,
+                    builtin: &game.client.remote.as_ref().unwrap().builtin,
                     dynamic: &new,
                 };
                 Hashed::create(&stack, &names).unwrap()
@@ -264,7 +264,7 @@ fn client_menu_kind_names_the_server_menu_type() {
                     (7, "minecraft:generic_9x3"),
                 ] {
                     let menu = game
-                        .side
+                        .client
                         .remote
                         .as_ref()
                         .unwrap()

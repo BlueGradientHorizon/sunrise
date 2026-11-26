@@ -70,7 +70,7 @@ fn a_reconfiguring_client_plays_menu_music_and_never_indexes_past_the_biomes() {
 
     // StartConfiguration after a Login: no player, ServerReconfigScreen.
     let ticks = game.ticks;
-    let r = game.side.remote.as_mut().unwrap();
+    let r = game.client.remote.as_mut().unwrap();
     r.logged_in = true;
     r.reconfiguring = Some(ticks);
     game.player = None;
@@ -78,12 +78,12 @@ fn a_reconfiguring_client_plays_menu_music_and_never_indexes_past_the_biomes() {
     // A new manager waits its first 100 ticks, then starts the menu track.
     let menu = (0..=100).any(|_| {
         game.tick_music();
-        game.side.music.current(&game.side.audio.0.engine) == Some("minecraft:music.menu")
+        game.client.music.current(&game.client.audio.0.engine) == Some("minecraft:music.menu")
     });
     assert!(menu, "the menu music starts under ServerReconfigScreen");
 
     // With a level again the camera probe reads that column: plains' music.
-    game.side.remote.as_mut().unwrap().reconfiguring = None;
+    game.client.remote.as_mut().unwrap().reconfiguring = None;
     let (music, _) = game.situational_music();
     assert!(music.is_some_and(|m| m != Music::menu()));
 }
@@ -109,9 +109,9 @@ fn a_reconfiguring_client_stops_flat_audio_streams_before_configuration() {
     with_client_game(|game| {
         let (_reader, mut writer) = connect_play_test(game, |_, _| {});
         spawn_menu_test(game);
-        game.side.audio.0.backend_live_for_bench();
+        game.client.audio.0.backend_live_for_bench();
         let stream = game
-            .side
+            .client
             .audio
             .0
             .open_stream(
@@ -129,7 +129,7 @@ fn a_reconfiguring_client_stops_flat_audio_streams_before_configuration() {
         game.wait_for_test_remote_event(|event| matches!(event, Event::Reconfiguring(_)));
         game.poll_remote_events(true).unwrap();
 
-        assert!(game.side.remote.as_ref().unwrap().reconfiguring.is_some());
+        assert!(game.client.remote.as_ref().unwrap().reconfiguring.is_some());
         assert_eq!(stream.state(), AudioStreamState::Stopped);
     });
 }
@@ -190,7 +190,7 @@ fn client_level_transitions_stop_streams_opened_during_unload() {
     .into();
     mod_platform::testing::with_mods(mods, || {
         with_client_game(|game| {
-            game.side.audio.0.backend_live_for_bench();
+            game.client.audio.0.backend_live_for_bench();
             let spawn = SpawnInfo {
                 dimension_type: 0,
                 dimension: "minecraft:overworld".into(),
@@ -207,7 +207,7 @@ fn client_level_transitions_stop_streams_opened_during_unload() {
                 let _server = logged_client(game);
                 game.enter_remote_dimension(&spawn, RemoteDimensionEntry::Login, Reason::Other);
                 let existing = game
-                    .side
+                    .client
                     .audio
                     .0
                     .open_stream(
@@ -233,7 +233,7 @@ fn client_level_transitions_stop_streams_opened_during_unload() {
                     );
                 } else {
                     if integrated {
-                        game.side.integrated = Some(Integrated::stopped_for_test());
+                        game.client.integrated = Some(Integrated::stopped_for_test());
                     }
                     game.leave_server(None).unwrap();
                 }

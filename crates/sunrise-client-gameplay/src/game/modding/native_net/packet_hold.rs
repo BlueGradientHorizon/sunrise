@@ -136,12 +136,12 @@ impl ClientGame<'_> {
             .session
             .hold_incarnation()
     }
-    pub(in crate::game) fn hold_packets(&mut self) -> Result<HoldId, HoldError> {
+    pub fn hold_packets(&mut self) -> Result<HoldId, HoldError> {
         let mut holds = self.client.packet_holds.borrow_mut();
         holds.sync(self.hold_incarnation());
         holds.start()
     }
-    pub(in crate::game) fn release_held(&mut self, hold: HoldId) -> Result<usize, HoldError> {
+    pub fn release_held(&mut self, hold: HoldId) -> Result<usize, HoldError> {
         let (incarnation, packets) = {
             let mut holds = self.client.packet_holds.borrow_mut();
             holds.sync(self.hold_incarnation());
@@ -151,7 +151,7 @@ impl ClientGame<'_> {
         let remote = self.client.remote.as_ref().ok_or(HoldError::Unknown)?;
         Holds::publish(packets, |packet| packet.publish(remote, incarnation))
     }
-    pub(in crate::game) fn drop_held(&mut self, hold: HoldId) -> Result<(), HoldError> {
+    pub fn drop_held(&mut self, hold: HoldId) -> Result<(), HoldError> {
         let mut holds = self.client.packet_holds.borrow_mut();
         holds.sync(self.hold_incarnation());
         holds.take(hold).map(|_| ())
@@ -234,7 +234,7 @@ impl ClientGame<'_> {
     /// `Connection.send` for the game's play packets. True only if there is a remote,
     /// `client_packet_send` did not cancel, and the packet was accepted by the active
     /// play writer or hold queue.
-    pub(in crate::game) fn send_play(&self, packet: S) -> bool {
+    pub fn send_play(&self, packet: S) -> bool {
         if self.client.remote.is_none() || self.client_packet_send_canceled(&packet) {
             return false;
         }

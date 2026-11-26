@@ -118,7 +118,7 @@ fn a_block_part_answers_fire_odds_for_one_face() {
             }
 
             // Stage block updates in the same adapter the fire-odds Part reads.
-            game.side.remote.as_mut().unwrap().logged_in = true;
+            game.client.remote.as_mut().unwrap().logged_in = true;
             let campfire = [4, 65, 8];
             let at = BlockPos::new(campfire[0], campfire[1], campfire[2]);
             let campfire_state = registry.default_state("minecraft:campfire").unwrap();

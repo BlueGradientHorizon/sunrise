@@ -168,7 +168,7 @@ fn hopper_skips_a_refused_slot_and_preserves_the_stack_if_all_refuse() {
             .unwrap()
             .slots()
             .to_vec();
-        game.side.hoppers.get_mut(&ABOVE).unwrap().cooldown = 0;
+        game.server.hoppers.get_mut(&ABOVE).unwrap().cooldown = 0;
         game.tick_hopper(ABOVE);
         assert_eq!(
             game.world.block_entities.get(&ABOVE).unwrap().slots(),

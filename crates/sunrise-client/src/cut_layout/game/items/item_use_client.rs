@@ -21,18 +21,18 @@ use sunrise_client_gameplay::game::client_side::item_use_client::tests::stand_in
         }
         with_client_game(|game| {
             stand_in_first_person(game);
-            game.side.settings.main_hand_left = true;
+            game.client.settings.main_hand_left = true;
             let left = game.hand_geometry(0.0).0;
-            game.side.settings.main_hand_left = false;
+            game.client.settings.main_hand_left = false;
             let right = game.hand_geometry(0.0).0;
 
-            game.side
+            game.client
                 .settings
                 .file
                 .set("modelPart_left_sleeve", V::Bool(false));
             game.tick_player_model();
             let right_hidden_left = game.hand_geometry(0.0).0;
-            game.side.settings.main_hand_left = true;
+            game.client.settings.main_hand_left = true;
             let left_hidden_left = game.hand_geometry(0.0).0;
 
             assert_eq!(
@@ -127,7 +127,7 @@ use sunrise_client_gameplay::game::client_side::item_use_client::tests::stand_in
                     {
                         let stack = ItemStack::new(item, 1);
                         *game.stack_in_mut(slot) = Some(stack.clone());
-                        game.side.visible_hands[i] = (slot, Some(stack));
+                        game.client.visible_hands[i] = (slot, Some(stack));
                     }
                     let atlas = Rect {
                         u0: 0.25,
@@ -137,12 +137,12 @@ use sunrise_client_gameplay::game::client_side::item_use_client::tests::stand_in
                         w: 64,
                         h: 64,
                     };
-                    game.side
+                    game.client
                         .gui
                         .atlas
                         .sprites
                         .insert("arms:fixture_skin".into(), atlas);
-                    let avatar = game.side.player_model.as_mut().unwrap();
+                    let avatar = game.client.player_model.as_mut().unwrap();
                     avatar.skin = Some("arms:fixture_skin".into());
                     avatar.slim = slim;
                     let (vanilla, runs) = game.hand_geometry(0.0);
@@ -162,7 +162,7 @@ use sunrise_client_gameplay::game::client_side::item_use_client::tests::stand_in
                     let quads = 6 * 4;
                     let arm_vertices = quads * 2;
                     let submitted = arm_vertices * 2;
-                    let view = game.side.sway.to_world(0.0, &game.side.view);
+                    let view = game.client.sway.to_world(0.0, &game.client.view);
                     for (i, (shoulder, roll, x, base_u, sleeve_u, v)) in [
                         (
                             5.0,
@@ -250,10 +250,10 @@ use sunrise_client_gameplay::game::client_side::item_use_client::tests::stand_in
                         "pop restores the unscaled normal pose for the second arm"
                     );
 
-                    game.side.gui.atlas.sprites.remove("arms:fixture_skin");
+                    game.client.gui.atlas.sprites.remove("arms:fixture_skin");
                     for missing_avatar in [false, true] {
                         if missing_avatar {
-                            game.side.player_model = None;
+                            game.client.player_model = None;
                         }
                         state.mode.store(0, Relaxed);
                         let (items, item_runs) = game.hand_geometry(0.0);

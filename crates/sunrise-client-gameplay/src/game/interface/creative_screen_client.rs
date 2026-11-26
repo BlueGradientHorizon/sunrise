@@ -115,7 +115,7 @@ impl crate::game::ClientGame<'_> {
             .0
             .shown(names, first_row * 9 + cell)
     }
-    pub(in crate::game) fn creative_inventory_open(&self) -> bool {
+    pub fn creative_inventory_open(&self) -> bool {
         self.client.screen == Screen::Creative && self.client.creative_screen.0.tab().inventory
     }
     /// NeoForge's creative page buttons, 20 square, 50 above the screen at
@@ -160,7 +160,7 @@ impl crate::game::ClientGame<'_> {
         true
     }
     /// An item tab of the creative screen (its ItemPickerMenu).
-    pub(in crate::game) fn creative_tab_open(&self) -> bool {
+    pub fn creative_tab_open(&self) -> bool {
         self.client.screen == Screen::Creative && !self.client.creative_screen.0.tab().inventory
     }
     /// A creative tab's title: `itemGroup.*` for vanilla's; a mod tab's

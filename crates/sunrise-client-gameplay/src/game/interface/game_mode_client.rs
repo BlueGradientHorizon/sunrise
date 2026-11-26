@@ -11,7 +11,7 @@ impl crate::game::ClientGame<'_> {
         ))
     }
     /// `MultiPlayerGameMode.setLocalMode(GameType)`: updates only the local mode and `Abilities`.
-    pub(in crate::game) fn set_local_mode(&mut self, mode: GameMode) {
+    pub fn set_local_mode(&mut self, mode: GameMode) {
         if mode != self.common.mode {
             self.common.previous_mode = Some(self.common.mode);
         }
@@ -47,7 +47,7 @@ impl crate::game::ClientGame<'_> {
     }
     /// Whether `Screen::Inventory` currently shows the player's own `InventoryScreen`
     /// rather than a container, crafting table, workstation, mount, or server/mod menu.
-    pub(in crate::game) fn is_player_inventory_screen(&self) -> bool {
+    pub fn is_player_inventory_screen(&self) -> bool {
         self.client.screen == Screen::Inventory
             && self.common.container.is_none()
             && self.common.station.is_none()

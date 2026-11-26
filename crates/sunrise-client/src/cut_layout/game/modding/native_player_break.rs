@@ -20,11 +20,11 @@ mod tests {
             .block_ticks
             .add_empty_chunk(sunrise_core::position::ChunkPos::new(0, 0));
         game.player = Some(PlayerMotion::new(game.motion, Vec3::new(4.5, 64.0, 4.5)).unwrap());
-        game.side.lan_acting_uuid = Some(123);
+        game.server.lan_acting_uuid = Some(123);
         // The host acts, whose entity the hooks name as 0 while no guest acts.
-        game.side.lan_acting_entity = Some(0);
-        game.side.lan_acting_name = Some("Breaker".into());
-        game.side.lan_acting_permission = Some(0);
+        game.server.lan_acting_entity = Some(0);
+        game.server.lan_acting_name = Some("Breaker".into());
+        game.server.lan_acting_permission = Some(0);
         game.set_mode(GameMode::Survival);
         game.inventory[game.selected] = Some(held);
         game.native_acting_player().unwrap()

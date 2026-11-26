@@ -56,7 +56,7 @@ use sunrise_core::geometry::Vec3;
                 .as_nanos()
         ));
         std::fs::create_dir_all(&scratch).unwrap();
-        game.side.world_root = scratch.clone();
+        game.server.world_root = scratch.clone();
         game.player = Some(PlayerMotion::new(game.motion, Vec3::new(10.5, 64.0, 0.5)).unwrap());
         let original = game.player.as_ref().unwrap().bounds();
         let net = NetConfig {
@@ -108,7 +108,7 @@ use sunrise_core::geometry::Vec3;
         guest.dimension = Dim::Nether.id().into();
         guest.placed = true;
         guest.loaded = true;
-        game.side.lan.as_mut().unwrap().hub.guests.push(guest);
+        game.server.lan.as_mut().unwrap().hub.guests.push(guest);
         let seen = game.for_player(sunrise_gameplay_common::game::commands_common::Target::Guest(2), |g| {
             assert_eq!(g.dim, Dim::Nether);
             // for_player already switched the level before entering the guest.

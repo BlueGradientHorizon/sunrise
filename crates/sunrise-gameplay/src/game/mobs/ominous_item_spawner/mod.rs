@@ -36,7 +36,7 @@ pub(in crate::game::server_side) fn block(p: [f64; 3]) -> [i32; 3] {
 
 impl ServerGame<'_> {
     /// `OminousItemSpawner.create` added at `position`.
-    pub(in crate::game) fn add_ominous_item_spawner(
+    pub fn add_ominous_item_spawner(
         &mut self,
         item: ItemStack,
         position: [f64; 3],
@@ -60,7 +60,7 @@ impl ServerGame<'_> {
     }
     /// A saved spawner, as `readAdditionalSaveData` leaves it: its tick
     /// count starts again from 0.
-    pub(in crate::game) fn load_ominous_item_spawner(&mut self, tag: sunrise_core::nbt::Tag) {
+    pub fn load_ominous_item_spawner(&mut self, tag: sunrise_core::nbt::Tag) {
         self.load_ominous_item_spawner_transferred(tag, None);
     }
     pub(in crate::game::server_side) fn load_ominous_item_spawner_transferred(
@@ -107,7 +107,7 @@ impl ServerGame<'_> {
     /// Every item spawner's tick: `commonTick`'s count, `tickServer` (the
     /// warning sound, then the item) and `tickClient` (particles every 5
     /// game ticks).
-    pub(in crate::game) fn tick_ominous_item_spawners(&mut self) {
+    pub fn tick_ominous_item_spawners(&mut self) {
         // ServerLevel.tick: only entities in entity-ticking chunks that joined before the pass tick.
         let ticking = self.entity_ticking_area();
         let through = self.server.ticked_entities_through;

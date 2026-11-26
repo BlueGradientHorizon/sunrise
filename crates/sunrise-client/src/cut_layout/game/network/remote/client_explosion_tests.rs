@@ -21,7 +21,7 @@ pub(in crate::game) fn registry_id(
     registry: &str,
     name: &str,
 ) -> i32 {
-    game.side
+    game.client
         .remote
         .as_ref()
         .unwrap()

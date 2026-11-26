@@ -133,7 +133,7 @@ impl crate::game::ServerGame<'_> {
 
     /// Narrows an entity to a villager or wandering trader, or None for
     /// another kind, a stale handle, or a client.
-    pub(in crate::game) fn merchant(&self, entity: EntityRef) -> Option<MerchantRef> {
+    pub fn merchant(&self, entity: EntityRef) -> Option<MerchantRef> {
         let merchant = MerchantRef::new(entity);
         self.native_merchant_index(merchant).map(|_| merchant)
     }

@@ -178,7 +178,7 @@ impl crate::game::ClientGame<'_> {
     }
 
     /// Cache only model-dependent work, never an entity's seed, light or pose.
-    pub(in crate::game) fn falling_model_vertices(
+    pub fn falling_model_vertices(
         &self,
         state: BlockStateId,
         start_pos: BlockPos,

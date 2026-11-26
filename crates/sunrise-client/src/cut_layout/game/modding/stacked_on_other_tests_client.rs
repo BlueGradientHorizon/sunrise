@@ -59,7 +59,7 @@ pub(crate) mod item_part_tests {
                 //    HostSide::Client (never global listener), predicts the edit locally, and
                 //    sends ContainerClick with the predicted slots/carried.
                 game.creative = false;
-                game.side.screen = Screen::Inventory;
+                game.client.screen = Screen::Inventory;
                 game.inventory = vec![None; game.inventory.len()];
                 game.inventory[9] = Some(ItemStack::new("minecraft:flint", 1));
                 game.carried = Some(ItemStack::new("minecraft:stick", 1));
@@ -103,7 +103,7 @@ pub(crate) mod item_part_tests {
 
                 // Server reconciliation stays authoritative over client prediction.
                 let item_id = |game: &sunrise_client_gameplay::game::ClientGame<'_>, name: &str| {
-                    game.side
+                    game.client
                         .remote
                         .as_ref()
                         .unwrap()
@@ -166,7 +166,7 @@ pub(crate) mod item_part_tests {
 
                 // 2b. Multi-gesture batch on a remote inventory carries predicted `craft_result`
                 //     from gesture 1 to gesture 2 so gesture 2 does not see a cleared result.
-                game.side.remote.as_mut().unwrap().craft_result =
+                game.client.remote.as_mut().unwrap().craft_result =
                     Some(ItemStack::new("minecraft:flint", 1));
                 game.carried = Some(ItemStack::new("minecraft:stick", 1));
                 set_part_script(PartScript {
@@ -193,23 +193,23 @@ pub(crate) mod item_part_tests {
                     None,
                     "second gesture in remote batch must observe updated craft_result"
                 );
-                assert_eq!(game.side.remote.as_ref().unwrap().craft_result, None);
+                assert_eq!(game.client.remote.as_ref().unwrap().craft_result, None);
                 let _ = drain_packets(&mut reader);
 
                 // 3. Creative Survival Inventory tab pickup runs ItemPart on HostSide::Client and
                 //    sends SetCreativeModeSlot (never ContainerClick).
                 game.creative = true;
-                game.side.screen = Screen::Creative;
+                game.client.screen = Screen::Creative;
                 game.refresh_creative_tabs();
                 let inv_tab = game
-                    .side
+                    .client
                     .creative_screen
                     .0
                     .tabs
                     .iter()
                     .position(|t| t.inventory)
                     .expect("creative inventory tab");
-                game.side.creative_screen.0.select(inv_tab);
+                game.client.creative_screen.0.select(inv_tab);
                 assert!(game.creative_inventory_open());
                 game.inventory[9] = Some(ItemStack::new("minecraft:flint", 1));
                 game.carried = Some(ItemStack::new("minecraft:stick", 1));
@@ -247,14 +247,14 @@ pub(crate) mod item_part_tests {
                 // 4. Creative item-tab hotbar pickup runs ItemPart on HostSide::Client and sends
                 //    SetCreativeModeSlot; creative catalogue display slots do NOT dispatch Parts.
                 let item_tab = game
-                    .side
+                    .client
                     .creative_screen
                     .0
                     .tabs
                     .iter()
                     .position(|t| !t.inventory && !t.search && !t.items.is_empty())
                     .expect("creative item tab");
-                game.side.creative_screen.0.select(item_tab);
+                game.client.creative_screen.0.select(item_tab);
                 assert!(game.creative_tab_open());
                 game.inventory[0] = Some(ItemStack::new("minecraft:flint", 1));
                 game.carried = Some(ItemStack::new("minecraft:stick", 1));

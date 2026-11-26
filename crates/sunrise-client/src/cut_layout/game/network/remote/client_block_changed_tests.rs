@@ -73,7 +73,7 @@ fn with_client(name: &str, test: impl FnOnce(&mut sunrise_client_gameplay::game:
                 RemoteDimensionEntry::Login,
                 sunrise_client::level_loading::Reason::Other,
             );
-            game.side.remote.as_mut().unwrap().logged_in = true;
+            game.client.remote.as_mut().unwrap().logged_in = true;
             game.world
                 .chunks
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));

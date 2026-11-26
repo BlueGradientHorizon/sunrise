@@ -348,7 +348,7 @@ impl crate::game::ClientGame<'_> {
     /// The pause menu's widgets for a `ScreenBuild` at `(w, h)`: the buttons
     /// and the icon row. The build makes it once per open, resize and input
     /// change; the drawing, the click hit test and the key focus list read it.
-    pub(in crate::game::client_side) fn pause_layout(&self, w: f32, h: f32) -> PauseLayout {
+    pub fn pause_layout(&self, w: f32, h: f32) -> PauseLayout {
         self.pause_layout_for(&self.pause_inputs(), w, h)
     }
     /// `pause_layout` from inputs already read, as the build compares them.
@@ -529,7 +529,7 @@ impl crate::game::ClientGame<'_> {
             ui::tooltip(batch, atlas, &lines, self.client.cursor);
         }
     }
-    pub(in crate::game::client_side) fn execute_pause_action(&mut self, hit: u8) -> Result<()> {
+    pub fn execute_pause_action(&mut self, hit: u8) -> Result<()> {
         match hit {
             0 => {
                 self.client.pause_focus = None;
@@ -581,7 +581,7 @@ impl crate::game::ClientGame<'_> {
             })
             .map(|(i, page)| (page.title(), ADDED_PAGES + i as u8))
     }
-    pub(in crate::game::client_side) fn pause_click(&mut self) -> Result<bool> {
+    pub fn pause_click(&mut self) -> Result<bool> {
         let (w, h) = {
             let size = self
                 .client

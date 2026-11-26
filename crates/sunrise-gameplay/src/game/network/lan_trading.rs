@@ -79,7 +79,7 @@ impl crate::game::ServerGame<'_> {
 
     /// A trading screen the guest's interaction opened (it opened as a
     /// station while the guest acted): handed to the guest.
-    pub(in crate::game) fn lan_open_merchant(&mut self, conn: u32, mut state: MerchantState) {
+    pub fn lan_open_merchant(&mut self, conn: u32, mut state: MerchantState) {
         let Some(uuid) = self
             .server
             .lan
@@ -600,7 +600,7 @@ impl crate::game::ServerGame<'_> {
         handled
     }
     /// ServerboundSelectTradePacket: the selection hint, then tryMoveItems.
-    pub(in crate::game) fn lan_select_trade(&mut self, conn: u32, index: i32) {
+    pub fn lan_select_trade(&mut self, conn: u32, index: i32) {
         let Ok(index) = usize::try_from(index) else {
             return;
         };
@@ -918,7 +918,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// The live session of a guest's open trading screen, whose offers,
     /// experience and level are newer than the mob's until the screen closes.
-    pub(in crate::game) fn lan_trade_session(&self, conn: u32) -> Option<&merchant::Session> {
+    pub fn lan_trade_session(&self, conn: u32) -> Option<&merchant::Session> {
         let gm = self
             .server
             .lan
@@ -936,7 +936,7 @@ impl crate::game::ServerGame<'_> {
     /// Changes the session of a guest's open trading screen and sends the
     /// client its offers and result slot again. The merchant's own random is
     /// not drawn: the update sound is held back.
-    pub(in crate::game) fn lan_trade_edit(
+    pub fn lan_trade_edit(
         &mut self,
         conn: u32,
         edit: impl FnOnce(&mut merchant::Session),

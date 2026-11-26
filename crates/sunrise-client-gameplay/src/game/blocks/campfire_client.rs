@@ -10,13 +10,13 @@ impl crate::game::ClientGame<'_> {
     /// turned to `Direction.from2DDataValue((i + facing) % 4)`, laid flat
     /// (90° about X), at a corner and three eighths of its size, drawn as a
     /// FIXED item seeded by the block's position plus the slot.
-    pub(in crate::game) fn campfire_geometry(&self, camera: glam::DVec3, out: &mut Vec<Vertex>) {
+    pub fn campfire_geometry(&self, camera: glam::DVec3, out: &mut Vec<Vertex>) {
         self.campfire_items(camera, |d| {
             self.submit_item_world(d.state, d.pose, d.light, out);
         });
     }
     /// The items [`Self::campfire_geometry`] draws, in `CampfireRenderer.submit`'s order.
-    pub(in crate::game) fn campfire_items(
+    pub fn campfire_items(
         &self,
         camera: glam::DVec3,
         mut draw: impl FnMut(BlockItemDraw),

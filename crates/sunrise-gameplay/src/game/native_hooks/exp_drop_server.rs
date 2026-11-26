@@ -2,7 +2,7 @@ use super::*;
 use sunrise_gameplay_common::game::spill_common::{BlockDropEntity, BlockDrops};
 
 impl crate::game::ServerGame<'_> {
-    pub(in crate::game) fn entity_block_dropped(
+    pub fn entity_block_dropped(
         &mut self,
         pos: [i32; 3],
         state: BlockStateId,

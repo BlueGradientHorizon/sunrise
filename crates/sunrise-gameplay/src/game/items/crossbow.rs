@@ -172,7 +172,7 @@ impl crate::game::ServerGame<'_> {
         loaded
     }
     /// `CrossbowItem.use`: shoot when charged, else start charging.
-    pub(in crate::game) fn use_crossbow(&mut self, stack: &ItemStack) -> bool {
+    pub fn use_crossbow(&mut self, stack: &ItemStack) -> bool {
         if &*stack.item != CROSSBOW {
             return false;
         }
@@ -188,7 +188,7 @@ impl crate::game::ServerGame<'_> {
         true
     }
     /// `CrossbowItem.onUseTick` for the charge in progress.
-    pub(in crate::game) fn tick_crossbow(&mut self, slot: usize, ticks: u32, stack: &ItemStack) {
+    pub fn tick_crossbow(&mut self, slot: usize, ticks: u32, stack: &ItemStack) {
         // getUseDuration - the ticks left, as a mod's Start or Tick left them.
         let held = self.ticks_held(stack, ticks);
         self.common.using = Some((slot, ticks + 1));
@@ -254,7 +254,7 @@ impl crate::game::ServerGame<'_> {
         }
     }
     /// `CrossbowItem.performShooting`.
-    pub(in crate::game) fn shoot_crossbow(&mut self) {
+    pub fn shoot_crossbow(&mut self) {
         let Some(eye) = self.common.eye_position() else {
             return;
         };

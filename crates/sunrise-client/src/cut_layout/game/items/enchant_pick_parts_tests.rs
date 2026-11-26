@@ -564,15 +564,15 @@ fn short_enchantment_item_holders_bind_for_both_selectors() {
             serde_json::to_vec(&sharpness).unwrap(),
         )
         .unwrap();
-        game.side.world_root = root.path().to_owned();
+        game.server.world_root = root.path().to_owned();
         let packs = game.reload_datapacks(false, &[]).unwrap();
-        game.side.world_tables.0 = game
+        game.server.world_tables.0 = game
             .stage_world_tables(&packs, false, &resources)
             .unwrap()
             .tables;
         game.load_server_loot();
         let roll = |game: &sunrise_gameplay::game::ServerGame<'_>| {
-            let loot = game.side.server_loot.0.get().unwrap();
+            let loot = game.server.server_loot.0.get().unwrap();
             let stacks = loot.roll("test:sword", &mut LegacyRandom::new(1), 0.0, None, None);
             assert_eq!(stacks[0].item, "minecraft:diamond_sword");
             stacks[0].enchantments.clone()
@@ -654,7 +654,7 @@ fn support_resolves_once_against_the_tags_published_by_world_open_and_play_packe
             let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
             game.connect_local(pipe, "EnchantTags").unwrap();
             let sword = game
-                .side
+                .client
                 .remote
                 .as_ref()
                 .unwrap()
@@ -672,7 +672,7 @@ fn support_resolves_once_against_the_tags_published_by_world_open_and_play_packe
                     }],
                 }],
             };
-            let registries = &mut game.side.remote.as_mut().unwrap().registries;
+            let registries = &mut game.client.remote.as_mut().unwrap().registries;
             Arc::make_mut(registries).add_tags(&tags(vec![sword]));
             seen.lock().unwrap().clear();
             game.handle_packet(C::Login(play::Login {

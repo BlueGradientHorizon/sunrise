@@ -29,14 +29,14 @@ impl ServerGame<'_> {
     /// `LevelChunk.isTicking` (block coordinates): a block-ticking chunk from
     /// every player's tickets (`update_chunk_tickets`), its entities loaded
     /// (`ServerLevel.areEntitiesLoaded`).
-    pub(in crate::game) fn block_ticking_area(&self) -> impl Fn(i32, i32) -> bool + use<> {
+    pub fn block_ticking_area(&self) -> impl Fn(i32, i32) -> bool + use<> {
         let levels = self.server.tickets.0.levels();
         let pending = self.common.world.entities_pending.clone();
         move |x, z| block_ticking_at(&levels, &pending, x, z)
     }
     /// `AbstractFurnaceBlockEntity.serverTick` of the furnace at `pos`, and
     /// its block's `lit` following it.
-    pub(in crate::game) fn tick_furnace(&mut self, pos: Pos) -> Result<()> {
+    pub fn tick_furnace(&mut self, pos: Pos) -> Result<()> {
         // What the hooks need from before the tick, without cloning stacks: the
         // fuel's id if the furnace can be out after this tick's countdown, the
         // input's id (a last item is gone after it smelts) and the result count.
@@ -153,7 +153,7 @@ impl ServerGame<'_> {
     /// `BlockState.getTicker` of every state, for the block entities ticked
     /// here. A creaking heart keeps its slot while uprooted (see
     /// `tick_creaking_heart`).
-    pub(in crate::game) fn ticking_states(&self) -> Vec<Ticking> {
+    pub fn ticking_states(&self) -> Vec<Ticking> {
         let registry = self.common.pack.assets.registry;
         (0..registry.len())
             .map(|i| {

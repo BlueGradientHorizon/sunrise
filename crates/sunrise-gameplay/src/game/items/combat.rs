@@ -248,7 +248,7 @@ impl crate::game::ServerGame<'_> {
     /// skipped. Mob victims take their attack explicitly (`DamageLevel::attacked_by`); this is
     /// the one implicit scope left, because the player-victim path (`hurt_player_from`,
     /// `mob_hits_player`) has ~30 callers that would all pass it through.
-    pub(in crate::game) fn with_attack<R>(
+    pub fn with_attack<R>(
         &mut self,
         attack: Attack,
         f: impl FnOnce(&mut Self) -> R,
@@ -259,7 +259,7 @@ impl crate::game::ServerGame<'_> {
         result
     }
     /// The attack the hits on the player land in now (a reader of `combat.attack`).
-    pub(in crate::game) fn current_attack(&self) -> Attack {
+    pub fn current_attack(&self) -> Attack {
         self.server.combat.0.attack.clone()
     }
 
@@ -310,7 +310,7 @@ impl crate::game::ServerGame<'_> {
         (self.common.world.game_time - at <= 100).then_some((sunrise_sim::mobs::Who::Mob(*id), *at))
     }
     /// Remember who deals the next `damage_type` damage to the player.
-    pub(in crate::game::server_side) fn note_attacker(&mut self, damage_type: &str, mob: u32) {
+    pub fn note_attacker(&mut self, damage_type: &str, mob: u32) {
         if let Some(name) = self.mob_display_name(mob) {
             self.note_named_attacker(damage_type, mob, name);
         }
@@ -372,7 +372,7 @@ impl crate::game::ServerGame<'_> {
     /// hit by entity `id`, which only a native mod reads: a player's hit names
     /// them, a tame wolf's its owner (no one without one), and other mobs leave
     /// it as it was.
-    pub(in crate::game::server_side) fn resolve_player_responsible_for_player(
+    pub fn resolve_player_responsible_for_player(
         &mut self,
         id: u32,
         captured_player: Option<[i32; 4]>,
@@ -432,7 +432,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// `CombatTracker.recordDamage` for the motion events of this tick.
-    pub(in crate::game) fn record_combat(&mut self, events: &[MotionEvent]) {
+    pub fn record_combat(&mut self, events: &[MotionEvent]) {
         self.recheck_combat();
         // The attacker of the hit whose damage was just recorded, for its criterion.
         let mut recorded: Option<(String, u32)> = None;
@@ -664,7 +664,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// `CombatTracker.getDeathMessage` for a player whose display name is
     /// `me`: a server's guest is not `PLAYER_NAME`.
-    pub(in crate::game::server_side) fn combat_death_message_for(&mut self, me: Text) -> Text {
+    pub fn combat_death_message_for(&mut self, me: Text) -> Text {
         self.recheck_combat();
         let entries = std::mem::take(&mut self.server.combat.0.entries);
         self.server.combat.0.in_combat = false;
@@ -804,7 +804,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// `CombatTracker.getDeathMessage` for a mob, from the hits it recorded
     /// (`Mob::combat`), told the way the player's own tracker tells them.
-    pub(in crate::game::server_side) fn mob_death_message(
+    pub fn mob_death_message(
         &mut self,
         m: &Mob,
         killer: Option<Option<u32>>,

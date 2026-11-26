@@ -10,7 +10,7 @@ pub(crate) fn level_random(
     game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
 ) -> LegacyRandom {
     LegacyRandom::from(<(u64, Option<f64>)>::from(
-        &*game.side.particles.0.level_random(),
+        &*game.client.particles.0.level_random(),
     ))
 }
 
@@ -34,7 +34,7 @@ fn sampled_picks_reach_the_parts_of_their_block_only() {
         assert!(sunrise_client_gameplay::game::ClientGame::animate_part_listens(glass));
         assert!(!sunrise_client_gameplay::game::ClientGame::animate_part_listens(stone));
         // Under All the limiter draws nothing: the part's two draws are the level random's next.
-        game.side.particles.0.particle_level = 0;
+        game.client.particles.0.particle_level = 0;
         let mut expected = level_random(game);
         game.mod_animate_tick(glass, [1, 64, 2]);
         let first = expected.next_float();
@@ -51,7 +51,7 @@ fn sampled_picks_reach_the_parts_of_their_block_only() {
             )]
         );
         assert_eq!(
-            game.side.particles.0.level_random().next_long(),
+            game.client.particles.0.level_random().next_long(),
             expected.next_long(),
             "the part drew the level's own random"
         );
@@ -91,8 +91,8 @@ fn the_limiter_roll_of_add_particle_moves_the_parts_random() {
             .registry
             .default_state("minecraft:glass")
             .unwrap();
-        game.side.settings.particles = 1;
-        game.side.particles.0.particle_level = 1;
+        game.client.settings.particles = 1;
+        game.client.particles.0.particle_level = 1;
         let before = level_random(game);
         let mut expected = before.clone();
         game.mod_animate_tick(glass, [8, 64, 8]);
@@ -111,7 +111,7 @@ fn the_limiter_roll_of_add_particle_moves_the_parts_random() {
             )]
         );
         assert_eq!(
-            game.side.particles.0.level_random().next_long(),
+            game.client.particles.0.level_random().next_long(),
             expected.next_long(),
             "the level random after the call counts the limiter roll"
         );
@@ -152,15 +152,15 @@ fn the_part_runs_inside_its_pick_before_the_fluid_the_next_pick_and_the_rain() {
         biomes.list[0].precipitation = true;
         biomes.list[0].temperature = 0.8;
         game.world_biomes = Some(Arc::new(biomes));
-        game.side.settings.particles = 0;
-        game.side.settings.sunrise.weather = true;
+        game.client.settings.particles = 0;
+        game.client.settings.sunrise.weather = true;
         // Run after a camera frame: tickWeatherEffects uses the camera position,
         // which is still the origin until the camera has aligned with its entity.
         game.camera_view(1.0).expect("camera over the rod floor");
-        game.side.particles.0.requested = Some(Vec::new());
+        game.client.particles.0.requested = Some(Vec::new());
         game.tick_particles();
         let log: Vec<(ParticleType, [i32; 3])> = game
-            .side
+            .client
             .particles
             .0
             .requested

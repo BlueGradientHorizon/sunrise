@@ -9,7 +9,7 @@ pub(in crate::game) use sunrise_gameplay::crash_save::CrashSave;
 impl ServerGame<'_> {
     /// `MinecraftServer.runServer`'s finally: once startup begins, every exit
     /// stops and saves the server, including a failed init or tick.
-    pub(in crate::game::server_side) fn run_server_lifecycle(
+    pub fn run_server_lifecycle(
         &mut self,
         dedicated: bool,
         run: impl FnOnce(&mut Self, &mut bool) -> Result<()>,
@@ -105,7 +105,7 @@ impl ServerGame<'_> {
     /// fires; only the saves read the exclusion. When that is the single-player owner, or the hub is lost
     /// (`crashed` and no hub, or an interrupted turn and no hub), `level.dat` is written without
     /// a new player file, keeping a legacy `Data.Player`.
-    pub(in crate::game::server_side) fn exclude_interrupted_players(
+    pub fn exclude_interrupted_players(
         &mut self,
         crashed: bool,
         warn: impl Fn(&str),
@@ -153,7 +153,7 @@ impl ServerGame<'_> {
     /// open must never overwrite a world the server did not successfully adopt.
     /// The session lock is not that marker: it is installed before the prepared
     /// level, so tag reads work, and a save in that gap would write the placeholder.
-    pub(in crate::game::server_side) fn finish_server_save(
+    pub fn finish_server_save(
         &mut self,
         crashed: bool,
         run_error: Option<&str>,

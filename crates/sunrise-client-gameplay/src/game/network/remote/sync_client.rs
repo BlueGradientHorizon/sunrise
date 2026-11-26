@@ -84,7 +84,7 @@ impl crate::game::ClientGame<'_> {
         self.remote_effect_def(effect).map(|def| def.id)
     }
     /// The server's network id of a mob effect (`brewing::EFFECTS` id).
-    pub(in crate::game) fn remote_effect_network_id(&self, effect: &str) -> Option<i32> {
+    pub fn remote_effect_network_id(&self, effect: &str) -> Option<i32> {
         let r = self.client.remote.as_ref()?;
         r.builtin
             .get("minecraft:mob_effect")?
@@ -128,7 +128,7 @@ impl crate::game::ClientGame<'_> {
     /// `player.push(entity)`. `before_player`: the mobs and boats that tick
     /// before the player (`ticked_before_player`), else those that tick after
     /// it.
-    pub(in crate::game) fn remote_pushes(&self, before_player: bool) -> Vec3 {
+    pub fn remote_pushes(&self, before_player: bool) -> Vec3 {
         let (Some(p), Some(r)) = (self.common.player.as_ref(), self.client.remote.as_ref()) else {
             return Vec3::ZERO;
         };
@@ -221,7 +221,7 @@ impl crate::game::ClientGame<'_> {
     }
     /// `MultiPlayerGameMode.ensureHasSentCarriedItem`: the server hears of a
     /// new selected slot before anything the slot acts with.
-    pub(in crate::game) fn remote_send_carried(&self) {
+    pub fn remote_send_carried(&self) {
         if let Some(r) = &self.client.remote
             && r.carried.get() != Some(self.common.selected)
         {
@@ -235,7 +235,7 @@ impl crate::game::ClientGame<'_> {
     /// passenger's `sendChanges`), then `LocalPlayer.sendChanges`: the input, and a passenger's look,
     /// vehicle and sprint, or `sendPosition`'s sprint and move. The held slot is not sent here:
     /// `MultiPlayerGameMode.tick` sends it at the start of the next tick (`remote_handle_input`).
-    pub(in crate::game) fn remote_send_state(&mut self, input: u8) {
+    pub fn remote_send_state(&mut self, input: u8) {
         // Minecraft.tick's sendChanges also skips the tick that removed the player.
         if self.local_player_removed_by_death() {
             return;
@@ -675,7 +675,7 @@ impl crate::game::ClientGame<'_> {
     /// `broadcastChanges`, so a click's slots go out with the click, right behind a thrown
     /// stack, and not at the end of the tick: a slot update the server sends meanwhile (the
     /// pickup of what a held Q threw) can then never land on a change still unsent and undo it.
-    pub(in crate::game) fn send_creative_slots(&mut self) {
+    pub fn send_creative_slots(&mut self) {
         if !self.common.creative {
             return;
         }
@@ -695,7 +695,7 @@ impl crate::game::ClientGame<'_> {
         }
     }
 
-    pub(in crate::game) fn remote_tab_players(
+    pub fn remote_tab_players(
         &mut self,
     ) -> Option<(Vec<TabPlayer>, bool, Vec<u128>)> {
         self.update_remote_skins();

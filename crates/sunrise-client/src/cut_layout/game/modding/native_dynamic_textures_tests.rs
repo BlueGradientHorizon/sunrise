@@ -57,7 +57,7 @@ fn a_mods_dynamic_texture_draws_under_its_id_until_it_is_freed() {
     let mods = vec![ModEntry::new("api-only", Box::new(ApiOnly))];
     with_mods(mods.into(), || {
         crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
-            assert!(game.side.gui.atlas.dynamic_texture_pool.is_some());
+            assert!(game.client.gui.atlas.dynamic_texture_pool.is_some());
             let id = Identifier::parse("api-only:dynamic/panel").unwrap();
             let name = "api-only:dynamic/panel";
             let green = GREEN.repeat(16 * 16);
@@ -75,7 +75,7 @@ fn a_mods_dynamic_texture_draws_under_its_id_until_it_is_freed() {
             let (src, dst) = ([0.0, 0.0, 16.0, 16.0], [16.0, 16.0, 32.0, 32.0]);
             assert!(game.native_sprite(&mut batch, name, src, dst, None));
             let pixels =
-                render_hud(&batch, &game.side.gui.atlas, SIZE).expect("software Vulkan draw");
+                render_hud(&batch, &game.client.gui.atlas, SIZE).expect("software Vulkan draw");
             assert_eq!(pixel(&pixels, 32, 32), GREEN, "the mod's image");
             assert_eq!(pixel(&pixels, 4, 4), BLACK, "outside the sprite");
             as_mod("api-only", || game.free_dynamic_texture(&id)).unwrap();

@@ -96,7 +96,7 @@ pub(in crate::game) fn tag_id(tag: &str) -> Option<String> {
         .map(|id| id.to_string())
 }
 impl<'a> Registrar<'a> {
-    pub(in crate::game) fn new(
+    pub fn new(
         items: &'a Items,
         registry: &'a sunrise_world::registry::BlockRegistry,
     ) -> Self {
@@ -134,7 +134,7 @@ impl<'a> Registrar<'a> {
         self.error = Some(error);
         Err(error)
     }
-    pub(in crate::game) fn finish(self) -> Result<Arc<Table>> {
+    pub fn finish(self) -> Result<Arc<Table>> {
         let Self { edits, error, .. } = self;
         if let Some(error) = error {
             for edit in edits {

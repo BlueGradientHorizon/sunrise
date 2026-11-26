@@ -35,7 +35,7 @@ pub(in crate::game) type SavedRespawn = (String, [i32; 3], f32, f32, bool);
 
 impl RespawnConfig {
     /// `RespawnData.of`: the yaw wrapped to [-180, 180).
-    pub(in crate::game) fn wrapped(dim: Dim, pos: [i32; 3], yaw: f32, forced: bool) -> Self {
+    pub fn wrapped(dim: Dim, pos: [i32; 3], yaw: f32, forced: bool) -> Self {
         Self {
             dim,
             pos,
@@ -135,7 +135,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// `RespawnAnchorBlock.canSetSpawn`: the `respawn_anchor_works` attribute
     /// (only the Nether's dimension type sets it).
-    pub(in crate::game::server_side) fn anchor_works(&self) -> bool {
+    pub fn anchor_works(&self) -> bool {
         self.dimension_type().respawn_anchor_works
     }
     /// `RespawnAnchorBlock.useItemOn` with `held` in the hand that acts.
@@ -412,7 +412,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// `Block.isPossibleToRespawnInThis`: neither solid nor liquid; banners,
     /// signs and pressure plates override it to always.
-    pub(in crate::game::server_side) fn possible_to_respawn_in(&self, state: BlockStateId) -> bool {
+    pub fn possible_to_respawn_in(&self, state: BlockStateId) -> bool {
         let mut answer = None;
         self.native_is_possible_to_respawn_in(state, &mut answer);
         if let Some(answer) = answer {
@@ -468,7 +468,7 @@ impl crate::game::ServerGame<'_> {
     /// `BedRule.canSetSpawn` of the bed's rule attribute (`bed_rule`,
     /// `straw_bed_rule`): only the Overworld's beds set the spawn, straw
     /// beds never.
-    pub(in crate::game::server_side) fn bed_sets_spawn(&self, state: BlockStateId) -> bool {
+    pub fn bed_sets_spawn(&self, state: BlockStateId) -> bool {
         let straw = &*self.common.res.facts().get(state).name == "minecraft:straw_bed";
         let facts = self.dimension_type();
         let rule = if straw {
@@ -494,7 +494,7 @@ impl crate::game::ServerGame<'_> {
     /// dimension: position and angles, using an anchor's charge; a bed's
     /// stand-up spot. A forced point (`spawnpoint`) not handled by the anchor
     /// or bed rule holds if the spawn column is clear.
-    pub(in crate::game) fn find_respawn_and_use(
+    pub fn find_respawn_and_use(
         &mut self,
         c: RespawnConfig,
         consume: bool,

@@ -204,7 +204,7 @@ impl crate::game::ClientGame<'_> {
     }
 
     /// `Tutorial.key`: bold belongs to the bound key, not the translation using it.
-    fn tutorial_toast(&self, hint: Hint, progress: Option<f32>) -> Option<HintToast> {
+    pub fn tutorial_toast(&self, hint: Hint, progress: Option<f32>) -> Option<HintToast> {
         use sunrise_client::keybinds;
         use sunrise_game_data::text::Text;
         let key =

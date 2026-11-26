@@ -31,7 +31,7 @@ impl ServerGame<'_> {
     /// a run naming a palette entry
     /// or filter past the end, or more than 65536 filters, and nothing is
     /// made.
-    pub(in crate::game) fn apply_block_edit(&mut self, edit: &BlockEdit) -> Result<u64, String> {
+    pub fn apply_block_edit(&mut self, edit: &BlockEdit) -> Result<u64, String> {
         let sunrise_gameplay_common::game::api_values::block_edit::PreparedBlockEdit { palette, filters } =
             sunrise_gameplay_common::game::api_values::block_edit::prepare(edit)?;
         let runs = resolve_runs(edit, &palette, filters.len(), |h, x, z| {

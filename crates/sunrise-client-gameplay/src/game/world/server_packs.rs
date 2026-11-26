@@ -236,7 +236,7 @@ impl crate::game::ClientGame<'_> {
     /// `ConnectScreen`: the server's setting decides what its packs do
     /// (`configureForServerControl`); single player's own server takes them
     /// all, quietly (`configureForLocalWorld`).
-    pub(in crate::game::client_side) fn server_packs_connect(
+    pub fn server_packs_connect(
         &mut self,
         address: Option<&str>,
         list_name: Option<&str>,
@@ -276,7 +276,7 @@ impl crate::game::ClientGame<'_> {
     }
 
     /// `handleResourcePackPush`.
-    pub(in crate::game::client_side) fn handle_pack_push(&mut self, p: ResourcePackPush) {
+    pub fn handle_pack_push(&mut self, p: ResourcePackPush) {
         if !valid_url(&p.url) {
             self.send_pack_status(p.id, action::INVALID_URL);
             return;
@@ -346,7 +346,7 @@ impl crate::game::ClientGame<'_> {
 
     /// `PackConfirmScreen`'s callback: push every pending pack and save the server list.
     /// Declining a required pack closes the connection without changing its stored policy.
-    pub(in crate::game::client_side) fn answer_pack_prompt(&mut self, yes: bool) -> Result<()> {
+    pub fn answer_pack_prompt(&mut self, yes: bool) -> Result<()> {
         let Some(prompt) = self.client.server_packs.0.prompt.take() else {
             return Ok(());
         };
@@ -374,7 +374,7 @@ impl crate::game::ClientGame<'_> {
     /// Runs what the packs need (`createUpdateScheduler`): the downloads
     /// that finished, the ones to start, a resource reload when the active
     /// packs change, and the statuses for the server.
-    pub(in crate::game::client_side) fn tick_server_packs(&mut self) {
+    pub fn tick_server_packs(&mut self) {
         let mut notifiers = std::mem::take(&mut self.client.server_packs.0.notifiers);
         notifiers.retain_mut(|n| {
             let id = SystemToastId::PackDownload(n.id);
@@ -558,7 +558,7 @@ impl crate::game::ClientGame<'_> {
     /// client toast queue rather than through `toast_add` so a mod cannot veto
     /// or rewrite its own failure notice; headless servers log the error and do
     /// not drain the client queue.
-    pub(in crate::game::client_side) fn add_hook_panic_toasts(&mut self) {
+    pub fn add_hook_panic_toasts(&mut self) {
         if self.common.options.dedicated.is_some() {
             return;
         }

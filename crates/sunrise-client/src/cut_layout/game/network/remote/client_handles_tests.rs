@@ -20,7 +20,7 @@ fn client_handles_reach_a_custom_level() {
         DimensionFacts::set_levels(vec![(stale_key, stale)]);
         game.connect_local(client, "CustomLevelTest").unwrap();
         assert_eq!(game.dimension_facts_for(stale_key).coordinate_scale, 1.0);
-        let mut registries = (*game.side.remote.as_ref().unwrap().registries).clone();
+        let mut registries = (*game.client.remote.as_ref().unwrap().registries).clone();
         let json = serde_json::json!({"min_y": 0, "height": 256,
                 "coordinate_scale": 4.0, "ambient_light": 0.3,
                 "attributes": {"minecraft:gameplay/fast_lava": true}});
@@ -45,7 +45,7 @@ fn client_handles_reach_a_custom_level() {
             sea_level: 63,
         };
         game.enter_remote_dimension(&spawn, RemoteDimensionEntry::Login, Reason::Other);
-        game.side.remote.as_mut().unwrap().logged_in = true;
+        game.client.remote.as_mut().unwrap().logged_in = true;
 
         let level = game.level("test:pocket").unwrap();
         assert_ne!(level.dimension(), DimensionKey::OVERWORLD);
@@ -61,7 +61,7 @@ fn client_handles_reach_a_custom_level() {
         let overworld = LevelRef::new(level.epoch(), DimensionKey::OVERWORLD);
         assert_eq!(overworld.height(game), None);
         // An equal JSON body with a different type name must not hit the old cache.
-        let mut renamed = (*game.side.remote.as_ref().unwrap().registries).clone();
+        let mut renamed = (*game.client.remote.as_ref().unwrap().registries).clone();
         renamed
             .registries
             .get_mut("minecraft:dimension_type")
@@ -83,7 +83,7 @@ fn client_handles_reach_a_custom_level() {
         ] {
             let mut invalid = json.clone();
             invalid[field] = value;
-            let mut registries = (*game.side.remote.as_ref().unwrap().registries).clone();
+            let mut registries = (*game.client.remote.as_ref().unwrap().registries).clone();
             registries.registries.insert(
                 "minecraft:dimension_type".into(),
                 vec![(
@@ -111,7 +111,7 @@ fn client_handles_reach_a_custom_level() {
             boundary["coordinate_scale"] = serde_json::json!(value);
             // Vanilla uses Codec.FLOAT, not a unit-interval ambient-light codec.
             boundary["ambient_light"] = serde_json::json!(1.1);
-            let mut registries = (*game.side.remote.as_ref().unwrap().registries).clone();
+            let mut registries = (*game.client.remote.as_ref().unwrap().registries).clone();
             registries.registries.insert(
                 "minecraft:dimension_type".into(),
                 vec![(
@@ -134,7 +134,7 @@ fn client_handles_reach_a_custom_level() {
             legal["ambient_light"] = serde_json::json!(ambient);
             let block_limit = if ambient > 0.0 { 15 } else { 0 };
             legal["monster_spawn_block_light_limit"] = serde_json::json!(block_limit);
-            let mut registries = (*game.side.remote.as_ref().unwrap().registries).clone();
+            let mut registries = (*game.client.remote.as_ref().unwrap().registries).clone();
             registries.registries.insert(
                 "minecraft:dimension_type".into(),
                 vec![(
@@ -155,7 +155,7 @@ fn client_handles_reach_a_custom_level() {
         }
         // Disconnect drops the connection-owned table; the server table is untouched.
         let lifetime = Arc::downgrade(
-            game.side
+            game.client
                 .remote
                 .as_ref()
                 .unwrap()
@@ -216,7 +216,7 @@ fn client_handle_reads_answer_from_the_clients_copy() {
             sea_level: 63,
         };
         game.enter_remote_dimension(&spawn, RemoteDimensionEntry::Login, Reason::Other);
-        let remote = game.side.remote.as_mut().unwrap();
+        let remote = game.client.remote.as_mut().unwrap();
         remote.logged_in = true;
         remote.entity_id = 7;
         remote.profile = 42;
@@ -252,7 +252,7 @@ fn client_handle_reads_answer_from_the_clients_copy() {
         assert_eq!(living.health(game), Some(14.0));
         assert_eq!(living.max_health(game), Some(20.0));
         let speed = game
-            .side
+            .client
             .remote
             .as_ref()
             .unwrap()
@@ -331,7 +331,7 @@ fn client_handle_reads_answer_from_the_clients_copy() {
 
         // The time of day, as the server's clock last set it.
         game.set_registries({
-            let mut registries = (*game.side.remote.as_ref().unwrap().registries).clone();
+            let mut registries = (*game.client.remote.as_ref().unwrap().registries).clone();
             registries.registries.insert(
                 "minecraft:world_clock".into(),
                 vec![("minecraft:overworld".into(), None)],
@@ -352,7 +352,7 @@ fn client_handle_reads_answer_from_the_clients_copy() {
 
         // An entity the server told the client of; others read None.
         let pig = game
-            .side
+            .client
             .remote
             .as_ref()
             .unwrap()

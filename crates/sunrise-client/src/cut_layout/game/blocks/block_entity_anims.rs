@@ -47,7 +47,7 @@ pub(crate) mod tests {
             (0, 0),
             std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
         );
-        game.side.streaming.forced.insert((0, 0));
+        game.server.streaming.forced.insert((0, 0));
         game.build_registries();
         fn command(game: &mut sunrise_gameplay::game::ServerGame<'_>, line: &str) -> bool {
             game.as_console(|game| game.run_command(line))

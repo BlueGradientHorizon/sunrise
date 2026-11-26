@@ -55,7 +55,7 @@ fn open_mod_menu(
         .collect(),
     );
     game.world.modified.clear();
-    game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+    game.server.lan.as_mut().unwrap().hub.guests.update(0, |g| {
         g.menu_generation = 1;
         g.menu = Some(Open {
             window: 1,
@@ -145,7 +145,7 @@ fn actual_game_stage_refuses_nested_frame_and_mutated_actor() {
                 ((), false)
             });
             assert!(game.mod_book_placement_context(&before, &selection));
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()
@@ -212,7 +212,7 @@ fn place_recipe_in_grid_places_once_per_click() {
         )
         .unwrap();
         let known = game
-            .side
+            .server
             .lan
             .as_ref()
             .unwrap()
@@ -221,7 +221,7 @@ fn place_recipe_in_grid_places_once_per_click() {
             .unwrap()
             .recipe_book
             .clone();
-        game.side.book_placement_session = Some(Session {
+        game.server.book_placement_session = Some(Session {
             recipe: selection.display.recipe.as_str().to_owned(),
             graph: Backings::capture(game, &before, &plan).unwrap(),
             menu: Box::new(Menu::new(Kind::Mod(before.kind))),
@@ -288,7 +288,7 @@ fn a_listening_part_places_the_recipe_through_the_real_stage() {
     mod_platform::testing::with_mods(mods, || {
         super::super::native_guest_turn_tests::with_guests(|game| {
             let (_, opened, selection) = open_mod_menu(game);
-            game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+            game.server.lan.as_mut().unwrap().hub.guests.update(0, |g| {
                 let open = g.menu.as_mut().unwrap();
                 open.slots = Slots::Native;
                 open.pos = None;
@@ -343,7 +343,7 @@ fn a_listening_part_places_the_recipe_through_the_real_stage() {
             );
             assert_eq!(placed.count(), 1);
             let left = game
-                .side
+                .server
                 .lan
                 .as_ref()
                 .unwrap()
@@ -383,7 +383,7 @@ fn a_listening_part_places_the_recipe_through_the_real_stage() {
                 Ok(())
             );
             stale_contents.inventory = game
-                .side
+                .server
                 .lan
                 .as_ref()
                 .unwrap()

@@ -141,7 +141,7 @@ fn a_tame_zombie_nautilus_at_full_health_falls_in_love() {
             Some(1),
             "{kind}: the fish is eaten"
         );
-        let sounds = std::mem::take(&mut game.side.pending_sounds);
+        let sounds = std::mem::take(&mut game.server.pending_sounds);
         game.stop_audio_capture();
         assert!(
             sounds.iter().any(|s| s.event == eat),

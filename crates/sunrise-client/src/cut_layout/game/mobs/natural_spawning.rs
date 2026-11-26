@@ -86,7 +86,7 @@ use sunrise_gameplay_common::world_biomes;
             if spectator {
                 guest.game_mode = 3;
             }
-            game.side.lan.as_mut().unwrap().hub.guests.push(guest);
+            game.server.lan.as_mut().unwrap().hub.guests.push(guest);
         }
         let full = |game: &sunrise_gameplay::game::ServerGame<'_>, x: f64, range: f64| {
             game.level_players()
@@ -201,7 +201,7 @@ use sunrise_gameplay_common::world_biomes;
                     game.world.chunks.insert((x, z), Arc::new(chunk));
                 }
             }
-            game.side.tickets.0.update(None);
+            game.server.tickets.0.update(None);
             game.player = Some(PlayerMotion::new(game.motion, Vec3::new(8.5, 64.0, 8.5)).unwrap());
             game.border.set_center([8.0, 8.0]);
             game.border.set_size(2.0);

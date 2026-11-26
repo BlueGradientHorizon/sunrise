@@ -134,7 +134,7 @@ impl<'a> Edits<'a> {
             guest.placed = true;
             guest.loaded = true;
             guest.dimension = "minecraft:overworld".into();
-            game.side.lan.as_mut().unwrap().hub.guests.push(guest);
+            game.server.lan.as_mut().unwrap().hub.guests.push(guest);
             inbox.push((conn, rx));
         }
         Self {
@@ -145,7 +145,7 @@ impl<'a> Edits<'a> {
     }
     fn host(&mut self) -> &mut LanHost {
         self.game
-            .side
+            .server
             .lan
             .as_mut()
             .expect("the game hosts the test world")

@@ -7,7 +7,7 @@ impl crate::game::ServerGame<'_> {
     /// (unanswered: not `#dragon_immune`), no mod keeps it
     /// (`LivingDestroyBlockEvent`) and it is not `#dragon_immune`, which a yes
     /// does not bypass; any other puts the dragon in a wall.
-    pub(in crate::game) fn dragon_check_walls(&mut self) {
+    pub fn dragon_check_walls(&mut self) {
         let mut in_wall = false;
         let Some(d) = self.common.dragon.as_ref() else {
             return;

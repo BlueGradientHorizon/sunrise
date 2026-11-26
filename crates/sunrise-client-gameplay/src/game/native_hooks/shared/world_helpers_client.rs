@@ -28,11 +28,11 @@ impl crate::game::ClientGame<'_> {
     /// `ParticleEngine.countParticles`: every live group. Sunrise keeps vanilla's groups
     /// apart: ordinary particles, firework starters and elder guardians in the engine,
     /// and ITEM_PICKUP in `pickups`.
-    pub(in crate::game) fn client_particle_count(&self) -> usize {
+    pub fn client_particle_count(&self) -> usize {
         self.client.particles.0.group_count() + self.client.pickups.0.live.len()
     }
     /// A mod's own screen closes (Escape, or `mod_screen_close`).
-    pub(in crate::game) fn close_mod_screen(&mut self) {
+    pub fn close_mod_screen(&mut self) {
         if self.client.screen == Screen::Mod {
             if self.client.title.0.is_some() {
                 self.close_mod_screen_to_title();
@@ -140,7 +140,7 @@ impl<'g> crate::game::ClientGame<'g> {
     /// Draws inserted layers not drawn yet this frame, below `until` or to the end with `None`.
     /// A skipped vanilla layer keeps its place; its neighbours draw at the next paint site.
     /// Inserted layers don't draw while the HUD is hidden.
-    pub(in crate::game) fn draw_mod_gui_layers(
+    pub fn draw_mod_gui_layers(
         &mut self,
         until: Option<VanillaGuiLayer>,
         batch: &mut HudBatch,
@@ -165,7 +165,7 @@ impl<'g> crate::game::ClientGame<'g> {
     /// Dispatches a vanilla slot after flushing inserted layers below it. Replacing or wrapping
     /// a body leaves the slot's ID, order and hooks unchanged. The original body's eligibility
     /// applies only to the original paint, including when a wrapper delegates to it.
-    pub(in crate::game) fn gui_layer(
+    pub fn gui_layer(
         &mut self,
         layer: VanillaGuiLayer,
         batch: &mut HudBatch,

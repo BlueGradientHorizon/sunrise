@@ -272,7 +272,7 @@ pub(crate) mod tests {
                 } else {
                     game.options.dedicated = Some(Vec::new());
                 }
-                game.side
+                game.server
                     .streaming
                     .insert_remote(&mut game.world, Chunk::empty(0, 0));
                 let reg = game.pack.assets.registry;
@@ -322,7 +322,7 @@ pub(crate) mod tests {
                             .inbox
                             .push_back(InboxItem::Packet(S::ClientTickEnd(Empty), None));
                     }
-                    game.side.lan.as_mut().unwrap().hub.guests.push(player);
+                    game.server.lan.as_mut().unwrap().hub.guests.push(player);
                     game.entity_section_joined(LANDING, start);
                     health
                 } else {
@@ -369,7 +369,7 @@ pub(crate) mod tests {
                 let drops = game.dropped.len();
                 if player {
                     game.tick_lan_packets();
-                    let guest = game.side.lan.as_ref().unwrap().hub.guest(1).unwrap();
+                    let guest = game.server.lan.as_ref().unwrap().hub.guest(1).unwrap();
                     assert_eq!(
                         guest.moves.len(),
                         usize::from(!converted),
@@ -393,7 +393,7 @@ pub(crate) mod tests {
                     assert_eq!(game.dropped.len(), drops);
                 }
                 let (landing_y, health) = if player {
-                    let g = game.side.lan.as_ref().unwrap().hub.guest(1).unwrap();
+                    let g = game.server.lan.as_ref().unwrap().hub.guest(1).unwrap();
                     (g.position[1], g.health)
                 } else {
                     let m = game.mob_object(LANDING).unwrap();

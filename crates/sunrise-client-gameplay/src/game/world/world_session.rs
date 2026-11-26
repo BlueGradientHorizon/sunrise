@@ -20,7 +20,7 @@ impl crate::game::ClientGame<'_> {
     }
 
     /// What the title screen asked for, from a click or Enter.
-    pub(in crate::game::client_side) fn title_action(&mut self, action: Action) -> Result<()> {
+    pub fn title_action(&mut self, action: Action) -> Result<()> {
         match action {
             Action::Quit => self.begin_closing_save(true)?,
             Action::Options => self.open_options(true),

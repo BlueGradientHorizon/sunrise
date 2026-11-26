@@ -128,17 +128,17 @@ fn a_client_mod_reads_a_block_states_baked_models_once_per_load() {
                 );
                 keys[0]
             };
-            let previous = Arc::clone(&game.side.client_pack.render);
+            let previous = Arc::clone(&game.client.client_pack.render);
             reload(game);
             let next_key = read.lock().unwrap().keys[1].as_ref().unwrap()[0];
             assert_ne!(next_key, first, "a new generation's key");
             assert_eq!(
-                game.side.client_pack.render.baked_model(first).unwrap_err(),
+                game.client.client_pack.render.baked_model(first).unwrap_err(),
                 ModelError::StaleModel,
                 "the first load's key is superseded"
             );
             let before = previous.baked_model(first).unwrap();
-            let after = game.side.client_pack.render.baked_model(next_key).unwrap();
+            let after = game.client.client_pack.render.baked_model(next_key).unwrap();
             let slot = mod_api::__private::game::Fields::fields(&first).slot;
             let particle_layer = previous
                 .model_catalog
@@ -154,11 +154,11 @@ fn a_client_mod_reads_a_block_states_baked_models_once_per_load() {
             assert_eq!(before.particle, Some(expected_particle));
             assert_eq!(before, after, "untouched: the same quads and metadata");
             let unknown = BakedModelKey::from(mod_api::__private::built::model_ref(
-                game.side.client_pack.render.generation,
+                game.client.client_pack.render.generation,
                 u32::MAX,
             ));
             assert_eq!(
-                game.side
+                game.client
                     .client_pack
                     .render
                     .baked_model(unknown)
@@ -174,7 +174,7 @@ fn a_client_mod_reads_a_block_states_baked_models_once_per_load() {
                 cache.path().to_owned(),
                 game.pack.source.clone(),
             );
-            game.side.client_pack.render = Arc::new(
+            game.client.client_pack.render = Arc::new(
                 sunrise_client::assets::RenderAssets::load_for_server(&root, &game.pack.assets)
                     .unwrap(),
             );

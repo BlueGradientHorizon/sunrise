@@ -228,7 +228,7 @@ fn hit_attempts_reach_the_listener_once_including_refusals() {
             assert_eq!(game.player.as_ref().unwrap().health.health(), 20.0);
 
             fresh_player(game, GameMode::Survival);
-            game.side.combat.0.refuse_player_hit = true;
+            game.server.combat.0.refuse_player_hit = true;
             assert!(!game.hurt_player_from(
                 2.0,
                 None,
@@ -238,7 +238,7 @@ fn hit_attempts_reach_the_listener_once_including_refusals() {
             ));
             check(&[false], "PvP refusal after the first predicate");
             assert_eq!(game.player.as_ref().unwrap().health.health(), 20.0);
-            game.side.combat.0.refuse_player_hit = false;
+            game.server.combat.0.refuse_player_hit = false;
 
             fresh_player(game, GameMode::Survival);
             game.player

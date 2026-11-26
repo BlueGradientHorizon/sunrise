@@ -119,7 +119,7 @@ impl EntitySections {
 
     /// `addEntity`: entity `id` is filed at `at`, untold. A new entity under an id seen before
     /// (a client's `AddEntity` replacing one) starts over too.
-    pub(in crate::game) fn placed(&mut self, scope: Scope, id: u32, at: [f64; 3]) {
+    pub fn placed(&mut self, scope: Scope, id: u32, at: [f64; 3]) {
         self.table(scope).insert(id, (scope.level, section_of(at)));
     }
 
@@ -160,7 +160,7 @@ impl EntitySections {
 
     /// `id` is gone (removed, or respawned as a new entity under the same id): it is filed
     /// again where it next appears, untold.
-    pub(in crate::game) fn forget(&mut self, id: u32) {
+    pub fn forget(&mut self, id: u32) {
         self.filed.remove(&id);
         // A nested listener may have queued a crossing immediately before it
         // removed this entity.  Do not deliver that stale write on the next
@@ -169,7 +169,7 @@ impl EntitySections {
     }
 
     /// The crossings to tell now, or none while a telling is under way.
-    pub(in crate::game) fn begin_telling(&mut self) -> Option<Vec<Crossing>> {
+    pub fn begin_telling(&mut self) -> Option<Vec<Crossing>> {
         if self.busy || self.queue.is_empty() {
             return None;
         }
@@ -180,7 +180,7 @@ impl EntitySections {
     }
 
     /// The telling is over; `batch` goes back for its capacity.
-    pub(in crate::game) fn end_telling(&mut self, mut batch: Vec<Crossing>) {
+    pub fn end_telling(&mut self, mut batch: Vec<Crossing>) {
         batch.clear();
         self.telling = batch;
         self.busy = false;

@@ -107,7 +107,7 @@ impl crate::game::ServerGame<'_> {
                 .get_or_insert_with(|| self.server.rand_sequences.clone());
         }
     }
-    pub(in crate::game) fn lan_merchant_click(
+    pub fn lan_merchant_click(
         &mut self,
         conn: u32,
         p: &play::ContainerClick,

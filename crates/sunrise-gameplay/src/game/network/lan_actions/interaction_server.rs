@@ -137,7 +137,7 @@ impl crate::game::ServerGame<'_> {
     /// `Player.attack` for a player, a mob or another entity, and the deflection of a fireball,
     /// a wind charge or a shulker bullet. True when the blow landed. A fake player's
     /// `PlayerRef::perform_action` runs it as the packet does.
-    pub(in crate::game) fn guest_attack(
+    pub fn guest_attack(
         &mut self,
         conn: u32,
         gi: usize,
@@ -357,7 +357,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// `ServerGamePacketListenerImpl.handleInteract`'s entity use for a guest or the persistent fake: the border and
     /// interaction range, then that entity and hand only, never an air-use fallback.
-    pub(in crate::game) fn guest_interact(
+    pub fn guest_interact(
         &mut self,
         conn: u32,
         gi: usize,
@@ -599,7 +599,7 @@ impl crate::game::ServerGame<'_> {
     /// when the use ends the click. An optional receipt reports block and item phases before
     /// their block updates. The packet handler answers refusals. A fake player's
     /// `PlayerRef::perform_action` runs it as the packet does.
-    pub(in crate::game) fn guest_use_item_on(
+    pub fn guest_use_item_on(
         &mut self,
         conn: u32,
         gi: usize,

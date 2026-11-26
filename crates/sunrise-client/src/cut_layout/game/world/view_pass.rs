@@ -131,7 +131,7 @@ use sunrise_protocol::{
             radius: 1,
             mode,
         };
-        let hub = &mut game.side.lan.as_mut().unwrap().hub;
+        let hub = &mut game.server.lan.as_mut().unwrap().hub;
         hub.set_viewed_areas(2, "test:portal", vec![area]).unwrap();
         let mut all = Sent::default();
         let deadline = Instant::now() + Duration::from_secs(120);
@@ -166,7 +166,7 @@ use sunrise_protocol::{
             game.tick_server(false).unwrap();
             all.times.extend(sent(&rx).times);
         }
-        let world = game.side.levels.0.parked_world(Dim::Nether).unwrap();
+        let world = game.server.levels.0.parked_world(Dim::Nether).unwrap();
         assert!(
             square().iter().all(|c| world.chunks.contains_key(c)),
             "still loaded"
@@ -194,7 +194,7 @@ use sunrise_protocol::{
         let mut resources = None;
         let (mut game, rx, all) = stream_the_nether(&mut resources, "view-pass-withdraw");
         assert_eq!(all.chunks, square());
-        let hub = &mut game.side.lan.as_mut().unwrap().hub;
+        let hub = &mut game.server.lan.as_mut().unwrap().hub;
         hub.set_viewed_areas(2, "test:portal", Vec::new()).unwrap();
         let nether = Dim::Nether.id();
         assert!(hub.viewed_tickets(nether).is_empty() && hub.viewed_extra(nether).is_empty());
@@ -202,7 +202,7 @@ use sunrise_protocol::{
         assert!(game.needs_view_pass(Dim::Nether), "its view is still open");
         // The first pass after the withdrawal starts the linger at this hub tick.
         game.tick_server(false).unwrap();
-        let start = game.side.lan.as_ref().unwrap().hub.ticks;
+        let start = game.server.lan.as_ref().unwrap().hub.ticks;
         assert!(sent(&rx).forgotten.is_empty());
         let mut forgot_at = None;
         let mut last = Sent::default();
@@ -210,7 +210,7 @@ use sunrise_protocol::{
             game.tick_server(false).unwrap();
             let s = sent(&rx);
             if !s.forgotten.is_empty() {
-                forgot_at = Some(game.side.lan.as_ref().unwrap().hub.ticks - start);
+                forgot_at = Some(game.server.lan.as_ref().unwrap().hub.ticks - start);
                 last = s;
                 break;
             }
@@ -223,7 +223,7 @@ use sunrise_protocol::{
         last.forgotten.sort_unstable();
         assert_eq!(last.forgotten, square());
         assert!(last.closed, "closed once nothing of it is left");
-        let hub = &game.side.lan.as_ref().unwrap().hub;
+        let hub = &game.server.lan.as_ref().unwrap().hub;
         let viewer = hub.guests.iter().find(|g| g.uuid == 2).unwrap();
         assert!(viewer.viewed.view(nether).is_none());
         assert!(!hub.viewed.active());
@@ -262,7 +262,7 @@ use sunrise_protocol::{
         assert!(t.events.contains(&3), "its death, wrapped: {:?}", t.events);
         assert!(t.removed, "removed, wrapped");
         let viewer = game
-            .side
+            .server
             .lan
             .as_ref()
             .unwrap()
@@ -388,7 +388,7 @@ use sunrise_protocol::{
             let out = host_with_viewer(&mut game, || {
                 PlayerSender::payload_executor_test_sender(transport)
             });
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()
@@ -520,7 +520,7 @@ use sunrise_protocol::{
         let overworld: Vec<(i32, i32)> = (-1..=1)
             .flat_map(|x| (-1..=1).map(move |z| (x, z)))
             .collect();
-        let hub = &mut game.side.lan.as_mut().unwrap().hub;
+        let hub = &mut game.server.lan.as_mut().unwrap().hub;
         let i = hub.guests.iter().position(|g| g.uuid == 2).unwrap();
         hub.guests
             .update(i, |g| g.sent_chunks = overworld.iter().copied().collect());

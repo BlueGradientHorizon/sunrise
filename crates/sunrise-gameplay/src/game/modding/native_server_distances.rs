@@ -8,11 +8,11 @@ impl ServerGame<'_> {
         self.common.clock.tick_times()
     }
     /// `PlayerList.getViewDistance`.
-    pub(in crate::game) fn server_view_distance(&self) -> Option<i32> {
+    pub fn server_view_distance(&self) -> Option<i32> {
         Some(self.server.lan.as_ref()?.hub.config.view_distance)
     }
     /// `PlayerList.getSimulationDistance`.
-    pub(in crate::game) fn server_simulation_distance(&self) -> Option<i32> {
+    pub fn server_simulation_distance(&self) -> Option<i32> {
         Some(self.server.lan.as_ref()?.hub.config.simulation_distance)
     }
     /// `MinecraftServer.isPublished`: `DedicatedServer`'s is always true, `IntegratedServer`'s
@@ -21,7 +21,7 @@ impl ServerGame<'_> {
         self.common.is_dedicated_server() || self.published_port().is_some()
     }
     /// `PlayerList.setViewDistance` on a dedicated server; the tickets read the settings.
-    pub(in crate::game) fn server_set_view_distance(&mut self, distance: i32) -> bool {
+    pub fn server_set_view_distance(&mut self, distance: i32) -> bool {
         if !(2..=32).contains(&distance)
             || self.common.options.dedicated.is_none()
             || self.server.lan.is_none()
@@ -33,7 +33,7 @@ impl ServerGame<'_> {
         true
     }
     /// `PlayerList.setSimulationDistance` on a dedicated server.
-    pub(in crate::game) fn server_set_simulation_distance(&mut self, distance: i32) -> bool {
+    pub fn server_set_simulation_distance(&mut self, distance: i32) -> bool {
         if !(2..=32).contains(&distance)
             || self.common.options.dedicated.is_none()
             || self.server.lan.is_none()

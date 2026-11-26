@@ -210,8 +210,8 @@ fn creative_catalog_builds_lazily_and_edits_before_filtering_on_both_sides() {
             game.native_lifecycle
                 .begin_open(mod_api::Authority::RemoteClient);
             replace_client_definition(game, 2);
-            game.side.creative_screen.0 = Creative::from_json(&catalog).unwrap();
-            assert!(!game.side.creative_screen.0.has_contents());
+            game.client.creative_screen.0 = Creative::from_json(&catalog).unwrap();
+            assert!(!game.client.creative_screen.0.has_contents());
             let old = check(
                 game,
                 LogicalSide::Client,

@@ -147,7 +147,7 @@ impl crate::game::ServerGame<'_> {
 
     /// `ServerPlayer.setCamera`: the view moves to the new camera, which
     /// the client is told, or back to the player (`None`).
-    pub(in crate::game) fn guest_set_camera(&mut self, gi: usize, camera: Option<i32>) {
+    pub fn guest_set_camera(&mut self, gi: usize, camera: Option<i32>) {
         let Some(host) = self.server.lan.as_ref() else {
             return;
         };

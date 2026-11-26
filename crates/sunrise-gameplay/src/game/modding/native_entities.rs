@@ -43,7 +43,7 @@ impl crate::game::ServerGame<'_> {
     /// load, one a mod kept out (`native_entity_join_level`), or with the entity ids exhausted.
     /// Inside a transaction the id comes back at once: a join a mod cancels at the root commit
     /// leaves its handle stale.
-    pub(in crate::game) fn summon(
+    pub fn summon(
         &mut self,
         dimension: &str,
         kind: &str,
@@ -163,7 +163,7 @@ impl crate::game::ServerGame<'_> {
     /// until then. The same holds for a call a listener makes while that commit is told: its
     /// joins are told after the batch being told. A `through` is the commit's own flush of one
     /// batch, never held.
-    pub(in crate::game) fn native_joins_flush(
+    pub fn native_joins_flush(
         &mut self,
         loaded_from_disk: bool,
         watch: u32,
@@ -273,7 +273,7 @@ impl crate::game::ServerGame<'_> {
         }
     }
 
-    fn assign_pending_join_ids(&mut self) {
+    pub fn assign_pending_join_ids(&mut self) {
         self.assign_dragon_and_crystal_ids();
         use super::entity_residency::assign_resident_ids;
         assign_resident_ids!(self.common.tnts, t, &mut self.server.next_entity, None);
@@ -414,7 +414,7 @@ impl crate::game::ServerGame<'_> {
     /// Entities that were moved, not added (a portal's arrival keeps being
     /// silent): everything now in the level counts as announced, and will
     /// be told when it leaves.
-    pub(in crate::game) fn native_joins_skip(&mut self) {
+    pub fn native_joins_skip(&mut self) {
         let observed = sunrise_sim::join_seq::JoinSeq::latest();
         if self.common.is_logical_server() && !mod_api::__private::mods().is_empty() {
             self.assign_pending_join_ids();
@@ -437,7 +437,7 @@ impl crate::game::ServerGame<'_> {
         }
     }
     /// Entity `id` has left the level: told once, if mods were told it joined.
-    pub(in crate::game::server_side) fn native_entity_left(&mut self, id: u32) {
+    pub fn native_entity_left(&mut self, id: u32) {
         if self.common.hold_announcement(sunrise_gameplay_common::game::transactions::entities::Announcement::Left(id)) {
             return;
         }
@@ -458,7 +458,7 @@ impl crate::game::ServerGame<'_> {
     /// through a portal, unloaded), lowest id first. Marks the entities still
     /// there in the registry and tells the rest: no allocation, and nothing
     /// runs when no mod is loaded or none was announced.
-    pub(in crate::game) fn native_leaves_flush(&mut self) {
+    pub fn native_leaves_flush(&mut self) {
         self.native_removals_flush();
         if self.common.persist.live.is_empty()
             || self.common.hold_announcement(sunrise_gameplay_common::game::transactions::entities::Announcement::Leaves)

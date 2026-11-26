@@ -73,7 +73,7 @@ fn click(game: &mut sunrise_gameplay::game::ServerGame<'_>, pos: [i32; 3], stack
     game.cooldowns = Default::default();
     *game.held_mut() = Some(stack);
     let hit = hit(pos);
-    game.side.forced_hit = Some(hit);
+    game.server.forced_hit = Some(hit);
     game.with_player_actor(|g| g.use_hand(Some(&hit))).unwrap();
 }
 
@@ -84,10 +84,10 @@ fn click_as_guest(game: &mut sunrise_gameplay::game::ServerGame<'_>, pos: [i32; 
     game.cooldowns = Default::default();
     *game.held_mut() = Some(stack);
     let hit = hit(pos);
-    game.side.forced_hit = Some(hit);
-    game.side.guest_use = Some(GuestUse::on_block(Hand::Main));
+    game.server.forced_hit = Some(hit);
+    game.server.guest_use = Some(GuestUse::on_block(Hand::Main));
     game.with_player_actor(|g| g.use_hand(Some(&hit))).unwrap();
-    game.side.guest_use = None;
+    game.server.guest_use = None;
 }
 
 fn state(game: &sunrise_gameplay::game::ServerGame<'_>, pos: [i32; 3]) -> BlockStateId {

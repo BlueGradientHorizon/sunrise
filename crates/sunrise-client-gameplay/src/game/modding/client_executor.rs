@@ -4,7 +4,7 @@ use mod_api::ClientExecutor;
 use sunrise_level::crash;
 
 impl ClientGame<'_> {
-    pub(in crate::game) fn client_executor(&self) -> Option<ClientExecutor> {
+    pub fn client_executor(&self) -> Option<ClientExecutor> {
         if !self.common.native_window() {
             return None;
         }

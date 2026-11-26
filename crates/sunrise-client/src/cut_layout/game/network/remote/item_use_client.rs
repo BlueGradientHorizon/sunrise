@@ -87,7 +87,7 @@ pub(crate) mod tests {
         let fire_charge = ItemStack::new("minecraft:fire_charge", 1);
         game.inventory[0] = Some(fire_charge.clone());
         game.selected = 0;
-        game.side.audio.0.heard.clear();
+        game.client.audio.0.heard.clear();
         assert!(game.predict_fire_starter(&fire_charge, &hit, Hand::Main, 1));
         assert_eq!(
             game.inventory[0].as_ref().map(|s| s.count),
@@ -95,14 +95,14 @@ pub(crate) mod tests {
             "survival fire charge must not be consumed on client for TNT"
         );
         assert!(
-            game.side.audio.0.heard.is_empty(),
+            game.client.audio.0.heard.is_empty(),
             "TNT ignition sound must not play on client"
         );
 
         // Flint and steel on TNT: returns true without playing sound.
         let flint_steel = ItemStack::new("minecraft:flint_and_steel", 1);
         game.inventory[0] = Some(flint_steel.clone());
-        game.side.audio.0.heard.clear();
+        game.client.audio.0.heard.clear();
         assert!(game.predict_fire_starter(&flint_steel, &hit, Hand::Main, 2));
         assert_eq!(
             game.inventory[0].as_ref().map(|s| s.count),
@@ -110,7 +110,7 @@ pub(crate) mod tests {
             "flint and steel must remain in inventory"
         );
         assert!(
-            game.side.audio.0.heard.is_empty(),
+            game.client.audio.0.heard.is_empty(),
             "TNT ignition sound must not play on client"
         );
     }

@@ -50,7 +50,7 @@ impl crate::game::ServerGame<'_> {
     /// True when the entity moved. False when no spot was found, for a
     /// non-finite point, a fake player, a player in another level, an armor
     /// stand or the dragon, a stale handle, or on a client.
-    pub(in crate::game) fn living_random_teleport(
+    pub fn living_random_teleport(
         &mut self,
         living: LivingRef,
         at: [f64; 3],

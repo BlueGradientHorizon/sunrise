@@ -16,7 +16,7 @@ use sunrise_level::effects::EffectInstance;
 
 impl ServerGame<'_> {
     /// Apply one loaded consumable effect without consuming the item.
-    pub(in crate::game) fn living_apply_consume_effect(
+    pub fn living_apply_consume_effect(
         &mut self,
         living: LivingRef,
         stack: &ItemStack,
@@ -51,7 +51,7 @@ impl ServerGame<'_> {
     /// ticks. False before effect resolution, for a duration below -1, an armor
     /// stand, the dragon, a stale handle or a client, or when the active
     /// instance did not change, as in vanilla's `addEffect`.
-    pub(in crate::game) fn living_add_effect(
+    pub fn living_add_effect(
         &mut self,
         living: LivingRef,
         effect: &ActiveEffect,
@@ -110,7 +110,7 @@ impl ServerGame<'_> {
     /// leaving the same way its expiry takes them. False (and nothing
     /// changes) when the entity has the effect not, before effect resolution, or for
     /// an armor stand, the dragon, a stale handle or a client.
-    pub(in crate::game) fn living_remove_effect(
+    pub fn living_remove_effect(
         &mut self,
         living: LivingRef,
         effect: EffectKey,
@@ -158,7 +158,7 @@ impl ServerGame<'_> {
     /// every effect's attribute modifiers and absorption hearts leave with
     /// them. False when the entity has none, or for an armor stand, the
     /// dragon, a stale handle or a client.
-    pub(in crate::game) fn living_remove_all_effects(&mut self, living: LivingRef) -> bool {
+    pub fn living_remove_all_effects(&mut self, living: LivingRef) -> bool {
         match self.native_living_target(living) {
             Some(t @ (Target::Player | Target::Guest(_))) => self
                 .for_player(t, |g| g.remove_player_effects(None))

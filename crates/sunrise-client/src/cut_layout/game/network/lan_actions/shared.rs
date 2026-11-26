@@ -122,7 +122,7 @@ pub(in crate::game) mod swing_echo_tests {
         guest.loaded = true;
         guest.inventory[0] = Some(ItemStack::new("minecraft:stone", 16));
         guest.selected = 0;
-        let mut host = game.side.lan.take().unwrap();
+        let mut host = game.server.lan.take().unwrap();
         host.hub.guests.push(guest);
         let id = host.hub.guests[0].entity_id;
         let swings_back = || {
@@ -157,7 +157,7 @@ pub(in crate::game) mod swing_echo_tests {
                 sequence,
             })
         };
-        game.side.lan = Some(host);
+        game.server.lan = Some(host);
         // BlockItem.place: SUCCESS, the client's own swing.
         game.lan_guest_packet(2, use_on([4, 199, 6], [0.5, 1.0, 0.5], 1));
         assert_eq!(game.world.block(4, 200, 6).0, stone, "the stone is placed");
@@ -166,7 +166,7 @@ pub(in crate::game) mod swing_echo_tests {
         for _ in 0..8 {
             game.lan_swings();
         }
-        game.side
+        game.server
             .lan
             .as_mut()
             .unwrap()
@@ -295,13 +295,13 @@ pub(in crate::game) mod item_on_block_cooldown_tests {
         guest.inventory[0] = Some(ItemStack::new("minecraft:stone", 16));
         guest.selected = 0;
 
-        game.side.lan.as_mut().unwrap().hub.guests.push(guest);
-        assert_eq!(game.side.lan.as_mut().unwrap().hub.guests[0].uuid, 331);
+        game.server.lan.as_mut().unwrap().hub.guests.push(guest);
+        assert_eq!(game.server.lan.as_mut().unwrap().hub.guests[0].uuid, 331);
         assert!(
-            game.side.lan.as_mut().unwrap().hub.guests[0].placed
-                && game.side.lan.as_mut().unwrap().hub.guests[0].loaded
+            game.server.lan.as_mut().unwrap().hub.guests[0].placed
+                && game.server.lan.as_mut().unwrap().hub.guests[0].loaded
         );
-        assert_eq!(game.side.lan.as_mut().unwrap().hub.guests[0].game_mode, 0);
+        assert_eq!(game.server.lan.as_mut().unwrap().hub.guests[0].game_mode, 0);
         let mut planks = ItemStack::new("minecraft:oak_planks", 5);
         planks.data_mut().set_other(
             "minecraft:use_cooldown",
@@ -313,7 +313,7 @@ pub(in crate::game) mod item_on_block_cooldown_tests {
                 ),
             ])),
         );
-        game.side
+        game.server
             .lan
             .as_mut()
             .unwrap()
@@ -333,13 +333,13 @@ pub(in crate::game) mod item_on_block_cooldown_tests {
         };
         assert!(game.world.is_air(game.world.block(5, 200, 6)));
         if check_start.is_none() {
-            let mut stick = game.side.lan.as_mut().unwrap().hub.guests[0].inventory[0]
+            let mut stick = game.server.lan.as_mut().unwrap().hub.guests[0].inventory[0]
                 .as_ref()
                 .unwrap()
                 .clone();
             stick.item = "minecraft:stick".into();
             stick.count = 1;
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()
@@ -352,17 +352,17 @@ pub(in crate::game) mod item_on_block_cooldown_tests {
                 "failed stick use"
             );
             assert!(
-                !game.side.lan.as_mut().unwrap().play[&2]
+                !game.server.lan.as_mut().unwrap().play[&2]
                     .cooldowns
                     .is_on_cooldown("probe:group")
             );
-            let mut planks = game.side.lan.as_mut().unwrap().hub.guests[0].inventory[0]
+            let mut planks = game.server.lan.as_mut().unwrap().hub.guests[0].inventory[0]
                 .as_ref()
                 .unwrap()
                 .clone();
             planks.item = "minecraft:oak_planks".into();
             planks.count = 5;
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()
@@ -379,19 +379,19 @@ pub(in crate::game) mod item_on_block_cooldown_tests {
             .unwrap();
         assert_eq!(game.world.block(5, 200, 6), oak, "actual first placement");
         assert_eq!(
-            game.side.lan.as_mut().unwrap().hub.guests[0].inventory[0]
+            game.server.lan.as_mut().unwrap().hub.guests[0].inventory[0]
                 .as_ref()
                 .unwrap()
                 .count,
             4
         );
         assert!(
-            game.side.lan.as_mut().unwrap().play.contains_key(&2),
+            game.server.lan.as_mut().unwrap().play.contains_key(&2),
             "real acting guest context installed"
         );
         if check_start == Some(true) {
             assert!(
-                game.side.lan.as_mut().unwrap().play[&2]
+                game.server.lan.as_mut().unwrap().play[&2]
                     .cooldowns
                     .is_on_cooldown("probe:group"),
                 "successful use starts the actual guest's group"
@@ -410,7 +410,7 @@ pub(in crate::game) mod item_on_block_cooldown_tests {
                 "same-group second placement is rejected"
             );
             assert_eq!(
-                game.side.lan.as_mut().unwrap().hub.guests[0].inventory[0]
+                game.server.lan.as_mut().unwrap().hub.guests[0].inventory[0]
                     .as_ref()
                     .unwrap()
                     .count,

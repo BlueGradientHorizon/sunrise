@@ -76,7 +76,7 @@ impl crate::game::ClientGame<'_> {
     /// `setYRot` / `setXRot` of the local player by a client mod: yaw as given, pitch `% 360`
     /// clamped to -90..90, the previous angles moved by as much (`Entity.turn`). Sends nothing:
     /// the tick's player sync (`remote_send_state`) carries the look.
-    pub(in crate::game) fn set_local_rotation(
+    pub fn set_local_rotation(
         &mut self,
         yaw: f32,
         pitch: f32,

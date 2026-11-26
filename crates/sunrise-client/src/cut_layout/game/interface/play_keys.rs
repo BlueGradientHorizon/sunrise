@@ -21,7 +21,7 @@ pub(crate) mod pause_close_tests {
             for (screen, closes) in [(Screen::Paused, 0), (Screen::Inventory, 1)] {
                 game.set_screen(screen);
                 game.key_pressed(KeyCode::Escape, KeyCode::Escape).unwrap();
-                assert_eq!(game.side.screen, Screen::Playing);
+                assert_eq!(game.client.screen, Screen::Playing);
                 let mut sent = 0;
                 while let Ok((id, bytes)) = peer.recv() {
                     if matches!(S::decode(id, &bytes), Ok(S::ContainerClose(_))) {
@@ -88,7 +88,7 @@ pub(crate) mod creative_close_tests {
                 veto.store(true, Ordering::SeqCst);
                 game.key_pressed(KeyCode::Escape, KeyCode::Escape).unwrap();
                 assert_eq!(
-                    game.side.screen,
+                    game.client.screen,
                     Screen::Creative,
                     "a vetoed close keeps the screen"
                 );
@@ -98,7 +98,7 @@ pub(crate) mod creative_close_tests {
                     game.set_screen(Screen::Creative);
                     closes(&mut peer);
                     game.key_pressed(key, key).unwrap();
-                    assert_eq!(game.side.screen, Screen::Playing, "{key:?}");
+                    assert_eq!(game.client.screen, Screen::Playing, "{key:?}");
                     assert_eq!(closes(&mut peer), [0], "{key:?}");
                 }
             });

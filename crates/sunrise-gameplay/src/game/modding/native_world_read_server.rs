@@ -22,7 +22,7 @@ impl crate::game::ServerGame<'_> {
     /// The fluid state at `pos` of the level `level` names (`BlockGetter.getFluidState`). None
     /// for a stale handle, a chunk that isn't loaded or a `y` outside the world: a read never
     /// loads a chunk.
-    pub(in crate::game) fn level_fluid_state(
+    pub fn level_fluid_state(
         &self,
         level: LevelRef,
         pos: [i32; 3],

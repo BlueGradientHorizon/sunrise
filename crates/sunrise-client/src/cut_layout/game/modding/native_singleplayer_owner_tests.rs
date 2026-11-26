@@ -74,7 +74,7 @@ fn open_hub(game: &mut sunrise_gameplay::game::ServerGame<'_>, role: ExecutionRo
         force_game_mode: false,
     };
     let singleplayer_profile = game
-        .side
+        .server
         .singleplayer_profile
         .as_ref()
         .map(|profile| (profile.name.clone(), profile.uuid));
@@ -97,8 +97,8 @@ fn open_hub(game: &mut sunrise_gameplay::game::ServerGame<'_>, role: ExecutionRo
         seed: 0,
         max_players: 4,
         integrated: role == ExecutionRole::IntegratedServer,
-        levels: game.side.level_shapes,
-        level_seeds: game.side.levels.0.runtime.seeds(),
+        levels: game.server.level_shapes,
+        level_seeds: game.server.levels.0.runtime.seeds(),
     };
     game.lan_host(settings, net, config).unwrap();
 }
@@ -124,7 +124,7 @@ fn join(game: &mut sunrise_gameplay::game::ServerGame<'_>, conn: u32, uuid: u128
         10,
     );
     guest.placed = true;
-    game.side.lan.as_mut().unwrap().hub.guests.push(guest);
+    game.server.lan.as_mut().unwrap().hub.guests.push(guest);
     let players = game.players().server_players();
     *players
         .iter()
@@ -133,7 +133,7 @@ fn join(game: &mut sunrise_gameplay::game::ServerGame<'_>, conn: u32, uuid: u128
 }
 
 fn leave(game: &mut sunrise_gameplay::game::ServerGame<'_>, conn: u32) {
-    game.side
+    game.server
         .lan
         .as_mut()
         .unwrap()
@@ -174,12 +174,12 @@ fn the_startup_hooks_read_the_whole_launch_profile_before_the_hub() {
             // The account answers after the server is created: its creation waits for it,
             // as `getGameProfile` joins `profileFuture`, so no read sees it half made.
             let account = slow_account(std::time::Duration::from_millis(200));
-            game.side.singleplayer_profile = Some(SingleplayerProfile::launched(
+            game.server.singleplayer_profile = Some(SingleplayerProfile::launched(
                 "Owner".into(),
                 OWNER,
                 Some(&account),
             ));
-            assert!(game.side.lan.is_none(), "no hub yet");
+            assert!(game.server.lan.is_none(), "no hub yet");
             game.native_server_about_to_start(false);
             game.native_server_starting(false);
             open_hub(game, ExecutionRole::IntegratedServer);
@@ -205,20 +205,20 @@ fn the_integrated_owner_is_the_launch_profile_matched_by_name() {
     }
     super::native_entity_refs::tests::with_game(|game| {
         let account = slow_account(std::time::Duration::ZERO);
-        game.side.singleplayer_profile = Some(SingleplayerProfile::launched(
+        game.server.singleplayer_profile = Some(SingleplayerProfile::launched(
             "Owner".into(),
             OWNER,
             Some(&account),
         ));
         open_hub(game, ExecutionRole::IntegratedServer);
         // Commands off: the owner is no operator (`IntegratedPlayerList`).
-        let hub = &mut game.side.lan.as_mut().unwrap().hub;
+        let hub = &mut game.server.lan.as_mut().unwrap().hub;
         hub.ops.insert(OWNER, 0);
         hub.singleplayer_owner = Some(OWNER);
         assert_eq!(read(game), Some(launched()), "before the owner joins");
 
         let guest = join(game, 12, 12, "guest12");
-        game.side.lan.as_mut().unwrap().hub.ops.insert(12, 4);
+        game.server.lan.as_mut().unwrap().hub.ops.insert(12, 4);
         assert!(
             !guest.is_singleplayer_owner(game),
             "a guest who joined first, op 4"
@@ -268,7 +268,7 @@ fn a_dedicated_server_has_no_singleplayer_owner() {
     super::native_entity_refs::tests::with_game_role(root, role, |game| {
         open_hub(game, role);
         let op = join(game, 12, OWNER, "Owner");
-        game.side.lan.as_mut().unwrap().hub.ops.insert(OWNER, 4);
+        game.server.lan.as_mut().unwrap().hub.ops.insert(OWNER, 4);
         assert_eq!(read(game), None);
         assert!(!op.is_singleplayer_owner(game));
     });

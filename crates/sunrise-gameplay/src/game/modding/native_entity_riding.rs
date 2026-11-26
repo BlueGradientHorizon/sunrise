@@ -363,7 +363,7 @@ impl crate::game::ServerGame<'_> {
             .is_some_and(|target| self.detach_leash(target, drop_lead))
     }
     /// Attempts one mount, shared by handle writes and the ride command.
-    pub(in crate::game) fn start_riding_target(
+    pub fn start_riding_target(
         &mut self,
         rider: Target,
         vehicle: Target,
@@ -373,7 +373,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// `start_riding_target` with its refusal named (`StartRidingRefusal`).
-    pub(in crate::game) fn try_start_riding_target(
+    pub fn try_start_riding_target(
         &mut self,
         rider: Target,
         vehicle: Target,
@@ -655,7 +655,7 @@ impl crate::game::ServerGame<'_> {
     /// General rows use the same admission and cancellable mount notifications
     /// as players and mobs. Only the explicit `entity_ride_player` route lets a
     /// mob ride a player; force does not make unsaved vehicles eligible.
-    pub(in crate::game) fn entity_start_riding(
+    pub fn entity_start_riding(
         &mut self,
         entity: EntityRef,
         vehicle: EntityRef,
@@ -673,7 +673,7 @@ impl crate::game::ServerGame<'_> {
     /// Gets the entity off its vehicle (`Entity.stopRiding`), where the
     /// vehicle lets it out, as `/ride ... dismount` does. False when it rode
     /// nothing, a mod's `mob_ride` hook kept it on, or for a stale handle.
-    pub(in crate::game) fn entity_stop_riding(&mut self, entity: EntityRef) -> bool {
+    pub fn entity_stop_riding(&mut self, entity: EntityRef) -> bool {
         let Some(t) = self.native_entity_target(entity) else {
             return false;
         };
@@ -762,7 +762,7 @@ impl crate::game::ServerGame<'_> {
     /// Gets every passenger off the entity (`Entity.ejectPassengers`), last
     /// first as vanilla walks the list, so `mob_ride` hears them in its
     /// order. False when nothing rode it, or for a stale handle.
-    pub(in crate::game) fn entity_eject_passengers(&mut self, entity: EntityRef) -> bool {
+    pub fn entity_eject_passengers(&mut self, entity: EntityRef) -> bool {
         let Some(passengers) = self.entity_passengers(entity) else {
             return false;
         };
@@ -776,13 +776,13 @@ impl crate::game::ServerGame<'_> {
 
 impl crate::game::ServerGame<'_> {
     /// What the entity rides (`Entity.getVehicle`), if its vehicle has a handle.
-    pub(in crate::game) fn entity_vehicle(&self, entity: EntityRef) -> Option<EntityRef> {
+    pub fn entity_vehicle(&self, entity: EntityRef) -> Option<EntityRef> {
         let target = self.native_entity_target(entity)?;
         self.entity(self.native_vehicle_id(target)?)
     }
 
     /// Whether the entity rides another object, even one without a handle.
-    pub(in crate::game) fn entity_is_passenger(&self, entity: EntityRef) -> Option<bool> {
+    pub fn entity_is_passenger(&self, entity: EntityRef) -> Option<bool> {
         let target = self.native_entity_target(entity)?;
         let vehicle = self.native_vehicle_id(target);
         Some(vehicle.is_some())
@@ -797,7 +797,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// The entities riding this one (`Entity.getPassengers`), in `addPassenger`'s order.
-    pub(in crate::game) fn entity_passengers(&self, entity: EntityRef) -> Option<Vec<EntityRef>> {
+    pub fn entity_passengers(&self, entity: EntityRef) -> Option<Vec<EntityRef>> {
         self.native_entity_target(entity)?;
         Some(
             self.seated_passengers(entity.id())
@@ -808,7 +808,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// Whether any object rides the entity, even one without a handle.
-    pub(in crate::game) fn entity_is_vehicle(&self, entity: EntityRef) -> Option<bool> {
+    pub fn entity_is_vehicle(&self, entity: EntityRef) -> Option<bool> {
         self.native_entity_target(entity)?;
         Some(self.has_seated_passengers(entity.id()))
     }

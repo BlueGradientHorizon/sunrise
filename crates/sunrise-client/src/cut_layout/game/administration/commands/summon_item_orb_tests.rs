@@ -53,9 +53,9 @@ fn a_summoned_orb_keeps_the_position_it_was_asked_for() {
         assert!(game.run_command("setblock 4 100 4 stone"));
         // Its box (0.5 tall) reaches into the stone's top 0.2, which is what
         // makes the constructor's unstuck search move it in the first place.
-        let prev = game.side.chat_capture.replace(Vec::new());
+        let prev = game.server.chat_capture.replace(Vec::new());
         let ok = game.run_command("summon minecraft:experience_orb 4.5 100.8 4.5");
-        let lines = std::mem::replace(&mut game.side.chat_capture, prev).unwrap_or_default();
+        let lines = std::mem::replace(&mut game.server.chat_capture, prev).unwrap_or_default();
         assert!(ok, "{lines:?}");
         let orb = game.orbs.last().expect("an orb");
         assert_eq!(orb.position, Vec3::new(4.5, 100.8, 4.5));

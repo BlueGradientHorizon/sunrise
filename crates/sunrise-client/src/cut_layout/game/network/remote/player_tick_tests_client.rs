@@ -14,7 +14,7 @@ fn client_player_ticks_on_the_death_screen_too() {
         crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
             let (client, server) = sunrise_protocol::connection::Pipe::pair();
             game.connect_local(client, "tick-client").unwrap();
-            let remote = game.side.remote.as_mut().unwrap();
+            let remote = game.client.remote.as_mut().unwrap();
             remote.logged_in = true;
             remote.profile = 456;
             remote.entity_id = 42;
@@ -23,14 +23,14 @@ fn client_player_ticks_on_the_death_screen_too() {
                 sunrise_core::geometry::Vec3::ZERO,
             )
             .ok();
-            game.side
+            game.client
                 .remote
                 .as_mut()
                 .unwrap()
                 .level_players
                 .insert(66, 789);
             let kind = game
-                .side
+                .client
                 .remote
                 .as_ref()
                 .unwrap()
@@ -59,15 +59,15 @@ fn client_player_ticks_on_the_death_screen_too() {
                     .collect::<Vec<_>>()
             };
             assert_eq!(phases(), [("pre", "client", 789), ("post", "client", 789)]);
-            game.side.remote.as_mut().unwrap().loaded_sent = true;
-            game.side
+            game.client.remote.as_mut().unwrap().loaded_sent = true;
+            game.client
                 .streaming
                 .insert_remote(&mut game.world, sunrise_level::chunk::Chunk::empty(0, 0));
             // The other player's tick ends before the local player's starts.
             game.tick_remote().unwrap();
             assert_eq!(game.cooldowns.remaining().next().unwrap().1, 2);
             assert_eq!(game.sleep_timer, 5);
-            game.side.screen = sunrise_gameplay_common::game::Screen::Dead;
+            game.client.screen = sunrise_gameplay_common::game::Screen::Dead;
             game.player
                 .as_mut()
                 .unwrap()

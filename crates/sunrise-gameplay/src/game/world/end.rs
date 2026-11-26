@@ -84,7 +84,7 @@ impl crate::game::ServerGame<'_> {
 impl crate::game::ServerGame<'_> {
     /// EnderEyeItem.useOn: fill an empty End portal frame, then light the
     /// portal when the ring of twelve filled frames is complete.
-    pub(in crate::game::server_side) fn use_ender_eye(
+    pub fn use_ender_eye(
         &mut self,
         stack: &ItemStack,
         use_on_block: bool,
@@ -833,7 +833,7 @@ impl crate::game::ServerGame<'_> {
     /// (`applyEffectsFromBlocks`), and `ServerLevel.tick` ticks only the
     /// entities in entity-ticking chunks: one past the simulation distance
     /// enters none (and costs nothing here, however many lie there).
-    pub(in crate::game::server_side) fn find_end_gateway_portals(&mut self) {
+    pub fn find_end_gateway_portals(&mut self) {
         if !self.common.is_logical_server() || self.common.dim != Dim::End {
             return;
         }
@@ -952,11 +952,11 @@ impl crate::game::ServerGame<'_> {
 
     /// `Entity.handlePortal` for the entities in an End gateway: they go
     /// through to the gateway's exit, where they wait for its chunks.
-    pub(in crate::game::server_side) fn handle_end_gateway_portals(&mut self) {
+    pub fn handle_end_gateway_portals(&mut self) {
         self.handle_end_gateway_portals_phase(false);
     }
 
-    pub(in crate::game::server_side) fn handle_end_gateway_portals_phase(
+    pub fn handle_end_gateway_portals_phase(
         &mut self,
         after_move: bool,
     ) {

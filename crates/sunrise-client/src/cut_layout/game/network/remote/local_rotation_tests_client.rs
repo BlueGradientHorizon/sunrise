@@ -22,7 +22,7 @@ fn a_mod_set_look_is_clamped_and_sent_once_by_the_tick() {
                 .set_read_timeout(Some(std::time::Duration::from_secs(5)))
                 .unwrap();
             finish_login(game, &mut server);
-            game.side.title.0 = None;
+            game.client.title.0 = None;
             game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 0.5)).unwrap());
             // The baseline: the first sync sends the position.
             game.remote_send_state(0);
@@ -61,7 +61,7 @@ fn a_mod_set_look_is_clamped_and_sent_once_by_the_tick() {
             assert_eq!(sent_moves(game, &mut server), [("rot", 12.0, 3.0)]);
             game.riding = None;
 
-            game.side.remote.as_mut().unwrap().logged_in = false;
+            game.client.remote.as_mut().unwrap().logged_in = false;
             assert_eq!(
                 game.set_local_rotation(0.0, 0.0),
                 Err(LocalRotationError::NoWorld)
@@ -83,18 +83,18 @@ fn a_player_dead_for_twenty_ticks_sends_nothing_until_it_respawns() {
                 .set_read_timeout(Some(std::time::Duration::from_secs(5)))
                 .unwrap();
             finish_login(game, &mut server);
-            game.side.title.0 = None;
+            game.client.title.0 = None;
             game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 0.5)).unwrap());
             game.remote_send_state(0);
             sent_packets(game, &mut server);
 
-            game.side.screen = sunrise_gameplay_common::game::Screen::Dead;
-            game.side.chat_ui.death_time = 19;
+            game.client.screen = sunrise_gameplay_common::game::Screen::Dead;
+            game.client.chat_ui.death_time = 19;
             game.yaw = 10.0;
             game.remote_send_state(1);
             assert!(sent_packets(game, &mut server) > 0, "still sent at 19");
 
-            game.side.chat_ui.death_time = 20;
+            game.client.chat_ui.death_time = 20;
             for call in 0..25 {
                 game.yaw = 20.0 + call as f32;
                 game.remote_send_state(call as u8 & 1);
@@ -102,8 +102,8 @@ fn a_player_dead_for_twenty_ticks_sends_nothing_until_it_respawns() {
             }
 
             // The respawn's new player starts its death clock again.
-            game.side.screen = sunrise_gameplay_common::game::Screen::Playing;
-            game.side.chat_ui.death_time = 0;
+            game.client.screen = sunrise_gameplay_common::game::Screen::Playing;
+            game.client.chat_ui.death_time = 0;
             game.yaw = 90.0;
             game.remote_send_state(1);
             assert!(sent_packets(game, &mut server) > 0, "sent after respawn");

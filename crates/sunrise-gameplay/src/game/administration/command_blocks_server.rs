@@ -106,7 +106,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// `CommandBlock.tick`.
-    pub(in crate::game) fn command_block_tick(&mut self, pos: BlockPos) {
+    pub fn command_block_tick(&mut self, pos: BlockPos) {
         let key = (pos.x, pos.y, pos.z);
         let Some(state) = self.common.block_state_at(key) else {
             return;
@@ -349,7 +349,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// What `handleSetCommandBlock` does once the player may edit the block.
-    pub(in crate::game) fn apply_command_block(&mut self, s: &CommandBlockEdit) {
+    pub fn apply_command_block(&mut self, s: &CommandBlockEdit) {
         let pos = s.pos;
         let registry = self.common.pack.assets.registry;
         let Some(current) = self.common.block_state_at(pos) else {

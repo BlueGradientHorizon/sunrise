@@ -5,7 +5,7 @@ use sunrise_items::items::EntityTypeTags;
 #[cfg(feature = "client")]
 impl ClientGame<'_> {
     /// Apply synced block, item, fluid, and entity-type tags plus generated class tags on clients.
-    pub(in crate::game) fn install_server_items(&mut self) {
+    pub fn install_server_items(&mut self) {
         let Some(remote) = self.client.remote.as_ref() else {
             return;
         };

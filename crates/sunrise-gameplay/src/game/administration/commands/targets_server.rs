@@ -5,7 +5,7 @@ impl crate::game::ServerGame<'_> {
     /// The level `t` is in (`Entity.level`): a server's players have their
     /// own, which need not be the one in place; everything else is in the
     /// level in place.
-    pub(in crate::game) fn target_level(&self, t: Target) -> Dim {
+    pub fn target_level(&self, t: Target) -> Dim {
         let conn = match t {
             Target::Player => self.server.lan_acting,
             Target::Guest(conn) => Some(conn),
@@ -14,7 +14,7 @@ impl crate::game::ServerGame<'_> {
         conn.and_then(|c| self.command_guest(c))
             .map_or(self.common.dim, |g| Dim::from_id(&g.dimension))
     }
-    pub(in crate::game) fn target_position(&self, t: Target) -> Option<[f64; 3]> {
+    pub fn target_position(&self, t: Target) -> Option<[f64; 3]> {
         match t {
             Target::Player => self
                 .common.player

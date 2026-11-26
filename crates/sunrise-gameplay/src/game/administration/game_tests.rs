@@ -73,7 +73,7 @@ pub struct Info {
 }
 
 impl Info {
-    pub(in crate::game::server_side) fn new(
+    pub fn new(
         id: u32,
         key: String,
         def: TestDef,
@@ -215,7 +215,7 @@ impl RunnerOptions {
 
     /// `/test verify`: `batcher(fromGameTestInfo(100))`, the grid for
     /// existing tests too, `haltOnError`, `clearBetweenBatches`.
-    pub(in crate::game::server_side) fn verify(grid: Grid) -> Self {
+    pub fn verify(grid: Grid) -> Self {
         Self {
             halt_on_error: true,
             batch_size: 100,
@@ -382,7 +382,7 @@ pub struct Grid {
 }
 
 impl Grid {
-    pub(in crate::game::server_side) fn new(around: (i32, i32), per_row: i32) -> Self {
+    pub fn new(around: (i32, i32), per_row: i32) -> Self {
         Self {
             around,
             per_row,
@@ -392,7 +392,7 @@ impl Grid {
     }
 
     /// `clearOnBatch = true`.
-    pub(in crate::game::server_side) fn clearing(mut self) -> Self {
+    pub fn clearing(mut self) -> Self {
         self.clear_on_batch = true;
         self
     }
@@ -539,7 +539,7 @@ impl crate::game::ServerGame<'_> {
     /// `TestCommand.trackAndStartRunner` for tests already built (batched by
     /// environment, 50 to a batch): the tracker and its listeners, then
     /// `GameTestRunner.start`.
-    pub(in crate::game::server_side) fn track_and_start_runner(
+    pub fn track_and_start_runner(
         &mut self,
         infos: Vec<Info>,
         halt_on_error: bool,
@@ -735,7 +735,7 @@ impl crate::game::ServerGame<'_> {
 
     /// `GameTestServer`'s per-tick call: `MinecraftServer.tickServer`'s
     /// `GameTestTicker.SINGLETON.tick()`, for the tests of the level in place.
-    pub(in crate::game::server_side) fn tick_game_tests(&mut self) {
+    pub fn tick_game_tests(&mut self) {
         self.flush_game_test_output();
         if self.server.game_tests.0.runner.is_none() {
             return;
@@ -1023,7 +1023,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// `GameTestInfo.startTest`.
-    fn start_test(&mut self, info: &mut Info) {
+    pub fn start_test(&mut self, info: &mut Info) {
         info.started = true;
         info.started_at = Some(Instant::now());
         self.set_test_status(info.pos, Status::Running, None);
@@ -1294,7 +1294,7 @@ impl crate::game::ServerGame<'_> {
     /// The listeners of a finished test, in the order they were added:
     /// `ReportGameListener`, the `TestSummaryDisplayer`, the failure tracker
     /// and the runner's batch listener.
-    fn test_finished(&mut self, info: &Info) {
+    pub fn test_finished(&mut self, info: &Info) {
         let passed = info.error.is_none();
         self.report_game_test(info, passed);
         // TestSummaryDisplayer: only the tests the command started (the
@@ -1517,7 +1517,7 @@ impl crate::game::ServerGame<'_> {
 
     /// Sends what the runner said: the server's console log (and the
     /// operators, when it broadcasts) and the players' chat.
-    fn flush_game_test_output(&mut self) {
+    pub fn flush_game_test_output(&mut self) {
         for out in std::mem::take(&mut self.server.game_tests.0.outbox) {
             match out {
                 Out::Console { text, broadcast } => self.test_console_output(text, broadcast),
@@ -1566,7 +1566,7 @@ impl crate::game::ServerGame<'_> {
 
     /// `TestSummaryDisplayer`: feedback uses the original issuer, without
     /// executing another command or invoking the command's result callbacks.
-    fn test_source_output(&mut self, context: SummarySource, text: Text, broadcast: bool) {
+    pub fn test_source_output(&mut self, context: SummarySource, text: Text, broadcast: bool) {
         if let Some(recipient) = context.recipient {
             let delivered = self.for_player(recipient, |g| {
                 g.with_source(context.source, |g| {
