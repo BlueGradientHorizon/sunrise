@@ -370,13 +370,24 @@ fn enter_listener(entry: &'static ModEntry, hook: &'static str) -> ((), &'static
     ENTERED.with(|entered| entered.borrow_mut().push((index, hook)));
     ((), &*entry.hooks)
 }
+/// The side a mod declares (`side = "server"` mods are left out of a client-controlled body's movement hooks).
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Side {
+    Server,
+    Client,
+}
 struct ModEntry {
     id: &'static str,
     hooks: Box<dyn Hooks>,
+    side: Side,
 }
 impl ModEntry {
     fn new(id: &'static str, hooks: Box<dyn Hooks>) -> Self {
-        Self { id, hooks }
+        Self {
+            id,
+            hooks,
+            side: Side::Client,
+        }
     }
 }
 trait Registrar {}
