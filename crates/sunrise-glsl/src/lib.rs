@@ -1492,16 +1492,22 @@ pub fn resources(text: &str) -> Vec<Resource<'_>> {
         .collect()
 }
 
-/// The `in` declarations of a stage's text as `(name, type)`, in the order it declares them (a
-/// name declared twice is listed twice). They are found as [`resources`] finds its own: through
-/// the one declaration classifier, whatever else is on the line, and the text is read as
-/// `rewrite` reads it, with comments gone and includes inlined ([`expand_includes`]).
-pub fn stage_inputs(text: &str) -> Vec<(&str, &str)> {
+/// The `in` declarations of a stage's text as `(offset, name, type)`, in the order it declares
+/// them (a name declared twice is listed twice); `offset` is the byte of `text` where the name
+/// stands. They are found as [`resources`] finds its own: through the one declaration
+/// classifier, whatever else is on the line, and the text is read as `rewrite` reads it, with
+/// comments gone and includes inlined ([`expand_includes`]).
+pub fn stage_inputs(text: &str) -> Vec<(usize, &str, &str)> {
     text.lines()
         .flat_map(declaration_lines)
         .filter_map(declared)
         .filter_map(|declared| match declared {
-            Declared::Other(decl) if decl.storage == "in" => Some((decl.name, decl.ty)),
+            // The name is a slice of `text`, so its address gives its byte.
+            Declared::Other(decl) if decl.storage == "in" => Some((
+                decl.name.as_ptr() as usize - text.as_ptr() as usize,
+                decl.name,
+                decl.ty,
+            )),
             _ => None,
         })
         .collect()
@@ -3093,7 +3099,11 @@ mod tests {
         let text = "in vec3 Position; in vec4 Color;\nuniform float u;\nvoid f() { } in vec2 UV0;\nout vec4 o;\n";
         assert_eq!(
             stage_inputs(text),
-            [("Position", "vec3"), ("Color", "vec4"), ("UV0", "vec2")]
+            [
+                (text.find("Position").unwrap(), "Position", "vec3"),
+                (text.find("Color").unwrap(), "Color", "vec4"),
+                (text.find("UV0").unwrap(), "UV0", "vec2"),
+            ]
         );
     }
 
@@ -3114,14 +3124,14 @@ mod tests {
         assert_eq!(
             stage_inputs(real),
             [
-                ("a", "uint"),
-                ("b", "vec2"),
-                ("c", "vec2"),
-                ("d", "vec2"),
-                ("e", "vec2"),
-                ("h", "int"),
-                ("i", "vec2"),
-                ("j", "vec2"),
+                (real.find("a;").unwrap(), "a", "uint"),
+                (real.find("b;").unwrap(), "b", "vec2"),
+                (real.find("c;").unwrap(), "c", "vec2"),
+                (real.find("d;").unwrap(), "d", "vec2"),
+                (real.find("e;").unwrap(), "e", "vec2"),
+                (real.find("h;").unwrap(), "h", "int"),
+                (real.find("i;").unwrap(), "i", "vec2"),
+                (real.find("j;").unwrap(), "j", "vec2"),
             ]
         );
         assert_eq!(
