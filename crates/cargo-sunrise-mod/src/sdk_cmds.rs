@@ -776,7 +776,7 @@ pub(crate) fn check_mod(
     // The mod's `sunrise-mod-api` is a path into `.sunrise/sdk/`: fetch it before Cargo looks.
     let sdk = fetch_pinned(root, &native.sunrise)?;
     let surface = surface_of(&sdk)?;
-    if release.is_some() {
+    let built = if release.is_some() {
         let rust = crate::dev::native_sdk(&crate::dev::cache_dir()?, &native.sunrise)?.rust;
         crate::dev::check_lock(&rust, root, &native.sunrise)?;
         crate::dev::build(
@@ -786,9 +786,21 @@ pub(crate) fn check_mod(
             false,
             sunrise_native_build::contract::TargetName::Client,
             true,
-        )?;
+        )
+        .map(|_| ())
     } else {
-        crate::dev::check(root, &package, with)?;
+        crate::dev::check(root, &package, with)
+    };
+    if let Err(error) = built {
+        // The compiler's error stands; the notes of the changes that may explain it follow it.
+        let Ok(Ok(sources)) = uses_table::read(root, &package.manifest) else {
+            return Err(error);
+        };
+        let Ok(chain) = sdk_notes::chain(&sdk, None, |text| fetch_build(root, text)) else {
+            return Err(error);
+        };
+        let explained = sdk_notes::explaining(&chain.notes, &surface, &sources);
+        return Err(sdk_notes::with_notes(error, &explained, &chain));
     }
     match uses_table::scan(entry, root, &package.manifest, &surface)? {
         Scanned::Uses(uses) => {
@@ -1212,6 +1224,68 @@ mod tests {
         assert!(
             chain.stopped.is_some_and(|why| why.contains("bbbbbbb")),
             "names the build it stopped at"
+        );
+    }
+
+    /// The names `explaining` matched for `ids` removed from a surface that still holds
+    /// `hook:kept`, against a source that calls `gone_hook` and `kept`.
+    fn explained_names(ids: &[&str]) -> Vec<String> {
+        let notes = [shipped(
+            "42c5f70",
+            note(ids, "It moved.", Some("Use hook:new.")),
+        )];
+        let current = surface(vec![hook("hook:kept", "", &[])]);
+        let sources = [(
+            "src/lib.rs".to_owned(),
+            "fn setup() { host.gone_hook(); // lost_hook\n let _ = kept; }".to_owned(),
+        )];
+        sdk_notes::explaining(&notes, &current, &sources)
+            .into_iter()
+            .flat_map(|e| e.names.into_iter().map(str::to_owned))
+            .collect()
+    }
+
+    #[test]
+    fn a_removed_id_the_source_names_is_explained() {
+        assert_eq!(explained_names(&["hook:gone_hook"]), ["gone_hook"]);
+    }
+
+    #[test]
+    fn a_removed_id_the_source_does_not_name_is_not_explained() {
+        // `lost_hook` is only in a comment, which is no identifier.
+        assert!(explained_names(&["hook:lost_hook", "hook:other"]).is_empty());
+    }
+
+    #[test]
+    fn an_id_still_in_the_surface_is_not_explained() {
+        assert!(explained_names(&["hook:kept"]).is_empty());
+    }
+
+    #[test]
+    fn the_notes_follow_the_error_and_nothing_follows_when_none_matches() {
+        let notes = [shipped(
+            "42c5f70",
+            note(&["hook:gone_hook"], "It moved.", Some("Use hook:new.")),
+        )];
+        let current = surface(vec![]);
+        let sources = [(
+            "src/lib.rs".to_owned(),
+            "fn f() { gone_hook(); }".to_owned(),
+        )];
+        let chain = sdk_notes::Chain {
+            notes: vec![],
+            stopped: Some("build bbbbbbb: gone".into()),
+        };
+        let explained = sdk_notes::explaining(&notes, &current, &sources);
+        let text = sdk_notes::with_notes("error: cargo failed".into(), &explained, &chain);
+        assert!(text.starts_with("error: cargo failed\n"), "{text}");
+        assert!(text.contains("`gone_hook`"), "{text}");
+        assert!(text.contains("changed in 42c5f70"), "{text}");
+        assert!(text.contains("Use hook:new."), "{text}");
+        assert!(text.contains("bbbbbbb"), "{text}");
+        assert_eq!(
+            sdk_notes::with_notes("error: cargo failed".into(), &[], &chain),
+            "error: cargo failed"
         );
     }
 

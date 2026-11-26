@@ -1,7 +1,11 @@
-//! The change notes of the SDK builds between two builds. Each build's `sdk.json` carries the notes of the changes since the build
+//! The change notes of the SDK builds between two builds, and the ones that explain a failed
+//! build of a mod. Each build's `sdk.json` carries the notes of the changes since the build
 //! before it (`surface.previous`), so a mod that moves across several builds follows that chain.
 //! Only each build's small files are fetched ([`crate::sdk_fetch::fetch_build`]).
 use crate::sdk_fetch::PinnedSdk;
+use mod_surface::scan::{Token, tokens};
+use mod_surface::{Surface, leaf};
+use std::collections::BTreeSet;
 use sunrise_mod_package::sdk::{self, ChangeNote, Index};
 
 /// A change note and the build whose `sdk.json` carried it.
@@ -71,4 +75,71 @@ pub(crate) fn chain(
         }
     }
     Ok(Chain { notes, stopped })
+}
+
+/// A note that explains a failed build, with the ids of it the mod's source names.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) struct Explained<'a> {
+    pub names: Vec<&'a str>,
+    pub shipped: &'a Shipped,
+}
+
+/// The notes of `notes` that name an id `surface` no longer holds whose final name occurs as an
+/// identifier in `sources` (file and text), each once, with those names.
+pub(crate) fn explaining<'a>(
+    notes: &'a [Shipped],
+    surface: &Surface,
+    sources: &[(String, String)],
+) -> Vec<Explained<'a>> {
+    let present: BTreeSet<&str> = surface.entries().map(|(id, _)| id).collect();
+    let written: BTreeSet<&str> = sources
+        .iter()
+        .flat_map(|(_, text)| tokens(text))
+        .filter_map(|(token, _)| match token {
+            Token::Ident(name) => Some(name),
+            _ => None,
+        })
+        .collect();
+    notes
+        .iter()
+        .filter_map(|shipped| {
+            let mut names: Vec<&str> = shipped
+                .note
+                .ids
+                .iter()
+                .filter(|id| !present.contains(id.as_str()))
+                .map(|id| leaf(id))
+                .filter(|name| written.contains(name))
+                .collect();
+            names.sort_unstable();
+            names.dedup();
+            (!names.is_empty()).then_some(Explained { names, shipped })
+        })
+        .collect()
+}
+
+/// `error` followed by the notes that explain it and, after them, why the chain stopped early.
+/// With no note, `error` as it is.
+pub(crate) fn with_notes(error: String, explained: &[Explained<'_>], chain: &Chain) -> String {
+    if explained.is_empty() {
+        return error;
+    }
+    let mut text = format!("{error}\n\nChange notes that explain it:\n");
+    for item in explained {
+        let names: Vec<String> = item.names.iter().map(|name| format!("`{name}`")).collect();
+        text.push_str(&format!(
+            "  {}: changed in {}\n      why: {}\n",
+            names.join(", "),
+            item.shipped.build,
+            item.shipped.note.why
+        ));
+        if let Some(migrate) = &item.shipped.note.migrate {
+            text.push_str(&format!("      migrate: {migrate}\n"));
+        }
+    }
+    if let Some(line) = chain.stopped_line() {
+        text.push_str(&line);
+        text.push('\n');
+    }
+    text
 }
