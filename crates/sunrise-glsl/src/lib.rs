@@ -44,7 +44,7 @@ pub mod macros;
 mod stage;
 
 pub use directives::run_directives;
-pub use located::{Error, Expanded, Location, describe};
+pub use located::{Error, Expanded, Location, describe, shader_message};
 use located::{Lines, Origin};
 pub use macros::Macros;
 pub use stage::{BindingMap, Source, compile_stage};
