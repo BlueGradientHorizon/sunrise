@@ -25,7 +25,6 @@ use naga::ShaderStage;
 use naga::front::glsl::InterfaceLimits;
 
 use crate::Preprocessed;
-use crate::preprocess::Origin;
 
 mod anonymous_structs;
 mod array_constructors;
@@ -306,30 +305,6 @@ const GBUFFERS_MATRICES: &str = "    hz_ModelViewMatrix = gbufferModelView;\n   
      mat4 hz_light = mat4(vec4(1.0 / 256.0, 0.0, 0.0, 0.0), vec4(0.0, 1.0 / 256.0, 0.0, 0.0), vec4(0.0, 0.0, 1.0, 0.0), vec4(1.0 / 32.0, 1.0 / 32.0, 0.0, 1.0));\n    \
      hz_TextureMatrix = mat4[8](mat4(1.0), hz_light, hz_light, mat4(1.0), mat4(1.0), mat4(1.0), mat4(1.0), mat4(1.0));\n";
 
-/// `pp` with `declaration` after its leading directives (`#version`, `#extension`...). The
-/// inserted lines are Sunrise's own, so they get [`Origin::default`] and every later line keeps
-/// the pack file and line it came from.
-fn with_declaration(pp: &Preprocessed, declaration: &str) -> Preprocessed {
-    let mut at = 0;
-    for line in pp.code.split_inclusive('\n') {
-        let t = line.trim_start();
-        if !(t.is_empty() || t.starts_with('#')) {
-            break;
-        }
-        at += line.len();
-    }
-    let code = format!("{}{declaration}\n{}", &pp.code[..at], &pp.code[at..]);
-    let mut lines = pp.lines.clone();
-    let first = pp.code[..at].matches('\n').count().min(lines.len());
-    let added = declaration.matches('\n').count() + 1;
-    lines.splice(first..first, std::iter::repeat_n(Origin::default(), added));
-    Preprocessed {
-        code,
-        lines,
-        ..pp.clone()
-    }
-}
-
 /// The type of a game input a vertex stage may read without declaring it: terrain's
 /// `mc_chunkFade`, and the core-profile vertex attributes (`vaPosition`...) that a
 /// `#version 130` line program reads as it would in a core-profile one (Complementary
@@ -361,7 +336,7 @@ fn implicit_inputs<'a>(
             Some((name.as_str(), value.as_str(), implicit_input_type(name)?))
         })
         .filter(|(name, _, _)| {
-            uses_name(&vertex.code, name)
+            uses_name(vertex.code(), name)
                 && !scanned.globals.contains(*name)
                 && !scanned.declared.contains(*name)
         })
@@ -424,7 +399,7 @@ fn translate(
         fragment_declarations.push(format!("uniform sampler2D {WATER_MASK};"));
     }
     let declared = |pp: &Preprocessed, declarations: &[String]| {
-        (!declarations.is_empty()).then(|| with_declaration(pp, &declarations.join("\n")))
+        (!declarations.is_empty()).then(|| pp.with_declaration(&declarations.join("\n")))
     };
     let patch_vertex = declared(vertex, &vertex_declarations);
     let vertex = patch_vertex.as_ref().unwrap_or(vertex);
@@ -570,7 +545,7 @@ fn translate(
             && !uniforms.contains_key(item)
             && [vertex, fragment]
                 .iter()
-                .any(|pp| uses_name(&pp.code, item));
+                .any(|pp| uses_name(pp.code(), item));
     }
     let samplers: Vec<Sampler> = samplers
         .into_iter()
@@ -1012,10 +987,7 @@ fn resources(
 
 /// Translates a compute program (`.csh`).
 pub fn translate_compute(compute: &Preprocessed) -> Result<ComputeProgram, Vec<Error>> {
-    let named = anonymous_structs::name(&compute.code).map(|code| Preprocessed {
-        code,
-        ..compute.clone()
-    });
+    let named = anonymous_structs::name(compute.code()).map(|code| compute.with_code(code));
     let compute = named.as_ref().unwrap_or(compute);
     let split = atomic_vectors::rewrite(compute);
     let compute = split.as_ref().unwrap_or(compute);
