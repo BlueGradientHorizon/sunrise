@@ -6,9 +6,7 @@ import json
 import os
 from pathlib import Path
 import sys
-import socket
 import tempfile
-import threading
 import time
 import unittest
 from unittest import mock
@@ -39,7 +37,7 @@ class DatafixSeedKeyTests(unittest.TestCase):
         self.lab = self.root / datafix_seeds.LAB
         self.lab.write_text(
             'def unrelated():\n    return 0\n\n\n'
-            + ''.join(f'def {name}(value):\n    return value\n\n\n' for name in datafix_seeds.LAB_FUNCTIONS),
+            + ''.join(f'def {name}(value):\n    return value\n\n\n' for name in datafix_seeds.lab_functions()),
             encoding='utf-8',
         )
         self.expected = [('worlds-pre-1.17', '1.12.2'), ('worlds', '1.19')]
@@ -84,7 +82,7 @@ class DatafixSeedKeyTests(unittest.TestCase):
                 path.write_bytes(original + b'# changed\n')
                 self.assertNotEqual(self.key(), base)
                 path.write_bytes(original)
-        for name in datafix_seeds.LAB_FUNCTIONS:
+        for name in datafix_seeds.lab_functions():
             with self.subTest(lab=name):
                 original = self.lab.read_text(encoding='utf-8')
                 self.lab.write_text(original.replace(f'def {name}(value):\n    return value\n',
@@ -115,51 +113,25 @@ class DatafixSeedKeyTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'free_port'):
             self.key()
 
-    def test_lab_functions_are_the_ones_the_seed_tools_call(self):
-        # A bot logging in to a server and a world build's port pick use lab through datafix_worlds; every lab name they
-        # reach must be one the key hashes, or a change to it would not regenerate the seed worlds.
-        from tools import datafix_worlds as worlds
+    def test_lab_functions_are_the_ones_the_seed_tools_import(self):
+        self.assertEqual(datafix_seeds.lab_functions(), ['free_port', 'offline_uuid', 'parse_varint', 'varint'])
 
-        class Spy:
-            used = set()
+    def test_a_lab_function_a_seed_tool_gains_changes_the_key(self):
+        from tools import datafix_worlds as worlds, lab
+        base = self.key()
+        self.lab.write_text(self.lab.read_text(encoding='utf-8') + 'def cargo_target():\n    return 1\n', encoding='utf-8')
+        self.assertEqual(self.key(), base)  # lab has it, no seed tool imports it yet
+        with mock.patch.object(worlds, 'cargo_target', lab.cargo_target, create=True):
+            gained = self.key()
+            self.lab.write_text(self.lab.read_text(encoding='utf-8').replace('return 1', 'return 2'), encoding='utf-8')
+            self.assertNotEqual(gained, base)
+            self.assertNotEqual(self.key(), gained)
 
-            def __getattr__(self, name):
-                self.used.add(name)
-                return getattr(lab, name)
-
-        def fake_server(listener):
-            connection, _ = listener.accept()
-            with connection:
-                connection.recv(4096)  # the handshake and the login start
-                connection.sendall(b'\x01\x02')  # login success: packet 2, no body
-                connection.recv(4096)  # the login acknowledgement
-                connection.sendall(b'\x01\x03')  # configuration finished: packet 3
-                connection.recv(4096)
-
-        class Stop(Exception):
-            pass
-
-        def refuse_server(*args, **kwargs):
-            raise Stop
-
-        import lab
-        spy = Spy()
-        with socket.socket() as listener:
-            listener.bind(('127.0.0.1', 0))
-            listener.listen(1)
-            thread = threading.Thread(target=fake_server, args=(listener,))
-            thread.start()
-            with mock.patch.object(worlds, 'lab', spy), mock.patch.object(worlds.scene12, 'lab', spy):
-                bot = worlds.Bot(listener.getsockname()[1], 770, 'seedbot')
-                bot.leave()
-                thread.join()
-                with mock.patch.object(worlds, 'server_jar', return_value=(Path('server.jar'), 3105, 763)), \
-                        mock.patch.object(worlds, 'LOCAL', Path(self.temp.name)), \
-                        mock.patch.object(worlds, 'java', return_value='java'), \
-                        mock.patch.object(worlds, 'Server', refuse_server), \
-                        self.assertRaises(Stop):
-                    worlds.build('1.19', force=True)
-        self.assertEqual(spy.used, set(datafix_seeds.LAB_FUNCTIONS))
+    def test_a_seed_tool_holding_the_lab_module_is_refused(self):
+        from tools import datafix_worlds as worlds, lab
+        with mock.patch.object(worlds, 'lab', lab, create=True):
+            with self.assertRaisesRegex(ValueError, 'datafix_worlds.py imports the lab module'):
+                datafix_seeds.lab_functions()
 
     def test_default_java_identity_hashes_jdk_content_via_parity_shim(self):
         jdk = self.root / 'jdk'
@@ -357,6 +329,14 @@ class DatafixSeedSnapshotTests(unittest.TestCase):
         self.assertEqual(len(calls), 1)
         self.assertGreater((keep / key).stat().st_mtime, old_time + 3600)
         self.assertEqual((dest2 / 'worlds' / '1.19' / 'level.dat').read_bytes(), b'modern-119')
+
+    def test_prepare_keeps_the_content_of_the_lock_file(self):
+        keep = self.base / 'keep'
+        keep.mkdir()
+        (keep / datafix_seeds.LOCK_NAME).write_text('held', encoding='utf-8')
+        datafix_seeds.prepare(self.base / 'job' / 'datafix', keep, key='6' * 64, expected=self.expected,
+                              generate=lambda scratch, _m: self.populate(scratch))
+        self.assertEqual((keep / datafix_seeds.LOCK_NAME).read_text(encoding='utf-8'), 'held')
 
     def test_incomplete_generation_publishes_nothing(self):
         keep = self.base / 'keep'

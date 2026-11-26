@@ -77,6 +77,15 @@ pub trait BlockStatesBackend {
         name: &str,
     ) -> Result<Option<&str>, BlockStateError>;
     /// Side: both.
+    /// Visit each property of this `BlockState` with its serialized value, in name order, from
+    /// immutable block metadata.
+    #[forward_api_inputs]
+    fn block_metadata_visit_properties(
+        &self,
+        state: BlockState,
+        visit: &mut dyn FnMut(&str, &str),
+    ) -> Result<(), BlockStateError>;
+    /// Side: both.
     /// Return a `BlockState` with one property changed, without a world write.
     #[forward_api_inputs]
     #[forward_api_output]

@@ -132,6 +132,8 @@ mod skin;
 mod status;
 mod sync;
 mod tab_entries;
+#[cfg(test)]
+pub(in crate::game) use tab_entries::listed_player_skins;
 mod tables;
 mod tick;
 mod tracking;

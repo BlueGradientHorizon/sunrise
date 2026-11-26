@@ -2572,7 +2572,7 @@ mod tests {
         );
         write(
             "data/mine/predicate/p.json",
-            "{\"condition\":\"minecraft:random_chance\",\"chance\":1}",
+            "{\"type\":\"minecraft:random_chance\",\"chance\":1}",
         );
         write(
             "data/mine/dialog/config/points.json",
@@ -2703,7 +2703,13 @@ mod tests {
             for kind in kinds {
                 let file = folder.join(format!("data/demo/{kind}/nested/entry.json"));
                 std::fs::create_dir_all(file.parent().unwrap()).unwrap();
-                std::fs::write(file, serde_json::json!({"layer":name,"neoforge:conditions":[{"type":"unsupported"}]}).to_string()).unwrap();
+                let mut entry = serde_json::json!({"layer":name,"neoforge:conditions":[{"type":"unsupported"}]});
+                // A 26.3 predicate names its condition under `type`.
+                if kind == "predicate" {
+                    entry["type"] = "minecraft:random_chance".into();
+                    entry["chance"] = 1.into();
+                }
+                std::fs::write(file, entry.to_string()).unwrap();
             }
             packs.push(DataPack::from_source(
                 name.into(),

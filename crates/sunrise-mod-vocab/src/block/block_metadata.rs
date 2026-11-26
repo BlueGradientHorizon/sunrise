@@ -84,6 +84,14 @@ pub trait BlockMetadata {
         block: BlockKey,
         properties: &[StateConstraint],
     ) -> Result<BlockState, BlockStateError>;
+    /// Visit each property of `state` with its serialized value (names and values as `property`
+    /// reads them), in name order as vanilla's `StateDefinition` keeps them. A block with no
+    /// properties visits nothing.
+    fn visit_properties(
+        &self,
+        state: BlockState,
+        visit: &mut dyn FnMut(&str, &str),
+    ) -> Result<(), BlockStateError>;
 }
 
 impl BlockMetadata for sunrise_mod_runtime::block_definitions::Blocks {
@@ -114,6 +122,17 @@ impl BlockMetadata for sunrise_mod_runtime::block_definitions::Blocks {
             .ok_or(BlockStateError::UnknownBlock)?
             .with(state.ordinal(), name, value)?;
         Ok(block_state_from_ordinal(block, ordinal))
+    }
+    fn visit_properties(
+        &self,
+        state: BlockState,
+        visit: &mut dyn FnMut(&str, &str),
+    ) -> Result<(), BlockStateError> {
+        self.definitions
+            .get(state.block().0 as usize)
+            .ok_or(BlockStateError::UnknownBlock)?
+            .visit_properties(state.ordinal(), visit)
+            .map_err(Into::into)
     }
     fn of(
         &self,
