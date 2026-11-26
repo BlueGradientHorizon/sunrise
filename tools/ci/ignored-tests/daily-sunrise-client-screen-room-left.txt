@@ -1,0 +1,2 @@
+# Left screen room opens a game, whose process-wide tables need their own process.
+sunrise-client game::screen_build::tests::room_on_the_left_moves_the_window_right_and_clears_the_book lib daily child-process

@@ -304,7 +304,7 @@ impl Game<'_> {
     fn mod_book_button(&self, batch: &HudBatch) -> (f32, f32) {
         self.mod_book_layout(batch.width, self.mod_book_open())
             .map_or((0.0, 0.0), |layout| {
-                layout.shifted_toggle(self.screen_room_shift(batch))
+                layout.shifted_toggle(self.screen_room_offset(batch))
             })
     }
     pub(super) fn draw_mod_book(&mut self, batch: &mut HudBatch) -> Option<Vec<(Text, u32)>> {
