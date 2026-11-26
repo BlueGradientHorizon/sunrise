@@ -61,6 +61,16 @@ pub(crate) fn is_feature_answer(name: &str) -> bool {
     name.starts_with(FEATURE_MACRO)
 }
 
+/// Whether `name` is one of the macros Sunrise alone answers: a feature answer
+/// ([`is_feature_answer`]) or an identity macro (`IS_IRIS`, `IRIS_VERSION`, decision D-8). A
+/// pack's line declaring one is no option (`options`, `switches_on`, `value_options`): it is
+/// never defined for the pack's property files, never counted as on in `program.*.enabled`, and
+/// a saved choice never rewrites it, so neither an option nor a profile changes the answer. As
+/// written, uncommented, it is the pack's own directive, with a directive's scope.
+pub(crate) fn is_reserved(name: &str) -> bool {
+    is_feature_answer(name) || crate::identity::NAMES.contains(&name)
+}
+
 /// The flags `properties` gives under `key`, as the pack wrote them.
 fn flags<'a>(properties: &'a crate::Properties, key: &str) -> std::str::SplitWhitespace<'a> {
     properties.get(key).unwrap_or_default().split_whitespace()
@@ -220,8 +230,9 @@ impl Macros {
         // default; Iris 1.11.7 defines both too, with or without a resource pack's maps).
         m.define("MC_NORMAL_MAP", "");
         m.define("MC_SPECULAR_MAP", "");
-        // No `IS_IRIS`, `IRIS_VERSION` or `IRIS_HAS_*` (spec OQ-2, docs/cleanroom/README.md):
-        // packs take their other path. The `IRIS_FEATURE_*` answers depend on the pack
+        // No `IS_IRIS`, `IRIS_VERSION` or `IRIS_HAS_*` here (spec OQ-2, docs/cleanroom/README.md):
+        // the identity macros are defined only for a pack whose Iris compatibility is on
+        // (`set_identity`, decision D-8), and the `IRIS_FEATURE_*` answers depend on the pack
         // (`define_features`).
         // Distant Sunrises' block materials, which Iris defines with or without the mod (packs
         // compare ids with them unguarded: Exposa's `blockID == DH_BLOCK_LEAVES`), numbered as

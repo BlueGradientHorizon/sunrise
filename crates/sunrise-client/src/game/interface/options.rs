@@ -515,6 +515,7 @@ impl Game<'_> {
                         sunrise_client::shader_pack_list::scan(&Self::shader_packs_dir());
                     // A pack may have been replaced under the same name.
                     self.native_shaders.pick_hdr.get_mut().forget();
+                    self.refresh_identity();
                 }
                 // Saved; the next frame's `shader_pack_inputs` loads the pick.
                 Event::ShaderPack => self.settings.save(&Self::options_path()),

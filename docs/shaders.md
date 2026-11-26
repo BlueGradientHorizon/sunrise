@@ -35,6 +35,15 @@ puts them back. Picking away from a pack saves its changed options, as Apply doe
 options are saved to `shaderpacks/<pack>.txt` (`NAME=value` lines), and the pack loads again with them, with Apply
 (shown while they differ from the saved ones) or on leaving the screen.
 
+Under the picked pack's row, **Iris compatibility** (Auto, On, Off) decides whether the pack gets `IS_IRIS` and
+`IRIS_VERSION`, the macros packs test to take the path they wrote for Iris. Auto, the default, gives them only to a
+pack whose programs test them (seen while reading its programs with its saved options and feature answers); On and Off
+decide for that pack whatever it tests. The choice is kept by the pack's name in `sunrise-graphics.txt`
+(`shaderPackIrisCompat:<on|off>:<name>`), apart from the pack's own options, so a pack replaced under the same name
+keeps it. While it applies, the pack's row says so and the log has a `runs with Iris compatibility` line; a load
+started before the switch changed is dropped and the pack loads again. The rule is decision D-8 in
+[cleanroom/decisions.md](cleanroom/decisions.md).
+
 The **Shadow Cache** (off by default; `shadowCache` in `sunrise-graphics.txt`) skips the shadow pass and keeps the
 shadow map and shadowcolor buffers of the frame before while nothing that draws them has changed (the world, the
 time, the snapped shadow camera, the shadow settings, and the uniforms the shadow programs and their compute stages

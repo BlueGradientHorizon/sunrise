@@ -218,6 +218,28 @@ impl Pack {
         names
     }
 
+    /// The names of the files directly inside a folder of the pack that [`Pack::exists`] finds,
+    /// a link to a file among them, sorted.
+    pub(crate) fn files_in(&self, dir: &str) -> Vec<String> {
+        let Some(dir) = normalize(dir) else {
+            return Vec::new();
+        };
+        match &self.files {
+            Files::Folder(root) => {
+                let mut names: Vec<String> = fs::read_dir(root.join(&dir))
+                    .into_iter()
+                    .flatten()
+                    .flatten()
+                    .filter(|e| e.path().is_file())
+                    .map(|e| e.file_name().to_string_lossy().into_owned())
+                    .collect();
+                names.sort();
+                names
+            }
+            Files::Zip { .. } => self.list(&dir),
+        }
+    }
+
     /// Every file of the pack, by its path inside `shaders`, sorted.
     pub fn all_files(&self) -> Vec<String> {
         let mut names = match &self.files {

@@ -16,7 +16,8 @@ use crate::arrays_too_large::RADV;
 
 /// `shaders.properties` and the macros the game reads `pack`'s programs and id files with: the
 /// standard set, the renderer's (at Mipmap Levels 4, and with `subgroups` those of a device with
-/// subgroup operations), then the features the pack lists, which those may reach
+/// subgroup operations), the identity macros where Iris compatibility on Auto turns them on
+/// (`asks_for_identity`), then the features the pack lists, which those may reach
 /// (`read_properties`). Returns the macros, the properties and the feature notes.
 fn game_read(pack: &Pack, subgroups: bool) -> (Macros, Properties, Vec<String>) {
     let mut macros = Macros::standard();
@@ -24,6 +25,7 @@ fn game_read(pack: &Pack, subgroups: bool) -> (Macros, Properties, Vec<String>) 
     if subgroups {
         macros.define_subgroups();
     }
+    macros.set_identity(sunrise_shaders::asks_for_identity(pack, &[]).is_some());
     let (properties, notes) = sunrise_shaders::read_properties(pack, &mut macros);
     (macros, properties, notes)
 }
@@ -134,6 +136,15 @@ fn real_packs_read() {
             );
             for n in &shaders.notes {
                 println!("  shaders.properties:{}: {}", n.line, n.message);
+            }
+            let scan = Instant::now();
+            let asked = sunrise_shaders::asks_for_identity(&pack, &[]);
+            let scan = scan.elapsed().as_secs_f64() * 1000.0;
+            match asked {
+                Some(at) => {
+                    println!("  Iris compatibility on Auto: on, asked at {at} (scan {scan:.2} ms)")
+                }
+                None => println!("  Iris compatibility on Auto: off (scan {scan:.2} ms)"),
             }
             // Every stage file of the base and dimension folders through the preprocessor.
             let start = Instant::now();
@@ -311,6 +322,23 @@ fn real_packs_read() {
                     println!("    {note}");
                 }
                 let post = load_post(&pack, &folder, &shaders, &macros, &inputs);
+                // Every stage the load read is one the identity scan reads.
+                let scanned = sunrise_shaders::program_stages(&pack, &folder, &[]);
+                let at = |file: String| match folder.as_str() {
+                    "" => file,
+                    f => format!("{f}/{file}"),
+                };
+                for p in post.every_program() {
+                    let mut read: Vec<String> = (p.compute.iter())
+                        .map(|(name, _)| at(format!("{name}.csh")))
+                        .collect();
+                    if p.program.is_some() {
+                        read.push(at(format!("{}.fsh", p.name)));
+                    }
+                    for file in read.into_iter().filter(|f| !scanned.contains(f)) {
+                        println!("    read by the load, not by the identity scan: {file}");
+                    }
+                }
                 if std::env::var_os("BACKENDS").is_some() {
                     backends(&post);
                 }

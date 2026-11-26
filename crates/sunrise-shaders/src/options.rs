@@ -31,7 +31,7 @@ pub fn switches_on(pack: &Pack) -> BTreeSet<String> {
             };
             let mut words = rest.split_whitespace();
             let Some(name) = words.next() else { continue };
-            if crate::macros::is_feature_answer(name) {
+            if crate::macros::is_reserved(name) {
                 continue;
             }
             match directive {
@@ -68,10 +68,7 @@ pub fn value_options(pack: &Pack) -> BTreeMap<String, String> {
             let (Some(name), Some(value), None) = (words.next(), words.next(), words.next()) else {
                 continue;
             };
-            if comment.contains('[')
-                && comment.contains(']')
-                && !crate::macros::is_feature_answer(name)
-            {
+            if comment.contains('[') && comment.contains(']') && !crate::macros::is_reserved(name) {
                 out.entry(name.to_owned())
                     .or_insert_with(|| value.to_owned());
             }
@@ -82,8 +79,8 @@ pub fn value_options(pack: &Pack) -> BTreeMap<String, String> {
 
 /// `macros` with the pack's options at their defaults: the switches that are on, and the
 /// value options. `shaders.properties` and the program switches test them (3.3, 8.1). No
-/// `IRIS_FEATURE_*` is among them (`is_feature_answer`): those macros are Sunrise's answers to
-/// the flags the pack lists (`Macros::define_features`, decision D-7).
+/// `IRIS_FEATURE_*`, `IS_IRIS` or `IRIS_VERSION` is among them (`is_reserved`): those macros are
+/// Sunrise's answers (`Macros::define_features`, `Macros::set_identity`; decisions D-7, D-8).
 pub fn with_options(pack: &Pack, macros: &crate::Macros) -> crate::Macros {
     let mut out = macros.clone();
     for name in switches_on(pack) {
@@ -126,7 +123,7 @@ pub fn read_properties(
     if !macros.define_features(&listed) {
         return (listed, notes);
     }
-    // No option is named as an answer (`is_feature_answer`), so adding the answers to the
+    // No option is named as an answer (`is_reserved`), so adding the answers to the
     // options read once is the same as the options over the answered `macros`.
     options.define_features(&listed);
     let mut properties = crate::Properties::parse(&text, &options);
@@ -191,7 +188,7 @@ fn declaration(line: &str) -> Option<Declaration<'_>> {
         let mut words = code.split_whitespace();
         let name = words.next()?;
         let value = words.next();
-        if words.next().is_some() || crate::macros::is_feature_answer(name) {
+        if words.next().is_some() || crate::macros::is_reserved(name) {
             return None;
         }
         return Some(Declaration {
@@ -213,7 +210,7 @@ fn declaration(line: &str) -> Option<Declaration<'_>> {
     let (Some(ty), Some(name), None) = (words.next(), words.next(), words.next()) else {
         return None;
     };
-    if crate::macros::is_feature_answer(name) {
+    if crate::macros::is_reserved(name) {
         return None;
     }
     let value = right.trim().strip_suffix(';')?.trim_end();

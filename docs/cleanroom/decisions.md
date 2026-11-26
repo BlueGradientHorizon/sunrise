@@ -284,3 +284,68 @@ the full list.
   `client::render_pipeline::tests::pack_binding_syntax_rejects_bad_identifiers_and_multiline_defines`
   (`sunrise-mod-vocab`)
   (`sunrise-client`); `profiles_behind_answered_feature_flags_are_dumped` (`sunrise-render-shaderpack`, `spirv_dump`).
+
+## D-8: which packs get `IS_IRIS` and `IRIS_VERSION`, and when
+
+- **Open point:** spec rev 1, 1.5.1, line 168 lists `IS_IRIS`, `IRIS_VERSION`, `IRIS_TAG_SUPPORT`,
+  `IRIS_HAS_TRANSLUCENCY_SORTING` and `IRIS_HAS_CONNECTED_TEXTURES` as macros that "identify a specific loader", and
+  leaves whether to define them to a product decision (OQ-2, line 1122). The spec gives no value for `IRIS_VERSION`.
+  Until 2026-11-26 OQ-2 in the [README](README.md) kept them undefined; it was rewritten on
+  [#6054](https://github.com/sunrise-org/sunrise/issues/6054) (PR B), which reads the two as what a pack uses them
+  for: choosing the path it wrote for Iris.
+- **Decision** (2026-11-26, the shader lead on #6054):
+  - Each pack has a Sunrise switch, Iris compatibility, with Auto (the default), On and Off, on Sunrise Settings ›
+    Shaders under the picked pack's row. It is kept by the pack's name in `shaderpacks/` (the installed path), in
+    `sunrise-graphics.txt` (`shaderPackIrisCompat:<on|off>:<name>`), apart from the pack's options and profiles: a pack
+    replaced under the same name keeps it, and choosing Auto again forgets it.
+  - While it is on, the pack gets `IS_IRIS` as `1` and `IRIS_VERSION` as `11103`, for its programs and its
+    `shaders.properties` (`Macros::set_identity`). Off, and on Auto for a pack that doesn't ask, neither is defined.
+    On gives them to any pack the player turns it on for. `IRIS_TAG_SUPPORT` and the `IRIS_HAS_*` names stay
+    undefined.
+  - **`IRIS_VERSION` is 11103**, the value #6054's observations were made with. It promises only that a pack testing
+    it takes its Iris path; whether that path's needs are met is shown per pack by the load's notes. The value
+    changes only by a new dated decision.
+  - A pack's line declaring `IS_IRIS` or `IRIS_VERSION` is no option, as a feature answer's isn't (D-7): it is not
+    listed among the pack's options, not defined for its property files, and a saved choice never rewrites it, so no
+    option or profile changes the answer, On's value or Off's absence. The pack's own uncommented directive keeps a
+    directive's scope.
+  - On Auto it is on for a pack that asks: evaluating a conditional directive looks up either name. That is the name
+    `#ifdef` / `#ifndef` tests, a `defined` operand, or a name the `#if` / `#elif` condition's expansion leaves (a
+    name a macro pastes together counts; an argument a macro drops, or the `FOO` of `defined FOO` whatever `FOO`
+    holds, doesn't). It is looked for in the stage files the loader reads: those of its programs (`post::program_stage`,
+    from the loader's own program lists, the programs mods request among them), found as `Pack::exists` finds them
+    (a link to a file included), in the base folder and each dimension folder (those `dimension.properties` maps, or
+    else `world0`, `world-1` and `world1`), their includes with them. Only the directives are read, with the standard
+    macros, the pack's saved options and its feature answers (D-7) and no identity macro, and the read stops at the
+    first lookup. The preprocessor only evaluates the branches those settings reach, so the answer is fixed for those
+    files and options. The renderer's macros are not among them, so the title screen, the HDR read before the frame
+    and the load, which run with and without a renderer, get the same answer.
+  - The scan runs before anything is translated, once for the pack's files (their fingerprint), its saved options and
+    the programs mods request: its answer is kept and used again until one changes; a pack whose fingerprint can't be
+    taken is scanned at every read. It is asked at the load (in game), when the pick's options are read (picking a
+    pack or saving its options, in game and on the title screen), when the pack list is read again, and by the HDR
+    read, and the same answer feeds all of them.
+  - A load (running or still building) made with another switch than the pick's, or with another answer than the
+    pick's as last read (a pack replaced under its name), is dropped before the poll that would install it, and the
+    pack loads again: a build started before the player turned it off is never installed. The loader's refusals are
+    kept per switch: the same files refused with one switch are tried again with another.
+  - Where it applies, the pack's row says it runs with Iris compatibility, and the load logs a line saying so and why
+    (the switch, or the file and line where the pack asks). No toast.
+  - A mod's pack binding may not define `IS_IRIS` or `IRIS_VERSION`: registration refuses it, as it refuses `GL_` and
+    `IRIS_FEATURE_*` names (`crates/sunrise-mod-vocab/changes/shader-pack-iris-identity-defines-6054.md`).
+- **Reason:** a pack that tests the names asks which path to take; one that never tests them gets nothing, so its
+  output can't change. The player decides last, per pack, where the answer would be wrong for that pack.
+- **Tests:** `identity::tests::*` and `post::tests::program_stages_follow_the_loaders_lists` (`sunrise-shaders`:
+  what asks, which files are read, options and features, the answer reaching `shaders.properties` and the programs),
+  `condition::tests::the_names_a_condition_looks_up_are_noted` (`sunrise-glsl`);
+  `game::shader_packs::native_pack_tests::iris_compatibility_follows_the_switch_for_the_options_page_and_the_hdr_read`,
+  `…::a_load_from_other_inputs_than_the_picks_is_dropped`,
+  `…::a_pack_replaced_under_its_name_with_another_answer_loads_again`,
+  `…::a_pack_without_a_fingerprint_is_scanned_every_time`,
+  `…::a_refusal_under_one_switch_is_tried_again_under_another` and
+  `native_shaders::tests::outcomes_and_refusals_survive_renderer_resets` (`sunrise-client`);
+  `graphics::tests::iris_compatibility_is_kept_by_pack_name`,
+  `shader_ui::tests::the_picked_pack_has_an_iris_compatibility_switch_beside_its_row` and the daily
+  `pack_terrain_ids::a_stale_pack_build_is_never_installed` (`sunrise-client-render`);
+  `client::render_pipeline::tests::pack_binding_syntax_rejects_bad_identifiers_and_multiline_defines`
+  (`sunrise-mod-vocab`).

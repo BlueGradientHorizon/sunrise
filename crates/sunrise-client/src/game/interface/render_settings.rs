@@ -97,7 +97,7 @@ impl Game<'_> {
                 !shader_packs::active_pack(&f.to_string_lossy(), &self.settings.mods).is_empty()
             });
         let outcome = if available {
-            native_shaders::outcome(&path)
+            native_shaders::outcome(&path, self.settings.sunrise.iris_compat_of(picked))
         } else {
             Some(false)
         };
