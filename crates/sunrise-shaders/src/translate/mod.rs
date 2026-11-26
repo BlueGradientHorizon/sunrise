@@ -1036,7 +1036,7 @@ pub fn translate_compute(compute: &Preprocessed) -> Result<ComputeProgram, Vec<E
         let v = constant(&c, name)?;
         if !counts.contains(&v.len()) {
             errors.push(Error::new(
-                compute.files.first().cloned().unwrap_or_default(),
+                compute.file(),
                 0,
                 format!("`{name}` must have {counts:?} numbers, not {}", v.len()),
             ));
@@ -1058,7 +1058,7 @@ pub fn translate_compute(compute: &Preprocessed) -> Result<ComputeProgram, Vec<E
         }
         Some(Err(message)) => {
             errors.push(Error::new(
-                compute.files.first().cloned().unwrap_or_default(),
+                compute.file(),
                 0,
                 message,
             ));
@@ -1068,7 +1068,7 @@ pub fn translate_compute(compute: &Preprocessed) -> Result<ComputeProgram, Vec<E
     };
     let code = work_group_size(&code).unwrap_or_else(|message| {
         errors.push(Error::new(
-            compute.files.first().cloned().unwrap_or_default(),
+            compute.file(),
             0,
             message,
         ));
@@ -1452,7 +1452,7 @@ fn compile(
     let header_lines = header.lines().count();
     let specialized = image_parameters::rewrite(&format!("{header}{code}")).map_err(|message| {
         vec![Error::new(
-            stage.pp.files.first().cloned().unwrap_or_default(),
+            stage.pp.file(),
             1,
             message,
         )]
