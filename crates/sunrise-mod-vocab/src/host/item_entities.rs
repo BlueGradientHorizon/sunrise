@@ -83,7 +83,11 @@ pub trait ItemEntitiesBackendMut {
     /// `item_picked_up_post`, `Inventory.add` (what does not fit stays on the ground), the
     /// statistic, the advancement criterion, and the take animation and sound. `Ok` of the count
     /// the inventory took: 0 when the delay, the target, a mod or a full inventory refused it.
-    /// `Err(Stale)` for a stale player or item handle and `Err(Unavailable)` on a client.
+    /// `Err(Stale)` for a stale player or item handle or a dead player (the game's pickup skips
+    /// the dead), and `Err(Unavailable)` on a client.
+    ///
+    /// Not transactional: the pickup commits at once, its take packet and sound included.
+    /// Inside an open transaction it is refused with `Err(InTransaction)` and nothing is done.
     fn player_touch_item(
         &mut self,
         player: PlayerRef,
@@ -96,7 +100,8 @@ pub trait ItemEntitiesBackendMut {
     /// the orb's count is taken with the take animation and sound, its value goes through
     /// Mending and the rest to the player's experience, and a one-count orb is discarded.
     /// `Ok(true)` when taken. The same for the host's own player and for a LAN guest. `Err` as
-    /// for `player_touch_item`.
+    /// for `player_touch_item`, including `Err(InTransaction)`: the orb's take, Mending and the
+    /// experience commit at once and are refused inside an open transaction.
     fn player_touch_orb(
         &mut self,
         player: PlayerRef,

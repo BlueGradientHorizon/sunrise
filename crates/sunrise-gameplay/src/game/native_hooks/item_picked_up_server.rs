@@ -349,9 +349,12 @@ impl crate::game::ServerGame<'_> {
                     })
                 }
                 PickupSlot::Resident { conn, .. } => {
+                    // In place within the guest's own turn (`touch_item`), as the Pre notice and
+                    // the insert above. A refused turn heard nothing: what `Inventory.add` left
+                    // stays the remainder, never "all of it fit".
                     let told = self
-                        .as_guest(*conn, |game| game.native_pickup_post(id, &captured, rest))
-                        .unwrap_or(None);
+                        .as_guest_here(*conn, |game| game.native_pickup_post(id, &captured, rest))
+                        .unwrap_or_else(|| rest_before.clone());
                     let present = self.common.dropped.iter().any(|d| d.id == id);
                     let removed =
                         !present || self.common.persist.removals.contains(&Target::Item(id));

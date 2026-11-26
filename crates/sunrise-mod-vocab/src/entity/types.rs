@@ -843,10 +843,13 @@ impl crate::NoBackend for ExperienceOrbWriteError {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, sunrise_mod_api_macros::Wire)]
 #[non_exhaustive]
 pub enum PickupError {
-    /// The player or the item or orb handle is stale, removed, or temporarily held out of lookup.
+    /// The player or the item or orb handle is stale, removed, or temporarily held out of lookup,
+    /// or the player is dead.
     Stale,
     /// World access is unavailable, or the call ran on a client.
     Unavailable,
+    /// A transaction is open: the pickup cannot join one, as an abort could not undo it.
+    InTransaction,
 }
 
 impl crate::NoBackend for PickupError {

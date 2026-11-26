@@ -282,6 +282,18 @@ impl crate::game::ServerGame<'_> {
             .ok_or(PlayerDataRefusal::Stale)
     }
 
+    /// `native_resident_player_turn` for a living player only: a dead one is `Stale`.
+    pub(in crate::game) fn native_living_player_turn(
+        &self,
+        player: PlayerRef,
+    ) -> Result<PlayerTurn, PlayerDataRefusal> {
+        if !self.common.is_logical_server() {
+            return Err(PlayerDataRefusal::Client);
+        }
+        self.player_handle_turn(player, true)
+            .ok_or(PlayerDataRefusal::Stale)
+    }
+
     pub(in crate::game) fn native_as_resident_player(
         &mut self,
         player: PlayerRef,
