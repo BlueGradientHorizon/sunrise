@@ -220,7 +220,7 @@ fn build_command(
             "build --update-lock rewrites a native mod's Cargo.lock; {MANIFEST} has no [native] table"
         ));
     }
-    let output = PackageOutput::in_project(root)?;
+    let output = PackageOutput::prepare(root, &package.manifest)?;
     let bundle = package
         .is_native()
         .then(|| dev::project_bundle(root, &package))
@@ -253,7 +253,7 @@ fn build_command(
         built.as_ref().map(|built| built.mixins.as_str()),
     )?;
     println!("Built {}", path.display());
-    if let Some(bundle) = page::write_bundle(root, &output.0, &package.manifest)? {
+    if let Some(bundle) = page::write_bundle(root, &output.dir, &package.manifest)? {
         println!("Built {}", bundle.display());
     }
     Ok(path)
@@ -601,25 +601,30 @@ fn build(
 }
 
 fn build_in(root: &Path, manifest: &Manifest) -> Result<PathBuf, String> {
-    pack_into(
-        root,
-        &PackageOutput::in_project(root)?,
-        manifest,
-        None,
-        None,
-    )
+    let output = PackageOutput::prepare(root, manifest)?;
+    pack_into(root, &output, manifest, None, None)
 }
 
-struct PackageOutput(PathBuf);
+struct PackageOutput {
+    dir: PathBuf,
+    path: PathBuf,
+}
 
 impl PackageOutput {
-    /// Check both output components under the project before writing or unlinking packages.
-    fn in_project(root: &Path) -> Result<Self, String> {
+    /// Check both output components, then unlink the previous package. A failed build must not
+    /// leave a package that a later `check <file>` would report as current.
+    fn prepare(root: &Path, manifest: &Manifest) -> Result<Self, String> {
         let target = root.join("target");
         internals::check_output_dir(&target)?;
         let dir = target.join("sunrise-mod");
         internals::check_output_dir(&dir)?;
-        Ok(Self(dir))
+        let path = dir.join(format!("{}.smod", manifest.id));
+        if let Err(e) = std::fs::remove_file(&path)
+            && e.kind() != std::io::ErrorKind::NotFound
+        {
+            return Err(format!("{}: {e}", path.display()));
+        }
+        Ok(Self { dir, path })
     }
 }
 
@@ -654,23 +659,14 @@ fn pack_into(
     uses: Option<&[u8]>,
     mixins: Option<&str>,
 ) -> Result<PathBuf, String> {
-    let dir = &output.0;
-    // A failed build leaves no earlier package that a later `check <file>` would report as good.
-    let path = dir.join(format!("{}.smod", manifest.id));
-    match std::fs::remove_file(&path) {
-        Err(e) if e.kind() != std::io::ErrorKind::NotFound => {
-            return Err(format!("{}: {e}", path.display()));
-        }
-        _ => {}
-    }
     check::references(root, manifest)?;
     let text = bounded::read(&root.join(MANIFEST), bounded::MAX_MANIFEST)?;
     let bytes = Package::pack_directory_with(root, uses, Some(completed_manifest(&text, mixins)?))?;
-    std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&output.dir).map_err(|e| e.to_string())?;
     // Written beside it and renamed, so a running game never reads half a file, through a
     // temporary name made new: a link planted at a guessable name is never followed.
-    internals::atomic_write(&path, bytes)?;
-    Ok(path)
+    internals::atomic_write(&output.path, bytes)?;
+    Ok(output.path.clone())
 }
 
 /// What `check` was asked to check.
@@ -1295,10 +1291,11 @@ mod tests {
         // Only selected content ships, not the Git project's executable hooks.
         std::fs::create_dir_all(path.join(".git/hooks")).unwrap();
         std::fs::write(path.join(".git/hooks/pre-commit"), b"#!/bin/sh\nexit 0\n").unwrap();
+        let manifest = Package::read(&path).unwrap().manifest;
         let smod = pack_into(
             &path,
-            &PackageOutput::in_project(&path).unwrap(),
-            &Package::read(&path).unwrap().manifest,
+            &PackageOutput::prepare(&path, &manifest).unwrap(),
+            &manifest,
             Some(&uses_list("0123456789abcdef0123456789abcdef01234567")),
             None,
         )
@@ -1356,8 +1353,8 @@ mod tests {
             sunrise_native_build::MixinsIdentity::resolve([&bundle], Some(&sdk)).unwrap();
         let smod = pack_into(
             &root,
-            &PackageOutput::in_project(&root).unwrap(),
-            &Package::read(&root).unwrap().manifest,
+            &PackageOutput::prepare(&root, &bundle.manifest).unwrap(),
+            &bundle.manifest,
             None,
             Some(identity.revision()),
         )
@@ -1415,7 +1412,7 @@ mod tests {
         let rev = "fedcba9876543210fedcba9876543210fedcba98";
         let smod = pack_into(
             &path,
-            &PackageOutput::in_project(&path).unwrap(),
+            &PackageOutput::prepare(&path, &written).unwrap(),
             &written,
             None,
             Some(rev),
@@ -1462,7 +1459,7 @@ mod tests {
         let pack = |made_for: &str| {
             let smod = pack_into(
                 &path,
-                &PackageOutput::in_project(&path).unwrap(),
+                &PackageOutput::prepare(&path, &written).unwrap(),
                 &written,
                 Some(&uses_list(made_for)),
                 Some(rev),
@@ -1483,7 +1480,7 @@ mod tests {
         std::fs::write(path.join("src/m.rs"), "").unwrap();
         let smod = pack_into(
             &path,
-            &PackageOutput::in_project(&path).unwrap(),
+            &PackageOutput::prepare(&path, &exact).unwrap(),
             &exact,
             None,
             Some(rev),
@@ -1715,7 +1712,7 @@ served_by = \"horizon_java\"
             let manifest = Package::read(&root).unwrap().manifest;
             pack_into(
                 &root,
-                &PackageOutput::in_project(&root).unwrap(),
+                &PackageOutput::prepare(&root, &manifest).unwrap(),
                 &manifest,
                 None,
                 None,
