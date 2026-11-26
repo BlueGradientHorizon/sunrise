@@ -212,8 +212,10 @@ NeoForge's `IClientFluidTypeExtensions`; the fluid needs no block, and a recipe 
 object makes it exist in the world: `{"world": {}}` adds the block `<id>:<path>`, a copy of `minecraft:water` that flows
 with vanilla's fluid simulation, and the bucket item `<id>:<path>_bucket`, which needs its model as any item does. `world`
 takes `tick_delay` (1 or more, default 5), `drop_off` (1 to 7, default 1), `slope_find_distance` (1 to 4, default 4),
-`source_conversion` (default false), `bucket` (default true) and `flowing`, the flowing form's id in the fluid's
-namespace and not the fluid's own id (default `<id>:flowing_<path>`). Beside `world`, `bucket_item` names the item that
+`source_conversion` (default false), `bucket` (default true), `flowing`, the flowing form's id in the fluid's
+namespace and not the fluid's own id (default `<id>:flowing_<path>`), and `block`, the liquid block's id in the fluid's
+namespace and not the flowing form's (NeoForge's `BaseFlowingFluid.Properties.block`; default the fluid's own id), which
+commands, data packs and structure files then name. Code passes the same through `WorldFluid::block`. Beside `world`, `bucket_item` names the item that
 holds a bucket of the fluid (`Fluid.getBucket`): the generated bucket's id, in the fluid's namespace, or, for a tank-only
 fluid or one with `"bucket": false`, an item the mod declares itself, which keeps the fluid through its own parts. An
 empty bucket fills to that item from any fluid handler, with the bucket's fill sound, and a generated bucket empties

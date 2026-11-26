@@ -838,6 +838,7 @@ impl TryIntoEngine<()> for (String, mod_api::WorldFluid) {
                 source_conversion: fluid.source_conversion,
                 bucket: fluid.bucket,
                 flowing: fluid.flowing.clone(),
+                block: fluid.block.clone(),
             }),
             // Named here, the generated bucket keeps its id over a fluid file's `bucket_item`.
             bucket_item: fluid

@@ -24,10 +24,12 @@ pub struct ModFluidRules {
 /// world and the bucket that carries it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ModFluidType {
-    /// `<namespace>:<path>`, which is also its block's id.
+    /// `<namespace>:<path>`.
     pub id: String,
     /// `<namespace>:flowing_<path>`.
     pub flowing_id: String,
+    /// Its liquid block's id: the fluid's own unless the mod names another.
+    pub block_id: String,
     /// The filled bucket, when the fluid has one.
     pub bucket: Option<String>,
     pub rules: ModFluidRules,
@@ -112,6 +114,14 @@ pub fn mod_fluid_named(id: &str) -> Option<ModFluid> {
     mod_fluid_table()
         .iter()
         .position(|fluid| fluid.id == id)
+        .map(|at| ModFluid(at as u16))
+}
+
+/// The mod fluid whose liquid block is named `name` ([`ModFluidType::block_id`]).
+pub fn mod_fluid_of_block_name(name: &str) -> Option<ModFluid> {
+    mod_fluid_table()
+        .iter()
+        .position(|fluid| fluid.block_id == name)
         .map(|at| ModFluid(at as u16))
 }
 
@@ -410,7 +420,7 @@ impl FluidState {
     }
     pub fn from_block(state: &BlockState) -> io::Result<Self> {
         let water = state.name == "minecraft:water";
-        let mod_fluid = mod_fluid_named(&state.name);
+        let mod_fluid = mod_fluid_of_block_name(&state.name);
         if water || state.name == "minecraft:lava" || mod_fluid.is_some() {
             let level = state
                 .properties
@@ -472,7 +482,7 @@ impl FluidState {
 }
 /// `state`'s fluid when its block is a mod fluid's, whose rows copy a vanilla liquid's.
 pub fn mod_fluid_of_block(state: &BlockState) -> io::Result<Option<FluidState>> {
-    match mod_fluid_named(&state.name) {
+    match mod_fluid_of_block_name(&state.name) {
         Some(_) => FluidState::from_block(state).map(Some),
         None => Ok(None),
     }
@@ -530,7 +540,7 @@ impl FluidBlockBindings {
             lava: levels("minecraft:lava")?,
             mods: mod_fluids()
                 .into_iter()
-                .map(|(_, fluid)| levels(&fluid.id).ok())
+                .map(|(_, fluid)| levels(&fluid.block_id).ok())
                 .collect(),
         })
     }
@@ -581,6 +591,7 @@ mod mod_fluid_tests {
         register_mod_fluid(ModFluidType {
             id: id.into(),
             flowing_id: flowing_id.into(),
+            block_id: id.into(),
             bucket: Some(format!("{id}_bucket")),
             rules: ModFluidRules {
                 tick_delay: 20,
@@ -591,6 +602,46 @@ mod mod_fluid_tests {
         })
         .unwrap()
     }
+    /// #6039: a mod fluid whose liquid block has its own id is found by that block's name,
+    /// not by the fluid's, and the block's `level` gives source and flowing as water's does.
+    #[test]
+    fn a_liquid_block_with_its_own_id_names_its_fluid() {
+        let essence = register_mod_fluid(ModFluidType {
+            id: "blockname:essence_fluid".into(),
+            flowing_id: "blockname:flowing_essence_fluid".into(),
+            block_id: "blockname:essence_block".into(),
+            bucket: None,
+            rules: ModFluidRules {
+                tick_delay: 5,
+                drop_off: 1,
+                slope_find_distance: 4,
+                converts_to_source: false,
+            },
+        })
+        .unwrap();
+        assert_eq!(
+            mod_fluid_of_block_name("blockname:essence_block"),
+            Some(essence)
+        );
+        assert_eq!(mod_fluid_of_block_name("blockname:essence_fluid"), None);
+        assert_eq!(mod_fluid_named("blockname:essence_fluid"), Some(essence));
+        let block = |name: &str, level: &str| BlockState {
+            name: name.into(),
+            properties: [("level".to_owned(), level.to_owned())]
+                .into_iter()
+                .collect(),
+        };
+        let source = FluidState::from_block(&block("blockname:essence_block", "0")).unwrap();
+        assert_eq!(source.kind, FluidKind::Mod(essence));
+        let flowing = FluidState::from_block(&block("blockname:essence_block", "3")).unwrap();
+        assert_eq!(flowing.kind, FluidKind::ModFlowing(essence));
+        assert_eq!(
+            mod_fluid_of_block(&block("blockname:essence_fluid", "0")).unwrap(),
+            None,
+            "the fluid's own id is no block"
+        );
+    }
+
     #[test]
     fn fluid_registration_refuses_collisions_and_capacity_atomically() {
         let a = oil("refusal:oil", "refusal:flowing_oil").get();
