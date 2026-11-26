@@ -69,6 +69,33 @@ class ServerStopTests(unittest.TestCase):
         self.assertEqual(calls, [120, None])
 
 
+class KnownPacksTests(unittest.TestCase):
+    def configure(self, protocol, received):
+        """What the bot sends while it configures against a server that sends `received` (id, payload), then finish."""
+        bot = worlds.Bot.__new__(worlds.Bot)
+        bot.protocol = protocol
+        sent = []
+        packets = iter([*received, (3, b'')])
+        bot.receive = lambda: next(packets)
+        bot.send = lambda packet_id, payload=b'': sent.append((packet_id, payload))
+        bot.configure()
+        return sent
+
+    def test_the_bot_answers_only_the_select_known_packs_packet_of_its_protocol(self):
+        # What select_known_packs carries: one pack, namespace minecraft, id core, version.
+        offer = b'\x01\x09minecraft\x04core\x041.21'
+        answer = (7, b'\x00')
+        finish = (3, b'')
+        # 26.2: select_known_packs is 14 and update_tags 15. A bare minecraft-shaped payload on 15 is left alone.
+        self.assertEqual(self.configure(776, [(15, offer), (14, offer)]), [answer, finish])
+        # 26.3: post_effects comes in before it, so update_tags is 14 and select_known_packs 15.
+        self.assertEqual(self.configure(777, [(14, offer), (15, offer)]), [answer, finish])
+
+    def test_a_protocol_with_no_known_id_is_refused(self):
+        with self.assertRaisesRegex(ValueError, 'protocol 999'):
+            self.configure(999, [])
+
+
 class BuildCleanupTests(unittest.TestCase):
     """build() with the server, the bot and the scene replaced: what is closed when something fails."""
 

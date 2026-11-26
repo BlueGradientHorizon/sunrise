@@ -70,6 +70,10 @@ BOT = 'Upgrader'
 # Versions whose default world also gets every block state the server can save, on a grid beside the scene.
 STATE_GRID = {'1.13.2'}
 UUID_BASE = 0x6000
+# The clientbound configuration packet id of select_known_packs, by protocol: 14 from 1.20.5 (766) to 26.2 (776); 26.3 (777)
+# puts post_effects before it, which makes it 15 (crates/sunrise-protocol/src/ids.rs). The older ids are those of the
+# per-version packet tables removed in 9dd33d4e1b2 (crates/sunrise-protocol/src/adapter/v*.rs, from the packets reports).
+SELECT_KNOWN_PACKS_ID = {**dict.fromkeys(range(766, 777), 14), 777: 15}
 
 
 def fetch(path, url, sha1, what):
@@ -293,6 +297,9 @@ class Bot:
     def configure(self):
         old = self.protocol < 766  # 1.20.2 - 1.20.4 packet ids
         finish, keep_alive, ping, disconnect = (2, 3, 4, 1) if old else (3, 4, 5, 2)
+        known_packs = SELECT_KNOWN_PACKS_ID.get(self.protocol)   # None before 1.20.5: no known packs
+        if not old and known_packs is None:
+            raise ValueError(f'protocol {self.protocol}: the id of select_known_packs is not in SELECT_KNOWN_PACKS_ID')
         while True:
             pid, data = self.receive()
             if pid == finish:
@@ -304,19 +311,8 @@ class Bot:
                 self.send(4 if old else 5, data)
             elif pid == disconnect:
                 raise RuntimeError(f'disconnected during configuration: {data!r}')
-            elif not old and self.known_packs(data):
+            elif pid == known_packs:
                 self.send(7, varint(0))  # claim no packs: the server sends full registries
-
-    @staticmethod
-    def known_packs(data):
-        try:
-            pos, count = parse_varint(data, 0)
-            if count < 1:
-                return False
-            pos, n = parse_varint(data, pos)
-            return data[pos:pos + n] == b'minecraft'
-        except IndexError:
-            return False
 
     def idle(self):
         self.sock.settimeout(1.0)
