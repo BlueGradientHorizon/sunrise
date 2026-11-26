@@ -10,7 +10,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from tests.git_fixture import git_in
+from tests.git_fixture import git_in, isolated_git_env
 from tools.ci import nightly
 
 PREVIOUS = "26.3-0.1.10"
@@ -519,7 +519,11 @@ class StableModApiTests(unittest.TestCase):
             git("merge", "--no-ff", "main", "-m", "bring in main")
             imported = git("rev-parse", "HEAD")
         git("clone", "--depth", "1", "--branch", "release", repo.as_uri(), str(checkout))
-        with chdir(checkout), mock.patch.object(nightly, "REPOSITORY", checkout):
+        with (
+            chdir(checkout),
+            mock.patch.object(nightly, "REPOSITORY", checkout),
+            mock.patch.dict("os.environ", isolated_git_env(), clear=True),
+        ):
             tag = "26.3-0.1.11"
             nightly.require_stable_lineage(candidate, tag, previous, PREVIOUS)
             self.assertEqual(nightly.git("rev-parse", "--is-shallow-repository"), "false")
@@ -547,7 +551,11 @@ class StableModApiTests(unittest.TestCase):
             git("commit", "--allow-empty", "-m", "another release fix")
             candidate = git("rev-parse", "HEAD")
         git("clone", "--depth", "1", "--branch", "release", repo.as_uri(), str(checkout))
-        with chdir(checkout), mock.patch.object(nightly, "REPOSITORY", checkout):
+        with (
+            chdir(checkout),
+            mock.patch.object(nightly, "REPOSITORY", checkout),
+            mock.patch.dict("os.environ", isolated_git_env(), clear=True),
+        ):
             nightly.require_stable_lineage(candidate, "26.3-0.1.11", previous, PREVIOUS)
 
     def test_stable_mod_api_command_requires_a_full_commit_sha(self):
