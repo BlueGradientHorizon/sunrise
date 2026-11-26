@@ -5093,7 +5093,7 @@ mod tests {
                     SceneBlockEntity::new(
                         Identifier::parse(id).unwrap(),
                         state,
-                        ModBlockEntityFields {
+                        mod_api::item::containers::ModBlockEntityFields {
                             nbt,
                             items: Vec::new(),
                             data: Vec::new(),
