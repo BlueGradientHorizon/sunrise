@@ -1647,7 +1647,12 @@ impl ItemModels {
         let Some(Value::String(id)) = self.prototypes.get(item)?.get("minecraft:item_model") else {
             return None;
         };
-        let definition = self.definitions.get(&identifier(id).ok()?)?;
+        // Asked each frame for every worn non-vanilla item: a namespaced id is already the
+        // definitions' canonical key, so only a bare one pays for `identifier`'s allocation.
+        let definition = match id.split_once(':') {
+            Some((namespace, _)) if !namespace.is_empty() => self.definitions.get(id.as_str())?,
+            _ => self.definitions.get(&identifier(id).ok()?)?,
+        };
         match &definition.model {
             ItemModelNode::Special {
                 model:

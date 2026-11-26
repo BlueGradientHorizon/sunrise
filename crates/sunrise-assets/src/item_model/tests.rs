@@ -806,15 +806,19 @@ fn an_items_head_model_names_its_skull_kind() {
     let prototype = |model: &str| Components::from([("minecraft:item_model".into(), json!(model))]);
     let models = ItemModels {
         definitions: BTreeMap::from([
-            ("mymod:skull".to_owned(), head),
+            ("mymod:skull".to_owned(), head.clone()),
+            ("minecraft:bare_skull".to_owned(), head),
             ("minecraft:stick".to_owned(), plain),
         ]),
         prototypes: std::sync::Arc::new(BTreeMap::from([
             ("mymod:skull".to_owned(), prototype("mymod:skull")),
+            // A bare model id names the `minecraft` namespace's definition.
+            ("mymod:bare".to_owned(), prototype("bare_skull")),
             ("minecraft:stick".to_owned(), prototype("minecraft:stick")),
         ])),
     };
     assert_eq!(models.head_kind("mymod:skull"), Some("zombie"));
+    assert_eq!(models.head_kind("mymod:bare"), Some("zombie"));
     assert_eq!(models.head_kind("minecraft:stick"), None);
     assert_eq!(models.head_kind("mymod:unknown"), None);
 }

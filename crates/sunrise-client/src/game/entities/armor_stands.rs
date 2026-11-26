@@ -2576,11 +2576,15 @@ pub(super) fn skull_kind<'a>(
     models: &'a sunrise_assets::item_model::ItemModels,
     item: &str,
 ) -> Option<&'a str> {
-    vanilla_skull_kind(item).or_else(|| {
-        models
-            .head_kind(item)
-            .filter(|kind| sunrise_assets::item_model::is_skull_kind(kind))
-    })
+    skull_kind_among(models, item, sunrise_assets::item_model::is_skull_kind)
+}
+/// [`skull_kind`] with the registered skull kinds named by `registered`.
+fn skull_kind_among<'a>(
+    models: &'a sunrise_assets::item_model::ItemModels,
+    item: &str,
+    registered: impl Fn(&str) -> bool,
+) -> Option<&'a str> {
+    vanilla_skull_kind(item).or_else(|| models.head_kind(item).filter(|kind| registered(kind)))
 }
 /// `AbstractSkullBlock.getType` of vanilla's skull items.
 fn vanilla_skull_kind(item: &str) -> Option<&'static str> {
@@ -3443,25 +3447,41 @@ mod setup_anim_tests {
 
 #[cfg(test)]
 mod worn_skull_tests {
-    use super::skull_kind;
+    use super::skull_kind_among;
     use serde_json::json;
     use std::collections::BTreeMap;
-    use sunrise_assets::item_model::{ClientItem, ItemModels, register_skull_kinds};
+    use sunrise_assets::item_model::{
+        ClientItem, ItemModelNode, ItemModels, SpecialKind, SpecialModel,
+    };
 
     /// A worn skull's kind (#5969): vanilla's skulls by item, then a mod's skull by the
     /// `minecraft:head` kind its item model names, once a mod registered that kind
     /// (`create_skull_models`); a plain item, or a head model naming an unregistered kind, is
-    /// no skull.
+    /// no skull. The registered kinds are this test's own, not the process-wide table.
     #[test]
     fn a_mods_skull_item_resolves_to_its_registered_kind() {
-        register_skull_kinds(vec!["worntest:goblin".into()]);
-        let head = |kind: &str| {
-            ClientItem::decode(&json!({"model": {
+        let registered = |kind: &str| kind == "worntest:goblin";
+        // Decoding checks a head's kind against the process-wide table, so decode a vanilla
+        // head and name the kind afterwards rather than register a mod kind for the process.
+        let head = |named: &str| {
+            let mut item = ClientItem::decode(&json!({"model": {
                 "type": "minecraft:special",
                 "base": "minecraft:item/template_skull",
-                "model": {"type": "minecraft:head", "kind": kind}
+                "model": {"type": "minecraft:head", "kind": "zombie"}
             }}))
-            .unwrap()
+            .unwrap();
+            let ItemModelNode::Special {
+                model:
+                    SpecialModel {
+                        kind: SpecialKind::Head { kind, .. },
+                    },
+                ..
+            } = &mut item.model
+            else {
+                panic!("a head model");
+            };
+            *kind = named.to_owned();
+            item
         };
         let prototype =
             |model: &str| BTreeMap::from([("minecraft:item_model".to_owned(), json!(model))]);
@@ -3482,13 +3502,19 @@ mod worn_skull_tests {
             ])),
         };
         assert_eq!(
-            skull_kind(&models, "worntest:goblin_head"),
+            skull_kind_among(&models, "worntest:goblin_head", registered),
             Some("worntest:goblin")
         );
-        assert_eq!(skull_kind(&models, "minecraft:zombie_head"), Some("zombie"));
-        assert_eq!(skull_kind(&models, "minecraft:stick"), None);
         assert_eq!(
-            skull_kind(&models, "worntest:zombie_look"),
+            skull_kind_among(&models, "minecraft:zombie_head", registered),
+            Some("zombie")
+        );
+        assert_eq!(
+            skull_kind_among(&models, "minecraft:stick", registered),
+            None
+        );
+        assert_eq!(
+            skull_kind_among(&models, "worntest:zombie_look", registered),
             None,
             "a vanilla kind on a mod item is no registered mod skull"
         );
