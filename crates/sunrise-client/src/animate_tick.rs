@@ -2784,3 +2784,7 @@ mod biome_particle_tests;
 #[cfg(test)]
 #[path = "animate_tick_parts_tests.rs"]
 mod parts_tests;
+
+#[cfg(test)]
+#[path = "startup_convention_tags_tests.rs"]
+mod startup_convention_tags_tests;
