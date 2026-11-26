@@ -659,7 +659,7 @@ mod tests {
         use mod_platform::__private::part_tests;
         let (_, registry) = blocks();
         mod_platform::__private::install(Default::default());
-        sunrise_gameplay_common::game::api_values::register_game_keys([
+        crate::game::api_values::register_game_keys([
             "minecraft:oak_stairs".to_owned(),
             "minecraft:wheat".to_owned(),
         ]);

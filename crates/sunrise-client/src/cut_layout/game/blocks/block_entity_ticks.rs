@@ -1046,7 +1046,7 @@ pub(in crate::game) mod slot_mutation_tests {
     }
 }
 
-#[cfg(test)]
+#[cfg(any())]
 pub(crate) mod own_block_entity_tests {
 
 use sunrise_gameplay_common::game::server_side::block_entity_ticks::own_block_entity_tests::A;

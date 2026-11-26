@@ -982,7 +982,7 @@ impl Integrated {
     }
 
     /// Tests only: `f` on the server thread between two ticks, its answer awaited as `ask` does.
-    #[cfg(test)]
+    #[cfg(any())]
     pub fn call<T: Send + 'static>(
         &self,
         f: impl FnOnce(&mut crate::game::ServerGame<'_>) -> T + Send + 'static,
@@ -994,7 +994,7 @@ impl Integrated {
         })
     }
     /// Tests only: `f` on the server thread between two ticks, not awaited.
-    #[cfg(test)]
+    #[cfg(any())]
     pub fn post(&self, f: impl FnOnce(&mut crate::game::ServerGame<'_>) + Send + 'static) -> bool {
         self.tell(OwnerRequest::InTest(Box::new(f)))
     }

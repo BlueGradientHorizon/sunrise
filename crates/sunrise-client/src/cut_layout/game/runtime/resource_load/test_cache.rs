@@ -1,5 +1,5 @@
 //! Process-wide cache of immutable loaded test resources, keyed by every load-affecting input.
-use {crate::game::resource_load::*, sunrise_gameplay_common::game::resource_load::{BlockRegistry, Path, Progress, ResourceRoot, acquire_fresh_child_permit, cached_structure_spawns, launch_world, publish_entity_type_defaults, with_skip_facts_memo}};
+use {crate::game::resource_load::*, sunrise_gameplay_common::game::resource_load::{BlockRegistry, Path, Progress, ResourceRoot, launch_world, publish_entity_type_defaults, with_skip_facts_memo}};
 #[cfg(feature = "client")]
 use sunrise_gameplay_common::game::api_values::TryIntoApi;
 use std::{
@@ -465,7 +465,7 @@ fn hydrate_hit(
     }
     publish_entity_type_defaults(&cached.resources.core.motion.attributes);
     sunrise_sim::save::level_mods::set_block_namespaces(Some(cached.mod_namespaces.clone()));
-    let registry = api_values::resolve_cached_block_definitions(cached.pack.assets.registry)?;
+    let registry = crate::game::api_values::resolve_cached_block_definitions(cached.pack.assets.registry)?;
     let _ = sunrise_world::poi::extend(Vec::new());
     sunrise_gameplay::game::machines::cauldron_contents::install(
         crate::game::machines::cauldron_contents::CauldronContents::vanilla(),

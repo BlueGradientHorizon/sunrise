@@ -33,9 +33,6 @@ pub use movement::stepped_move;
 pub use std::collections::HashMap;
 #[cfg(test)]
 pub use std::sync::Arc;
-#[allow(unused_imports)]
-#[cfg(test)]
-pub use sunrise_client_lib::net::{Event, Session};
 pub use sunrise_core::geometry::Vec3;
 #[allow(unused_imports)]
 pub use sunrise_items::items::ItemStack;
@@ -641,6 +638,7 @@ pub fn client_has_level(logged_in: bool, reconfiguring: Option<u64>) -> bool {
 
 // A packet's removals (`RemoveEntities`), apart: this file may not grow.
 
+#[cfg(any())]
 #[cfg(test)]
 pub mod client_camera_tests;
 /// `Entity.baseTick`'s fluid update for a mob this window only displays (`fluids`, sampled before

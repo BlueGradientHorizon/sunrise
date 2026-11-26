@@ -3,9 +3,7 @@
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
 
-use super::*;
-
-use sunrise_sim::advancements::{Criterion, Display, Rewards};
+use sunrise_sim::advancements::{Advancement, Criterion, Display, Frame, Rewards};
 
 pub fn mine_stone() -> Advancement {
         let criterion = |name: &str| Criterion {

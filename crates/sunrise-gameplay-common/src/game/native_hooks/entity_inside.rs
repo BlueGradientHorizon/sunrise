@@ -22,21 +22,19 @@ impl HitLevel<'_> {
 pub mod sweep_tests {
     use super::*;
 
-    #[cfg(test)]
 /// The `entity_inside` part the player's sweep tests install: it draws the
     /// level's random once a contact (vanilla's order), queues a push and a wither
     /// effect around the freeze, and can kill or panic on later contacts.
     #[derive(Clone, Default)]
-    pub(in crate::game) struct InsidePart {
-        pub(in crate::game) contacts: std::sync::Arc<std::sync::Mutex<Vec<[i32; 3]>>>,
-        pub(in crate::game) wither: std::sync::Arc<std::sync::Mutex<Option<mod_api::EffectKey>>>,
-        pub(in crate::game) speed: std::sync::Arc<std::sync::Mutex<Option<mod_api::EffectKey>>>,
-        pub(in crate::game) hurt_after: Option<(usize, f32)>,
-        pub(in crate::game) generic:
+    pub struct InsidePart {
+        pub contacts: std::sync::Arc<std::sync::Mutex<Vec<[i32; 3]>>>,
+        pub wither: std::sync::Arc<std::sync::Mutex<Option<mod_api::EffectKey>>>,
+        pub speed: std::sync::Arc<std::sync::Mutex<Option<mod_api::EffectKey>>>,
+        pub hurt_after: Option<(usize, f32)>,
+        pub generic:
             std::sync::Arc<std::sync::Mutex<Option<mod_api::DamageTypeKey>>>,
-        pub(in crate::game) panic_after: Option<usize>,
+        pub panic_after: Option<usize>,
     }
-    #[cfg(test)]
 #[mod_api::sunrise_part]
     impl mod_api::BlockPart for InsidePart {
         fn entity_inside(
@@ -90,9 +88,7 @@ pub mod sweep_tests {
             }
         }
     }
-    #[cfg(test)]
 pub(in crate::game) struct InsideMod(pub(in crate::game) InsidePart);
-    #[cfg(test)]
 #[mod_api::__subscriptions]
     impl mod_api::Hooks for InsideMod {
         fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {

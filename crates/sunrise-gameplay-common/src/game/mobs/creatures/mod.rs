@@ -916,9 +916,6 @@ pub mod shulker_arrow_tests;
 pub mod damage_type_tests;
 
 #[cfg(test)]
-pub mod pearl_tests;
-
-#[cfg(test)]
 pub mod knockback_tests;
 
 #[cfg(test)]

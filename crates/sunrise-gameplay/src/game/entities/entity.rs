@@ -1745,7 +1745,67 @@ pub(in crate::game) mod trident_selector_tests {
 pub(in crate::game) mod join_order_tests {
 use sunrise_gameplay_common::game::server_side::entity_server::join_order_tests::at;
 
-use sunrise_gameplay_common::game::server_side::entity_server::join_order_tests::mixed;
+#[cfg(test)]
+impl Lists {
+        fn view(&self) -> EntityLists<'_> {
+            EntityLists {
+                mobs: &self.mobs,
+                dropped: &[],
+                boats: &self.boats,
+                carts: &[],
+                armor_stands: &self.stands,
+                tnts: &[],
+                falling: &[],
+                orbs: &[],
+                projectiles: &[],
+                rockets: &self.rockets,
+                tridents: &self.tridents,
+                general: &[],
+            }
+        }
+        fn walk(&self) -> Result<Vec<EntityHandle>, JoinOrderError> {
+            let mut seen = Vec::new();
+            self.view().walk_in_join_order(|h, _| seen.push(h))?;
+            Ok(seen)
+        }
+    }
+/// Joins different kinds of entities interleaved, the way a level gets them.
+    pub fn mixed() -> (Lists, Vec<EntityHandle>) {
+        let mut l = Lists::default();
+        l.trident(1);
+        l.rocket(2);
+        l.stand(3);
+        l.boat(4);
+        l.trident(5);
+        l.stand(6);
+        l.rocket(7);
+        let joined = vec![
+            EntityHandle::Trident(0),
+            EntityHandle::Rocket(0),
+            EntityHandle::ArmorStand(0),
+            EntityHandle::Boat(0),
+            EntityHandle::Trident(1),
+            EntityHandle::ArmorStand(1),
+            EntityHandle::Rocket(1),
+        ];
+        (l, joined)
+    }
+#[cfg(test)]
+impl Lists {
+        fn stand(&mut self, id: u32) {
+            self.stands.push(ArmorStand::new(id, at(), 0.0));
+        }
+        fn trident(&mut self, id: u32) {
+            self.tridents
+                .push(ThrownTrident::remote(id, at(), 0.0, 0.0));
+        }
+        fn rocket(&mut self, id: u32) {
+            self.rockets.push(Rocket::remote(id, at(), Vec3::ZERO));
+        }
+        fn boat(&mut self, id: u32) {
+            self.boats.push(Boat::new(id, "oak".into(), at(), 0.0));
+        }
+    }
 
     use crate::game::client_side::entity_client::{DrawExtras, DrawFamily, DrawRun, draw_runs};
     use sunrise_gameplay_common::game::entity::{EntityHandle, EntityLists, JoinOrderError};

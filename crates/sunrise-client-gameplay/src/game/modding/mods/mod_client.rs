@@ -547,3 +547,92 @@ pub(in crate::game) fn content_root(
         };
     sunrise_gameplay_common::game::mods::content_root_with(root, sources, set_fluid_looks)
 }
+
+#[cfg(test)]
+mod living_type_tests {
+    use sunrise_gameplay_common::game::mods::with_living_mod_type_fixture;
+
+    /// A content mod's living type is a mob of its template's species under
+    /// its own id, with its own attributes: it saves its id with every field
+    /// its template's class saves, loads back as itself, and rolls its own
+    /// loot table. A thrown type stays a projectile.
+    #[test]
+    fn a_mod_living_type_is_its_templates_mob_with_its_own_attributes() {
+        use sunrise_core::geometry::Vec3;
+        use sunrise_sim::mobs::{Mob, Species, drops::death_loot_table};
+        let (types, models) = with_living_mod_type_fixture(|root, types| {
+            let models = sunrise_client_lib::mobs_render::ClientMobModels::load(root).unwrap();
+            (types, models)
+        });
+        let (zombie, ghoul) = (&types["minecraft:zombie"], &types["ruby:ghoul"]);
+        assert_eq!(ghoul.species, Species::Zombie);
+        assert_eq!(ghoul.class_id(), "minecraft:zombie");
+        assert_eq!(types["ruby:settler"].species, Species::Villager);
+        assert!(!types.contains_key("ruby:bolt"), "a thrown type is no mob");
+        assert_eq!((zombie.max_health, ghoul.max_health), (20.0, 40.0));
+        assert_eq!(ghoul.speed.to_bits(), zombie.speed.to_bits());
+        assert_eq!(
+            (
+                ghoul.sounds,
+                ghoul.model_name(),
+                models.texture("ruby:ghoul")
+            ),
+            (
+                zombie.sounds,
+                zombie.model_name(),
+                models.texture("minecraft:zombie"),
+            )
+        );
+        assert!(models.texture("ruby:ghoul").is_some());
+
+        let at = Vec3::new(0.5, 64.0, 0.5);
+        let (zombie, ghoul) = (
+            Mob::new(1, zombie.clone(), at, 0.0),
+            Mob::new(2, ghoul.clone(), at, 0.0),
+        );
+        assert_eq!(ghoul.health, 40.0);
+        let saved = |m: &Mob| {
+            sunrise_sim::entity_nbt::mob_to_nbt(
+                m,
+                [0, 0, 0, 2],
+                None,
+                None,
+                |_| None,
+                &Default::default(),
+            )
+        };
+        let keys = |tag: &sunrise_core::nbt::Tag| -> Vec<String> {
+            let sunrise_core::nbt::Tag::Compound(map) = tag else {
+                panic!("a mob saves a compound");
+            };
+            map.keys().map(|k| k.to_string_lossy()).collect()
+        };
+        let (zombie_tag, ghoul_tag) = (saved(&zombie), saved(&ghoul));
+        let Some(sunrise_core::nbt::Tag::String(id)) = ghoul_tag.get("id") else {
+            panic!("a saved mob has its id");
+        };
+        assert_eq!(id.to_string_lossy(), "ruby:ghoul");
+        assert_eq!(
+            keys(&ghoul_tag),
+            keys(&zombie_tag),
+            "it saves what a zombie saves"
+        );
+        for key in ["IsBaby", "CanBreakDoors", "DrownedConversionTime"] {
+            assert!(keys(&ghoul_tag).iter().any(|k| k == key), "{key}");
+        }
+        let loaded = sunrise_sim::entity_nbt::mob_from_nbt(&ghoul_tag, &types, 3, None)
+            .expect("it loads back");
+        assert_eq!(
+            (loaded.kind.id.as_str(), loaded.health),
+            ("ruby:ghoul", 40.0)
+        );
+        assert_eq!(
+            death_loot_table(&ghoul, true).as_deref(),
+            Some("ruby:entities/ghoul")
+        );
+        assert_eq!(
+            death_loot_table(&zombie, true).as_deref(),
+            Some("minecraft:entities/zombie")
+        );
+    }
+}

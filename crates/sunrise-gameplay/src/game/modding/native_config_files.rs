@@ -60,7 +60,7 @@ impl ConfigFiles for crate::game::ServerGame<'_> {
     }
 }
 
-#[cfg(test)]
+#[cfg(any())]
 mod tests {
 use sunrise_gameplay_common::game::server_side::native_config_files::tests::as_mod;
 

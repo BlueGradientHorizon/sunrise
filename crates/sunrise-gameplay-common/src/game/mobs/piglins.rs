@@ -3,7 +3,7 @@
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
 
-use super::*;
+use sunrise_sim::mobs::equip;
 
 pub fn armor(points: f64, binding: bool) -> equip::Facts {
         equip::Facts {

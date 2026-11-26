@@ -3,7 +3,7 @@
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
 
-use super::*;
+use sunrise_core::nbt::{Compound, Tag};
 
 pub fn compound(snbt: &str) -> Compound {
         match sunrise_core::nbt::parse_snbt(snbt).unwrap().0 {

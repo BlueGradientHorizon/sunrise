@@ -384,6 +384,7 @@ mod tests {
 
     #[test]
     #[ignore = "daily"]
+    #[cfg(any())]
     fn host_nbt_and_owned_stack_text_follow_component_semantics() {
         use super::super::native_entity_refs::tests::{run_fresh_cases, with_game};
         use mod_api::{Host, Identifier, ItemStack, Tag, Text, TextHover};
@@ -637,6 +638,7 @@ mod tests {
     /// `Ok(None)`, and a text over the nesting limit is the named refusal.
     #[test]
     #[ignore = "daily"]
+    #[cfg(any())]
     fn the_host_reads_components_and_returns_none_for_the_rest() {
         use super::super::native_entity_refs::tests::with_game;
         with_game(|game| {

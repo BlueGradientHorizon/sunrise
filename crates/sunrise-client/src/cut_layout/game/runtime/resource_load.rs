@@ -3,6 +3,8 @@
 #[cfg(test)]
 #[path = "resource_load/test_cache.rs"]
 pub(in crate::game) mod test_cache;
+#[cfg(test)]
+pub(in crate::game) use test_cache::{acquire_fresh_child_permit, cached_structure_spawns};
 
 /// Fixture helper for tests without a launch mod state.
 #[allow(clippy::too_many_arguments)]

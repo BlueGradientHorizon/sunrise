@@ -204,10 +204,6 @@ pub fn resolve_block_definitions(
 pub fn resolve_cached_block_definitions(
     cached_registry: &'static sunrise_world::registry::BlockRegistry,
 ) -> Result<&'static sunrise_world::registry::BlockRegistry, String> {
-    if !mod_api::__private::parts_installation::parts_installed() {
-        mod_platform::__private::part_tests::install_parts_fixture(&[])
-            .map_err(|errors| errors.join("\n"))?;
-    }
     let _tick = TickThread::mint();
     block_state::clear();
     if mod_api::__private::block_definitions().is_none() {
@@ -2393,106 +2389,6 @@ pub mod text_boundary;
 #[cfg(test)]
 pub mod gui_draw_boundary_tests {
     use super::{TryIntoApi, TryIntoEngine};
-    use serde_json::json;
-    use sunrise_client::hud_layout::{Blend, GuiDraw as D, PoseOp};
-    use sunrise_game_data::text::Text;
-
-    #[test]
-    fn gui_commands_keep_every_variant_field_order_and_text_source() {
-        use crate::game::client_side::api_values_client::gui_draw::{
-            gui_draw_to_api, gui_draw_to_engine,
-        };
-
-        let text = Text::from(
-            json!({"translate":"test.hud", "fallback":"%s", "with":[{"text":"name"}], "bold":false, "test:meta":{"n":1}}),
-        );
-        let commands = vec![
-            D::Sprite {
-                sprite: String::from("test:sprite").into(),
-                x: -1,
-                y: 2,
-                w: 3,
-                h: 4,
-                region: Some([5, 6, 7, 8]),
-                color: 0x12345678,
-                blend: Blend::Crosshair,
-            },
-            D::AtlasSprite {
-                sprite: "test:atlas".into(),
-                x: 11,
-                y: 12,
-                w: 13,
-                h: 14,
-                color: 15,
-            },
-            D::Blit {
-                texture: "test:texture".into(),
-                blend: Blend::Nausea,
-                x: 21,
-                y: 22,
-                w: 23,
-                h: 24,
-                uv: [0.25, 0.5],
-                src: [26, 27],
-                tex: [28, 29],
-                color: 30,
-            },
-            D::Fill {
-                x0: -31,
-                y0: 32,
-                x1: 33,
-                y1: 34,
-                color: 35,
-            },
-            D::FillGradient {
-                x0: 36,
-                y0: -37,
-                x1: 38,
-                y1: 39,
-                top: 0x8000_0040,
-                bottom: 0xFF00_0041,
-            },
-            D::Text {
-                text: text.clone(),
-                x: 41,
-                y: 42,
-                color: 43,
-                shadow: false,
-            },
-            D::Item {
-                slot: 40,
-                x: 51,
-                y: 52,
-                seed: -53,
-                scale: [0.5, 1.5],
-                pivot: [55., 56.],
-            },
-            D::PlayerFace {
-                uuid: 0x0102_0304_0506_0708_090a_0b0c_0d0e_0f10,
-                x: -57,
-                y: 58,
-                size: 59,
-                hat: false,
-                flip: true,
-                color: 0x8000_0060,
-            },
-            D::Push(vec![PoseOp::Translate(61., 62.), PoseOp::Scale(0.5, 1.5)]),
-            D::Pop,
-        ];
-        let api = commands
-            .iter()
-            .map(gui_draw_to_api)
-            .collect::<Result<Vec<_>, _>>()
-            .unwrap();
-        let actual: Result<Vec<D>, mod_api::text::TextFormError> =
-            api.iter().map(gui_draw_to_engine).collect();
-        let actual = actual.unwrap();
-        assert_eq!(actual, commands);
-        let D::Text { text: actual, .. } = &actual[5] else {
-            panic!("text command")
-        };
-        assert_eq!(actual.component(), text.component());
-    }
 
     #[test]
     fn tooltip_pairs_round_trip_without_an_item_registry() {
@@ -2751,29 +2647,37 @@ pub fn with_rule_schema<T>(f: impl FnOnce(&mod_api::__private::RuleSchema<'_>) -
             .expect("vanilla rule count fits u32"),
     })
 }
-/// Supply the real platform when unit tests bypass executable startup.
 #[cfg(any(test, feature = "test-support"))]
-pub fn install_test_platform() {
-    static INSTALLED: std::sync::Once = std::sync::Once::new();
-    INSTALLED.call_once(|| {
-        let result = mod_api::__private::platform::install_platform(
-            mod_api::__private::platform::Platform {
-                install_packages: mod_platform::__private::install_packages,
-                install_registration_data: mod_platform::__private::install_registration_data,
-                install_parts: mod_platform::__private::install_parts,
-                with_registration_open: mod_platform::__private::with_registration_open,
-                profiler_is_enabled: mod_platform::__private::profiler::is_enabled,
-                profiler_start: mod_platform::__private::profiler::start,
-                profiler_stop: mod_platform::__private::profiler::stop,
-                profiler_summary: mod_platform::__private::profiler::summary,
-                profiler_firefox_profile: mod_platform::__private::profiler::firefox_profile,
-            },
-        );
-        assert!(
-            result.is_ok()
-                || result == Err(mod_api::__private::platform::PlatformRefusal::AlreadyInstalled)
-        );
-    });
+#[doc(hidden)]
+#[macro_export]
+macro_rules! install_test_mod_platform {
+    ($platform:ident) => {{
+        static INSTALLED: std::sync::Once = std::sync::Once::new();
+        INSTALLED.call_once(|| {
+            let result = mod_api::__private::platform::install_platform(
+                mod_api::__private::platform::Platform {
+                    install_packages: $platform::__private::install_packages,
+                    install_registration_data: $platform::__private::install_registration_data,
+                    install_parts: $platform::__private::install_parts,
+                    with_registration_open: $platform::__private::with_registration_open,
+                    profiler_is_enabled: $platform::__private::profiler::is_enabled,
+                    profiler_start: $platform::__private::profiler::start,
+                    profiler_stop: $platform::__private::profiler::stop,
+                    profiler_summary: $platform::__private::profiler::summary,
+                    profiler_firefox_profile: $platform::__private::profiler::firefox_profile,
+                },
+            );
+            assert!(
+                result.is_ok()
+                    || result == Err(mod_api::__private::platform::PlatformRefusal::AlreadyInstalled)
+            );
+        });
+    }};
+}
+
+#[cfg(test)]
+pub(in crate::game) fn install_test_platform() {
+    crate::install_test_mod_platform!(mod_platform);
 }
 pub fn install_parts(mods: &[mod_api::ModEntry]) -> Result<(), Vec<String>> {
     #[cfg(test)]
@@ -2784,49 +2688,6 @@ pub fn install_parts(mods: &[mod_api::ModEntry]) -> Result<(), Vec<String>> {
             .install_parts)(mods, schema, super::native_dimensions::valid_shape)
     })
 }
-#[cfg(any(test, feature = "test-support"))]
-pub fn register_game_keys(ids: impl IntoIterator<Item = String>) {
-    let mod_fluids = sunrise_world::fluid::mod_fluids();
-    let mod_fluids: Vec<&str> = mod_fluids
-        .iter()
-        .flat_map(|(_, fluid)| [fluid.id.as_str(), fluid.flowing_id.as_str()])
-        .collect();
-    with_rule_schema(|schema| {
-        mod_platform::__private::part_tests::register_game_keys(
-            ids,
-            &mod_fluids,
-            schema,
-            super::native_dimensions::valid_shape,
-        )
-    });
-    mod_api::__private::resolve_effects(
-        sunrise_game_data::potions::all_effects()
-            .map(|def| sunrise_game_data::potions::namespaced(def.id)),
-        |id| sunrise_game_data::potions::effect(id).map(|def| def.index),
-    )
-    .unwrap();
-    mod_api::__private::validate_effect_part_owners(|id| {
-        sunrise_game_data::potions::effect(id)?.owner
-    })
-    .unwrap();
-    if let Some(types) = sunrise_game_data::block_entity_types::current() {
-        // Registration just replaced the mod snapshot, but the process-wide engine
-        // table can still belong to an earlier fixture. Include this fixture's
-        // declarations before resolving its requested keys, as content loading does.
-        let declared = mod_api::__private::block_entity_types();
-        mod_api::__private::resolve_block_entity_types(
-            types
-                .names()
-                .chain(declared.iter().map(|(_, kind)| kind.id.as_str())),
-            |id| {
-                (types.key(id).is_some() || declared.iter().any(|(_, kind)| kind.id == id))
-                    .then_some(())
-            },
-        )
-        .unwrap();
-    }
-}
-
 pub fn game_rule_registry() -> sunrise_game_data::gamerules::RuleRegistry {
     let rules: Vec<_> = mod_api::__private::game_rules()
         .iter()

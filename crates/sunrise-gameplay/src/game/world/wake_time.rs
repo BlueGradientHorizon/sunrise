@@ -117,6 +117,26 @@ use sunrise_gameplay_common::game::server_side::wake_time::tests::marker;
     
     
 
+#[cfg(test)]
+/// The Overworld clock's markers as vanilla ships the two used here.
+    fn overworld(id: &Identifier) -> Option<TimeMarker> {
+        let at = |ticks| TimeMarker {
+            ticks,
+            period: Some(24_000),
+            show: false,
+        };
+        match format!("{}:{}", id.namespace(), id.path()).as_str() {
+            WAKE_UP_FROM_SLEEP => Some(at(0)),
+            "minecraft:noon" => Some(at(6_000)),
+            _ => None,
+        }
+    }
+#[cfg(test)]
+/// A clock that defines no markers, as every clock but the Overworld's today.
+    fn bare(_: &Identifier) -> Option<TimeMarker> {
+        None
+    }
+
     #[test]
     fn vanillas_marker_is_the_morning_as_before() {
         for now in [0, 1, NOW, 23_999, 24_000, 48_001] {

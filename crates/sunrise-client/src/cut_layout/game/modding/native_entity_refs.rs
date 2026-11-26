@@ -371,7 +371,7 @@ pub(in crate::game) mod tests {
                     .clone()
             })
             .collect();
-        sunrise_gameplay_common::game::api_values::register_game_keys(ids);
+        crate::game::api_values::register_game_keys(ids);
         Some(root)
     }
 
@@ -695,7 +695,7 @@ pub(in crate::game) mod tests {
         // Parts registration replaces its metadata snapshot. Finish registration before
         // loading the resource graph, whose registry retains one immutable worker snapshot.
         let ids = fixture_block_names(&root);
-        sunrise_gameplay_common::game::api_values::register_game_keys(ids.iter().cloned());
+        crate::game::api_values::register_game_keys(ids.iter().cloned());
         // Parts registration also clears particle keys. Restore the load-owned
         // providers as content_root does, rather than relying on a prior test.
         super::super::mods::resolve_particle_providers(
@@ -789,7 +789,7 @@ pub(in crate::game) mod tests {
         // Parts registration replaces its metadata snapshot. Finish registration before
         // loading the resource graph, whose registry retains one immutable worker snapshot.
         let ids = fixture_block_names(&root);
-        sunrise_gameplay_common::game::api_values::register_game_keys(ids.iter().cloned());
+        crate::game::api_values::register_game_keys(ids.iter().cloned());
         // Parts registration also clears particle keys. Restore the load-owned
         // providers as content_root does, rather than relying on a prior test.
         super::super::mods::resolve_particle_providers(

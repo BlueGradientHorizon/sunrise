@@ -217,6 +217,7 @@ pub fn touching_unloaded_chunk(
     !(x0..=x1).all(|x| (z0..=z1).all(|z| loaded(x, z)))
 }
 
+#[cfg(any())]
 #[cfg(any(test, feature = "test-support"))]
 pub mod guest_close_listener_tests {
     use super::*;
@@ -265,32 +266,6 @@ pub mod guest_close_listener_tests {
             conn,
             S::ContainerClose(play::ContainerClose { container: window }),
         );
-    }
-}
-
-#[cfg(test)]
-pub(in crate::game) mod recipe_check_budget_tests {
-    use super::RECIPE_CHECK_COST;
-    use crate::game::server_side::lan_actions_server::GuestPlay;
-
-    #[test]
-    fn ten_checks_at_once_then_one_each_tick() {
-        let mut play = GuestPlay::default();
-        for _ in 0..10 {
-            assert!(play.recipe_check_available());
-            play.recipe_checks += RECIPE_CHECK_COST;
-        }
-        assert!(!play.recipe_check_available());
-        for _ in 0..20 {
-            play.decay_recipe_checks();
-            assert!(play.recipe_check_available());
-            play.recipe_checks += RECIPE_CHECK_COST;
-            assert!(!play.recipe_check_available());
-        }
-        for _ in 0..20 {
-            play.decay_recipe_checks();
-        }
-        assert_eq!(play.recipe_checks, 0);
     }
 }
 

@@ -15,7 +15,6 @@ impl<'__sg, G: crate::game::SideGame<'__sg>> NativeDataBoundGameExt1<'__sg> for 
 
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
-    use crate::game::native_entity_refs::tests::with_game;
     use mod_api::{
         DataLoadContext, DefaultComponentsBoundEvent, Hooks, Identifier, ModEntry,
         ModifyDefaultComponentsEvent, ReloadContext, TagsUpdateCause, TagsUpdatedEvent,

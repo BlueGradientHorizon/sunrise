@@ -3,7 +3,9 @@
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
 
-use super::*;
+use crate::game::dragon_common::{Dragon, Phase};
+use sunrise_core::geometry::{Aabb, Vec3};
+use sunrise_sim::health::HurtSource;
 
 pub fn player_box(feet: [f64; 3]) -> (Aabb, Vec3) {
         (
@@ -14,36 +16,6 @@ pub fn player_box(feet: [f64; 3]) -> (Aabb, Vec3) {
             Vec3::new(feet[0], feet[1], feet[2]),
         )
     }
-pub fn run_dragon_render_parity_fixture() {
-        let path = std::env::var("SUNRISE_DRAGON_RENDER_OUTPUT").expect("harness output path");
-        let mut cases = Vec::new();
-        for t in [0.0, 0.05, 0.25, 0.5, 0.8, 0.9, 0.95, 1.0] {
-            let mut vertices = Vec::new();
-            dragon_rays(
-                glam::Mat4::IDENTITY,
-                t,
-                sunrise_client::hud::Rect {
-                    u0: 0.0,
-                    v0: 0.0,
-                    u1: 1.0,
-                    v1: 1.0,
-                    w: 1,
-                    h: 1,
-                },
-                &mut vertices,
-            );
-            // The fourth quad vertex only pads a triangle for our index buffer.
-            let triangles: Vec<_> = vertices
-                .as_chunks::<4>()
-                .0
-                .iter()
-                .flat_map(|q| &q[..3])
-                .map(|v| serde_json::json!([v.pos[0], v.pos[1], v.pos[2], v.color]))
-                .collect();
-            cases.push(triangles);
-        }
-        std::fs::write(path, serde_json::to_vec(&cases).unwrap()).unwrap();
-    }
 /// The damage type of the hits below, which count.
     pub const HIT: Option<HurtSource> = Some(HurtSource {
         damage_type: "minecraft:player_attack",
@@ -51,8 +23,7 @@ pub fn run_dragon_render_parity_fixture() {
         direct: 0,
         position: None,
     });
-#[cfg(test)]
-fn dragon(phase: Phase) -> Dragon {
+pub fn dragon(phase: Phase) -> Dragon {
         let mut d = Dragon::new(Vec3::new(0.0, 70.0, 0.0), 0.0, 1);
         d.phase = phase;
         d
@@ -64,7 +35,6 @@ pub fn flying() -> Phase {
             clockwise: false,
         }
     }
-#[cfg(test)]
 /// The dragon hits the hook of these tests saw: entity, damage type,
     /// causing and direct entities, amount.
     type Seen = (String, i32, i32, f32);
@@ -106,16 +76,5 @@ pub fn dragon_as(entity: u32) -> Dragon {
         let mut d = dragon(flying());
         d.id = entity;
         d
-    }
-pub fn player(who: FightWho, x: f64, creative: bool, spectator: bool) -> FightPlayer {
-        let position = Vec3::new(x, 64.0, 0.0);
-        FightPlayer {
-            who,
-            position,
-            bounds: Aabb::new(position, Vec3::new(x + 0.6, 65.8, 0.6)),
-            alive: true,
-            creative,
-            spectator,
-        }
     }
 }

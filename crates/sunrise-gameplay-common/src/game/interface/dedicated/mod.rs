@@ -3,11 +3,6 @@
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
 
-use super::{
-        FORWARDING_REMOVED, capture_log, log, log_from, overload_warning, panic_message,
-        refuse_forwarding_secret,
-    };
-
 pub const LOGIN: &str = "Player[/127.0.0.1:0] logged in with entity id 2 at (0.5, 115.0, 0.5)";
 pub const WARNING: &str = "Authentication warning";
 pub const READY: &str = "sunrise-console-log-ready\n";

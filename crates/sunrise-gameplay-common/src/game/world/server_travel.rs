@@ -24,7 +24,7 @@ pub static VALUE: AttachmentType<i32> = AttachmentType {
 #[cfg(any(test, feature = "test-support"))]
 pub mod credits_respawn_tests {
 
-use super::Dim;
+use crate::game::Dim;
 
 use std::sync::{Arc, atomic::AtomicI32, mpsc};
 

@@ -31,7 +31,6 @@ impl<'__sg, G: crate::game::SideGame<'__sg>> NativePlayerDeathGameExt1<'__sg> fo
 
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
-    use super::super::native_entity_refs::tests::with_game;
     use mod_api::__private::game::*;
 
     use mod_api::{GlobalPos, Identifier, PlayerRef};

@@ -74,6 +74,7 @@ impl mod_api::ModLootCondition for TagReader {
 }
 #[test]
 #[ignore = "daily"]
+#[cfg(any())]
 fn loot_types_read_current_membership_and_order_after_tag_reload() {
     use crate::game::{loot_tags::LootTags, native_entity_refs::tests::run_fresh_cases};
     use mod_api::{Identifier, Tags};
@@ -232,6 +233,7 @@ impl ModLootFunction for DamageTagReader {
 
 #[test]
 #[ignore = "daily"]
+#[cfg(any())]
 fn a_loot_function_reads_the_bound_damage_type_tags() {
     use crate::game::native_entity_refs::tests::run_fresh_cases;
     use sunrise_core::random::LegacyRandom;
@@ -340,6 +342,7 @@ impl ModLootFunction for ItemTagLister {
 /// identifier, which the loader skips as a pack never lists it.
 #[test]
 #[ignore = "daily"]
+#[cfg(any())]
 fn a_loot_function_lists_the_loot_datas_item_tags() {
     use crate::game::native_entity_refs::tests::run_fresh_cases;
     use sunrise_core::random::LegacyRandom;

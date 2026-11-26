@@ -864,7 +864,7 @@ fn mob_death_and_handle_preserve_namespaced_types() {
                 // Entity-type keys are frozen once per Parts snapshot. This
                 // fixture needs its synthetic type in that first publication.
                 let blocks = &game.pack.assets.registry;
-                sunrise_gameplay_common::game::api_values::register_game_keys((0..blocks.len()).map(|i| {
+                crate::game::api_values::register_game_keys((0..blocks.len()).map(|i| {
                     blocks
                         .state(sunrise_world::registry::BlockStateId(i as u32))
                         .unwrap()

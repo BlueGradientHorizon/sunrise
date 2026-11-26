@@ -11,17 +11,11 @@ pub mod view_pass;
 #[path = "world/server_travel.rs"]
 pub mod server_travel;
 
-#[path = "world/ordered_tick.rs"]
-pub(in crate::game) mod ordered_tick;
 
 #[path = "world/levels.rs"]
 pub mod levels;
 
-#[path = "world/integrated.rs"]
-pub(in crate::game) mod integrated;
 
-#[path = "world/end.rs"]
-pub mod end;
 
 #[path = "world/carrier_transfers.rs"]
 pub mod carrier_transfers;

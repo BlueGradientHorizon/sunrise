@@ -252,8 +252,6 @@ pub fn passage(f: &PassageForm) -> Passage {
 pub mod tests {
     use super::{HeldRefusal, PassageForm, Refused, check};
     use crate::game::Dim;
-    use crate::game::native_entity_refs::tests::{with_client_game, with_game};
-    use crate::game::native_guest_turn_tests::with_guests;
     use mod_api::{DimensionKey, LevelRef, Passage, PassageId, PassageTurn, Vec3, WorldEpoch};
     use std::sync::{Arc, mpsc};
     use sunrise_level::chunk::Chunk;

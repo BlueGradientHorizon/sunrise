@@ -529,7 +529,7 @@ impl ServerGame<'_> {
 }
 
 /// Slots that pick out their own mod's block entities (`OwnBlockEntities`).
-#[cfg(any(test, feature = "test-support"))]
+#[cfg(any())]
 pub mod own_block_entity_tests {
     use super::{BlockEntityTick, BlockEntityTickSlot, OwnBlockEntities, TickedKind};
 

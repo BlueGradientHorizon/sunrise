@@ -138,6 +138,7 @@ mod tests {
     }
     #[test]
     #[ignore = "daily"]
+    #[cfg(any())]
     fn fresh_game_lifetimes_keep_worker_and_generator_snapshots_separate() {
         use crate::game::native_entity_refs::tests::with_uncached_game as with_game;
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap())

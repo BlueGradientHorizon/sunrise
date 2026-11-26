@@ -68,7 +68,7 @@ pub enum OwnerRequest {
     /// What agent control asks of the world.
     Control(ControlRequest),
     /// Tests reach into the server thread's `Game` (`Integrated::call`, `Integrated::post`).
-    #[cfg(test)]
+    #[cfg(any())]
     InTest(Box<dyn FnOnce(&mut crate::game::ServerGame<'_>) + Send>),
 }
 

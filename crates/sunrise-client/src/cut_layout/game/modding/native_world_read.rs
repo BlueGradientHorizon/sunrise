@@ -60,7 +60,7 @@ mod tests {
     #[test]
     fn fluid_state_conversion_preserves_source_and_empty_invariants() {
         mod_platform::__private::install(Default::default());
-        sunrise_gameplay_common::game::api_values::register_game_keys([]);
+        crate::game::api_values::register_game_keys([]);
         for kind in FluidKind::ALL {
             let engine =
                 EngineFluidState::new(kind, if kind == FluidKind::Empty { 0 } else { 8 }, true);
@@ -81,7 +81,7 @@ mod tests {
     fn api_block_tags_rebind_the_merged_snapshot_without_changing_keys() {
         use mod_platform::__private::part_tests;
         mod_platform::__private::install(Default::default());
-        sunrise_gameplay_common::game::api_values::register_game_keys([
+        crate::game::api_values::register_game_keys([
             "minecraft:stone".into(),
             "test:machine".into(),
         ]);

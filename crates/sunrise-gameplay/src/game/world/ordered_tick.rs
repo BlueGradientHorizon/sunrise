@@ -565,20 +565,6 @@ mod tests {
 
     
 
-    /// Hears every entity tick, naming `named` to `entity_tick_each`.
-    struct Displays {
-        named: &'static [&'static str],
-        heard: Heard,
-    }
-
-    
-
-    
-
-    
-
-    
-
     #[test]
     fn first_join_uses_join_sequence_when_storage_is_reordered() {
         struct E {

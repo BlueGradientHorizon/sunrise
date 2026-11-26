@@ -106,7 +106,7 @@ fn actual_data_commands_preserve_same_mod_entity_runtime_state() {
         )
         .unwrap();
         let (registry, _) = sunrise_world::level::data::load_registry_with_flags(&root).unwrap();
-        sunrise_gameplay_common::game::api_values::register_game_keys((0..registry.len()).map(|id| {
+        crate::game::api_values::register_game_keys((0..registry.len()).map(|id| {
             registry
                 .state(sunrise_world::registry::BlockStateId(id as u32))
                 .unwrap()

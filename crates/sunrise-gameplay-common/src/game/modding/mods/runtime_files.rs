@@ -42,7 +42,9 @@ pub fn sources(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::game::{api_values, native_entity_refs::tests::run_fresh_cases};
+    use crate::game::api_values;
+    #[cfg(any())]
+    use crate::game::native_entity_refs::tests::run_fresh_cases;
     use mod_api::{
         Hooks, ModEntry, PackageInfo, PackageKind, Registrar, RegistrationContext, Side,
     };
@@ -161,6 +163,7 @@ mod tests {
     /// `NoRuntimeFiles`, and a name the manifest does not list is `None`.
     #[test]
     #[ignore = "daily"]
+    #[cfg(any())]
     fn a_mod_reads_runtime_files_by_mod_id_during_registration() {
         if run_fresh_cases(NAME, "SUNRISE_RUNTIME_FILES_CHILD", &["registration"]) {
             return;

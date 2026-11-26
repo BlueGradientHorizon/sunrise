@@ -11,18 +11,17 @@ use sunrise_protocol::{
         viewed_levels::{CHANNEL, Level::Index, Message, REVISION_3, ScopedPacket},
     };
 
-#[cfg(test)]
 /// What a client was sent of the Nether (level 2) on `sunrise:levels`.
     #[derive(Default)]
-    pub(in crate::game) struct Sent {
-        pub(in crate::game) opened: bool,
-        pub(in crate::game) chunks: Vec<(i32, i32)>,
-        pub(in crate::game) forgotten: Vec<(i32, i32)>,
-        pub(in crate::game) closed: bool,
-        times: Vec<i64>,
+    pub struct Sent {
+        pub opened: bool,
+        pub chunks: Vec<(i32, i32)>,
+        pub forgotten: Vec<(i32, i32)>,
+        pub closed: bool,
+        pub times: Vec<i64>,
         /// The other packets of its runs, in order.
-        others: Vec<C>,
-        sounds: Vec<sunrise_protocol::packets::play::Sound>,
+        pub others: Vec<C>,
+        pub sounds: Vec<sunrise_protocol::packets::play::Sound>,
     }
 pub fn sent(rx: &std::sync::mpsc::Receiver<sunrise_sim::lan::Out>) -> Sent {
         let mut sent = Sent::default();
@@ -74,6 +73,17 @@ pub fn sent(rx: &std::sync::mpsc::Receiver<sunrise_sim::lan::Out>) -> Sent {
             .flat_map(|x| (39..=41).map(move |z| (x, z)))
             .collect()
     }
+/// What the viewer was sent of entity `id` in the Nether's runs: where `AddEntity` put it and
+    /// where each move after took it (the client's `VecDeltaCodec`), and whether it was removed.
+    #[derive(Debug, Default)]
+    pub struct Tracked {
+        pub added: Option<(i32, [f64; 3])>,
+        pub moves: Vec<[f64; 3]>,
+        /// Its entity events (`EntityEvent`).
+        pub events: Vec<i8>,
+        pub removed: bool,
+    }
+
 pub fn tracked(packets: &[C], id: i32) -> Tracked {
         use sunrise_protocol::packets::play;
         let mut t = Tracked::default();
@@ -102,10 +112,9 @@ pub fn tracked(packets: &[C], id: i32) -> Tracked {
         }
         t
     }
-#[cfg(test)]
 /// A packet a client was sent: a plain one, or what `sunrise:levels` carried.
     #[derive(Debug)]
-    enum Got {
+    pub enum Got {
         Plain(C),
         Open(i32),
         Wrapped(i32, C),

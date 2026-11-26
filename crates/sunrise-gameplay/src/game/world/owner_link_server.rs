@@ -53,7 +53,7 @@ impl crate::game::ServerGame<'_> {
             }
             OwnerRequest::MarkServerCapture(name) => self.mark_server_capture(&name),
             OwnerRequest::Control(request) => self.serve_control_request(request),
-            #[cfg(test)]
+            #[cfg(any())]
             OwnerRequest::InTest(task) => task(self),
         }
     }

@@ -1,7 +1,7 @@
 #[test]
 #[ignore = "daily"]
 fn replacing_mod_block_entity_payload_keeps_its_type_and_saved_identity() {
-    use super::super::native_entity_refs::tests::with_game;
+    use crate::game::native_entity_refs::tests::with_game;
     use std::sync::Arc;
     use sunrise_level::chunk::Chunk;
     use sunrise_level::containers::{BlockEntity, ModBlockEntity, ModBlockEntityFields};

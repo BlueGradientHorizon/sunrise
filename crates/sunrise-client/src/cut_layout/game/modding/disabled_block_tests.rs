@@ -303,7 +303,7 @@ pub(in crate::game) mod tests {
         ]
         .into();
         mod_platform::testing::with_mods(mods.clone(), || {
-            sunrise_gameplay_common::game::api_values::install_test_platform();
+            crate::game::api_values::install_test_platform();
             sunrise_gameplay_common::game::api_values::install_packages(sources.native.packages(), &[]).unwrap();
             sunrise_gameplay_common::game::api_values::install_parts(&mods).unwrap();
             mod_api::__private::mark_game_thread();

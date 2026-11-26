@@ -187,7 +187,7 @@ fn native_process_environment_in_registration_and_game_hosts() {
         vec!["runtime_probe".into()],
         vec![],
     )];
-    api_values::install_test_platform();
+    crate::game::api_values::install_test_platform();
     mod_platform::__private::install_packages(&inventory, &[]);
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
     // Freeze the real bootstrap snapshot before with_mods runs registration hooks.

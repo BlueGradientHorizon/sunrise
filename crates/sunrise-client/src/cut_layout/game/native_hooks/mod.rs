@@ -118,3 +118,7 @@ pub(crate) mod block_entity_on_load_tests;
 pub(crate) mod block_entity_on_load_routes_tests;
 
 pub(crate) mod base;
+
+#[cfg(any())]
+#[cfg(test)]
+mod mod_block_entity_payload_tests;

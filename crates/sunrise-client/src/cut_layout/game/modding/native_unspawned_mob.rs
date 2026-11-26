@@ -7,7 +7,25 @@ use sunrise_gameplay_common::game::server_side::native_unspawned_mob::tests::AT;
 
 use sunrise_gameplay_common::game::server_side::native_unspawned_mob::tests::id;
 
-use sunrise_gameplay_common::game::server_side::native_unspawned_mob::tests::listening;
+type Listen = dyn Fn(&dyn Host, &mut FinalizeSpawnEvent<'_>) -> Flow + Send + Sync;
+/// Answers `finalize_spawn` with the test's closure.
+    struct Listener(Box<Listen>);
+#[mod_api::__subscriptions]
+    impl mod_api::Hooks for Listener {
+        fn finalize_spawn(&self, host: &dyn Host, event: &mut FinalizeSpawnEvent<'_>) -> Flow {
+            (self.0)(host, event)
+        }
+    }
+fn listening<R>(
+        listen: impl Fn(&dyn Host, &mut FinalizeSpawnEvent<'_>) -> Flow + Send + Sync + 'static,
+        run: impl FnOnce() -> R,
+    ) -> R {
+        let listener = Listener(Box::new(listen));
+        mod_platform::testing::with_mods(
+            vec![mod_api::ModEntry::new("unspawned", Box::new(listener))].into(),
+            run,
+        )
+    }
 
 use sunrise_gameplay::game::server_side::native_unspawned_mob::tests::spawn_pig;
 

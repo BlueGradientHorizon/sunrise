@@ -15,12 +15,6 @@ impl<'__sg, G: crate::game::SideGame<'__sg>> GeneralGameExt1<'__sg> for G {}
 
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
-    use crate::game::{
-        client_side::remote_client::general::{RemoteGeneral, tick_remote_general},
-        remote::Lerp,
-    };
-    use indexmap::IndexMap;
-    use std::collections::HashMap;
     use sunrise_mod_runtime::attachments::Holder;
     use sunrise_protocol::general_entity::{self, Message};
     use sunrise_protocol::packets::play::{self, Clientbound as C};

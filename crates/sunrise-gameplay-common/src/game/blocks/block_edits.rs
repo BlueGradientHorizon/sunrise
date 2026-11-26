@@ -3,7 +3,11 @@
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
 
-use super::*;
+use crate::game::block_edits_common::column_height;
+use mod_api::{BlockEdit, Heightmap};
+use std::sync::Arc;
+use sunrise_level::world::World;
+use sunrise_world::registry::BlockStateId;
 
 use mod_api::BlockRun;
 

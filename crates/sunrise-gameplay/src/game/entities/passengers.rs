@@ -609,52 +609,7 @@ pub(in crate::game) mod player_seat_tests {
 
 #[cfg(any(test, feature = "test-support"))]
 pub mod nested_vehicle_discard_tests {
-use sunrise_gameplay_common::game::server_side::passengers::nested_vehicle_discard_tests::VEHICLE_VALUE;
-
-    use super::*;
-    use crate::game::native_entity_refs::tests::{collect_all_entities, collect_entities_in};
-    use {sunrise_gameplay_common::game::boats_common::Boat, sunrise_gameplay_common::game::entity_memory::OffLevel, crate::game::server_side::minecarts_server::CartHit};
-    use std::sync::{
-        Arc,
-        atomic::{AtomicBool, AtomicUsize, Ordering},
-    };
-    use sunrise_sim::mobs::Mob;
-
-    
-    
-    
-    
-    
-    
-    #[cfg(test)]
-struct CancelUntilAllowed {
-        cancel: Arc<AtomicBool>,
-        calls: Arc<AtomicUsize>,
-    }
-    
-
-    
-    
-
-    
-
-    #[cfg(test)]
-struct CancelPlayerDismount {
-        cancel: Arc<AtomicBool>,
-        calls: Arc<AtomicUsize>,
-    }
-    
-
-    
-
-    
-
-    
-    
-
-    
-
-    
+    use sunrise_gameplay_common::game::server_side::passengers::nested_vehicle_discard_tests::VEHICLE_VALUE;
 
     pub fn set_vehicle_test_attachment(game: &mut crate::game::ServerGame<'_>) {
         // The real store path binds the resident owner's registration. Rebinding
@@ -663,71 +618,6 @@ struct CancelPlayerDismount {
             .set(game, mod_api::Holder::Entity(71), 37)
             .unwrap();
     }
-
-    
-
-    
-
-    #[cfg(test)]
-struct RemovalBoundaryObserver {
-        kind: &'static str,
-        cancel: Arc<AtomicBool>,
-        mounts: Arc<AtomicUsize>,
-        leaves: Arc<AtomicUsize>,
-        destroys: Arc<AtomicUsize>,
-    }
-    
-
-    
-
-    #[cfg(test)]
-#[derive(Default)]
-    struct SpillJoins {
-        vehicle: AtomicUsize,
-        items: AtomicUsize,
-    }
-
-    
-    
-
-    
-
-    #[cfg(test)]
-struct ObserveDestroyedVehicle {
-        kind: &'static str,
-        calls: Arc<AtomicUsize>,
-    }
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-    #[cfg(test)]
-struct CancelLive {
-        count: Arc<AtomicUsize>,
-        cross_level: bool,
-    }
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
 }
 
 #[cfg(test)]

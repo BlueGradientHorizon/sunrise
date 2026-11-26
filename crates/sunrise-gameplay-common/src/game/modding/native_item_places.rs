@@ -44,7 +44,6 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
         guest.placed = true;
         guest
     }
-#[cfg(test)]
 /// One player's offer in a trade: inventory index `.0` must still hold exactly `.1`.
     pub(in crate::game) type Offer = (usize, ItemStack);
 pub fn offers() -> ([Offer; 1], [Offer; 1]) {

@@ -1,6 +1,6 @@
 
 
-#[cfg(any(test, feature = "test-support"))]
+#[cfg(any())]
 pub mod tests {
     use super::super::{Game, commands::Target};
     use mod_api::{

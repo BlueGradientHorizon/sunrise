@@ -1986,28 +1986,6 @@ impl crate::game::ServerGame<'_> {}
 pub mod tests {
     use super::super::server_travel::TravelCause;
     use super::*;
-    use std::sync::{
-        Arc, Mutex,
-        atomic::{AtomicU32, Ordering},
-    };
-
-    
-
-    #[cfg(test)]
-/// Cancels the travel of the entity whose id `spare` holds, and logs each
-    /// (entity, dimension, cause) it is asked.
-    struct Gate {
-        spare: Arc<AtomicU32>,
-        heard: Arc<Mutex<Vec<(u32, String, String)>>>,
-        discard: bool,
-    }
-    
-
-    
-
-    
-
-    
 
     /// `Entity.setPortalCooldown` sets only the cooldown; the restart and
     /// the portal process use the same delay.

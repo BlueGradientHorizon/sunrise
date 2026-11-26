@@ -451,7 +451,7 @@ pub(in crate::game) mod tests {
         )]);
         build(&base, std::path::Path::new(""), &mods, &root, &inventory).unwrap();
         let (registry, _) = sunrise_world::level::data::load_registry_with_flags(&root).unwrap();
-        sunrise_gameplay_common::game::api_values::register_game_keys((0..registry.len()).map(|id| {
+        crate::game::api_values::register_game_keys((0..registry.len()).map(|id| {
             registry
                 .state(sunrise_world::registry::BlockStateId(id as u32))
                 .unwrap()

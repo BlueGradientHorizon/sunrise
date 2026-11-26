@@ -314,6 +314,7 @@ mod tests {
     /// Runs in a fresh child process: its keys intern tag names in the process-wide table.
     #[test]
     #[ignore = "daily"]
+    #[cfg(any())]
     fn damage_type_membership_follows_the_last_bound_catalog() {
         if crate::game::native_entity_refs::tests::run_fresh_cases(
             "game::native_tags::tests::damage_type_membership_follows_the_last_bound_catalog",

@@ -20,7 +20,7 @@ impl crate::game::CommonGame<'_> {
         if !mod_api::__private::item_listens(mod_api::HookId::CanEquip, &stack.item) {
             return EquipStack::DataOnly;
         }
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         EQUIP_CONVERSIONS.with(|count| count.set(count.get() + 1));
         match stack.try_into_api() {
             Ok(stack) => EquipStack::Ready(Box::new(stack)),
@@ -139,7 +139,7 @@ impl<'__carrier, S: crate::game::SideGame<'__carrier>> CanEquip for MenuEquip<'_
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 thread_local! { static EQUIP_CONVERSIONS:std::cell::Cell<usize>=const{std::cell::Cell::new(0)}; }
 #[cfg(any(test, feature = "test-support"))]
 pub fn take_equip_conversions() -> usize {

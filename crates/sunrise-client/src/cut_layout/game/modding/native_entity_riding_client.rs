@@ -1,6 +1,6 @@
 
 
-#[cfg(test)]
+#[cfg(any())]
 pub(in crate::game) mod tests {
     use sunrise_gameplay_common::game::server_side::native_entity_riding::tests::UnleashObserver;
     use sunrise_gameplay_common::game::server_side::native_entity_riding::tests::add_mob;

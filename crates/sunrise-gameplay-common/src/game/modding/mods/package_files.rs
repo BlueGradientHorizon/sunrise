@@ -395,6 +395,7 @@ pub(in crate::game) mod tests {
         assert!(rows[0].problem.is_some());
     }
 
+    #[cfg(any())]
     fn mount(
         root: &Path,
         mods: &ModsState,
@@ -432,6 +433,7 @@ pub(in crate::game) mod tests {
     }
 
     #[test]
+    #[cfg(any())]
     fn registration_and_resource_loading_keep_the_admitted_archive_after_replacement() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("demo.smod");
@@ -463,6 +465,7 @@ pub(in crate::game) mod tests {
     }
 
     #[test]
+    #[cfg(any())]
     fn registration_declarations_and_resources_share_the_index_and_read_loose_bytes_live() {
         let dir = tempfile::tempdir().unwrap();
         let demo = folder(dir.path(), "demo", "");

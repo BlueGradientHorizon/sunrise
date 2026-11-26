@@ -3,11 +3,9 @@
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
 
-use super::*;
-
 use sunrise_items::items::ItemStack;
 
-use sunrise_sim::{merchant::ItemCost, mobs::Mob};
+use sunrise_sim::merchant::{ItemCost, MerchantOffer};
 
 pub fn offer(cost: &str, result: &str) -> MerchantOffer {
         MerchantOffer {

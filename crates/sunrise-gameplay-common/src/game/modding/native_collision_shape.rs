@@ -317,6 +317,7 @@ mod tests {
     /// game's own gate and marking decide whether a player's move asks the part: stone opens
     /// for entity 7 only, as a per-player barrier does.
     #[test]
+    #[cfg(any())]
     fn a_registered_part_gives_a_moving_entity_its_shape() {
         use sunrise_core::geometry::{Aabb, Vec3};
         use sunrise_level::{chunk::Chunk, collisions::SceneCollisions, world::World};

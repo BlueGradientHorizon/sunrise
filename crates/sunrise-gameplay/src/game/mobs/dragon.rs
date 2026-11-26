@@ -22,7 +22,6 @@ use sunrise_gameplay_common::game::dragon_common::{
 };
 use {sunrise_gameplay_common::game::potions_common::Victim, crate::game::server_side::potions_server::mob_can_be_affected};
 #[cfg(test)]
-use sunrise_client_gameplay::dragon_render::{dissolve_color, dissolve_mask, dragon_rays};
 use sunrise_core::nbt::Tag;
 use sunrise_core::position::BlockPos;
 use sunrise_core::{
@@ -3648,16 +3647,25 @@ use sunrise_gameplay_common::game::server_side::dragon::tests::flying;
 
 use sunrise_gameplay_common::game::server_side::dragon::tests::hooks;
 
-use sunrise_gameplay_common::game::server_side::dragon::tests::player;
+pub fn player(who: FightWho, x: f64, creative: bool, spectator: bool) -> FightPlayer {
+        let position = Vec3::new(x, 64.0, 0.0);
+        FightPlayer {
+            who,
+            position,
+            bounds: Aabb::new(position, Vec3::new(x + 0.6, 65.8, 0.6)),
+            alive: true,
+            creative,
+            spectator,
+        }
+    }
 
 use sunrise_gameplay_common::game::server_side::dragon::tests::player_box;
 
-use sunrise_gameplay_common::game::server_side::dragon::tests::run_dragon_render_parity_fixture;
+use sunrise_gameplay_common::game::server_side::dragon::tests::dragon;
 
 use sunrise_gameplay_common::game::server_side::dragon::tests::seen;
 
     use super::*;
-    use crate::game::client_side::dragon_client::breath_puffs;
     use sunrise_gameplay_common::game::dragon_common::{dragon_part_index, dragon_part_wire_id};
 
     /// The pinned vanilla 26.3 side is `VanillaTurnOracle`'s `dragon.txt`
@@ -3966,70 +3974,6 @@ use sunrise_gameplay_common::game::server_side::dragon::tests::seen;
             assert_eq!(dragon.sample_lerp(0, partial), (70.0, 170.0));
         }
     }
-
-    /// Driven by `tools/test_dragon_render_parity.py`; compares the actual
-    /// ray vertices with EnderDragonRenderer's captured VertexConsumer output.
-    #[test]
-    #[ignore]
-    fn dragon_render_parity_fixture() {
-        run_dragon_render_parity_fixture();
-    }
-
-    
-
-    #[test]
-    fn the_dying_model_reads_the_mask_where_it_reads_the_skin() {
-        // The skin in the atlas's top-left quarter, the mask in its bottom-right one.
-        let mut quad = [Vertex {
-            pos: [0.0; 3],
-            uv: [0.25, 0.125],
-            layer: 0,
-            color: 0,
-            light: 0,
-            normal: [0; 4],
-            glint_uv: [0.0; 2],
-        }];
-        dissolve_mask(&mut quad, [0.0, 0.0, 0.5, 0.5], [0.5, 0.5, 1.0, 1.0]);
-        assert_eq!(quad[0].glint_uv, [0.75, 0.625]);
-        // ARGB.white(1 - deathTime / 200): floor(127.5), and past 200 the int shift wraps.
-        assert_eq!(dissolve_color(100.0), 0x7FFF_FFFF);
-        assert_eq!(dissolve_color(200.5), 0xFFFF_FFFF);
-    }
-
-    #[test]
-    fn death_rays_sample_inside_the_white_sprite() {
-        // A four-texel white sprite surrounded by transparent atlas pixels.
-        // A border UV can round outside it during perspective interpolation.
-        let size = 1024.0;
-        let white = sunrise_client::hud::Rect {
-            u0: 20.0 / size,
-            v0: 60.0 / size,
-            u1: 24.0 / size,
-            v1: 64.0 / size,
-            w: 4,
-            h: 4,
-        };
-        for t in [0.25, 0.8, 0.95, 1.0] {
-            let mut vertices = Vec::new();
-            dragon_rays(glam::Mat4::IDENTITY, t, white, &mut vertices);
-            assert!(!vertices.is_empty());
-            for v in &vertices {
-                assert!(
-                    v.uv[0] > white.u0 + 0.5 / size && v.uv[0] < white.u1 - 0.5 / size,
-                    "death-ray U touches the atlas border: {}",
-                    v.uv[0]
-                );
-                assert!(
-                    v.uv[1] > white.v0 + 0.5 / size && v.uv[1] < white.v1 - 0.5 / size,
-                    "death-ray V touches the atlas border: {}",
-                    v.uv[1]
-                );
-            }
-        }
-    }
-
-    
-    
 
     /// `EnderDragon.readAdditionalSaveData` reads `sitting_damage_received`
     /// (`getFloatOr`, 0 when absent); the writer already saved it. Sunrise

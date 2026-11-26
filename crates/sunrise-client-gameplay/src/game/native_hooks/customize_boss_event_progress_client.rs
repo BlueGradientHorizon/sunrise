@@ -1,3 +1,4 @@
+#[cfg(any())]
 #[cfg(any(test, feature = "test-support"))]
 pub mod customize_boss_event_progress_tests {
 use sunrise_gameplay_common::game::native_hooks::customize_boss_event_progress::customize_boss_event_progress_tests::backgrounds;

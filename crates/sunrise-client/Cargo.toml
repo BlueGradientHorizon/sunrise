@@ -90,7 +90,7 @@ cap-fs-ext = { version = "3", optional = true }
 
 [target.'cfg(unix)'.dependencies]
 # The server thread's CPU time per tick (`SUNRISE_SPIKES`, spans.rs).
-rustix = { version = "1", default-features = false, features = ["std", "time", "process", "fs"], optional = true }
+rustix = { version = "1", default-features = false, features = ["std", "time", "process", "fs"] }
 
 [target.'cfg(windows)'.dependencies]
 # DirectX 12, where Vulkan has no adapter or device, or by choice (`graphicsApi`, graphics.rs).
@@ -111,7 +111,7 @@ default = ["client", "audio", "controllers", "sunrise-extras"]
 # Interactive client gameplay, UI, rendering hooks, and client-side modules.
 # Without it (`--no-default-features`, released as sunrise-engine; docs/server.md),
 # only dedicated-server and common gameplay code is compiled.
-client = ["dep:cap-fs-ext", "dep:cap-std", "dep:chrono", "dep:cipher", "dep:crypto-common", "dep:digest", "dep:flate2", "dep:fnv", "dep:fs4", "dep:glam", "dep:indexmap", "dep:libc", "dep:png", "dep:rustix", "dep:sha1", "dep:sha2", "dep:socket2", "dep:sunrise-client-gameplay", "dep:sunrise-client-input", "dep:sunrise-client-lib", "dep:sunrise-client-render", "dep:sunrise-narrator", "dep:ureq", "dep:winit", "dep:zip", "sunrise-client-gameplay/client"]
+client = ["dep:cap-fs-ext", "dep:cap-std", "dep:chrono", "dep:cipher", "dep:crypto-common", "dep:digest", "dep:flate2", "dep:fnv", "dep:fs4", "dep:glam", "dep:indexmap", "dep:libc", "dep:png", "dep:sha1", "dep:sha2", "dep:socket2", "dep:sunrise-client-gameplay", "dep:sunrise-client-input", "dep:sunrise-client-lib", "dep:sunrise-client-render", "dep:sunrise-narrator", "dep:ureq", "dep:winit", "dep:zip", "sunrise-client-gameplay/client"]
 # Scoped trait-mod installation for a mod's own tests.
 testing = []
 # Per-level-tick state digest for determinism checks (game/world/state_digest.rs).

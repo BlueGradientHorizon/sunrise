@@ -3,8 +3,6 @@
 #[cfg(test)]
 pub(crate) mod tests {
 
-use super::super::native_merchant_refs::tests::{offer, spawn};
-
 use super::*;
 
 use std::sync::{

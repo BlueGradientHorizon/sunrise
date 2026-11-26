@@ -2385,7 +2385,7 @@ pub(in crate::game) mod upload_pace;
 
 #[cfg(any(test, feature = "client"))]
 #[path = "interface/key_codes.rs"]
-pub(in crate::game) mod key_codes;
+pub mod key_codes;
 
 #[cfg(any(test, feature = "client"))]
 #[path = "interface/key_focus.rs"]
@@ -2803,3 +2803,7 @@ fn hwnd(window: &Window) -> Option<isize> {
         Err(_) => None,
     }
 }
+
+#[cfg(all(test, feature = "client"))]
+#[path = "interface/entity_model_loading_tests.rs"]
+mod entity_model_loading_tests;

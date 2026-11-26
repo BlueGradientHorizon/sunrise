@@ -2,21 +2,9 @@
 //! block interaction, inventory and HUD.
 
 #[allow(unused_imports)]
-#[cfg(test)]
-pub use key_codes::drop_held_behind_dialog;
-#[cfg(any(test, feature = "client"))]
-#[allow(unused_imports)]
-pub use key_codes::{gameplay_has_keyboard, glfw_button, glfw_modifiers, keyboard_button};
-#[allow(unused_imports)]
-#[cfg(any(test, feature = "client"))]
-pub use loading_screen::unclean_start_recovery;
-#[allow(unused_imports)]
 pub use resource_load::{
     Progress, WorldRestLoader, launch_world, named_scope, synchronous_startup,
 };
-#[allow(unused_imports)]
-#[cfg(test)]
-pub use resource_load::{load_resources, load_resources_skip_lang, load_resources_uncached};
 /// The content tables the world plays with, as field-level borrows: the
 /// world's data packs' over the game's own. The `Game::items`/`recipes`/
 /// `stations` methods read the same tables, but taking `&self` blocks a
@@ -300,9 +288,6 @@ pub mod decorated_pot;
 pub mod developer_launch;
 #[path = "game/world/end_common.rs"]
 pub mod end_common;
-#[cfg(test)]
-#[path = "game/interface/entity_model_loading_tests.rs"]
-pub mod entity_model_loading_tests;
 #[path = "game/modding/entity_sections.rs"]
 pub mod entity_sections;
 #[path = "game/modding/entity_type_rows.rs"]
@@ -3570,8 +3555,6 @@ pub fn clip_start_source(
 
 pub use closest_space::closest_space_nudge;
 
-#[cfg(test)]
-pub use sunrise_client_gameplay::hud_gates::{block_outline_drawn, debug_crosshair_drawn};
 pub use sunrise_gameplay_common::game_master_blocks::is_game_master_block;
 #[cfg(test)]
 pub mod test_neighbourhood {

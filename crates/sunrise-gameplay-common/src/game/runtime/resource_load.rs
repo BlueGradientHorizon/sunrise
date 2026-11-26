@@ -93,11 +93,7 @@ pub(in crate::game) mod scope_tests;
 #[path = "resource_load/facts_memo.rs"]
 pub(in crate::game) mod facts_memo;
 
-#[allow(unused_imports)]
-#[cfg(test)]
-pub(in crate::game) use test_cache::{acquire_fresh_child_permit, cached_structure_spawns};
-
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 thread_local! {
     pub(in crate::game) static SKIP_FACTS_MEMO: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }

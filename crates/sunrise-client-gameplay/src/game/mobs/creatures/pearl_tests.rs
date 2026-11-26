@@ -1,4 +1,6 @@
-use super::*;
+use sunrise_core::geometry::Vec3;
+use sunrise_gameplay_common::projectile_world::ProjWorld;
+use sunrise_sim::{mobs::{MobWorld, spawning}, projectiles::{Projectile, ProjectileKind}};
 
 /// A pearl's water test is `Entity.isInWater`: `wasTouchingWater` from the
 /// last `updateFluidInteraction`, water whose surface reaches its 0.25
@@ -14,7 +16,7 @@ fn a_pearl_feels_the_water_its_box_touches() {
         return;
     }
     let assets = sunrise_level::assets::Assets::load(&root).unwrap();
-    let render = sunrise_client::assets::RenderAssets::load(
+    let render = sunrise_client_render::assets::RenderAssets::load(
         &sunrise_assets::resource_source::ResourceRoot::directory(root.to_path_buf()),
         &assets,
     )
@@ -44,7 +46,7 @@ fn a_pearl_feels_the_water_its_box_touches() {
     let suffocation =
         sunrise_sim::mobs::suffocation::bind(collision.clone(), &motion.causes_suffocation)
             .unwrap();
-    let mut world = sunrise_client::assets::test_scene_world(&assets, &render, 3).unwrap();
+    let mut world = sunrise_client_render::assets::test_scene_world(&assets, &render, 3).unwrap();
     // A pool of still water one block deep at y = 4, from x = 20 on (clear of the
     // scene's pyramid): its
     // surface is at 4 + 8/9.
@@ -62,7 +64,7 @@ fn a_pearl_feels_the_water_its_box_touches() {
         live_mobs: None,
         teams: Default::default(),
         professions: sunrise_sim::mobs::villager::profession_table(),
-        loop_context: &crate::game::test_server_load()
+        loop_context: &sunrise_gameplay_common::game::test_server_load()
             .loop_context(sunrise_world::native_load_context::LoopSide::Server, []),
         world: &world,
         registry,

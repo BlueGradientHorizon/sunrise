@@ -235,3 +235,9 @@ pub(in crate::game) mod add_attribute_tooltips;
 
 #[cfg(feature = "client")]
 include!("mod_client.rs");
+
+#[cfg(all(test, feature = "client"))]
+mod screen_slot_tests;
+
+#[cfg(all(test, feature = "client"))]
+mod panel_recipes_tests;

@@ -541,6 +541,6 @@ pub(in crate::game) fn route<H: ActionHost, T: ActionTarget<H>>(
     run(host, menu, decide, fire)
 }
 
-#[cfg(any(test, feature = "test-support"))]
+#[cfg(test)]
 #[path = "decision_tests.rs"]
 pub mod tests;

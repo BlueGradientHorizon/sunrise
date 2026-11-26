@@ -2,19 +2,13 @@
 
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
-    use super::super::lan::LanSettings;
-    use super::super::native_entity_refs::tests::with_game;
-    use mod_api::__private::game::*;
-    use mod_api::{SoundSource, WorldEpoch};
     use std::sync::{
         Arc,
         atomic::{AtomicI32, AtomicUsize},
         mpsc::Receiver,
     };
-    use sunrise_core::geometry::Vec3;
     use sunrise_protocol::packets::{configuration::ClientInformation, play::Clientbound};
-    use sunrise_sim::lan::{Joined, NetConfig, Out, PlayerSender, guest::Guest, hub::HubConfig};
-    use sunrise_sim::mobs::Mob;
+    use sunrise_sim::lan::{Joined, Out, PlayerSender, guest::Guest};
 
     pub fn guest(conn: u32, uuid: u128, at: [f64; 3]) -> (Guest, Receiver<Out>) {
         let (tx, rx) = std::sync::mpsc::channel();

@@ -225,20 +225,6 @@ use sunrise_gameplay_common::game::server_side::view_pass::tests::sent;
 
     
 
-    #[cfg(test)]
-/// What the viewer was sent of entity `id` in the Nether's runs: where `AddEntity` put it and
-    /// where each move after took it (the client's `VecDeltaCodec`), and whether it was removed.
-    #[derive(Debug, Default)]
-    struct Tracked {
-        added: Option<(i32, [f64; 3])>,
-        moves: Vec<[f64; 3]>,
-        /// Its entity events (`EntityEvent`).
-        events: Vec<i8>,
-        removed: bool,
-    }
-
-    
-
     /// Summons `entity` in the Nether, at chunk (40, 40) above its bedrock roof, and gives its id.
     pub fn summon_in_the_nether(game: &mut crate::game::ServerGame<'_>, entity: &str) -> i32 {
         game.enter_level(Dim::Nether).unwrap();

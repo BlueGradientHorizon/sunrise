@@ -12,7 +12,7 @@ pub fn walking_speed(abilities: Option<&PlayerAbilities>) -> f32 {
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use super::{PlayerAbilities, walking_speed};
-    use {sunrise_client::camera::field_of_view_modifier, sunrise_level::camera_math::FovPlayer};
+    use sunrise_level::camera_math::{FovPlayer, field_of_view_modifier};
 
     fn fov(walking: f32, movement: f64) -> f32 {
         let player = FovPlayer {

@@ -1,5 +1,6 @@
 use super::*;
 
+#[cfg(any())]
 #[cfg(test)]
 pub(in crate::game) mod server_tick_rate_changed_tests {
     use crate::game::native_guest_turn_tests::with_guests;

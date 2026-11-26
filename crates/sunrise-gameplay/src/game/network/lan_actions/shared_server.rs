@@ -280,3 +280,29 @@ pub(in crate::game) fn stop_dig(
         Some(start) => StopDig::Delay(start),
     }
 }
+
+#[cfg(test)]
+pub(in crate::game) mod recipe_check_budget_tests {
+    use sunrise_gameplay_common::game::lan_actions::RECIPE_CHECK_COST;
+    use super::GuestPlay;
+
+    #[test]
+    fn ten_checks_at_once_then_one_each_tick() {
+        let mut play = GuestPlay::default();
+        for _ in 0..10 {
+            assert!(play.recipe_check_available());
+            play.recipe_checks += RECIPE_CHECK_COST;
+        }
+        assert!(!play.recipe_check_available());
+        for _ in 0..20 {
+            play.decay_recipe_checks();
+            assert!(play.recipe_check_available());
+            play.recipe_checks += RECIPE_CHECK_COST;
+            assert!(!play.recipe_check_available());
+        }
+        for _ in 0..20 {
+            play.decay_recipe_checks();
+        }
+        assert_eq!(play.recipe_checks, 0);
+    }
+}

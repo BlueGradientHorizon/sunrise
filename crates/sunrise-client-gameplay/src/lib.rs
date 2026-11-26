@@ -32,3 +32,7 @@ pub mod upload_pace;
 
 extern crate self as sunrise_client_gameplay;
 pub mod game;
+
+#[cfg(test)]
+#[path = "game/mobs/creatures/pearl_tests.rs"]
+mod pearl_tests;

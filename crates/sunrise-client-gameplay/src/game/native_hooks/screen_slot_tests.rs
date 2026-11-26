@@ -1,4 +1,4 @@
-use crate::game::client_side::native_hooks_client::{OpenNativeMenu, OpenNativeScreen, SlotMoves};
+use super::{OpenNativeMenu, OpenNativeScreen, SlotMoves};
 
 /// A data packet for an old window leaves the open mod screen alone.
 #[test]

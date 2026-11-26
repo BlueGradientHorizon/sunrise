@@ -5,6 +5,19 @@ pub(crate) mod tests {
 
 use sunrise_gameplay_common::game::server_side::levels::tests::LOGGED;
 
+#[cfg(test)]
+struct LogCapture;
+#[cfg(test)]
+impl log::Log for LogCapture {
+        fn enabled(&self, _: &log::Metadata) -> bool {
+            true
+        }
+        fn log(&self, record: &log::Record) {
+            LOGGED.lock().unwrap().push(record.args().to_string());
+        }
+        fn flush(&self) {}
+    }
+
 use super::*;
 
 /// A game on the prepared resources in `SUNRISE_TEST_RESOURCES`, with no

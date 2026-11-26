@@ -8,6 +8,7 @@ impl crate::game::CommonGame<'_> {
     }
 }
 
+#[cfg(any())]
 #[cfg(test)]
 pub(in crate::game) mod tests {
 

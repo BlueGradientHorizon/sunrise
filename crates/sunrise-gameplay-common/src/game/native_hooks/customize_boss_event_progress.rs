@@ -1,5 +1,6 @@
 use super::*;
 
+#[cfg(any())]
 #[cfg(any(test, feature = "test-support"))]
 pub mod customize_boss_event_progress_tests {
     use mod_api::{

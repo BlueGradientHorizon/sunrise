@@ -2164,6 +2164,7 @@ impl crate::game::ClientGame<'_> {
 }
 
 #[cfg(test)]
+#[cfg(any())]
 #[path = "block_particle_effects_tests_client.rs"]
 pub(in crate::game) mod block_particle_effects_tests;
 

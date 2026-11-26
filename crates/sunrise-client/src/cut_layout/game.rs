@@ -1,10 +1,22 @@
 pub use crate::game_facade::*;
+#[cfg(all(test, feature = "client"))]
+pub(crate) use sunrise_client_gameplay::hud_gates::{block_outline_drawn, debug_crosshair_drawn};
+#[cfg(all(test, feature = "client"))]
+pub(crate) use sunrise_client_gameplay::game::client_side::key_codes::{
+    drop_held_behind_dialog, gameplay_has_keyboard, glfw_button, glfw_modifiers, keyboard_button,
+};
+#[cfg(test)]
+pub(crate) use resource_load::{load_resources, load_resources_skip_lang, load_resources_uncached};
 #[path = "../benchmark_retention.rs"]
-mod benchmark_retention;
+pub(crate) mod benchmark_retention;
+#[cfg(not(feature = "client"))]
+#[path = "../server_startup_settings.rs"]
+mod server_startup_settings;
 use std::sync::Arc;
 use std::time::Instant;
 use sunrise_game_data::Result;
 use sunrise_world::level::Behaviours;
+#[cfg(feature = "client")]
 use crate::settings::Settings;
 #[cfg(feature = "client")] use sunrise_client_lib::audio::Audio;
 use sunrise_gameplay_common::game::resource_load::Progress;
@@ -532,7 +544,11 @@ pub(crate) fn run_with(
             return Err(error.into());
         }
     };
+    #[cfg(feature = "client")]
     let mut early_settings = Settings::load(&sunrise_gameplay_common::game::options_path());
+    #[cfg(not(feature = "client"))]
+    let (early_settings, workers) =
+        server_startup_settings::load(&sunrise_gameplay_common::game::options_path());
     options
         .mods
         .capture_code_switches(&early_settings.mods.disabled);
@@ -681,13 +697,19 @@ pub(crate) fn run_with(
             sunrise_core::prepared_profile::Profile::Server => base.with_server_profile(),
         };
         let prepared_root = root.prepared().to_path_buf();
+        #[cfg(feature = "client")]
         let settings = early_settings.sim_settings();
+        #[cfg(not(feature = "client"))]
+        let settings = early_settings;
         let (resources, pack) = load_resources_server(
             root,
             data_packs(&options.mods),
             &vanilla_root,
             &settings,
+            #[cfg(feature = "client")]
             early_settings.sunrise.worker_threads(),
+            #[cfg(not(feature = "client"))]
+            workers.count(),
             started,
             &options.mods,
             &Progress::new(),
@@ -710,7 +732,7 @@ pub(crate) fn run_with(
     {
         let _ = (
             options,
-            early_settings.sim_settings(),
+            early_settings,
             vanilla_root,
             started,
         );

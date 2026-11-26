@@ -1968,14 +1968,13 @@ impl<'__sg, G: crate::game::SideGame<'__sg>> ModGameExt1<'__sg> for G {}
 #[cfg(any(test, feature = "test-support"))]
 pub fn living_mod_types()
 -> std::collections::HashMap<String, std::sync::Arc<sunrise_sim::mobs::MobType>> {
-    living_mod_types_and_models().0
+    with_living_mod_type_fixture(|_, types| types)
 }
 
 #[cfg(any(test, feature = "test-support"))]
-pub fn living_mod_types_and_models() -> (
-    std::collections::HashMap<String, std::sync::Arc<sunrise_sim::mobs::MobType>>,
-    sunrise_client::mobs_render::ClientMobModels,
-) {
+pub fn with_living_mod_type_fixture<R>(
+    run: impl FnOnce(&Path, std::collections::HashMap<String, std::sync::Arc<sunrise_sim::mobs::MobType>>) -> R,
+) -> R {
     let zombie =
         r#""width":0.6,"height":1.95,"eye_height":1.74,"category":"monster","fire_immune":false"#;
     let villager =
@@ -2026,16 +2025,16 @@ pub fn living_mod_types_and_models() -> (
     }))
     .unwrap();
     let types = sunrise_sim::mobs::MobTypes::load_for_server(&root, attributes).unwrap();
-    let models = sunrise_client::mobs_render::ClientMobModels::load(&root).unwrap();
-    let _ = std::fs::remove_dir_all(&root);
-    (
+    let result = run(
+        &root,
         types
             .types
             .into_iter()
             .map(|(id, t)| (id, std::sync::Arc::new(t)))
             .collect(),
-        models,
-    )
+    );
+    let _ = std::fs::remove_dir_all(&root);
+    result
 }
 
 /// The block states native mods add to vanilla POI types (`native_extend_poi_types`),

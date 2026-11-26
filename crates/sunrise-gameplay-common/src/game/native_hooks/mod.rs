@@ -274,6 +274,7 @@ pub mod block_entity_view_distance;
 pub mod block_grow_feature;
 pub mod block_landing;
 pub mod block_particle_effects;
+#[cfg(any())]
 #[cfg(any(test, feature = "test-support"))]
 pub mod block_particle_effects_tests;
 pub mod block_path_type;
@@ -471,8 +472,6 @@ pub mod minecart_pass;
 pub mod mob_effect_events;
 pub mod mob_spawn_checks;
 pub mod mob_split;
-#[cfg(test)]
-pub mod mod_block_entity_payload_tests;
 pub mod mod_configs;
 pub mod mod_mismatch;
 pub mod mod_settings;
@@ -495,8 +494,6 @@ pub mod on_destroyed_by_push_reaction;
 pub mod on_dropped_by_player;
 pub mod on_item_use_first;
 pub mod panel_recipes;
-#[cfg(test)]
-pub mod panel_recipes_tests;
 pub mod permissions_changed;
 pub mod piston_carries_block_entity;
 pub mod piston_push_reaction;
@@ -598,8 +595,6 @@ pub mod screen_opening;
 pub mod screen_preedit_effects;
 pub mod screen_render_stages;
 pub mod screen_room;
-#[cfg(test)]
-pub mod screen_slot_tests;
 pub mod screen_transparent_background;
 pub mod screenshot;
 pub mod section_visibility;

@@ -2,8 +2,6 @@
 
 #[cfg(any(test, feature = "test-support"))]
 pub mod peaceful_tests {
-    use super::{Arg, Context};
-    use crate::game::{execution_role::ExecutionRole, native_entity_refs::tests as fixture};
     use std::sync::{Arc, OnceLock};
     use sunrise_command::ParsedArg;
     use sunrise_core::nbt::Tag;

@@ -8,6 +8,137 @@ use {crate::game::client_side::armor_stands_client, crate::game::client_side::bo
 use sunrise_gameplay_common::painting_variants::PaintingVariants;
 use sunrise_sim::lan::SessionVerifier;
 
+#[test]
+fn worker_prepares_owned_models_and_inventory_before_handoff() {
+    let root = std::env::temp_dir().join(format!("sunrise-startup-cpu-{}", std::process::id()));
+    std::fs::create_dir_all(&root).unwrap();
+    std::fs::write(
+        root.join("entity-models.json"),
+        r#"{
+        "minecraft:end_crystal#main": {}, "minecraft:ender_dragon#main": {},
+        "minecraft:arrow#main": {}, "minecraft:trident#main": {},
+        "minecraft:armor_stand#main": {}, "minecraft:cushion#main": {},
+        "minecraft:leash_knot#main": {}, "minecraft:wind_charge#main": {},
+        "minecraft:shulker_bullet#main": {}, "minecraft:wither_skull#main": {},
+        "minecraft:evoker_fangs#main": {}, "minecraft:standing_banner#main": {},
+        "minecraft:standing_banner#flag": {}
+    }"#,
+    )
+    .unwrap();
+    std::fs::write(
+        root.join("creative-inventory.json"),
+        r#"{"schema":4,"item_features":{},"potion_features":{},"tabs":[{
+        "id":"minecraft:building_blocks","title":"Building Blocks","type":"CATEGORY","build":[
+            {"kind":"stack","visibility":"PARENT_AND_SEARCH_TABS","snbt":"{count:1,id:\"minecraft:stone\"}"}
+        ]
+    }]}"#,
+    )
+    .unwrap();
+    use std::collections::BTreeMap;
+    use sunrise_assets::{
+        model::CuboidModel,
+        model_loaders::{LoaderProvider, LoaderQuad, LoaderSchema, LoaderTexture},
+        resolve::ModelLibrary,
+        resource_source::ResourceRoot,
+    };
+    let models = |sprite: &str| {
+        let frame = CuboidModel::from_json_with_loaders(
+            &format!(r#"{{"loader":"example:frame_loader","textures":{{"frame":"{sprite}"}}}}"#),
+            &|loader| {
+                assert_eq!(loader, "example:frame_loader");
+                Some(LoaderProvider {
+                    schema: LoaderSchema::ModelProperties,
+                    bake: Arc::new(|_, _, _| {
+                        Ok(vec![LoaderQuad {
+                            positions: [
+                                [0.75, 0.0, 0.5],
+                                [0.25, 0.0, 0.5],
+                                [0.25, 1.0, 0.5],
+                                [0.75, 1.0, 0.5],
+                            ],
+                            uvs: [[1.0, 1.0], [0.0, 1.0], [0.0, 0.0], [1.0, 0.0]],
+                            texture: LoaderTexture::Slot("frame".into()),
+                            cull: None,
+                            tint_index: -1,
+                            shade: true,
+                        }])
+                    }),
+                })
+            },
+        )
+        .unwrap();
+        let item_frame = CuboidModel::from_json(r#"{"parent":"example:block/frame"}"#).unwrap();
+        ModelLibrary::with_item_generator(BTreeMap::from([
+            ("minecraft:block/item_frame".into(), item_frame),
+            ("example:block/frame".into(), frame),
+        ]))
+        .unwrap()
+    };
+    let server = GameCpuResources::load(
+        &sunrise_assets::resource_source::ResourceRoot::directory(root.clone())
+            .with_server_profile(),
+        None,
+        None,
+        false,
+    )
+    .unwrap();
+    assert!(server.crystal_model.is_none());
+    assert!(server.armor_stand_assets.main.is_none());
+    assert!(server.entity_models.leash_knot.is_none());
+    assert_eq!(
+        server.creative_screen.catalog().tabs()[0].id,
+        "minecraft:building_blocks"
+    );
+    let worker_root = root.clone();
+    let prepared = std::thread::spawn(move || {
+        let root = ResourceRoot::directory(worker_root);
+        let library = models("example:block/startup_frame");
+        GameCpuResources::load(&root, None, Some(&library), true).map_err(|error| error.to_string())
+    })
+    .join()
+    .unwrap()
+    .unwrap();
+    assert_eq!(prepared.frame_model.len(), 1);
+    assert_eq!(prepared.frame_model[0].2, "example:block/startup_frame");
+    let reloaded = models("example:block/reloaded_frame");
+    let [frame, ..] = crate::game::client_side::frames_client::bake_frames(Some(&reloaded));
+    assert_eq!(frame.len(), 1);
+    assert_eq!(frame[0].2, "example:block/reloaded_frame");
+    std::fs::remove_dir_all(&root).unwrap();
+    assert!(prepared.crystal_model.is_some());
+    assert!(prepared.cushion_model.is_some());
+    let models = &prepared.entity_models;
+    assert!(models.leash_knot.is_some() && models.wind_charge.is_some());
+    assert!(models.shulker_bullet.is_some() && models.wither_skull.is_some());
+    assert!(models.evoker_fangs.is_some() && models.banner.is_some());
+    assert!(prepared.dragon_model.is_some());
+    assert!(prepared.arrow_model.is_some());
+    assert!(prepared.trident_model.is_some());
+    assert!(prepared.armor_stand_assets.main.is_some());
+    assert!(!prepared.creative_screen.has_contents());
+    let contents = prepared.creative_screen.catalog().build(
+        sunrise_items::creative_catalog::Parameters {
+            operator: false,
+            features: &[],
+            holders: &Default::default(),
+            items: &sunrise_items::items::Items::empty(),
+        },
+        None,
+        |_, _, _| {},
+    );
+    assert_eq!(contents[0].display[0].item.as_ref(), "minecraft:stone");
+    // No documents from the old generation remain available to reload.
+    assert!(
+        GameCpuResources::load(
+            &sunrise_assets::resource_source::ResourceRoot::directory(root.clone()),
+            None,
+            None,
+            true,
+        )
+        .is_err()
+    );
+}
+
 /// CPU-only startup data, owned by one loader generation. No file reads or
 /// model baking are needed when the event loop installs this bundle.
 pub struct GameCpuResources {

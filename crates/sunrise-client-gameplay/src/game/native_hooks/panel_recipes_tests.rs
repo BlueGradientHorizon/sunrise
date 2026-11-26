@@ -1,6 +1,6 @@
 //! `RecipesClientHost::panel_recipes`: a native mod's page shows in the panel, cut as the
 //! renderer cuts one, and `None` brings its items back.
-use super::panel_recipes::page_views;
+use sunrise_gameplay_common::game::native_hooks::panel_recipes::page_views;
 use crate::game::native_hooks::NativeRecipeLayout;
 use crate::game::native_panel::{Owner, Panel};
 use crate::game::native_panel_recipes::RecipePage;
