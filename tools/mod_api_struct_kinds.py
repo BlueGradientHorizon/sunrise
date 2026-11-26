@@ -226,19 +226,23 @@ def defaults_and_constructors(source, file=""):
         key = (file, modules[i] + path)
         end = _skip_group(ts, j, '{', '}')
         body = ts[j + 1:end - 1]
-        for k, token in enumerate(body):
-            if token != 'pub':
+        # Only the impl's own items count: each `fn` body (and any other braced item) is skipped
+        # whole, so a function declared inside a method is not taken for a constructor.
+        k = 0
+        while k < len(body):
+            if body[k] == '{':
+                k = _skip_group(body, k, '{', '}')
                 continue
-            fn_at = k + 1
-            while fn_at < len(body) and body[fn_at] in ('const', 'async', 'unsafe'):
-                fn_at += 1
-            if fn_at == len(body) or body[fn_at] != 'fn':
+            if body[k] != 'fn':
+                k += 1
                 continue
-            params_at = body.index('(', fn_at + 1)
+            before = k - 1
+            while before >= 0 and body[before] in ('const', 'async', 'unsafe'):
+                before -= 1
+            public = before >= 0 and body[before] == 'pub'
+            params_at = body.index('(', k + 1)
             params_end = _skip_group(body, params_at, '(', ')')
             params = body[params_at:params_end]
-            if 'self' in params[:4]:
-                continue
             ret = []
             m = params_end
             if m < len(body) and body[m] == '->':
@@ -246,11 +250,15 @@ def defaults_and_constructors(source, file=""):
                 while m < len(body) and body[m] not in ('{', 'where', ';'):
                     ret.append(body[m])
                     m += 1
-            for value in (['Self'], [name]):
-                if (ret == value or ret == ['Option', '<'] + value + ['>']
-                        or (ret[:2] == ['Result', '<'] and ret[2:3] == value
-                            and ret[3:4] == [','] and ret[-1:] == ['>'])):
-                    constructors.add(key)
+            if public and 'self' not in params[:4]:
+                for value in (['Self'], [name]):
+                    if (ret == value or ret == ['Option', '<'] + value + ['>']
+                            or (ret[:2] == ['Result', '<'] and ret[2:3] == value
+                                and ret[3:4] == [','] and ret[-1:] == ['>'])):
+                        constructors.add(key)
+            while m < len(body) and body[m] not in ('{', ';'):
+                m += 1
+            k = _skip_group(body, m, '{', '}') if m < len(body) and body[m] == '{' else m + 1
     return defaults, constructors
 
 
