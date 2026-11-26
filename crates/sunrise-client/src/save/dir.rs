@@ -110,6 +110,83 @@ impl SaveDir {
             .join("attachments.dat")
     }
 
+    fn entity_metadata_path(&self) -> PathBuf {
+        self.root
+            .join("data")
+            .join("sunrise")
+            .join("entity_metadata.dat")
+    }
+
+    /// Versioned, engine-owned entity metadata (`data/sunrise/entity_metadata.dat`):
+    /// returns the dragon UUIDs whose `living_death` was vetoed and whether the file
+    /// exists on disk. Never reads arbitrary raw entity NBT fields.
+    pub fn load_dragon_death_canceled(&self) -> (HashSet<[i32; 4]>, bool) {
+        const VERSION: i32 = 1;
+        let path = self.entity_metadata_path();
+        match try_read_dat(&path) {
+            Err(DatIssue::Missing) => (HashSet::new(), false),
+            Ok(root) => {
+                if root.get("version") != Some(&Tag::Int(VERSION)) {
+                    log::warn!(
+                        "{}: unsupported entity metadata version; ignoring persisted dragon vetoes",
+                        path.display()
+                    );
+                    return (HashSet::new(), true);
+                }
+                let mut out = HashSet::new();
+                if let Some(Tag::List(entries)) = root.get("dragon_death_canceled") {
+                    for entry in entries {
+                        if let Tag::IntArray(words) = entry
+                            && words.len() == 4
+                        {
+                            out.insert([words[0], words[1], words[2], words[3]]);
+                        }
+                    }
+                }
+                (out, true)
+            }
+            Err(DatIssue::Unreadable(why)) => {
+                let aside = path.with_extension("dat.corrupt");
+                log::warn!(
+                    "{}: {why}; engine entity metadata starts over, the file is kept as {}",
+                    path.display(),
+                    aside.display()
+                );
+                let _ = fs::rename(&path, &aside);
+                (HashSet::new(), false)
+            }
+        }
+    }
+
+    /// Persist versioned, engine-owned dragon death-veto metadata; removes the file
+    /// when empty and writes nothing when already absent.
+    pub fn save_dragon_death_canceled(&self, uuids: &HashSet<[i32; 4]>) -> Result<()> {
+        const VERSION: i32 = 1;
+        let path = self.entity_metadata_path();
+        if uuids.is_empty() {
+            if let Err(err) = fs::remove_file(&path)
+                && err.kind() != std::io::ErrorKind::NotFound
+            {
+                return Err(err.into());
+            }
+            return Ok(());
+        }
+        let mut sorted: Vec<[i32; 4]> = uuids.iter().copied().collect();
+        sorted.sort_unstable();
+        let list = sorted
+            .into_iter()
+            .map(|u| Tag::IntArray(u.to_vec()))
+            .collect();
+        write_dat(
+            &path,
+            Tag::compound([
+                ("DataVersion", Tag::Int(DATA_VERSION)),
+                ("version", Tag::Int(VERSION)),
+                ("dragon_death_canceled", Tag::List(list)),
+            ]),
+        )
+    }
+
     /// The saves of a level of `shape` at `root` (its dimension folder).
     pub fn new(root: PathBuf, shape: LevelShape, items: Option<Arc<crate::items::Items>>) -> Self {
         Self {

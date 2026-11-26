@@ -2660,6 +2660,12 @@ impl Game<'_> {
         self.fire_raid_state_change(raid, pos, state);
     }
 
+    /// The server is starting a world save cycle, before anything is written.
+    /// `wait` says this cycle flushes its chunk writes.
+    pub(in crate::game) fn native_world_save_start(&mut self, wait: bool) {
+        self.fire_world_save_start(wait);
+    }
+
     /// The server completed a world save cycle. `wait` says chunk writes were
     /// flushed before returning.
     pub(in crate::game) fn native_world_saved(&mut self, wait: bool) {

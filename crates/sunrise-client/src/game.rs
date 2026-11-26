@@ -387,6 +387,8 @@ mod container_hooks;
 mod container_layout;
 #[path = "game/world/container_loot.rs"]
 mod container_loot;
+#[path = "game/interface/context_menu.rs"]
+mod context_menu;
 #[cfg(test)]
 #[path = "game/items/continue_using_tests.rs"]
 mod continue_using_tests;
@@ -4584,6 +4586,8 @@ struct Game<'a> {
     /// A guest's `/save-all`: saved once their turn ends (`run_guest_command`),
     /// when their own state is back in their record.
     save_after_guest_turn: bool,
+    /// Guards `begin_world_save` against re-entry while `world_save_start` runs.
+    world_save_starting: bool,
     /// Guests whose records are displaced by nested player swaps, outer first.
     lan_guest_swaps: Vec<u32>,
     /// Bodies and their statistics displaced by guest turns, outer first.
@@ -7839,6 +7843,7 @@ impl Game<'_> {
         self.draw_code_of_conduct(&mut batch);
         self.draw_link_prompt(&mut batch);
         self.draw_command_prompt(&mut batch);
+        self.draw_context_menu(&mut batch);
         if let Some((bar, fade)) = reload_overlay {
             self.draw_reload_overlay(&mut batch, bar, fade);
         }
@@ -12692,6 +12697,7 @@ impl Game<'_> {
             self.physical_buttons.clear();
             self.drag_button = None;
             self.container_buttons.clear();
+            self.screen_state.context_menu_input.clear();
             self.mod_browser_focus_lost();
         }
         if let WindowEvent::ModifiersChanged(m) = event {
@@ -12759,7 +12765,15 @@ impl Game<'_> {
                 (_, false) => KeyAction::Press,
                 (_, true) => KeyAction::Repeat,
             };
-            if self.debug_key(key, action) {
+            if self.context_menu_key_active()
+                && (self.context_menu_open()
+                    || (action != KeyAction::Press
+                        && self.context_menu_owns_key(Source::Keyboard, key)))
+            {
+                if action == KeyAction::Release {
+                    self.debug_key_release_cleanup(key);
+                }
+            } else if self.debug_key(key, action) {
                 return true;
             }
         }
@@ -13112,6 +13126,23 @@ impl Game<'_> {
         })
     }
 
+    #[cfg(test)]
+    fn handle_window_event_inner(
+        &mut self,
+        event_loop: &dyn EventLoopCtl,
+        event: WindowEvent,
+        cursor_sample: Option<sunrise_client::window::PointerSample>,
+        mouse_press_millis: Option<u64>,
+    ) -> bool {
+        self.handle_window_event_inner_as(
+            event_loop,
+            event,
+            cursor_sample,
+            mouse_press_millis,
+            input_trace::InputOrigin::User,
+        )
+    }
+
     /// One window event, in the order vanilla's `KeyboardHandler` and `MouseHandler` see it.
     ///
     /// A controller doesn't come through here in play: `pad_action` goes straight to the mappings
@@ -13122,12 +13153,13 @@ impl Game<'_> {
     /// `mouse_press_millis` is the monotonic timestamp of a physical press, absent for synthetic
     /// inputs and all other events.
     /// Returns true when button routing already settled the title before its Post.
-    fn handle_window_event_inner(
+    fn handle_window_event_inner_as(
         &mut self,
         event_loop: &dyn EventLoopCtl,
         event: WindowEvent,
         cursor_sample: Option<sunrise_client::window::PointerSample>,
         mouse_press_millis: Option<u64>,
+        origin: input_trace::InputOrigin,
     ) -> bool {
         let before_screen =
             |game: &mut Self| game.prepare_window_event(event_loop, &event, cursor_sample);
@@ -13222,6 +13254,9 @@ impl Game<'_> {
                             .map_or([0.0; 2], |previous| projection.drag_delta(previous, sample));
                         self.set_window_cursor(sample, projection);
                         let [w, h] = projection.gui.size.map(|v| v as f32);
+                        if self.context_menu_hover([w, h]) {
+                            return Ok(());
+                        }
                         let overlay = self.observed_overlay_now();
                         if self.observed_screen_view().is_none() && self.studio_mouse_dragged(w) {
                             return Ok(());
@@ -13291,6 +13326,9 @@ impl Game<'_> {
                         }) * wheel_sensitivity
                     };
                     let d = scaled(raw_y) as f32;
+                    if self.context_menu_wheel(d) {
+                        return Ok(());
+                    }
                     // ScreenEvent.MouseScrolled.Pre: the open screen hears of
                     // the wheel before anything scrolls, and a cancelled turn
                     // scrolls nothing — no bundle, no list, slider or
@@ -13462,6 +13500,15 @@ impl Game<'_> {
                     let code = glfw_button(button);
                     let modifiers = glfw_modifiers(self.modifiers);
                     let synthetic = self.pad_synthetic_input();
+                    let mouse_source = if synthetic {
+                        context_menu::MouseSource::Game
+                    } else {
+                        origin.into()
+                    };
+                    // An open context menu takes every press (and its matching release) until it closes.
+                    if self.context_menu_mouse(mouse_source, button, pressed) {
+                        return Ok(());
+                    }
                     let owned_release = std::mem::take(&mut self.container_owned_up);
                     let had_screen = self.mod_mappings_screen_open() || self.remote_loading();
                     let receiver = (!synthetic).then(|| self.observed_input_screen()).flatten();
@@ -13983,9 +14030,33 @@ impl Game<'_> {
         shortcut: Option<sunrise_client::clipboard::EditShortcut>,
         text: Option<&str>,
     ) -> Result<()> {
+        if !self.context_menu_key_active() {
+            self.dispatch_window_keyboard_as::<false>(
+                event_loop, key, pressed, repeat, shortcut, text,
+            )
+        } else {
+            self.dispatch_window_keyboard_as::<true>(
+                event_loop, key, pressed, repeat, shortcut, text,
+            )
+        }
+    }
+
+    #[inline(always)]
+    fn dispatch_window_keyboard_as<const MENU: bool>(
+        &mut self,
+        event_loop: &dyn EventLoopCtl,
+        key: Option<KeyCode>,
+        pressed: bool,
+        repeat: bool,
+        shortcut: Option<sunrise_client::clipboard::EditShortcut>,
+        text: Option<&str>,
+    ) -> Result<()> {
         let has_screen = self.observed_screen_view().is_some();
+        let menu_blocking = MENU
+            && (self.context_menu_open()
+                || key.is_some_and(|k| self.context_menu_owns_key(Source::Keyboard, k)));
         if let Some(key) = key
-            && !self.dispatch_screen_key(
+            && !self.dispatch_screen_key_as::<MENU>(
                 event_loop,
                 key,
                 pressed,
@@ -13998,8 +14069,9 @@ impl Game<'_> {
             self.native_panel_key_event(key, pressed, repeat);
             self.mapped_key_event(key, pressed, repeat)?;
         }
-        // GLFW's character event follows the key, even if KeyPressed.Pre canceled.
-        if pressed && has_screen {
+        // GLFW's character event follows the key, even if KeyPressed.Pre canceled;
+        // recheck the menu in case a key callback just opened one.
+        if pressed && has_screen && !menu_blocking && !self.context_menu_open() {
             self.settle_title_mode();
             self.screen_chars_typed(text);
         }
@@ -14017,6 +14089,26 @@ impl Game<'_> {
         shortcut: Option<sunrise_client::clipboard::EditShortcut>,
         source: Source,
     ) -> Result<bool> {
+        if !self.context_menu_key_active() {
+            self.dispatch_screen_key_as::<false>(event_loop, key, pressed, repeat, shortcut, source)
+        } else {
+            self.dispatch_screen_key_as::<true>(event_loop, key, pressed, repeat, shortcut, source)
+        }
+    }
+
+    #[inline(always)]
+    fn dispatch_screen_key_as<const MENU: bool>(
+        &mut self,
+        event_loop: &dyn EventLoopCtl,
+        key: KeyCode,
+        pressed: bool,
+        repeat: bool,
+        shortcut: Option<sunrise_client::clipboard::EditShortcut>,
+        source: Source,
+    ) -> Result<bool> {
+        if MENU && self.context_menu_key_event(source, key, pressed, repeat) {
+            return Ok(true);
+        }
         let instance = self.screen_state.screen_instance;
         let receiver = self.observed_input_screen();
         let canceled = if pressed {
@@ -14041,7 +14133,8 @@ impl Game<'_> {
         Ok(post_canceled
             || self.screen_state.screen_instance != instance
             || (pressed
-                && (self.mounted_widget_captures_input()
+                && ((receiver.is_some() && self.context_menu_open())
+                    || self.mounted_widget_captures_input()
                     || self.observed_overlay_now().is_some()
                     || self.title_input_active()
                     || matches!(
@@ -15041,6 +15134,7 @@ impl<'a> Game<'a> {
             native_client_commands: Default::default(),
             lan_building_boxes: Default::default(),
             save_after_guest_turn: false,
+            world_save_starting: false,
             lan_guest_swaps: Vec::new(),
             lan_displaced_players: Vec::new(),
             interrupted_turns: Vec::new(),

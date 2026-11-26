@@ -113,7 +113,16 @@ impl Game<'_> {
     pub(super) fn restore_held_keys(&mut self) {
         let held: Vec<KeyCode> = self.physical_keys.iter().copied().collect();
         let options = self.toggle_options();
+        let has_menu_keys = !self.screen_state.context_menu_input.owned_keys_empty();
         for key in held {
+            let restore_sources = if has_menu_keys {
+                match self.context_menu_restore_sources(key) {
+                    Some(0) => continue,
+                    other => other,
+                }
+            } else {
+                None
+            };
             if let Some(name) = sunrise_client::keybinds::key_name(key) {
                 for slot in self.settings.keys.slots_for(name) {
                     let option =
@@ -130,9 +139,22 @@ impl Game<'_> {
             for mapped in self.settings.keys.translate_all(key) {
                 match mapped {
                     Ok(KeyCode::ShiftLeft | KeyCode::ControlLeft) => {}
-                    Ok(other) => {
-                        self.insert_device_key(other);
-                    }
+                    Ok(other) => match restore_sources {
+                        None => {
+                            self.insert_device_key(other);
+                        }
+                        Some(mask) => {
+                            if mask & 1 != 0 {
+                                self.press_device_key(
+                                    other,
+                                    sunrise_client::held::Source::Keyboard,
+                                );
+                            }
+                            if mask & 2 != 0 {
+                                self.press_device_key(other, sunrise_client::held::Source::Agent);
+                            }
+                        }
+                    },
                     Err(_) => {}
                 }
             }
@@ -304,7 +326,9 @@ impl Game<'_> {
             }
             return true;
         }
-        if !(self.focused || self.unclaimed_window || self.scripted_run()) {
+        if !(self.focused || self.unclaimed_window || self.scripted_run())
+            || self.has_live_context_menu()
+        {
             return false;
         }
         self.pointer_grab_request.set(Some(true));
@@ -332,7 +356,11 @@ impl Game<'_> {
         });
         if self.screen_grab && (owner_off || request == Some(false)) {
             self.capture(false);
-        } else if request == Some(true) && !owner_off && self.screen == Screen::Mod {
+        } else if request == Some(true)
+            && !owner_off
+            && self.screen == Screen::Mod
+            && !self.live_context_menu()
+        {
             self.screen_grab = true;
             self.screen_state.answered.set(false);
             self.capture(true);

@@ -87,7 +87,7 @@ use sunrise_protocol::{
     },
     registry::{Builtin, DimensionType, Dynamic, SyncedNames, ceil_log2},
     secure_chat::{self, Signature},
-    text::{Language, plain},
+    text::{Language, plain, plain_with},
 };
 use sunrise_server_files::profiles::ServicesKeySet;
 use {

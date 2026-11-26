@@ -2476,6 +2476,9 @@ impl Game<'_> {
             renderer.retire_unloaded_mod_readbacks(&effective);
             renderer.retire_unloaded_mod_render_targets(&effective);
         }
+        if self.options.execution_role.is_client() {
+            lang::set_disabled_mod_entries(&effective);
+        }
         self.mods.apply_code_switches(&effective);
     }
 }
