@@ -154,7 +154,11 @@ dispatch of the same commit reuses it too; an SDK that is still a draft is built
 commit already published or drafted that day is skipped. Only a new commit, a fix,
 builds everything again. `BLACKSMITH_DEV=on` (a repository variable the owner sets; unset is off) moves every leg
 of a Dev build, the SDK's and the game's, to Blacksmith while `BLACKSMITH` stays `off` for everything else;
-`BLACKSMITH_DEV_MACOS=on` moves its macOS legs alone.
+`BLACKSMITH_DEV_MACOS=on` moves its macOS legs alone. `DEV_ON_DYNA_LINUX`, `DEV_ON_DYNA_WINDOWS` and `DEV_ON_DYNA_MACOS`
+(one per platform, `on` or unset) build that platform's legs of a Dev build, the SDK's and the game's, on Dyna's
+Linux runners instead: Linux against glibc 2.35, Windows and macOS cross-compiled (`tools/ci/cross/`), and the
+programs of a cross-built Windows or macOS leg started on GitHub's runner of that platform before anything publishes.
+Unsetting a switch puts its legs back where the variables above send them.
 
 It never touches the `nightly` tag or channel, its rotation, its `nightly-source/` tags or `daily-green`. A dry run
 (the default for a dispatch, and any run off main) starts a `nightly build` dry run, which builds, indexes and
