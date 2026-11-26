@@ -1,4 +1,6 @@
 // Included in mod_content.rs to retain its private scope.
+/// The mods' mob effects in registry order: by id, as items are. Their
+/// network ids follow vanilla's in this order.
 pub fn mob_effects(mods: &[ContentMod]) -> Vec<&MobEffect> {
     let mut effects: Vec<&MobEffect> = mods.iter().flat_map(|m| &m.content.effects).collect();
     effects.sort_by(|a, b| a.id.cmp(&b.id));

@@ -125,8 +125,6 @@ fn declared_item_ids(layer: &ContentMod) -> impl Iterator<Item = &str> {
         )
 }
 
-/// The mods' mob effects in registry order: by id, as items are. Their
-/// network ids follow vanilla's in this order.
 include!("mod_content/fluids.rs");
 
 #[path = "mod_content_fluid_declarations.rs"]
