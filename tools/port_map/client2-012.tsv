@@ -42,8 +42,8 @@ TabNavigationBar.currentTabIndex	skip:other		accessor; Sunrise keeps the open ta
 TabNavigationBar.currentTabButton	skip:other		accessor; Sunrise draws the tabs from options.tab
 TabNavigationBar.Builder.addTab	skip:java		builder
 TabNavigationBar.Builder.build	skip:java		builder
-AdvancementToast.update	port	crates/sunrise-client/src/game/interface/advancements/mod.rs::Toast::wants_show	5 s visible, scaled by the notification time option
-AdvancementToast.isChallengeAdvancement	port	crates/sunrise-client/src/game/interface/advancements/mod.rs::Toast::is_challenge	challenge check for the sound when a toast enters a slot
+AdvancementToast.update	port	crates/sunrise-client/src/game/interface/advancements/toast_client.rs::Toast::wants_show	5 s visible, scaled by the notification time option
+AdvancementToast.isChallengeAdvancement	port	crates/sunrise-client/src/game/interface/advancements/toast_client.rs::Toast::is_challenge	challenge check for the sound when a toast enters a slot
 AdvancementToast.extractRenderState	port	crates/sunrise-client/src/game/interface/advancements/mod_client.rs::Game::draw_advancement_toast	gap: player: a long title is one line; vanilla wraps it and fades the frame label into it over 1.5 s
 FriendToast.update	skip:service		friend toasts belong to the friend-request service; Sunrise's friends are an invite code for the open world (sunrise-friends), with no requests and no toasts
 FriendToast.extractRenderState	skip:service		no friend toast is drawn: Sunrise's friends are an invite code for the open world (sunrise-friends)
@@ -56,7 +56,7 @@ NowPlayingToast.extractToast	port	crates/sunrise-client/src/toasts.rs::draw_now_
 NowPlayingToast.tickMusicNotes	port	crates/sunrise-client/src/toasts.rs::MusicNotes::tick	the notes change colour every 25 ms while a song plays
 NowPlayingToast.showToast	port	crates/sunrise-client/src/toasts.rs::NowPlayingToast::show	slide in and count down over 5000 ms times the notification time
 NowPlayingToast.update	port	crates/sunrise-client/src/toasts.rs::NowPlayingToast::update	the slide, the hide when the song ends and the notes ticking
-RecipeToast.update	port	crates/sunrise-client/src/game/interface/advancements/mod.rs::Toast::wants_show	recipe toast visibility; the cycling index is Toast::displayed_recipe
+RecipeToast.update	port	crates/sunrise-client/src/game/interface/advancements/toast_client.rs::Toast::wants_show	recipe toast visibility; the cycling index is Toast::displayed_recipe
 RecipeToast.extractRenderState	port	crates/sunrise-client/src/game/interface/advancements/mod_client.rs::Game::draw_advancement_toast	recipe branch: station at 0.6 scale over the cycling result
 SystemToast.height	missing		minor: no multi-line height; a system toast always takes one 32 px slot
 SystemToast.extractRenderState	port	crates/sunrise-client/src/toasts.rs::SystemToast::draw	gap: minor: one line per title and message, no wrapping

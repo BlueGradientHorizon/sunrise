@@ -11,7 +11,7 @@ Animal.handleEntityEvent	port	crates/sunrise-level/src/particle_options.rs::enti
 Animal.getDismountLocationForPassenger	port	crates/sunrise-client/src/game/mobs/mounts.rs::Game::dismount_mount	gap: tries both sides by the mob's yaw, then on top; not DismountHelper's offsets and pose boxes
 Allay.createAttributes	skip:data		attributes come from entity-types.json
 Allay.createNavigation	port	crates/sunrise-sim/src/mobs/allay.rs::register	flying navigation, required path length 48
-Allay.defineSynchedData	port	crates/sunrise-client/src/game/network/lan/mod.rs::mob_meta	dancing and can_duplicate
+Allay.defineSynchedData	port	crates/sunrise-client/src/game/network/lan_mob_metadata.rs::mob_meta	dancing and can_duplicate
 Allay.isLikedPlayer	inline	crates/sunrise-sim/src/mobs/allay.rs::is_liked_player	verified owner-player UUID routes; unresolved entrypoints retain legacy Who::Player compatibility; considersEntityAsAlly is not ported
 Allay.setJukeboxPlaying	inline	crates/sunrise-client/src/game/mobs/allays.rs::Game::tick_allays	polls playing jukeboxes within 10 blocks every tick instead of listening for jukebox events; no remembered jukebox
 Allay.wantsToPickUp	inline	crates/sunrise-client/src/game/mobs/allays.rs::Game::tick_allays	same item within 32 blocks, mob_griefing on
@@ -46,7 +46,7 @@ ArmadilloAi.initIdleActivity	inline	crates/sunrise-sim/src/mobs/armadillo.rs::re
 ArmadilloAi.initScaredActivity	inline	crates/sunrise-sim/src/mobs/armadillo.rs::server_ai_step	the PANIC activity and ArmadilloBallUp
 Axolotl.<init>	port	crates/sunrise-sim/src/mobs/aquatic.rs::register	the Axolotl arm: smooth swimming move and look control, amphibious navigation, water malus 0
 Axolotl.removeWhenFarAway	port	crates/sunrise-sim/src/mobs/aquatic.rs::named_keeps_it	the same pair as AbstractFish's
-Axolotl.defineSynchedData	port	crates/sunrise-client/src/game/network/lan/mod.rs::mob_meta	variant and playing_dead; from_bucket is not synced
+Axolotl.defineSynchedData	port	crates/sunrise-client/src/game/network/lan_mob_metadata.rs::mob_meta	variant and playing_dead; from_bucket is not synced
 Axolotl.addAdditionalSaveData	inline	crates/sunrise-sim/src/entity_nbt.rs::mob_to_nbt	Variant and FromBucket are written
 Axolotl.readAdditionalSaveData	port	crates/sunrise-sim/src/entity_nbt.rs::read_variant	Variant and FromBucket are read
 Axolotl.finalizeSpawn	port	crates/sunrise-sim/src/mobs/finalize.rs::Ctx::finalize	group variants and baby age
@@ -72,7 +72,7 @@ AxolotlAi.initIdleActivity	port	crates/sunrise-sim/src/mobs/animal_brain.rs::axo
 AxolotlAi.canSetWalkTargetFromLookTarget	port	crates/sunrise-sim/src/mobs/animal_brain.rs::axolotl_action	the WalkFromLook arm
 PlayDead.canStillUse	inline	crates/sunrise-sim/src/mobs/animal_brain.rs::B::tick_or_stop	the PlayDead behaviour: in water and ticks present
 PlayDead.start	inline	crates/sunrise-sim/src/mobs/animal_brain.rs::B::try_start	clears targets, regeneration for 200 ticks
-Bee.defineSynchedData	port	crates/sunrise-client/src/game/network/lan/mod.rs::mob_meta	flags and anger end time
+Bee.defineSynchedData	port	crates/sunrise-client/src/game/network/lan_mob_metadata.rs::mob_meta	flags and anger end time
 Bee.registerGoals	port	crates/sunrise-sim/src/mobs/bee.rs::register
 Bee.addAdditionalSaveData	inline	crates/sunrise-sim/src/mobs/bee.rs::to_nbt	hive_pos, flower_pos, the nectar and sting state, and NeutralMob's anger_end_time and angry_at (the target's UUID)
 Bee.readAdditionalSaveData	inline	crates/sunrise-sim/src/mobs/bee.rs::from_nbt	the same; angry_at is the player's UUID or a mob the level may not have loaded (Who::Mob(0))
@@ -98,7 +98,7 @@ Bee.ValidateHiveGoal.canBeeUse	port	crates/sunrise-sim/src/mobs/bee.rs::Validate
 Camel.addAdditionalSaveData	inline	crates/sunrise-sim/src/entity_nbt.rs::mob_to_nbt	LastPoseTick is written as -1 or 0, not the real tick
 Camel.readAdditionalSaveData	inline	crates/sunrise-sim/src/entity_nbt/mob_load.rs::mob_from_nbt	sitting is read from the sign of LastPoseTick
 Camel.createAttributes	skip:data		attributes come from entity-types.json
-Camel.defineSynchedData	port	crates/sunrise-client/src/game/network/lan/mod.rs::mob_meta	dash and last pose change tick
+Camel.defineSynchedData	port	crates/sunrise-client/src/game/network/lan_mob_metadata.rs::mob_meta	dash and last pose change tick
 Camel.checkCamelSpawnRules	port	crates/sunrise-sim/src/mobs/spawn_rules.rs::check_spawn_rules
 Camel.getDefaultDimensions	port	crates/sunrise-client/src/mobs/living.rs::Mob::awake_dims_in	ticked in #3512; `Camel.getDefaultDimensions` is cited at crates/sunrise-client/src/mobs/living.rs:442 (in a comment, so `where` names the enclosing fn)
 Camel.updateWalkAnimation	port	crates/sunrise-sim/src/mobs/camel.rs::walk_target	ticked in #3512; `Camel.updateWalkAnimation` is cited at crates/sunrise-client/src/mobs/camel.rs:208
@@ -127,7 +127,7 @@ Chicken.registerGoals	port	crates/sunrise-sim/src/mobs/farm.rs::register
 Chicken.getSoundSet	inline	crates/sunrise-client/src/mobs/ai.rs::voice_sounds	gap: baby sets only; the picky sound variant is stored but never used
 Chicken.getBreedOffspring	port	crates/sunrise-client/src/game/mobs/creatures/mod_server.rs::Game::breed	gap: baby copies the first parent's variant, no random parent
 Chicken.finalizeSpawn	port	crates/sunrise-sim/src/mobs/finalize.rs::Ctx::finalize	variant by biome and a random sound variant
-Chicken.defineSynchedData	port	crates/sunrise-client/src/game/network/lan/mod.rs::mob_meta	gap: variant is synced, sound variant is not
+Chicken.defineSynchedData	port	crates/sunrise-client/src/game/network/lan_mob_metadata.rs::mob_meta	gap: variant is synced, sound variant is not
 Chicken.readAdditionalSaveData	port	crates/sunrise-sim/src/entity_nbt/mob_load.rs::mob_from_nbt	EggLayTime, variant, sound_variant; jockey in riders.rs
 Chicken.addAdditionalSaveData	port	crates/sunrise-sim/src/entity_nbt.rs::mob_to_nbt
 Chicken.get	port	crates/sunrise-sim/src/mobs/finalize.rs::variant_component	gap: chicken/variant only, no chicken/sound_variant
@@ -137,7 +137,7 @@ Chicken.positionRider	port	crates/sunrise-sim/src/mobs/riders.rs::takes_vehicle_
 ChickenVariants	skip:data		chicken variants come from the registry data files
 AbstractCow.registerGoals	port	crates/sunrise-sim/src/mobs/farm.rs::register
 AbstractCow.mobInteract	port	crates/sunrise-client/src/game/mobs/creatures/mod_server.rs::Game::interact_mob	the Cow/Mooshroom bucket arm gives milk
-Cow.defineSynchedData	port	crates/sunrise-client/src/game/network/lan/mod.rs::mob_meta	gap: variant is synced, sound variant is not
+Cow.defineSynchedData	port	crates/sunrise-client/src/game/network/lan_mob_metadata.rs::mob_meta	gap: variant is synced, sound variant is not
 Cow.addAdditionalSaveData	port	crates/sunrise-sim/src/entity_nbt.rs::mob_to_nbt
 Cow.readAdditionalSaveData	port	crates/sunrise-sim/src/entity_nbt/mob_load.rs::mob_from_nbt
 Cow.getBreedOffspring	port	crates/sunrise-client/src/game/mobs/creatures/mod_server.rs::Game::breed	gap: baby copies the first parent's variant, no random parent
@@ -146,7 +146,7 @@ CowVariants	skip:data		cow variants come from the registry data files
 MushroomCow.getWalkTargetValue	port	crates/sunrise-client/src/mobs/ai/walk_target.rs::walk_target_value	mycelium 10, anything else by the light: its own override replaces Animal's grass rule, in the stroll's score and the spawn check
 MushroomCow.checkMushroomSpawnRules	port	crates/sunrise-sim/src/mobs/spawn_rules.rs::check_spawn_rules
 MushroomCow.thunderHit	port	crates/sunrise-client/src/game/entities/lightning_server.rs::Game::thunder_hit	swaps colour once per bolt, convert sound
-MushroomCow.defineSynchedData	port	crates/sunrise-client/src/game/network/lan/mod.rs::mob_meta	the type entry
+MushroomCow.defineSynchedData	port	crates/sunrise-client/src/game/network/lan_mob_metadata.rs::mob_meta	the type entry
 MushroomCow.mobInteract	port	crates/sunrise-client/src/game/mobs/creatures/mod_server.rs::Game::interact_mob	bowl (plain or suspicious stew), shears and the brown flower branch
 MushroomCow.addAdditionalSaveData	port	crates/sunrise-sim/src/entity_nbt.rs::mob_to_nbt	Type and stew_effects, written only while it holds any
 MushroomCow.readAdditionalSaveData	port	crates/sunrise-sim/src/entity_nbt/mob_load.rs::mob_from_nbt	Type, red when missing; stew_effects decoded like the component's list

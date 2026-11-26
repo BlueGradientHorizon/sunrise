@@ -87,7 +87,7 @@ Advancement.Builder.display	skip:data		datagen builder; Sunrise reads advancemen
 Advancement.Builder.rewards	skip:data		datagen builder; Sunrise reads advancement JSON
 Advancement.Builder.requirements	skip:data		datagen builder; Sunrise reads advancement JSON
 AdvancementHolder.equals	skip:java		Java equality by id
-AdvancementNode.getRoot	inline	crates/sunrise-client/src/game/interface/advancements/mod.rs::RemoteTree::widget_links	resolves each packet node's insertion-time root before mapping to its current tab ID
+AdvancementNode.getRoot	inline	crates/sunrise-client/src/game/interface/advancements/common.rs::RemoteTree::widget_links	resolves each packet node's insertion-time root before mapping to its current tab ID
 AdvancementNode.equals	skip:java		Java equality by holder
 AdvancementProgress.hasProgress	inline	crates/sunrise-sim/src/advancements.rs::Progress::to_json	the save keeps only advancements with a criterion obtained (empty entries are skipped)
 AdvancementProgress.grantProgress	port	crates/sunrise-sim/src/advancements.rs::Progress::grant	records the criterion date; false when already obtained

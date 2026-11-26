@@ -26,7 +26,7 @@ Block.box	skip:data		Shape builder; Sunrise reads precomputed shapes from extrac
 Block.boxes	skip:data		Shape array builder; shapes come from extracted data.
 Block.cube	skip:data		Shape builder; shapes come from extracted data.
 Block.boxZ	skip:data		Shape builder; shapes come from extracted data.
-Block.dropFromLootTable	inline	crates/sunrise-client/src/game/blocks/spill.rs::GameLevel::drop_interact_loot	gap: minor: returns nothing, where vanilla returns whether anything dropped; folded into the interact-loot drop.
+Block.dropFromLootTable	inline	crates/sunrise-client/src/game/blocks/spill_common.rs::GameLevel::drop_interact_loot	gap: minor: returns nothing, where vanilla returns whether anything dropped; folded into the interact-loot drop.
 Block.popExperience	port	crates/sunrise-client/src/game.rs::Game::spawn_orbs	gap: minor: popExperience checks the block_drops rule, and the ore XP in break_block_as_player does not.
 Block.fallOn	port	crates/sunrise-world/src/block_landing.rs::BlockLandingRegistry::fall_on	Default and hay rules apply fall damage with the block's reduction.
 Block.getShapeForEachState	skip:java		Shape lookup cache over the state table; Sunrise precomputes shapes per state.
@@ -129,11 +129,11 @@ ComparatorBlock.triggerEvent	skip:other		No effect: vanilla BlockEntity.triggerE
 ComparatorBlock.createBlockStateDefinition	skip:data		Block state properties come from extracted data.
 ComposterBlock.onPlace	port	crates/sunrise-world/src/level/hooks.rs::Sim::on_place	A full composter schedules its ready tick in 20 ticks.
 ComposterBlock.tick	port	crates/sunrise-world/src/level/tick.rs::Sim::tick_block	Full composter becomes ready (level 8) with the ready sound.
-ComposterBlock.getContainer	port	crates/sunrise-client/src/game/blocks/machines/mod.rs::Containers::view	Composter level picks the input, output or empty view.
-ComposterBlock.InputContainer.getSlotsForFace	port	crates/sunrise-client/src/game/blocks/machines/mod.rs::View::slots_for_face_iter	Up face, slot 0 while the level is under 7.
+ComposterBlock.getContainer	port	crates/sunrise-client/src/game/blocks/machine_containers.rs::Containers::view	Composter level picks the input, output or empty view.
+ComposterBlock.InputContainer.getSlotsForFace	port	crates/sunrise-client/src/game/blocks/machine_containers.rs::View::slots_for_face_iter	Up face, slot 0 while the level is under 7.
 ComposterBlock.InputContainer.canPlaceItemThroughFace	port	crates/sunrise-client/src/game/blocks/composter.rs::Game::composter_container_insert	Only from above, below level 7, and compostable.
 ComposterBlock.InputContainer.setChanged	port	crates/sunrise-client/src/game/blocks/composter.rs::Game::composter_container_insert	Composts the item at once through addLayer.
-ComposterBlock.OutputContainer.getSlotsForFace	port	crates/sunrise-client/src/game/blocks/machines/mod.rs::View::slots_for_face_iter	Down face, slot 0 at level 8.
+ComposterBlock.OutputContainer.getSlotsForFace	port	crates/sunrise-client/src/game/blocks/machine_containers.rs::View::slots_for_face_iter	Down face, slot 0 at level 8.
 ComposterBlock.OutputContainer.setChanged	port	crates/sunrise-world/src/level/interact.rs::Behaviours::composter_empty	Empties the composter to level 0.
 ChestBlock.getBlockType	port	crates/sunrise-client/src/game/world/storage_common.rs::Game::chest_partner	Partner half and right-half flag give the single, first or second combine type.
 ChestBlock.updateShape	port	crates/sunrise-world/src/level/shapes.rs::Sim::update_shape_class	Class::Chest arm joins or splits a double chest with the neighbour.

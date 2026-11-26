@@ -34,7 +34,7 @@ DolphinCarryingItemLayer.submit	inline	crates/sunrise-client/src/mobs/render.rs:
 DrownedOuterLayer.submit	port	crates/sunrise-client/src/mobs/render.rs::layers	drowned outer layer, adult and baby
 EnergySwirlLayer.submit	port	crates/sunrise-client/src/mobs/render.rs::energy_swirl	charged creeper and powered wither swirl, drawn in render_visible
 EquipmentLayerRenderer.renderLayers	port	crates/sunrise-client/src/game/entities/armor_stands_client.rs::Game::armor_layers	draws all humanoid layers of the equipment asset, including leather overlay
-EquipmentLayerRenderer.getColorForLayer	port	crates/sunrise-client/src/game/entities/armor_stands.rs::layer_color	the stack's dyed colour when it has one, else the layer's undyed colour (red and blue swapped for the draw); -1 for a layer that is not dyeable
+EquipmentLayerRenderer.getColorForLayer	port	crates/sunrise-client/src/game/entities/armor_stands_client.rs::layer_color	the stack's dyed colour when it has one, else the layer's undyed colour (red and blue swapped for the draw); -1 for a layer that is not dyeable
 EquipmentLayerRenderer.TrimTextureKey.createTextureWithNoPalette	port	crates/sunrise-client-render/src/trims.rs::TrimTexture::generate	a trim with no palette is used as its own texture
 EyesLayer.submit	port	crates/sunrise-client/src/mobs/render.rs::layers	spider, enderman and phantom eyes
 FoxHeldItemLayer.submit	inline	crates/sunrise-client/src/mobs/render.rs::held_item_transform	the fox branch: the main hand's item in its mouth, at fox_item_transform

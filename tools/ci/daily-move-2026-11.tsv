@@ -5,7 +5,7 @@ sunrise-client	lib	game::server_side::api_values::loot_values::query_tests::quer
 sunrise-client	lib	game::server_side::api_values::read_stack_tests::read_consumers_forward_nonresident_stacks_and_mutants	crates/sunrise-client/src/game/modding/api_values/read_stack_tests.rs:38	slow
 sunrise-client	lib	game::server_side::commands::selector_bounds_tests::actual_selector_uses_body_overlap_but_distance_stays_at_the_origin	crates/sunrise-client/src/game/administration/commands/mod.rs:4865	game-boot
 sunrise-client	lib	game::server_side::commands_server::world_cmds::allay_owner_damage_tests::allay_owner_adapters_compare_the_actual_player_uuid	crates/sunrise-client/src/game/administration/commands/world_cmds.rs:2225	game-boot
-sunrise-client	lib	game::server_side::maps::tests::map_on_banner_in_adventure_mode_honours_can_place_on	crates/sunrise-client/src/game/blocks/maps/mod.rs:2173	game-boot
+sunrise-client	lib	game::server_side::maps_server::tests::map_on_banner_in_adventure_mode_honours_can_place_on	crates/sunrise-client/src/game/blocks/maps/mod.rs:1026	game-boot
 sunrise-client	lib	game::server_side::mounts::tests::feeding_a_mount_draws_from_its_own_random_and_posts_eat	crates/sunrise-client/src/game/mobs/mounts.rs:1750	game-boot
 sunrise-client	lib	game::native_server::network_settings_tests::server_settings_follow_the_network_config	crates/sunrise-client/src/game/modding/native_server.rs:5695	slow
 sunrise-client	lib	game::server_side::natural_spawning::tests::spawn_candidates_match_the_uncached_union_while_players_move	crates/sunrise-client/src/game/mobs/natural_spawning.rs:1692	slow

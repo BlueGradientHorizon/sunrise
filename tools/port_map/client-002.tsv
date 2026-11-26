@@ -116,7 +116,7 @@ ClientPacketListener.broadcastClientInformation	port	crates/sunrise-client/src/g
 ClientPacketListener.notifyPlayerLoaded	port	crates/sunrise-client/src/game/network/remote/tick_client.rs::Game::tick_client_load	sends PlayerLoaded when the load tracker is ready
 ClientPacketListener.setKeyPair	port	crates/sunrise-client/src/game/network/remote_chat.rs::Game::update_chat_session	only for the account's own profile id; a new session when the pair changes
 ClientRegistryLayer.createRegistryAccess	skip:data		registry layers come from Sunrise's own tables
-ClientSuggestionProvider.getOnlinePlayerNames	port	crates/sunrise-client/src/game/network/remote/mod.rs::Game::remote_online_names	sorted names of the server's player list
+ClientSuggestionProvider.getOnlinePlayerNames	port	crates/sunrise-client/src/game/network/remote/session_state.rs::Game::remote_online_names	sorted names of the server's player list
 ClientSuggestionProvider.getCustomTabSuggestions	port	crates/sunrise-game-data/src/registries.rs::Registries::custom_tab_suggestions	the player names and the server's custom completions, each once
 ClientSuggestionProvider.getSelectedEntities	port	crates/sunrise-client/src/game/entities/pick_entity.rs::Game::crosshair_entity_uuid	the UUID of the entity under the crosshair, before any block; the command suggestions add it
 ClientSuggestionProvider.suggestRegistryElements	port	crates/sunrise-command/src/args.rs::suggest_resources	registry ids come from Sunrise's registry tables

@@ -13,7 +13,7 @@ BlockEntity.collectComponents	port	crates/sunrise-sim/src/block_entity_item.rs::
 BrewingStandBlockEntity.getPotionBits	inline	crates/sunrise-level/src/brewing.rs::BrewingStand::tick	bottle occupancy sent as out.bottles
 BrewingStandBlockEntity.isBrewable	port	crates/sunrise-level/src/brewing.rs::BrewingStand::brewable
 BrewingStandBlockEntity.doBrew	port	crates/sunrise-level/src/brewing.rs::BrewingStand::brew
-BrewingStandBlockEntity.getSlotsForFace	port	crates/sunrise-client/src/game/blocks/machines/mod.rs::View::slots_for_face_iter
+BrewingStandBlockEntity.getSlotsForFace	port	crates/sunrise-client/src/game/blocks/machine_containers.rs::View::slots_for_face_iter
 BrushableBlockEntity.dropContent	port	crates/sunrise-client/src/game/blocks/brush_server.rs::Game::brushing_completed	item drops from the hit face; loot is unpacked in unpack_brush_loot
 BrushableBlockEntity.tryLoadLootTable	port	crates/sunrise-client/src/game/blocks/brush_server.rs::Game::unpack_brush_loot	reads LootTable and seed from the saved tag
 BrushableBlockEntity.trySaveLootTable	skip:other		no own code: the raw saved tag (spill::saved_entity) keeps LootTable
@@ -46,10 +46,10 @@ ContainerOpenersCounter.hasContainerOpen	port	crates/sunrise-sim/src/mobs/transp
 ContainerOpenersCounter.incrementOpeners	port	crates/sunrise-client/src/game/blocks/block_entity_anims.rs::Game::count_opener	the open or close and the first opener's scheduleRecheck
 ContainerOpenersCounter.recheckOpeners	port	crates/sunrise-client/src/game/blocks/level_access.rs::GameLevel::recheck_container_openers	the level asks, from ChestBlock.tick, EnderChestBlock.tick and BarrelBlock.tick
 CrafterBlockEntity.isSlotDisabled	port	crates/sunrise-level/src/containers.rs::Crafter::can_place	disabled check (disabled[slot]) inside can_place
-CrafterBlockEntity.canPlaceItem	port	crates/sunrise-client/src/game/blocks/machines/mod.rs::Containers::can_place	calls Crafter::can_place
+CrafterBlockEntity.canPlaceItem	port	crates/sunrise-client/src/game/blocks/machine_containers.rs::Containers::can_place	calls Crafter::can_place
 CrafterBlockEntity.smallerStackExist	port	crates/sunrise-level/src/containers.rs::Crafter::can_place	the smaller-stack check later in the slots
 CrafterBlockEntity.saveAdditional	port	crates/sunrise-sim/src/save/block_entity_encode.rs::encode	crafter arm: items, disabled slots, triggered, ticks
-CrafterBlockEntity.isEmpty	port	crates/sunrise-client/src/game/blocks/machines/mod.rs::Containers::is_empty
+CrafterBlockEntity.isEmpty	port	crates/sunrise-client/src/game/blocks/machine_containers.rs::Containers::is_empty
 CrafterBlockEntity.fillStackedContents	port	crates/sunrise-sim/src/menu/place.rs::Menu::stacked_contents	the crafter's nine slots are the menu's MAIN container (`CrafterMenu.addSlots`), accounted like a grid (`accountSimpleStack`) for the recipe book's craftable check
 CrafterBlockEntity.addDisabledSlots	port	crates/sunrise-sim/src/save/block_entity_encode.rs::encode	disabled_slots in the crafter arm
 CrafterBlockEntity.slotCanBeDisabled	port	crates/sunrise-level/src/containers.rs::Crafter::slot_can_be_disabled
@@ -74,10 +74,10 @@ HopperBlockEntity.loadAdditional	port	crates/sunrise-sim/src/save/block_entity_d
 HopperBlockEntity.saveAdditional	port	crates/sunrise-sim/src/save/block_entity_encode.rs::encode	gap: minor: TransferCooldown is not saved (transient state in machines.rs)
 HopperBlockEntity.setItem	port	crates/sunrise-client/src/game/blocks/machines/mod.rs::Game::try_move_in_item	gap: minor: unpackLootTable(null) on set is not done here
 HopperBlockEntity.inventoryFull	inline	crates/sunrise-client/src/game/blocks/machines/mod.rs::Game::hopper_try_move_items	all-slots-at-max check before sucking
-HopperBlockEntity.getSlots	port	crates/sunrise-client/src/game/blocks/machines/mod.rs::View::slots_for_face_iter
+HopperBlockEntity.getSlots	port	crates/sunrise-client/src/game/blocks/machine_containers.rs::View::slots_for_face_iter
 HopperBlockEntity.createFlatSlots	skip:java		cached slot index array
-HopperBlockEntity.canPlaceItemInContainer	port	crates/sunrise-client/src/game/blocks/machines/mod.rs::Containers::can_place
-HopperBlockEntity.canTakeItemFromContainer	port	crates/sunrise-client/src/game/blocks/machines/mod.rs::Containers::can_take
+HopperBlockEntity.canPlaceItemInContainer	port	crates/sunrise-client/src/game/blocks/machine_containers.rs::Containers::can_place
+HopperBlockEntity.canTakeItemFromContainer	port	crates/sunrise-client/src/game/blocks/machine_containers.rs::Containers::can_take
 HopperBlockEntity.getSourceContainer	port	crates/sunrise-client/src/game/blocks/machines/mod.rs::Game::suck_from_container	container above the hopper
 HopperBlockEntity.getItemsAtAndAbove	port	crates/sunrise-client/src/game/blocks/machines/mod.rs::Game::suck_item_entities	item entities in the suck box
 HopperBlockEntity.entityInside	inline	crates/sunrise-client/src/game/blocks/machines/mod.rs::Game::suck_item_entities	item entering the hopper is polled each tick instead
@@ -87,7 +87,7 @@ JukeboxBlockEntity.getComparatorOutput	port	crates/sunrise-client/src/game/block
 JukeboxBlockEntity.loadAdditional	port	crates/sunrise-sim/src/save/block_entity_decode.rs::decode_block_entity	RecordItem and ticks
 JukeboxBlockEntity.saveAdditional	port	crates/sunrise-sim/src/save/block_entity_encode.rs::encode	RecordItem and ticks
 JukeboxBlockEntity.setTheItem	port	crates/sunrise-client/src/game/blocks/jukebox_server.rs::Game::jukebox_inserted	a disc a hopper or dropper feeds into the slot starts the song, with the block state, the level event and the neighbour and comparator updates
-JukeboxBlockEntity.canPlaceItem	port	crates/sunrise-client/src/game/blocks/machines/mod.rs::Containers::can_place	a playable disc into the empty single slot (`Jukebox.items`, which `BlockEntity.slots` now exposes), so a hopper reaches a jukebox
+JukeboxBlockEntity.canPlaceItem	port	crates/sunrise-client/src/game/blocks/machine_containers.rs::Containers::can_place	a playable disc into the empty single slot (`Jukebox.items`, which `BlockEntity.slots` now exposes), so a hopper reaches a jukebox
 JukeboxBlockEntity.setSongItemWithoutPlaying	skip:other		@VisibleForTesting setter; no player behaviour
 JukeboxBlockEntity.tryForcePlaySong	skip:other		@VisibleForTesting hook; no player behaviour
 LecternBlockEntity.hasBook	inline	crates/sunrise-client/src/game/interface/books_server.rs::Game::use_lectern	book-present check before a book is placed

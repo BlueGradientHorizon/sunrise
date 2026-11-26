@@ -15,20 +15,20 @@ DragonHoldingPatternPhase.strafePlayer	inline	crates/sunrise-client/src/game/mob
 DragonLandingApproachPhase.doServerTick	inline	crates/sunrise-client/src/game/mobs/dragon.rs::Game::tick_phase	LandingApproach arm; gap: minor: no collision re-target
 DragonLandingApproachPhase.findNewTarget	inline	crates/sunrise-client/src/game/mobs/dragon.rs::Game::tick_phase	LandingApproach arm: path to the node by the nearest enemy to the egg, last node is the podium
 DragonLandingApproachPhase.navigateToNextPathNode	port	crates/sunrise-client/src/game/mobs/dragon.rs::Game::next_target
-DragonLandingPhase.doClientTick	inline	crates/sunrise-client/src/game/mobs/dragon.rs::breath_puffs	the fan of dragon breath at the head: eight a tick along getHeadLookVector(1) plus the dragon's motion; every client (single player on its server thread included) breathes it in remote_dragon_phase_tick
+DragonLandingPhase.doClientTick	inline	crates/sunrise-client/src/game/mobs/dragon_client.rs::breath_puffs	the fan of dragon breath at the head: eight a tick along getHeadLookVector(1) plus the dragon's motion; every client (single player on its server thread included) breathes it in remote_dragon_phase_tick
 DragonLandingPhase.doServerTick	inline	crates/sunrise-client/src/game/mobs/dragon.rs::Game::tick_phase	Landing arm: sets flame count 0 and goes to Scanning on reaching the podium
 DragonLandingPhase.getTurnSpeed	inline	crates/sunrise-client/src/game/mobs/dragon.rs::Game::tick_dragon	Landing turn min(rot,40)/rot, the one turn formula that differs from the default
 DragonSittingAttackingPhase.doClientTick	inline	crates/sunrise-client/src/game/mobs/dragon.rs::Game::tick_phase	gap: player: the growl is played once at the start of the 40 ticks; vanilla replays it on every client tick
 DragonSittingAttackingPhase.doServerTick	inline	crates/sunrise-client/src/game/mobs/dragon.rs::Game::tick_phase	Attacking arm: 40 ticks then Flaming
-DragonSittingFlamingPhase.doClientTick	inline	crates/sunrise-client/src/game/mobs/dragon.rs::breath_puffs	on flame ticks 2, 4, 6 and 8: eight starts, each six puffs down the look line; every client breathes it in remote_dragon_phase_tick
+DragonSittingFlamingPhase.doClientTick	inline	crates/sunrise-client/src/game/mobs/dragon_client.rs::breath_puffs	on flame ticks 2, 4, 6 and 8: eight starts, each six puffs down the look line; every client breathes it in remote_dragon_phase_tick
 DragonSittingFlamingPhase.doServerTick	inline	crates/sunrise-client/src/game/mobs/dragon.rs::Game::tick_phase	Flaming arm: the flame cloud at tick 10, 200 ticks, flame count 4 leads to Takeoff
 DragonSittingScanningPhase.doServerTick	inline	crates/sunrise-client/src/game/mobs/dragon.rs::Game::tick_phase	Scanning arm; gap: minor: turns every tick, vanilla skips the turn while the target is within 10 degrees of the facing
 DragonTakeoffPhase.doServerTick	inline	crates/sunrise-client/src/game/mobs/dragon.rs::Game::tick_phase	Takeoff arm: first tick finds a new target, later ticks go to Holding once 10 blocks from the podium
 DragonTakeoffPhase.findNewTarget	inline	crates/sunrise-client/src/game/mobs/dragon.rs::Game::tick_phase	Takeoff arm; gap: minor: no path leaves an empty path, vanilla leaves none and searches again next tick
 DragonTakeoffPhase.navigateToNextPathNode	port	crates/sunrise-client/src/game/mobs/dragon.rs::Game::next_target
 EnderDragonPhase.create	skip:data		phase registry; the ids are fixed in Phase::id
-EnderDragonPhase.createInstance	port	crates/sunrise-client/src/game/mobs/dragon.rs::Phase::from_id	builds the default instance for an id
-EnderDragonPhase.getById	port	crates/sunrise-client/src/game/mobs/dragon.rs::Phase::from_id	id to phase, unknown ids fall back to Holding
+EnderDragonPhase.createInstance	port	crates/sunrise-client/src/game/mobs/dragon_common.rs::Phase::from_id	builds the default instance for an id
+EnderDragonPhase.getById	port	crates/sunrise-client/src/game/mobs/dragon_common.rs::Phase::from_id	id to phase, unknown ids fall back to Holding
 Mannequin.addAdditionalSaveData	port	crates/sunrise-sim/src/entity_nbt.rs::Base::mob_to_nbt	ticked in #3514; `Mannequin.addAdditionalSaveData` is cited at crates/sunrise-client/src/entity_nbt.rs:376 (in a comment, so `where` names the enclosing fn)
 Mannequin.applyImplicitComponent	missing		minor: the profile from a spawning item is not applied; Sunrise has no mannequin item, only summon with a profile tag
 Mannequin.defineSynchedData	inline	crates/sunrise-client/src/game/network/remote_mob_data.rs::apply	slots 17 to 19: the profile, DATA_IMMOVABLE and DATA_DESCRIPTION are all read now
@@ -197,7 +197,7 @@ DyeItem.tryApplyToSign	inline	crates/sunrise-client/src/game/interface/sign_edit
 EggItem.asProjectile	port	crates/sunrise-client/src/game/mobs/creatures/mod_server.rs::Game::throw_item	egg kinds in throw_item
 EggItem.use	inline	crates/sunrise-client/src/game/mobs/creatures/mod_server.rs::Game::throw_item	egg throw
 EnderpearlItem.use	inline	crates/sunrise-client/src/game/mobs/creatures/mod_server.rs::Game::throw_item	ender pearl throw
-ExperienceBottleItem.asProjectile	port	crates/sunrise-client/src/game/items/potions.rs::Game::thrown_kind	thrown bottle entity type
+ExperienceBottleItem.asProjectile	port	crates/sunrise-client/src/game/items/potions_common.rs::thrown_kind	thrown bottle entity type
 ExperienceBottleItem.createDispenseConfig	port	crates/sunrise-client/src/game/blocks/dispenser.rs::Game::dispense_projectile	dispensed bottle flight
 ExperienceBottleItem.use	inline	crates/sunrise-client/src/game/items/potions_server.rs::Game::use_potion_item	thrown bottle path
 FireChargeItem.asProjectile	port	crates/sunrise-client/src/game/blocks/dispenser.rs::Game::shoot_projectile_item	fire charge becomes a small fireball
@@ -222,7 +222,7 @@ ItemProvider.FallbackItemProvider.next	inline	crates/sunrise-client/src/game/ite
 ItemProvider.FallbackItemProvider.peek	inline	crates/sunrise-client/src/game/items/recipe_book.rs::Game::draw_ghost	ghost slot item list
 JukeboxSongs	skip:data		registry of jukebox songs; song data is read from files
 KnowledgeBookItem.use	port	crates/sunrise-client/src/game/interface/advancements/mod.rs::Game::use_knowledge_book	the recipes the book names become known and the book is used up; an invalid recipe knows nothing
-LingeringPotionItem.createPotion	port	crates/sunrise-client/src/game/items/potions.rs::thrown_kind	lingering entity type
+LingeringPotionItem.createPotion	port	crates/sunrise-client/src/game/items/potions_common.rs::thrown_kind	lingering entity type
 LingeringPotionItem.use	inline	crates/sunrise-client/src/game/items/potions_server.rs::Game::use_potion_item	lingering potion throw
 NameTagItem.interactLivingEntity	port	crates/sunrise-client/src/game/interface/names_server.rs::Game::name_mob	a tag with a custom name names the mob under the crosshair, makes it persistent and is used up, in creative too
 PlaceOnWaterBlockItem.use	inline	crates/sunrise-client/src/game/blocks/block_items_server.rs::Game::apply_placed_item	placed by generic block placement; the water rule is not checked here

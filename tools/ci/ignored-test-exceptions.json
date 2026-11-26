@@ -90,7 +90,7 @@
   {
     "package": "sunrise-client",
     "target": "lib",
-    "test": "game::server_side::maps::save_tests::saved_map_codec_fixture",
+    "test": "game::server_side::maps_server::save_tests::saved_map_codec_fixture",
     "path": "crates/sunrise-client/src/game/blocks/maps/save_tests.rs",
     "reason": "run through tools/test_map_saved_data_parity.py",
     "rationale": "Existing parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_map_saved_data_parity.py supplies its independent oracle/private fixture and drives it separately, not as a prepared-resource daily test."

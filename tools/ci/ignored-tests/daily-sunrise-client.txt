@@ -44,7 +44,7 @@ sunrise-client game::host::draw::tests::scaled_text_is_the_text_scaled_about_its
 sunrise-client game::lan_actions::tick::equipment_tick_tests::a_new_slot_takes_its_items_attributes_at_the_guests_tick lib daily resources
 sunrise-client game::lan_actions::tick::equipment_tick_tests::gear_swapped_and_swapped_back_before_the_tick_keeps_its_modifiers lib daily resources
 sunrise-client game::launch_api::tests::developer_offline_never_consumes_inherited_sessions lib daily child-process
-sunrise-client game::server_side::maps::tests::map_on_banner_in_adventure_mode_honours_can_place_on lib daily game-boot
+sunrise-client game::server_side::maps_server::tests::map_on_banner_in_adventure_mode_honours_can_place_on lib daily game-boot
 sunrise-client game::mods::tests::a_shared_missing_jar_stops_native_load_and_refuses_each_content_mod_row lib daily child-process
 sunrise-client game::mods::tests::content_overlay_validates_dependencies_and_orders_layers lib daily child-process
 sunrise-client game::mods::tests::native_content_follows_the_build_and_misplaced_content_follows_its_selection lib daily child-process
@@ -132,9 +132,9 @@ sunrise-client game::server_side::native_menus::tests::container_hooks_follow_ac
 sunrise-client game::server_side::native_menus::tests::each_menu_items_refusal_has_its_own_name_and_sends_nothing lib daily resources
 sunrise-client game::client_side::native_net::packet_hold::tests::generation_change_after_a_drops_b_and_invalidates_the_hold lib daily network
 sunrise-client game::client_side::native_net::packet_hold::tests::physical_hold_orders_engine_and_mod_packets_and_bypasses_network_keepalive lib daily resources
-sunrise-client game::native_packet_builders::tests::client_host_hashes_plain_stacks_with_added_and_removed_components lib daily child-process
-sunrise-client game::server_side::native_passages::tests::a_destination_level_must_be_open_and_another_level lib daily resources
-sunrise-client game::server_side::native_passages::tests::a_passage_into_another_level_is_not_sent_to_the_clients lib daily resources
+sunrise-client game::client_side::native_packet_builders::tests::client_host_hashes_plain_stacks_with_added_and_removed_components lib daily child-process
+sunrise-client game::native_passages::tests::a_destination_level_must_be_open_and_another_level lib daily resources
+sunrise-client game::native_passages::tests::a_passage_into_another_level_is_not_sent_to_the_clients lib daily resources
 sunrise-client game::server_side::native_player_ender_chest_tests::a_write_while_the_local_ender_chest_is_open_survives_closing_it lib daily resources
 sunrise-client game::server_side::native_player_ender_chest_tests::a_written_slot_is_what_the_open_ender_chest_menu_shows_and_clicks lib daily resources
 sunrise-client game::server_side::native_player_ender_chest_tests::an_item_use_opens_the_players_own_ender_chest_and_its_clicks_keep_every_stack lib daily resources
@@ -245,10 +245,10 @@ sunrise-client game::client_side::piston_push_client::client_lid_tests::a_shulke
 sunrise-client game::client_side::potions::tests::typed_cloud_remote_metadata_keeps_valid_options_on_malformed_update lib daily child-process
 sunrise-client game::client_side::world_fluids_tests_client::liquid_part_predicts_the_same_target_on_connected_client lib daily resources
 sunrise-client game::server_side::native_entity_refs::tests::server_box_queries_use_live_display_positions_and_section_order lib daily resources
-sunrise-client game::server_side::native_passages::cross_tests::the_server_follows_a_crossing_without_a_snap lib daily resources
-sunrise-client game::server_side::native_passages::cross_tests::two_crossings_in_a_row_are_decided_each_from_its_own_source lib daily resources
-sunrise-client game::server_side::native_passages::cross_tests::a_crossing_the_server_cannot_follow_is_refused_by_name lib daily resources
-sunrise-client game::server_side::native_passages::cross_tests::a_crossing_into_another_level_is_refused_far_level lib daily resources
-sunrise-client game::server_side::native_passages::cross_tests::a_mod_vetoes_a_crossing_before_the_server_follows lib daily resources
+sunrise-client game::native_passages::cross_tests::the_server_follows_a_crossing_without_a_snap lib daily resources
+sunrise-client game::native_passages::cross_tests::two_crossings_in_a_row_are_decided_each_from_its_own_source lib daily resources
+sunrise-client game::native_passages::cross_tests::a_crossing_the_server_cannot_follow_is_refused_by_name lib daily resources
+sunrise-client game::native_passages::cross_tests::a_crossing_into_another_level_is_refused_far_level lib daily resources
+sunrise-client game::native_passages::cross_tests::a_mod_vetoes_a_crossing_before_the_server_follows lib daily resources
 sunrise-client game::native_entity_selectors::tests::synced_selector_tokens_survive_client_registry_refresh lib daily game-boot
 sunrise-client game::dynamic_light_emission_tests::a_light_update_asks_the_part_again_on_the_client lib daily resources

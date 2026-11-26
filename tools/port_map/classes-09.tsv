@@ -122,7 +122,7 @@ PathAllowList.ConfigEntry.parse	skip:server		server file allow-list
 BlockHitResult.hitBorder	missing		`BlockHit` (`sunrise-core/src/geometry/mod.rs`) carries the location, the direction, the block and `inside`, no world-border flag, so a projectile's border hit is not told apart from any other
 BlockHitResult.withDirection	skip:java		copy helper (Rust struct update)
 BlockHitResult.withPosition	skip:java		copy helper (Rust struct update)
-HitResult.distanceTo	port	crates/sunrise-client/src/game/items/fishing.rs::rebound	the bobber's block-hit bounce: the squared distance to the hook scales the normalised velocity (`FishingHook.onHitBlock`)
+HitResult.distanceTo	port	crates/sunrise-client/src/game/items/fishing_common.rs::rebound	the bobber's block-hit bounce: the squared distance to the hook scales the normalised velocity (`FishingHook.onHitBlock`)
 Vec2.add	skip:other		2D vector maths; Sunrise has no Vec2 type and keeps 2D maths in its callers
 Vec2.distanceToSqr	skip:other		2D vector maths; Sunrise has no Vec2 type and keeps 2D maths in its callers
 Vec2.dot	skip:other		2D vector maths; Sunrise has no Vec2 type and keeps 2D maths in its callers

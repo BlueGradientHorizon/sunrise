@@ -15,7 +15,7 @@ CopperGolemStatueBlock.isPathfindable	skip:data		path types come from the per-st
 CopperGolemStatueBlock.getCloneItemStack	port	crates/sunrise-client/src/game/blocks/block_items.rs::Game::picked_stack	the statue's pose goes into the item's block_state (copper_golem_pose), picked with or without the block data
 CopperGolemStatueBlock.getFluidState	skip:data		waterlogged water source comes from the per-state fluid facts table (Level::fluid)
 CopperGolemStatueBlock.updateShape	port	crates/sunrise-world/src/level/shapes.rs::Sim::update_shape_class	statue arm runs waterlogged_tick then the default shape update
-CrafterBlock.getAnalogOutputSignal	port	crates/sunrise-client/src/game/blocks/machines/mod.rs::Containers::signal	crafter signal is the filled or disabled slot count from the block entity
+CrafterBlock.getAnalogOutputSignal	port	crates/sunrise-client/src/game/blocks/machine_containers.rs::Containers::signal	crafter signal is the filled or disabled slot count from the block entity
 CrafterBlock.getStateForPlacement	port	crates/sunrise-world/src/level/place.rs::Sim::placement_class	Crafter arm sets orientation from look direction and triggered from neighbour signal
 CrafterBlock.setPlacedBy	port	crates/sunrise-world/src/level/place.rs::Sim::set_placed_by	schedules the 4-tick crafter tick when triggered
 CrafterBlock.rotate	skip:data		rotation results come from the exported BlockState rotate table (worldgen/structure.rs)

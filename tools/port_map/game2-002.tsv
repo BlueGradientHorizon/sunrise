@@ -37,7 +37,7 @@ ItemEntity.hurtClient	skip:other		client-side hurt prediction; items are not att
 ItemEntity.hurtServer	inline	crates/sunrise-client/src/game/entities/explosion.rs::Game::explosion_hurt_entities	gap: minor: explosions destroy items at damage 5 without subtracting health; fire and lava hurt are in environment_tick
 ItemEntity.addAdditionalSaveData	port	crates/sunrise-sim/src/entity_nbt.rs::item_entity_to_nbt
 ItemEntity.readAdditionalSaveData	port	crates/sunrise-sim/src/entity_nbt.rs::item_entity_from_nbt	a missing Item returns None, which matches the discard
-ItemEntity.getName	inline	crates/sunrise-client/src/game/administration/commands/mod_server.rs::Game::target_name	the command target's name for a dropped item: its saved CustomName, else the stack's `item_name` (minecraft:item_name), else the item's display name
+ItemEntity.getName	inline	crates/sunrise-client/src/game/administration/commands_common.rs::Game::target_name	the command target's name for a dropped item: its saved CustomName, else the stack's `item_name` (minecraft:item_name), else the item's display name
 ItemEntity.teleport	port	crates/sunrise-client/src/game/blocks/nether_portal.rs::Game::spawn_teleported_entity	the recreated item immediately calls merge_with_neighbours after either portal arrival or an explicit cross-level teleport, before its first tick
 ItemEntity.getVisualRotationYInDegrees	inline	crates/sunrise-client/src/game/interface/item_draw.rs::Game::dropped_item_geometry	spin is applied in radians there; no degree conversion
 ItemEntity.getSlot	missing		a dropped item is not addressable as an entity slot: `game/administration/commands/mod.rs` has no item entity case

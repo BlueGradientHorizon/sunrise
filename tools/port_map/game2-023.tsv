@@ -21,7 +21,7 @@ LavaFluid.Flowing.createFluidStateDefinition	skip:data	-	state property list, re
 WaterFluid.beforeDestroyingBlock	port	crates/sunrise-world/src/level/update.rs::Sim::drop_resources	called from spread_to for water only
 WaterFluid.canBeReplacedWith	port	crates/sunrise-world/src/level/fluids.rs::Sim::can_be_replaced_with	-
 WaterFluid.Flowing.createFluidStateDefinition	skip:data	-	state property list, read from data tables
-MapColor.calculateARGBColor	port	crates/sunrise-client/src/game/blocks/maps/mod.rs::packed_rgba	packed id with brightness in, ARGB out; id 0 is transparent as in vanilla NONE
+MapColor.calculateARGBColor	port	crates/sunrise-client/src/game/blocks/maps/data.rs::packed_rgba	packed id with brightness in, ARGB out; id 0 is transparent as in vanilla NONE
 MapColor.getPackedId	inline	crates/sunrise-client/src/game/blocks/maps/mod.rs::Game::render_biome_preview	the packed id (color << 2 | brightness) is built where map pixels are written (maps.rs:682 and in update_map)
 AmphibiousNodeEvaluator.done	skip:other	-	vanilla sets the mob malus for WATER, WALKABLE and WATER_BORDER in prepare and restores it here; Sunrise never writes the mob malus, Finder::malus applies the amphibious values per search
 AmphibiousNodeEvaluator.isVerticalNeighborValid	inline	crates/sunrise-sim/src/mobs/path.rs::Finder::walk_neighbors	the amphibious up and down neighbours need a valid node that is WATER; folded into the amphibious branch
@@ -51,26 +51,26 @@ WalkNodeEvaluator.doesBlockHavePartialCollision	port	crates/sunrise-sim/src/mobs
 WalkNodeEvaluator.getCachedPathType	port	crates/sunrise-sim/src/mobs/path.rs::Finder::path_type	-
 WalkNodeEvaluator.getPathTypeWithinMobBB	port	crates/sunrise-sim/src/mobs/path.rs::Finder::within_bb	-
 MapItemSavedData.type	skip:data	-	saved-data type and codec; Sunrise saves map files in save_maps
-MapItemSavedData.<init>	port	crates/sunrise-client/src/game/blocks/maps/mod.rs::MapData::fresh	gap: minor: sets the grid cell, scale and dimension; locked and the tracking flags are set by the caller or the NBT load
+MapItemSavedData.<init>	port	crates/sunrise-client/src/game/blocks/maps/data.rs::MapData::fresh	gap: minor: sets the grid cell, scale and dimension; locked and the tracking flags are set by the caller or the NBT load
 MapItemSavedData.createForClient	port	crates/sunrise-client/src/game/blocks/maps/mod_client.rs::Game::remote_map_item_data	the client map is created from the packet (fresh map, locked flag from the packet)
 MapItemSavedData.mapMatcher	inline	crates/sunrise-client/src/game/blocks/maps/mod.rs::Game::tick_maps	the carried maps are the map ids in the inventory and offhand, which is what the matcher finds
 MapItemSavedData.tickCarriedBy	port	crates/sunrise-client/src/game/blocks/maps/mod.rs::Game::tick_maps	gap: player: no framed-map marker when the map hangs in an item frame, and no removal of a player who wears map-invisibility gear
-MapItemSavedData.hasMapInvisibilityItemEquipped	port	crates/sunrise-client/src/game/blocks/maps/mod.rs::Holder::new	ticked in #3517; `MapItemSavedData.hasMapInvisibilityItemEquipped` is cited at crates/sunrise-client/src/game/blocks/maps/mod.rs:161
+MapItemSavedData.hasMapInvisibilityItemEquipped	port	crates/sunrise-client/src/game/blocks/maps/data.rs::Holder::new	ticked in #3517; `MapItemSavedData.hasMapInvisibilityItemEquipped` is cited at crates/sunrise-client/src/game/blocks/maps/mod.rs:161
 MapItemSavedData.removeDecoration	inline	crates/sunrise-client/src/game/blocks/maps/mod.rs::Game::tick_maps	decorations are rebuilt each tick (holder markers kept, the rest replaced) instead of removed by key
 MapItemSavedData.addDecoration	inline	crates/sunrise-client/src/game/blocks/maps/mod.rs::Game::tick_maps	gap: player: only the item target decorations go through here; banner and frame markers never reach it
 MapItemSavedData.calculateDecorationLocationAndType	inline	crates/sunrise-client/src/game/blocks/maps/mod.rs::Game::tick_maps	player branch and item branch both done inline, with clamping
 MapItemSavedData.playerDecorationTypeAndRotation	inline	crates/sunrise-client/src/game/blocks/maps/mod.rs::Game::tick_maps	player marker sprite and rotation chosen inline (decoration_rotation for the rotation)
 MapItemSavedData.isInsideMap	inline	crates/sunrise-client/src/game/blocks/maps/mod.rs::Game::tick_maps	the plus or minus 63 range test is inline
 MapItemSavedData.decorationTypeForPlayerOutsideMap	inline	crates/sunrise-client/src/game/blocks/maps/mod.rs::Game::tick_maps	off-map and off-limits sprite choice inline
-MapItemSavedData.setColorsDirty	inline	crates/sunrise-client/src/game/blocks/maps/mod.rs::MapData::update_color	the holders dirty rectangle is updated in update_color
-MapItemSavedData.getHoldingPlayer	port	crates/sunrise-client/src/game/blocks/maps/mod.rs::MapData::holder	-
-MapItemSavedData.toggleBanner	port	crates/sunrise-client/src/game/blocks/maps/mod.rs::MapData::toggle_banner	ticked in #3517; `MapItemSavedData.toggleBanner` is cited at crates/sunrise-client/src/game/blocks/maps/mod.rs:403
+MapItemSavedData.setColorsDirty	inline	crates/sunrise-client/src/game/blocks/maps/data.rs::MapData::update_color	the holders dirty rectangle is updated in update_color
+MapItemSavedData.getHoldingPlayer	port	crates/sunrise-client/src/game/blocks/maps/data.rs::MapData::holder	-
+MapItemSavedData.toggleBanner	port	crates/sunrise-client/src/game/blocks/maps/data.rs::MapData::toggle_banner	ticked in #3517; `MapItemSavedData.toggleBanner` is cited at crates/sunrise-client/src/game/blocks/maps/mod.rs:403
 MapItemSavedData.checkBanners	port	crates/sunrise-client/src/game/blocks/maps/mod.rs::MapData::check_banners	ticked in #3517; `MapItemSavedData.checkBanners` is cited at crates/sunrise-client/src/game/blocks/maps/mod.rs:443
-MapItemSavedData.removedFromFrame	port	crates/sunrise-client/src/game/blocks/maps/mod.rs::MapData::removed_from_frame	ticked in #3517; `MapItemSavedData.removedFromFrame` is cited at crates/sunrise-client/src/game/blocks/maps/mod.rs:387
-MapItemSavedData.setColor	port	crates/sunrise-client/src/game/blocks/maps/mod.rs::MapData::update_color	-
+MapItemSavedData.removedFromFrame	port	crates/sunrise-client/src/game/blocks/maps/data.rs::MapData::removed_from_frame	ticked in #3517; `MapItemSavedData.removedFromFrame` is cited at crates/sunrise-client/src/game/blocks/maps/mod.rs:387
+MapItemSavedData.setColor	port	crates/sunrise-client/src/game/blocks/maps/data.rs::MapData::update_color	-
 MapItemSavedData.addClientSideDecorations	port	crates/sunrise-client/src/game/blocks/maps/mod_client.rs::Game::remote_map_item_data	decorations are replaced from the packet list
-MapItemSavedData.HoldingPlayer.createPatch	port	crates/sunrise-client/src/game/blocks/maps/mod.rs::MapData::update_packet	the dirty rectangle is copied into the patch
-MapItemSavedData.HoldingPlayer.markColorsDirty	inline	crates/sunrise-client/src/game/blocks/maps/mod.rs::MapData::update_color	the holder dirty rectangle is widened in update_color
+MapItemSavedData.HoldingPlayer.createPatch	port	crates/sunrise-client/src/game/blocks/maps/data.rs::MapData::update_packet	the dirty rectangle is copied into the patch
+MapItemSavedData.HoldingPlayer.markColorsDirty	inline	crates/sunrise-client/src/game/blocks/maps/data.rs::MapData::update_color	the holder dirty rectangle is widened in update_color
 MapItemSavedData.MapPatch.applyToMap	port	crates/sunrise-client/src/game/blocks/maps/mod_client.rs::Game::remote_map_item_data	the patch loop writes each colour through update_color
 LootContext.createVisitedEntry	inline	crates/sunrise-world/src/loot.rs::Context::table_raw	gap: minor: only the loot-table cycle guard (visited list); predicates and modifiers are not tracked
 LootContext.EntityTarget.getByName	port	crates/sunrise-world/src/loot.rs::Context::target	-

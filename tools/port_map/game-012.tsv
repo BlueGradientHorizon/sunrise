@@ -1,4 +1,4 @@
-Fox.defineSynchedData	port	crates/sunrise-client/src/game/network/lan/mod.rs::mob_meta	gap: minor: the type and the flags byte are synced; the two trusted-entity slots are not
+Fox.defineSynchedData	port	crates/sunrise-client/src/game/network/lan_mob_metadata.rs::mob_meta	gap: minor: the type and the flags byte are synced; the two trusted-entity slots are not
 Fox.canEat	inline	crates/sunrise-sim/src/mobs/fox.rs::ai_step	held food (eats), no target, on the ground and awake, tested in the eating block of ai_step
 Fox.populateDefaultEquipmentSlots	port	crates/sunrise-sim/src/mobs/finalize.rs::populate	Ctx::finalize calls Ctx::populate for fox equipment: one fox in five (nextFloat below 0.2) holds, by a second draw, an emerald (below 0.05), egg (0.2), rabbit foot or hide (0.4, by nextBoolean), wheat (0.6), leather (0.8) or feather
 Fox.handleEntityEvent	port	crates/sunrise-sim/src/mobs/fox.rs::ai_step	ticked in #3512; `Fox.handleEntityEvent` is cited at crates/sunrise-client/src/mobs/fox.rs:227 (in a comment, so `where` names the enclosing fn)
@@ -32,7 +32,7 @@ Fox.FoxMeleeAttackGoal.checkAndPerformAttack	port	crates/sunrise-sim/src/mobs/go
 Fox.FoxPanicGoal.shouldPanic	inline	crates/sunrise-sim/src/mobs/fox.rs::register	Panic(2.2); the not-defending test is moot because defending is never set
 Fox.FoxPounceGoal.canContinueToUse	inline	crates/sunrise-sim/src/mobs/fox.rs::Pounce::can_continue	target alive, still in the air or tilted 15 degrees, not faceplanted
 Fox.FoxStrollThroughVillageGoal.canFoxMove	port	crates/sunrise-sim/src/mobs/fox.rs::can_fox_move	not sleeping, sitting or defending, and no target; fox.rs::can_move is Fox.canMove, a different test
-Frog.defineSynchedData	port	crates/sunrise-client/src/game/network/lan/mod.rs::mob_meta	variant holder and tongue target id
+Frog.defineSynchedData	port	crates/sunrise-client/src/game/network/lan_mob_metadata.rs::mob_meta	variant holder and tongue target id
 Frog.getTongueTarget	inline	crates/sunrise-sim/src/mobs/frog.rs::ShootTongue::tick	gap: minor: the target lives in Frog.State; FrogLookControl.resetXRotOnTick has no frog case, so the head pitch is zeroed while the tongue is out
 Frog.get	port	crates/sunrise-sim/src/mobs/finalize.rs::species_variant_component	frog/variant component
 Frog.applyImplicitComponent	port	crates/sunrise-sim/src/entity_nbt.rs::apply_item_components	the `minecraft:frog/variant` name sets the variant (WARM over TEMPERATE)
@@ -84,7 +84,7 @@ Goat.finalizeSpawn	port	crates/sunrise-sim/src/mobs/finalize.rs::goat_spawn	call
 Goat.getDefaultDimensions	port	crates/sunrise-sim/src/mobs/living.rs::Mob::dims	baby box (0.45 x 0.65, eye 0.59375) from the species table; no long jump pose scale since there is no long jump
 Goat.addAdditionalSaveData	port	crates/sunrise-sim/src/entity_nbt.rs::mob_to_nbt	IsScreamingGoat, HasLeftHorn, HasRightHorn; the GoatAi LONG_JUMP_COOLDOWN_TICKS brain memory is saved too
 Goat.readAdditionalSaveData	port	crates/sunrise-sim/src/entity_nbt/mob_load.rs::mob_from_nbt	IsScreamingGoat and both horn flags (default true)
-Goat.defineSynchedData	port	crates/sunrise-client/src/game/network/lan/mod.rs::mob_meta	gap: minor: the two horn flags are synced; the screaming flag is not
+Goat.defineSynchedData	port	crates/sunrise-client/src/game/network/lan_mob_metadata.rs::mob_meta	gap: minor: the two horn flags are synced; the screaming flag is not
 Goat.checkGoatSpawnRules	port	crates/sunrise-sim/src/mobs/spawn_rules.rs::check_spawn_rules	goats_spawnable_on below and bright enough
 GoatAi.initMemories	port	crates/sunrise-sim/src/mobs/finalize.rs::goat_init_memories	the long jump cooldown uniform 600 to 1200 and the ram cooldown uniform 600 to 6000 (TIME_BETWEEN_LONG_JUMPS, TIME_BETWEEN_RAMS); Ctx::finalize and creatures.rs::breed (a baby, as Goat.getBreedOffspring calls initMemories) call it, and goat_spawn draws the same two values for a live spawn
 GoatAi.initCoreActivity	inline	crates/sunrise-sim/src/mobs/ai.rs::generic	Float (swim), Panic 2.0 and the cooldown count in goat.rs::tick
@@ -92,7 +92,7 @@ GoatAi.initIdleActivity	inline	crates/sunrise-sim/src/mobs/ai.rs::generic	Breed,
 GoatAi.initLongJumpActivity	port	crates/sunrise-sim/src/mobs/goat.rs::register	ticked in #3512; `GoatAi.initLongJumpActivity` is cited at crates/sunrise-client/src/mobs/goat.rs:61 (in a comment, so `where` names the enclosing fn)
 GoatAi.initRamActivity	port	crates/sunrise-sim/src/mobs/goat.rs::register	the Ram goal: prepare four to seven blocks away, wait 20 ticks head down, charge, knock back or break a horn
 CopperGolem.createAttributes	skip:data		attributes come from entity-types.json
-CopperGolem.defineSynchedData	port	crates/sunrise-client/src/game/network/lan/mod.rs::mob_meta	weather state and golem state
+CopperGolem.defineSynchedData	port	crates/sunrise-client/src/game/network/lan_mob_metadata.rs::mob_meta	weather state and golem state
 CopperGolem.canTurnToStatue	inline	crates/sunrise-sim/src/mobs/copper_golem.rs::update_weathering	oxidized, standing in air, 0.0058 chance per tick on the level random
 CopperGolem.playHeadSpinSound	port	crates/sunrise-sim/src/mobs/copper_golem.rs::ai_step	gap: minor: local spin sound by oxidation level, but a silent golem still plays it
 CopperGolem.getLeashOffset	port	crates/sunrise-sim/src/mobs/leash.rs::leash_offset	0.75 of the eye height on the centre, no forwards shift
@@ -133,8 +133,8 @@ HappyGhast.tickRidden	port	crates/sunrise-sim/src/mobs/happy_ghast.rs::ridden	tu
 HappyGhast.getHappyGhastRestrictionRadius	port	crates/sunrise-sim/src/mobs/happy_ghast.rs::restriction_radius	64 for a bare adult, 32 otherwise
 HappyGhast.checkRestriction	inline	crates/sunrise-sim/src/mobs/happy_ghast.rs::ai_step	home set to the block when unleashed and unridden and stale or the radius changed
 HappyGhast.continuousHeal	inline	crates/sunrise-sim/src/mobs/happy_ghast.rs::ai_step	gap: minor: one point every 600 ticks, every 20 in precipitation; the in-clouds fast heal is missing
-HappyGhast.defineSynchedData	port	crates/sunrise-client/src/game/network/lan/mod.rs::mob_meta	gap: minor: STAYS_STILL is synced; IS_LEASH_HOLDER is not tracked (no leashHolderTime), so the harness rope layer is never drawn
-HappyGhast.syncStayStillFlag	port	crates/sunrise-client/src/game/network/lan/mod.rs::mob_meta	STAYS_STILL shown while the timeout is above zero (on_still_timeout)
+HappyGhast.defineSynchedData	port	crates/sunrise-client/src/game/network/lan_mob_metadata.rs::mob_meta	gap: minor: STAYS_STILL is synced; IS_LEASH_HOLDER is not tracked (no leashHolderTime), so the harness rope layer is never drawn
+HappyGhast.syncStayStillFlag	port	crates/sunrise-client/src/game/network/lan_mob_metadata.rs::mob_meta	STAYS_STILL shown while the timeout is above zero (on_still_timeout)
 HappyGhast.getLeashOffset	port	crates/sunrise-sim/src/mobs/leash.rs::leash_offset	Vec3.ZERO, the rope at the ghast's feet rather than an eye height up
 HappyGhastAi.initCoreActivity	port	crates/sunrise-sim/src/mobs/animal_brain.rs::ghastling_package	swim, flying panic 2.0, look sink, move sink and the tempt cooldown countdown
 HappyGhastAi.initIdleActivity	port	crates/sunrise-sim/src/mobs/animal_brain.rs::ghastling_package	tempt with look in the eyes, follow a player, follow an adult, then fly stroll or walk to the look target

@@ -36,14 +36,14 @@ LevelLoadProgressTracker.finishSegment	inline	crates/sunrise-level/src/level_loa
 LevelLoadProgressTracker.tracksStage	inline	crates/sunrise-level/src/level_loading.rs::progress	both stages tracked, player chunks included
 LevelLoadProgressTracker.updateProgress	port	crates/sunrise-level/src/level_loading.rs::progress
 LoggingLevelLoadListener	skip:server		console progress log of a dedicated server or integrated server start
-CompoundContainer.isEmpty	port	crates/sunrise-client/src/game/blocks/machines/mod.rs::Containers::is_empty	a View of both halves is empty when every slot is
+CompoundContainer.isEmpty	port	crates/sunrise-client/src/game/blocks/machine_containers.rs::Containers::is_empty	a View of both halves is empty when every slot is
 CompoundContainer.contains	inline	crates/sunrise-client/src/game/blocks/block_entity_anims.rs::Game::container_openers_changed	an opener of a chest counts on both halves (chest_other_half)
-CompoundContainer.getItem	port	crates/sunrise-client/src/game/blocks/machines/mod.rs::Containers::get	View::locate picks the half; lan/menu.rs Slots::get does the same for a guest's menu
+CompoundContainer.getItem	port	crates/sunrise-client/src/game/blocks/machine_containers.rs::Containers::get	View::locate picks the half; lan/menu.rs Slots::get does the same for a guest's menu
 CompoundContainer.removeItem	inline	crates/sunrise-client/src/game/blocks/machines/mod.rs::Game::slot_mut_at	View::locate picks the half, the caller splits the stack
 CompoundContainer.removeItemNoUpdate	inline	crates/sunrise-client/src/game/blocks/machines/mod.rs::Game::slot_mut_at	View::locate picks the half, the caller takes the slot
 CompoundContainer.setItem	inline	crates/sunrise-client/src/game/blocks/machines/mod.rs::Game::slot_mut_at	View::locate picks the half
 CompoundContainer.stillValid	port	crates/sunrise-sim/src/lan/menu.rs::Slots::still_valid	both halves must still be there and in reach
-CompoundContainer.canPlaceItem	port	crates/sunrise-client/src/game/blocks/machines/mod.rs::Containers::can_place
+CompoundContainer.canPlaceItem	port	crates/sunrise-client/src/game/blocks/machine_containers.rs::Containers::can_place
 Container.countItem	port	crates/sunrise-sim/src/mobs/villager.rs::Ext::count_item	villager inventory only, the one caller that needs it
 Container.hasAnyOf	inline	crates/sunrise-sim/src/mobs/villager.rs::Ext::take_half_stack	TradeWithVillager's hasAnyOf gate: no wanted item in the inventory, nothing is thrown
 Container.hasAnyMatching	inline	crates/sunrise-sim/src/mobs/villager_brain.rs::harvest_tick	Villager.hasFarmSeeds gate: a farmer sows only when a plantable seed is in the inventory; the hopper checks of chiseled bookshelf and jukebox canTakeItem are not ported as such

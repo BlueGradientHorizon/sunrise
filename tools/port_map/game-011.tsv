@@ -55,7 +55,7 @@ Llama.setRandomStrength	inline	crates/sunrise-sim/src/mobs/finalize.rs::Ctx::fin
 Llama.addAdditionalSaveData	port	crates/sunrise-sim/src/mobs/llama.rs::to_nbt	Variant and Strength
 Llama.readAdditionalSaveData	port	crates/sunrise-sim/src/mobs/llama.rs::from_nbt
 Llama.registerGoals	port	crates/sunrise-sim/src/mobs/llama.rs::register	goals and targets as vanilla, path length 40
-Llama.defineSynchedData	port	crates/sunrise-client/src/game/network/lan/mod.rs::mob_meta	strength and variant entries
+Llama.defineSynchedData	port	crates/sunrise-client/src/game/network/lan_mob_metadata.rs::mob_meta	strength and variant entries
 Llama.get	port	crates/sunrise-sim/src/mobs/finalize.rs::species_variant_component	llama/variant component, a trader llama too
 Llama.applyImplicitComponent	port	crates/sunrise-sim/src/entity_nbt.rs::apply_item_components	the `minecraft:llama/variant` name sets the variant; a trader llama inherits the llama's arm
 Llama.playChestEquipsSound	inline	crates/sunrise-client/src/game/mobs/llamas.rs::Game::interact_llama	entity.llama.chest when a chest is added
@@ -86,7 +86,7 @@ ZombieHorse.generateZombieHorseSpeed	inline	crates/sunrise-sim/src/mobs/finalize
 ZombieHorse.addBehaviourGoals	inline	crates/sunrise-sim/src/mobs/equine.rs::register	float and tempt with the zombie horse food, no mount panic
 ZombieHorse.mobInteract	inline	crates/sunrise-client/src/game/mobs/mounts.rs::Game::interact_mount	gap: player: an untamed zombie horse with a non-food item in hand is mounted instead of rearing angrily, and food that is not eaten still mounts it
 Cat.getSoundSet	port	crates/sunrise-sim/src/mobs/finalize.rs::variant_sound
-Cat.defineSynchedData	port	crates/sunrise-client/src/game/network/lan/mod.rs::mob_meta	gap: minor: variant, lying, relax and collar are sent, the sound variant entry is not
+Cat.defineSynchedData	port	crates/sunrise-client/src/game/network/lan_mob_metadata.rs::mob_meta	gap: minor: variant, lying, relax and collar are sent, the sound variant entry is not
 Cat.addAdditionalSaveData	port	crates/sunrise-sim/src/entity_nbt.rs::mob_to_nbt	variant, sound_variant and CollarColor
 Cat.readAdditionalSaveData	port	crates/sunrise-sim/src/entity_nbt/mob_load.rs::mob_from_nbt
 Cat.getAmbientSound	inline	crates/sunrise-sim/src/mobs/ai.rs::play_ambient	gap: minor: purr when in love and the stray sound are used; a tame cat never plays the purreow variant
@@ -131,14 +131,14 @@ Pufferfish.playerTouch	port	crates/sunrise-client/src/game/mobs/creatures/puffer
 Pufferfish.readAdditionalSaveData	port	crates/sunrise-sim/src/entity_nbt/mob_load.rs::mob_from_nbt	`getIntOr("PuffState", 0)` at most 2; mob_to_nbt writes it, and a reload test covers it
 Pufferfish.registerGoals	port	crates/sunrise-sim/src/mobs/aquatic.rs::register	the puff goal at priority 1
 Pufferfish.touch	inline	crates/sunrise-sim/src/mobs/aquatic.rs::ai_step	sting_touching_mobs: alive mobs outside #not_scary_for_pufferfish whose box meets the fish's inflated by 0.3, when teams allow damage, take a mobAttack hit for puff state + 1, then, once it lands, POISON for 60 * puff state and the sting sound (game/mobs/creatures/mod.rs PufferfishSting)
-Salmon.defineSynchedData	port	crates/sunrise-client/src/game/network/lan/mod.rs::mob_meta	size entry, small 0 to large 2
+Salmon.defineSynchedData	port	crates/sunrise-client/src/game/network/lan_mob_metadata.rs::mob_meta	size entry, small 0 to large 2
 Salmon.readAdditionalSaveData	port	crates/sunrise-sim/src/entity_nbt.rs::read_variant	the type tag, medium by default
 Salmon.get	inline	crates/sunrise-sim/src/entity_nbt.rs::bucket_components	the size component goes onto the bucket
 Salmon.applyImplicitComponent	port	crates/sunrise-sim/src/entity_nbt.rs::apply_item_components	size from the bucket, the salmon/size component
 Salmon.finalizeSpawn	port	crates/sunrise-sim/src/mobs/finalize.rs::Ctx::finalize	weighted size: small 30, medium 50, large 15
 Salmon.getDefaultDimensions	port	crates/sunrise-client/src/mobs/living.rs::Mob::awake_dims_in	the variant's bounding box scale (small 0.5, medium 1.0, large 1.5) over the whole box, through aquatic::salmon_scale
 TropicalFish.packVariant	inline	crates/sunrise-sim/src/entity_nbt.rs::mob_to_nbt	packed pattern, base colour and pattern colour; lan.rs::mob_meta packs it for sync
-TropicalFish.defineSynchedData	port	crates/sunrise-client/src/game/network/lan/mod.rs::mob_meta	packed variant entry
+TropicalFish.defineSynchedData	port	crates/sunrise-client/src/game/network/lan_mob_metadata.rs::mob_meta	packed variant entry
 TropicalFish.readAdditionalSaveData	port	crates/sunrise-sim/src/entity_nbt.rs::read_variant	an unknown pattern is a kob; full color bytes use DyeColor.byId zero fallback
 TropicalFish.setPattern	inline	crates/sunrise-sim/src/entity_nbt.rs::apply_item_components	only reached from the bucket's pattern component
 TropicalFish.setBaseColor	inline	crates/sunrise-sim/src/entity_nbt.rs::apply_item_components	only reached from the bucket's base colour component

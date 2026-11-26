@@ -114,9 +114,9 @@ WitherSkullBlock.getOrCreateWitherFull	inline	crates/sunrise-client/src/game/mob
 AbstractFurnaceBlockEntity.consumeFuel	inline	crates/sunrise-sim/src/furnace.rs::Furnace::tick	Fuel count drops by one when a burn starts; bucket remainder in the same branch.
 AbstractFurnaceBlockEntity.canBurn	inline	crates/sunrise-sim/src/furnace.rs::Furnace::tick	Output slot check (same item, room left) inside tick.
 AbstractFurnaceBlockEntity.getTotalCookTime	port	crates/sunrise-sim/src/furnace.rs::total_time
-AbstractFurnaceBlockEntity.getSlotsForFace	port	crates/sunrise-client/src/game/blocks/machines/mod.rs::View::slots_for_face_iter	Furnace faces: down 2 and 1, up 0, sides 1.
-AbstractFurnaceBlockEntity.canTakeItemThroughFace	port	crates/sunrise-client/src/game/blocks/machines/mod.rs::Containers::can_take
-AbstractFurnaceBlockEntity.canPlaceItem	port	crates/sunrise-client/src/game/blocks/machines/mod.rs::Containers::can_place	Furnace arm: output refused, fuel slot takes fuel or a bucket.
+AbstractFurnaceBlockEntity.getSlotsForFace	port	crates/sunrise-client/src/game/blocks/machine_containers.rs::View::slots_for_face_iter	Furnace faces: down 2 and 1, up 0, sides 1.
+AbstractFurnaceBlockEntity.canTakeItemThroughFace	port	crates/sunrise-client/src/game/blocks/machine_containers.rs::Containers::can_take
+AbstractFurnaceBlockEntity.canPlaceItem	port	crates/sunrise-client/src/game/blocks/machine_containers.rs::Containers::can_place	Furnace arm: output refused, fuel slot takes fuel or a bucket.
 AbstractFurnaceBlockEntity.setRecipeUsed	inline	crates/sunrise-sim/src/furnace.rs::Furnace::tick	The recipe count goes up at each finished smelt.
 AbstractFurnaceBlockEntity.awardUsedRecipesAndPopExperience	port	crates/sunrise-client/src/game/item_entities.rs::Game::award_furnace_recipes	gap: minor: pays the experience and clears the used recipes; the recipe unlock and recipe-crafted trigger are not in this fn.
 AbstractFurnaceBlockEntity.getRecipesToAwardAndPopExperience	port	crates/sunrise-sim/src/furnace.rs::Furnace::recipe_experience	gap: minor: returns counts and experience, not the recipe list.
@@ -127,7 +127,7 @@ BannerBlockEntity.collectImplicitComponents	port	crates/sunrise-sim/src/block_en
 BaseContainerBlockEntity.loadAdditional	port	crates/sunrise-game-data/src/block_entity_nbt.rs::items	container slots from the saved list
 BaseContainerBlockEntity.saveAdditional	port	crates/sunrise-game-data/src/block_entity_nbt.rs::canonical	container NBT in its saved form
 BaseContainerBlockEntity.sendChestLockedNotifications	port	crates/sunrise-level/src/containers.rs::locked_message	the container.isLocked action-bar text, naming the container by its display name; the menu path in game/network/lan_actions.rs refuses a container whose Lock the held item does not open, sends this and plays block.chest.locked
-BaseContainerBlockEntity.isEmpty	port	crates/sunrise-client/src/game/blocks/machines/mod.rs::Containers::is_empty
+BaseContainerBlockEntity.isEmpty	port	crates/sunrise-client/src/game/blocks/machine_containers.rs::Containers::is_empty
 BaseContainerBlockEntity.removeItem	port	crates/sunrise-client/src/game/blocks/machines/mod.rs::Game::take_one	gap: minor: takes one item, not a chosen count.
 BaseContainerBlockEntity.createMenu	port	crates/sunrise-client/src/game.rs::Game::open_menu	opens the container's screen
 BaseContainerBlockEntity.applyImplicitComponents	port	crates/sunrise-sim/src/block_entity_item.rs::place	container items, name and lock from item components

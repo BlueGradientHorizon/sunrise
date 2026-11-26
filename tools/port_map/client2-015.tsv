@@ -74,7 +74,7 @@ AdvancementWidget.createWidget	inline	crates/sunrise-client/src/game/interface/a
 AdvancementWidget.getMaxProgressWidth	inline	crates/sunrise-client/src/game/interface/advancements_screen.rs::Game::adv_widget_text	width of the progress text when there is more than one requirement
 AdvancementWidget.getMaxWidth	inline	crates/sunrise-client/src/game/interface/advancements_screen.rs::Game::adv_widget_text	widest line of the wrapped description
 AdvancementWidget.findOptimalLines	inline	crates/sunrise-client/src/game/interface/advancements_screen.rs::Game::adv_widget_text	offsets 0, 10, -10, 25, -25 and the 10 px tolerance
-AdvancementWidget.findFirstVisibleParent	inline	crates/sunrise-client/src/game/interface/advancements/mod.rs::RemoteTree::widget_links	resolves the nearest displayed insertion-time ancestor
+AdvancementWidget.findFirstVisibleParent	inline	crates/sunrise-client/src/game/interface/advancements/common.rs::RemoteTree::widget_links	resolves the nearest displayed insertion-time ancestor
 AdvancementWidget.extractConnectivity	port	crates/sunrise-client/src/game/interface/advancements_screen.rs::Game::draw_advancements	connection lines, background pass then the line pass
 AdvancementWidget.extractRenderState	port	crates/sunrise-client/src/game/interface/advancements_screen.rs::Game::draw_advancements	frame sprite (obtained or not) and the item icon
 AdvancementWidget.extractMultilineText	inline	crates/sunrise-client/src/game/interface/advancements_screen.rs::Game::adv_draw_hover	description lines in the hover card

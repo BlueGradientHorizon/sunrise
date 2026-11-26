@@ -139,7 +139,7 @@ MaceItem.createAttributes	skip:data		attribute modifiers come from the item data
 MaceItem.calculateImpactPosition	inline	crates/sunrise-client/src/game/items/mace.rs::Game::mace_hurt_enemy	the earlier impact below the player is kept
 MaceItem.knockbackPredicate	port	crates/sunrise-client/src/game/items/mace.rs::Game::smash_knockback	the nearby entity filter for the smash
 MapItem.create	port	crates/sunrise-client/src/game/blocks/maps/mod.rs::Game::register_exploration_maps
-MapItem.createNewSavedData	port	crates/sunrise-client/src/game/blocks/maps/mod.rs::MapData::fresh
+MapItem.createNewSavedData	port	crates/sunrise-client/src/game/blocks/maps/data.rs::MapData::fresh
 MapItem.getCorrectStateForFluidBlock	inline	crates/sunrise-client/src/game/blocks/maps/mod.rs::Game::update_map	the map colour pass
 MapItem.inventoryTick	port	crates/sunrise-client/src/game/blocks/maps/mod.rs::Game::tick_maps
 MapItem.lockMap	port	crates/sunrise-sim/src/menu.rs::Menu::map_crafted	the lock branch of the post processing
