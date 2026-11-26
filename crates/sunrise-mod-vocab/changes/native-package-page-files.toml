@@ -1,3 +1,0 @@
-ids = ["behaviour:native_package_files"]
-why = "`cargo sunrise-mod build` no longer packs the root `page.toml` and `page/` into a native `.smod`: they are the registry page, which it writes to `<id>.page.tar`. A package that carried them was refused as `unexpected package path: page.toml` by the tools of builds before Nov 25, so the launcher could not check it against those builds. The tools now leave a root page entry in an older package out, unread."
-migrate = "Rebuild a native mod that has a `page.toml` and was built with a tool from Nov 25 on, so its `.smod` drops the page files. A `src/page/` folder is source as before."
