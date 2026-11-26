@@ -1211,7 +1211,11 @@ impl Game<'_> {
                                 );
                                 self.finish_mob_damage_at(index);
                             } else {
-                                m.heal(&self.loop_context, (4 << amp.min(30)) as f32);
+                                m.heal(
+                                    &self.loop_context,
+                                    &|| crate::game::entity::hit_reads_of!(self),
+                                    (4 << amp.min(30)) as f32,
+                                );
                             }
                         }
                         _ => {
@@ -1231,9 +1235,17 @@ impl Game<'_> {
             EffectAction::Heal(mut amount) => {
                 if let Some(player) = self.player.as_ref() {
                     let mut cancel = false;
+                    let reads = || crate::game::entity::hit_reads_of!(self);
+                    let healed = sunrise_client::health::LivingLend::player(
+                        player.entity_id,
+                        &player.attributes,
+                        &player.health.data,
+                        player.health.ids,
+                        &reads,
+                    );
                     sunrise_client::hunger::native_living_heal(
                         &self.loop_context,
-                        player.entity_id as u32,
+                        healed,
                         &mut amount,
                         &mut cancel,
                     );
@@ -2356,7 +2368,11 @@ impl Game<'_> {
                                 );
                                 self.finish_mob_damage_at(index);
                             } else {
-                                m.heal(&self.loop_context, amount(4));
+                                m.heal(
+                                    &self.loop_context,
+                                    &|| crate::game::entity::hit_reads_of!(self),
+                                    amount(4),
+                                );
                             }
                         }
                         _ => {
@@ -2774,6 +2790,7 @@ impl Game<'_> {
                 } else {
                     m.heal(
                         &self.loop_context,
+                        &|| crate::game::entity::hit_reads_of!(self),
                         (intensity * f64::from(4 << amp) + 0.5) as i32 as f32,
                     );
                 }

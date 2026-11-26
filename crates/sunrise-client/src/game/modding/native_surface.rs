@@ -148,6 +148,10 @@ impl sunrise_client::motion::SideLevel for Game<'_> {
         self.last_hurt_target_alive(id)
     }
 
+    fn hit_reads(&self) -> Option<sunrise_client::health::HitReads<'_>> {
+        crate::game::entity::hit_reads_of!(self)
+    }
+
     fn damage_types(&self) -> &sunrise_world::damage_source::Catalog {
         &self.health_resources.damage
     }

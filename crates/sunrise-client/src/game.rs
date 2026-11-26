@@ -566,6 +566,9 @@ mod entity_sections;
 mod entity_sizes;
 #[path = "game/entities/entity_sounds.rs"]
 mod entity_sounds;
+#[cfg(test)]
+#[path = "game/entities/entity_tick_families_tests.rs"]
+mod entity_tick_families_tests;
 #[path = "game/modding/entity_type_rows.rs"]
 mod entity_type_rows;
 #[path = "game/items/equip_answers.rs"]
@@ -767,6 +770,9 @@ mod interaction_data_tests;
 mod interactions;
 #[path = "game/interface/inventory_input.rs"]
 mod inventory_input;
+#[cfg(test)]
+#[path = "game/modding/inventory_menu_parts_tests.rs"]
+mod inventory_menu_parts_tests;
 #[path = "game/interface/inventory_slots.rs"]
 mod inventory_slots;
 #[path = "game/items/inventory_tick.rs"]
@@ -1362,6 +1368,9 @@ mod native_hanging;
 mod native_hanging_tests;
 #[path = "game/modding/native_harvest_queries.rs"]
 mod native_harvest_queries;
+#[cfg(test)]
+#[path = "game/modding/native_heal_motion_view_tests.rs"]
+mod native_heal_motion_view_tests;
 #[cfg(test)]
 #[path = "game/modding/native_held_out_tests.rs"]
 mod native_held_out_tests;
@@ -2526,6 +2535,7 @@ pub(crate) use launch_options::Options;
 pub use native_block_entity_draw::BlockEntityDraw;
 pub use native_data_maps::DataMapType;
 pub use native_hooks::{PhantomSpawnResult, SleepProblem};
+pub(crate) use native_living_body::with_lent_view;
 pub use native_mob_draw::{MobRender, PlayerRender};
 use std::{
     cell::RefCell,

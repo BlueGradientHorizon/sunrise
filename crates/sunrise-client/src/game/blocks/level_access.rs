@@ -7,6 +7,10 @@ impl LevelAccess for GameLevel<'_> {
         self.world.infiniburn.as_deref()
     }
     #[inline]
+    fn golem_heads(&self) -> Option<&sunrise_world::level::data::BlockSet> {
+        self.world.golem_heads.as_deref()
+    }
+    #[inline]
     fn cake_can_eat(&self, vanilla: bool) -> bool {
         if self.cake_probe {
             self.cake_requested.set(true);

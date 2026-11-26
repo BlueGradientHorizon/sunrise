@@ -1201,7 +1201,8 @@ impl Game<'_> {
     ) -> bool {
         let [x, y, z] = gs.pos;
         let name = &self.res.facts().get(self.world.block(x, y, z)).name;
-        StationKind::from_block(name) == Some(gs.kind) && g.within_block_range(gs.pos, 4.0)
+        StationKind::from_block(name) == Some(gs.kind)
+            && g.within_interaction_range(&self.loop_context, gs.pos, 4.0)
     }
 
     /// `LecternMenu.stillValid` (`Container.stillValidBlockEntity`): the block
@@ -1215,7 +1216,7 @@ impl Game<'_> {
         matches!(
             self.world.block_entities.get(&key),
             Some(BlockEntity::Lectern(l)) if l.book.is_some()
-        ) && g.within_block_range([key.0, key.1, key.2], 4.0)
+        ) && g.within_interaction_range(&self.loop_context, [key.0, key.1, key.2], 4.0)
     }
 
     /// One guest's lectern each tick: `stillValid` (the block entity, its book, the reach)

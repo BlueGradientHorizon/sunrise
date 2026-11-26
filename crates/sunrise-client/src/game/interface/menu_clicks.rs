@@ -464,7 +464,9 @@ impl Game<'_> {
         }
         let menu_id = if matches!(kind, Kind::Mount(_)) {
             Some("sunrise:mount_inventory")
-        } else if matches!(kind, Kind::Inventory | Kind::ItemPicker) {
+        } else if kind == Kind::Inventory {
+            Some(sunrise_client::menu::INVENTORY_MENU)
+        } else if kind == Kind::ItemPicker {
             None
         } else {
             self.remote_menu_type()

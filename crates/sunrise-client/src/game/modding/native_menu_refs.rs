@@ -719,7 +719,7 @@ impl Game<'_> {
         let rules = match &guest.menu {
             None => LiveSlotRules {
                 kind: Kind::Inventory,
-                registry_id: None,
+                registry_id: Some(sunrise_client::menu::INVENTORY_MENU),
                 pos: None,
                 main: &[],
                 main_second: &[],

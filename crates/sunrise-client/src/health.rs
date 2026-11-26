@@ -410,6 +410,23 @@ pub struct PlayerBody<'a> {
     pub attachments: Option<&'a sunrise_mod_runtime::attachments::Attachments>,
 }
 impl<'a> PlayerBody<'a> {
+    /// The player in place's body: the floats and attributes its holder lends, and the effects,
+    /// stacks and UUID the game keeps beside it (`reads`).
+    pub fn in_place(
+        id: i32,
+        body: PlayerBodyRead<'a, Attributes>,
+        reads: Option<&HitReads<'a>>,
+    ) -> Self {
+        Self {
+            id,
+            uuid: reads.and_then(|reads| reads.player_uuid),
+            health: PlayerHealthRead::Synced(body.data, body.ids),
+            attributes: Some(body.attributes),
+            effects: reads.and_then(|reads| reads.player_effects),
+            equipment: reads.map_or([None; 8], |reads| reads.player_equipment),
+            attachments: None,
+        }
+    }
     /// A guest's body as its hub record keeps it while the guest is not in place: its stored
     /// health, the attributes of its body, its effects, stacks and attachments.
     pub fn of_record(g: &'a crate::lan::guest::Guest) -> Self {
@@ -493,6 +510,87 @@ pub struct HitReads<'a> {
     pub player_attachments: Option<&'a sunrise_mod_runtime::attachments::Attachments>,
     pub entity_attachments:
         Option<&'a crate::fast_hash::FxHashMap<u32, sunrise_mod_runtime::attachments::Attachments>>,
+}
+/// The body a heal or movement hook lends: a mob, or the player in place, whose effects, stacks
+/// and UUID come from the reads (as a hit's player victim's do, [`PlayerBody::in_place`]).
+#[derive(Clone, Copy)]
+pub enum LendBody<'a> {
+    Mob(&'a crate::mobs::Mob),
+    Player {
+        id: i32,
+        attributes: &'a Attributes,
+        data: &'a SyncedFloats,
+        ids: PlayerFloatIds,
+    },
+}
+/// A living entity a heal or movement hook lends its listeners for reading
+/// ([`LivingView`](mod_api::LivingView)): the body the site holds, and what naming and reading it
+/// needs beyond the body, which the game builds only once a listener is subscribed.
+#[derive(Clone, Copy)]
+pub struct LivingLend<'a> {
+    pub body: LendBody<'a>,
+    pub reads: &'a dyn Fn() -> Option<HitReads<'a>>,
+}
+impl<'a> LivingLend<'a> {
+    /// A mob's lend.
+    pub fn mob(mob: &'a crate::mobs::Mob, reads: &'a dyn Fn() -> Option<HitReads<'a>>) -> Self {
+        Self {
+            body: LendBody::Mob(mob),
+            reads,
+        }
+    }
+    /// The player in place's lend: its floats and attributes as the site holds them.
+    pub fn player(
+        id: i32,
+        attributes: &'a Attributes,
+        data: &'a SyncedFloats,
+        ids: PlayerFloatIds,
+        reads: &'a dyn Fn() -> Option<HitReads<'a>>,
+    ) -> Self {
+        Self {
+            body: LendBody::Player {
+                id,
+                attributes,
+                data,
+                ids,
+            },
+            reads,
+        }
+    }
+    /// The entity's id (`Entity.getId`).
+    pub fn id(&self) -> u32 {
+        match self.body {
+            LendBody::Mob(m) => m.id,
+            LendBody::Player { id, .. } => id as u32,
+        }
+    }
+    /// The entity's type name.
+    pub fn kind(&self) -> &'a str {
+        match self.body {
+            LendBody::Mob(m) => &m.kind.id,
+            LendBody::Player { .. } => "minecraft:player",
+        }
+    }
+    /// The body its reads read, completed from `reads`.
+    pub fn living_body(&self, reads: &HitReads<'a>) -> LivingBody<'a> {
+        match self.body {
+            LendBody::Mob(m) => LivingBody::Mob(m),
+            LendBody::Player {
+                id,
+                attributes,
+                data,
+                ids,
+            } => LivingBody::Player(PlayerBody::in_place(
+                id,
+                PlayerBodyRead {
+                    attributes,
+                    data,
+                    ids,
+                },
+                Some(reads),
+            )),
+        }
+    }
 }
 /// Inputs to `Entity.isInvulnerableToBase` for a mob or a nonliving body.
 pub struct BodyImmunity<T> {
@@ -2706,17 +2804,8 @@ fn player_hook_level<'b>(
     body: Option<PlayerBodyRead<'b, Attributes>>,
 ) -> DamageLevel<'b> {
     let reads = level.reads();
-    let victim = body.map(|body| {
-        LivingBody::Player(PlayerBody {
-            id: entity,
-            uuid: reads.and_then(|reads| reads.player_uuid),
-            health: PlayerHealthRead::Synced(body.data, body.ids),
-            attributes: Some(body.attributes),
-            effects: reads.and_then(|reads| reads.player_effects),
-            equipment: reads.map_or([None; 8], |reads| reads.player_equipment),
-            attachments: None,
-        })
-    });
+    let victim =
+        body.map(|body| LivingBody::Player(PlayerBody::in_place(entity, body, reads.as_ref())));
     let level = level.reborrow();
     match victim {
         Some(victim) => level.with_victim(victim),

@@ -468,15 +468,16 @@ impl Game<'_> {
             .player_uuid
             .map(sunrise_client::lan::playerdata::ints_uuid);
         if me == Some(who) && self.player.is_some() {
-            return self.eye_position().is_some_and(|eye| {
+            let within = self.eye_position().is_some_and(|eye| {
                 sunrise_client::lan::guest::within_block_range(eye, self.reach() + 4.0, at)
             });
+            return self.host_within_interaction_range(at, within);
         }
         self.lan.as_ref().is_some_and(|host| {
             host.hub
                 .guests
                 .iter()
-                .any(|g| g.uuid == who && g.within_block_range(at, 4.0))
+                .any(|g| g.uuid == who && g.within_interaction_range(&self.loop_context, at, 4.0))
         })
     }
     /// `SignBlock.openTextEdit` for the front side after placement.
@@ -520,6 +521,7 @@ impl Game<'_> {
         let near = self.eye_position().is_some_and(|eye| {
             sunrise_client::lan::guest::within_block_range(eye, self.reach() + 4.0, [x, y, z])
         });
+        let near = self.host_within_interaction_range([x, y, z], near);
         let sign = matches!(
             self.world.block_entities.get(&edit.pos),
             Some(BlockEntity::Sign(_))
