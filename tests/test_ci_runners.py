@@ -83,15 +83,22 @@ def checkouts(job):
 
 
 def labels_of(runs_on):
-    """The labels a parsed runs-on can select: a list's or mapping's own, a plain label, or the lists in an
-    expression's fromJSON('[...]') literals, whichever branch picks them (other values name hosted runners)."""
+    """The labels a parsed runs-on can select: a list's or mapping's own, a plain label, or the labels an expression
+    picks, whichever branch picks them: its quoted labels and the lists in its fromJSON('[...]') literals, but not
+    the values it compares or passes to a function (other values name hosted runners)."""
     if isinstance(runs_on, dict):
         runs_on = runs_on.get("labels", [])
     if isinstance(runs_on, list):
         return set(runs_on)
     if not runs_on.startswith("${{"):
         return {runs_on}
-    return {label for literal in re.findall(r"fromJSON\('(\[[^']*\])'\)", runs_on) for label in json.loads(literal)}
+    labels = set()
+    for literal in re.finditer(r"(?P<before>[=!]=\s*|,\s*)?'(?P<text>[^']*)'(?P<after>\s*[=!]=)?", runs_on):
+        if literal["before"] or literal["after"]:
+            continue
+        text = literal["text"]
+        labels.update(json.loads(text) if text.startswith("[") else [text])
+    return labels
 
 
 def parsed_expression(runs_on):
@@ -99,7 +106,7 @@ def parsed_expression(runs_on):
     body = runs_on.removeprefix("${{").removesuffix("}}").replace("&&", " and ").replace("||", " or ")
     tree = ast.parse(re.sub(r"!(?!=)", " not ", body).strip(), mode="eval").body
     comparisons = {ast.unparse(node) for node in ast.walk(tree) if isinstance(node, ast.Compare)}
-    return comparisons, tree.values[-1]
+    return comparisons, tree.values[-1] if isinstance(tree, ast.BoolOp) else tree
 
 
 def routed():
@@ -131,6 +138,12 @@ class OwnRunnerTests(unittest.TestCase):
             "        run: echo head.repo.fork\n")
         found = [e for e in fork_flag_expressions(document) if "head.repo.fork" in e]
         self.assertEqual(len(found), 3)
+
+    def test_a_runs_on_expression_is_read_for_every_label_it_picks(self):
+        light = "${{ vars.SELF_HOSTED_CI != 'off' && 'sunrise-light' || 'ubuntu-latest' }}"
+        self.assertEqual(labels_of(light), {"sunrise-light", "ubuntu-latest"})
+        both = "${{ a == 'x' && fromJSON('[\"self-hosted\", \"sunrise-checks\"]') || 'ubuntu-24.04' }}"
+        self.assertEqual(labels_of(both), {"self-hosted", "sunrise-checks", "ubuntu-24.04"})
 
     def test_every_job_on_our_runners_can_go_back_to_github(self):
         count = 0
