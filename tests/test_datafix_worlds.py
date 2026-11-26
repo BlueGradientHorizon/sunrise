@@ -1,7 +1,9 @@
 """Unit tests for tools/datafix_worlds.py: the Java runtime choice, the bot's configuration phase, the server stop."""
+import socket
 import subprocess
 import sys
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -94,6 +96,47 @@ class KnownPacksTests(unittest.TestCase):
     def test_a_protocol_with_no_known_id_is_refused(self):
         with self.assertRaisesRegex(ValueError, 'protocol 999'):
             self.configure(999, [])
+
+
+class BotFailedJoinTests(unittest.TestCase):
+    def join_against(self, packets, protocol):
+        """Run Bot against a local server that sends `packets` (id, payload) once connected; returns the error and the bot's socket."""
+        listener = socket.socket()
+        self.addCleanup(listener.close)
+        listener.bind(('127.0.0.1', 0))
+        listener.listen(1)
+
+        def serve():
+            peer, _ = listener.accept()
+            with peer:
+                for packet_id, payload in packets:
+                    body = bytes([packet_id]) + payload
+                    peer.sendall(bytes([len(body)]) + body)
+                peer.settimeout(5)
+                try:
+                    while peer.recv(4096):
+                        pass
+                except OSError:
+                    pass
+        threading.Thread(target=serve, daemon=True).start()
+        made = []
+        create = socket.create_connection
+        with mock.patch.object(worlds.socket, 'create_connection', lambda *a, **k: made.append(create(*a, **k)) or made[-1]):
+            with self.assertRaises((RuntimeError, ValueError)) as caught:
+                worlds.Bot(listener.getsockname()[1], protocol, 'x')
+        self.addCleanup(made[0].close)
+        return caught.exception, made[0]
+
+    def test_a_refused_login_closes_the_socket(self):
+        error, sock = self.join_against([(0, b'no')], 770)
+        self.assertIsInstance(error, RuntimeError)
+        self.assertEqual(sock.fileno(), -1)
+
+    def test_a_failed_configuration_closes_the_socket(self):
+        # Login succeeds, then the bot has no select_known_packs id for protocol 999 and refuses.
+        error, sock = self.join_against([(2, b'')], 999)
+        self.assertIsInstance(error, ValueError)
+        self.assertEqual(sock.fileno(), -1)
 
 
 class BuildCleanupTests(unittest.TestCase):

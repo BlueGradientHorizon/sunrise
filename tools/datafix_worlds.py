@@ -271,32 +271,36 @@ class Bot:
 
     def __init__(self, port, protocol, name):
         self.sock = socket.create_connection(('127.0.0.1', port), timeout=30)
-        self.threshold = -1
-        self.buffer = b''
-        self.protocol = protocol
-        self.stop = threading.Event()
-        self.send(0, varint(protocol) + mcstring('127.0.0.1') + struct.pack('>H', port) + varint(2))
-        if protocol <= 758:  # 1.18.2: the name only
-            self.send(0, mcstring(name))
-        elif protocol == 759:  # 1.19: no signature data
-            self.send(0, mcstring(name) + b'\x00')
-        elif protocol == 760:  # 1.19.2: no signature data, optional UUID
-            self.send(0, mcstring(name) + b'\x00' + b'\x01' + offline_uuid(name).bytes)
-        elif protocol <= 763:  # 1.19.3 - 1.20.1: optional UUID
-            self.send(0, mcstring(name) + b'\x01' + offline_uuid(name).bytes)
-        else:
-            self.send(0, mcstring(name) + offline_uuid(name).bytes)
-        while True:
-            pid, data = self.receive()
-            if pid == 3:
-                self.threshold = parse_varint(data, 0)[1]
-            elif pid == 2:
-                break
-            elif pid == 0:
-                raise RuntimeError(f'login refused: {data!r}')
-        if protocol >= 764:
-            self.send(3)  # login acknowledged -> configuration
-            self.configure()
+        try:
+            self.threshold = -1
+            self.buffer = b''
+            self.protocol = protocol
+            self.stop = threading.Event()
+            self.send(0, varint(protocol) + mcstring('127.0.0.1') + struct.pack('>H', port) + varint(2))
+            if protocol <= 758:  # 1.18.2: the name only
+                self.send(0, mcstring(name))
+            elif protocol == 759:  # 1.19: no signature data
+                self.send(0, mcstring(name) + b'\x00')
+            elif protocol == 760:  # 1.19.2: no signature data, optional UUID
+                self.send(0, mcstring(name) + b'\x00' + b'\x01' + offline_uuid(name).bytes)
+            elif protocol <= 763:  # 1.19.3 - 1.20.1: optional UUID
+                self.send(0, mcstring(name) + b'\x01' + offline_uuid(name).bytes)
+            else:
+                self.send(0, mcstring(name) + offline_uuid(name).bytes)
+            while True:
+                pid, data = self.receive()
+                if pid == 3:
+                    self.threshold = parse_varint(data, 0)[1]
+                elif pid == 2:
+                    break
+                elif pid == 0:
+                    raise RuntimeError(f'login refused: {data!r}')
+            if protocol >= 764:
+                self.send(3)  # login acknowledged -> configuration
+                self.configure()
+        except BaseException:
+            self.sock.close()   # the caller never gets the bot, so nothing else would close it
+            raise
         threading.Thread(target=self.idle, daemon=True).start()
 
     def configure(self):
