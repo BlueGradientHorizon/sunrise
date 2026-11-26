@@ -120,9 +120,11 @@ fn execute<Ev, R: MainRoute<Ev>>(
             return;
         }
         if matches!(incoming.body, Body::Payload(_)) {
-            // This is a wire record on the dedicated client reader, not work
-            // staged by a mod. A closed reader leaves the old epoch to main:
-            // an already-admitted bundle may still have inline payloads to run.
+            // Only the dedicated client reader uses the direct path. Hosted
+            // payloads go through main preparation and publication, and bundle
+            // roots use that same path but stay in the current ordered main turn.
+            // A closed reader leaves the old epoch to main: an already-admitted
+            // bundle may still have inline payloads to run.
             match main.direct_payload(incoming) {
                 Direct::Taken => return,
                 Direct::Refused(super::ingress::Refusal::Pressure) => {
@@ -130,7 +132,7 @@ fn execute<Ev, R: MainRoute<Ev>>(
                     return;
                 }
                 Direct::Refused(super::ingress::Refusal::Closed) => return,
-                Direct::NotDirect(restored) => incoming = restored,
+                Direct::DeferToMain(restored) => incoming = restored,
             }
         }
         let epoch = incoming.epoch.clone();

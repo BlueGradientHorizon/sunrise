@@ -54,7 +54,7 @@ pub(crate) enum Direct {
     /// The stream refused it; only pressure ends the session.
     Refused(Refusal),
     /// This turn has no direct stream (bundle or hosted guest).
-    NotDirect(Incoming),
+    DeferToMain(Incoming),
 }
 
 /// A failed publication keeps the refused event alive until after the caller
@@ -80,7 +80,7 @@ pub(crate) trait MainRoute<Ev> {
     fn publish(&self, prepared: Self::Prepared) -> Result<(), FailedMain<Ev>>;
     /// The client reader's fast path for a wire record that is not work.
     fn direct_payload(&self, incoming: Incoming) -> Direct {
-        Direct::NotDirect(incoming)
+        Direct::DeferToMain(incoming)
     }
     /// Only dedicated configuration/client receivers park their physical stream;
     /// a hosted play receiver continues in its own maintenance turn.
