@@ -141,13 +141,13 @@ The tools that read source out of an archive (the registry's checks, the launche
 and add up their declared sizes from the archive's directory before inflating any, and refuse more than the source
 file and size limits allow; they also refuse an entry that is not the manifest, `uses.json`, `icon.png`, `runtime/`,
 `assets/`, `data/` or a source file (a `target/` or `.cargo/` entry), by name. A root `page.toml` or `page/` entry,
-which `build` packed as source for a while from Nov 25, is left out unread. The tools of builds before Nov 25 knew a
-shorter list of source names (`Cargo.toml`, `Cargo.lock`, `build.rs`, `src/**/*.rs` and `.toml`, and root
-`README*`, `LICENSE*`, `COPYING*` and `NOTICE*` files) and refuse any other entry as `unexpected package path`:
-rebuild a mod with the current tool to drop its page files before checking it against such a build. The game
-does neither: it never reads
-or compiles the source, so it does not check this list when it loads a package. It reads the manifest, the icon, the
-content and the runtime files, and skips the rest.
+which `build` packed as source for a while from Nov 25, is left out unread, with a warning naming the mod and the
+entry; this lasts until no published package carries one, and ends by 26.3-0.1.0 at the latest. The tools of builds
+before Nov 25 knew a shorter list of source names (`Cargo.toml`, `Cargo.lock`, `build.rs`, `src/**/*.rs` and
+`.toml`, and root `README*`, `LICENSE*`, `COPYING*` and `NOTICE*` files) and refuse any other entry as `unexpected
+package path`: rebuild a mod with the current tool to drop its page files before checking it against such a build.
+The game does neither: it never reads or compiles the source, so it does not check this list when it loads a
+package. It reads the manifest, the icon, the content and the runtime files, and skips the rest.
 
 A package does not carry prebuilt object code. A source file whose header is an ELF, Mach-O (also universal),
 PE or WebAssembly file, or an `ar` archive (`.a`, `.lib`), is refused by name when the package is packed or read by the

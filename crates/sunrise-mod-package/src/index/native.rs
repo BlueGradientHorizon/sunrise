@@ -45,9 +45,16 @@ impl Bundle {
                     "{other} and {name} differ only by case, which a Windows or macOS extraction cannot keep apart"
                 ));
             }
-            // The tools from Nov 25 until this rule packed the registry page as source. It is no
-            // part of the package: it is left out, not staged and not refused.
-            if mod_source::package::page_file(&name) {
+            // TOLERANCE (#5973), the only one: `build` from Nov 25 until #5974 packed the root
+            // registry page as source. Only the root `page.toml` and what is under the root
+            // `page/` are skipped, after every check above, so no digest changes; any other
+            // unexpected path is still refused below. Remove this skip and its tests once no
+            // published package carries them, by 26.3-0.1.0 at the latest (#5985).
+            if name == "page.toml" || name.starts_with("page/") {
+                log::warn!(
+                    "{}: skipped {name}, a registry page entry an older build packed as source",
+                    package.manifest.id
+                );
                 continue;
             }
             let source = crate::manifest::source_file(&name);
@@ -281,28 +288,53 @@ mod tests {
         }
     }
 
+    // The three tests of the #5973 tolerance; remove them with it (#5985).
     #[test]
-    fn a_registry_page_packed_as_source_is_left_out() {
+    fn an_already_built_package_with_root_page_entries_reads_without_them() {
         let bundle = read(
             "page",
             &manifest(),
             &[
                 ("page.toml", b"summary = 'x'"),
                 ("page/runes.jpg", b"\xff\xd8\xff"),
-                ("src/page/mod.rs", b"fn page() {}"),
+                ("page/more/shot.png", b"\x89PNG"),
             ],
         )
         .unwrap();
         let names: Vec<_> = bundle.files.keys().map(String::as_str).collect();
         assert_eq!(
             names,
-            [
-                "Cargo.toml",
-                "src/lib.rs",
-                "src/page/mod.rs",
-                crate::manifest::MANIFEST
-            ]
+            ["Cargo.toml", "src/lib.rs", crate::manifest::MANIFEST]
         );
+    }
+
+    #[test]
+    fn nested_page_paths_are_not_touched_by_the_page_tolerance() {
+        let nested: [(&str, &[u8]); 4] = [
+            ("src/page.rs", b"fn page() {}"),
+            ("src/page/mod.rs", b"fn page() {}"),
+            ("assets/veinminer/page/info.json", b"{}"),
+            ("data/veinminer/page/table.json", b"{}"),
+        ];
+        let bundle = read("nested-page", &manifest(), &nested).unwrap();
+        for (name, bytes) in nested {
+            assert_eq!(bundle.files[name], bytes, "{name}");
+        }
+    }
+
+    #[test]
+    fn another_unexpected_root_path_is_still_refused_beside_page_entries() {
+        let error = read(
+            "page-and-other",
+            &manifest(),
+            &[
+                ("page.toml", b"summary = 'x'"),
+                (".cargo/config.toml", b"[build]\n"),
+            ],
+        )
+        .err()
+        .unwrap();
+        assert_eq!(error, "unexpected package path: .cargo/config.toml");
     }
 
     #[test]
