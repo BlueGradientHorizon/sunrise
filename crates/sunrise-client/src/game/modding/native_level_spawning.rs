@@ -182,6 +182,7 @@ impl Game<'_> {
             owner,
             custom_name: None,
             custom_name_visible: false,
+            base: Default::default(),
             envelope: GeneralTypeEnvelope {
                 type_key: kind.to_owned(),
                 payload_version: catalog.payload_version(slot),

@@ -302,40 +302,15 @@ impl Game<'_> {
         }
     }
 
-    /// Entity.isOnFire: remaining ticks or the client's synced flag, unless fire immune.
+    /// `Entity.isOnFire`: remaining ticks or the client's synced shared flag 0, unless fire
+    /// immune. Every kind, and on a client every tracked copy.
     pub(super) fn entity_is_on_fire(&self, entity: EntityRef) -> Option<bool> {
-        let (ticks, immune) = match self
-            .native_entity_read_target(entity)
-            .and_then(|target| self.native_target_body(target))
-        {
-            Some(Body::Player(p)) => (p.fire_ticks, p.mod_fire_immune),
-            Some(Body::Mob(m)) => (m.fire_ticks, m.fire_immune()),
-            Some(Body::Other(Target::Stand(stand))) => {
-                let stand = self.armor_stands.iter().find(|s| s.id == stand)?;
-                (stand.fire_ticks, stand.mod_fire_immune)
+        let (ticks, immune) = match self.native_entity_read_target(entity) {
+            Some(target) => {
+                let view = self.read_entity_base(target)?;
+                (view.base.fire_ticks, view.fire_immune)
             }
-            Some(Body::Other(Target::Item(item))) => {
-                let item = self.dropped.iter().find(|i| i.id == item)?;
-                (
-                    item.fire_ticks,
-                    self.stack_can_be_hurt_by(&item.stack, "minecraft:in_fire") == Some(false),
-                )
-            }
-            Some(Body::Other(Target::Projectile(id))) => {
-                let p = self.creatures.projectiles.iter().find(|p| p.id == id)?;
-                match p.arrow.as_ref() {
-                    Some(a) => (a.fire_ticks, false),
-                    None => (
-                        p.fire_ticks,
-                        matches!(
-                            p.kind,
-                            sunrise_client::projectiles::ProjectileKind::WitherSkull { .. }
-                                | sunrise_client::projectiles::ProjectileKind::ShulkerBullet { .. }
-                        ),
-                    ),
-                }
-            }
-            _ => (0, self.client_tracked_player_fire_immunity(entity)?),
+            None => (0, self.client_tracked_fire_immunity(entity)?),
         };
         let synced = !self.is_logical_server()
             && self
@@ -345,22 +320,25 @@ impl Game<'_> {
         Some(!immune && (ticks > 0 || synced))
     }
 
-    /// `Entity.fireImmune`: effective immunity on the side of the host.
+    /// `Entity.fireImmune`: effective immunity on the side of the host, for every kind.
     pub(super) fn entity_fire_immune(&self, entity: EntityRef) -> Option<bool> {
-        match self
-            .native_entity_read_target(entity)
-            .and_then(|target| self.native_target_body(target))
-        {
-            Some(Body::Player(p)) => Some(p.mod_fire_immune),
-            Some(Body::Mob(m)) => Some(m.fire_immune()),
-            Some(Body::Other(Target::Stand(id))) => self
-                .armor_stands
-                .iter()
-                .find(|s| s.id == id)
-                .map(|s| s.mod_fire_immune),
-            Some(Body::Other(Target::Dragon(_))) => Some(true),
-            _ => self.client_tracked_player_fire_immunity(entity),
+        match self.native_entity_read_target(entity) {
+            Some(target) => Some(self.read_entity_base(target)?.fire_immune),
+            None => self.client_tracked_fire_immunity(entity),
         }
+    }
+
+    /// The immunity of a copy the client only tracks (no body of its own): a player's synced
+    /// grant, a general row's declared `fire_immune`, `false` for any other kind.
+    fn client_tracked_fire_immunity(&self, entity: EntityRef) -> Option<bool> {
+        if let Some(row) = self.native_client_general(entity) {
+            return Some(super::general::general_type_catalog().fire_immune(row.type_slot));
+        }
+        let (kind, _) = self.native_client_tracked(entity)?;
+        if kind == "minecraft:player" {
+            return self.client_tracked_player_fire_immunity(entity);
+        }
+        Some(false)
     }
 
     fn client_tracked_player_fire_immunity(&self, entity: EntityRef) -> Option<bool> {
@@ -425,24 +403,10 @@ impl Game<'_> {
         true
     }
 
-    /// The ticks the entity burns for (`Entity.getRemainingFireTicks`):
-    /// players, mobs, armor stands, items and projectiles.
+    /// The ticks the entity burns for (`Entity.getRemainingFireTicks`), for every kind.
     pub(super) fn entity_fire_ticks(&self, entity: EntityRef) -> Option<i32> {
-        match self.native_entity_body(entity)? {
-            Body::Player(p) => Some(p.fire_ticks),
-            Body::Mob(m) => Some(m.fire_ticks),
-            Body::Other(Target::Stand(id)) => {
-                Some(self.armor_stands.iter().find(|s| s.id == id)?.fire_ticks)
-            }
-            Body::Other(Target::Item(id)) => {
-                Some(self.dropped.iter().find(|i| i.id == id)?.fire_ticks)
-            }
-            Body::Other(Target::Projectile(id)) => {
-                let p = self.creatures.projectiles.iter().find(|p| p.id == id)?;
-                Some(p.arrow.as_ref().map_or(p.fire_ticks, |a| a.fire_ticks))
-            }
-            Body::Other(_) => None,
-        }
+        let target = self.native_entity_target(entity)?;
+        Some(self.read_entity_base(target)?.base.fire_ticks)
     }
     /// `Entity.getPortalCooldown`: a player's own portal state, the falling
     /// block's, a pearl's End gateway state, or the level's for the other
@@ -533,62 +497,14 @@ impl Game<'_> {
             _ => false,
         }
     }
-    /// Sets the remaining fire ticks (`Entity.setRemainingFireTicks`).
+    /// Sets the remaining fire ticks (`Entity.setRemainingFireTicks`), for every kind.
     pub(super) fn entity_set_remaining_fire_ticks(
         &mut self,
         entity: EntityRef,
         ticks: i32,
     ) -> bool {
-        match self.native_entity_target(entity) {
-            Some(Target::Player) => self.player.as_mut().is_some_and(|p| {
-                p.fire_ticks = ticks;
-                true
-            }),
-            Some(Target::Guest(conn)) => self
-                .lan
-                .as_mut()
-                .and_then(|lan| lan.hub.guests.motion_mut(conn))
-                .is_some_and(|p| {
-                    p.fire_ticks = ticks;
-                    true
-                }),
-            Some(Target::Mob(id)) => self.mobs.iter_mut().find(|m| m.id == id).is_some_and(|m| {
-                m.fire_ticks = ticks;
-                m.needs_sync = true;
-                true
-            }),
-            Some(Target::Stand(id)) => self
-                .armor_stands
-                .iter_mut()
-                .find(|s| s.id == id)
-                .is_some_and(|s| {
-                    s.fire_ticks = ticks;
-                    true
-                }),
-            Some(Target::Item(id)) => {
-                self.dropped
-                    .iter_mut()
-                    .find(|i| i.id == id)
-                    .is_some_and(|i| {
-                        i.fire_ticks = ticks;
-                        true
-                    })
-            }
-            Some(Target::Projectile(id)) => {
-                let Some(i) = self.creatures.projectiles.iter().position(|p| p.id == id) else {
-                    return false;
-                };
-                self.creatures.projectiles.update(i, |p| {
-                    if let Some(a) = p.arrow.as_mut() {
-                        a.fire_ticks = ticks;
-                    } else {
-                        p.fire_ticks = ticks;
-                    }
-                });
-                true
-            }
-            _ => false,
-        }
+        self.native_entity_target(entity)
+            .is_some_and(|target| self.update_entity_base(target, |b| b.fire_ticks = ticks))
     }
     /// Clears positive fire ticks while retaining fire immunity (`Entity.clearFire`).
     pub(super) fn entity_clear_fire(&mut self, entity: EntityRef) -> bool {
@@ -645,28 +561,15 @@ impl Game<'_> {
             _ => Some(max_air(None)),
         }
     }
-    /// Whether the mob makes no sounds (`Entity.isSilent`, its `Silent`
-    /// tag); false for a player.
+    /// Whether the entity makes no sounds (`Entity.isSilent`, its `Silent` tag), for every kind.
     pub(super) fn entity_is_silent(&self, entity: EntityRef) -> Option<bool> {
-        match self.native_entity_body(entity)? {
-            Body::Player(_) => Some(false),
-            Body::Mob(m) => Some(m.silent),
-            Body::Other(_) => None,
-        }
+        let target = self.native_entity_target(entity)?;
+        Some(self.read_entity_base(target)?.base.silent)
     }
-    /// Silences the mob or lets it make sounds again (`Entity.setSilent`).
-    /// False for the other kinds.
+    /// Silences the entity or lets it make sounds again (`Entity.setSilent`), for every kind.
     pub(super) fn entity_set_silent(&mut self, entity: EntityRef, silent: bool) -> bool {
-        let Some(Target::Mob(id)) = self.native_entity_target(entity) else {
-            return false;
-        };
-        match self.mobs.iter_mut().find(|m| m.id == id) {
-            Some(m) => {
-                m.silent = silent;
-                true
-            }
-            None => false,
-        }
+        self.native_entity_target(entity)
+            .is_some_and(|target| self.update_entity_base(target, |b| b.silent = silent))
     }
     /// Whether the entity's model is hidden (`Entity.isInvisible`): the
     /// invisibility effect on a player or a mob, the flag of a mob, an armor
@@ -712,24 +615,15 @@ impl Game<'_> {
             _ => false,
         }
     }
-    /// Returns the mob's persistent glowing tag (`Entity.hasGlowingTag`).
+    /// The persistent glowing tag (`Entity.hasGlowingTag`), for every kind.
     pub(super) fn entity_glowing(&self, entity: EntityRef) -> Option<bool> {
-        match self.native_entity_body(entity)? {
-            Body::Mob(m) => Some(m.glowing),
-            _ => None,
-        }
+        let target = self.native_entity_target(entity)?;
+        Some(self.read_entity_base(target)?.base.glowing)
     }
-    /// Returns the mob's or dropped item's no-gravity flag (`Entity.isNoGravity`).
+    /// The no-gravity flag (`Entity.isNoGravity`), for every kind.
     pub(super) fn entity_no_gravity(&self, entity: EntityRef) -> Option<bool> {
-        match self.native_entity_body(entity)? {
-            Body::Mob(m) => Some(m.no_gravity),
-            Body::Other(Target::Item(id)) => self
-                .dropped
-                .iter()
-                .find(|i| i.id == id)
-                .map(|i| i.no_gravity),
-            _ => None,
-        }
+        let target = self.native_entity_target(entity)?;
+        Some(self.read_entity_base(target)?.base.no_gravity)
     }
     /// Returns the entity's frozen ticks (`Entity.getTicksFrozen`).
     pub(super) fn entity_ticks_frozen(&self, entity: EntityRef) -> Option<i32> {
@@ -782,38 +676,15 @@ impl Game<'_> {
             .map(|tracked| tracked.tick_count)
             .or_else(|| remote.general.rows.get(&id).map(|row| row.age as i32))
     }
-    /// Sets the mob's persistent glowing tag (`Entity.setGlowingTag`). Returns false for players and guests.
+    /// Sets the persistent glowing tag (`Entity.setGlowingTag`), for every kind.
     pub(super) fn entity_set_glowing(&mut self, entity: EntityRef, glowing: bool) -> bool {
-        let Some(Target::Mob(id)) = self.native_entity_target(entity) else {
-            return false;
-        };
-        self.mobs.iter_mut().find(|m| m.id == id).is_some_and(|m| {
-            m.glowing = glowing;
-            m.needs_sync = true;
-            true
-        })
+        self.native_entity_target(entity)
+            .is_some_and(|target| self.update_entity_base(target, |b| b.glowing = glowing))
     }
-    /// Sets the mob's or dropped item's no-gravity flag (`Entity.setNoGravity`). Returns false
-    /// for players and guests.
+    /// Sets the no-gravity flag (`Entity.setNoGravity`), for every kind.
     pub(super) fn entity_set_no_gravity(&mut self, entity: EntityRef, no_gravity: bool) -> bool {
-        match self.native_entity_target(entity) {
-            Some(Target::Mob(id)) => self.mobs.iter_mut().find(|m| m.id == id).is_some_and(|m| {
-                m.no_gravity = no_gravity;
-                m.needs_sync = true;
-                true
-            }),
-            Some(Target::Item(id)) => {
-                self.dropped
-                    .iter_mut()
-                    .find(|i| i.id == id)
-                    .is_some_and(|i| {
-                        i.no_gravity = no_gravity;
-                        i.needs_sync = true;
-                        true
-                    })
-            }
-            _ => false,
-        }
+        self.native_entity_target(entity)
+            .is_some_and(|target| self.update_entity_base(target, |b| b.no_gravity = no_gravity))
     }
     /// Sets the entity's shared invisibility flag (`Entity.setInvisible`) on a mob, an armor
     /// stand or an item frame. Returns false for players, guests and other kinds.
@@ -1037,12 +908,12 @@ mod tests {
             assert!(game.dropped[0].needs_sync);
             assert_eq!(item.no_gravity(game), Some(true));
 
-            // A kind that is neither an item nor a mob keeps refusing both: the new arm
-            // widened the match for items alone.
+            // Every kind keeps the flag (#5082): a stand too.
             game.armor_stands.push(ArmorStand::new(43, Vec3::ZERO, 0.0));
             let stand = game.entity(43).unwrap();
-            assert_eq!(stand.no_gravity(game), None);
-            assert!(!stand.set_no_gravity(game, true));
+            assert_eq!(stand.no_gravity(game), Some(false));
+            assert!(stand.set_no_gravity(game, true));
+            assert_eq!(stand.no_gravity(game), Some(true));
 
             let stale = EntityRef::new(WorldEpoch::new(item.epoch().get() + 1), item.id());
             assert_eq!(stale.no_gravity(game), None);
@@ -1124,7 +995,7 @@ mod tests {
 
     #[test]
     #[ignore = "daily"]
-    fn fire_ticks_reads_supported_entities_and_refuses_others() {
+    fn fire_ticks_reads_every_kind_and_refuses_a_stale_handle() {
         use mod_api::WorldEpoch;
         use sunrise_client::entities::ArmorStand;
         use sunrise_client::items::ItemStack;
@@ -1206,7 +1077,10 @@ mod tests {
                 0.0,
             ));
             let boat = game.entity(44).unwrap();
-            assert_eq!(boat.fire_ticks(game), None);
+            // A boat keeps the base state every `Entity` has (#5082).
+            assert_eq!(boat.fire_ticks(game), Some(0));
+            assert!(boat.set_remaining_fire_ticks(game, 5));
+            assert_eq!(boat.fire_ticks(game), Some(5));
             let stale = EntityRef::new(WorldEpoch::new(mob.epoch().get() + 1), mob.id());
             assert_eq!(stale.fire_ticks(game), None);
         });
@@ -1773,14 +1647,20 @@ mod tests {
 
     #[test]
     #[ignore = "daily"]
-    fn player_glowing_write_is_refused() {
-        with_player(|game, player| assert!(!player.set_glowing(game, true)));
+    fn player_glowing_write_is_kept_in_its_saved_data() {
+        with_player(|game, player| {
+            assert!(player.set_glowing(game, true));
+            assert_eq!(player.glowing(game), Some(true));
+        });
     }
 
     #[test]
     #[ignore = "daily"]
-    fn player_no_gravity_write_is_refused() {
-        with_player(|game, player| assert!(!player.set_no_gravity(game, true)));
+    fn player_no_gravity_write_is_kept_in_its_saved_data() {
+        with_player(|game, player| {
+            assert!(player.set_no_gravity(game, true));
+            assert_eq!(player.no_gravity(game), Some(true));
+        });
     }
 
     #[test]

@@ -1516,6 +1516,8 @@ mod general_handle_tests {
             fall_distance: fall,
             custom_name: None,
             custom_name_visible: false,
+            base: Default::default(),
+            base: Default::default(),
             payload_version: 1,
             payload_bytes: Vec::new(),
             mount: None,

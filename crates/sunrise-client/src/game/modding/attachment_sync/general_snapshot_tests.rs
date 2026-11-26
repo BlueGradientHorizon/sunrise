@@ -30,6 +30,7 @@ impl mod_api::Hooks for Declare {
             GeneralSavePolicy::Save,
             true,
             false,
+            false,
             None,
             8,
             3,
@@ -76,6 +77,7 @@ fn robot(game: &mut super::super::Game<'_>) -> u32 {
         owner: None,
         custom_name: None,
         custom_name_visible: false,
+        base: Default::default(),
         envelope: GeneralTypeEnvelope {
             type_key: "sync_route:robot".into(),
             payload_version: 1,

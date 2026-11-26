@@ -13,6 +13,7 @@ use super::Game;
 use super::commands::Target;
 use super::entity::Entity;
 use super::entity_initialization::TransferredEntityState;
+use super::native_entity_base::{EntityBase, owned};
 use super::persist::ChunkKey;
 use std::borrow::Cow;
 use std::collections::HashSet;
@@ -45,6 +46,8 @@ pub struct GeneralEntityRecord {
     pub custom_name: Option<Text>,
     /// `Entity.isCustomNameVisible`, saved as `CustomNameVisible`; absent means false.
     pub custom_name_visible: bool,
+    /// The `Entity` base state: `Fire`, `Invulnerable`, `NoGravity`, `Silent`, `Glowing`.
+    pub base: EntityBase,
     /// The type envelope: which registered type owns the payload, at which
     /// schema version, with which bounded payload bytes.
     pub envelope: GeneralTypeEnvelope,
@@ -299,6 +302,7 @@ impl GeneralEntityRecord {
         if self.custom_name_visible {
             map.insert(format::CUSTOM_NAME_VISIBLE.into(), Tag::Byte(1));
         }
+        self.base.write(&mut map, owned::ALL);
         map.insert(
             format::PAYLOAD_VERSION.into(),
             Tag::Short(i16::from_ne_bytes(
@@ -490,6 +494,7 @@ fn read_general_record(
         owner,
         custom_name,
         custom_name_visible,
+        base: EntityBase::read(Some(tag)),
         envelope: GeneralTypeEnvelope {
             type_key: type_key.to_string_lossy(),
             payload_version,
@@ -589,6 +594,13 @@ impl GeneralTypeCatalog {
         self.entries[slot].pickable
     }
 
+    /// Whether the type was declared fire immune (`EntityType.fireImmune`).
+    pub(in crate::game) fn fire_immune(&self, slot: usize) -> bool {
+        self.entries
+            .get(slot)
+            .is_some_and(|entry| entry.fire_immune)
+    }
+
     pub(in crate::game) fn piston_push_reaction(
         &self,
         slot: usize,
@@ -686,6 +698,8 @@ pub struct GeneralRow {
     pub custom_name: Option<Text>,
     /// `Entity.isCustomNameVisible`; synced as `Entity.DATA_CUSTOM_NAME_VISIBLE`.
     pub custom_name_visible: bool,
+    /// The `Entity` base state (`Entity.saveWithoutId`'s `Fire`, `Invulnerable`, ...).
+    pub base: EntityBase,
     /// The payload's schema version, as the record carried it and the writer
     /// returns it: no decoder owns it before stage 4.
     pub payload_version: u16,
@@ -911,6 +925,7 @@ impl Game<'_> {
             owner: row.owner,
             custom_name: row.custom_name.clone(),
             custom_name_visible: row.custom_name_visible,
+            base: row.base,
             envelope: GeneralTypeEnvelope {
                 type_key: general_type_catalog().key(row.type_slot).to_owned(),
                 payload_version: row.payload_version,
@@ -1353,6 +1368,7 @@ impl Game<'_> {
             fall_distance: 0.0,
             custom_name: record.custom_name,
             custom_name_visible: record.custom_name_visible,
+            base: record.base,
             payload_version: record.envelope.payload_version,
             payload_bytes: record.envelope.payload_bytes,
             mount,
@@ -1518,6 +1534,8 @@ mod tests {
             owner: None,
             custom_name: None,
             custom_name_visible: false,
+            base: Default::default(),
+            base: Default::default(),
             uuid,
             envelope: GeneralTypeEnvelope {
                 type_key: type_key.to_owned(),
@@ -1687,6 +1705,7 @@ mod tests {
             save_policy: mod_api::GeneralSavePolicy::Save,
             summonable: true,
             pickable: false,
+            fire_immune: false,
             piston_push_reaction: mod_api::PushReaction::PushPull,
             tracking_chunks: 8,
             update_interval: 3,
@@ -1809,6 +1828,7 @@ mod tests {
             fall_distance: 0.0,
             custom_name: None,
             custom_name_visible: false,
+            base: Default::default(),
             payload_version: 1,
             payload_bytes: Vec::new(),
             mount: None,

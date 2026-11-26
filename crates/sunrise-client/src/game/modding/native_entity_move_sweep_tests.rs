@@ -135,6 +135,7 @@ impl Hooks for DeclareGeneral {
             mod_api::GeneralSavePolicy::NoSave,
             false,
             false,
+            false,
             None,
             8,
             3,
@@ -246,6 +247,7 @@ fn every_walk_family_of_the_entity_lists_fires_its_case() {
                 owner: None,
                 custom_name: None,
                 custom_name_visible: false,
+                base: Default::default(),
                 uuid: [11, 12, 13, 14],
                 envelope: crate::game::general::GeneralTypeEnvelope {
                     type_key: "mymod:robot".to_owned(),

@@ -679,6 +679,7 @@ sunrise-client game::functions::tests::world_open_loads_functions_before_first_t
 sunrise-client game::game_tests::added_test_summary_context_tests::added_issuer_actor_missing_guest_and_restoration_controls lib daily resources
 sunrise-client game::game_tests::completed_test_coordinate_feedback_tests::actual_completed_test_retains_player_source_for_coordinate_feedback lib daily resources
 sunrise-client game::game_tests::registered_game_test_tests::registered_game_tests_report_pass_failure_and_unknown_in_real_level lib daily resources
+sunrise-client game::general::save_load_tests::a_general_entitys_base_state_round_trips_through_its_handle_and_record lib daily resources
 sunrise-client game::general::save_load_tests::codec_refusal_publishes_nothing_and_poisons_nothing lib daily resources
 sunrise-client game::general::save_load_tests::duplicate_uuid_with_a_live_entity_refuses_the_whole_tree lib daily resources
 sunrise-client game::general::save_load_tests::general_row_unloads_with_its_chunk_and_reloads_once lib daily resources
@@ -1185,6 +1186,10 @@ sunrise-client game::native_entities::tests::native_roots_keep_the_loaded_id_and
 sunrise-client game::native_entities::tests::pending_assignment_refuses_a_bound_zero_owner_before_consuming_an_id lib daily resources
 sunrise-client game::native_entities::tests::pending_ids_keep_counter_order_and_assign_zero_only_once lib daily resources
 sunrise-client game::native_entities::tests::portal_ids_follow_only_the_existing_moving_entity_filters lib daily resources
+sunrise-client game::native_entity_base_tests::a_boat_keeps_its_base_state lib daily resources
+sunrise-client game::native_entity_base_tests::a_marker_keeps_its_base_state_in_its_saved_tags lib daily resources
+sunrise-client game::native_entity_base_tests::a_minecart_keeps_its_base_state lib daily resources
+sunrise-client game::native_entity_base_tests::a_projectile_keeps_its_base_state lib daily resources
 sunrise-client game::native_entity_data::tests::an_entity_is_in_its_level_from_its_join_until_its_removal lib daily resources
 sunrise-client game::native_entity_data::tests::classification_is_the_types_category lib daily resources
 sunrise-client game::native_entity_data::tests::custom_name_and_visibility_are_saved_and_load_again lib daily resources
@@ -1291,12 +1296,12 @@ sunrise-client game::native_entity_sounds::tests::game_and_entity_events_come_fr
 sunrise-client game::native_entity_sounds::tests::only_a_spectator_player_is_a_spectator lib daily resources
 sunrise-client game::native_entity_sounds::tests::play_sound_queues_at_the_entity_in_its_source lib daily resources
 sunrise-client game::native_entity_sounds::tests::sound_sources_follow_the_entity_class lib daily resources
-sunrise-client game::native_entity_state::tests::fire_ticks_reads_supported_entities_and_refuses_others lib daily resources
+sunrise-client game::native_entity_state::tests::fire_ticks_reads_every_kind_and_refuses_a_stale_handle lib daily resources
 sunrise-client game::native_entity_state::tests::mob_setters_update_stored_state lib daily resources
 sunrise-client game::native_entity_state::tests::player_frozen_write_updates_server_state lib daily resources
-sunrise-client game::native_entity_state::tests::player_glowing_write_is_refused lib daily resources
+sunrise-client game::native_entity_state::tests::player_glowing_write_is_kept_in_its_saved_data lib daily resources
 sunrise-client game::native_entity_state::tests::player_invisibility_write_is_refused lib daily resources
-sunrise-client game::native_entity_state::tests::player_no_gravity_write_is_refused lib daily resources
+sunrise-client game::native_entity_state::tests::player_no_gravity_write_is_kept_in_its_saved_data lib daily resources
 sunrise-client game::native_entity_state::tests::portal_cooldown_reads_simulated_kinds_and_refuses_others lib daily resources
 sunrise-client game::native_entity_state::tests::portal_cooldown_write_blocks_entry_and_counts_down lib daily resources
 sunrise-client game::native_entity_state::tests::portal_cooldown_write_is_refused_for_a_falling_block lib daily resources

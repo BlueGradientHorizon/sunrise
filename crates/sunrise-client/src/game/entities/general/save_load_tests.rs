@@ -19,6 +19,7 @@ impl mod_api::Hooks for Declare {
     fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
         for (path, save, features) in [
             ("robot", true, &[][..]),
+            ("blaze", true, &[][..]),
             ("ghost", false, &[][..]),
             (
                 "experimental",
@@ -39,6 +40,8 @@ impl mod_api::Hooks for Declare {
                 },
                 true,
                 false,
+                false,
+                path == "blaze",
                 save.then_some(mod_api::PushReaction::IgnoreEntity),
                 8,
                 3,
@@ -86,6 +89,7 @@ fn record_tag(type_key: &str, uuid: [i32; 4], payload: &[u8], riders: Vec<Tag>) 
         owner: None,
         custom_name: None,
         custom_name_visible: false,
+        base: Default::default(),
         uuid,
         envelope: GeneralTypeEnvelope {
             type_key: type_key.to_owned(),
@@ -1870,6 +1874,7 @@ fn a_general_records_custom_name_survives_save_and_load() {
         owner: None,
         custom_name: Some(Text::colored("Grumbles", 0xFF5555)),
         custom_name_visible: true,
+        base: Default::default(),
         uuid: [1, 2, 3, 4],
         envelope: GeneralTypeEnvelope {
             type_key: "mymod:robot".to_owned(),
@@ -2003,5 +2008,44 @@ fn a_general_row_answers_distance_nearest_and_uuid_selectors() {
             game.as_console(|game| game.run_command("kill 00000009-0000-000a-0000-000b0000000c"))
         );
         assert!(game.resident_entities.general.row(last).is_none());
+    });
+}
+
+/// #5082: a general entity's base state is read and written through its handle, saved under
+/// vanilla's tag names, and a type declared `fire_immune` never reads as burning.
+#[test]
+#[ignore = "daily"]
+fn a_general_entitys_base_state_round_trips_through_its_handle_and_record() {
+    with_types(|game| {
+        let ids = general_chain(game, &[([0.0, 64.0, 0.0], [0.0, 0.0])], 11);
+        let handle = game.entity(ids[0]).unwrap();
+        assert_eq!(handle.fire_ticks(game), Some(0));
+        assert!(handle.set_remaining_fire_ticks(game, 40));
+        assert!(handle.set_silent(game, true));
+        assert!(handle.set_glowing(game, true));
+        assert!(handle.set_no_gravity(game, true));
+        assert!(handle.set_invulnerable(game, true));
+        assert_eq!(handle.is_on_fire(game), Some(true));
+        assert_eq!(handle.fire_immune(game), Some(false));
+        let Tag::Compound(saved) = game.general_row_record(ids[0], false).unwrap().to_tag() else {
+            panic!("a record saves as a compound");
+        };
+        assert_eq!(saved.get("Fire"), Some(&Tag::Short(40)));
+        assert_eq!(saved.get("Invulnerable"), Some(&Tag::Byte(1)));
+        for key in ["Silent", "Glowing", "NoGravity"] {
+            assert_eq!(saved.get(key), Some(&Tag::Byte(1)), "{key}");
+        }
+        assert!(handle.clear_fire(game));
+        assert_eq!(handle.fire_ticks(game), Some(0));
+
+        let tag = record_tag("mymod:blaze", [11, 12, 13, 14], b"", Vec::new());
+        let start = game.resident_entities.general.rows.len();
+        game.load_listed("mymod:blaze", None, None, tag).unwrap();
+        let blaze = game
+            .entity(game.resident_entities.general.rows[start].id)
+            .unwrap();
+        assert!(blaze.set_remaining_fire_ticks(game, 40));
+        assert_eq!(blaze.fire_immune(game), Some(true));
+        assert_eq!(blaze.is_on_fire(game), Some(false));
     });
 }

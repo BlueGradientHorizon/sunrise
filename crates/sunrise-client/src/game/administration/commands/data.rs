@@ -1187,7 +1187,7 @@ impl Game<'_> {
             .state(state)
             .map_or_else(|| "minecraft:air".into(), |s| s.name.to_string())
     }
-    fn raw_mut(&mut self, t: Target) -> Option<&mut Tag> {
+    pub(in crate::game) fn raw_mut(&mut self, t: Target) -> Option<&mut Tag> {
         match t {
             Target::Player => Some(self.level.player_extra.get_or_insert_with(empty)),
             Target::Guest(conn) => self

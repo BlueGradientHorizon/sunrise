@@ -746,6 +746,13 @@ impl Game<'_> {
             if row.custom_name_visible {
                 e.meta.push((3, serializer::BOOLEAN, Value::Bool(true)));
             }
+            // `Entity.DATA_SHARED_FLAGS_ID`: bit 0 is on fire (`Entity.isOnFire`), bit 6 glowing.
+            let on_fire = row.base.fire_ticks > 0 && !catalog.fire_immune(row.type_slot);
+            let flags = u8::from(on_fire) | (u8::from(row.base.glowing) << 6);
+            if flags != 0 {
+                e.meta.push((0, serializer::BYTE, Value::Byte(flags as i8)));
+            }
+            e.defaults.push((0, serializer::BYTE, Value::Byte(0)));
             // A name taken away or hidden again is sent as none / false.
             e.defaults
                 .push((2, serializer::OPTIONAL_COMPONENT, Value::OptText(None)));

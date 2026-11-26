@@ -107,6 +107,7 @@ impl Hooks for StateMod {
             mod_api::GeneralSavePolicy::Save,
             true,
             false,
+            false,
             None,
             8,
             3,
@@ -207,6 +208,7 @@ fn robot_tag(uuid: i32) -> Tag {
         owner: None,
         custom_name: None,
         custom_name_visible: false,
+        base: Default::default(),
         uuid: [uuid, 0, 0, 2],
         envelope: super::general::GeneralTypeEnvelope {
             type_key: "part_state:robot".to_owned(),

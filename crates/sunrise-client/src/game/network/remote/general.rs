@@ -327,6 +327,7 @@ mod tests {
                     mod_api::GeneralSavePolicy::Save,
                     true,
                     pickable,
+                    false,
                     (!pickable).then_some(mod_api::PushReaction::IgnoreEntity),
                     8,
                     1,
@@ -481,6 +482,7 @@ mod tests {
                     owner: None,
                     custom_name: None,
                     custom_name_visible: false,
+                    base: Default::default(),
                     uuid: [1, 0, 0, 4],
                     envelope: GeneralTypeEnvelope {
                         type_key: PACKAGE.into(),

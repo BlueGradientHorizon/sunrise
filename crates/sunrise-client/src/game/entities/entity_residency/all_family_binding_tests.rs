@@ -133,6 +133,7 @@ fn every_ordinary_resident_family_binds_its_actual_owned_slot() {
                 fall_distance: 0.0,
                 custom_name: None,
                 custom_name_visible: false,
+                base: Default::default(),
                 payload_version: 1,
                 payload_bytes: Vec::new(),
                 mount: None,

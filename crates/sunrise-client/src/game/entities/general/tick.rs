@@ -232,6 +232,16 @@ impl Game<'_> {
         if mount.is_some() {
             row.velocity = sunrise_core::geometry::Vec3::ZERO;
         }
+        // `Entity.baseTick`: a fire immune type puts the fire out, any other burns down. The
+        // damage every twentieth tick is vanilla's `hurt`, which general entities refuse until
+        // they have a hurt Part (#5084).
+        if row.base.fire_ticks > 0 {
+            row.base.fire_ticks = if general_type_catalog().fire_immune(row.type_slot) {
+                0
+            } else {
+                row.base.fire_ticks - 1
+            };
+        }
     }
 
     fn position_general_row(&mut self, index: usize) {

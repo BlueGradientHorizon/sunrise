@@ -1,0 +1,20 @@
+ids = [
+  "handle:EntityRef::is_on_fire",
+  "handle:EntityRef::fire_immune",
+  "handle:EntityRef::fire_ticks",
+  "handle:EntityRef::set_remaining_fire_ticks",
+  "handle:EntityRef::clear_fire",
+  "handle:EntityRef::extinguish_fire",
+  "handle:EntityRef::is_silent",
+  "handle:EntityRef::set_silent",
+  "handle:EntityRef::glowing",
+  "handle:EntityRef::set_glowing",
+  "handle:EntityRef::no_gravity",
+  "handle:EntityRef::set_no_gravity",
+  "handle:EntityRef::permanently_invulnerable",
+  "handle:EntityRef::set_invulnerable",
+  "method:GeneralTypesRegistrar::declare_general_entity",
+  "type:GeneralEntityTypeDeclaration",
+]
+why = "Vanilla gives every Entity the same base state, so every kind now keeps it: the fire ticks, fire immunity, silent, glowing, no-gravity and invulnerable flags are read and written for boats, minecarts, projectiles, markers, displays, interactions, general entities and the rest, saved as Fire, Invulnerable, NoGravity, Silent and Glowing as Entity.saveWithoutId writes them, and a general entity's fire shows to clients as bit 0 of the shared flags. Coverage of these methods grew; None no longer means unsupported kind. None or false now means only a stale handle, a non-finite input or the wrong side. A fishing bobber, a leash knot and a dragon's part keep no entity data: they read the defaults and refuse writes. entity_hurt still refuses for general entities until their hurt Part (#5084). set_fire_immunity and set_client_fire_immunity are unchanged. A general entity type declares EntityType.fireImmune() through a new fire_immune argument."
+migrate = "Pass fire_immune (false for vanilla's default) after pickable in declare_general_entity, and set it on a GeneralEntityTypeDeclaration literal. Code that treated None or false from the listed methods as an unsupported kind should treat it as a stale handle."
