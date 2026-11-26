@@ -21,7 +21,7 @@ pub(in crate::game) use projectile_targets::{
     NonMobHit, ProjectileHitInfo, TargetQuery, is_pickable_projectile,
 };
 #[allow(unused_imports)]
-pub(in crate::game) use sunrise_gameplay::projectile_world::ProjWorld;
+pub(in crate::game) use sunrise_gameplay_common::projectile_world::ProjWorld;
 pub(in crate::game) mod pufferfish_player;
 #[cfg(test)]
 pub(in crate::game) mod render_fixture;

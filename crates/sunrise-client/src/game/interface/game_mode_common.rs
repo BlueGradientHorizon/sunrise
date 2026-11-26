@@ -6,7 +6,7 @@ use sunrise_command::args::GameMode;
 use sunrise_items::items::ItemStack;
 
 #[allow(unused_imports)]
-pub(in crate::game) use sunrise_gameplay::game_modes::{
+pub(in crate::game) use sunrise_gameplay_common::game_modes::{
     loads_chunks, mode_from_id, projectile_predicate_supported,
 };
 

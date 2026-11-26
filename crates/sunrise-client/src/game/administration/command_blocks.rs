@@ -25,7 +25,7 @@ pub(in crate::game) use sunrise_client_gameplay::command_block_screen::{
     Button, CommandBlockScreen, previous_y,
 };
 #[allow(unused_imports)]
-pub(in crate::game) use sunrise_gameplay::command_blocks::{
+pub(in crate::game) use sunrise_gameplay_common::command_blocks::{
     CommandBlockEdit, CommandBlockTransition, analog_signal, command_block_mut, conditional,
     facing_step, facing_yaw, mark_condition_met, offset, set_powered, state_of,
 };

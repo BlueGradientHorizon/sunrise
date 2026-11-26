@@ -1,3 +1,3 @@
-pub(super) use sunrise_gameplay::class_tags::install;
+pub(super) use sunrise_gameplay_common::class_tags::install;
 #[cfg(test)]
-pub(super) use sunrise_gameplay::class_tags::merge;
+pub(super) use sunrise_gameplay_common::class_tags::merge;

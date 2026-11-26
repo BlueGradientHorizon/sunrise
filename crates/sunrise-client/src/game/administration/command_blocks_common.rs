@@ -3,7 +3,7 @@ use super::{
     Game,
     minecarts::{CartKind, Minecart},
 };
-use sunrise_gameplay::command_blocks::state_of;
+use sunrise_gameplay_common::command_blocks::state_of;
 use sunrise_level::{command_block::CommandBlock, containers::BlockEntity};
 use sunrise_world::chunk::BlockState;
 

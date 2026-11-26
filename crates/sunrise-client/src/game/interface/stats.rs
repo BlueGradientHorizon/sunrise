@@ -7,8 +7,8 @@ use super::{Dim, Game};
 use std::path::PathBuf;
 use sunrise_core::{geometry::Vec3, identifier::Identifier, random::RandomSource};
 
-pub(in crate::game) use sunrise_gameplay::stats::{Stats, locate_player_json, player_json};
-use sunrise_gameplay::stats::{namespaced, stat_registry};
+pub(in crate::game) use sunrise_gameplay_common::stats::{Stats, locate_player_json, player_json};
+use sunrise_gameplay_common::stats::{namespaced, stat_registry};
 
 #[cfg(test)]
 #[path = "tests/phantom_spawn_tests.rs"]

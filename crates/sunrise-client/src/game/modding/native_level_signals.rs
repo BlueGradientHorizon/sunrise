@@ -42,7 +42,7 @@ pub(in crate::game) fn block_entity_signal(
     if let Some(sunrise_level::containers::BlockEntity::TestBlock(block)) =
         world.block_entities.get(&(pos.x, pos.y, pos.z))
     {
-        return sunrise_gameplay::test_blocks::own_signal(registry, state, block.powered);
+        return sunrise_gameplay_common::test_blocks::own_signal(registry, state, block.powered);
     }
     if let Some(count) = lid_openers.get(&(pos.x, pos.y, pos.z)) {
         return (*count).clamp(0, 15);

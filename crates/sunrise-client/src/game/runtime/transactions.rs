@@ -895,7 +895,10 @@ pub(in crate::game) enum DeferredEffect {
     },
     /// `PlayerRef::set_statistics` inside a transaction: the counters and their criterion
     /// scores are replaced together at the root commit.
-    RestoreStatistics(mod_api::PlayerRef, Box<sunrise_gameplay::stats::StatValues>),
+    RestoreStatistics(
+        mod_api::PlayerRef,
+        Box<sunrise_gameplay_common::stats::StatValues>,
+    ),
 }
 
 impl Level {

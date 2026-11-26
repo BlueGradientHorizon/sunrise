@@ -6,7 +6,7 @@ use crate::game::server_side::{
 };
 use std::sync::Arc;
 use sunrise_core::geometry::{Aabb, Vec3};
-use sunrise_gameplay::painting_variants::{painting_coexists, painting_facing};
+use sunrise_gameplay_common::painting_variants::{painting_coexists, painting_facing};
 use sunrise_items::items::ItemStack;
 use sunrise_level::collisions::SceneCollisions;
 use sunrise_sim::{

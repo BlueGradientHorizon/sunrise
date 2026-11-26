@@ -1,6 +1,7 @@
 //! `Mob.aiStep`'s looting block: what a mob that can pick up loot takes and wears, on `MobLevel`.
-use crate::{item_areas::ItemAreas, mob_level::MobLevel};
+use crate::mob_level::MobLevel;
 use sunrise_core::{geometry::Vec3, random::RandomSource};
+use sunrise_gameplay_common::item_areas::ItemAreas;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::mobs::{
     Species,

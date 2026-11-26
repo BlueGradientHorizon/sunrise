@@ -6,7 +6,7 @@ use super::{Game, chat_common::PLAYER_NAME, commands::Target};
 use mod_api::EntityTags;
 use std::collections::{HashMap, HashSet};
 use sunrise_core::nbt::Tag;
-use sunrise_gameplay::stats::{StatScoreChange, StatScoreOp};
+use sunrise_gameplay_common::stats::{StatScoreChange, StatScoreOp};
 #[allow(unused_imports)]
 use {
     sunrise_client_core::scoreboard as sb, sunrise_client_core::scoreboard::Comp,

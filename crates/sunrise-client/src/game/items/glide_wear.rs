@@ -1,1 +1,1 @@
-pub(super) use sunrise_gameplay::glide_wear::gliding_slots;
+pub(super) use sunrise_gameplay_common::glide_wear::gliding_slots;

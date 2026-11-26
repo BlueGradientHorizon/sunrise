@@ -8,7 +8,7 @@ use super::{
     transactions::DeferredEffect,
 };
 use mod_api::{PlayerRef, StatType};
-use sunrise_gameplay::stats::StatValues;
+use sunrise_gameplay_common::stats::StatValues;
 
 use super::native_namespaced_id::namespaced;
 

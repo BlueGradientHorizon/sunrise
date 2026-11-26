@@ -1,6 +1,7 @@
 //! Foxes and dolphins: what they take from the ground and where they go for it, on `MobLevel`.
-use crate::{item_areas::ItemAreas, mob_level::MobLevel};
+use crate::mob_level::MobLevel;
 use sunrise_core::geometry::Vec3;
+use sunrise_gameplay_common::item_areas::ItemAreas;
 use sunrise_sim::mobs::{
     Species, dolphin,
     equip::Slot,

@@ -3,7 +3,7 @@ use super::command_blocks_common::Pos;
 use super::{Game, commands::execute::Source};
 use sunrise_client_core::text::Text;
 use sunrise_core::position::BlockPos;
-use sunrise_gameplay::command_blocks::{
+use sunrise_gameplay_common::command_blocks::{
     CommandBlockEdit, CommandBlockTransition, command_block_mut, conditional, facing_step,
     facing_yaw, mark_condition_met, offset, set_powered,
 };

@@ -29,8 +29,8 @@ pub(in crate::game) mod hit;
 #[allow(unused_imports)]
 pub(in crate::game) use hit::CartHit;
 #[allow(unused_imports)]
-pub(in crate::game) use sunrise_gameplay::minecart_cells::CartCells;
-use sunrise_gameplay::minecart_seat::*;
+pub(in crate::game) use sunrise_gameplay_common::minecart_cells::CartCells;
+use sunrise_gameplay_common::minecart_seat::*;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(in crate::game) enum CartKind {
     Rideable,

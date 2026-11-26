@@ -4,7 +4,9 @@
 use super::Game;
 
 #[allow(unused_imports)]
-pub(in crate::game) use sunrise_gameplay::brushing::{Brushing, USE_DURATION, completion_state};
+pub(in crate::game) use sunrise_gameplay_common::brushing::{
+    Brushing, USE_DURATION, completion_state,
+};
 
 impl<__Side: crate::game::Side> Game<'_, __Side> {
     pub(in crate::game) fn set_dusted(&mut self, pos: [i32; 3], dusted: i32) {

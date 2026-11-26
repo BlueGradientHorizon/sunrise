@@ -7,7 +7,7 @@ use std::{
 };
 use sunrise_client_core::gamerules::GameRules;
 use sunrise_command::Registries;
-use sunrise_gameplay::world_clock::WorldClock;
+use sunrise_gameplay_common::world_clock::WorldClock;
 use sunrise_world::{
     heightmap::{HeightmapState, HeightmapType},
     registry::{BlockRegistry, BlockStateId},
@@ -18,9 +18,9 @@ use sunrise_world::{
 pub const PLAYER_NAME: &str = "Player";
 
 #[allow(unused_imports)]
-pub(in crate::game) use sunrise_gameplay::world_clock::OVERWORLD_CLOCK;
+pub(in crate::game) use sunrise_gameplay_common::world_clock::OVERWORLD_CLOCK;
 #[allow(unused_imports)]
-pub use sunrise_gameplay::world_clock::TimeMarker;
+pub use sunrise_gameplay_common::world_clock::TimeMarker;
 
 /// An owned command tree, initialized even before a world is opened.
 pub struct SessionDispatcher(pub Arc<sunrise_command::Dispatcher>);

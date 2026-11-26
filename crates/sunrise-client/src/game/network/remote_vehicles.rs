@@ -411,14 +411,14 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let (mut position, _, _) = self.remote_minecart_lerp(id, partial)?;
         let seat_offset = if subject.is_local_player {
             let scale = f64::from(subject.camera.living.map_or(1.0, |l| l.scale));
-            sunrise_gameplay::minecart_seat::PASSENGER_Y - 0.6 * scale
+            sunrise_gameplay_common::minecart_seat::PASSENGER_Y - 0.6 * scale
         } else if let Some(m) = self.mob_index.get_ref(&self.mobs, subject.entity_id) {
-            sunrise_gameplay::minecart_seat::cart_seat_offset(
+            sunrise_gameplay_common::minecart_seat::cart_seat_offset(
                 m.species(),
                 sunrise_sim::mobs::riders::vehicle_attachment(m, 0.98),
             )
         } else {
-            sunrise_gameplay::minecart_seat::PASSENGER_Y
+            sunrise_gameplay_common::minecart_seat::PASSENGER_Y
         };
         position[1] += seat_offset;
         Some(position)

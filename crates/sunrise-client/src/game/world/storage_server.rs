@@ -1,8 +1,8 @@
 use super::Game;
 use sunrise_client_core::text::Text;
 use sunrise_core::random::RandomSource;
-use sunrise_gameplay::chests::facing_step;
-use sunrise_gameplay::chests::is_shulker_box;
+use sunrise_gameplay_common::chests::facing_step;
+use sunrise_gameplay_common::chests::is_shulker_box;
 use sunrise_level::containers::{BlockEntity, is_chest_block};
 
 impl Game<'_, crate::game::server_side::ServerState> {

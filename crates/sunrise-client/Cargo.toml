@@ -19,6 +19,7 @@ mod_api = { package = "sunrise-mod-vocab", path = "../sunrise-mod-vocab" }
 sunrise-mod-api-macros = { path = "../sunrise-mod-api-macros" }
 sunrise-client-lib = { path = "../sunrise-client-lib", default-features = false }
 sunrise-gameplay = { path = "../sunrise-gameplay" }
+sunrise-gameplay-common = { path = "../sunrise-gameplay-common" }
 sunrise-client-gameplay = { path = "../sunrise-client-gameplay" }
 sunrise-assets = { path = "../sunrise-assets" }
 sunrise-client-core = { path = "../sunrise-client-core" }

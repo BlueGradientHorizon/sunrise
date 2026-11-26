@@ -10,7 +10,7 @@ use sunrise_level::random_source;
 use sunrise_sim::entities::Painting;
 
 #[allow(unused_imports)]
-pub(in crate::game) use sunrise_gameplay::painting_variants::{
+pub(in crate::game) use sunrise_gameplay_common::painting_variants::{
     PaintingVariants, Variant, frame_coexists, painting_coexists, painting_facing,
 };
 /// Whether the camera, at the origin of `corners`' space, is on the side of the quad

@@ -3,7 +3,7 @@
 //! the generator's cached starts.
 use super::Game;
 
-pub(in crate::game) use sunrise_gameplay::structures::structures_reaching_in;
+pub(in crate::game) use sunrise_gameplay_common::structures::structures_reaching_in;
 
 impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// Structures reaching `pos`: (id, inside a piece). `getStructureAt`

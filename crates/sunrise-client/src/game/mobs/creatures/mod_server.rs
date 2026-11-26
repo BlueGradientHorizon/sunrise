@@ -40,7 +40,7 @@ use sunrise_core::{
     position::BlockPos,
     random::RandomSource,
 };
-use sunrise_gameplay::projectile_world::ProjWorld;
+use sunrise_gameplay_common::projectile_world::ProjWorld;
 use sunrise_sim::health::source_damage_type;
 use {
     sunrise_client_core::Result, sunrise_items::items::ItemStack,

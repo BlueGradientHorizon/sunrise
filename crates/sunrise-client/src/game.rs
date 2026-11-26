@@ -2989,10 +2989,11 @@ pub(in crate::game) mod storage_common;
 use sunrise_client_gameplay::frame_autotune;
 #[allow(unused_imports)]
 use sunrise_client_gameplay::occlusion_culling;
+use sunrise_gameplay::tick_profile;
 #[allow(unused_imports)]
-use sunrise_gameplay::lan::idle as lan_idle;
+use sunrise_gameplay_common::lan::idle as lan_idle;
 #[allow(unused_imports)]
-use sunrise_gameplay::{interaction_shapes, item_areas, mob_index, tick_profile};
+use sunrise_gameplay_common::{interaction_shapes, item_areas, mob_index};
 
 #[cfg(feature = "client")]
 #[allow(unused_imports)]

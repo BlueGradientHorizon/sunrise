@@ -4,6 +4,6 @@
 //! `TestInstanceBlockEntity.forceLoadChunks` and `GameTestRunner`'s release.
 
 #[allow(unused_imports)]
-pub(in crate::game) use sunrise_gameplay::test_entities::{Aabb, intersects, standing};
+pub(in crate::game) use sunrise_gameplay_common::test_entities::{Aabb, intersects, standing};
 #[allow(unused_imports)]
-pub use sunrise_gameplay::test_entities::{aabb_of, inflate};
+pub use sunrise_gameplay_common::test_entities::{aabb_of, inflate};

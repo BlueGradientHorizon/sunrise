@@ -1,7 +1,7 @@
 //! Common potent sulfur state/source queries and sound constants.
 use super::Game;
-use sunrise_gameplay::potent_sulfur::Geyser;
-pub(in crate::game) use sunrise_gameplay::potent_sulfur::PassMobs;
+use sunrise_gameplay_common::potent_sulfur::Geyser;
+pub(in crate::game) use sunrise_gameplay_common::potent_sulfur::PassMobs;
 use sunrise_level::block_entities::Pos;
 use sunrise_level::potent_sulfur_level::{SulfurLevel, find_noxious_gas_source_block};
 use sunrise_world::registry::BlockStateId;
