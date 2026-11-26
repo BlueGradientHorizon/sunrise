@@ -891,6 +891,7 @@ impl After {
         matches!(
             self,
             Self::Block(_)
+                | Self::BlockEntityRemoved(_)
                 | Self::BulkBlocks(..)
                 | Self::ConnectionGroup(..)
                 | Self::DispenseEvent(..)
