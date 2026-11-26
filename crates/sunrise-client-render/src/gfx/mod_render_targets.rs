@@ -571,11 +571,7 @@ impl ModRenderTargets {
         handle: RenderTargetRef,
         mip_level: u32,
     ) -> Result<(), RenderTargetError> {
-        let entry = self.get_owned(owner, handle)?;
-        if mip_level >= entry.mip_levels {
-            return Err(RenderTargetError::InvalidMipLevels);
-        }
-        Ok(())
+        self.owned_level(owner, handle, mip_level).map(|_| ())
     }
 
     /// Snapshot the views of mip level `mip_level` and format metadata for executing an
@@ -587,8 +583,7 @@ impl ModRenderTargets {
         handle: RenderTargetRef,
         mip_level: u32,
     ) -> Result<ResolvedOffscreenTarget, RenderTargetError> {
-        self.check_level(owner, handle, mip_level)?;
-        let entry = self.get_owned(owner, handle)?;
+        let entry = self.owned_level(owner, handle, mip_level)?;
         Ok(ResolvedOffscreenTarget {
             handle,
             size: [
@@ -620,6 +615,20 @@ impl ModRenderTargets {
             return None;
         }
         entry.colors.get(attachment as usize).map(|c| &c.texture)
+    }
+
+    /// The entry of `handle` when `owner` may use it and it has mip level `mip_level`.
+    fn owned_level(
+        &self,
+        owner: Option<&'static str>,
+        handle: RenderTargetRef,
+        mip_level: u32,
+    ) -> Result<&ModRenderTarget, RenderTargetError> {
+        let entry = self.get_owned(owner, handle)?;
+        if mip_level >= entry.mip_levels {
+            return Err(RenderTargetError::InvalidMipLevels);
+        }
+        Ok(entry)
     }
 
     fn get_owned(
@@ -862,7 +871,6 @@ impl super::mod_gpu::ModGpuResources {
             .resolve_depth(owner, target, filterable)
     }
 
-    /// Snapshot attachment views for executing an [`OffscreenPass`].
     /// [`ModRenderTargets::check_level`]: validate a pass's target and mip level without
     /// resolving its views.
     pub fn check_mod_render_target_level(
@@ -876,6 +884,8 @@ impl super::mod_gpu::ModGpuResources {
             .unwrap_or_else(|e| e.into_inner())
             .check_level(owner, target, mip_level)
     }
+
+    /// Snapshot attachment views for executing an [`OffscreenPass`].
     pub fn resolve_mod_render_target(
         &self,
         owner: Option<&'static str>,
