@@ -904,6 +904,11 @@ impl Game<'_> {
                 .filter(|b| b.id != 0)
                 .map(|b| Target::Bolt(b.id)),
         );
+        // `FishingHook`: every cast bobber here, the player's and each guest's (#6100).
+        candidates.extend(
+            self.fishing_hooks_here()
+                .map(|(hook, _)| Target::Hook(hook.id())),
+        );
         candidates.extend(self.natural_knot_ids().into_iter().map(Target::Knot));
         // `isRemoved` from a mod's call on, though the sweep has not taken it out.
         candidates.retain(|t| !self.target_removed(t));
