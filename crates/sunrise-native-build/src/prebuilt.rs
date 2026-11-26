@@ -309,8 +309,7 @@ pub fn identity(dir: &Path) -> Result<Identity, String> {
     }
     let Format {
         package_format: found,
-    } = serde_json::from_str(&text)
-        .map_err(|e| format!("{}: {e}; fetch the SDK again", path.display()))?;
+    } = serde_json::from_str(&text).map_err(|e| unreadable_identity(&path, &e))?;
     let supported = sunrise_mod_package::sdk::PACKAGE_FORMAT;
     let (version, supported_text) = (found.to_string(), supported.to_string());
     let args = [
@@ -318,16 +317,34 @@ pub fn identity(dir: &Path) -> Result<Identity, String> {
         ("format", supported_text.as_str()),
     ];
     match found {
-        found if found == supported => serde_json::from_str(&text)
-            .map_err(|e| format!("{}: {e}; fetch the SDK again", path.display())),
+        found if found == supported => {
+            serde_json::from_str(&text).map_err(|e| unreadable_identity(&path, &e))
+        }
         found if found < supported => Err(trf(
-            "SDK format {version} is too old; install a newer SDK (format {format})",
+            "SDK format {version} is too old for this tool (format {format}); the SDK is older than this tool: use the tool in the SDK's own release, or pin a newer SDK with cargo sunrise-mod pin",
             &args,
         )),
         _ => Err(trf(
-            "SDK format {version} is newer than this launcher's supported format {format}; update the launcher",
+            "SDK format {version} is newer than this tool's supported format {format}; this tool is older than the SDK: update cargo sunrise-mod, or use the tool in the SDK's own release",
             &args,
         )),
+    }
+}
+
+/// The refusal for an identity file that does not parse. A field the file lacks or mistypes means
+/// the SDK was written by an older layout of this format than this tool reads; a file that is not
+/// JSON at all is a damaged download.
+fn unreadable_identity(path: &Path, error: &serde_json::Error) -> String {
+    let shown = path.display().to_string();
+    let why = error.to_string();
+    let args = [("path", shown.as_str()), ("why", why.as_str())];
+    if error.is_data() {
+        trf(
+            "{path}: {why}; the SDK is older than this tool: use the tool in the SDK's own release, or pin a newer SDK with cargo sunrise-mod pin",
+            &args,
+        )
+    } else {
+        trf("{path}: {why}; fetch the SDK again", &args)
     }
 }
 
@@ -346,19 +363,49 @@ pub fn check_identity(
         && found.side == target.name()
         && found.rustc.lines().any(|line| line == release);
     if matches {
-        Ok(found)
-    } else {
-        Err(trf(
-            "The prebuilt game for {revision} was made for another build ({commit}, {target}, {side}, {rustc}).",
-            &[
-                ("revision", revision),
-                ("commit", &found.commit),
-                ("target", &found.target),
-                ("side", &found.side),
-                ("rustc", found.rustc.lines().next().unwrap_or_default()),
-            ],
-        ))
+        return Ok(found);
     }
+    // Only the Rust release differs: say which side is older.
+    let numbers = |release: &str| {
+        release
+            .split('.')
+            .map(|part| part.parse::<u32>().ok())
+            .collect::<Option<Vec<_>>>()
+    };
+    let theirs = found
+        .rustc
+        .lines()
+        .find_map(|line| line.strip_prefix("release: "));
+    if found.commit == revision
+        && found.target == host
+        && found.side == target.name()
+        && let Some(theirs) = theirs
+        && let (Some(theirs_numbers), Some(ours_numbers)) =
+            (numbers(theirs), numbers(crate::rust::VERSION))
+    {
+        let args = [("rust", theirs), ("this", crate::rust::VERSION)];
+        return Err(if theirs_numbers > ours_numbers {
+            trf(
+                "The prebuilt game was made with Rust {rust}, newer than this tool's {this}; this tool is older than the SDK: update cargo sunrise-mod, or use the tool in the SDK's own release",
+                &args,
+            )
+        } else {
+            trf(
+                "The prebuilt game was made with Rust {rust}, older than this tool's {this}; the SDK is older than this tool: use the tool in the SDK's own release, or pin a newer SDK with cargo sunrise-mod pin",
+                &args,
+            )
+        });
+    }
+    Err(trf(
+        "The prebuilt game for {revision} was made for another build ({commit}, {target}, {side}, {rustc}).",
+        &[
+            ("revision", revision),
+            ("commit", &found.commit),
+            ("target", &found.target),
+            ("side", &found.side),
+            ("rustc", found.rustc.lines().next().unwrap_or_default()),
+        ],
+    ))
 }
 
 /// Does this plan need the SDK's own tool because it copies a lower-crate function from a
@@ -1138,17 +1185,19 @@ pub fn compiling(id: &str) -> String {
     trf("Compiling {mod}", &[("mod", id)])
 }
 
-/// The launcher's settings for a kept registry build: bumped whenever the launcher changes the
-/// cargo arguments, the compiler plan or how it stages, so a build made the old way is not reused.
+/// The tool's settings for a kept registry build: bumped whenever the tool changes the cargo
+/// arguments, the compiler plan or how it stages, so a build made the old way is not reused.
 const KEPT_BUILD_FLAGS: u32 = 3;
 
 /// The folder a registry build's cargo output is kept in, under `native/prebuilt-build`: one per
-/// game build, Rust toolchain and launcher settings ([`KEPT_BUILD_FLAGS`]). Inside one, cargo's
-/// own fingerprints decide what to rebuild.
+/// game build, Rust toolchain, tool commit ([`crate::contract::TOOL_COMMIT`]) and tool settings
+/// ([`KEPT_BUILD_FLAGS`]), so two different tools never share one. Inside one, cargo's own
+/// fingerprints decide what to rebuild.
 fn kept_build(rust: &dyn Toolchain, package: &Package, revision: &str) -> Result<String, String> {
     let mut hasher = Sha256::new();
     hasher.update(KEPT_BUILD_FLAGS.to_le_bytes());
     hasher.update(crate::rust::VERSION.as_bytes());
+    hasher.update(crate::contract::TOOL_COMMIT.as_bytes());
     hasher.update(rust.target().as_bytes());
     // The package's files reach rustc and the linker through the compiler plan, which cargo
     // doesn't fingerprint: a package any of whose files differ is another key. Each file is known
@@ -1896,8 +1945,10 @@ mod tests {
         };
         let error = refusal(5);
         assert!(error.contains("SDK format 5 is too old"), "{error}");
+        assert!(error.contains("the SDK is older"), "{error}");
         let error = refusal(7);
-        assert!(error.contains("update the launcher"), "{error}");
+        assert!(error.contains("this tool is older"), "{error}");
+        assert!(!error.contains("launcher"), "{error}");
     }
 
     #[test]
@@ -1925,6 +1976,7 @@ mod tests {
             // Even when the retired spelling advertises 6, the published name is required.
             incomplete["format_version"] = 6.into();
             let error = read(&incomplete).err().unwrap();
+            assert!(error.contains("the SDK is older than this tool"), "{error}");
             assert!(
                 error.contains(&format!("missing field `{field}`")),
                 "{error}"

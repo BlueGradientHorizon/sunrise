@@ -883,7 +883,7 @@ impl Game<'_> {
 
     /// Whether the only open transaction is the one a server level tick's dispatch opens around
     /// each listener (#5750): a machine's fake player acts from its level tick.
-    fn in_level_tick_boundary_alone(&self) -> bool {
+    pub(super) fn in_level_tick_boundary_alone(&self) -> bool {
         LevelTickListeners::marked() && self.transactions.len() == 1
     }
 
@@ -893,7 +893,7 @@ impl Game<'_> {
     /// commit their own transactions. A rollback of the listener's own earlier writes still
     /// puts back what they changed, over the action's result at the same place. With no
     /// transaction open this is just `act`.
-    fn beside_listener_journal<T>(&mut self, act: impl FnOnce(&mut Self) -> T) -> T {
+    pub(super) fn beside_listener_journal<T>(&mut self, act: impl FnOnce(&mut Self) -> T) -> T {
         if self.transactions.is_empty() {
             return act(self);
         }
@@ -3089,19 +3089,27 @@ impl Drop for LevelTickListeners {
     }
 }
 
-/// A fake player's `perform_action` in progress: set for its length by [`Acting`], whose drop
-/// clears it on every exit, an early return or a panic unwinding through a mod's hook, and the
-/// effect it stopped, cleared as each action starts.
+/// A fake player's `perform_action`, or a mod's `PlayerRef::attack` or `MobRef::do_hurt_target`,
+/// in progress: set for its length by [`Acting`], whose drop clears it on every exit, an early
+/// return or a panic unwinding through a mod's hook, and the effect it stopped, cleared as each
+/// action starts.
 #[derive(Default)]
 pub(super) struct FakeAction {
     acting: AtomicBool,
+    /// The action is `PlayerRef::attack`: `Player.attack` alone, without its packet's swing.
+    unswung: AtomicBool,
     /// The first effect stopped since the action started.
     blocked: Mutex<Option<FakeEffect>>,
 }
 impl FakeAction {
-    /// Whether a fake player's action is running.
+    /// Whether a fake player's action, or a mod's attack, is running.
     pub(super) fn acting(&self) -> bool {
         self.acting.load(Ordering::Relaxed)
+    }
+    /// Whether the action running is a mod's `PlayerRef::attack`, which `swing_arm` leaves
+    /// without a swing: vanilla's `Player.attack` has none, the swing is its packet's.
+    pub(in crate::game) fn unswung(&self) -> bool {
+        self.unswung.load(Ordering::Relaxed)
     }
     fn block(&self, effect: FakeEffect) {
         // The first effect stopped is the one the action answers.
@@ -3111,16 +3119,21 @@ impl FakeAction {
             .get_or_insert(effect);
     }
 }
-/// Marks a fake player's action as running until it drops.
-struct Acting(Arc<FakeAction>);
+/// Marks a fake player's action, or a mod's attack, as running until it drops.
+pub(super) struct Acting(Arc<FakeAction>);
 impl Acting {
-    fn start(action: &Arc<FakeAction>) -> Self {
+    pub(super) fn start(action: &Arc<FakeAction>) -> Self {
         *action
             .blocked
             .lock()
             .unwrap_or_else(PoisonError::into_inner) = None;
         action.acting.store(true, Ordering::Relaxed);
         Self(Arc::clone(action))
+    }
+    /// [`Self::start`] for a mod's `PlayerRef::attack`, which runs without a swing.
+    pub(super) fn start_unswung(action: &Arc<FakeAction>) -> Self {
+        action.unswung.store(true, Ordering::Relaxed);
+        Self::start(action)
     }
     /// The effect this action stopped, if any.
     fn blocked(&self) -> Option<FakeEffect> {
@@ -3134,6 +3147,7 @@ impl Acting {
 impl Drop for Acting {
     fn drop(&mut self) {
         self.0.acting.store(false, Ordering::Relaxed);
+        self.0.unswung.store(false, Ordering::Relaxed);
     }
 }
 

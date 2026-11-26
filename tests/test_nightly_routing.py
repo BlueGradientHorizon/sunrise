@@ -95,7 +95,7 @@ console.log(JSON.stringify(eval(expression)));
                 self.assertEqual(evaluate(timeout, row, trusted, repository), expected)
 
     @unittest.skipUnless(shutil.which("node"), "Node evaluates GitHub's JavaScript-style expressions")
-    def test_only_a_dev_releases_macos_legs_follow_the_owners_blacksmith_switch(self):
+    def test_only_a_dev_releases_legs_follow_the_owners_blacksmith_switches(self):
         script = """const state = JSON.parse(require('fs').readFileSync(0, 'utf8'));
 const context = values => new Proxy(values, {get: (values, key) => values[key] ?? ''});
 const matrix = context(state.matrix), vars = context(state.vars), inputs = context(state.inputs);
@@ -105,16 +105,19 @@ console.log(JSON.stringify(eval(state.expression)));
         legs = json.loads(prebuilt["jobs"]["fresh"]["steps"][1]["env"]["ALL"])
         game = yaml.safe_load(GAME.read_text())["jobs"]["build"]
         builds = {"game": (game, game["strategy"]["matrix"]["include"]), "sdk": (prebuilt["jobs"]["build"], legs)}
-        for (what, (job, rows)), switch, dev in itertools.product(builds.items(), [None, "off", "on", "true"], [False, True]):
+        switches = [None, "off", "on", "true"]
+        for (what, (job, rows)), switch, every, dev in itertools.product(builds.items(), switches, switches, [False, True]):
             variables = {"BLACKSMITH": "off"}
             if switch is not None:
                 variables["BLACKSMITH_DEV_MACOS"] = switch
+            if every is not None:
+                variables["BLACKSMITH_DEV"] = every
             for row in rows:
-                with self.subTest(build=what, switch=switch, dev=dev, leg=row["name"]):
+                with self.subTest(build=what, switch=switch, every=every, dev=dev, leg=row["name"]):
                     state = {"expression": job["runs-on"][3:-2], "matrix": row, "vars": variables, "inputs": {"dev": dev}}
                     result = subprocess.run(["node", "-e", script], input=json.dumps(state), text=True,
                                             capture_output=True, check=True)
-                    blacksmith = switch == "on" and dev and row["os"] == "macos-15"
+                    blacksmith = dev and (every == "on" or (switch == "on" and row["os"] == "macos-15"))
                     self.assertEqual(json.loads(result.stdout), row["blacksmith"] if blacksmith else row["os"])
 
     def test_any_missing_leg_holds_the_build(self):

@@ -119,6 +119,9 @@ pub enum BlockShapeKind {
     Outline,
     /// Collision shape (`BlockState.getCollisionShape`).
     Collision,
+    /// Visual shape (`BlockState.getVisualShape`), the one `ClipBlock::Visual` rays stop on:
+    /// the collision shape except for the blocks vanilla overrides (see `ClipBlock::Visual`).
+    Visual,
 }
 
 /// A block face for a level support query.

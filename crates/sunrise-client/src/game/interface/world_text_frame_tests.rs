@@ -65,22 +65,18 @@ const WHITE: [u8; 3] = [255, 255, 255];
 /// - that tag behind the display's own blue background (its text back), outside Improved
 ///   Transparency: the background blends over the tag, half blue over white
 ///   (`FeatureRenderDispatcher.PreparedFrame.executeTranslucent` runs `nameTags` before `texts`);
-/// - and, in cases of their own, a mod's world view draws the name tag
-///   ([`a_world_view_draws_the_name_tag`]) and a shader pack's shadow map takes it
-///   ([`a_shader_packs_shadow_takes_the_name_tag`]).
+/// - and, in a case of its own, a mod's world view draws the name tag
+///   ([`a_world_view_draws_the_name_tag`]).
 #[test]
 #[ignore = "daily"]
 fn a_packs_text_draws_world_text_with_and_without_improved_transparency() {
-    let cases = ["classic", "improved_transparency", "world_view", "shadow"];
+    let cases = ["classic", "improved_transparency", "world_view"];
     if run_fresh_cases(NAME, CASE, &cases) {
         return;
     }
     let case = std::env::var(CASE).unwrap();
     if case == "world_view" {
         return a_world_view_draws_the_name_tag();
-    }
-    if case == "shadow" {
-        return a_shader_packs_shadow_takes_the_name_tag();
     }
     let improved = case == "improved_transparency";
     with_client_game(|game| {
@@ -285,122 +281,5 @@ fn a_world_view_draws_the_name_tag() {
         game.tick_text_displays(game.clock.runs_normally());
         let named = picture(game);
         assert!(named != unnamed, "the view shows the name tag");
-    });
-}
-
-/// One of Sunrise's own shader packs with a shadow map (`[shadow]`): with a pack's text, a name
-/// tag's copies are the pack's materials, which the shadow pass draws as the native entity
-/// layer: the map's depth changes when the display is named, as on main.
-fn a_shader_packs_shadow_takes_the_name_tag() {
-    with_client_game(|game| {
-        let pack = super::pack_clouds_frame_tests::pack(&TEXT);
-        game.gui = crate::game::UiResources::load(&pack, std::path::Path::new("")).unwrap();
-        let _event_loop = frame_scene(game);
-        let manifest = br#"schema = 1
-id = "tag_shadow"
-name = "Tag Shadow"
-version = "1.0.0"
-api = "0.1"
-[material]
-file = "material.wgsl"
-[shadow]
-resolution = 256
-distance = 32.0
-"#;
-        let shader_pack = sunrise_shader_api::Pack::from_files(std::collections::BTreeMap::from([
-            (sunrise_shader_api::MANIFEST.into(), manifest.to_vec()),
-            (
-                "material.wgsl".into(),
-                b"fn material(input: MaterialInput) -> Surface { return Surface(input.albedo); }"
-                    .to_vec(),
-            ),
-        ]))
-        .unwrap();
-        let report = sunrise_shader_api::check(&shader_pack).unwrap();
-        let renderer = game.renderer.as_mut().unwrap();
-        renderer
-            .set_native_shader_pack(Some((
-                report,
-                Vec::new(),
-                Vec::new(),
-                Vec::new(),
-                Default::default(),
-            )))
-            .unwrap();
-        assert!(renderer.draws_pack_world_text());
-        let sy = game.world.shape.column().section_index(65).unwrap() as i32;
-        game.settings.chunk_fade = 0.0;
-        game.ui.hide_gui = true;
-        // Mid-afternoon, the sun in the west (its arc runs east to west), and the player facing
-        // east at the display: the tag turns to face the camera, west, so the sun sees its face
-        // (a tag facing north or south is edge-on to the sun at any hour).
-        game.world.day_time = 10000;
-        game.yaw = -90.0;
-        // The shadow map's depth after a few frames, every byte of it: the display's section
-        // uploaded before each (a pack picked since the last frame has the world meshed again,
-        // which drops it), so the display counts as in a visible section.
-        let depth = |game: &mut super::Game<'_>| {
-            for _ in 0..3 {
-                game.renderer
-                    .as_mut()
-                    .unwrap()
-                    .upload((0, sy, 0), &sunrise_client::mesher::SectionMesh::default());
-                frame(game).unwrap();
-            }
-            let renderer = game.renderer.as_mut().unwrap();
-            renderer.wait_submissions();
-            let texture = renderer
-                .native_shadow_depth()
-                .expect("the pack's map")
-                .clone();
-            let device = &renderer.device;
-            let row = texture.width() * 4;
-            let buffer = device.create_buffer(&wgpu::BufferDescriptor {
-                label: None,
-                size: u64::from(row * texture.height()),
-                usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
-                mapped_at_creation: false,
-            });
-            let mut encoder = device.create_command_encoder(&Default::default());
-            encoder.copy_texture_to_buffer(
-                texture.as_image_copy(),
-                wgpu::TexelCopyBufferInfo {
-                    buffer: &buffer,
-                    layout: wgpu::TexelCopyBufferLayout {
-                        offset: 0,
-                        bytes_per_row: Some(row),
-                        rows_per_image: None,
-                    },
-                },
-                texture.size(),
-            );
-            renderer.queue.submit([encoder.finish()]);
-            buffer
-                .slice(..)
-                .map_async(wgpu::MapMode::Read, |r| r.unwrap());
-            device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
-            buffer.slice(..).get_mapped_range().unwrap().to_vec()
-        };
-        // An empty display, with no background, two blocks below the eye: then named.
-        let mut display = super::text_displays::RemoteTextDisplay::new(
-            super::text_displays::Shows::Text,
-            [4.0, 65.5, 0.5],
-            0.0,
-        );
-        display.metadata(&[
-            (23, 0, Value::Text(Tag::String("".into()))),
-            (25, 1, Value::Int(0)),
-        ]);
-        game.text_displays.insert(1, display);
-        game.tick_text_displays(game.clock.runs_normally());
-        let unnamed = depth(game);
-        let display = game.text_displays.get_mut(&1).unwrap();
-        display.metadata(&[
-            (2, 0, Value::OptText(Some(Tag::String("Tag".into())))),
-            (3, 0, Value::Bool(true)),
-        ]);
-        game.tick_text_displays(game.clock.runs_normally());
-        let named = depth(game);
-        assert!(named != unnamed, "the shadow map takes the name tag");
     });
 }

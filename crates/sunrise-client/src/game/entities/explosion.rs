@@ -10,7 +10,12 @@ use mod_api::ExplosionStart;
 use std::{cmp::Ordering, collections::HashSet, io};
 use sunrise_client::health::DamageLevel;
 use sunrise_client::{
-    Result, blocks::Fluid, collisions::SceneCollisions, items::ItemStack, mobs::Who, text::Text,
+    Result,
+    blocks::{Fluid, VisualShape},
+    collisions::SceneCollisions,
+    items::ItemStack,
+    mobs::Who,
+    text::Text,
 };
 use sunrise_core::{
     geometry::{Vec3, VoxelShape},
@@ -37,8 +42,8 @@ pub(super) struct ExplosionCause {
     pub species: Option<sunrise_client::mobs::Species>,
 }
 
-/// Outline and interaction shape tables for [`ColliderRays`] when clipping with
-/// `RayBlockMode::Outline` or `BlockGetter.clipWithInteractionOverride`.
+/// Outline, visual and interaction shape tables for [`ColliderRays`] when clipping with
+/// `RayBlockMode::Outline`, `RayBlockMode::Visual` or `BlockGetter.clipWithInteractionOverride`.
 pub(super) struct ClipData<'a, 'r> {
     pub facts: &'a sunrise_client::blocks::BlockFacts,
     pub behaviours: &'a sunrise_world::level::Behaviours,
@@ -78,6 +83,19 @@ impl RayWorld for ColliderRays<'_, '_> {
         p: BlockPos,
         mode: RayBlockMode,
     ) -> io::Result<VoxelShape> {
+        if mode == RayBlockMode::Visual {
+            // `BlockStateBase.getVisualShape`: the overriding classes answer here,
+            // every other block falls through to its collision shape below.
+            let Some(data) = &self.clip_data else {
+                return Err(io::Error::other("visual ray shape unavailable"));
+            };
+            match data.facts.get(state).visual_shape() {
+                VisualShape::Empty => return Ok(VoxelShape::empty()),
+                VisualShape::Block => return Ok(VoxelShape::block()),
+                VisualShape::Outline => return self.block_shape(state, p, RayBlockMode::Outline),
+                VisualShape::Collision => {}
+            }
+        }
         if mode == RayBlockMode::Outline {
             let Some(data) = &self.clip_data else {
                 return Err(io::Error::other("outline ray shape unavailable"));

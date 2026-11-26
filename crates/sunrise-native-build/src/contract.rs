@@ -9,7 +9,23 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 /// The contract this tool speaks: a plan naming another is refused, so a caller never misreads a reply.
+///
+/// Bump it for any tool change that alters what a caller may send the tool or rely on from it:
+/// plan fields, events, exit codes and outputs. A change that also alters the package layout
+/// bumps `PACKAGE_FORMAT` in `sunrise-mod-package` too.
 pub const CONTRACT: u32 = 2;
+
+/// The commit this tool was built from: release and SDK builds compile with `SUNRISE_TOOL_COMMIT`
+/// set, any other build is `local`. `--version`, `self-update` and the kept builds' key all read it.
+pub const TOOL_COMMIT: &str = tool_build_id(option_env!("SUNRISE_TOOL_COMMIT"));
+
+/// A build that names no commit, or an empty one, is `local`: never a git call whose answer goes stale.
+const fn tool_build_id(named: Option<&'static str>) -> &'static str {
+    match named {
+        Some(commit) if !commit.is_empty() => commit,
+        _ => "local",
+    }
+}
 
 /// What to build, the first line of standard input.
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
@@ -449,6 +465,13 @@ fn answer(input: &mut dyn BufRead) -> bool {
 mod tests {
     use super::*;
     use std::path::Path;
+
+    #[test]
+    fn a_build_that_names_no_commit_is_local() {
+        assert_eq!(tool_build_id(None), "local");
+        assert_eq!(tool_build_id(Some("")), "local");
+        assert_eq!(tool_build_id(Some("abc123")), "abc123");
+    }
 
     fn plan(mods: &Path) -> Plan {
         Plan {

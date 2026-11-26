@@ -185,7 +185,7 @@ impl Game<'_> {
         let players = self.stab_players_for(conn);
         let sound = self
             .guest_hit_by(conn, |g| {
-                if g.cannot_attack_with_item(g.attack_ticks as i32, 5) {
+                if g.cannot_attack_with_item(g.attack_ticks, 5) {
                     None
                 } else {
                     let outer = std::mem::replace(&mut g.stab_players, players);
@@ -562,10 +562,9 @@ impl Game<'_> {
     }
 
     /// `ServerGamePacketListenerImpl.handleAttack` for guest `conn` (at `gi`) hitting
-    /// entity `id`: the border and the attack range, the native mods' `attack_entity`, then
-    /// `Player.attack` for a player, a mob or another entity, and the deflection of a fireball,
-    /// a wind charge or a shulker bullet. True when the blow landed. A fake player's
-    /// `PlayerRef::perform_action` runs it as the packet does.
+    /// entity `id`: the border and the attack range, then [`Self::guest_player_attack`]. True
+    /// when the blow landed. A fake player's `PlayerRef::perform_action` runs it as the packet
+    /// does.
     pub(in crate::game) fn guest_attack(
         &mut self,
         conn: u32,
@@ -592,6 +591,23 @@ impl Game<'_> {
         if self.guest_attack_stops(gi, id) {
             return Ok(false);
         }
+        Ok(self.guest_player_attack(conn, gi, id, true)? == Struck::Landed)
+    }
+
+    /// `Player.attack` for guest `conn` (at `gi`) on entity `id`, from its start: the native
+    /// mods' `attack_entity`, `cannotAttack`, then the attack on a player, a mob or another
+    /// entity, or the deflection of a fireball, a wind charge or a shulker bullet. `packet` is
+    /// the packet's attack, which keeps its swing and its own range check on a projectile;
+    /// a mod's `PlayerRef::attack` runs without them, in an unswung [`Acting`] it holds.
+    ///
+    /// [`Acting`]: crate::game::native_server::Acting
+    pub(in crate::game) fn guest_player_attack(
+        &mut self,
+        conn: u32,
+        gi: usize,
+        id: i32,
+        packet: bool,
+    ) -> Result<Struck, ActionRefused> {
         // Native mods, where Player.attack starts: the global `attack_entity`,
         // then the held item's `on_left_click_entity` Part. A canceled blow
         // does nothing (game/native_hooks.rs).
@@ -623,24 +639,28 @@ impl Game<'_> {
                 canceled || g.native_left_click_entity_event(id, &kind)
             }) == Ok(true)
         {
-            return Ok(false);
+            return Ok(Struck::Stopped);
+        }
+        if self.cannot_attack(id) {
+            return Ok(Struck::Stopped);
         }
         if let Some(victim) = self.pvp_victim(conn, id) {
-            if let Ok(Some(strike)) = self.as_guest_at(gi, conn, |g| g.pvp_strike(id as u32))
-                && let Some(stops_sprint) = self.pvp_land(victim, &strike)
-            {
-                let on_ground = self.pvp_victim_on_ground(victim);
-                let sent = self
-                    .as_guest_at(gi, conn, |g| {
-                        g.remember_player_target(Some(id as u32));
-                        g.pvp_hit_after(id as u32, on_ground, stops_sprint, &strike)
-                    })
-                    .ok()
-                    .flatten();
-                self.send_guest_motion(conn, sent);
-                return Ok(true);
-            }
-            return Ok(false);
+            let Ok(Some(strike)) = self.as_guest_at(gi, conn, |g| g.pvp_strike(id as u32)) else {
+                return Ok(Struck::Stopped);
+            };
+            let Some(stops_sprint) = self.pvp_land(victim, &strike) else {
+                return Ok(Struck::Spent);
+            };
+            let on_ground = self.pvp_victim_on_ground(victim);
+            let sent = self
+                .as_guest_at(gi, conn, |g| {
+                    g.remember_player_target(Some(id as u32));
+                    g.pvp_hit_after(id as u32, on_ground, stops_sprint, &strike)
+                })
+                .ok()
+                .flatten();
+            self.send_guest_motion(conn, sent);
+            return Ok(Struck::Landed);
         }
         // A ghast's fireball or a wind charge: turned along the guest's own
         // view (ServerGamePacketListenerImpl.handleInteract, then
@@ -651,8 +671,8 @@ impl Game<'_> {
             .iter()
             .position(|p| p.id != 0 && p.id as i32 == id && crate::game::deflect::attackable(p))
         {
-            return Ok(self.as_guest_at(gi, conn, |g| {
-                if !g.within_interaction_range(i) {
+            let deflected = self.as_guest_at(gi, conn, |g| {
+                if packet && !g.within_interaction_range(i) {
                     return false;
                 }
                 if matches!(
@@ -664,7 +684,12 @@ impl Game<'_> {
                     g.deflect(i);
                 }
                 true
-            }) == Ok(true));
+            }) == Ok(true);
+            return Ok(if deflected {
+                Struck::Landed
+            } else {
+                Struck::Stopped
+            });
         }
         if let Some(index) = self
             .mobs
@@ -676,7 +701,7 @@ impl Game<'_> {
                 return Err(ActionRefused::Stale);
             };
             if host.hub.guests[gi].vehicle == Some(self.mobs[index].id) {
-                return Ok(false);
+                return Ok(Struck::Stopped);
             }
             // A mace's smash sets the attacker's velocity and sends it at once, before the
             // Wind Burst's push (MaceItem.hurtEnemy, then the post-attack effects).
@@ -702,7 +727,7 @@ impl Game<'_> {
             {
                 host.mob_players.insert(id, conn);
             }
-            return Ok(true);
+            return Ok(Struck::Landed);
         }
         let Some(host) = self.lan.as_ref() else {
             return Err(ActionRefused::Stale);
@@ -714,16 +739,11 @@ impl Game<'_> {
             .iter()
             .find(|tnt| tnt.id as i32 == id)
             .map(|tnt| tnt.id);
-        let falling = self.falling.iter().any(|block| block.id as i32 == id);
-        if falling {
-            // FallingBlockEntity.isAttackable is false: Player.attack exits at cannotAttack.
-            return Ok(false);
-        }
         let general = match u32::try_from(id).ok().and_then(|id| self.general_row(id)) {
             Some(row) => {
                 let catalog = crate::game::general::general_type_catalog();
                 if !catalog.pickable(row.type_slot) {
-                    return Ok(false);
+                    return Ok(Struck::Stopped);
                 }
                 Some((row.id, catalog.key(row.type_slot)))
             }
@@ -765,7 +785,7 @@ impl Game<'_> {
         self.send_guest_motion(conn, sent);
         if tnt.is_some() || general.is_some() {
             // Primed TNT and plain rows refuse damage, even though the attack spent its charge.
-            return Ok(false);
+            return Ok(Struck::Spent);
         }
         // The mob now answers to this guest (game/network/lan_mobs.rs).
         let Some(host) = self.lan.as_mut() else {
@@ -784,8 +804,19 @@ impl Game<'_> {
             let value = old_pitch;
             host.hub.guests.update(gi, |guest| guest.pitch = value);
         }
-        Ok(true)
+        Ok(Struck::Landed)
     }
+}
+
+/// How far a guest's `Player.attack` went ([`Game::guest_player_attack`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(in crate::game) enum Struck {
+    /// It ended before `onAttack`: a mod canceled it, or `cannotAttack`.
+    Stopped,
+    /// It spent the attack, but nothing took the blow.
+    Spent,
+    /// The blow landed.
+    Landed,
 }
 
 #[cfg(test)]

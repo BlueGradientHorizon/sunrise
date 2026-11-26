@@ -26,12 +26,11 @@ pub trait LevelCollisionBackend {
     /// Reads parked server levels and the current client level without loading chunks.
     fn level_block_floor_height(&self, level: LevelRef, pos: [i32; 3]) -> Option<f64>;
     /// Side: both.
-    /// Visit the supplied state's block-local outline or collision boxes at `pos`,
-    /// with an empty context (`BlockState.getShape` / `getCollisionShape`).
-    /// The state need not be the block stored there; level-dependent shapes
-    /// still read the real level. Pass `block_state(host, pos)` to query the
-    /// state at that position. Interaction, visual, occlusion and support shapes
-    /// are not exposed. Reads open server levels and the current client level.
+    /// Visit the supplied state's block-local outline, collision or visual boxes at `pos`,
+    /// with an empty context (`BlockState.getShape` / `getCollisionShape` /
+    /// `getVisualShape`). The state need not be the block stored there; level-dependent
+    /// shapes still read the real level. Pass `block_state(host, pos)` to query the
+    /// state at that position. Interaction, occlusion and support shapes are not exposed. Reads open server levels and the current client level.
     /// Returns None for an unknown state, a stale handle or an unavailable level.
     /// Collision errors return no boxes.
     /// A visitor break ends the walk immediately.
@@ -44,12 +43,13 @@ pub trait LevelCollisionBackend {
         visit: &mut dyn FnMut([f64; 6]) -> core::ops::ControlFlow<()>,
     ) -> Option<core::ops::ControlFlow<()>>;
     /// Side: both.
-    /// Clip an empty-context ray from `from` to `to` against collider or outline shapes and
-    /// fluids (`BlockGetter.clip` / `BlockGetter.clipWithInteractionOverride`, not
-    /// `CollisionGetter.clipIncludingBorder`). `fluids` selects which fluid states stop the ray
-    /// (`ClipFluid`), using `FluidState.getShape` with neighbour-dependent height; in each cell,
-    /// block and fluid hits compare squared distance at the actual hit point and the block wins a
-    /// tie. No traversal cell cap or entity reach limit is applied.
+    /// Clip an empty-context ray from `from` to `to` against collider, outline or visual shapes
+    /// (`ClipContext.Block.COLLIDER`, `OUTLINE`, `VISUAL`) and fluids (`BlockGetter.clip` /
+    /// `BlockGetter.clipWithInteractionOverride`, not `CollisionGetter.clipIncludingBorder`).
+    /// `fluids` selects which fluid states stop the ray (`ClipFluid`), using
+    /// `FluidState.getShape` with neighbour-dependent height; in each cell, block and fluid hits
+    /// compare squared distance at the actual hit point and the block wins a tie. No traversal
+    /// cell cap or entity reach limit is applied.
     ///
     /// Reads the named resident world without loading chunks: on a client (including a viewed
     /// level from `host.level`), missing columns read as empty chunks
@@ -58,8 +58,10 @@ pub trait LevelCollisionBackend {
     /// (`PathNavigationRegion.getBlockState`/`getChunk`). Cells outside build height read as
     /// air. Collider mode uses the full collision registry and context shapes; outline mode
     /// returns `None` when a block has dynamic outline geometry without an outline
-    /// implementation. Also returns `None` for a stale or unavailable level, non-finite
-    /// endpoints, or a shape query error.
+    /// implementation. Visual mode reads `BlockState.getVisualShape` (see `ClipBlock::Visual`):
+    /// a block that keeps vanilla's default clips as in collider mode, a block whose visual
+    /// shape is its outline as in outline mode. Also returns `None` for a stale or unavailable
+    /// level, non-finite endpoints, or a shape query error.
     fn level_clip(
         &self,
         level: LevelRef,
