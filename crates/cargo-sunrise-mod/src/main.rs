@@ -1351,13 +1351,7 @@ mod tests {
         let names: Vec<_> = bundle.files.keys().map(String::as_str).collect();
         assert_eq!(
             names,
-            [
-                "Cargo.toml",
-                "README.md",
-                "page.toml",
-                "src/lib.rs",
-                "sunrise-mod.toml"
-            ]
+            ["Cargo.toml", "README.md", "src/lib.rs", "sunrise-mod.toml"]
         );
         assert!(path.join("sunrise-mod.toml").is_file());
         for old in [
