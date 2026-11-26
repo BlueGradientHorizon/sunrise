@@ -8,6 +8,16 @@ use sunrise_client::{
 use sunrise_game_data::text::Text;
 
 impl crate::game::ClientGame<'_> {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn test_open_gamemode_switcher(&mut self) {
+        self.open_gamemode_switcher();
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn test_close_gamemode_switcher(&mut self, apply: bool) {
+        self.close_gamemode_switcher(apply);
+    }
+
     pub(in crate::game::client_side) fn open_gamemode_switcher(&mut self) {
         self.client.gamemode_switcher = Some(GameModeSwitcher::new(
             self.common.mode,

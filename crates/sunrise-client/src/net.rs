@@ -114,7 +114,7 @@ use sunrise_protocol::{
     registry::Dynamic,
     rsa::RsaPublicKey,
     servers::parse_address,
-    text::{Language, plain, translatable},
+    text::{Language, plain, plain_with, translatable},
 };
 use {
     sunrise_core::nbt::{JavaString, Tag},
@@ -1049,7 +1049,17 @@ impl Reason {
     fn component(reason_json: &str, lang: &Language) -> Self {
         match serde_json::from_str::<serde_json::Value>(reason_json) {
             Ok(v) => Self {
-                text: json_text(&v, lang),
+                text: if crate::lang::has_mod_entries() {
+                    let current = crate::lang::current();
+                    json_text_with(&v, |key| {
+                        current
+                            .as_deref()
+                            .and_then(|published| published.mod_entry(key))
+                            .or_else(|| lang.get(key).map(String::as_str))
+                    })
+                } else {
+                    json_text(&v, lang)
+                },
                 key: v["translate"].as_str().map(str::to_owned),
                 from_server: true,
             },
@@ -1083,7 +1093,17 @@ impl Reason {
             _ => None,
         };
         Self {
-            text: plain(tag, lang),
+            text: if crate::lang::has_mod_entries() {
+                let current = crate::lang::current();
+                plain_with(tag, |key| {
+                    current
+                        .as_deref()
+                        .and_then(|published| published.mod_entry(key))
+                        .or_else(|| lang.get(key).map(String::as_str))
+                })
+            } else {
+                plain(tag, lang)
+            },
             key,
             from_server: true,
         }
@@ -2548,59 +2568,65 @@ fn send_identity(
 /// At most `sunrise_protocol::text::MAX_TEXT` bytes, as `plain`: a login-phase reason from a
 /// server is any JSON it likes.
 pub fn json_text(v: &serde_json::Value, lang: &Language) -> String {
-    use sunrise_protocol::text::{MAX_TEXT, push_capped};
-    match v {
-        serde_json::Value::String(s) => {
-            let mut out = String::new();
-            push_capped(&mut out, s);
-            out
-        }
-        serde_json::Value::Array(a) => {
-            let mut out = String::new();
-            for e in a {
-                if out.len() >= MAX_TEXT {
-                    break;
-                }
-                push_capped(&mut out, &json_text(e, lang));
-            }
-            out
-        }
-        serde_json::Value::Object(o) => {
-            let mut out = if let Some(t) = o.get("text").and_then(|t| t.as_str()) {
+    json_text_with(v, |key| lang.get(key).map(String::as_str))
+}
+
+fn json_text_with<'a>(v: &serde_json::Value, lookup: impl Fn(&str) -> Option<&'a str>) -> String {
+    fn walk<'a, F: Fn(&str) -> Option<&'a str>>(v: &serde_json::Value, lookup: &F) -> String {
+        use sunrise_protocol::text::{MAX_TEXT, push_capped};
+        match v {
+            serde_json::Value::String(s) => {
                 let mut out = String::new();
-                push_capped(&mut out, t);
+                push_capped(&mut out, s);
                 out
-            } else if let Some(key) = o.get("translate").and_then(|t| t.as_str()) {
-                let args: Vec<String> = o
-                    .get("with")
-                    .and_then(|w| w.as_array())
-                    .map(|a| a.iter().map(|e| json_text(e, lang)).collect())
-                    .unwrap_or_default();
-                let pattern = lang
-                    .get(key)
-                    .cloned()
-                    .or_else(|| {
-                        o.get("fallback")
-                            .and_then(|f| f.as_str())
-                            .map(str::to_owned)
-                    })
-                    .unwrap_or_else(|| key.to_owned());
-                sunrise_protocol::text::format_java(&pattern, &args)
-            } else {
-                String::new()
-            };
-            if let Some(extra) = o.get("extra").and_then(|e| e.as_array()) {
-                for e in extra {
+            }
+            serde_json::Value::Array(a) => {
+                let mut out = String::new();
+                for e in a {
                     if out.len() >= MAX_TEXT {
                         break;
                     }
-                    push_capped(&mut out, &json_text(e, lang));
+                    push_capped(&mut out, &walk(e, lookup));
                 }
+                out
             }
-            out
+            serde_json::Value::Object(o) => {
+                let mut out = if let Some(t) = o.get("text").and_then(|t| t.as_str()) {
+                    let mut out = String::new();
+                    push_capped(&mut out, t);
+                    out
+                } else if let Some(key) = o.get("translate").and_then(|t| t.as_str()) {
+                    let args: Vec<String> = o
+                        .get("with")
+                        .and_then(|w| w.as_array())
+                        .map(|a| a.iter().map(|e| walk(e, lookup)).collect())
+                        .unwrap_or_default();
+                    let pattern = lookup(key)
+                        .map(str::to_owned)
+                        .or_else(|| {
+                            o.get("fallback")
+                                .and_then(|f| f.as_str())
+                                .map(str::to_owned)
+                        })
+                        .unwrap_or_else(|| key.to_owned());
+                    sunrise_protocol::text::format_java(&pattern, &args)
+                } else {
+                    String::new()
+                };
+                if let Some(extra) = o.get("extra").and_then(|e| e.as_array()) {
+                    for e in extra {
+                        if out.len() >= MAX_TEXT {
+                            break;
+                        }
+                        push_capped(&mut out, &walk(e, lookup));
+                    }
+                }
+                out
+            }
+            other => other.to_string(),
         }
-        other => other.to_string(),
     }
+    walk(v, &lookup)
 }
 
 pub use sunrise_sim::lang_load::load_language;
@@ -3379,6 +3405,109 @@ mod tests {
         let v = serde_json::json!({ "text": "", "extra": [v.clone(), v] });
         let text = json_text(&v, &Language::default());
         assert!(text.len() <= sunrise_protocol::text::MAX_TEXT);
+    }
+
+    #[test]
+    fn disconnect_reasons_layer_runtime_overrides_over_pack_only_session_maps() {
+        use crate::lang::{self, Language as ClientLanguage};
+        use std::path::Path;
+
+        // Unmodded mid-session locale change keeps resolving from the session's captured map.
+        {
+            let _isolated = lang::isolate_publication(ClientLanguage::of(
+                "en_us",
+                [("disconnect.test".into(), "English pack".into())],
+            ));
+            let session_lang = load_language(Path::new(""));
+            lang::set(ClientLanguage::of(
+                "de_de",
+                [("disconnect.test".into(), "German pack".into())],
+            ));
+            assert_eq!(
+                Reason::component(r#"{"translate":"disconnect.test"}"#, &session_lang).text,
+                "English pack"
+            );
+            assert_eq!(
+                Reason::tag(&translatable("disconnect.test", &[]), &session_lang).text,
+                "English pack"
+            );
+        }
+
+        // A session opened during an override still captures the pack-only fallback.
+        {
+            let _isolated = lang::isolate_publication(ClientLanguage::of(
+                "en_us",
+                [
+                    ("disconnect.test".into(), "Pack reason".into()),
+                    ("disconnect.wrap".into(), "Wrap: %s".into()),
+                ],
+            ));
+            lang::set_mod_entries(
+                "disconnect_mod",
+                "en_us",
+                HashMap::from([
+                    ("disconnect.test".into(), "Mod reason".into()),
+                    ("disconnect.mod_only".into(), "Mod only".into()),
+                ]),
+            );
+            let session_lang = load_language(Path::new(""));
+            assert_eq!(
+                Reason::component(r#"{"translate":"disconnect.test"}"#, &session_lang).text,
+                "Mod reason"
+            );
+            assert_eq!(
+                Reason::tag(&translatable("disconnect.test", &[]), &session_lang).text,
+                "Mod reason"
+            );
+            assert_eq!(
+                Reason::component(
+                    r#"{"translate":"disconnect.wrap","with":[{"translate":"disconnect.mod_only"}]}"#,
+                    &session_lang,
+                )
+                .text,
+                "Wrap: Mod only"
+            );
+            assert_eq!(
+                Reason::tag(&translatable("disconnect.mod_only", &[]), &session_lang).text,
+                "Mod only"
+            );
+
+            lang::clear_mod_entries("disconnect_mod");
+            assert_eq!(
+                Reason::component(r#"{"translate":"disconnect.test"}"#, &session_lang).text,
+                "Pack reason"
+            );
+            assert_eq!(
+                Reason::tag(&translatable("disconnect.test", &[]), &session_lang).text,
+                "Pack reason"
+            );
+            assert_eq!(
+                Reason::component(
+                    r#"{"translate":"disconnect.mod_only","fallback":"Fallback"}"#,
+                    &session_lang,
+                )
+                .text,
+                "Fallback"
+            );
+            assert_eq!(
+                Reason::tag(&translatable("disconnect.mod_only", &[]), &session_lang).text,
+                "disconnect.mod_only"
+            );
+
+            lang::set_mod_entries(
+                "disconnect_mod",
+                "en_us",
+                HashMap::from([("disconnect.test".into(), "Late override".into())]),
+            );
+            assert_eq!(
+                Reason::component(r#"{"translate":"disconnect.test"}"#, &session_lang).text,
+                "Late override"
+            );
+            assert_eq!(
+                Reason::tag(&translatable("disconnect.test", &[]), &session_lang).text,
+                "Late override"
+            );
+        }
     }
 
     fn pack(namespace: &str, id: &str, version: &str) -> cfg::KnownPack {

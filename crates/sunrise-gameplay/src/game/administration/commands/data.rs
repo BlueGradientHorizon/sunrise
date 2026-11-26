@@ -181,7 +181,7 @@ impl crate::game::ServerGame<'_> {
         });
         Some(())
     }
-    pub(in crate::game::server_side) fn raw_mut(&mut self, t: Target) -> Option<&mut Tag> {
+    pub(in crate::game) fn raw_mut(&mut self, t: Target) -> Option<&mut Tag> {
         match t {
             Target::Player => Some(self.common.level.player_extra.get_or_insert_with(empty)),
             Target::Guest(conn) => self

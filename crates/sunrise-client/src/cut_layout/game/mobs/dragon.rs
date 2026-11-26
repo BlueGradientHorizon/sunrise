@@ -9,7 +9,7 @@ use sunrise_sim::projectiles::ProjectileKind;
 pub(crate) mod tests {
 
     use sunrise_core::random::RandomSource;
-    use sunrise_gameplay::game::server_side::dragon::{DragonHitOrigin, Hurt};
+    use sunrise_gameplay::game::server_side::dragon::{DragonHitHooks, DragonHitOrigin, Hurt};
     use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
     use sunrise_gameplay_common::game::dragon_common::Phase;
     use sunrise_gameplay_common::game::server_side::dragon::tests::dragon;
@@ -328,6 +328,9 @@ pub(crate) mod tests {
                             entity_id: None,
                             from: None,
                             invulnerability_checked: false,
+                            hook_source: None,
+                            attack: None,
+                            hooks: DragonHitHooks::capture(),
                         },
                     )
                 };
@@ -382,6 +385,9 @@ pub(crate) mod tests {
                     entity_id: None,
                     from: Some(from),
                     invulnerability_checked: false,
+                    hook_source: None,
+                    attack: None,
+                    hooks: DragonHitHooks::capture(),
                 },
             );
             assert_eq!(hurt, Hurt::Landed { full: true });

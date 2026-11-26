@@ -89,7 +89,7 @@ use sunrise_protocol::{
     },
     registry::{DimensionType, Dynamic, SyncedNames, ceil_log2},
     secure_chat::{self, Signature},
-    text::plain,
+    text::{plain, plain_with},
 };
 use sunrise_server_files::profiles::ServicesKeySet;
 use sunrise_sim::first_person_sim::{Hand, SwingAnimation};

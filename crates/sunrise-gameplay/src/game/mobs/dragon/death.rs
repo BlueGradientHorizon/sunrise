@@ -9,6 +9,19 @@ impl crate::game::ServerGame<'_> {
             return;
         };
         d.death_time += 1;
+        if d.death_canceled {
+            // A vetoed death expires quietly after 20 ticks if the dragon stays unhealed.
+            if d.death_time >= 20 {
+                let id = d.id;
+                if let Some(&uuid) = self.common.persist.uuids.get(&id)
+                    && let Some(set) = self.common.persist.dragon_death_canceled.as_mut()
+                {
+                    set.remove(&uuid);
+                }
+                self.discard_resident_dragon();
+            }
+            return;
+        }
         let t = d.death_time;
         let p = d.position;
         if (180..=200).contains(&t) {

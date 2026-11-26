@@ -313,7 +313,7 @@ pub struct Crystal {
     /// moves itself; a client's copy eases to where the server sends it.
     pub previous: Vec3,
     pub rotation: [f32; 2],
-    pub fire: i16,
+    pub fire: i32,
     pub show_bottom: bool,
     /// EndCrystal.time (the bob and spin), starting random.
     pub time: i32,
@@ -531,6 +531,7 @@ pub struct Dragon {
     pub hurt_by_player: Option<(FightWho, i32)>,
     pub last_source: Option<(&'static str, Option<i32>, Option<i32>)>,
     pub death_time: i32,
+    pub death_canceled: bool,
     pub flap: f32,
     pub old_flap: f32,
     pub in_wall: bool,
@@ -687,6 +688,7 @@ impl Dragon {
             hurt_by_player: None,
             last_source: None,
             death_time: 0,
+            death_canceled: false,
             flap: 0.0,
             old_flap: 0.0,
             in_wall: false,
@@ -734,10 +736,6 @@ impl Dragon {
     }
     pub fn alive(&self) -> bool {
         self.health > 0.0
-    }
-    /// `isDeadOrDying` for the killing blow: the dying flight, or no health.
-    pub fn down(&self) -> bool {
-        matches!(self.phase, Phase::Dying { .. }) || !self.alive()
     }
     /// The entity's own box, not any of the separate `EnderDragonPart` boxes.
     pub fn body_bounds(&self) -> Aabb {
@@ -914,25 +912,34 @@ impl Dragon {
         let mut d = Self::new(position, yaw, seed);
         d.pitch = pitch;
         d.velocity = velocity;
-        // Vanilla getFloatOr/getIntOr accept any numeric tag type.
-        d.health = nbt_value::float(tag.get("Health")).map_or(d.health, |h| h as f32);
-        d.sitting_damage =
-            nbt_value::float(tag.get("sitting_damage_received")).unwrap_or(0.0) as f32;
-        if let Some(p) = nbt_value::number(tag.get("DragonPhase")) {
-            d.phase = Phase::from_id(p as i32);
-        }
-        if let Some(t) = nbt_value::number(tag.get("DragonDeathTime")) {
-            d.death_time = t as i32;
-        }
-        d.persistent = sunrise_sim::entity_nbt::flag(tag, "PersistenceRequired");
-        if let Some(equipment) = tag.get("equipment") {
-            d.equipment = sunrise_items::equipment::Equipment::read(equipment);
-        }
-        d.live.load(tag.get("attributes"), |_| true);
-        d.no_ai = matches!(tag.get("NoAI"), Some(Tag::Byte(b)) if *b != 0);
+        d.apply_saved_fields(tag);
         Some(d)
     }
+
+    fn apply_saved_fields(&mut self, tag: &Tag) {
+        // Vanilla getFloatOr/getIntOr accept any numeric tag type.
+        self.health = nbt_value::float(tag.get("Health")).map_or(self.health, |h| h as f32);
+        self.sitting_damage =
+            nbt_value::float(tag.get("sitting_damage_received")).unwrap_or(0.0) as f32;
+        if let Some(phase) = saved_dragon_phase(tag.get("DragonPhase")) {
+            self.phase = phase;
+        }
+        if let Some(t) = nbt_value::number(tag.get("DragonDeathTime")) {
+            self.death_time = t as i32;
+        }
+        self.persistent = sunrise_sim::entity_nbt::flag(tag, "PersistenceRequired");
+        if let Some(equipment) = tag.get("equipment") {
+            self.equipment = sunrise_items::equipment::Equipment::read(equipment);
+        }
+        self.live.load(tag.get("attributes"), |_| true);
+        self.no_ai = matches!(tag.get("NoAI"), Some(Tag::Byte(b)) if *b != 0);
+    }
 }
+
+pub fn saved_dragon_phase(tag: Option<&Tag>) -> Option<Phase> {
+    nbt_value::number(tag).map(|phase| Phase::from_id(phase as i32))
+}
+
 impl Crystal {
     pub fn to_nbt(&self, uuid: [i32; 4], raw: Option<&Tag>) -> Tag {
         let mut tag = sunrise_sim::entity_nbt::vehicle_to_nbt(
@@ -945,7 +952,7 @@ impl Crystal {
             raw,
         );
         if let Tag::Compound(map) = &mut tag {
-            map.insert("Fire".into(), Tag::Short(self.fire));
+            map.insert("Fire".into(), Tag::Short(self.fire as i16));
             map.insert("ShowBottom".into(), Tag::Byte(i8::from(self.show_bottom)));
             if let Some(b) = self.beam {
                 map.insert("beam_target".into(), Tag::IntArray(b.to_vec()));
@@ -975,7 +982,7 @@ impl Crystal {
             position,
             previous: position,
             rotation: sunrise_sim::entity_nbt::loaded_rotation(tag),
-            fire,
+            fire: i32::from(fire),
             show_bottom: sunrise_sim::entity_nbt::flag_or(tag, "ShowBottom", true),
             time,
             beam: match tag.get("beam_target") {

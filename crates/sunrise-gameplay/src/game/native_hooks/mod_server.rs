@@ -208,10 +208,16 @@ impl crate::game::ServerGame<'_> {
         kind: &str,
         post: std::sync::Arc<sunrise_sim::health::DamagePost>,
     ) {
+        use sunrise_gameplay_common::game::transactions::entities::EntityRemovalGameExt as _;
         use sunrise_sim::health::{HitLend, LivingBody, PlayerBody, PlayerHealthRead};
         let (source, state, original_lend) = post.view();
-        // The victim as the death or protection callback left it, beside the lent attacker:
-        // the player in place, or a mob split from the attacker in the same list.
+        // Check removal before borrowing the victim and the lent attacker.
+        let dragon_victim = self
+            .common
+            .dragon
+            .as_ref()
+            .filter(|d| d.id as i32 == entity)
+            .is_some_and(|d| !self.target_removed(&crate::game::commands::Target::Dragon(d.id)));
         let victim_mob = self.common.mobs.iter().position(|m| m.id as i32 == entity);
         // The Post record exists only for a Post subscriber, and names an attacker only if the hit
         // lent one: it carries the setup's decision.
@@ -268,7 +274,13 @@ impl crate::game::ServerGame<'_> {
                     })
                     .or_else(parked),
             };
-            (victim_mob.map(LivingBody::Mob), lend)
+            let victim = victim_mob.map(LivingBody::Mob).or_else(|| {
+                dragon_victim
+                    .then(|| self.common.dragon.as_ref())
+                    .flatten()
+                    .map(sunrise_gameplay_common::game::native_living_body::dragon_body)
+            });
+            (victim, lend)
         };
         let level = crate::game::server_side::entity_server::damage_level_of!(
             self,

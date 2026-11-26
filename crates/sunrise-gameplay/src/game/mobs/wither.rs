@@ -2,6 +2,7 @@
 //! its boss bar, and its skulls hitting and exploding.
 use crate::game::ServerGame;
 use sunrise_core::{geometry::Direction, position::BlockPos};
+use sunrise_gameplay_common::game::dragon_common::SPECIAL;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::block_pattern::{BlockPattern, PatternMatch, WITHER_FULL};
 use sunrise_sim::{
@@ -264,15 +265,26 @@ impl ServerGame<'_> {
                 } else {
                     "minecraft:magic"
                 };
-                self.hit_special_full(
-                    id,
-                    amount,
-                    live_owner,
-                    p.guest,
-                    kind,
-                    Some(damage_type),
-                    Some(super::dragon::DirectHit::from_projectile(p)),
-                );
+                let hit = |game: &mut Self| {
+                    game.hit_special_full(
+                        id,
+                        amount,
+                        live_owner,
+                        p.guest,
+                        kind,
+                        Some(damage_type),
+                        Some(super::dragon::DirectHit::from_projectile(p)),
+                    );
+                };
+                if id >= SPECIAL
+                    && mod_api::__private::enabled_listened(mod_api::HookId::LivingDeath)
+                    && self.server.combat.0.attack().projectile != Some(p.id as i32)
+                {
+                    let attack = self.projectile_attack(p);
+                    self.with_attack(attack, hit);
+                } else {
+                    hit(self);
+                }
             }
             Some(Who::Mob(id)) => {
                 let owner_species = owner

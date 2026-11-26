@@ -3950,6 +3950,9 @@ pub mod attachment_indexes;
 #[path = "game/modding/native_level_refs_common.rs"]
 pub mod native_level_refs_common;
 
+#[path = "game/modding/native_entity_base.rs"]
+pub mod native_entity_base;
+
 #[path = "game/modding/native_entity_state_common.rs"]
 pub mod native_entity_state_common;
 

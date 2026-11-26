@@ -417,15 +417,25 @@ impl ServerGame<'_> {
             Who::Mob(id) if id >= sunrise_gameplay_common::game::dragon_common::SPECIAL => {
                 if id < sunrise_gameplay_common::game::dragon_common::SPECIAL + 8 {
                     let owner = self.resolved_projectile_owner(p.owner, p.guest);
-                    self.hit_special_full(
-                        id,
-                        1.0,
-                        owner,
-                        p.guest,
-                        sunrise_sim::mobs::DamageKind::WindCharge,
-                        Some("minecraft:wind_charge"),
-                        Some(super::dragon::DirectHit::from_projectile(p)),
-                    );
+                    let hit = |game: &mut Self| {
+                        game.hit_special_full(
+                            id,
+                            1.0,
+                            owner,
+                            p.guest,
+                            DamageKind::WindCharge,
+                            Some("minecraft:wind_charge"),
+                            Some(super::dragon::DirectHit::from_projectile(p)),
+                        );
+                    };
+                    if mod_api::__private::enabled_listened(mod_api::HookId::LivingDeath)
+                        && self.server.combat.0.attack().projectile != Some(p.id as i32)
+                    {
+                        let attack = self.projectile_attack(p);
+                        self.with_attack(attack, hit);
+                    } else {
+                        hit(self);
+                    }
                 }
             }
             // Non-mob pickable target (stand, painting, frame, knot, cushion, vehicle, falling block).

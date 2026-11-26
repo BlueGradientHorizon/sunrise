@@ -160,6 +160,8 @@ pub struct EntityMemory {
     pub removals: Vec<Target>,
     /// First attachment persistence error raised while building the current entity record.
     pub attachment_encode_error: Option<sunrise_mod_runtime::attachments::AttachmentEncodeError>,
+    pub dragon_death_canceled: Option<HashSet<[i32; 4]>>,
+    pub entity_metadata_on_disk: bool,
 }
 
 impl EntityMemory {

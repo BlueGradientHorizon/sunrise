@@ -70,6 +70,7 @@ impl ServerGame<'_> {
                 .0
                 .save_attachments(&self.common.world.attachments)?;
             self.save_chunk_tickets()?;
+            self.save_entity_metadata()?;
             self.save_game_metadata()?;
             Ok(Some(self.server.save.0.flush_later()?))
         } else {
@@ -100,7 +101,7 @@ impl ServerGame<'_> {
     }
     /// Save the level in place: its changed chunks, its entities and its raids.
     pub fn save_level(&mut self, wait: bool) -> Result<()> {
-        self.common.admit_level_save()?;
+        self.admit_level_save()?;
         // No save holds a player vehicle: a mob a mod seated on a player gets off first.
         self.eject_player_riders(None);
         self.save_border();

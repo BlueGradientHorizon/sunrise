@@ -328,6 +328,11 @@ pub(in crate::game) use server_side::native_display_refs;
 pub(in crate::game) use server_side::native_dragon_refs;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_entities;
+#[path = "game/modding/native_entity_base_server.rs"]
+mod native_entity_base_server;
+#[cfg(test)]
+#[path = "game/modding/native_entity_base_tests.rs"]
+mod native_entity_base_tests;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_entity_commands;
 #[allow(unused_imports)]

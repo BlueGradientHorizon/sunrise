@@ -54,7 +54,7 @@ impl crate::game::ServerGame<'_> {
             owner: row.owner,
             custom_name: row.custom_name.clone(),
             custom_name_visible: row.custom_name_visible,
-            no_gravity: row.no_gravity,
+            base: row.base,
             on_ground: row.on_ground,
             fall_distance: row.fall_distance,
             envelope: GeneralTypeEnvelope {
@@ -511,7 +511,7 @@ impl crate::game::ServerGame<'_> {
             fall_distance: record.fall_distance,
             custom_name: record.custom_name,
             custom_name_visible: record.custom_name_visible,
-            no_gravity: record.no_gravity,
+            base: record.base,
             on_ground: record.on_ground,
             tick_count: 0,
             no_physics: false,

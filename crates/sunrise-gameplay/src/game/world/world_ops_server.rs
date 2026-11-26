@@ -465,6 +465,37 @@ impl crate::game::ServerGame<'_> {
         self.save_game_with(true)
     }
 
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn test_world_save_starting(&self) -> bool {
+        self.server.world_save_starting
+    }
+
+    pub(in crate::game) fn admit_level_save(&self) -> Result<()> {
+        if self.server.world_save_starting {
+            return Err("a world save is already starting".into());
+        }
+        self.common.admit_level_save()
+    }
+
+    /// Admit the save and notify mods before any player, level, or metadata writes.
+    #[inline(always)]
+    pub(in crate::game) fn begin_world_save(&mut self, wait: bool) -> Result<()> {
+        self.admit_level_save()?;
+        if !mod_api::__private::enabled_listened(mod_api::HookId::WorldSaveStart) {
+            return Ok(());
+        }
+        struct Guard<'a, 'g>(&'a mut crate::game::ServerGame<'g>);
+        impl Drop for Guard<'_, '_> {
+            fn drop(&mut self) {
+                self.0.server.world_save_starting = false;
+            }
+        }
+        self.server.world_save_starting = true;
+        let guard = Guard(self);
+        guard.0.native_world_save_start(wait);
+        Ok(())
+    }
+
     /// The autosave doesn't `wait` for the chunks to be on disk: every
     /// generated chunk is saved, hundreds at a time, encoded and written on
     /// the region writer meanwhile.
@@ -473,13 +504,13 @@ impl crate::game::ServerGame<'_> {
             self.is_logical_server(),
             "save_game_with called on Client role"
         );
-        self.common.admit_level_save()?;
+        self.begin_world_save(wait)?;
         let owner_saved = self.save_placed_players();
         self.write_world(wait, owner_saved)
     }
 
     pub(in crate::game) fn save_world_after_players(&mut self, owner_saved: bool) -> Result<()> {
-        self.common.admit_level_save()?;
+        self.admit_level_save()?;
         self.write_world(true, owner_saved)
     }
 

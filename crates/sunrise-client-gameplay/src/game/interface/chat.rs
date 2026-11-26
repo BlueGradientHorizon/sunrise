@@ -551,6 +551,11 @@ impl crate::game::ClientGame<'_> {
         self.close_chat(ChatExit::Intentional);
     }
 
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn test_close_chat_done(&mut self) {
+        self.close_chat(ChatExit::Done);
+    }
+
     /// `ChatScreen.removed`, called only after the screen transition is accepted.
     pub fn remove_chat_screen(&mut self, reason: ChatExit) {
         if let Some(screen) = self.client.chat_ui.chat_screen.take() {

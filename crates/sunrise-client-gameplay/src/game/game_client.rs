@@ -1,4 +1,5 @@
 use crate::game::client_side::key_codes::{glfw_button, glfw_modifiers};
+use crate::game::client_side::{context_menu, input_trace};
 use crate::game::event_loop::EventLoopCtl;
 use crate::game::loading_window::{build_renderer, loading_frame};
 use crate::game::motion_ids::motion_block_entity;
@@ -202,9 +203,33 @@ impl crate::game::ClientGame<'_> {
         shortcut: Option<sunrise_client::clipboard::EditShortcut>,
         text: Option<&str>,
     ) -> Result<()> {
+        if !self.context_menu_key_active() {
+            self.dispatch_window_keyboard_as::<false>(
+                event_loop, key, pressed, repeat, shortcut, text,
+            )
+        } else {
+            self.dispatch_window_keyboard_as::<true>(
+                event_loop, key, pressed, repeat, shortcut, text,
+            )
+        }
+    }
+
+    #[inline(always)]
+    fn dispatch_window_keyboard_as<const MENU: bool>(
+        &mut self,
+        event_loop: &dyn EventLoopCtl,
+        key: Option<KeyCode>,
+        pressed: bool,
+        repeat: bool,
+        shortcut: Option<sunrise_client::clipboard::EditShortcut>,
+        text: Option<&str>,
+    ) -> Result<()> {
         let has_screen = self.observed_screen_view().is_some();
+        let menu_blocking = MENU
+            && (self.context_menu_open()
+                || key.is_some_and(|k| self.context_menu_owns_key(Source::Keyboard, k)));
         if let Some(key) = key
-            && !self.dispatch_screen_key(
+            && !self.dispatch_screen_key_as::<MENU>(
                 event_loop,
                 key,
                 pressed,
@@ -217,8 +242,8 @@ impl crate::game::ClientGame<'_> {
             self.native_panel_key_event(key, pressed, repeat);
             self.mapped_key_event(key, pressed, repeat)?;
         }
-        // GLFW's character event follows the key, even if KeyPressed.Pre canceled.
-        if pressed && has_screen {
+        // A key callback can open a menu before GLFW's character event.
+        if pressed && has_screen && !menu_blocking && !self.context_menu_open() {
             self.settle_title_mode();
             self.screen_chars_typed(text);
         }
@@ -454,6 +479,26 @@ impl crate::game::ClientGame<'_> {
         shortcut: Option<sunrise_client::clipboard::EditShortcut>,
         source: Source,
     ) -> Result<bool> {
+        if !self.context_menu_key_active() {
+            self.dispatch_screen_key_as::<false>(event_loop, key, pressed, repeat, shortcut, source)
+        } else {
+            self.dispatch_screen_key_as::<true>(event_loop, key, pressed, repeat, shortcut, source)
+        }
+    }
+
+    #[inline(always)]
+    fn dispatch_screen_key_as<const MENU: bool>(
+        &mut self,
+        event_loop: &dyn EventLoopCtl,
+        key: KeyCode,
+        pressed: bool,
+        repeat: bool,
+        shortcut: Option<sunrise_client::clipboard::EditShortcut>,
+        source: Source,
+    ) -> Result<bool> {
+        if MENU && self.context_menu_key_event(source, key, pressed, repeat) {
+            return Ok(true);
+        }
         let instance = self.client.screen_state.0.screen_instance;
         let receiver = self.observed_input_screen();
         let canceled = if pressed {
@@ -478,7 +523,8 @@ impl crate::game::ClientGame<'_> {
         Ok(post_canceled
             || self.client.screen_state.0.screen_instance != instance
             || (pressed
-                && (self.mounted_widget_captures_input()
+                && ((receiver.is_some() && self.context_menu_open())
+                    || self.mounted_widget_captures_input()
                     || self.observed_overlay_now().is_some()
                     || self.title_input_active()
                     || matches!(
@@ -1296,6 +1342,23 @@ impl crate::game::ClientGame<'_> {
         self.capture(false);
         Ok(())
     }
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn handle_window_event_inner(
+        &mut self,
+        event_loop: &dyn EventLoopCtl,
+        event: WindowEvent,
+        cursor_sample: Option<sunrise_client::window::PointerSample>,
+        mouse_press_millis: Option<u64>,
+    ) -> bool {
+        self.handle_window_event_inner_as(
+            event_loop,
+            event,
+            cursor_sample,
+            mouse_press_millis,
+            input_trace::InputOrigin::User,
+        )
+    }
+
     /// One window event, in the order vanilla's `KeyboardHandler` and `MouseHandler` see it.
     ///
     /// A controller doesn't come through here in play: `pad_action` goes straight to the mappings
@@ -1306,12 +1369,13 @@ impl crate::game::ClientGame<'_> {
     /// `mouse_press_millis` is the monotonic timestamp of a physical press, absent for synthetic
     /// inputs and all other events.
     /// Returns true when button routing already settled the title before its Post.
-    pub fn handle_window_event_inner(
+    pub(in crate::game::client_side) fn handle_window_event_inner_as(
         &mut self,
         event_loop: &dyn EventLoopCtl,
         event: WindowEvent,
         cursor_sample: Option<sunrise_client::window::PointerSample>,
         mouse_press_millis: Option<u64>,
+        origin: input_trace::InputOrigin,
     ) -> bool {
         let before_screen =
             |game: &mut Self| game.prepare_window_event(event_loop, &event, cursor_sample);
@@ -1407,6 +1471,9 @@ impl crate::game::ClientGame<'_> {
                             .map_or([0.0; 2], |previous| projection.drag_delta(previous, sample));
                         self.set_window_cursor(sample, projection);
                         let [w, h] = projection.gui.size.map(|v| v as f32);
+                        if self.context_menu_hover([w, h]) {
+                            return Ok(());
+                        }
                         let overlay = self.observed_overlay_now();
                         if self.observed_screen_view().is_none() && self.studio_mouse_dragged(w) {
                             return Ok(());
@@ -1478,6 +1545,9 @@ impl crate::game::ClientGame<'_> {
                         }) * wheel_sensitivity
                     };
                     let d = scaled(raw_y) as f32;
+                    if self.context_menu_wheel(d) {
+                        return Ok(());
+                    }
                     // ScreenEvent.MouseScrolled.Pre: the open screen hears of
                     // the wheel before anything scrolls, and a cancelled turn
                     // scrolls nothing — no bundle, no list, slider or
@@ -1659,6 +1729,14 @@ impl crate::game::ClientGame<'_> {
                     let code = glfw_button(button);
                     let modifiers = glfw_modifiers(self.client.modifiers);
                     let synthetic = self.pad_synthetic_input();
+                    let mouse_source = if synthetic {
+                        context_menu::MouseSource::Game
+                    } else {
+                        origin.into()
+                    };
+                    if self.context_menu_mouse(mouse_source, button, pressed) {
+                        return Ok(());
+                    }
                     let owned_release = std::mem::take(&mut self.client.container_owned_up);
                     let had_screen = self.mod_mappings_screen_open() || self.remote_loading();
                     let receiver = (!synthetic).then(|| self.observed_input_screen()).flatten();
@@ -2762,6 +2840,7 @@ impl crate::game::ClientGame<'_> {
         self.draw_code_of_conduct(&mut batch);
         self.draw_link_prompt(&mut batch);
         self.draw_command_prompt(&mut batch);
+        self.draw_context_menu(&mut batch);
         if let Some((bar, fade)) = reload_overlay {
             self.draw_reload_overlay(&mut batch, bar, fade);
         }
@@ -2918,6 +2997,7 @@ impl crate::game::ClientGame<'_> {
             self.client.physical_buttons.clear();
             self.client.drag_button = None;
             self.client.container_buttons.clear();
+            self.client.screen_state.0.context_menu_input.clear();
             self.mod_browser_focus_lost();
         }
         if let WindowEvent::ModifiersChanged(m) = event {
@@ -2985,7 +3065,15 @@ impl crate::game::ClientGame<'_> {
                 (_, false) => KeyAction::Press,
                 (_, true) => KeyAction::Repeat,
             };
-            if self.debug_key(key, action) {
+            if self.context_menu_key_active()
+                && (self.context_menu_open()
+                    || (action != KeyAction::Press
+                        && self.context_menu_owns_key(Source::Keyboard, key)))
+            {
+                if action == KeyAction::Release {
+                    self.debug_key_release_cleanup(key);
+                }
+            } else if self.debug_key(key, action) {
                 return true;
             }
         }

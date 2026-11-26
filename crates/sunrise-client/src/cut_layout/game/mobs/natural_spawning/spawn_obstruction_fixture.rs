@@ -96,6 +96,7 @@ impl mod_api::Hooks for DeclareRelay {
             mod_api::GeneralSavePolicy::Save,
             false,
             false,
+            false,
             None,
             8,
             3,

@@ -168,6 +168,14 @@ pub fn with_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
     with_game_at(fixture_root(), test);
 }
 
+/// Loads the origin column and its ticking neighbours so entity handles at the origin are accessible.
+pub fn with_resident_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
+    with_game(|game| {
+        prepare_entity_ticking_neighborhood(game, sunrise_core::position::ChunkPos::new(0, 0));
+        test(game);
+    });
+}
+
 pub fn with_game_at(root: std::path::PathBuf, test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
     with_game_role(root, ExecutionRole::IntegratedServer, test);
 }

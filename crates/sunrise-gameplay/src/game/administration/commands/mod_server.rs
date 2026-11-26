@@ -1582,6 +1582,15 @@ impl crate::game::ServerGame<'_> {
                 .filter(|b| b.id != 0)
                 .map(|b| Target::Bolt(b.id)),
         );
+        // The player in place keeps their hook across level swaps.
+        let player_here = self
+            .current_player_resident_location()
+            .is_some_and(|location| location.owner.dimension == self.common.dim.key());
+        candidates.extend(
+            self.fishing_hooks_here()
+                .filter(|(_, caster)| player_here || *caster != Target::Player)
+                .map(|(hook, _)| Target::Hook(hook.id())),
+        );
         candidates.extend(self.natural_knot_ids().into_iter().map(Target::Knot));
         // `isRemoved` from a mod's call on, though the sweep has not taken it out.
         candidates.retain(|t| !self.target_removed(t));

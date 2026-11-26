@@ -259,12 +259,22 @@ impl ServerGame<'_> {
                 )
             },
         );
-        if alive {
+        if !alive {
+            match epoch {
+                Some(epoch) => {
+                    self.remove_target_now(EntityRef::new(epoch, id), Target::General(id))
+                }
+                None => self.common.persist.removals.push(Target::General(id)),
+            }
             return;
         }
-        match epoch {
-            Some(epoch) => self.remove_target_now(EntityRef::new(epoch, id), Target::General(id)),
-            None => self.common.persist.removals.push(Target::General(id)),
+        // General entities lack a hurt Part, so only the fire timer changes here.
+        if row.base.fire_ticks > 0 {
+            row.base.fire_ticks = if general_type_catalog().fire_immune(row.type_slot) {
+                0
+            } else {
+                row.base.fire_ticks - 1
+            };
         }
     }
 

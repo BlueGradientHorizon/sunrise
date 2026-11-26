@@ -30,7 +30,7 @@ pub(crate) mod general_handle_tests {
             fall_distance: fall,
             custom_name: None,
             custom_name_visible: false,
-            no_gravity: false,
+            base: Default::default(),
             on_ground: false,
             tick_count: 0,
             no_physics: false,
@@ -202,6 +202,14 @@ pub(crate) mod tests {
 
     pub(crate) fn with_game(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
         with_game_at(fixture_root(), test);
+    }
+
+    /// Boots a server with the origin's entity-ticking neighbourhood loaded.
+    pub(crate) fn with_resident_game(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
+        with_game(|game| {
+            prepare_entity_ticking_neighborhood(game, sunrise_core::position::ChunkPos::new(0, 0));
+            test(game);
+        });
     }
 
     pub(crate) fn with_game_at(

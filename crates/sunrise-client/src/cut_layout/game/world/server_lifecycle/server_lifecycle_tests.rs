@@ -55,6 +55,24 @@ fn integrated_stop_finishes_after_an_unencodable_record() {
     struct SaveEvents(Arc<Mutex<Vec<&'static str>>>);
     #[mod_api::__subscriptions]
     impl Hooks for SaveEvents {
+        fn world_save_start(
+            &self,
+            _: &mut dyn ServerHost,
+            event: &mut mod_api::WorldSaveStartEvent,
+        ) {
+            self.0.lock().unwrap().push(if event.wait {
+                "save start, wait"
+            } else {
+                "save start"
+            });
+        }
+        fn player_save_to_file(
+            &self,
+            _: &mut dyn ServerHost,
+            _: &mut mod_api::PlayerSaveToFileEvent<'_>,
+        ) {
+            self.0.lock().unwrap().push("player saved");
+        }
         fn level_save(&self, _: &mut dyn ServerHost, _: &mut mod_api::LevelSaveEvent<'_>) {
             self.0.lock().unwrap().push("level saved");
         }
@@ -74,7 +92,8 @@ fn integrated_stop_finishes_after_an_unencodable_record() {
     )]
     .into();
     with_mods(mods, || {
-        with_game(|game| {
+        with_guests(|game| {
+            game.join_world_rest().unwrap();
             game.server.world_root = root.path().to_path_buf();
             let open = || {
                 SaveDir::new(
@@ -90,7 +109,16 @@ fn integrated_stop_finishes_after_an_unencodable_record() {
                 .begin_open(Some(mod_api::Authority::IntegratedServer));
             game.native_lifecycle.world_open_ready().unwrap();
             game.save_game().unwrap();
-            assert_eq!(*events.lock().unwrap(), ["level saved", "world saved"]);
+            assert_eq!(
+                *events.lock().unwrap(),
+                [
+                    "save start, wait",
+                    "player saved",
+                    "player saved",
+                    "level saved",
+                    "world saved",
+                ]
+            );
             events.lock().unwrap().clear();
             game.level.name = "saved on exit after record failure".into();
 
@@ -134,7 +162,14 @@ fn integrated_stop_finishes_after_an_unencodable_record() {
             assert_eq!(game.server.save.0.record_save_failures(), 1);
             assert_eq!(
                 *events.lock().unwrap(),
-                ["level saved", "world saved", "stopped"]
+                [
+                    "save start, wait",
+                    "player saved",
+                    "player saved",
+                    "level saved",
+                    "world saved",
+                    "stopped",
+                ]
             );
         });
     });
@@ -628,6 +663,199 @@ fn every_started_server_stops_and_saves_even_when_startup_or_ticks_fail() {
     }
 }
 
+/// A panicking `world_save_start` listener rolls back its committed nested writes before
+/// the snapshot is taken, while healthy listeners' writes persist and shutdown finishes.
+#[test]
+#[ignore = "daily"]
+fn a_world_save_start_panic_discards_only_its_listeners_journal() {
+    if in_child("a_world_save_start_panic_discards_only_its_listeners_journal") {
+        return;
+    }
+    world_save_start_panic_during_shutdown();
+}
+
+fn world_save_start_panic_during_shutdown() {
+    use mod_api::__private::{HookPanicReport, take_hook_panics};
+    use mod_api::{
+        BlockState, BlockUpdateFlags, HostTransaction, WorldSaveStartEvent, WorldSavedEvent,
+    };
+    use std::sync::atomic::AtomicUsize;
+    use sunrise_level::chunk::Chunk;
+    use sunrise_sim::save;
+
+    const POS_PANIC: [i32; 3] = [1, 64, 1];
+    const POS_HEALTHY: [i32; 3] = [2, 64, 1];
+    const LEVEL: &str = "minecraft:overworld";
+
+    struct Panics {
+        calls: Arc<AtomicUsize>,
+        writes: Arc<AtomicUsize>,
+    }
+    #[mod_api::__subscriptions]
+    impl Hooks for Panics {
+        #[listener(priority = 100)]
+        fn world_save_start(&self, host: &mut dyn ServerHost, _: &mut WorldSaveStartEvent) {
+            self.calls.fetch_add(1, Ordering::Relaxed);
+            let level = host.level(LEVEL).unwrap();
+            let gold = host.block_state_id("minecraft:gold_block").unwrap();
+            host.transaction(|host, _| {
+                assert_eq!(
+                    level.set_block(host, POS_PANIC, gold, BlockUpdateFlags::NONE),
+                    Ok(true)
+                );
+                Ok::<_, std::convert::Infallible>(())
+            })
+            .unwrap();
+            assert_eq!(level.block_state(host, POS_PANIC), Some(gold));
+            self.writes.fetch_add(1, Ordering::Relaxed);
+            panic!("after committing a nested write");
+        }
+    }
+
+    #[derive(Debug, PartialEq)]
+    enum Notice {
+        Start(Option<BlockState>),
+        Saved(Option<BlockState>, Option<BlockState>),
+        Unloaded(String),
+        Stopped,
+    }
+    struct Observer(Arc<Mutex<Vec<Notice>>>);
+    #[mod_api::__subscriptions]
+    impl Hooks for Observer {
+        fn world_save_start(&self, host: &mut dyn ServerHost, _: &mut WorldSaveStartEvent) {
+            let at_panic = host
+                .level(LEVEL)
+                .and_then(|level| level.block_state(host, POS_PANIC));
+            if let Some(level) = host.level(LEVEL) {
+                let iron = host.block_state_id("minecraft:iron_block").unwrap();
+                assert_eq!(
+                    level.set_block(host, POS_HEALTHY, iron, BlockUpdateFlags::NONE),
+                    Ok(true)
+                );
+            }
+            self.0.lock().unwrap().push(Notice::Start(at_panic));
+        }
+        fn world_saved(&self, host: &mut dyn ServerHost, _: &mut WorldSavedEvent) {
+            let at_panic = host
+                .level(LEVEL)
+                .and_then(|level| level.block_state(host, POS_PANIC));
+            let at_healthy = host
+                .level(LEVEL)
+                .and_then(|level| level.block_state(host, POS_HEALTHY));
+            self.0
+                .lock()
+                .unwrap()
+                .push(Notice::Saved(at_panic, at_healthy));
+        }
+        fn level_unload(&self, _: &mut dyn ServerHost, event: &mut mod_api::LevelUnloadEvent<'_>) {
+            self.0
+                .lock()
+                .unwrap()
+                .push(Notice::Unloaded(event.dimension.into()));
+        }
+        fn server_stopped(&self, _: &mut dyn ServerHost, _: &mut mod_api::ServerStoppedEvent) {
+            self.0.lock().unwrap().push(Notice::Stopped);
+        }
+    }
+
+    let calls = Arc::new(AtomicUsize::new(0));
+    let writes = Arc::new(AtomicUsize::new(0));
+    let notices = Arc::new(Mutex::new(Vec::new()));
+    with_mods(
+        vec![
+            ModEntry::new(
+                "broken-save-start",
+                Box::new(Panics {
+                    calls: calls.clone(),
+                    writes: writes.clone(),
+                }),
+            ),
+            ModEntry::new("observer", Box::new(Observer(notices.clone()))),
+        ]
+        .into(),
+        || {
+            with_game(|game| {
+                let root = tempfile::tempdir().unwrap();
+                game.join_world_rest().unwrap();
+                game.server.world_root = root.path().to_path_buf();
+                let open = || {
+                    save::SaveDir::new(
+                        root.path().to_path_buf(),
+                        save::LevelShape::OVERWORLD,
+                        Some(Default::default()),
+                    )
+                };
+                game.server.save.0 = Arc::new(open());
+                game.server.session_lock.0 = Some(save::SessionLock::acquire(root.path()).unwrap());
+                game.server.world_adopted = true;
+                game.level.name = "saved despite start listener panic".into();
+                game.native_level_opened(Dim::Overworld);
+                game.world
+                    .chunks
+                    .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+                let registry = game.pack.assets.registry;
+                let stone = registry.default_state("minecraft:stone").unwrap();
+                let iron = registry.default_state("minecraft:iron_block").unwrap();
+                game.world
+                    .set(POS_PANIC[0], POS_PANIC[1], POS_PANIC[2], stone)
+                    .unwrap();
+                game.world
+                    .set(POS_HEALTHY[0], POS_HEALTHY[1], POS_HEALTHY[2], stone)
+                    .unwrap();
+                let stone_api = (&*game as &dyn ServerHost)
+                    .block_state_id("minecraft:stone")
+                    .unwrap();
+                let iron_api = (&*game as &dyn ServerHost)
+                    .block_state_id("minecraft:iron_block")
+                    .unwrap();
+
+                game.run_server_lifecycle(false, |_| Ok(ServerRunOutcome::Orderly))
+                    .unwrap();
+
+                assert_eq!(
+                    writes.load(Ordering::Relaxed),
+                    1,
+                    "the callback reached its deliberate panic"
+                );
+                assert_eq!(
+                    take_hook_panics(),
+                    [HookPanicReport {
+                        mod_id: "broken-save-start",
+                        hook: "world_save_start"
+                    }]
+                );
+                assert_eq!(
+                    notices.lock().unwrap().as_slice(),
+                    [
+                        Notice::Start(Some(stone_api)),
+                        Notice::Saved(Some(stone_api), Some(iron_api)),
+                        Notice::Unloaded(LEVEL.into()),
+                        Notice::Stopped
+                    ]
+                );
+                assert_eq!(
+                    save::Level::read(root.path()).unwrap().name,
+                    "saved despite start listener panic"
+                );
+                let reloaded = open().load(0, 0, registry, world_biomes!(game)).unwrap();
+                assert_eq!(reloaded.block(1, 64, 1), stone);
+                assert_eq!(reloaded.block(2, 64, 1), iron);
+                assert!(game.server.session_lock.0.is_none());
+
+                game.test_native_world_save_start(true);
+                assert_eq!(
+                    calls.load(Ordering::Relaxed),
+                    1,
+                    "the panicking callback stays disabled"
+                );
+                assert_eq!(notices.lock().unwrap().last(), Some(&Notice::Start(None)));
+                assert!(take_hook_panics().is_empty());
+            })
+        },
+    );
+}
+
+/// Final level.dat writes must preserve the authoritative owner.
 #[test]
 #[ignore = "daily"]
 fn integrated_shutdown_reopens_the_authoritative_owner_or_keeps_an_interrupted_save() {
@@ -836,8 +1064,10 @@ fn full_saves_write_live_players_before_saving_levels() {
 
     #[derive(Debug, PartialEq)]
     enum Notice {
+        Start(bool),
         Player(u128),
         Level(Option<i32>, Option<i32>),
+        End(bool),
     }
 
     struct Log {
@@ -846,6 +1076,13 @@ fn full_saves_write_live_players_before_saving_levels() {
     }
     #[mod_api::__subscriptions]
     impl Hooks for Log {
+        fn world_save_start(
+            &self,
+            _: &mut dyn ServerHost,
+            event: &mut mod_api::WorldSaveStartEvent,
+        ) {
+            self.notices.lock().unwrap().push(Notice::Start(event.wait));
+        }
         fn player_save_to_file(
             &self,
             _: &mut dyn ServerHost,
@@ -868,6 +1105,9 @@ fn full_saves_write_live_players_before_saving_levels() {
                 .lock()
                 .unwrap()
                 .push(Notice::Level(xp(12), xp(13)));
+        }
+        fn world_saved(&self, _: &mut dyn ServerHost, event: &mut mod_api::WorldSavedEvent) {
+            self.notices.lock().unwrap().push(Notice::End(event.wait));
         }
     }
 
@@ -923,12 +1163,78 @@ fn full_saves_write_live_players_before_saving_levels() {
         assert_eq!(
             *notices.lock().unwrap(),
             [
+                Notice::Start(false),
                 Notice::Player(12),
                 Notice::Player(13),
-                Notice::Level(Some(7), Some(9))
+                Notice::Level(Some(7), Some(9)),
+                Notice::End(false),
             ]
         );
     }
+}
+
+/// A `world_save_start` listener cannot re-enter the save cycle via `/save-all`; the nested
+/// command fails before notifying or writing, and the outer cycle finishes once.
+#[test]
+#[ignore = "daily"]
+fn world_save_start_rejects_nested_save_all_command() {
+    if in_child("world_save_start_rejects_nested_save_all_command") {
+        return;
+    }
+    world_save_start_nested_save_all();
+}
+
+fn world_save_start_nested_save_all() {
+    use std::sync::atomic::AtomicUsize;
+
+    struct ReenterSave {
+        starts: Arc<AtomicUsize>,
+        saved: Arc<AtomicUsize>,
+        nested_ok: Arc<AtomicBool>,
+    }
+    #[mod_api::__subscriptions]
+    impl Hooks for ReenterSave {
+        fn world_save_start(
+            &self,
+            host: &mut dyn ServerHost,
+            _: &mut mod_api::WorldSaveStartEvent,
+        ) {
+            if self.starts.fetch_add(1, Ordering::SeqCst) == 0 {
+                let ok = host.commands().run_command("save-all");
+                self.nested_ok.store(ok, Ordering::SeqCst);
+            }
+        }
+        fn world_saved(&self, _: &mut dyn ServerHost, _: &mut mod_api::WorldSavedEvent) {
+            self.saved.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+
+    let root = tempfile::tempdir().unwrap();
+    let starts = Arc::new(AtomicUsize::new(0));
+    let saved = Arc::new(AtomicUsize::new(0));
+    let nested_ok = Arc::new(AtomicBool::new(true));
+    let mods = vec![ModEntry::new(
+        "reenter_save",
+        Box::new(ReenterSave {
+            starts: starts.clone(),
+            saved: saved.clone(),
+            nested_ok: nested_ok.clone(),
+        }),
+    )]
+    .into();
+    with_mods(mods, || {
+        crate::game::server_side::visibility_unwind_tests::with_save_game(root.path(), |game| {
+            game.join_world_rest().unwrap();
+            game.save_game().unwrap();
+            assert!(!nested_ok.load(Ordering::SeqCst));
+            assert_eq!(starts.load(Ordering::SeqCst), 1);
+            assert_eq!(saved.load(Ordering::SeqCst), 1);
+            assert!(!game.test_world_save_starting());
+            assert!(game.native_run_command("save-all"));
+            assert_eq!(starts.load(Ordering::SeqCst), 2);
+            assert_eq!(saved.load(Ordering::SeqCst), 2);
+        });
+    });
 }
 
 use sunrise_gameplay_common::game::native_lifecycle_common::NativeLifecycleCommonGameExt1 as _;

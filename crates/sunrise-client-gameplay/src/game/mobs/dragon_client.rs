@@ -7,7 +7,7 @@ use sunrise_core::{
     random::{LegacyRandom, RandomSource},
 };
 use sunrise_gameplay_common::game::dragon_common::{
-    Dragon, PART_SIZES, Phase, dragon_part_id, dragon_part_index, wrap,
+    Dragon, PART_SIZES, Phase, dragon_part_id, dragon_part_index, saved_dragon_phase, wrap,
 };
 use sunrise_level::particle_options::{ParticleOptions, ParticleType};
 use sunrise_protocol::entity_data::Value;
@@ -74,6 +74,44 @@ pub(in crate::game) fn breath_puffs(
     }
 }
 
+/// Detached GUI dragon state, without dragon parts or entity seeds.
+#[derive(Clone, Copy, Debug)]
+pub(in crate::game) struct DragonPreview {
+    flap: f32,
+    sitting: bool,
+    hurt_time: i32,
+}
+
+impl DragonPreview {
+    pub(in crate::game) fn from_dragon(d: &Dragon) -> Self {
+        Self {
+            flap: d.flap,
+            sitting: d.phase.sitting(),
+            hurt_time: d.hurt_time,
+        }
+    }
+
+    /// Build a detached preview from saved dragon NBT, discarding position and orientation.
+    pub(in crate::game) fn from_nbt(data: &sunrise_core::nbt::Compound) -> Self {
+        let phase =
+            saved_dragon_phase(data.get(&sunrise_core::nbt::JavaString::from("DragonPhase")))
+                .unwrap_or(Phase::Hover { target: None });
+        Self {
+            flap: 0.0,
+            sitting: phase.sitting(),
+            hurt_time: 0,
+        }
+    }
+}
+
+/// GUI dragon body yaw, relative head yaw, and head pitch in degrees.
+#[derive(Clone, Copy, Debug, Default)]
+pub(in crate::game) struct GuiDragonLook {
+    pub body_yaw: f32,
+    pub head_yaw: f32,
+    pub head_pitch: f32,
+}
+
 impl ClientGame<'_> {
     /// The boss bars' draws on a `w` x `h` GUI.
     pub fn boss_bar_draws(&self, w: i32, h: i32) -> Vec<hud_layout::GuiDraw> {
@@ -116,6 +154,40 @@ impl ClientGame<'_> {
         out: &mut Vec<Vertex>,
         additive: &mut Vec<Vertex>,
     ) {
+        self.dragon_geometry_as::<false>(
+            Some(d),
+            DragonPreview::from_dragon(d),
+            (camera, alpha),
+            GuiDragonLook::default(),
+            out,
+            additive,
+        );
+    }
+
+    /// Draws the full-bright GUI dragon body and additive eyes at the supplied orientation.
+    #[inline(always)]
+    pub(in crate::game) fn gui_dragon_geometry(
+        &self,
+        preview: DragonPreview,
+        look: GuiDragonLook,
+        out: &mut Vec<Vertex>,
+        eyes: &mut Vec<Vertex>,
+    ) {
+        self.dragon_geometry_as::<true>(None, preview, (glam::DVec3::ZERO, 1.0), look, out, eyes);
+    }
+
+    /// `dragon_geometry` specialised by `GUI` so world draws drop GUI branches and add no slot.
+    #[inline(always)]
+    fn dragon_geometry_as<const GUI: bool>(
+        &self,
+        world: Option<&Dragon>,
+        preview: DragonPreview,
+        view: (glam::DVec3, f64),
+        gui: GuiDragonLook,
+        out: &mut Vec<Vertex>,
+        additive: &mut Vec<Vertex>,
+    ) {
+        let (camera, alpha) = view;
         let Some(model) = self.client.dragon_model.as_ref() else {
             return;
         };
@@ -134,9 +206,17 @@ impl ClientGame<'_> {
         ) else {
             return;
         };
-        let p = d.previous.lerp(d.position, alpha);
-        let pos = glam::DVec3::new(p.x, p.y, p.z);
-        let h = |delay: usize| d.sample_lerp(delay, a);
+        let pos = match world {
+            Some(d) if !GUI => {
+                let p = d.previous.lerp(d.position, alpha);
+                glam::DVec3::new(p.x, p.y, p.z)
+            }
+            _ => glam::DVec3::ZERO,
+        };
+        let h = |delay: usize| match world {
+            Some(d) if !GUI => d.sample_lerp(delay, a),
+            _ => (0.0, gui.body_yaw),
+        };
         let yr = h(7).1;
         let rot2 = (h(5).0 - h(10).0) as f32;
         let mut base = glam::Mat4::from_translation((pos - camera).as_vec3())
@@ -147,22 +227,31 @@ impl ClientGame<'_> {
             * glam::Mat4::from_translation(glam::Vec3::new(0.0, -1.501, 0.0));
         let rays_base = base * glam::Mat4::from_translation(glam::Vec3::new(0.0, -1.0, -2.0));
         // setupAnim.
-        let flap = (d.old_flap + (d.flap - d.old_flap) * a) * std::f32::consts::TAU;
+        let flap = match world {
+            Some(d) if !GUI => (d.old_flap + (d.flap - d.old_flap) * a) * std::f32::consts::TAU,
+            _ => preview.flap * std::f32::consts::TAU,
+        };
         let mut bounce = (flap - 1.0).sin() + 1.0;
         bounce = (bounce * bounce + bounce * 2.0) * 0.05;
         base *=
             glam::Mat4::from_translation(glam::Vec3::new(0.0, (bounce - 2.0) * 16.0, -48.0) / 16.0)
                 * glam::Mat4::from_rotation_x((bounce * 2.0).to_radians());
-        let mut poses = sunrise_sim::mobs::anim::Poses::new(model);
+        let mut poses = sunrise_client::mobs::anim::Poses::new(model);
         poses.get("jaw")[3] = (flap.sin() + 1.0) * 0.2;
-        let sitting = d.phase.sitting();
-        let landing = matches!(d.phase, Phase::Landing { .. } | Phase::Takeoff { .. });
-        let egg_dist = {
-            let p = self.common.podium_top();
-            ((p.x - d.position.x).powi(2)
-                + (p.y - d.position.y).powi(2)
-                + (p.z - d.position.z).powi(2))
-            .sqrt()
+        let sitting = preview.sitting;
+        let landing = match world {
+            Some(d) if !GUI => matches!(d.phase, Phase::Landing { .. } | Phase::Takeoff { .. }),
+            _ => false,
+        };
+        let egg_dist = match world {
+            Some(d) if !GUI => {
+                let p = self.common.podium_top();
+                ((p.x - d.position.x).powi(2)
+                    + (p.y - d.position.y).powi(2)
+                    + (p.z - d.position.z).powi(2))
+                .sqrt()
+            }
+            _ => 0.0,
         };
         let head_offset = |part: usize, start: (f64, f32), point: (f64, f32)| -> f32 {
             if landing {
@@ -195,14 +284,20 @@ impl ClientGame<'_> {
             yy += xr.sin() * 10.0;
             zz -= yrr.cos() * xr.cos() * 10.0;
         }
-        let current = h(0);
         let head = poses.get("head");
         head[0] = xx;
         head[1] = yy;
         head[2] = zz;
-        head[4] = wrap(current.1 - start.1) * deg;
-        head[3] = wrap(head_offset(6, start, current)) * deg * 1.5 * 5.0;
-        head[5] = -wrap(current.1 - rot) * deg;
+        if GUI {
+            head[4] = wrap(gui.head_yaw) * deg;
+            head[3] = gui.head_pitch * deg;
+            head[5] = 0.0;
+        } else {
+            let current = h(0);
+            head[4] = wrap(current.1 - start.1) * deg;
+            head[3] = wrap(head_offset(6, start, current)) * deg * 1.5 * 5.0;
+            head[5] = -wrap(current.1 - rot) * deg;
+        }
         poses.get("body")[5] = -rot2y * 1.5 * deg;
         let lw = [0.125 - flap.cos() * 0.2, -0.25, -(flap.sin() + 0.125) * 0.8];
         let lt = ((flap + 2.0).sin() + 0.5) * 0.75;
@@ -242,16 +337,21 @@ impl ClientGame<'_> {
             zz -= yrr.cos() * xr.cos() * 10.0;
             xx -= yrr.sin() * xr.cos() * 10.0;
         }
-        let l = self.common.world.light(
-            d.position.x.floor() as i32,
-            d.position.y.floor() as i32,
-            d.position.z.floor() as i32,
-        );
-        let light = (u32::from(l >> 4) * 16) | ((u32::from(l & 15) * 16) << 8);
-        let death = if d.death_time > 0 {
-            d.death_time as f32 + a
-        } else {
-            0.0
+        let light = match world {
+            Some(d) if !GUI => {
+                let l = self.common.world.light(
+                    d.position.x.floor() as i32,
+                    d.position.y.floor() as i32,
+                    d.position.z.floor() as i32,
+                );
+                (u32::from(l >> 4) * 16) | ((u32::from(l & 15) * 16) << 8)
+            }
+            // `renderEntityInInventory`: LightTexture.FULL_BRIGHT.
+            _ => sunrise_client::mobs::render::FULL_BRIGHT,
+        };
+        let death = match world {
+            Some(d) if !GUI && d.death_time > 0 => d.death_time as f32 + a,
+            _ => 0.0,
         };
         // Dying: DYING_RENDER_TYPE, `entityCutoutDissolve` of the skin with dragon_exploding as
         // the mask, white at `ARGB.white(1 - deathTime / 200)` and no overlay.
@@ -259,11 +359,13 @@ impl ClientGame<'_> {
         let (color, overlay) = if mask.is_some() {
             (dissolve_color(death), sunrise_client::gfx::DISSOLVE_OVERLAY)
         } else {
-            (0xFFFF_FFFF, u32::from(d.hurt_time > 0))
+            (0xFFFF_FFFF, u32::from(preview.hurt_time > 0))
         };
         let first = out.len();
-        self.mark_entity(first, "minecraft:ender_dragon");
-        self.mark_motion(first, 0);
+        if !GUI {
+            self.mark_entity(first, "minecraft:ender_dragon");
+            self.mark_motion(first, 0);
+        }
         sunrise_client::mobs::render::draw(model, base, &poses, skin, color, light, overlay, out);
         if let Some(mask) = mask {
             dissolve_mask(&mut out[first..], skin, mask);
@@ -282,7 +384,11 @@ impl ClientGame<'_> {
             sunrise_client::mobs::render::draw(model, base, &poses, glow, color, full, 0, out);
         }
         #[cfg(test)]
-        super::native_render_pair_tests::witness_body(d.id, first, out.len());
+        if let Some(d) = world
+            && !GUI
+        {
+            super::native_render_pair_tests::witness_body(d.id, first, out.len());
+        }
         // RenderTypes.eyes: the glowing eyes, added on top.
         let first_eye = additive.len();
         sunrise_client::mobs::render::draw(
@@ -298,6 +404,9 @@ impl ClientGame<'_> {
         // `RenderTypes.eyes` has an `OitPipelineSet`: improved transparency
         // moves the tagged quads into its stages (the HDR tier is the eyes'
         // shine, `mobs::render::EYES_TIER`).
+        if GUI {
+            return;
+        }
         for v in &mut additive[first_eye..] {
             v.layer = 2
                 | sunrise_client::gfx::OIT_ENTITY
@@ -311,7 +420,9 @@ impl ClientGame<'_> {
             }
         }
         // The healing beam to the nearest crystal.
-        if let Some(c) = d.nearest_crystal.and_then(|i| self.common.crystals.get(i)) {
+        if let Some(d) = world
+            && let Some(c) = d.nearest_crystal.and_then(|i| self.common.crystals.get(i))
+        {
             let bob = f64::from(sunrise_client::end_crystal::y(c.time as f32 + a));
             let to = glam::DVec3::new(c.position.x, c.position.y + bob, c.position.z);
             self.crystal_beam(pos, to - pos, self.visual_ticks() as f32 + a, camera, out);

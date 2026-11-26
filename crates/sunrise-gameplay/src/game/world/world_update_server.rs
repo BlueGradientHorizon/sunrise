@@ -15,7 +15,7 @@ impl crate::game::ServerGame<'_> {
         sunrise_level::spans::time("tick_pregen", || self.tick_pregen());
         if self.defer_chunk_disk_save() {
             return if wait {
-                self.common.admit_level_save()
+                self.admit_level_save()
             } else {
                 Ok(())
             };
@@ -53,7 +53,7 @@ impl crate::game::ServerGame<'_> {
             if keys.is_empty() {
                 return Ok(Vec::new());
             }
-            self.common.admit_level_save()?;
+            self.admit_level_save()?;
             let chunks = self.with_entities(
                 keys.iter()
                     .filter(|key| self.common.world.modified.contains(key))

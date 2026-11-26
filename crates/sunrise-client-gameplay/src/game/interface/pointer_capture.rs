@@ -118,7 +118,16 @@ impl crate::game::ClientGame<'_> {
     pub(in crate::game::client_side) fn restore_held_keys(&mut self) {
         let held: Vec<KeyCode> = self.client.physical_keys.iter().copied().collect();
         let options = self.toggle_options();
+        let has_menu_keys = !self.client.screen_state.0.context_menu_input.owned_keys_empty();
         for key in held {
+            let restore_sources = if has_menu_keys {
+                match self.context_menu_restore_sources(key) {
+                    Some(0) => continue,
+                    other => other,
+                }
+            } else {
+                None
+            };
             if let Some(name) = sunrise_client::keybinds::key_name(key) {
                 for slot in self.client.settings.keys.slots_for(name) {
                     let option =
@@ -136,9 +145,19 @@ impl crate::game::ClientGame<'_> {
             for mapped in self.client.settings.keys.translate_all(key) {
                 match mapped {
                     Ok(KeyCode::ShiftLeft | KeyCode::ControlLeft) => {}
-                    Ok(other) => {
-                        self.insert_device_key(other);
-                    }
+                    Ok(other) => match restore_sources {
+                        None => {
+                            self.insert_device_key(other);
+                        }
+                        Some(mask) => {
+                            if mask & 1 != 0 {
+                                self.press_device_key(other, Source::Keyboard);
+                            }
+                            if mask & 2 != 0 {
+                                self.press_device_key(other, Source::Agent);
+                            }
+                        }
+                    },
                     Err(_) => {}
                 }
             }
@@ -329,7 +348,9 @@ impl crate::game::ClientGame<'_> {
             }
             return true;
         }
-        if !(self.client.focused || self.client.unclaimed_window || self.scripted_run()) {
+        if !(self.client.focused || self.client.unclaimed_window || self.scripted_run())
+            || self.has_live_context_menu()
+        {
             return false;
         }
         self.client.pointer_grab_request.set(Some(true));
@@ -364,7 +385,11 @@ impl crate::game::ClientGame<'_> {
             });
         if self.client.screen_grab && (owner_off || request == Some(false)) {
             self.capture(false);
-        } else if request == Some(true) && !owner_off && self.client.screen == Screen::Mod {
+        } else if request == Some(true)
+            && !owner_off
+            && self.client.screen == Screen::Mod
+            && !self.live_context_menu()
+        {
             self.client.screen_grab = true;
             self.client.screen_state.0.answered.set(false);
             self.capture(true);

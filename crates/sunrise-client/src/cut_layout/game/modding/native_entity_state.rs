@@ -15,7 +15,7 @@ pub(crate) mod tests {
 
     use super::super::native_entity_refs::tests::{run_fresh_cases, with_client_game};
 
-    use super::super::native_guest_turn_tests::with_guests;
+    use super::super::native_guest_turn_tests::with_resident_guests;
 
     use mod_api::MainHand;
 
@@ -27,7 +27,7 @@ pub(crate) mod tests {
     #[ignore = "daily"]
     fn tick_count_reads_supported_entities_and_refuses_others() {
         use super::super::native_entity_refs::tests::bind_local_player;
-        use super::super::native_guest_turn_tests::with_guests;
+        use super::super::native_guest_turn_tests::with_resident_guests;
         use mod_api::WorldEpoch;
         use sunrise_core::geometry::Vec3;
         use sunrise_gameplay_common::game::minecarts::{CartKind, Minecart};
@@ -35,7 +35,7 @@ pub(crate) mod tests {
         use sunrise_sim::entities::ExperienceOrb;
         use sunrise_sim::motion::PlayerMotion;
 
-        with_guests(|game| {
+        with_resident_guests(|game| {
             game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
             bind_local_player(game, 20, 123);
             let player = game.entity(20).unwrap();
@@ -132,7 +132,7 @@ pub(crate) mod tests {
     #[test]
     #[ignore = "daily"]
     fn portal_cooldown_reads_simulated_kinds_and_refuses_others() {
-        use super::super::native_guest_turn_tests::with_guests;
+        use super::super::native_guest_turn_tests::with_resident_guests;
         use mod_api::WorldEpoch;
         use sunrise_core::{geometry::Vec3, position::BlockPos};
         use sunrise_gameplay_common::game::{
@@ -143,7 +143,7 @@ pub(crate) mod tests {
         use sunrise_sim::entities::{ArmorStand, ExperienceOrb};
         use sunrise_sim::projectiles::{Projectile, ProjectileKind};
 
-        with_guests(|game| {
+        with_resident_guests(|game| {
             // Players keep their own state: in place during their turn, beside the hub otherwise.
             let host = game.server.lan.as_mut().unwrap();
             host.play.entry(12).or_default().portal.cooldown = 7;
@@ -306,9 +306,9 @@ pub(crate) mod tests {
     #[test]
     #[ignore = "daily"]
     fn portal_cooldown_write_is_refused_for_an_acting_guest() {
-        use super::super::native_guest_turn_tests::with_guests;
+        use super::super::native_guest_turn_tests::with_resident_guests;
 
-        with_guests(|game| {
+        with_resident_guests(|game| {
             let host = game.server.lan.as_mut().unwrap();
             host.play.entry(12).or_default().portal.cooldown = 7;
             let guest = game.entity(12).unwrap();
@@ -386,6 +386,45 @@ pub(crate) mod tests {
                 }
                 let stand = g.entity(15).unwrap();
                 let zombie = g.entity(16).unwrap();
+                // Tracked copies answer the same type-level fire immunity as the server.
+                for (id, name, immune) in [
+                    (17, "minecraft:tnt", true),
+                    (18, "minecraft:end_crystal", true),
+                    (19, "minecraft:blaze", true),
+                    (20, "minecraft:pig", false),
+                ] {
+                    let kind = g
+                        .client
+                        .remote
+                        .as_ref()
+                        .unwrap()
+                        .builtin
+                        .get("minecraft:entity_type")
+                        .unwrap()
+                        .id(name)
+                        .unwrap();
+                    g.handle_packet(sunrise_protocol::packets::play::Clientbound::AddEntity(
+                        sunrise_protocol::packets::play::AddEntity {
+                            id,
+                            uuid: id as u128,
+                            kind,
+                            position: [0.0; 3],
+                            velocity: [0.0; 3],
+                            pitch: 0,
+                            yaw: 0,
+                            head_yaw: 0,
+                            data: 0,
+                        },
+                    ))
+                    .unwrap();
+                    assert_eq!(
+                        g.entity(id as u32)
+                            .unwrap()
+                            .fire_immune(&*g as &dyn mod_api::ClientHost),
+                        Some(immune),
+                        "{name}"
+                    );
+                }
                 for flag in [1, 0] {
                     for id in [7, 15, 16] {
                         g.handle_packet(
@@ -475,7 +514,7 @@ pub(crate) mod tests {
             }
         }
         mod_platform::testing::with_mods(Vec::new().into(), || {
-            super::super::native_entity_refs::tests::with_game(|g| {
+            super::super::native_entity_refs::tests::with_resident_game(|g| {
                 g.player =
                     Some(PlayerMotion::new(g.motion, sunrise_core::geometry::Vec3::ZERO).unwrap());
                 g.options.dedicated = Some(Vec::new());
@@ -761,7 +800,7 @@ pub(crate) mod tests {
         ) {
             return;
         }
-        with_guests(|game| {
+        with_resident_guests(|game| {
             let (a, b) = (game.player(12).unwrap(), game.player(13).unwrap());
             let host = game.server.lan.as_mut().unwrap();
             host.hub.update_guest(12, |g| g.info.main_hand = 0).unwrap();

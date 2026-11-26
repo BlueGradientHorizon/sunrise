@@ -2,6 +2,27 @@ use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
 impl crate::game::ServerGame<'_> {
+    /// A veto skips the dragon's dying transition, kill credit, and post hook.
+    pub(in crate::game) fn dragon_death_canceled(
+        &mut self,
+        dragon: u32,
+        source: &HurtSource<'_>,
+        weapon: Option<&sunrise_items::items::ItemStack>,
+    ) -> bool {
+        if !mod_api::__private::enabled_listened(mod_api::HookId::LivingDeath) {
+            return false;
+        }
+        let weapon = weapon.and_then(|stack| stack.try_into_api().ok());
+        let mut cancel = false;
+        self.native_living_death(
+            dragon,
+            "minecraft:ender_dragon",
+            source,
+            weapon.as_ref(),
+            &mut cancel,
+        );
+        cancel
+    }
     /// `LivingEntity.die`: a veto skips its whole tail, without supplying revive health.
     pub(crate) fn mob_death_canceled(&mut self, mob: &sunrise_sim::mobs::Mob) -> bool {
         if mob.death_canceled {

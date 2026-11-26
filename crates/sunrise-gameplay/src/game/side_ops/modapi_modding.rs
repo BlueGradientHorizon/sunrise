@@ -77,6 +77,14 @@ impl SideOps for crate::game::server_side::ServerState {
     ) -> Option<bool> {
         None
     }
+    fn side_entity_body_fire_facts(
+        game: &Self::Game<'_>,
+        _entity: EntityRef,
+        target: Target,
+    ) -> Option<(i32, bool, Option<BuiltinKind>)> {
+        let view = game.read_entity_base(target)?;
+        Some((view.base.fire_ticks, view.fire_immune, view.kind))
+    }
     fn side_client_entity_tick_count(game: &Self::Game<'_>, entity: EntityRef) -> Option<i32> {
         None
     }
@@ -491,3 +499,5 @@ use sunrise_sim::mobs::finalize::EquipmentRead;
 use sunrise_sim::motion::PlayerMotion;
 use sunrise_world::native_load_context::LoopContext;
 use sunrise_world::registry::BlockStateId;
+
+use sunrise_gameplay_common::game::native_entity_base::BuiltinKind;

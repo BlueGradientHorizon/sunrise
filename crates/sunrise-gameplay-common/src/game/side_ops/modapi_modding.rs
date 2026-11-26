@@ -60,6 +60,15 @@ pub trait ModapiModdingSideGameExt<'__sg>: crate::game::SideGame<'__sg> {
     }
 
     #[inline(always)]
+    fn side_entity_body_fire_facts(
+        &self,
+        entity: EntityRef,
+        target: Target,
+    ) -> Option<(i32, bool, Option<BuiltinKind>)> {
+        <Self::State as SideOps>::side_entity_body_fire_facts(self, entity, target)
+    }
+
+    #[inline(always)]
     fn side_client_entity_tick_count(&self, entity: EntityRef) -> Option<i32> {
         <Self::State as SideOps>::side_client_entity_tick_count(self, entity)
     }
@@ -490,6 +499,11 @@ pub trait SideOps: Sized {
         game: &Self::Game<'_>,
         entity: EntityRef,
     ) -> Option<bool>;
+    fn side_entity_body_fire_facts(
+        game: &Self::Game<'_>,
+        entity: EntityRef,
+        target: Target,
+    ) -> Option<(i32, bool, Option<BuiltinKind>)>;
     fn side_client_entity_tick_count(game: &Self::Game<'_>, entity: EntityRef) -> Option<i32>;
     fn side_client_entity_custom_name(
         game: &Self::Game<'_>,
@@ -684,3 +698,5 @@ pub trait SideOps: Sized {
     fn side_level_ref(game: &Self::Game<'_>, epoch: WorldEpoch, key: DimensionKey) -> LevelRef;
     fn side_online_player_sender(game: &Self::Game<'_>, player: PlayerRef) -> Option<PlayerSender>;
 }
+
+use crate::game::native_entity_base::BuiltinKind;

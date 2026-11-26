@@ -326,7 +326,9 @@ about = "menus, inventories, crafting, the recipe book, workstations"
 paths = [
   "crates/sunrise-sim/src/menu.rs", "crates/sunrise-client/src/container_screen.rs", "crates/sunrise-client/src/creative.rs",
   "crates/sunrise-items/src/creative_catalog.rs",
-  "crates/sunrise-sim/src/crafting.rs", "crates/sunrise-client/src/recipe_book*", "crates/sunrise-sim/src/stations.rs",
+  "crates/sunrise-sim/src/crafting.rs", "crates/sunrise-sim/src/crafting/*",
+  "crates/sunrise-client/src/recipe_book*", "crates/sunrise-sim/src/recipe_book.rs",
+  "crates/sunrise-sim/src/stations.rs", "crates/sunrise-sim/src/stations/recipe_load_tests.rs",
   "crates/sunrise-level/src/containers.rs", "crates/sunrise-world/src/simple_container.rs",
   "crates/sunrise-client-gameplay/src/game/interface/container_hooks.rs", "crates/sunrise-client-gameplay/src/game/interface/container_layout.rs", "crates/sunrise-client/src/cut_layout/game/interface/container_hooks.rs", "crates/sunrise-gameplay-common/src/game/interface/container_hooks.rs",
   "crates/sunrise-client-gameplay/src/game/interface/extras/mouse_tweaks.rs", "crates/sunrise-client/src/cut_layout/game/interface/extras/mouse_tweaks.rs",
@@ -334,6 +336,9 @@ paths = [
 cargo = [
   { package = "sunrise-sim", target = "lib", filter = "menu::" },
   { package = "sunrise-sim", target = "lib", filter = "crafting::" },
+  { package = "sunrise-sim", target = "lib", filter = "stations::recipe_load_tests::" },
+  { package = "sunrise-sim", target = "lib", filter = "recipe_book::tests::custom_display_matches_base_but_shows_another_item" },
+  { package = "sunrise-sim", target = "lib", filter = "recipe_book::tests::recipe_book_and_placement_use_component_ingredient_item_lists" },
   { package = "sunrise-client", target = "lib", filter = "game::client_side::container_hooks::" }, { package = "sunrise-client-gameplay", target = "lib", filter = "game::client_side::container_hooks::" },
   { package = "sunrise-client", target = "lib", filter = "game::client_side::extras::mouse_tweaks::" },
 ]

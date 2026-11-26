@@ -200,6 +200,11 @@ pub(in crate::game) mod hardware {
 }
 
 impl Pads {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn test_set_in_use(&mut self, in_use: bool) {
+        self.in_use = in_use;
+    }
+
     /// The digital buttons the person's pad changed since the last poll.
     pub(in crate::game::client_side) fn hardware_edges(
         &mut self,
@@ -579,6 +584,9 @@ impl crate::game::ClientGame<'_> {
             // Like a click into the window: take the pointer.
             self.capture(true);
         }
+        if !down && playing {
+            let _ = self.client.screen_state.0.context_menu_input.take_pad(button);
+        }
         if !playing {
             self.pad_menu_button(event_loop, button, down)?;
             if down {
@@ -735,6 +743,9 @@ impl crate::game::ClientGame<'_> {
 
     /// B and Start: what Escape does where the pad is.
     pub fn pad_back(&mut self) -> Result<()> {
+        if self.context_menu_key(KeyCode::Escape) {
+            return Ok(());
+        }
         // The death confirm's buttons wait a second, as its Escape does.
         if self
             .client

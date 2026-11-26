@@ -55,6 +55,8 @@ pub struct Hook {
     /// The position a server's update put it heading for.
     pub lerp: HookLerp,
     pub random: LegacyRandom,
+    /// The bobber's base entity state, which is never saved.
+    pub base: crate::game::native_entity_base::EntityBase,
 }
 
 sunrise_mod_runtime::impl_attachment_lifetime!(Hook);
@@ -237,6 +239,7 @@ impl Hook {
             medium: None,
             lerp: HookLerp::default(),
             random,
+            base: Default::default(),
         }
     }
 }

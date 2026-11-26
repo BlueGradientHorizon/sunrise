@@ -65,6 +65,13 @@ impl SideOps for crate::game::client_side::ClientState {
     ) -> Option<bool> {
         game.client_tracked_player_fire_immunity(entity)
     }
+    fn side_entity_body_fire_facts(
+        game: &Self::Game<'_>,
+        entity: EntityRef,
+        target: Target,
+    ) -> Option<(i32, bool, Option<BuiltinKind>)> {
+        game.client_entity_body_fire_facts(entity, target)
+    }
     fn side_client_entity_tick_count(game: &Self::Game<'_>, entity: EntityRef) -> Option<i32> {
         game.client_entity_tick_count(entity)
     }
@@ -505,3 +512,5 @@ use sunrise_sim::mobs::finalize::EquipmentRead;
 use sunrise_sim::motion::PlayerMotion;
 use sunrise_world::native_load_context::LoopContext;
 use sunrise_world::registry::BlockStateId;
+
+use sunrise_gameplay_common::game::native_entity_base::BuiltinKind;

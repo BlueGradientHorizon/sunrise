@@ -2,6 +2,7 @@ pub use mod_api::ExperienceOrbRef;
 pub use mod_api::NameTagLine;
 pub use mod_api::ShaderPackState;
 mod client_visual_text;
+pub mod translate;
 
 use self::screen_view::{screen_view_for_mod, screen_view_with_id};
 use crate::game::client_side::key_codes::{glfw_button, glfw_modifiers};
@@ -143,7 +144,7 @@ pub use sunrise_gameplay_common::game::native_hooks::{
     server_tick_rate_changed, set_placed_by, shield_block, should_check_weak_power,
     should_redstone_wire_connect_to, sound_and_shader_helpers, spread_players_teleport,
     startup_math_profile, stateful_block_entity, supported, supports_enchantment, sweep_attack,
-    tags_updated, teleport_command, tool_modified_state, translate, use_item_on_block, use_totem,
+    tags_updated, teleport_command, tool_modified_state, use_item_on_block, use_totem,
     vanilla_game_event, wind_burst, with_property, world_for_mods, xp_orb_targeting,
     xp_repair_ratio,
 };
@@ -1093,12 +1094,30 @@ impl crate::game::ClientGame<'_> {
         // Keeps the build on the frame's window size and drops it once nothing
         // shows; an unchanged frame compares and builds nothing.
         self.build_screen();
+        if self.has_context_menu() {
+            let _ = self.live_context_menu();
+        }
         // Free with no native mod: the snapshot clones the title and menu.
         if mod_api::__private::mods().is_empty() {
             return;
         }
         let current = self.observed_now();
         self.observe_change(current);
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn test_refresh_screen_widgets(&mut self) {
+        self.refresh_screen_widgets();
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn test_context_menu_open(&mut self) -> bool {
+        self.live_context_menu()
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn test_has_context_menu(&self) -> bool {
+        self.has_context_menu()
     }
     /// `screen` as the screen hooks see it while it opens or closes: no
     /// renderer (a test, a window not yet up) leaves its rectangle empty.

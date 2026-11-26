@@ -1,5 +1,8 @@
 use super::*;
 
+/// Difficulty ids, in the cycle button's order.
+pub use sunrise_server_files::properties::DIFFICULTIES;
+
 #[derive(Clone, Debug, Default)]
 pub struct Level {
     pub name: String,
@@ -120,8 +123,6 @@ pub struct Level {
     /// that file, not their own.
     pub singleplayer_file: bool,
 }
-
-const DIFFICULTIES: [&str; 4] = ["peaceful", "easy", "normal", "hard"];
 
 impl Level {
     /// `PrimaryLevelData.setDifficulty`: the level data holds the world's

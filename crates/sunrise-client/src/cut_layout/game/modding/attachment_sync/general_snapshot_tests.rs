@@ -33,6 +33,7 @@ impl mod_api::Hooks for Declare {
             GeneralSavePolicy::Save,
             true,
             false,
+            false,
             None,
             8,
             3,
@@ -79,7 +80,7 @@ fn robot(game: &mut sunrise_gameplay::game::ServerGame<'_>) -> u32 {
         owner: None,
         custom_name: None,
         custom_name_visible: false,
-        no_gravity: false,
+        base: Default::default(),
         on_ground: false,
         fall_distance: 0.0,
         envelope: GeneralTypeEnvelope {

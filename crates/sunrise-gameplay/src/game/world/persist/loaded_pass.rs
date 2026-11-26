@@ -184,6 +184,9 @@ impl crate::game::ServerGame<'_> {
         let unloaded = if kind == "minecraft:lightning_bolt" && !is_mob && !transferring {
             let _ = self.load_bolt(tag, None, !from_disk);
             Ok(())
+        } else if kind == "minecraft:ender_dragon" && !is_mob && !transferring {
+            self.load_dragon_transferred(tag, uuid, None, from_disk);
+            Ok(())
         } else if kind == "minecraft:tnt"
             && !is_mob
             && reason == sunrise_level::world::EntityLoadReason::TeleportedTnt

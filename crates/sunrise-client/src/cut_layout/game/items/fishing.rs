@@ -11,6 +11,10 @@ pub(crate) mod fishing_air_tests;
 pub(crate) mod fishing_catch_tests;
 
 #[cfg(test)]
+#[path = "fishing_tests/fishing_find_tests.rs"]
+pub(crate) mod fishing_find_tests;
+
+#[cfg(test)]
 #[path = "fishing_tests/fishing_medium_tests.rs"]
 pub(crate) mod fishing_medium_tests;
 

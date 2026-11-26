@@ -18,7 +18,7 @@ use sunrise_sim::{lan::PlayerSender, mobs::Mob};
 
 pub use sunrise_gameplay::game::native_guest_turn_tests::{
     expire_guest_damage_cooldown, level_uuids, place_host, register_test_menu, summon_stand,
-    told_since, with_command_guests, with_guests,
+    told_since, with_command_guests, with_guests, with_resident_guests,
 };
 
 #[test]

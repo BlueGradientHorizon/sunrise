@@ -540,6 +540,7 @@ impl crate::game::ServerGame<'_> {
                 medium: None,
                 lerp: HookLerp::default(),
                 random,
+                base: Default::default(),
             });
             // FishingRodItem.use counts a cast, not a reel-in.
             self.award_stat("used", &stack.item, 1);
@@ -1549,6 +1550,24 @@ impl crate::game::ServerGame<'_> {
         });
         own.chain(guests)
     }
+    /// The cast hook of the acting player or a guest.
+    pub(in crate::game) fn caster_hook_mut(
+        &mut self,
+        caster: sunrise_gameplay_common::game::commands_common::Target,
+    ) -> Option<&mut Hook> {
+        use sunrise_gameplay_common::game::commands_common::Target;
+        match caster {
+            Target::Guest(conn) if Some(conn) != self.server.lan_acting => self
+                .server
+                .lan
+                .as_mut()
+                .and_then(|host| host.play.get_mut(&conn))
+                .and_then(|play| play.hook.as_mut()),
+            Target::Player | Target::Guest(_) => self.common.hook.as_mut(),
+            _ => None,
+        }
+    }
+
     /// Update a cast bobber's support in the level that owns the hook.
     pub(in crate::game::server_side) fn set_fishing_hook_ground(
         &mut self,
@@ -1572,23 +1591,7 @@ impl crate::game::ServerGame<'_> {
             None,
             sunrise_sim::motion::BodyMotion::entity_context(id, at),
         );
-        let hook = match caster {
-            sunrise_gameplay_common::game::commands_common::Target::Guest(conn)
-                if Some(conn) != self.server.lan_acting =>
-            {
-                self.server
-                    .lan
-                    .as_mut()
-                    .and_then(|host| host.play.get_mut(&conn))
-                    .and_then(|play| play.hook.as_mut())
-            }
-            sunrise_gameplay_common::game::commands_common::Target::Player
-            | sunrise_gameplay_common::game::commands_common::Target::Guest(_) => {
-                self.common.hook.as_mut()
-            }
-            _ => None,
-        };
-        let Some(hook) = hook else {
+        let Some(hook) = self.caster_hook_mut(caster) else {
             return Ok(false);
         };
         hook.ground = ground;

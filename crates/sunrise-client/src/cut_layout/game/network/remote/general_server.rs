@@ -123,7 +123,7 @@ pub(crate) mod tests {
                     owner: None,
                     custom_name: None,
                     custom_name_visible: false,
-                    no_gravity: false,
+                    base: Default::default(),
                     on_ground: false,
                     fall_distance: 0.0,
                     uuid: [1, 0, 0, 4],

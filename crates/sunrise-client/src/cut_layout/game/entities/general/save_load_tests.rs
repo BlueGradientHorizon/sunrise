@@ -17,8 +17,7 @@ use sunrise_gameplay_common::game::general::{
 };
 use sunrise_gameplay_common::game::test_fixtures::{collect_entity_visit, fixture_resident_column};
 
-/// Declares the fixture's two types: `mymod:robot`, which saves, and
-/// `mymod:ghost`, which never does.
+/// Declares saved, unsaved, fire-immune, and feature-gated general entity types.
 struct Declare;
 
 #[mod_api::__subscriptions]
@@ -26,6 +25,7 @@ impl mod_api::Hooks for Declare {
     fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
         for (path, save, features) in [
             ("robot", true, &[][..]),
+            ("blaze", true, &[][..]),
             ("ghost", false, &[][..]),
             (
                 "experimental",
@@ -46,6 +46,7 @@ impl mod_api::Hooks for Declare {
                 },
                 true,
                 false,
+                path == "blaze",
                 save.then_some(mod_api::PushReaction::IgnoreEntity),
                 8,
                 3,
@@ -99,7 +100,7 @@ fn record_tag(type_key: &str, uuid: [i32; 4], payload: &[u8], riders: Vec<Tag>) 
         owner: None,
         custom_name: None,
         custom_name_visible: false,
-        no_gravity: false,
+        base: Default::default(),
         on_ground: false,
         fall_distance: 0.0,
         uuid,
@@ -1884,7 +1885,7 @@ fn a_general_records_custom_name_survives_save_and_load() {
         owner: None,
         custom_name: Some(Text::colored("Grumbles", 0xFF5555)),
         custom_name_visible: true,
-        no_gravity: false,
+        base: Default::default(),
         on_ground: false,
         fall_distance: 0.0,
         uuid: [1, 2, 3, 4],
@@ -1925,7 +1926,10 @@ fn a_general_records_no_gravity_ground_and_fall_survive_save_and_load() {
         owner: None,
         custom_name: None,
         custom_name_visible: false,
-        no_gravity: true,
+        base: sunrise_gameplay_common::game::native_entity_base::EntityBase {
+            no_gravity: true,
+            ..Default::default()
+        },
         on_ground: true,
         fall_distance: 2.5,
         uuid: [1, 2, 3, 4],
@@ -1945,7 +1949,7 @@ fn a_general_records_no_gravity_ground_and_fall_survive_save_and_load() {
     );
     assert_eq!(record_from_compound(&tag).unwrap(), record);
 
-    record.no_gravity = false;
+    record.base.no_gravity = false;
     record.on_ground = false;
     let tag = record.to_tag();
     assert_eq!(tag.get("NoGravity"), None);
@@ -1953,7 +1957,7 @@ fn a_general_records_no_gravity_ground_and_fall_survive_save_and_load() {
     assert_eq!(record_from_compound(&tag).unwrap(), record);
 
     // An old record never wrote any of the three keys.
-    record.no_gravity = true;
+    record.base.no_gravity = true;
     record.on_ground = true;
     let Tag::Compound(mut old) = record.to_tag() else {
         panic!("a record is a compound");
@@ -1965,7 +1969,7 @@ fn a_general_records_no_gravity_ground_and_fall_survive_save_and_load() {
         );
     }
     let loaded = record_from_compound(&Tag::Compound(old)).unwrap();
-    assert!(!loaded.no_gravity);
+    assert!(!loaded.base.no_gravity);
     assert!(!loaded.on_ground);
     assert_eq!(loaded.fall_distance, 0.0);
 }
@@ -1981,7 +1985,7 @@ fn a_general_records_fall_distance_reads_any_number_and_defaults_otherwise() {
         owner: None,
         custom_name: None,
         custom_name_visible: false,
-        no_gravity: false,
+        base: Default::default(),
         on_ground: false,
         fall_distance: 2.5,
         uuid: [1, 2, 3, 4],
@@ -2126,3 +2130,81 @@ use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCo
 use sunrise_gameplay_common::game::passengers_common::PassengersCommonGameExt1 as _;
 
 use sunrise_gameplay_common::game::piston_push::PistonPushGameExt1 as _;
+
+/// #5082: Base-state handle edits use vanilla NBT keys, and fire immunity suppresses burning.
+#[test]
+#[ignore = "daily"]
+fn a_general_entitys_base_state_round_trips_through_its_handle_and_record() {
+    with_types(|game| {
+        let ids = general_chain(game, &[([0.0, 64.0, 0.0], [0.0, 0.0])], 11);
+        let handle = game.entity(ids[0]).unwrap();
+        assert_eq!(handle.fire_ticks(game), Some(0));
+        assert!(handle.set_remaining_fire_ticks(game, 40));
+        assert!(handle.set_silent(game, true));
+        assert!(handle.set_glowing(game, true));
+        assert!(handle.set_no_gravity(game, true));
+        assert!(handle.set_invulnerable(game, true));
+        assert_eq!(handle.is_on_fire(game), Some(true));
+        assert_eq!(handle.fire_immune(game), Some(false));
+        let Tag::Compound(saved) = game.general_row_record(ids[0], false).unwrap().to_tag() else {
+            panic!("a record saves as a compound");
+        };
+        assert_eq!(
+            saved.get(&mod_api::JavaString::from("Fire")),
+            Some(&Tag::Short(40))
+        );
+        assert_eq!(
+            saved.get(&mod_api::JavaString::from("Invulnerable")),
+            Some(&Tag::Byte(1))
+        );
+        for key in ["Silent", "Glowing", "NoGravity"] {
+            assert_eq!(
+                saved.get(&mod_api::JavaString::from(key)),
+                Some(&Tag::Byte(1)),
+                "{key}"
+            );
+        }
+        assert!(handle.clear_fire(game));
+        assert_eq!(handle.fire_ticks(game), Some(0));
+
+        let tag = record_tag("mymod:blaze", [11, 12, 13, 14], b"", Vec::new());
+        let start = game.resident_entities.general.rows.len();
+        game.load_listed("mymod:blaze", None, None, tag).unwrap();
+        let blaze = game
+            .entity(game.resident_entities.general.rows[start].id)
+            .unwrap();
+        assert!(blaze.set_remaining_fire_ticks(game, 40));
+        assert_eq!(blaze.fire_immune(game), Some(true));
+        assert_eq!(blaze.is_on_fire(game), Some(false));
+    });
+}
+
+/// A general row tracks silence and no-gravity as `Entity.DATA_SILENT` and `DATA_NO_GRAVITY`.
+#[test]
+#[ignore = "daily"]
+fn a_general_rows_silent_and_no_gravity_are_tracked_to_clients() {
+    use sunrise_protocol::entity_data::{Value, serializer};
+    with_types(|game| {
+        fixture_resident_column(&mut game.world, (0, 0));
+        let mut tag = record_tag("mymod:robot", [1, 2, 3, 4], b"", Vec::new());
+        if let Tag::Compound(map) = &mut tag {
+            map.insert("Silent".into(), Tag::Byte(1));
+            map.insert("NoGravity".into(), Tag::Byte(1));
+        }
+        game.load_listed("mymod:robot", None, None, tag).unwrap();
+        let mut states = sunrise_sim::lan::entity::States::default();
+        game.lan_general_states(&mut states, 0);
+        let [state] = states.as_slice() else {
+            panic!("one row tracked");
+        };
+        for index in [4, 5] {
+            assert!(
+                state
+                    .meta
+                    .contains(&(index, serializer::BOOLEAN, Value::Bool(true))),
+                "{index}: {:?}",
+                state.meta
+            );
+        }
+    });
+}

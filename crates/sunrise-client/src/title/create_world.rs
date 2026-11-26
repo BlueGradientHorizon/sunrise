@@ -16,7 +16,8 @@ const TABS: [&str; 3] = [
     "createWorld.tab.world.title",
     "createWorld.tab.more.title",
 ];
-pub use sunrise_sim::world_options::{DIFFICULTIES, WorldOptions};
+pub use sunrise_sim::save::DIFFICULTIES;
+pub use sunrise_sim::world_options::WorldOptions;
 
 impl super::Title {
     /// The live Alt state (`Minecraft.hasAltDown`) for an open Create New World screen

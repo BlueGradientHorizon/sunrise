@@ -133,6 +133,7 @@ fn spawners_check_registered_placements_for_types_outside_the_mob_table() {
                 GeneralSavePolicy::Save,
                 true,
                 false,
+                false,
                 None,
                 8,
                 1,

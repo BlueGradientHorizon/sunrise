@@ -95,6 +95,28 @@ impl crate::game::ClientGame<'_> {
             _ => OpenScreen::Other,
         }
     }
+    /// Clear held debug keys on context-menu releases without firing debug or screen actions.
+    #[inline(always)]
+    pub(super) fn debug_key_release_cleanup(&mut self, key: KeyCode) {
+        if !self.client.debug_keys.modifier_down && self.client.debug_keys.crash_key_time <= 0 {
+            return;
+        }
+        let Some(name) = keybinds::key_name(key) else {
+            return;
+        };
+        if name == self.client.settings.keys.get("key.debug.modifier") {
+            self.client.debug_keys.modifier_down = false;
+            self.client.debug_keys.used_debug_key_as_modifier = false;
+        }
+        if self.client.debug_keys.crash_key_time > 0 {
+            let crash_down = keybinds::key_code(self.client.settings.keys.get("key.debug.crash"))
+                .is_some_and(|k| self.client.physical_keys.contains(&k));
+            if !crash_down || !self.client.debug_keys.modifier_down {
+                self.client.debug_keys.crash_key_time = -1;
+            }
+        }
+    }
+
     /// A physical key event (already in `physical_keys`) before the game's
     /// own handling. Returns true when it is used up (a debug combination,
     /// F3 itself, F3+Escape).
@@ -104,6 +126,12 @@ impl crate::game::ClientGame<'_> {
         };
         let pressed = action != KeyAction::Release;
         let switcher_open = self.client.screen == Screen::GameModeSwitcher;
+        if switcher_open && self.context_menu_open() {
+            if !pressed {
+                self.debug_key_release_cleanup(key);
+            }
+            return false;
+        }
         if switcher_open && pressed {
             if name == self.client.settings.keys.get("key.debug.switchGameMode") {
                 if let Some(switcher) = &mut self.client.gamemode_switcher {
@@ -212,6 +240,12 @@ impl crate::game::ClientGame<'_> {
     pub(in crate::game::client_side) fn debug_millis(&self) -> i64 {
         self.client.started.elapsed().as_millis() as i64 + 1_000_000
     }
+
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn test_debug_millis(&self) -> i64 {
+        self.debug_millis()
+    }
+
     /// `KeyboardHandler.tick`: the debug crash countdown.
     pub(in crate::game::client_side) fn tick_debug_keys(&mut self) -> Result<()> {
         let now = self.debug_millis();

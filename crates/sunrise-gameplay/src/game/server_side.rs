@@ -1227,6 +1227,8 @@ pub struct ServerState {
     /// A guest's `/save-all`: saved once their turn ends (`run_guest_command`),
     /// when their own state is back in their record.
     pub(in crate::game::server_side) save_after_guest_turn: bool,
+    /// Guards `begin_world_save` against re-entry while `world_save_start` runs.
+    pub(in crate::game::server_side) world_save_starting: bool,
     /// Guests whose records are displaced by nested player swaps, outer first.
     pub lan_guest_swaps: Vec<u32>,
     /// Connections whose turn a panic interrupted this tick: the turn helpers record the
@@ -1516,6 +1518,7 @@ impl ServerState {
             lan_acting: None,
             acting_abilities: None,
             save_after_guest_turn: false,
+            world_save_starting: false,
             lan_guest_swaps: Vec::new(),
             interrupted_turns: Vec::new(),
             crash_save: Default::default(),

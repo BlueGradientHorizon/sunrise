@@ -4,6 +4,7 @@ use crate::game::commands::data::set_key;
 use crate::game::commands::data::strip_finalize_tree;
 pub(in crate::game::server_side) use crate::game::commands::data::summon_type_name;
 use sunrise_core::nbt::{Compound, Tag};
+use sunrise_gameplay_common::game::native_entity_base::owned;
 #[allow(unused_imports)]
 use sunrise_game_data::text::Text;
 #[allow(unused_imports)]
@@ -939,6 +940,7 @@ impl crate::game::ServerGame<'_> {
             // entity fields, as an explicitly summoned knot's.
             Target::Knot(id) => {
                 let fence = self.natural_knot(id)?;
+                let base = self.read_entity_base(Target::Knot(id))?.base;
                 let uuid = *self.common.persist.uuids.get(&id)?;
                 let knot = super::OtherEntity {
                     size_answer: None,
@@ -956,10 +958,10 @@ impl crate::game::ServerGame<'_> {
                     eye: None,
                 };
                 let mut tag = self.other_to_nbt(&knot, uuid);
-                // Entity.saveWithoutId writes `remainingFireTicks` always; the
-                // knot's never changes (BlockAttachedEntity.tick has no
-                // baseTick).
-                set_key(&mut tag, "Fire", Tag::Short(0));
+                // BlockAttachedEntity.tick has no baseTick, so only a mod changes the fire.
+                if let Tag::Compound(map) = &mut tag {
+                    base.write(map, owned::ALL);
+                }
                 tag
             }
         };

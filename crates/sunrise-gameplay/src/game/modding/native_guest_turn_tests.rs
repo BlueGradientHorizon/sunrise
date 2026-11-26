@@ -14,6 +14,17 @@ pub fn with_guests(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
     with_guests_at(super::native_entity_refs::tests::fixture_root(), test);
 }
 
+/// Runs the guest fixture with the origin and its neighboring columns loaded and ticking.
+pub fn with_resident_guests(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
+    with_guests(|game| {
+        super::native_entity_refs::tests::prepare_entity_ticking_neighborhood(
+            game,
+            sunrise_core::position::ChunkPos::new(0, 0),
+        );
+        test(game);
+    });
+}
+
 pub fn with_guests_at(
     root: std::path::PathBuf,
     test: impl FnOnce(&mut crate::game::ServerGame<'_>),

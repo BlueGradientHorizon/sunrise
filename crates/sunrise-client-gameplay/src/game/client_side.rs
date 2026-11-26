@@ -105,6 +105,9 @@ pub mod container_hooks;
 #[path = "interface/container_layout.rs"]
 pub mod container_layout;
 #[cfg(feature = "client")]
+#[path = "interface/context_menu.rs"]
+pub(in crate::game) mod context_menu;
+#[cfg(feature = "client")]
 #[path = "runtime/control.rs"]
 pub(in crate::game) mod control;
 #[cfg(feature = "client")]
@@ -1912,6 +1915,19 @@ impl ClientState {
     #[cfg(any(test, feature = "test-support"))]
     pub(in crate::game) fn test_rain_sound_time(&self) -> i32 {
         self.rain_sound_time
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn test_debug_keys(&self) -> &sunrise_client::debug_keys::DebugKeys {
+        &self.debug_keys
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn test_tick_debug_keys(
+        &mut self,
+        now: i64,
+    ) -> Option<sunrise_client::debug_keys::CrashNotice> {
+        self.debug_keys.tick(now)
     }
 
     // Kept out-of-line so its field temporaries do not bloat `ClientGame::construct`'s unoptimised frame.

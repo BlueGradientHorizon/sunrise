@@ -70,7 +70,7 @@ impl crate::game::ServerGame<'_> {
             _ => None,
         }
     }
-    pub(in crate::game::server_side) fn native_player_body_mut(
+    pub(in crate::game) fn native_player_body_mut(
         &mut self,
         t: Target,
     ) -> Option<&mut sunrise_sim::motion::PlayerMotion> {
@@ -81,77 +81,15 @@ impl crate::game::ServerGame<'_> {
         }
     }
 
-    /// `Entity.isPermanentlyInvulnerable`: the `Invulnerable` flag, which
-    /// only damage that bypasses invulnerability (the void, `/kill`) or a
-    /// creative player gets past. Mobs keep it on themselves (saved with
-    /// them), players on their body (#916, not saved: Sunrise's player save
-    /// keeps no such field yet), the other kinds in the saved `Invulnerable`
-    /// tag of their entity data (#916) — the tag the item damage path
-    /// already refuses by.
+    /// `Entity.isPermanentlyInvulnerable` reads the flag from the entity's base state.
     pub fn entity_permanently_invulnerable(&self, entity: EntityRef) -> Option<bool> {
-        match self.native_entity_target(entity)? {
-            Target::Mob(id) => Some(
-                self.common
-                    .mobs
-                    .iter()
-                    .find(|m| m.id == id)?
-                    .invulnerable_flag,
-            ),
-            t @ (Target::Player | Target::Guest(_)) => {
-                Some(self.native_player_body(t)?.health.permanently_invulnerable)
-            }
-            t => Some(self.saved_invulnerable_flag(t)?),
-        }
+        let target = self.native_entity_target(entity)?;
+        Some(self.read_entity_base(target)?.base.invulnerable)
     }
-    /// `Entity.setInvulnerable`: the write side of
-    /// [`entity_permanently_invulnerable`](Self::entity_permanently_invulnerable):
-    /// a mob's flag (saved with it), a player's body, the saved tag for the
-    /// other kinds. False where the entity is gone.
+    /// `Entity.setInvulnerable` sets the flag on the entity's base state.
     pub fn entity_set_invulnerable(&mut self, entity: EntityRef, invulnerable: bool) -> bool {
-        match self.native_entity_target(entity) {
-            Some(Target::Mob(id)) => match self.common.mobs.iter_mut().find(|m| m.id == id) {
-                Some(m) => {
-                    m.invulnerable_flag = invulnerable;
-                    true
-                }
-                None => false,
-            },
-            Some(t @ (Target::Player | Target::Guest(_))) => {
-                self.native_player_body_mut(t).is_some_and(|p| {
-                    p.health.permanently_invulnerable = invulnerable;
-                    true
-                })
-            }
-            Some(t) => self.set_saved_invulnerable_flag(t, invulnerable),
-            None => false,
-        }
-    }
-
-    /// The saved `Invulnerable` tag of a non-mob entity's data (#916):
-    /// `false` where its entity data has none. None for a kind that keeps
-    /// none (a frame, a painting, a fang).
-    fn saved_invulnerable_flag(&self, t: Target) -> Option<bool> {
-        let id = match t {
-            Target::Stand(id) | Target::Dragon(id) | Target::Item(id) => id,
-            _ => return None,
-        };
-        Some(self.saved_invulnerability(id).0)
-    }
-    /// Writes the `Invulnerable` tag into a non-mob entity's saved data
-    /// (#916), the compound its own save builds on.
-    fn set_saved_invulnerable_flag(&mut self, t: Target, invulnerable: bool) -> bool {
-        use sunrise_core::nbt::Tag;
-        let id = match t {
-            Target::Stand(id) | Target::Dragon(id) | Target::Item(id) => id,
-            _ => return false,
-        };
-        let mut compound = match self.common.persist.raw.get(&id) {
-            Some(Tag::Compound(map)) => map.clone(),
-            _ => sunrise_core::nbt::Compound::new(),
-        };
-        compound.insert("Invulnerable".into(), Tag::Byte(i8::from(invulnerable)));
-        self.common.persist.raw.insert(id, Tag::Compound(compound));
-        true
+        self.native_entity_target(entity)
+            .is_some_and(|target| self.update_entity_base(target, |b| b.invulnerable = invulnerable))
     }
 
     fn timer_read_target(&self, entity: EntityRef) -> Option<Target> {

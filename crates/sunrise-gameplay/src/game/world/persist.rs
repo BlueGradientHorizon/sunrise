@@ -687,7 +687,7 @@ impl crate::game::ServerGame<'_> {
             }
             "minecraft:ender_dragon" => {
                 if let Some(state) = transferred.take() {
-                    self.load_dragon_transferred(tag, uuid, Some(state));
+                    self.load_dragon_transferred(tag, uuid, Some(state), false);
                 } else {
                     self.load_dragon(tag, uuid);
                 }
@@ -847,13 +847,14 @@ impl crate::game::ServerGame<'_> {
 
     /// The saved ender dragon.
     pub fn load_dragon(&mut self, tag: Tag, uuid: Option<[i32; 4]>) {
-        self.load_dragon_transferred(tag, uuid, None)
+        self.load_dragon_transferred(tag, uuid, None, true)
     }
     pub(in crate::game::server_side) fn load_dragon_transferred(
         &mut self,
         tag: Tag,
         uuid: Option<[i32; 4]>,
         transferred: Option<super::entity_initialization::TransferredEntityState>,
+        from_disk: bool,
     ) {
         // The loaded dragon's own random (`Entity.random`): loading draws
         // nothing from the level's.
@@ -872,6 +873,22 @@ impl crate::game::ServerGame<'_> {
                 self.adopt_transferred_entity_state(d.id, state);
             }
             let uuid = with_constructor_uuid(uuid);
+            if from_disk && let Some(saved_uuid) = uuid.or_else(|| entity_nbt::uuid(&tag)) {
+                if self.common.persist.dragon_death_canceled.is_none() {
+                    let (set, on_disk) = self.server.save.0.load_dragon_death_canceled();
+                    self.common.persist.dragon_death_canceled = Some(set);
+                    self.common.persist.entity_metadata_on_disk = on_disk;
+                }
+                if self
+                    .common
+                    .persist
+                    .dragon_death_canceled
+                    .as_mut()
+                    .is_some_and(|set| set.remove(&saved_uuid))
+                {
+                    d.death_canceled = true;
+                }
+            }
             self.remember_tags(d.id, &tag);
             self.remember_uuid(d.id, uuid, &tag);
             d.join = sunrise_sim::join_seq::JoinSeq::next();
@@ -2303,6 +2320,50 @@ impl crate::game::ServerGame<'_> {
             }
         }
     }
+    #[inline(always)]
+    pub(in crate::game) fn save_entity_metadata(&mut self) -> Result<()> {
+        if let Some(d) = self.common.dragon.as_ref() {
+            if d.death_canceled {
+                if self.common.persist.dragon_death_canceled.is_none() {
+                    let (set, on_disk) = self.server.save.0.load_dragon_death_canceled();
+                    self.common.persist.dragon_death_canceled = Some(set);
+                    self.common.persist.entity_metadata_on_disk = on_disk;
+                }
+                let id = d.id;
+                let uuid = self.uuid_for(id);
+                self.common
+                    .persist
+                    .dragon_death_canceled
+                    .get_or_insert_with(HashSet::new)
+                    .insert(uuid);
+            } else if let Some(&uuid) = self.common.persist.uuids.get(&d.id)
+                && let Some(set) = self.common.persist.dragon_death_canceled.as_mut()
+            {
+                set.remove(&uuid);
+            }
+        }
+        if !self.common.persist.entity_metadata_on_disk
+            && self
+                .common
+                .persist
+                .dragon_death_canceled
+                .as_ref()
+                .is_none_or(HashSet::is_empty)
+        {
+            return Ok(());
+        }
+        let empty = HashSet::new();
+        let set = self
+            .common
+            .persist
+            .dragon_death_canceled
+            .as_ref()
+            .unwrap_or(&empty);
+        self.server.save.0.save_dragon_death_canceled(set)?;
+        self.common.persist.entity_metadata_on_disk = !set.is_empty();
+        Ok(())
+    }
+
     /// Write the entities of every resident chunk (an autosave or quit).
     /// Without `wait` (the autosave) they are written on the region writer
     /// meanwhile: `PersistentEntitySectionManager.autoSave` stores them
@@ -2310,6 +2371,7 @@ impl crate::game::ServerGame<'_> {
     pub fn save_entities(&mut self, wait: bool) -> Result<()> {
         let keys = self.prepare_entity_save();
         let chunks = self.entity_chunks(&keys, false);
+        self.save_entity_metadata()?;
         self.prune_entity_memory();
         if wait {
             self.server.save.0.save_entities(chunks)?;
@@ -2491,6 +2553,14 @@ impl crate::game::ServerGame<'_> {
         keys: &HashSet<ChunkKey>,
     ) -> (Vec<(ChunkKey, Vec<Tag>)>, HashSet<ChunkKey>) {
         self.spawn_loaded_entities();
+        if self
+            .common
+            .dragon
+            .as_ref()
+            .is_some_and(|d| d.death_canceled && keys.contains(&chunk_of(d.position)))
+        {
+            let _ = self.save_entity_metadata();
+        }
         self.snapshot_entity_chunks(keys, EntitySnapshot::Save)
     }
     pub fn remove_unloading_entities(&mut self, keys: &HashSet<ChunkKey>) {

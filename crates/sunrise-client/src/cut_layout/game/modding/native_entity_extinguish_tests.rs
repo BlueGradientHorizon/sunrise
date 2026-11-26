@@ -5,7 +5,8 @@ use sunrise_core::{
     geometry::Vec3,
     random::{LegacyRandom, RandomSource},
 };
-use sunrise_gameplay::game::native_entity_refs::tests::with_game;
+use sunrise_gameplay::game::native_entity_refs::tests::with_resident_game;
+use sunrise_gameplay::game::native_guest_turn_tests::with_resident_guests;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::{
     entities::{ArmorStand, ItemEntity},
@@ -22,7 +23,7 @@ const PITCH: u32 = 0x3fe09a90;
 #[test]
 #[ignore = "daily"]
 fn extinguish_fire_uses_mob_kind_immunity_and_own_random_unlike_silent_clear() {
-    with_game(|game| {
+    with_resident_game(|game| {
         let kind = game.res.mob_types().get("minecraft:cow").unwrap().clone();
         game.mobs
             .push(Mob::new(21, kind, Vec3::new(3.0, 64.0, 5.0), 0.0));
@@ -68,7 +69,7 @@ fn extinguish_fire_uses_mob_kind_immunity_and_own_random_unlike_silent_clear() {
 #[test]
 #[ignore = "daily"]
 fn extinguish_fire_preserves_player_guest_stand_and_item_sound_routes() {
-    sunrise_gameplay::game::native_guest_turn_tests::with_guests(|game| {
+    with_resident_guests(|game| {
         let at = Vec3::new(3.0, 64.0, 5.0);
         let mut body = PlayerMotion::new(game.motion, at).unwrap();
         body.entity_id = 7;

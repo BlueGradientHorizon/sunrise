@@ -2,6 +2,16 @@ use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
 impl crate::game::ServerGame<'_> {
+    /// The server is starting a world save cycle, before any writes.
+    pub(in crate::game) fn native_world_save_start(&mut self, wait: bool) {
+        self.fire_world_save_start(wait);
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn test_native_world_save_start(&mut self, wait: bool) {
+        self.native_world_save_start(wait);
+    }
+
     /// `WorldlyContainer.canTakeItemThroughFace` for a block entity's subscribed part: whether
     /// `stack` in `slot` may leave through `face`, replacing the declared output slots.
     pub(in crate::game) fn native_can_take_item_through_face(

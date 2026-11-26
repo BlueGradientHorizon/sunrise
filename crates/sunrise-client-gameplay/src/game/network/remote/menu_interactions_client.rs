@@ -139,7 +139,7 @@ impl crate::game::ClientGame<'_> {
         if let Some(lang) = sunrise_game_data::lang::current()
             && let Some(r) = self.client.remote.as_mut()
         {
-            r.lang = Arc::new(lang.map().clone());
+            r.lang = Arc::new(lang.pack_map());
         }
     }
     /// `MultiPlayerGameMode.handleInventoryButtonClick`: button `button` of
@@ -502,15 +502,27 @@ impl crate::game::ClientGame<'_> {
         }
         if menu == "minecraft:merchant" {
             // A trading window: its offers follow in a MerchantOffers packet.
-            let title = plain(
-                &p.title,
-                &self
-                    .client
-                    .remote
-                    .as_ref()
-                    .map(|r| r.lang.clone())
-                    .unwrap_or_default(),
-            );
+            let title = {
+                let empty;
+                let session = match self.client.remote.as_ref() {
+                    Some(r) => r.lang.as_ref(),
+                    None => {
+                        empty = sunrise_protocol::text::Language::default();
+                        &empty
+                    }
+                };
+                if sunrise_game_data::lang::has_mod_entries() {
+                    let current = sunrise_game_data::lang::current();
+                    plain_with(&p.title, |key| {
+                        current
+                            .as_deref()
+                            .and_then(|published| published.mod_entry(key))
+                            .or_else(|| session.get(key).map(String::as_str))
+                    })
+                } else {
+                    plain(&p.title, session)
+                }
+            };
             self.remote_open_merchant(p.container, title, menu_title(&p.title));
             return;
         }

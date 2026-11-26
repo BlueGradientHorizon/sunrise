@@ -1,4 +1,5 @@
 use crate::game::commands_common::Target;
+use crate::game::native_entity_base::BuiltinKind;
 use crate::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5 as _;
 use mod_api::{EntityReadError, EntityRef};
 use std::ops::ControlFlow;
@@ -163,61 +164,50 @@ pub trait NativeEntityStateCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
         }
     }
 
-    /// Entity.isOnFire: remaining ticks or the client's synced flag, unless fire immune.
+    /// `Entity.isOnFire`: remaining ticks or the client's synced flag, unless fire immune.
     fn entity_is_on_fire(&self, entity: EntityRef) -> Option<bool> {
-        let (ticks, immune) = match self
-            .native_entity_read_target(entity)
-            .and_then(|target| self.native_target_body(target))
-        {
-            Some(Body::Player(p)) => (p.fire_ticks, p.mod_fire_immune),
-            Some(Body::Mob(m)) => (m.fire_ticks, m.fire_immune()),
-            Some(Body::Other(Target::Stand(stand))) => {
-                let stand = self.armor_stands.iter().find(|s| s.id == stand)?;
-                (stand.fire_ticks, stand.mod_fire_immune)
-            }
-            Some(Body::Other(Target::Item(item))) => {
-                let item = self.dropped.iter().find(|i| i.id == item)?;
-                (
-                    item.fire_ticks,
-                    self.stack_can_be_hurt_by(&item.stack, "minecraft:in_fire") == Some(false),
-                )
-            }
-            Some(Body::Other(Target::Projectile(id))) => {
-                let p = self.creatures.projectiles.iter().find(|p| p.id == id)?;
-                match p.arrow.as_ref() {
-                    Some(a) => (a.fire_ticks, false),
-                    None => (
-                        p.fire_ticks,
-                        matches!(
-                            p.kind,
-                            sunrise_sim::projectiles::ProjectileKind::WitherSkull { .. }
-                                | sunrise_sim::projectiles::ProjectileKind::ShulkerBullet { .. }
-                        ),
-                    ),
-                }
-            }
-            _ => (0, self.side_client_tracked_player_fire_immunity(entity)?),
+        let (ticks, immune, kind) = match self.native_entity_read_target(entity) {
+            Some(target) => self.side_entity_body_fire_facts(entity, target)?,
+            None => (
+                0,
+                self.client_tracked_fire_immunity(entity)?,
+                self.side_native_client_tracked(entity)
+                    .and_then(|(id, _)| BuiltinKind::from_type_id(id)),
+            ),
         };
+        if kind.is_some_and(BuiltinKind::is_on_fire_overridden_false) {
+            return Some(false);
+        }
         let synced = !self.is_logical_server() && self.side_client_entity_on_fire(entity)?;
         Some(!immune && (ticks > 0 || synced))
     }
 
     /// `Entity.fireImmune`: effective immunity on the side of the host.
     fn entity_fire_immune(&self, entity: EntityRef) -> Option<bool> {
-        match self
-            .native_entity_read_target(entity)
-            .and_then(|target| self.native_target_body(target))
-        {
-            Some(Body::Player(p)) => Some(p.mod_fire_immune),
-            Some(Body::Mob(m)) => Some(m.fire_immune()),
-            Some(Body::Other(Target::Stand(id))) => self
-                .armor_stands
-                .iter()
-                .find(|s| s.id == id)
-                .map(|s| s.mod_fire_immune),
-            Some(Body::Other(Target::Dragon(_))) => Some(true),
-            _ => self.side_client_tracked_player_fire_immunity(entity),
+        match self.native_entity_read_target(entity) {
+            Some(target) => self
+                .side_entity_body_fire_facts(entity, target)
+                .map(|(_, immune, _)| immune),
+            None => self.client_tracked_fire_immunity(entity),
         }
+    }
+
+    fn client_tracked_fire_immunity(&self, entity: EntityRef) -> Option<bool> {
+        if let Some(slot) = self.side_native_client_general_type_slot(entity) {
+            return Some(crate::game::general::general_type_catalog().fire_immune(slot));
+        }
+        let (kind, _) = self.side_native_client_tracked(entity)?;
+        if kind == "minecraft:player" {
+            return self.side_client_tracked_player_fire_immunity(entity);
+        }
+        Some(
+            BuiltinKind::from_type_id(kind).is_some_and(BuiltinKind::fire_immune)
+                || self
+                    .res
+                    .mob_types()
+                    .get(kind)
+                    .is_some_and(|mob| mob.flags.fire_immune),
+        )
     }
 
     /// The entity's air (`Entity.getAirSupply`): players and mobs.

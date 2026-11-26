@@ -10,6 +10,12 @@ pub struct Knot {
     pub id: u32,
     pub join: sunrise_sim::join_seq::JoinSeq,
     pub fence: [i32; 3],
+    /// Runtime fire ticks use NBT's signed short only when persisted.
+    pub fire_ticks: i32,
+    pub invulnerable: bool,
+    pub no_gravity: bool,
+    pub silent: bool,
+    pub glowing: bool,
 }
 sunrise_sim::impl_joined!(Knot);
 sunrise_mod_runtime::impl_attachment_lifetime!(Knot);

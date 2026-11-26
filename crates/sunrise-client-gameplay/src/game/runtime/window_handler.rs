@@ -225,7 +225,13 @@ impl crate::game::ClientGame<'_> {
             if event.state == ElementState::Pressed {
                 self.client.physical_keys.insert(key);
                 sunrise_client::keybinds::learn_layout(event);
-            } else {
+            } else if !self
+                .client
+                .screen_state
+                .0
+                .context_menu_input
+                .holds_other_source(sunrise_client::held::Source::Keyboard, key)
+            {
                 self.client.physical_keys.remove(&key);
             }
         }
@@ -283,8 +289,13 @@ impl crate::game::ClientGame<'_> {
         let mouse_press_millis = (origin == input_trace::InputOrigin::User
             && mouse.is_some_and(|(_, pressed, _)| pressed))
         .then(|| self.millis());
-        let title_settled =
-            self.handle_window_event_inner(event_loop, event, cursor_sample, mouse_press_millis);
+        let title_settled = self.handle_window_event_inner_as(
+            event_loop,
+            event,
+            cursor_sample,
+            mouse_press_millis,
+            origin,
+        );
         if resized {
             self.notify_window_resize();
         }

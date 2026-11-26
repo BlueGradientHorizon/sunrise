@@ -10,7 +10,7 @@ use sunrise_core::{
     position::BlockPos,
     random::RandomSource,
 };
-use sunrise_gameplay_common::game::level_sounds_common::LevelSound;
+use sunrise_gameplay_common::game::{dragon_common::SPECIAL, level_sounds_common::LevelSound};
 use sunrise_items::items::ItemStack;
 use sunrise_sim::{
     entities::arrows::{Pickup, back_off, clip_block_hit},
@@ -766,11 +766,16 @@ impl crate::game::ServerGame<'_> {
                             }
                             Who::Mob(id) if self.is_special_target(id) => {
                                 let guest = t.guest;
-                                let direct = super::dragon::DirectHit {
-                                    id: t.id,
-                                    position: t.position,
-                                    kind: Some(&sunrise_sim::projectiles::ProjectileKind::Trident),
-                                };
+                                let direct = super::dragon::DirectHit::trident(
+                                    t.id,
+                                    t.position,
+                                    (id >= SPECIAL
+                                        && !mod_api::__private::mods().is_empty()
+                                        && mod_api::__private::enabled_listened(
+                                            mod_api::HookId::LivingDeath,
+                                        ))
+                                    .then_some(&attack),
+                                );
                                 let hurt = |game: &mut Self| {
                                     game.hit_special_full(
                                         id,

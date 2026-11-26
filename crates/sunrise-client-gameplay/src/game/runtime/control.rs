@@ -852,35 +852,56 @@ impl crate::game::ClientGame<'_> {
                 super::narrator::narrate_key(&mut self.client.narration, key, action != "up");
                 // KeyboardHandler.keyPress: the debug keys see the physical key first.
                 let physical = key;
+                let repeat = action == "repeat";
+                let menu_active = self.context_menu_key_active();
+                let menu_modal = menu_active
+                    && (self.context_menu_open()
+                        || ((action == "up" || repeat)
+                            && self.context_menu_owns_key(Source::Agent, physical)));
                 {
                     use sunrise_client::debug_keys::KeyAction;
                     if action == "up" {
                         self.press_modifier_key(key, false);
-                        self.client.physical_keys.remove(&key);
-                        self.debug_key(key, KeyAction::Release);
+                        if !menu_active
+                            || !self
+                                .client
+                                .screen_state
+                                .0
+                                .context_menu_input
+                                .holds_other_source(Source::Agent, key)
+                        {
+                            self.client.physical_keys.remove(&key);
+                        }
+                        if menu_modal {
+                            self.debug_key_release_cleanup(key);
+                        } else {
+                            self.debug_key(key, KeyAction::Release);
+                        }
                     } else {
                         self.press_modifier_key(key, true);
                         self.client.physical_keys.insert(key);
-                        if self.debug_key(key, KeyAction::Press) {
+                        if !menu_modal && self.debug_key(key, KeyAction::Press) {
                             if action == "tap" {
                                 self.press_modifier_key(key, false);
-                                self.client.physical_keys.remove(&key);
+                                if !self
+                                    .client
+                                    .screen_state
+                                    .0
+                                    .context_menu_input
+                                    .holds_other_source(Source::Agent, key)
+                                {
+                                    self.client.physical_keys.remove(&key);
+                                }
                                 self.debug_key(key, KeyAction::Release);
                             }
                             return ok();
                         }
                     }
                 }
-                let repeat = action == "repeat";
                 if action != "up" {
                     if self.screenshot_shortcut(physical, repeat) {
                         if action == "tap" {
-                            self.press_modifier_key(physical, false);
-                            self.client.physical_keys.remove(&physical);
-                            self.debug_key(
-                                physical,
-                                sunrise_client::debug_keys::KeyAction::Release,
-                            );
+                            self.finish_control_tap_release(physical);
                         }
                         return ok();
                     }
@@ -903,9 +924,7 @@ impl crate::game::ClientGame<'_> {
                 if action == "up" || action == "tap" {
                     if action == "tap" {
                         self.settle_title_mode();
-                        self.press_modifier_key(physical, false);
-                        self.client.physical_keys.remove(&physical);
-                        self.debug_key(physical, sunrise_client::debug_keys::KeyAction::Release);
+                        self.finish_control_tap_release(physical);
                     }
                     if !self.dispatch_screen_key(
                         event_loop,
@@ -926,6 +945,7 @@ impl crate::game::ClientGame<'_> {
             "release" => {
                 self.clear_device_keys();
                 self.client.physical_keys.clear();
+                self.client.screen_state.0.context_menu_input.clear_agent();
                 self.client.mod_keys.set_all_up();
                 self.client.modifiers = winit::keyboard::ModifiersState::empty();
                 let options = self.toggle_options();
@@ -1204,6 +1224,9 @@ impl crate::game::ClientGame<'_> {
                     self.require_world()?;
                 }
                 self.client.narration.keyboard_action();
+                if self.context_menu_open() {
+                    return ok();
+                }
                 if text == "\\b" {
                     if self.preset_editor_title().is_some() {
                         self.dispatch_screen_key(
@@ -1462,6 +1485,30 @@ impl crate::game::ClientGame<'_> {
             return Err("no world open; use: open WORLD [SEED] [creative]".into());
         }
         Ok(())
+    }
+
+    /// Release modifier, physical-key and debug-key state for the up half of a socket `key … tap`.
+    #[inline(always)]
+    fn finish_control_tap_release(&mut self, physical: KeyCode) {
+        self.press_modifier_key(physical, false);
+        let tap_menu = self.context_menu_key_active();
+        if !tap_menu
+            || !self
+                .client
+                .screen_state
+                .0
+                .context_menu_input
+                .holds_other_source(Source::Agent, physical)
+        {
+            self.client.physical_keys.remove(&physical);
+        }
+        if tap_menu
+            && (self.context_menu_open() || self.context_menu_owns_key(Source::Agent, physical))
+        {
+            self.debug_key_release_cleanup(physical);
+        } else {
+            self.debug_key(physical, sunrise_client::debug_keys::KeyAction::Release);
+        }
     }
 
     /// Release any untagged keyboard-standin holds on non-toggle keys bound to `physical`.

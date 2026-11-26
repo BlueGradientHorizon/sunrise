@@ -90,7 +90,28 @@ impl crate::game::ServerGame<'_> {
                 }
                 true
             }
-            _ => false,
+            Some(target) => {
+                let Some(view) = self.read_entity_base(target) else {
+                    return false;
+                };
+                let burning = view.base.fire_ticks > 0 && !view.fire_immune;
+                let at = self.target_position(target);
+                let pitch = burning.then(|| extinguish_pitch(&mut self.server.effect_rng));
+                if !self.update_entity_base(target, |b| b.fire_ticks = b.fire_ticks.min(0)) {
+                    return false;
+                }
+                if let (Some(at), Some(pitch)) = (at, pitch) {
+                    self.server_play_sound_on(
+                        SoundSource::Neutral.index(),
+                        "minecraft:entity.generic.extinguish_fire",
+                        at,
+                        0.7,
+                        pitch,
+                    );
+                }
+                true
+            }
+            None => false,
         }
     }
 }

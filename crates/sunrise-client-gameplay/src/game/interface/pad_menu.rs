@@ -123,7 +123,7 @@ pub struct MenuCursor {
     /// Pointer mode: the open screen's target centres last poll.
     anchors: Option<(Screen, Vec<(f32, f32)>)>,
     layout: Option<Layout>,
-    wheel: [f32; 2],
+    pub(super) wheel: [f32; 2],
     /// The wheel event being handled is the right stick's, on a focus-mode
     /// screen: it scrolls, whatever the pointer is over, and changes no value.
     stick_scroll: bool,
@@ -132,7 +132,7 @@ pub struct MenuCursor {
     step_scroll: bool,
     stick_scrolled: Option<StickScrolled>,
     /// The held D-pad direction and when it last stepped.
-    repeat: Option<(Button, Instant, bool)>,
+    pub(super) repeat: Option<(Button, Instant, bool)>,
     /// Pointer buttons the pad holds down.
     pub(in crate::game) held: [bool; 2],
     /// The focused button A went down on: letting go presses it, unless the
@@ -207,6 +207,26 @@ pub(in crate::game) struct HeldTrigger {
 }
 
 impl MenuCursor {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn test_set_pos(&mut self, pos: Option<(f32, f32)>) {
+        self.pos = pos;
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn test_armed_mut(&mut self) -> &mut Option<Target> {
+        &mut self.armed
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn test_wheel(&self) -> [f32; 2] {
+        self.wheel
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn test_repeat(&self) -> Option<(Button, Instant, bool)> {
+        self.repeat
+    }
+
     /// A running direct craft ends, as cleanly as the server still lets it (`DirectCraft::stop`).
     pub(in crate::game::client_side) fn stop_craft(&mut self) {
         if let Some(craft) = &mut self.craft {
@@ -767,6 +787,35 @@ impl crate::game::ClientGame<'_> {
         self.pad_focus_mode() && self.client.pad.0.menu.focus.is_some()
     }
 
+    /// Clear transient pad menu holds and armed targets when a context menu takes focus.
+    #[inline(always)]
+    pub(super) fn settle_pad_for_context_menu(&mut self) {
+        self.direct_craft_stop();
+        self.client.screen_state.0.context_menu_input.take_pad_repeat_owned();
+        self.client.screen_state.0.context_menu_input.take_pad_wheel_owned();
+        let menu = &mut self.client.pad.0.menu;
+        menu.armed = None;
+        menu.trigger = None;
+        menu.repeat = None;
+        menu.wheel = [0.0, 0.0];
+        menu.slider_hold = None;
+        menu.nudge = None;
+        menu.glide = None;
+        menu.pending = None;
+        menu.stick_scrolled = None;
+    }
+
+    /// Clear any pad direction repeat or wheel accumulation started by the context menu on close.
+    #[inline(always)]
+    pub(super) fn clear_context_menu_pad_state(&mut self) {
+        if self.client.screen_state.0.context_menu_input.take_pad_repeat_owned() {
+            self.client.pad.0.menu.repeat = None;
+        }
+        if self.client.screen_state.0.context_menu_input.take_pad_wheel_owned() {
+            self.client.pad.0.menu.wheel = [0.0, 0.0];
+        }
+    }
+
     /// A button in a menu.
     pub fn pad_menu_button(
         &mut self,
@@ -775,6 +824,31 @@ impl crate::game::ClientGame<'_> {
         down: bool,
     ) -> Result<()> {
         if !down {
+            if self.client.screen_state.0.context_menu_input.take_pad(button) {
+                if self.client.pad.0.menu.repeat.is_some_and(|r| r.0 == button) {
+                    self.client.pad.0.menu.repeat = None;
+                    self.client.screen_state.0.context_menu_input.take_pad_repeat_owned();
+                }
+                return Ok(());
+            }
+            if self.context_menu_open() {
+                self.client.pad.0.menu.armed = None;
+                self.client.pad.0.menu.trigger = None;
+                self.client.pad.0.menu.slider_hold = None;
+                if self.client.pad.0.menu.repeat.is_some_and(|r| r.0 == button) {
+                    self.client.pad.0.menu.repeat = None;
+                }
+                match button {
+                    Button::South if self.client.pad.0.menu.held[0] => {
+                        self.pad_pointer_button(event_loop, false, false);
+                    }
+                    Button::West if self.client.pad.0.menu.held[1] => {
+                        self.pad_pointer_button(event_loop, true, false);
+                    }
+                    _ => {}
+                }
+                return Ok(());
+            }
             match button {
                 Button::LeftTrigger if self.client.pad.0.menu.trigger.is_some() => {
                     let pressed_a = self
@@ -817,6 +891,44 @@ impl crate::game::ClientGame<'_> {
         }
         // The pad takes the focus back from the keyboard.
         self.client.pad.0.menu.keyboard = false;
+        if self.context_menu_open() {
+            self.settle_pad_for_context_menu();
+            self.client.screen_state.0.context_menu_input.own_pad(button);
+            match button {
+                Button::DPadUp => {
+                    self.client.pad.0.menu.repeats = 0;
+                    self.context_menu_key(KeyCode::ArrowUp);
+                    self.client.screen_state.0.context_menu_input.own_pad_repeat();
+                    self.client.pad.0.menu.repeat = Some((button, Instant::now(), false));
+                }
+                Button::DPadDown => {
+                    self.client.pad.0.menu.repeats = 0;
+                    self.context_menu_key(KeyCode::ArrowDown);
+                    self.client.screen_state.0.context_menu_input.own_pad_repeat();
+                    self.client.pad.0.menu.repeat = Some((button, Instant::now(), false));
+                }
+                Button::DPadLeft => {
+                    self.client.pad.0.menu.repeats = 0;
+                    self.context_menu_key(KeyCode::ArrowLeft);
+                    self.client.screen_state.0.context_menu_input.own_pad_repeat();
+                    self.client.pad.0.menu.repeat = Some((button, Instant::now(), false));
+                }
+                Button::DPadRight => {
+                    self.client.pad.0.menu.repeats = 0;
+                    self.context_menu_key(KeyCode::ArrowRight);
+                    self.client.screen_state.0.context_menu_input.own_pad_repeat();
+                    self.client.pad.0.menu.repeat = Some((button, Instant::now(), false));
+                }
+                Button::South => {
+                    self.context_menu_key(KeyCode::Enter);
+                }
+                Button::East | Button::Start => {
+                    self.context_menu_key(KeyCode::Escape);
+                }
+                _ => {}
+            }
+            return Ok(());
+        }
         // A with LT held over the crafting book is LT + A: LT coming up changes no category.
         if button == Button::South
             && let Some(trigger) = &mut self.client.pad.0.menu.trigger
@@ -1046,6 +1158,17 @@ impl crate::game::ClientGame<'_> {
 
     /// One D-pad (or stick) step in either mode.
     fn pad_step(&mut self, event_loop: &dyn EventLoopCtl, button: Button) {
+        if self.context_menu_open() {
+            let key = match button {
+                Button::DPadUp => KeyCode::ArrowUp,
+                Button::DPadDown => KeyCode::ArrowDown,
+                Button::DPadLeft => KeyCode::ArrowLeft,
+                Button::DPadRight => KeyCode::ArrowRight,
+                _ => return,
+            };
+            self.context_menu_key(key);
+            return;
+        }
         if let Some(keyboard) = self.client.pad.0.menu.osk.as_mut() {
             keyboard.step(button);
             return;
@@ -1513,6 +1636,11 @@ impl crate::game::ClientGame<'_> {
         self.client.last_inv_click = None;
     }
 
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn test_pad_menu_frame(&mut self, event_loop: &dyn EventLoopCtl) {
+        self.pad_menu_frame(event_loop);
+    }
+
     /// Once per poll in a menu: the stick moves the cursor (pointer) or
     /// steps focus, the right stick scrolls, a held direction repeats, focus
     /// follows its widget from frame to frame, and the OS pointer hides
@@ -1552,6 +1680,17 @@ impl crate::game::ClientGame<'_> {
             menu.prompt = None;
             menu.prompt_restart = None;
             menu.prompt_crosshair = None;
+            if self
+                .client
+                .screen_state
+                .0
+                .context_menu_input
+                .has_pad_stick_or_repeat()
+            {
+                self.client.screen_state.0
+                    .context_menu_input
+                    .clear_pad_stick_and_repeat();
+            }
             self.pad_show_os_pointer(true);
             return;
         }
@@ -1579,6 +1718,7 @@ impl crate::game::ClientGame<'_> {
         if self.client.pad.0.in_use
             && self.client.pad.0.menu.pos.is_none()
             && self.client.pad.0.menu.open_polls == 3
+            && !self.context_menu_open()
         {
             self.pad_take_pointer(event_loop);
         }
@@ -1592,18 +1732,71 @@ impl crate::game::ClientGame<'_> {
         } else {
             Vec::new()
         };
+        if !self.context_menu_pad_active() {
+            self.pad_menu_frame_as::<false>(event_loop, now, seconds, focus_mode, &targets);
+        } else {
+            self.pad_menu_frame_as::<true>(event_loop, now, seconds, focus_mode, &targets);
+        }
+        // Vanilla's keyboard focus leaves the mouse pointer alone.
+        self.pad_show_os_pointer(
+            self.client.pad.0.menu.pos.is_none() || self.client.pad.0.menu.keyboard,
+        );
+    }
+
+    /// The inactive path checks for a newly opened context menu only after input callbacks.
+    #[inline(always)]
+    fn pad_menu_frame_as<const MENU: bool>(
+        &mut self,
+        event_loop: &dyn EventLoopCtl,
+        now: Instant,
+        seconds: f32,
+        focus_mode: bool,
+        targets: &[Target],
+    ) {
+        let context_menu = if MENU {
+            let open = self.context_menu_open();
+            if !open {
+                self.clear_context_menu_pad_state();
+            }
+            open
+        } else {
+            false
+        };
         let focusing = focus_mode && !targets.is_empty();
         let resizing = self.pad_follow_resize(event_loop);
-        let restarting = self.pad_prompt_frame(&targets);
-        if focusing && !resizing && !restarting && !self.key_focus_restart(event_loop, &targets) {
-            self.pad_follow_focus(event_loop, &targets);
+        let restarting = self.pad_prompt_frame(targets);
+        if focusing
+            && !context_menu
+            && !resizing
+            && !restarting
+            && !self.key_focus_restart(event_loop, targets)
+        {
+            self.pad_follow_focus(event_loop, targets);
         }
         let (move_deadzone, look_deadzone) = (
             self.client.settings.controller.move_deadzone,
             self.client.settings.controller.look_deadzone,
         );
         let state = self.client.pad.0.state;
-        if focusing || self.client.pad.0.menu.osk.is_some() {
+        let stick_suppressed =
+            MENU && !context_menu && self.client.screen_state.0.context_menu_input.stick_owned() && {
+                let left_radial = gamepad::radial(state.left, move_deadzone);
+                if left_radial == [0.0, 0.0] {
+                    self.client.screen_state.0.context_menu_input.release_stick();
+                    self.client.pad.0.menu.stick = None;
+                    false
+                } else {
+                    self.client.pad.0.menu.stick = gamepad::stick_direction_held(
+                        left_radial,
+                        STICK_STEP,
+                        self.client.pad.0.menu.stick,
+                    );
+                    true
+                }
+            };
+        if stick_suppressed {
+            // Held left stick from the closed context menu stays suppressed until neutral.
+        } else if focusing || self.client.pad.0.menu.osk.is_some() || context_menu {
             // The stick steps like the D-pad.
             let dir = gamepad::stick_direction_held(
                 gamepad::radial(state.left, move_deadzone),
@@ -1615,17 +1808,31 @@ impl crate::game::ClientGame<'_> {
                     && Some(b) == self.client.pad.0.menu.stick
                 {
                     self.client.pad.0.menu.repeat = None;
+                    if MENU && context_menu {
+                        self.client.screen_state.0.context_menu_input.take_pad_repeat_owned();
+                    }
                 }
                 self.client.pad.0.menu.stick = dir;
                 if let Some(button) = dir {
-                    if self.client.pad.0.menu.pos.is_none() && self.client.pad.0.menu.osk.is_none()
+                    if self.client.pad.0.menu.pos.is_none()
+                        && self.client.pad.0.menu.osk.is_none()
+                        && !context_menu
                     {
                         self.pad_take_pointer(event_loop);
                     } else {
                         self.client.pad.0.menu.repeats = 0;
                         self.pad_step(event_loop, button);
+                        if !MENU && self.client.screen_state.0.context_menu.is_some() {
+                            return;
+                        }
+                    }
+                    if MENU && context_menu {
+                        self.client.screen_state.0.context_menu_input.own_pad_repeat();
+                        self.client.screen_state.0.context_menu_input.own_stick();
                     }
                     self.client.pad.0.menu.repeat = Some((button, now, false));
+                } else if MENU && context_menu {
+                    self.client.screen_state.0.context_menu_input.release_stick();
                 }
             }
         } else {
@@ -1670,16 +1877,40 @@ impl crate::game::ClientGame<'_> {
                 self.pad_follow_targets();
             }
         }
-        // Nothing scrolls under the on-screen keyboard; its right stick picks a
-        // suggestion only for the native chat editor.
-        let suggests = self.client.pad.0.menu.osk.is_some() && self.pad_chat_owns_keyboard();
-        let scroll = if let Some(keyboard) = self.client.pad.0.menu.osk.as_mut() {
-            if let Some(out) = keyboard.stick(state.right[1], suggests) {
-                self.pad_osk_output(out);
+        // An open context menu takes the right stick ahead of the on-screen keyboard.
+        let scroll = if MENU && context_menu {
+            let right = gamepad::radial(state.right, look_deadzone);
+            if right != [0.0, 0.0] || (self.client.pad.0.menu.osk.is_some() && state.right[1].abs() >= 0.3) {
+                self.client.screen_state.0.context_menu_input.own_right_stick();
+                if right != [0.0, 0.0] {
+                    self.client.screen_state.0.context_menu_input.own_pad_wheel();
+                }
+            } else if self.client.screen_state.0.context_menu_input.right_stick_owned()
+                && state.right[1].abs() < 0.3
+            {
+                self.client.screen_state.0.context_menu_input.release_right_stick();
+            }
+            right
+        } else if MENU && self.client.screen_state.0.context_menu_input.right_stick_owned() {
+            if gamepad::radial(state.right, look_deadzone) == [0.0, 0.0]
+                && state.right[1].abs() < 0.3
+            {
+                self.client.screen_state.0.context_menu_input.release_right_stick();
             }
             [0.0, 0.0]
         } else {
-            gamepad::radial(state.right, look_deadzone)
+            let suggests = self.client.pad.0.menu.osk.is_some() && self.pad_chat_owns_keyboard();
+            if let Some(keyboard) = self.client.pad.0.menu.osk.as_mut() {
+                if let Some(out) = keyboard.stick(state.right[1], suggests) {
+                    self.pad_osk_output(out);
+                    if !MENU && self.client.screen_state.0.context_menu.is_some() {
+                        return;
+                    }
+                }
+                [0.0, 0.0]
+            } else {
+                gamepad::radial(state.right, look_deadzone)
+            }
         };
         let wheel = &mut self.client.pad.0.menu.wheel;
         wheel[0] += scroll[0] * self.client.settings.controller.scroll_speed * seconds;
@@ -1691,26 +1922,42 @@ impl crate::game::ClientGame<'_> {
         if lines != [0.0, 0.0] {
             wheel[0] -= lines[0];
             wheel[1] -= lines[1];
-            // Stick right scrolls right: the wheel's x runs the other way.
-            self.pad_stick_wheel(event_loop, focus_mode, &targets, [-lines[0], lines[1]]);
-        }
-        if let Some((button, since, repeating)) = self.client.pad.0.menu.repeat {
-            let wait = if repeating {
-                self.client.settings.controller.repeat_interval
+            if MENU && context_menu {
+                self.context_menu_wheel(lines[1]);
             } else {
-                self.client.settings.controller.repeat_delay
-            };
-            if now.duration_since(since).as_secs_f32() >= wait {
-                self.client.pad.0.menu.repeat = Some((button, now, true));
-                self.client.pad.0.menu.repeats = self.client.pad.0.menu.repeats.saturating_add(1);
-                self.pad_step(event_loop, button);
+                // Stick right scrolls right: the wheel's x runs the other way.
+                self.pad_stick_wheel(event_loop, focus_mode, targets, [-lines[0], lines[1]]);
+                if !MENU && self.client.screen_state.0.context_menu.is_some() {
+                    return;
+                }
             }
         }
-        self.pad_auto_keyboard();
-        // Vanilla's keyboard focus leaves the mouse pointer alone.
-        self.pad_show_os_pointer(
-            self.client.pad.0.menu.pos.is_none() || self.client.pad.0.menu.keyboard,
-        );
+        if let Some((button, since, repeating)) = self.client.pad.0.menu.repeat {
+            if MENU
+                && !context_menu
+                && (self.client.screen_state.0.context_menu_input.owns_pad(button)
+                    || self.client.screen_state.0.context_menu_input.stick_owned())
+            {
+                self.client.pad.0.menu.repeat = None;
+            } else {
+                let wait = if repeating {
+                    self.client.settings.controller.repeat_interval
+                } else {
+                    self.client.settings.controller.repeat_delay
+                };
+                if now.duration_since(since).as_secs_f32() >= wait {
+                    self.client.pad.0.menu.repeat = Some((button, now, true));
+                    self.client.pad.0.menu.repeats = self.client.pad.0.menu.repeats.saturating_add(1);
+                    self.pad_step(event_loop, button);
+                    if !MENU && self.client.screen_state.0.context_menu.is_some() {
+                        return;
+                    }
+                }
+            }
+        }
+        if !context_menu {
+            self.pad_auto_keyboard();
+        }
     }
 
     /// Each poll: a prompt came up or went away. The keyboard was typing into what was open, and
@@ -2695,6 +2942,9 @@ impl crate::game::ClientGame<'_> {
     /// What a key of the on-screen keyboard does: the same as a typed key in
     /// the field that has focus.
     pub fn pad_osk_output(&mut self, out: osk::Output) {
+        if self.context_menu_open() {
+            return;
+        }
         use osk::Output;
         let (key, text) = match &out {
             Output::Text(t) => (None, Some(t.as_str())),

@@ -1969,6 +1969,9 @@ pub trait ModGameExt1<'__sg>: crate::game::SideGame<'__sg> {
             .mods
             .reconcile_code_switches(&crate::game::Side::mods_list(self.side_state()).disabled);
         self.side_retire_disabled_instance_groups(&effective);
+        if self.options.execution_role.is_client() {
+            lang::set_disabled_mod_entries(&effective);
+        }
         self.mods.apply_code_switches(&effective);
     }
 

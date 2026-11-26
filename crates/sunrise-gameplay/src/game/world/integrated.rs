@@ -495,6 +495,9 @@ impl crate::game::ServerGame<'_> {
         view.finish(Stage::LoadInitialChunks);
         startup::time("server.settle_spawn", || self.settle_player_spawn())?;
         startup::time("server.initial_save", || {
+            if mod_api::__private::enabled_listened(mod_api::HookId::WorldSaveStart) {
+                self.begin_world_save(true)?;
+            }
             self.save_world_after_players(false)
         })?;
         Ok((pipe, self.common.level.name.clone()))

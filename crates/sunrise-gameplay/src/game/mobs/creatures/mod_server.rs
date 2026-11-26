@@ -44,6 +44,7 @@ use sunrise_gameplay_common::game::creatures::projectile_targets::{
 use sunrise_gameplay_common::game::creatures::seen;
 use sunrise_gameplay_common::game::creatures::to_loot;
 use sunrise_gameplay_common::game::creatures::*;
+use sunrise_gameplay_common::game::dragon_common::SPECIAL;
 use sunrise_gameplay_common::game::item_abilities::ability;
 use sunrise_gameplay_common::game::level_sounds_common::LevelSound;
 use sunrise_gameplay_common::projectile_world::ProjWorld;
@@ -5075,15 +5076,26 @@ impl crate::game::ServerGame<'_> {
                 }
                 _ => sunrise_sim::mobs::DamageKind::Thrown,
             };
-            self.hit_special_full(
-                id,
-                amount,
-                resolved_owner,
-                p.guest,
-                kind,
-                Some(damage_type),
-                Some(super::dragon::DirectHit::from_projectile(p)),
-            );
+            let hit_special = |game: &mut Self| {
+                game.hit_special_full(
+                    id,
+                    amount,
+                    resolved_owner,
+                    p.guest,
+                    kind,
+                    Some(damage_type),
+                    Some(super::dragon::DirectHit::from_projectile(p)),
+                );
+            };
+            if id >= SPECIAL
+                && mod_api::__private::enabled_listened(mod_api::HookId::LivingDeath)
+                && self.server.combat.0.attack().projectile != Some(p.id as i32)
+            {
+                let attack = self.projectile_attack(p);
+                self.with_attack(attack, hit_special);
+            } else {
+                hit_special(self);
+            }
             if !matches!(
                 p.kind,
                 ProjectileKind::EnderPearl
@@ -8752,15 +8764,27 @@ impl crate::game::ServerGame<'_> {
             let index = bounced_place(projectiles, followers);
             projectiles.put_back(index, contact);
         }
-        let hurt = self.hit_special_full(
-            id,
-            amount,
-            owner,
-            arrow.guest,
-            kind,
-            Some(damage_type),
-            Some(crate::game::dragon::DirectHit::from_projectile(arrow)),
-        );
+        let hit = |game: &mut Self| {
+            game.hit_special_full(
+                id,
+                amount,
+                owner,
+                arrow.guest,
+                kind,
+                Some(damage_type),
+                Some(crate::game::dragon::DirectHit::from_projectile(arrow)),
+            )
+        };
+        let hurt = if !crystal
+            && id >= SPECIAL
+            && mod_api::__private::enabled_listened(mod_api::HookId::LivingDeath)
+            && self.server.combat.0.attack().projectile != Some(arrow.id as i32)
+        {
+            let attack = self.projectile_attack(arrow);
+            self.with_attack(attack, hit)
+        } else {
+            hit(self)
+        };
         if crystal {
             if !self.projectile_removal_pending(arrow.id)
                 && let Some(live) = self.common.creatures.projectiles.extract(join)

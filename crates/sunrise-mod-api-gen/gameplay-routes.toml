@@ -2793,3 +2793,23 @@ owner = "::sunrise_gameplay_common::game::tables::WorldTablesExt<'_>"
 borrow = "shared"
 kind = "shared_trait"
 owner = "::sunrise_gameplay_common::game::tables::WorldTablesExt<'_>"
+
+[host.client."ScreensClientHost::open_context_menu"]
+borrow = "mutable"
+kind = "local"
+owner = "crate::game::ClientGame"
+
+[host.client."ScreensClientHost::close_context_menu"]
+borrow = "mutable"
+kind = "local"
+owner = "crate::game::ClientGame"
+
+[host.client."ConfigClientHost::set_translations"]
+borrow = "shared"
+kind = "local"
+owner = "crate::game::ClientGame"
+
+[host.client."ConfigClientHost::clear_translations"]
+borrow = "shared"
+kind = "local"
+owner = "crate::game::ClientGame"

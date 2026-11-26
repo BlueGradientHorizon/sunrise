@@ -49,6 +49,7 @@ pub mod tests {
                     mod_api::GeneralSavePolicy::Save,
                     true,
                     pickable,
+                    false,
                     (!pickable).then_some(mod_api::PushReaction::IgnoreEntity),
                     8,
                     1,
