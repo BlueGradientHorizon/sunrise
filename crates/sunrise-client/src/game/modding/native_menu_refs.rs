@@ -57,7 +57,8 @@ impl Game<'_> {
         if !self.creative {
             return Err(CarriedDestroyError::NotCreative);
         }
-        if self.screen != super::Screen::Creative {
+        // The visible screen can outlive a change to the active menu.
+        if self.screen != super::Screen::Creative || self.remote_menu_type().is_some() {
             return Err(CarriedDestroyError::ServerOwnedMenu);
         }
         Ok(self.carried.take().is_some())

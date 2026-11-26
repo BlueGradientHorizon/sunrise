@@ -476,9 +476,8 @@ mod destroy_carried {
         }
     }
 
-    /// Every refusal, with a stack carried and with none, changes nothing and sends nothing;
-    /// a server's menu (the inventory menu off the creative screen, a chest) holds its own
-    /// cursor and is refused.
+    /// Every refusal, with a stack carried and with none, changes nothing and sends nothing.
+    /// A live server menu is refused even when the creative inventory screen is still visible.
     #[test]
     #[ignore = "daily"]
     fn a_refused_destroy_changes_and_sends_nothing() {
@@ -505,7 +504,11 @@ mod destroy_carried {
                     game.set_local_mode(GameMode::Creative);
                     game.screen = Screen::Inventory;
                     refuses(game, inventory_menu, CarriedDestroyError::ServerOwnedMenu);
+                    let packets = sent(&mut reader);
+                    assert!(packets.is_empty(), "{packets:?}");
 
+                    game.screen = Screen::Creative;
+                    let previous_screen = game.screen;
                     let chest = game
                         .remote
                         .as_ref()
@@ -522,17 +525,23 @@ mod destroy_carried {
                     }))
                     .unwrap();
                     assert_eq!(game.screen, Screen::Inventory);
+                    assert_eq!(game.remote_menu().0, 12);
                     sent(&mut reader);
                     refuses(game, inventory_menu, CarriedDestroyError::Stale);
                     let chest_menu = menu(game);
+                    refuses(game, chest_menu, CarriedDestroyError::ServerOwnedMenu);
+
+                    // Keep the previous screen visible without changing the live server menu.
+                    // Model that state without depending on how ScreenOpening handles a veto.
+                    game.screen = previous_screen;
                     refuses(game, chest_menu, CarriedDestroyError::ServerOwnedMenu);
                     game.options.execution_role =
                         crate::game::execution_role::ExecutionRole::IntegratedServer;
                     refuses(game, chest_menu, CarriedDestroyError::Unavailable);
                     game.options.execution_role =
                         crate::game::execution_role::ExecutionRole::Client;
-                    let writes = slot_writes(sent(&mut reader));
-                    assert!(writes.is_empty(), "{writes:?}");
+                    let packets = sent(&mut reader);
+                    assert!(packets.is_empty(), "{packets:?}");
                 });
             },
         );

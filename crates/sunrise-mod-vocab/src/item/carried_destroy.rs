@@ -14,8 +14,9 @@ pub enum CarriedDestroyError {
     Stale,
     /// The local player is not in creative mode.
     NotCreative,
-    /// The creative inventory screen is not open: the open menu's cursor is the server's, and no
-    /// vanilla packet clears it (`SetCreativeModeSlot` slot `-1` only drops a stack).
+    /// The creative inventory screen is not visible, or a server container is active even
+    /// though that screen is still visible. The server owns the menu's cursor; no vanilla
+    /// packet clears it in place (`SetCreativeModeSlot` slot `-1` only drops a stack).
     ServerOwnedMenu,
 }
 
