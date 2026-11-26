@@ -17,6 +17,9 @@ import yaml
 
 WORKFLOW = ROOT / '.github/workflows/modding-book.yml'
 
+# The workflow's steps are shell for a Linux runner: where `bash` is WSL's or lacks the runner's tools they cannot run.
+runs_a_linux_step = unittest.skipUnless(os.name == 'posix', "runs a Linux runner's workflow step")
+
 
 def guard_script():
     """Read the executable guard from the parsed workflow, not text delimiters."""
@@ -57,6 +60,7 @@ sys.exit(42)
 class BookErrorTests(unittest.TestCase):
     """The build step fails when mdBook logs an error it would otherwise build past."""
 
+    @runs_a_linux_step
     def build(self, log, exit_code=0):
         step = next(step for step in yaml.safe_load(WORKFLOW.read_text())['jobs']['book']['steps']
                     if step.get('name') == 'Build the book')
@@ -100,6 +104,7 @@ class BookGuardTests(unittest.TestCase):
             step = next(step for step in steps if step.get('run') == command)
             self.assertEqual(step['if'], present + " && github.event_name != 'pull_request'")
 
+    @runs_a_linux_step
     def run_guard(self, event, *, token=None, missing=None):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
