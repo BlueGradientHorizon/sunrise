@@ -268,13 +268,20 @@ pub(super) fn drowned_travel(
     pause: bool,
 ) -> ControlFlow<super::living::TravelPause> {
     m.move_relative(0.01, input);
-    m.travel_move(w, level, events, pause, |m, _, _, _| {
-        m.set_velocity(Vec3::new(
-            m.velocity.x * 0.9,
-            m.velocity.y * 0.9,
-            m.velocity.z * 0.9,
-        ));
-    })
+    m.travel_move(
+        w,
+        level,
+        events,
+        pause,
+        sunrise_world::travel::TravelMode::Water,
+        |m, _, _, _| {
+            m.set_velocity(Vec3::new(
+                m.velocity.x * 0.9,
+                m.velocity.y * 0.9,
+                m.velocity.z * 0.9,
+            ));
+        },
+    )
 }
 /// `RangedAttackMob.rangedAttackUncertainty`: 14 on peaceful, four less per
 /// difficulty step, so a hard drowned throws its trident almost straight.

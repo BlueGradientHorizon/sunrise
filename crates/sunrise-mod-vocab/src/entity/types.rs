@@ -1836,6 +1836,34 @@ pub(crate) fn refused_move_output(
     Ok(())
 }
 
+/// A `living_travel_moved` listener's proposed velocity: any finite vector is accepted
+/// (`Entity.setDeltaMovement`), a changed non-finite one is refused.
+pub(crate) fn refused_velocity_output(
+    accepted: &[f64; 3],
+    velocity: &[f64; 3],
+) -> Result<(), &'static str> {
+    if accepted.map(f64::to_bits) != velocity.map(f64::to_bits)
+        && velocity.iter().any(|component| !component.is_finite())
+    {
+        return Err("velocity");
+    }
+    Ok(())
+}
+
+#[test]
+fn travel_velocity_proposals_accept_finite_vectors_and_refuse_a_changed_non_finite_one() {
+    let accepted = [65.0, -66.0, 67.0];
+    assert_eq!(refused_velocity_output(&[1.0; 3], &accepted), Ok(()));
+    for value in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+        let mut proposed = accepted;
+        proposed[1] = value;
+        assert_eq!(
+            refused_velocity_output(&accepted, &proposed),
+            Err("velocity")
+        );
+    }
+}
+
 #[test]
 fn move_replacements_accept_finite_components_without_an_axis_limit() {
     let accepted = [65.0, -66.0, 67.0];

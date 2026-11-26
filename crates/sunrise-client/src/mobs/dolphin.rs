@@ -426,9 +426,14 @@ impl FollowPlayerRidden {
             f64::from(m.ai.zza),
         );
         m.move_relative(speed, input);
-        if let ControlFlow::Break(movement) =
-            m.travel_move(cx.w, cx.level, cx.events, pause, |_, _, _, _| {})
-        {
+        if let ControlFlow::Break(movement) = m.travel_move(
+            cx.w,
+            cx.level,
+            cx.events,
+            pause,
+            sunrise_world::travel::TravelMode::Water,
+            |_, _, _, _| {},
+        ) {
             self.pending_rider = Some((position, yaw));
             return Some(movement);
         }
