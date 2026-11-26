@@ -6829,7 +6829,7 @@ impl Game<'_> {
         };
         let hurt = if !crystal
             && id >= super::dragon::SPECIAL
-            && mod_api::__private::listened(mod_api::HookId::LivingDeath)
+            && mod_api::__private::enabled_listened(mod_api::HookId::LivingDeath)
             && self.combat.attack().projectile != Some(arrow.id as i32)
         {
             let attack = self.projectile_attack(arrow);
@@ -7622,7 +7622,7 @@ impl Game<'_> {
                 );
             };
             if id >= super::dragon::SPECIAL
-                && mod_api::__private::listened(mod_api::HookId::LivingDeath)
+                && mod_api::__private::enabled_listened(mod_api::HookId::LivingDeath)
                 && self.combat.attack().projectile != Some(p.id as i32)
             {
                 let attack = self.projectile_attack(p);

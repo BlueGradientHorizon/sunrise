@@ -146,14 +146,7 @@ impl Game<'_> {
         origin: input_trace::InputOrigin,
         retained_sample: Option<PointerSample>,
     ) {
-        let prev_origin = self
-            .screen_state
-            .context_menu_input
-            .set_window_origin(origin.into());
         self.handle_window_event_as(event_loop, id, event, origin, retained_sample);
-        self.screen_state
-            .context_menu_input
-            .set_window_origin(prev_origin);
     }
 
     pub(super) fn handle_window_event_as(
@@ -234,7 +227,7 @@ impl Game<'_> {
             if event.state == ElementState::Pressed {
                 self.physical_keys.insert(key);
                 sunrise_client::keybinds::learn_layout(event);
-            } else {
+            } else if !self.screen_state.context_menu_input.has_agent_key(key) {
                 self.physical_keys.remove(&key);
             }
         }
@@ -292,8 +285,13 @@ impl Game<'_> {
         let mouse_press_millis = (origin == input_trace::InputOrigin::User
             && mouse.is_some_and(|(_, pressed, _)| pressed))
         .then(|| self.millis());
-        let title_settled =
-            self.handle_window_event_inner(event_loop, event, cursor_sample, mouse_press_millis);
+        let title_settled = self.handle_window_event_inner_as(
+            event_loop,
+            event,
+            cursor_sample,
+            mouse_press_millis,
+            origin,
+        );
         if resized {
             self.notify_window_resize();
         }

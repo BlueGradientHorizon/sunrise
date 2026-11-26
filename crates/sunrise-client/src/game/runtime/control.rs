@@ -816,17 +816,34 @@ impl Game<'_> {
                     use sunrise_client::debug_keys::KeyAction;
                     if action == "up" {
                         self.press_modifier_key(key, false);
-                        self.physical_keys.remove(&key);
-                        if !menu_modal {
+                        self.screen_state.context_menu_input.agent_key_up(key);
+                        if !self
+                            .screen_state
+                            .context_menu_input
+                            .has_unowned_key(Source::Keyboard, key)
+                        {
+                            self.physical_keys.remove(&key);
+                        }
+                        if menu_modal {
+                            self.debug_key_release_cleanup(key);
+                        } else {
                             self.debug_key(key, KeyAction::Release);
                         }
                     } else {
                         self.press_modifier_key(key, true);
                         self.physical_keys.insert(key);
+                        self.screen_state.context_menu_input.agent_key_down(key);
                         if !menu_modal && self.debug_key(key, KeyAction::Press) {
                             if action == "tap" {
                                 self.press_modifier_key(key, false);
-                                self.physical_keys.remove(&key);
+                                self.screen_state.context_menu_input.agent_key_up(key);
+                                if !self
+                                    .screen_state
+                                    .context_menu_input
+                                    .has_unowned_key(Source::Keyboard, key)
+                                {
+                                    self.physical_keys.remove(&key);
+                                }
                                 self.debug_key(key, KeyAction::Release);
                             }
                             return ok();
@@ -837,10 +854,19 @@ impl Game<'_> {
                     if self.screenshot_shortcut(physical, repeat) {
                         if action == "tap" {
                             self.press_modifier_key(physical, false);
-                            self.physical_keys.remove(&physical);
-                            if !self.context_menu_open()
-                                && !self.context_menu_owns_key(Source::Agent, physical)
+                            self.screen_state.context_menu_input.agent_key_up(physical);
+                            if !self
+                                .screen_state
+                                .context_menu_input
+                                .has_unowned_key(Source::Keyboard, physical)
                             {
+                                self.physical_keys.remove(&physical);
+                            }
+                            if self.context_menu_open()
+                                || self.context_menu_owns_key(Source::Agent, physical)
+                            {
+                                self.debug_key_release_cleanup(physical);
+                            } else {
                                 self.debug_key(
                                     physical,
                                     sunrise_client::debug_keys::KeyAction::Release,
@@ -869,10 +895,19 @@ impl Game<'_> {
                     if action == "tap" {
                         self.settle_title_mode();
                         self.press_modifier_key(physical, false);
-                        self.physical_keys.remove(&physical);
-                        if !self.context_menu_open()
-                            && !self.context_menu_owns_key(Source::Agent, physical)
+                        self.screen_state.context_menu_input.agent_key_up(physical);
+                        if !self
+                            .screen_state
+                            .context_menu_input
+                            .has_unowned_key(Source::Keyboard, physical)
                         {
+                            self.physical_keys.remove(&physical);
+                        }
+                        if self.context_menu_open()
+                            || self.context_menu_owns_key(Source::Agent, physical)
+                        {
+                            self.debug_key_release_cleanup(physical);
+                        } else {
                             self.debug_key(
                                 physical,
                                 sunrise_client::debug_keys::KeyAction::Release,
@@ -898,7 +933,7 @@ impl Game<'_> {
             "release" => {
                 self.clear_device_keys();
                 self.physical_keys.clear();
-                self.screen_state.context_menu_input.clear();
+                self.screen_state.context_menu_input.clear_agent();
                 self.mod_keys.set_all_up();
                 self.modifiers = winit::keyboard::ModifiersState::empty();
                 let options = self.toggle_options();

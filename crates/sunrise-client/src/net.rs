@@ -954,15 +954,19 @@ impl Reason {
     /// `translate` key when the component named one (servers' literal
     /// kicks have none; their text is the server's own language).
     fn component(reason_json: &str, lang: &Language) -> Self {
-        let current = crate::lang::current();
         match serde_json::from_str::<serde_json::Value>(reason_json) {
             Ok(v) => Self {
-                text: json_text_with(&v, |key| {
-                    current
-                        .as_deref()
-                        .and_then(|published| published.mod_entry(key))
-                        .or_else(|| lang.get(key).map(String::as_str))
-                }),
+                text: if crate::lang::has_mod_entries() {
+                    let current = crate::lang::current();
+                    json_text_with(&v, |key| {
+                        current
+                            .as_deref()
+                            .and_then(|published| published.mod_entry(key))
+                            .or_else(|| lang.get(key).map(String::as_str))
+                    })
+                } else {
+                    json_text(&v, lang)
+                },
                 key: v["translate"].as_str().map(str::to_owned),
                 from_server: true,
             },
@@ -986,7 +990,6 @@ impl Reason {
     /// The play/configuration phases' disconnect: the reason arrives as
     /// an NBT component.
     fn tag(tag: &Tag, lang: &Language) -> Self {
-        let current = crate::lang::current();
         let key = match tag {
             Tag::Compound(map) => map
                 .get(&JavaString::from("translate"))
@@ -997,12 +1000,17 @@ impl Reason {
             _ => None,
         };
         Self {
-            text: plain_with(tag, |key| {
-                current
-                    .as_deref()
-                    .and_then(|published| published.mod_entry(key))
-                    .or_else(|| lang.get(key).map(String::as_str))
-            }),
+            text: if crate::lang::has_mod_entries() {
+                let current = crate::lang::current();
+                plain_with(tag, |key| {
+                    current
+                        .as_deref()
+                        .and_then(|published| published.mod_entry(key))
+                        .or_else(|| lang.get(key).map(String::as_str))
+                })
+            } else {
+                plain(tag, lang)
+            },
             key,
             from_server: true,
         }

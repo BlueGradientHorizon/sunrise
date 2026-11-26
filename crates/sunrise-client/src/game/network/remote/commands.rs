@@ -4,27 +4,42 @@ use sunrise_protocol::packets::play::CommandSuggestions;
 impl Game<'_> {
     /// `ClientPacketListener.handleCommandSuggestions`: forward the reply to the command edit box.
     pub(super) fn handle_command_suggestions(&mut self, packet: CommandSuggestions) {
-        let current = sunrise_client::lang::current();
         let session = self.remote.as_ref().map(|r| r.lang.as_ref());
-        let list: Vec<_> = packet
-            .suggestions
-            .into_iter()
-            .map(|entry| {
-                (
-                    entry.text,
-                    entry.tooltip.as_ref().map(|tag| {
-                        plain_with(tag, |key| {
-                            current
-                                .as_deref()
-                                .and_then(|published| published.mod_entry(key))
-                                .or_else(|| {
-                                    session.and_then(|map| map.get(key).map(String::as_str))
-                                })
-                        })
-                    }),
-                )
-            })
-            .collect();
+        let list: Vec<_> = if sunrise_client::lang::has_mod_entries() {
+            let current = sunrise_client::lang::current();
+            packet
+                .suggestions
+                .into_iter()
+                .map(|entry| {
+                    (
+                        entry.text,
+                        entry.tooltip.as_ref().map(|tag| {
+                            plain_with(tag, |key| {
+                                current
+                                    .as_deref()
+                                    .and_then(|published| published.mod_entry(key))
+                                    .or_else(|| {
+                                        session.and_then(|map| map.get(key).map(String::as_str))
+                                    })
+                            })
+                        }),
+                    )
+                })
+                .collect()
+        } else {
+            let empty = Language::default();
+            let lang = session.unwrap_or(&empty);
+            packet
+                .suggestions
+                .into_iter()
+                .map(|entry| {
+                    (
+                        entry.text,
+                        entry.tooltip.as_ref().map(|tag| plain(tag, lang)),
+                    )
+                })
+                .collect()
+        };
         let range = (packet.start.max(0) as usize, packet.length.max(0) as usize);
         self.chat_server_suggestions(packet.id, range, list.clone());
         self.command_block_server_suggestions(packet.id, range, list);

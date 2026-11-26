@@ -128,6 +128,7 @@ fn update_publication<R>(
     if published {
         if let Some(language) = current.as_deref() {
             BIDIRECTIONAL.store(language.bidirectional, Ordering::Relaxed);
+            HAS_MOD_OVERLAY.store(!language.shadowed.is_empty(), Ordering::Release);
         }
         GENERATION.fetch_add(1, Ordering::Relaxed);
     }
@@ -207,6 +208,8 @@ thread_local! {
 }
 /// The current language's `bidirectional`, read for every drawn string.
 static BIDIRECTIONAL: AtomicBool = AtomicBool::new(false);
+/// Whether the current published language carries any active run-time mod overrides.
+static HAS_MOD_OVERLAY: AtomicBool = AtomicBool::new(false);
 /// Counts the languages set (`set`): another count is another language, so text looked up
 /// before it may read otherwise.
 static GENERATION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
@@ -1109,6 +1112,21 @@ pub fn bidirectional() -> bool {
         return language.bidirectional;
     }
     BIDIRECTIONAL.load(Ordering::Relaxed)
+}
+/// Whether the current published language carries any active run-time mod overrides.
+pub fn has_mod_entries() -> bool {
+    #[cfg(any(test, feature = "test-language-publication"))]
+    if let Some(has) = PUBLICATION.with(|slot| {
+        slot.borrow().as_ref().map(|isolated| {
+            isolated
+                .current
+                .as_deref()
+                .is_some_and(|language| !language.shadowed.is_empty())
+        })
+    }) {
+        return has;
+    }
+    HAS_MOD_OVERLAY.load(Ordering::Acquire)
 }
 pub fn code() -> String {
     current().map_or_else(|| DEFAULT.to_owned(), |language| language.code.to_string())
@@ -2076,6 +2094,7 @@ mod shared_source_tests {
                 ("t5474.b".into(), "pack b".into()),
             ],
         ));
+        assert!(!has_mod_entries());
         assert_eq!(
             set_mod_entries(
                 "lang_test_mod",
@@ -2088,6 +2107,7 @@ mod shared_source_tests {
             ),
             3
         );
+        assert!(has_mod_entries());
         assert_eq!(
             set_mod_entries("lang_test_mod", "de_de", pairs(&[("t5474.a", "de a")])),
             1
@@ -2129,6 +2149,7 @@ mod shared_source_tests {
         assert_eq!(get("t5474.c"), "en c");
 
         clear_mod_entries("lang_test_mod");
+        assert!(!has_mod_entries());
         assert_eq!(get("t5474.a"), "reloaded a", "the fresh pack text is back");
         assert!(!has("t5474.c"), "a key only the mod had is gone");
         assert_eq!(get("t5474.c"), "t5474.c");
@@ -2175,6 +2196,7 @@ mod shared_source_tests {
         let before = generation();
         set_disabled_mod_entries(&BTreeSet::from(["mod_a".to_owned()]));
         assert_eq!(generation(), before + 1);
+        assert!(!has_mod_entries());
         assert_eq!(get("t5474.k"), "pack v1");
         assert!(!has("t5474.only"));
 
@@ -2182,12 +2204,14 @@ mod shared_source_tests {
             "en_us",
             [("t5474.k".into(), "pack v2".into())],
         ));
+        assert!(!has_mod_entries());
         assert_eq!(get("t5474.k"), "pack v2");
         assert!(!has("t5474.only"));
 
         let before = generation();
         set_disabled_mod_entries(&BTreeSet::new());
         assert_eq!(generation(), before + 1);
+        assert!(has_mod_entries());
         assert_eq!(get("t5474.k"), "mod a");
         assert_eq!(get("t5474.only"), "only a");
 

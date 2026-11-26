@@ -88,6 +88,29 @@ impl Game<'_> {
             _ => OpenScreen::Other,
         }
     }
+    /// Clear held debug modifier and F3+C crash countdown on release without firing debug or
+    /// screen actions while a context menu is modal or owns this key's press.
+    #[inline(always)]
+    pub(super) fn debug_key_release_cleanup(&mut self, key: KeyCode) {
+        if !self.debug_keys.modifier_down && self.debug_keys.crash_key_time <= 0 {
+            return;
+        }
+        let Some(name) = keybinds::key_name(key) else {
+            return;
+        };
+        if name == self.settings.keys.get("key.debug.modifier") {
+            self.debug_keys.modifier_down = false;
+            self.debug_keys.used_debug_key_as_modifier = false;
+        }
+        if self.debug_keys.crash_key_time > 0 {
+            let crash_down = keybinds::key_code(self.settings.keys.get("key.debug.crash"))
+                .is_some_and(|k| self.physical_keys.contains(&k));
+            if !crash_down || !self.debug_keys.modifier_down {
+                self.debug_keys.crash_key_time = -1;
+            }
+        }
+    }
+
     /// A physical key event (already in `physical_keys`) before the game's
     /// own handling. Returns true when it is used up (a debug combination,
     /// F3 itself, F3+Escape).
@@ -98,6 +121,9 @@ impl Game<'_> {
         let pressed = action != KeyAction::Release;
         let switcher_open = self.screen == Screen::GameModeSwitcher;
         if switcher_open && self.context_menu_open() {
+            if !pressed {
+                self.debug_key_release_cleanup(key);
+            }
             return false;
         }
         if switcher_open && pressed {

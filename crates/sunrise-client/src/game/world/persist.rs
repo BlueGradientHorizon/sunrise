@@ -1045,7 +1045,7 @@ impl Game<'_> {
         // nothing from the level's.
         let seed = random_source::unique_seed();
         if self.dragon.is_none()
-            && let Some(mut d) = super::dragon::Dragon::from_nbt(&tag, seed)
+            && let Some(mut d) = super::dragon::Dragon::from_persisted_nbt(&tag, seed)
         {
             // EnderDragon's constructor takes its id and its
             // parts' from the entity counter.

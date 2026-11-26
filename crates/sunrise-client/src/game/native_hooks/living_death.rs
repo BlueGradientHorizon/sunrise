@@ -71,7 +71,7 @@ impl Game<'_> {
         source: &HurtSource<'_>,
         weapon: Option<&sunrise_client::items::ItemStack>,
     ) -> bool {
-        if !mod_api::__private::listened(mod_api::HookId::LivingDeath) {
+        if !mod_api::__private::enabled_listened(mod_api::HookId::LivingDeath) {
             return false;
         }
         let weapon = weapon.and_then(|stack| stack.try_into_api().ok());

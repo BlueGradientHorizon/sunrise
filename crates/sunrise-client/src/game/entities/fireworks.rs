@@ -1117,7 +1117,7 @@ impl Game<'_> {
                         }
                     }
                     SplashTarget::Dragon => {
-                        self.rocket_blast_dragon(from, damage, reach, by);
+                        self.rocket_blast_dragon(from, damage, reach, by, r.id, owner);
                     }
                     SplashTarget::Stand(id) => {
                         let sees = {

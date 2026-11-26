@@ -354,7 +354,9 @@ impl ScreenState {
     pub(super) fn bump_instance(&mut self) -> u64 {
         self.screen_instance = self.screen_instance.wrapping_add(1);
         self.last_click = None;
-        self.context_menu = None;
+        if self.context_menu.is_some() {
+            self.context_menu = None;
+        }
         self.screen_instance
     }
 

@@ -1078,12 +1078,19 @@ fn context_menu_overlay_draw_order_disposal_and_action_reopen() {
             "context menu draws after book geometry"
         );
         let menu_verts = &with_menu.vertices[first_menu_idx..];
+        let box_verts: Vec<_> = menu_verts.iter().filter(|v| v.text == 0).collect();
+        assert!(!box_verts.is_empty(), "menu box geometry present");
         assert!(
-            menu_verts.iter().all(|v| v.pos[0] >= 0.0
+            box_verts.iter().all(|v| v.pos[0] >= 0.0
                 && v.pos[0] <= 320.0
                 && v.pos[1] >= 0.0
                 && v.pos[1] <= 200.0),
-            "menu clamps to the render batch's 320x200 GUI size"
+            "menu box clamps to the render batch's 320x200 GUI size"
+        );
+        assert!(
+            box_verts.iter().any(|v| v.pos[0] == 320.0)
+                && box_verts.iter().any(|v| v.pos[1] == 200.0),
+            "menu box clamps against the 320x200 batch edges"
         );
 
         // Scrollable menu in a 7-11px-high GUI draws its scrollbar without panicking.
@@ -1239,6 +1246,7 @@ fn context_menu_blocks_pointer_motion_drag_wheel_keyboard_ime_and_socket() {
 
         // Focus Chat with active IME preedit, then open menu: preedit resets, unidentified-key
         // characters (Alt-code), IME preedit/commit, and control socket keys never reach Chat.
+        game.ui.chat.add_recent("older");
         game.begin_chat_screen("base", false);
         send(
             game,
@@ -1290,8 +1298,8 @@ fn context_menu_blocks_pointer_motion_drag_wheel_keyboard_ime_and_socket() {
         assert_eq!(game.ui.chat_screen.as_ref().unwrap().value(), "base");
 
         // With the chat on-screen keyboard already open, right-stick input and OSK output
-        // stay gated while the context menu is active and do not change chat history/suggestions.
-        game.ui.chat.add_recent("older");
+        // stay gated while the context menu is active and do not change chat history/suggestions
+        // even on the first closed-menu poll after dismissing with a controller button.
         game.settings.controller.enabled = true;
         game.pad.in_use = true;
         game.pad.menu.osk = Some(sunrise_client::osk::Keyboard::new(false));
@@ -1303,7 +1311,20 @@ fn context_menu_blocks_pointer_motion_drag_wheel_keyboard_ime_and_socket() {
         game.pad_menu_frame(&NoLoop);
         game.pad_osk_output(sunrise_client::osk::Output::Previous);
         assert_eq!(game.ui.chat_screen.as_ref().unwrap().value(), "base");
-        assert!(game.close_context_menu());
+        // Dismiss via controller button while still holding the right stick up: the wheel
+        // accumulator resets and the first closed-menu poll must not trigger OSK Previous.
+        game.pad_menu_button(&NoLoop, sunrise_client::gamepad::Button::East, true)
+            .unwrap();
+        game.pad_menu_button(&NoLoop, sunrise_client::gamepad::Button::East, false)
+            .unwrap();
+        assert!(!game.context_menu_open());
+        assert_eq!(game.pad.menu.wheel, [0.0, 0.0]);
+        game.pad_menu_frame(&NoLoop);
+        assert_eq!(
+            game.ui.chat_screen.as_ref().unwrap().value(),
+            "base",
+            "held right stick stays suppressed until neutral after menu dismissal"
+        );
         game.pad.state.right = [0.0, 0.0];
         game.pad_menu_frame(&NoLoop);
         game.pad.state.right = [0.0, 1.0];
@@ -1311,6 +1332,31 @@ fn context_menu_blocks_pointer_motion_drag_wheel_keyboard_ime_and_socket() {
         assert_eq!(game.ui.chat_screen.as_ref().unwrap().value(), "older");
         game.pad.state.right = [0.0, 0.0];
         game.pad.menu.osk = None;
+
+        // Releasing an F3+C crash chord while a context menu is open still cancels the
+        // countdown and clears modifier_down without firing debug overlay or screen actions.
+        game.close_chat(crate::game::chat::ChatExit::Done);
+        game.debug = false;
+        send_key_control(game, "key f3 down");
+        send_key_control(game, "key c down");
+        assert!(game.debug_keys.modifier_down);
+        assert!(game.debug_keys.crash_key_time > 0);
+        game.open_gamemode_switcher();
+        assert!(game.open_context_menu(
+            [60.0, 60.0],
+            vec![ContextMenuEntry::action(ApiText::literal("Keep"), |_| {})],
+        ));
+        send_key_control(game, "key c up");
+        send_key_control(game, "key f3 up");
+        assert_eq!(game.debug_keys.crash_key_time, -1);
+        assert!(!game.debug_keys.modifier_down);
+        assert!(!game.debug);
+        assert_eq!(game.screen, Screen::GameModeSwitcher);
+        assert!(game.context_menu_open());
+        let future = game.debug_millis() + 20_000;
+        assert_eq!(game.debug_keys.tick(future), None);
+        assert!(game.close_context_menu());
+        game.close_gamemode_switcher(false);
 
         // Over GameModeSwitcher: Escape, arrows and Enter route to the menu ahead of the
         // switcher's debug_key handler in both window and control-socket `key` entry points.
@@ -1465,6 +1511,8 @@ fn context_menu_tracks_mouse_key_and_controller_press_ownership() {
         game.settings.controller.enabled = true;
         game.pad.in_use = true;
         game.pad.menu.focus = Some(mounted_button);
+        game.pad.menu.pos = Some(mounted_button.center());
+        game.cursor = mounted_button.center();
         assert!(game.open_context_menu(
             [100.0, 100.0],
             vec![ContextMenuEntry::action(
@@ -1477,6 +1525,29 @@ fn context_menu_tracks_mouse_key_and_controller_press_ownership() {
         key(game, KeyCode::Escape, ElementState::Pressed);
         key(game, KeyCode::Escape, ElementState::Released);
         assert!(!game.context_menu_open());
+        game.pad_menu_frame(&NoLoop);
+        assert_eq!(game.pad.menu.focus, Some(mounted_button));
+        game.pad_menu_button(&NoLoop, PadButton::DPadDown, false)
+            .unwrap();
+
+        // Socket `release` while holding D-pad Down in the menu keeps controller ownership so
+        // dismissing via socket still clears `pad.menu.repeat` and never steps the screen underneath.
+        assert!(game.open_context_menu(
+            [100.0, 100.0],
+            vec![ContextMenuEntry::action(
+                ApiText::literal("SocketRel"),
+                |_| {}
+            )],
+        ));
+        game.pad_menu_button(&NoLoop, PadButton::DPadDown, true)
+            .unwrap();
+        send_key_control(game, "release");
+        send_key_control(game, "key escape tap");
+        assert!(!game.context_menu_open());
+        assert!(
+            game.pad.menu.repeat.is_none(),
+            "controller repeat must not remain armed after socket release + socket dismiss"
+        );
         game.pad_menu_frame(&NoLoop);
         assert_eq!(game.pad.menu.focus, Some(mounted_button));
         game.pad_menu_button(&NoLoop, PadButton::DPadDown, false)
@@ -1543,6 +1614,31 @@ fn context_menu_tracks_mouse_key_and_controller_press_ownership() {
         game.physical_keys.remove(&KeyCode::Space);
         key(game, KeyCode::Space, ElementState::Released);
         assert!(!game.vanilla_mappings.is_down(jump) && !game.keys.raw(&KeyCode::Space));
+
+        // A socket-owned Space press in the menu must not suppress a fresh physical Keyboard
+        // Space press during pointer recapture.
+        assert!(game.mod_screen_open("input_route"));
+        assert!(game.open_context_menu(
+            [100.0, 100.0],
+            vec![ContextMenuEntry::action(ApiText::literal("Hold"), |_| {})],
+        ));
+        send_key_control(game, "key space down");
+        assert!(game.close_context_menu());
+        game.physical_keys.insert(KeyCode::Space);
+        key(game, KeyCode::Space, ElementState::Pressed);
+        game.close_mod_screen();
+        assert_eq!(game.screen, Screen::Playing);
+        assert!(game.captured);
+        assert!(
+            game.vanilla_mappings.is_down(jump)
+                && game
+                    .keys
+                    .held_by(&KeyCode::Space, sunrise_client::held::Source::Keyboard),
+            "fresh physical Space must still restore Jump despite socket-owned Space"
+        );
+        send_key_control(game, "key space up");
+        game.physical_keys.remove(&KeyCode::Space);
+        key(game, KeyCode::Space, ElementState::Released);
     });
 }
 

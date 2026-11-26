@@ -12768,7 +12768,11 @@ impl Game<'_> {
             let menu_modal = self.context_menu_open()
                 || (action != KeyAction::Press
                     && self.context_menu_owns_key(Source::Keyboard, key));
-            if !menu_modal && self.debug_key(key, action) {
+            if menu_modal {
+                if action == KeyAction::Release {
+                    self.debug_key_release_cleanup(key);
+                }
+            } else if self.debug_key(key, action) {
                 return true;
             }
         }
@@ -13121,6 +13125,23 @@ impl Game<'_> {
         })
     }
 
+    #[cfg(test)]
+    fn handle_window_event_inner(
+        &mut self,
+        event_loop: &dyn EventLoopCtl,
+        event: WindowEvent,
+        cursor_sample: Option<sunrise_client::window::PointerSample>,
+        mouse_press_millis: Option<u64>,
+    ) -> bool {
+        self.handle_window_event_inner_as(
+            event_loop,
+            event,
+            cursor_sample,
+            mouse_press_millis,
+            input_trace::InputOrigin::User,
+        )
+    }
+
     /// One window event, in the order vanilla's `KeyboardHandler` and `MouseHandler` see it.
     ///
     /// A controller doesn't come through here in play: `pad_action` goes straight to the mappings
@@ -13131,12 +13152,13 @@ impl Game<'_> {
     /// `mouse_press_millis` is the monotonic timestamp of a physical press, absent for synthetic
     /// inputs and all other events.
     /// Returns true when button routing already settled the title before its Post.
-    fn handle_window_event_inner(
+    fn handle_window_event_inner_as(
         &mut self,
         event_loop: &dyn EventLoopCtl,
         event: WindowEvent,
         cursor_sample: Option<sunrise_client::window::PointerSample>,
         mouse_press_millis: Option<u64>,
+        origin: input_trace::InputOrigin,
     ) -> bool {
         let before_screen =
             |game: &mut Self| game.prepare_window_event(event_loop, &event, cursor_sample);
@@ -13480,7 +13502,7 @@ impl Game<'_> {
                     let mouse_source = if synthetic {
                         context_menu::MouseSource::Game
                     } else {
-                        self.screen_state.context_menu_input.window_origin()
+                        origin.into()
                     };
                     // An open context menu takes every press (and its matching release) until it closes.
                     if self.context_menu_mouse(mouse_source, button, pressed) {

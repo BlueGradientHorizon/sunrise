@@ -825,14 +825,19 @@ impl Game<'_> {
         if menu == "minecraft:merchant" {
             // A trading window: its offers follow in a MerchantOffers packet.
             let title = {
-                let current = sunrise_client::lang::current();
-                let session = self.remote.as_ref().map(|r| r.lang.as_ref());
-                plain_with(&p.title, |key| {
-                    current
-                        .as_deref()
-                        .and_then(|published| published.mod_entry(key))
-                        .or_else(|| session.and_then(|map| map.get(key).map(String::as_str)))
-                })
+                let empty = Language::default();
+                let session = self.remote.as_ref().map_or(&empty, |r| r.lang.as_ref());
+                if sunrise_client::lang::has_mod_entries() {
+                    let current = sunrise_client::lang::current();
+                    plain_with(&p.title, |key| {
+                        current
+                            .as_deref()
+                            .and_then(|published| published.mod_entry(key))
+                            .or_else(|| session.get(key).map(String::as_str))
+                    })
+                } else {
+                    plain(&p.title, session)
+                }
             };
             self.remote_open_merchant(p.container, title, menu_title(&p.title));
             return;

@@ -26,6 +26,7 @@ impl Game<'_> {
         let _save_lease = sunrise_client::join_seq::visibility::PassLease::enter();
         let mut waiting = std::mem::take(&mut self.world.loaded_entities);
         mark_fresh(&mut tree.0);
+        strip_death_canceled_tree(&mut tree.0);
         self.publish_entity_tree(
             key,
             tree,
@@ -209,6 +210,18 @@ impl Game<'_> {
             self.native_joins_skip();
         } else {
             self.native_joins_flush(from_disk, 0);
+        }
+    }
+}
+
+/// Strips internal death-veto markers from fresh command/structure spawns so
+/// only engine persistence can restore them.
+fn strip_death_canceled_tree(tag: &mut Tag) {
+    let Tag::Compound(c) = tag else { return };
+    c.remove(&"sunrise:death_canceled".into());
+    if let Some(Tag::List(passengers)) = c.get_mut(&"Passengers".into()) {
+        for passenger in passengers {
+            strip_death_canceled_tree(passenger);
         }
     }
 }

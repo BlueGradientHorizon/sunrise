@@ -1,6 +1,8 @@
 //! Production singleton installation/removal and id-allocation contracts.
 use super::*;
-use crate::game::native_entity_refs::tests::{with_client_game, with_game};
+use crate::game::native_entity_refs::tests::{
+    fixture_resident_column, with_client_game, with_game,
+};
 
 #[test]
 #[ignore = "daily"]
@@ -269,6 +271,7 @@ fn the_dragons_killing_blow_fires_the_living_death_hooks() {
     use sunrise_client::{
         items::ItemStack,
         mobs::Mob,
+        motion::PlayerMotion,
         projectiles::{Projectile, ProjectileKind},
     };
 
@@ -376,10 +379,13 @@ fn the_dragons_killing_blow_fires_the_living_death_hooks() {
     };
     let spawn_one_hp = |game: &mut Game<'_>| -> u32 { spawn_with_phase(game, holding()) };
 
+    crate::entry::install_client_hooks();
     mod_platform::testing::with_mods(mods, || {
         with_game(|game| {
             game.build_registries();
+            fixture_resident_column(&mut game.world, (0, 0));
             let host_uuid = 77u128;
+            game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
             game.player.as_mut().unwrap().entity_id = 55;
             game.level.player_uuid = Some(sunrise_client::lan::playerdata::uuid_ints(host_uuid));
 
@@ -421,6 +427,16 @@ fn the_dragons_killing_blow_fires_the_living_death_hooks() {
                     );
                     assert_eq!(*probe.order.lock().unwrap(), ["death", "damage_post"]);
                     assert!(probe.posts.lock().unwrap().is_empty());
+                    // Engine persistence preserves a genuine veto across save/load.
+                    let saved_uuid = game.persist.uuids.get(&id).copied().unwrap_or([1, 2, 3, 4]);
+                    let saved = d.to_nbt(saved_uuid, None, game.res.items());
+                    assert_eq!(saved.get("sunrise:death_canceled"), Some(&Tag::Byte(1)));
+                    game.dragon.discard();
+                    game.load_dragon(saved, Some(saved_uuid));
+                    assert!(
+                        game.dragon.as_ref().unwrap().death_canceled,
+                        "persisted veto survives save/load"
+                    );
                     // Advancing 20 ticks removes the unhealed body without XP or fight completion.
                     for _ in 0..19 {
                         game.tick_dragon();
@@ -499,6 +515,30 @@ fn the_dragons_killing_blow_fires_the_living_death_hooks() {
                 }
             }
 
+            // 1c. /summon strips sunrise:death_canceled and Dragon::from_nbt ignores it.
+            game.dragon.discard();
+            let summoned = game
+                .summon_with_nbt(
+                    "minecraft:ender_dragon",
+                    [0.0, 80.0, 0.0],
+                    r#"{Health:0f,"sunrise:death_canceled":1b}"#,
+                )
+                .unwrap();
+            assert!(summoned.is_some());
+            {
+                let d = game.dragon.as_ref().unwrap();
+                assert!(!d.death_canceled, "/summon strips sunrise:death_canceled");
+                let mut saved = d.to_nbt([1, 0, 0, 1], None, game.res.items());
+                assert!(saved.get("sunrise:death_canceled").is_none());
+                if let Tag::Compound(map) = &mut saved {
+                    map.insert("sunrise:death_canceled".into(), Tag::Byte(1));
+                }
+                assert!(
+                    !Dragon::from_nbt(&saved, 0).unwrap().death_canceled,
+                    "Dragon::from_nbt does not accept forged sunrise:death_canceled"
+                );
+            }
+
             // 2a. Lethal projectile shot after the shooter switched items keeps projectile ID, type, and saved weapon.
             probe.cancel.store(false, Ordering::SeqCst);
             clear(&probe);
@@ -553,6 +593,69 @@ fn the_dragons_killing_blow_fires_the_living_death_hooks() {
                 game.dragon.as_ref().unwrap().last_source,
                 Some(("minecraft:explosion", None, None)),
                 "baseline LAN damage source stays separate from hook blast payload"
+            );
+
+            // 2c. Lethal firework rocket blast carries rocket ID and type while keeping baseline last_source.
+            clear(&probe);
+            spawn_one_hp(game);
+            let reach = game.dragon.as_ref().unwrap().whole_box();
+            game.rocket_blast_dragon(
+                Vec3::new(0.0, 80.0, 0.0),
+                7.0,
+                reach,
+                Some(FightWho::Host),
+                941,
+                Some(Who::Player),
+            );
+            {
+                let deaths = probe.deaths.lock().unwrap();
+                assert_eq!(deaths.len(), 1);
+                assert_eq!(deaths[0].damage_type, "minecraft:fireworks");
+                assert_eq!(deaths[0].causing, 55);
+                assert_eq!(deaths[0].direct, 941);
+                assert_eq!(
+                    deaths[0].direct_type.as_deref(),
+                    Some("minecraft:firework_rocket")
+                );
+            }
+            assert_eq!(
+                game.dragon.as_ref().unwrap().last_source,
+                Some(("minecraft:fireworks", Some(55), None)),
+                "baseline LAN damage source stays separate from hook rocket payload"
+            );
+
+            // 2d. Lethal linked-crystal destruction carries crystal ID and type while keeping baseline last_source.
+            clear(&probe);
+            let prev_dim = game.dim;
+            game.dim = crate::game::Dim::End;
+            game.reset_entity_residency();
+            spawn_one_hp(game);
+            let crystal_tag =
+                game.dragon
+                    .as_ref()
+                    .unwrap()
+                    .to_nbt([2, 0, 0, 1], None, game.res.items());
+            let mut crystal = Crystal::from_nbt(&crystal_tag, 0).unwrap();
+            crystal.id = 942;
+            game.dragon.as_mut().unwrap().nearest_crystal = Some(0);
+            game.crystal_destroyed(0, &crystal, Some(FightWho::Host), false);
+            game.dim = prev_dim;
+            game.reset_entity_residency();
+            {
+                let deaths = probe.deaths.lock().unwrap();
+                assert_eq!(deaths.len(), 1);
+                assert_eq!(deaths[0].damage_type, "minecraft:player_explosion");
+                assert_eq!(deaths[0].causing, 55);
+                assert_eq!(deaths[0].direct, 942);
+                assert_eq!(
+                    deaths[0].direct_type.as_deref(),
+                    Some("minecraft:end_crystal")
+                );
+            }
+            assert_eq!(
+                game.dragon.as_ref().unwrap().last_source,
+                Some(("minecraft:player_explosion", Some(55), None)),
+                "baseline LAN damage source stays separate from hook crystal payload"
             );
 
             // 3. Lethal explicit-source hit carries its type, cause, and direct entity ID.
@@ -612,6 +715,10 @@ fn the_dragons_killing_blow_fires_the_living_death_hooks() {
                 let d = game.dragon.as_ref().unwrap();
                 assert_eq!(d.health, 0.0);
                 assert!(matches!(d.phase, Phase::Hover { .. }));
+                assert_eq!(
+                    d.sitting_damage, 0.0,
+                    "phase change during living_death skips finish_sitting_damage"
+                );
             }
             assert!(probe.posts.lock().unwrap().is_empty());
             assert_eq!(
