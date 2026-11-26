@@ -289,13 +289,21 @@ pub fn build_with_conditions(
     // holds their definitions too, so a loader that reads the root alone (the startup
     // damage catalog, structure mobs' tables, the client sync preload) binds vanilla's
     // damage tags against the same registry instead of failing every tag naming one (#6120).
-    // Conditions stay in the file: every reader evaluates them with its own inventory.
+    // Those loaders read the root with the vanilla-only inventory, so the winning file's
+    // `neoforge:conditions` are decided here, once, with the owning load's, as for the
+    // worldgen and modifier files: a file that fails them is left out, and one that holds
+    // is written without the key.
     for (file, (owner, layer)) in &damage_type_files {
         let bytes = layer
             .data
             .read(file)
             .ok_or_else(|| format!("mod {owner}: {file}: unreadable"))?;
-        overlay.write(file, &bytes)?;
+        let doc: serde_json::Value =
+            serde_json::from_slice(&bytes).map_err(|e| format!("mod {owner}: {file}: {e}"))?;
+        if !conditions.allows_file(&doc, file) {
+            continue;
+        }
+        overlay.write(file, &without_conditions(&bytes, owner, file)?)?;
     }
     let mut winners: Vec<_> = modifier_files.into_values().collect();
     winners.sort_by_key(|(order, ..)| *order);
@@ -663,6 +671,23 @@ fn is_damage_type_file(file: &str) -> bool {
         .and_then(|rest| rest.split_once('/'))
         .and_then(|(_, rest)| rest.strip_prefix("damage_type/"))
         .is_some_and(|path| path.ends_with(".json"))
+}
+
+/// A damage type file's bytes without `neoforge:conditions`, decoded as
+/// `ConditionalOps.ConditionalDecoder` does (`conditions::into_payload`) but on the raw
+/// text, so a number is read from its original decimal as the codec does. A file without
+/// the key is returned as it is.
+fn without_conditions(bytes: &[u8], owner: &str, file: &str) -> Result<Vec<u8>> {
+    use serde_json::value::RawValue;
+    let mut fields: BTreeMap<String, Box<RawValue>> =
+        serde_json::from_slice(bytes).map_err(|e| format!("mod {owner}: {file}: {e}"))?;
+    if fields.remove("neoforge:conditions").is_none() {
+        return Ok(bytes.to_vec());
+    }
+    Ok(match fields.remove("neoforge:value") {
+        Some(payload) => payload.get().as_bytes().to_vec(),
+        None => serde_json::to_vec(&fields)?,
+    })
 }
 
 /// Builds a root using the owning load's condition registrations.

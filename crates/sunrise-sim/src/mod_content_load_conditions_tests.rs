@@ -549,3 +549,163 @@ fn a_mod_damage_type_in_a_vanilla_damage_tag_keeps_the_tag_bound() {
         .collect();
     assert_eq!(members, BTreeSet::from(expected));
 }
+
+/// A root built with the owning load's conditions, from a base holding vanilla's
+/// `starve` and `fall` and the given mods, each enabled beside the extra mod ids.
+fn damage_root(scratch: &Path, mods: &[ContentMod], also_loaded: &[&str], out: &str) -> PathBuf {
+    let base = scratch.join("resources");
+    if !base.exists() {
+        let base = resources(scratch);
+        for (file, text) in [
+            (
+                "data/minecraft/damage_type/starve.json",
+                r#"{"message_id":"starve","scaling":"when_caused_by_living_non_player","exhaustion":0.0}"#,
+            ),
+            (
+                "data/minecraft/damage_type/fall.json",
+                r#"{"message_id":"fall","scaling":"when_caused_by_living_non_player","exhaustion":0.0,"death_message_type":"fall_variants"}"#,
+            ),
+            (
+                "data/minecraft/tags/damage_type/bypasses_armor.json",
+                r#"{"values":["minecraft:starve","minecraft:fall"]}"#,
+            ),
+        ] {
+            let path = base.join(file);
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(path, text).unwrap();
+        }
+    }
+    let ids: Vec<&str> = mods
+        .iter()
+        .map(|m| m.id.as_str())
+        .chain(also_loaded.iter().copied())
+        .collect();
+    let inventory = sunrise_mod_package::enabled::EnabledMods::new(
+        ids.iter().map(|id| ((*id).to_owned(), mod_api::Side::Both)),
+    );
+    let out = scratch.join(out);
+    super::super::build_with_conditions(
+        &base,
+        Path::new(""),
+        mods,
+        &out,
+        &inventory,
+        &LoadConditions::new(ids),
+    )
+    .unwrap();
+    out
+}
+
+/// The server's damage registry read from a root alone, as startup and the structure
+/// mobs' tables do: no pack overlay, the vanilla-only inventory.
+fn root_only_catalog(out: &Path) -> sunrise_world::damage_source::Catalog {
+    sunrise_world::damage_source::Catalog::default()
+        .with_packs(out, &sunrise_world::loot::PackOverlay::NONE)
+        .unwrap()
+}
+
+/// #6120: the root's reader has the vanilla-only inventory, so a definition gated on
+/// its own mod (or on another) is decided while the root is built: present when the
+/// owning load's conditions hold, absent when they fail, and a negated one the other way.
+#[test]
+fn a_gated_mod_damage_type_is_decided_once_for_the_root_alone_readers() {
+    let scratch = tempfile::tempdir().unwrap();
+    for loaded in [true, false] {
+        let dir = scratch.path().join(format!("loaded_{loaded}"));
+        let tag = if loaded {
+            "testmod:gated"
+        } else {
+            "testmod:negated"
+        };
+        let mods = vec![folder_mod(
+            &dir.join("mod"),
+            &[
+                ("sunrise-mod.toml", &manifest("testmod", "")),
+                (
+                    "data/testmod/damage_type/gated.json",
+                    r#"{"neoforge:conditions":[{"type":"neoforge:mod_loaded","modid":"chemlib"}],"message_id":"testmod.gated","scaling":"never","exhaustion":0.1}"#,
+                ),
+                (
+                    "data/testmod/damage_type/negated.json",
+                    r#"{"neoforge:conditions":[{"type":"neoforge:not","value":{"type":"neoforge:mod_loaded","modid":"chemlib"}}],"message_id":"testmod.negated","scaling":"never","exhaustion":0.1}"#,
+                ),
+                (
+                    "data/minecraft/tags/damage_type/bypasses_armor.json",
+                    &format!(r#"{{"values":["{tag}"]}}"#),
+                ),
+            ],
+        )];
+        let out = damage_root(&dir, &mods, if loaded { &["chemlib"] } else { &[] }, "out");
+        let catalog = root_only_catalog(&out);
+        assert_eq!(catalog.id("testmod:gated").is_some(), loaded, "{loaded}");
+        assert_eq!(catalog.id("testmod:negated").is_some(), !loaded, "{loaded}");
+        let members: BTreeSet<_> = catalog.tag_members("minecraft:bypasses_armor").collect();
+        assert_eq!(
+            members,
+            BTreeSet::from(["minecraft:fall", "minecraft:starve", tag]),
+            "{loaded}"
+        );
+    }
+}
+
+/// #6120: the later mod's `damage_type` file is the root's, as in a pack stack.
+#[test]
+fn a_later_mods_damage_type_file_wins_in_the_root() {
+    let scratch = tempfile::tempdir().unwrap();
+    let file = "data/minecraft/damage_type/shared_type.json";
+    let text = |message: &str| {
+        format!(r#"{{"message_id":"{message}","scaling":"never","exhaustion":0.1}}"#)
+    };
+    let mods = vec![
+        folder_mod(
+            &scratch.path().join("first"),
+            &[
+                ("sunrise-mod.toml", &manifest("firstmod", "")),
+                (file, &text("first")),
+            ],
+        ),
+        folder_mod(
+            &scratch.path().join("last"),
+            &[
+                ("sunrise-mod.toml", &manifest("lastmod", "")),
+                (file, &text("last")),
+            ],
+        ),
+    ];
+    let out = damage_root(scratch.path(), &mods, &[], "out");
+    let root: serde_json::Value =
+        serde_json::from_slice(&fs::read(out.join(file)).unwrap()).unwrap();
+    assert_eq!(root["message_id"], "last");
+    assert!(
+        root_only_catalog(&out)
+            .id("minecraft:shared_type")
+            .is_some()
+    );
+}
+
+/// #6120: a mod's file for a `minecraft:` damage type replaces the base's in the root,
+/// and the base's own file stays as it was.
+#[test]
+fn a_mod_file_replaces_a_vanilla_damage_type_in_the_root() {
+    let scratch = tempfile::tempdir().unwrap();
+    let file = "data/minecraft/damage_type/starve.json";
+    let mods = vec![folder_mod(
+        &scratch.path().join("mod"),
+        &[
+            ("sunrise-mod.toml", &manifest("testmod", "")),
+            (
+                file,
+                r#"{"message_id":"testmod.starve","scaling":"never","exhaustion":0.5}"#,
+            ),
+        ],
+    )];
+    let out = damage_root(scratch.path(), &mods, &[], "out");
+    let root: serde_json::Value =
+        serde_json::from_slice(&fs::read(out.join(file)).unwrap()).unwrap();
+    assert_eq!(root["message_id"], "testmod.starve");
+    let base: serde_json::Value =
+        serde_json::from_slice(&fs::read(scratch.path().join("resources").join(file)).unwrap())
+            .unwrap();
+    assert_eq!(base["message_id"], "starve");
+    assert!(root_only_catalog(&out).id("minecraft:starve").is_some());
+}
