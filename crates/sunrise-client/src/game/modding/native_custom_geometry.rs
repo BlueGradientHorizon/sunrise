@@ -4418,6 +4418,8 @@ mod tests {
         mesh: Option<mod_api::MeshRef>,
         uniform: Option<mod_api::UniformBufferRef>,
         storage: Option<mod_api::StorageBufferRef>,
+        pipeline: Option<RenderPipelineRef>,
+        draw: Option<mod_api::PreparedWorldDraw>,
     }
 
     /// Reaches the GPU through the host in the three frame hooks, each call unwrapped: a refusal
@@ -4426,6 +4428,26 @@ mod tests {
 
     #[mod_api::__subscriptions]
     impl Hooks for GpuProbe {
+        fn register_render_pipelines(
+            &self,
+            _: &mod_api::RegistrationContext,
+            event: &mut mod_api::RegisterRenderPipelinesEvent<'_>,
+        ) {
+            event.register(
+                mod_api::RenderPipeline::new(
+                    Identifier::parse("gpu_probe:sampled").unwrap(),
+                    Identifier::parse("gpu_probe:core/sampled").unwrap(),
+                    mod_api::PipelineBlend::Opaque,
+                    mod_api::WorldDepth::ThroughWalls,
+                )
+                .sampler(
+                    "ColorTex",
+                    mod_api::SamplerFilter::Nearest,
+                    mod_api::SamplerAddress::ClampToEdge,
+                ),
+            );
+        }
+
         fn frame_graph_setup(
             &self,
             host: &dyn ClientHost,
@@ -4452,9 +4474,10 @@ mod tests {
         fn prepare_render_buffers(
             &self,
             host: &dyn ClientHost,
-            _: &mut mod_api::PrepareRenderBuffersEvent<'_>,
+            event: &mut mod_api::PrepareRenderBuffersEvent<'_>,
         ) {
-            let init = [mod_api::MeshBufferInit::from_bytes(8, &[0; 32])];
+            // One quad of the default `PositionTexColor` format: 24 bytes a vertex.
+            let init = [mod_api::MeshBufferInit::from_bytes(24, &[0; 96])];
             let mesh = host
                 .create_mesh(&mod_api::MeshDescriptor::new(&init))
                 .unwrap();
@@ -4464,7 +4487,27 @@ mod tests {
                 .create_storage_buffer(&mod_api::StorageBufferDescriptor::new(64))
                 .unwrap();
             storage.write_range(host, 0, &[1; 16]).unwrap();
+            let pipeline = host
+                .render_assets()
+                .render_pipeline(&Identifier::parse("gpu_probe:sampled").unwrap())
+                .unwrap();
+            let target = self.0.lock().unwrap().target.unwrap();
+            let draw = event
+                .context
+                .draw_mesh(
+                    RenderLevelStage::AfterOpaqueFeatures,
+                    pipeline,
+                    mesh,
+                    mod_api::MeshDraw::vertices(0..4),
+                    &mod_api::DrawBindings::default().texture(
+                        "ColorTex",
+                        mod_api::TextureSource::RenderTargetColor(target, 0),
+                    ),
+                )
+                .unwrap();
             let mut handles = self.0.lock().unwrap();
+            handles.pipeline = Some(pipeline);
+            handles.draw = Some(draw);
             handles.mesh = Some(mesh);
             handles.uniform = Some(uniform);
             handles.storage = Some(storage);
@@ -4479,6 +4522,12 @@ mod tests {
                 return;
             }
             let handles = self.0.lock().unwrap();
+            event
+                .context
+                .world_pass()
+                .unwrap()
+                .draw(handles.draw.unwrap())
+                .unwrap();
             handles.mesh.unwrap().release(host).unwrap();
             handles.uniform.unwrap().release(host).unwrap();
             handles.storage.unwrap().release(host).unwrap();
@@ -4494,8 +4543,17 @@ mod tests {
     fn mod_gpu_handles_work_while_the_renderer_is_out_of_the_game() {
         use mod_api::__private::take_hook_panics;
         use mod_api::{BufferError, MeshError, RenderTargetError};
+        use sunrise_client::gfx::mod_pipelines::{PipelineDrawSource, ResolvedSet1Entry};
         use sunrise_client::gfx::world_primitives::FrameHooks;
 
+        // The mod's pipeline registration is process-global and published once: run in a child.
+        if super::super::native_entity_refs::tests::run_fresh_cases(
+            "game::native_custom_geometry::tests::mod_gpu_handles_work_while_the_renderer_is_out_of_the_game",
+            "SUNRISE_MOD_GPU_FRAME_CHILD",
+            &["run"],
+        ) {
+            return;
+        }
         super::super::native_entity_refs::tests::with_client_game(|game| {
             let (_event_loop, window) =
                 crate::game::native_hooks::particle_count_tests::hidden_window();
@@ -4515,6 +4573,62 @@ mod tests {
             );
             let _ = take_hook_panics();
 
+            // The mod's sampler pipeline, registered and built from its GLSL as a resource load does.
+            let mut pipelines = Vec::new();
+            Game::native_register_render_pipelines(
+                &mod_api::RegistrationContext::new(),
+                &mut pipelines,
+                &mut Vec::new(),
+                &mut Vec::new(),
+            );
+            assert_eq!(pipelines.len(), 1);
+            let vanilla = tempfile::tempdir().unwrap();
+            std::fs::write(
+                vanilla.path().join("render-pipelines.json"),
+                r#"{"required":["minecraft:pipeline/solid_block"],"optional":["minecraft:pipeline/wireframe"]}"#,
+            )
+            .unwrap();
+            sunrise_client_render::mod_pipelines::register(pipelines, vanilla.path()).unwrap();
+            let shaders = tempfile::tempdir().unwrap();
+            let core = shaders.path().join("assets/gpu_probe/shaders/core");
+            std::fs::create_dir_all(&core).unwrap();
+            std::fs::write(
+                core.join("sampled.vsh"),
+                "#version 330\n\
+                 in vec3 Position;\n\
+                 in vec2 UV0;\n\
+                 in vec4 Color;\n\
+                 out vec2 vUv;\n\
+                 out vec4 vColor;\n\
+                 void main() {\n\
+                     gl_Position = vec4(Position.xy, 0.5, 1.0);\n\
+                     vUv = UV0;\n\
+                     vColor = Color;\n\
+                 }\n",
+            )
+            .unwrap();
+            std::fs::write(
+                core.join("sampled.fsh"),
+                "#version 330\n\
+                 uniform sampler2D ColorTex;\n\
+                 in vec2 vUv;\n\
+                 in vec4 vColor;\n\
+                 out vec4 fragColor;\n\
+                 void main() {\n\
+                     fragColor = texture(ColorTex, vUv) * vColor;\n\
+                 }\n",
+            )
+            .unwrap();
+            let mut render = sunrise_client_render::assets::RenderAssets::unpublished();
+            render.mod_pipelines = sunrise_client_render::mod_pipelines::Pipelines::load(
+                &sunrise_assets::resource_source::ResourceSource::directory(
+                    shaders.path().to_owned(),
+                ),
+                7,
+            )
+            .unwrap();
+            game.pack.render = std::sync::Arc::new(render);
+
             // `game.rs`'s `Game::render`: the renderer is out while its frame is drawn, the mod
             // GPU handles stay.
             let renderer_slot = game.renderer.take();
@@ -4528,21 +4642,50 @@ mod tests {
             {
                 let mut driver = GameWorldStageDriver::new(game, &camera, 0.0, &mut draw);
                 driver.on_frame_graph_setup(&[], false);
+                // The recorded pass draws into the mod render target the hook created.
+                let graph = driver.take_frame_graph().unwrap();
+                let created = handles.lock().unwrap().target.unwrap();
+                assert_eq!(graph.passes.len(), 1);
+                assert_eq!(graph.passes[0].label, "gpu_probe");
+                assert!(matches!(
+                    graph.passes[0].target,
+                    Some(mod_api::FrameTarget::Mod(t)) if t == created
+                ));
                 driver.on_prepare_render_buffers(&[], false, &mut Default::default());
-                driver.on_render_stage(RenderLevelStage::AfterOpaqueFeatures, &[], false);
+                let stage_draws: Vec<_> = driver
+                    .on_render_stage(RenderLevelStage::AfterOpaqueFeatures, &[], false)
+                    .iter()
+                    .map(|ranges| ranges.pipeline_draws.clone())
+                    .collect();
+                // The mesh draw sampling the mod target's colour is in the stage batch.
+                assert_eq!(stage_draws, [0..1]);
+                let batch = driver.prepared_primitives();
+                assert_eq!(batch.pipelines.draws.len(), 1);
+                let recorded = &batch.pipelines.draws[0];
+                assert_eq!(recorded.slot, 0);
+                assert!(matches!(recorded.source, PipelineDrawSource::Retained(_)));
+                assert!(matches!(
+                    recorded.bindings.as_ref().map(|b| b.entries.as_slice()),
+                    Some([ResolvedSet1Entry::Texture { mips: Some(_), .. }])
+                ));
             }
             let panics = take_hook_panics();
             assert!(panics.is_empty(), "{panics:?}");
             let made = handles.lock().unwrap();
             assert!(made.target.is_some() && made.mesh.is_some());
             assert!(made.uniform.is_some() && made.storage.is_some());
-            let (mesh, uniform, storage, target) = (
+            let (mesh, uniform, storage, target, pipeline) = (
                 made.mesh.unwrap(),
                 made.uniform.unwrap(),
                 made.storage.unwrap(),
                 made.target.unwrap(),
+                made.pipeline.unwrap(),
             );
             drop(made);
+
+            // The stage released every handle: a second release is refused.
+            assert!(game.mesh_release(mesh).is_err());
+            assert!(game.render_target_resize(target, [8, 8]).is_err());
 
             // The renderer's own textures that `TextureSource` binds resolve from the handles.
             let gpu = game.mod_gpu().unwrap();
@@ -4575,6 +4718,19 @@ mod tests {
                 Err(RenderTargetError::Unavailable)
             );
             assert_eq!(game.mesh_release(mesh), Err(MeshError::Unavailable));
+            assert_eq!(
+                game.native_world_draw_mesh(
+                    &mut draw,
+                    pipeline,
+                    mesh,
+                    mod_api::MeshDraw::vertices(0..4),
+                    &mod_api::DrawBindings::default().texture(
+                        "ColorTex",
+                        mod_api::TextureSource::RenderTargetColor(target, 0)
+                    ),
+                ),
+                Err(mod_api::PipelineDrawError::Mesh(MeshError::Unavailable))
+            );
             game.renderer = renderer_slot;
         });
     }
