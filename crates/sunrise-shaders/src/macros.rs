@@ -34,9 +34,33 @@ fn feature(name: &str) -> Option<&'static str> {
         .find(|f| f.eq_ignore_ascii_case(name))
 }
 
+/// The keys that list the feature flags a pack asks for (spec 3.2).
+pub(crate) const FEATURE_LISTS: [&str; 2] = ["iris.features.optional", "iris.features.required"];
+
+/// The prefix of the macros that answer a pack's feature flags.
+const FEATURE_MACRO: &str = "IRIS_FEATURE_";
+
+/// Whether `name` is one of the macros that answer a pack's feature flags. Sunrise alone
+/// defines them (`Macros::define_features`): a pack's option of such a name is neither defined
+/// for its property files (`with_options`) nor counted as on in `program.*.enabled`.
+pub(crate) fn is_feature_answer(name: &str) -> bool {
+    name.starts_with(FEATURE_MACRO)
+}
+
 /// The flags `properties` gives under `key`, as the pack wrote them.
 fn flags<'a>(properties: &'a crate::Properties, key: &str) -> std::str::SplitWhitespace<'a> {
     properties.get(key).unwrap_or_default().split_whitespace()
+}
+
+/// The flags of [`FEATURES`] that `properties` lists in either of [`FEATURE_LISTS`], as
+/// `FEATURES` writes them; a name matches in any case.
+pub(crate) fn listed_features(
+    properties: &crate::Properties,
+) -> impl Iterator<Item = &'static str> {
+    FEATURE_LISTS
+        .iter()
+        .flat_map(|key| flags(properties, key))
+        .filter_map(feature)
 }
 
 /// `MC_VERSION` of the version Sunrise plays: 26.3 → 260300.
@@ -245,10 +269,8 @@ impl Macros {
     /// Sunrise lacks stays undefined. Whether any was defined.
     pub fn define_features(&mut self, properties: &crate::Properties) -> bool {
         let mut defined = false;
-        let listed = flags(properties, "iris.features.optional")
-            .chain(flags(properties, "iris.features.required"));
-        for name in listed.filter_map(feature) {
-            self.define(format!("IRIS_FEATURE_{name}"), "1");
+        for name in listed_features(properties) {
+            self.define(format!("{FEATURE_MACRO}{name}"), "1");
             defined = true;
         }
         defined

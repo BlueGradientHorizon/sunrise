@@ -26,6 +26,9 @@
 //!   alter the output (a naga upgrade) deletes the manifests and blesses them again, and its PR
 //!   says why they changed:
 //!   `SUNRISE_BLESS_SPIRV_DUMP=1 cargo test -p sunrise-render-shaderpack --test spirv_dump -- --exact spirv_dump_matches_the_committed_manifests`
+//! - `profiles_behind_answered_feature_flags_are_dumped` (not ignored): a pack written by the
+//!   test, whose profiles sit behind `IRIS_FEATURE_*` guards, dumps the profile its listed flag
+//!   reaches and not the one an unlisted flag guards.
 //! - `spirv_dump_real_packs` (manual): the packs in `SUNRISE_TEST_SHADER_PACKS` (zips or folders,
 //!   and those one folder down), each dumped twice in one process, written to
 //!   `SUNRISE_SPIRV_DUMP_OUT/<pack>.txt`. The output folder must not exist yet: the run makes it
@@ -556,4 +559,47 @@ fn spirv_dump_real_packs() {
         "two dumps in one process differ: {differ:?}"
     );
     assert!(dumped > 0, "no pack was dumped");
+}
+
+/// The dump reads profiles as the options screen does (`read_properties`): a profile behind a
+/// flag the pack lists and Sunrise answers is dumped, one behind a flag it doesn't list is not.
+#[test]
+fn profiles_behind_answered_feature_flags_are_dumped() {
+    let dir = std::env::temp_dir().join(format!(
+        "sunrise-spirv-dump-features-{}",
+        std::process::id()
+    ));
+    let shaders = dir.join("shaders");
+    std::fs::create_dir_all(&shaders).unwrap();
+    for (file, text) in [
+        (
+            "shaders.properties",
+            "iris.features.optional = CUSTOM_IMAGES\n\
+             #ifdef IRIS_FEATURE_CUSTOM_IMAGES\nprofile.listed = LEVEL=1\n#endif\n\
+             #ifdef IRIS_FEATURE_SSBO\nprofile.unlisted = LEVEL=1\n#endif\n",
+        ),
+        ("options.glsl", "#define LEVEL 2 // [1 2]\n"),
+        (
+            "composite.vsh",
+            "#version 330\nvoid main() { gl_Position = vec4(0.0); }\n",
+        ),
+        (
+            "composite.fsh",
+            "#version 330\n#include \"/options.glsl\"\nout vec4 c;\n\
+             void main() { c = vec4(float(LEVEL)); }\n",
+        ),
+    ] {
+        std::fs::write(shaders.join(file), text).unwrap();
+    }
+    let dumped = dump(&dir);
+    std::fs::remove_dir_all(&dir).unwrap();
+    let dumped = dumped.unwrap();
+    let parts: Vec<&str> = dumped
+        .text
+        .lines()
+        .filter(|l| l.starts_with("options "))
+        .map(|l| l.split(' ').nth(1).unwrap_or_default())
+        .collect();
+    assert_eq!(parts, ["defaults", "profile.listed"]);
+    assert_eq!(dumped.kinds.profiles, 1);
 }

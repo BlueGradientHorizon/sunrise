@@ -934,7 +934,11 @@ pub fn load_post(
         folder,
         properties,
         macros,
-        switches: crate::switches_on(pack),
+        // A switch named as a feature answer is not the pack's to turn on (`with_options`).
+        switches: crate::switches_on(pack)
+            .into_iter()
+            .filter(|s| !crate::macros::is_feature_answer(s))
+            .collect(),
         options,
         geometry: None,
         limits: inputs.interface_limits,
@@ -1963,13 +1967,7 @@ fn scale(properties: &Properties, program: &str, group: Group) -> [f32; 3] {
 
 /// Whether the pack names the `HIGHER_SHADOWCOLOR` feature, required or optional, in any case.
 fn higher_shadowcolor(properties: &Properties) -> bool {
-    ["iris.features.required", "iris.features.optional"]
-        .iter()
-        .filter_map(|k| properties.get(k))
-        .any(|v| {
-            v.split_whitespace()
-                .any(|w| w.eq_ignore_ascii_case("HIGHER_SHADOWCOLOR"))
-        })
+    crate::macros::listed_features(properties).any(|f| f == "HIGHER_SHADOWCOLOR")
 }
 
 /// `flip.<program>.<buffer>=<bool>` keys of one program.

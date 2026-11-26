@@ -219,6 +219,11 @@ the full list.
     read again, and that second read is the one the game uses. A list that only a feature macro reaches is not read.
     The programs and `block.properties`, `entity.properties` and `item.properties` see the answers. A pack that lists
     no supported flag is read once, with the macros it had before.
+  - What is decided by the lists after the read (the eight shadow colour buffers of `HIGHER_SHADOWCOLOR`) takes the
+    lists of the first read, the ones the answers came from, even where the second read would hide or change them.
+  - `IRIS_FEATURE_*` names are Sunrise's answers alone: a pack's own option of such a name (a value option or a
+    switch) is not defined for its property files and doesn't count as on in `program.<name>.enabled`. The pack's
+    program text is read as written: a `#define` of such a name there applies from that line, as any `#define` does.
   - The same read serves every place that reads a pack's `shaders.properties`: the load, the HDR read made before
     the frame, and the Shader Options page.
   - No setting turns it off: it is the format's answer to what the pack asks.
@@ -230,8 +235,10 @@ the full list.
 - **Tests:** `options::tests::listed_features_sunrise_has_are_defined_for_properties_programs_and_id_files`,
   `options::tests::a_pack_that_lists_no_feature_sunrise_has_gets_none`,
   `options::tests::flag_lists_are_settled_before_the_answers_are_defined`,
-  `options::tests::properties_are_read_with_the_options_then_define_the_features`, and in `tests/it`
+  `options::tests::properties_are_read_with_the_options_then_define_the_features`,
+  `options::tests::the_settled_lists_decide_the_shadow_colour_buffers`,
+  `options::tests::a_packs_option_named_as_a_feature_answer_changes_no_answer`, and in `tests/it`
   `reversed_culling_feature::requested_reversed_culling_loads_and_packs_take_the_path_it_guards` and
   `terrain_fade::fade_feature_negotiation_ignores_case_and_defines_the_written_macro` (`sunrise-shaders`);
   `game::shader_packs::native_pack_tests::the_hdr_read_and_the_options_page_see_the_features_the_pack_lists`
-  (`sunrise-client`).
+  (`sunrise-client`); `profiles_behind_answered_feature_flags_are_dumped` (`sunrise-render-shaderpack`, `spirv_dump`).
