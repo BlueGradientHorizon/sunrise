@@ -843,6 +843,9 @@ pub fn translate_oit(
     Ok(out.try_into().expect("three OIT stages"))
 }
 
+/// Expand both stages ([`Expanded`]), refuse what the guard and the vertex inputs refuse, and
+/// translate the program, once more with the linear-light finish when `options` ask for it. The
+/// built program carries each stage's expanded text.
 fn translate_inner(
     sources: &ProgramSources<'_>,
     options: &Options<'_>,
@@ -861,8 +864,7 @@ fn translate_inner(
         Some(defines),
     )
     .map_err(|e| vec![problem(sources.vertex_file, e.to_string())])?;
-    let vertex_expanded = vertex.text().to_owned();
-    if let Some((at, msg)) = guard::refusal(&vertex_expanded) {
+    if let Some((at, msg)) = guard::refusal(vertex.text()) {
         return Err(vec![refusal_at(&vertex, at, msg)]);
     }
     validate_vertex_inputs(&vertex, options.vertex_inputs).map_err(|prob| vec![prob])?;
@@ -875,30 +877,24 @@ fn translate_inner(
         Some(defines),
     )
     .map_err(|e| vec![problem(sources.fragment_file, e.to_string())])?;
-    let fragment_expanded = fragment.text().to_owned();
-    if let Some((at, msg)) = guard::refusal(&fragment_expanded) {
+    if let Some((at, msg)) = guard::refusal(fragment.text()) {
         return Err(vec![refusal_at(&fragment, at, msg)]);
     }
 
-    // When both stages live in the same folder, pass original sources so `__LINE__` stays exact.
-    // When vertex and fragment come from different folders/namespaces, pass pre-expanded vertex
-    // text (already resolved against `vertex_dir`) alongside the fragment source.
-    let stages = if sources.vertex_dir == sources.fragment_dir {
-        Stages {
-            dir: sources.fragment_dir,
-            vertex: sources.vertex,
-            fragment: sources.fragment,
-            vertex_file: sources.vertex_file,
-            fragment_file: sources.fragment_file,
-        }
+    // `Stages` has one folder for both stages, which a quoted include is read from. The vertex
+    // stage's own source keeps `__LINE__` and error lines exact, but is only right when the
+    // folders are the same; otherwise its text, expanded against its own folder above, goes in.
+    let vertex_source = if sources.vertex_dir == sources.fragment_dir {
+        sources.vertex
     } else {
-        Stages {
-            dir: sources.fragment_dir,
-            vertex: &vertex_expanded,
-            fragment: sources.fragment,
-            vertex_file: sources.vertex_file,
-            fragment_file: sources.fragment_file,
-        }
+        vertex.text()
+    };
+    let stages = Stages {
+        dir: sources.fragment_dir,
+        vertex: vertex_source,
+        fragment: sources.fragment,
+        vertex_file: sources.vertex_file,
+        fragment_file: sources.fragment_file,
     };
 
     if options.push_constant_size > MAX_PUSH_CONSTANT_SIZE {
@@ -916,8 +912,7 @@ fn translate_inner(
     let glue = setup.glue(options, None);
 
     let provided = |name: &str| extra_samplers.contains(&name);
-    let to_problems =
-        |errs: Vec<sunrise_glsl::Error>| map_glsl_errors(sources, &errs, options.textured);
+    let to_problems = |errs: Vec<sunrise_glsl::Error>| map_glsl_errors(&errs, options.textured);
     let mut translated =
         sunrise_glsl::translate(&stages, &inputs, &glue, &provided).map_err(to_problems)?;
     if let Some(pc_binding) = set1.push_constant_binding
@@ -957,8 +952,8 @@ fn translate_inner(
 
     Ok(BuiltProgram {
         translated,
-        vertex_expanded,
-        fragment_expanded,
+        vertex_expanded: vertex.text().to_owned(),
+        fragment_expanded: fragment.text().to_owned(),
     })
 }
 
@@ -1003,15 +998,11 @@ pub fn translate_linear_fragment(
     .unwrap_or_else(Err)
 }
 
-/// The translator's `errors` as problems in the program's files. An error refusing `Sampler0` or
-/// `SpriteRect` as a block or sampler the pipeline doesn't provide
-/// ([`sunrise_glsl::Error::unprovided`]) adds, on an untextured pipeline, the hint to declare it
-/// textured.
-fn map_glsl_errors(
-    sources: &ProgramSources<'_>,
-    errors: &[sunrise_glsl::Error],
-    textured: bool,
-) -> Vec<Problem> {
+/// The translator's `errors` as problems, each in the file it names (the stage's file or an
+/// `#include`d one, by asset path). An error refusing `Sampler0` or `SpriteRect` as a block or
+/// sampler the pipeline doesn't provide ([`sunrise_glsl::Error::unprovided`]) adds, on an
+/// untextured pipeline, the hint to declare it textured.
+fn map_glsl_errors(errors: &[sunrise_glsl::Error], textured: bool) -> Vec<Problem> {
     errors
         .iter()
         .map(|err| {
@@ -1019,15 +1010,8 @@ fn map_glsl_errors(
             if !textured && matches!(err.unprovided.as_deref(), Some("Sampler0" | "SpriteRect")) {
                 message += " (requires RenderPipeline::textured)";
             }
-            let file = if !err.file.is_empty() {
-                asset_path(&err.file)
-            } else if message.starts_with("vertex shader: ") {
-                sources.vertex_file.to_owned()
-            } else {
-                sources.fragment_file.to_owned()
-            };
             Problem {
-                file,
+                file: asset_path(&err.file),
                 line: err.line as usize,
                 column: 0,
                 message,
