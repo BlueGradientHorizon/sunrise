@@ -157,6 +157,8 @@ fn a_mod_element_wraps_another_through_the_adapter() {
         placed: Vec::new(),
         water: false,
         ticks: Vec::new(),
+        flags: Vec::new(),
+        marks: Vec::new(),
     };
     let mut random = LegacyRandom::new(3);
     let PoolElement::Mod {
@@ -506,6 +508,8 @@ fn a_piece_places_configured_and_placed_features() {
         placed: Vec::new(),
         water: false,
         ticks: Vec::new(),
+        flags: Vec::new(),
+        marks: Vec::new(),
     };
     let mut random = LegacyRandom::new(7);
     {
