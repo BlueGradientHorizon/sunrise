@@ -95,8 +95,11 @@ pub struct IndirectSource {
     pub buffer: wgpu::Buffer,
     /// Byte offset of the first command, a multiple of 4 inside `buffer` for all `max_count`.
     pub offset: u64,
-    /// How many commands are drawn.
+    /// How many commands are drawn, or with `count` the most that are.
     pub max_count: u32,
+    /// The buffer and byte offset of the GPU-written `u32` count, created with `INDIRECT`
+    /// usage (`multi_draw_indirect_count`).
+    pub count: Option<(wgpu::Buffer, u64)>,
 }
 
 impl IndirectSource {
@@ -105,19 +108,29 @@ impl IndirectSource {
     /// of a `Quads`, `Lines` or `TriangleFan` `topology`, which the engine expands from a vertex
     /// range an indirect command does not give it; `buffer` needs `INDIRECT` usage and a
     /// 4-byte `offset`, and must hold `max_count` commands of vanilla's
-    /// `INDIRECT_INDEXED_DRAW_SIZE` (indexed) or `INDIRECT_DRAW_SIZE` bytes.
+    /// `INDIRECT_INDEXED_DRAW_SIZE` (indexed) or `INDIRECT_DRAW_SIZE` bytes. A `count` buffer
+    /// needs `INDIRECT` usage and a 4-byte offset with its `u32` inside it.
     pub fn new(
         topology: PrimitiveTopology,
         mesh: Option<ResolvedMeshDraw>,
         buffer: wgpu::Buffer,
         offset: u64,
         max_count: u32,
+        count: Option<(wgpu::Buffer, u64)>,
     ) -> Result<Self, mod_api::PipelineDrawError> {
+        if let Some((count, at)) = &count
+            && (!count.usage().contains(wgpu::BufferUsages::INDIRECT)
+                || !at.is_multiple_of(wgpu::COPY_BUFFER_ALIGNMENT)
+                || at.checked_add(4).is_none_or(|end| end > count.size()))
+        {
+            return Err(mod_api::PipelineDrawError::InvalidIndirect);
+        }
         let source = Self {
             mesh,
             buffer,
             offset,
             max_count,
+            count,
         };
         let stride = if source.index_buffer().is_some() {
             mod_api::INDIRECT_INDEXED_DRAW_SIZE
@@ -4181,20 +4194,35 @@ impl ModPipelines {
                         pass.set_vertex_buffer(*binding, buf.slice(0..*len));
                     }
                 }
-                // One path on every backend: `max_count` commands, those the mod's culling
-                // shader zeroed (`instance_count = 0`) drawing nothing.
-                match indirect.index_buffer() {
-                    Some((ibuf, fmt)) => {
-                        pass.set_index_buffer(ibuf.slice(..), *fmt);
-                        pass.multi_draw_indexed_indirect(
-                            &indirect.buffer,
-                            indirect.offset,
-                            indirect.max_count,
-                        );
-                    }
-                    None => pass.multi_draw_indirect(
+                // `max_count` commands, those the mod's culling shader zeroed
+                // (`instance_count = 0`) drawing nothing; or, with a count buffer (checked
+                // against `RenderCapabilities::indirect_count`), as many as the GPU wrote.
+                if let Some((ibuf, fmt)) = indirect.index_buffer() {
+                    pass.set_index_buffer(ibuf.slice(..), *fmt);
+                }
+                match (indirect.index_buffer(), &indirect.count) {
+                    (Some(_), None) => pass.multi_draw_indexed_indirect(
                         &indirect.buffer,
                         indirect.offset,
+                        indirect.max_count,
+                    ),
+                    (None, None) => pass.multi_draw_indirect(
+                        &indirect.buffer,
+                        indirect.offset,
+                        indirect.max_count,
+                    ),
+                    (Some(_), Some((count, at))) => pass.multi_draw_indexed_indirect_count(
+                        &indirect.buffer,
+                        indirect.offset,
+                        count,
+                        *at,
+                        indirect.max_count,
+                    ),
+                    (None, Some((count, at))) => pass.multi_draw_indirect_count(
+                        &indirect.buffer,
+                        indirect.offset,
+                        count,
+                        *at,
                         indirect.max_count,
                     ),
                 }
@@ -6883,11 +6911,24 @@ void main() {
     /// draw their quads: a `base_vertex` other than zero reaches the vertex fetch (the DirectX 12
     /// case), a command with `instance_count = 0` draws nothing (how a mod's culling shader drops
     /// a slot), and the buffer is refused unless it is `INDIRECT`, 4-aligned and large enough.
+    /// Where the adapter draws GPU-written counts, a count of 1 draws command 0 alone (#5908);
+    /// a count buffer is refused on the same terms as the command buffer.
     #[test]
     #[ignore = "daily"]
     fn indirect_commands_draw_with_base_vertex_skip_zeroed_slots_and_are_refused_when_unfit() {
         let _gpu = crate::gfx::test_gpu::lock();
-        let Some((device, queue)) = device() else {
+        let Some(adapter) = crate::gfx::test_gpu::adapter() else {
+            return;
+        };
+        // Count draws where the adapter has them, as the game's device asks for them.
+        let counts = adapter.features() & wgpu::Features::MULTI_DRAW_INDIRECT_COUNT;
+        let descriptor = wgpu::DeviceDescriptor {
+            required_features: counts,
+            ..Default::default()
+        };
+        let Some((device, queue)) =
+            crate::gfx::test_gpu::optional_device_with(&adapter, &descriptor)
+        else {
             return;
         };
         let vsh = "\
@@ -6985,6 +7026,7 @@ void main() {
             commands_buffer.clone(),
             0,
             3,
+            None,
         )
         .unwrap();
 
@@ -7022,6 +7064,7 @@ void main() {
                 commands_buffer.clone(),
                 offset,
                 count,
+                None,
             )
             .map(|_| ())
         };
@@ -7055,9 +7098,86 @@ void main() {
             })
         };
         assert_eq!(
-            IndirectSource::new(triangles, Some(resolved.clone()), plain, 0, 1).map(|_| ()),
+            IndirectSource::new(triangles, Some(resolved.clone()), plain.clone(), 0, 1, None)
+                .map(|_| ()),
             Err(mod_api::PipelineDrawError::InvalidIndirect)
         );
+        // A GPU-written count (`multi_draw_indexed_indirect_count`) draws that many, at most
+        // `max_count`: with 1 written, command 1 is left out though it lies in range.
+        let count_handle = storage
+            .create(
+                &gpu.0,
+                None,
+                &mod_api::StorageBufferDescriptor::new(8).indirect(true),
+            )
+            .unwrap();
+        storage
+            .write_range(None, count_handle, 4, bytemuck::cast_slice(&[1u32]))
+            .unwrap();
+        storage.flush(&gpu.0, &gpu.1);
+        let count_buffer = storage.resolve_buffer(None, count_handle).unwrap();
+        if crate::gfx::mod_render_targets::indirect_count(&adapter.get_info(), gpu.0.features()) {
+            let counted = IndirectSource::new(
+                triangles,
+                Some(resolved.clone()),
+                commands_buffer.clone(),
+                0,
+                3,
+                Some((count_buffer.clone(), 4)),
+            )
+            .unwrap();
+            let draw_cmd = PipelineDraw {
+                slot: 0,
+                stage: 4,
+                modifier_stack: 0,
+                draw: MeshDraw::vertices(0..0),
+                source: PipelineDrawSource::Indirect(counted),
+                bindings: None,
+            };
+            let batch = Batch {
+                set: Some(&set),
+                draws: std::slice::from_ref(&draw_cmd),
+                time: 0.0,
+                ..Default::default()
+            };
+            let at = render(&gpu, &mut primitives, format, batch, STAGES - 1);
+            assert_near(
+                at(4, 4),
+                [0.0, 220.0, 40.0, 255.0],
+                1.0,
+                "counted command 0",
+            );
+            assert_eq!(at(20, 4), at(20, 40), "command 1 is past the written count");
+        } else {
+            eprintln!(
+                "no count draws on {:?}: the counted draw is not run",
+                adapter.get_info()
+            );
+        }
+        let counted = |count: Option<(wgpu::Buffer, u64)>| {
+            IndirectSource::new(
+                triangles,
+                Some(resolved.clone()),
+                commands_buffer.clone(),
+                0,
+                3,
+                count,
+            )
+            .map(|_| ())
+        };
+        assert_eq!(counted(Some((count_buffer.clone(), 4))), Ok(()));
+        for (buffer, at) in [
+            (count_buffer.clone(), 2),
+            (count_buffer.clone(), 8),
+            (count_buffer.clone(), u64::MAX - 1),
+            (plain.clone(), 0),
+        ] {
+            assert_eq!(
+                counted(Some((buffer, at))),
+                Err(mod_api::PipelineDrawError::InvalidIndirect),
+                "a count at {at}"
+            );
+        }
         // Without an index buffer the commands are 16 bytes each, and an expanded topology has
         // no vertex range to expand.
         let bare = crate::gfx::mod_meshes::ResolvedMeshDraw {
@@ -7071,6 +7191,7 @@ void main() {
                 commands_buffer.clone(),
                 0,
                 count,
+                None,
             )
             .map(|_| ())
         };
