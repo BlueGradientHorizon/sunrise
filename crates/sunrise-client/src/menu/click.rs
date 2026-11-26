@@ -1415,6 +1415,7 @@ impl Menu {
                             && self.quick_replace(t, &have, env)
                             && self.may_pickup(env, t)
                             && self.can_take_for_pick_all(t)
+                            && self.parts_allow_pick_all(env, t, &have)
                         {
                             let item = self.slot(t).expect("has item").clone();
                             if (pass != 0 || item.count != Self::max_stack(env, &item))
