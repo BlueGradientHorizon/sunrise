@@ -1961,7 +1961,8 @@ impl Game<'_> {
             .facts()
             .get(self.world.block(pos[0], pos[1], pos[2]))
             .name;
-        &**name == "minecraft:crafting_table" && g.within_block_range(pos, 4.0)
+        &**name == "minecraft:crafting_table"
+            && g.within_interaction_range(&self.loop_context, pos, 4.0)
     }
 
     /// Guest `gi`'s open window `container` when it is a mod menu type with a

@@ -365,6 +365,19 @@ pub(crate) fn install_client_hooks() {
         is_ladder: |context, entity, pos, state, ladder| {
             crate::game::is_ladder(context, entity, pos, state, ladder);
         },
+        block_interaction_range: |context, player, pos, buffer, within| {
+            if !mod_api::__private::listened(mod_api::HookId::BlockInteractionRange) {
+                return;
+            }
+            let reader = sunrise_client_render::api_context::LoopReader(context);
+            mod_api::dispatch_block_interaction_range(
+                &reader.context(),
+                player,
+                pos,
+                buffer,
+                within,
+            );
+        },
         makes_open_trapdoor_above_climbable:
             crate::game::native_trapdoor_ladder::makes_open_trapdoor_above_climbable,
         friction: crate::game::native_surface::friction,
