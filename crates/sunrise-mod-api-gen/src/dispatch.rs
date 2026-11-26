@@ -1079,7 +1079,7 @@ pub(super) fn emit<'a>(
                 .is_some_and(|(_, param)| param.ty == "LevelRandomSide");
         let filtered_subscribers = name == "add_pack_finders";
         let movement_side_filter = matches!(
-            name.as_str(),
+            name,
             "entity_move" | "living_travel" | "living_travel_moved"
         );
         let allow_subscriber = fresh_name("allow", &mut used);
@@ -1685,7 +1685,6 @@ pub(super) fn emit<'a>(
                     Some(validate) => format!("{plain_call}; {}", validate(mod_id_expr)),
                     None => format!("{plain_call};"),
                 },
-                _ => format!("{plain_call};"),
             };
             format!("{local_event} {snapshot_statement}{invocation} {local_write_back}")
         };
