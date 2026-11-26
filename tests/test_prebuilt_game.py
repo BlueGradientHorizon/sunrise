@@ -13,7 +13,7 @@ from unittest.mock import patch
 from pathlib import Path
 
 from tools import prebuilt_game
-from tests.os_support import needs_symlinks
+from tests.os_support import needs_runner_shell, needs_symlinks
 from tests.test_ci_concurrency import yaml
 
 COMMIT = "c" * 40
@@ -1008,7 +1008,7 @@ if __name__ == "__main__":
 
 
 class LauncherPinTests(unittest.TestCase):
-    @unittest.skipUnless(os.name == "posix", "runs a Linux runner's workflow step")
+    @needs_runner_shell
     def test_only_a_full_lowercase_sha_is_accepted_by_the_script_and_the_smoke(self):
         script = prebuilt_game.ROOT / "tools/ci/launcher_pin.sh"
         pin = prebuilt_game.ROOT / "tools/ci/launcher-pin"
@@ -1029,7 +1029,7 @@ class LauncherPinTests(unittest.TestCase):
 
 
 class LauncherCheckoutTests(unittest.TestCase):
-    @unittest.skipUnless(os.name == "posix", "runs a Linux runner's workflow step")
+    @needs_runner_shell
     def test_checks_out_the_pinned_commit_detached_and_refuses_an_unfetchable_pin(self):
         script = prebuilt_game.ROOT / "tools/ci/launcher_checkout.sh"
         pin_file = prebuilt_game.ROOT / "tools/ci/launcher-pin"
