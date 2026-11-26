@@ -2133,8 +2133,43 @@ impl Game<'_> {
             d.hurt_by_player = Some((who, d.ticks));
         }
         if !was_down && d.down() {
-            self.fight.last_blow = Some((kind, by.is_some()));
-            self.credit_dragon_kill();
+            let id = d.id;
+            // LivingEntity.die: NeoForge's LivingDeathEvent first, then the kill credit, and
+            // the death's end at its broadcastEntityEvent (living_death_post).
+            if !self.dragon_death_canceled(id, &hit_source) {
+                // The player the kill is credited to: lastHurtByPlayer within its 100 ticks.
+                let credited_player = self
+                    .dragon
+                    .as_ref()
+                    .and_then(|d| d.hurt_by_player.filter(|(_, hit)| d.ticks - hit <= 100))
+                    .and_then(|(who, _)| match who {
+                        FightWho::Host => Some(self.own_uuid()),
+                        FightWho::Guest(conn) => self
+                            .lan
+                            .as_ref()
+                            .and_then(|host| host.hub.guests.iter().find(|g| g.conn == conn))
+                            .map(|g| g.uuid),
+                    });
+                self.fight.last_blow = Some((kind, by.is_some()));
+                self.credit_dragon_kill();
+                if mod_api::__private::listened(mod_api::HookId::LivingDeathPost) {
+                    // The attacker is the mob that dealt it, 0 for none or a player.
+                    let attacker = if by.is_some() {
+                        0
+                    } else {
+                        u32::try_from(hit_source.causing).unwrap_or(0)
+                    };
+                    self.native_living_death_post(mod_api::__private::LivingDeathPostCall {
+                        entity: id,
+                        kind: "minecraft:ender_dragon",
+                        damage_type: hit_source.damage_type,
+                        attacker,
+                        player: None,
+                        credited_player,
+                        message_key: None,
+                    });
+                }
+            }
         }
         let Some(d) = self.dragon.as_mut() else {
             return hurt;
