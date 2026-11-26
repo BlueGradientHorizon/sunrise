@@ -417,10 +417,12 @@ class PrReadyTests(unittest.TestCase):
         failing = ("Surface: breaking (1 breaking, 0 conditional, 0 additive; 1 breaking without a note)\n"
                    "Old aaaa, new bbbb\n\nBreaking (1)\n- type:HookId (changed)\n"
                    "change note old.toml names fn:gone, which did not change\n"
+                   "change note typo.toml names fn:hokid, which did not change; did you mean type:HookId?\n"
                    "breaking change without a change note: type:HookId\n")
         self.assertEqual(pr_ready.surface_summary(failing),
                          "Surface: breaking (1 breaking, 0 conditional, 0 additive; 1 breaking without a note); "
                          "change note old.toml names fn:gone, which did not change; "
+                         "change note typo.toml names fn:hokid, which did not change; did you mean type:HookId?; "
                          "breaking change without a change note: type:HookId")
         self.assertEqual(pr_ready.surface_summary("sunrise-stage: change note a.toml has no `why`\n"),
                          "sunrise-stage: change note a.toml has no `why`")

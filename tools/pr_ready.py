@@ -325,7 +325,7 @@ def unittest_passed(output):
 # The lines of tools/ci/surface_report.py's output that say what it found and why it failed: the report's own verdict,
 # a stale change note, a breaking change no note names, and what stopped the tool (an unreadable note, say)
 # (crates/sunrise-stage/src/main.rs surface_diff and fail).
-SURFACE_LINES = re.compile(r"^(Surface: .*|No surface report: .*|change note .* which did not change"
+SURFACE_LINES = re.compile(r"^(Surface: .*|No surface report: .*|change note .* which did not change.*"
                            r"|breaking change without a change note: .*|sunrise-stage: .*)$", re.M)
 
 
