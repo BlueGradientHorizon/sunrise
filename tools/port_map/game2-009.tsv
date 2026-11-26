@@ -23,8 +23,8 @@ AttackRange.getClosesetHit	port	crates/sunrise-client-gameplay/src/game/items/ha
 AttackRange.effectiveMaxRange	inline	crates/sunrise-gameplay-common/src/game/items/held_items.rs::attack_range_contains	creative or survival reach; the mob factor is not used
 BlockItemStateProperties.with	port	crates/sunrise-gameplay-common/src/game/blocks/block_items.rs::Game::picked_stack	gap: minor: writes only honey_level for beehives and bee nests (BeehiveBlock.getCloneItemStack)
 BlockItemStateProperties.get	port	crates/sunrise-client/src/item_tooltip.rs::honey_line	reads honey_level only
-BlockItemStateProperties.apply	port	crates/sunrise-client/src/game/blocks/block_items.rs::Game::apply_item_block_state	sets the item's block state properties on the placed block
-BlockItemStateProperties.updateState	inline	crates/sunrise-client/src/game/blocks/block_items.rs::Game::apply_item_block_state	the per-property set, only for properties the block has
+BlockItemStateProperties.apply	port	crates/sunrise-gameplay-common/src/game/blocks/block_items.rs::apply_placed_item_common	sets the item's block state properties on the placed block
+BlockItemStateProperties.updateState	inline	crates/sunrise-gameplay-common/src/game/blocks/block_items.rs::apply_placed_item_common	the per-property set, only for properties the block has
 BlocksAttacks.onBlocked	port	crates/sunrise-gameplay/src/game/items/shield.rs::Game::after_block	gap: minor: block sound plays on this client only
 BlocksAttacks.hurtBlockingItem	port	crates/sunrise-gameplay/src/game/items/shield.rs::Game::after_block	item damage by the damage function (the shield breaks at max damage), and the hit counts the blocking item as used on the server before the blocked-damage check
 BlocksAttacks.disableBlockingForTicks	port	crates/sunrise-gameplay/src/game/items/shield.rs::Game::blocked_by_attacker	disable seconds times disable scale, rounded to ticks, sets the item cooldown
@@ -89,11 +89,11 @@ WrittenBookContent.getPages	port	crates/sunrise-client-gameplay/src/game/interfa
 WrittenBookContent.withReplacedPages	missing		minor: loot function set_written_book_pages is not in the loot modifiers, so a loot book gets no pages
 BookCloningRecipe.matches	port	crates/sunrise-sim/src/crafting.rs::Special::matches	BookCloning arm: one written book within the allowed generations, plus material
 BookCloningRecipe.assemble	port	crates/sunrise-sim/src/crafting.rs::Special::assemble	copies the book with generation plus one; material count sets the copies
-BookCloningRecipe.getRemainingItems	port	crates/sunrise-client/src/crafting.rs::Recipes::remainders	the first written book is kept as one copy (BookCloning arm); the crafting remainder item is kept too
+BookCloningRecipe.getRemainingItems	port	crates/sunrise-sim/src/crafting/remainders.rs::Recipes::remainders	the first written book is kept as one copy (BookCloning arm); the crafting remainder item is kept too
 CraftingInput.getItem	port	crates/sunrise-sim/src/crafting.rs::Input::get	reads the grid cell by x and y instead of a slot index
 CraftingInput.equals	skip:java		value equality
 CraftingInput.hashCode	skip:java		hash for collections
-Ingredient.testOptionalIngredient	port	crates/sunrise-client/src/crafting.rs::Ingredient::test	the caller treats a missing ingredient as an empty slot
+Ingredient.testOptionalIngredient	port	crates/sunrise-mod-vocab/src/item/crafting.rs::Ingredient::test	the caller treats a missing ingredient as an empty slot
 Ingredient.equals	skip:java		value equality
 Ingredient.of	port	crates/sunrise-sim/src/crafting.rs::Ingredient::of	ingredient from item ids
 Ingredient.displayForSingleItem	skip:other		no callers in the vanilla source
@@ -109,7 +109,7 @@ RecipeManager.isIngredientEnabled	missing		minor: no feature flag check for ingr
 RecipeManager.byKeyTyped	port	crates/sunrise-sim/src/crafting.rs::Recipes::recipe_matches	gap: minor: lookup by id; no recipe type check
 RecipeManager.listDisplaysForRecipe	port	crates/sunrise-sim/src/recipe_book.rs::Book::entry	the entry holds the recipe's displays
 RecipeManager.IngredientCollector.accept	skip:other		collects ingredients for the synced property sets; Sunrise's client reads its own recipe and brewing tables
-RepairItemRecipe.canCombine	port	crates/sunrise-client/src/crafting.rs::Special::repair_pair	two items of the same kind that can combine
+RepairItemRecipe.canCombine	port	crates/sunrise-sim/src/crafting/repair_item.rs::assemble	two items of the same kind that can combine
 RepairItemRecipe.assemble	port	crates/sunrise-sim/src/crafting.rs::Special::assemble	repair arm: combined durability and the bonus
 ShapedRecipePattern.of	port	crates/sunrise-sim/src/crafting.rs::Recipes::load	pattern read from the recipe JSON at load
 ShapedRecipePattern.unpack	port	crates/sunrise-sim/src/crafting.rs::Recipes::load	pattern cells read at load, empty where the key is blank
@@ -136,4 +136,4 @@ SlotDisplay.WithAnyPotion.resolve	port	crates/sunrise-sim/src/crafting.rs::book_
 SlotDisplay.WithRemainder.resolve	missing		remainders are kept for play (Recipes::remainders), and the book's displays never apply them
 SlotDisplay.WithRemainder.isEnabled	missing		no feature flag check: the recipe load and the book never read the level's enabled_features
 BlockPlaceContext.at	port	crates/sunrise-world/src/level/place.rs::Sim::placement_at	the placement position and face from the clicked block
-UseOnContext.isSecondaryUseActive	port	crates/sunrise-client/src/game.rs::Game::use_hand	the shift key sets the context's sneaking flag
+UseOnContext.isSecondaryUseActive	port	crates/sunrise-gameplay/src/game/items/use_hand.rs::ServerGame::use_hand	the shift key sets the context's sneaking flag

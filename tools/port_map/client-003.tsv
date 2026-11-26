@@ -80,7 +80,7 @@ SkinReport.copy	skip:service		chat and player reporting
 SkinReport.Builder.hasContent	skip:service		chat and player reporting
 SkinReport.Builder.checkBuildable	skip:service		chat and player reporting
 SkinReport.Builder.build	skip:service		chat and player reporting
-BlockStatePredictionHandler.updateKnownServerState	port	crates/sunrise-client/src/game/network/remote/mod.rs::Game::server_block	a predicted block keeps its predicted state; the server state is remembered
+BlockStatePredictionHandler.updateKnownServerState	port	crates/sunrise-client-gameplay/src/game/network/remote/break_prediction_client.rs::ClientGame::server_block	a predicted block keeps its predicted state; the server state is remembered
 BlockStatePredictionHandler.startPredicting	port	crates/sunrise-client-gameplay/src/game/network/remote/break_prediction_client.rs::Game::predict_break	gap: minor: the sequence number is passed in by the caller instead of counted here
 AddressCheck.createFromService	missing		minor: no block-list suppliers are loaded, so no address is refused on connect
 ServerAddress.isValidAddress	port	crates/sunrise-protocol/src/servers.rs::parse_address	gap: minor: no IDN check on the host name

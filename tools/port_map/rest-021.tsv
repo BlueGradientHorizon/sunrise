@@ -57,8 +57,8 @@ CubicSpline.Multipoint.packToPoints	skip:java		codec helper: nodes to a point li
 CubicSpline.Multipoint.createFromPoints	skip:java		codec helper: point list to nodes
 CubicSpline.Multipoint.Point.codec	skip:java		codec
 DelegateDataOutput.write	skip:java		stream delegate
-DependencySorter.visitDependenciesAndElement	port	crates/sunrise-world/src/worldgen/tags.rs::visit	depth-first walk that emits dependencies before the element
-DependencySorter.isCyclic	port	crates/sunrise-world/src/worldgen/tags.rs::reaches	reach test used to refuse a cyclic edge
+DependencySorter.visitDependenciesAndElement	port	crates/sunrise-world/src/tag_layers/order.rs::dependency_order	depth-first walk that emits dependencies before the element
+DependencySorter.isCyclic	port	crates/sunrise-world/src/tag_layers/order.rs::dependency_order	reach test used to refuse a cyclic edge
 DependencySorter.addDependencyIfNotCyclic	inline	crates/sunrise-world/src/worldgen/tags.rs::TagDefinitions::build	adds the edge only when reaches is false
 DependencySorter.orderByDependencies	inline	crates/sunrise-world/src/worldgen/tags.rs::TagDefinitions::build	required edges first, then optional ones, then the visit order
 DirectoryLock.create	port	crates/sunrise-sim/src/save/session.rs::SessionLock::acquire	exclusive file lock on session.lock with the two-byte snowman content

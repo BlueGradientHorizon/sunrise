@@ -77,7 +77,7 @@ CreateWorldScreen.MoreTab.openGameRulesScreen	port	crates/sunrise-client/src/tit
 CreateWorldScreen.WorldTab.<init>	port	crates/sunrise-client/src/title/create_world.rs::buttons	World tab: world type, customize, seed box (field 1), structures and bonus chest; gap: player: only Default and Superflat are offered, vanilla also offers Amplified and other presets
 CreateWorldScreen.WorldTab.openPresetEditor	port	crates/sunrise-client/src/title.rs::Title::click_action	Customize button (arm 26) opens CreateFlatWorldScreen (Mode::CreateFlat) for the flat preset and CreateBuffetWorldScreen (Mode::CreateBuffet) for single biome, as PresetEditor.EDITORS has them
 EditWorldScreen.create	port	crates/sunrise-client/src/title.rs::Title::click_action	Edit button (arm 13) builds the Edit mode from the list entry; gap: minor: no fixAndGetSummary (file fixing) on open
-EditWorldScreen.<init>	port	crates/sunrise-client/src/title.rs::Title::buttons	Edit buttons: reset icon, open folder, backup, backups folder, Optimize, Save, Cancel; gap: player: Optimize World is drawn inactive and does nothing
+EditWorldScreen.<init>	port	crates/sunrise-client/src/title/preset_buttons.rs::Title::buttons	Edit buttons: reset icon, open folder, backup, backups folder, Optimize, Save, Cancel; gap: player: Optimize World is drawn inactive and does nothing
 EditWorldScreen.keyPressed	port	crates/sunrise-client-gameplay/src/game/interface/startup_menu.rs::StartupMenu::title_key	Enter confirms a focused name box through confirm_edit; Escape goes back through Title::escape
 EditWorldScreen.onRename	port	crates/sunrise-client/src/title/world_management.rs::rename	saves the trimmed name to level.dat; Save (arm 35) and Enter reach it, then return to the list
 EditWorldScreen.makeBackupAndShowToast	port	crates/sunrise-client/src/title.rs::Title::start_backup	gap: minor: the success or failure toast and the return to the list are in Title::poll_backup
@@ -99,11 +99,11 @@ FileFixerProgressScreen.extractFileFixerCount	port	crates/sunrise-client-render/
 OptimizeWorldScreen.create	port	crates/sunrise-client/src/title.rs::Title::begin_optimize	a world whose files still need fixing is refused; otherwise WorldUpgrader runs over its dimensions
 OptimizeWorldScreen.init	port	crates/sunrise-client/src/title.rs::Title::end_optimize	Cancel closes the screen and the upgrader; progress and the Done at the end come from poll_optimize
 OptimizeWorldScreen.extractRenderState	port	crates/sunrise-client/src/title.rs::Title::draw_optimize	the converted, skipped and per-dimension progress, from the upgrader's snapshot
-SelectWorldScreen.init	port	crates/sunrise-client/src/title.rs::Title::buttons	Play, Create, Edit, Delete, Re-Create and Back; the list comes from list_worlds in return_to_list
-SelectWorldScreen.createFooterButtons	port	crates/sunrise-client/src/title.rs::Title::buttons	footer buttons for the selected world: Play, Create, Edit, Delete, Re-Create, Back
+SelectWorldScreen.init	port	crates/sunrise-client/src/title/preset_buttons.rs::Title::buttons	Play, Create, Edit, Delete, Re-Create and Back; the list comes from list_worlds in return_to_list
+SelectWorldScreen.createFooterButtons	port	crates/sunrise-client/src/title/preset_buttons.rs::Title::buttons	footer buttons for the selected world: Play, Create, Edit, Delete, Re-Create, Back
 SelectWorldScreen.createDebugWorldRecreateButton	skip:debug		DEBUG recreate button, only with SharedConstants.DEBUG_WORLD_RECREATE
 SelectWorldScreen.repositionElements	skip:ui		layout only
-SelectWorldScreen.updateButtonStatus	port	crates/sunrise-client/src/title.rs::Title::buttons	Play while can_play and its primaryActionMessage (Play, Attempt to Recover, Upgrade and Play); Edit and Re-Create while can_edit (vanilla canEdit = canRecreate); Delete on any selection (canDelete is always true)
+SelectWorldScreen.updateButtonStatus	port	crates/sunrise-client/src/title/preset_buttons.rs::Title::buttons	Play while can_play and its primaryActionMessage (Play, Attempt to Recover, Upgrade and Play); Edit and Re-Create while can_edit (vanilla canEdit = canRecreate); Delete on any selection (canDelete is always true)
 SwitchGrid.Builder.addSwitch	skip:java		builder for the switch rows
 SwitchGrid.Builder.build	skip:java		layout builder for the switch rows; Sunrise draws them in create_world buttons
 SwitchGrid.LabeledSwitch.refreshState	port	crates/sunrise-client/src/title/create_world.rs::buttons	switch value and enabled flag are read from WorldOptions every frame

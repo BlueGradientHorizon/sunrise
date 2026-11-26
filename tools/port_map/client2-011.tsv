@@ -3,7 +3,7 @@ MultilineTextField.setLineLimit	inline	crates/sunrise-client-gameplay/src/game/i
 MultilineTextField.setValue	port	crates/sunrise-client-render/src/ui.rs::EditBox::set_value	gap: minor: no line-limit check when the text is set (allowOverflowLineLimit path)
 MultilineTextField.insertText	port	crates/sunrise-client-render/src/ui.rs::EditBox::insert_text	the line limit is checked by Game::page_keep, not here
 MultilineTextField.deleteText	port	crates/sunrise-client-render/src/ui.rs::EditBox::delete_chars
-MultilineTextField.getSelected	port	crates/sunrise-client-render/src/ui.rs::EditBox::selected
+MultilineTextField.getSelected	port	crates/sunrise-client-render/src/multiline_edit.rs::MultiLineEdit::selected
 MultilineTextField.getLineAtCursor	port	crates/sunrise-client-gameplay/src/game/interface/books.rs::Game::caret_on	the visual row holding the caret, with its x
 MultilineTextField.getLineView	port	crates/sunrise-client-gameplay/src/game/interface/books.rs::Game::page_rows	visual rows as character ranges
 MultilineTextField.seekCursor	port	crates/sunrise-client-render/src/ui.rs::EditBox::set_cursor
@@ -22,16 +22,16 @@ MultilineTextField.truncateInsertionText	inline	crates/sunrise-client-render/src
 MultilineTextField.overflowsLineLimit	port	crates/sunrise-client-gameplay/src/game/interface/books.rs::Game::page_keep	counts page_rows, which adds the row after a trailing newline as vanilla does
 ObjectSelectionList.nextFocusPath	inline	crates/sunrise-client/src/title.rs::Title::arrow_key	arrow keys move the world list's selection; multiplayer.rs::Screen::arrow does the server list; pack lists take no keyboard
 ObjectSelectionList.updateWidgetNarration	skip:other		screen-reader narration; Sunrise has no narration output
-OptionsList.addBig	port	crates/sunrise-client-render/src/options_ui.rs::OptionsUi::layout	Row::Big: 310 wide at width/2 - 155
-OptionsList.addHeader	port	crates/sunrise-client-render/src/options_ui.rs::OptionsUi::layout	gap: minor: the header is centred text, not a focusable widget
+OptionsList.addBig	port	crates/sunrise-client-render/src/options_ui/layout.rs::OptionsUi::layout	Row::Big: 310 wide at width/2 - 155
+OptionsList.addHeader	port	crates/sunrise-client-render/src/options_ui/layout.rs::OptionsUi::layout	gap: minor: the header is centred text, not a focusable widget
 OptionsList.findOption	skip:ui		widget lookup only; rows are rebuilt from Settings in OptionsUi::layout each frame
 OptionsList.applyUnsavedChanges	inline	crates/sunrise-client-render/src/options_ui.rs::set_slider	gap: minor: delayed sliders (render, simulation, biome blend distance, wheel sensitivity) apply on every step, not 600 ms after the last move or on close
 OptionsList.resetOption	inline	crates/sunrise-client-render/src/options_ui.rs::OptionsUi::slider_shown	gap: minor: only sliders show the stored value at once; other options redraw from Settings each frame
 OptionsList.Entry.big	port	crates/sunrise-client-render/src/options_ui.rs::option_widget	310 wide; the row's place is OptionsUi::layout (Row::Big)
 OptionsList.Entry.small	port	crates/sunrise-client-render/src/options_ui.rs::option_widget	pair placement at width/2 - 155 and + 5 in OptionsUi::layout (Row::Pair)
-OptionsList.Entry.extractContent	inline	crates/sunrise-client-render/src/options_ui.rs::OptionsUi::layout	positions the row's widgets; OptionsUi::draw_standard_contents paints them
+OptionsList.Entry.extractContent	inline	crates/sunrise-client-render/src/options_ui/layout.rs::OptionsUi::layout	positions the row's widgets; OptionsUi::draw_standard_contents paints them
 OptionsList.Entry.findOption	skip:ui		widget lookup only; rows are rebuilt from Settings each frame
-OptionsList.HeaderEntry.extractContent	inline	crates/sunrise-client-render/src/options_ui.rs::OptionsUi::layout	header centred on the row (Row::Header)
+OptionsList.HeaderEntry.extractContent	inline	crates/sunrise-client-render/src/options_ui/layout.rs::OptionsUi::layout	header centred on the row (Row::Header)
 PlainTextButton.extractContents	inline	crates/sunrise-client/src/title/draw.rs::Title::draw_with_items	the bottom notice is the plain text button, underlined while hovered; Title::click opens the credits
 PlayerFaceExtractor.extractHat	port	crates/sunrise-client-render/src/tab_list.rs::face	hat layer: UV 40, flipped for Dinnerbone and Grumm
 PlayerFaceWidget.extractWidgetRenderState	skip:service		head in the friends list (AbstractFriendsEntryContainerWidget)

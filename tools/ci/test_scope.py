@@ -158,7 +158,8 @@ NOT_READS = {
         "crates/sunrise-official/Cargo.toml",
         # The discovery tests' scratch game source (`discover_tests.rs`).
         "crates/sunrise-client/src/entry.rs", "crates/sunrise-gameplay-common/src/game.rs", "crates/sunrise-client/src/lib.rs",
-        "crates/sunrise-mod-api-gen/internals.txt",
+        "crates/sunrise-gameplay/src", "crates/sunrise-gameplay/src/game.rs",
+        "crates/sunrise-mod-api-gen", "crates/sunrise-mod-api-gen/internals.txt",
     },
 }
 

@@ -69,7 +69,7 @@ SystemReport.ignoreErrors	skip:debug		error isolation for diagnostic collection
 SystemReport.putPhysicalMemory	port	crates/sunrise-level/src/crash.rs::memory	gap: minor: no per-module memory lines
 SystemReport.putVirtualMemory	missing		minor: no virtual or swap memory lines in the crash details
 SystemReport.putMemory	port	crates/sunrise-level/src/crash.rs::memory	gap: minor: memory summary only
-SystemReport.putGraphics	inline	crates/sunrise-client-render/src/gfx.rs::describe_adapter	the Graphics Adapter detail: the adapter's name, backend, device type and driver
+SystemReport.putGraphics	inline	crates/sunrise-client-render/src/gfx/device.rs::describe_adapter	the Graphics Adapter detail: the adapter's name, backend, device type and driver
 SystemReport.putProcessor	port	crates/sunrise-level/src/crash.rs::cpu	gap: minor: CPU name and thread count only; no frequency or package counts
 SystemReport.putStorage	missing		minor: no free-space lines for the storage paths
 SystemReport.putProcessDetails	inline	crates/sunrise-level/src/crash.rs::memory	gap: minor: the resident size of the process only; no process loads or virtual size

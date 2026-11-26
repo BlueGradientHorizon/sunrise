@@ -137,7 +137,7 @@ ModelBlockRenderer.tesselateAmbientOcclusion	port	crates/sunrise-client-render/s
 ModelBlockRenderer.tesselateFlat	port	crates/sunrise-client-render/src/mesher.rs::Mesher::face	flat branch of face
 ModelBlockRenderer.shouldRenderFace	port	crates/sunrise-world/src/block_render.rs::FaceVisibility::should_render_face	per face visibility, called from Mesher::mesh
 ModelBlockRenderer.putQuadWithTint	port	crates/sunrise-client-render/src/mesher.rs::Mesher::face	tinted vertex write
-ModelBlockRenderer.getTintColor	port	crates/sunrise-client-render/src/mesher.rs::Mesher::tint	tint source index to colour
+ModelBlockRenderer.getTintColor	port	crates/sunrise-client-render/src/mesher.rs::Mesher::tint_at	tint source index to colour
 ModelBlockRenderer.computeTintColor	port	crates/sunrise-client-render/src/mesher.rs::Tints::get	biome colour average over the blend radius
 MovingBlockRenderState.getBlockTint	port	crates/sunrise-client-gameplay/src/game/blocks/moving_pistons_client.rs::Game::moving_block_vertices	gap: minor: tint is the particle colour at the source position, not the biome tint at the moved spot
 MovingBlockRenderState.getBlockState	port	crates/sunrise-client-gameplay/src/game/blocks/moving_pistons_client.rs::Game::moving_piston_blocks	moved block and piston base

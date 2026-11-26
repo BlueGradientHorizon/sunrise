@@ -9,7 +9,7 @@ StringRepresentable	skip:java		codec and name-lookup builders; Sunrise matches e
 StringRepresentable.EnumCodec	skip:java		codec byName lookup
 StringUtil.truncateStringIfNecessary	port	crates/sunrise-client-render/src/screen_draw.rs::TextField::set_value	gap: minor: no '...' suffix variant (only the brain-dump debug text uses it); cuts by characters
 StringUtil.lineCount	skip:other		no caller in 26.3 (dead helper)
-StringUtil.isBlank	port	crates/sunrise-client/src/title.rs::Title::buttons	Save of the rename screen is active only for a non-blank name; trim() uses Unicode whitespace, a tiny difference from Java's isWhitespace
+StringUtil.isBlank	port	crates/sunrise-client/src/title/preset_buttons.rs::Title::buttons	Save of the rename screen is active only for a non-blank name; trim() uses Unicode whitespace, a tiny difference from Java's isWhitespace
 ThreadingDetector	skip:debug		debug check that two threads enter the same structure; Rust's ownership rules rule it out
 TickThrottler.isUnderThreshold	port	crates/sunrise-gameplay/src/game/network/lan_chat.rs::detect_rate_spam	a chat message or command adds 20 to the guest's counter, and a guest over the threshold who is not an operator is kicked with disconnect.spam; a threshold of 0 or less never kicks
 Util.makeDescriptionId	inline	crates/sunrise-gameplay-common/src/game/administration/commands_common.rs::Game::stack_display_name	gap: minor: each caller builds its own item, block or entity key (creative.rs, brewing.rs, stats_screen.rs, combat.rs); no shared key builder

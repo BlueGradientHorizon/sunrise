@@ -1,24 +1,24 @@
 SectionCopy.getBlockState	inline	crates/sunrise-client-render/src/mesher.rs::Padded::new	the copy is Padded's block array; no debug-world barrier or DebugLevelSource blocks
 SectionRenderDispatcher.<init>	skip:other		builds the GPU arena and staging for chunk upload; Sunrise creates its arena and uploads in gfx.rs with the renderer
 SectionRenderDispatcher.runTask	port	crates/sunrise-client-render/src/streaming.rs::MeshStreamer::new	the worker loop pops the nearest queued job and runs it
-SectionRenderDispatcher.getRenderSectionSlice	port	crates/sunrise-client-render/src/gfx.rs::Renderer::draw_sections	the per-layer vertex and index slices of a section are read when drawing
+SectionRenderDispatcher.getRenderSectionSlice	port	crates/sunrise-client-render/src/gfx/section_upload.rs::Renderer::draw_sections	the per-layer vertex and index slices of a section are read when drawing
 SectionRenderDispatcher.uploadTerrainBuffersToGpu	port	crates/sunrise-client-render/src/gfx/upload.rs::Uploads::finish	closes the frame's staging belt after the terrain copies
 SectionRenderDispatcher.schedule	port	crates/sunrise-client-render/src/streaming.rs::MeshStreamer::submit_mesh_job	the mesh job goes into the priority queue by distance
-SectionRenderDispatcher.dispose	port	crates/sunrise-client-render/src/gfx.rs::Renderer::clear_sections	frees every section's GPU buffers
+SectionRenderDispatcher.dispose	port	crates/sunrise-client-render/src/gfx/section_upload.rs::Renderer::clear_sections	frees every section's GPU buffers
 SectionRenderDispatcher.getStats	skip:debug		F3 text: compile queue size and free buffers
 SectionRenderDispatcher.RenderSection.getVisibility	port	crates/sunrise-render-core/src/terrain.rs::chunk_visibility	a section's visibility runs 0 to 1 over Options.chunkSectionFadeInTime from the upload; the instance data carries 1 - it to the terrain shader
 SectionRenderDispatcher.RenderSection.setSectionNode	port	crates/sunrise-render-core/src/terrain.rs::section_instance	the section's render origin; its 16-block bounds are derived from the origin
-SectionRenderDispatcher.RenderSection.reset	port	crates/sunrise-client-render/src/gfx.rs::Renderer::release_section	drops the section's mesh and GPU slices
+SectionRenderDispatcher.RenderSection.reset	port	crates/sunrise-client-render/src/gfx/section_upload.rs::Renderer::release_section	drops the section's mesh and GPU slices
 SectionRenderDispatcher.RenderSection.resortTransparency	port	crates/sunrise-client-render/src/gfx/translucency.rs::SortState::update	translucent quads re-sorted for the camera; gap: minor: the new order goes to the next draw, not a newly uploaded index buffer
 SectionRenderDispatcher.RenderSection.transparencyResortingScheduled	skip:other		Sunrise sorts during the frame, so there is no pending resort task to report
 SectionRenderDispatcher.RenderSection.cancelTasks	inline	crates/sunrise-client-render/src/streaming.rs::MeshStreamer::update	a finished job whose seq no longer matches is dropped on arrival; queued jobs are not removed
 SectionRenderDispatcher.RenderSection.createCompileTask	port	crates/sunrise-client-render/src/streaming.rs::MeshStreamer::submit_mesh_job	the mesh job is queued; the recompile flag is not kept
 SectionRenderDispatcher.RenderSection.compileSync	port	crates/sunrise-client-render/src/mesher.rs::Mesher::mesh	meshes on the calling thread with no queue
-SectionRenderDispatcher.RenderSection.setSectionMesh	port	crates/sunrise-client-render/src/gfx.rs::Renderer::upload	stores the new mesh for the section and hands back the old one
-SectionRenderDispatcher.RenderSection.releaseSectionMesh	port	crates/sunrise-client-render/src/gfx.rs::Renderer::release_mesh	frees the old mesh's GPU slices
+SectionRenderDispatcher.RenderSection.setSectionMesh	port	crates/sunrise-client-render/src/gfx/section_upload.rs::Renderer::upload	stores the new mesh for the section and hands back the old one
+SectionRenderDispatcher.RenderSection.releaseSectionMesh	port	crates/sunrise-client-render/src/gfx/section_upload.rs::Renderer::release_mesh	frees the old mesh's GPU slices
 SectionRenderDispatcher.RenderSection.createVertexSorting	port	crates/sunrise-client-render/src/gfx/translucency.rs::Sorter::sort	sort by squared distance from the camera to each quad centre
-SectionRenderDispatcher.RenderSection.checkSectionMesh	inline	crates/sunrise-client-render/src/gfx.rs::Renderer::upload	uploads are synchronous, so there is no wait for every layer to land before publishing
-SectionRenderDispatcher.RenderSection.addSectionBuffersToUberBuffer	port	crates/sunrise-client-render/src/gfx.rs::Renderer::upload_mesh	copies a layer's vertex and index bytes into arena pages
+SectionRenderDispatcher.RenderSection.checkSectionMesh	inline	crates/sunrise-client-render/src/gfx/section_upload.rs::Renderer::upload	uploads are synchronous, so there is no wait for every layer to land before publishing
+SectionRenderDispatcher.RenderSection.addSectionBuffersToUberBuffer	port	crates/sunrise-client-render/src/gfx/section_upload.rs::Renderer::upload_mesh	copies a layer's vertex and index bytes into arena pages
 SectionRenderDispatcher.RenderSection.CompileTask.doTask	port	crates/sunrise-client-render/src/mesher.rs::Mesher::mesh	meshes the section; the empty result and upload are handled in streaming and Renderer::upload
 SectionRenderDispatcher.RenderSection.ResortTransparencyTask.doTask	port	crates/sunrise-client-render/src/gfx/translucency.rs::SortState::update	re-sorts translucent quads when the camera's point of view changes
 SectionTaskDynamicQueue.poll	port	crates/sunrise-level/src/chunk_streamer.rs::Queued::cmp	nearest job first; gap: minor: no recompile quota, new and remesh jobs share one priority
@@ -81,11 +81,11 @@ WaterDebugRenderer	home	crates/sunrise-client/src/game/interface/debug_renderers
 LevelExtractor.extract	port	crates/sunrise-client-gameplay/src/game/game_client.rs::Game::render	the frame's extraction and draw; gap: minor: no separate render state, the frame is built and drawn in one fn
 LevelExtractor.drainTransientBlockQueue	port	crates/sunrise-client-gameplay/src/game/blocks/transient_blocks.rs::Game::drain_transient_block_queue	ClientboundAddTransientBlock's blocks are drawn as moving blocks until a section mesh compiled after them is uploaded
 LevelExtractor.extractVisibleBlockEntities	inline	crates/sunrise-client-gameplay/src/game/game_client.rs::Game::render	block entities of the visible sections; gap: minor: no 0.3 visibility gate, see RenderSection.getVisibility
-LevelExtractor.extractBlockDestroyAnimation	port	crates/sunrise-client/src/game.rs::Game::destroy_block_progress	keeps the crumbling progress per breaker for 400 ticks; gap: minor: no 32-block distance cut here
+LevelExtractor.extractBlockDestroyAnimation	port	crates/sunrise-client-gameplay/src/game/blocks/block_breaking.rs::ClientGame::destroy_block_progress	keeps the crumbling progress per breaker for 400 ticks; gap: minor: no 32-block distance cut here
 LevelExtractor.extractGizmos	port	crates/sunrise-client-gameplay/src/game/interface/debug_keys.rs::Game::debug_gizmos	the frame's debug gizmos
 LevelExtractor.extractPlayerState	inline	crates/sunrise-client-gameplay/src/game/game_client.rs::Game::render	player and hands read from the game state at draw time
 LevelExtractor.applyFrustum	port	crates/sunrise-client-render/src/gfx/resident.rs::Resident::visible	the frustum decides which sections are visible
-LevelExtractor.setLevel	inline	crates/sunrise-client/src/game/render_settings.rs::Game::all_sections_changed	a new level rebuilds every loaded section (allChanged); the null-level branch is not separate
+LevelExtractor.setLevel	inline	crates/sunrise-client-gameplay/src/game/interface/render_settings.rs::ClientGame::all_sections_changed	a new level rebuilds every loaded section (allChanged); the null-level branch is not separate
 LevelExtractor.blockChanged	port	crates/sunrise-level/src/world.rs::World::set	a block edit marks its 3x3x3 neighbourhood; gap: minor: the player-changed flag (update bit 8) is not kept
 LevelExtractor.setBlockDirty	port	crates/sunrise-level/src/world.rs::World::set	marks the 3x3x3 section neighbourhood of an edited block
 LevelExtractor.setBlocksDirty	inline	crates/sunrise-level/src/world.rs::World::set	each block of the range goes through the same 3x3x3 marking
@@ -100,5 +100,5 @@ CustomFeatureRenderer.buildGroup	skip:other		feature pass plumbing; Sunrise has 
 FeatureRenderDispatcher.<init>	skip:other		feature dispatcher set-up; Sunrise has no feature dispatcher
 FeatureRenderDispatcher.prepareFrame	skip:other		feature dispatcher; the frame's draw order is fixed in Renderer::draw_frame
 FeatureRenderDispatcher.prepareFrameWithContext	skip:other		feature dispatcher; the frame's draw order is fixed in Renderer::draw_frame
-FeatureRenderDispatcher.renderAllFeatures	port	crates/sunrise-client-render/src/gfx.rs::Renderer::draw_frame	draws the frame's passes; gap: minor: the order is fixed, not taken from a feature list
+FeatureRenderDispatcher.renderAllFeatures	port	crates/sunrise-client-render/src/gfx/draw_frame.rs::Renderer::draw_frame	draws the frame's passes; gap: minor: the order is fixed, not taken from a feature list
 FeatureRenderDispatcher.PhaseSubmitGrouper	skip:other		groups feature submissions per phase for vanilla's dispatcher; Sunrise submits in fixed passes

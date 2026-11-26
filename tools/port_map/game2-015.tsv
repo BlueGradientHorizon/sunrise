@@ -16,7 +16,7 @@ PotentSulfurBlock.triggerEvent	port	crates/sunrise-world/src/level/pistons.rs::S
 PotentSulfurBlock.getTicker	port	crates/sunrise-gameplay/src/game/blocks/potent_sulfur.rs::Game::tick_potent_sulfur	ticked in #3516; `PotentSulfurBlock.getTicker` is cited at crates/sunrise-client/src/game/blocks/potent_sulfur.rs:133
 PowderSnowBlock.skipRendering	port	crates/sunrise-world/src/block_render.rs::FaceVisibility::skips	same_block skip kind from the block data
 PowderSnowBlock.fallOn	port	crates/sunrise-world/src/block_landing.rs::BlockLandingRegistry::fall_on	powder snow landing sound from 4 blocks, small or big by 7
-PowderSnowBlock.getEntityInsideCollisionShape	inline	crates/sunrise-client/src/motion.rs::MotionWorld::check_inside_blocks	gap: minor: each powder snow cell is swept as a full box; vanilla uses the entity-context shape, which for falling entities over 2.5 blocks is a 0.9 tall box
+PowderSnowBlock.getEntityInsideCollisionShape	inline	crates/sunrise-sim/src/motion.rs::inside_shape	gap: minor: each powder snow cell is swept as a full box; vanilla uses the entity-context shape, which for falling entities over 2.5 blocks is a 0.9 tall box
 RailBlock.updateState	port	crates/sunrise-world/src/level/rails.rs::Sim::rail_update_state
 RailBlock.rotate	port	crates/sunrise-world/src/worldgen/structure.rs::StateTransforms::rotate	rail shape rotation from the generated state table, as PoweredRailBlock.rotate
 RailBlock.mirror	port	crates/sunrise-world/src/worldgen/structure.rs::StateTransforms::mirror	rail shape mirror from the generated state table, as PoweredRailBlock.rotate
@@ -113,7 +113,7 @@ ShelfBlock.swapSingleItem	inline	crates/sunrise-gameplay/src/game/blocks/shelf_s
 ShelfBlock.swapHotbar	inline	crates/sunrise-gameplay/src/game/blocks/shelf_server.rs::Game::use_shelf	the powered chain's hotbar swap is the `powered` arm of `use_shelf`
 ShelfBlock.getFluidState	port	crates/sunrise-world/src/registry_fluid.rs::RegistryFluidWorld::fluid_state	waterlogged state from block data
 ShelfBlock.updateShape	port	crates/sunrise-world/src/level/shapes.rs::Sim::update_shape_class
-ShulkerBoxBlock.useWithoutItem	port	crates/sunrise-client/src/game.rs::Game::open_menu	opens the box and awards the open stat; canOpen via shulker_can_open
+ShulkerBoxBlock.useWithoutItem	port	crates/sunrise-gameplay/src/game/network/lan_actions/menus.rs::ServerGame::open_block_menu	opens the box and awards the open stat; canOpen via shulker_can_open
 ShulkerBoxBlock.playerWillDestroy	port	crates/sunrise-gameplay/src/game/blocks/block_items_server.rs::Game::drop_creative_shulker	creative filled box spawns directly with collected components; ordinary removal keeps contents for survival drops
 ShulkerBoxBlock.getDrops	port	crates/sunrise-world/src/level/removal.rs::pre_remove	gap: minor: the contents kept on the dropped box come from the same kind; the loot drop is not traced here
 ShulkerBoxBlock.getBlockSupportShape	missing		unsure: shulker_is_closed returns None in the level and the client, so an open box keeps the full cube as its support shape
@@ -134,7 +134,7 @@ SideChainPartBlock.SideChainNeighbor.disconnectFromLeft	port	crates/sunrise-worl
 SignBlock.updateShape	port	crates/sunrise-world/src/level/shapes.rs::Sim::update_shape_class	waterlogged water tick
 SignBlock.getFluidState	port	crates/sunrise-world/src/registry_fluid.rs::RegistryFluidWorld::fluid_state	waterlogged state from block data
 SignBlock.otherPlayerIsEditingSign	missing		unsure: minor: no check that another player is editing the sign; sign_edit.rs tracks sign_editing per connection only
-SignBlock.setPlacedBy	port	crates/sunrise-client/src/game/use_hand.rs::Game::use_hand	gap: minor: the sign editor opens after a sign is placed; no allowed-editor player is stored
+SignBlock.setPlacedBy	port	crates/sunrise-gameplay/src/game/items/use_hand.rs::ServerGame::use_hand	gap: minor: the sign editor opens after a sign is placed; no allowed-editor player is stored
 SnifferEggBlock.onPlace	port	crates/sunrise-world/src/level/hooks.rs::Sim::on_place	sniffer egg arm: moss boost, place event and the hatch timer
 SnowLayerBlock.isPathfindable	skip:data		path types come from the per-state path data (mobs/path.rs)
 SnowLayerBlock.getShadeBrightness	inline	crates/sunrise-client-render/src/mesher.rs::MeshTables::new	a full eight-layer snow block shades 0.2 like a full cube, fewer layers 1.0, in the shade table

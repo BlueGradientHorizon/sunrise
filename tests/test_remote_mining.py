@@ -18,9 +18,10 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def method(source, name):
     # A method moved out of game.rs keeps its file's visibility; the fixture pastes it private.
+    visibilities = ("pub", "pub(super)", "pub(in crate::game)")
     plain = f"    fn {name}("
     start = source.index(plain) if plain in source else next(
-        source.index(f"    {vis} fn {name}(") for vis in ("pub(super)", "pub(in crate::game)")
+        source.index(f"    {vis} fn {name}(") for vis in visibilities
         if f"    {vis} fn {name}(" in source)
     opening = source.index("{", start)
     depth = 1
@@ -29,8 +30,8 @@ def method(source, name):
         depth += (source[end] == "{") - (source[end] == "}")
         end += 1
     body = source[start:end]
-    for vis in ("pub(super) fn", "pub(in crate::game) fn"):
-        body = body.replace(vis, "fn", 1)
+    for vis in visibilities:
+        body = body.replace(f"{vis} fn", "fn", 1)
     return body
 
 
@@ -114,6 +115,7 @@ impl ClientGame {
     fn same_destroying_item(&self, began: &String) -> bool { *began == self.common.main_hand_key() }
     fn reset_attack_strength(&mut self) {}
     fn own_entity_id(&self) -> i32 { 7 }
+    fn client_own_entity_id(&self) -> i32 { self.own_entity_id() }
     fn native_client_break_progress(&self, breaker: i32, pos: [i32; 3], progress: i32) {
         self.cracks.borrow_mut().push((breaker, pos, progress));
     }

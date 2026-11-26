@@ -117,7 +117,7 @@ PaletteMapping.apply	port	crates/sunrise-assets/src/palette.rs::apply_palette	co
 PalettedTextureManager.loadBaseTexture	port	crates/sunrise-client-render/src/trims.rs::TrimTexture::generate	base texture and its base_palette from the mcmeta
 PalettedTextureManager.allocateSlot	port	crates/sunrise-client-render/src/sprites.rs::Sprites::insert	gap: minor: one array layer per texture, no dynamic atlas tree
 PalettedTextureManager.close	skip:java		GPU release
-PalettedTextureManager.reload	port	crates/sunrise-client/src/game/entities/armor_stands.rs::ArmorStandAssets::reload_trims	trim data reloaded; models kept
+PalettedTextureManager.reload	port	crates/sunrise-client-gameplay/src/game/entities/armor_stands_client.rs::ArmorStandAssets::apply_resources	trim data reloaded; models kept
 PalettedTextureManager.AtlasTexture.dumpContents	skip:debug		debug dump
 PalettedTextureManager.Slot.getU	skip:java		UV accessor of a dynamic atlas slot; Sunrise uses sprite rects
 PalettedTextureManager.Slot.getV	skip:java		UV accessor of a dynamic atlas slot; Sunrise uses sprite rects

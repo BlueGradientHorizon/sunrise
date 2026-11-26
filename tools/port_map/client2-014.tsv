@@ -3,7 +3,7 @@ ConfirmLinkScreen.addAdditionalText	port	crates/sunrise-client-gameplay/src/game
 ConfirmLinkScreen.addButtons	port	crates/sunrise-client-gameplay/src/game/network/server_links.rs::Game::confirm_link_click	Yes opens the browser, Copy Link copies, No goes back; 100 wide
 ConfirmLinkScreen.confirmLinkNow	port	crates/sunrise-client-gameplay/src/game/network/server_links.rs::Game::click_link	opens the prompt when Prompt on Links is on; gap: minor: the trusted flag is not passed
 ConfirmLinkScreen.confirmLink	inline	crates/sunrise-client-gameplay/src/game/network/server_links.rs::Game::click_link	the button's action, folded into click_link
-ConfirmScreen.getNarrationMessage	port	crates/sunrise-client/src/game/interface/screen_info.rs::confirm	the title and the message joined for the narrator (PackConfirmScreen, ConfirmLinkScreen, DialogScreen.WarningScreen); the confirm screens the menus build narrate themselves in title.rs::Title::narration and multiplayer.rs::Screen::narration
+ConfirmScreen.getNarrationMessage	port	crates/sunrise-client-gameplay/src/screen_info.rs::confirm	the title and the message joined for the narrator (PackConfirmScreen, ConfirmLinkScreen, DialogScreen.WarningScreen); the confirm screens the menus build narrate themselves in title.rs::Title::narration and multiplayer.rs::Screen::narration
 ConfirmScreen.addMessage	port	crates/sunrise-client/src/confirm_screen.rs::Confirm::new	message wrapped to width - 50, 15 rows at most, centred
 ConfirmScreen.addButtons	port	crates/sunrise-client/src/confirm_screen.rs::Confirm::answer_at	Yes and No buttons; the answer comes from the click position
 ConfirmScreen.tick	inline	crates/sunrise-client/src/confirm_screen.rs::Confirm::draw_active	the 20-tick delay is a 1000 ms timer kept by the caller; buttons are greyed while it runs
@@ -29,7 +29,7 @@ CreateFlatWorldScreen.DetailsList.HeaderEntry.getNarration	port	crates/sunrise-c
 CreateFlatWorldScreen.DetailsList.LayerEntry.extractContent	port	crates/sunrise-client/src/title/flat.rs::draw_layers	slot, block name and the Top, Bottom or height label
 CreateFlatWorldScreen.DetailsList.LayerEntry.getDisplayItem	port	crates/sunrise-client/src/title/flat.rs::layer_icon	water and lava use the bucket sprites
 CreateFlatWorldScreen.DetailsList.LayerEntry.blitSlot	port	crates/sunrise-client/src/title/flat.rs::slot	slot frame and icon
-CreditsAndAttributionScreen.init	port	crates/sunrise-client-render/src/options_ui.rs::OptionsUi::layout	Credits page: Credits, Attribution and Licenses buttons; gap: unsure whether Attribution and Licenses open links here
+CreditsAndAttributionScreen.init	port	crates/sunrise-client-render/src/options_ui/layout.rs::OptionsUi::layout	Credits page: Credits, Attribution and Licenses buttons; gap: unsure whether Attribution and Licenses open links here
 CreditsAndAttributionScreen.openCreditsScreen	port	crates/sunrise-client-gameplay/src/game/interface/win.rs::Game::open_win_screen	rolls the credits without the poem, then returns here
 DatapackLoadFailureScreen.init	missing		gap: minor: no datapack failure screen; a pack that fails to install is logged (game.rs:12109-12111) and the world opens with the packs it has
 DatapackLoadFailureScreen.extractRenderState	missing		gap: minor: same as init, there is no failure screen to draw; a failed pack install only reaches the log
@@ -47,7 +47,7 @@ DirectJoinServerScreen.removed	port	crates/sunrise-client/src/title.rs::Title::r
 DirectJoinServerScreen.extractRenderState	port	crates/sunrise-client/src/multiplayer.rs::Screen::draw	title, label and address field (Screen::Direct arm)
 DisconnectedScreen.init	port	crates/sunrise-client/src/multiplayer.rs::Screen::buttons	reason text and the disconnected buttons; gap: minor: no Report to Server or open-report-folder button
 DisconnectedScreen.getNarrationMessage	port	crates/sunrise-client/src/multiplayer.rs::Screen::narration	disconnect.lost and the reason, joined
-ErrorScreen.init	port	crates/sunrise-client/src/title.rs::Title::buttons	Cancel button of the error mode (Mode::Error arm)
+ErrorScreen.init	port	crates/sunrise-client/src/title/preset_buttons.rs::Title::buttons	Cancel button of the error mode (Mode::Error arm)
 ErrorScreen.extractRenderState	port	crates/sunrise-client/src/title/draw.rs::Title::draw_with_items	the error title and message (Mode::Error arm)
 ErrorScreen.extractBackground	port	crates/sunrise-client/src/title/draw.rs::Title::draw_with_items	gap: minor: the flat gradient is replaced by the title background
 FaviconTexture.forWorld	port	crates/sunrise-client/src/title.rs::Title::icon	the world row's icon texture
@@ -70,7 +70,7 @@ GenericWaitingScreen.shouldCloseOnEsc	skip:service		Escape on the report waiting
 GenericWaitingScreen.getNarrationMessage	port	crates/sunrise-client/src/title.rs::Title::narration	Mode::Backup: selectWorld.waitingForBackup.title and its message, joined
 InBedChatScreen.init	port	crates/sunrise-client-gameplay/src/game/interface/chat.rs::Game::draw_chat_screen	Leave Bed button over the chat; its click is in chat_click
 InBedChatScreen.onPlayerWokeUp	port	crates/sunrise-client-gameplay/src/game/interface/chat.rs::Game::tick_in_bed_chat	closes the chat, or turns it into the plain chat if text was typed; gap: minor: polled each tick, not on the wake event
-LevelLoadingScreen.updateNarratedWidget	port	crates/sunrise-client/src/game/interface/screen_info.rs::level_loading	loading.progress with the server progress floored to a percent, in the title's place, said again every 2 s
+LevelLoadingScreen.updateNarratedWidget	port	crates/sunrise-client-gameplay/src/screen_info.rs::level_loading	loading.progress with the server progress floored to a percent, in the title's place, said again every 2 s
 LevelLoadingScreen.extractChunksForRendering	port	crates/sunrise-client-render/src/level_loading.rs::draw	chunk status colours; gap: minor: the debug red centre square is not drawn
 LevelLoadingScreen.getNetherPortalSprite	port	crates/sunrise-client-render/src/hud_overlays.rs::portal_overlay	draws the block/nether_portal sprite
 LoadingOverlay.extractRenderState	port	crates/sunrise-client-gameplay/src/game/game_client.rs::Game::render	the reload screen's progress bar; gap: player: no Mojang logo and no fade in or out
@@ -82,10 +82,10 @@ ManageServerScreen.init	port	crates/sunrise-client/src/multiplayer.rs::Screen::b
 ManageServerScreen.resize	skip:ui		layout only; Screen::Edit keeps its fields
 ManageServerScreen.onAdd	port	crates/sunrise-client/src/multiplayer.rs::Screen::click	Done saves the name (default if empty) and the address
 ManageServerScreen.extractRenderState	port	crates/sunrise-client/src/multiplayer.rs::Screen::draw	labels and fields (Screen::Edit arm)
-MenuScreens.create	port	crates/sunrise-client/src/game/network/remote/mod.rs::Game::remote_open_screen	server-opened menus; gap: minor: the screen is built from the packet title
+MenuScreens.create	port	crates/sunrise-client-gameplay/src/game/network/remote/menu_interactions_client.rs::ClientGame::remote_open_screen	server-opened menus; gap: minor: the screen is built from the packet title
 MenuScreens.register	skip:data		registry of menu types; Sunrise reads them from tables
 MenuScreens.selfTest	skip:debug		startup check that every menu has a screen
-MenuScreens.ScreenConstructor.fromPacket	port	crates/sunrise-client/src/game/network/remote/mod.rs::Game::remote_open_screen	builds the screen from the open-screen packet and sets the container menu
+MenuScreens.ScreenConstructor.fromPacket	port	crates/sunrise-client-gameplay/src/game/network/remote/menu_interactions_client.rs::ClientGame::remote_open_screen	builds the screen from the open-screen packet and sets the container menu
 NoticeWithLinkScreen.init	missing		minor: no symlink warning when a world or pack folder is a symlink
 NoticeWithLinkScreen.getNarrationMessage	missing		the symlink warning screen does not exist (see init), so nothing narrates it
 OutOfMemoryScreen.init	missing		minor: unsure: no out-of-memory screen; Sunrise does not handle allocation failures this way
@@ -139,10 +139,10 @@ Screen.updateNarratedWidget	port	crates/sunrise-client/src/screen_narrator.rs::u
 Screen.findNarratableWidget	port	crates/sunrise-narrator/src/screen.rs::find_narratable	the first focused narratable that is not the last said, else the highest priority one, else the last said focused one
 Screen.updateNarratorStatus	port	crates/sunrise-client/src/screen_narrator.rs::ScreenNarrator::status_changed	once the narrator is turned on the open screen is narrated two seconds later (after_status_change)
 TitleScreen.tick	skip:service		Realms notifications and the friend request count (social)
-TitleScreen.init	port	crates/sunrise-client/src/title.rs::Title::buttons	main menu buttons; the splash text is chosen at load (choose_splash)
+TitleScreen.init	port	crates/sunrise-client/src/title/preset_buttons.rs::Title::buttons	main menu buttons; the splash text is chosen at load (choose_splash)
 TitleScreen.getHorizontalPosition	skip:ui		layout of the icon row only
-TitleScreen.createNormalMenuOptions	port	crates/sunrise-client/src/title.rs::Title::buttons	Singleplayer, Multiplayer, Minecraft Realms and Quit Game buttons
-TitleScreen.getMultiplayerDisabledReason	port	crates/sunrise-client/src/title.rs::Title::buttons	the decision is the button's enabled flag from Title.allows_multiplayer (AccountStatus::allows_multiplayer: servers-allowed, a multiplayer ban, a forced name change); the reason component vanilla shows for it is not built
+TitleScreen.createNormalMenuOptions	port	crates/sunrise-client/src/title/preset_buttons.rs::Title::buttons	Singleplayer, Multiplayer, Minecraft Realms and Quit Game buttons
+TitleScreen.getMultiplayerDisabledReason	port	crates/sunrise-client/src/title/preset_buttons.rs::Title::buttons	the decision is the button's enabled flag from Title.allows_multiplayer (AccountStatus::allows_multiplayer: servers-allowed, a multiplayer ban, a forced name change); the reason component vanilla shows for it is not built
 TitleScreen.createDemoMenuOptions	skip:other		demo build only (isDemo); Sunrise has no demo mode
 TitleScreen.checkDemoWorldPresence	skip:other		demo world only
 TitleScreen.extractRenderState	port	crates/sunrise-client/src/title/draw.rs::Title::draw_with_items	version line and buttons
