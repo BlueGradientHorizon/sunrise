@@ -56,6 +56,10 @@ macro_rules! check_list {
 #[ignore = "daily"]
 fn resident_new_family_lifetimes_bind_move_and_retire() {
     with_game(|game| {
+        crate::game::native_entity_refs::tests::prepare_entity_ticking_neighborhood(
+            game,
+            sunrise_core::position::ChunkPos::new(0, 0),
+        );
         game.summon_with_nbt("minecraft:marker", [0.5, 70.0, 0.5], "{}")
             .unwrap();
         game.lan_assign_ids();

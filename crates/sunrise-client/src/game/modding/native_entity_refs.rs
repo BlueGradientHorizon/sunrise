@@ -2261,6 +2261,16 @@ pub(super) mod tests {
         with_game_at(fixture_root(), test);
     }
 
+    /// [`with_game`] with column (0, 0) and its neighbours loaded and ticking: entities are
+    /// found in resident columns only (`Visibility.isAccessible`), so a fixture that pushes a
+    /// body at the origin starts here.
+    pub(in crate::game) fn with_resident_game(test: impl FnOnce(&mut super::Game<'_>)) {
+        with_game(|game| {
+            prepare_entity_ticking_neighborhood(game, sunrise_core::position::ChunkPos::new(0, 0));
+            test(game);
+        });
+    }
+
     pub(in crate::game) fn fixture_root() -> std::path::PathBuf {
         std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap())
     }

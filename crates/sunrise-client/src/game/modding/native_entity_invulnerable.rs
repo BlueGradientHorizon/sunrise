@@ -442,7 +442,7 @@ impl Game<'_> {
 
 #[cfg(test)]
 mod tests {
-    use super::super::native_entity_refs::tests::with_game;
+    use super::super::native_entity_refs::tests::with_resident_game;
 
     /// A client reads its own player's damage cooldown as `LocalPlayer.hurtTo` sets it from
     /// the server's health (20 on a drop, 10 on a rise), its invulnerable time, and a tracked
@@ -565,7 +565,7 @@ mod tests {
             jars: Vec::new(),
         };
         let _publication = sunrise_client::datapack_net::isolate_server_publication();
-        with_game(|game| {
+        with_resident_game(|game| {
             let root = game.options.resources.clone();
             // Use the package's passive-data reader and the world-open path, not
             // an entry injected into the damage catalog the hurt call reads.
@@ -628,7 +628,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn review_unknown_damage_type_is_refused() {
-        with_game(|game| {
+        with_resident_game(|game| {
             let pig = game.res.mob_types().get("minecraft:pig").unwrap().clone();
             game.mobs.push(Mob::new(300001, pig, Vec3::ZERO, 0.0));
             let victim = game.entity(300001).unwrap();
@@ -643,7 +643,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn review_fire_immune_query() {
-        with_game(|game| {
+        with_resident_game(|game| {
             let blaze = game.res.mob_types().get("minecraft:blaze").unwrap().clone();
             game.mobs.push(Mob::new(300001, blaze, Vec3::ZERO, 0.0));
             let victim = game.entity(300001).unwrap();
@@ -680,7 +680,7 @@ mod tests {
         )]
         .into();
         mod_platform::testing::with_mods(mods, || {
-            with_game(|game| {
+            with_resident_game(|game| {
                 let pig = game.res.mob_types().get("minecraft:pig").unwrap().clone();
                 for id in 300001..=300003 {
                     game.mobs.push(Mob::new(id, pig.clone(), Vec3::ZERO, 0.0));
@@ -742,7 +742,7 @@ mod tests {
         )]
         .into();
         mod_platform::testing::with_mods(mods, || {
-            with_game(|game| {
+            with_resident_game(|game| {
                 let pig = game.res.mob_types().get("minecraft:pig").unwrap().clone();
                 game.mobs.push(Mob::new(300001, pig, Vec3::ZERO, 0.0));
                 let victim = game.entity(300001).unwrap();
@@ -774,7 +774,7 @@ mod tests {
         )]
         .into();
         mod_platform::testing::with_mods(mods, || {
-            with_game(|game| {
+            with_resident_game(|game| {
                 let pig = game.res.mob_types().get("minecraft:pig").unwrap().clone();
                 game.mobs.push(Mob::new(300001, pig, Vec3::ZERO, 0.0));
                 let victim = game.entity(300001).unwrap();
@@ -846,7 +846,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn teams_allow_damage_without_a_team() {
-        with_game(|game| {
+        with_resident_game(|game| {
             let zombie = game
                 .res
                 .mob_types()
@@ -870,7 +870,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_mob_keeps_its_flag_and_damage_cooldown() {
-        with_game(|game| {
+        with_resident_game(|game| {
             let zombie = game
                 .res
                 .mob_types()
@@ -902,7 +902,7 @@ mod tests {
     #[ignore = "daily"]
     fn the_flag_reaches_players_and_non_mobs_and_refuses_player_damage() {
         use sunrise_client::motion::PlayerMotion;
-        super::super::native_entity_refs::tests::with_game(|game| {
+        super::super::native_entity_refs::tests::with_resident_game(|game| {
             game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
             crate::game::native_entity_refs::tests::bind_local_player(game, 20, 123);
             let player = game.entity(20).unwrap();
@@ -976,7 +976,7 @@ mod tests {
     #[ignore = "daily"]
     fn the_entity_timer_never_shares_the_living_cooldown() {
         use sunrise_client::motion::PlayerMotion;
-        super::super::native_entity_refs::tests::with_game(|game| {
+        super::super::native_entity_refs::tests::with_resident_game(|game| {
             // The #170 recipe: two zombies on a lit stone floor, kept from
             // despawning while their tick runs.
             let zombie = game
@@ -1052,7 +1052,7 @@ mod tests {
     fn the_window_refuses_damage_and_hides_the_mob_from_enemies() {
         use sunrise_client::mobs::{Damage, DamageKind, Mob};
         use sunrise_core::geometry::Vec3;
-        super::super::native_entity_refs::tests::with_game(|game| {
+        super::super::native_entity_refs::tests::with_resident_game(|game| {
             // The #170 recipe: two zombies on a lit stone floor, kept from
             // despawning while their tick runs.
             let zombie = game
@@ -1128,7 +1128,7 @@ mod tests {
     #[ignore = "daily"]
     fn the_players_permanent_flag_is_apart_from_their_abilities() {
         use sunrise_client::motion::PlayerMotion;
-        super::super::native_entity_refs::tests::with_game(|game| {
+        super::super::native_entity_refs::tests::with_resident_game(|game| {
             game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
             crate::game::native_entity_refs::tests::bind_local_player(game, 20, 123);
             let player = game.entity(20).unwrap();
@@ -1195,7 +1195,7 @@ mod tests {
     fn a_non_mobs_saved_window_counts_down_and_refuses() {
         use sunrise_client::entities::ArmorStand;
         use sunrise_core::geometry::Vec3;
-        super::super::native_entity_refs::tests::with_game(|game| {
+        super::super::native_entity_refs::tests::with_resident_game(|game| {
             game.armor_stands
                 .push(ArmorStand::new(14, Vec3::new(0.5, 64.0, 0.5), 0.0));
             let stand = game.entity(14).unwrap();
@@ -1220,7 +1220,7 @@ mod tests {
     fn an_item_outside_the_ticking_chunks_keeps_its_window() {
         use sunrise_client::items::ItemStack;
         use sunrise_client::motion::PlayerMotion;
-        with_game(|game| {
+        with_resident_game(|game| {
             // A player's tickets: chunks out of the simulation distance
             // around them do not tick entities.
             game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
@@ -1232,6 +1232,11 @@ mod tests {
                 extra: None,
             };
             game.spawn_item(stack(), [0.5, 64.0, 0.5], [0.0; 3], 10);
+            // The far item's column is resident but outside every ticket.
+            game.world.chunks.insert(
+                (6250, 0),
+                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(6250, 0)),
+            );
             game.spawn_item(stack(), [100000.5, 64.0, 0.5], [0.0; 3], 10);
             let near = game.entity(game.dropped[0].id).unwrap();
             let far = game.entity(game.dropped[1].id).unwrap();
@@ -1254,7 +1259,7 @@ mod tests {
     fn the_piercing_query_follows_the_flag_or_the_window_of_every_kind() {
         use sunrise_client::entities::ArmorStand;
         use sunrise_client::motion::PlayerMotion;
-        with_game(|game| {
+        with_resident_game(|game| {
             let pig = game.res.mob_types().get("minecraft:pig").unwrap().clone();
             game.mobs.push(Mob::new(300001, pig, Vec3::ZERO, 0.0));
             let mob = game.entity(300001).unwrap();
@@ -1285,7 +1290,7 @@ mod tests {
     fn a_flagged_player_is_no_ones_target() {
         use super::Target;
         use sunrise_client::motion::PlayerMotion;
-        with_game(|game| {
+        with_resident_game(|game| {
             let zombie = game
                 .res
                 .mob_types()
@@ -1326,7 +1331,7 @@ mod tests {
     #[ignore = "daily"]
     fn a_saved_stand_refuses_the_punch_that_would_break_it() {
         use sunrise_client::entities::ArmorStand;
-        with_game(|game| {
+        with_resident_game(|game| {
             game.armor_stands
                 .push(ArmorStand::new(14, Vec3::new(0.5, 64.0, 0.5), 0.0));
             let stand = game.entity(14).unwrap();
@@ -1353,7 +1358,7 @@ mod tests {
     fn the_players_flag_and_window_ride_the_save() {
         use sunrise_client::motion::PlayerMotion;
         use sunrise_core::nbt::Tag;
-        with_game(|game| {
+        with_resident_game(|game| {
             game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
             crate::game::native_entity_refs::tests::bind_local_player(game, 20, 123);
             let player = game.entity(20).unwrap();
@@ -1396,7 +1401,7 @@ mod tests {
     fn the_dragons_saved_flag_refuses_all_but_a_creative_player() {
         use super::super::dragon::Dragon;
         use sunrise_client::mobs::DamageKind;
-        super::super::native_entity_refs::tests::with_game(|game| {
+        super::super::native_entity_refs::tests::with_resident_game(|game| {
             let mut dragon = Dragon::new(Vec3::ZERO, 0.0, 0);
             dragon.id = 15;
             game.dragon.replace(dragon);
