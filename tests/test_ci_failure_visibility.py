@@ -1,6 +1,7 @@
 """Synthetic diagnostics only: never use prepared resource output as a fixture."""
 import contextlib
 import io
+import json
 import subprocess
 import os
 from pathlib import Path
@@ -28,6 +29,32 @@ class Visibility(unittest.TestCase):
         self.assertIn("failed test: suite::broken", log)
         self.assertIn("assertion equality failed", log)
         self.assertNotIn("PRIVATE_RESOURCE", log)
+
+    def test_screen_effect_event_loop_error_keeps_details_private(self):
+        name = "screen_effect::draw"
+        canary_path = "/synthetic/screen-effect-canary/display.sock"
+        canary_token = "synthetic-screen-effect-token"
+        output = target(1, f"test {name} ... FAILED\n\n---- {name} stdout ----\n"
+                        f"screen-effect event loop error: backend denied {canary_path} ({canary_token})\n",
+                        summary(failed=1))
+        process = subprocess.CompletedProcess([], 101, output)
+        with tempfile.TemporaryDirectory() as folder:
+            private = Path(folder) / "private"
+            report = Path(folder) / "report.json"
+            with patch.dict(os.environ, {"IGNORED_TESTS_PRIVATE_LOGS": str(private)}), \
+                    patch.object(ignored_tests, "listed_entries", return_value=[]), \
+                    patch.object(ignored_tests.subprocess, "run", return_value=process), \
+                    contextlib.redirect_stdout(io.StringIO()) as stdout, \
+                    contextlib.redirect_stderr(io.StringIO()) as stderr:
+                self.assertEqual(ignored_tests.main(["example"], report), 1)
+            self.assertEqual((private / "example.test.log").read_text(), output)
+            report_text = report.read_text()
+        self.assertIn("screen-effect event loop error: details withheld", stdout.getvalue().splitlines())
+        public = stdout.getvalue() + stderr.getvalue() + report_text
+        self.assertNotIn(canary_path, public)
+        self.assertNotIn(canary_token, public)
+        self.assertEqual([(item["test"], item["kind"]) for item in json.loads(report_text)["problems"]],
+                         [(name, "failed")])
 
     def test_unquoted_compiler_payloads_are_never_published(self):
         with contextlib.redirect_stdout(io.StringIO()) as log:
