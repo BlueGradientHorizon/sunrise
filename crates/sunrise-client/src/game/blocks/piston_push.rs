@@ -1573,7 +1573,7 @@ impl Game<'_> {
             return self.resolve_push_target(selected);
         }
         if let EntityHandle::General(i) = handle {
-            return self.finish_general_move(selected, target, i, (wanted, moved), server);
+            return self.finish_general_move(selected, target, i, (wanted, moved));
         }
         // Stands retain support, but do not use nonliving restitution.
         if matches!(handle, EntityHandle::ArmorStand(_)) {
@@ -1685,9 +1685,7 @@ impl Game<'_> {
         let hit = sunrise_client::entities::fall_reset_hit(
             &self.world,
             &self.res.motion().fluids,
-            |p| {
-                reset.contains(&*self.res.facts().get(self.world.block(p.x, p.y, p.z)).name)
-            },
+            |p| reset.contains(&*self.res.facts().get(self.world.block(p.x, p.y, p.z)).name),
             from,
             moved,
         );
@@ -1697,9 +1695,9 @@ impl Game<'_> {
     }
 
     /// The rest of `Entity.move` for a general row after `GeneralRow::finish_move` (the flags and
-    /// the fall check), as every non-living body ends it: on the server
-    /// `restituteMovementAfterCollisions` (a blocked axis loses its velocity, and a block with a
-    /// bounce, such as slime or a bed, gives `Block.getBounceRestitution() * 0.8F` back with
+    /// the fall check), as every non-living body ends it (items and TNT restitute on either
+    /// side, so a general row does too): `restituteMovementAfterCollisions` (a blocked axis loses
+    /// its velocity, and a block with a bounce, such as slime or a bed, gives `Block.getBounceRestitution() * 0.8F` back with
     /// `Block.bounceOn` and `GameEvent.BOUNCE`), then `getBlockSpeedFactor` on the horizontal
     /// velocity (soul sand, honey). A `noPhysics` row's move ended at its `setPos`.
     fn finish_general_move(
@@ -1708,7 +1706,6 @@ impl Game<'_> {
         target: MoveWho,
         i: usize,
         (wanted, moved): (Vec3, Vec3),
-        server: bool,
     ) -> Option<MoveWho> {
         let row = &self.resident_entities.general.rows[i];
         if row.no_physics {
@@ -1721,7 +1718,7 @@ impl Game<'_> {
         let differs = sunrise_world::entity_move::different;
         let collided =
             wanted.y != moved.y || differs(wanted.x, moved.x) || differs(wanted.z, moved.z);
-        let velocity = if server && collided {
+        let velocity = if collided {
             let response = {
                 let side = game_side!(self);
                 let motion = self.body_motion(&side);
@@ -1752,7 +1749,8 @@ impl Game<'_> {
         let mut velocity = velocity;
         {
             let side = game_side!(self);
-            self.body_motion(&side).apply_block_speed(feet, &mut velocity);
+            self.body_motion(&side)
+                .apply_block_speed(feet, &mut velocity);
         }
         self.resident_entities.general.rows[i].velocity = velocity;
         Some(MoveWho::Entity(handle))

@@ -164,22 +164,48 @@ fn a_no_physics_row_is_pushed_by_a_current() {
 fn the_eye_is_085_of_the_height_above_the_feet() {
     let seen = std::cell::Cell::new(0.0);
     let mut row = row();
-    assert!(row.base_tick(bounds(), HEIGHT, false, MIN_Y, |bounds, at, eye, _| {
-        seen.set(eye);
-        dry(bounds, at, eye, &mut Vec3::ZERO)
-    }));
+    assert!(
+        row.base_tick(bounds(), HEIGHT, false, MIN_Y, |bounds, at, eye, pushed| {
+            seen.set(eye);
+            dry(bounds, at, eye, pushed)
+        })
+    );
     assert_eq!(seen.get(), 64.0 + f64::from(0.6_f32 * 0.85_f32));
 
     let mut row = self::row();
-    assert!(row.base_tick(bounds(), HEIGHT, false, MIN_Y, water_up_to(64.0 + 0.9 * HEIGHT)));
+    assert!(row.base_tick(
+        bounds(),
+        HEIGHT,
+        false,
+        MIN_Y,
+        water_up_to(64.0 + 0.9 * HEIGHT)
+    ));
     assert!(row.fluids.in_water && row.fluids.eye_in_water);
-    assert!(row.base_tick(bounds(), HEIGHT, false, MIN_Y, water_up_to(64.0 + 0.9 * HEIGHT)));
+    assert!(row.base_tick(
+        bounds(),
+        HEIGHT,
+        false,
+        MIN_Y,
+        water_up_to(64.0 + 0.9 * HEIGHT)
+    ));
     assert!(row.under_water);
 
     let mut row = self::row();
-    assert!(row.base_tick(bounds(), HEIGHT, false, MIN_Y, water_up_to(64.0 + 0.8 * HEIGHT)));
+    assert!(row.base_tick(
+        bounds(),
+        HEIGHT,
+        false,
+        MIN_Y,
+        water_up_to(64.0 + 0.8 * HEIGHT)
+    ));
     assert!(row.fluids.in_water && !row.fluids.eye_in_water);
-    assert!(row.base_tick(bounds(), HEIGHT, false, MIN_Y, water_up_to(64.0 + 0.8 * HEIGHT)));
+    assert!(row.base_tick(
+        bounds(),
+        HEIGHT,
+        false,
+        MIN_Y,
+        water_up_to(64.0 + 0.8 * HEIGHT)
+    ));
     assert!(!row.under_water);
 }
 

@@ -1986,7 +1986,9 @@ fn a_general_records_fall_distance_reads_any_number_and_defaults_otherwise() {
             panic!("a record is a compound");
         };
         map.insert("fall_distance".into(), value);
-        record_from_compound(&Tag::Compound(map)).unwrap().fall_distance
+        record_from_compound(&Tag::Compound(map))
+            .unwrap()
+            .fall_distance
     };
     assert_eq!(with(Tag::Int(3)), 3.0);
     assert_eq!(with(Tag::Float(1.5f32.to_bits())), 1.5);

@@ -788,17 +788,8 @@ impl GeneralRow {
         }
         let was_eye_in_water = self.fluids.eye_in_water;
         let (at, eye) = (self.position, Self::eye_y(self.position.y, height));
-        let mut unpushed = self.velocity;
-        let mut fluids = scan(
-            bounds,
-            at,
-            eye,
-            if self.is_pushed_by_fluid() {
-                &mut self.velocity
-            } else {
-                &mut unpushed
-            },
-        );
+        // `Entity.isPushedByFluid` is true for a general row, so the scan pushes its velocity.
+        let mut fluids = scan(bounds, at, eye, &mut self.velocity);
         // `Entity.isInLava` is false on the first tick (`firstTick`).
         fluids.in_lava &= !first_tick;
         if fluids.in_water {

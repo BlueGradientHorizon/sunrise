@@ -702,7 +702,13 @@ fn load_general_row(
     };
     game.load_listed("mymod:robot", None, None, record.to_tag())
         .unwrap();
-    game.resident_entities.general.rows.iter().last().unwrap().id
+    game.resident_entities
+        .general
+        .rows
+        .iter()
+        .last()
+        .unwrap()
+        .id
 }
 
 /// `Entity.move`'s fall-reset ray: a general row that moves a block or more through a block of
@@ -724,22 +730,38 @@ fn a_general_row_moving_through_a_fall_resetting_block_forgets_its_fall() {
             );
             // Two blocks down the column: the ray crosses the web, the fall restarts at the move.
             let id = load_general_row(game, [5.5, 16.5, 5.5], [0.0; 3], 5.0);
-            game.entity_move_by(EntityRef::new(epoch, id), [0.0, -2.0, 0.0], MoveCause::SelfMovement)
-                .unwrap();
+            game.entity_move_by(
+                EntityRef::new(epoch, id),
+                [0.0, -2.0, 0.0],
+                MoveCause::SelfMovement,
+            )
+            .unwrap();
             let row = game.resident_entities.general.row(id).unwrap();
             assert_eq!(row.fall_distance, 2.0, "reset, then the 2 blocks it went");
             // The same two blocks of open air beside the column keep the fall and add to it.
             let id = load_general_row(game, [9.5, 16.5, 9.5], [0.0; 3], 5.0);
-            game.entity_move_by(EntityRef::new(epoch, id), [0.0, -2.0, 0.0], MoveCause::SelfMovement)
-                .unwrap();
+            game.entity_move_by(
+                EntityRef::new(epoch, id),
+                [0.0, -2.0, 0.0],
+                MoveCause::SelfMovement,
+            )
+            .unwrap();
             let row = game.resident_entities.general.row(id).unwrap();
             assert_eq!(row.fall_distance, 7.0);
             // Less than a block never casts the ray: the web is crossed, the fall stays.
             let id = load_general_row(game, [5.5, 15.9, 5.5], [0.0; 3], 5.0);
-            game.entity_move_by(EntityRef::new(epoch, id), [0.0, -0.9, 0.0], MoveCause::SelfMovement)
-                .unwrap();
+            game.entity_move_by(
+                EntityRef::new(epoch, id),
+                [0.0, -0.9, 0.0],
+                MoveCause::SelfMovement,
+            )
+            .unwrap();
             let row = game.resident_entities.general.row(id).unwrap();
-            assert!((row.fall_distance - 5.9).abs() < 1.0e-6, "{}", row.fall_distance);
+            assert!(
+                (row.fall_distance - 5.9).abs() < 1.0e-6,
+                "{}",
+                row.fall_distance
+            );
         },
     );
 }
@@ -755,8 +777,12 @@ fn a_general_row_landing_on_slime_bounces_and_on_stone_stops() {
         with_general_level(floor, &[], |game, epoch| {
             // 0.3 above the floor, asked to drop 0.4 at speed 0.4: it travels 3/4 of the move.
             let id = load_general_row(game, [5.5, 9.3, 5.5], [0.0, -0.4, 0.0], 0.0);
-            game.entity_move_by(EntityRef::new(epoch, id), [0.0, -0.4, 0.0], MoveCause::SelfMovement)
-                .unwrap();
+            game.entity_move_by(
+                EntityRef::new(epoch, id),
+                [0.0, -0.4, 0.0],
+                MoveCause::SelfMovement,
+            )
+            .unwrap();
             let row = game.resident_entities.general.row(id).unwrap();
             assert!(row.on_ground && row.vertical_collision_below);
             if bounces {
@@ -786,11 +812,23 @@ fn a_general_row_moving_over_soul_sand_is_slowed() {
         with_general_level(floor, &[], |game, epoch| {
             // Over the floor's top (8.875 for soul sand, 9 for stone) and moving within it.
             let id = load_general_row(game, [5.5, 9.3, 5.5], [0.3, -0.05, 0.2], 0.0);
-            game.entity_move_by(EntityRef::new(epoch, id), [0.0, -0.01, 0.0], MoveCause::SelfMovement)
-                .unwrap();
+            game.entity_move_by(
+                EntityRef::new(epoch, id),
+                [0.0, -0.01, 0.0],
+                MoveCause::SelfMovement,
+            )
+            .unwrap();
             let row = game.resident_entities.general.row(id).unwrap();
-            assert!((row.velocity.x - 0.3 * factor).abs() < 1.0e-6, "{floor}: {:?}", row.velocity);
-            assert!((row.velocity.z - 0.2 * factor).abs() < 1.0e-6, "{floor}: {:?}", row.velocity);
+            assert!(
+                (row.velocity.x - 0.3 * factor).abs() < 1.0e-6,
+                "{floor}: {:?}",
+                row.velocity
+            );
+            assert!(
+                (row.velocity.z - 0.2 * factor).abs() < 1.0e-6,
+                "{floor}: {:?}",
+                row.velocity
+            );
             assert_eq!(row.velocity.y, -0.05, "{floor}");
         });
     }
