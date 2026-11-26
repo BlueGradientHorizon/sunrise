@@ -4,9 +4,11 @@ In CI, each tree's `sunrise-stage` exports its own SDK surface. The head's tool 
 compares the surfaces and writes the classified report to the job summary. CI compares published loops, not listed
 internals. On `pull_request`, the checkout is GitHub's merge commit, whose first parent is the base, and a dispatch
 with `pr` checks out that pull request's test merge the same way (tools/ci/pr_gate.py). CI builds
-the base's tool from a full archive of that commit (into target/surface-base, which a Dyna slot keeps), including
-`crates/`, `tools/layering`, Cargo manifests, and workspace members outside `crates/` (such as `docs/modding/examples/`).
-The archive's Git objects reconcile the kept target's input mtimes under the same lock as the build.
+the base's tool from a full archive of that commit, including `crates/`, `tools/layering`, Cargo manifests, and
+workspace members outside `crates/` (such as `docs/modding/examples/`). A Dyna slot keeps `target/surface-base-v3`:
+its Cargo target, build directory, mtime snapshot and lock share one protocol version. Under that lock, the
+archive's Git objects reconcile the snapshot before Cargo builds. Older writers keep their own directory, so
+an older build cannot leave artifacts that the current snapshot doesn't describe.
 Only that one commit is fetched (`--depth 1`, in CI's shallow checkout; a full clone is never fetched shallow).
 
 Locally, `--base SHA` compares this checkout against that commit exactly as CI compares against its base (the base's
@@ -127,14 +129,14 @@ def unpack(sha: str, into: Path, paths: tuple[str, ...] | None = None) -> str:
 
 def base_tool(sha: str, work: Path, *, archive_name: str | None = None) -> list[str]:
     """Build a commit's own exporter from a fresh full archive, the only source allowed in the kept target."""
-    target = ROOT / "target" / "surface-base"
+    # Version the whole cache together: a writer that doesn't update this snapshot must not share its artifacts.
+    target = ROOT / "target" / "surface-base-v3"
     target.mkdir(parents=True, exist_ok=True)
     with open(target / "surface-report.lock", "a") as lock:
         file_lock.lock(lock)
         tree = work / (archive_name or f"base-tool-{sha[:12]}")
         tree.mkdir()
         identity = unpack(sha, tree, ())
-        # The new snapshot starts cold; the old cache may contain artifacts from an unverified tree.
         restore_tree_mtimes(ROOT, identity, tree, target / "ci-source-mtimes-v3.json")
         return tree_tool(tree, work, target)
 

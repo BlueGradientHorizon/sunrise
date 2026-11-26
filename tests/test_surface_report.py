@@ -789,22 +789,35 @@ elif args[0] == "surface-diff":
             a = self.commit()
             (self.repo / self.INPUT).write_text('pub const VALUE: &str = "B";\n')
             b = self.commit()
-            # A fresh materialization each time, sharing only the kept target.
+            # Reconcile A/B/A with fresh archives, then let an older writer build B before the warm A audit.
             builds = []
-            for index, sha in enumerate((a, b, a, a)):
+            for index, (sha, legacy) in enumerate(((a, False), (b, False), (a, False), (b, True), (a, False))):
                 work = self.work / f"audit-{index}"
                 work.mkdir()
-                builds.append((surface_report.base_tool(sha, work), work / "surface.json"))
+                if legacy:
+                    tree = work / "archive"
+                    tree.mkdir()
+                    unpack(sha, tree, ())
+                    # The old tar -m kept extraction time; the only source difference needs a new mtime.
+                    os.utime(tree / self.INPUT, None)
+                    target = self.repo / "target" / "surface-base"
+                    target.mkdir(parents=True, exist_ok=True)
+                    with (target / "surface-report.lock").open("a") as lock:
+                        surface_report.file_lock.lock(lock)
+                        tool = surface_report.tree_tool(tree, work, target)
+                else:
+                    tool = surface_report.base_tool(sha, work)
+                builds.append((tool, work / "surface.json"))
+            for build in artifacts_by_build[:-1]:
+                generator = next(item for item in build if item["target"]["name"] == "generator")
+                self.assertFalse(generator["fresh"])
             # Each copied tool keeps its result even after later builds replace the cached binary.
-            for (tool, output), value in zip(builds, ("A", "B", "A", "A"), strict=True):
+            for (tool, output), value in zip(builds, ("A", "B", "A", "B", "A"), strict=True):
                 done = surface_report.export_surface(tool, self.repo, output)
                 self.assertEqual(done.returncode, 0, done.stderr)
                 self.assertEqual(json.loads(output.read_text())["value"], value)
-        for build in artifacts_by_build[:3]:
-            generator = next(item for item in build if item["target"]["name"] == "generator")
-            self.assertFalse(generator["fresh"])
-        self.assertTrue(artifacts_by_build[3])
-        self.assertTrue(all(item["fresh"] for item in artifacts_by_build[3]), artifacts_by_build[3])
+        self.assertTrue(artifacts_by_build[-1])
+        self.assertTrue(all(item["fresh"] for item in artifacts_by_build[-1]), artifacts_by_build[-1])
         self.assertFalse((self.work / "foreign-target").exists())
         self.assertFalse((self.work / "foreign-build").exists())
 
