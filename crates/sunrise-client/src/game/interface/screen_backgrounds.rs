@@ -218,6 +218,7 @@ impl Game<'_> {
         if let Some(view) = self.screen_render_view(batch) {
             self.screen_render_end(batch, &view);
         }
+        self.draw_context_menu(batch);
     }
     /// `ScreenEvent.Render.Pre` for the open screen: whether it draws.
     /// Background and Foreground are reported by the screen while drawing.
@@ -233,6 +234,7 @@ impl Game<'_> {
         if let Some(view) = self.title_screen_render_view(batch) {
             self.screen_render_end(batch, &view);
         }
+        self.draw_context_menu(batch);
     }
     /// Draw mounted widgets belonging to the topmost active overlay screen
     /// (`overlay_id`) inside that overlay's own draw pass, before tooltips.
