@@ -2137,10 +2137,11 @@ pub struct Sampler {
     /// base level. A value above `0.25` blends linearly between the two nearest levels, as
     /// vanilla does. `None` is [`Sampler::new`]'s: no limit, vanilla's absent `maxLod` (1000),
     /// so it blends between levels too. A depth texture, or an `R32Float` one where
-    /// [`RenderCapabilities::float32_filterable`] is false, cannot be filtered: the engine reads
-    /// it with nearest filtering and no blending between levels whatever this sampler says, so
-    /// [`Sampler::new`] binds to them as to any other texture. A value that is negative or not
-    /// finite is refused with [`BindGroupLayoutError::BadMaxLod`] when the layout is built.
+    /// [`RenderCapabilities::float32_filterable`] is false, cannot be filtered. Standalone draws
+    /// and compute dispatches use nearest sampling without blending between levels for these
+    /// textures. A linked shader-pack draw that needs to change the fixed sampler layout returns
+    /// [`PipelineDrawError::PackSamplerLayout`]. A value that is negative or not finite is refused
+    /// with [`BindGroupLayoutError::BadMaxLod`] when the layout is built.
     pub max_lod: Option<f32>,
 }
 
@@ -4124,7 +4125,8 @@ impl PipelineQuad {
     }
 }
 
-/// Why a pipeline draw call was refused; nothing from that call was appended.
+/// Why a pipeline draw was refused. A submit-time refusal appends nothing; the renderer logs
+/// a refusal discovered when preparing a device pipeline variant.
 ///
 /// Individual quads with non-finite coordinates or UVs are skipped without refusing valid quads
 /// in the same slice, and quad storage grows dynamically into the GPU buffers.
@@ -4155,6 +4157,13 @@ pub enum PipelineDrawError {
     /// mismatches kind or `min_size`, references an unknown/unavailable texture, or provides an
     /// invalid push-constant payload.
     InvalidBinding,
+    /// An active shader pack links this world draw to a translated pack program, whose fixed
+    /// sampler layout cannot bind one of the draw's textures. Direct mod draws, including those
+    /// into pack targets, do not have this restriction.
+    PackSamplerLayout,
+    /// The device refused the target or sampler pipeline variant in renderer preparation, after
+    /// submission. The draw is refused and the log names the pipeline and the device error.
+    VariantBuildFailed,
     /// A retained [`UniformBufferRef`] in [`DrawBindings`] was stale, not owned, or unavailable.
     /// For an [`IndirectDraw`](crate::IndirectDraw), also its command buffer.
     Buffer(BufferError),

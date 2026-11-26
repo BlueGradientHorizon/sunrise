@@ -154,6 +154,11 @@ impl ModGpuResources {
         self.render_capabilities.clone()
     }
 
+    /// `RenderCapabilities::float32_filterable`, without copying the rest.
+    pub fn float32_filterable(&self) -> bool {
+        self.render_capabilities.float32_filterable
+    }
+
     /// `RenderCapabilities::multi_draw_indirect_count`, without copying the rest.
     pub fn multi_draw_indirect_count(&self) -> bool {
         self.render_capabilities.multi_draw_indirect_count

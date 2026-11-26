@@ -7,10 +7,12 @@
 //! uncaptured device error.
 
 use super::mod_pipelines::{
-    ResolvedSet1Entry, create_mod_sampler, in_mask, sampler_filtering, unfilterable_mask,
+    ResolvedSet1Entry, create_mod_sampler, sampled_layout_entries, sampled_texture_limit,
 };
 use crate::mod_compute::{BuiltCompute, ComputeSet, Refusal};
-use mod_api::BindingKind;
+use mod_api::{BindingKind, ComputeDispatchError};
+use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 use wgpu::util::DeviceExt;
 
 /// One recorded dispatch of a compute node. Inline uniform and texel byte ranges in `entries`
@@ -18,6 +20,8 @@ use wgpu::util::DeviceExt;
 #[derive(Clone, Debug)]
 pub struct RecordedDispatch {
     pub slot: u32,
+    /// Set-1 sampled textures requiring a non-filtering layout, in sampled-texture order.
+    pub layout_mask: u64,
     pub entries: Vec<ResolvedSet1Entry>,
     pub inline: Vec<u8>,
     pub texel: Vec<u8>,
@@ -37,12 +41,13 @@ pub enum DispatchKind {
 }
 
 struct CompiledCompute {
+    recipe: Arc<BuiltCompute>,
     pipeline: wgpu::ComputePipeline,
     layout: wgpu::BindGroupLayout,
     /// The bind-group binding each declared entry starts at, in declaration order.
     bindings: Vec<(u32, BindingKind)>,
     /// The device sampler of each sampled texture, by its binding, made once at compile time.
-    samplers: std::collections::HashMap<u32, wgpu::Sampler>,
+    samplers: HashMap<u32, wgpu::Sampler>,
     label: String,
 }
 
@@ -50,15 +55,11 @@ struct CompiledCompute {
 #[derive(Default)]
 pub struct ModCompute {
     generation: u64,
-    pipelines: Vec<Option<CompiledCompute>>,
-    /// What the load built, by slot, kept to compile the nearest-sampler variants in `masked`.
-    built: Vec<Option<BuiltCompute>>,
-    /// Pipelines compiled again for the [`unfilterable_mask`] of a dispatch that samples a depth
-    /// texture, by `(slot, mask)`, when it is first recorded; `None` for one the device refused.
-    masked: std::collections::HashMap<(usize, u64), Option<CompiledCompute>>,
-    /// The slots whose dispatches were refused at record time and logged, so a persistent
-    /// refusal logs once, not every frame.
-    warned: std::collections::HashSet<u32>,
+    /// Base pipelines (zero mask) and lazy variants in the current resource generation.
+    pipelines: HashMap<(u32, u64), Result<CompiledCompute, ComputeDispatchError>>,
+    /// Slots whose variant preparation or encoding refused a dispatch, logged once per reason.
+    warned_variants: HashSet<u32>,
+    warned: HashSet<u32>,
 }
 
 /// The texel format the shader declares for the storage image of declared entry `entry` of
@@ -163,18 +164,13 @@ fn check_limits(device: &wgpu::Device, built: &BuiltCompute) -> Result<(), (Refu
             }
         }
     }
+    sampled_texture_limit(textures, &limits).map_err(|why| (Refusal::Invalid, why))?;
     for (what, count, max, limit) in [
         (
             "uniform buffer",
             uniforms,
             limits.max_uniform_buffers_per_shader_stage,
             "max_uniform_buffers_per_shader_stage",
-        ),
-        (
-            "sampled texture",
-            textures,
-            limits.max_sampled_textures_per_shader_stage,
-            "max_sampled_textures_per_shader_stage",
         ),
         (
             "sampler",
@@ -205,19 +201,20 @@ fn check_limits(device: &wgpu::Device, built: &BuiltCompute) -> Result<(), (Refu
 }
 
 /// The pipeline of `built`. The sampled textures of the entries in the `unfilterable` mask
-/// ([`unfilterable_mask`]) are declared unfilterable and read through nearest samplers: the
+/// are declared unfilterable and read through nearest samplers: the
 /// variant a dispatch binding a depth texture needs.
 fn compile(
     device: &wgpu::Device,
-    built: &BuiltCompute,
+    built: &Arc<BuiltCompute>,
     unfilterable: u64,
 ) -> Result<CompiledCompute, (Refusal, String)> {
-    check_limits(device, built)?;
     let compute = wgpu::ShaderStages::COMPUTE;
     let mut layout_entries = Vec::new();
     let mut bindings = Vec::new();
     let mut next = 0u32;
-    for (position, entry) in built.bind_group_layout.entries.iter().enumerate() {
+    let mut sampled = 0;
+    let mut samplers = HashMap::new();
+    for entry in &built.bind_group_layout.entries {
         bindings.push((next, entry.kind));
         match entry.kind {
             BindingKind::UniformBuffer { min_size } => {
@@ -234,27 +231,10 @@ fn compile(
                 next += 1;
             }
             BindingKind::CombinedImageSampler { sampler } => {
-                let filterable = !in_mask(unfilterable, position) && sampler_filtering(&sampler);
-                layout_entries.push(wgpu::BindGroupLayoutEntry {
-                    binding: next,
-                    visibility: compute,
-                    ty: wgpu::BindingType::Texture {
-                        sample_type: wgpu::TextureSampleType::Float { filterable },
-                        view_dimension: wgpu::TextureViewDimension::D2,
-                        multisampled: false,
-                    },
-                    count: None,
-                });
-                layout_entries.push(wgpu::BindGroupLayoutEntry {
-                    binding: next + 1,
-                    visibility: compute,
-                    ty: wgpu::BindingType::Sampler(if filterable {
-                        wgpu::SamplerBindingType::Filtering
-                    } else {
-                        wgpu::SamplerBindingType::NonFiltering
-                    }),
-                    count: None,
-                });
+                let nearest = unfilterable & (1 << sampled) != 0;
+                sampled += 1;
+                layout_entries.extend(sampled_layout_entries(next, compute, &sampler, nearest));
+                samplers.insert(next, create_mod_sampler(device, &sampler, nearest));
                 next += 2;
             }
             BindingKind::TexelBuffer { .. } | BindingKind::StorageBuffer { .. } => {
@@ -347,18 +327,8 @@ fn compile(
     if let Some(error) = validation.or(internal) {
         return Err((Refusal::Invalid, error.to_string()));
     }
-    let samplers = bindings
-        .iter()
-        .enumerate()
-        .filter_map(|(position, (binding, kind))| match kind {
-            BindingKind::CombinedImageSampler { sampler } => Some((
-                *binding,
-                create_mod_sampler(device, sampler, in_mask(unfilterable, position)),
-            )),
-            _ => None,
-        })
-        .collect();
     Ok(CompiledCompute {
+        recipe: Arc::clone(built),
         pipeline,
         layout,
         bindings,
@@ -375,31 +345,71 @@ impl ModCompute {
         if set.generation() == self.generation {
             return;
         }
-        self.pipelines = set
-            .built()
-            .iter()
-            .enumerate()
-            .map(|(slot, built)| {
-                let built = built.as_ref()?;
-                match compile(device, built, 0) {
-                    Ok(compiled) => Some(compiled),
-                    Err((reason, error)) => {
-                        if set.refuse(slot, reason) {
-                            log::warn!(
-                                "Sunrise: mod {} compute pipeline {} refused by the device: {error}",
-                                built.owner,
-                                built.id
-                            );
-                        }
-                        None
+        self.pipelines.clear();
+        for (slot, built) in set.built().iter().enumerate() {
+            let Some(built) = built else { continue };
+            let compiled = check_limits(device, built).and_then(|()| compile(device, built, 0));
+            let result = match compiled {
+                Ok(compiled) => Ok(compiled),
+                Err((reason, error)) => {
+                    if set.refuse(slot, reason) {
+                        log::warn!(
+                            "Sunrise: mod {} compute pipeline {} refused by the device: {error}",
+                            built.owner,
+                            built.id
+                        );
                     }
+                    Err(ComputeDispatchError::Pipeline(match reason {
+                        Refusal::Invalid => mod_api::ComputePipelineError::Invalid,
+                        Refusal::UnsupportedFeature => {
+                            mod_api::ComputePipelineError::UnsupportedFeature
+                        }
+                    }))
                 }
-            })
-            .collect();
-        self.built = set.built().to_vec();
-        self.masked.clear();
+            };
+            self.pipelines.insert((slot as u32, 0), result);
+        }
         self.generation = set.generation();
+        self.warned_variants.clear();
         self.warned.clear();
+    }
+
+    /// Prepare the dispatch variant before encoding the compute pass. A failure applies to this
+    /// layout only: do not invalidate the handle or any other variant in the same load.
+    fn prepare_dispatch(
+        &mut self,
+        device: &wgpu::Device,
+        dispatch: &RecordedDispatch,
+    ) -> Result<(), ComputeDispatchError> {
+        let slot = dispatch.slot;
+        let key = (slot, dispatch.layout_mask);
+        if let Some(compiled) = self.pipelines.get(&key) {
+            return compiled.as_ref().map(|_| ()).map_err(|err| *err);
+        }
+        let recipe = self
+            .pipelines
+            .get(&(slot, 0))
+            .ok_or(ComputeDispatchError::Pipeline(
+                mod_api::ComputePipelineError::Invalid,
+            ))?
+            .as_ref()
+            .map_err(|err| *err)?
+            .recipe
+            .clone();
+        let result = compile(device, &recipe, key.1).map_err(|(_, cause)| {
+            let error = ComputeDispatchError::VariantBuildFailed;
+            if self.warned_variants.insert(slot) {
+                log::warn!(
+                    "Sunrise: compute pipeline {} {error:?} (sampler mask {:#x}): {cause}",
+                    recipe.id,
+                    key.1
+                );
+            }
+            error
+        });
+        let prepared = result.as_ref().map(|_| ()).map_err(|err| *err);
+        self.pipelines.insert(key, result);
+        prepared
     }
 
     /// Record `dispatches` on `encoder`, each in its own compute pass. Recording a dispatch
@@ -412,43 +422,28 @@ impl ModCompute {
         encoder: &mut wgpu::CommandEncoder,
         dispatches: impl IntoIterator<Item = &'a RecordedDispatch>,
     ) {
+        let ready: Vec<_> = dispatches
+            .into_iter()
+            .filter_map(|dispatch| match self.prepare_dispatch(device, dispatch) {
+                Ok(()) => Some(dispatch),
+                Err(error) => {
+                    if self.warned_variants.insert(dispatch.slot) {
+                        log::warn!(
+                            "Sunrise: compute pipeline slot {} refused in preparation: {error:?}",
+                            dispatch.slot
+                        );
+                    }
+                    None
+                }
+            })
+            .collect();
         let mut owned: Vec<(u32, &[u8], wgpu::BufferUsages)> = Vec::new();
         let mut buffers: Vec<(u32, wgpu::Buffer)> = Vec::new();
         let max_groups = device.limits().max_compute_workgroups_per_dimension;
-        for dispatch in dispatches {
-            let slot = dispatch.slot as usize;
-            let mask = match self.pipelines.get(slot) {
-                Some(Some(base)) => unfilterable_mask(
-                    device,
-                    dispatch
-                        .entries
-                        .iter()
-                        .zip(base.bindings.iter().map(|(_, kind)| *kind)),
-                ),
-                _ => continue,
-            };
-            if mask != 0
-                && !self.masked.contains_key(&(slot, mask))
-                && let Some(Some(built)) = self.built.get(slot)
-            {
-                let variant = compile(device, built, mask)
-                    .inspect_err(|(_, error)| {
-                        log::warn!(
-                            "Sunrise: compute pipeline {} refused with nearest samplers for the unfilterable textures {mask:#b}: {error}",
-                            built.id
-                        );
-                    })
-                    .ok();
-                self.masked.insert((slot, mask), variant);
-            }
-            let compiled = if mask == 0 {
-                self.pipelines[slot].as_ref()
-            } else {
-                self.masked.get(&(slot, mask)).and_then(Option::as_ref)
-            };
-            let Some(compiled) = compiled else {
-                continue;
-            };
+        for dispatch in ready {
+            let compiled = self.pipelines[&(dispatch.slot, dispatch.layout_mask)]
+                .as_ref()
+                .expect("prepared compute variant");
             match &dispatch.kind {
                 DispatchKind::Direct(counts) => {
                     if counts.iter().any(|&n| n > max_groups) {
@@ -703,6 +698,7 @@ mod tests {
         });
         let dispatch = |counts| RecordedDispatch {
             slot: 0,
+            layout_mask: 0,
             entries: vec![ResolvedSet1Entry::StorageBuffer {
                 id: 1,
                 buffer: storage.clone(),
@@ -902,6 +898,7 @@ mod tests {
         });
         let image_dispatch = RecordedDispatch {
             slot: 0,
+            layout_mask: 0,
             entries: vec![ResolvedSet1Entry::StorageImage {
                 view_id: 1,
                 view: mip_view,

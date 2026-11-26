@@ -19,11 +19,12 @@ use crate::mod_pipelines::{Built, BuiltTexture, ModifierStacks, Pipelines};
 use glam::Mat4;
 use mod_api::{
     BindingKind, BlendFactor, BlendOp, ColorTargetState, ColorWrite, DepthCompare, DrawRange,
-    Identifier, IndexFormat, MeshDraw, PipelineBlend, PipelineState, PolygonMode,
-    PrimitiveTopology, Sampler, SamplerAddress, SamplerFilter, VertexAttributeFormat, VertexFormat,
-    VertexStepMode,
+    Identifier, IndexFormat, MeshDraw, PipelineBlend, PipelineDrawError, PipelineState,
+    PolygonMode, PrimitiveTopology, Sampler, SamplerAddress, SamplerFilter, VertexAttributeFormat,
+    VertexFormat, VertexStepMode,
 };
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 use sunrise_mod_pipeline::{
     ENTRY, OIT_STAGE_SAMPLERS, Options as PipelineOptions, SPRITE_RECT_BINDING,
 };
@@ -220,6 +221,8 @@ pub enum ResolvedSet1Entry {
 /// Resolved set-1 resource bindings for one [`PipelineDraw`] in exact declaration order.
 #[derive(Clone, Debug, Default)]
 pub struct ResolvedDrawBindings {
+    /// Set-1 sampled textures requiring a non-filtering layout, in sampled-texture order.
+    pub layout_mask: u64,
     pub entries: Vec<ResolvedSet1Entry>,
     /// Optional push-constant byte range in `Batch::inline_uniforms` / `Batch::oit_inline_uniforms`.
     pub push_constants: Option<std::ops::Range<usize>>,
@@ -294,13 +297,15 @@ struct Run {
 
 /// A unified draw command as prepared for the GPU render pass (zero-copy for retained meshes).
 struct PreparedDraw {
+    // Stage callbacks select indices in the submitted batch, even if an earlier draw failed.
+    submitted_index: usize,
     slot: usize,
     stage: usize,
     modifier_stack: u32,
     topology: PrimitiveTopology,
     draw: MeshDraw,
     source: PipelineDrawSource,
-    /// The bound textures wgpu refuses a filtering sampler on ([`unfilterable_mask`]); `0` draws
+    /// The bound textures wgpu refuses a filtering sampler on; `0` draws
     /// with the pipeline as compiled, any other mask with its nearest-sampler variant.
     layout_mask: u64,
     set1_bind_group: Option<(wgpu::BindGroup, Vec<u32>)>,
@@ -733,13 +738,14 @@ struct CompiledOitStage {
     reads_sprite_rect: bool,
     /// `(binding, cloud_samples_index)` for `DepthBoundsSampler` (0), `Coeff0` (1), `Coeff1` (2).
     oit_samplers: Vec<(u32, usize)>,
-    /// Cached bind group for `ModPipelines::oit_generation`.
+    /// Cached bind group for `CompiledOit::group_generation`.
     group: Option<wgpu::BindGroup>,
     /// Lazy modifier variants indexed by variant id (`ModPipelines::variant_ids`).
     variants: Vec<Option<CachedVariant>>,
 }
 
 struct CompiledOit {
+    group_generation: Option<u64>,
     stages: [CompiledOitStage; 3],
     /// Sprite atlas texture view and rect buffer kept alive for OIT bind groups.
     sprite: Option<(wgpu::TextureView, wgpu::Buffer)>,
@@ -786,54 +792,50 @@ enum Set1ResourceKey {
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 struct Set1CacheKey {
     slot: usize,
+    layout_mask: u64,
     generation: u64,
     resources: Vec<Set1ResourceKey>,
 }
 
-/// A built pipeline: its compiled render pipeline, its per-pipeline bind group (binding only
-/// the set-0 blocks/samplers its stages read, backed by the shared vanilla uniform buffer plus
-/// optional sprite texture/rect), and the shader modules and fixed state needed to lazily
-/// compile modifier and shader-pack target variants.
-struct Compiled {
-    id: Identifier,
-    pipeline: wgpu::RenderPipeline,
-    pipeline_layout: wgpu::PipelineLayout,
+/// GPU inputs shared by a pipeline's base and all its target / sampler variants.
+struct PipelineSource {
+    recipe: Arc<Built>,
     group: wgpu::BindGroup,
     pack_group: wgpu::BindGroup,
-    /// Layout of `group` and `pack_group` (set 0).
     globals_layout: wgpu::BindGroupLayout,
+    sprite: Option<(wgpu::TextureView, [f32; 4])>,
+    vertex_shader: wgpu::ShaderModule,
+    fragment_shader: wgpu::ShaderModule,
+    pack_fragment_shader: Option<wgpu::ShaderModule>,
+    vertex_layouts: Vec<OwnedVertexBufferLayout>,
+}
+
+/// A GPU pipeline built for one sampler layout and one set of attachments.
+struct Compiled {
+    source: Arc<PipelineSource>,
+    pipeline: wgpu::RenderPipeline,
+    pipeline_layout: wgpu::PipelineLayout,
     set1_layout: Option<wgpu::BindGroupLayout>,
     set1_entries: Vec<CompiledSet1Entry>,
     push_constant_slot: Option<(u32, u32)>,
-    /// The atlas view and `SpriteRect` of a textured pipeline, kept to build its OIT stages again
-    /// for a nearest-sampler variant.
-    sprite: Option<(wgpu::TextureView, [f32; 4])>,
-    vertex_shader: wgpu::ShaderModule,
-    /// The translated vertex stage, for a shader pack pass that runs it beside the pack's own
-    /// fragment stage (`ModProgramMode::ModVertexPackFragment`).
-    vertex_module: naga::Module,
-    /// Fragment shader targeting the main frame (linear-decoded when `linear_light`).
-    fragment_shader: wgpu::ShaderModule,
-    /// Vanilla-gamma fragment shader for shader-pack `colortex0` targets (when `linear_light`
-    /// differs from the pack's gamma encoding, `pack_fragment_shader` holds the undecoded stage).
-    pack_fragment_shader: Option<wgpu::ShaderModule>,
-    state: PipelineState,
-    color_targets: Vec<Option<ColorTargetState>>,
-    vertex_layouts: Vec<OwnedVertexBufferLayout>,
     /// Lazy modifier variants indexed by variant id (`ModPipelines::variant_ids`; `0` unused).
     variants: Vec<Option<CachedVariant>>,
-    /// The state and label each modifier variant resolves to, by variant id, kept so shader-pack
-    /// variants can be compiled for whichever pack target is current.
+    /// Effective modifier states for this world variant, reused by direct shader-pack draws.
     variant_states: Vec<Option<(PipelineState, String)>>,
-    /// Lazy modifier variants for the current shader-pack target (`ModPipelines::pack_pipelines`),
-    /// by variant id; cleared when that target changes.
-    pack_variants: Vec<Option<CachedVariant>>,
-    /// Compiled OIT variants (`DepthBounds`, `Transmittance`, `Accumulate`) when opted in and
-    /// supported by the device.
     oit: Option<CompiledOit>,
-    #[cfg(test)]
-    textured: bool,
 }
+
+/// The target part of the lazy variant key. A pack's format and write mask are distinct from
+/// the world target's reversed Z and the offscreen target's declared attachments.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+enum VariantTarget {
+    World,
+    Pack(wgpu::TextureFormat, bool),
+    Offscreen(Vec<wgpu::TextureFormat>, Option<wgpu::TextureFormat>),
+}
+
+type VariantKey = (usize, u64, VariantTarget);
+type DrawVariants = HashMap<VariantKey, Result<Compiled, PipelineDrawError>>;
 
 /// The pipelines and the buffer that draw a [`Batch`].
 pub struct ModPipelines {
@@ -889,33 +891,13 @@ pub struct ModPipelines {
     fan_indices: FanIndices,
     /// The load `pipelines` was built from; 0 before any.
     generation: u64,
-    /// OIT target generation last bound into `CompiledOitStage::group`; 0 before any.
-    oit_generation: u64,
-    /// By slot; `None` for a pipeline the load refused.
+    /// Load-time world pipelines by slot, `None` for an optional/refused registration.
     pipelines: Vec<Option<Compiled>>,
-    /// What the load built, by slot, kept to compile the nearest-sampler variants in `masked`.
-    built: Vec<Option<Built>>,
-    /// Pipelines whose set-1 layout takes a nearest sampler and an unfilterable texture where
-    /// [`unfilterable_mask`] says a draw binds one, by `(slot, mask)`, compiled when a draw first
-    /// needs one; `None` for a variant the GPU refused. Wgpu fixes a texture's sample type and a
-    /// sampler's binding type in the pipeline layout, so a depth texture cannot be bound to the
-    /// layout of a filtering sampler.
-    masked: HashMap<(usize, u64), Option<Compiled>>,
-    /// Lazily built for a shader pack's `(colortex0 format, rgb_only)` + GL `[0..1]` depth.
-    pack_pipelines: Option<(
-        (wgpu::TextureFormat, bool),
-        Vec<Option<wgpu::RenderPipeline>>,
-    )>,
-    /// Lazily built offscreen variants keyed by `(slot, mask, color_formats, depth_format)`.
-    offscreen_pipelines: HashMap<
-        (
-            usize,
-            u64,
-            Vec<wgpu::TextureFormat>,
-            Option<wgpu::TextureFormat>,
-        ),
-        Option<wgpu::RenderPipeline>,
-    >,
+    /// The lazy table for all target and sampler variants of this load.
+    variants: DrawVariants,
+    warned_variants: HashSet<usize>,
+    /// The current direct shader-pack target, if one has been prepared.
+    pack_target: Option<(wgpu::TextureFormat, bool)>,
     runs: Vec<Run>,
     oit_runs: Vec<Run>,
     /// Modifier slot sequences seen since `pipelines` was built, each with its stable variant
@@ -932,7 +914,7 @@ pub struct ModPipelines {
 /// blending between mip levels, which vanilla's backends do whenever `maxLod` allows more than
 /// the base level (`GlSampler`'s `*_MIPMAP_LINEAR`; Vulkan's linear mipmap mode for
 /// `maxLod > 0.25`). Wgpu lets such a sampler read a filterable texture only, so a binding of a
-/// texture that is not filterable ([`unfilterable`]) reads it through the nearest sampler instead.
+/// texture that is not filterable reads it through the nearest sampler instead.
 pub(super) fn sampler_filtering(sampler: &Sampler) -> bool {
     sampler.min == SamplerFilter::Linear
         || sampler.mag == SamplerFilter::Linear
@@ -960,45 +942,67 @@ fn filter_mode(filter: SamplerFilter) -> wgpu::FilterMode {
     }
 }
 
-/// Whether wgpu refuses to sample `view` through a filtering sampler: a depth format, or
-/// `R32Float` on a device without `FLOAT32_FILTERABLE`
-/// (`RenderCapabilities::float32_filterable`).
-pub(super) fn unfilterable(device: &wgpu::Device, view: &wgpu::TextureView) -> bool {
-    let format = view.texture().format();
-    format.has_depth_aspect()
-        || (format == wgpu::TextureFormat::R32Float
-            && !device
-                .features()
-                .contains(wgpu::Features::FLOAT32_FILTERABLE))
-}
-
-/// The entries of a draw, as `(resolved binding, declared kind)` in declaration order, that
-/// sample an unfilterable texture through a filtering sampler, as a bit set by position (an
-/// entry past the 64th is not counted). Such a draw needs the nearest-sampler variant of its
-/// pipeline for this mask: a pipeline layout is fixed when the pipeline is compiled, and its
-/// filtering sampler cannot read a depth texture there.
-pub(super) fn unfilterable_mask<'a>(
-    device: &wgpu::Device,
-    entries: impl Iterator<Item = (&'a ResolvedSet1Entry, BindingKind)>,
+/// Mask of one sampled binding as validated at submission. The index counts only sampled
+/// textures (not buffers or storage images), up to the limit checked when building the layout.
+pub fn unfilterable_sample_bit(
+    index: u32,
+    sampler: &Sampler,
+    format: wgpu::TextureFormat,
+    float32_filterable: bool,
 ) -> u64 {
-    entries
-        .enumerate()
-        .filter_map(|(position, entry)| match entry {
-            (
-                ResolvedSet1Entry::Texture { view, .. },
-                BindingKind::CombinedImageSampler { sampler },
-            ) if sampler_filtering(&sampler) && unfilterable(device, view) => {
-                1u64.checked_shl(position as u32)
-            }
-            _ => None,
-        })
-        .fold(0, |mask, bit| mask | bit)
+    if sampler_filtering(sampler)
+        && (format.has_depth_aspect()
+            || (format == wgpu::TextureFormat::R32Float && !float32_filterable))
+    {
+        1 << index
+    } else {
+        0
+    }
 }
 
-/// Whether entry `position` is in `mask`, a mask of [`unfilterable_mask`].
-pub(super) fn in_mask(mask: u64, position: usize) -> bool {
-    mask.checked_shr(position as u32)
-        .is_some_and(|bits| bits & 1 == 1)
+/// A sampler and its texture must agree on filtering in both render and compute layouts.
+pub(super) fn sampled_layout_entries(
+    binding: u32,
+    visibility: wgpu::ShaderStages,
+    sampler: &Sampler,
+    nearest: bool,
+) -> [wgpu::BindGroupLayoutEntry; 2] {
+    let filterable = !nearest && sampler_filtering(sampler);
+    [
+        wgpu::BindGroupLayoutEntry {
+            binding,
+            visibility,
+            ty: wgpu::BindingType::Texture {
+                sample_type: wgpu::TextureSampleType::Float { filterable },
+                view_dimension: wgpu::TextureViewDimension::D2,
+                multisampled: false,
+            },
+            count: None,
+        },
+        wgpu::BindGroupLayoutEntry {
+            binding: binding + 1,
+            visibility,
+            ty: wgpu::BindingType::Sampler(if filterable {
+                wgpu::SamplerBindingType::Filtering
+            } else {
+                wgpu::SamplerBindingType::NonFiltering
+            }),
+            count: None,
+        },
+    ]
+}
+
+/// The device's sampled texture limit, bounded by the width of a variant's sampled-texture mask.
+pub(super) fn sampled_texture_limit(count: u32, limits: &wgpu::Limits) -> Result<(), String> {
+    let device = limits.max_sampled_textures_per_shader_stage;
+    if count <= device.min(u64::BITS) {
+        Ok(())
+    } else {
+        Err(format!(
+            "sampled texture count ({count}) exceeds the binding layout limit ({}, device max_sampled_textures_per_shader_stage: {device})",
+            device.min(u64::BITS)
+        ))
+    }
 }
 
 /// The device sampler for a mod set-1 [`Sampler`] entry, made once when its pipeline is
@@ -1068,7 +1072,7 @@ fn storage_image_format(built: &Built, binding: u32) -> Option<wgpu::TextureForm
 }
 
 /// The set-1 layout of `built`. The sampled textures of the entries in the `unfilterable` mask
-/// ([`unfilterable_mask`]) are declared unfilterable and read through a nearest sampler: the
+/// are declared unfilterable and read through a nearest sampler: the
 /// layout of the variant a draw binding a depth texture needs.
 fn build_set1_layout(
     device: &wgpu::Device,
@@ -1086,16 +1090,24 @@ fn build_set1_layout(
         return Ok((None, Vec::new(), None));
     }
     let limits = device.limits();
+    sampled_texture_limit(
+        built
+            .bind_group_layout
+            .entries
+            .iter()
+            .filter(|e| matches!(e.kind, BindingKind::CombinedImageSampler { .. }))
+            .count() as u32,
+        &limits,
+    )?;
     let mut layout_entries = Vec::new();
     let mut compiled_entries = Vec::new();
     let mut next_binding = 0u32;
     let mut uniform_count = 0u32;
     let mut dynamic_uniform_count = 0u32;
     let mut texture_count = 0u32;
-    let mut sampler_count = 0u32;
     let mut storage_count = 0u32;
     let mut storage_image_count = 0u32;
-    for (position, entry) in built.bind_group_layout.entries.iter().enumerate() {
+    for entry in &built.bind_group_layout.entries {
         match entry.kind {
             BindingKind::UniformBuffer { min_size } => {
                 if u64::from(min_size) > limits.max_uniform_buffer_binding_size {
@@ -1125,30 +1137,14 @@ fn build_set1_layout(
                 next_binding += 1;
             }
             BindingKind::CombinedImageSampler { sampler } => {
+                let nearest = unfilterable & (1 << texture_count) != 0;
                 texture_count += 1;
-                sampler_count += 1;
-                let nearest = in_mask(unfilterable, position);
-                let filterable = !nearest && sampler_filtering(&sampler);
-                layout_entries.push(wgpu::BindGroupLayoutEntry {
-                    binding: next_binding,
-                    visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
-                    ty: wgpu::BindingType::Texture {
-                        sample_type: wgpu::TextureSampleType::Float { filterable },
-                        view_dimension: wgpu::TextureViewDimension::D2,
-                        multisampled: false,
-                    },
-                    count: None,
-                });
-                layout_entries.push(wgpu::BindGroupLayoutEntry {
-                    binding: next_binding + 1,
-                    visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
-                    ty: wgpu::BindingType::Sampler(if filterable {
-                        wgpu::SamplerBindingType::Filtering
-                    } else {
-                        wgpu::SamplerBindingType::NonFiltering
-                    }),
-                    count: None,
-                });
+                layout_entries.extend(sampled_layout_entries(
+                    next_binding,
+                    wgpu::ShaderStages::VERTEX_FRAGMENT,
+                    &sampler,
+                    nearest,
+                ));
                 compiled_entries.push(CompiledSet1Entry {
                     binding: next_binding,
                     kind: entry.kind,
@@ -1312,15 +1308,9 @@ fn build_set1_layout(
             limits.max_uniform_buffers_per_shader_stage
         ));
     }
-    if texture_count > limits.max_sampled_textures_per_shader_stage {
+    if texture_count > limits.max_samplers_per_shader_stage {
         return Err(format!(
-            "set-1 sampled texture count ({texture_count}) exceeds device max_sampled_textures_per_shader_stage ({})",
-            limits.max_sampled_textures_per_shader_stage
-        ));
-    }
-    if sampler_count > limits.max_samplers_per_shader_stage {
-        return Err(format!(
-            "set-1 sampler count ({sampler_count}) exceeds device max_samplers_per_shader_stage ({})",
+            "set-1 sampler count ({texture_count}) exceeds device max_samplers_per_shader_stage ({})",
             limits.max_samplers_per_shader_stage
         ));
     }
@@ -1343,51 +1333,37 @@ fn build_set1_layout(
     Ok((Some(layout), compiled_entries, push_constant_slot))
 }
 
-/// The pipeline of `slot` as compiled for `mask` ([`unfilterable_mask`]): the base one for `0`.
+/// A world pipeline with the submitted sampler layout.
 fn compiled_in<'a>(
     pipelines: &'a [Option<Compiled>],
-    masked: &'a HashMap<(usize, u64), Option<Compiled>>,
+    variants: &'a DrawVariants,
     slot: usize,
     mask: u64,
 ) -> Option<&'a Compiled> {
     if mask == 0 {
         pipelines.get(slot)?.as_ref()
     } else {
-        masked.get(&(slot, mask))?.as_ref()
+        variants
+            .get(&(slot, mask, VariantTarget::World))?
+            .as_ref()
+            .ok()
     }
 }
 
-/// [`compiled_in`], mutable.
 fn compiled_mut_in<'a>(
     pipelines: &'a mut [Option<Compiled>],
-    masked: &'a mut HashMap<(usize, u64), Option<Compiled>>,
+    variants: &'a mut DrawVariants,
     slot: usize,
     mask: u64,
 ) -> Option<&'a mut Compiled> {
     if mask == 0 {
         pipelines.get_mut(slot)?.as_mut()
     } else {
-        masked.get_mut(&(slot, mask))?.as_mut()
+        variants
+            .get_mut(&(slot, mask, VariantTarget::World))?
+            .as_mut()
+            .ok()
     }
-}
-
-/// The [`unfilterable_mask`] of a draw of `slot` with `bindings`.
-fn draw_mask_in(
-    device: &wgpu::Device,
-    pipelines: &[Option<Compiled>],
-    slot: u32,
-    bindings: Option<&ResolvedDrawBindings>,
-) -> u64 {
-    let (Some(Some(base)), Some(bindings)) = (pipelines.get(slot as usize), bindings) else {
-        return 0;
-    };
-    unfilterable_mask(
-        device,
-        bindings
-            .entries
-            .iter()
-            .zip(base.set1_entries.iter().map(|spec| spec.kind)),
-    )
 }
 
 fn align_up_usize(value: usize, align: usize) -> usize {
@@ -1457,12 +1433,10 @@ impl ModPipelines {
             compute: Default::default(),
             fan_indices: FanIndices::default(),
             generation: 0,
-            oit_generation: 0,
             pipelines: Vec::new(),
-            built: Vec::new(),
-            masked: HashMap::new(),
-            pack_pipelines: None,
-            offscreen_pipelines: HashMap::new(),
+            variants: HashMap::new(),
+            warned_variants: HashSet::new(),
+            pack_target: None,
             runs: Vec::new(),
             oit_runs: Vec::new(),
             variant_ids: HashMap::new(),
@@ -1820,6 +1794,7 @@ impl ModPipelines {
             });
         }
         Ok(CompiledOit {
+            group_generation: None,
             stages: built_stages.try_into().ok().expect("three OIT stages"),
             sprite,
         })
@@ -1828,12 +1803,12 @@ impl ModPipelines {
     /// One load's pipeline: its translated GLSL naga modules with the fixed state it registered,
     /// its per-pipeline set-0 layout and bind groups (`vanilla` and `pack_vanilla`), and its
     /// sprite texture/rect when textured — or the GPU's error.
-    fn pipeline(
+    fn pipeline_source(
         &self,
         device: &wgpu::Device,
-        built: &Built,
+        built: &Arc<Built>,
         textures: Option<TextureSources<'_>>,
-    ) -> Result<Compiled, String> {
+    ) -> Result<Arc<PipelineSource>, String> {
         use wgpu::util::DeviceExt;
         let sprite_binding = match &built.texture {
             None => None,
@@ -2001,316 +1976,291 @@ impl ModPipelines {
         };
         let group = make_group("Mod pipeline", &self.vanilla);
         let pack_group = make_group("Mod pipeline (pack)", &self.pack_vanilla);
-        let (set1_layout, set1_entries, push_constant_slot) = build_set1_layout(device, built, 0)?;
-        let mut bind_group_layouts = vec![Some(&group_layout)];
-        if let Some(ref set1) = set1_layout {
-            bind_group_layouts.push(Some(set1));
-        }
-        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("Mod pipeline"),
-            bind_group_layouts: &bind_group_layouts,
-            ..Default::default()
-        });
-        let pipeline_label = built.id.to_string();
         let internal = pollster::block_on(internal.pop());
         let validation = pollster::block_on(validation.pop());
         if let Some(error) = internal.or(validation) {
             return Err(error.to_string());
         }
+        Ok(Arc::new(PipelineSource {
+            recipe: Arc::clone(built),
+            group,
+            pack_group,
+            globals_layout: group_layout,
+            sprite: sprite_binding,
+            vertex_shader,
+            fragment_shader,
+            pack_fragment_shader,
+            vertex_layouts,
+        }))
+    }
+
+    /// The sole constructor for GPU render pipeline variants. Pack passes drawing the mod's
+    /// own shaders reuse the world variant's layout so the prepared bind group is shared.
+    fn compile(
+        &self,
+        device: &wgpu::Device,
+        source: Arc<PipelineSource>,
+        target: &VariantTarget,
+        mask: u64,
+        shared_layout: Option<&Compiled>,
+    ) -> Result<Compiled, String> {
+        let built = &source.recipe;
+        let (pipeline_layout, set1_layout, set1_entries, push_constant_slot) =
+            if let Some(shared) = shared_layout {
+                (
+                    shared.pipeline_layout.clone(),
+                    shared.set1_layout.clone(),
+                    shared.set1_entries.clone(),
+                    shared.push_constant_slot,
+                )
+            } else {
+                let validation = device.push_error_scope(wgpu::ErrorFilter::Validation);
+                let internal = device.push_error_scope(wgpu::ErrorFilter::Internal);
+                let layout = build_set1_layout(device, built, mask).map(|(set1, entries, push)| {
+                    let mut layouts = vec![Some(&source.globals_layout)];
+                    if let Some(layout) = &set1 {
+                        layouts.push(Some(layout));
+                    }
+                    let pipeline_layout =
+                        device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                            label: Some("Mod pipeline"),
+                            bind_group_layouts: &layouts,
+                            ..Default::default()
+                        });
+                    (pipeline_layout, set1, entries, push)
+                });
+                let internal = pollster::block_on(internal.pop());
+                let validation = pollster::block_on(validation.pop());
+                if let Some(error) = internal.or(validation) {
+                    return Err(error.to_string());
+                }
+                layout?
+            };
+        let frag = if matches!(target, VariantTarget::Pack(..)) {
+            source
+                .pack_fragment_shader
+                .as_ref()
+                .unwrap_or(&source.fragment_shader)
+        } else {
+            &source.fragment_shader
+        };
         let pipeline = Self::build_render_pipeline(
             device,
-            &pipeline_label,
+            &built.id.to_string(),
             &pipeline_layout,
-            &vertex_shader,
-            &fragment_shader,
-            &vertex_layouts,
+            &source.vertex_shader,
+            frag,
+            &source.vertex_layouts,
             built.state,
             &built.color_targets,
-            TargetState {
-                color_formats: &[self.color_format],
-                depth_format: Some(wgpu::TextureFormat::Depth32Float),
-                force_depth_attachment: false,
-                standard_z: false,
-                write_mask: wgpu::ColorWrites::ALL,
-            },
+            self.target_state(target),
         )?;
-        let oit = if let Some(variants) = &built.oit
+        let oit = if matches!(target, VariantTarget::World)
+            && let Some(variants) = &built.oit
             && super::oit::supported(device)
         {
             Some(Self::build_oit_stages(
                 device,
                 &built.id,
-                &vertex_layouts,
+                &source.vertex_layouts,
                 built.state,
                 variants,
-                sprite_binding.as_ref(),
+                source.sprite.as_ref(),
                 set1_layout.as_ref(),
             )?)
         } else {
             None
         };
         Ok(Compiled {
-            id: built.id.clone(),
+            source,
             pipeline,
             pipeline_layout,
-            group,
-            pack_group,
-            globals_layout: group_layout,
             set1_layout,
             set1_entries,
             push_constant_slot,
-            vertex_shader,
-            vertex_module: built.program.vertex.clone(),
-            fragment_shader,
-            pack_fragment_shader,
-            state: built.state,
-            color_targets: built.color_targets.clone(),
-            vertex_layouts,
             variants: Vec::new(),
             variant_states: Vec::new(),
-            pack_variants: Vec::new(),
             oit,
-            #[cfg(test)]
-            textured: sprite_binding.is_some(),
-            sprite: sprite_binding,
         })
     }
 
-    /// The pipeline of `slot` again with the set-1 layout of `mask` ([`unfilterable_mask`]): its
-    /// modules, set-0 groups and fixed state as compiled, with the masked entries' textures
-    /// declared unfilterable and read through nearest samplers.
-    fn masked_variant(
-        &self,
+    fn target_state<'a>(&'a self, target: &'a VariantTarget) -> TargetState<'a> {
+        let (color_formats, depth_format, force_depth_attachment, standard_z, write_mask) =
+            match target {
+                VariantTarget::World => (
+                    std::slice::from_ref(&self.color_format),
+                    Some(wgpu::TextureFormat::Depth32Float),
+                    false,
+                    false,
+                    wgpu::ColorWrites::ALL,
+                ),
+                VariantTarget::Pack(format, rgb) => (
+                    std::slice::from_ref(format),
+                    Some(wgpu::TextureFormat::Depth32Float),
+                    false,
+                    true,
+                    if *rgb {
+                        wgpu::ColorWrites::COLOR
+                    } else {
+                        wgpu::ColorWrites::ALL
+                    },
+                ),
+                VariantTarget::Offscreen(colors, depth) => (
+                    colors.as_slice(),
+                    *depth,
+                    depth.is_some(),
+                    false,
+                    wgpu::ColorWrites::ALL,
+                ),
+            };
+        TargetState {
+            color_formats,
+            depth_format,
+            force_depth_attachment,
+            standard_z,
+            write_mask,
+        }
+    }
+
+    /// Cache the build result per slot, target and mask. A GPU refusal of one combination
+    /// neither poisons another combination nor invalidates the handle.
+    fn ensure_variant(
+        &mut self,
         device: &wgpu::Device,
-        slot: usize,
-        mask: u64,
-    ) -> Result<Compiled, String> {
-        let (Some(Some(base)), Some(Some(built))) =
-            (self.pipelines.get(slot), self.built.get(slot))
-        else {
-            return Err("no such pipeline".into());
-        };
-        let (set1_layout, set1_entries, push_constant_slot) =
-            build_set1_layout(device, built, mask)?;
-        let validation = device.push_error_scope(wgpu::ErrorFilter::Validation);
-        let internal = device.push_error_scope(wgpu::ErrorFilter::Internal);
-        let mut bind_group_layouts = vec![Some(&base.globals_layout)];
-        if let Some(set1) = &set1_layout {
-            bind_group_layouts.push(Some(set1));
+        key: VariantKey,
+    ) -> Result<(), PipelineDrawError> {
+        let (slot, mask, ref target) = key;
+        if let Some(compiled) = self.variants.get(&key) {
+            return compiled.as_ref().map(|_| ()).map_err(|error| *error);
         }
-        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("Mod pipeline (nearest samplers)"),
-            bind_group_layouts: &bind_group_layouts,
-            ..Default::default()
-        });
-        let internal = pollster::block_on(internal.pop());
-        let validation = pollster::block_on(validation.pop());
-        if let Some(error) = internal.or(validation) {
-            return Err(error.to_string());
-        }
-        let vertex_layouts =
-            build_vertex_layouts(&built.vertex_bindings, device.limits().max_vertex_buffers)?;
-        let pipeline = Self::build_render_pipeline(
-            device,
-            &built.id.to_string(),
-            &pipeline_layout,
-            &base.vertex_shader,
-            &base.fragment_shader,
-            &vertex_layouts,
-            built.state,
-            &built.color_targets,
-            TargetState {
-                color_formats: &[self.color_format],
-                depth_format: Some(wgpu::TextureFormat::Depth32Float),
-                force_depth_attachment: false,
-                standard_z: false,
-                write_mask: wgpu::ColorWrites::ALL,
-            },
+        let base = self.pipelines.get(slot).and_then(Option::as_ref).ok_or(
+            PipelineDrawError::Pipeline(mod_api::RenderPipelineError::Invalid),
         )?;
-        let oit = match (&built.oit, &base.oit) {
-            (Some(variants), Some(_)) => Some(Self::build_oit_stages(
-                device,
-                &built.id,
-                &vertex_layouts,
-                built.state,
-                variants,
-                base.sprite.as_ref(),
-                set1_layout.as_ref(),
-            )?),
+        if mask == 0 && matches!(target, VariantTarget::World) {
+            return Ok(());
+        }
+        let shared = match target {
+            VariantTarget::Pack(..) => Some(
+                compiled_in(&self.pipelines, &self.variants, slot, mask)
+                    .ok_or(PipelineDrawError::VariantBuildFailed)?,
+            ),
+            _ if mask == 0 => Some(base),
             _ => None,
         };
-        Ok(Compiled {
-            id: base.id.clone(),
-            pipeline,
-            pipeline_layout,
-            group: base.group.clone(),
-            pack_group: base.pack_group.clone(),
-            globals_layout: base.globals_layout.clone(),
-            set1_layout,
-            set1_entries,
-            push_constant_slot,
-            vertex_shader: base.vertex_shader.clone(),
-            vertex_module: base.vertex_module.clone(),
-            fragment_shader: base.fragment_shader.clone(),
-            pack_fragment_shader: base.pack_fragment_shader.clone(),
-            state: base.state,
-            color_targets: base.color_targets.clone(),
-            vertex_layouts,
-            variants: Vec::new(),
-            variant_states: Vec::new(),
-            pack_variants: Vec::new(),
-            oit,
-            #[cfg(test)]
-            textured: base.textured,
-            sprite: base.sprite.clone(),
-        })
+        let id = base.source.recipe.id.clone();
+        let result = self.compile(device, base.source.clone(), target, mask, shared).map_err(|cause| {
+            let error = PipelineDrawError::VariantBuildFailed;
+            if self.warned_variants.insert(slot) {
+                log::warn!("Sunrise: mod pipeline {id} {error:?} ({target:?}, sampler mask {mask:#x}): {cause}");
+            }
+            error
+        });
+        let prepared = result.as_ref().map(|_| ()).map_err(|error| *error);
+        self.variants.insert(key, result);
+        prepared
     }
 
-    /// Compile the variant of `slot` for `mask` unless it is compiled already; one the GPU
-    /// refuses is logged once and its draws are skipped.
-    fn ensure_masked(&mut self, device: &wgpu::Device, slot: usize, mask: u64) {
-        if mask == 0 || self.masked.contains_key(&(slot, mask)) {
-            return;
-        }
-        let variant = self
-            .masked_variant(device, slot, mask)
-            .inspect_err(|error| {
-                log::warn!(
-                    "Sunrise: mod pipeline slot {slot} refused with nearest samplers for the unfilterable textures {mask:#b}: {error}"
-                );
-            })
-            .ok();
-        self.masked.insert((slot, mask), variant);
-    }
-
-    /// Ensure pack-target variants (`colortex0` format + GL `[0..1]` standard-Z depth) exist
-    /// for all loaded mod pipelines.
+    /// Prepare the direct mod pipelines into a pack's `colortex0` + standard-Z depth. Linked
+    /// translated pack programs are distinct and checked at draw admission.
     pub fn ensure_pack_pipelines(
         &mut self,
         device: &wgpu::Device,
         format: wgpu::TextureFormat,
         rgb: bool,
     ) {
-        let key = (format, rgb);
-        if self
-            .pack_pipelines
-            .as_ref()
-            .is_some_and(|(prev, list)| *prev == key && list.len() == self.pipelines.len())
-        {
-            self.ensure_pack_variants(device);
-            return;
+        if self.pack_target != Some((format, rgb)) {
+            self.variants
+                .retain(|(_, _, target), _| !matches!(target, VariantTarget::Pack(..)));
+            self.pack_target = Some((format, rgb));
         }
-        for compiled in self.pipelines.iter_mut().flatten() {
-            compiled.pack_variants.clear();
-        }
-        let color_formats = [format];
-        let target = TargetState {
-            color_formats: &color_formats,
-            depth_format: Some(wgpu::TextureFormat::Depth32Float),
-            force_depth_attachment: false,
-            standard_z: true,
-            write_mask: if rgb {
-                wgpu::ColorWrites::COLOR
-            } else {
-                wgpu::ColorWrites::ALL
-            },
-        };
-        let compiled = self
-            .pipelines
-            .iter()
-            .enumerate()
-            .map(|(slot, entry)| {
-                let c = entry.as_ref()?;
-                let frag = c
-                    .pack_fragment_shader
-                    .as_ref()
-                    .unwrap_or(&c.fragment_shader);
-                match Self::build_render_pipeline(
-                    device,
-                    &format!("{}/pack", c.id),
-                    &c.pipeline_layout,
-                    &c.vertex_shader,
-                    frag,
-                    &c.vertex_layouts,
-                    c.state,
-                    &c.color_targets,
-                    target,
-                ) {
-                    Ok(pipeline) => Some(pipeline),
-                    Err(error) => {
-                        log::warn!(
-                            "Sunrise: mod pipeline slot {slot} refused for shader-pack target {format:?}: {error}"
-                        );
-                        None
-                    }
-                }
-            })
-            .collect();
-        self.pack_pipelines = Some((key, compiled));
         self.ensure_pack_variants(device);
     }
 
-    /// Compile the shader-pack target's variant of every modifier stack seen so far that is not
-    /// compiled yet, like [`Self::ensure_modifier_variant`] does for the main frame.
     fn ensure_pack_variants(&mut self, device: &wgpu::Device) {
-        let Some(&((format, rgb), _)) = self.pack_pipelines.as_ref() else {
+        let Some((format, rgb)) = self.pack_target else {
             return;
         };
-        let color_formats = [format];
-        let target = TargetState {
-            color_formats: &color_formats,
-            depth_format: Some(wgpu::TextureFormat::Depth32Float),
-            force_depth_attachment: false,
-            standard_z: true,
-            write_mask: if rgb {
-                wgpu::ColorWrites::COLOR
+        let target = VariantTarget::Pack(format, rgb);
+        let pending: HashSet<_> = self
+            .runs
+            .iter()
+            .map(|run| (run.slot, 0, run.modifier_stack))
+            .chain(
+                self.draws
+                    .iter()
+                    .map(|draw| (draw.slot, draw.layout_mask, draw.modifier_stack)),
+            )
+            .collect();
+        for (slot, mask, variant) in pending {
+            let key = (slot, mask, target.clone());
+            if let Err(error) = self.ensure_variant(device, key.clone()) {
+                self.warn_prepare_error(slot, error);
+                continue;
+            }
+            let idx = variant as usize;
+            let state = compiled_in(&self.pipelines, &self.variants, slot, mask)
+                .and_then(|world| world.variant_states.get(idx))
+                .and_then(Option::as_ref)
+                .cloned();
+            let Some((modified, label)) = state else {
+                continue;
+            };
+            let pack = self
+                .variants
+                .get_mut(&key)
+                .expect("prepared pack variant")
+                .as_mut()
+                .expect("prepared pack variant");
+            if pack.variants.len() <= idx {
+                pack.variants.resize_with(idx + 1, || None);
+            }
+            if pack.variants[idx].is_some() {
+                continue;
+            }
+            let source = &pack.source;
+            let result = if modified == source.recipe.state {
+                CachedVariant::Base
             } else {
-                wgpu::ColorWrites::ALL
-            },
-        };
-        for compiled in self.pipelines.iter_mut().flatten() {
-            if compiled.pack_variants.len() < compiled.variant_states.len() {
-                compiled
-                    .pack_variants
-                    .resize_with(compiled.variant_states.len(), || None);
-            }
-            for idx in 1..compiled.variant_states.len() {
-                let Some((modified, label)) = &compiled.variant_states[idx] else {
-                    continue;
-                };
-                if compiled.pack_variants[idx].is_some() {
-                    continue;
-                }
-                if *modified == compiled.state {
-                    compiled.pack_variants[idx] = Some(CachedVariant::Base);
-                    continue;
-                }
-                let frag = compiled
-                    .pack_fragment_shader
-                    .as_ref()
-                    .unwrap_or(&compiled.fragment_shader);
-                compiled.pack_variants[idx] = Some(
-                    match Self::build_render_pipeline(
-                        device,
-                        &format!("{label}/pack"),
-                        &compiled.pipeline_layout,
-                        &compiled.vertex_shader,
-                        frag,
-                        &compiled.vertex_layouts,
-                        *modified,
-                        &compiled.color_targets,
-                        target,
-                    ) {
-                        Ok(pipeline) => CachedVariant::Compiled(pipeline),
-                        Err(error) => {
-                            log::warn!(
-                                "Sunrise: pipeline modifier variant {label} refused for shader-pack target {format:?}: {error}"
-                            );
-                            CachedVariant::Refused
-                        }
+                match Self::build_render_pipeline(
+                    device,
+                    &format!("{label}/pack"),
+                    &pack.pipeline_layout,
+                    &source.vertex_shader,
+                    source
+                        .pack_fragment_shader
+                        .as_ref()
+                        .unwrap_or(&source.fragment_shader),
+                    &source.vertex_layouts,
+                    modified,
+                    &source.recipe.color_targets,
+                    TargetState {
+                        color_formats: std::slice::from_ref(&format),
+                        depth_format: Some(wgpu::TextureFormat::Depth32Float),
+                        force_depth_attachment: false,
+                        standard_z: true,
+                        write_mask: if rgb {
+                            wgpu::ColorWrites::COLOR
+                        } else {
+                            wgpu::ColorWrites::ALL
+                        },
                     },
-                );
-            }
+                ) {
+                    Ok(pipeline) => CachedVariant::Compiled(pipeline),
+                    Err(error) => {
+                        log::warn!(
+                            "Sunrise: pipeline modifier variant {label} refused for shader-pack target {format:?}: {error}"
+                        );
+                        CachedVariant::Refused
+                    }
+                }
+            };
+            pack.variants[idx] = Some(result);
+        }
+    }
+
+    fn warn_prepare_error(&mut self, slot: usize, error: PipelineDrawError) {
+        if self.warned_variants.insert(slot) {
+            log::warn!("Sunrise: mod pipeline slot {slot} refused in preparation: {error:?}");
         }
     }
 
@@ -2324,7 +2274,10 @@ impl ModPipelines {
         set: &Pipelines,
         textures: Option<TextureSources<'_>>,
     ) -> Result<(), String> {
-        self.build_with(set, |this, built| this.pipeline(device, built, textures))?;
+        self.build_with(set, |this, built| {
+            let source = this.pipeline_source(device, built, textures)?;
+            this.compile(device, source, &VariantTarget::World, 0, None)
+        })?;
         self.compute.build(device, set.compute());
         Ok(())
     }
@@ -2332,7 +2285,7 @@ impl ModPipelines {
     fn build_with(
         &mut self,
         set: &Pipelines,
-        compile: impl Fn(&Self, &Built) -> Result<Compiled, String>,
+        compile: impl Fn(&Self, &Arc<Built>) -> Result<Compiled, String>,
     ) -> Result<(), String> {
         if set.generation() == self.generation {
             return Ok(());
@@ -2368,13 +2321,11 @@ impl ModPipelines {
             }
         }
         self.generation = set.generation();
-        self.oit_generation = 0;
         self.pipelines = pipelines;
-        self.built = set.built().to_vec();
-        self.masked.clear();
+        self.variants.clear();
+        self.warned_variants.clear();
         self.variant_ids.clear();
-        self.pack_pipelines = None;
-        self.offscreen_pipelines.clear();
+        self.pack_target = None;
         self.set1_bind_group_cache.clear();
         self.warned_storage_conflicts.clear();
         self.warned_target_conflicts.clear();
@@ -2391,8 +2342,9 @@ impl ModPipelines {
             .map(|slot| {
                 let c = slot.as_ref()?;
                 Some(sunrise_render_shaderpack::pack_post::ModVertexStage {
-                    module: c.vertex_module.clone(),
+                    module: c.source.recipe.program.vertex.clone(),
                     buffers: c
+                        .source
                         .vertex_layouts
                         .iter()
                         .map(|l| sunrise_render_shaderpack::pack_post::ModVertexBuffer {
@@ -2402,7 +2354,7 @@ impl ModPipelines {
                             attributes: l.attributes.clone(),
                         })
                         .collect(),
-                    globals_layout: c.globals_layout.clone(),
+                    globals_layout: c.source.globals_layout.clone(),
                     set1_layout: c.set1_layout.clone(),
                 })
             })
@@ -2427,13 +2379,17 @@ impl ModPipelines {
         let Some(samples) = samples else {
             return;
         };
-        if samples.generation == self.oit_generation {
-            return;
-        }
-        for compiled in self.pipelines.iter_mut().flatten() {
+        for compiled in self.pipelines.iter_mut().flatten().chain(
+            self.variants
+                .values_mut()
+                .filter_map(|entry| entry.as_mut().ok()),
+        ) {
             let Some(oit) = compiled.oit.as_mut() else {
                 continue;
             };
+            if oit.group_generation == Some(samples.generation) {
+                continue;
+            }
             for stage in &mut oit.stages {
                 let mut entries = Vec::new();
                 for b in 0..4u32 {
@@ -2484,8 +2440,8 @@ impl ModPipelines {
                     entries: &entries,
                 }));
             }
+            oit.group_generation = Some(samples.generation);
         }
-        self.oit_generation = samples.generation;
     }
 
     /// The stable variant id of a modifier slot sequence (`1..`), assigned on first sight.
@@ -2517,13 +2473,14 @@ impl ModPipelines {
         if compiled.variants[idx].is_some() {
             return;
         }
-        let modified = ModifierStacks::apply_slots(slots, compiled.state, defs);
-        let label = ModifierStacks::label_slots(slots, &compiled.id.to_string(), defs);
+        let modified = ModifierStacks::apply_slots(slots, compiled.source.recipe.state, defs);
+        let label =
+            ModifierStacks::label_slots(slots, &compiled.source.recipe.id.to_string(), defs);
         if compiled.variant_states.len() <= idx {
             compiled.variant_states.resize_with(idx + 1, || None);
         }
         compiled.variant_states[idx] = Some((modified, label.clone()));
-        if modified == compiled.state {
+        if modified == compiled.source.recipe.state {
             compiled.variants[idx] = Some(CachedVariant::Base);
             return;
         }
@@ -2532,11 +2489,11 @@ impl ModPipelines {
             device,
             &label,
             &compiled.pipeline_layout,
-            &compiled.vertex_shader,
-            &compiled.fragment_shader,
-            &compiled.vertex_layouts,
+            &compiled.source.vertex_shader,
+            &compiled.source.fragment_shader,
+            &compiled.source.vertex_layouts,
             modified,
-            &compiled.color_targets,
+            &compiled.source.recipe.color_targets,
             TargetState {
                 color_formats: &color_formats,
                 depth_format: Some(wgpu::TextureFormat::Depth32Float),
@@ -2578,7 +2535,7 @@ impl ModPipelines {
         if oit_stage.variants[idx].is_some() {
             return;
         }
-        let modified = ModifierStacks::apply_slots(slots, compiled.state, defs);
+        let modified = ModifierStacks::apply_slots(slots, compiled.source.recipe.state, defs);
         let depth_key = |ds: Option<mod_api::DepthState>| {
             ds.map(|d| {
                 (
@@ -2588,17 +2545,18 @@ impl ModPipelines {
                 )
             })
         };
-        if depth_key(modified.depth_stencil) == depth_key(compiled.state.depth_stencil)
-            && modified.cull == compiled.state.cull
-            && modified.polygon == compiled.state.polygon
-            && modified.topology == compiled.state.topology
+        if depth_key(modified.depth_stencil)
+            == depth_key(compiled.source.recipe.state.depth_stencil)
+            && modified.cull == compiled.source.recipe.state.cull
+            && modified.polygon == compiled.source.recipe.state.polygon
+            && modified.topology == compiled.source.recipe.state.topology
         {
             oit_stage.variants[idx] = Some(CachedVariant::Base);
             return;
         }
         let label = format!(
             "{}/oit/{stage_idx}",
-            ModifierStacks::label_slots(slots, &compiled.id.to_string(), defs)
+            ModifierStacks::label_slots(slots, &compiled.source.recipe.id.to_string(), defs)
         );
         match Self::build_oit_render_pipeline(
             device,
@@ -2606,7 +2564,7 @@ impl ModPipelines {
             &oit_stage.pipeline_layout,
             &oit_stage.vertex_shader,
             &oit_stage.fragment_shader,
-            &compiled.vertex_layouts,
+            &compiled.source.vertex_layouts,
             modified,
             super::oit::Stage::ALL[stage_idx],
         ) {
@@ -2718,12 +2676,19 @@ impl ModPipelines {
         }
         let mut max_index_quads = 0u32;
         let mut max_fan_verts = 0u32;
-        for cmd in batch.draws {
-            let mask = draw_mask_in(device, &self.pipelines, cmd.slot, cmd.bindings.as_ref());
-            self.ensure_masked(device, cmd.slot as usize, mask);
+        for (submitted_index, cmd) in batch.draws.iter().enumerate() {
+            let mask = cmd
+                .bindings
+                .as_ref()
+                .map_or(0, |bindings| bindings.layout_mask);
+            let slot = cmd.slot as usize;
+            if let Err(error) = self.ensure_variant(device, (slot, mask, VariantTarget::World)) {
+                self.warn_prepare_error(slot, error);
+                continue;
+            }
             let Some(compiled) = compiled_mut_in(
                 &mut self.pipelines,
-                &mut self.masked,
+                &mut self.variants,
                 cmd.slot as usize,
                 mask,
             ) else {
@@ -2731,7 +2696,7 @@ impl ModPipelines {
             };
             let (variant, topology) = match batch.modifiers {
                 _ if cmd.modifier_stack == ModifierStacks::EMPTY => {
-                    (ModifierStacks::EMPTY, compiled.state.topology)
+                    (ModifierStacks::EMPTY, compiled.source.recipe.state.topology)
                 }
                 Some(stacks) => {
                     let slots = stacks.get(cmd.modifier_stack);
@@ -2744,11 +2709,15 @@ impl ModPipelines {
                         slots,
                         modifier_defs,
                     );
-                    let state = ModifierStacks::apply_slots(slots, compiled.state, modifier_defs);
+                    let state = ModifierStacks::apply_slots(
+                        slots,
+                        compiled.source.recipe.state,
+                        modifier_defs,
+                    );
                     (variant, state.topology)
                 }
                 // A stack with no table to resolve it draws nothing.
-                None => (u32::MAX, compiled.state.topology),
+                None => (u32::MAX, compiled.source.recipe.state.topology),
             };
             if let DrawRange::Vertices(ref range) = cmd.draw.range {
                 let count = range.end.saturating_sub(range.start);
@@ -2763,6 +2732,7 @@ impl ModPipelines {
                 }
             }
             self.draws.push(PreparedDraw {
+                submitted_index,
                 slot: cmd.slot as usize,
                 stage: cmd.stage as usize,
                 modifier_stack: variant,
@@ -2773,15 +2743,22 @@ impl ModPipelines {
                 set1_bind_group: None,
             });
         }
-        for cmd in batch.oit_draws {
+        for (submitted_index, cmd) in batch.oit_draws.iter().enumerate() {
             if cmd.stage >= 3 {
                 continue;
             }
-            let mask = draw_mask_in(device, &self.pipelines, cmd.slot, cmd.bindings.as_ref());
-            self.ensure_masked(device, cmd.slot as usize, mask);
+            let mask = cmd
+                .bindings
+                .as_ref()
+                .map_or(0, |bindings| bindings.layout_mask);
+            let slot = cmd.slot as usize;
+            if let Err(error) = self.ensure_variant(device, (slot, mask, VariantTarget::World)) {
+                self.warn_prepare_error(slot, error);
+                continue;
+            }
             let Some(compiled) = compiled_mut_in(
                 &mut self.pipelines,
-                &mut self.masked,
+                &mut self.variants,
                 cmd.slot as usize,
                 mask,
             ) else {
@@ -2792,7 +2769,7 @@ impl ModPipelines {
             }
             let (variant, topology) = match batch.modifiers {
                 _ if cmd.modifier_stack == ModifierStacks::EMPTY => {
-                    (ModifierStacks::EMPTY, compiled.state.topology)
+                    (ModifierStacks::EMPTY, compiled.source.recipe.state.topology)
                 }
                 Some(stacks) => {
                     let slots = stacks.get(cmd.modifier_stack);
@@ -2805,11 +2782,15 @@ impl ModPipelines {
                         slots,
                         modifier_defs,
                     );
-                    let state = ModifierStacks::apply_slots(slots, compiled.state, modifier_defs);
+                    let state = ModifierStacks::apply_slots(
+                        slots,
+                        compiled.source.recipe.state,
+                        modifier_defs,
+                    );
                     (variant, state.topology)
                 }
                 // A stack with no table to resolve it draws nothing.
-                None => (u32::MAX, compiled.state.topology),
+                None => (u32::MAX, compiled.source.recipe.state.topology),
             };
             if let DrawRange::Vertices(ref range) = cmd.draw.range {
                 let count = range.end.saturating_sub(range.start);
@@ -2824,6 +2805,7 @@ impl ModPipelines {
                 }
             }
             self.oit_draws.push(PreparedDraw {
+                submitted_index,
                 slot: cmd.slot as usize,
                 stage: cmd.stage as usize,
                 modifier_stack: variant,
@@ -2939,7 +2921,7 @@ impl ModPipelines {
             };
             if let DrawRange::Vertices(ref range) = cmd.draw.range
                 && matches!(
-                    compiled.state.topology,
+                    compiled.source.recipe.state.topology,
                     PrimitiveTopology::Quads | PrimitiveTopology::Lines
                 )
             {
@@ -2947,52 +2929,6 @@ impl ModPipelines {
             }
         }
         max_quads
-    }
-
-    /// Ensure an offscreen `wgpu::RenderPipeline` variant exists for
-    /// `(slot, mask, color_formats, depth_format)`.
-    fn ensure_offscreen_pipeline(
-        &mut self,
-        device: &wgpu::Device,
-        slot: usize,
-        mask: u64,
-        color_formats: &[wgpu::TextureFormat],
-        depth_format: Option<wgpu::TextureFormat>,
-    ) {
-        let key = (slot, mask, color_formats.to_vec(), depth_format);
-        if self.offscreen_pipelines.contains_key(&key) {
-            return;
-        }
-        let compiled_opt = compiled_in(&self.pipelines, &self.masked, slot, mask);
-        let built = compiled_opt.and_then(|c| {
-            let target = TargetState {
-                color_formats,
-                depth_format,
-                force_depth_attachment: depth_format.is_some(),
-                standard_z: false,
-                write_mask: wgpu::ColorWrites::ALL,
-            };
-            match Self::build_render_pipeline(
-                device,
-                &format!("{}/offscreen", c.id),
-                &c.pipeline_layout,
-                &c.vertex_shader,
-                &c.fragment_shader,
-                &c.vertex_layouts,
-                c.state,
-                &c.color_targets,
-                target,
-            ) {
-                Ok(pipeline) => Some(pipeline),
-                Err(error) => {
-                    log::warn!(
-                        "Sunrise: mod pipeline slot {slot} refused for offscreen target ({color_formats:?}, {depth_format:?}): {error}"
-                    );
-                    None
-                }
-            }
-        });
-        self.offscreen_pipelines.insert(key, built);
     }
 
     /// Record an offscreen render pass targeting `data.target` into `encoder`.
@@ -3011,25 +2947,29 @@ impl ModPipelines {
         use wgpu::util::DeviceExt;
         let upload: Upload<'_> = &mut |buffer, bytes| queue.write_buffer(buffer, 0, bytes);
         let mut max_fan_verts = 0u32;
-        let mut masks = Vec::with_capacity(data.draws.len());
+        let target =
+            VariantTarget::Offscreen(data.target.color_formats.clone(), data.target.depth_format);
+        let mut ready = Vec::with_capacity(data.draws.len());
         for cmd in data.draws {
             let slot = cmd.slot as usize;
-            let mask = draw_mask_in(device, &self.pipelines, cmd.slot, cmd.bindings.as_ref());
-            self.ensure_masked(device, slot, mask);
-            masks.push(mask);
-            self.ensure_offscreen_pipeline(
-                device,
-                slot,
-                mask,
-                &data.target.color_formats,
-                data.target.depth_format,
-            );
-            if let Some(Some(compiled)) = self.pipelines.get(slot)
-                && compiled.state.topology == PrimitiveTopology::TriangleFan
+            let mask = cmd
+                .bindings
+                .as_ref()
+                .map_or(0, |bindings| bindings.layout_mask);
+            let key = (slot, mask, target.clone());
+            if let Err(error) = self.ensure_variant(device, key.clone()) {
+                self.warn_prepare_error(slot, error);
+                continue;
+            }
+            let compiled = self.variants[&key]
+                .as_ref()
+                .expect("prepared offscreen variant");
+            if compiled.source.recipe.state.topology == PrimitiveTopology::TriangleFan
                 && let DrawRange::Vertices(ref range) = cmd.draw.range
             {
                 max_fan_verts = max_fan_verts.max(range.end.saturating_sub(range.start));
             }
+            ready.push((cmd, key));
         }
         if max_fan_verts >= 3 {
             self.fan_indices
@@ -3071,15 +3011,12 @@ impl ModPipelines {
         let mut inline_staging: Vec<u8> = Vec::new();
         let mut texel_staging: Vec<u8> = Vec::new();
         let mut staged_meta: Vec<Option<(Vec<(u32, u64)>, Vec<(u64, u64)>)>> =
-            Vec::with_capacity(data.draws.len());
+            Vec::with_capacity(ready.len());
 
-        for (cmd, &mask) in data.draws.iter().zip(&masks) {
-            let Some(compiled) =
-                compiled_in(&self.pipelines, &self.masked, cmd.slot as usize, mask)
-            else {
-                staged_meta.push(None);
-                continue;
-            };
+        for (cmd, key) in &ready {
+            let compiled = self.variants[key]
+                .as_ref()
+                .expect("prepared offscreen variant");
             if compiled.set1_layout.is_none() {
                 staged_meta.push(None);
                 continue;
@@ -3174,13 +3111,11 @@ impl ModPipelines {
         let inline_base = inline_base.unwrap_or(0) as u32;
         let texel_base = texel_base.unwrap_or(0);
 
-        let mut prepared_draws: Vec<PreparedDraw> = Vec::with_capacity(data.draws.len());
-        for ((cmd, &mask), meta) in data.draws.iter().zip(&masks).zip(staged_meta) {
-            let Some(compiled) =
-                compiled_in(&self.pipelines, &self.masked, cmd.slot as usize, mask)
-            else {
-                continue;
-            };
+        let mut prepared_draws = Vec::with_capacity(ready.len());
+        for (submitted_index, ((cmd, key), meta)) in ready.iter().zip(staged_meta).enumerate() {
+            let compiled = self.variants[key]
+                .as_ref()
+                .expect("prepared offscreen variant");
             let set1_bind_group = if let Some(ref set1_layout) = compiled.set1_layout {
                 let (Some(bindings), Some((inline_spans, texel_spans))) = (&cmd.bindings, meta)
                 else {
@@ -3319,32 +3254,36 @@ impl ModPipelines {
             } else {
                 None
             };
-            prepared_draws.push(PreparedDraw {
-                slot: cmd.slot as usize,
-                stage: cmd.stage as usize,
-                modifier_stack: cmd.modifier_stack,
-                topology: compiled.state.topology,
-                draw: cmd.draw.clone(),
-                source: match &cmd.source {
-                    PipelineDrawSource::Transient {
-                        vertex_ranges,
-                        index_range,
-                    } => PipelineDrawSource::Transient {
-                        vertex_ranges: vertex_ranges
-                            .iter()
-                            .map(|(binding, range)| {
-                                (*binding, range.start + vertex_base..range.end + vertex_base)
-                            })
-                            .collect(),
-                        index_range: index_range.as_ref().map(|(format, range)| {
-                            (*format, range.start + index_base..range.end + index_base)
-                        }),
+            prepared_draws.push((
+                compiled,
+                PreparedDraw {
+                    submitted_index,
+                    slot: cmd.slot as usize,
+                    stage: cmd.stage as usize,
+                    modifier_stack: cmd.modifier_stack,
+                    topology: compiled.source.recipe.state.topology,
+                    draw: cmd.draw.clone(),
+                    source: match &cmd.source {
+                        PipelineDrawSource::Transient {
+                            vertex_ranges,
+                            index_range,
+                        } => PipelineDrawSource::Transient {
+                            vertex_ranges: vertex_ranges
+                                .iter()
+                                .map(|(binding, range)| {
+                                    (*binding, range.start + vertex_base..range.end + vertex_base)
+                                })
+                                .collect(),
+                            index_range: index_range.as_ref().map(|(format, range)| {
+                                (*format, range.start + index_base..range.end + index_base)
+                            }),
+                        },
+                        retained => retained.clone(),
                     },
-                    retained => retained.clone(),
+                    layout_mask: key.1,
+                    set1_bind_group,
                 },
-                layout_mask: mask,
-                set1_bind_group,
-            });
+            ));
         }
 
         // Patch vanilla uniform blocks for this offscreen pass (ScreenSize, optional ProjMat,
@@ -3426,23 +3365,9 @@ impl ModPipelines {
                 depth_stencil_attachment,
                 ..Default::default()
             });
-            for cmd in &prepared_draws {
-                let Some(compiled) =
-                    compiled_in(&self.pipelines, &self.masked, cmd.slot, cmd.layout_mask)
-                else {
-                    continue;
-                };
-                let key = (
-                    cmd.slot,
-                    cmd.layout_mask,
-                    data.target.color_formats.clone(),
-                    data.target.depth_format,
-                );
-                let Some(Some(pipeline)) = self.offscreen_pipelines.get(&key) else {
-                    continue;
-                };
-                rpass.set_pipeline(pipeline);
-                rpass.set_bind_group(0, &compiled.group, &[]);
+            for (compiled, cmd) in &prepared_draws {
+                rpass.set_pipeline(&compiled.pipeline);
+                rpass.set_bind_group(0, &compiled.source.group, &[]);
                 if compiled.set1_layout.is_some() {
                     let Some((ref bg, ref offsets)) = cmd.set1_bind_group else {
                         continue;
@@ -3511,12 +3436,7 @@ impl ModPipelines {
             }
         }
         for cmd in &self.draws {
-            // A draw on the nearest-sampler variant of its pipeline has a set-1 group the pack's
-            // pass, built on the pipeline as compiled, cannot take.
-            if !bound_slots.contains(&cmd.slot)
-                || cmd.layout_mask != 0
-                || cmd.draw.instances.is_empty()
-            {
+            if !bound_slots.contains(&cmd.slot) || cmd.draw.instances.is_empty() {
                 continue;
             }
             let (vertex_buffers, explicit_index) = match &cmd.source {
@@ -3650,7 +3570,7 @@ impl ModPipelines {
     /// Slot's frame-uniform group for a shader pack's target.
     fn pack_globals(&self, slot: usize) -> Option<wgpu::BindGroup> {
         let compiled = self.pipelines.get(slot)?.as_ref()?;
-        Some(compiled.pack_group.clone())
+        Some(compiled.source.pack_group.clone())
     }
 
     /// Stage all per-frame inline uniforms, push constants, and texel buffers from `batch` into
@@ -3677,7 +3597,7 @@ impl ModPipelines {
             scope: u32,
             prepared_idx: usize,
             slot: usize,
-            /// The draw's [`unfilterable_mask`]: which pipeline variant it draws with.
+            /// The draw's submitted sampler layout.
             mask: u64,
             inline_spans: Vec<(u32, u64)>,
             texel_spans: Vec<(u64, u64)>,
@@ -3686,25 +3606,14 @@ impl ModPipelines {
 
         let mut stage_list = |is_oit: bool,
                               cmds: &'b [PipelineDraw],
+                              prepared: &[PreparedDraw],
                               inline_pool: &[u8],
                               texel_pool: &[u8]| {
-            let mut prepared_idx = 0usize;
-            for cmd in cmds {
-                let mask = draw_mask_in(device, &self.pipelines, cmd.slot, cmd.bindings.as_ref());
-                let compiled = compiled_in(&self.pipelines, &self.masked, cmd.slot as usize, mask);
-                let valid = if is_oit {
-                    cmd.stage < 3 && compiled.is_some_and(|c| c.oit.is_some())
-                } else {
-                    compiled.is_some()
-                };
-                if !valid {
-                    continue;
-                }
-                let idx = prepared_idx;
-                prepared_idx += 1;
-                let Some(compiled) = compiled else {
-                    continue;
-                };
+            for (idx, prepared) in prepared.iter().enumerate() {
+                let cmd = &cmds[prepared.submitted_index];
+                let mask = prepared.layout_mask;
+                let compiled = compiled_in(&self.pipelines, &self.variants, prepared.slot, mask)
+                    .expect("prepared world variant");
                 if compiled.set1_layout.is_none() {
                     continue;
                 }
@@ -3804,10 +3713,17 @@ impl ModPipelines {
             }
         };
 
-        stage_list(false, batch.draws, batch.inline_uniforms, batch.texel_data);
+        stage_list(
+            false,
+            batch.draws,
+            &self.draws,
+            batch.inline_uniforms,
+            batch.texel_data,
+        );
         stage_list(
             true,
             batch.oit_draws,
+            &self.oit_draws,
             batch.oit_inline_uniforms,
             batch.oit_texel_data,
         );
@@ -3867,7 +3783,7 @@ impl ModPipelines {
         self.storage_uses.clear();
         self.storage_conflicts.clear();
         for (sd, bindings) in &staged {
-            let Some(compiled) = compiled_in(&self.pipelines, &self.masked, sd.slot, sd.mask)
+            let Some(compiled) = compiled_in(&self.pipelines, &self.variants, sd.slot, sd.mask)
             else {
                 continue;
             };
@@ -3936,7 +3852,7 @@ impl ModPipelines {
         // dropped with the first frame that no longer draws them.
         let mut previous = std::mem::take(&mut self.set1_bind_group_cache);
         for (sd, bindings) in staged {
-            let Some(compiled) = compiled_in(&self.pipelines, &self.masked, sd.slot, sd.mask)
+            let Some(compiled) = compiled_in(&self.pipelines, &self.variants, sd.slot, sd.mask)
             else {
                 continue;
             };
@@ -4031,6 +3947,7 @@ impl ModPipelines {
 
             let cache_key = Set1CacheKey {
                 slot: sd.slot,
+                layout_mask: sd.mask,
                 generation: self.generation,
                 resources: key_resources,
             };
@@ -4312,8 +4229,12 @@ impl ModPipelines {
             indices,
             false,
             ranges.iter().flat_map(|r| {
-                let start = (r.start as usize).min(self.draws.len());
-                let end = (r.end as usize).min(self.draws.len());
+                let start = self
+                    .draws
+                    .partition_point(|cmd| cmd.submitted_index < r.start as usize);
+                let end = self
+                    .draws
+                    .partition_point(|cmd| cmd.submitted_index < r.end as usize);
                 self.draws[start..end].iter()
             }),
         );
@@ -4378,8 +4299,12 @@ impl ModPipelines {
             stage_idx,
             indices,
             ranges.iter().flat_map(|r| {
-                let start = (r.start as usize).min(self.oit_draws.len());
-                let end = (r.end as usize).min(self.oit_draws.len());
+                let start = self
+                    .oit_draws
+                    .partition_point(|cmd| cmd.submitted_index < r.start as usize);
+                let end = self
+                    .oit_draws
+                    .partition_point(|cmd| cmd.submitted_index < r.end as usize);
                 self.oit_draws[start..end]
                     .iter()
                     .filter(move |cmd| cmd.stage == stage_idx)
@@ -4572,62 +4497,42 @@ impl ModPipelines {
         pack: bool,
         cmds: impl Iterator<Item = &'a PreparedDraw>,
     ) {
-        let pack_list = if pack {
-            let Some((_, list)) = &self.pack_pipelines else {
+        let pack_target = if pack {
+            let Some((format, rgb)) = self.pack_target else {
                 return;
             };
-            Some(list)
+            Some(VariantTarget::Pack(format, rgb))
         } else {
             None
         };
         for cmd in cmds {
-            // The pack's pipelines are built on the layout as compiled, which a draw needing
-            // the nearest-sampler variant cannot use.
-            if pack && cmd.layout_mask != 0 {
-                continue;
-            }
-            let Some(compiled) =
-                compiled_in(&self.pipelines, &self.masked, cmd.slot, cmd.layout_mask)
-            else {
-                continue;
+            let compiled = match &pack_target {
+                Some(target) => self
+                    .variants
+                    .get(&(cmd.slot, cmd.layout_mask, target.clone()))
+                    .and_then(|entry| entry.as_ref().ok()),
+                None => compiled_in(&self.pipelines, &self.variants, cmd.slot, cmd.layout_mask),
             };
-            if compiled.state.depth_stencil.is_none() {
+            let Some(compiled) = compiled else { continue };
+            if compiled.source.recipe.state.depth_stencil.is_none() {
                 continue;
             }
-            let pipeline = match pack_list {
-                Some(list) => {
-                    let Some(Some(base)) = list.get(cmd.slot) else {
-                        continue;
-                    };
-                    if cmd.modifier_stack == ModifierStacks::EMPTY {
-                        base
-                    } else {
-                        match compiled.pack_variants.get(cmd.modifier_stack as usize) {
-                            Some(Some(CachedVariant::Base)) => base,
-                            Some(Some(CachedVariant::Compiled(p))) => p,
-                            _ => continue,
-                        }
-                    }
-                }
-                None => {
-                    if cmd.modifier_stack == ModifierStacks::EMPTY {
-                        &compiled.pipeline
-                    } else {
-                        match compiled.variants.get(cmd.modifier_stack as usize) {
-                            Some(Some(CachedVariant::Base)) => &compiled.pipeline,
-                            Some(Some(CachedVariant::Compiled(p))) => p,
-                            _ => continue,
-                        }
-                    }
+            let pipeline = if cmd.modifier_stack == ModifierStacks::EMPTY {
+                &compiled.pipeline
+            } else {
+                match compiled.variants.get(cmd.modifier_stack as usize) {
+                    Some(Some(CachedVariant::Base)) => &compiled.pipeline,
+                    Some(Some(CachedVariant::Compiled(p))) => p,
+                    _ => continue,
                 }
             };
             pass.set_pipeline(pipeline);
             pass.set_bind_group(
                 0,
                 if pack {
-                    &compiled.pack_group
+                    &compiled.source.pack_group
                 } else {
-                    &compiled.group
+                    &compiled.source.group
                 },
                 &[],
             );
@@ -4656,7 +4561,7 @@ impl ModPipelines {
     ) {
         for cmd in cmds {
             let Some(compiled) =
-                compiled_in(&self.pipelines, &self.masked, cmd.slot, cmd.layout_mask)
+                compiled_in(&self.pipelines, &self.variants, cmd.slot, cmd.layout_mask)
             else {
                 continue;
             };
@@ -4742,47 +4647,34 @@ impl ModPipelines {
         pack: bool,
         runs: impl Iterator<Item = (&'a Run, std::ops::Range<u32>)>,
     ) {
-        let pack_list = if pack {
-            let Some((_, list)) = &self.pack_pipelines else {
+        let pack_target = if pack {
+            let Some((format, rgb)) = self.pack_target else {
                 return;
             };
-            Some(list)
+            Some(VariantTarget::Pack(format, rgb))
         } else {
             None
         };
         let mut index_bound = false;
         for (run, range) in runs {
-            let Some(Some(compiled)) = self.pipelines.get(run.slot) else {
-                continue;
+            let compiled = match &pack_target {
+                Some(target) => self
+                    .variants
+                    .get(&(run.slot, 0, target.clone()))
+                    .and_then(|entry| entry.as_ref().ok()),
+                None => compiled_in(&self.pipelines, &self.variants, run.slot, 0),
             };
-            if compiled.state.depth_stencil.is_none() {
+            let Some(compiled) = compiled else { continue };
+            if compiled.source.recipe.state.depth_stencil.is_none() {
                 continue;
             }
-            let pipeline = match pack_list {
-                Some(list) => {
-                    let Some(Some(base)) = list.get(run.slot) else {
-                        continue;
-                    };
-                    if run.modifier_stack == ModifierStacks::EMPTY {
-                        base
-                    } else {
-                        match compiled.pack_variants.get(run.modifier_stack as usize) {
-                            Some(Some(CachedVariant::Base)) => base,
-                            Some(Some(CachedVariant::Compiled(p))) => p,
-                            _ => continue,
-                        }
-                    }
-                }
-                None => {
-                    if run.modifier_stack == ModifierStacks::EMPTY {
-                        &compiled.pipeline
-                    } else {
-                        match compiled.variants.get(run.modifier_stack as usize) {
-                            Some(Some(CachedVariant::Base)) => &compiled.pipeline,
-                            Some(Some(CachedVariant::Compiled(p))) => p,
-                            _ => continue,
-                        }
-                    }
+            let pipeline = if run.modifier_stack == ModifierStacks::EMPTY {
+                &compiled.pipeline
+            } else {
+                match compiled.variants.get(run.modifier_stack as usize) {
+                    Some(Some(CachedVariant::Base)) => &compiled.pipeline,
+                    Some(Some(CachedVariant::Compiled(p))) => p,
+                    _ => continue,
                 }
             };
             if !index_bound {
@@ -4793,9 +4685,9 @@ impl ModPipelines {
             pass.set_bind_group(
                 0,
                 if pack {
-                    &compiled.pack_group
+                    &compiled.source.pack_group
                 } else {
-                    &compiled.group
+                    &compiled.source.group
                 },
                 &[],
             );
@@ -4845,7 +4737,6 @@ mod tests {
     /// target) is read with nearest filtering whatever the sampler says (#6033).
     #[test]
     fn a_sampler_without_max_lod_blends_mip_levels_as_vanilla_does() {
-        use crate::gfx::mod_frame_graph::validate_transient_depth_binding;
         let default = Sampler::new(SamplerFilter::Nearest, SamplerAddress::ClampToEdge);
         assert!(blends_mip_levels(&default) && sampler_filtering(&default));
         let mut base_only = default;
@@ -4860,7 +4751,15 @@ mod tests {
             [4, 4],
             mod_api::RenderTargetDepth::Depth32Float,
         );
-        assert!(validate_transient_depth_binding(&depth));
+        assert_eq!(
+            unfilterable_sample_bit(
+                0,
+                &default,
+                super::super::mod_render_targets::wgpu_depth_format(depth.depth).unwrap(),
+                true
+            ),
+            1
+        );
     }
     use crate::gfx::world_primitives::{self, STAGES, WorldPrimitives};
     use glam::Vec3;
@@ -5003,11 +4902,22 @@ void main() {
     /// Draws `batch`'s stages up to `last` over the cleared frame of `format`, behind a wall
     /// 5 blocks ahead, and reads the frame back as RGBA floats.
     fn render(
+        gpu: &(wgpu::Device, wgpu::Queue),
+        primitives: &mut WorldPrimitives,
+        format: wgpu::TextureFormat,
+        batch: Batch<'_>,
+        last: usize,
+    ) -> impl Fn(u32, u32) -> [f32; 4] + use<> {
+        render_target(gpu, primitives, format, batch, last, false)
+    }
+
+    fn render_target(
         (device, queue): &(wgpu::Device, wgpu::Queue),
         primitives: &mut WorldPrimitives,
         format: wgpu::TextureFormat,
         batch: Batch<'_>,
         last: usize,
+        pack: bool,
     ) -> impl Fn(u32, u32) -> [f32; 4] + use<> {
         let texture = |size: u32, format, usage| {
             device.create_texture(&wgpu::TextureDescriptor {
@@ -5086,9 +4996,17 @@ void main() {
                 }),
                 ..Default::default()
             });
-            if drawn {
+            if drawn && !pack {
                 primitives.draw_through(&mut pass, &mut 0, last);
             }
+        }
+        if pack {
+            primitives.prepare_pack_pass(device, format, false, false);
+            assert!(primitives.draw_pack_custom(
+                &mut encoder,
+                &color.create_view(&Default::default()),
+                &depth.create_view(&Default::default()),
+            ));
         }
         let float = format == wgpu::TextureFormat::Rgba16Float;
         let texel = if float { 8 } else { 4 };
@@ -5150,7 +5068,7 @@ void main() {
         let id = Identifier::parse("test:p0").unwrap();
         let handle = set.resolve(&id).unwrap();
         let renderer = ModPipelines::new(&device, (wgpu::TextureFormat::Rgba8Unorm, false));
-        let mut broken = set.built()[0].clone().unwrap();
+        let mut broken = set.built()[0].as_deref().unwrap().clone();
         broken.owner = "owning_mod".into();
         assert_eq!(
             gpu_refusal(&broken, "compiler refusal"),
@@ -5162,7 +5080,10 @@ void main() {
             naga::Module::default(),
             Vec::new(),
         ));
-        assert!(renderer.pipeline(&device, &broken, None).is_err());
+        let result = renderer
+            .pipeline_source(&device, &Arc::new(broken), None)
+            .and_then(|source| renderer.compile(&device, source, &VariantTarget::World, 0, None));
+        assert!(result.is_err());
         assert!(set.invalidate(0));
         assert_eq!(set.resolve(&id), Err(mod_api::RenderPipelineError::Invalid));
         assert_eq!(set.slot(handle), Err(mod_api::RenderPipelineError::Invalid));
@@ -5633,8 +5554,22 @@ void main() {
             Err(mod_api::RenderPipelineError::Invalid),
             "a sprite the atlas lacks"
         );
-        assert!(primitives.pipelines.pipelines[0].as_ref().unwrap().textured);
-        assert!(!primitives.pipelines.pipelines[3].as_ref().unwrap().textured);
+        assert!(
+            primitives.pipelines.pipelines[0]
+                .as_ref()
+                .unwrap()
+                .source
+                .sprite
+                .is_some()
+        );
+        assert!(
+            !primitives.pipelines.pipelines[3]
+                .as_ref()
+                .unwrap()
+                .source
+                .sprite
+                .is_some()
+        );
         let mut vertices = Vec::new();
         for (row, slot) in [(0.0, 0), (16.0, 1), (32.0, 3)] {
             let mut quad = quad([0.0, row, 64.0, row + 16.0], 2.0, [255, 255, 255, 255]);
@@ -6241,14 +6176,14 @@ void main() {
             // Draw Triangles
             let tri_c = mod_pipelines.pipelines[0].as_ref().unwrap();
             pass.set_pipeline(&tri_c.pipeline);
-            pass.set_bind_group(0, &tri_c.group, &[]);
+            pass.set_bind_group(0, &tri_c.source.group, &[]);
             pass.set_vertex_buffer(0, tri_buf.slice(..));
             pass.draw(0..3, 0..1);
 
             // Draw DebugLines
             let line_c = mod_pipelines.pipelines[1].as_ref().unwrap();
             pass.set_pipeline(&line_c.pipeline);
-            pass.set_bind_group(0, &line_c.group, &[]);
+            pass.set_bind_group(0, &line_c.source.group, &[]);
             pass.set_vertex_buffer(0, line_buf.slice(..));
             pass.draw(0..2, 0..1);
         }
@@ -6990,6 +6925,7 @@ void main() {
                     index_range: None,
                 },
                 bindings: Some(ResolvedDrawBindings {
+                    layout_mask: 0,
                     entries: vec![
                         ResolvedSet1Entry::UniformBuffer {
                             id: ubo_id,
@@ -7014,6 +6950,7 @@ void main() {
                     index_range: None,
                 },
                 bindings: Some(ResolvedDrawBindings {
+                    layout_mask: 0,
                     entries: vec![
                         ResolvedSet1Entry::UniformBuffer {
                             id: ubo_id,
@@ -7064,6 +7001,7 @@ void main() {
                     index_range: None,
                 },
                 bindings: Some(ResolvedDrawBindings {
+                    layout_mask: 0,
                     entries: vec![
                         ResolvedSet1Entry::UniformBuffer {
                             id: ubo_id,
@@ -7210,6 +7148,7 @@ void main() {
                     index_range: None,
                 },
                 bindings: Some(ResolvedDrawBindings {
+                    layout_mask: 0,
                     entries: vec![ResolvedSet1Entry::StorageBuffer {
                         id: r.id,
                         buffer: r.buffer,
@@ -7688,6 +7627,7 @@ void main() {
                 index_range: None,
             },
             bindings: Some(ResolvedDrawBindings {
+                layout_mask: 0,
                 entries: vec![ResolvedSet1Entry::Texture {
                     view_id,
                     view,
@@ -7743,12 +7683,7 @@ void main() {
     /// the stored depth. `Sampler::new` blends mip levels, which wgpu refuses on a depth
     /// texture, so the engine reads the depth through a nearest sampler instead (#6033): the
     /// draw is not skipped.
-    fn draw_sampling_depth(
-        gpu: (wgpu::Device, wgpu::Queue),
-        view: wgpu::TextureView,
-        view_id: u64,
-    ) {
-        let device = &gpu.0;
+    fn sampled_quad_setup(fragment: &str, oit: bool) -> (Pipelines, [PipelineVertex; 4], Sampler) {
         let id = Identifier::parse("mod_c3:depth_tex").unwrap();
         let vsh = "#version 330\n\
             #include <minecraft:projection.glsl>\n\
@@ -7762,28 +7697,26 @@ void main() {
                 gl_Position = vec4(ndc, 0.5, 1.0);\n\
                 vUv = UV0;\n\
             }\n";
-        let fsh = "#version 330\n\
-            uniform sampler2D DepthTex;\n\
-            in vec2 vUv;\n\
-            out vec4 fragColor;\n\
-            void main() {\n\
-                fragColor = vec4(texture(DepthTex, vUv).r, 0.0, 0.0, 1.0);\n\
-            }\n";
-        let p = RenderPipeline::new(
+        let sampler = Sampler::new(SamplerFilter::Nearest, SamplerAddress::ClampToEdge);
+        let mut p = RenderPipeline::new(
             id.clone(),
             id,
-            PipelineBlend::Opaque,
-            mod_api::WorldDepth::ThroughWalls,
+            if oit {
+                PipelineBlend::Translucent
+            } else {
+                PipelineBlend::Opaque
+            },
+            WorldDepth::ThroughWalls,
         )
-        .sampler(
-            "DepthTex",
-            Sampler::new(SamplerFilter::Nearest, SamplerAddress::ClampToEdge),
-        );
+        .sampler("DepthTex", sampler);
+        if oit {
+            p = p.order_independent();
+        }
         let set = Pipelines::build(&[p], 1, |file| {
             if file.ends_with(".vsh") {
                 Ok(Some(vsh.to_owned()))
             } else if file.ends_with(".fsh") {
-                Ok(Some(fsh.to_owned()))
+                Ok(Some(fragment.to_owned()))
             } else {
                 Ok(sunrise_mod_pipeline::stubs::read(
                     file.strip_prefix("assets/")
@@ -7808,10 +7741,29 @@ void main() {
             corner(64.0, 64.0, [1.0, 1.0]),
             corner(64.0, 0.0, [1.0, 0.0]),
         ];
-        let vbytes = bytemuck::cast_slice(&quad);
-        let draw_cmd = PipelineDraw {
+        (set, quad, sampler)
+    }
+
+    const SAMPLE_DEPTH: &str = "#version 330
+\
+        uniform sampler2D DepthTex;
+\
+        in vec2 vUv;
+\
+        out vec4 fragColor;
+\
+        void main() { fragColor = vec4(texture(DepthTex, vUv).r, 0.0, 0.0, 1.0); }
+";
+
+    fn sampled_quad_draw(
+        entry: ResolvedSet1Entry,
+        mask: u64,
+        stage: usize,
+        vbytes: &[u8],
+    ) -> PipelineDraw {
+        PipelineDraw {
             slot: 0,
-            stage: 4,
+            stage: stage as u32,
             modifier_stack: 0,
             draw: MeshDraw::vertices(0..4),
             source: PipelineDrawSource::Transient {
@@ -7819,28 +7771,444 @@ void main() {
                 index_range: None,
             },
             bindings: Some(ResolvedDrawBindings {
-                entries: vec![ResolvedSet1Entry::Texture {
-                    view_id,
-                    view,
-                    mips: None,
-                }],
+                layout_mask: mask,
+                entries: vec![entry],
                 push_constants: None,
             }),
-        };
+        }
+    }
 
+    fn draw_sampling_depth(
+        gpu: &(wgpu::Device, wgpu::Queue),
+        view: wgpu::TextureView,
+        view_id: u64,
+    ) {
+        let (set, quad, sampler) = sampled_quad_setup(SAMPLE_DEPTH, false);
+        let vbytes = bytemuck::cast_slice(&quad);
+        let mask = unfilterable_sample_bit(0, &sampler, view.texture().format(), true);
+        let draw = sampled_quad_draw(
+            ResolvedSet1Entry::Texture {
+                view_id,
+                view,
+                mips: None,
+            },
+            mask,
+            4,
+            vbytes,
+        );
+        let format = wgpu::TextureFormat::Rgba8Unorm;
+        let mut primitives = WorldPrimitives::new(&gpu.0, (format, false));
+        let batch = Batch {
+            set: Some(&set),
+            draws: std::slice::from_ref(&draw),
+            transient_vertices: vbytes,
+            ..Default::default()
+        };
+        let at = render(gpu, &mut primitives, format, batch, STAGES - 1);
+        for (x, y) in [(8, 8), (32, 32), (56, 56)] {
+            assert_near(at(x, y), [63.75, 0.0, 0.0, 255.0], 1.5, "the depth, read");
+        }
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn a_deferred_direct_pack_draw_reads_depth_with_default_sampler() {
+        let _guard = crate::gfx::test_gpu::lock();
+        let Some(gpu) = device() else { return };
+        let (device, queue) = &gpu;
+        let mut targets = super::super::mod_render_targets::ModRenderTargets::default();
+        let handle = targets
+            .create(
+                device,
+                None,
+                &mod_api::RenderTargetDescriptor::rgba8(
+                    [8, 8],
+                    mod_api::RenderTargetDepth::Depth32Float,
+                ),
+            )
+            .unwrap();
+        let (view_id, view) = targets.resolve_depth(None, handle).unwrap();
+        clear_depth_to_a_quarter(device, queue, &view);
+        let (set, quad, sampler) = sampled_quad_setup(SAMPLE_DEPTH, false);
+        let vbytes = bytemuck::cast_slice(&quad);
+        let mask = unfilterable_sample_bit(0, &sampler, view.texture().format(), true);
+        let draw = sampled_quad_draw(
+            ResolvedSet1Entry::Texture {
+                view_id,
+                view,
+                mips: None,
+            },
+            mask,
+            world_primitives::STAGE_CUSTOM_GEOMETRY,
+            vbytes,
+        );
         let format = wgpu::TextureFormat::Rgba8Unorm;
         let mut primitives = WorldPrimitives::new(device, (format, false));
         let batch = Batch {
             set: Some(&set),
-            draws: std::slice::from_ref(&draw_cmd),
+            draws: &[draw],
             transient_vertices: vbytes,
-            time: 0.0,
             ..Default::default()
         };
-        let at = render(&gpu, &mut primitives, format, batch, STAGES - 1);
-        for (x, y) in [(8, 8), (32, 32), (56, 56)] {
-            assert_near(at(x, y), [63.75, 0.0, 0.0, 255.0], 1.5, "the depth, read");
+        let at = render_target(&gpu, &mut primitives, format, batch, STAGES - 1, true);
+        assert_eq!(at(32, 32), [64.0, 0.0, 0.0, 255.0]);
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn a_default_sampler_reads_transient_depth_after_the_frame_graph_swaps_the_entry() {
+        use super::super::mod_frame_graph::{
+            FrameGraphRunner, FrameGraphSlot, RecordedFrameGraph, RecordedFramePass,
+            TransientTargetPool,
+        };
+        use super::super::mod_render_targets::ModRenderTargets;
+        use mod_api::{
+            FramePassDescriptor, FrameTarget, RenderTargetDepth, RenderTargetDescriptor,
+        };
+
+        let _guard = crate::gfx::test_gpu::lock();
+        let Some((device, queue)) = device() else {
+            return;
+        };
+        let mut targets = ModRenderTargets::default();
+        let out = targets
+            .create(
+                &device,
+                None,
+                &RenderTargetDescriptor::rgba8([SIZE, SIZE], RenderTargetDepth::None),
+            )
+            .unwrap();
+        let mut recorded = RecordedFrameGraph::default();
+        let desc = RenderTargetDescriptor::rgba8([SIZE, SIZE], RenderTargetDepth::Depth32Float);
+        let depth = recorded.add_transient(desc.clone());
+        let write =
+            FramePassDescriptor::new("store transient depth", FrameTarget::Transient(depth))
+                .clear_depth(0.25);
+        recorded.validate_new_pass(&write, false).unwrap();
+        recorded.push_pass(RecordedFramePass::from_descriptor(write, None));
+        let read = FramePassDescriptor::new("sample transient depth", FrameTarget::Mod(out))
+            .reads(FrameTarget::Transient(depth))
+            .clear_color_0([0.0, 1.0, 0.0, 1.0]);
+        recorded.validate_new_pass(&read, false).unwrap();
+        let mut pass = RecordedFramePass::from_descriptor(read, None);
+        let (set, quad, sampler) = sampled_quad_setup(SAMPLE_DEPTH, false);
+        let mask = unfilterable_sample_bit(
+            0,
+            &sampler,
+            super::super::mod_render_targets::wgpu_depth_format(desc.depth).unwrap(),
+            true,
+        );
+        pass.transient_vertices
+            .extend_from_slice(bytemuck::cast_slice(&quad));
+        pass.draws.push(sampled_quad_draw(
+            ResolvedSet1Entry::TransientDepth { target: depth },
+            mask,
+            0,
+            &pass.transient_vertices,
+        ));
+        recorded.push_pass(pass);
+        let mut runner =
+            FrameGraphRunner::prepare(recorded, false, &mut Default::default()).unwrap();
+        let mut primitives =
+            WorldPrimitives::new(&device, (wgpu::TextureFormat::Rgba8Unorm, false));
+        primitives.pipelines.build(&device, &set, None).unwrap();
+        let mut pool = TransientTargetPool::default();
+        let mut encoder = device.create_command_encoder(&Default::default());
+        runner.execute_slot(
+            FrameGraphSlot::BeforeWorld,
+            &device,
+            &queue,
+            &mut encoder,
+            &mut primitives,
+            &targets,
+            &mut pool,
+        );
+        runner.finish(&mut pool);
+        let result = read_sample::<4>(
+            &device,
+            &queue,
+            encoder,
+            targets.color_texture(out, 0).unwrap(),
+        );
+        assert_eq!(result, [64, 0, 0, 255]);
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn a_late_masked_oit_draw_gets_groups_for_the_existing_targets_and_draws() {
+        use super::super::oit::{CloudSamples, Stage};
+        let _guard = crate::gfx::test_gpu::lock();
+        let Some((device, queue)) = crate::gfx::test_gpu::oit_device() else {
+            return;
+        };
+        let mut targets = super::super::mod_render_targets::ModRenderTargets::default();
+        let handle = targets
+            .create(
+                &device,
+                None,
+                &mod_api::RenderTargetDescriptor::rgba8(
+                    [SIZE, SIZE],
+                    mod_api::RenderTargetDepth::Depth32Float,
+                ),
+            )
+            .unwrap();
+        let (id, view) = targets.resolve_depth(None, handle).unwrap();
+        clear_depth_to_a_quarter(&device, &queue, &view);
+        const FRAGMENT: &str = "#version 330
+#include <minecraft:oit.glsl>
+uniform sampler2D DepthTex;
+in vec2 vUv;
+#ifndef OIT_ALPHA_ONLY
+out vec4 fragColor;
+#endif
+void main() {
+    vec4 color = vec4(0.8, 0.0, 0.0, texture(DepthTex, vUv).r);
+#ifdef OIT_ALPHA_ONLY
+    executeAlphaOnlyPhase(gl_FragCoord.z, color.a);
+#else
+#ifdef OIT_ACCUMULATE
+    color = sampleColorForAccumulation(color);
+#endif
+    fragColor = color;
+#endif
+}";
+        let (set, quad, sampler) = sampled_quad_setup(FRAGMENT, true);
+        let vbytes = bytemuck::cast_slice(&quad);
+        let mask = unfilterable_sample_bit(0, &sampler, view.texture().format(), true);
+        let draw = sampled_quad_draw(
+            ResolvedSet1Entry::Texture {
+                view_id: id,
+                view,
+                mips: None,
+            },
+            mask,
+            Stage::DepthBounds as usize,
+            vbytes,
+        );
+        let mut primitives =
+            WorldPrimitives::new(&device, (wgpu::TextureFormat::Rgba8Unorm, false));
+        primitives.pipelines.build(&device, &set, None).unwrap();
+        let texture = |format, usage| {
+            device.create_texture(&wgpu::TextureDescriptor {
+                label: None,
+                size: wgpu::Extent3d {
+                    width: SIZE,
+                    height: SIZE,
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format,
+                usage,
+                view_formats: &[],
+            })
+        };
+        let aux = texture(
+            wgpu::TextureFormat::Rgba16Float,
+            wgpu::TextureUsages::TEXTURE_BINDING,
+        )
+        .create_view(&Default::default());
+        let samples = || {
+            Some(CloudSamples {
+                generation: 1,
+                views: [&aux; 3],
+            })
+        };
+        primitives.prepare_oit_mod_pipelines(&device, samples());
+        let batch = Batch {
+            set: Some(&set),
+            oit_draws: &[draw],
+            oit_transient_vertices: vbytes,
+            ..Default::default()
+        };
+        primitives.prepare(
+            &device,
+            &mut |buffer, bytes| queue.write_buffer(buffer, 0, bytes),
+            &world_primitives::Batch {
+                pipelines: batch,
+                ..Default::default()
+            },
+            view_proj(),
+            [SIZE, SIZE],
+            &aux,
+            None,
+        );
+        primitives.prepare_oit_mod_pipelines(&device, samples());
+        let color = texture(
+            wgpu::TextureFormat::Rgba32Float,
+            wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+        );
+        let depth = texture(
+            wgpu::TextureFormat::Depth32Float,
+            wgpu::TextureUsages::RENDER_ATTACHMENT,
+        );
+        let depth_view = depth.create_view(&Default::default());
+        clear_depth_to_a_quarter(&device, &queue, &depth_view);
+        let mut encoder = device.create_command_encoder(&Default::default());
+        {
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &color.create_view(&Default::default()),
+                    depth_slice: None,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: &depth_view,
+                    depth_ops: None,
+                    stencil_ops: None,
+                }),
+                ..Default::default()
+            });
+            primitives.draw_oit(&mut pass, Stage::DepthBounds);
         }
+        let result = read_sample::<16>(&device, &queue, encoder, &color);
+        assert_eq!(
+            f32::from_le_bytes(result[8..12].try_into().unwrap()),
+            0.5,
+            "masked OIT geometry wrote depth bounds"
+        );
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn r32float_sampler_blends_mips_only_when_the_device_enables_filtering() {
+        let _guard = crate::gfx::test_gpu::lock();
+        let Some(adapter) = crate::gfx::test_gpu::adapter() else {
+            return;
+        };
+        let feature = wgpu::Features::FLOAT32_FILTERABLE;
+        eprintln!(
+            "R32Float adapter {:?}: FLOAT32_FILTERABLE={}",
+            adapter.get_info(),
+            adapter.features().contains(feature)
+        );
+        for features in [wgpu::Features::empty(), feature] {
+            if !adapter.features().contains(features) {
+                continue;
+            }
+            let gpu = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
+                required_features: features,
+                ..Default::default()
+            }))
+            .unwrap();
+            let (device, queue) = &gpu;
+            let filterable = device.features().contains(feature);
+            assert_eq!(filterable, features == feature);
+            eprintln!("R32Float device enabled FLOAT32_FILTERABLE={filterable}");
+            let texture = device.create_texture(&wgpu::TextureDescriptor {
+                label: None,
+                size: wgpu::Extent3d {
+                    width: 2,
+                    height: 2,
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 2,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: wgpu::TextureFormat::R32Float,
+                usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+                view_formats: &[],
+            });
+            for (mip, width, values) in [(0, 2, &[0.25f32; 4][..]), (1, 1, &[0.75f32][..])] {
+                queue.write_texture(
+                    wgpu::TexelCopyTextureInfo {
+                        mip_level: mip,
+                        ..texture.as_image_copy()
+                    },
+                    bytemuck::cast_slice(values),
+                    wgpu::TexelCopyBufferLayout {
+                        offset: 0,
+                        bytes_per_row: Some(4 * width),
+                        rows_per_image: Some(width),
+                    },
+                    wgpu::Extent3d {
+                        width,
+                        height: width,
+                        depth_or_array_layers: 1,
+                    },
+                );
+            }
+            let fragment =
+                SAMPLE_DEPTH.replace("texture(DepthTex, vUv)", "textureLod(DepthTex, vUv, 0.25)");
+            let (set, quad, sampler) = sampled_quad_setup(&fragment, false);
+            let vbytes = bytemuck::cast_slice(&quad);
+            let mask = unfilterable_sample_bit(0, &sampler, texture.format(), filterable);
+            let draw = sampled_quad_draw(
+                ResolvedSet1Entry::Texture {
+                    view_id: 1,
+                    view: texture.create_view(&Default::default()),
+                    mips: None,
+                },
+                mask,
+                4,
+                vbytes,
+            );
+            let format = wgpu::TextureFormat::Rgba8Unorm;
+            let mut primitives = WorldPrimitives::new(device, (format, false));
+            let at = render(
+                &gpu,
+                &mut primitives,
+                format,
+                Batch {
+                    set: Some(&set),
+                    draws: &[draw],
+                    transient_vertices: vbytes,
+                    ..Default::default()
+                },
+                STAGES - 1,
+            );
+            assert_eq!(
+                at(32, 32),
+                [if filterable { 96.0 } else { 64.0 }, 0.0, 0.0, 255.0]
+            );
+        }
+    }
+
+    fn read_sample<const N: usize>(
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        mut encoder: wgpu::CommandEncoder,
+        texture: &wgpu::Texture,
+    ) -> [u8; N] {
+        let readback = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("sampled variant readback"),
+            size: 256,
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+            mapped_at_creation: false,
+        });
+        encoder.copy_texture_to_buffer(
+            wgpu::TexelCopyTextureInfo {
+                origin: wgpu::Origin3d {
+                    x: SIZE / 2,
+                    y: SIZE / 2,
+                    z: 0,
+                },
+                ..texture.as_image_copy()
+            },
+            wgpu::TexelCopyBufferInfo {
+                buffer: &readback,
+                layout: wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(256),
+                    rows_per_image: None,
+                },
+            },
+            wgpu::Extent3d {
+                width: 1,
+                height: 1,
+                depth_or_array_layers: 1,
+            },
+        );
+        queue.submit([encoder.finish()]);
+        let slice = readback.slice(..);
+        slice.map_async(wgpu::MapMode::Read, |result| result.unwrap());
+        device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
+        slice.get_mapped_range().unwrap()[..N].try_into().unwrap()
     }
 
     /// A depth texture bound through `TextureSource::WorldDepth`: the view the renderer makes
@@ -8079,6 +8447,7 @@ void main() {
                 index_range: None,
             },
             bindings: Some(ResolvedDrawBindings {
+                layout_mask: 0,
                 entries: vec![ResolvedSet1Entry::Texture {
                     view_id,
                     view,
@@ -8330,6 +8699,7 @@ void main() {
                 index_range: None,
             },
             bindings: Some(ResolvedDrawBindings {
+                layout_mask: 0,
                 entries: vec![ResolvedSet1Entry::Texture {
                     view_id: view_id_after_noop,
                     view: rt_view,
@@ -8458,6 +8828,7 @@ void main() {
                 index_range: None,
             },
             bindings: Some(ResolvedDrawBindings {
+                layout_mask: 0,
                 entries: vec![ResolvedSet1Entry::StorageImage {
                     view_id,
                     view,

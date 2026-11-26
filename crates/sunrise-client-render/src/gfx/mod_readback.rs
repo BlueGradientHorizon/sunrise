@@ -423,6 +423,7 @@ mod tests {
         let plain_buffer = store.resolve_buffer(None, plain).unwrap();
         let dispatch = |slot| RecordedDispatch {
             slot,
+            layout_mask: 0,
             entries: vec![ResolvedSet1Entry::StorageBuffer {
                 id: 1,
                 buffer: buffer.clone(),

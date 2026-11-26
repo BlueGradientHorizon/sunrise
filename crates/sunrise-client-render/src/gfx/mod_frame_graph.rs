@@ -1055,16 +1055,6 @@ fn resolve_dispatch_transients(
     }
 }
 
-/// Validate a transient target sampler binding against its descriptor during draw recording.
-pub fn validate_transient_color_binding(desc: &RenderTargetDescriptor, attachment: u8) -> bool {
-    desc.color_targets.get(attachment as usize).is_some()
-}
-
-/// Validate a transient target depth sampler binding against its descriptor during draw recording.
-pub fn validate_transient_depth_binding(desc: &RenderTargetDescriptor) -> bool {
-    desc.depth != RenderTargetDepth::None
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1492,6 +1482,7 @@ mod tests {
                 index_range: None,
             },
             bindings: Some(super::super::mod_pipelines::ResolvedDrawBindings {
+                layout_mask: 0,
                 entries: vec![ResolvedSet1Entry::TransientColor {
                     target: tmp,
                     attachment: 0,
