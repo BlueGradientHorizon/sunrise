@@ -67,10 +67,12 @@ pub trait ConfigHost {
     /// `ModList.get()`): the view registration reads through
     /// [`RegistrationContext::mods`](crate::RegistrationContext::mods). `mods().get(id)` is one
     /// package's manifest facts, its [`name`](crate::PackageInfo::name) and
-    /// [`version`](crate::PackageInfo::version) among them (`IModInfo.getDisplayName` and
-    /// `getVersion`); `None` for a package that isn't installed or was off at startup. The game
-    /// itself is not a package: its version is [`game_version`](Self::game_version). The view
-    /// is shared: cloning it copies no package.
+    /// [`version`](crate::PackageInfo::version) among them (`IModInfo.getVersion`); `None` for a
+    /// package that isn't installed or was off at startup. `name` is empty when the manifest
+    /// gives none: `mods().display_name(id)` is the name to show (`IModInfo.getDisplayName`),
+    /// the id in that case, and `Minecraft` for `minecraft`. The game itself is not a package:
+    /// `mods().get("minecraft")` is `None` and its version is
+    /// [`game_version`](Self::game_version). The view is shared: cloning it copies no package.
     #[published(startup_mods)]
     fn mods(&self) -> LoadedMods;
 }
