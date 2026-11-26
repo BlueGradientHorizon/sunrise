@@ -41,7 +41,7 @@ import tomllib
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from tools import file_lock
+from tools import file_lock, lab
 
 ROOT = Path(__file__).resolve().parents[2]
 NOTES = "crates/sunrise-mod-vocab/changes"
@@ -128,15 +128,16 @@ def tree_tool(tree: Path, work: Path) -> list[str]:
     copy keeps another audit's build from replacing the binary before this one has its copy."""
     target = ROOT / "target" / "surface-base"
     target.mkdir(parents=True, exist_ok=True)
-    tool = work / f"base-stage-{len(list(work.glob('base-stage-*')))}"
+    suffix = ".exe" if sys.platform == "win32" else ""  # Cargo names the program so on Windows, and Windows runs only that
+    tool = work / f"base-stage-{len(list(work.glob('base-stage-*')))}{suffix}"
     with open(target / "surface-report.lock", "a") as lock:
         file_lock.lock(lock)
-        built = subprocess.run(["cargo", "build", "--locked", "--profile", "test",
+        built = subprocess.run([*lab.CARGO, "build", "--locked", "--profile", "test",
                                 "--bin", "sunrise-stage", "--target-dir", str(target)],
                                cwd=tree, capture_output=True, text=True)
         if built.returncode != 0:
             raise RuntimeError(f"building that tree's sunrise-stage failed: {last_line(built.stderr)}")
-        shutil.copy2(target / "debug" / "sunrise-stage", tool)
+        shutil.copy2(target / "debug" / f"sunrise-stage{suffix}", tool)
     return [str(tool)]
 
 
