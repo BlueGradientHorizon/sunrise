@@ -220,19 +220,21 @@ pub struct ProgramSources<'a> {
     pub fragment: &'a str,
 }
 
+/// A pipeline's default vertex format, kept for the program's lifetime so that
+/// [`DEFAULT_VERTEX_INPUTS`] can borrow its attribute names.
+static DEFAULT_VERTEX_FORMAT: LazyLock<mod_vocab::VertexFormat> =
+    LazyLock::new(mod_vocab::VertexFormat::position_tex_color);
+
 /// Default vertex inputs `(name, glsl_type)`: the attributes of
 /// [`VertexFormat::position_tex_color`](mod_vocab::VertexFormat::position_tex_color) in
-/// deterministic sequential location order (`0..3`). Built once from that format; its three
-/// names are leaked so that [`Options::default`] can borrow them for `'static`.
+/// deterministic sequential location order (`0..3`), borrowed from that format.
 pub static DEFAULT_VERTEX_INPUTS: LazyLock<Vec<(&'static str, &'static str)>> =
     LazyLock::new(|| {
-        mod_vocab::VertexFormat::position_tex_color()
+        let format: &'static mod_vocab::VertexFormat = &DEFAULT_VERTEX_FORMAT;
+        format
             .attributes
-            .into_iter()
-            .map(|attribute| {
-                let name: &'static str = Box::leak(attribute.name.into_boxed_str());
-                (name, attribute.format.glsl_type())
-            })
+            .iter()
+            .map(|attribute| (attribute.name.as_str(), attribute.format.glsl_type()))
             .collect()
     });
 
