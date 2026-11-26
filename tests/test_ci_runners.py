@@ -15,7 +15,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tests.os_support import needs_runner_shell
+from tests.os_support import BASH, needs_runner_shell
 from tools.ci import vendored_yaml
 
 yaml = vendored_yaml.load()
@@ -283,6 +283,22 @@ class OwnRunnerTests(unittest.TestCase):
                 "GITHUB_WORKSPACE": str(home / "workspace")})
             self.assertEqual(job.returncode, 0, job.stderr)
             self.assertTrue((home / "workspace/.git").is_dir())
+
+    @needs_runner_shell
+    def test_a_failed_size_check_of_the_cargo_target_does_not_fail_the_job(self):
+        with tempfile.TemporaryDirectory() as folder:
+            home = Path(folder)
+            target = home / "target"
+            target.mkdir()
+            du = home / "du"
+            # du can print a partial total and still fail. Do not act on that total.
+            du.write_bytes(b"#!/bin/sh\nprintf '41\\t%s\\n' \"$3\"\nexit 1\n")
+            du.chmod(0o755)
+            job = subprocess.run([BASH, str(ROOT / "tools/ci/job-started.sh")], capture_output=True, text=True, env={
+                **os.environ, "PATH": f"{home}{os.pathsep}{os.environ['PATH']}", "GITHUB_EVENT_NAME": "push",
+                "CARGO_TARGET_DIR": str(target), "MAX_TARGET_GB": "40", "GITHUB_WORKSPACE": "", "RUNNER_WORKSPACE": ""})
+            self.assertEqual(job.returncode, 0, job.stderr)
+            self.assertTrue(target.is_dir())
 
 
 if __name__ == "__main__":
