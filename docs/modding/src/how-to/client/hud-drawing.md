@@ -368,8 +368,9 @@ fn draw_member(draw: &mut dyn DrawContext, member: u128, x: f32, y: f32) -> Resu
 
 `GuiCanvas::texture(id, dst, region, argb)` inside `DrawContext::draw_gui` is vanilla's
 `GuiGraphicsExtractor.blit` with a texture's `Identifier`: a picture that isn't in the GUI atlas, such as a
-guide book's chapter art. It takes `blit`'s arguments: the quad at `dst = [x, y, w, h]` in GUI pixels, showing
-`region.src` texels from `region.uv` of an image `region.tex` texels big, tinted by the ARGB `argb`.
+guide book's chapter art. Unlike `blit`, which takes a GUI-atlas name and a `Blend`, it takes a resource
+`Identifier` and no blend: the quad at `dst = [x, y, w, h]` in GUI pixels, showing `region.src` texels from
+`region.uv` of an image `region.tex` texels big, tinted by the ARGB `argb`.
 
 ```rust,ignore
 use mod_api::{DrawContext, GuiBlitRegion, GuiDrawError, Identifier};
