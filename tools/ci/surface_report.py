@@ -10,9 +10,11 @@ Only that one commit is fetched (`--depth 1`, in CI's shallow checkout; a full c
 
 Locally, `--base SHA` compares this checkout against that commit exactly as CI compares against its base (the base's
 own sunrise-stage, the landed-note check, the "Base" line); tools/pr_ready.py runs it with the branch's merge base.
-Without SUNRISE_STAGE_TOOL (CI sets it from its own build step) the head's tool is built as that step builds it:
-`cargo build --locked --profile test -p sunrise-stage --bin sunrise-stage` in this checkout. `--base` and `--trees`
-are two ways to pick the base, so they do not go together.
+Without SUNRISE_STAGE_TOOL the head's tool is built by `build_tool`: `cargo build --locked --profile test -p
+sunrise-stage --bin sunrise-stage` in this checkout, with the extra cargo arguments in $JOBS. CI's "Build the source
+stage generator" step runs `--build-tool`, which does the same, appends SUNRISE_STAGE_TOOL to $GITHUB_ENV for the
+report step, and prints the path. `--base` and `--trees` are two ways to pick the base, so they do not go together,
+and neither goes with `--build-tool`.
 
 Use --with-internals to audit listed internals too. With --trees BASE HEAD, use --build-base-tool when the generator
 changed: it always builds and uses BASE's own `sunrise-stage`, even if HEAD's could read the old sources. Only pass
@@ -146,6 +148,28 @@ def tree_tool(tree: Path, work: Path) -> str:
             raise RuntimeError(f"building that tree's sunrise-stage failed: {last_line(built.stderr)}")
         shutil.copy2(target / "debug" / "sunrise-stage", tool)
     return str(tool)
+
+
+def build_tool(jobs: list[str]) -> str:
+    """The head's sunrise-stage, built in the test profile in this checkout (`jobs`: extra cargo arguments, CI's
+    $JOBS), as the path of the one normal executable the compiler reports; this is the only place that picks it."""
+    built = subprocess.run(["cargo", "build", *jobs, "--locked", "--profile", "test", "-p", "sunrise-stage",
+                            "--bin", "sunrise-stage", "--message-format=json-render-diagnostics"],
+                           cwd=ROOT, stdout=subprocess.PIPE, text=True)
+    if built.returncode != 0:
+        raise SystemExit("building the head's sunrise-stage failed")
+    artifacts = [json.loads(line) for line in built.stdout.splitlines()]
+    executables = {item["executable"] for item in artifacts
+                   if item.get("reason") == "compiler-artifact"
+                   and item["target"]["name"] == "sunrise-stage"
+                   and "bin" in item["target"]["kind"]
+                   and not item["profile"]["test"] and item.get("executable")}
+    if len(executables) != 1:
+        raise SystemExit(f"expected one normal sunrise-stage executable, got {executables}")
+    executable = str(Path(executables.pop()).resolve(strict=True))
+    if "\r" in executable or "\n" in executable:
+        raise SystemExit("sunrise-stage executable path must not contain CR or LF")
+    return executable
 
 
 def last_line(text: str) -> str:
@@ -363,6 +387,9 @@ def main(argv=None) -> int:
     parser.add_argument("--base", metavar="SHA",
                         help="compare against this commit as CI compares against its base, including the base's "
                              "own sunrise-stage (a local run)")
+    parser.add_argument("--build-tool", action="store_true",
+                        help="only build the head's sunrise-stage (cargo arguments from $JOBS), append "
+                             "SUNRISE_STAGE_TOOL=<path> to $GITHUB_ENV when that is set, and print the path")
     parser.add_argument("--build-base-tool", action="store_true",
                         help="with --trees: always build and use BASE's own sunrise-stage "
                              "(runs BASE's code; a whole, trusted checkout only)")
@@ -371,23 +398,19 @@ def main(argv=None) -> int:
         parser.error("--build-base-tool goes with --trees; CI builds the base commit's own tool by itself")
     if args.base and args.trees:
         parser.error("--base and --trees both pick the base; use one")
-    tool = os.environ.get("SUNRISE_STAGE_TOOL")
-    if not tool:
-        # CI's "Build the source stage generator" step, with the same choice among the compiler's artifacts.
-        built = subprocess.run(["cargo", "build", "--locked", "--profile", "test", "-p", "sunrise-stage",
-                                "--bin", "sunrise-stage", "--message-format=json-render-diagnostics"],
-                               cwd=ROOT, stdout=subprocess.PIPE, text=True)
-        if built.returncode != 0:
-            raise SystemExit("building the head's sunrise-stage failed")
-        artifacts = [json.loads(line) for line in built.stdout.splitlines()]
-        executables = {item["executable"] for item in artifacts
-                       if item.get("reason") == "compiler-artifact"
-                       and item["target"]["name"] == "sunrise-stage"
-                       and "bin" in item["target"]["kind"]
-                       and not item["profile"]["test"] and item.get("executable")}
-        if len(executables) != 1:
-            raise SystemExit(f"expected one normal sunrise-stage executable, got {executables}")
-        tool = str(Path(executables.pop()).resolve(strict=True))
+    if args.build_tool and (args.base or args.trees):
+        parser.error("--build-tool only builds the tool; it goes with neither --base nor --trees")
+    jobs = os.environ.get("JOBS", "").split()
+    if args.build_tool:
+        built_at = time.monotonic()
+        tool = build_tool(jobs)
+        print(f"Stage generator build: {int(time.monotonic() - built_at)}s")
+        if environment_file := os.environ.get("GITHUB_ENV"):
+            with open(environment_file, "a") as environment:
+                environment.write(f"SUNRISE_STAGE_TOOL={tool}\n")
+        print(tool)
+        return 0
+    tool = os.environ.get("SUNRISE_STAGE_TOOL") or build_tool(jobs)
     started = time.monotonic()
     gate_on = gate(ROOT / "tools/ci/surface.toml")
     with tempfile.TemporaryDirectory(dir=os.environ.get("RUNNER_TEMP")) as directory:
