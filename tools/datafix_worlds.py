@@ -249,9 +249,12 @@ class Server:
 
     def stop(self):
         try:
-            self.process.stdin.write('stop\n')
-            self.process.stdin.flush()
-            self.process.wait(120)
+            # A server already gone is not asked again: datafix_scene_12.populate kills its own once the world is
+            # saved, and closes its stdin.
+            if self.process.poll() is None:
+                self.process.stdin.write('stop\n')
+                self.process.stdin.flush()
+                self.process.wait(120)
         finally:
             self.process.kill()   # a no-op once it has exited; after a failed stop the error still reaches the caller
             self.process.wait()   # the world folder and port are reused only once the process is gone

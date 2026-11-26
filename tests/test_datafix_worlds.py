@@ -85,6 +85,17 @@ class ServerStopTests(unittest.TestCase):
         self.assertIsNotNone(server.process.poll())
         self.assertEqual(calls, [120, None])
 
+    def test_a_server_already_killed_with_its_stdin_closed_stops_without_an_error(self):
+        # What datafix_scene_12.populate leaves for build() and build_flat() to stop.
+        server = worlds.Server.__new__(worlds.Server)
+        server.process = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)'], stdin=subprocess.PIPE, text=True)
+        self.addCleanup(server.process.kill)
+        server.process.kill()
+        server.process.wait()
+        server.process.stdin.close()
+        server.stop()
+        self.assertIsNotNone(server.process.poll())
+
 
 class KnownPacksTests(unittest.TestCase):
     def configure(self, protocol, received):
