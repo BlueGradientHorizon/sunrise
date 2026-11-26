@@ -1,7 +1,7 @@
 
 
 #[cfg(test)]
-pub(in crate::game) mod off_level_tests {
+pub(crate) mod off_level_tests {
     use super::*;
 
     #[test]
@@ -47,10 +47,10 @@ pub(in crate::game) mod off_level_tests {
 
 #[cfg(test)]
 #[path = "tests/villager_witness_tests.rs"]
-pub(in crate::game) mod witness_tests;
+pub(crate) mod witness_tests;
 
 #[cfg(test)]
-pub(in crate::game) mod birth_tests {
+pub(crate) mod birth_tests {
     use super::*;
     use mod_api::{
         BabyEntitySpawnEvent, EntityJoinLevelEvent, FinalizeSpawnEvent, Flow, Hooks, Host,

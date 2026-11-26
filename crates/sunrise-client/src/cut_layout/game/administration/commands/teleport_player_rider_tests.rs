@@ -1,5 +1,5 @@
 #[cfg(test)]
-pub(in crate::game) mod teleport_player_tests {
+pub(crate) mod teleport_player_tests {
     use sunrise_gameplay::game::native_entity_refs::tests::with_game;
     use sunrise_core::geometry::Vec3;
     use sunrise_sim::motion::PlayerMotion;
@@ -57,10 +57,10 @@ pub(in crate::game) mod teleport_player_tests {
 }
 
 #[cfg(test)]
-pub(in crate::game) mod fake_travel_tests {}
+pub(crate) mod fake_travel_tests {}
 
 #[cfg(test)]
-pub(in crate::game) mod teleport_rider_tests {
+pub(crate) mod teleport_rider_tests {
     #[test]
     #[ignore = "daily"]
     fn a_vehicle_carries_its_riders_and_a_rider_leaves_its_vehicle() {

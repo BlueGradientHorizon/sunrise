@@ -88,7 +88,7 @@ fn air_use_fires_once_and_passing_hands_fire_in_main_off_order() {
     });
 }
 
-pub(in crate::game) fn with_packet_game(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
+pub(crate) fn with_packet_game(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
     with_game(|game| {
         game.options.dedicated = Some(Vec::new());
         game.world
@@ -100,7 +100,7 @@ pub(in crate::game) fn with_packet_game(test: impl FnOnce(&mut sunrise_gameplay:
 }
 
 #[allow(unused_imports)]
-pub(in crate::game) use crate::game::server_side::remote_server::interaction_event_tests::item_fallthrough_tests::assert_block_item_before_fallthrough;
+pub(crate) use crate::game::server_side::remote_server::interaction_event_tests::item_fallthrough_tests::assert_block_item_before_fallthrough;
 
 #[test]
 #[ignore = "daily"]

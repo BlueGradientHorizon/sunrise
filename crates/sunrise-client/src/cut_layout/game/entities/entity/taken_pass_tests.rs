@@ -7,7 +7,7 @@ pub use sunrise_gameplay::game::server_side::entity_server::taken_pass_tests::{
 };
 
 /// Storage adapters for the same production lifecycle walk across entity kinds.
-pub(in crate::game) struct LifecycleFixture {
+pub(crate) struct LifecycleFixture {
     pub seed: fn(&mut sunrise_gameplay::game::ServerGame<'_>, &[(u32, [f64; 3])]),
     pub ids: fn(&sunrise_gameplay::game::ServerGame<'_>) -> Vec<u32>,
     pub target: fn(u32) -> crate::game::commands::Target,
@@ -15,7 +15,7 @@ pub(in crate::game) struct LifecycleFixture {
     pub remote: Option<RemoteLifecycle>,
 }
 
-pub(in crate::game) struct RemoteLifecycle {
+pub(crate) struct RemoteLifecycle {
     pub prepare: fn(&mut sunrise_client_gameplay::game::ClientGame<'_>),
     pub apply: fn(&mut sunrise_client_gameplay::game::ClientGame<'_>, u32, u32),
 }
@@ -35,7 +35,7 @@ impl LifecycleFixture {
 
     /// A singleton tests selected and unselected chunks in separate passes.
     /// Remote singleton behavior is checked by its storage-specific fixture.
-    pub(in crate::game) fn run_singleton(self) {
+    pub(crate) fn run_singleton(self) {
         assert!(self.remote.is_none());
         self.walk(true, |_| {});
     }
@@ -139,7 +139,7 @@ impl LifecycleFixture {
     }
 }
 
-pub(in crate::game) fn run_remote_lifecycle(
+pub(crate) fn run_remote_lifecycle(
     seed: fn(&mut sunrise_client_gameplay::game::ClientGame<'_>, &[(u32, [f64; 3])]),
     ids: fn(&sunrise_client_gameplay::game::ClientGame<'_>) -> Vec<u32>,
     remote: RemoteLifecycle,

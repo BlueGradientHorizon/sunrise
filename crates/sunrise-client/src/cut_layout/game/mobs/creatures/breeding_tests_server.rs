@@ -205,7 +205,7 @@ fn breeding_announces_the_orb_before_the_lower_id_child() {
     });
 }
 
-pub(in crate::game) fn tick_breeding(
+pub(crate) fn tick_breeding(
     game: &mut sunrise_gameplay::game::ServerGame<'_>,
     parent_kind: &str,
     partner_kind: &str,

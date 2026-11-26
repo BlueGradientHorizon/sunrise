@@ -7,10 +7,10 @@ use mod_api::{HostTransaction, ItemPlace, ServerHost};
 use sunrise_items::items::ItemStack;
 use sunrise_sim::lan::playerdata;
 
-pub(in crate::game) const NETHER: &str = "minecraft:the_nether";
+pub(crate) const NETHER: &str = "minecraft:the_nether";
 
 /// How many item entities lie in each of the Overworld and the Nether.
-pub(in crate::game) fn dropped(game: &mut sunrise_gameplay::game::ServerGame<'_>) -> [usize; 2] {
+pub(crate) fn dropped(game: &mut sunrise_gameplay::game::ServerGame<'_>) -> [usize; 2] {
     let here = game.dim;
     let overworld = game.dropped.len();
     game.enter_level(Dim::Nether).unwrap();
@@ -21,7 +21,7 @@ pub(in crate::game) fn dropped(game: &mut sunrise_gameplay::game::ServerGame<'_>
 
 /// Guests 12 (the world's owner) and 13 in the Nether with full inventories but for slot 8;
 /// the Overworld in place, as for an Overworld hook. A diamond to give.
-pub(in crate::game) fn in_the_nether(game: &mut sunrise_gameplay::game::ServerGame<'_>) -> mod_api::ItemStack {
+pub(crate) fn in_the_nether(game: &mut sunrise_gameplay::game::ServerGame<'_>) -> mod_api::ItemStack {
     game.level.player_uuid = Some(playerdata::uuid_ints(12));
     // A level is open while a player is in it.
     game.enter_level(Dim::Nether).unwrap();
@@ -55,7 +55,7 @@ pub(in sunrise_gameplay::game::server_side) fn some_diamonds(
         .unwrap()
 }
 
-pub(in crate::game) fn diamonds(game: &sunrise_gameplay::game::ServerGame<'_>, conn: u32) -> u32 {
+pub(crate) fn diamonds(game: &sunrise_gameplay::game::ServerGame<'_>, conn: u32) -> u32 {
     let guest = game.side.lan.as_ref().unwrap().hub.guest(conn).unwrap();
     let held = guest.inventory.iter().flatten();
     held.filter(|s| &*s.item == "minecraft:diamond")

@@ -1,7 +1,7 @@
 
 
 #[cfg(test)]
-pub(in crate::game) mod tests {
+pub(crate) mod tests {
     use super::*;
     use sunrise_gameplay::game::native_entity_refs::tests::with_game;
     use sunrise_core::geometry::Vec3;
@@ -84,14 +84,14 @@ pub(in crate::game) mod tests {
 
 #[cfg(test)]
 #[path = "data/eye_item_tests_server.rs"]
-pub(in crate::game) mod eye_item_tests;
+pub(crate) mod eye_item_tests;
 
 #[cfg(test)]
 #[path = "data/saved_tag_tests_server.rs"]
-pub(in crate::game) mod saved_tag_tests;
+pub(crate) mod saved_tag_tests;
 
 #[cfg(test)]
-pub(in crate::game) mod modern_literal_tests {
+pub(crate) mod modern_literal_tests {
     use super::*;
     use sunrise_gameplay::game::commands::execute::ExecState;
     use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
@@ -209,7 +209,7 @@ pub(in crate::game) mod modern_literal_tests {
 }
 
 #[cfg(test)]
-pub(in crate::game) mod falling_live_adoption_tests {
+pub(crate) mod falling_live_adoption_tests {
     use crate::game::commands::Target;
     use sunrise_gameplay::game::commands::data::falling_live_adoption_tests::with_game;
     use sunrise_core::nbt::Tag;

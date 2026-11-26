@@ -1,7 +1,7 @@
 
 
 #[cfg(test)]
-pub(in crate::game) mod map_limit_tests {
+pub(crate) mod map_limit_tests {
     use super::super::maps::{Decoration, Key, MapData};
     use super::*;
 
@@ -78,7 +78,7 @@ pub(in crate::game) mod map_limit_tests {
 }
 
 #[cfg(test)]
-pub(in crate::game) mod game_event_tests {
+pub(crate) mod game_event_tests {
     use super::super::game_tests::tests::server_game;
     use super::*;
     use sunrise_sim::mobs::Who;
@@ -206,4 +206,4 @@ pub(in crate::game) mod game_event_tests {
 
 #[cfg(test)]
 #[path = "tests/lodestone_compass_tests.rs"]
-pub(in crate::game) mod lodestone_compass_tests;
+pub(crate) mod lodestone_compass_tests;

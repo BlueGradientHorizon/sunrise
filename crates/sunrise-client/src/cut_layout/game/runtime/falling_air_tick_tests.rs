@@ -1,4 +1,4 @@
-use {crate::game::*, sunrise_gameplay_common::game::{Arc, Vec3}};
+use {crate::game::*, sunrise_gameplay_common::game::{Vec3}};
 use std::sync::Arc;
 use sunrise_core::nbt::Tag;
 use sunrise_core::position::ChunkPos;

@@ -1,13 +1,13 @@
 
 #[cfg(test)]
 #[path = "native_entity_refs/level_uuid_tests.rs"]
-pub(in crate::game) mod level_uuid_tests;
+pub(crate) mod level_uuid_tests;
 #[cfg(test)]
 #[path = "native_entity_refs/roll_loot_tests.rs"]
-pub(in crate::game) mod roll_loot_tests;
+pub(crate) mod roll_loot_tests;
 
 #[cfg(test)]
-pub(in crate::game) mod general_handle_tests {
+pub(crate) mod general_handle_tests {
     use super::tests::with_game;
     use crate::game::commands::Target;
     use sunrise_gameplay_common::game::general::GeneralRow;
@@ -106,7 +106,7 @@ pub(in crate::game) mod general_handle_tests {
 }
 
 #[cfg(test)]
-pub(in crate::game) mod tests {
+pub(crate) mod tests {
     pub use sunrise_gameplay_common::game::test_fixtures::{
         FRESH_CASE_LIMIT, fixture_block_names, fixture_facts_mut, fixture_root, output_within, ran_one_test,
         record_key, resolve_parts, run_fresh_cases, run_fresh_cases_at_once, run_with_game_stack,
@@ -142,7 +142,7 @@ pub(in crate::game) mod tests {
     }
 
     /// The parent runs and checks an isolated child; the child loads the Part fixtures' types.
-    pub(in crate::game) fn declared_part_root(name: &str) -> Option<std::path::PathBuf> {
+    pub(crate) fn declared_part_root(name: &str) -> Option<std::path::PathBuf> {
         if run_fresh_cases(name, "SUNRISE_DECLARED_PART_GAME_CHILD", &["valid"]) {
             return None;
         }
@@ -168,11 +168,11 @@ pub(in crate::game) mod tests {
         Some(root)
     }
 
-    pub(in crate::game) fn with_game(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
+    pub(crate) fn with_game(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
         with_game_at(fixture_root(), test);
     }
 
-    pub(in crate::game) fn with_game_at(
+    pub(crate) fn with_game_at(
         root: std::path::PathBuf,
         test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>),
     ) {
@@ -183,7 +183,7 @@ pub(in crate::game) mod tests {
         );
     }
 
-    pub(in crate::game) fn with_client_game(test: impl FnOnce(&mut sunrise_client_gameplay::game::ClientGame<'_>)) {
+    pub(crate) fn with_client_game(test: impl FnOnce(&mut sunrise_client_gameplay::game::ClientGame<'_>)) {
         with_game_role_client(
             fixture_root(),
             super::super::execution_role::ExecutionRole::Client,
@@ -191,7 +191,7 @@ pub(in crate::game) mod tests {
         );
     }
 
-    pub(in crate::game) fn with_uncached_game(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
+    pub(crate) fn with_uncached_game(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
         with_game_role_and_facts_with(
             fixture_root(),
             super::super::execution_role::ExecutionRole::IntegratedServer,
@@ -201,7 +201,7 @@ pub(in crate::game) mod tests {
         );
     }
 
-    pub(in crate::game) fn with_uncached_client_game(
+    pub(crate) fn with_uncached_client_game(
         test: impl FnOnce(&mut sunrise_client_gameplay::game::ClientGame<'_>),
     ) {
         with_game_role_and_facts_with_client(
@@ -213,7 +213,7 @@ pub(in crate::game) mod tests {
         );
     }
 
-    pub(in crate::game) fn with_game_role(
+    pub(crate) fn with_game_role(
         root: std::path::PathBuf,
         role: super::super::execution_role::ExecutionRole,
         test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>),
@@ -221,7 +221,7 @@ pub(in crate::game) mod tests {
         with_game_role_and_facts(root, role, None, test);
     }
 
-    pub(in crate::game) fn with_game_role_client(
+    pub(crate) fn with_game_role_client(
         root: std::path::PathBuf,
         role: super::super::execution_role::ExecutionRole,
         test: impl FnOnce(&mut sunrise_client_gameplay::game::ClientGame<'_>),
@@ -230,7 +230,7 @@ pub(in crate::game) mod tests {
     }
 
     /// Configure the fixture's owned gameplay facts before constructing the game.
-    pub(in crate::game) fn with_game_role_and_facts(
+    pub(crate) fn with_game_role_and_facts(
         root: std::path::PathBuf,
         role: super::super::execution_role::ExecutionRole,
         configure: Option<
@@ -241,7 +241,7 @@ pub(in crate::game) mod tests {
         with_game_role_and_facts_with(root, role, configure, configure.is_none(), test);
     }
 
-    pub(in crate::game) fn with_game_role_and_facts_client(
+    pub(crate) fn with_game_role_and_facts_client(
         root: std::path::PathBuf,
         role: super::super::execution_role::ExecutionRole,
         configure: Option<
@@ -1242,7 +1242,7 @@ pub(in crate::game) mod tests {
         );
     }
 
-    pub(in crate::game) fn block_part_bounce_restitution_in_own_process() {
+    pub(crate) fn block_part_bounce_restitution_in_own_process() {
         use sunrise_core::position::BlockPos;
         use sunrise_sim::block_contact::{Contact, bounce_restitution};
 
@@ -4026,7 +4026,7 @@ pub(in crate::game) mod tests {
 
 #[cfg(test)]
 #[path = "native_entity_refs/restitution_replay_tests.rs"]
-pub(in crate::game) mod restitution_replay_tests;
+pub(crate) mod restitution_replay_tests;
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;

@@ -7,7 +7,7 @@ use sunrise_core::{geometry::Vec3, position::ChunkPos};
 use sunrise_level::chunk::Chunk;
 use sunrise_sim::motion::PlayerMotion;
 
-pub(in crate::game) fn fixture(
+pub(crate) fn fixture(
     run: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>, &Arc<Mutex<Seen>>),
 ) {
     crate::entry::install_client_hooks();

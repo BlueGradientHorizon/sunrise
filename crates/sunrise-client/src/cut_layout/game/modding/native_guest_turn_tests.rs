@@ -1485,7 +1485,7 @@ fn a_vetoed_drop_gives_the_stack_back() {
     });
 }
 
-pub(in crate::game) struct PanicOnDamage(pub(in crate::game) Arc<AtomicUsize>);
+pub(crate) struct PanicOnDamage(pub(crate) Arc<AtomicUsize>);
 
 #[mod_api::__subscriptions]
 impl mod_api::Hooks for PanicOnDamage {
@@ -1667,7 +1667,7 @@ fn guest_message_capture_is_restored_after_a_real_native_panic() {
     });
 }
 
-pub(in crate::game) struct PanicOnFood(pub(in crate::game) Arc<AtomicUsize>);
+pub(crate) struct PanicOnFood(pub(crate) Arc<AtomicUsize>);
 
 #[mod_api::__subscriptions]
 impl mod_api::Hooks for PanicOnFood {

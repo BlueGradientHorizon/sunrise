@@ -11,7 +11,7 @@ use sunrise_sim::{
     motion::PlayerMotion,
 };
 
-pub(in crate::game) const GUEST: &str = "H274Guest";
+pub(crate) const GUEST: &str = "H274Guest";
 
 /// A host on a stone floor with one connected, placed guest (conn 2).
 pub(in sunrise_gameplay::game::server_side) fn game(

@@ -49,4 +49,4 @@ use super::*;
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "tests/mob_conversion_state_tests.rs"]
-pub(in crate::game) mod mob_conversion_state_tests;
+pub(crate) mod mob_conversion_state_tests;

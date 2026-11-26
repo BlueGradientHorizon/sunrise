@@ -4,7 +4,7 @@ use serde_json::json;
 use sunrise_sim::advancements as a;
 
 /// One `item_used_on_block` advancement per stick count the tool must have.
-pub(in crate::game) fn install_criteria(
+pub(crate) fn install_criteria(
     game: &mut sunrise_gameplay::game::ServerGame<'_>,
     counts: &[u32],
     item: &str,

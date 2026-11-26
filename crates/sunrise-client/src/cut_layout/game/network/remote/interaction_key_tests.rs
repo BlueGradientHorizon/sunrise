@@ -1,12 +1,12 @@
 use super::*;
 use mod_api::{ClientHost, InteractionKeyMappingTriggeredEvent};
 
-pub(in crate::game) struct KeyControl {
-    pub(in crate::game) cancel: bool,
-    pub(in crate::game) swing: bool,
-    pub(in crate::game) hand: Hand,
-    pub(in crate::game) calls: Arc<Mutex<Vec<Hand>>>,
-    pub(in crate::game) packets: Arc<Mutex<Vec<String>>>,
+pub(crate) struct KeyControl {
+    pub(crate) cancel: bool,
+    pub(crate) swing: bool,
+    pub(crate) hand: Hand,
+    pub(crate) calls: Arc<Mutex<Vec<Hand>>>,
+    pub(crate) packets: Arc<Mutex<Vec<String>>>,
 }
 #[mod_api::__subscriptions]
 impl Hooks for KeyControl {
@@ -34,7 +34,7 @@ impl Hooks for KeyControl {
     }
 }
 
-pub(in crate::game) struct FirstSilent(pub(in crate::game) std::sync::atomic::AtomicBool);
+pub(crate) struct FirstSilent(pub(crate) std::sync::atomic::AtomicBool);
 #[mod_api::__subscriptions]
 impl Hooks for FirstSilent {
     fn interaction_key_mapping_triggered(

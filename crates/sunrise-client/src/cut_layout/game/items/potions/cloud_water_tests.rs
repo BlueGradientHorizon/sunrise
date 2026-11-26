@@ -1,7 +1,7 @@
 use serde_json::Value;
 use sunrise_core::nbt::Tag;
 
-pub(in crate::game) fn read_witness() -> String {
+pub(crate) fn read_witness() -> String {
     let raw = std::env::var_os("SUNRISE_CLOUD_WATER_WITNESS").unwrap_or_else(|| {
         panic!(
             "SUNRISE_CLOUD_WATER_WITNESS is unset; run through tools/test_cloud_water_parity.py, which records the 26.3 witness"
@@ -21,18 +21,18 @@ pub(in crate::game) fn read_witness() -> String {
     })
 }
 
-pub(in crate::game) fn offset_coord(base: i32, offset: &str) -> String {
+pub(crate) fn offset_coord(base: i32, offset: &str) -> String {
     match offset.split_once('.') {
         Some((whole, frac)) => format!("{}.{frac}", base + whole.parse::<i32>().unwrap()),
         None => (base + offset.parse::<i32>().unwrap()).to_string(),
     }
 }
 
-pub(in crate::game) fn parse_double_bits(hex: &str) -> Tag {
+pub(crate) fn parse_double_bits(hex: &str) -> Tag {
     Tag::Double(u64::from_str_radix(hex, 16).unwrap())
 }
 
-pub(in crate::game) fn parse_motion_bits(obs: &Value) -> Tag {
+pub(crate) fn parse_motion_bits(obs: &Value) -> Tag {
     let bits = obs["motion_bits"].as_array().unwrap();
     assert_eq!(
         bits.len(),
@@ -56,4 +56,4 @@ fn a_cloud_in_water_resets_its_fall_distance_and_a_dry_one_keeps_it() {
 }
 
 #[allow(unused_imports)]
-pub(in crate::game) use crate::game::server_side::potions_server::cloud_water_tests::run_a_cloud_in_water_resets_its_fall_distance_and_a_dry_one_keeps_it;
+pub(crate) use crate::game::server_side::potions_server::cloud_water_tests::run_a_cloud_in_water_resets_its_fall_distance_and_a_dry_one_keeps_it;

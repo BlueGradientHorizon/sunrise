@@ -1,36 +1,36 @@
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use super::*;
+pub(crate) use super::*;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::base::screen_open_tests::CancelSecondPress;
+pub(crate) use crate::game::native_hooks::base::screen_open_tests::CancelSecondPress;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::base::screen_open_tests::Idle;
+pub(crate) use crate::game::native_hooks::base::screen_open_tests::Idle;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::base::screen_open_tests::KeyProbe;
+pub(crate) use crate::game::native_hooks::base::screen_open_tests::KeyProbe;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::base::screen_open_tests::MappingProbe;
+pub(crate) use crate::game::native_hooks::base::screen_open_tests::MappingProbe;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::base::screen_open_tests::Passer;
+pub(crate) use crate::game::native_hooks::base::screen_open_tests::Passer;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::base::screen_open_tests::Probe;
+pub(crate) use crate::game::native_hooks::base::screen_open_tests::Probe;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::base::screen_open_tests::observed;
+pub(crate) use crate::game::native_hooks::base::screen_open_tests::observed;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::base::screen_open_tests::run;
+pub(crate) use crate::game::native_hooks::base::screen_open_tests::run;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::base::screen_open_tests::take;
+pub(crate) use crate::game::native_hooks::base::screen_open_tests::take;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::base::screen_open_tests::with_game_of;
+pub(crate) use crate::game::native_hooks::base::screen_open_tests::with_game_of;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::base::screen_open_tests::*;
+pub(crate) use crate::game::native_hooks::base::screen_open_tests::*;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use mod_api::{
+pub(crate) use mod_api::{
     ClientHost, Flow, Hooks, InteractionKeyMappingTriggeredEvent, KeyMappingPreEvent, ModEntry,
     ScreenClosingEvent, ScreenOpeningEvent,
 };
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use mod_platform::testing::with_mods;
+pub(crate) use mod_platform::testing::with_mods;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use std::sync::{Arc, Mutex};
+pub(crate) use std::sync::{Arc, Mutex};
 
 /// A cancelled press of a mapping is dropped while playing, and only then asked; the
 /// release of the same key is asked too but never canceled, so nothing stays held.

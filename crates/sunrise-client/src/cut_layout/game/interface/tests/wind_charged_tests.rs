@@ -8,14 +8,14 @@ use std::sync::Arc;
 use sunrise_level::chunk::Chunk;
 use sunrise_world::food::Difficulty;
 
-pub(in crate::game) const BREEZE_BURST: &str = "minecraft:entity.breeze.wind_burst";
-pub(in crate::game) const WIND_CHARGE_BURST: &str = "minecraft:entity.wind_charge.wind_burst";
+pub(crate) const BREEZE_BURST: &str = "minecraft:entity.breeze.wind_burst";
+pub(crate) const WIND_CHARGE_BURST: &str = "minecraft:entity.wind_charge.wind_burst";
 
 /// A windowless integrated-server game on normal difficulty (a level.dat would
 /// set it; the default would discard a zombie as Peaceful does) with chunk
 /// (0, 0) loaded and a stone floor at y 63, which a dead mob falls onto so
 /// that its burst has ground under it. `None` without the prepared resources.
-pub(in crate::game) fn with_game<R>(
+pub(crate) fn with_game<R>(
     f: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>) -> R,
 ) -> Option<R> {
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES")?);
@@ -61,7 +61,7 @@ pub(in crate::game) fn with_game<R>(
 }
 
 /// How many times `sound` was queued as a server sound.
-pub(in crate::game) fn heard(game: &sunrise_gameplay::game::ServerGame<'_>, sound: &str) -> u32 {
+pub(crate) fn heard(game: &sunrise_gameplay::game::ServerGame<'_>, sound: &str) -> u32 {
     game.side
         .pending_sounds
         .iter()
@@ -70,7 +70,7 @@ pub(in crate::game) fn heard(game: &sunrise_gameplay::game::ServerGame<'_>, soun
 }
 
 /// An oak boat two blocks east of the burst's centre.
-pub(in crate::game) fn boat(game: &mut sunrise_gameplay::game::ServerGame<'_>) -> u32 {
+pub(crate) fn boat(game: &mut sunrise_gameplay::game::ServerGame<'_>) -> u32 {
     match game
         .summon_with_nbt("minecraft:oak_boat", [6.5, 64.0, 4.5], "{}")
         .unwrap()
@@ -80,7 +80,7 @@ pub(in crate::game) fn boat(game: &mut sunrise_gameplay::game::ServerGame<'_>) -
     }
 }
 
-pub(in crate::game) fn boat_speed(game: &sunrise_gameplay::game::ServerGame<'_>, id: u32) -> f64 {
+pub(crate) fn boat_speed(game: &sunrise_gameplay::game::ServerGame<'_>, id: u32) -> f64 {
     let v = game.boats.iter().find(|b| b.id == id).unwrap().velocity;
     (v.x * v.x + v.y * v.y + v.z * v.z).sqrt()
 }
@@ -88,7 +88,7 @@ pub(in crate::game) fn boat_speed(game: &sunrise_gameplay::game::ServerGame<'_>,
 /// A zombie at (4.5, 64, 4.5) with the Wind Charged effect, `Silent` or not,
 /// killed and ticked out: `LivingEntity.remove` with KILLED runs its effects
 /// after `LivingEntity.tickDeath`'s twenty ticks.
-pub(in crate::game) fn a_wind_charged_zombie_dies(
+pub(crate) fn a_wind_charged_zombie_dies(
     game: &mut sunrise_gameplay::game::ServerGame<'_>,
     silent: bool,
 ) {

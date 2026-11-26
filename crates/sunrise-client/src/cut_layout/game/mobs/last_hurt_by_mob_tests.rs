@@ -3,7 +3,7 @@
 //! younger than 100 ticks (`LivingEntity.baseTick`); a value read from saved
 //! data ages the same way (tools/test_last_hurt_by_mob_parity.py measures the
 //! same on vanilla 26.3).
-use {crate::game::*, sunrise_gameplay_common::game::{Arc, Instant, Mob, Options, PathBuf, Progress, Resources, Settings, entity, execution_role, hit, load_resources}};
+use {crate::game::*, sunrise_gameplay_common::game::{Instant, Mob, Options, PathBuf, Progress, Resources, entity, execution_role, hit}};
 use std::sync::Arc;
 use sunrise_core::position::ChunkPos;
 use sunrise_level::chunk::Chunk;

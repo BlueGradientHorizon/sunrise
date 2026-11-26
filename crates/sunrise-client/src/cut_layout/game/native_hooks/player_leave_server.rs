@@ -1,7 +1,7 @@
 
 
 #[cfg(test)]
-pub(in crate::game) mod player_leave_tests {
+pub(crate) mod player_leave_tests {
 use sunrise_gameplay_common::game::server_side::native_item_places::tests::guest;
 
     use crate::game::native_hooks::player_leave::player_leave_tests::FLAG;
@@ -18,7 +18,7 @@ use sunrise_gameplay_common::game::server_side::native_item_places::tests::guest
     /// Two guests, 12 then 13, a listener on both hooks, and guest 12's connection closing as
     /// the hub hears it (`NetEvent::Left`, `Hub::remove_guest`). `prepare` sets the guests up
     /// first; `check` gets the game and what the listener heard.
-    pub(in crate::game) fn first_of_two_leaves(
+    pub(crate) fn first_of_two_leaves(
         prepare: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>),
         check: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>, Vec<Heard>),
     ) {

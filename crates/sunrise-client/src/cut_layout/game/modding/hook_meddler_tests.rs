@@ -21,10 +21,10 @@ pub(in crate::game) struct Gate {
     fired: AtomicBool,
 }
 impl Gate {
-    pub(in crate::game) fn arm(&self) {
+    pub(crate) fn arm(&self) {
         self.armed.store(true, Ordering::SeqCst);
     }
-    pub(in crate::game) fn fired(&self) -> bool {
+    pub(crate) fn fired(&self) -> bool {
         self.fired.load(Ordering::SeqCst)
     }
 }
@@ -67,7 +67,7 @@ impl Hooks for Meddler {
 
 /// Runs `test` on a server game with the meddling mod, which does `act` the first time a hook it
 /// listens to fires once the gate is armed.
-pub(in crate::game) fn with_meddler(
+pub(crate) fn with_meddler(
     act: impl Fn(&mut dyn ServerHost) + Send + Sync + 'static,
     test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>, &Gate),
 ) {

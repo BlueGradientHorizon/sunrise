@@ -53,7 +53,7 @@ fn a_first_shot_listener_can_clear_the_eggs_captured_block_before_landing() {
     );
 }
 
-pub(in crate::game) fn run_continuing_wind_charge_keeps_tick_order_and_skips_relaunch_in_batched_pass()
+pub(crate) fn run_continuing_wind_charge_keeps_tick_order_and_skips_relaunch_in_batched_pass()
  {
     let witness = load_wind_continuation_witness_26_3();
     const CASE: &str = "SUNRISE_PROJECTILE_BATCH_CASE";

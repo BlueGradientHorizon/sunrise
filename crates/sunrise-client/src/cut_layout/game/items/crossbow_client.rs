@@ -1,7 +1,7 @@
 
 
 #[cfg(test)]
-pub(in crate::game) mod tests {
+pub(crate) mod tests {
     use super::*;
 
     /// `BowItem.releaseUsing` and `CrossbowItem.performShooting` play the shot
@@ -42,7 +42,7 @@ pub(in crate::game) mod tests {
     }
 
     /// A game on the prepared resources with a creative player.
-    pub(in crate::game) fn game_with_player<'a>(
+    pub(crate) fn game_with_player<'a>(
         resources: &'a mut Option<std::sync::Arc<sunrise_gameplay_common::game::Resources>>,
         root: &std::path::Path,
     ) -> (sunrise_gameplay::game::ServerGame<'a>, [f64; 3]) {

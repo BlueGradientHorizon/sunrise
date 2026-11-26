@@ -1,7 +1,7 @@
 
 
 #[cfg(test)]
-pub(in crate::game) mod part_remainder_tests {
+pub(crate) mod part_remainder_tests {
     use super::*;
     struct Milk;
     #[mod_api::sunrise_part]

@@ -1,7 +1,7 @@
 
 
 #[cfg(test)]
-pub(in crate::game) mod tests {
+pub(crate) mod tests {
     use sunrise_gameplay::game::server_side::lan::LanSettings;
     use super::super::native_entity_refs::tests::with_game;
     use {sunrise_gameplay_common::game::server_side::native_sound_refs::tests::guest, sunrise_gameplay_common::game::server_side::native_sound_refs::tests::packets};

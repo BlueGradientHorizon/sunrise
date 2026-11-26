@@ -1,7 +1,7 @@
 
 #[cfg(test)]
 #[path = "trident/impact_tests.rs"]
-pub(in crate::game) mod impact_tests;
+pub(crate) mod impact_tests;
 
 #[cfg(test)]
 pub(crate) mod tests {

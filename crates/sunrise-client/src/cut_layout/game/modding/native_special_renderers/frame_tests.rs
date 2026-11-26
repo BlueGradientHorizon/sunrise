@@ -136,7 +136,7 @@ impl SpecialModelRenderer for Stick {
 }
 
 /// How many times the renderer was asked about a stack of `count`.
-pub(in crate::game) fn asked(count: u32) -> usize {
+pub(crate) fn asked(count: u32) -> usize {
     ASKED
         .lock()
         .unwrap()
@@ -147,7 +147,7 @@ pub(in crate::game) fn asked(count: u32) -> usize {
 
 /// Installs a special renderer for sticks in this game's item definitions. The fixture submits
 /// its own quad and needs no display transforms from a client-only model library.
-pub(in crate::game) fn install_special_stick(game: &mut sunrise_client_gameplay::game::ClientGame<'_>) {
+pub(crate) fn install_special_stick(game: &mut sunrise_client_gameplay::game::ClientGame<'_>) {
     let factories = BTreeMap::from([(
         mod_api::Identifier::parse("test:stick").unwrap(),
         OwnedSpecialModelFactory::new(
@@ -186,7 +186,7 @@ pub(in crate::game) fn install_special_stick(game: &mut sunrise_client_gameplay:
 }
 
 /// A stick of `count` resolved as a frame resolves a held item (`ItemModelResolver.updateForTopItem`).
-pub(in crate::game) fn draw_stick(
+pub(crate) fn draw_stick(
     game: &sunrise_client_gameplay::game::ClientGame<'_>,
     count: u32,
 ) -> ItemRenderState {

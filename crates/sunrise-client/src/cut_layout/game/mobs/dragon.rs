@@ -405,18 +405,18 @@ use super::*;
 
 #[cfg(test)]
 #[path = "dragon/residency_tests.rs"]
-pub(in crate::game) mod residency_tests;
+pub(crate) mod residency_tests;
 #[cfg(test)]
 #[path = "dragon/thorns_tests.rs"]
-pub(in crate::game) mod thorns_tests;
+pub(crate) mod thorns_tests;
 #[cfg(test)]
 #[path = "dragon/walls_tests.rs"]
-pub(in crate::game) mod walls_tests;
+pub(crate) mod walls_tests;
 
 #[cfg(test)]
-pub(in crate::game) mod dragon_fireball_spawn_tests {
+pub(crate) mod dragon_fireball_spawn_tests {
     include!("dragon/fireball_spawn_tests.rs");
 }
 #[cfg(test)]
 #[path = "dragon/wing_push_tests.rs"]
-pub(in crate::game) mod wing_push_tests;
+pub(crate) mod wing_push_tests;

@@ -1,7 +1,7 @@
 
 
 #[cfg(test)]
-pub(in crate::game) mod tests {
+pub(crate) mod tests {
     use super::*;
     use sunrise_gameplay_common::game::native_hooks::register_enchantment_damage_effects::tests::Observations;
     use sunrise_gameplay_common::game::native_hooks::register_enchantment_damage_effects::tests::TestMod;

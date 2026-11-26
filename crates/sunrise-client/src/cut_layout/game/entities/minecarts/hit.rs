@@ -1,3 +1,3 @@
 #[cfg(test)]
 #[path = "minecart_hit_tests.rs"]
-pub(in crate::game) mod hit_tests;
+pub(crate) mod hit_tests;

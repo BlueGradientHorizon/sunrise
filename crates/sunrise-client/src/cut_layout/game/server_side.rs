@@ -1,337 +1,337 @@
 
 #[cfg(test)]
 #[path = "entities/armor_stand_refind_tests.rs"]
-pub(in crate::game) mod armor_stand_refind_tests;
+pub(crate) mod armor_stand_refind_tests;
 #[cfg(test)]
 #[path = "blocks/block_drops_pops_tests.rs"]
-pub(in crate::game) mod block_drops_pops_tests;
+pub(crate) mod block_drops_pops_tests;
 #[cfg(test)]
 #[path = "modding/block_entity_part_state_tests.rs"]
-pub(in crate::game) mod block_entity_part_state_tests;
+pub(crate) mod block_entity_part_state_tests;
 #[cfg(test)]
 #[path = "modding/block_use_completion_tests.rs"]
-pub(in crate::game) mod block_use_completion_tests;
+pub(crate) mod block_use_completion_tests;
 #[cfg(test)]
 #[path = "blocks/cauldron_underwater_tests.rs"]
-pub(in crate::game) mod cauldron_underwater_tests;
+pub(crate) mod cauldron_underwater_tests;
 #[cfg(test)]
 #[path = "administration/clone_dimensions_tests.rs"]
-pub(in crate::game) mod clone_dimensions_tests;
+pub(crate) mod clone_dimensions_tests;
 #[cfg(test)]
 #[path = "items/damage_item_tests.rs"]
-pub(in crate::game) mod damage_item_tests;
+pub(crate) mod damage_item_tests;
 #[cfg(test)]
 #[path = "items/damage_resistant_tests.rs"]
-pub(in crate::game) mod damage_resistant_tests;
+pub(crate) mod damage_resistant_tests;
 #[cfg(test)]
 #[path = "modding/disabled_block_tests.rs"]
-pub(in crate::game) mod disabled_block_tests;
+pub(crate) mod disabled_block_tests;
 #[cfg(test)]
 #[path = "mobs/dragon_fireball_motion_tests.rs"]
-pub(in crate::game) mod dragon_fireball_motion_tests;
+pub(crate) mod dragon_fireball_motion_tests;
 #[cfg(test)]
 #[path = "items/enchant_pick_parts_tests.rs"]
-pub(in crate::game) mod enchant_pick_parts_tests;
+pub(crate) mod enchant_pick_parts_tests;
 #[cfg(test)]
 #[path = "mobs/enderman_hurt_teleport_tests.rs"]
-pub(in crate::game) mod enderman_hurt_teleport_tests;
+pub(crate) mod enderman_hurt_teleport_tests;
 #[cfg(test)]
 #[path = "entities/entity_die_tests.rs"]
-pub(in crate::game) mod entity_die_tests;
+pub(crate) mod entity_die_tests;
 #[cfg(test)]
 #[path = "modding/entity_part_state_tests.rs"]
-pub(in crate::game) mod entity_part_state_tests;
+pub(crate) mod entity_part_state_tests;
 #[cfg(test)]
 #[path = "mobs/fence_leash_force_tests.rs"]
-pub(in crate::game) mod fence_leash_force_tests;
+pub(crate) mod fence_leash_force_tests;
 #[cfg(test)]
 #[path = "blocks/first_tick_registration_tests.rs"]
-pub(in crate::game) mod first_tick_registration_tests;
+pub(crate) mod first_tick_registration_tests;
 #[cfg(test)]
 #[path = "mobs/golem_defense_tests.rs"]
-pub(in crate::game) mod golem_defense_tests;
+pub(crate) mod golem_defense_tests;
 #[cfg(test)]
 #[path = "modding/grindstone_decisions_tests.rs"]
-pub(in crate::game) mod grindstone_decisions_tests;
+pub(crate) mod grindstone_decisions_tests;
 #[cfg(test)]
 #[path = "mobs/hoglin_repeat_attack_tests.rs"]
-pub(in crate::game) mod hoglin_repeat_attack_tests;
+pub(crate) mod hoglin_repeat_attack_tests;
 #[cfg(test)]
 #[path = "modding/hook_meddler_tests.rs"]
-pub(in crate::game) mod hook_meddler_tests;
+pub(crate) mod hook_meddler_tests;
 #[cfg(test)]
 #[path = "world/infiniburn_tests.rs"]
-pub(in crate::game) mod infiniburn_tests;
+pub(crate) mod infiniburn_tests;
 #[cfg(test)]
 #[path = "administration/inline_feature_parse_tests.rs"]
-pub(in crate::game) mod inline_feature_parse_tests;
+pub(crate) mod inline_feature_parse_tests;
 #[cfg(test)]
 #[path = "administration/inline_loot_reference_tests.rs"]
-pub(in crate::game) mod inline_loot_reference_tests;
+pub(crate) mod inline_loot_reference_tests;
 #[cfg(test)]
 #[path = "entities/interaction_data_tests.rs"]
-pub(in crate::game) mod interaction_data_tests;
+pub(crate) mod interaction_data_tests;
 #[cfg(test)]
 #[path = "items/item_abilities_tests.rs"]
-pub(in crate::game) mod item_abilities_tests;
+pub(crate) mod item_abilities_tests;
 #[cfg(test)]
 #[path = "entities/item_contact_tests.rs"]
-pub(in crate::game) mod item_contact_tests;
+pub(crate) mod item_contact_tests;
 #[cfg(test)]
 #[path = "modding/item_drop_state_tests.rs"]
-pub(in crate::game) mod item_drop_state_tests;
+pub(crate) mod item_drop_state_tests;
 #[cfg(test)]
 #[path = "items/item_pickup_shape_tests.rs"]
-pub(in crate::game) mod item_pickup_shape_tests;
+pub(crate) mod item_pickup_shape_tests;
 #[cfg(test)]
 #[path = "entities/item_void_tests.rs"]
-pub(in crate::game) mod item_void_tests;
+pub(crate) mod item_void_tests;
 #[cfg(test)]
 #[path = "entities/kill_die_vibration_tests.rs"]
-pub(in crate::game) mod kill_die_vibration_tests;
+pub(crate) mod kill_die_vibration_tests;
 #[cfg(test)]
 #[path = "entities/knot_residency_tests.rs"]
-pub(in crate::game) mod knot_residency_tests;
+pub(crate) mod knot_residency_tests;
 #[cfg(test)]
 #[path = "network/lan_menus_tests.rs"]
-pub(in crate::game) mod lan_menus_tests;
+pub(crate) mod lan_menus_tests;
 #[cfg(test)]
 #[path = "network/lan_trade_decisions_tests.rs"]
-pub(in crate::game) mod lan_trade_decisions_tests;
+pub(crate) mod lan_trade_decisions_tests;
 #[cfg(test)]
 #[path = "administration/loot_kill_guest_tests.rs"]
-pub(in crate::game) mod loot_kill_guest_tests;
+pub(crate) mod loot_kill_guest_tests;
 #[cfg(test)]
 #[path = "items/mending_pick_tests.rs"]
-pub(in crate::game) mod mending_pick_tests;
+pub(crate) mod mending_pick_tests;
 #[cfg(test)]
 #[path = "runtime/mining_component_tests.rs"]
-pub(in crate::game) mod mining_component_tests;
+pub(crate) mod mining_component_tests;
 #[cfg(test)]
 #[path = "modding/mod_container_openers_tests.rs"]
-pub(in crate::game) mod mod_container_openers_tests;
+pub(crate) mod mod_container_openers_tests;
 #[cfg(test)]
 #[path = "modding/native_biome_keys_tests.rs"]
-pub(in crate::game) mod native_biome_keys_tests;
+pub(crate) mod native_biome_keys_tests;
 #[cfg(test)]
 #[path = "modding/native_block_entity_item_tests.rs"]
-pub(in crate::game) mod native_block_entity_item_tests;
+pub(crate) mod native_block_entity_item_tests;
 #[cfg(test)]
 #[path = "modding/native_chat_recipients_tests.rs"]
-pub(in crate::game) mod native_chat_recipients_tests;
+pub(crate) mod native_chat_recipients_tests;
 #[cfg(test)]
 #[path = "modding/native_colliders_tests.rs"]
-pub(in crate::game) mod native_colliders_tests;
+pub(crate) mod native_colliders_tests;
 #[cfg(test)]
 #[path = "modding/native_console_tests.rs"]
-pub(in crate::game) mod native_console_tests;
+pub(crate) mod native_console_tests;
 #[cfg(test)]
 #[path = "modding/native_damage_tests.rs"]
-pub(in crate::game) mod native_damage_tests;
+pub(crate) mod native_damage_tests;
 #[cfg(test)]
 #[path = "modding/native_entity_extinguish_tests.rs"]
-pub(in crate::game) mod native_entity_extinguish_tests;
+pub(crate) mod native_entity_extinguish_tests;
 #[cfg(test)]
 #[path = "modding/native_entity_index_parity_tests.rs"]
-pub(in crate::game) mod native_entity_index_parity_tests;
+pub(crate) mod native_entity_index_parity_tests;
 #[cfg(test)]
 #[path = "modding/native_entity_move_correction_tests.rs"]
-pub(in crate::game) mod native_entity_move_correction_tests;
+pub(crate) mod native_entity_move_correction_tests;
 #[cfg(test)]
 #[path = "modding/native_entity_move_player_tests.rs"]
-pub(in crate::game) mod native_entity_move_player_tests;
+pub(crate) mod native_entity_move_player_tests;
 #[cfg(test)]
 #[path = "modding/native_entity_move_sweep_tests.rs"]
-pub(in crate::game) mod native_entity_move_sweep_tests;
+pub(crate) mod native_entity_move_sweep_tests;
 #[cfg(test)]
 #[path = "modding/native_explosions_tests.rs"]
-pub(in crate::game) mod native_explosions_tests;
+pub(crate) mod native_explosions_tests;
 #[cfg(test)]
 #[path = "modding/native_fake_disconnect_tests.rs"]
-pub(in crate::game) mod native_fake_disconnect_tests;
+pub(crate) mod native_fake_disconnect_tests;
 #[cfg(test)]
 #[path = "modding/native_game_event_keys_tests.rs"]
-pub(in crate::game) mod native_game_event_keys_tests;
+pub(crate) mod native_game_event_keys_tests;
 #[cfg(test)]
 #[path = "modding/native_guest_turn_tests.rs"]
-pub(in crate::game) mod native_guest_turn_tests;
+pub(crate) mod native_guest_turn_tests;
 #[cfg(test)]
 #[path = "modding/native_hanging_tests.rs"]
-pub(in crate::game) mod native_hanging_tests;
+pub(crate) mod native_hanging_tests;
 #[cfg(test)]
 #[path = "modding/native_hit_attempt_tests.rs"]
-pub(in crate::game) mod native_hit_attempt_tests;
+pub(crate) mod native_hit_attempt_tests;
 #[cfg(test)]
 #[path = "modding/native_hit_causer_tests.rs"]
-pub(in crate::game) mod native_hit_causer_tests;
+pub(crate) mod native_hit_causer_tests;
 #[cfg(test)]
 #[path = "modding/native_hit_sounds_tests.rs"]
-pub(in crate::game) mod native_hit_sounds_tests;
+pub(crate) mod native_hit_sounds_tests;
 #[cfg(test)]
 #[path = "modding/native_hit_view_tests.rs"]
-pub(in crate::game) mod native_hit_view_tests;
+pub(crate) mod native_hit_view_tests;
 #[cfg(test)]
 #[path = "modding/native_invulnerability_check_tests.rs"]
-pub(in crate::game) mod native_invulnerability_check_tests;
+pub(crate) mod native_invulnerability_check_tests;
 #[cfg(test)]
 #[path = "modding/native_knockback_tests.rs"]
-pub(in crate::game) mod native_knockback_tests;
+pub(crate) mod native_knockback_tests;
 #[cfg(test)]
 #[path = "modding/native_level_placement_tests.rs"]
-pub(in crate::game) mod native_level_placement_tests;
+pub(crate) mod native_level_placement_tests;
 #[cfg(test)]
 #[path = "modding/native_menu_inventory_tests.rs"]
-pub(in crate::game) mod native_menu_inventory_tests;
+pub(crate) mod native_menu_inventory_tests;
 #[cfg(test)]
 #[path = "modding/native_mob_wanted_position_tests.rs"]
-pub(in crate::game) mod native_mob_wanted_position_tests;
+pub(crate) mod native_mob_wanted_position_tests;
 #[cfg(test)]
 #[path = "modding/native_move_by_tests.rs"]
-pub(in crate::game) mod native_move_by_tests;
+pub(crate) mod native_move_by_tests;
 #[cfg(test)]
 #[path = "modding/native_path_types_tests.rs"]
-pub(in crate::game) mod native_path_types_tests;
+pub(crate) mod native_path_types_tests;
 #[cfg(test)]
 #[path = "modding/native_placement_state_tests.rs"]
-pub(in crate::game) mod native_placement_state_tests;
+pub(crate) mod native_placement_state_tests;
 #[cfg(test)]
 #[path = "modding/native_player_destroyed_block_tests.rs"]
-pub(in crate::game) mod native_player_destroyed_block_tests;
+pub(crate) mod native_player_destroyed_block_tests;
 #[cfg(test)]
 #[path = "modding/native_player_ender_chest_tests.rs"]
-pub(in crate::game) mod native_player_ender_chest_tests;
+pub(crate) mod native_player_ender_chest_tests;
 #[cfg(test)]
 #[path = "modding/native_player_level_tests.rs"]
-pub(in crate::game) mod native_player_level_tests;
+pub(crate) mod native_player_level_tests;
 #[cfg(test)]
 #[path = "modding/native_player_move_tests.rs"]
-pub(in crate::game) mod native_player_move_tests;
+pub(crate) mod native_player_move_tests;
 #[cfg(test)]
 #[path = "modding/native_player_spectating_tests.rs"]
-pub(in crate::game) mod native_player_spectating_tests;
+pub(crate) mod native_player_spectating_tests;
 #[cfg(test)]
 #[path = "modding/native_player_visibility_tests.rs"]
-pub(in crate::game) mod native_player_visibility_tests;
+pub(crate) mod native_player_visibility_tests;
 #[cfg(test)]
 #[path = "modding/native_projectile_launch_tests.rs"]
-pub(in crate::game) mod native_projectile_launch_tests;
+pub(crate) mod native_projectile_launch_tests;
 #[cfg(test)]
 #[path = "modding/native_recipe_sync_tests.rs"]
-pub(in crate::game) mod native_recipe_sync_tests;
+pub(crate) mod native_recipe_sync_tests;
 #[cfg(test)]
 #[path = "modding/native_registry_ids_tests.rs"]
-pub(in crate::game) mod native_registry_ids_tests;
+pub(crate) mod native_registry_ids_tests;
 #[cfg(test)]
 #[path = "modding/native_shield_totem_tests.rs"]
-pub(in crate::game) mod native_shield_totem_tests;
+pub(crate) mod native_shield_totem_tests;
 #[cfg(test)]
 #[path = "modding/native_singleplayer_owner_tests.rs"]
-pub(in crate::game) mod native_singleplayer_owner_tests;
+pub(crate) mod native_singleplayer_owner_tests;
 #[cfg(test)]
 #[path = "modding/native_success_broadcast_tests.rs"]
-pub(in crate::game) mod native_success_broadcast_tests;
+pub(crate) mod native_success_broadcast_tests;
 #[cfg(test)]
 #[path = "entities/orb_data_tests.rs"]
-pub(in crate::game) mod orb_data_tests;
+pub(crate) mod orb_data_tests;
 #[cfg(test)]
 #[path = "mobs/piglin_admire_tests.rs"]
-pub(in crate::game) mod piglin_admire_tests;
+pub(crate) mod piglin_admire_tests;
 #[cfg(test)]
 #[path = "mobs/piglin_conversion_tests.rs"]
-pub(in crate::game) mod piglin_conversion_tests;
+pub(crate) mod piglin_conversion_tests;
 #[cfg(test)]
 #[path = "blocks/place_feature_tests.rs"]
-pub(in crate::game) mod place_feature_tests;
+pub(crate) mod place_feature_tests;
 #[cfg(test)]
 #[path = "interface/play_ping_tests.rs"]
-pub(in crate::game) mod play_ping_tests;
+pub(crate) mod play_ping_tests;
 #[cfg(test)]
 #[path = "blocks/player_destroy_tests.rs"]
-pub(in crate::game) mod player_destroy_tests;
+pub(crate) mod player_destroy_tests;
 #[cfg(test)]
 #[path = "entities/player_residency_tests.rs"]
-pub(in crate::game) mod player_residency_tests;
+pub(crate) mod player_residency_tests;
 #[cfg(test)]
 #[path = "world/player_save_projection_tests.rs"]
-pub(in crate::game) mod player_save_projection_tests;
+pub(crate) mod player_save_projection_tests;
 #[cfg(test)]
 #[path = "items/projectile_spawned_tests.rs"]
-pub(in crate::game) mod projectile_spawned_tests;
+pub(crate) mod projectile_spawned_tests;
 #[cfg(test)]
 #[path = "entities/rail_parts_tests.rs"]
-pub(in crate::game) mod rail_parts_tests;
+pub(crate) mod rail_parts_tests;
 #[cfg(test)]
 #[path = "interface/recipe_book_variants_tests.rs"]
-pub(in crate::game) mod recipe_book_variants_tests;
+pub(crate) mod recipe_book_variants_tests;
 #[cfg(test)]
 #[path = "modding/rectangular_recipe_remainder_tests.rs"]
-pub(in crate::game) mod rectangular_recipe_remainder_tests;
+pub(crate) mod rectangular_recipe_remainder_tests;
 #[cfg(test)]
 #[path = "world/runtime_levels_tests.rs"]
-pub(in crate::game) mod runtime_levels_tests;
+pub(crate) mod runtime_levels_tests;
 #[cfg(test)]
 #[path = "world/save_load_pass_tests.rs"]
-pub(in crate::game) mod save_load_pass_tests;
+pub(crate) mod save_load_pass_tests;
 #[cfg(test)]
 #[path = "world/save_pass_tests.rs"]
-pub(in crate::game) mod save_pass_tests;
+pub(crate) mod save_pass_tests;
 #[cfg(test)]
 #[path = "mobs/shear_refind_tests.rs"]
-pub(in crate::game) mod shear_refind_tests;
+pub(crate) mod shear_refind_tests;
 #[cfg(test)]
 #[path = "modding/slot_take_tests.rs"]
-pub(in crate::game) mod slot_take_tests;
+pub(crate) mod slot_take_tests;
 #[cfg(test)]
 #[path = "world/spawn_save_tests.rs"]
-pub(in crate::game) mod spawn_save_tests;
+pub(crate) mod spawn_save_tests;
 #[cfg(test)]
 #[path = "entities/stand_break_loot_tests.rs"]
-pub(in crate::game) mod stand_break_loot_tests;
+pub(crate) mod stand_break_loot_tests;
 #[cfg(test)]
 #[path = "entities/stand_command_hurt_tests.rs"]
-pub(in crate::game) mod stand_command_hurt_tests;
+pub(crate) mod stand_command_hurt_tests;
 #[cfg(test)]
 #[path = "runtime/storage_alias_tests.rs"]
-pub(in crate::game) mod storage_alias_tests;
+pub(crate) mod storage_alias_tests;
 #[cfg(test)]
 #[path = "runtime/test_pos_guest_tests.rs"]
-pub(in crate::game) mod test_pos_guest_tests;
+pub(crate) mod test_pos_guest_tests;
 #[cfg(test)]
 #[path = "items/use_stop_tests.rs"]
-pub(in crate::game) mod use_stop_tests;
+pub(crate) mod use_stop_tests;
 #[cfg(test)]
 #[path = "entities/vehicle_removal_tests.rs"]
-pub(in crate::game) mod vehicle_removal_tests;
+pub(crate) mod vehicle_removal_tests;
 #[cfg(test)]
 #[path = "blocks/vibration_source_tests.rs"]
-pub(in crate::game) mod vibration_source_tests;
+pub(crate) mod vibration_source_tests;
 #[cfg(test)]
 #[path = "blocks/vibration_tests.rs"]
-pub(in crate::game) mod vibration_tests;
+pub(crate) mod vibration_tests;
 #[cfg(test)]
 #[path = "world/visibility_unwind_tests.rs"]
-pub(in crate::game) mod visibility_unwind_tests;
+pub(crate) mod visibility_unwind_tests;
 #[cfg(test)]
 #[path = "mobs/wither_star_tests.rs"]
-pub(in crate::game) mod wither_star_tests;
+pub(crate) mod wither_star_tests;
 #[cfg(test)]
 #[path = "blocks/world_test_def_tests.rs"]
-pub(in crate::game) mod world_test_def_tests;
+pub(crate) mod world_test_def_tests;
 #[cfg(test)]
 #[path = "items/xp_repair_ratio_tests.rs"]
-pub(in crate::game) mod xp_repair_ratio_tests;
+pub(crate) mod xp_repair_ratio_tests;
 #[cfg(test)]
 #[path = "runtime/core_tests_server.rs"]
-pub(in crate::game) mod core_tests_server;
+pub(crate) mod core_tests_server;
 #[cfg(test)]
 #[path = "modding/crafting_recipe_kind_tests_server.rs"]
-pub(in crate::game) mod crafting_recipe_kind_tests_server;
+pub(crate) mod crafting_recipe_kind_tests_server;
 #[cfg(test)]
 #[path = "modding/stacked_on_other_tests_server.rs"]
-pub(in crate::game) mod stacked_on_other_tests_server;
+pub(crate) mod stacked_on_other_tests_server;
 #[cfg(test)]
 #[path = "blocks/world_fluids_tests.rs"]
-pub(in crate::game) mod world_fluids_tests;
+pub(crate) mod world_fluids_tests;
 #[path = "world/world_loading.rs"]
 pub(crate) mod world_loading;
 

@@ -1,7 +1,7 @@
 
 
 #[cfg(test)]
-pub(in crate::game) mod tests {
+pub(crate) mod tests {
     use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 
     /// `lan_guest_joined`'s placement-only pass, between a forced write and
@@ -40,14 +40,14 @@ pub(in crate::game) mod tests {
 
 #[cfg(test)]
 #[path = "data/orb_uuid_tests.rs"]
-pub(in crate::game) mod orb_uuid_tests;
+pub(crate) mod orb_uuid_tests;
 
 #[cfg(test)]
 #[path = "data/eye_item_tests.rs"]
-pub(in crate::game) mod eye_item_tests;
+pub(crate) mod eye_item_tests;
 
 #[cfg(test)]
-pub(in crate::game) mod wolf_live_anger_tests {
+pub(crate) mod wolf_live_anger_tests {
     use sunrise_gameplay::game::server_side::commands::data::Target;
     use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
     use sunrise_core::nbt::Tag;
@@ -150,7 +150,7 @@ pub(in crate::game) mod wolf_live_anger_tests {
 }
 
 #[cfg(test)]
-pub(in crate::game) mod boat_passenger_tree_tests {
+pub(crate) mod boat_passenger_tree_tests {
     use super::*;
     use sunrise_gameplay::game::native_entity_refs::tests::with_game;
     #[test]
@@ -321,7 +321,7 @@ pub(in crate::game) mod boat_passenger_tree_tests {
 }
 
 #[cfg(test)]
-pub(in crate::game) mod loot_table_tests {
+pub(crate) mod loot_table_tests {
     use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
     use std::sync::Arc;
     use sunrise_core::nbt::Tag;
@@ -458,40 +458,40 @@ pub(in crate::game) mod loot_table_tests {
 
 #[cfg(test)]
 #[path = "data/portal_cooldown_tests.rs"]
-pub(in crate::game) mod portal_cooldown_tests;
+pub(crate) mod portal_cooldown_tests;
 
 #[cfg(test)]
-pub(in crate::game) mod compute_tests;
+pub(crate) mod compute_tests;
 
 #[cfg(test)]
-pub(in crate::game) mod saved_tag_tests;
+pub(crate) mod saved_tag_tests;
 
 #[cfg(test)]
 #[path = "data/stand_living_tests.rs"]
-pub(in crate::game) mod stand_living_tests;
+pub(crate) mod stand_living_tests;
 
 #[cfg(test)]
-pub(in crate::game) mod mod_block_entity_tests;
+pub(crate) mod mod_block_entity_tests;
 
 #[cfg(test)]
 #[path = "data/fire_tests.rs"]
-pub(in crate::game) mod fire_tests;
+pub(crate) mod fire_tests;
 
 #[cfg(test)]
-pub(in crate::game) mod residency_tests;
+pub(crate) mod residency_tests;
 
 #[cfg(test)]
-pub(in crate::game) mod hopper_cooldown_tests;
+pub(crate) mod hopper_cooldown_tests;
 
 #[cfg(test)]
 #[path = "data/rotation_tests.rs"]
-pub(in crate::game) mod rotation_tests;
+pub(crate) mod rotation_tests;
 
 #[cfg(test)]
-pub(in crate::game) mod arrow_reload_tests;
+pub(crate) mod arrow_reload_tests;
 
 #[cfg(test)]
-pub(in crate::game) mod arrow_owner_tests {
+pub(crate) mod arrow_owner_tests {
     use sunrise_gameplay::game::server_side::commands::data::Target;
     use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
     use sunrise_core::nbt::Tag;
@@ -600,7 +600,7 @@ pub(in crate::game) mod arrow_owner_tests {
 }
 
 #[cfg(test)]
-pub(in crate::game) mod bell_command_identity_tests {
+pub(crate) mod bell_command_identity_tests {
     use super::*;
     use std::sync::Arc;
     use sunrise_core::{geometry::Vec3, position::ChunkPos};
@@ -703,12 +703,12 @@ pub(in crate::game) mod bell_command_identity_tests {
 }
 
 #[cfg(test)]
-pub(in crate::game) mod falling_live_adoption_tests {
+pub(crate) mod falling_live_adoption_tests {
     use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
     use std::sync::Arc;
     use sunrise_core::position::ChunkPos;
     use sunrise_level::chunk::Chunk;
-    pub(in crate::game) fn with_game(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
+    pub(crate) fn with_game(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let settings = Settings::default();
         let loaded = load_resources(
@@ -758,7 +758,7 @@ pub(in crate::game) mod falling_live_adoption_tests {
 }
 
 #[cfg(test)]
-pub(in crate::game) mod vehicle_container_tests {
+pub(crate) mod vehicle_container_tests {
     use super::*;
 
     #[test]
@@ -1001,5 +1001,5 @@ pub(in crate::game) mod vehicle_container_tests {
 
 #[cfg(test)]
 #[path = "finalize_marker_tests.rs"]
-pub(in crate::game) mod finalize_marker_tests;
+pub(crate) mod finalize_marker_tests;
 use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

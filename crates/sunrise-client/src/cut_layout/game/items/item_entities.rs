@@ -1,7 +1,7 @@
 
 
 #[cfg(test)]
-pub(in crate::game) mod destroyed_contents_tests {
+pub(crate) mod destroyed_contents_tests {
     use super::*;
     use sunrise_gameplay::game::game_tests::tests::server_game;
     use sunrise_core::random::RandomSource;
@@ -97,7 +97,7 @@ pub(in crate::game) mod destroyed_contents_tests {
 }
 
 #[cfg(test)]
-pub(in crate::game) mod escape_tests {
+pub(crate) mod escape_tests {
     use sunrise_gameplay::game::game_tests::tests::server_game;
     use sunrise_core::random::RandomSource;
     use sunrise_items::items::ItemStack;
@@ -142,5 +142,5 @@ pub(in crate::game) mod escape_tests {
 
 #[cfg(test)]
 #[path = "tests/thrown_items_tests.rs"]
-pub(in crate::game) mod thrown_items_tests;
+pub(crate) mod thrown_items_tests;
 use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

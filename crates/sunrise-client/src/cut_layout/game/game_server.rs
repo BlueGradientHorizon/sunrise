@@ -1,7 +1,7 @@
 
 
 #[cfg(test)]
-pub(in crate::game) mod nested_orb_spawn_tests {
+pub(crate) mod nested_orb_spawn_tests {
 
     #[test]
     #[ignore = "daily"]

@@ -93,7 +93,7 @@ pub(in sunrise_gameplay::game::server_side) fn run_portal_arrival_effects_merge_
 
 /// Expire an actual primed TNT beside a portal and an ordinary block. A valid
 /// frame keeps neighbour updates from removing a protected portal indirectly.
-pub(in crate::game) fn assert_tnt_blast(game: &mut sunrise_gameplay::game::ServerGame<'_>, protected: bool) {
+pub(crate) fn assert_tnt_blast(game: &mut sunrise_gameplay::game::ServerGame<'_>, protected: bool) {
     assert_eq!(game.tnts.len(), 1);
     let at = game.tnts[0].position;
     let (x, y, z) = (

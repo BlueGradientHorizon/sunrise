@@ -1,7 +1,7 @@
 
 
 #[cfg(test)]
-pub(in crate::game) mod allay_owner_damage_tests {
+pub(crate) mod allay_owner_damage_tests {
     use sunrise_gameplay::game::native_entity_refs::tests::with_game_at;
     use sunrise_core::geometry::Vec3;
     use sunrise_sim::mobs::{Damage, Mob};
@@ -74,7 +74,7 @@ pub(in crate::game) mod allay_owner_damage_tests {
 
 #[cfg(test)]
 #[path = "registered_damage_tests_server.rs"]
-pub(in crate::game) mod registered_damage_tests;
+pub(crate) mod registered_damage_tests;
 
 #[cfg(test)]
 pub(crate) mod datapack_damage_tests {
@@ -89,7 +89,7 @@ use crate::game::{commands::Target, native_entity_refs::tests::with_game};
 
 use sunrise_core::geometry::Vec3;
 
-pub(in crate::game) fn run_a_datapack_explosion_type_removes_a_crystal_quietly_and_hurts_the_dragon()
+pub(crate) fn run_a_datapack_explosion_type_removes_a_crystal_quietly_and_hurts_the_dragon()
      {
         with_game(|game| {
             with_pack(game);
@@ -134,7 +134,7 @@ pub(in crate::game) fn run_a_datapack_explosion_type_removes_a_crystal_quietly_a
 
 
 #[cfg(test)]
-pub(in crate::game) mod vehicle_damage_command_tests {
+pub(crate) mod vehicle_damage_command_tests {
     use sunrise_gameplay::game::commands::world_cmds::vehicle_damage_command_tests::attribute_chat_count;
     use sunrise_gameplay::game::commands::world_cmds::vehicle_damage_command_tests::with_game;
     use std::sync::Arc;
@@ -393,7 +393,7 @@ pub(in crate::game) mod vehicle_damage_command_tests {
 
 #[cfg(test)]
 #[path = "effect_attribute_tests_server.rs"]
-pub(in crate::game) mod effect_attribute_tests;
+pub(crate) mod effect_attribute_tests;
 use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
 
 use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;

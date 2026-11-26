@@ -4,7 +4,7 @@
 use std::sync::Arc;
 use sunrise_protocol::packets::play::{self};
 
-pub(in crate::game) fn spawn(dimension: &str) -> play::SpawnInfo {
+pub(crate) fn spawn(dimension: &str) -> play::SpawnInfo {
     play::SpawnInfo {
         dimension_type: 0,
         dimension: dimension.into(),
@@ -21,7 +21,7 @@ pub(in crate::game) fn spawn(dimension: &str) -> play::SpawnInfo {
 
 impl sunrise_client_gameplay::game::client_side::remote_client::Remote {
     /// Lists this client's own player with `latency`, as the server's player info update does.
-    pub(in crate::game) fn list_self(&mut self, latency: i32) {
+    pub(crate) fn list_self(&mut self, latency: i32) {
         let mut me = sunrise_level::profile_lookup::TabPlayer::new(self.profile, "SessionReadTest");
         me.latency = latency;
         self.tab_players.insert(self.profile, me);

@@ -31,13 +31,13 @@ impl Goal for SeededBreed {
         self.goal.tick(m, cx);
     }
 }
-pub(in crate::game) struct Bred {
-    pub(in crate::game) child: Mob,
-    pub(in crate::game) next_random: i32,
-    pub(in crate::game) experience: BreedExperience,
+pub(crate) struct Bred {
+    pub(crate) child: Mob,
+    pub(crate) next_random: i32,
+    pub(crate) experience: BreedExperience,
 }
 #[allow(unused_imports)]
-pub(in crate::game) use crate::game::server_side::creatures_server::breeding_tests::tick_breeding;
+pub(crate) use crate::game::server_side::creatures_server::breeding_tests::tick_breeding;
 
 #[test]
 #[ignore = "daily"]

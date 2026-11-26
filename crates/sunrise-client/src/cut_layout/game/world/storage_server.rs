@@ -1,7 +1,7 @@
 
 
 #[cfg(test)]
-pub(in crate::game) mod tests {
+pub(crate) mod tests {
     /// `ChestBlockEntity`'s opener counter plays the block's own hinge
     /// sound: a copper chest's, by weather state, not the wooden chest's.
     #[test]
@@ -43,7 +43,7 @@ pub(in crate::game) mod tests {
 }
 
 #[cfg(test)]
-pub(in crate::game) mod reach_tests {
+pub(crate) mod reach_tests {
     use super::super::game_tests::tests::server_game;
     use sunrise_core::geometry::Vec3;
     use sunrise_level::containers::BlockEntity;
@@ -97,7 +97,7 @@ pub(in crate::game) mod reach_tests {
 }
 
 #[cfg(test)]
-pub(in crate::game) mod lock_tests {
+pub(crate) mod lock_tests {
     use super::super::game_tests::tests::server_game;
     use sunrise_core::nbt::Tag;
     use sunrise_items::items::ItemStack;

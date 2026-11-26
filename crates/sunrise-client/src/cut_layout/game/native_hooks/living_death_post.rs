@@ -1,7 +1,7 @@
 
 
 #[cfg(test)]
-pub(in crate::game) mod tests {
+pub(crate) mod tests {
     use sunrise_gameplay::game::native_entity_refs::tests::with_game;
     use {crate::game::native_hooks::living_death_post::*};
     use mod_api::{
@@ -23,12 +23,12 @@ pub(in crate::game) mod tests {
         pub(in crate::game) experience_before: bool,
     }
 
-    pub(in crate::game) struct Observer {
+    pub(crate) struct Observer {
         pub heard: Arc<Mutex<Vec<&'static str>>>,
-        pub(in crate::game) cancel: Arc<AtomicBool>,
-        pub(in crate::game) drops: Arc<AtomicUsize>,
-        pub(in crate::game) experience: Arc<AtomicBool>,
-        pub(in crate::game) post: Arc<Mutex<Post>>,
+        pub(crate) cancel: Arc<AtomicBool>,
+        pub(crate) drops: Arc<AtomicUsize>,
+        pub(crate) experience: Arc<AtomicBool>,
+        pub(crate) post: Arc<Mutex<Post>>,
     }
 
     #[mod_api::__subscriptions]
@@ -70,7 +70,7 @@ pub(in crate::game) mod tests {
     }
 
     #[allow(unused_imports)]
-pub(in crate::game) use sunrise_gameplay::game::server_side::native_hooks_server::living_death_post::tests::sheep;
+pub(crate) use sunrise_gameplay::game::server_side::native_hooks_server::living_death_post::tests::sheep;
 
     /// One notice per death, at the end: after `living_death` (unless it
     /// cancelled), the drop list and the experience, and before the tick is

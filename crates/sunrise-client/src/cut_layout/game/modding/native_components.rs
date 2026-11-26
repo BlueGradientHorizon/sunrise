@@ -1,7 +1,7 @@
 
 
 #[cfg(test)]
-pub(in crate::game) mod equippable_slot_tests {
+pub(crate) mod equippable_slot_tests {
     use sunrise_items::items::ItemStack;
 
     /// `Equippable.slot`: armour goes where it is worn, a plain item goes nowhere.
@@ -18,7 +18,7 @@ pub(in crate::game) mod equippable_slot_tests {
 }
 
 #[cfg(test)]
-pub(in crate::game) mod enchantment_conflict_tests {
+pub(crate) mod enchantment_conflict_tests {
     use sunrise_gameplay_common::game::native_components::ItemStack;
     use {sunrise_gameplay_common::game::api_values::stack_value, sunrise_gameplay_common::game::api_values::test_snapshot};
     use sunrise_gameplay::game::native_entity_refs::tests::with_game;
@@ -100,8 +100,8 @@ pub(in crate::game) mod enchantment_conflict_tests {
 }
 
 #[cfg(test)]
-pub(in crate::game) mod item_resource_property_tests {
-    pub(in crate::game) fn engine(
+pub(crate) mod item_resource_property_tests {
+    pub(crate) fn engine(
         resource: &mod_api::ItemResource,
         count: u32,
     ) -> sunrise_items::items::ItemStack {
@@ -109,7 +109,7 @@ pub(in crate::game) mod item_resource_property_tests {
     }
     #[allow(unused_imports)]
     use serde_json::Value;
-    pub(in crate::game) mod support {
+    pub(crate) mod support {
         include!(concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/../../tests/fixture_support/item_resource_properties.rs"
@@ -123,7 +123,7 @@ pub(in crate::game) mod item_resource_property_tests {
     }
 
     #[allow(unused_imports)]
-pub(in crate::game) use crate::game::server_side::native_components_server::item_resource_property_tests::run_effective_resource_properties_match_vanilla;
+pub(crate) use crate::game::server_side::native_components_server::item_resource_property_tests::run_effective_resource_properties_match_vanilla;
     /// Changed defaults and a patched mod consumable exercise the real game consumers.
     #[test]
     #[ignore = "daily"]
@@ -131,7 +131,7 @@ pub(in crate::game) use crate::game::server_side::native_components_server::item
         run_item_resource_changed_defaults_and_consumption();
     }
 
-    pub(in crate::game) fn run_item_resource_changed_defaults_and_consumption() {
+    pub(crate) fn run_item_resource_changed_defaults_and_consumption() {
         use mod_api::{ComponentId, ItemResource, Tag};
         use serde_json::json;
         use std::{fs, path::Path};
@@ -311,7 +311,7 @@ pub(in crate::game) use crate::game::server_side::native_components_server::item
 }
 
 #[cfg(test)]
-pub(in crate::game) mod hot_key_tests {
+pub(crate) mod hot_key_tests {
     #[test]
     #[ignore = "daily"]
     fn resolved_keys_select_fuel_and_compost_metadata() {
@@ -328,7 +328,7 @@ pub(in crate::game) mod hot_key_tests {
 }
 
 #[cfg(test)]
-pub(in crate::game) mod combat_query_tests {
+pub(crate) mod combat_query_tests {
     use sunrise_gameplay_common::game::api_values::test_snapshot;
     use sunrise_gameplay::game::native_entity_refs::tests::with_game;
     use {crate::game::native_components::*, sunrise_gameplay_common::game::native_components::{ItemStack, stack_attack_bonus_preview, stack_can_be_hurt_by}};

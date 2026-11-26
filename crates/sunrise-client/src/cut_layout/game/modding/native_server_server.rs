@@ -2,14 +2,14 @@
 
 #[cfg(test)]
 #[path = "native_server/command_failure_tests_server.rs"]
-pub(in crate::game) mod command_failure_tests;
+pub(crate) mod command_failure_tests;
 
 #[cfg(test)]
 #[path = "native_server/selector_tests_server.rs"]
-pub(in crate::game) mod selector_tests;
+pub(crate) mod selector_tests;
 
 #[cfg(test)]
-pub(in crate::game) mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::game::native_server::tests::with_command_sources;
 

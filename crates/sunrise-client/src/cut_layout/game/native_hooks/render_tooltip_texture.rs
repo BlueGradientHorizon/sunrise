@@ -1,7 +1,7 @@
 
 
 #[cfg(test)]
-pub(in crate::game) mod render_tooltip_texture_tests {
+pub(crate) mod render_tooltip_texture_tests {
     use super::ItemStack;
     use mod_api::{ClientHost, Hooks, Identifier, ModEntry, RenderTooltipTextureEvent};
     use mod_platform::testing::with_mods;
@@ -60,7 +60,7 @@ pub(in crate::game) mod render_tooltip_texture_tests {
         run_an_items_tooltip_style_draws_its_own_sprites();
     }
 
-    pub(in crate::game) fn run_an_items_tooltip_style_draws_its_own_sprites() {
+    pub(crate) fn run_an_items_tooltip_style_draws_its_own_sprites() {
         #[derive(serde::Deserialize)]
         struct Witness {
             minecraft_version: String,

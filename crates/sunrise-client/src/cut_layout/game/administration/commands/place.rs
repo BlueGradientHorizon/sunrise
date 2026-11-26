@@ -1,7 +1,7 @@
 
 
 #[cfg(test)]
-pub(in crate::game) mod live_dungeon_spawner_tests {
+pub(crate) mod live_dungeon_spawner_tests {
     use super::*;
     use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
     use std::sync::Arc;
@@ -210,7 +210,7 @@ use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
 
 
 #[cfg(test)]
-pub(in crate::game) mod source_tests {
+pub(crate) mod source_tests {
     use sunrise_core::nbt::{self, Limits, Tag};
     use sunrise_world::compression::Compression;
     use sunrise_gameplay::game::server_side::commands::place::read_template_data;

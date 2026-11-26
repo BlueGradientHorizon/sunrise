@@ -1,4 +1,4 @@
-use {crate::game::*, sunrise_gameplay_common::game::{Arc, ItemStack, Ordering, mods}};
+use {crate::game::*, sunrise_gameplay_common::game::{ItemStack, mods}};
 use {crate::game::item_use::interact_vibration_tests::EVENTS, sunrise_gameplay::game::item_use::interact_vibration_tests::with_game};
 use std::sync::{
     Arc,

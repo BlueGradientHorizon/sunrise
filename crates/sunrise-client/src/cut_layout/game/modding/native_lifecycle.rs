@@ -1,7 +1,7 @@
 
 
 #[cfg(test)]
-pub(in crate::game) mod tests {
+pub(crate) mod tests {
     use super::*;
     use sunrise_gameplay::game::native_entity_refs::tests::with_game;
     use sunrise_gameplay_common::game::native_lifecycle_common::NativeLifecycle;

@@ -1,7 +1,7 @@
 use super::*;
 use crate::game::remote::interaction_event_tests::predicted_use_tests::*;
 
-pub(in crate::game) fn matrix(mods: mod_api::Mods) {
+pub(crate) fn matrix(mods: mod_api::Mods) {
     mod_platform::testing::with_mods(mods.clone(), || {
         sunrise_gameplay_common::game::api_values::install_parts(&mods).unwrap();
         let base = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());

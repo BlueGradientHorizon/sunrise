@@ -8,7 +8,7 @@ use sunrise_protocol::{
     },
 };
 
-pub(in crate::game) fn post_effects_witness() -> serde_json::Value {
+pub(crate) fn post_effects_witness() -> serde_json::Value {
     let dir = std::env::var("SUNRISE_NETWORK_WITNESS_DIR")
         .expect("SUNRISE_NETWORK_WITNESS_DIR must be set (run via tools/test_network_parity.py)");
     let path = std::path::Path::new(&dir).join("post_effects.json");
@@ -17,7 +17,7 @@ pub(in crate::game) fn post_effects_witness() -> serde_json::Value {
     serde_json::from_str(&text).unwrap()
 }
 
-pub(in crate::game) fn overworld_spawn() -> SpawnInfo {
+pub(crate) fn overworld_spawn() -> SpawnInfo {
     SpawnInfo {
         dimension_type: 0,
         dimension: "minecraft:overworld".into(),
@@ -32,7 +32,7 @@ pub(in crate::game) fn overworld_spawn() -> SpawnInfo {
     }
 }
 
-pub(in crate::game) fn login_packet(player_id: i32) -> play::Login {
+pub(crate) fn login_packet(player_id: i32) -> play::Login {
     play::Login {
         player_id,
         hardcore: false,
@@ -49,7 +49,7 @@ pub(in crate::game) fn login_packet(player_id: i32) -> play::Login {
     }
 }
 
-pub(in crate::game) fn json_strings(v: &serde_json::Value) -> Vec<String> {
+pub(crate) fn json_strings(v: &serde_json::Value) -> Vec<String> {
     v.as_array()
         .unwrap()
         .iter()
@@ -57,7 +57,7 @@ pub(in crate::game) fn json_strings(v: &serde_json::Value) -> Vec<String> {
         .collect()
 }
 
-pub(in crate::game) fn wait_for_pong(
+pub(crate) fn wait_for_pong(
     game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
     peer: &mut Connection,
     ping_id: i32,
@@ -87,7 +87,7 @@ fn post_effects_cleared_on_login_respawn_and_reconfigure_26_3() {
 }
 
 #[allow(unused_imports)]
-pub(in crate::game) use crate::game::client_side::remote_client::raw_ingress::post_effects_parity_tests::post_effects_cleared_on_login_respawn_and_reconfigure_body;
+pub(crate) use crate::game::client_side::remote_client::raw_ingress::post_effects_parity_tests::post_effects_cleared_on_login_respawn_and_reconfigure_body;
 
 #[test]
 #[ignore = "daily"]
@@ -102,4 +102,4 @@ fn post_effects_before_login_disconnects_with_packet_error_26_3() {
 }
 
 #[allow(unused_imports)]
-pub(in crate::game) use crate::game::client_side::remote_client::raw_ingress::post_effects_parity_tests::post_effects_before_login_disconnects_case;
+pub(crate) use crate::game::client_side::remote_client::raw_ingress::post_effects_parity_tests::post_effects_before_login_disconnects_case;

@@ -1,13 +1,13 @@
 use super::*;
 
 /// One `use_item` event as `(side, hand, player, player_entity_id)`.
-pub(in crate::game) type ItemUser = (LogicalSide, Hand, u128, i32);
+pub(crate) type ItemUser = (LogicalSide, Hand, u128, i32);
 
-pub(in crate::game) fn item_users(observer: &Observer) -> Vec<ItemUser> {
+pub(crate) fn item_users(observer: &Observer) -> Vec<ItemUser> {
     std::mem::take(&mut observer.0.lock().unwrap().item_users)
 }
 
-pub(in crate::game) fn item_observer() -> (Observer, mod_api::Mods) {
+pub(crate) fn item_observer() -> (Observer, mod_api::Mods) {
     let observer = Observer::default();
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
         "item_users",

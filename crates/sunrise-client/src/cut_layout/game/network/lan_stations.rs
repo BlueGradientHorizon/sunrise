@@ -1,7 +1,7 @@
 
 
 #[cfg(test)]
-pub(in crate::game) mod anvil_tests {
+pub(crate) mod anvil_tests {
     use super::*;
     use sunrise_gameplay::game::native_guest_turn_tests::with_guests;
     use mod_api::{

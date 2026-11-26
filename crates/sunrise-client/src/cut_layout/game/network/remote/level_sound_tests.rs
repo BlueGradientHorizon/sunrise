@@ -9,7 +9,7 @@ pub(in crate::game) struct Log {
     pub(in crate::game) requests: Vec<&'static str>,
     pub(in crate::game) played: Vec<SoundPlay>,
 }
-pub(in crate::game) struct Tuner(pub(in crate::game) Arc<Mutex<Log>>);
+pub(crate) struct Tuner(pub(crate) Arc<Mutex<Log>>);
 #[mod_api::__subscriptions]
 impl mod_api::Hooks for Tuner {
     fn play_level_sound_at_position(

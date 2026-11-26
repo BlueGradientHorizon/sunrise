@@ -1,6 +1,6 @@
 #![cfg(test)]
 //! Prepared-resource proof of the API request, server queue and client model resolution.
-use {crate::game::*, sunrise_gameplay_common::game::{Arc, ItemStack, PathBuf, TryIntoApi, api_values}};
+use {crate::game::*, sunrise_gameplay_common::game::{Arc, ItemStack, PathBuf, api_values}};
 use {sunrise_gameplay_common::game::api_values::TryIntoApi, sunrise_gameplay_common::game::api_values::TryIntoEngine};
 
 #[test]

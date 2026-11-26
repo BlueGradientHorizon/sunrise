@@ -297,7 +297,7 @@ fn rider_pick_rejects_shared_passengers_unless_their_part_allows_them() {
     }
 }
 
-pub(in crate::game) fn with_pick_game(
+pub(crate) fn with_pick_game(
     kind: &str,
     x: f64,
     run: impl FnOnce(&mut sunrise_client_gameplay::game::ClientGame<'_>, &mut sunrise_protocol::connection::Connection),

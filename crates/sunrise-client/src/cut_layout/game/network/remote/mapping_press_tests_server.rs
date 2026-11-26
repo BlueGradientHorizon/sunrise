@@ -3,7 +3,7 @@ use crate::game::remote::interaction_event_tests::mapping_press_tests::sent;
 use crate::game::remote::interaction_event_tests::mapping_press_tests::with_pressing_game;
 
 #[path = "input_burst_tests_server.rs"]
-pub(in crate::game) mod input_burst_tests;
+pub(crate) mod input_burst_tests;
 
 /// Q in creative mode: `MultiPlayerGameMode.dropItem` sends the drop and nothing else, so the
 /// end of the tick sends no creative slot edit for the stack it left (only the creative screen
@@ -111,7 +111,7 @@ fn clicking_attack_on_nothing_punches_and_waits_out_the_miss_cooldown() {
     });
 }
 
-pub(in crate::game) fn stone_under_the_crosshair(game: &mut sunrise_client_gameplay::game::ClientGame<'_>) {
+pub(crate) fn stone_under_the_crosshair(game: &mut sunrise_client_gameplay::game::ClientGame<'_>) {
     let stone = game
         .pack
         .assets

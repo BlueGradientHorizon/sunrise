@@ -1,5 +1,5 @@
 #[cfg(test)]
-pub(in crate::game) mod tests {
+pub(crate) mod tests {
     use sunrise_gameplay::game::native_entity_refs::tests::with_game;
     use mod_api::{BlockEntityPart, BlockEntitySaveAdditionalEvent, Hooks, LevelHost, ModEntry};
     use std::sync::atomic::{AtomicI32, Ordering};
@@ -19,7 +19,7 @@ pub(in crate::game) mod tests {
     thread_local! {
         pub(in crate::game) static SAVED_AT: std::cell::RefCell<Vec<([i32; 3], mod_api::LevelRef)>> = const { std::cell::RefCell::new(Vec::new()) };
     }
-    pub(in crate::game) struct Counter(pub(in crate::game) Arc<AtomicI32>);
+    pub(crate) struct Counter(pub(crate) Arc<AtomicI32>);
     #[mod_api::sunrise_part]
     impl mod_api::BlockPart for Counter {}
     #[mod_api::sunrise_part]
@@ -60,7 +60,7 @@ pub(in crate::game) mod tests {
             event.tag.insert(ATTACHMENTS_KEY.into(), Tag::Byte(1));
         }
     }
-    pub(in crate::game) struct Mod(pub(in crate::game) Arc<AtomicI32>);
+    pub(crate) struct Mod(pub(crate) Arc<AtomicI32>);
     #[mod_api::__subscriptions]
     impl Hooks for Mod {
         fn register(
@@ -203,7 +203,7 @@ pub(in crate::game) mod tests {
         );
     }
 
-    pub(in crate::game) struct SaveItemsPart;
+    pub(crate) struct SaveItemsPart;
     #[mod_api::sunrise_part]
     impl mod_api::BlockPart for SaveItemsPart {}
     #[mod_api::sunrise_part]
@@ -238,7 +238,7 @@ pub(in crate::game) mod tests {
         }
     }
 
-    pub(in crate::game) fn saved_stack(id: &str) -> Tag {
+    pub(crate) fn saved_stack(id: &str) -> Tag {
         Tag::List(vec![Tag::Compound(Compound::from([
             ("Slot".into(), Tag::Byte(0)),
             ("id".into(), Tag::String(id.into())),
@@ -246,7 +246,7 @@ pub(in crate::game) mod tests {
         ]))])
     }
 
-    pub(in crate::game) struct SaveItemsMod;
+    pub(crate) struct SaveItemsMod;
     #[mod_api::__subscriptions]
     impl Hooks for SaveItemsMod {
         fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
@@ -274,8 +274,8 @@ pub(in crate::game) mod tests {
         }
     }
 
-    pub(in crate::game) struct BreakObserver(
-        pub(in crate::game) Arc<Mutex<Vec<(&'static str, Option<Tag>)>>>,
+    pub(crate) struct BreakObserver(
+        pub(crate) Arc<Mutex<Vec<(&'static str, Option<Tag>)>>>,
     );
 
     #[mod_api::__subscriptions]

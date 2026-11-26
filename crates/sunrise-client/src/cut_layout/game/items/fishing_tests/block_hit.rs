@@ -2,7 +2,7 @@
 //! (`FishingHook.onHitBlock` -> `Projectile.onHitBlock`, #12936): a target
 //! block is powered and a bell rings, both credited to the rod's owner.
 use sunrise_gameplay::game::fishing::Hook;
-use {crate::game::*, sunrise_gameplay_common::game::{Arc, Instant, ItemStack, Options, PathBuf, PlayerMotion, Progress, Resources, Settings, Vec3, execution_role, hit, load_resources, remote}};
+use {crate::game::*, sunrise_gameplay_common::game::{Arc, Instant, ItemStack, Options, PathBuf, PlayerMotion, Progress, Resources, Vec3, execution_role, hit, remote}};
 use sunrise_core::position::ChunkPos;
 use sunrise_level::chunk::Chunk;
 

@@ -4,7 +4,7 @@
 //! already been seen by the wire next to it, which then ends as a cross, not a dot
 //! (tools/redstone_diff.py found it on vanilla 26.3 with two random circuits and reduced it to these
 //! four commands).
-use {crate::game::*, sunrise_gameplay_common::game::{Arc, BlockPos, Direction, Instant, Options, PathBuf, Progress, Resources, Settings, entity, execution_role, load_resources}};
+use {crate::game::*, sunrise_gameplay_common::game::{BlockPos, Direction, Instant, Options, PathBuf, Progress, Resources, entity, execution_role}};
 use std::sync::Arc;
 use sunrise_core::position::ChunkPos;
 use sunrise_level::chunk::Chunk;

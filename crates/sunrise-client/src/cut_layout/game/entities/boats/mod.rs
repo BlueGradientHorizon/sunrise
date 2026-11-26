@@ -1,10 +1,10 @@
 
 #[cfg(test)]
-pub(in crate::game) mod friction_tests;
+pub(crate) mod friction_tests;
 #[cfg(test)]
-pub(in crate::game) mod lifetime_tests;
+pub(crate) mod lifetime_tests;
 #[cfg(test)]
-pub(in crate::game) mod paddle_tests;
+pub(crate) mod paddle_tests;
 
 #[cfg(test)]
 pub(crate) mod tests {
@@ -114,7 +114,7 @@ use crate::game::boats_common::{
 }
 
 #[cfg(test)]
-pub(in crate::game) mod cobweb_tests {
+pub(crate) mod cobweb_tests {
     use sunrise_gameplay::game::server_side::boats::Boat;
     use sunrise_gameplay::game::game_tests::tests::server_game;
     use std::sync::Arc;

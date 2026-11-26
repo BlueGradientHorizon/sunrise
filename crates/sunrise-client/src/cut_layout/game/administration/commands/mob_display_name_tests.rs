@@ -2,7 +2,7 @@
 //! insertion (#14220): `HoverEvent.ShowEntity` of its type, UUID and name, and
 //! its UUID string to insert.
 use crate::game::commands::Target;
-use {crate::game::*, sunrise_gameplay_common::game::{Arc, Instant, Mob, Options, PathBuf, Progress, Resources, Settings, entity, execution_role, load_resources}};
+use {crate::game::*, sunrise_gameplay_common::game::{Instant, Mob, Options, PathBuf, Progress, Resources, entity, execution_role}};
 use std::sync::Arc;
 use sunrise_core::position::ChunkPos;
 use sunrise_level::chunk::Chunk;

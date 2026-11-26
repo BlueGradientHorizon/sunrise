@@ -11,9 +11,9 @@ use sunrise_sim::{
     mobs::Mob,
 };
 
-pub(in crate::game) const AT: Vec3 = Vec3::new(4.5, 64.0, 4.5);
+pub(crate) const AT: Vec3 = Vec3::new(4.5, 64.0, 4.5);
 
-pub(in crate::game) fn push_pig(game: &mut sunrise_gameplay::game::ServerGame<'_>, id: u32) {
+pub(crate) fn push_pig(game: &mut sunrise_gameplay::game::ServerGame<'_>, id: u32) {
     let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
     game.mobs.push(Mob::new(id, kind, AT, 0.0));
 }
@@ -163,7 +163,7 @@ pub(in crate::game) struct Observation {
     pub(in crate::game) trace: Mutex<Vec<String>>,
 }
 
-pub(in crate::game) struct Observe(pub(in crate::game) Arc<Observation>);
+pub(crate) struct Observe(pub(crate) Arc<Observation>);
 
 #[mod_api::__subscriptions]
 impl Hooks for Observe {
@@ -222,7 +222,7 @@ impl Hooks for Observe {
     }
 }
 
-pub(in crate::game) fn with_removal_test_hooks(
+pub(crate) fn with_removal_test_hooks(
     hooks: impl Hooks,
     test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>),
 ) {
@@ -237,7 +237,7 @@ pub(in crate::game) fn with_removal_test_hooks(
     });
 }
 
-pub(in crate::game) fn finish_death_on_next_tick(game: &mut sunrise_gameplay::game::ServerGame<'_>, id: u32) {
+pub(crate) fn finish_death_on_next_tick(game: &mut sunrise_gameplay::game::ServerGame<'_>, id: u32) {
     let mob = game.mob_object_mut(id).unwrap();
     mob.health = 0.0;
     mob.death_time = 19;

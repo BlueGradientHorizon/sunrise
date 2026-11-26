@@ -2,7 +2,7 @@
 
 #[cfg(test)]
 #[path = "tests/portal_spawn_tests.rs"]
-pub(in crate::game) mod portal_spawn_tests;
+pub(crate) mod portal_spawn_tests;
 
 #[cfg(test)]
 pub(crate) mod tests {
@@ -526,12 +526,12 @@ fn with_gate_mode(
 
 #[cfg(test)]
 #[path = "tests/portal_cooldown_tests.rs"]
-pub(in crate::game) mod cooldown_tests;
+pub(crate) mod cooldown_tests;
 
 #[cfg(test)]
 #[path = "nether_portal/arrival_effects_tests.rs"]
-pub(in crate::game) mod arrival_effects_tests;
+pub(crate) mod arrival_effects_tests;
 
 #[cfg(test)]
 #[path = "tests/nether_portal_stand_tests.rs"]
-pub(in crate::game) mod stand_tests;
+pub(crate) mod stand_tests;

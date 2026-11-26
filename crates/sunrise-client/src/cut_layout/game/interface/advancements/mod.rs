@@ -2,10 +2,10 @@
 
 #[cfg(test)]
 #[path = "inventory_changed_tests.rs"]
-pub(in crate::game) mod inventory_changed_tests;
+pub(crate) mod inventory_changed_tests;
 
 #[cfg(test)]
-pub(in crate::game) mod progress_tests;
+pub(crate) mod progress_tests;
 
 #[cfg(test)]
 pub(crate) mod tests {
@@ -238,7 +238,7 @@ use super::*;
 }
 
 #[cfg(test)]
-pub(in crate::game) mod structure_tag_tests {
+pub(crate) mod structure_tag_tests {
     use sunrise_gameplay::game::server_side::advancements::View;
     use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
     use serde_json::json;
@@ -347,7 +347,7 @@ pub(in crate::game) mod structure_tag_tests {
 }
 
 #[cfg(test)]
-pub(in crate::game) mod random_chance_command_tests {
+pub(crate) mod random_chance_command_tests {
     use super::*;
     use crate::game::commands::Target;
     use sunrise_core::nbt::Tag;
@@ -471,7 +471,7 @@ pub(in crate::game) mod random_chance_command_tests {
 }
 
 #[cfg(test)]
-pub(in crate::game) mod custom_data_equipment_tests {
+pub(crate) mod custom_data_equipment_tests {
     use super::*;
     use sunrise_core::nbt::{Tag, parse_snbt};
     use sunrise_core::position::BlockPos;
@@ -613,7 +613,7 @@ pub(in crate::game) mod custom_data_equipment_tests {
 }
 
 #[cfg(test)]
-pub(in crate::game) mod movement_predicate_tests {
+pub(crate) mod movement_predicate_tests {
     use sunrise_gameplay::game::game_tests::tests::server_game;
     use serde_json::json;
     use sunrise_core::geometry::Vec3;

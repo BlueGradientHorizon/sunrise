@@ -7,7 +7,7 @@ use sunrise_core::{
 };
 use sunrise_world::level::LevelAccess;
 
-pub(in crate::game) fn run_client_piston_case(root: std::path::PathBuf) {
+pub(crate) fn run_client_piston_case(root: std::path::PathBuf) {
     sunrise_gameplay::game::native_entity_refs::tests::with_game_role_client(
         root,
         ExecutionRole::Client,

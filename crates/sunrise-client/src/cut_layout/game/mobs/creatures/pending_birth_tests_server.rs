@@ -2,13 +2,13 @@ use super::*;
 use crate::game::creatures::pending_birth_tests::AT;
 use crate::game::creatures::pending_birth_tests::IGNORE;
 use crate::game::creatures::pending_birth_tests::NEXT_INT;
-pub(in crate::game::server_side) use crate::game::creatures::pending_birth_tests::SEED;
-pub(in crate::game::server_side) use crate::game::creatures::pending_birth_tests::YAWS;
+pub(crate) use crate::game::creatures::pending_birth_tests::SEED;
+pub(crate) use crate::game::creatures::pending_birth_tests::YAWS;
 use crate::game::creatures::pending_birth_tests::animals_bred;
 use crate::game::creatures::pending_birth_tests::assert_vanilla_children;
-pub(in crate::game::server_side) use crate::game::creatures::pending_birth_tests::breed_pair;
-pub(in crate::game::server_side) use crate::game::creatures::pending_birth_tests::find;
-pub(in crate::game::server_side) use crate::game::creatures::pending_birth_tests::near;
+pub(crate) use crate::game::creatures::pending_birth_tests::breed_pair;
+pub(crate) use crate::game::creatures::pending_birth_tests::find;
+pub(crate) use crate::game::creatures::pending_birth_tests::near;
 use crate::game::creatures::pending_birth_tests::spawned;
 use crate::game::creatures::pending_birth_tests::spec;
 use crate::game::creatures::pending_birth_tests::with_baby;
@@ -266,7 +266,7 @@ fn a_parent_changed_during_dispatch_refuses_the_baby_and_nothing_is_rebuilt() {
     });
 }
 
-pub(in crate::game) use sunrise_gameplay::game::server_side::creatures_server::pending_birth_matrix_tests::breed_pair_credited;
+pub(crate) use sunrise_gameplay::game::server_side::creatures_server::pending_birth_matrix_tests::breed_pair_credited;
 
 #[test]
 #[ignore = "daily"]
@@ -316,7 +316,7 @@ fn credit_goes_to_the_player_only_when_the_baby_is_accepted() {
     );
 }
 
-pub(in crate::game) use sunrise_gameplay::game::server_side::creatures_server::pending_birth_matrix_tests::cube;
+pub(crate) use sunrise_gameplay::game::server_side::creatures_server::pending_birth_matrix_tests::cube;
 
 #[test]
 #[ignore = "daily"]

@@ -5,7 +5,7 @@ use sunrise_sim::lan::guest::InboxItem;
 
 /// Transfer the client's real play packets to the integrated server's normal
 /// connection drain. The test drives ticks without scheduling two game loops.
-pub(in crate::game) fn client_tick_to_server(
+pub(crate) fn client_tick_to_server(
     client: &sunrise_client_gameplay::game::ClientGame<'_>,
     peer: &mut ConnReader,
     server: &mut sunrise_gameplay::game::ServerGame<'_>,

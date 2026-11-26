@@ -9,7 +9,7 @@ use sunrise_sim::lan::{
 };
 use sunrise_world::loot::PackOverlay;
 
-pub(in crate::game) fn install_dedicated_holders(
+pub(crate) fn install_dedicated_holders(
     game: &mut sunrise_gameplay::game::ServerGame<'_>,
     max_level: i32,
 ) {

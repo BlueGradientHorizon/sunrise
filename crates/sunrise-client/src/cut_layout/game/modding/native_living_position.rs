@@ -1,7 +1,7 @@
 
 
 #[cfg(test)]
-pub(in crate::game) mod tests {
+pub(crate) mod tests {
     use super::super::native_entity_refs::tests::with_game;
     use super::*;
     use mod_api::{PathType, Pose};
@@ -127,7 +127,7 @@ pub(in crate::game) mod tests {
 
     /// Lit empty chunks around the origin, a stone floor at y 63 over
     /// -8..8, and two zombies standing on it five blocks apart.
-    pub(in crate::game) fn floor_and_zombies(game: &mut sunrise_gameplay::game::ServerGame<'_>) {
+    pub(crate) fn floor_and_zombies(game: &mut sunrise_gameplay::game::ServerGame<'_>) {
         for (x, z) in (-1..=1).flat_map(|x| (-1..=1).map(move |z| (x, z))) {
             let mut chunk = sunrise_level::chunk::Chunk::empty(x, z);
             chunk.lit = true;

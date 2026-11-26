@@ -32,7 +32,7 @@ impl Hooks for KeepRider {
 }
 
 /// Runs `test` on a server game with a horse (its id) and the `KeepRider` mod.
-pub(in crate::game) fn with_horse(
+pub(crate) fn with_horse(
     test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>, u32, &AtomicBool, &AtomicU32),
 ) {
     let keep = Arc::new(AtomicBool::new(true));

@@ -74,4 +74,4 @@ use super::*;
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "potions/cloud_water_tests.rs"]
-pub(in crate::game) mod cloud_water_tests;
+pub(crate) mod cloud_water_tests;

@@ -5,9 +5,9 @@ use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise
 use mod_api::{BabyEntitySpawnEvent, Flow, Hooks, MobSplitEvent, ServerHost};
 
 #[path = "pending_birth_matrix_tests/fixture.rs"]
-pub(in crate::game) mod fixture;
+pub(crate) mod fixture;
 
-pub(in crate::game) struct Native;
+pub(crate) struct Native;
 #[mod_api::__subscriptions]
 impl Hooks for Native {
     fn mob_split(&self, host: &mut dyn ServerHost, event: &mut MobSplitEvent<'_>) -> Flow {
@@ -23,12 +23,12 @@ impl Hooks for Native {
 }
 
 #[allow(unused_imports)]
-pub(in crate::game) use sunrise_gameplay::game::server_side::creatures_server::pending_birth_matrix_tests::split;
+pub(crate) use sunrise_gameplay::game::server_side::creatures_server::pending_birth_matrix_tests::split;
 
 #[allow(unused_imports)]
-pub(in crate::game) use sunrise_gameplay::game::server_side::creatures_server::pending_birth_matrix_tests::breed;
+pub(crate) use sunrise_gameplay::game::server_side::creatures_server::pending_birth_matrix_tests::breed;
 
-pub(in crate::game) fn matrix(mods: mod_api::Mods) {
+pub(crate) fn matrix(mods: mod_api::Mods) {
     mod_platform::testing::with_mods(mods, || {
         with_game(|game| {
             // No change: the vanilla three, in order.

@@ -1,7 +1,7 @@
 
 
 #[cfg(test)]
-pub(in crate::game) mod tests {
+pub(crate) mod tests {
     #[test]
     #[ignore = "daily"]
     fn horse_inventory_click_keeps_complete_body_stack() {

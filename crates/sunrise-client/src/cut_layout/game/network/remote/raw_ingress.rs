@@ -2,14 +2,14 @@
 
 #[cfg(test)]
 #[path = "bundle_parity_tests.rs"]
-pub(in crate::game) mod bundle_parity_tests;
+pub(crate) mod bundle_parity_tests;
 
 #[cfg(test)]
 #[path = "post_effects_parity_tests.rs"]
-pub(in crate::game) mod post_effects_parity_tests;
+pub(crate) mod post_effects_parity_tests;
 
 #[cfg(test)]
-pub(in crate::game) mod tests {
+pub(crate) mod tests {
     use super::super::tests::{connect_play_test, spawn_menu_test};
     use super::*;
     use crate::game::server_side::native_entity_refs::tests::with_client_game;

@@ -1,7 +1,7 @@
 
 
 #[cfg(test)]
-pub(in crate::game) mod tests {
+pub(crate) mod tests {
     use {crate::game::native_state_shapes::*, sunrise_gameplay_common::game::native_state_shapes::{BlockShapeKind, Outline}};
     use sunrise_gameplay_common::game::api_values::TryIntoApi;
 

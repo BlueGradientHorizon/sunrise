@@ -201,7 +201,7 @@ fn named_projectiles_hear_each_their_own_pre_and_post() {
 
 /// Two idle pigs in an entity-ticking chunk, at x = 1 and x = 2, ready for
 /// the real creature pass.
-pub(in crate::game) fn with_two_pigs(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
+pub(crate) fn with_two_pigs(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
     let root = std::env::temp_dir().join(format!(
         "sunrise-mob-tick-access-{}-{:?}",
         std::process::id(),

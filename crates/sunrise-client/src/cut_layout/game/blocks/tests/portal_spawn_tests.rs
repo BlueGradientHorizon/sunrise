@@ -10,7 +10,7 @@ use sunrise_core::position::ChunkPos;
 use sunrise_level::chunk::Chunk;
 use sunrise_sim::motion::PlayerMotion;
 
-pub(in crate::game) fn game<'a>(
+pub(crate) fn game<'a>(
     resources: &'a mut Option<std::sync::Arc<sunrise_gameplay_common::game::Resources>>,
 ) -> sunrise_gameplay::game::ServerGame<'a> {
     let root = std::path::PathBuf::from(
@@ -57,7 +57,7 @@ pub(in crate::game) fn game<'a>(
 }
 
 /// A portal block at (0, 64, 0) standing on `floor`.
-pub(in crate::game) fn portal_on(game: &mut sunrise_gameplay::game::ServerGame<'_>, floor: &str) {
+pub(crate) fn portal_on(game: &mut sunrise_gameplay::game::ServerGame<'_>, floor: &str) {
     assert!(game.run_command(&format!("setblock 0 63 0 minecraft:{floor}")));
     assert!(game.run_command("setblock 0 64 0 minecraft:nether_portal"));
     let state = game.world.block(0, 64, 0);
@@ -68,7 +68,7 @@ pub(in crate::game) fn portal_on(game: &mut sunrise_gameplay::game::ServerGame<'
     );
 }
 
-pub(in crate::game) fn spawned(game: &sunrise_gameplay::game::ServerGame<'_>) -> Vec<String> {
+pub(crate) fn spawned(game: &sunrise_gameplay::game::ServerGame<'_>) -> Vec<String> {
     game.mobs.iter().map(|m| m.kind.id.clone()).collect()
 }
 

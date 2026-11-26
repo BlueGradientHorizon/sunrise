@@ -2,14 +2,14 @@
 
 #[cfg(test)]
 #[path = "resource_load/test_cache.rs"]
-pub(in crate::game) mod test_cache;
+pub(crate) mod test_cache;
 #[cfg(test)]
-pub(in crate::game) use test_cache::{acquire_fresh_child_permit, cached_structure_spawns};
+pub(crate) use test_cache::{acquire_fresh_child_permit, cached_structure_spawns};
 
 /// Fixture helper for tests without a launch mod state.
 #[allow(clippy::too_many_arguments)]
 #[cfg(test)]
-pub(in crate::game) fn load_resources(
+pub(crate) fn load_resources(
     roots: impl Into<packs::PackRoots>,
     additional_data: Vec<Arc<sunrise_level::datapack::DataPack>>,
     launch_world: Option<&str>,
@@ -39,7 +39,7 @@ pub(in crate::game) fn load_resources(
 /// [`load_resources`] that leaves process-wide language untouched, for `isolated_server_game`.
 #[allow(clippy::too_many_arguments)]
 #[cfg(test)]
-pub(in crate::game) fn load_resources_skip_lang(
+pub(crate) fn load_resources_skip_lang(
     roots: impl Into<packs::PackRoots>,
     additional_data: Vec<Arc<sunrise_level::datapack::DataPack>>,
     launch_world: Option<&str>,
@@ -68,7 +68,7 @@ pub(in crate::game) fn load_resources_skip_lang(
 /// Private, uncached [`load_resources`] for tests that mutate `Resources` or test distinct loads.
 #[allow(clippy::too_many_arguments)]
 #[cfg(test)]
-pub(in crate::game) fn load_resources_uncached(
+pub(crate) fn load_resources_uncached(
     roots: impl Into<packs::PackRoots>,
     additional_data: Vec<Arc<sunrise_level::datapack::DataPack>>,
     launch_world: Option<&str>,

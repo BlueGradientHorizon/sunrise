@@ -2,7 +2,7 @@
 
 #[cfg(feature = "client")]
 #[cfg(test)]
-pub(in crate::game) mod tests {
+pub(crate) mod tests {
     use sunrise_client_gameplay::game::client_side::viewed_worlds::routing::RouteError;
     use {sunrise_client_gameplay::game::client_side::viewed_worlds::sounds::ViewedPlay, sunrise_client_gameplay::game::client_side::viewed_worlds::sounds::ViewedSound};
 
@@ -20,7 +20,7 @@ pub(in crate::game) mod tests {
     pub(super) const STONE: BlockStateId = BlockStateId(1);
     pub(super) const AIR: BlockStateId = BlockStateId(0);
 
-    pub(in crate::game) fn spawn(dimension: &str) -> play::SpawnInfo {
+    pub(crate) fn spawn(dimension: &str) -> play::SpawnInfo {
         play::SpawnInfo {
             dimension_type: 0,
             dimension: dimension.into(),
@@ -36,14 +36,14 @@ pub(in crate::game) mod tests {
     }
 
     /// A client of a server whose Login names four levels, the player in the Overworld.
-    pub(in crate::game) fn client(
+    pub(crate) fn client(
         resources: &mut Option<std::sync::Arc<sunrise_gameplay_common::game::Resources>>,
     ) -> sunrise_client_gameplay::game::ClientGame<'_> {
         client_with_pipe(resources).0
     }
 
     /// As `client`, retaining the server half so the executor stays connected for negotiation.
-    pub(in crate::game) fn client_with_pipe(
+    pub(crate) fn client_with_pipe(
         resources: &mut Option<std::sync::Arc<sunrise_gameplay_common::game::Resources>>,
     ) -> (sunrise_client_gameplay::game::ClientGame<'_>, Pipe) {
         use {sunrise_gameplay_common::game::Audio, sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::execution_role, sunrise_gameplay_common::game::load_resources};
@@ -154,13 +154,13 @@ pub(in crate::game) mod tests {
     }
 
     /// A column of stone at `x, z`, unlit.
-    pub(in crate::game) fn column(x: i32, z: i32) -> C {
+    pub(crate) fn column(x: i32, z: i32) -> C {
         layered(x, z, 24)
     }
 
     /// A column at `x, z` whose lowest `stone` of its 24 sections are stone and the rest air,
     /// unlit.
-    pub(in crate::game) fn layered(x: i32, z: i32, stone: usize) -> C {
+    pub(crate) fn layered(x: i32, z: i32, stone: usize) -> C {
         let section = |state: BlockStateId| Section {
             non_empty: if state == AIR { 0 } else { 4096 },
 
@@ -199,12 +199,12 @@ pub(in crate::game) mod tests {
 
     /// An `open` of the level `dimension` in `slot`, with the next epoch and a cap of 2048
     /// columns.
-    pub(in crate::game) fn open(slot: i32, dimension: &str) -> C {
+    pub(crate) fn open(slot: i32, dimension: &str) -> C {
         payload(&viewed_levels::open(bind(slot), 2048, &spawn(dimension)))
     }
 
     /// A `run` of `slot` at the epoch it was last bound with.
-    pub(in crate::game) fn run(slot: i32, packets: &[C]) -> C {
+    pub(crate) fn run(slot: i32, packets: &[C]) -> C {
         run_at(bound_slot(slot), packets)
     }
 
@@ -218,7 +218,7 @@ pub(in crate::game) mod tests {
     }
 
     /// A `close` of `slot` at the epoch it was last bound with.
-    pub(in crate::game) fn close(slot: i32) -> C {
+    pub(crate) fn close(slot: i32) -> C {
         payload(&viewed_levels::close(bound_slot(slot)))
     }
 

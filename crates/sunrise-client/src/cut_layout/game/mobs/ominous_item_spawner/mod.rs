@@ -1,4 +1,4 @@
 
 
 #[cfg(test)]
-pub(in crate::game) mod warning_tests;
+pub(crate) mod warning_tests;

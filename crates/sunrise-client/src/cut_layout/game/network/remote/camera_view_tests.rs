@@ -13,13 +13,13 @@ use sunrise_protocol::{
 use sunrise_sim::motion::PlayerMotion;
 
 /// The local player's entity id.
-pub(in crate::game) const OWN: i32 = 7;
+pub(crate) const OWN: i32 = 7;
 /// A zombie, living.
-pub(in crate::game) const ZOMBIE: i32 = 31;
+pub(crate) const ZOMBIE: i32 = 31;
 /// An oak boat, not living.
-pub(in crate::game) const BOAT: i32 = 40;
+pub(crate) const BOAT: i32 = 40;
 
-pub(in crate::game) fn spawn(dimension: &str) -> SpawnInfo {
+pub(crate) fn spawn(dimension: &str) -> SpawnInfo {
     SpawnInfo {
         dimension_type: 0,
         dimension: dimension.into(),
@@ -35,7 +35,7 @@ pub(in crate::game) fn spawn(dimension: &str) -> SpawnInfo {
 }
 
 /// A spectator client in the overworld, holding a zombie at (10, 64, 12) and an oak boat.
-pub(in crate::game) fn with_spectator(test: impl FnOnce(&mut sunrise_client_gameplay::game::ClientGame<'_>)) {
+pub(crate) fn with_spectator(test: impl FnOnce(&mut sunrise_client_gameplay::game::ClientGame<'_>)) {
     with_client_game(|game| {
         let (client, _server) = Pipe::pair();
         game.connect_local(client, "CameraViewTest").unwrap();
@@ -56,7 +56,7 @@ pub(in crate::game) fn with_spectator(test: impl FnOnce(&mut sunrise_client_game
     });
 }
 
-pub(in crate::game) fn add(
+pub(crate) fn add(
     game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
     id: i32,
     kind: &str,
@@ -77,7 +77,7 @@ pub(in crate::game) fn add(
     .unwrap();
 }
 
-pub(in crate::game) fn registry_id(
+pub(crate) fn registry_id(
     game: &sunrise_client_gameplay::game::ClientGame<'_>,
     registry: &str,
     name: &str,
@@ -86,7 +86,7 @@ pub(in crate::game) fn registry_id(
     remote.builtin.get(registry).unwrap().id(name).unwrap()
 }
 
-pub(in crate::game) fn update(
+pub(crate) fn update(
     game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
     id: i32,
     effect: &str,
@@ -104,19 +104,19 @@ pub(in crate::game) fn update(
     .unwrap();
 }
 
-pub(in crate::game) fn remove(game: &mut sunrise_client_gameplay::game::ClientGame<'_>, id: i32, effect: &str) {
+pub(crate) fn remove(game: &mut sunrise_client_gameplay::game::ClientGame<'_>, id: i32, effect: &str) {
     let effect = registry_id(game, "minecraft:mob_effect", effect);
     game.handle_packet(C::RemoveMobEffect(play::RemoveMobEffect { id, effect }))
         .unwrap();
 }
 
-pub(in crate::game) fn set_camera(game: &mut sunrise_client_gameplay::game::ClientGame<'_>, camera_id: i32) {
+pub(crate) fn set_camera(game: &mut sunrise_client_gameplay::game::ClientGame<'_>, camera_id: i32) {
     game.handle_packet(C::SetCamera(play::SetCamera { camera_id }))
         .unwrap();
 }
 
 /// The view's values but its light, read at the partial tick 0.25.
-pub(in crate::game) fn view(game: &sunrise_client_gameplay::game::ClientGame<'_>) -> ViewEntity {
+pub(crate) fn view(game: &sunrise_client_gameplay::game::ClientGame<'_>) -> ViewEntity {
     ViewEntity {
         eye_light: [0; 2],
         ..game.pack_view_entity(glam::DVec3::new(0.5, 65.62, 0.5), 0.25)
@@ -125,7 +125,7 @@ pub(in crate::game) fn view(game: &sunrise_client_gameplay::game::ClientGame<'_>
 
 /// The effects the client keeps for the entity `id` (a mob, another player or an armor stand),
 /// `None` when the level holds no such entity or it has none.
-pub(in crate::game) fn kept(
+pub(crate) fn kept(
     game: &sunrise_client_gameplay::game::ClientGame<'_>,
     id: i32,
 ) -> Option<Vec<(&'static str, i32)>> {
@@ -144,7 +144,7 @@ pub(in crate::game) fn kept(
     (!list.is_empty()).then(|| list.iter().map(|e| (e.id, e.duration)).collect())
 }
 
-pub(in crate::game) const PLAYER_VIEW: ViewEntity = ViewEntity {
+pub(crate) const PLAYER_VIEW: ViewEntity = ViewEntity {
     living: true,
     blindness: 1.0,
     night_vision: 0.0,
@@ -231,7 +231,7 @@ fn other_entities_effects_go_with_the_entity() {
 }
 
 /// Puts `light` (`sky << 4 | block`) at one block, every other block of its section dark.
-pub(in crate::game) fn set_light(
+pub(crate) fn set_light(
     game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
     at: glam::IVec3,
     light: u8,
@@ -253,7 +253,7 @@ pub(in crate::game) fn set_light(
     section.light = sunrise_level::chunk::Light::from_slice(&all);
 }
 
-pub(in crate::game) fn ride(
+pub(crate) fn ride(
     game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
     vehicle: i32,
     passengers: Vec<i32>,
@@ -553,11 +553,11 @@ fn a_canceled_tick_counts_no_effect_down() {
     });
 }
 
-pub(in crate::game) const FRAME_NAME: &str = "game::client_side::remote_client::camera_view_tests::the_frame_reads_the_eye_light_in_first_and_third_person";
-pub(in crate::game) const FRAME_CASE: &str = "SUNRISE_CAMERA_VIEW_FRAME_CASE";
+pub(crate) const FRAME_NAME: &str = "game::client_side::remote_client::camera_view_tests::the_frame_reads_the_eye_light_in_first_and_third_person";
+pub(crate) const FRAME_CASE: &str = "SUNRISE_CAMERA_VIEW_FRAME_CASE";
 
 /// What a game's frame gives the pack: its camera, its `eyePosition` and the view's light.
-pub(in crate::game) fn framed(
+pub(crate) fn framed(
     game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
 ) -> (glam::DVec3, glam::DVec3, [i32; 2]) {
     let mut seen = None;

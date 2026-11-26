@@ -66,7 +66,7 @@ fn guest_player_bow_death_keeps_the_connected_shooter_without_a_local_player() {
     );
 }
 
-pub(in crate::game) fn player(game: &mut sunrise_gameplay::game::ServerGame<'_>) {
+pub(crate) fn player(game: &mut sunrise_gameplay::game::ServerGame<'_>) {
     game.player = Some(PlayerMotion::new(game.motion, Vec3::new(4.5, 80.0, 4.5)).unwrap());
     bind_local_player(game, 11, 123);
     game.set_mode_id(0);

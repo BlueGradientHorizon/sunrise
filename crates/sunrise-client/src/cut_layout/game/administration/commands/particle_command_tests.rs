@@ -12,7 +12,7 @@ use {
     sunrise_level::particle_options::ParticleType, sunrise_sim::motion::PlayerMotion,
 };
 
-pub(in crate::game) fn game<'a>(
+pub(crate) fn game<'a>(
     resources: &'a mut Option<std::sync::Arc<sunrise_gameplay_common::game::Resources>>,
 ) -> sunrise_gameplay::game::ServerGame<'a> {
     let root = std::path::PathBuf::from(
@@ -60,7 +60,7 @@ pub(in crate::game) fn game<'a>(
 }
 
 #[allow(unused_imports)]
-pub(in crate::game) use crate::game::client_side::commands_client::world_cmds::particle_command_tests::drawn;
+pub(crate) use crate::game::client_side::commands_client::world_cmds::particle_command_tests::drawn;
 
 #[test]
 #[ignore = "daily"]

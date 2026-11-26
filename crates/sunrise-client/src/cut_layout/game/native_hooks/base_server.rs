@@ -1,7 +1,7 @@
 
 
 #[cfg(test)]
-pub(in crate::game) mod held_break_slot_tests {
+pub(crate) mod held_break_slot_tests {
 
     #[test]
     #[ignore = "daily"]

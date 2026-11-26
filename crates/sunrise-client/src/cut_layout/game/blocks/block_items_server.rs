@@ -1,7 +1,7 @@
 
 
 #[cfg(test)]
-pub(in crate::game) mod tests {
+pub(crate) mod tests {
     #[test]
     #[ignore = "daily"]
     fn placed_sculk_item_data_survives_pending_placement() {
@@ -260,7 +260,7 @@ pub(in crate::game) mod tests {
 }
 
 #[cfg(test)]
-pub(in crate::game) mod plain_name_overlay_tests {
+pub(crate) mod plain_name_overlay_tests {
     use super::*;
     use sunrise_gameplay::game::native_entity_refs::tests::with_game;
     use sunrise_core::position::BlockPos;
@@ -389,7 +389,7 @@ pub(in crate::game) mod plain_name_overlay_tests {
 }
 
 #[cfg(test)]
-pub(in crate::game) mod styled_name_model_tests {
+pub(crate) mod styled_name_model_tests {
     use super::*;
     use sunrise_gameplay::game::native_entity_refs::tests::with_game;
     use sunrise_core::position::BlockPos;

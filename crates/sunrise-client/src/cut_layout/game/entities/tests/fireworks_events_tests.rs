@@ -8,7 +8,7 @@ use {
     sunrise_items::items::ItemStack, sunrise_level::chunk::Chunk, sunrise_sim::mobs::Who,
 };
 
-pub(in crate::game) fn with_game(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
+pub(crate) fn with_game(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
     let settings = Settings::default();
     let loaded = load_resources(
@@ -51,7 +51,7 @@ pub(in crate::game) fn with_game(test: impl FnOnce(&mut sunrise_gameplay::game::
 
 /// One `small_ball` that twinkles, as `/summon` reads it: a `Starter` of 16
 /// ticks that plays a blast first and a twinkle last.
-pub(in crate::game) fn twinkling() -> FireworkExplosion {
+pub(crate) fn twinkling() -> FireworkExplosion {
     FireworkExplosion {
         shape: FireworkShape::SmallBall,
         colors: vec![0xFF5555],
@@ -62,11 +62,11 @@ pub(in crate::game) fn twinkling() -> FireworkExplosion {
 }
 
 /// Recording of `Game::post_game_event`, as the sculk tests read it.
-pub(in crate::game) fn start_events() {
+pub(crate) fn start_events() {
     sunrise_client_gameplay::game::sculk::TEST_POSTED_EVENTS.with(|e| *e.borrow_mut() = Some(Vec::new()));
 }
 
-pub(in crate::game) fn take_explosions() -> Vec<(&'static str, [f64; 3], Option<Who>)> {
+pub(crate) fn take_explosions() -> Vec<(&'static str, [f64; 3], Option<Who>)> {
     sunrise_client_gameplay::game::sculk::TEST_POSTED_EVENTS.with(|e| {
         std::mem::take(e.borrow_mut().as_mut().unwrap())
             .into_iter()
@@ -75,7 +75,7 @@ pub(in crate::game) fn take_explosions() -> Vec<(&'static str, [f64; 3], Option<
     })
 }
 
-pub(in crate::game) fn stop_events() {
+pub(crate) fn stop_events() {
     sunrise_client_gameplay::game::sculk::TEST_POSTED_EVENTS.with(|e| *e.borrow_mut() = None);
 }
 

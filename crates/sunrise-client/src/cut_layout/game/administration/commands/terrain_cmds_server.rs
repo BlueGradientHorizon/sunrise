@@ -1,7 +1,7 @@
 
 
 #[cfg(test)]
-pub(in crate::game) mod loot_mine_component_tests {
+pub(crate) mod loot_mine_component_tests {
     use super::*;
     use sunrise_gameplay::game::server_side::commands::terrain_cmds::loot_mine_component_tests::slot;
     use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
@@ -127,7 +127,7 @@ pub(in crate::game) mod loot_mine_component_tests {
 }
 
 #[cfg(test)]
-pub(in crate::game) mod loot_mine_location_tests {
+pub(crate) mod loot_mine_location_tests {
     use super::*;
     use sunrise_gameplay::game::commands::terrain_cmds::loot_mine_location_tests::TABLE;
     use std::sync::Arc;
@@ -276,5 +276,5 @@ pub(in crate::game) mod loot_mine_location_tests {
 
 #[cfg(test)]
 #[path = "loot_slot_tests_server.rs"]
-pub(in crate::game) mod loot_slot_tests;
+pub(crate) mod loot_slot_tests;
 use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

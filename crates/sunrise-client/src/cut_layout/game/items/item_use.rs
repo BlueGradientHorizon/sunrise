@@ -292,7 +292,7 @@ use sunrise_core::use_animation::UseAnimation;
 
 
 #[cfg(test)]
-pub(in crate::game) mod interact_vibration_tests {
+pub(crate) mod interact_vibration_tests {
     use super::*;
 
     use sunrise_gameplay::game::server_side::sculk_server::item_use_event_fixture::{EVENTS, RECORDING};
@@ -300,7 +300,7 @@ pub(in crate::game) mod interact_vibration_tests {
     /// Runs `f` on a windowless game built from the prepared resources with
     /// `held` in the main hand and returns the game events it posted;
     /// `None` without the resources.
-    pub(in crate::game) fn with_game(
+    pub(crate) fn with_game(
         held: &str,
         f: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>),
     ) -> Option<Vec<String>> {

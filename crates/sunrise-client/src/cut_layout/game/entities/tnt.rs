@@ -17,7 +17,7 @@ use super::*;
 
 /// A server's game on the prepared resources with the chunk at the origin
     /// loaded, as `native_machines`' tests make one; None without them.
-    pub(in crate::game) fn server_game<'a>(
+    pub(crate) fn server_game<'a>(
         resources: &'a mut Option<std::sync::Arc<sunrise_gameplay_common::game::Resources>>,
     ) -> Option<Box<sunrise_gameplay::game::ServerGame<'a>>> {
         use {crate::game::*, sunrise_gameplay_common::game::*};
@@ -137,7 +137,7 @@ pub(in sunrise_gameplay::game::server_side) fn run_portal_transfer_ordinary_nbt_
     fn portal_blast_sulfur_cube_uses_only_positive_cooldown() {
         run_portal_blast_sulfur_cube_uses_only_positive_cooldown();
     }
-pub(in crate::game) fn source_silence_game(
+pub(crate) fn source_silence_game(
         resources: &mut Option<std::sync::Arc<sunrise_gameplay_common::game::Resources>>,
     ) -> Option<Box<sunrise_gameplay::game::ServerGame<'_>>> {
         let mut game = server_game(resources)?;
@@ -146,7 +146,7 @@ pub(in crate::game) fn source_silence_game(
         game.side.lan_acting = Some(0);
         Some(game)
     }
-pub(in crate::game) fn run_portal_blast_sulfur_cube_uses_only_positive_cooldown() {
+pub(crate) fn run_portal_blast_sulfur_cube_uses_only_positive_cooldown() {
         use sunrise_sim::mobs::Mob;
         use sunrise_sim::nether_portal::PortalState;
         let mut resources = None;
@@ -402,7 +402,7 @@ pub(in crate::game) fn run_portal_blast_sulfur_cube_uses_only_positive_cooldown(
     fn silent_tnt_keeps_the_blast_without_its_sound() {
         run_silent_tnt_keeps_the_blast_without_its_sound();
     }
-pub(in crate::game) fn run_silent_tnt_keeps_the_blast_without_its_sound() {
+pub(crate) fn run_silent_tnt_keeps_the_blast_without_its_sound() {
         on_big_stack(|| {
             let mut resources = None;
             let Some(mut game) = source_silence_game(&mut resources) else {
@@ -463,7 +463,7 @@ pub(in crate::game) fn run_silent_tnt_keeps_the_blast_without_its_sound() {
     fn silent_potions_keep_the_splash_without_its_sound() {
         run_silent_potions_keep_the_splash_without_its_sound();
     }
-pub(in crate::game) fn run_silent_potions_keep_the_splash_without_its_sound() {
+pub(crate) fn run_silent_potions_keep_the_splash_without_its_sound() {
         on_big_stack(|| {
             use sunrise_sim::projectiles::{Hit, Projectile, ProjectileKind};
             let mut resources = None;
@@ -526,7 +526,7 @@ pub(in crate::game) fn run_silent_potions_keep_the_splash_without_its_sound() {
     fn silent_creeper_keeps_the_blast_after_its_source_is_removed() {
         run_silent_creeper_keeps_the_blast_after_its_source_is_removed();
     }
-pub(in crate::game) fn run_silent_creeper_keeps_the_blast_after_its_source_is_removed() {
+pub(crate) fn run_silent_creeper_keeps_the_blast_after_its_source_is_removed() {
         on_big_stack(|| {
             let mut resources = None;
             let Some(mut game) = source_silence_game(&mut resources) else {
@@ -565,7 +565,7 @@ pub(in crate::game) fn run_silent_creeper_keeps_the_blast_after_its_source_is_re
     fn silent_launched_potions_and_bottles_keep_their_impact() {
         run_silent_launched_potions_and_bottles_keep_their_impact();
     }
-pub(in crate::game) fn run_silent_launched_potions_and_bottles_keep_their_impact() {
+pub(crate) fn run_silent_launched_potions_and_bottles_keep_their_impact() {
         on_big_stack(|| {
             let mut resources = None;
             let Some(mut game) = source_silence_game(&mut resources) else {
@@ -790,7 +790,7 @@ pub(in sunrise_gameplay::game::server_side) fn run_silent_bottles_preserve_xp_an
 }
 
 #[cfg(test)]
-pub(in crate::game) mod entity_collision_tests {
+pub(crate) mod entity_collision_tests {
     use std::sync::Arc;
     use sunrise_core::position::ChunkPos;
     use sunrise_level::chunk::Chunk;

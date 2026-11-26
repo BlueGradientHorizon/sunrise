@@ -1,7 +1,7 @@
 
 
 #[cfg(test)]
-pub(in crate::game) mod tests {
+pub(crate) mod tests {
     use {crate::game::native_hooks::farmland_trample::*};
     use sunrise_gameplay::game::native_entity_refs::tests::with_game;
     use {sunrise_gameplay_common::game::server_side::native_item_places::tests::guest, sunrise_gameplay::game::server_side::native_item_places::tests::open_to_lan};
@@ -12,14 +12,14 @@ pub(in crate::game) mod tests {
     use sunrise_protocol::packets::{Empty, play, play::Serverbound as S};
     use sunrise_sim::{lan::guest::InboxItem, motion::PlayerMotion};
 
-    pub(in crate::game) const FIELD: [i32; 3] = [1, 63, 1];
-    pub(in crate::game) const LISTENER_WRITE: [i32; 3] = [3, 63, 3];
-    pub(in crate::game) const HEALTHY_WRITE: [i32; 3] = [4, 63, 4];
-    pub(in crate::game) const LANDING_Y: f64 = 63.9375;
-    pub(in crate::game) const LANDING: u32 = 20;
-    pub(in crate::game) const OTHER: u32 = 72;
-    pub(in crate::game) const OUTSIDE: u32 = 73;
-    pub(in crate::game) const WALKING: Body = Body::Guest { sneaking: false };
+    pub(crate) const FIELD: [i32; 3] = [1, 63, 1];
+    pub(crate) const LISTENER_WRITE: [i32; 3] = [3, 63, 3];
+    pub(crate) const HEALTHY_WRITE: [i32; 3] = [4, 63, 4];
+    pub(crate) const LANDING_Y: f64 = 63.9375;
+    pub(crate) const LANDING: u32 = 20;
+    pub(crate) const OTHER: u32 = 72;
+    pub(crate) const OUTSIDE: u32 = 73;
+    pub(crate) const WALKING: Body = Body::Guest { sneaking: false };
 
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
     pub(in crate::game) enum Choice {
@@ -50,11 +50,11 @@ pub(in crate::game) mod tests {
         Fall(f32, f64, mod_api::BlockState),
     }
 
-    pub(in crate::game) type Trace = Arc<Mutex<Vec<Moment>>>;
+    pub(crate) type Trace = Arc<Mutex<Vec<Moment>>>;
 
     // This observer listens to the effects, not to farmland_trample. It can be
     // installed on both sides of the allow/no-listener comparison.
-    pub(in crate::game) struct Observe(pub(in crate::game) Trace, pub(in crate::game) Choice);
+    pub(crate) struct Observe(pub(crate) Trace, pub(crate) Choice);
     #[mod_api::__subscriptions]
     impl Hooks for Observe {
         fn entity_entering_section(
@@ -136,7 +136,7 @@ pub(in crate::game) mod tests {
         }
     }
 
-    pub(in crate::game) struct Gardener(pub(in crate::game) Choice, pub(in crate::game) Trace);
+    pub(crate) struct Gardener(pub(crate) Choice, pub(crate) Trace);
     #[mod_api::__subscriptions]
     impl Hooks for Gardener {
         fn farmland_trample(
@@ -202,7 +202,7 @@ pub(in crate::game) mod tests {
         }
     }
 
-    pub(in crate::game) struct AfterTrap;
+    pub(crate) struct AfterTrap;
     #[mod_api::__subscriptions]
     impl Hooks for AfterTrap {
         fn farmland_trample(
@@ -225,11 +225,11 @@ pub(in crate::game) mod tests {
         }
     }
 
-    pub(in crate::game) fn land(body: Body, choice: Choice) -> Vec<Moment> {
+    pub(crate) fn land(body: Body, choice: Choice) -> Vec<Moment> {
         land_with_later_packet(body, choice, None)
     }
 
-    pub(in crate::game) fn land_with_later_packet(
+    pub(crate) fn land_with_later_packet(
         body: Body,
         choice: Choice,
         later: Option<S>,

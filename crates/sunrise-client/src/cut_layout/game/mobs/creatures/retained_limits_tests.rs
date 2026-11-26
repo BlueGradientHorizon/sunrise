@@ -6,9 +6,9 @@ use std::sync::{
 use sunrise_core::geometry::Vec3;
 use sunrise_sim::mobs::Mob;
 
-pub(in crate::game) const ZOMBIE: u32 = 71;
-pub(in crate::game) const TARGET_GUEST: u32 = 12;
-pub(in crate::game) const OTHER_GUEST: u32 = 13;
+pub(crate) const ZOMBIE: u32 = 71;
+pub(crate) const TARGET_GUEST: u32 = 12;
+pub(crate) const OTHER_GUEST: u32 = 13;
 
 #[test]
 #[ignore = "daily"]
@@ -72,7 +72,7 @@ fn pending_pushes_deliver_once_and_do_not_cross_world_reset() {
     });
 }
 
-pub(in crate::game) struct PanicInMovement(pub(in crate::game) Arc<AtomicUsize>);
+pub(crate) struct PanicInMovement(pub(crate) Arc<AtomicUsize>);
 #[mod_api::__subscriptions]
 impl mod_api::Hooks for PanicInMovement {
     fn living_speed(
@@ -87,7 +87,7 @@ impl mod_api::Hooks for PanicInMovement {
     }
 }
 
-pub(in crate::game) struct ObserveMovement(pub(in crate::game) Arc<AtomicUsize>);
+pub(crate) struct ObserveMovement(pub(crate) Arc<AtomicUsize>);
 #[mod_api::__subscriptions]
 impl mod_api::Hooks for ObserveMovement {
     fn living_speed(

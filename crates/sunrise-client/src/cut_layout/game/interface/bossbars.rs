@@ -24,8 +24,8 @@ use sunrise_gameplay::game::server_side::bossbars::audience_tests::add_real_and_
 
 #[cfg(test)]
 #[path = "tests/bossbar_names_tests.rs"]
-pub(in crate::game) mod bossbar_names_tests;
+pub(crate) mod bossbar_names_tests;
 
 #[cfg(test)]
 #[path = "tests/bossbar_store_tests.rs"]
-pub(in crate::game) mod bossbar_store_tests;
+pub(crate) mod bossbar_store_tests;

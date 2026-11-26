@@ -7,10 +7,10 @@ use serde_json::Value as JsonValue;
 use sunrise_command::args::GameMode;
 use sunrise_protocol::connection::ConnReader;
 
-pub(in crate::game) const SELF_UUID: u128 = 0xdf71_dcc7_da3b_3506_b229_6d1f_589e_2569;
-pub(in crate::game) const SELF_NAME: &str = "BX0W";
+pub(crate) const SELF_UUID: u128 = 0xdf71_dcc7_da3b_3506_b229_6d1f_589e_2569;
+pub(crate) const SELF_NAME: &str = "BX0W";
 
-pub(in crate::game) fn oracle_witness() -> JsonValue {
+pub(crate) fn oracle_witness() -> JsonValue {
     let path = std::env::var("SUNRISE_GAMEMODE_SPLIT_WITNESS").unwrap_or_else(|_| {
         let fallback = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../.local/witness/26.3/gamemode_split/witness.json");
@@ -28,19 +28,19 @@ pub(in crate::game) fn oracle_witness() -> JsonValue {
     serde_json::from_str(&raw).expect("valid 26.3 gamemode split witness JSON")
 }
 
-pub(in crate::game) fn f32_bits(hex: &JsonValue) -> u32 {
+pub(crate) fn f32_bits(hex: &JsonValue) -> u32 {
     u32::from_str_radix(hex.as_str().unwrap().trim_start_matches("0x"), 16).unwrap()
 }
 
-pub(in crate::game) fn f64_bits(hex: &JsonValue) -> u64 {
+pub(crate) fn f64_bits(hex: &JsonValue) -> u64 {
     u64::from_str_radix(hex.as_str().unwrap().trim_start_matches("0x"), 16).unwrap()
 }
 
-pub(in crate::game) fn mode_id_from_name(name: &str) -> i32 {
+pub(crate) fn mode_id_from_name(name: &str) -> i32 {
     GameMode::from_name(name).unwrap().id()
 }
 
-pub(in crate::game) fn spawn_info(
+pub(crate) fn spawn_info(
     game_type: i32,
     previous_game_type: Option<i32>,
 ) -> play::SpawnInfo {
@@ -58,7 +58,7 @@ pub(in crate::game) fn spawn_info(
     }
 }
 
-pub(in crate::game) fn login_packet(
+pub(crate) fn login_packet(
     player_id: i32,
     game_type: i32,
     previous_game_type: Option<i32>,
@@ -79,7 +79,7 @@ pub(in crate::game) fn login_packet(
     })
 }
 
-pub(in crate::game) fn position_packet(teleport: i32, position: [f64; 3]) -> C {
+pub(crate) fn position_packet(teleport: i32, position: [f64; 3]) -> C {
     C::PlayerPosition(play::PlayerPosition {
         teleport,
         position,
@@ -90,7 +90,7 @@ pub(in crate::game) fn position_packet(teleport: i32, position: [f64; 3]) -> C {
     })
 }
 
-pub(in crate::game) fn abilities_packet(flags: i8, flying_speed: f32, walking_speed: f32) -> C {
+pub(crate) fn abilities_packet(flags: i8, flying_speed: f32, walking_speed: f32) -> C {
     C::PlayerAbilities(play::PlayerAbilities {
         flags,
         flying_speed,
@@ -98,11 +98,11 @@ pub(in crate::game) fn abilities_packet(flags: i8, flying_speed: f32, walking_sp
     })
 }
 
-pub(in crate::game) fn change_mode_packet(param: f32) -> C {
+pub(crate) fn change_mode_packet(param: f32) -> C {
     C::GameEvent(play::GameEvent { event: 3, param })
 }
 
-pub(in crate::game) fn player_info_add_mode(uuid: u128, name: &str, game_mode: i32) -> C {
+pub(crate) fn player_info_add_mode(uuid: u128, name: &str, game_mode: i32) -> C {
     C::PlayerInfoUpdate(play::PlayerInfoUpdate {
         actions: 0x01 | 0x04 | 0x08,
         entries: vec![play::PlayerInfo {
@@ -115,7 +115,7 @@ pub(in crate::game) fn player_info_add_mode(uuid: u128, name: &str, game_mode: i
     })
 }
 
-pub(in crate::game) fn player_info_mode(uuid: u128, game_mode: i32) -> C {
+pub(crate) fn player_info_mode(uuid: u128, game_mode: i32) -> C {
     C::PlayerInfoUpdate(play::PlayerInfoUpdate {
         actions: 0x04,
         entries: vec![play::PlayerInfo {
@@ -126,7 +126,7 @@ pub(in crate::game) fn player_info_mode(uuid: u128, game_mode: i32) -> C {
     })
 }
 
-pub(in crate::game) fn install_stone_floor(game: &mut sunrise_client_gameplay::game::ClientGame<'_>) {
+pub(crate) fn install_stone_floor(game: &mut sunrise_client_gameplay::game::ClientGame<'_>) {
     game.side
         .streaming
         .insert_remote(&mut game.world, Chunk::empty(0, 0));
@@ -146,9 +146,9 @@ pub(in crate::game) fn install_stone_floor(game: &mut sunrise_client_gameplay::g
 }
 
 #[allow(unused_imports)]
-pub(in crate::game) use crate::game::client_side::remote_client::abilities::gamemode_split_tests::setup_client;
+pub(crate) use crate::game::client_side::remote_client::abilities::gamemode_split_tests::setup_client;
 
-pub(in crate::game) fn drain_sent_abilities(
+pub(crate) fn drain_sent_abilities(
     game: &sunrise_client_gameplay::game::ClientGame<'_>,
     peer: &mut ConnReader,
 ) -> Vec<bool> {
@@ -164,11 +164,11 @@ pub(in crate::game) fn drain_sent_abilities(
     sent
 }
 
-pub(in crate::game) fn run_local_tick(game: &mut sunrise_client_gameplay::game::ClientGame<'_>) {
+pub(crate) fn run_local_tick(game: &mut sunrise_client_gameplay::game::ClientGame<'_>) {
     game.tick_local_player(Vec::new(), 7, None).unwrap();
 }
 
-pub(in crate::game) fn player_info_mode_name(
+pub(crate) fn player_info_mode_name(
     game: &sunrise_client_gameplay::game::ClientGame<'_>,
 ) -> Option<&'static str> {
     let r = game.side.remote.as_ref()?;
@@ -176,7 +176,7 @@ pub(in crate::game) fn player_info_mode_name(
     Some(mode_from_id(t.game_mode).name())
 }
 
-pub(in crate::game) fn assert_row_core(
+pub(crate) fn assert_row_core(
     game: &sunrise_client_gameplay::game::ClientGame<'_>,
     row: &JsonValue,
     check_pos_vel: bool,
@@ -339,7 +339,7 @@ fn genpvp_packet_sequence_matches_26_3_oracle_step_by_step() {
     run_genpvp_packet_sequence_matches_26_3_oracle_step_by_step();
 }
 
-pub(in crate::game) fn run_genpvp_packet_sequence_matches_26_3_oracle_step_by_step() {
+pub(crate) fn run_genpvp_packet_sequence_matches_26_3_oracle_step_by_step() {
     sunrise_gameplay_common::game::in_own_process(
         "game::remote::abilities::gamemode_split_tests::genpvp_packet_sequence_matches_26_3_oracle_step_by_step",
         || {
@@ -392,7 +392,7 @@ fn change_game_mode_updates_only_local_mode_and_abilities_26_3() {
     run_change_game_mode_updates_only_local_mode_and_abilities_26_3();
 }
 
-pub(in crate::game) fn run_change_game_mode_updates_only_local_mode_and_abilities_26_3() {
+pub(crate) fn run_change_game_mode_updates_only_local_mode_and_abilities_26_3() {
     sunrise_gameplay_common::game::in_own_process(
         "game::remote::abilities::gamemode_split_tests::change_game_mode_updates_only_local_mode_and_abilities_26_3",
         || {
@@ -477,7 +477,7 @@ fn split_local_and_player_info_physics_matrix_26_3() {
 }
 
 #[allow(unused_imports)]
-pub(in crate::game) use crate::game::client_side::remote_client::abilities::gamemode_split_tests::run_split_local_and_player_info_physics_matrix_26_3;
+pub(crate) use crate::game::client_side::remote_client::abilities::gamemode_split_tests::run_split_local_and_player_info_physics_matrix_26_3;
 
 /// Real 26.3 oracle witness (`scenarios.live_player_info_transitions`):
 /// while `local_game_mode` stays Spectator and abilities stay 0x00, `PlayerInfoUpdate` flips
@@ -488,7 +488,7 @@ fn live_player_info_updates_toggle_no_physics_while_local_spectator_26_3() {
     run_live_player_info_updates_toggle_no_physics_while_local_spectator_26_3();
 }
 
-pub(in crate::game) fn run_live_player_info_updates_toggle_no_physics_while_local_spectator_26_3() {
+pub(crate) fn run_live_player_info_updates_toggle_no_physics_while_local_spectator_26_3() {
     sunrise_gameplay_common::game::in_own_process(
         "game::remote::abilities::gamemode_split_tests::live_player_info_updates_toggle_no_physics_while_local_spectator_26_3",
         || {
@@ -548,7 +548,7 @@ fn login_and_respawn_set_previous_mode_and_fresh_abilities_26_3() {
     run_login_and_respawn_set_previous_mode_and_fresh_abilities_26_3();
 }
 
-pub(in crate::game) fn run_login_and_respawn_set_previous_mode_and_fresh_abilities_26_3() {
+pub(crate) fn run_login_and_respawn_set_previous_mode_and_fresh_abilities_26_3() {
     sunrise_gameplay_common::game::in_own_process(
         "game::remote::abilities::gamemode_split_tests::login_and_respawn_set_previous_mode_and_fresh_abilities_26_3",
         || {
@@ -599,7 +599,7 @@ fn resolved_player_info_retains_identity_across_remove_and_readd_26_3() {
 }
 
 #[allow(unused_imports)]
-pub(in crate::game) use crate::game::client_side::remote_client::abilities::gamemode_split_tests::run_resolved_player_info_retains_identity_across_remove_and_readd_26_3;
+pub(crate) use crate::game::client_side::remote_client::abilities::gamemode_split_tests::run_resolved_player_info_retains_identity_across_remove_and_readd_26_3;
 
 /// Real 26.3 oracle witness (`scenarios.respawn_keep_data_spectator_clears_y`):
 /// `Respawn(KEEP_ENTITY_DATA)` followed by a Spectator `PlayerInfoUpdate` before the first
@@ -610,7 +610,7 @@ fn respawn_keep_data_spectator_info_clears_pending_y_26_3() {
     run_respawn_keep_data_spectator_info_clears_pending_y_26_3();
 }
 
-pub(in crate::game) fn run_respawn_keep_data_spectator_info_clears_pending_y_26_3() {
+pub(crate) fn run_respawn_keep_data_spectator_info_clears_pending_y_26_3() {
     sunrise_gameplay_common::game::in_own_process(
         "game::remote::abilities::gamemode_split_tests::respawn_keep_data_spectator_info_clears_pending_y_26_3",
         || {
@@ -658,7 +658,7 @@ fn retained_player_login_preserves_custom_ability_speeds_26_3() {
     run_retained_player_login_preserves_custom_ability_speeds_26_3();
 }
 
-pub(in crate::game) fn run_retained_player_login_preserves_custom_ability_speeds_26_3() {
+pub(crate) fn run_retained_player_login_preserves_custom_ability_speeds_26_3() {
     sunrise_gameplay_common::game::in_own_process(
         "game::remote::abilities::gamemode_split_tests::retained_player_login_preserves_custom_ability_speeds_26_3",
         || {
@@ -774,7 +774,7 @@ fn split_mode_hud_rendering_reach_miss_inventory_and_input_rules() {
     run_split_mode_hud_rendering_reach_miss_inventory_and_input_rules();
 }
 
-pub(in crate::game) fn run_split_mode_hud_rendering_reach_miss_inventory_and_input_rules() {
+pub(crate) fn run_split_mode_hud_rendering_reach_miss_inventory_and_input_rules() {
     sunrise_gameplay_common::game::in_own_process(
         "game::remote::abilities::gamemode_split_tests::split_mode_hud_rendering_reach_miss_inventory_and_input_rules",
         || {
@@ -1214,7 +1214,7 @@ pub(in crate::game) fn run_split_mode_hud_rendering_reach_miss_inventory_and_inp
     );
 }
 
-pub(in crate::game) fn add_entity_packet(
+pub(crate) fn add_entity_packet(
     game: &sunrise_client_gameplay::game::ClientGame<'_>,
     id: i32,
     uuid: u128,
@@ -1243,7 +1243,7 @@ pub(in crate::game) fn add_entity_packet(
     })
 }
 
-pub(in crate::game) fn spawn_mob(
+pub(crate) fn spawn_mob(
     game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
     id: i32,
     uuid: u128,
@@ -1274,7 +1274,7 @@ pub(in crate::game) fn spawn_mob(
     mob.extra.set_saddled(saddled);
 }
 
-pub(in crate::game) fn contextual_bar_name(
+pub(crate) fn contextual_bar_name(
     bar: sunrise_client::locator_bar::ContextualBar,
 ) -> &'static str {
     use sunrise_client::locator_bar::ContextualBar;
@@ -1293,7 +1293,7 @@ fn hud_camera_mounts_match_26_3_oracle() {
     run_hud_camera_mounts_match_26_3_oracle();
 }
 
-pub(in crate::game) fn run_hud_camera_mounts_match_26_3_oracle() {
+pub(crate) fn run_hud_camera_mounts_match_26_3_oracle() {
     sunrise_gameplay_common::game::in_own_process(
         "game::remote::abilities::gamemode_split_tests::hud_camera_mounts_match_26_3_oracle",
         || {

@@ -6,7 +6,7 @@ use sunrise_gameplay::game::game_tests::tests::server_game;
 
 /// A server's game on the prepared resources, or None when they are absent
 /// (CI has none: the tests then skip quietly).
-pub(in crate::game) fn server(
+pub(crate) fn server(
     resources: &mut Option<std::sync::Arc<sunrise_gameplay_common::game::Resources>>,
 ) -> Option<sunrise_gameplay::game::ServerGame<'_>> {
     std::env::var_os("SUNRISE_TEST_RESOURCES")?;
@@ -14,7 +14,7 @@ pub(in crate::game) fn server(
 }
 
 #[allow(unused_imports)]
-pub(in crate::game) use sunrise_gameplay::game::server_side::minecarts_server::minecart_tnt_tests::tnt_cart;
+pub(crate) use sunrise_gameplay::game::server_side::minecarts_server::minecart_tnt_tests::tnt_cart;
 
 #[test]
 fn a_silent_tnt_cart_primes_without_its_sound() {

@@ -1,7 +1,7 @@
 
 
 #[cfg(test)]
-pub(in crate::game) mod tests {
+pub(crate) mod tests {
     use mod_api::{EntityRef, LivingRef, WorldEpoch};
     use sunrise_core::geometry::Vec3;
 

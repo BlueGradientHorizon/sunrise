@@ -8,11 +8,11 @@ use {
     sunrise_client::options_file::V, sunrise_level::profile_lookup::TabPlayer,
 };
 
-pub(in crate::game) const ALICE: u128 = 10;
-pub(in crate::game) const BOB: u128 = 11;
-pub(in crate::game) const SESSION: u128 = 42;
+pub(crate) const ALICE: u128 = 10;
+pub(crate) const BOB: u128 = 11;
+pub(crate) const SESSION: u128 = 42;
 
-pub(in crate::game) fn with_delayed_chat(
+pub(crate) fn with_delayed_chat(
     test: &str,
     check: impl FnOnce(&mut sunrise_client_gameplay::game::ClientGame<'_>),
 ) {
@@ -35,7 +35,7 @@ pub(in crate::game) fn with_delayed_chat(
     });
 }
 
-pub(in crate::game) fn tracker_offset(game: &mut sunrise_client_gameplay::game::ClientGame<'_>) -> i32 {
+pub(crate) fn tracker_offset(game: &mut sunrise_client_gameplay::game::ClientGame<'_>) -> i32 {
     game.side
         .remote
         .as_mut()
@@ -45,7 +45,7 @@ pub(in crate::game) fn tracker_offset(game: &mut sunrise_client_gameplay::game::
         .offset()
 }
 
-pub(in crate::game) fn take_seen_update(
+pub(crate) fn take_seen_update(
     game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
 ) -> secure_chat::SeenUpdate {
     game.side
@@ -57,7 +57,7 @@ pub(in crate::game) fn take_seen_update(
         .update()
 }
 
-pub(in crate::game) fn bound() -> play::ChatTypeBound {
+pub(crate) fn bound() -> play::ChatTypeBound {
     play::ChatTypeBound {
         chat_type: 0,
         name: Tag::String("Alice".into()),
@@ -65,7 +65,7 @@ pub(in crate::game) fn bound() -> play::ChatTypeBound {
     }
 }
 
-pub(in crate::game) fn player_chat(
+pub(crate) fn player_chat(
     sender: u128,
     global_index: i32,
     content: &str,
@@ -85,7 +85,7 @@ pub(in crate::game) fn player_chat(
     }
 }
 
-pub(in crate::game) fn add_sender(game: &mut sunrise_client_gameplay::game::ClientGame<'_>, sender: u128) {
+pub(crate) fn add_sender(game: &mut sunrise_client_gameplay::game::ClientGame<'_>, sender: u128) {
     game.side
         .remote
         .as_mut()
@@ -94,7 +94,7 @@ pub(in crate::game) fn add_sender(game: &mut sunrise_client_gameplay::game::Clie
         .insert(sender, TabPlayer::new(sender, "Player"));
 }
 
-pub(in crate::game) fn add_signed_sender(
+pub(crate) fn add_signed_sender(
     game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
     key: &RsaPrivateKey,
     sender: u128,
@@ -121,7 +121,7 @@ pub(in crate::game) fn add_signed_sender(
         .insert(sender, secure_chat::MessageValidator::keyed(session));
 }
 
-pub(in crate::game) fn deliver_signed(
+pub(crate) fn deliver_signed(
     game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
     key: &RsaPrivateKey,
     mut packet: play::PlayerChat,

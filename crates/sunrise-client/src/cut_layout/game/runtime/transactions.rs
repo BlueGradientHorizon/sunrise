@@ -2,10 +2,10 @@
 
 #[cfg(test)]
 #[path = "transactions/player_tests.rs"]
-pub(in crate::game) mod player_tests;
+pub(crate) mod player_tests;
 
 #[cfg(test)]
-pub(in crate::game) mod tests {
+pub(crate) mod tests {
     use sunrise_gameplay_common::game::api_values::TryIntoApi;
     use {sunrise_gameplay_common::game::BlockEntity, sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
     use mod_api::HostTransaction;
@@ -321,7 +321,7 @@ pub(in crate::game) mod tests {
         });
     }
 
-    pub(in crate::game) fn insert(
+    pub(crate) fn insert(
         host: &mut dyn ServerHost,
         at: BlockSide,
         slot: usize,
@@ -347,7 +347,7 @@ pub(in crate::game) mod tests {
         })
     }
 
-    pub(in crate::game) fn extract(
+    pub(crate) fn extract(
         host: &mut dyn ServerHost,
         at: BlockSide,
         slot: usize,
@@ -365,7 +365,7 @@ pub(in crate::game) mod tests {
         resource.to_stack(taken)
     }
 
-    pub(in crate::game) fn extract_fluid(
+    pub(crate) fn extract_fluid(
         host: &mut dyn ServerHost,
         at: BlockSide,
         tank: usize,
@@ -383,7 +383,7 @@ pub(in crate::game) mod tests {
         (taken > 0).then(|| resource.to_stack(taken))
     }
 
-    pub(in crate::game) fn chest_items(game: &sunrise_gameplay::game::ServerGame<'_>) -> Vec<(usize, u32)> {
+    pub(crate) fn chest_items(game: &sunrise_gameplay::game::ServerGame<'_>) -> Vec<(usize, u32)> {
         let Some(BlockEntity::Chest(items)) = game.world.block_entities.get(&(0, 64, 0)) else {
             panic!("chest block entity missing")
         };
@@ -1114,7 +1114,7 @@ pub(in crate::game) mod tests {
 }
 
 #[cfg(test)]
-pub(in crate::game) mod mod_capability_tests {
+pub(crate) mod mod_capability_tests {
     use sunrise_gameplay::game::native_entity_refs::tests::with_game;
     use mod_api::ServerHost;
     use mod_api::{BlockSide, HostTransaction, ResourceHandler, resource_util::move_resources};

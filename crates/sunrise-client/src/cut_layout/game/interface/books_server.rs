@@ -1,7 +1,7 @@
 
 
 #[cfg(test)]
-pub(in crate::game) mod lectern_book_removal_tests {
+pub(crate) mod lectern_book_removal_tests {
     use super::super::game_tests::tests::server_game;
     use sunrise_items::items::ItemStack;
     use sunrise_level::containers::{BlockEntity, Lectern};
@@ -58,7 +58,7 @@ pub(in crate::game) mod lectern_book_removal_tests {
 }
 
 #[cfg(test)]
-pub(in crate::game) mod lectern_books_tag_tests {
+pub(crate) mod lectern_books_tag_tests {
     use super::super::game_tests::tests::server_game;
     use sunrise_items::items::ItemStack;
     use sunrise_level::containers::BlockEntity;

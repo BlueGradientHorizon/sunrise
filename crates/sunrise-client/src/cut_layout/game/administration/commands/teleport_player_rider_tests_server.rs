@@ -1,5 +1,5 @@
 #[cfg(test)]
-pub(in crate::game) mod fake_travel_tests {
+pub(crate) mod fake_travel_tests {
     use super::super::super::Dim;
     use sunrise_gameplay::game::server_side::commands_server::Target;
 

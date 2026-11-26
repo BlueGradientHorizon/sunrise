@@ -6,11 +6,11 @@ use sunrise_protocol::packets::configuration::ClientInformation;
 use sunrise_sim::lan::{Joined, PlayerSender, guest::SavedBody};
 
 #[path = "tests/fall_reset.rs"]
-pub(in crate::game) mod fall_reset;
+pub(crate) mod fall_reset;
 #[path = "tests/travel.rs"]
-pub(in crate::game) mod travel;
+pub(crate) mod travel;
 
-pub(in crate::game) fn guest(entity_id: i32) -> Guest {
+pub(crate) fn guest(entity_id: i32) -> Guest {
     let (sender, _) = mpsc::channel();
     Guest::new(
         Joined {
@@ -240,9 +240,9 @@ fn guest_equipment_changes_powder_snow_support_on_the_same_move() {
 /// its application: the listener reads the helmet, edits the chestplate through a transaction,
 /// triggers a criterion and answers; the game applies it to the air it decided on, or refuses
 /// when the listener changed that air and rolls the transactional edit back.
-pub(in crate::game) struct Breather {
-    pub(in crate::game) meddle: bool,
-    pub(in crate::game) helmet: Arc<std::sync::Mutex<Option<String>>>,
+pub(crate) struct Breather {
+    pub(crate) meddle: bool,
+    pub(crate) helmet: Arc<std::sync::Mutex<Option<String>>>,
 }
 #[mod_api::__subscriptions]
 impl mod_api::Hooks for Breather {
@@ -296,7 +296,7 @@ impl mod_api::Hooks for Breather {
 
 /// One tick of a guest in a diving helmet and a damageable chestplate: the helmet the listener
 /// read, then the air and the chestplate's damage the tick left.
-pub(in crate::game) fn breathing_guest_tick(meddle: bool) -> (Option<String>, i32, i32) {
+pub(crate) fn breathing_guest_tick(meddle: bool) -> (Option<String>, i32, i32) {
     use sunrise_gameplay::game::native_entity_refs::tests::with_game;
     use {sunrise_gameplay_common::game::server_side::native_item_places::tests::guest as online_guest, sunrise_gameplay::game::server_side::native_item_places::tests::open_to_lan};
     use sunrise_items::items::ItemStack;
@@ -357,7 +357,7 @@ pub(in crate::game) fn breathing_guest_tick(meddle: bool) -> (Option<String>, i3
     (helmet, left.0, i32::try_from(left.1).unwrap())
 }
 
-pub(in crate::game) fn assert_isolated_breathing_tick(
+pub(crate) fn assert_isolated_breathing_tick(
     name: &str,
     meddle: bool,
     air: i32,

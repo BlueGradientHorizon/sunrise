@@ -202,7 +202,7 @@ use sunrise_level::{chunk::Chunk, containers::BlockEntity};
 
 
 #[cfg(test)]
-pub(in crate::game) mod loot_position_tests {
+pub(crate) mod loot_position_tests {
     use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
 
     #[test]
@@ -307,7 +307,7 @@ pub(in crate::game) mod loot_position_tests {
 }
 
 #[cfg(test)]
-pub(in crate::game) mod loot_kill_target_tests {
+pub(crate) mod loot_kill_target_tests {
     use super::*;
     use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
     use std::sync::Arc;
@@ -426,5 +426,5 @@ pub(in crate::game) mod loot_kill_target_tests {
 
 #[cfg(test)]
 #[path = "loot_slot_tests.rs"]
-pub(in crate::game) mod loot_slot_tests;
+pub(crate) mod loot_slot_tests;
 use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

@@ -1,7 +1,7 @@
 use super::*;
 use crate::game::remote::interaction_event_tests::item_fallthrough_tests::with_packet_game;
 
-pub(in crate::game) fn assert_block_item_before_fallthrough(
+pub(crate) fn assert_block_item_before_fallthrough(
     item: &str,
     block: &str,
     expected: &str,

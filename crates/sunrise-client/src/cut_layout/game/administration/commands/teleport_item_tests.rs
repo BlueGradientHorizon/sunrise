@@ -58,7 +58,7 @@ fn portal_arrival_effects_command_items_merge_immediately() {
     run_portal_arrival_effects_command_items_merge_immediately();
 }
 
-pub(in crate::game) fn run_portal_arrival_effects_command_items_merge_immediately() {
+pub(crate) fn run_portal_arrival_effects_command_items_merge_immediately() {
     with_game(|game| {
         game.build_registries();
         game.set_allow_commands(true);

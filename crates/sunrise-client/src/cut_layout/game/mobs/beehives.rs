@@ -1,7 +1,7 @@
 
 
 #[cfg(test)]
-pub(in crate::game) mod honey_overflow_tests {
+pub(crate) mod honey_overflow_tests {
     use super::*;
 
     /// `BeehiveBlock.useItemOn`: a honey bottle that no longer fits is
@@ -54,7 +54,7 @@ pub(in crate::game) mod honey_overflow_tests {
 }
 
 #[cfg(test)]
-pub(in crate::game) mod stay_tests {
+pub(crate) mod stay_tests {
     use super::*;
     use sunrise_core::nbt::Compound;
     use sunrise_sim::beehive::Occupant;
@@ -112,7 +112,7 @@ pub(in crate::game) mod stay_tests {
 }
 
 #[cfg(test)]
-pub(in crate::game) mod changed_tests {
+pub(crate) mod changed_tests {
     use sunrise_gameplay::game::game_tests::tests::server_game;
     use sunrise_core::geometry::Vec3;
     use sunrise_core::nbt::Tag;

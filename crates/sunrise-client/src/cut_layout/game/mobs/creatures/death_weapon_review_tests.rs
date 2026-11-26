@@ -1,7 +1,7 @@
 use super::tests::isolated;
 use {crate::game::creatures::death_weapon::*};
 
-pub(in crate::game) fn fixture(
+pub(crate) fn fixture(
     expected: Option<ItemStack>,
     run: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>),
 ) {
@@ -9,8 +9,8 @@ pub(in crate::game) fn fixture(
 }
 
 #[allow(unused_imports)]
-pub(in crate::game) use crate::game::server_side::creatures_server::death_weapon::review_tests::fixture_with_source;
-pub(in crate::game) fn victim(game: &sunrise_gameplay::game::ServerGame<'_>) -> Mob {
+pub(crate) use crate::game::server_side::creatures_server::death_weapon::review_tests::fixture_with_source;
+pub(crate) fn victim(game: &sunrise_gameplay::game::ServerGame<'_>) -> Mob {
     Mob::new(
         70,
         game.res.mob_types().get("minecraft:pig").unwrap().clone(),
@@ -18,7 +18,7 @@ pub(in crate::game) fn victim(game: &sunrise_gameplay::game::ServerGame<'_>) -> 
         0.0,
     )
 }
-pub(in crate::game) fn arrow(weapon: Option<ItemStack>) -> Projectile {
+pub(crate) fn arrow(weapon: Option<ItemStack>) -> Projectile {
     let mut shot = Projectile::new(
         ProjectileKind::Arrow {
             base_damage: 2.0,
@@ -32,7 +32,7 @@ pub(in crate::game) fn arrow(weapon: Option<ItemStack>) -> Projectile {
     shot.id = 912;
     shot
 }
-pub(in crate::game) fn hit(
+pub(crate) fn hit(
     game: &mut sunrise_gameplay::game::ServerGame<'_>,
     shot: &Projectile,
     amount: f32,
@@ -133,7 +133,7 @@ fn death_weapon_dispenser_arrow_without_recorded_weapon_is_none() {
     });
 }
 
-pub(in crate::game) fn player(game: &mut sunrise_gameplay::game::ServerGame<'_>) {
+pub(crate) fn player(game: &mut sunrise_gameplay::game::ServerGame<'_>) {
     game.player = Some(sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
     sunrise_gameplay::game::native_entity_refs::tests::bind_local_player(game, 11, 123);
 }

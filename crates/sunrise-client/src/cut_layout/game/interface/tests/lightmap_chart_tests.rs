@@ -2,7 +2,7 @@
 //! readback of a pack-drawn light texture: the game asks for the readback exactly while the
 //! chart is on screen (`Game::debug_shows_lightmap`, given to `Renderer::set_lightmap_readback`
 //! each frame).
-use {crate::game::*, sunrise_gameplay_common::game::{Game, KeyAction, Renderer, Screen}};
+use {crate::game::*, sunrise_gameplay_common::game::{Screen}};
 use sunrise_client::debug_keys::KeyAction;
 
 /// F3+4 pressed: F3 held, 4 pressed and released, F3 released.

@@ -2,7 +2,7 @@
 
 #[cfg(feature = "client")]
 #[cfg(test)]
-pub(in crate::game) mod tests {
+pub(crate) mod tests {
     use super::*;
     use std::{sync::mpsc, time::Duration};
 
@@ -266,4 +266,4 @@ pub(in crate::game) mod tests {
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "clouds_reload_tests.rs"]
-pub(in crate::game) mod clouds_reload_tests;
+pub(crate) mod clouds_reload_tests;

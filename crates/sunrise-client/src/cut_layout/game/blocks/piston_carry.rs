@@ -1,7 +1,7 @@
 
 
 #[cfg(test)]
-pub(in crate::game) mod tests {
+pub(crate) mod tests {
     use {crate::game::piston_carry::*, sunrise_gameplay_common::game::piston_carry::{ATTACHMENTS_KEY, Attachments, BlockPos, CARRIED_KEY, ChunkExtras, Direction, MovingPiston, Tag}};
     use std::sync::Arc;
     use sunrise_items::items::ItemStack;

@@ -85,11 +85,11 @@ pub(in sunrise_gameplay::game::server_side) fn fbits(v: f32) -> String {
     format!("{:08x}", v.to_bits())
 }
 
-pub(in crate::game) fn vec_bits(v: Vec3) -> [String; 3] {
+pub(crate) fn vec_bits(v: Vec3) -> [String; 3] {
     [bits(v.x), bits(v.y), bits(v.z)]
 }
 
-pub(in crate::game) fn align_next_entity_mod4(
+pub(crate) fn align_next_entity_mod4(
     game: &mut sunrise_gameplay::game::ServerGame<'_>,
     want_mod4: u32,
 ) {
@@ -125,7 +125,7 @@ pub(in sunrise_gameplay::game::server_side) fn setup_game<'a>(
     game
 }
 
-pub(in crate::game) fn clear_entities(game: &mut sunrise_gameplay::game::ServerGame<'_>) {
+pub(crate) fn clear_entities(game: &mut sunrise_gameplay::game::ServerGame<'_>) {
     game.hook.discard();
     game.mobs.clear();
     game.dropped.clear();
@@ -166,7 +166,7 @@ pub(in crate::game) enum TrackedTarget {
 }
 
 impl TrackedTarget {
-    pub(in crate::game) fn id(self) -> Option<u32> {
+    pub(crate) fn id(self) -> Option<u32> {
         match self {
             Self::Frame(id)
             | Self::Painting(id)
@@ -182,7 +182,7 @@ impl TrackedTarget {
     }
 }
 
-pub(in crate::game) fn summon_target(
+pub(crate) fn summon_target(
     game: &mut sunrise_gameplay::game::ServerGame<'_>,
     target: &str,
 ) -> TrackedTarget {
@@ -282,7 +282,7 @@ pub(in crate::game) fn summon_target(
     }
 }
 
-pub(in crate::game) fn target_kinematics(
+pub(crate) fn target_kinematics(
     game: &sunrise_gameplay::game::ServerGame<'_>,
     target: TrackedTarget,
 ) -> Option<(Vec3, Vec3)> {
@@ -306,7 +306,7 @@ pub(in crate::game) fn target_kinematics(
     }
 }
 
-pub(in crate::game) fn check_hook_tick(
+pub(crate) fn check_hook_tick(
     game: &sunrise_gameplay::game::ServerGame<'_>,
     label: &str,
     expected: &FishingTick,
@@ -389,7 +389,7 @@ pub(in crate::game) fn check_hook_tick(
     }
 }
 
-pub(in crate::game) fn spawn_test_hook(
+pub(crate) fn spawn_test_hook(
     game: &mut sunrise_gameplay::game::ServerGame<'_>,
     pos: Vec3,
     vel: Vec3,
@@ -405,10 +405,10 @@ pub(in crate::game) fn spawn_test_hook(
 }
 
 #[allow(unused_imports)]
-pub(in crate::game) use crate::game::client_side::fishing_client::fishing_targets_tests::run_case;
+pub(crate) use crate::game::client_side::fishing_client::fishing_targets_tests::run_case;
 
 #[allow(unused_imports)]
-pub(in crate::game) use crate::game::client_side::fishing_client::fishing_targets_tests::run_extra_case;
+pub(crate) use crate::game::client_side::fishing_client::fishing_targets_tests::run_extra_case;
 
 #[test]
 #[ignore = "run by tools/test_projectile_targets_parity.py"]

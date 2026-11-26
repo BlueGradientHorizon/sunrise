@@ -7,8 +7,8 @@ pub(in crate::game) struct Policy {
     pub(in crate::game) override_result: Option<Option<CrosshairTarget>>,
     pub(in crate::game) calls: usize,
 }
-pub(in crate::game) struct First;
-pub(in crate::game) struct Last(pub(in crate::game) Arc<Mutex<Policy>>);
+pub(crate) struct First;
+pub(crate) struct Last(pub(crate) Arc<Mutex<Policy>>);
 #[mod_api::__subscriptions]
 impl Hooks for First {
     fn client_pick(&self, host: &mut dyn ClientHost, event: &mut ClientPickEvent<'_>) {
@@ -32,7 +32,7 @@ impl Hooks for Last {
     }
 }
 
-pub(in crate::game) fn finish_login(
+pub(crate) fn finish_login(
     game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
     server: &mut sunrise_protocol::connection::Connection,
 ) {
@@ -62,7 +62,7 @@ pub(in crate::game) fn finish_login(
     server.recv().unwrap();
 }
 
-pub(in crate::game) struct SelectedPick(pub(in crate::game) Arc<Mutex<Option<CrosshairTarget>>>);
+pub(crate) struct SelectedPick(pub(crate) Arc<Mutex<Option<CrosshairTarget>>>);
 #[mod_api::__subscriptions]
 impl Hooks for SelectedPick {
     fn client_pick(&self, _: &mut dyn ClientHost, event: &mut ClientPickEvent<'_>) {
@@ -71,7 +71,7 @@ impl Hooks for SelectedPick {
         }
     }
 }
-pub(in crate::game) struct UnchangedAttack;
+pub(crate) struct UnchangedAttack;
 #[mod_api::__subscriptions]
 impl Hooks for UnchangedAttack {
     fn client_attack_target(
@@ -84,9 +84,9 @@ impl Hooks for UnchangedAttack {
 }
 
 #[allow(unused_imports)]
-pub(in crate::game) use crate::game::client_side::native_hooks_client::client_pick::tests::with_pick_game;
+pub(crate) use crate::game::client_side::native_hooks_client::client_pick::tests::with_pick_game;
 
-pub(in crate::game) fn ranged_stack() -> sunrise_items::items::ItemStack {
+pub(crate) fn ranged_stack() -> sunrise_items::items::ItemStack {
     use sunrise_core::nbt::Tag;
     let mut stack = sunrise_items::items::ItemStack::new("minecraft:stick", 1);
     stack.data_mut().set_other(
@@ -104,7 +104,7 @@ pub(in crate::game) fn ranged_stack() -> sunrise_items::items::ItemStack {
     stack
 }
 
-pub(in crate::game) fn sent_actions(
+pub(crate) fn sent_actions(
     game: &sunrise_client_gameplay::game::ClientGame<'_>,
     server: &mut sunrise_protocol::connection::Connection,
 ) -> Vec<(&'static str, i32)> {
@@ -113,7 +113,7 @@ pub(in crate::game) fn sent_actions(
     actions
 }
 
-pub(in crate::game) fn sent_packets(
+pub(crate) fn sent_packets(
     game: &sunrise_client_gameplay::game::ClientGame<'_>,
     server: &mut sunrise_protocol::connection::Connection,
 ) -> Vec<(&'static str, i32)> {
@@ -305,7 +305,7 @@ fn attack_range_pick_outside_interact_range_falls_through_to_item_use() {
 
 /// A cushion the stored pick selected, spawned where `with_pick_game` puts an
 /// entity and raised to the player's eye so the look ray crosses it.
-pub(in crate::game) fn with_picked_cushion(
+pub(crate) fn with_picked_cushion(
     run: impl FnOnce(
         &mut sunrise_client_gameplay::game::ClientGame<'_>,
         &mut sunrise_protocol::connection::Connection,
@@ -416,7 +416,7 @@ fn a_click_on_a_free_cushion_while_sneaking_passes_to_the_item() {
     });
 }
 
-pub(in crate::game) struct CountPicks(pub(in crate::game) Arc<Mutex<Vec<f32>>>);
+pub(crate) struct CountPicks(pub(crate) Arc<Mutex<Vec<f32>>>);
 #[mod_api::__subscriptions]
 impl Hooks for CountPicks {
     fn client_pick(&self, _: &mut dyn ClientHost, event: &mut ClientPickEvent<'_>) {
@@ -513,7 +513,7 @@ fn paused_ticks_pick_and_the_frame_can_overwrite_the_tick_target() {
     });
 }
 
-pub(in crate::game) struct OverwriteOrigin;
+pub(crate) struct OverwriteOrigin;
 #[mod_api::__subscriptions]
 impl Hooks for OverwriteOrigin {
     fn client_pick(&self, _: &mut dyn ClientHost, event: &mut ClientPickEvent<'_>) {
@@ -521,7 +521,7 @@ impl Hooks for OverwriteOrigin {
     }
 }
 
-pub(in crate::game) struct RecordOrigins(pub(in crate::game) Arc<Mutex<Vec<[f64; 3]>>>);
+pub(crate) struct RecordOrigins(pub(crate) Arc<Mutex<Vec<[f64; 3]>>>);
 #[mod_api::__subscriptions]
 impl Hooks for RecordOrigins {
     fn client_pick(&self, _: &mut dyn ClientHost, event: &mut ClientPickEvent<'_>) {
@@ -566,9 +566,9 @@ fn pick_origin_is_the_eye_used_for_each_pick_and_isolated_per_listener() {
     });
 }
 
-pub(in crate::game) struct RiderPart(
-    pub(in crate::game) Arc<Mutex<usize>>,
-    pub(in crate::game) bool,
+pub(crate) struct RiderPart(
+    pub(crate) Arc<Mutex<usize>>,
+    pub(crate) bool,
 );
 #[mod_api::sunrise_part]
 impl mod_api::EntityPart for RiderPart {
@@ -585,9 +585,9 @@ impl mod_api::EntityPart for RiderPart {
         }
     }
 }
-pub(in crate::game) struct RegisterRiderPart(
-    pub(in crate::game) Arc<Mutex<usize>>,
-    pub(in crate::game) bool,
+pub(crate) struct RegisterRiderPart(
+    pub(crate) Arc<Mutex<usize>>,
+    pub(crate) bool,
 );
 #[mod_api::__subscriptions]
 impl Hooks for RegisterRiderPart {
@@ -648,7 +648,7 @@ fn rider_pick_refuses_a_camera_changed_by_its_listener() {
     });
 }
 
-pub(in crate::game) struct SelectOccludedEntity;
+pub(crate) struct SelectOccludedEntity;
 #[mod_api::__subscriptions]
 impl Hooks for SelectOccludedEntity {
     fn client_pick(&self, _host: &mut dyn ClientHost, event: &mut ClientPickEvent<'_>) {

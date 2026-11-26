@@ -7,7 +7,7 @@ use sunrise_protocol::packets::{configuration::ClientInformation, play::Clientbo
 use sunrise_sim::lan::{Joined, NetConfig, Out, PlayerSender, guest::Guest, hub::HubConfig};
 
 /// The packets a guest's connection was sent, encoded.
-pub(in crate::game) fn packets(receiver: &mpsc::Receiver<Out>) -> Vec<Vec<u8>> {
+pub(crate) fn packets(receiver: &mpsc::Receiver<Out>) -> Vec<Vec<u8>> {
     let mut out = Vec::new();
     for sent in receiver.try_iter() {
         match sent {
@@ -20,7 +20,7 @@ pub(in crate::game) fn packets(receiver: &mpsc::Receiver<Out>) -> Vec<Vec<u8>> {
 }
 
 /// The system lines a guest's connection was sent (`ClientboundSystemChatPacket`).
-pub(in crate::game) fn chats(receiver: &mpsc::Receiver<Out>) -> Vec<String> {
+pub(crate) fn chats(receiver: &mpsc::Receiver<Out>) -> Vec<String> {
     let mut out = Vec::new();
     for body in packets(receiver) {
         let mut reader = sunrise_protocol::buf::Reader::new(&body);
@@ -39,7 +39,7 @@ pub(in crate::game) fn chats(receiver: &mpsc::Receiver<Out>) -> Vec<String> {
 }
 
 /// The completions a guest was sent (`ClientboundCommandSuggestionsPacket`).
-pub(in crate::game) fn suggestions(receiver: &mpsc::Receiver<Out>) -> Vec<String> {
+pub(crate) fn suggestions(receiver: &mpsc::Receiver<Out>) -> Vec<String> {
     let mut out = Vec::new();
     for body in packets(receiver) {
         let mut r = sunrise_protocol::buf::Reader::new(&body);
@@ -58,7 +58,7 @@ pub(in crate::game) fn suggestions(receiver: &mpsc::Receiver<Out>) -> Vec<String
 }
 
 /// A server with two guests on it (`conn` 2 and 7).
-pub(in crate::game) fn server_with_guests<'a>(
+pub(crate) fn server_with_guests<'a>(
     resources: &'a mut Option<std::sync::Arc<sunrise_gameplay_common::game::Resources>>,
 ) -> (sunrise_gameplay::game::ServerGame<'a>, Vec<mpsc::Receiver<Out>>) {
     let mut game = server_game(resources);

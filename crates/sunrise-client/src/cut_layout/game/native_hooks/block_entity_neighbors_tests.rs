@@ -7,17 +7,17 @@ use std::sync::{
 use sunrise_core::position::BlockPos;
 use sunrise_level::chunk::Chunk;
 
-pub(in crate::game) type Notices = Arc<Mutex<Vec<(BlockPos, BlockPos)>>>;
-pub(in crate::game) struct Counter(pub(in crate::game) Notices);
+pub(crate) type Notices = Arc<Mutex<Vec<(BlockPos, BlockPos)>>>;
+pub(crate) struct Counter(pub(crate) Notices);
 #[mod_api::sunrise_part]
 impl BlockPart for Counter {
     fn on_neighbor_change(&self, _: &dyn LevelHost, event: &mut OnNeighborChangeEvent) {
         self.0.lock().unwrap().push((event.pos, event.neighbor));
     }
 }
-pub(in crate::game) struct Weak(
-    pub(in crate::game) Arc<AtomicBool>,
-    pub(in crate::game) Arc<AtomicUsize>,
+pub(crate) struct Weak(
+    pub(crate) Arc<AtomicBool>,
+    pub(crate) Arc<AtomicUsize>,
 );
 #[mod_api::sunrise_part]
 impl BlockPart for Weak {
@@ -26,10 +26,10 @@ impl BlockPart for Weak {
         event.receive = self.0.load(Ordering::SeqCst);
     }
 }
-pub(in crate::game) struct Listener(
-    pub(in crate::game) Notices,
-    pub(in crate::game) Arc<AtomicBool>,
-    pub(in crate::game) Arc<AtomicUsize>,
+pub(crate) struct Listener(
+    pub(crate) Notices,
+    pub(crate) Arc<AtomicBool>,
+    pub(crate) Arc<AtomicUsize>,
 );
 #[mod_api::__subscriptions]
 impl Hooks for Listener {
@@ -40,10 +40,10 @@ impl Hooks for Listener {
     }
 }
 
-pub(in crate::game) struct EdgeListener(
-    pub(in crate::game) Notices,
-    pub(in crate::game) Arc<AtomicBool>,
-    pub(in crate::game) Arc<AtomicUsize>,
+pub(crate) struct EdgeListener(
+    pub(crate) Notices,
+    pub(crate) Arc<AtomicBool>,
+    pub(crate) Arc<AtomicUsize>,
 );
 #[mod_api::__subscriptions]
 impl Hooks for EdgeListener {

@@ -68,7 +68,7 @@ fn an_armor_stand_ticks_its_living_counters() {
     run_an_armor_stand_ticks_its_living_counters();
 }
 
-pub(in crate::game) fn run_an_armor_stand_ticks_its_living_counters() {
+pub(crate) fn run_an_armor_stand_ticks_its_living_counters() {
     let witness = load_witness();
     assert_eq!(witness.minecraft, "26.3");
     assert!(!witness.cases.is_empty());

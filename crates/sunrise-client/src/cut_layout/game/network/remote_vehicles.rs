@@ -2,7 +2,7 @@
 
 #[cfg(feature = "client")]
 #[cfg(test)]
-pub(in crate::game) mod tests {
+pub(crate) mod tests {
     #[test]
     fn local_player_on_block_display_and_interaction() {
         for kind in ["minecraft:block_display", "minecraft:interaction"] {

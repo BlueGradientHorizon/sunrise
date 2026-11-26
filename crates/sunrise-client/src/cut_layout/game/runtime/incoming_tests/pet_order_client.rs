@@ -5,7 +5,7 @@ use sunrise_core::position::ChunkPos;
 use sunrise_level::chunk::Chunk;
 use sunrise_sim::mobs::Mob;
 
-pub(in crate::game) fn game<'a>(
+pub(crate) fn game<'a>(
     resources: &'a mut Option<std::sync::Arc<sunrise_gameplay_common::game::Resources>>,
 ) -> sunrise_gameplay::game::ServerGame<'a> {
     let root = std::path::PathBuf::from(

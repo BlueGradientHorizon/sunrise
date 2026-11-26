@@ -1,7 +1,7 @@
 
 
 #[cfg(test)]
-pub(in crate::game) mod pause_close_tests {
+pub(crate) mod pause_close_tests {
     use {sunrise_gameplay_common::game::Screen, crate::game::server_side::native_entity_refs::tests::with_client_game};
     use sunrise_protocol::packets::play::Serverbound as S;
     use winit::keyboard::KeyCode;
@@ -34,7 +34,7 @@ pub(in crate::game) mod pause_close_tests {
 }
 
 #[cfg(test)]
-pub(in crate::game) mod creative_close_tests {
+pub(crate) mod creative_close_tests {
     use {sunrise_gameplay_common::game::Screen, crate::game::server_side::native_entity_refs::tests::with_client_game};
     use mod_api::{ClientHost, Hooks, ModEntry, ScreenOpening, ScreenOpeningEvent};
     use std::sync::{

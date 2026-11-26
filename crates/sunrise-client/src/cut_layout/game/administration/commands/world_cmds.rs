@@ -2,11 +2,11 @@
 
 #[cfg(test)]
 #[path = "attribute_missing_tests.rs"]
-pub(in crate::game) mod attribute_missing_tests;
+pub(crate) mod attribute_missing_tests;
 
 #[cfg(test)]
 #[path = "registered_damage_tests.rs"]
-pub(in crate::game) mod registered_damage_tests;
+pub(crate) mod registered_damage_tests;
 
 #[cfg(test)]
 pub(crate) mod datapack_damage_tests {
@@ -19,9 +19,9 @@ use crate::game::{commands::Target, native_entity_refs::tests::with_game};
 
 use sunrise_core::geometry::Vec3;
 
-pub(in crate::game) use crate::game::server_side::commands_server::world_cmds::datapack_damage_tests::pig;
+pub(crate) use crate::game::server_side::commands_server::world_cmds::datapack_damage_tests::pig;
 
-pub(in crate::game) use crate::game::server_side::commands_server::world_cmds::datapack_damage_tests::run_a_datapack_explosion_type_removes_a_crystal_quietly_and_hurts_the_dragon;
+pub(crate) use crate::game::server_side::commands_server::world_cmds::datapack_damage_tests::run_a_datapack_explosion_type_removes_a_crystal_quietly_and_hurts_the_dragon;
 
 /// #2647: a damage type a world's datapack declares is in the world's frozen
     /// registry, and `/damage` with it hurts a mob, as `DamageCommand.damage`
@@ -32,7 +32,7 @@ pub(in crate::game) use crate::game::server_side::commands_server::world_cmds::d
     fn a_datapack_damage_type_hurts_a_mob() {
         run_a_datapack_damage_type_hurts_a_mob();
     }
-pub(in crate::game) fn run_a_datapack_damage_type_hurts_a_mob() {
+pub(crate) fn run_a_datapack_damage_type_hurts_a_mob() {
         with_game(|game| {
             with_pack(game);
             pig(game, 1, Vec3::new(0.5, 64.0, 0.5));
@@ -52,7 +52,7 @@ pub(in crate::game) fn run_a_datapack_damage_type_hurts_a_mob() {
     fn a_datapack_types_tags_reach_the_mob_hurt_path() {
         run_a_datapack_types_tags_reach_the_mob_hurt_path();
     }
-pub(in crate::game) fn run_a_datapack_types_tags_reach_the_mob_hurt_path() {
+pub(crate) fn run_a_datapack_types_tags_reach_the_mob_hurt_path() {
         with_game(|game| {
             with_pack(game);
             pig(game, 1, Vec3::new(0.5, 64.0, 0.5));
@@ -99,12 +99,12 @@ pub(in crate::game) fn run_a_datapack_types_tags_reach_the_mob_hurt_path() {
 
 
 #[cfg(test)]
-pub(in crate::game) mod vehicle_damage_command_tests {
+pub(crate) mod vehicle_damage_command_tests {
     use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
     use std::sync::Arc;
     use sunrise_core::position::ChunkPos;
     use sunrise_level::chunk::Chunk;
-    pub(in crate::game) fn with_game(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
+    pub(crate) fn with_game(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let settings = Settings::default();
         let loaded = load_resources(
@@ -231,7 +231,7 @@ pub(in crate::game) mod vehicle_damage_command_tests {
             assert_eq!(game.world.game_time, clock);
         });
     }
-    pub(in crate::game) fn attribute_chat_count(
+    pub(crate) fn attribute_chat_count(
         rx: &std::sync::mpsc::Receiver<sunrise_sim::lan::Out>,
     ) -> usize {
         use sunrise_protocol::packets::play::Clientbound;
@@ -260,18 +260,18 @@ pub(in crate::game) mod vehicle_damage_command_tests {
 
 #[cfg(test)]
 #[path = "particle_command_tests.rs"]
-pub(in crate::game) mod particle_command_tests;
+pub(crate) mod particle_command_tests;
 
 #[cfg(test)]
 #[path = "attribute_tests.rs"]
-pub(in crate::game) mod attribute_tests;
+pub(crate) mod attribute_tests;
 
 #[cfg(test)]
 #[path = "effect_attribute_tests.rs"]
-pub(in crate::game) mod effect_attribute_tests;
+pub(crate) mod effect_attribute_tests;
 
 #[cfg(test)]
-pub(in crate::game) mod attribute_modifier_command_tests {
+pub(crate) mod attribute_modifier_command_tests {
     use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
     use std::sync::Arc;
     use sunrise_core::geometry::Vec3;

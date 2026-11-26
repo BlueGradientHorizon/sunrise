@@ -16,7 +16,7 @@ use sunrise_protocol::{
 };
 use sunrise_sim::motion::PlayerMotion;
 
-pub(in crate::game) fn dependent_entity_bundle_body() {
+pub(crate) fn dependent_entity_bundle_body() {
     let witness = bundle_witness();
     let case = &witness["dependent_entity_bundle"];
     let entity_type = case["entity_type"].as_str().unwrap();
@@ -196,7 +196,7 @@ pub(in crate::game) fn dependent_entity_bundle_body() {
     });
 }
 
-pub(in crate::game) fn entity_data_validation_inline_painting_and_pre_login_bundle_case(
+pub(crate) fn entity_data_validation_inline_painting_and_pre_login_bundle_case(
     case_name: &str,
 ) {
     let bundle = bundle_witness();

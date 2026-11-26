@@ -1,7 +1,7 @@
 
 
 #[cfg(test)]
-pub(in crate::game) mod tests {
+pub(crate) mod tests {
     use crate::game::commands::Target;
     use sunrise_gameplay_common::game::creatures::SpawnSite;
     use sunrise_gameplay_common::game::dragon_common::dragon_part_id;

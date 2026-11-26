@@ -1,7 +1,7 @@
 
 
 #[cfg(test)]
-pub(in crate::game) mod stand_equip_event_tests {
+pub(crate) mod stand_equip_event_tests {
     use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
     use std::sync::Arc;
     use sunrise_core::position::ChunkPos;
@@ -104,14 +104,14 @@ pub(in crate::game) mod stand_equip_event_tests {
 }
 
 #[cfg(test)]
-pub(in crate::game) mod mob_equipment_command_tests {
+pub(crate) mod mob_equipment_command_tests {
     use {crate::game::commands::Target, sunrise_gameplay::game::commands::data::DataRef};
     use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
     use std::sync::Arc;
     use sunrise_core::position::ChunkPos;
     use sunrise_level::chunk::Chunk;
 
-    pub(in crate::game) fn with_game(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
+    pub(crate) fn with_game(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let settings = Settings::default();
         let loaded = load_resources(
@@ -157,7 +157,7 @@ pub(in crate::game) mod mob_equipment_command_tests {
         test(&mut game);
     }
 
-    pub(in crate::game) fn actor(
+    pub(crate) fn actor(
         game: &mut sunrise_gameplay::game::ServerGame<'_>,
         kind: &str,
         n: i32,
@@ -415,7 +415,7 @@ pub(in crate::game) mod mob_equipment_command_tests {
 }
 
 #[cfg(test)]
-pub(in crate::game) mod mob_equipment_stack_tests {
+pub(crate) mod mob_equipment_stack_tests {
     use {crate::game::commands::Target, sunrise_gameplay::game::commands::data::DataRef};
     use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
     use std::sync::Arc;
@@ -609,7 +609,7 @@ pub(in crate::game) mod mob_equipment_stack_tests {
 }
 
 #[cfg(test)]
-pub(in crate::game) mod builtin_component_delivery_tests {
+pub(crate) mod builtin_component_delivery_tests {
     use sunrise_gameplay::game::lan::LanHost;
     use std::sync::{Arc, atomic::AtomicI32, mpsc};
     use sunrise_core::nbt::Tag;
@@ -850,7 +850,7 @@ pub(in crate::game) mod builtin_component_delivery_tests {
 }
 
 #[cfg(test)]
-pub(in crate::game) mod component_modifier_tests {
+pub(crate) mod component_modifier_tests {
     use super::*;
 
     #[test]
@@ -891,7 +891,7 @@ use sunrise_gameplay::game::server_side::commands::items::registered_slot_source
 
 use super::*;
 
-pub(in crate::game) use crate::game::server_side::commands_server::items::registered_slot_source_preservation_tests::scene;
+pub(crate) use crate::game::server_side::commands_server::items::registered_slot_source_preservation_tests::scene;
 
 #[test]
     #[ignore = "daily"]

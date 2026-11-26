@@ -1,7 +1,7 @@
 
 
 #[cfg(test)]
-pub(in crate::game) mod tests {
+pub(crate) mod tests {
 
     use super::super::native_entity_refs::tests::{record_key, with_game};
     use mod_api::{
@@ -207,7 +207,7 @@ pub(in crate::game) mod tests {
         });
     }
 
-    pub(in crate::game) fn guest_server(
+    pub(crate) fn guest_server(
         game: &mut sunrise_gameplay::game::ServerGame<'_>,
         dedicated: bool,
         owner: bool,
@@ -254,7 +254,7 @@ pub(in crate::game) mod tests {
         );
     }
 
-    pub(in crate::game) fn guest(
+    pub(crate) fn guest(
         game: &mut sunrise_gameplay::game::ServerGame<'_>,
         conn: u32,
     ) -> (LivingRef, std::sync::mpsc::Receiver<sunrise_sim::lan::Out>) {
@@ -317,7 +317,7 @@ pub(in crate::game) mod tests {
         }
     }
 
-    pub(in crate::game) fn sync_guests(game: &mut sunrise_gameplay::game::ServerGame<'_>) {
+    pub(crate) fn sync_guests(game: &mut sunrise_gameplay::game::ServerGame<'_>) {
         use sunrise_sim::lan::hub::TickCtx;
         let mut ctx = TickCtx {
             world: &mut game.world,
@@ -345,7 +345,7 @@ pub(in crate::game) mod tests {
             .tick_level(&mut ctx, None);
     }
 
-    pub(in crate::game) fn packets(
+    pub(crate) fn packets(
         rx: &std::sync::mpsc::Receiver<sunrise_sim::lan::Out>,
     ) -> Vec<sunrise_protocol::packets::play::Clientbound> {
         use sunrise_protocol::{buf::Reader, packets::play::Clientbound};

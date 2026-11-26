@@ -1,16 +1,16 @@
 //! Behavioural proofs of the broadcast events around scoped interaction Parts.
 #[path = "interaction_matrix_tests.rs"]
-pub(in crate::game) mod interaction_matrix_tests;
+pub(crate) mod interaction_matrix_tests;
 #[path = "item_fallthrough_tests.rs"]
-pub(in crate::game) mod item_fallthrough_tests;
+pub(crate) mod item_fallthrough_tests;
 #[path = "item_used_on_block_tests.rs"]
-pub(in crate::game) mod item_used_on_block_tests;
+pub(crate) mod item_used_on_block_tests;
 #[path = "predicted_use_tests.rs"]
-pub(in crate::game) mod predicted_use_tests;
+pub(crate) mod predicted_use_tests;
 #[path = "use_item_hand_tests.rs"]
-pub(in crate::game) mod use_item_hand_tests;
+pub(crate) mod use_item_hand_tests;
 #[path = "use_item_result_tests.rs"]
-pub(in crate::game) mod use_item_result_tests;
+pub(crate) mod use_item_result_tests;
 use {sunrise_gameplay_common::game::Game, sunrise_gameplay_common::game::Hit, sunrise_gameplay_common::game::execution_role::ExecutionRole, sunrise_gameplay::game::native_entity_refs::tests::with_game};
 use mod_api::InteractionResult as Answer;
 use mod_api::{
@@ -30,7 +30,7 @@ use {
 
 #[cfg(feature = "client")]
 impl sunrise_client_gameplay::game::ClientGame<'_> {
-    pub(in crate::game) fn set_sent_sneak_for_test(&mut self) {
+    pub(crate) fn set_sent_sneak_for_test(&mut self) {
         self.side.remote.as_mut().unwrap().last_input |= sunrise_gameplay_common::game::remote::SHIFT_INPUT;
     }
 }
@@ -89,7 +89,7 @@ pub(in crate::game) struct Controls {
 #[derive(Clone, Default)]
 pub(in crate::game) struct Observer(pub(in crate::game) Arc<Mutex<Controls>>);
 
-pub(in crate::game) fn side(host: &HostSide<'_>) -> LogicalSide {
+pub(crate) fn side(host: &HostSide<'_>) -> LogicalSide {
     match host {
         HostSide::Server(_) => LogicalSide::Server,
         HostSide::Client(_) => LogicalSide::Client,
@@ -274,14 +274,14 @@ impl ItemPart for Observer {
     }
 }
 
-pub(in crate::game) fn with_interaction_client_game(
+pub(crate) fn with_interaction_client_game(
     test: impl FnOnce(&mut sunrise_client_gameplay::game::ClientGame<'_>),
 ) {
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
     with_interaction_client_game_at(root, test);
 }
 
-pub(in crate::game) fn with_interaction_client_game_at(
+pub(crate) fn with_interaction_client_game_at(
     root: std::path::PathBuf,
     test: impl FnOnce(&mut sunrise_client_gameplay::game::ClientGame<'_>),
 ) {
@@ -303,14 +303,14 @@ pub(in crate::game) fn with_interaction_client_game_at(
     );
 }
 
-pub(in crate::game) fn with_interaction_server_game(
+pub(crate) fn with_interaction_server_game(
     test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>),
 ) {
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
     with_interaction_server_game_at(root, test);
 }
 
-pub(in crate::game) fn with_interaction_server_game_at(
+pub(crate) fn with_interaction_server_game_at(
     root: std::path::PathBuf,
     test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>),
 ) {
@@ -330,7 +330,7 @@ pub(in crate::game) fn with_interaction_server_game_at(
     });
 }
 
-pub(in crate::game) trait InteractionSide: sunrise_gameplay_common::game::Side {
+pub(crate) trait InteractionSide: sunrise_gameplay_common::game::Side {
     const IS_CLIENT: bool;
     const LOGICAL_SIDE: LogicalSide;
     fn set_interaction_mode(game: &mut Game<'_, Self>, mode: sunrise_command::args::GameMode);
@@ -342,11 +342,11 @@ pub(in crate::game) trait InteractionSide: sunrise_gameplay_common::game::Side {
     fn interaction_reset_use_failed(game: &mut Game<'_, Self>);
 }
 
-pub(in crate::game) fn use_block<S: InteractionSide>(game: &mut Game<'_, S>) -> bool {
+pub(crate) fn use_block<S: InteractionSide>(game: &mut Game<'_, S>) -> bool {
     S::interaction_use_block_hand(game, Hand::Main)
 }
 
-pub(in crate::game) fn hit() -> Hit {
+pub(crate) fn hit() -> Hit {
     Hit {
         pos: [0, 64, 0],
         face: [0, 1, 0],
@@ -356,7 +356,7 @@ pub(in crate::game) fn hit() -> Hit {
 }
 
 #[allow(unused_imports)]
-pub(in crate::game) use crate::game::server_side::remote_server::interaction_event_tests::setup_interaction_guest;
+pub(crate) use crate::game::server_side::remote_server::interaction_event_tests::setup_interaction_guest;
 
 #[test]
 #[ignore = "daily"]
@@ -602,9 +602,9 @@ fn a_creative_hand_replaced_by_a_finish_listener_is_not_sent_as_a_creative_slot(
 }
 
 #[path = "interaction_key_tests.rs"]
-pub(in crate::game) mod interaction_key_tests;
+pub(crate) mod interaction_key_tests;
 #[path = "mapping_press_tests.rs"]
-pub(in crate::game) mod mapping_press_tests;
+pub(crate) mod mapping_press_tests;
 
 #[test]
 #[ignore = "daily"]

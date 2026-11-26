@@ -1,7 +1,7 @@
 
 
 #[cfg(test)]
-pub(in crate::game) mod controller_tests {
+pub(crate) mod controller_tests {
     use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
     use std::sync::{Arc, atomic::AtomicI32, mpsc};
     use sunrise_core::position::ChunkPos;

@@ -1,7 +1,7 @@
 use super::*;
 use {sunrise_gameplay_common::game::dragon_common::FightWho, sunrise_gameplay_common::game::dragon_common::SPECIAL};
 use crate::game::server_side::dragon::thorns_tests::thorny;
-use {crate::game::*, sunrise_gameplay_common::game::{Instant, Mob, Options, PathBuf, PlayerMotion, Progress, Settings, Vec3, World, dragon_common, execution_role, hit, load_resources}};
+use {crate::game::*, sunrise_gameplay_common::game::{Instant, Options, PathBuf, PlayerMotion, Progress, Vec3, World, dragon_common, execution_role, hit}};
 use sunrise_sim::mobs::{Damage, DamageKind, Mob, Who, finalize as f};
 
 pub(in crate::game) fn check_answer(g: &sunrise_gameplay::game::ServerGame<'_>, slot: usize, answers: bool) {

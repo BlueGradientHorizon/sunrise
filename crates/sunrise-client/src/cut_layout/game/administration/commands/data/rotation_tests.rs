@@ -45,7 +45,7 @@ fn a_cloud_and_a_falling_block_save_the_rotation_they_were_loaded_with() {
     run_a_cloud_and_a_falling_block_save_the_rotation_they_were_loaded_with();
 }
 
-pub(in crate::game) fn run_a_cloud_and_a_falling_block_save_the_rotation_they_were_loaded_with() {
+pub(crate) fn run_a_cloud_and_a_falling_block_save_the_rotation_they_were_loaded_with() {
     let witness_path = std::env::var_os("SUNRISE_CLOUD_FALLING_ROTATION_WITNESS").unwrap_or_else(|| {
         panic!(
             "SUNRISE_CLOUD_FALLING_ROTATION_WITNESS is unset; run tools/test_cloud_falling_loaded_rotation_parity.py"

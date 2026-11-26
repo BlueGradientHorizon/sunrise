@@ -9,7 +9,7 @@ use sunrise_sim::mobs::Mob;
 /// run as the first guest with the console's permission; each line's last invocation names the
 /// expected cows in its `argument` (their numbers, sorted). The cows take the next entity ids in
 /// summon order, after those the guests reserved.
-pub(in crate::game) fn in_two_levels(lines: &[(&str, &str, &[u32])]) {
+pub(crate) fn in_two_levels(lines: &[(&str, &str, &[u32])]) {
     let heard = Arc::new(Mutex::new(Vec::new()));
     mod_platform::testing::with_mods(
         vec![mod_api::ModEntry::new(

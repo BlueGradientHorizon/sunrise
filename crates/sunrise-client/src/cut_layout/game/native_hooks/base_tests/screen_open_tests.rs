@@ -12,7 +12,7 @@ use mod_platform::testing::with_mods;
 use std::sync::{Arc, Mutex};
 
 /// A mod that hears `screen_opening` and passes.
-pub(in crate::game) struct Passer;
+pub(crate) struct Passer;
 #[mod_api::__subscriptions]
 impl Hooks for Passer {
     fn screen_opening(
@@ -24,11 +24,11 @@ impl Hooks for Passer {
     }
 }
 /// A mod with no screen hook.
-pub(in crate::game) struct Idle;
+pub(crate) struct Idle;
 #[mod_api::__subscriptions]
 impl Hooks for Idle {}
 
-pub(in crate::game) struct KeyProbe(pub(in crate::game) Arc<Mutex<Vec<String>>>);
+pub(crate) struct KeyProbe(pub(crate) Arc<Mutex<Vec<String>>>);
 #[mod_api::__subscriptions]
 impl Hooks for KeyProbe {
     fn interaction_key_mapping_triggered(
@@ -82,7 +82,7 @@ fn an_interaction_key_reaches_a_mod_as_its_kind_and_can_be_cancelled() {
     assert_eq!(take(&log), ["Attack:Held", "Use:Press", "PickBlock:Press"]);
 }
 
-pub(in crate::game) struct MappingProbe(pub(in crate::game) Arc<Mutex<Vec<String>>>);
+pub(crate) struct MappingProbe(pub(crate) Arc<Mutex<Vec<String>>>);
 #[mod_api::__subscriptions]
 impl Hooks for MappingProbe {
     fn key_mapping_pre(&self, _host: &mut dyn ClientHost, event: &mut KeyMappingPreEvent) -> Flow {
@@ -95,7 +95,7 @@ impl Hooks for MappingProbe {
 }
 
 /// Cancels the second press it hears and no other: an allowed down, then a cancelled repeat.
-pub(in crate::game) struct CancelSecondPress(pub(in crate::game) Arc<Mutex<usize>>);
+pub(crate) struct CancelSecondPress(pub(crate) Arc<Mutex<usize>>);
 #[mod_api::__subscriptions]
 impl Hooks for CancelSecondPress {
     fn key_mapping_pre(&self, _host: &mut dyn ClientHost, event: &mut KeyMappingPreEvent) -> Flow {
@@ -110,9 +110,9 @@ impl Hooks for CancelSecondPress {
     }
 }
 
-pub(in crate::game) struct Probe {
-    pub(in crate::game) log: Arc<Mutex<Vec<String>>>,
-    pub(in crate::game) answer: Arc<Mutex<Option<ScreenOpening>>>,
+pub(crate) struct Probe {
+    pub(crate) log: Arc<Mutex<Vec<String>>>,
+    pub(crate) answer: Arc<Mutex<Option<ScreenOpening>>>,
 }
 #[mod_api::__subscriptions]
 impl Hooks for Probe {
@@ -136,7 +136,7 @@ impl Hooks for Probe {
 }
 
 /// Runs `test` on a client game with one probe mod; the probe's log and answer.
-pub(in crate::game) fn run(
+pub(crate) fn run(
     test: impl FnOnce(
         &mut sunrise_client_gameplay::game::ClientGame<'_>,
         &Arc<Mutex<Vec<String>>>,
@@ -159,7 +159,7 @@ pub(in crate::game) fn run(
     with_game_of(mods, |game| test(game, &log, &answer));
 }
 /// A client game with a player, under `mods`.
-pub(in crate::game) fn with_game_of(
+pub(crate) fn with_game_of(
     mods: Arc<[ModEntry]>,
     test: impl FnOnce(&mut sunrise_client_gameplay::game::ClientGame<'_>),
 ) {
@@ -177,7 +177,7 @@ pub(in crate::game) fn with_game_of(
     });
 }
 
-pub(in crate::game) fn take(log: &Arc<Mutex<Vec<String>>>) -> Vec<String> {
+pub(crate) fn take(log: &Arc<Mutex<Vec<String>>>) -> Vec<String> {
     std::mem::take(&mut *log.lock().unwrap())
 }
 
@@ -194,7 +194,7 @@ fn the_same_screen_again_fires_nothing() {
     });
 }
 
-pub(in crate::game) fn observed(id: &'static str, overlay: bool) -> Option<ObservedScreen> {
+pub(crate) fn observed(id: &'static str, overlay: bool) -> Option<ObservedScreen> {
     Some(ObservedScreen {
         id,
         overlay,

@@ -1,13 +1,13 @@
 use {crate::game::creatures::*, sunrise_gameplay_common::game::creatures::{DamageKind, Vec3, knockback, source_damage_type}};
 use sunrise_core::geometry::Vec3;
-pub(in crate::game) fn with_game(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
+pub(crate) fn with_game(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
     with_role_game(
         sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer,
         test,
     );
 }
 #[allow(unused_imports)]
-pub(in crate::game) use crate::game::server_side::creatures_server::h169_glide_travel_tests::with_role_game;
+pub(crate) use crate::game::server_side::creatures_server::h169_glide_travel_tests::with_role_game;
 
 #[test]
 #[ignore = "daily"]

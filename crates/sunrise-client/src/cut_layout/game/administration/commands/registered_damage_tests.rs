@@ -6,7 +6,7 @@ use sunrise_sim::{
 use sunrise_world::damage_source::Catalog;
 
 #[path = "registered_damage_tests/creaking_borrowed.rs"]
-pub(in crate::game) mod creaking_borrowed;
+pub(crate) mod creaking_borrowed;
 
 #[test]
 fn formerly_aliased_types_keep_their_id_and_registry_tags() {
@@ -288,10 +288,10 @@ fn projectile_and_command_targets_classify_actual_direct_entity_families() {
 }
 
 #[allow(unused_imports)]
-pub(in crate::game) use crate::game::server_side::commands_server::world_cmds::registered_damage_tests::setup_live_damage_world;
+pub(crate) use crate::game::server_side::commands_server::world_cmds::registered_damage_tests::setup_live_damage_world;
 
 #[allow(unused_imports)]
-pub(in crate::game) use crate::game::server_side::commands_server::world_cmds::registered_damage_tests::spawn_test_projectile;
+pub(crate) use crate::game::server_side::commands_server::world_cmds::registered_damage_tests::spawn_test_projectile;
 
 #[test]
 #[ignore = "daily"]
@@ -299,7 +299,7 @@ fn live_damage_and_blast_creaking_reactions_and_timed_player_credit() {
     run_live_damage_and_blast_creaking_reactions_and_timed_player_credit();
 }
 
-pub(in crate::game) fn run_live_damage_and_blast_creaking_reactions_and_timed_player_credit() {
+pub(crate) fn run_live_damage_and_blast_creaking_reactions_and_timed_player_credit() {
     use {sunrise_gameplay_common::game::combat_common::PlayerCredit, crate::game::commands::Target, sunrise_client_gameplay::game::sculk::TEST_POSTED_EVENT_ORDER, sunrise_client_gameplay::game::sculk::TEST_POSTED_EVENTS};
     use mod_api::{ExplosionInteraction, ExplosionSettings};
     use sunrise_core::{geometry::Vec3, position::BlockPos};

@@ -1,14 +1,14 @@
 
 
 #[cfg(test)]
-pub(in crate::game) mod tests {
+pub(crate) mod tests {
     use super::*;
     use sunrise_gameplay::game::native_entity_refs::tests::with_game;
     use std::sync::{Arc, mpsc};
     use sunrise_core::nbt::{DISK_WRITE_NESTING_GUARD, Tag};
     use sunrise_sim::save::{LevelShape, SaveDir};
 
-    pub(in crate::game) fn finish_server_staged_save(
+    pub(crate) fn finish_server_staged_save(
         game: &mut sunrise_gameplay::game::ServerGame<'_>,
         save: &mut ClosingSave,
     ) -> bool {

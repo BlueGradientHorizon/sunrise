@@ -1,9 +1,9 @@
 //! Independently specified outcomes for the interaction hooks.
 use super::*;
 #[path = "interaction_matrix_tests/fixture.rs"]
-pub(in crate::game) mod fixture;
+pub(crate) mod fixture;
 
-pub(in crate::game) struct Native;
+pub(crate) struct Native;
 #[mod_api::__subscriptions]
 impl Hooks for Native {
     fn right_click_block(&self, host: HostSide<'_>, event: &mut RightClickBlockEvent<'_>) -> Flow {
@@ -29,7 +29,7 @@ pub(in crate::game) struct Case {
     pub(in crate::game) lever: bool,
 }
 
-pub(in crate::game) fn cases(hand: Hand) -> Vec<Case> {
+pub(crate) fn cases(hand: Hand) -> Vec<Case> {
     let mut cases = Vec::new();
     // RightClickBlock: TRUE overrides secondary use; Default skips the block
     // only when sneaking with either hand full; FALSE always skips it.
@@ -198,7 +198,7 @@ pub(in crate::game) fn cases(hand: Hand) -> Vec<Case> {
     cases
 }
 
-pub(in crate::game) fn advancement_tree<S: sunrise_gameplay_common::game::Side>(game: &mut Game<'_, S>)
+pub(crate) fn advancement_tree<S: sunrise_gameplay_common::game::Side>(game: &mut Game<'_, S>)
 where
     for<'__g> sunrise_gameplay_common::game::Game<'__g, S>: ::mod_api::Host,
 {
@@ -231,7 +231,7 @@ where
 }
 
 #[allow(unused_imports)]
-pub(in crate::game) use crate::game::server_side::remote_server::interaction_event_tests::interaction_matrix_tests::matrix;
+pub(crate) use crate::game::server_side::remote_server::interaction_event_tests::interaction_matrix_tests::matrix;
 
 #[test]
 #[ignore = "daily"]

@@ -1,6 +1,6 @@
 //! Exercise the server's attack entry points with real enchantment data.
 use super::*;
-use {crate::game::*, sunrise_gameplay_common::game::{Arc, Hit, ItemStack, Mob, Vec3, entity, hit}};
+use {crate::game::*, sunrise_gameplay_common::game::{Arc, ItemStack, Vec3, entity, hit}};
 use sunrise_sim::{
     mobs::{Damage, Mob, MobEvent, Who, finalize as f},
     projectiles::{Hit, Projectile, ProjectileKind},

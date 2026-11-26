@@ -1,7 +1,7 @@
 
 
 #[cfg(test)]
-pub(in crate::game) mod pass_tests {
+pub(crate) mod pass_tests {
     use super::*;
     use sunrise_core::{geometry::Vec3, random::LegacyRandom};
 

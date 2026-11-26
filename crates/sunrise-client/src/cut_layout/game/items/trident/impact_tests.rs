@@ -2,7 +2,7 @@ use super::*;
 use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_projectiles::impact_probe::Action, sunrise_gameplay::game::native_projectiles::impact_probe::with_probe};
 use std::sync::atomic::Ordering;
 
-pub(in crate::game) fn aim_trident_at_wall(
+pub(crate) fn aim_trident_at_wall(
     game: &mut sunrise_gameplay::game::ServerGame<'_>,
 ) -> mod_api::EntityRef {
     let stone = game

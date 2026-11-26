@@ -11,7 +11,7 @@ use mod_platform::testing::with_mods;
 
 use std::sync::{Arc, Mutex};
 
-pub(in crate::game) fn with_scheduler(
+pub(crate) fn with_scheduler(
         retune: Option<&'static str>,
         check: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>, &dyn Fn() -> Vec<f32>),
     ) {

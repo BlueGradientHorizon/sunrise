@@ -4,7 +4,7 @@ use sunrise_core::geometry::Vec3;
 use sunrise_sim::motion::PlayerMotion;
 
 /// What `command` told the player.
-pub(in crate::game) fn say(game: &mut sunrise_gameplay::game::ServerGame<'_>, command: &str) -> Vec<Text> {
+pub(crate) fn say(game: &mut sunrise_gameplay::game::ServerGame<'_>, command: &str) -> Vec<Text> {
     game.side.chat_capture = Some(Vec::new());
     assert!(game.run_command(command), "{command}");
     game.side.chat_capture.take().unwrap_or_default()
@@ -34,7 +34,7 @@ fn tag_list_is_not_repeated_to_the_operators() {
 }
 
 /// A server-side game that runs commands, its world in a scratch folder.
-pub(in crate::game) fn with_command_game(
+pub(crate) fn with_command_game(
     name: &str,
     test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>),
 ) {

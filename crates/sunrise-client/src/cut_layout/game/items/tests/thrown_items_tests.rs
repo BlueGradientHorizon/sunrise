@@ -39,7 +39,7 @@ fn server_sound(game: &mut sunrise_gameplay::game::ServerGame<'_>, event: &str) 
 }
 
 #[allow(unused_imports)]
-pub(in crate::game) use crate::game::client_side::item_entities_client::thrown_items_tests::sound;
+pub(crate) use crate::game::client_side::item_entities_client::thrown_items_tests::sound;
 
 /// `Player.createItemStackToDrop(false)`: the drop key's throw is 0.3 along
 /// the view (level facing, so +z) and 0.1 up, scattered by the thrower's own
@@ -171,7 +171,7 @@ fn a_pickup_pitch_is_not_drawn_from_the_levels_random() {
 }
 
 #[allow(unused_imports)]
-pub(in crate::game) use crate::game::client_side::item_entities_client::thrown_items_tests::with_remote_game;
+pub(crate) use crate::game::client_side::item_entities_client::thrown_items_tests::with_remote_game;
 
 /// `ClientPacketListener.handleTakeItemEntity`: a client pitches an item's and
 /// an orb's pickup from its own random (`ClientPacketListener.random`), so a

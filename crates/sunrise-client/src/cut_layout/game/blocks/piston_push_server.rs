@@ -1,7 +1,7 @@
 
 
 #[cfg(test)]
-pub(in crate::game) mod order_tests {
+pub(crate) mod order_tests {
     use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
     use std::sync::Arc;
     use sunrise_core::geometry::Vec3;
@@ -430,7 +430,7 @@ pub(in crate::game) mod order_tests {
 }
 
 #[cfg(test)]
-pub(in crate::game) mod h255_mob_piston_ground_tests {
+pub(crate) mod h255_mob_piston_ground_tests {
     use super::*;
     use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
     use std::sync::Arc;
@@ -438,14 +438,14 @@ pub(in crate::game) mod h255_mob_piston_ground_tests {
     use sunrise_level::chunk::Chunk;
     use sunrise_sim::motion::PlayerMotion;
 
-    pub(in crate::game) fn with_game(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
+    pub(crate) fn with_game(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
         with_role_game(
             sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer,
             test,
         );
     }
 
-    pub(in crate::game) fn with_role_game(
+    pub(crate) fn with_role_game(
         role: sunrise_gameplay_common::game::execution_role::ExecutionRole,
         test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>),
     ) {
@@ -520,7 +520,7 @@ pub(in crate::game) mod h255_mob_piston_ground_tests {
         });
     }
 
-    pub(in crate::game) fn mob_index(game: &sunrise_gameplay::game::ServerGame<'_>, n: i32) -> usize {
+    pub(crate) fn mob_index(game: &sunrise_gameplay::game::ServerGame<'_>, n: i32) -> usize {
         let id = game
             .persist
             .uuids
@@ -626,7 +626,7 @@ pub(in crate::game) mod h255_mob_piston_ground_tests {
         });
     }
 
-    pub(in crate::game) fn added_mob(
+    pub(crate) fn added_mob(
         game: &mut sunrise_gameplay::game::ServerGame<'_>,
         n: i32,
         kind: &str,
@@ -645,7 +645,7 @@ pub(in crate::game) mod h255_mob_piston_ground_tests {
         i
     }
 
-    pub(in crate::game) fn added_push(
+    pub(crate) fn added_push(
         game: &mut sunrise_gameplay::game::ServerGame<'_>,
         i: usize,
         movement: Vec3,
@@ -881,7 +881,7 @@ pub(in crate::game) mod h255_mob_piston_ground_tests {
 }
 
 #[cfg(test)]
-pub(in crate::game) mod lid_push_tests {
+pub(crate) mod lid_push_tests {
     use super::h255_mob_piston_ground_tests::with_game;
     use {sunrise_gameplay::game::server_side::piston_push_server::EntityHandle, sunrise_gameplay::game::server_side::piston_push_server::Lid};
 

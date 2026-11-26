@@ -2,14 +2,14 @@
 
 #[cfg(test)]
 #[path = "summon_item_orb_tests_server.rs"]
-pub(in crate::game) mod summon_item_orb_tests;
+pub(crate) mod summon_item_orb_tests;
 
 #[cfg(test)]
 #[path = "summon_bolt_tests_server.rs"]
-pub(in crate::game) mod summon_bolt_tests;
+pub(crate) mod summon_bolt_tests;
 
 #[cfg(test)]
-pub(in crate::game) mod peaceful_tests {
+pub(crate) mod peaceful_tests {
     use sunrise_gameplay_common::game::server_side::commands::peaceful_tests::TRADER;
     use crate::game::server_side::commands::peaceful_tests::with_types;
     use sunrise_gameplay_common::game::execution_role::ExecutionRole;
@@ -57,10 +57,10 @@ pub(in crate::game) mod peaceful_tests {
 
 #[cfg(test)]
 #[path = "teleport_player_rider_tests_server.rs"]
-pub(in crate::game) mod teleport_player_rider_tests;
+pub(crate) mod teleport_player_rider_tests;
 
 #[cfg(test)]
-pub(in crate::game) mod query_feedback_tests {
+pub(crate) mod query_feedback_tests {
 
     #[test]
     #[ignore = "daily"]
@@ -209,7 +209,7 @@ pub(in crate::game) mod query_feedback_tests {
 
 #[cfg(test)]
 #[path = "incoming_tests/knot_identity_server.rs"]
-pub(in crate::game) mod knot_identity_tests;
+pub(crate) mod knot_identity_tests;
 use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
 
 #[path = "world_cmds_server.rs"]

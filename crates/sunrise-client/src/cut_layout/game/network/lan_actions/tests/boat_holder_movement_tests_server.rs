@@ -5,7 +5,7 @@ use sunrise_level::chunk::Chunk;
 use sunrise_protocol::packets::configuration::ClientInformation;
 use sunrise_sim::lan::{Joined, NetConfig, Out, PlayerSender, guest::Guest, hub::HubConfig};
 
-pub(in crate::game) fn scene<'a>(
+pub(crate) fn scene<'a>(
     resources: &'a mut Option<std::sync::Arc<sunrise_gameplay_common::game::Resources>>,
 ) -> (sunrise_gameplay::game::ServerGame<'a>, mpsc::Receiver<Out>) {
     let mut g = sunrise_gameplay::game::game_tests::tests::server_game(resources);

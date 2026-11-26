@@ -88,7 +88,7 @@ impl Hooks for Probe {
     }
 }
 
-pub(in crate::game) fn heard(
+pub(crate) fn heard(
     test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>, &Mutex<Heard>),
 ) -> Heard {
     hear(|log| with_game(|game| test(game, log)))
@@ -672,7 +672,7 @@ fn callable_knockback_reads_resistance_written_this_tick() {
     });
 }
 
-pub(in crate::game) fn credit_pig(game: &mut sunrise_gameplay::game::ServerGame<'_>) {
+pub(crate) fn credit_pig(game: &mut sunrise_gameplay::game::ServerGame<'_>) {
     game.world.health_rules.difficulty = sunrise_world::food::Difficulty::Normal;
     game.world
         .chunks
@@ -880,7 +880,7 @@ fn borrowed_rider_environmental_damage_never_dispatches_a_living_push() {
 
 /// An evoker (id 50) holding an iron sword, the owner the credit tests name; with the probe's
 /// `reduce_sword_credit`, a push credited to it is halved.
-pub(in crate::game) fn sword_evoker(game: &mut sunrise_gameplay::game::ServerGame<'_>) {
+pub(crate) fn sword_evoker(game: &mut sunrise_gameplay::game::ServerGame<'_>) {
     let kind = game
         .res
         .mob_types()
@@ -898,7 +898,7 @@ pub(in crate::game) fn sword_evoker(game: &mut sunrise_gameplay::game::ServerGam
 
 /// The listener heard the evoker and its sword as the credit, and its halving reached the
 /// pig's motion (an uncredited push moves it 0.4).
-pub(in crate::game) fn assert_sword_credit_reached_the_push(heard: &Heard, pushed: Vec3) {
+pub(crate) fn assert_sword_credit_reached_the_push(heard: &Heard, pushed: Vec3) {
     assert_eq!(
         heard.credits,
         [(50, Some("minecraft:iron_sword".to_string()))]

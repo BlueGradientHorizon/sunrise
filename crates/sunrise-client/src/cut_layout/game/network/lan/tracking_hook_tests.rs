@@ -15,7 +15,7 @@ use sunrise_sim::{
     raw_payloads::{Side, Transport},
 };
 
-pub(in crate::game) const CHANNEL: &str = "tracktest:seen";
+pub(crate) const CHANNEL: &str = "tracktest:seen";
 
 #[derive(Debug, PartialEq)]
 pub(in crate::game) enum Heard {
@@ -25,7 +25,7 @@ pub(in crate::game) enum Heard {
     LoggedOut,
 }
 
-pub(in crate::game) struct Probe(pub(in crate::game) Arc<Mutex<Vec<Heard>>>);
+pub(crate) struct Probe(pub(crate) Arc<Mutex<Vec<Heard>>>);
 impl Probe {
     /// Tell the player which entity it heard of, on the mod's channel.
     pub(in sunrise_gameplay::game::server_side) fn send(
@@ -113,7 +113,7 @@ pub(in sunrise_gameplay::game::server_side) fn read(packets: Vec<Vec<u8>>) -> Ve
 /// Two loaded guests in chunk (0, 0) on a vanilla peer's connection each, and two items near
 /// them that never come within pickup reach: `run` gets the game, each guest's packet reader and
 /// the items' ids.
-pub(in crate::game) fn with_two_items(
+pub(crate) fn with_two_items(
     run: impl FnOnce(
         &mut sunrise_gameplay::game::ServerGame<'_>,
         &dyn Fn() -> Vec<Heard>,
@@ -171,7 +171,7 @@ pub(in crate::game) fn with_two_items(
 
 /// Run server ticks until a mod hears something, at most 20: a new guest is sent its chunks,
 /// and pairs the entities in them, over its first ticks.
-pub(in crate::game) fn tick_until_heard(
+pub(crate) fn tick_until_heard(
     game: &mut sunrise_gameplay::game::ServerGame<'_>,
     heard: &dyn Fn() -> Vec<Heard>,
 ) -> Vec<Heard> {
@@ -198,7 +198,7 @@ pub(in crate::game) fn tick_until_heard(
 }
 
 /// The index of the first packet matching `wanted`.
-pub(in crate::game) fn at(sent: &[Sent], wanted: &Sent) -> usize {
+pub(crate) fn at(sent: &[Sent], wanted: &Sent) -> usize {
     sent.iter()
         .position(|s| s == wanted)
         .unwrap_or_else(|| panic!("{wanted:?} not sent: {sent:?}"))

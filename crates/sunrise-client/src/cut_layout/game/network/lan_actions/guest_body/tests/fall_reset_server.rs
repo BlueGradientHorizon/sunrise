@@ -9,7 +9,7 @@ use sunrise_sim::{
 };
 
 /// A server with one survival guest in the air at 12.5 110 12.5, over a stone floor at y 99.
-pub(in crate::game) fn scene<'a>(
+pub(crate) fn scene<'a>(
     resources: &'a mut Option<Arc<sunrise_gameplay_common::game::Resources>>,
     scratch: &Path,
 ) -> sunrise_gameplay::game::ServerGame<'a> {

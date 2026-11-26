@@ -1,7 +1,7 @@
 
 
 #[cfg(test)]
-pub(in crate::game) mod tests {
+pub(crate) mod tests {
     use super::*;
     use sunrise_gameplay::game::native_entity_refs::tests::with_game;
     use crate::game::native_hooks::farmland_trample::tests::Choice;

@@ -1,7 +1,7 @@
 
 
 #[cfg(test)]
-pub(in crate::game) mod jukebox_play_tests {
+pub(crate) mod jukebox_play_tests {
     use super::*;
 
     fn playing(ticks: i32) -> Option<Vec<String>> {
@@ -107,7 +107,7 @@ pub(in crate::game) mod jukebox_play_tests {
 }
 
 #[cfg(test)]
-pub(in crate::game) mod saved_song_clock_tests {
+pub(crate) mod saved_song_clock_tests {
     use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 
     #[test]
@@ -196,7 +196,7 @@ pub(in crate::game) mod saved_song_clock_tests {
 }
 
 #[cfg(test)]
-pub(in crate::game) mod jukebox_component_tests {
+pub(crate) mod jukebox_component_tests {
     use super::*;
     use sunrise_gameplay::game::game_tests::tests::server_game;
     use sunrise_core::nbt::Tag;
@@ -298,10 +298,10 @@ pub(in crate::game) mod jukebox_component_tests {
 
 #[cfg(test)]
 #[path = "jukebox/tests.rs"]
-pub(in crate::game) mod jukebox_tests;
+pub(crate) mod jukebox_tests;
 
 #[cfg(test)]
-pub(in crate::game) mod block_change_tests {
+pub(crate) mod block_change_tests {
 
     use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
     use std::sync::Arc;

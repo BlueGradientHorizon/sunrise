@@ -1,50 +1,50 @@
 
 
 #[cfg(test)]
-pub(in crate::game) mod animate_tick_tests;
+pub(crate) mod animate_tick_tests;
 #[cfg(test)]
-pub(in crate::game) mod block_entity_client_tick_tests;
+pub(crate) mod block_entity_client_tick_tests;
 #[cfg(test)]
-pub(in crate::game) mod block_entity_neighbors_tests;
+pub(crate) mod block_entity_neighbors_tests;
 #[cfg(test)]
-pub(in crate::game) mod can_be_connected_to_tests;
+pub(crate) mod can_be_connected_to_tests;
 #[cfg(test)]
-pub(in crate::game) mod client_chunk_hooks_tests;
+pub(crate) mod client_chunk_hooks_tests;
 #[cfg(feature = "client")]
 #[cfg(test)]
-pub(in crate::game) mod client_pick;
+pub(crate) mod client_pick;
 #[cfg(test)]
-pub(in crate::game) mod creative_tabs_read_tests;
+pub(crate) mod creative_tabs_read_tests;
 #[cfg(test)]
-pub(in crate::game) mod death_source_tests;
+pub(crate) mod death_source_tests;
 #[cfg(test)]
-pub(in crate::game) mod enchantment_and_lang_tests;
+pub(crate) mod enchantment_and_lang_tests;
 #[cfg(test)]
-pub(in crate::game) mod fence_gate_in_wall_tests;
+pub(crate) mod fence_gate_in_wall_tests;
 #[cfg(test)]
-pub(in crate::game) mod fluid_draw;
+pub(crate) mod fluid_draw;
 #[cfg(test)]
-pub(in crate::game) mod guest_death_lifecycle_tests;
+pub(crate) mod guest_death_lifecycle_tests;
 #[cfg(test)]
-pub(in crate::game) mod on_block_state_change_tests;
+pub(crate) mod on_block_state_change_tests;
 #[cfg(test)]
-pub(in crate::game) mod on_chunk_unloaded_tests;
+pub(crate) mod on_chunk_unloaded_tests;
 #[cfg(test)]
-pub(in crate::game) mod on_destroyed_by_push_reaction_tests;
+pub(crate) mod on_destroyed_by_push_reaction_tests;
 #[cfg(test)]
-pub(in crate::game) mod on_entity_item_update;
+pub(crate) mod on_entity_item_update;
 #[cfg(test)]
-pub(in crate::game) mod piston_push_reaction_tests;
+pub(crate) mod piston_push_reaction_tests;
 #[cfg(test)]
-pub(in crate::game) mod placement_context_tests;
+pub(crate) mod placement_context_tests;
 #[cfg(test)]
-pub(in crate::game) mod play_hit_sound_tests;
+pub(crate) mod play_hit_sound_tests;
 #[cfg(test)]
-pub(in crate::game) mod registered_potions_tests;
+pub(crate) mod registered_potions_tests;
 #[cfg(test)]
-pub(in crate::game) mod remove_block_tests;
+pub(crate) mod remove_block_tests;
 #[cfg(test)]
-pub(in crate::game) mod trident_family_tests;
+pub(crate) mod trident_family_tests;
 pub(crate) mod tick_target_millis;
 
 include!("shared.rs");

@@ -119,7 +119,7 @@ fn exploding_a_cart_removes_only_its_owner_and_keeps_a_bound_survivor() {
     });
 }
 
-pub(in crate::game) static VALUE: AttachmentType<i32> = AttachmentType {
+pub(crate) static VALUE: AttachmentType<i32> = AttachmentType {
     namespace: "test",
     name: "cart_lifetime",
     default: || 0,
@@ -128,9 +128,9 @@ pub(in crate::game) static VALUE: AttachmentType<i32> = AttachmentType {
     sync: false,
 };
 
-pub(in crate::game) struct CancelCartDismount {
-    pub(in crate::game) calls: Arc<std::sync::atomic::AtomicUsize>,
-    pub(in crate::game) index: Arc<Mutex<AttachmentIndex<mod_api::EntityRef>>>,
+pub(crate) struct CancelCartDismount {
+    pub(crate) calls: Arc<std::sync::atomic::AtomicUsize>,
+    pub(crate) index: Arc<Mutex<AttachmentIndex<mod_api::EntityRef>>>,
 }
 
 #[mod_api::__subscriptions]
@@ -160,8 +160,8 @@ impl mod_api::Hooks for CancelCartDismount {
     }
 }
 
-pub(in crate::game) struct TeleportPlayerOnCartDismount(
-    pub(in crate::game) Arc<std::sync::atomic::AtomicUsize>,
+pub(crate) struct TeleportPlayerOnCartDismount(
+    pub(crate) Arc<std::sync::atomic::AtomicUsize>,
 );
 #[mod_api::__subscriptions]
 impl mod_api::Hooks for TeleportPlayerOnCartDismount {
@@ -214,9 +214,9 @@ fn exploding_driven_cart_does_not_reseat_a_player_moved_by_its_dismount_hook() {
     });
 }
 
-pub(in crate::game) struct ToggleActivatorDismount {
-    pub(in crate::game) cancel: Arc<std::sync::atomic::AtomicBool>,
-    pub(in crate::game) calls: Arc<std::sync::atomic::AtomicUsize>,
+pub(crate) struct ToggleActivatorDismount {
+    pub(crate) cancel: Arc<std::sync::atomic::AtomicBool>,
+    pub(crate) calls: Arc<std::sync::atomic::AtomicUsize>,
 }
 #[mod_api::__subscriptions]
 impl mod_api::Hooks for ToggleActivatorDismount {
@@ -355,7 +355,7 @@ fn a_bound_cart_commits_valid_nbt_and_refuses_an_invalid_load() {
 }
 
 #[allow(unused_imports)]
-pub(in crate::game) use crate::game::server_side::minecarts_server::lifetime_tests::bound_cart_case;
+pub(crate) use crate::game::server_side::minecarts_server::lifetime_tests::bound_cart_case;
 
 #[test]
 #[ignore = "daily"]
@@ -392,7 +392,7 @@ fn a_bound_tnt_cart_keeps_its_join_when_damage_primes_it() {
 // A public entity lookup also hides a temporarily extracted row. Check the
 // residency journal itself so a terminal path cannot leave a permanent Taken
 // record that poisons later level queries (#2855).
-pub(in crate::game) fn assert_vehicle_residency_retired(
+pub(crate) fn assert_vehicle_residency_retired(
     game: &mut sunrise_gameplay::game::ServerGame<'_>,
     id: u32,
 ) {

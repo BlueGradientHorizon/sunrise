@@ -1,7 +1,7 @@
 
 
 #[cfg(test)]
-pub(in crate::game) mod live_frame_tests;
+pub(crate) mod live_frame_tests;
 
 #[cfg(test)]
 pub(crate) mod tests {
@@ -117,4 +117,4 @@ use super::*;
 
 
 #[cfg(test)]
-pub(in crate::game) mod command_exploration_map_test_file;
+pub(crate) mod command_exploration_map_test_file;

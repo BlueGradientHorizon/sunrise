@@ -1,7 +1,7 @@
 
 
 #[cfg(test)]
-pub(in crate::game) mod tests {
+pub(crate) mod tests {
 
     /// A flying rocket's vertices carry its own id for frame generation's and a temporal
     /// upscaler's motion vectors (`Frame::entity_motion`), so the motion matched between
@@ -70,7 +70,7 @@ pub(in crate::game) mod tests {
         assert_eq!(marks.last(), Some(&(out.len() as u32, 0)));
     }
 
-    pub(in crate::game) fn assert_client_silent_rocket_burst_without_blast_or_twinkle(
+    pub(crate) fn assert_client_silent_rocket_burst_without_blast_or_twinkle(
         explosion: sunrise_client::particles::FireworkExplosion,
     ) {
         use sunrise_client::particles::ParticleLevel;

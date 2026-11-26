@@ -1,21 +1,21 @@
 
 #[cfg(test)]
 #[path = "minecarts/lifetime_tests.rs"]
-pub(in crate::game) mod lifetime_tests;
+pub(crate) mod lifetime_tests;
 #[cfg(test)]
 #[path = "minecarts/hit.rs"]
-pub(in crate::game) mod hit;
+pub(crate) mod hit;
 
 #[cfg(test)]
 #[path = "minecarts/minecart_tnt_tests.rs"]
-pub(in crate::game) mod minecart_tnt_tests;
+pub(crate) mod minecart_tnt_tests;
 
 #[cfg(test)]
 #[path = "minecarts/tests.rs"]
-pub(in crate::game) mod tests;
+pub(crate) mod tests;
 
 #[cfg(test)]
-pub(in crate::game) mod tnt_impact_tests {
+pub(crate) mod tnt_impact_tests {
     use {sunrise_gameplay_common::game::minecarts::CartKind, sunrise_gameplay_common::game::minecarts::Minecart};
     use sunrise_gameplay::game::native_entity_refs::tests::with_game;
     use sunrise_core::geometry::Vec3;
@@ -253,7 +253,7 @@ pub(in crate::game) mod tnt_impact_tests {
 }
 
 #[cfg(test)]
-pub(in crate::game) mod cart_push_tests {
+pub(crate) mod cart_push_tests {
     use {sunrise_gameplay_common::game::minecarts::CartKind, sunrise_gameplay_common::game::minecarts::Minecart};
     use sunrise_core::geometry::Vec3;
     use sunrise_items::items::ItemStack;
@@ -443,7 +443,7 @@ pub(in crate::game) mod cart_push_tests {
 }
 
 #[cfg(test)]
-pub(in crate::game) mod container_drop_tests {
+pub(crate) mod container_drop_tests {
     use {sunrise_gameplay_common::game::minecarts::CartKind, sunrise_gameplay_common::game::minecarts::Minecart};
     use sunrise_gameplay_common::game::boats_common::Boat;
     use sunrise_gameplay::game::server_side::minecarts_server::CartHit;
@@ -526,7 +526,7 @@ pub(in crate::game) mod container_drop_tests {
 }
 
 #[cfg(test)]
-pub(in crate::game) mod rejected_passenger_tests {
+pub(crate) mod rejected_passenger_tests {
     use {crate::game::minecarts::*, sunrise_gameplay_common::game::minecarts::{Arc, CartKind, HEIGHT, InteractTarget, Minecart, Vec3}};
     use {crate::game::commands::Target, sunrise_gameplay::game::native_entity_refs::tests::with_game};
     use sunrise_core::nbt::Tag;
@@ -646,7 +646,7 @@ pub(in crate::game) mod rejected_passenger_tests {
 }
 
 #[cfg(test)]
-pub(in crate::game) mod hook_mutation_regressions {
+pub(crate) mod hook_mutation_regressions {
     use {crate::game::minecarts::*, sunrise_gameplay_common::game::minecarts::{Arc, CartKind, Minecart, Vec3}};
     use std::sync::{Arc, Mutex};
     use sunrise_sim::mobs::Mob;
@@ -822,7 +822,7 @@ pub(in crate::game) mod hook_mutation_regressions {
 }
 
 #[cfg(test)]
-pub(in crate::game) mod cart_cost_bench {
+pub(crate) mod cart_cost_bench {
     use {sunrise_gameplay_common::game::minecarts::CartKind, sunrise_gameplay_common::game::minecarts::Minecart};
     use sunrise_gameplay::game::game_tests::tests::server_game;
     use sunrise_core::geometry::Vec3;

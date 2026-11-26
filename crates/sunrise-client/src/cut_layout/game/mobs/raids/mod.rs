@@ -2,22 +2,22 @@
 
 #[cfg(test)]
 #[path = "tests/bed_loss.rs"]
-pub(in crate::game) mod bed_loss_tests;
+pub(crate) mod bed_loss_tests;
 
 #[cfg(test)]
 #[path = "tests/bar_players.rs"]
-pub(in crate::game) mod bar_players_tests;
+pub(crate) mod bar_players_tests;
 
 #[cfg(test)]
 #[path = "tests/victory.rs"]
-pub(in crate::game) mod victory_tests;
+pub(crate) mod victory_tests;
 
 #[cfg(test)]
 #[path = "tests/spawn_placements.rs"]
-pub(in crate::game) mod spawn_placement_tests;
+pub(crate) mod spawn_placement_tests;
 
 #[cfg(test)]
-pub(in crate::game) mod entity_ticking_tests {
+pub(crate) mod entity_ticking_tests {
     use {sunrise_gameplay::game::server_side::raids::Lvl, sunrise_gameplay::game::server_side::raids::RaidLevel};
     use sunrise_gameplay::game::native_entity_refs::tests::with_game;
     use std::{collections::HashSet, sync::Arc};

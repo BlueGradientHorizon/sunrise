@@ -1,7 +1,7 @@
 
 
 #[cfg(test)]
-pub(in crate::game) mod menu_extra_data_tests {
+pub(crate) mod menu_extra_data_tests {
     use sunrise_client::title::Mode;
     use sunrise_protocol::{
         connection::Pipe,

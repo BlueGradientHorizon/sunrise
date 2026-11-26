@@ -2,10 +2,10 @@
 
 #[cfg(test)]
 #[path = "falling_blocks/moving_piston_tests.rs"]
-pub(in crate::game) mod moving_piston_tests;
+pub(crate) mod moving_piston_tests;
 
 #[cfg(test)]
-pub(in crate::game) mod geometry_tests {
+pub(crate) mod geometry_tests {
     use super::*;
 
     #[test]

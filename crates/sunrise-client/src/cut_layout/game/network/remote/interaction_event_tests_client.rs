@@ -6,7 +6,7 @@ use sunrise_core::geometry::Vec3;
 use sunrise_sim::first_person_sim::Hand;
 
 #[path = "mapping_press_tests_client.rs"]
-pub(in crate::game) mod mapping_press_tests;
+pub(crate) mod mapping_press_tests;
 
 impl InteractionSide for sunrise_client_gameplay::game::client_side::ClientState {
     const IS_CLIENT: bool = true;

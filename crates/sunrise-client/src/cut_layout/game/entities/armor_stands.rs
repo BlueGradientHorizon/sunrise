@@ -1,7 +1,7 @@
 
 
 #[cfg(test)]
-pub(in crate::game) mod pumpkin_equippable_use_tests {
+pub(crate) mod pumpkin_equippable_use_tests {
     use super::*;
     use std::sync::{atomic::AtomicI32, mpsc};
     use sunrise_core::position::ChunkPos;
@@ -142,7 +142,7 @@ pub(in crate::game) mod pumpkin_equippable_use_tests {
 }
 
 #[cfg(test)]
-pub(in crate::game) mod stand_lodestone_inventory_tick_tests {
+pub(crate) mod stand_lodestone_inventory_tick_tests {
     use sunrise_core::{geometry::Vec3, position::BlockPos};
     use sunrise_sim::motion::PlayerMotion;
 
@@ -308,7 +308,7 @@ pub(in crate::game) mod stand_lodestone_inventory_tick_tests {
 }
 
 #[cfg(test)]
-pub(in crate::game) mod postbaseline_lodestone_controls {
+pub(crate) mod postbaseline_lodestone_controls {
     //! Added after baseline: source-backed slots and preservation, not new runtime breadth.
 
     use std::sync::Arc;

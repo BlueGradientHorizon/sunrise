@@ -55,7 +55,7 @@ use super::*;
     }
 /// A server-side game with nothing in it but an empty chunk, or None when
     /// the prepared resources are missing (CI has no vanilla data).
-    pub(in crate::game) fn server_game(
+    pub(crate) fn server_game(
         resources: &mut Option<std::sync::Arc<sunrise_gameplay_common::game::Resources>>,
     ) -> Option<Box<sunrise_gameplay::game::ServerGame<'_>>> {
         use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
@@ -374,7 +374,7 @@ use super::*;
 
 
 #[cfg(test)]
-pub(in crate::game) mod off_level_tests {
+pub(crate) mod off_level_tests {
     use super::*;
 
     #[test]
@@ -464,24 +464,24 @@ pub(in crate::game) mod off_level_tests {
 
 #[cfg(test)]
 #[path = "mounts/camel_jump_tests.rs"]
-pub(in crate::game) mod camel_jump_tests;
+pub(crate) mod camel_jump_tests;
 
 #[cfg(test)]
 #[path = "mounts/sneak_dismount_tests.rs"]
-pub(in crate::game) mod sneak_dismount_tests;
+pub(crate) mod sneak_dismount_tests;
 #[cfg(test)]
 #[path = "tests/strider_lava_boarding_tests.rs"]
-pub(in crate::game) mod strider_lava_boarding_tests;
+pub(crate) mod strider_lava_boarding_tests;
 
 #[cfg(test)]
 #[path = "tests/steerable_boarding_tests.rs"]
-pub(in crate::game) mod steerable_boarding_tests;
+pub(crate) mod steerable_boarding_tests;
 
 #[cfg(test)]
 #[path = "tests/ride_dismount_tests.rs"]
-pub(in crate::game) mod ride_dismount_tests;
+pub(crate) mod ride_dismount_tests;
 
 #[cfg(test)]
 #[path = "tests/ride_seat_tests.rs"]
-pub(in crate::game) mod ride_seat_tests;
+pub(crate) mod ride_seat_tests;
 use sunrise_gameplay_common::game::tables::GameItems as _;

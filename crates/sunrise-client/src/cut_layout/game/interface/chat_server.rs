@@ -1,7 +1,7 @@
 
 
 #[cfg(test)]
-pub(in crate::game) mod enchantment_snapshot_tests {
+pub(crate) mod enchantment_snapshot_tests {
     use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
 
     #[test]
@@ -161,7 +161,7 @@ pub(in crate::game) mod enchantment_snapshot_tests {
 }
 
 #[cfg(test)]
-pub(in crate::game) mod damage_type_registry_tests {
+pub(crate) mod damage_type_registry_tests {
     use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
 
     /// A world pack's damage type is a `/damage` type once the world opens,
@@ -250,7 +250,7 @@ pub(in crate::game) mod damage_type_registry_tests {
 
 #[cfg(test)]
 #[path = "tests/end_clock_tests_server.rs"]
-pub(in crate::game) mod end_clock_tests;
+pub(crate) mod end_clock_tests;
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
 

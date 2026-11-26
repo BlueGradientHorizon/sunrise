@@ -3,7 +3,7 @@
 //! while sneaking with something in hand and then triggers
 //! ITEM_USED_ON_BLOCK for the use it consumed.
 use sunrise_gameplay::game::game_tests::tests::server_game;
-use {crate::game::*, sunrise_gameplay_common::game::{Arc, BlockEntity, Hit, ItemStack, PlayerMotion, Resources, Vec3, entity, hit}};
+use {crate::game::*, sunrise_gameplay_common::game::{BlockEntity, Hit, Resources, entity, hit}};
 use std::sync::Arc;
 use sunrise_core::geometry::Vec3;
 use sunrise_items::items::ItemStack;

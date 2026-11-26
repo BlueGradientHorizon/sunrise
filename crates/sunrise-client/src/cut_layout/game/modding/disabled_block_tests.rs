@@ -1,6 +1,6 @@
 //! Switching an owner off holds scheduled work and prevents template writes.
 #[cfg(test)]
-pub(in crate::game) mod tests {
+pub(crate) mod tests {
     use super::super::{
         Dim, Hit,
         api_values::{TryIntoApi, TryIntoEngine},
@@ -23,8 +23,8 @@ pub(in crate::game) mod tests {
         registry::BlockStateId,
     };
 
-    pub(in crate::game) const POS: BlockPos = BlockPos::new(3, 64, 5);
-    pub(in crate::game) const CARPET: &str = "inert_test_extra:carpet";
+    pub(crate) const POS: BlockPos = BlockPos::new(3, 64, 5);
+    pub(crate) const CARPET: &str = "inert_test_extra:carpet";
 
     #[derive(Default)]
     pub(in crate::game) struct ToolProbe {
@@ -41,7 +41,7 @@ pub(in crate::game) mod tests {
         pub(in crate::game) tool: Mutex<ToolProbe>,
     }
 
-    pub(in crate::game) struct Earlier(pub(in crate::game) Arc<Probe>);
+    pub(crate) struct Earlier(pub(crate) Arc<Probe>);
     #[mod_api::sunrise_part]
     impl BlockPart for Earlier {
         fn tick_block(&self, _: &mut dyn LevelWriteHost, _: &mut TickBlockEvent) -> Flow {
@@ -67,7 +67,7 @@ pub(in crate::game) mod tests {
             Some((Some(remainder), 0))
         }
     }
-    pub(in crate::game) struct HydratesWithWater;
+    pub(crate) struct HydratesWithWater;
     #[mod_api::sunrise_part]
     impl BlockPart for HydratesWithWater {
         fn can_be_hydrated(
@@ -80,7 +80,7 @@ pub(in crate::game) mod tests {
         }
     }
 
-    pub(in crate::game) struct HydratesWithLava;
+    pub(crate) struct HydratesWithLava;
     #[mod_api::sunrise_part]
     impl BlockPart for HydratesWithLava {
         fn can_be_hydrated(
@@ -93,7 +93,7 @@ pub(in crate::game) mod tests {
         }
     }
 
-    pub(in crate::game) struct HydratesWithAnyFluid;
+    pub(crate) struct HydratesWithAnyFluid;
     #[mod_api::sunrise_part]
     impl BlockPart for HydratesWithAnyFluid {
         fn can_be_hydrated(
@@ -105,7 +105,7 @@ pub(in crate::game) mod tests {
         }
     }
 
-    pub(in crate::game) struct EnabledPrefix(pub(in crate::game) Arc<Probe>);
+    pub(crate) struct EnabledPrefix(pub(crate) Arc<Probe>);
     #[mod_api::__subscriptions]
     impl Hooks for EnabledPrefix {
         fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
@@ -116,7 +116,7 @@ pub(in crate::game) mod tests {
         }
     }
 
-    pub(in crate::game) struct Machine(pub(in crate::game) Arc<Probe>);
+    pub(crate) struct Machine(pub(crate) Arc<Probe>);
     #[mod_api::sunrise_part]
     impl BlockPart for Machine {
         fn tick_block(&self, _: &mut dyn LevelWriteHost, _: &mut TickBlockEvent) -> Flow {
@@ -134,7 +134,7 @@ pub(in crate::game) mod tests {
             Flow::Continue
         }
     }
-    pub(in crate::game) struct Survival;
+    pub(crate) struct Survival;
     #[mod_api::sunrise_part]
     impl BlockPart for Survival {
         fn can_survive(
@@ -146,7 +146,7 @@ pub(in crate::game) mod tests {
         }
     }
 
-    pub(in crate::game) struct Plant;
+    pub(crate) struct Plant;
     #[mod_api::sunrise_part]
     impl BlockPart for Plant {
         fn may_place_on(
@@ -158,7 +158,7 @@ pub(in crate::game) mod tests {
         }
     }
 
-    pub(in crate::game) struct Soil;
+    pub(crate) struct Soil;
     #[mod_api::sunrise_part]
     impl BlockPart for Soil {
         fn can_sustain_plant(
@@ -170,7 +170,7 @@ pub(in crate::game) mod tests {
         }
     }
 
-    pub(in crate::game) struct Owner(pub(in crate::game) Arc<Probe>);
+    pub(crate) struct Owner(pub(crate) Arc<Probe>);
     #[mod_api::__subscriptions]
     impl Hooks for Owner {
         fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
@@ -208,7 +208,7 @@ pub(in crate::game) mod tests {
             }
         }
     }
-    pub(in crate::game) struct DispenseNotices(pub(in crate::game) Arc<Probe>);
+    pub(crate) struct DispenseNotices(pub(crate) Arc<Probe>);
     #[mod_api::sunrise_part]
     impl BlockPart for DispenseNotices {
         fn contents_changed(&self, _: &mut dyn ServerHost, _: &mut mod_api::ContentsChangedEvent) {
@@ -216,7 +216,7 @@ pub(in crate::game) mod tests {
         }
     }
 
-    pub(in crate::game) struct Observer(pub(in crate::game) Arc<Probe>);
+    pub(crate) struct Observer(pub(crate) Arc<Probe>);
     #[mod_api::__subscriptions]
     impl Hooks for Observer {
         fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
@@ -246,11 +246,11 @@ pub(in crate::game) mod tests {
         }
     }
 
-    pub(in crate::game) struct ConflictingCode;
+    pub(crate) struct ConflictingCode;
     #[mod_api::__subscriptions]
     impl Hooks for ConflictingCode {}
 
-    pub(in crate::game) fn with_inert_block(
+    pub(crate) fn with_inert_block(
         name: &str,
         test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>, BlockStateId, &Probe),
     ) {
@@ -610,11 +610,11 @@ pub(in crate::game) mod tests {
         );
     }
 
-    pub(in crate::game) const DISPENSER: BlockPos = BlockPos::new(POS.x - 1, POS.y, POS.z);
-    pub(in crate::game) const DISPENSER_SLOT: (i32, i32, i32) =
+    pub(crate) const DISPENSER: BlockPos = BlockPos::new(POS.x - 1, POS.y, POS.z);
+    pub(crate) const DISPENSER_SLOT: (i32, i32, i32) =
         (DISPENSER.x, DISPENSER.y, DISPENSER.z);
 
-    pub(in crate::game) fn place_dispenser(game: &mut sunrise_gameplay::game::ServerGame<'_>) -> BlockStateId {
+    pub(crate) fn place_dispenser(game: &mut sunrise_gameplay::game::ServerGame<'_>) -> BlockStateId {
         let base = game
             .pack
             .assets

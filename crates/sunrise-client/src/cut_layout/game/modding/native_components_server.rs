@@ -1,12 +1,12 @@
 
 
 #[cfg(test)]
-pub(in crate::game) mod item_resource_property_tests {
+pub(crate) mod item_resource_property_tests {
     use crate::game::native_components::item_resource_property_tests::engine;
     use crate::game::native_components::item_resource_property_tests::*;
     use serde_json::Value;
 
-    pub(in crate::game) fn run_effective_resource_properties_match_vanilla() {
+    pub(crate) fn run_effective_resource_properties_match_vanilla() {
         let inputs = std::env::var("SUNRISE_ITEM_PROPERTIES_CASES")
             .map(|path| std::fs::read_to_string(path).unwrap())
             .unwrap_or_else(|_| {

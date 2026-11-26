@@ -24,7 +24,7 @@ pub(in crate::game) struct Hit {
     pub(in crate::game) weapon: Option<mod_api::ItemStack>,
 }
 impl Hit {
-    pub(in crate::game) fn new(
+    pub(crate) fn new(
         entity: u32,
         source: &HurtSource<'_>,
         weapon: Option<&mod_api::ItemStack>,
@@ -44,7 +44,7 @@ pub(in crate::game) struct Seen {
     pub(in crate::game) incoming: Vec<Hit>,
     pub(in crate::game) deaths: Vec<Hit>,
 }
-pub(in crate::game) struct Probe(pub(in crate::game) Arc<Mutex<Seen>>);
+pub(crate) struct Probe(pub(crate) Arc<Mutex<Seen>>);
 #[mod_api::__subscriptions]
 impl Hooks for Probe {
     fn living_incoming_damage(
@@ -69,8 +69,8 @@ impl Hooks for Probe {
     }
 }
 #[allow(unused_imports)]
-pub(in crate::game) use crate::game::server_side::native_hooks_server::trident_family_tests::fixture;
-pub(in crate::game) fn victim(game: &mut sunrise_gameplay::game::ServerGame<'_>, name: &str) -> f32 {
+pub(crate) use crate::game::server_side::native_hooks_server::trident_family_tests::fixture;
+pub(crate) fn victim(game: &mut sunrise_gameplay::game::ServerGame<'_>, name: &str) -> f32 {
     let kind = game.res.mob_types().get(name).unwrap().clone();
     let mut mob = Mob::new(41, kind, Vec3::new(6.0, 80.0, 4.5), 0.0);
     mob.persistent = true;
@@ -84,7 +84,7 @@ pub(in crate::game) fn victim(game: &mut sunrise_gameplay::game::ServerGame<'_>,
     game.mobs.push(mob);
     health
 }
-pub(in crate::game) fn weapon() -> ItemStack {
+pub(crate) fn weapon() -> ItemStack {
     let mut stack = ItemStack::new("minecraft:trident", 1);
     stack.damage = 7;
     stack.data_mut().set_other(
@@ -97,7 +97,7 @@ pub(in crate::game) fn weapon() -> ItemStack {
     );
     stack
 }
-pub(in crate::game) fn throw_player(game: &mut sunrise_gameplay::game::ServerGame<'_>) -> (u32, ItemStack) {
+pub(crate) fn throw_player(game: &mut sunrise_gameplay::game::ServerGame<'_>) -> (u32, ItemStack) {
     game.inventory[game.selected] = Some(weapon());
     game.release_trident(10);
     assert_eq!(
@@ -111,7 +111,7 @@ pub(in crate::game) fn throw_player(game: &mut sunrise_gameplay::game::ServerGam
     shot.velocity = Vec3::new(4.0, 0.0, 0.0);
     (shot.id, shot.stack.clone())
 }
-pub(in crate::game) fn throw_mob(game: &mut sunrise_gameplay::game::ServerGame<'_>) -> (u32, ItemStack) {
+pub(crate) fn throw_mob(game: &mut sunrise_gameplay::game::ServerGame<'_>) -> (u32, ItemStack) {
     // A non-undead owner ensures WitherBoss's separate WITHER_FRIENDS filter
     // cannot hide a missing direct-projectile immunity.
     let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
@@ -132,7 +132,7 @@ pub(in crate::game) fn throw_mob(game: &mut sunrise_gameplay::game::ServerGame<'
     game.creatures.projectiles.push(shot);
     (id, stack)
 }
-pub(in crate::game) fn step(game: &mut sunrise_gameplay::game::ServerGame<'_>, player: bool) {
+pub(crate) fn step(game: &mut sunrise_gameplay::game::ServerGame<'_>, player: bool) {
     if player {
         game.tick_tridents();
     } else {

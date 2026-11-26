@@ -1,5 +1,5 @@
 #[cfg(test)]
-pub(in crate::game) mod on_entity_item_update_tests {
+pub(crate) mod on_entity_item_update_tests {
     use {crate::game::native_hooks::*, sunrise_gameplay_common::game::native_hooks::{Arc, ItemStack, mod_api}};
     use sunrise_gameplay::game::server_side::native_hooks_server::on_entity_item_update::ItemEntityTickAccess;
     use {crate::game::api_values::STACK_PROJECTIONS, sunrise_gameplay_common::game::api_values::test_snapshot, sunrise_gameplay::game::native_entity_refs::tests::with_game};
@@ -50,12 +50,12 @@ pub(in crate::game) mod on_entity_item_update_tests {
         }
     }
 
-    pub(in crate::game) struct Mod(pub(in crate::game) Vec<Update>, pub(in crate::game) bool);
+    pub(crate) struct Mod(pub(crate) Vec<Update>, pub(crate) bool);
 
     thread_local! { pub(in crate::game) static ORDER: std::cell::RefCell<Vec<(u32, &'static str)>> = const { std::cell::RefCell::new(Vec::new()) }; }
 
     /// Each entity a tick hook was told, in order, with the hook's phase.
-    pub(in crate::game) fn told(entities: &[u32], phase: &'static str) {
+    pub(crate) fn told(entities: &[u32], phase: &'static str) {
         ORDER.with(|order| {
             let mut order = order.borrow_mut();
             order.extend(entities.iter().map(|&entity| (entity, phase)));
@@ -97,7 +97,7 @@ pub(in crate::game) mod on_entity_item_update_tests {
     }
 
     /// A serving level with a stone floor at y 63 and nothing dropped.
-    pub(in crate::game) fn floor(game: &mut sunrise_gameplay::game::ServerGame<'_>) {
+    pub(crate) fn floor(game: &mut sunrise_gameplay::game::ServerGame<'_>) {
         game.options.dedicated = Some(Vec::new());
         game.native_lifecycle
             .begin_open(mod_api::Authority::IntegratedServer);
@@ -120,9 +120,9 @@ pub(in crate::game) mod on_entity_item_update_tests {
     }
 
     #[allow(unused_imports)]
-pub(in crate::game) use sunrise_gameplay::game::server_side::native_hooks_server::on_entity_item_update::on_entity_item_update_tests::rest;
+pub(crate) use sunrise_gameplay::game::server_side::native_hooks_server::on_entity_item_update::on_entity_item_update_tests::rest;
 
-    pub(in crate::game) fn counts(game: &sunrise_gameplay::game::ServerGame<'_>, ids: &[u32]) -> Vec<u32> {
+    pub(crate) fn counts(game: &sunrise_gameplay::game::ServerGame<'_>, ids: &[u32]) -> Vec<u32> {
         game.dropped
             .iter()
             .filter(|item| ids.contains(&item.id))
@@ -152,7 +152,7 @@ pub(in crate::game) use sunrise_gameplay::game::server_side::native_hooks_server
         );
     }
 
-    pub(in crate::game) fn a_canceling_part_holds_its_own_item_and_nothing_else_isolated(
+    pub(crate) fn a_canceling_part_holds_its_own_item_and_nothing_else_isolated(
         named: bool,
     ) {
         let iron = Update {

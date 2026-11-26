@@ -3,11 +3,11 @@
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "recipe_book/check_mod_menu_tests.rs"]
-pub(in crate::game) mod check_mod_menu_tests;
+pub(crate) mod check_mod_menu_tests;
 
 #[cfg(feature = "client")]
 #[cfg(test)]
-pub(in crate::game) mod screen_room_tests {
+pub(crate) mod screen_room_tests {
     use super::*;
     #[test]
     #[ignore = "daily"]

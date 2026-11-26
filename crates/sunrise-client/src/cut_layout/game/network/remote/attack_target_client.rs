@@ -2,7 +2,7 @@
 
 #[cfg(feature = "client")]
 #[cfg(test)]
-pub(in crate::game) mod tests {
+pub(crate) mod tests {
     use sunrise_gameplay_common::game::boats_common::Boat;
     use sunrise_gameplay_common::game::dragon_common::Crystal;
     use {sunrise_gameplay_common::game::minecarts::CartKind, sunrise_gameplay_common::game::minecarts::Minecart};
@@ -16,7 +16,7 @@ pub(in crate::game) mod tests {
     /// Each target, sprinting at full strength (knockback 0.5): the horizontal motion times 0.6,
     /// the vertical kept, the sprint stopped, and STOP_SPRINTING after the Attack on the wire.
     /// Walking, the same hit on a boat has no knockback and changes nothing.
-    pub(in crate::game) fn sprint_hits_isolated() {
+    pub(crate) fn sprint_hits_isolated() {
         with_client_game(|game| {
             let mut reader = logged_in(game);
             let at = Vec3::new(0.5, 65.0, 2.5);

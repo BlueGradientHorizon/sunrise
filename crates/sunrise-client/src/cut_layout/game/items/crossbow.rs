@@ -5,7 +5,7 @@ pub(crate) mod tests {
 
 use super::*;
 
-pub(in crate::game) use crate::game::client_side::crossbow_client::tests::game_with_player;
+pub(crate) use crate::game::client_side::crossbow_client::tests::game_with_player;
 
 /// `Projectile.applyOnProjectileSpawned` runs `EnchantmentHelper.onProjectileSpawned`
     /// for the weapon an arrow is fired from, bow or crossbow, so a Flame

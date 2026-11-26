@@ -1,7 +1,7 @@
 
 
 #[cfg(test)]
-pub(in crate::game) mod connected_spawnpoint_rotation_tests {
+pub(crate) mod connected_spawnpoint_rotation_tests {
     use sunrise_gameplay::game::lan::LanSettings;
     use std::sync::{Arc, atomic::AtomicI32, mpsc};
     use sunrise_level::chunk::Chunk;
@@ -235,7 +235,7 @@ pub(in crate::game) mod connected_spawnpoint_rotation_tests {
 }
 
 #[cfg(test)]
-pub(in crate::game) mod forced_respawn_space_tests {
+pub(crate) mod forced_respawn_space_tests {
     use super::*;
 
     #[test]
@@ -312,7 +312,7 @@ pub(in crate::game) mod forced_respawn_space_tests {
 }
 
 #[cfg(test)]
-pub(in crate::game) mod pitch_preservation_controls {
+pub(crate) mod pitch_preservation_controls {
     use super::*;
 
     #[test]

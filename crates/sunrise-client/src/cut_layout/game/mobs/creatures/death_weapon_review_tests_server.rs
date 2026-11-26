@@ -2,7 +2,7 @@ use super::tests::WeaponProbe;
 use super::*;
 use std::sync::{Arc, Mutex};
 
-pub(in crate::game) fn fixture_with_source(
+pub(crate) fn fixture_with_source(
     expected: Option<ItemStack>,
     expected_source: Option<(&'static str, i32)>,
     run: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>),

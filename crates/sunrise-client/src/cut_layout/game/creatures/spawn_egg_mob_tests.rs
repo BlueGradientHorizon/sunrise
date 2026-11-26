@@ -9,9 +9,9 @@ use sunrise_items::items::ItemStack;
 use sunrise_sim::mobs::{Mob, Species, Who};
 
 #[allow(unused_imports)]
-pub(in crate::game) use crate::game::client_side::creatures_client::spawn_egg_mob_tests::game;
+pub(crate) use crate::game::client_side::creatures_client::spawn_egg_mob_tests::game;
 
-pub(in crate::game) fn spawn(
+pub(crate) fn spawn(
     game: &mut sunrise_gameplay::game::ServerGame<'_>,
     kind: &str,
     id: u32,
@@ -23,18 +23,18 @@ pub(in crate::game) fn spawn(
         .push(Mob::new(id, kind, Vec3::new(at[0], at[1], at[2]), 0.0));
 }
 
-pub(in crate::game) fn target(id: u32) -> Option<InteractTarget> {
+pub(crate) fn target(id: u32) -> Option<InteractTarget> {
     Some(InteractTarget {
         id: id as i32,
         location: [0.0, 1.0, 0.0],
     })
 }
 
-pub(in crate::game) fn watch() {
+pub(crate) fn watch() {
     sunrise_client_gameplay::game::sculk::TEST_POSTED_EVENTS.with(|events| *events.borrow_mut() = Some(Vec::new()));
 }
 
-pub(in crate::game) fn posted() -> Vec<(&'static str, [f64; 3], Option<Who>)> {
+pub(crate) fn posted() -> Vec<(&'static str, [f64; 3], Option<Who>)> {
     sunrise_client_gameplay::game::sculk::TEST_POSTED_EVENTS
         .with(|events| std::mem::take(events.borrow_mut().as_mut().unwrap()))
 }

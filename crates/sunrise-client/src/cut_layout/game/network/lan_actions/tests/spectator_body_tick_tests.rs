@@ -8,7 +8,7 @@ use mod_api::HostSide;
 use std::sync::{Arc, Mutex};
 use sunrise_level::{chunk::Chunk, effects::EffectInstance};
 
-pub(in crate::game) struct Log(pub(in crate::game) Arc<Mutex<Vec<(&'static str, u128)>>>);
+pub(crate) struct Log(pub(crate) Arc<Mutex<Vec<(&'static str, u128)>>>);
 #[mod_api::__subscriptions]
 impl mod_api::Hooks for Log {
     fn player_tick_pre(&self, _: HostSide<'_>, event: &mut mod_api::PlayerTickPreEvent) {
@@ -21,7 +21,7 @@ impl mod_api::Hooks for Log {
 
 /// A loaded guest at `x` in chunk row z = 0 with 100 ticks of luck. `guest`
 /// gives connection `conn` the UUID `conn + 122`.
-pub(in crate::game) fn placed(conn: u32, x: f64, game_mode: i32) -> sunrise_sim::lan::guest::Guest {
+pub(crate) fn placed(conn: u32, x: f64, game_mode: i32) -> sunrise_sim::lan::guest::Guest {
     let mut g = guest(conn);
     g.loaded = true;
     g.position = [x, 64.0, 8.5];
@@ -30,7 +30,7 @@ pub(in crate::game) fn placed(conn: u32, x: f64, game_mode: i32) -> sunrise_sim:
     g
 }
 
-pub(in crate::game) fn luck_left(game: &sunrise_gameplay::game::ServerGame<'_>) -> Vec<i32> {
+pub(crate) fn luck_left(game: &sunrise_gameplay::game::ServerGame<'_>) -> Vec<i32> {
     let host = game.side.lan.as_ref().unwrap();
     host.hub
         .guests
@@ -40,7 +40,7 @@ pub(in crate::game) fn luck_left(game: &sunrise_gameplay::game::ServerGame<'_>) 
 }
 
 /// Each guest's ender pearl cooldown, in ticks left.
-pub(in crate::game) fn pearl_left(game: &sunrise_gameplay::game::ServerGame<'_>) -> Vec<i32> {
+pub(crate) fn pearl_left(game: &sunrise_gameplay::game::ServerGame<'_>) -> Vec<i32> {
     let host = game.side.lan.as_ref().unwrap();
     host.hub
         .guests

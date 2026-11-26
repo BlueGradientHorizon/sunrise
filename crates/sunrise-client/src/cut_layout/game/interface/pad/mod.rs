@@ -1,3 +1,3 @@
 
 #[cfg(test)]
-pub(in crate::game) mod parity_tests;
+pub(crate) mod parity_tests;

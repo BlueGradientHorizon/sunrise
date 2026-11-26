@@ -1,7 +1,7 @@
 
 
 #[cfg(test)]
-pub(in crate::game) mod player_packet_tests;
+pub(crate) mod player_packet_tests;
 
 #[cfg(test)]
 pub(crate) mod world_spawn_sync_tests {
@@ -216,7 +216,7 @@ pub(in sunrise_gameplay::game::server_side) fn run_guest_respawn_without_a_known
 
 
 #[cfg(test)]
-pub(in crate::game) mod world_spawn_join_tests {
+pub(crate) mod world_spawn_join_tests {
     /// `PrepareSpawnTask.start`: a returning player whose saved level the world no longer has
     /// joins in the world spawn's level (`respawnData.dimension()`), at its saved position and
     /// rotation, not in the Overworld.
@@ -249,7 +249,7 @@ pub(in crate::game) mod world_spawn_join_tests {
 }
 
 #[cfg(test)]
-pub(in crate::game) mod mob_pickup_sync_tests {
+pub(crate) mod mob_pickup_sync_tests {
 
     use super::*;
     use std::sync::{Arc, atomic::AtomicI32, mpsc};
@@ -354,7 +354,7 @@ pub(in crate::game) mod mob_pickup_sync_tests {
 }
 
 #[cfg(test)]
-pub(in crate::game) mod mob_swing_sync_tests {
+pub(crate) mod mob_swing_sync_tests {
     use super::*;
     use std::sync::{Arc, atomic::AtomicI32, mpsc};
     use {
@@ -463,14 +463,14 @@ pub(in crate::game) mod mob_swing_sync_tests {
 }
 
 #[cfg(test)]
-pub(in crate::game) mod owner_attachment_connected_statistics_save_tests;
+pub(crate) mod owner_attachment_connected_statistics_save_tests;
 
 #[cfg(test)]
-pub(in crate::game) mod login_profile_tests;
+pub(crate) mod login_profile_tests;
 #[cfg(test)]
-pub(in crate::game) mod no_gravity_sync_tests;
+pub(crate) mod no_gravity_sync_tests;
 #[cfg(test)]
-pub(in crate::game) mod tracking_hook_tests;
+pub(crate) mod tracking_hook_tests;
 use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
 
 #[cfg(test)]

@@ -21,28 +21,28 @@ use {
 };
 
 #[path = "interaction_matrix_tests_server.rs"]
-pub(in crate::game) mod interaction_matrix_tests;
+pub(crate) mod interaction_matrix_tests;
 
 #[path = "item_fallthrough_tests_server.rs"]
-pub(in crate::game) mod item_fallthrough_tests;
+pub(crate) mod item_fallthrough_tests;
 
 #[path = "item_used_on_block_tests_server.rs"]
-pub(in crate::game) mod item_used_on_block_tests;
+pub(crate) mod item_used_on_block_tests;
 
 #[path = "predicted_use_tests_server.rs"]
-pub(in crate::game) mod predicted_use_tests;
+pub(crate) mod predicted_use_tests;
 
 #[path = "use_item_hand_tests_server.rs"]
-pub(in crate::game) mod use_item_hand_tests;
+pub(crate) mod use_item_hand_tests;
 
 #[path = "use_item_result_tests_server.rs"]
-pub(in crate::game) mod use_item_result_tests;
+pub(crate) mod use_item_result_tests;
 
 #[path = "interaction_key_tests_server.rs"]
-pub(in crate::game) mod interaction_key_tests;
+pub(crate) mod interaction_key_tests;
 
 #[path = "mapping_press_tests_server.rs"]
-pub(in crate::game) mod mapping_press_tests;
+pub(crate) mod mapping_press_tests;
 
 /// `SolidBucketItem.useOn`: a powder snow bucket placed on a block leaves an empty bucket in the
 /// hand that placed it, on the server and in the client's own prediction, so the client's next
@@ -1247,7 +1247,7 @@ fn right_click_block_forced_item_use_reaches_empty_hand_on_both_sides() {
     });
 }
 
-pub(in crate::game) fn setup_interaction_guest(
+pub(crate) fn setup_interaction_guest(
     game: &mut sunrise_gameplay::game::ServerGame<'_>,
 ) -> std::sync::mpsc::Receiver<sunrise_sim::lan::Out> {
     game.lan_host(

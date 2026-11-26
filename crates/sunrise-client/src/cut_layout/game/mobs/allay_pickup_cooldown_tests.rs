@@ -2,7 +2,7 @@
 //! (`item_pickup_cooldown_ticks`, `{value: …}`), which `AllayAi` sets to 60 when
 //! it throws an item (tools/test_allay_pickup_cooldown_parity.py measures the
 //! same on vanilla 26.3).
-use {crate::game::*, sunrise_gameplay_common::game::{Arc, Instant, Mob, Options, PathBuf, Progress, Resources, Settings, entity, execution_role, load_resources}};
+use {crate::game::*, sunrise_gameplay_common::game::{Instant, Mob, Options, PathBuf, Progress, Resources, entity, execution_role}};
 use std::sync::Arc;
 use sunrise_core::nbt::Tag;
 use sunrise_core::position::ChunkPos;

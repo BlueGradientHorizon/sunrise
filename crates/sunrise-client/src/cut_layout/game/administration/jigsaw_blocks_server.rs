@@ -1,7 +1,7 @@
 
 
 #[cfg(test)]
-pub(in crate::game) mod tests {
+pub(crate) mod tests {
     use sunrise_level::containers::BlockEntity;
 
     /// A single-player jigsaw edit is applied by the game that is its own

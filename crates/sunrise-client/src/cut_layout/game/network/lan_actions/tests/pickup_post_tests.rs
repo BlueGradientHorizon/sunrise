@@ -24,7 +24,7 @@ pub(in crate::game) struct State {
 }
 
 /// One notice heard: player, original count, remainder count.
-pub(in crate::game) type Notice = (u128, u32, Option<u32>);
+pub(crate) type Notice = (u128, u32, Option<u32>);
 
 #[derive(Clone, Default)]
 pub(in crate::game) struct Probe(pub(in crate::game) Arc<Mutex<State>>);
@@ -51,7 +51,7 @@ impl Hooks for Probe {
 
 impl Probe {
     /// Records the notice, then makes the case's changes.
-    pub(in crate::game) fn heard(
+    pub(crate) fn heard(
         &self,
         host: &mut dyn ServerHost,
         player: u128,
@@ -89,17 +89,17 @@ impl Probe {
 
 /// One pickup case: the listener's setup, the inventory's room for apples,
 /// and the ground stack's count and pickup delay.
-pub(in crate::game) struct Case {
+pub(crate) struct Case {
     pub answer: TriState,
     pub raise: Option<u32>,
     pub empty: bool,
     pub kill: bool,
     pub room: u32,
-    pub(in crate::game) count: u32,
-    pub(in crate::game) delay: u32,
+    pub(crate) count: u32,
+    pub(crate) delay: u32,
 }
 
-pub(in crate::game) const CASE: Case = Case {
+pub(crate) const CASE: Case = Case {
     answer: TriState::Default,
     raise: None,
     empty: false,
@@ -111,9 +111,9 @@ pub(in crate::game) const CASE: Case = Case {
 
 /// What a case left: the notices heard, the apples on the ground (`None`
 /// when the entity is gone) and the apples in the inventory's first slot.
-pub(in crate::game) type Outcome = (Vec<Notice>, Option<u32>, u32);
+pub(crate) type Outcome = (Vec<Notice>, Option<u32>, u32);
 
-pub(in crate::game) fn apples(room: u32) -> Option<ItemStack> {
+pub(crate) fn apples(room: u32) -> Option<ItemStack> {
     Some(match room {
         0 => ItemStack::new("minecraft:stone", 64),
         room => ItemStack::new("minecraft:apple", 64 - room),
@@ -121,13 +121,13 @@ pub(in crate::game) fn apples(room: u32) -> Option<ItemStack> {
     .filter(|stack| stack.count > 0)
 }
 
-pub(in crate::game) fn clear_ground(game: &mut sunrise_gameplay::game::ServerGame<'_>) {
+pub(crate) fn clear_ground(game: &mut sunrise_gameplay::game::ServerGame<'_>) {
     while !game.dropped.is_empty() {
         game.remove_dropped(0);
     }
 }
 
-pub(in crate::game) fn arm(probe: &Probe, case: &Case) {
+pub(crate) fn arm(probe: &Probe, case: &Case) {
     let mut state = probe.0.lock().unwrap();
     state.answer = case.answer;
     state.raise = case.raise;
@@ -136,7 +136,7 @@ pub(in crate::game) fn arm(probe: &Probe, case: &Case) {
     state.notices.clear();
 }
 
-pub(in crate::game) fn spawn(
+pub(crate) fn spawn(
     game: &mut sunrise_gameplay::game::ServerGame<'_>,
     at: [f64; 3],
     case: &Case,
@@ -154,20 +154,20 @@ pub(in crate::game) fn spawn(
     .id()
 }
 
-pub(in crate::game) fn ground(game: &sunrise_gameplay::game::ServerGame<'_>, id: u32) -> Option<u32> {
+pub(crate) fn ground(game: &sunrise_gameplay::game::ServerGame<'_>, id: u32) -> Option<u32> {
     game.dropped
         .iter()
         .find(|item| item.id == id)
         .map(|item| item.stack.count)
 }
 
-pub(in crate::game) fn with_probe(probe: &Probe, test: impl FnOnce()) {
+pub(crate) fn with_probe(probe: &Probe, test: impl FnOnce()) {
     let mods: mod_api::Mods = vec![ModEntry::new("pickup_post", Box::new(probe.clone()))].into();
     with_mods(mods, test);
 }
 
 /// The host's player picks up through the lifted pass.
-pub(in crate::game) fn host_case(
+pub(crate) fn host_case(
     game: &mut sunrise_gameplay::game::ServerGame<'_>,
     probe: &Probe,
     case: &Case,
@@ -194,9 +194,9 @@ pub(in crate::game) fn host_case(
 }
 
 #[allow(unused_imports)]
-pub(in crate::game) use sunrise_client_gameplay::game::client_side::lan_actions_client::pickups::pickup_post_tests::host_animations;
+pub(crate) use sunrise_client_gameplay::game::client_side::lan_actions_client::pickups::pickup_post_tests::host_animations;
 
-pub(in crate::game) fn host_stat(game: &sunrise_gameplay::game::ServerGame<'_>) -> i64 {
+pub(crate) fn host_stat(game: &sunrise_gameplay::game::ServerGame<'_>) -> i64 {
     game.stats
         .values
         .get("minecraft:picked_up")
@@ -205,7 +205,7 @@ pub(in crate::game) fn host_stat(game: &sunrise_gameplay::game::ServerGame<'_>) 
 }
 
 /// Guest 12 picks up next to itself.
-pub(in crate::game) fn guest_case(
+pub(crate) fn guest_case(
     game: &mut sunrise_gameplay::game::ServerGame<'_>,
     probe: &Probe,
     case: &Case,

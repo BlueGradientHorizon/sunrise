@@ -1,6 +1,6 @@
 //! `RamTarget.tick`: the push a ram gives, and the shield that softens it
 //! (`applyItemBlocking`'s `blockingFactor`).
-use {crate::game::*, sunrise_gameplay_common::game::{Arc, Instant, ItemStack, Options, PathBuf, PlayerMotion, Progress, Resources, Settings, Vec3, execution_role, hit, load_resources}};
+use {crate::game::*, sunrise_gameplay_common::game::{Instant, ItemStack, Options, PathBuf, PlayerMotion, Progress, Resources, Vec3, execution_role, hit}};
 use std::sync::Arc;
 use sunrise_level::chunk::Chunk;
 use sunrise_sim::mobs::{Damage, MobEvent, Who};

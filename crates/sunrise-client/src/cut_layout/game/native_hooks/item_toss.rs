@@ -1,7 +1,7 @@
 
 
 #[cfg(test)]
-pub(in crate::game) mod item_toss_tests {
+pub(crate) mod item_toss_tests {
     use {crate::game::native_hooks::item_toss::*};
     use mod_api::{Flow, Hooks, ItemTossEvent, ModEntry, ServerHost};
     use mod_platform::testing::with_mods;

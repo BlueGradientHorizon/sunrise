@@ -28,7 +28,7 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
     );
 #[cfg(test)]
 impl Heard {
-        pub(in crate::game::server_side) fn record(
+        pub(crate) fn record(
             &self,
             part: &'static str,
             pos: [i32; 3],
@@ -36,13 +36,13 @@ impl Heard {
         ) {
             self.0.lock().unwrap().push((part, pos, state));
         }
-        pub(in crate::game) fn take(&self) -> Vec<(&'static str, [i32; 3], u32)> {
+        pub(crate) fn take(&self) -> Vec<(&'static str, [i32; 3], u32)> {
             std::mem::take(&mut *self.0.lock().unwrap())
         }
     }
 #[cfg(test)]
 /// Answers for the faced block for dirt and cobblestone, whatever the item's own part says.
-    pub(in crate::game) struct Front(pub(in crate::game) Heard);
+    pub(crate) struct Front(pub(crate) Heard);
 #[cfg(test)]
 #[mod_api::sunrise_part]
     impl mod_api::BlockPart for Front {
@@ -64,7 +64,7 @@ impl Heard {
     }
 #[cfg(test)]
 /// Answers for the item it is attached to, if the block in front let it.
-    pub(in crate::game) struct Item(pub(in crate::game) Heard);
+    pub(crate) struct Item(pub(crate) Heard);
 #[cfg(test)]
 #[mod_api::sunrise_part]
     impl mod_api::ItemPart for Item {
@@ -78,7 +78,7 @@ impl Heard {
         }
     }
 #[cfg(test)]
-pub(in crate::game) struct Probe(pub(in crate::game) Heard);
+pub(crate) struct Probe(pub(crate) Heard);
 #[cfg(test)]
 #[mod_api::__subscriptions]
     impl mod_api::Hooks for Probe {
@@ -112,7 +112,7 @@ pub(in crate::game) struct Probe(pub(in crate::game) Heard);
         }
     }
 #[cfg(test)]
-pub(in crate::game) struct Tailor(pub(in crate::game) Fits);
+pub(crate) struct Tailor(pub(crate) Fits);
 #[cfg(test)]
 #[mod_api::__subscriptions]
     impl mod_api::Hooks for Tailor {
@@ -123,19 +123,19 @@ pub(in crate::game) struct Tailor(pub(in crate::game) Fits);
     }
 #[cfg(test)]
 impl Fits {
-        pub(in crate::game::server_side) fn new(accepts: &'static str) -> Self {
+        pub(crate) fn new(accepts: &'static str) -> Self {
             Self {
                 accepts: Arc::new(std::sync::Mutex::new(accepts)),
                 asked: Arc::default(),
             }
         }
-        pub(in crate::game::server_side) fn asked(
+        pub(crate) fn asked(
             &self,
         ) -> Vec<(String, u32, String, Option<[f64; 3]>)> {
             std::mem::take(&mut *self.asked.lock().unwrap())
         }
         /// Runs `test` with a mod whose part of the iron helmet is this one installed.
-        pub(in crate::game::server_side) fn installed(&self, test: impl FnOnce()) {
+        pub(crate) fn installed(&self, test: impl FnOnce()) {
             let tailor = mod_api::ModEntry::new("tailor", Box::new(Tailor(self.clone())));
             let mods: mod_api::Mods = vec![tailor].into();
             crate::entry::install_client_hooks();
@@ -793,4 +793,4 @@ impl Fits {
 
 #[cfg(test)]
 #[path = "dispenser/decision_tests.rs"]
-pub(in crate::game) mod decision_tests;
+pub(crate) mod decision_tests;

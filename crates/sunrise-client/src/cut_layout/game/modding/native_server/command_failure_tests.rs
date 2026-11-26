@@ -9,7 +9,7 @@ use sunrise_protocol::{
 };
 use sunrise_sim::lan::{Out, PlayerSender};
 
-pub(in crate::game) struct FailingCommand(pub(in crate::game) Arc<AtomicUsize>);
+pub(crate) struct FailingCommand(pub(crate) Arc<AtomicUsize>);
 
 #[mod_api::__subscriptions]
 impl mod_api::Hooks for FailingCommand {
@@ -79,7 +79,7 @@ impl mod_api::Hooks for FailingCommand {
     }
 }
 
-pub(in crate::game) fn with_failure_sources(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
+pub(crate) fn with_failure_sources(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
     mod_platform::testing::with_mods(
         vec![mod_api::ModEntry::new(
             "failure_test",

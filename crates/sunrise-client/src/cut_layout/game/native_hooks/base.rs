@@ -2,14 +2,14 @@
 
 #[cfg(test)]
 #[path = "base_tests/screen_open_tests.rs"]
-pub(in crate::game) mod screen_open_tests;
+pub(crate) mod screen_open_tests;
 
 #[cfg(test)]
 #[path = "base_tests/screen_widgets_tests.rs"]
-pub(in crate::game) mod screen_widgets_tests;
+pub(crate) mod screen_widgets_tests;
 
 #[cfg(test)]
-pub(in crate::game) mod text_tests {
+pub(crate) mod text_tests {
     use {crate::game::native_hooks::base::*};
 
     /// `DrawContext::text` takes ARGB as vanilla's `GuiGraphics` does: the alpha reaches the

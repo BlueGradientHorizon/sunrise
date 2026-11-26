@@ -1,5 +1,5 @@
 use super::*;
-pub(in crate::game::server_side) use crate::game::remote::interaction_event_tests::item_used_on_block_tests::install_criteria;
+pub(crate) use crate::game::remote::interaction_event_tests::item_used_on_block_tests::install_criteria;
 
 #[test]
 #[ignore = "daily"]

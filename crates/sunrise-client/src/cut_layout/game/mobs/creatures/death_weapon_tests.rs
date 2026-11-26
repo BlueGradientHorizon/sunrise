@@ -2,7 +2,7 @@ use std::sync::{Arc, Mutex};
 
 // Native mod registries are process-global. Each parallel test owns a fresh process
 // and temporary working directory, while retaining the normal test runner parallelism.
-pub(in crate::game) fn isolated() -> bool {
+pub(crate) fn isolated() -> bool {
     const FLAG: &str = "SUNRISE_DEATH_WEAPON_CHILD";
     if std::env::var_os(FLAG).is_some() {
         return false;
@@ -37,11 +37,11 @@ pub(in crate::game) fn isolated() -> bool {
     true
 }
 
-pub(in crate::game) struct WeaponProbe {
-    pub(in crate::game) expected: Option<mod_api::ItemStack>,
-    pub(in crate::game) expected_source: Option<(&'static str, i32)>,
-    pub(in crate::game) swap: Option<mod_api::ItemStack>,
-    pub(in crate::game) seen: Arc<Mutex<usize>>,
+pub(crate) struct WeaponProbe {
+    pub(crate) expected: Option<mod_api::ItemStack>,
+    pub(crate) expected_source: Option<(&'static str, i32)>,
+    pub(crate) swap: Option<mod_api::ItemStack>,
+    pub(crate) seen: Arc<Mutex<usize>>,
 }
 #[mod_api::__subscriptions]
 impl mod_api::Hooks for WeaponProbe {
@@ -73,7 +73,7 @@ impl mod_api::Hooks for WeaponProbe {
 }
 
 #[allow(unused_imports)]
-pub(in crate::game) use crate::game::server_side::creatures_server::death_weapon::tests::weapon_case;
+pub(crate) use crate::game::server_side::creatures_server::death_weapon::tests::weapon_case;
 
 #[test]
 #[ignore = "daily"]

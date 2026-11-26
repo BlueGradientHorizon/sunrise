@@ -3,7 +3,7 @@
 //! ends the dance; another jukebox's `jukebox_play` (every 20 ticks of its
 //! song) starts it again (tools/test_allay_jukebox_source_parity.py measures
 //! the same on vanilla 26.3).
-use {crate::game::*, sunrise_gameplay_common::game::{Arc, Instant, Options, PathBuf, Progress, Resources, Settings, entity, execution_role, load_resources}};
+use {crate::game::*, sunrise_gameplay_common::game::{Instant, Options, PathBuf, Progress, Resources, entity, execution_role}};
 use std::sync::Arc;
 use sunrise_core::position::ChunkPos;
 use sunrise_level::chunk::Chunk;

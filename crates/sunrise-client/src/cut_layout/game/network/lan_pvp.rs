@@ -1,7 +1,7 @@
 
 
 #[cfg(test)]
-pub(in crate::game) mod arrow_hit_sound_tests {
+pub(crate) mod arrow_hit_sound_tests {
     use {sunrise_gameplay::game::server_side::lan_pvp::Victim, sunrise_gameplay::game::server_side::lan_pvp::Who};
     use std::fmt::Write as _;
     use std::path::PathBuf;

@@ -1,22 +1,22 @@
 
 #[cfg(test)]
-pub(in crate::game) mod enchant_tests;
+pub(crate) mod enchant_tests;
 
 #[cfg(test)]
-pub(in crate::game) mod clone_writes_tests;
+pub(crate) mod clone_writes_tests;
 
 #[cfg(test)]
-pub(in crate::game) mod air_filter_tests;
+pub(crate) mod air_filter_tests;
 #[cfg(test)]
-pub(in crate::game) mod teleport_pitch_tests;
+pub(crate) mod teleport_pitch_tests;
 
 #[cfg(test)]
 #[path = "summon_item_orb_tests.rs"]
-pub(in crate::game) mod summon_item_orb_tests;
+pub(crate) mod summon_item_orb_tests;
 
 #[cfg(test)]
 #[path = "summon_bolt_tests.rs"]
-pub(in crate::game) mod summon_bolt_tests;
+pub(crate) mod summon_bolt_tests;
 
 #[cfg(test)]
 pub(crate) mod peaceful_tests {
@@ -37,8 +37,8 @@ use sunrise_mod_package::{Content, Package, enabled::EnabledMods};
 
 use sunrise_sim::mod_content::{self, ContentMod};
 
-pub(in crate::game) use sunrise_gameplay::game::server_side::creatures_server::peaceful_fixture::with_types;
-pub(in crate::game) fn with_types_client(
+pub(crate) use sunrise_gameplay::game::server_side::creatures_server::peaceful_fixture::with_types;
+pub(crate) fn with_types_client(
         role: ExecutionRole,
         test: impl FnOnce(&mut sunrise_client_gameplay::game::ClientGame<'_>),
     ) {
@@ -164,22 +164,22 @@ capabilities = ["registries"]
 
 #[cfg(test)]
 #[path = "teleport_mob_tests.rs"]
-pub(in crate::game) mod teleport_mob_tests;
+pub(crate) mod teleport_mob_tests;
 
 #[cfg(test)]
 #[path = "teleport_item_tests.rs"]
-pub(in crate::game) mod teleport_item_tests;
+pub(crate) mod teleport_item_tests;
 
 #[cfg(test)]
 #[path = "teleport_level_tests.rs"]
-pub(in crate::game) mod teleport_level_tests;
+pub(crate) mod teleport_level_tests;
 
 #[cfg(test)]
 #[path = "teleport_player_rider_tests.rs"]
-pub(in crate::game) mod teleport_player_rider_tests;
+pub(crate) mod teleport_player_rider_tests;
 
 #[cfg(test)]
-pub(in crate::game) mod selector_bounds_tests {
+pub(crate) mod selector_bounds_tests {
     use {crate::game::server_side::commands::*};
     use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
     use sunrise_core::geometry::Vec3;
@@ -269,10 +269,10 @@ pub(in crate::game) mod selector_bounds_tests {
 
 #[cfg(test)]
 #[path = "local_coordinate_command_tests.rs"]
-pub(in crate::game) mod local_coordinate_command_tests;
+pub(crate) mod local_coordinate_command_tests;
 
 #[cfg(test)]
-pub(in crate::game) mod effective_presence_tests {
+pub(crate) mod effective_presence_tests {
     use {crate::game::server_side::commands::*};
     use sunrise_gameplay::game::native_entity_refs::tests::with_game;
     #[test]
@@ -404,7 +404,7 @@ pub(in crate::game) mod effective_presence_tests {
 }
 
 #[cfg(test)]
-pub(in crate::game) mod fill_note_instrument_tests {
+pub(crate) mod fill_note_instrument_tests {
     use {crate::game::server_side::commands::*};
     use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
     use std::sync::Arc;
@@ -539,7 +539,7 @@ pub(in crate::game) mod fill_note_instrument_tests {
 }
 
 #[cfg(test)]
-pub(in crate::game) mod item_damage_range_tests {
+pub(crate) mod item_damage_range_tests {
     use {crate::game::server_side::commands::*};
     use sunrise_gameplay::game::native_entity_refs::tests::with_game;
     use sunrise_core::position::BlockPos;
@@ -710,10 +710,10 @@ pub(in crate::game) mod item_damage_range_tests {
 
 #[cfg(test)]
 #[path = "vehicle_kill_tests.rs"]
-pub(in crate::game) mod vehicle_kill_tests;
+pub(crate) mod vehicle_kill_tests;
 
 #[cfg(test)]
-pub(in crate::game) mod global_selector_order_tests {
+pub(crate) mod global_selector_order_tests {
     use {sunrise_gameplay::game::server_side::commands::Selector, crate::game::server_side::commands::Target};
     use sunrise_command::args::Sort;
     use sunrise_core::nbt::Tag;
@@ -871,14 +871,14 @@ pub(in crate::game) mod global_selector_order_tests {
 
 #[cfg(test)]
 #[path = "incoming_tests/knot_identity.rs"]
-pub(in crate::game) mod knot_identity_tests;
+pub(crate) mod knot_identity_tests;
 
 #[cfg(test)]
-pub(in crate::game) mod mob_display_name_tests;
+pub(crate) mod mob_display_name_tests;
 
 #[cfg(test)]
 #[path = "item_count_predicate_tests.rs"]
-pub(in crate::game) mod item_count_predicate_tests;
+pub(crate) mod item_count_predicate_tests;
 
 use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
 

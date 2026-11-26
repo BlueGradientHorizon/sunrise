@@ -25,7 +25,7 @@ pub(in crate::game) struct Hit {
     pub(in crate::game) weapon: Option<mod_api::ItemStack>,
 }
 impl Hit {
-    pub(in crate::game) fn new(
+    pub(crate) fn new(
         entity: u32,
         kind: &str,
         source: &HurtSource<'_>,
@@ -51,10 +51,10 @@ pub(in crate::game) struct Seen {
     pub(in crate::game) kinds: Vec<(String, String)>,
     pub(in crate::game) drops: Vec<(Hit, Vec<String>)>,
 }
-pub(in crate::game) struct Probe {
+pub(crate) struct Probe {
     pub seen: Arc<Mutex<Seen>>,
-    pub(in crate::game) cancel: bool,
-    pub(in crate::game) heal: bool,
+    pub(crate) cancel: bool,
+    pub(crate) heal: bool,
 }
 #[mod_api::__subscriptions]
 impl Hooks for Probe {
@@ -134,7 +134,7 @@ impl Hooks for Probe {
     }
 }
 
-pub(in crate::game) fn observed(
+pub(crate) fn observed(
     cancel: bool,
     heal: bool,
     check: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>, &Arc<Mutex<Seen>>),
@@ -170,9 +170,9 @@ pub(in crate::game) fn observed(
 }
 
 #[allow(unused_imports)]
-pub(in crate::game) use crate::game::server_side::native_hooks_server::death_source_tests::player;
+pub(crate) use crate::game::server_side::native_hooks_server::death_source_tests::player;
 
-pub(in crate::game) fn mob(
+pub(crate) fn mob(
     game: &mut sunrise_gameplay::game::ServerGame<'_>,
     id: u32,
     name: &str,
@@ -186,7 +186,7 @@ pub(in crate::game) fn mob(
     game.mobs.push(mob);
 }
 
-pub(in crate::game) fn bow() -> ItemStack {
+pub(crate) fn bow() -> ItemStack {
     let mut bow = ItemStack::new("minecraft:bow", 1);
     bow.damage = 7;
     bow.data_mut().set_other(
@@ -203,7 +203,7 @@ pub(in crate::game) fn bow() -> ItemStack {
 }
 
 /// Reuse BowItem.releaseUsing, then make its collision deterministic (not its random spread).
-pub(in crate::game) fn player_arrow(
+pub(crate) fn player_arrow(
     game: &mut sunrise_gameplay::game::ServerGame<'_>,
     weapon: &ItemStack,
 ) -> u32 {
@@ -223,7 +223,7 @@ pub(in crate::game) fn player_arrow(
     })
 }
 
-pub(in crate::game) fn finish_projectile_death(game: &mut sunrise_gameplay::game::ServerGame<'_>, id: u32) {
+pub(crate) fn finish_projectile_death(game: &mut sunrise_gameplay::game::ServerGame<'_>, id: u32) {
     game.tick_projectiles().unwrap();
     assert!(game.mobs.iter().find(|mob| mob.id == id).unwrap().health <= 0.0);
     game.tick_creature_entities().unwrap();
@@ -312,7 +312,7 @@ fn skeleton_arrow_death_credits_the_skeleton_not_the_player() {
     );
 }
 
-pub(in crate::game) fn cancelled_mob(heal: bool) {
+pub(crate) fn cancelled_mob(heal: bool) {
     observed(true, heal, |game, seen| {
         player(game);
         // Sheep's guaranteed mutton makes the absence of loot non-probabilistic.
@@ -373,7 +373,7 @@ fn cancelled_unhealed_mob_is_removed_at_twenty_ticks_without_loot_or_redispatch(
     );
 }
 
-pub(in crate::game) fn cancelled_player(heal: bool) {
+pub(crate) fn cancelled_player(heal: bool) {
     observed(true, heal, |game, seen| {
         sunrise_gameplay::game::native_player_death::tests::add_guest(game);
         game.side
@@ -744,7 +744,7 @@ fn a_killed_guest_with_no_combat_entry_reports_its_drops() {
 }
 
 /// A loaded guest at `position` with `health` and a diamond to drop.
-pub(in crate::game) fn standing_guest(
+pub(crate) fn standing_guest(
     game: &mut sunrise_gameplay::game::ServerGame<'_>,
     position: [f64; 3],
     health: f32,
@@ -768,7 +768,7 @@ pub(in crate::game) fn standing_guest(
 
 /// A skeleton (42) at x 2.5 and its arrow from x 4.5 flying east along z 4.5, through a
 /// guest standing at x 6.
-pub(in crate::game) fn skeleton_shot_at_guest(game: &mut sunrise_gameplay::game::ServerGame<'_>) -> u32 {
+pub(crate) fn skeleton_shot_at_guest(game: &mut sunrise_gameplay::game::ServerGame<'_>) -> u32 {
     mob(game, 42, "minecraft:skeleton", Vec3::new(2.5, 80.0, 4.5));
     let mut shot = Projectile::new(
         ProjectileKind::Arrow {

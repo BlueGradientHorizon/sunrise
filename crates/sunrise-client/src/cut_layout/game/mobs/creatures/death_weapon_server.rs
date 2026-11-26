@@ -2,8 +2,8 @@
 
 #[cfg(test)]
 #[path = "death_weapon_tests_server.rs"]
-pub(in crate::game) mod tests;
+pub(crate) mod tests;
 
 #[cfg(test)]
 #[path = "death_weapon_review_tests_server.rs"]
-pub(in crate::game) mod review_tests;
+pub(crate) mod review_tests;

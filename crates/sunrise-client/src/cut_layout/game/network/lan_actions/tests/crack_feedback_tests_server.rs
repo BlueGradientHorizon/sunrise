@@ -7,7 +7,7 @@ use sunrise_level::chunk::Chunk;
 use sunrise_sim::lan::{NetConfig, hub::HubConfig};
 use sunrise_world::registry::BlockStateId;
 
-pub(in crate::game) fn run_crack_packets_follow_start_clock_and_strict_observer_radius() {
+pub(crate) fn run_crack_packets_follow_start_clock_and_strict_observer_radius() {
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
     let settings = Settings::default();
     let loaded = load_resources(

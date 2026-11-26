@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod interception_tests;
 #[cfg(test)]
-pub(in crate::game) mod live_read_tests;
+pub(crate) mod live_read_tests;
 #[cfg(test)]
 mod redirect_tests;
 

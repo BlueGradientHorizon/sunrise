@@ -3,132 +3,132 @@
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "claimed_item_use_tests_client.rs"]
-pub(in crate::game) mod claimed_item_use_tests;
+pub(crate) mod claimed_item_use_tests;
 
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "gamemode_actions_tests_client.rs"]
-pub(in crate::game) mod gamemode_actions_tests;
+pub(crate) mod gamemode_actions_tests;
 
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "chat_audit_tests_client.rs"]
-pub(in crate::game) mod chat_audit_tests;
+pub(crate) mod chat_audit_tests;
 
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "interaction_event_tests_client.rs"]
-pub(in crate::game) mod interaction_event_tests;
+pub(crate) mod interaction_event_tests;
 
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "native_entity_tests_client.rs"]
-pub(in crate::game) mod native_entity_tests;
+pub(crate) mod native_entity_tests;
 
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "camera_view_tests_client.rs"]
-pub(in crate::game) mod camera_view_tests;
+pub(crate) mod camera_view_tests;
 
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "client_camera_tests_client.rs"]
-pub(in crate::game) mod client_camera_tests;
+pub(crate) mod client_camera_tests;
 
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "riptide_tests_client.rs"]
-pub(in crate::game) mod riptide_tests;
+pub(crate) mod riptide_tests;
 
 #[cfg(feature = "client")]
 #[cfg(test)]
-pub(in crate::game) mod tests {
+pub(crate) mod tests {
     use sunrise_client_gameplay::game::client_side::remote_client::Game;
-    pub(in crate::game::client_side) use crate::game::remote::tests::connect_menu_test;
-    pub(in crate::game::client_side) use crate::game::remote::tests::connect_play_test;
-    pub(in crate::game::client_side) use crate::game::remote::tests::spawn_menu_test;
+    pub(crate) use crate::game::remote::tests::connect_menu_test;
+    pub(crate) use crate::game::remote::tests::connect_play_test;
+    pub(crate) use crate::game::remote::tests::spawn_menu_test;
 
-    pub(in crate::game) mod client_explosion_tests {
+    pub(crate) mod client_explosion_tests {
         include!("client_explosion_tests_client.rs");
     }
 
-    pub(in crate::game) mod chat_window_and_input_tests {
+    pub(crate) mod chat_window_and_input_tests {
         include!("chat_window_and_input_tests_client.rs");
     }
 
-    pub(in crate::game) mod play_bundle_tests {
+    pub(crate) mod play_bundle_tests {
         include!("play_bundle_tests_client.rs");
     }
 
-    pub(in crate::game) mod camera_draw_tests {
+    pub(crate) mod camera_draw_tests {
         include!("camera_draw_tests_client.rs");
     }
 
-    pub(in crate::game) mod camera_parity_red_tests {
+    pub(crate) mod camera_parity_red_tests {
         include!("camera_parity_red_tests_client.rs");
     }
 
-    pub(in crate::game) mod camera_death_tests {
+    pub(crate) mod camera_death_tests {
         include!("camera_death_tests_client.rs");
     }
 
-    pub(in crate::game) mod client_hud_camera_tests {
+    pub(crate) mod client_hud_camera_tests {
         include!("client_hud_camera_tests_client.rs");
     }
 
-    pub(in crate::game) mod client_day_time_tests {
+    pub(crate) mod client_day_time_tests {
         include!("client_day_time_tests_client.rs");
     }
 
-    pub(in crate::game) mod client_level_environment_tests {
+    pub(crate) mod client_level_environment_tests {
         include!("client_level_environment_tests_client.rs");
     }
 
-    pub(in crate::game) mod client_level_lifecycle_tests {
+    pub(crate) mod client_level_lifecycle_tests {
         include!("client_level_lifecycle_tests_client.rs");
     }
 
-    pub(in crate::game) mod client_menu_tests {
+    pub(crate) mod client_menu_tests {
         include!("client_menu_tests_client.rs");
     }
 
-    pub(in crate::game) mod client_vanilla_reads_tests {
+    pub(crate) mod client_vanilla_reads_tests {
         include!("client_vanilla_reads_tests_client.rs");
     }
 
-    pub(in crate::game) mod container_drop_tests {
+    pub(crate) mod container_drop_tests {
         include!("container_drop_tests_client.rs");
     }
 
-    pub(in crate::game) mod dimension_transition_tests {
+    pub(crate) mod dimension_transition_tests {
         include!("dimension_transition_tests_client.rs");
     }
 
-    pub(in crate::game) mod menu_packets_tests {
+    pub(crate) mod menu_packets_tests {
         include!("menu_packets_tests_client.rs");
     }
 
-    pub(in crate::game) mod client_close_tests {
+    pub(crate) mod client_close_tests {
         include!("client_close_tests_client.rs");
     }
 
-    pub(in crate::game) mod particle_group_tests {
+    pub(crate) mod particle_group_tests {
         include!("particle_group_tests_client.rs");
     }
 
-    pub(in crate::game) mod spear_jab_tests {
+    pub(crate) mod spear_jab_tests {
         include!("spear_jab_tests_client.rs");
     }
 
-    pub(in crate::game) mod client_admission_tests {
+    pub(crate) mod client_admission_tests {
         include!("client_admission_tests_client.rs");
     }
 
-    pub(in crate::game) mod client_emitters_tests {
+    pub(crate) mod client_emitters_tests {
         include!("client_emitters_tests_client.rs");
     }
 
-    pub(in crate::game) mod tracking_state_tests {
+    pub(crate) mod tracking_state_tests {
         include!("tracking_state_tests_client.rs");
     }
 
@@ -378,17 +378,17 @@ pub(in crate::game) mod tests {
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "movement_input_tests_client.rs"]
-pub(in crate::game) mod movement_input_tests;
+pub(crate) mod movement_input_tests;
 
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "player_tick_tests_client.rs"]
-pub(in crate::game) mod player_tick_tests;
+pub(crate) mod player_tick_tests;
 
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "rider_tick_tests_client.rs"]
-pub(in crate::game) mod rider_tick_tests;
+pub(crate) mod rider_tick_tests;
 #[path = "sync.rs"]
 mod sync_reads;
 

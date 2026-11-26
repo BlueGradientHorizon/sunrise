@@ -47,7 +47,7 @@ pub(in sunrise_client_gameplay::game::client_side) fn reset_arena(
     game.start_audio_capture();
 }
 
-pub(in crate::game) fn run_case(
+pub(crate) fn run_case(
     game: &mut sunrise_gameplay::game::ServerGame<'_>,
     case: &FishingCase,
     hook_seed: i64,
@@ -127,7 +127,7 @@ pub(in crate::game) fn run_case(
     errors
 }
 
-pub(in crate::game) fn run_extra_case(
+pub(crate) fn run_extra_case(
     game: &mut sunrise_gameplay::game::ServerGame<'_>,
     case: &FishingExtraCase,
     hook_seed: i64,

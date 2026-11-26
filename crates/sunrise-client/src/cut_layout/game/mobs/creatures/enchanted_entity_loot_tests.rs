@@ -13,9 +13,9 @@ pub(in crate::game) struct Heard {
     pub(in crate::game) level: u32,
 }
 /// Answers every question with level `self.1`.
-pub(in crate::game) struct Answer(
-    pub(in crate::game) Arc<Mutex<Vec<Heard>>>,
-    pub(in crate::game) u32,
+pub(crate) struct Answer(
+    pub(crate) Arc<Mutex<Vec<Heard>>>,
+    pub(crate) u32,
 );
 #[mod_api::__subscriptions]
 impl mod_api::Hooks for Answer {
@@ -43,17 +43,17 @@ impl mod_api::Hooks for Answer {
     }
 }
 
-pub(in crate::game) fn listening(seen: &Arc<Mutex<Vec<Heard>>>, level: u32) -> mod_api::Mods {
+pub(crate) fn listening(seen: &Arc<Mutex<Vec<Heard>>>, level: u32) -> mod_api::Mods {
     let answer = Box::new(Answer(Arc::clone(seen), level));
     vec![mod_api::ModEntry::new("enchanted-loot", answer)].into()
 }
 #[allow(unused_imports)]
-pub(in crate::game) use crate::game::server_side::creatures_server::enchanted_entity_loot_tests::zombie;
-pub(in crate::game) fn dropped(game: &sunrise_gameplay::game::ServerGame<'_>, item: &str) -> u32 {
+pub(crate) use crate::game::server_side::creatures_server::enchanted_entity_loot_tests::zombie;
+pub(crate) fn dropped(game: &sunrise_gameplay::game::ServerGame<'_>, item: &str) -> u32 {
     let drops = game.dropped.iter().filter(|d| &*d.stack.item == item);
     drops.map(|d| d.stack.count).sum()
 }
-pub(in crate::game) fn heard(entity: &str, attacker: &str, damage_type: &str, level: u32) -> Heard {
+pub(crate) fn heard(entity: &str, attacker: &str, damage_type: &str, level: u32) -> Heard {
     Heard {
         entity: Some(entity.into()),
         attacker: Some(attacker.into()),

@@ -7,7 +7,7 @@ use mod_api::VanillaKeyMappingRef;
 use std::sync::OnceLock;
 
 #[path = "input_burst_tests_client.rs"]
-pub(in crate::game) mod input_burst_tests;
+pub(crate) mod input_burst_tests;
 
 #[test]
 #[ignore = "daily"]
@@ -79,7 +79,7 @@ fn opening_a_screen_releases_mod_holds() {
     });
 }
 
-pub(in crate::game) fn with_callback_game(
+pub(crate) fn with_callback_game(
     click: bool,
     test: impl FnOnce(
         &mut sunrise_client_gameplay::game::ClientGame<'_>,

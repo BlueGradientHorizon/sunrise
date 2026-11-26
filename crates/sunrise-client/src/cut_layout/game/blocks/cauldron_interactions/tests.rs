@@ -12,7 +12,7 @@ use sunrise_items::items::ItemStack;
 use sunrise_sim::cauldron::{Outcome, interactions::Entry};
 use sunrise_sim::first_person_sim::Hand;
 
-pub(in crate::game) const POS: [i32; 3] = [0, 64, 0];
+pub(crate) const POS: [i32; 3] = [0, 64, 0];
 #[derive(Default)]
 pub(in crate::game) struct Seen {
     pub(in crate::game) fail_preparation: AtomicBool,
@@ -20,7 +20,7 @@ pub(in crate::game) struct Seen {
     pub(in crate::game) actor: AtomicUsize,
     pub(in crate::game) drops: AtomicUsize,
 }
-pub(in crate::game) struct Syrup {
+pub(crate) struct Syrup {
     pub seen: Arc<Seen>,
 }
 impl mod_api::Interaction for Syrup {
@@ -81,9 +81,9 @@ impl mod_api::Interaction for Syrup {
         CauldronDecision::Success
     }
 }
-pub(in crate::game) struct TestMod {
+pub(crate) struct TestMod {
     pub seen: Arc<Seen>,
-    pub(in crate::game) dye: bool,
+    pub(crate) dye: bool,
 }
 #[mod_api::__subscriptions]
 impl Hooks for TestMod {
@@ -276,7 +276,7 @@ fn a_panicking_cauldron_registrar_leaves_no_exact_tag_or_all_entries() {
     );
 }
 
-pub(in crate::game) fn fixture_mods(
+pub(crate) fn fixture_mods(
     mods: mod_api::Mods,
     test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>),
 ) {
@@ -289,7 +289,7 @@ pub(in crate::game) fn fixture_mods(
         .to_path_buf();
     with_game_at(root, test);
 }
-pub(in crate::game) fn fixture_mods_client(
+pub(crate) fn fixture_mods_client(
     mods: mod_api::Mods,
     test: impl FnOnce(&mut sunrise_client_gameplay::game::ClientGame<'_>),
 ) {
@@ -306,7 +306,7 @@ pub(in crate::game) fn fixture_mods_client(
         test,
     );
 }
-pub(in crate::game) fn fixture_mods_pair(
+pub(crate) fn fixture_mods_pair(
     mods: mod_api::Mods,
     test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>, &mut sunrise_client_gameplay::game::ClientGame<'_>),
 ) {
@@ -325,7 +325,7 @@ pub(in crate::game) fn fixture_mods_pair(
         );
     });
 }
-pub(in crate::game) fn fixture(
+pub(crate) fn fixture(
     dye: bool,
     test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>, &Arc<Seen>),
 ) {
@@ -343,7 +343,7 @@ pub(in crate::game) fn fixture(
         test(game, &seen);
     });
 }
-pub(in crate::game) fn setup_common<S>(
+pub(crate) fn setup_common<S>(
     game: &mut Game<'_, S>,
     block: &str,
     level: Option<&str>,
@@ -373,7 +373,7 @@ pub(in crate::game) fn setup_common<S>(
     game.inventory[0] = Some(ItemStack::new(item, count));
     sunrise_client_gameplay::game::sculk::TEST_POSTED_EVENTS.with(|events| *events.borrow_mut() = Some(Vec::new()));
 }
-pub(in crate::game) fn setup(
+pub(crate) fn setup(
     game: &mut sunrise_gameplay::game::ServerGame<'_>,
     block: &str,
     level: Option<&str>,
@@ -386,7 +386,7 @@ pub(in crate::game) fn setup(
     game.side.audio_capture_active = true;
     game.side.pending_sounds.clear();
 }
-pub(in crate::game) fn state<S>(game: &Game<'_, S>) -> (String, Option<String>) {
+pub(crate) fn state<S>(game: &Game<'_, S>) -> (String, Option<String>) {
     let state = game
         .pack
         .assets
@@ -395,10 +395,10 @@ pub(in crate::game) fn state<S>(game: &Game<'_, S>) -> (String, Option<String>) 
         .unwrap();
     (state.name.clone(), state.properties.get("level").cloned())
 }
-pub(in crate::game) fn events() -> usize {
+pub(crate) fn events() -> usize {
     sunrise_client_gameplay::game::sculk::TEST_POSTED_EVENTS.with(|events| events.borrow().as_ref().unwrap().len())
 }
-pub(in crate::game) fn unchanged<S>(game: &Game<'_, S>, seen: &Seen) {
+pub(crate) fn unchanged<S>(game: &Game<'_, S>, seen: &Seen) {
     assert_eq!(state(game), ("minecraft:cauldron".into(), None));
     let held = game.inventory[0].as_ref().unwrap();
     assert_eq!((&*held.item, held.count), ("test:syrup_bottle", 2));
@@ -413,7 +413,7 @@ pub(in crate::game) fn unchanged<S>(game: &Game<'_, S>, seen: &Seen) {
         0
     );
 }
-pub(in crate::game) fn bottles(game: &sunrise_gameplay::game::ServerGame<'_>) -> u32 {
+pub(crate) fn bottles(game: &sunrise_gameplay::game::ServerGame<'_>) -> u32 {
     game.inventory
         .iter()
         .flatten()

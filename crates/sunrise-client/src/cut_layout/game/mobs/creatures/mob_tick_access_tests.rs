@@ -16,9 +16,9 @@ pub(in crate::game) struct DespawnRecords(
     pub(in crate::game) Vec<(u32, Option<[f64; 3]>, Option<[f64; 3]>)>,
 );
 
-pub(in crate::game) struct DespawnProbe {
-    pub(in crate::game) records: Arc<Mutex<DespawnRecords>>,
-    pub(in crate::game) allow: Arc<AtomicU32>,
+pub(crate) struct DespawnProbe {
+    pub(crate) records: Arc<Mutex<DespawnRecords>>,
+    pub(crate) allow: Arc<AtomicU32>,
 }
 
 #[mod_api::__subscriptions]
@@ -38,9 +38,9 @@ impl mod_api::Hooks for DespawnProbe {
 }
 
 /// Reads and moves the mob in its `entity_tick_pre`, through its handle.
-pub(in crate::game) struct MoveOnPre {
-    pub(in crate::game) id: u32,
-    pub(in crate::game) seen: Arc<Mutex<Vec<Option<[f64; 3]>>>>,
+pub(crate) struct MoveOnPre {
+    pub(crate) id: u32,
+    pub(crate) seen: Arc<Mutex<Vec<Option<[f64; 3]>>>>,
 }
 
 #[mod_api::__subscriptions]
@@ -67,14 +67,14 @@ impl mod_api::Hooks for MoveOnPre {
 }
 
 #[allow(unused_imports)]
-pub(in crate::game) use crate::game::server_side::creatures_server::borrowed_tick::mob_tick_access_tests::with_two_pigs;
+pub(crate) use crate::game::server_side::creatures_server::borrowed_tick::mob_tick_access_tests::with_two_pigs;
 
 /// Removes the mob it names, and records what every despawn callback reads of
 /// that mob's handle: the victim's own callback runs before the removal, a
 /// later callback after it.
-pub(in crate::game) struct RemovedPeerProbe {
-    pub(in crate::game) victim: u32,
-    pub(in crate::game) records: Arc<Mutex<Vec<(u32, Option<[f64; 3]>)>>>,
+pub(crate) struct RemovedPeerProbe {
+    pub(crate) victim: u32,
+    pub(crate) records: Arc<Mutex<Vec<(u32, Option<[f64; 3]>)>>>,
 }
 
 #[mod_api::__subscriptions]
@@ -220,8 +220,8 @@ pub(in crate::game) struct PassObservation {
     pub(in crate::game) spawned_handles: [bool; 3],
 }
 
-pub(in crate::game) struct PassProbe {
-    pub(in crate::game) records: Arc<Mutex<Vec<PassObservation>>>,
+pub(crate) struct PassProbe {
+    pub(crate) records: Arc<Mutex<Vec<PassObservation>>>,
 }
 
 #[mod_api::__subscriptions]
@@ -324,8 +324,8 @@ fn scoped_despawn_view_tracks_peer_turns_and_defers_mid_pass_spawns() {
 }
 
 /// Extends the lifetime of the dropped item it names, through `extra_life`.
-pub(in crate::game) struct ExtendLife {
-    pub(in crate::game) id: Arc<AtomicU32>,
+pub(crate) struct ExtendLife {
+    pub(crate) id: Arc<AtomicU32>,
 }
 
 #[mod_api::__subscriptions]
@@ -339,10 +339,10 @@ impl mod_api::Hooks for ExtendLife {
 
 /// Discards another mob from the first mob's `entity_tick_pre`: a hook that
 /// re-enters the entity handles while a tick is running.
-pub(in crate::game) struct DiscardOnPre {
-    pub(in crate::game) id: u32,
-    pub(in crate::game) victim: u32,
-    pub(in crate::game) seen: Arc<Mutex<Vec<(u32, bool, bool)>>>,
+pub(crate) struct DiscardOnPre {
+    pub(crate) id: u32,
+    pub(crate) victim: u32,
+    pub(crate) seen: Arc<Mutex<Vec<(u32, bool, bool)>>>,
 }
 
 #[mod_api::__subscriptions]
@@ -397,14 +397,14 @@ fn a_tick_hook_discards_another_mob_nested() {
 
 /// What a tick listener heard: each call's phase and entities, and at a Post where the first
 /// of them stands. Names the types of `named` to `entity_tick_each`.
-pub(in crate::game) struct TickTiming {
-    pub(in crate::game) named: &'static [&'static str],
-    pub(in crate::game) replace_cancels: bool,
-    pub(in crate::game) heard: Arc<Mutex<TickCalls>>,
+pub(crate) struct TickTiming {
+    pub(crate) named: &'static [&'static str],
+    pub(crate) replace_cancels: bool,
+    pub(crate) heard: Arc<Mutex<TickCalls>>,
 }
 
 /// A tick listener's calls, in order: (phase, entities, the first one's position at a Post).
-pub(in crate::game) type TickCalls = Vec<(&'static str, Vec<u32>, Option<[f64; 3]>)>;
+pub(crate) type TickCalls = Vec<(&'static str, Vec<u32>, Option<[f64; 3]>)>;
 
 #[mod_api::__subscriptions]
 impl mod_api::Hooks for TickTiming {
@@ -439,7 +439,7 @@ impl mod_api::Hooks for TickTiming {
 }
 
 /// The two pigs' tick hooks through the real creature pass; the first pig falls in its tick.
-pub(in crate::game) fn pig_ticks(named: bool, replace_cancels: bool) -> TickCalls {
+pub(crate) fn pig_ticks(named: bool, replace_cancels: bool) -> TickCalls {
     let heard = Arc::new(Mutex::new(Vec::new()));
     let mods: mod_api::Mods = vec![ModEntry::new(
         "mob-tick-timing",
@@ -518,8 +518,8 @@ fn an_unnamed_family_hears_one_pre_and_one_post() {
 
 /// Moves pig 72 into a second arrow's path in the Post of the arrow `first` (an arrow named to
 /// `entity_tick_each`, so told alone).
-pub(in crate::game) struct MoveOnArrowPost {
-    pub(in crate::game) first: Arc<AtomicU32>,
+pub(crate) struct MoveOnArrowPost {
+    pub(crate) first: Arc<AtomicU32>,
 }
 
 #[mod_api::__subscriptions]

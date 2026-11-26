@@ -2,7 +2,7 @@
 
 #[cfg(test)]
 #[path = "native_projectiles/impact_probe.rs"]
-pub(in crate::game) mod impact_probe;
+pub(crate) mod impact_probe;
 
 #[cfg(test)]
 #[path = "native_projectiles/impact_panic_tests.rs"]

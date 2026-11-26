@@ -82,7 +82,7 @@ fn a_stand_breaks_on_low_health_only_through_damage_and_a_dead_one_goes_at_twent
     run_a_stand_breaks_on_low_health_only_through_damage_and_a_dead_one_goes_at_twenty();
 }
 
-pub(in crate::game) fn run_a_stand_breaks_on_low_health_only_through_damage_and_a_dead_one_goes_at_twenty()
+pub(crate) fn run_a_stand_breaks_on_low_health_only_through_damage_and_a_dead_one_goes_at_twenty()
  {
     let witness = load_witness_26_3();
     let rows = parse_witness_26_3(&witness);

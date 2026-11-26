@@ -1,16 +1,16 @@
 
 #[cfg(test)]
 #[path = "native_server/command_failure_tests.rs"]
-pub(in crate::game) mod command_failure_tests;
+pub(crate) mod command_failure_tests;
 #[cfg(test)]
 #[path = "native_server/command_shape_tests.rs"]
-pub(in crate::game) mod command_shape_tests;
+pub(crate) mod command_shape_tests;
 #[cfg(test)]
 #[path = "native_server/selector_tests.rs"]
-pub(in crate::game) mod selector_tests;
+pub(crate) mod selector_tests;
 #[cfg(test)]
 #[path = "native_server/sidebar_tests.rs"]
-pub(in crate::game) mod sidebar_tests;
+pub(crate) mod sidebar_tests;
 
 #[cfg(test)]
 pub(crate) mod tests {
@@ -96,7 +96,7 @@ use super::*;
             );
         }
     }
-pub(in crate::game) fn with_command_sources(
+pub(crate) fn with_command_sources(
         test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>),
     ) {
         use sunrise_core::geometry::Vec3;
@@ -1153,7 +1153,7 @@ use super::super::{
 
 
 #[cfg(test)]
-pub(in crate::game) mod player_rule_tests {
+pub(crate) mod player_rule_tests {
     use sunrise_gameplay::game::native_guest_turn_tests::with_guests;
     use {crate::game::native_server::*, sunrise_gameplay_common::game::native_server::{BlockPos, GlobalPos, Identifier, PlayerRespawnConfig}};
 

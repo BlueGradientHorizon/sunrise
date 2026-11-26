@@ -6,7 +6,7 @@ use std::sync::Arc;
 use sunrise_core::position::ChunkPos;
 use sunrise_level::chunk::Chunk;
 
-pub(in crate::game) fn game<'a>(
+pub(crate) fn game<'a>(
     resources: &'a mut Option<std::sync::Arc<sunrise_gameplay_common::game::Resources>>,
 ) -> sunrise_gameplay::game::ServerGame<'a> {
     let root = std::path::PathBuf::from(
@@ -46,7 +46,7 @@ pub(in crate::game) fn game<'a>(
 }
 
 /// Gives the current level the empty chunk at `x, z`, as an opened world has it.
-pub(in crate::game) fn load_chunk(game: &mut sunrise_gameplay::game::ServerGame<'_>, x: i32, z: i32) {
+pub(crate) fn load_chunk(game: &mut sunrise_gameplay::game::ServerGame<'_>, x: i32, z: i32) {
     game.world
         .chunks
         .insert((x, z), Arc::new(Chunk::empty(x, z)));
@@ -55,7 +55,7 @@ pub(in crate::game) fn load_chunk(game: &mut sunrise_gameplay::game::ServerGame<
 
 /// Opens `dim`'s level through the same adapter the clone uses, gives it the
 /// empty chunk at the origin, and returns to `back`.
-pub(in crate::game) fn load_chunk_in(game: &mut sunrise_gameplay::game::ServerGame<'_>, dim: Dim, back: Dim) {
+pub(crate) fn load_chunk_in(game: &mut sunrise_gameplay::game::ServerGame<'_>, dim: Dim, back: Dim) {
     game.enter_command_level(dim);
     assert_eq!(game.dim, dim, "the level is in place");
     load_chunk(game, 0, 0);
@@ -64,10 +64,10 @@ pub(in crate::game) fn load_chunk_in(game: &mut sunrise_gameplay::game::ServerGa
 }
 
 #[allow(unused_imports)]
-pub(in crate::game) use sunrise_gameplay::game::server_side::commands_server::clone_writes_tests::run;
+pub(crate) use sunrise_gameplay::game::server_side::commands_server::clone_writes_tests::run;
 
 /// The value `/clone` returned, through `execute store result`.
-pub(in crate::game) fn cloned(
+pub(crate) fn cloned(
     game: &mut sunrise_gameplay::game::ServerGame<'_>,
     command: &str,
 ) -> (bool, Option<String>, i32) {

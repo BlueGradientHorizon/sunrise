@@ -13,7 +13,7 @@ use sunrise_protocol::passage_sync::{Message, PassageForm, encode};
 use sunrise_sim::lan::hub::passage_cross::refusal_code;
 
 /// What the window sent since the last call, as play packets.
-pub(in crate::game) fn sent(reader: &mut ConnReader) -> Vec<S> {
+pub(crate) fn sent(reader: &mut ConnReader) -> Vec<S> {
     reader
         .set_read_timeout(Some(std::time::Duration::from_millis(200)))
         .unwrap();
@@ -27,7 +27,7 @@ pub(in crate::game) fn sent(reader: &mut ConnReader) -> Vec<S> {
 /// A window logged in to the overworld, its player at `at` facing south, holding a 2 by 3
 /// doorway (passage 1) at (0.5, 65.5, 8.5) facing south, which comes out at (24.5, 65.5,
 /// 8.5) turned a clockwise quarter.
-pub(in crate::game) fn scene(
+pub(crate) fn scene(
     game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
     at: [f64; 3],
 ) -> (ConnReader, ConnWriter) {
@@ -135,7 +135,7 @@ fn a_window_refuses_what_it_cannot_cross_and_keeps_the_servers_refusal() {
 }
 
 /// Cancels every custom payload the window sends.
-pub(in crate::game) struct Silence;
+pub(crate) struct Silence;
 #[mod_api::__subscriptions]
 impl mod_api::Hooks for Silence {
     fn client_packet_send(

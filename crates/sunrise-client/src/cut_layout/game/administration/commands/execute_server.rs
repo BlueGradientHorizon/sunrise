@@ -1,7 +1,7 @@
 
 
 #[cfg(test)]
-pub(in crate::game) mod passenger_relation_tests {
+pub(crate) mod passenger_relation_tests {
     use super::*;
     use sunrise_gameplay::game::server_side::commands::execute::passenger_relation_tests::actor;
     use sunrise_gameplay::game::server_side::commands::execute::passenger_relation_tests::value;

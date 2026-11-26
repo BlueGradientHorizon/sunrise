@@ -1,7 +1,7 @@
 
 
 #[cfg(test)]
-pub(in crate::game) mod tests {
+pub(crate) mod tests {
     #[test]
     #[ignore = "daily"]
     fn replacing_a_gateway_discards_its_old_cooldown() {
@@ -153,7 +153,7 @@ fn game_with(
         game
     }
 /// A level of a server.
-    pub(in crate::game) fn game(
+    pub(crate) fn game(
         resources: &mut Option<Arc<sunrise_gameplay_common::game::Resources>>,
     ) -> sunrise_gameplay::game::ServerGame<'_> {
         let mut game = game_with(resources, execution_role::ExecutionRole::IntegratedServer);
@@ -183,7 +183,7 @@ fn game_with(
 
 
 #[cfg(test)]
-pub(in crate::game) mod gateway_age_tests {
+pub(crate) mod gateway_age_tests {
     use super::*;
     use sunrise_gameplay::game::game_tests::tests::server_game;
 

@@ -27,15 +27,15 @@ use winit::event_loop::ControlFlow;
 use winit::keyboard::KeyCode;
 
 #[path = "screen_widgets_input_tests.rs"]
-pub(in crate::game) mod input_routing;
+pub(crate) mod input_routing;
 
-pub(in crate::game) struct NoLoop;
+pub(crate) struct NoLoop;
 impl EventLoopCtl for NoLoop {
     fn exit(&self) {}
     fn set_control_flow(&self, _: ControlFlow) {}
 }
 
-pub(in crate::game) struct DropCounter(pub(in crate::game) Arc<AtomicUsize>);
+pub(crate) struct DropCounter(pub(crate) Arc<AtomicUsize>);
 impl Drop for DropCounter {
     fn drop(&mut self) {
         self.0.fetch_add(1, Ordering::SeqCst);
@@ -43,9 +43,9 @@ impl Drop for DropCounter {
 }
 
 #[allow(unused_imports)]
-pub(in crate::game) use crate::game::client_side::native_hooks_client::base::screen_widgets_tests::attach_offscreen_window;
+pub(crate) use crate::game::client_side::native_hooks_client::base::screen_widgets_tests::attach_offscreen_window;
 
-pub(in crate::game) fn move_mouse(
+pub(crate) fn move_mouse(
     game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
     id: winit::window::WindowId,
     x: f64,
@@ -62,7 +62,7 @@ pub(in crate::game) fn move_mouse(
     );
 }
 
-pub(in crate::game) fn send_mouse_button(
+pub(crate) fn send_mouse_button(
     game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
     id: winit::window::WindowId,
     button: MouseButton,
@@ -84,7 +84,7 @@ pub(in crate::game) fn send_mouse_button(
     );
 }
 
-pub(in crate::game) fn send_scroll(
+pub(crate) fn send_scroll(
     game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
     id: winit::window::WindowId,
     x: f32,
@@ -102,11 +102,11 @@ pub(in crate::game) fn send_scroll(
     );
 }
 
-pub(in crate::game) fn send_key_control(game: &mut sunrise_client_gameplay::game::ClientGame<'_>, line: &str) {
+pub(crate) fn send_key_control(game: &mut sunrise_client_gameplay::game::ClientGame<'_>, line: &str) {
     game.replay_line(line, &NoLoop);
 }
 
-pub(in crate::game) fn take_log(log: &Arc<Mutex<Vec<String>>>) -> Vec<String> {
+pub(crate) fn take_log(log: &Arc<Mutex<Vec<String>>>) -> Vec<String> {
     std::mem::take(&mut *log.lock().unwrap())
 }
 

@@ -1,5 +1,5 @@
 //! Actual entity removal, commands and chunk-save assembly, with no intervening tick.
-use {crate::game::*, sunrise_gameplay_common::game::{Arc, HashMap, Instant, Mob, Options, PathBuf, PlayerMotion, Progress, Settings, Vec3, World, api_values, entity, execution_role, general, load_resources, mods}};
+use {crate::game::*, sunrise_gameplay_common::game::{Arc, HashMap, Instant, Options, PathBuf, PlayerMotion, Progress, Vec3, World, api_values, entity, execution_role, general, mods}};
 use sunrise_core::nbt::Tag;
 use sunrise_level::chunk::Chunk;
 use sunrise_sim::mobs::Mob;

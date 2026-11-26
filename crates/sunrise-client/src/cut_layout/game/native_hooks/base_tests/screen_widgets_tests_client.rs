@@ -32,12 +32,12 @@ use winit::event_loop::EventLoop;
 use winit::keyboard::KeyCode;
 
 #[path = "screen_widgets_input_tests_client.rs"]
-pub(in crate::game) mod input_routing;
+pub(crate) mod input_routing;
 
 /// Attach a hidden offscreen window and renderer to `game` so screen hooks, `mod_screen_open`,
 /// and real `WindowEvent` input paths execute end to end. Returns the `EventLoop` (kept alive
 /// for the test's duration) and `WindowId`.
-pub(in crate::game) fn attach_offscreen_window(
+pub(crate) fn attach_offscreen_window(
     game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
 ) -> (EventLoop<()>, winit::window::WindowId) {
     let (event_loop, window) = sunrise_gameplay::game::native_entity_refs::tests::test_window([640, 480]);

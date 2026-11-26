@@ -20,17 +20,17 @@ use std::sync::{
 };
 use sunrise_level::chunk::Chunk;
 
-pub(in crate::game) const IGNORE: &str = "needs prepared resources in SUNRISE_TEST_RESOURCES";
+pub(crate) const IGNORE: &str = "needs prepared resources in SUNRISE_TEST_RESOURCES";
 
 /// `new Random(2)`: `2 + nextInt(3)` is 3, then `nextFloat() * 360.0F` three times, then the
 /// next `nextInt()`. The same three draws with no listener, a cancel or a listener.
-pub(in crate::game) use sunrise_gameplay::game::server_side::creatures_server::pending_birth_matrix_tests::SEED;
-pub(in crate::game) const YAWS: [f32; 3] = [105.61554, 324.52115, 1.4961791];
-pub(in crate::game) const NEXT_INT: i32 = 2_133_836_778;
+pub(crate) use sunrise_gameplay::game::server_side::creatures_server::pending_birth_matrix_tests::SEED;
+pub(crate) const YAWS: [f32; 3] = [105.61554, 324.52115, 1.4961791];
+pub(crate) const NEXT_INT: i32 = 2_133_836_778;
 
-pub(in crate::game) type SplitFn =
+pub(crate) type SplitFn =
     Box<dyn Fn(&mut dyn ServerHost, &mut MobSplitEvent<'_>) -> Flow + Send + Sync>;
-pub(in crate::game) struct Split(pub(in crate::game) SplitFn);
+pub(crate) struct Split(pub(crate) SplitFn);
 #[mod_api::__subscriptions]
 impl Hooks for Split {
     fn mob_split(&self, host: &mut dyn ServerHost, event: &mut MobSplitEvent<'_>) -> Flow {
@@ -38,9 +38,9 @@ impl Hooks for Split {
     }
 }
 
-pub(in crate::game) type BabyFn =
+pub(crate) type BabyFn =
     Box<dyn Fn(&mut dyn ServerHost, &mut BabyEntitySpawnEvent<'_>) -> Flow + Send + Sync>;
-pub(in crate::game) struct Baby(pub(in crate::game) BabyFn);
+pub(crate) struct Baby(pub(crate) BabyFn);
 #[mod_api::__subscriptions]
 impl Hooks for Baby {
     fn baby_entity_spawn(
@@ -52,7 +52,7 @@ impl Hooks for Baby {
     }
 }
 
-pub(in crate::game) fn with_split(
+pub(crate) fn with_split(
     listener: impl Fn(&mut dyn ServerHost, &mut MobSplitEvent<'_>) -> Flow + Send + Sync + 'static,
     run: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>),
 ) {
@@ -64,7 +64,7 @@ pub(in crate::game) fn with_split(
     mod_platform::testing::with_mods(mods, || with_game(run));
 }
 
-pub(in crate::game) fn with_baby(
+pub(crate) fn with_baby(
     listener: impl Fn(&mut dyn ServerHost, &mut BabyEntitySpawnEvent<'_>) -> Flow
     + Send
     + Sync
@@ -79,21 +79,21 @@ pub(in crate::game) fn with_baby(
     mod_platform::testing::with_mods(mods, || with_game(run));
 }
 
-pub(in crate::game) use sunrise_gameplay::game::server_side::creatures_server::pending_birth_matrix_tests::AT;
+pub(crate) use sunrise_gameplay::game::server_side::creatures_server::pending_birth_matrix_tests::AT;
 
 #[allow(unused_imports)]
-pub(in crate::game) use crate::game::server_side::creatures_server::pending_birth_tests::cube;
+pub(crate) use crate::game::server_side::creatures_server::pending_birth_tests::cube;
 
-pub(in crate::game) fn near(a: f64, b: f64) -> bool {
+pub(crate) fn near(a: f64, b: f64) -> bool {
     (a - b).abs() < 1e-4
 }
 
 /// The mobs the split added, in order (the fixture world starts with none).
-pub(in crate::game) fn spawned(game: &sunrise_gameplay::game::ServerGame<'_>) -> Vec<Mob> {
+pub(crate) fn spawned(game: &sunrise_gameplay::game::ServerGame<'_>) -> Vec<Mob> {
     game.mobs.to_vec()
 }
 
-pub(in crate::game) fn assert_vanilla_children(children: &[Mob], kind: &str, first_id: u32) {
+pub(crate) fn assert_vanilla_children(children: &[Mob], kind: &str, first_id: u32) {
     assert_eq!(children.len(), 3);
     // `setUpSplitCube`: a half-width offset spread over a 2x2 grid by index, 0.5 up. A size-4
     // cube is 2.08 wide (0.52 per size), so the offset is 1.04.
@@ -154,7 +154,7 @@ fn sulfur_cube_splits_two_babies_unless_primed_and_size_one_asks_nobody() {
     );
 }
 
-pub(in crate::game) fn spec(
+pub(crate) fn spec(
     kind: &str,
     at: [f64; 3],
     yaw: f32,
@@ -347,9 +347,9 @@ fn retained_native_tokens_fail_after_the_callback_returns() {
     );
 }
 
-pub(in crate::game) struct NetherBiomeOnJoin {
-    pub(in crate::game) biome: String,
-    pub(in crate::game) writes: Arc<AtomicUsize>,
+pub(crate) struct NetherBiomeOnJoin {
+    pub(crate) biome: String,
+    pub(crate) writes: Arc<AtomicUsize>,
 }
 
 #[mod_api::__subscriptions]
@@ -493,12 +493,12 @@ fn a_birth_panic_does_not_undo_or_misroute_a_biome_write_in_another_level() {
 
 /// Two cows bred directly, as `breeding_announces_the_orb_before_the_lower_id_child` does: the
 /// parents' ages are 6000 as the goal leaves them, the partner is in love.
-pub(in crate::game) use sunrise_gameplay::game::server_side::creatures_server::pending_birth_matrix_tests::breed_pair;
+pub(crate) use sunrise_gameplay::game::server_side::creatures_server::pending_birth_matrix_tests::breed_pair;
 
 #[allow(unused_imports)]
-pub(in crate::game) use crate::game::server_side::creatures_server::pending_birth_tests::breed_pair_credited;
+pub(crate) use crate::game::server_side::creatures_server::pending_birth_tests::breed_pair_credited;
 
-pub(in crate::game) fn find(game: &sunrise_gameplay::game::ServerGame<'_>, id: u32) -> Mob {
+pub(crate) fn find(game: &sunrise_gameplay::game::ServerGame<'_>, id: u32) -> Mob {
     game.mobs.iter().find(|m| m.id == id).unwrap().clone()
 }
 
@@ -698,7 +698,7 @@ fn turtle_hatching_spawns_its_turtle_without_asking_baby_entity_spawn() {
     assert_eq!(*calls.lock().unwrap(), 0);
 }
 
-pub(in crate::game) fn with_splits(
+pub(crate) fn with_splits(
     listeners: Vec<SplitFn>,
     run: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>),
 ) {
@@ -781,7 +781,7 @@ fn a_token_kept_from_one_listener_is_expired_in_the_next() {
     );
 }
 
-pub(in crate::game) fn animals_bred(game: &sunrise_gameplay::game::ServerGame<'_>) -> i32 {
+pub(crate) fn animals_bred(game: &sunrise_gameplay::game::ServerGame<'_>) -> i32 {
     game.stats.get("custom", "minecraft:animals_bred")
 }
 

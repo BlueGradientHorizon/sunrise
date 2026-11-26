@@ -349,17 +349,17 @@ use super::*;
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "tests/brewing_changed_tests.rs"]
-pub(in crate::game) mod brewing_changed_tests;
+pub(crate) mod brewing_changed_tests;
 
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "stations/brewing_tick_tests.rs"]
-pub(in crate::game) mod brewing_tick_tests;
+pub(crate) mod brewing_tick_tests;
 
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "stations/stonecutter_scroll_tests.rs"]
-pub(in crate::game) mod stonecutter_scroll_tests;
+pub(crate) mod stonecutter_scroll_tests;
 #[path = "stations/tooltip.rs"]
 pub(crate) mod tooltip;
 

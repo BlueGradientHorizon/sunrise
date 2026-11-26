@@ -19,11 +19,11 @@ pub(in crate::game) enum Family {
     Landing,
 }
 impl Family {
-    pub(in crate::game) fn is_goal(self) -> bool {
+    pub(crate) fn is_goal(self) -> bool {
         matches!(self, Self::Goal | Self::MountedGoal)
     }
 
-    pub(in crate::game) fn hook(self) -> &'static str {
+    pub(crate) fn hook(self) -> &'static str {
         match self {
             Self::Damage => "living_incoming_damage",
             Self::Shield => "living_shield_block",
@@ -38,8 +38,8 @@ impl Family {
 
 #[derive(Debug)]
 pub(in crate::game) struct PanicToken(pub(in crate::game) u64);
-pub(in crate::game) const LEVEL_SEED: i64 = 0x5eed;
-pub(in crate::game) const FAILING_MOD: &str = "borrowed-panic";
+pub(crate) const LEVEL_SEED: i64 = 0x5eed;
+pub(crate) const FAILING_MOD: &str = "borrowed-panic";
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(in crate::game) enum Proposal {
@@ -55,18 +55,18 @@ pub(in crate::game) enum OutputNotice {
     Egg,
 }
 
-pub(in crate::game) struct Probe {
-    pub(in crate::game) family: Family,
-    pub(in crate::game) calls: AtomicUsize,
-    pub(in crate::game) posts: Mutex<Vec<u32>>,
-    pub(in crate::game) first_proposal: Mutex<Option<Proposal>>,
-    pub(in crate::game) healthy_proposals: Mutex<Vec<Proposal>>,
-    pub(in crate::game) draw: Mutex<Option<i64>>,
-    pub(in crate::game) outputs: Mutex<Vec<OutputNotice>>,
-    pub(in crate::game) goal_payload: Mutex<Option<Box<PanicToken>>>,
+pub(crate) struct Probe {
+    pub(crate) family: Family,
+    pub(crate) calls: AtomicUsize,
+    pub(crate) posts: Mutex<Vec<u32>>,
+    pub(crate) first_proposal: Mutex<Option<Proposal>>,
+    pub(crate) healthy_proposals: Mutex<Vec<Proposal>>,
+    pub(crate) draw: Mutex<Option<i64>>,
+    pub(crate) outputs: Mutex<Vec<OutputNotice>>,
+    pub(crate) goal_payload: Mutex<Option<Box<PanicToken>>>,
 }
 impl Probe {
-    pub(in crate::game) fn goal_callback(&self, family: Family, target: bool) {
+    pub(crate) fn goal_callback(&self, family: Family, target: bool) {
         if self.family == family && target {
             self.calls.fetch_add(1, Ordering::SeqCst);
             let payload = self.goal_payload.lock().unwrap().take();
@@ -77,23 +77,23 @@ impl Probe {
         }
     }
 
-    pub(in crate::game) fn enter_failing(&self, input: Proposal) {
+    pub(crate) fn enter_failing(&self, input: Proposal) {
         self.calls.fetch_add(1, Ordering::SeqCst);
         *self.first_proposal.lock().unwrap() = Some(input);
     }
 
-    pub(in crate::game) fn progress(&self, host: &mut dyn mod_api::LevelRandomHost) {
+    pub(crate) fn progress(&self, host: &mut dyn mod_api::LevelRandomHost) {
         *self.draw.lock().unwrap() = host.with_random(|random| random.next_long());
         let _ = VALUE.set(host.attachments(), Holder::Level, 314);
     }
 }
 
-pub(in crate::game) fn assert_panic_report(mod_id: &'static str, hook: &'static str) {
+pub(crate) fn assert_panic_report(mod_id: &'static str, hook: &'static str) {
     assert_eq!(take_hook_panics(), [HookPanicReport { mod_id, hook }]);
 }
-pub(in crate::game) struct GoalSpec {
+pub(crate) struct GoalSpec {
     pub probe: Arc<Probe>,
-    pub(in crate::game) target: bool,
+    pub(crate) target: bool,
 }
 impl mod_api::Goal for GoalSpec {
     fn name(&self) -> &'static str {
@@ -133,7 +133,7 @@ impl mod_api::Goal for GoalSpec {
         }
     }
 }
-pub(in crate::game) struct GoalPart(pub(in crate::game) Arc<Probe>);
+pub(crate) struct GoalPart(pub(crate) Arc<Probe>);
 #[mod_api::sunrise_part]
 impl mod_api::MobEffectPart for GoalPart {
     fn should_apply_effect_tick_this_tick(
@@ -154,7 +154,7 @@ impl mod_api::MobEffectPart for GoalPart {
         }
     }
 }
-pub(in crate::game) struct FailingLanding(pub(in crate::game) Arc<Probe>);
+pub(crate) struct FailingLanding(pub(crate) Arc<Probe>);
 #[mod_api::sunrise_part]
 impl mod_api::BlockPart for FailingLanding {
     fn fall_on(
@@ -172,7 +172,7 @@ impl mod_api::BlockPart for FailingLanding {
     }
 }
 
-pub(in crate::game) struct HealthyLanding(pub(in crate::game) Arc<Probe>);
+pub(crate) struct HealthyLanding(pub(crate) Arc<Probe>);
 #[mod_api::sunrise_part]
 impl mod_api::BlockPart for HealthyLanding {
     fn fall_on(&self, _: &mut dyn mod_api::LevelRandomHost, event: &mut mod_api::FallOnEvent<'_>) {
@@ -204,12 +204,12 @@ impl mod_api::EntityPart for GoalPart {
         );
     }
 }
-pub(in crate::game) struct Hooks {
-    pub(in crate::game) probe: Arc<Probe>,
-    pub(in crate::game) panics: bool,
+pub(crate) struct Hooks {
+    pub(crate) probe: Arc<Probe>,
+    pub(crate) panics: bool,
 }
 impl Hooks {
-    pub(in crate::game) fn hear(&self, family: Family, target: bool, input: Proposal) -> bool {
+    pub(crate) fn hear(&self, family: Family, target: bool, input: Proposal) -> bool {
         if self.probe.family != family || !target {
             return false;
         }
@@ -359,7 +359,7 @@ impl mod_api::Hooks for Hooks {
         mod_api::Flow::Continue
     }
 }
-pub(in crate::game) const VALUE: AttachmentType<i32> = AttachmentType {
+pub(crate) const VALUE: AttachmentType<i32> = AttachmentType {
     namespace: "borrowed-panic",
     name: "retained",
     default: || 0,
@@ -367,7 +367,7 @@ pub(in crate::game) const VALUE: AttachmentType<i32> = AttachmentType {
     copy_on_death: false,
     sync: false,
 };
-pub(in crate::game) struct Scratch(pub(in crate::game) std::path::PathBuf);
+pub(crate) struct Scratch(pub(crate) std::path::PathBuf);
 impl Drop for Scratch {
     fn drop(&mut self) {
         let _ = std::fs::remove_dir_all(&self.0);
@@ -382,10 +382,10 @@ pub(in crate::game) enum Output {
     Mixed,
     Reset,
 }
-pub(in crate::game) const FRESH_CASE: &str = "SUNRISE_BORROWED_PANIC_CASE";
-pub(in crate::game) const BOTH_LEVELS: &[&str] = &["overworld", "nether"];
+pub(crate) const FRESH_CASE: &str = "SUNRISE_BORROWED_PANIC_CASE";
+pub(crate) const BOTH_LEVELS: &[&str] = &["overworld", "nether"];
 
-pub(in crate::game) fn fresh_dimension(test: &str, cases: &[&str]) -> Option<Dim> {
+pub(crate) fn fresh_dimension(test: &str, cases: &[&str]) -> Option<Dim> {
     let name = format!("game::creatures::borrowed_panic_tests::{test}");
     if run_fresh_cases(&name, FRESH_CASE, cases) {
         return None;
@@ -397,7 +397,7 @@ pub(in crate::game) fn fresh_dimension(test: &str, cases: &[&str]) -> Option<Dim
     })
 }
 
-pub(in crate::game) fn fixture_game(
+pub(crate) fn fixture_game(
     output: Output,
     test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>),
 ) {
@@ -408,7 +408,7 @@ pub(in crate::game) fn fixture_game(
     }
 }
 
-pub(in crate::game) fn eggs(game: &sunrise_gameplay::game::ServerGame<'_>) -> u32 {
+pub(crate) fn eggs(game: &sunrise_gameplay::game::ServerGame<'_>) -> u32 {
     game.dropped
         .iter()
         .filter(|d| d.stack.item.as_ref() == "minecraft:egg")
@@ -416,7 +416,7 @@ pub(in crate::game) fn eggs(game: &sunrise_gameplay::game::ServerGame<'_>) -> u3
         .sum()
 }
 
-pub(in crate::game) fn tick_in_level(game: &mut sunrise_gameplay::game::ServerGame<'_>) -> Result<()> {
+pub(crate) fn tick_in_level(game: &mut sunrise_gameplay::game::ServerGame<'_>) -> Result<()> {
     sunrise_sim::block_contact::in_level(
         sunrise_sim::parallel::TickThread::mint(),
         Some(game.dim.id()),
@@ -424,7 +424,7 @@ pub(in crate::game) fn tick_in_level(game: &mut sunrise_gameplay::game::ServerGa
     )
 }
 
-pub(in crate::game) fn prime_hook(mob: &mut Mob, family: Family) {
+pub(crate) fn prime_hook(mob: &mut Mob, family: Family) {
     mob.invulnerable_time = 0;
     if matches!(family, Family::Knockback | Family::Totem) {
         // These hooks need the hit to pass LivingEntity.hurtServer's damageCooldownTime check.
@@ -471,7 +471,7 @@ pub(in crate::game) fn prime_hook(mob: &mut Mob, family: Family) {
     }
 }
 
-pub(in crate::game) fn fixture_mob(
+pub(crate) fn fixture_mob(
     game: &sunrise_gameplay::game::ServerGame<'_>,
     id: u32,
     family: Family,
@@ -536,19 +536,19 @@ pub(in crate::game) fn fixture_mob(
     mob
 }
 
-pub(in crate::game) fn guest_health(game: &sunrise_gameplay::game::ServerGame<'_>) -> [f32; 2] {
+pub(crate) fn guest_health(game: &sunrise_gameplay::game::ServerGame<'_>) -> [f32; 2] {
     let guests = &game.side.lan.as_ref().unwrap().hub.guests;
     [guests[0].health, guests[1].health]
 }
 
-pub(in crate::game) fn run_output(test: &str, family: Family, output: Output) {
+pub(crate) fn run_output(test: &str, family: Family, output: Output) {
     if let Some(dim) = fresh_dimension(test, BOTH_LEVELS) {
         run_fixture(family, output, dim);
     }
 }
 
 #[allow(unused_imports)]
-pub(in crate::game) use crate::game::server_side::creatures_server::borrowed_panic_tests::run_fixture;
+pub(crate) use crate::game::server_side::creatures_server::borrowed_panic_tests::run_fixture;
 
 #[test]
 #[ignore = "daily"]
@@ -626,7 +626,7 @@ pub(in crate::game) struct ConsumerProbe {
 }
 
 impl ConsumerProbe {
-    pub(in crate::game) fn assert_tick(&self, game: &sunrise_gameplay::game::ServerGame<'_>, egg_count: u32) {
+    pub(crate) fn assert_tick(&self, game: &sunrise_gameplay::game::ServerGame<'_>, egg_count: u32) {
         assert_eq!(self.calls.load(Ordering::SeqCst), 1);
         assert_eq!(std::mem::take(&mut *self.posts.lock().unwrap()), [71, 72]);
         assert_eq!(eggs(game), egg_count);
@@ -651,9 +651,9 @@ impl ConsumerProbe {
     }
 }
 
-pub(in crate::game) struct Consumer {
-    pub(in crate::game) probe: Arc<ConsumerProbe>,
-    pub(in crate::game) panics: bool,
+pub(crate) struct Consumer {
+    pub(crate) probe: Arc<ConsumerProbe>,
+    pub(crate) panics: bool,
 }
 #[mod_api::__subscriptions]
 impl mod_api::Hooks for Consumer {
@@ -694,9 +694,9 @@ impl mod_api::Hooks for Consumer {
 }
 
 #[allow(unused_imports)]
-pub(in crate::game) use crate::game::server_side::creatures_server::borrowed_panic_tests::with_consumer_game;
+pub(crate) use crate::game::server_side::creatures_server::borrowed_panic_tests::with_consumer_game;
 
-pub(in crate::game) fn queue_egg(game: &mut sunrise_gameplay::game::ServerGame<'_>) {
+pub(crate) fn queue_egg(game: &mut sunrise_gameplay::game::ServerGame<'_>) {
     game.creatures
         .pending
         .entry(game.dim.id())
@@ -764,7 +764,7 @@ fn retained_nested_tail() {
     run_conditional("retained_nested_tail", true);
 }
 
-pub(in crate::game) fn run_conditional(test: &str, nested: bool) {
+pub(crate) fn run_conditional(test: &str, nested: bool) {
     let Some(dim) = fresh_dimension(test, &["overworld"]) else {
         return;
     };
@@ -875,9 +875,9 @@ pub(in crate::game) fn run_conditional(test: &str, nested: bool) {
 /// `living_breathe` with the owning host: a listener reads the mob's air and edits what it holds
 /// through a transaction, and the game applies its answer to the air it had decided on, or
 /// refuses when the listener changed that air and rolls the transactional edit back.
-pub(in crate::game) struct Breather {
-    pub(in crate::game) meddle: bool,
-    pub(in crate::game) seen_air: Arc<std::sync::Mutex<Vec<i32>>>,
+pub(crate) struct Breather {
+    pub(crate) meddle: bool,
+    pub(crate) seen_air: Arc<std::sync::Mutex<Vec<i32>>>,
 }
 #[mod_api::__subscriptions]
 impl mod_api::Hooks for Breather {
@@ -910,7 +910,7 @@ impl mod_api::Hooks for Breather {
 }
 
 #[allow(unused_imports)]
-pub(in crate::game) use crate::game::server_side::creatures_server::borrowed_panic_tests::breathing_tick;
+pub(crate) use crate::game::server_side::creatures_server::borrowed_panic_tests::breathing_tick;
 
 #[test]
 #[ignore = "daily"]
@@ -931,7 +931,7 @@ fn a_mob_whose_air_the_listener_changed_keeps_it_and_loses_the_transactional_wri
 /// without touching `air`: under the unified failure rule, the panic is contained, the enclosing
 /// transaction aborts (rolling back the sword edit and leaving air unchanged), and the listener is
 /// disabled for `living_breathe` for the rest of the session so subsequent ticks run vanilla.
-pub(in crate::game) struct BreathPanic(pub(in crate::game) Arc<AtomicUsize>);
+pub(crate) struct BreathPanic(pub(crate) Arc<AtomicUsize>);
 #[mod_api::__subscriptions]
 impl mod_api::Hooks for BreathPanic {
     fn living_breathe(

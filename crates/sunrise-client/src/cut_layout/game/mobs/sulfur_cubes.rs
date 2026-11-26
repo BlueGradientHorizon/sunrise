@@ -1,7 +1,7 @@
 
 
 #[cfg(test)]
-pub(in crate::game) mod off_level_tests {
+pub(crate) mod off_level_tests {
     use super::*;
     use sunrise_core::geometry::Vec3;
 

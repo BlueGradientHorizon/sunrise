@@ -1,6 +1,6 @@
 use super::*;
-pub(in crate::game::server_side) use crate::game::creatures::death_weapon::tests::WeaponProbe;
-pub(in crate::game::server_side) use crate::game::creatures::death_weapon::tests::isolated;
+pub(crate) use crate::game::creatures::death_weapon::tests::WeaponProbe;
+pub(crate) use crate::game::creatures::death_weapon::tests::isolated;
 use std::sync::{Arc, Mutex};
 
 #[test]
@@ -94,7 +94,7 @@ fn death_weapon_e_fall_has_no_weapon() {
     });
 }
 
-pub(in crate::game) fn weapon_case(
+pub(crate) fn weapon_case(
     item: &str,
     enchantment: &str,
     level: u32,

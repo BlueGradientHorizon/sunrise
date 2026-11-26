@@ -3,12 +3,12 @@
 //! already has does nothing, while another item still makes it sit or stand.
 use super::*;
 
-pub(in crate::game) const WOLF: u32 = 50;
+pub(crate) const WOLF: u32 = 50;
 
 #[allow(unused_imports)]
-pub(in crate::game) use crate::game::client_side::core_tests_client::pet_order_tests::game;
+pub(crate) use crate::game::client_side::core_tests_client::pet_order_tests::game;
 
-pub(in crate::game) fn use_on_wolf(
+pub(crate) fn use_on_wolf(
     game: &mut sunrise_gameplay::game::ServerGame<'_>,
     item: &str,
 ) -> (bool, u8, u32) {

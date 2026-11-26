@@ -7,7 +7,7 @@ use sunrise_sim::{
     motion::PlayerMotion,
     projectiles::{Projectile, ProjectileKind},
 };
-pub(in crate::game) fn with_game(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
+pub(crate) fn with_game(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
     let settings = Settings::default();
     let loaded = load_resources(
@@ -65,10 +65,10 @@ pub(in crate::game) fn with_game(test: impl FnOnce(&mut sunrise_gameplay::game::
     game.world.random.set_seed(114);
     test(&mut game);
 }
-pub(in crate::game) fn start_events() {
+pub(crate) fn start_events() {
     sunrise_client_gameplay::game::sculk::TEST_POSTED_EVENTS.with(|v| *v.borrow_mut() = Some(Vec::new()));
 }
-pub(in crate::game) fn take_shots() -> Vec<(&'static str, [f64; 3], Option<Who>)> {
+pub(crate) fn take_shots() -> Vec<(&'static str, [f64; 3], Option<Who>)> {
     sunrise_client_gameplay::game::sculk::TEST_POSTED_EVENTS.with(|v| {
         std::mem::take(v.borrow_mut().as_mut().unwrap())
             .into_iter()
@@ -76,10 +76,10 @@ pub(in crate::game) fn take_shots() -> Vec<(&'static str, [f64; 3], Option<Who>)
             .collect()
     })
 }
-pub(in crate::game) fn stop_events() {
+pub(crate) fn stop_events() {
     sunrise_client_gameplay::game::sculk::TEST_POSTED_EVENTS.with(|v| *v.borrow_mut() = None);
 }
-pub(in crate::game) fn owner(game: &sunrise_gameplay::game::ServerGame<'_>) -> u32 {
+pub(crate) fn owner(game: &sunrise_gameplay::game::ServerGame<'_>) -> u32 {
     game.mobs
         .iter()
         .find(|m| game.persist.uuid_of(m.id) == Some([114, 0, 0, 99]))
@@ -205,7 +205,7 @@ fn loaded_arrow_first_tick_dispatches_once_with_its_real_owner() {
         }
     });
 }
-pub(in crate::game) fn natural(kind: &str) {
+pub(crate) fn natural(kind: &str) {
     with_game(|game| {
         let shooter = owner(game);
         match kind {

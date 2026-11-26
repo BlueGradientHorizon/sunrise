@@ -2,7 +2,7 @@
 //! the renderer table never reads the rest tables before they exist (#1377).
 
 #[allow(unused_imports)]
-pub(in crate::game) use crate::game::client_side::initial_client_models_tests_client::with_loading_client;
+pub(crate) use crate::game::client_side::initial_client_models_tests_client::with_loading_client;
 
 #[test]
 #[ignore = "daily"]

@@ -5,11 +5,11 @@
 mod anger_tests;
 #[cfg(test)]
 #[path = "persist/lookup_order_tests.rs"]
-pub(in crate::game) mod lookup_order_tests;
+pub(crate) mod lookup_order_tests;
 
 #[cfg(test)]
 #[path = "persist/tests.rs"]
-pub(in crate::game) mod tests;
+pub(crate) mod tests;
 #[cfg(test)]
 mod interaction_saved_defaults_tests {
     use super::*;
@@ -1600,7 +1600,7 @@ mod summon_uuid_conflict_tests;
 
 #[cfg(test)]
 #[path = "persist/thrown_item_tests.rs"]
-pub(in crate::game) mod thrown_item_tests;
+pub(crate) mod thrown_item_tests;
 
 #[cfg(test)]
 mod h262_enderman_absolute_anger_tests {

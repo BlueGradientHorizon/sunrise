@@ -2,10 +2,10 @@
 
 #[cfg(test)]
 #[path = "tests/fireworks_events_tests.rs"]
-pub(in crate::game) mod events_tests;
+pub(crate) mod events_tests;
 
 #[cfg(test)]
-pub(in crate::game) mod tests {
+pub(crate) mod tests {
 
     /// `Projectile.shoot` turns a shot rocket to its motion at once.
     #[test]

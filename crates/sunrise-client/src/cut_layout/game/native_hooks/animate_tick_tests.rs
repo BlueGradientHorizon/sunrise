@@ -14,13 +14,13 @@ use sunrise_sim::motion::PlayerMotion;
 
 /// One call the part heard: its position and block, its draw before and after its particle,
 /// and whether the particle was submitted.
-pub(in crate::game) type Call = (BlockPos, String, f32, f32, bool);
-pub(in crate::game) type Calls = Arc<Mutex<Vec<Call>>>;
+pub(crate) type Call = (BlockPos, String, f32, f32, bool);
+pub(crate) type Calls = Arc<Mutex<Vec<Call>>>;
 
 /// Draws, adds a heart at the block's centre, draws again.
-pub(in crate::game) struct Hearts {
+pub(crate) struct Hearts {
     pub calls: Calls,
-    pub(in crate::game) heart: mod_api::ParticleKey,
+    pub(crate) heart: mod_api::ParticleKey,
 }
 #[mod_api::sunrise_part]
 impl BlockPart for Hearts {
@@ -41,7 +41,7 @@ impl BlockPart for Hearts {
             .push((p, block, first, second, added));
     }
 }
-pub(in crate::game) struct Register(pub(in crate::game) Calls);
+pub(crate) struct Register(pub(crate) Calls);
 #[mod_api::__subscriptions]
 impl Hooks for Register {
     fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
@@ -61,7 +61,7 @@ impl Hooks for Register {
 
 /// A client game with the hearts part installed, in loaded empty chunks around a player at
 /// `(8.5, 65, 8.5)`.
-pub(in crate::game) fn with_hearts(test: impl FnOnce(&mut sunrise_client_gameplay::game::ClientGame<'_>, &Calls)) {
+pub(crate) fn with_hearts(test: impl FnOnce(&mut sunrise_client_gameplay::game::ClientGame<'_>, &Calls)) {
     let calls = Calls::default();
     let mods = vec![ModEntry::new("hearts", Box::new(Register(calls.clone())))];
     mod_platform::testing::with_mods(mods.into(), || {

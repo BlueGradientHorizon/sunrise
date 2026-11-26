@@ -11,7 +11,7 @@ use sunrise_sim::mobs::Mob;
 
 /// A world whose datapack defines `spawn_test:<name>` for each
 /// `(name, projectile_spawned effects)`.
-pub(in crate::game) fn with_enchantments(
+pub(crate) fn with_enchantments(
     defs: &[(&str, Value)],
     test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>),
 ) {
@@ -73,7 +73,7 @@ pub(in crate::game) fn with_enchantments(
     });
 }
 
-pub(in crate::game) fn enchanted(item: &str, count: u32, levels: &[(&str, u32)]) -> ItemStack {
+pub(crate) fn enchanted(item: &str, count: u32, levels: &[(&str, u32)]) -> ItemStack {
     let mut stack = ItemStack::new(item, count);
     stack.data_mut().enchantments = levels
         .iter()
@@ -82,13 +82,13 @@ pub(in crate::game) fn enchanted(item: &str, count: u32, levels: &[(&str, u32)])
     stack
 }
 
-pub(in crate::game) fn sound(name: &str) -> Value {
+pub(crate) fn sound(name: &str) -> Value {
     json!({"type": "minecraft:play_sound", "sound": name,
         "volume": {"type": "minecraft:uniform", "min_inclusive": 0.5, "max_exclusive": 1.0},
         "pitch": {"type": "minecraft:uniform", "min_inclusive": 1.0, "max_exclusive": 2.0}})
 }
 
-pub(in crate::game) fn ignite(seconds: f32) -> Value {
+pub(crate) fn ignite(seconds: f32) -> Value {
     json!({"type": "minecraft:ignite", "duration": seconds})
 }
 

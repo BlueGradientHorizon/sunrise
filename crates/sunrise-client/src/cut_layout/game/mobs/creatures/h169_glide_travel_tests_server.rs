@@ -4,7 +4,7 @@ use sunrise_core::{geometry::Vec3, position::ChunkPos, random::RandomSource};
 use sunrise_level::chunk::Chunk;
 use sunrise_sim::motion::PlayerMotion;
 
-pub(in crate::game) fn with_role_game(
+pub(crate) fn with_role_game(
     role: sunrise_gameplay_common::game::execution_role::ExecutionRole,
     test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>),
 ) {

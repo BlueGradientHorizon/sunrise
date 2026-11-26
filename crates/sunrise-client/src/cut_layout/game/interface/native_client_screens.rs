@@ -1,7 +1,7 @@
 
 
 #[cfg(test)]
-pub(in crate::game) mod client_screen_tests {
+pub(crate) mod client_screen_tests {
     use super::*;
     use sunrise_client_gameplay::game::books::BookScreen;
     use crate::game::server_side::native_entity_refs::tests::with_client_game;

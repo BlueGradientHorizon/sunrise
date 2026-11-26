@@ -1,7 +1,7 @@
 
 
 #[cfg(test)]
-pub(in crate::game) mod player_bed_leave_tests {
+pub(crate) mod player_bed_leave_tests {
 
     use mod_api::{Hooks, ModEntry, PlayerBedLeaveEvent, ServerHost};
     use std::sync::{Arc, Mutex};

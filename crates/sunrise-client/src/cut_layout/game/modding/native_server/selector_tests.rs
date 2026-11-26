@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex};
 use sunrise_core::geometry::Vec3;
 use sunrise_sim::mobs::Mob;
 
-pub(in crate::game) struct SelectorCommands(pub(in crate::game) Arc<Mutex<Vec<CommandInvocation>>>);
+pub(crate) struct SelectorCommands(pub(crate) Arc<Mutex<Vec<CommandInvocation>>>);
 
 #[mod_api::__subscriptions]
 impl mod_api::Hooks for SelectorCommands {
@@ -177,7 +177,7 @@ fn entity_selection_has_no_additional_count_cap() {
 }
 
 #[allow(unused_imports)]
-pub(in crate::game) use crate::game::server_side::native_server_server::selector_tests::in_two_levels;
+pub(crate) use crate::game::server_side::native_server_server::selector_tests::in_two_levels;
 
 /// `native_command_entity_target` looks a selected entity up in the level that holds it
 /// (`in_target_level`): a mod command run from the overworld reaches the entity that lives in

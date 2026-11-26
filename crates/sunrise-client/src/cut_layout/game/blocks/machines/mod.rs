@@ -1,16 +1,16 @@
 
 
 #[cfg(test)]
-pub(in crate::game) mod can_place_item_tests;
+pub(crate) mod can_place_item_tests;
 #[cfg(test)]
-pub(in crate::game) mod contents_changed_tests;
+pub(crate) mod contents_changed_tests;
 #[cfg(test)]
-pub(in crate::game) mod contents_watch_tests;
+pub(crate) mod contents_watch_tests;
 #[cfg(test)]
-pub(in crate::game) mod tank_reopen_tests;
+pub(crate) mod tank_reopen_tests;
 
 #[cfg(test)]
-pub(in crate::game) mod brewing_fuel_transfer_tests {
+pub(crate) mod brewing_fuel_transfer_tests {
     use super::*;
     use sunrise_gameplay::game::native_entity_refs::tests::with_game;
     use mod_api::HostTransaction;
@@ -196,7 +196,7 @@ pub(in crate::game) mod brewing_fuel_transfer_tests {
 }
 
 #[cfg(test)]
-pub(in crate::game) mod furnace_fuel_transfer_tests {
+pub(crate) mod furnace_fuel_transfer_tests {
     use super::*;
     use {sunrise_gameplay::game::game_tests::tests::server_game, sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases};
     use sunrise_items::item_data::parse_stack;
@@ -308,7 +308,7 @@ pub(in crate::game) mod furnace_fuel_transfer_tests {
 }
 
 #[cfg(test)]
-pub(in crate::game) mod part_front_tests {
+pub(crate) mod part_front_tests {
     use super::super::native_entity_refs::tests::{declared_part_root, with_game_at};
     use mod_api::BlockUpdateFlags;
     use std::sync::Arc;
@@ -553,10 +553,10 @@ pub(in crate::game) mod part_front_tests {
 
 #[cfg(test)]
 #[path = "hopper_cart_rider_tests.rs"]
-pub(in crate::game) mod hopper_cart_rider_tests;
+pub(crate) mod hopper_cart_rider_tests;
 
 #[cfg(test)]
-pub(in crate::game) mod hopper_cart_transfer_tests {
+pub(crate) mod hopper_cart_transfer_tests {
     use super::super::{
         boats_common::Boat,
         minecarts::{CartKind, Minecart},
@@ -780,7 +780,7 @@ pub(in crate::game) mod hopper_cart_transfer_tests {
 }
 
 #[cfg(test)]
-pub(in crate::game) mod pot_hopper_insertion_tests {
+pub(crate) mod pot_hopper_insertion_tests {
     use super::*;
     use {sunrise_gameplay::game::game_tests::tests::server_game, sunrise_gameplay_common::game::spill_common as spill};
     use sunrise_core::nbt::Tag;
@@ -920,10 +920,10 @@ pub(in crate::game) mod pot_hopper_insertion_tests {
 
 #[cfg(test)]
 #[path = "machines_pot_signal_tests.rs"]
-pub(in crate::game) mod pot_signal_tests;
+pub(crate) mod pot_signal_tests;
 
 #[cfg(test)]
-pub(in crate::game) mod tests {
+pub(crate) mod tests {
     use super::*;
     use sunrise_gameplay::game::game_tests::tests::server_game;
 
@@ -1096,10 +1096,10 @@ pub(in crate::game) mod tests {
 
 #[cfg(test)]
 #[path = "machines_chest_cat_tests.rs"]
-pub(in crate::game) mod machines_chest_cat_tests;
+pub(crate) mod machines_chest_cat_tests;
 
 #[cfg(test)]
-pub(in crate::game) mod can_take_tests {
+pub(crate) mod can_take_tests {
     use super::*;
     use sunrise_gameplay::game::game_tests::tests::server_game;
     use sunrise_level::containers::ChiseledBookshelf;

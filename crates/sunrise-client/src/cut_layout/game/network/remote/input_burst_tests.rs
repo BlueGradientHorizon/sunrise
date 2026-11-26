@@ -5,7 +5,7 @@
 
 /// How many of each packet `packets` holds: punches, player actions (drops and swaps) and slot
 /// changes, in that order.
-pub(in crate::game) fn counts(packets: &[String]) -> [usize; 3] {
+pub(crate) fn counts(packets: &[String]) -> [usize; 3] {
     [
         "minecraft:punch",
         "minecraft:player_action",

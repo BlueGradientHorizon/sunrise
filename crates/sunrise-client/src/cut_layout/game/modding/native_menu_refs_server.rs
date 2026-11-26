@@ -1,7 +1,7 @@
 
 
 #[cfg(test)]
-pub(in crate::game) mod tests {
+pub(crate) mod tests {
     use super::super::api_values::TryIntoApi;
     use {sunrise_gameplay::game::server_side::lan::LanSettings, crate::game::server_side::native_entity_refs::tests::with_game};
     use super::*;

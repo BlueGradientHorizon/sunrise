@@ -205,7 +205,7 @@ mod tests {
 
 #[cfg(test)]
 #[path = "falling_damage/helmet_tests.rs"]
-pub(in crate::game) mod helmet_tests;
+pub(crate) mod helmet_tests;
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;

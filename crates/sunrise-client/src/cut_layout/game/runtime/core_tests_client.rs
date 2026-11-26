@@ -1,7 +1,7 @@
 use super::*;
 
 #[path = "incoming_tests/pet_order_client.rs"]
-pub(in crate::game) mod pet_order_tests;
+pub(crate) mod pet_order_tests;
 
 #[test]
 #[ignore = "daily"]
@@ -26,7 +26,7 @@ fn client_modifier_snapshot_tracks_focus_loss() {
     });
 }
 
-pub(in crate::game) fn exercise_blank_inventory_presses() {
+pub(crate) fn exercise_blank_inventory_presses() {
     use mod_api::{ClientHost, Hooks, ModEntry, ScreenMouseButtonPressedPostEvent};
     use std::sync::Mutex;
     use winit::{event::DeviceId, event_loop::ControlFlow};

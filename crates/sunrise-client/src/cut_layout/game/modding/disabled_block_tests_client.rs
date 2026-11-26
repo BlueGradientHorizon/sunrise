@@ -1,5 +1,5 @@
 #[cfg(test)]
-pub(in crate::game) mod tests {
+pub(crate) mod tests {
     use crate::game::server_side::disabled_block_tests::tests::DISPENSER;
     use crate::game::server_side::disabled_block_tests::tests::DISPENSER_SLOT;
     use crate::game::server_side::disabled_block_tests::tests::place_dispenser;

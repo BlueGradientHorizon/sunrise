@@ -1,5 +1,5 @@
 #[cfg(test)]
-pub(in crate::game) mod local_sound_tests {
+pub(crate) mod local_sound_tests {
     use sunrise_gameplay_common::game::native_hooks::render_gui_pre::local_sound_tests::Mod;
     use mod_api::ModEntry;
     use mod_platform::testing::with_mods;

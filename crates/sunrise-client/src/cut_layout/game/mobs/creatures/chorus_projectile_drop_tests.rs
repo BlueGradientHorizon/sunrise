@@ -4,7 +4,7 @@ use std::sync::Arc;
 use sunrise_core::position::ChunkPos;
 use sunrise_level::chunk::Chunk;
 use sunrise_sim::motion::PlayerMotion;
-pub(in crate::game) fn with_game(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
+pub(crate) fn with_game(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
     let settings = Settings::default();
     let loaded = load_resources(
@@ -55,13 +55,13 @@ pub(in crate::game) fn with_game(test: impl FnOnce(&mut sunrise_gameplay::game::
     test(&mut game);
 }
 
-pub(in crate::game) fn source(game: &mut sunrise_gameplay::game::ServerGame<'_>, x: i32, z: i32, block: &str) {
+pub(crate) fn source(game: &mut sunrise_gameplay::game::ServerGame<'_>, x: i32, z: i32, block: &str) {
     assert!(game.world.chunks.contains_key(&(0, 0)));
     assert!(game.run_command(&format!("setblock {x} 199 {z} end_stone strict")));
     assert!(game.run_command(&format!("setblock {x} 200 {z} {block} strict")));
     assert!(game.run_command(&format!("execute if block {x} 199 {z} end_stone")));
 }
-pub(in crate::game) fn launch(
+pub(crate) fn launch(
     game: &mut sunrise_gameplay::game::ServerGame<'_>,
     kind: &str,
     n: i32,
@@ -87,7 +87,7 @@ pub(in crate::game) fn launch(
     }
     p.id
 }
-pub(in crate::game) fn dropped(game: &sunrise_gameplay::game::ServerGame<'_>, item: &str) {
+pub(crate) fn dropped(game: &sunrise_gameplay::game::ServerGame<'_>, item: &str) {
     assert_eq!(game.dropped.len(), 1, "actual unfiltered item collection");
     assert_eq!(&*game.dropped[0].stack.item, item);
     assert_eq!(game.dropped[0].stack.count, 1);

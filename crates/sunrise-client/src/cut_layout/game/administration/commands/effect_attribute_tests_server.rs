@@ -48,7 +48,7 @@ fn a_given_invisibility_hides_a_mobs_waypoint_and_a_loaded_one_does_not() {
 }
 
 /// The number a successful `/attribute` read says, or None when it failed.
-pub(in crate::game) fn read(
+pub(crate) fn read(
     game: &mut sunrise_gameplay::game::ServerGame<'_>,
     command: &str,
 ) -> Option<String> {

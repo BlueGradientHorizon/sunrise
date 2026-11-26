@@ -6,7 +6,7 @@ use sunrise_core::nbt::Tag;
 use sunrise_core::position::ChunkPos;
 use sunrise_sim::motion::PlayerMotion;
 
-pub(in crate::game) fn read_witness() -> String {
+pub(crate) fn read_witness() -> String {
     let raw = std::env::var_os("SUNRISE_ENTITY_FIRE_TICKS_WITNESS").unwrap_or_else(|| {
         panic!(
             "SUNRISE_ENTITY_FIRE_TICKS_WITNESS is unset; run through tools/test_entity_fire_ticks_parity.py, which records the 26.3 witness"
@@ -26,26 +26,26 @@ pub(in crate::game) fn read_witness() -> String {
     })
 }
 
-pub(in crate::game) struct WitnessRow<'a> {
-    pub(in crate::game) kind: &'a str,
-    pub(in crate::game) initial_fire: &'a str,
-    pub(in crate::game) nbt: &'a str,
-    pub(in crate::game) ticks: usize,
-    pub(in crate::game) expected: Option<Tag>,
+pub(crate) struct WitnessRow<'a> {
+    pub(crate) kind: &'a str,
+    pub(crate) initial_fire: &'a str,
+    pub(crate) nbt: &'a str,
+    pub(crate) ticks: usize,
+    pub(crate) expected: Option<Tag>,
 }
 
-pub(in crate::game) struct Active<'a> {
-    pub(in crate::game) kind: &'a str,
-    pub(in crate::game) initial_fire: &'a str,
-    pub(in crate::game) nbt: &'a str,
-    pub(in crate::game) target: Target,
-    pub(in crate::game) elapsed: usize,
+pub(crate) struct Active<'a> {
+    pub(crate) kind: &'a str,
+    pub(crate) initial_fire: &'a str,
+    pub(crate) nbt: &'a str,
+    pub(crate) target: Target,
+    pub(crate) elapsed: usize,
 }
 
 #[allow(unused_imports)]
-pub(in crate::game) use sunrise_gameplay::game::server_side::commands_server::data::fire_tests::target_exists;
+pub(crate) use sunrise_gameplay::game::server_side::commands_server::data::fire_tests::target_exists;
 
-pub(in crate::game) fn summon_target_at(
+pub(crate) fn summon_target_at(
     game: &mut sunrise_gameplay::game::ServerGame<'_>,
     kind: &str,
     pos: [f64; 3],
@@ -60,9 +60,9 @@ pub(in crate::game) fn summon_target_at(
 }
 
 #[allow(unused_imports)]
-pub(in crate::game) use sunrise_gameplay::game::server_side::commands_server::data::fire_tests::tick_fire_entities;
+pub(crate) use sunrise_gameplay::game::server_side::commands_server::data::fire_tests::tick_fire_entities;
 
-pub(in crate::game) fn parse_witness_26_3(witness: &str) -> Vec<WitnessRow<'_>> {
+pub(crate) fn parse_witness_26_3(witness: &str) -> Vec<WitnessRow<'_>> {
     assert!(
         witness.starts_with("# vanilla 26.3 witness "),
         "witness must be tagged with vanilla 26.3"
@@ -106,7 +106,7 @@ fn fire_changes_on_eyes_fangs_spawners_clouds_and_bullets() {
     run_fire_changes_on_eyes_fangs_spawners_clouds_and_bullets();
 }
 
-pub(in crate::game) fn run_fire_changes_on_eyes_fangs_spawners_clouds_and_bullets() {
+pub(crate) fn run_fire_changes_on_eyes_fangs_spawners_clouds_and_bullets() {
     let witness = read_witness();
     let rows = parse_witness_26_3(&witness);
     let total_rows = rows.len();

@@ -15,7 +15,7 @@ use mod_platform::testing::with_mods;
 
 use std::sync::{Arc, Mutex};
 
-pub(in crate::game) use crate::game::client_side::native_hooks_client::customize_boss_event_progress::customize_boss_event_progress_tests::add_bars;
+pub(crate) use crate::game::client_side::native_hooks_client::customize_boss_event_progress::customize_boss_event_progress_tests::add_bars;
 
 /// `CustomizeGuiOverlayEvent.BossEventProgress`: with no mod the bars sit 19 pixels apart from
     /// y = 12; a mod hears each bar at vanilla's place, and hides one, spaces the next and moves

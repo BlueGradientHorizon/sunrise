@@ -1,7 +1,7 @@
 
 
 #[cfg(test)]
-pub(in crate::game) mod off_level_tests {
+pub(crate) mod off_level_tests {
     use {crate::game::creatures::borrowed_tick::*};
 
     #[test]
@@ -80,4 +80,4 @@ pub(in crate::game) mod off_level_tests {
 
 #[cfg(test)]
 #[path = "mob_tick_access_tests.rs"]
-pub(in crate::game) mod mob_tick_access_tests;
+pub(crate) mod mob_tick_access_tests;

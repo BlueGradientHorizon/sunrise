@@ -1,7 +1,7 @@
 
 
 #[cfg(test)]
-pub(in crate::game) mod tests {
+pub(crate) mod tests {
     use mod_api::{ClientHost, ClientTickPreEvent, Hooks, HudMode, ModEntry};
     use mod_platform::testing::with_mods;
 

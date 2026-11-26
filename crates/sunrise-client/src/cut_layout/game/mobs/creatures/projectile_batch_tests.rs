@@ -7,7 +7,7 @@ use sunrise_mod_runtime::attachments::{
     AttachmentType, Attachments, HasAttachmentLifetime, Holder, index::AttachmentIndex,
 };
 use sunrise_sim::join_seq::JoinSeq;
-pub(in crate::game) static VALUE: AttachmentType<i32> = AttachmentType {
+pub(crate) static VALUE: AttachmentType<i32> = AttachmentType {
     namespace: "test",
     name: "projectile_lifetime",
     default: || 0,
@@ -16,15 +16,15 @@ pub(in crate::game) static VALUE: AttachmentType<i32> = AttachmentType {
     sync: false,
 };
 
-pub(in crate::game) struct BoundProjectiles {
-    pub(in crate::game) _values: [Attachments; 2],
-    pub(in crate::game) index: Arc<Mutex<AttachmentIndex<mod_api::EntityRef>>>,
-    pub(in crate::game) registrations:
+pub(crate) struct BoundProjectiles {
+    pub(crate) _values: [Attachments; 2],
+    pub(crate) index: Arc<Mutex<AttachmentIndex<mod_api::EntityRef>>>,
+    pub(crate) registrations:
         [sunrise_mod_runtime::attachments::AttachmentRegistration; 2],
 }
 
 impl BoundProjectiles {
-    pub(in crate::game) fn bind_two(game: &mut sunrise_gameplay::game::ServerGame<'_>) -> Self {
+    pub(crate) fn bind_two(game: &mut sunrise_gameplay::game::ServerGame<'_>) -> Self {
         let index = Arc::new(Mutex::new(AttachmentIndex::default()));
         let mut values = [Attachments::default(), Attachments::default()];
         let registrations = std::array::from_fn(|i| {
@@ -54,7 +54,7 @@ pub(in crate::game) struct Observed {
     pub(in crate::game) remove: Option<u32>,
 }
 
-pub(in crate::game) struct CancelImpacts(pub(in crate::game) Arc<Mutex<Observed>>);
+pub(crate) struct CancelImpacts(pub(crate) Arc<Mutex<Observed>>);
 
 #[mod_api::__subscriptions]
 impl Hooks for CancelImpacts {
@@ -112,7 +112,7 @@ impl Hooks for CancelImpacts {
     }
 }
 
-pub(in crate::game) fn with_batch(
+pub(crate) fn with_batch(
     remove: bool,
     test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>, [u32; 3], [JoinSeq; 3], u32, u32),
 ) {
@@ -338,7 +338,7 @@ fn a_projectile_removed_in_its_impact_hook_stays_removed_after_replay() {
     });
 }
 
-pub(in crate::game) fn terminal_egg(action: Action, abort: bool) {
+pub(crate) fn terminal_egg(action: Action, abort: bool) {
     use sunrise_core::random::LegacyRandom;
 
     with_probe(action, true, |game, observed| {
@@ -458,7 +458,7 @@ fn two_discarded_eggs_leave_once_without_dying() {
     });
 }
 
-pub(in crate::game) fn shoot_arrow_at_wall(
+pub(crate) fn shoot_arrow_at_wall(
     game: &mut sunrise_gameplay::game::ServerGame<'_>,
     wall_x: i32,
     start_x: f64,
@@ -652,10 +652,10 @@ pub(in crate::game) struct WindContinuationObserved {
     pub(in crate::game) buffered: Mutex<bool>,
 }
 
-pub(in crate::game) struct WindContinuationObserver {
-    pub(in crate::game) spawn_on_shoot: bool,
-    pub(in crate::game) watch_breeze_each: bool,
-    pub(in crate::game) observed: Arc<WindContinuationObserved>,
+pub(crate) struct WindContinuationObserver {
+    pub(crate) spawn_on_shoot: bool,
+    pub(crate) watch_breeze_each: bool,
+    pub(crate) observed: Arc<WindContinuationObserved>,
 }
 
 #[mod_api::__subscriptions]
@@ -716,7 +716,7 @@ impl Hooks for WindContinuationObserver {
     }
 }
 
-pub(in crate::game) fn load_wind_continuation_witness_26_3() -> String {
+pub(crate) fn load_wind_continuation_witness_26_3() -> String {
     let raw = std::env::var_os("SUNRISE_WIND_CONTINUATION_WITNESS").unwrap_or_else(|| {
         panic!(
             "SUNRISE_WIND_CONTINUATION_WITNESS is unset; run tools/test_bounced_projectile_tick_order_parity.py"
@@ -736,7 +736,7 @@ pub(in crate::game) fn load_wind_continuation_witness_26_3() -> String {
     })
 }
 
-pub(in crate::game) fn wind_continuation_witness_row_26_3<'a>(
+pub(crate) fn wind_continuation_witness_row_26_3<'a>(
     witness: &'a str,
     tick: usize,
     tag: &str,
@@ -749,7 +749,7 @@ pub(in crate::game) fn wind_continuation_witness_row_26_3<'a>(
     &line[prefix.len()..]
 }
 
-pub(in crate::game) fn wind_continuation_witness_26_3(
+pub(crate) fn wind_continuation_witness_26_3(
     witness: &str,
     tick: usize,
     tag: &str,
@@ -769,7 +769,7 @@ pub(in crate::game) fn wind_continuation_witness_26_3(
     Some((parse3(pos_str), parse3(mot_str)))
 }
 
-pub(in crate::game) fn wind_continuation_boat_witness_26_3(
+pub(crate) fn wind_continuation_boat_witness_26_3(
     witness: &str,
     tick: usize,
     tag: &str,
@@ -786,7 +786,7 @@ pub(in crate::game) fn wind_continuation_boat_witness_26_3(
     Some(damage)
 }
 
-pub(in crate::game) fn assert_boat_matches_witness(
+pub(crate) fn assert_boat_matches_witness(
     witness: &str,
     game: &sunrise_gameplay::game::ServerGame<'_>,
     tick: usize,
@@ -806,7 +806,7 @@ pub(in crate::game) fn assert_boat_matches_witness(
     );
 }
 
-pub(in crate::game) fn assert_vec3_bits(actual: Vec3, expected: [f64; 3], label: &str) {
+pub(crate) fn assert_vec3_bits(actual: Vec3, expected: [f64; 3], label: &str) {
     for (axis, (got, want)) in actual.components().into_iter().zip(expected).enumerate() {
         assert_eq!(
             got.to_bits(),
@@ -823,6 +823,6 @@ fn continuing_wind_charge_keeps_tick_order_and_skips_relaunch_in_batched_pass() 
 }
 
 #[allow(unused_imports)]
-pub(in crate::game) use crate::game::server_side::creatures_server::projectile_batch_tests::run_continuing_wind_charge_keeps_tick_order_and_skips_relaunch_in_batched_pass;
+pub(crate) use crate::game::server_side::creatures_server::projectile_batch_tests::run_continuing_wind_charge_keeps_tick_order_and_skips_relaunch_in_batched_pass;
 
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

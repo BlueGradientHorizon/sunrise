@@ -1,7 +1,7 @@
 use crate::game::lan_actions::guest_body::tests::guest;
 
 #[path = "tests/fall_reset_server.rs"]
-pub(in crate::game) mod fall_reset;
+pub(crate) mod fall_reset;
 
 #[path = "tests/travel_server.rs"]
-pub(in crate::game) mod travel;
+pub(crate) mod travel;

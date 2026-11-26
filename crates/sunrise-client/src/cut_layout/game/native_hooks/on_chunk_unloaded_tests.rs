@@ -13,18 +13,18 @@ use std::time::{Duration, Instant};
 use sunrise_core::nbt::{Compound, Tag};
 use sunrise_level::containers::BlockEntity;
 
-pub(in crate::game) const POT: &str = "unload_probe:pot";
+pub(crate) const POT: &str = "unload_probe:pot";
 /// Chunk (100, 100): far from the spawn, so only its ticket keeps it.
-pub(in crate::game) const CHUNK: (i32, i32) = (100, 100);
-pub(in crate::game) const POTS: [[i32; 3]; 2] = [[1601, 100, 1602], [1610, 120, 1613]];
-pub(in crate::game) const CHEST: [i32; 3] = [1605, 100, 1605];
+pub(crate) const CHUNK: (i32, i32) = (100, 100);
+pub(crate) const POTS: [[i32; 3]; 2] = [[1601, 100, 1602], [1610, 120, 1613]];
+pub(crate) const CHEST: [i32; 3] = [1605, 100, 1605];
 
 /// What each call saw: the side, the position its handle names, its entity's id, and
 /// whether the merge the part tried inside it was refused.
-pub(in crate::game) static CALLS: Mutex<Vec<(&'static str, [i32; 3], String, bool)>> =
+pub(crate) static CALLS: Mutex<Vec<(&'static str, [i32; 3], String, bool)>> =
     Mutex::new(Vec::new());
 
-pub(in crate::game) struct Pot;
+pub(crate) struct Pot;
 #[mod_api::sunrise_part]
 impl BlockPart for Pot {}
 #[mod_api::sunrise_part]
@@ -47,7 +47,7 @@ impl BlockEntityPart for Pot {
     }
 }
 
-pub(in crate::game) struct Probe;
+pub(crate) struct Probe;
 #[mod_api::__subscriptions]
 impl Hooks for Probe {
     fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
@@ -61,7 +61,7 @@ impl Hooks for Probe {
     }
 }
 
-pub(in crate::game) fn request(world: &Path, create: bool) -> WorldRequest {
+pub(crate) fn request(world: &Path, create: bool) -> WorldRequest {
     let rules = std::sync::Arc::new(sunrise_game_data::gamerules::RuleRegistry::vanilla());
     let options = sunrise_sim::world_options::WorldOptions {
         world_type: sunrise_sim::save::WorldPreset::Flat,
@@ -82,7 +82,7 @@ pub(in crate::game) fn request(world: &Path, create: bool) -> WorldRequest {
 }
 
 /// The prepared resources with the installed mods' content.
-pub(in crate::game) fn prepared_root() -> std::path::PathBuf {
+pub(crate) fn prepared_root() -> std::path::PathBuf {
     let base = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
     sunrise_gameplay_common::game::mods::content_root(&base, &Default::default())
         .unwrap()
@@ -92,7 +92,7 @@ pub(in crate::game) fn prepared_root() -> std::path::PathBuf {
 
 /// Runs the game's streaming until chunk `CHUNK` is resident (`true`) or gone, and
 /// nothing is left on its way (a ticket removed mid-generation is another matter).
-pub(in crate::game) fn pump_until(game: &mut sunrise_gameplay::game::ServerGame<'_>, resident: bool) {
+pub(crate) fn pump_until(game: &mut sunrise_gameplay::game::ServerGame<'_>, resident: bool) {
     let deadline = Instant::now() + Duration::from_secs(120);
     while game.world.chunks.contains_key(&CHUNK) != resident || game.side.streaming.busy() {
         assert!(Instant::now() < deadline, "chunk {CHUNK:?} did not change");

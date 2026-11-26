@@ -296,7 +296,7 @@ fn live_damage_and_blast_warden_reactions_follow_source_entities_and_cooldown() 
     });
 }
 
-pub(in crate::game) fn setup_live_damage_world(game: &mut sunrise_gameplay::game::ServerGame<'_>) {
+pub(crate) fn setup_live_damage_world(game: &mut sunrise_gameplay::game::ServerGame<'_>) {
     use std::sync::Arc;
     use sunrise_core::{geometry::Vec3, position::ChunkPos};
     use sunrise_level::chunk::Chunk;
@@ -316,7 +316,7 @@ pub(in crate::game) fn setup_live_damage_world(game: &mut sunrise_gameplay::game
     game.side.next_entity = 100;
 }
 
-pub(in crate::game) fn spawn_test_projectile(
+pub(crate) fn spawn_test_projectile(
     game: &mut sunrise_gameplay::game::ServerGame<'_>,
     kind: sunrise_sim::projectiles::ProjectileKind,
     at: sunrise_core::geometry::Vec3,

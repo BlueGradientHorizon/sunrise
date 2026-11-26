@@ -1,7 +1,7 @@
 
 
 #[cfg(test)]
-pub(in crate::game) mod tests {
+pub(crate) mod tests {
     /// Invoke the actual attack methods in an empty scratch Game, without
     /// starting a server, opening a world or entering the game loop.
     #[test]

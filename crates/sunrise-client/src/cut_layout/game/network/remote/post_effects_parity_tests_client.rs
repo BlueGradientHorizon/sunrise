@@ -15,7 +15,7 @@ use sunrise_protocol::{
     },
 };
 
-pub(in crate::game) fn post_effects_before_login_disconnects_case(case_name: &str) {
+pub(crate) fn post_effects_before_login_disconnects_case(case_name: &str) {
     let witness = post_effects_witness();
     let effects = match case_name {
         "empty" => Vec::new(),
@@ -77,7 +77,7 @@ pub(in crate::game) fn post_effects_before_login_disconnects_case(case_name: &st
     });
 }
 
-pub(in crate::game) fn post_effects_cleared_on_login_respawn_and_reconfigure_body() {
+pub(crate) fn post_effects_cleared_on_login_respawn_and_reconfigure_body() {
     let witness = post_effects_witness();
     let lifecycle = &witness["play_lifecycle"];
 

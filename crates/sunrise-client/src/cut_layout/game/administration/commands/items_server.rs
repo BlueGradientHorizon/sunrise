@@ -1,7 +1,7 @@
 
 
 #[cfg(test)]
-pub(in crate::game) mod mob_equipment_command_tests {
+pub(crate) mod mob_equipment_command_tests {
     use sunrise_gameplay::game::commands::items::mob_equipment_command_tests::with_game;
 
     #[test]
@@ -119,7 +119,7 @@ pub(in crate::game) mod mob_equipment_command_tests {
 }
 
 #[cfg(test)]
-pub(in crate::game) mod registered_slot_source_read_tests {
+pub(crate) mod registered_slot_source_read_tests {
     use super::*;
 
     #[test]
@@ -221,7 +221,7 @@ pub(in crate::game) mod registered_slot_source_read_tests {
 }
 
 #[cfg(test)]
-pub(in crate::game) mod registered_slot_source_preservation_tests {
+pub(crate) mod registered_slot_source_preservation_tests {
 use sunrise_gameplay::game::server_side::commands::items::registered_slot_source_preservation_tests::count;
 
     use super::*;
@@ -304,7 +304,7 @@ use sunrise_gameplay::game::server_side::commands::items::registered_slot_source
         }
     }
 
-    pub(in crate::game) fn scene<'a>(
+    pub(crate) fn scene<'a>(
         resources: &'a mut Option<std::sync::Arc<sunrise_gameplay_common::game::Resources>>,
         name: &str,
     ) -> (sunrise_gameplay::game::ServerGame<'a>, std::path::PathBuf) {

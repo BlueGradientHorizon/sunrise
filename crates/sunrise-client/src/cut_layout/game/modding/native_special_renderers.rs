@@ -5,4 +5,4 @@
 mod cost_tests;
 #[cfg(test)]
 #[path = "native_special_renderers/frame_tests.rs"]
-pub(in crate::game) mod frame_tests;
+pub(crate) mod frame_tests;

@@ -16,7 +16,7 @@ use sunrise_items::items::ItemStack;
 use sunrise_sim::motion::PlayerMotion;
 use sunrise_world::level::{PlaceContext, PlacementSource as EnginePlacementSource};
 
-pub(in crate::game) struct Move;
+pub(crate) struct Move;
 #[mod_api::sunrise_part]
 impl ItemPart for Move {
     fn placement_context(
@@ -52,7 +52,7 @@ impl ItemPart for Move {
         Some(Some(context))
     }
 }
-pub(in crate::game) struct Refuse;
+pub(crate) struct Refuse;
 #[mod_api::sunrise_part]
 impl ItemPart for Refuse {
     fn placement_context(
@@ -63,7 +63,7 @@ impl ItemPart for Refuse {
         Some(None)
     }
 }
-pub(in crate::game) enum Invalid {
+pub(crate) enum Invalid {
     Nonfinite,
     Item,
     Bounds,
@@ -88,7 +88,7 @@ impl ItemPart for Invalid {
 }
 /// Rewrites the placement into a dispenser-like `DirectionalPlaceContext` at the same cell,
 /// along and clicking East, and claims the clicked block is not replaced.
-pub(in crate::game) struct Directional;
+pub(crate) struct Directional;
 #[mod_api::sunrise_part]
 impl ItemPart for Directional {
     fn placement_context(
@@ -106,7 +106,7 @@ impl ItemPart for Directional {
         Some(Some(context))
     }
 }
-pub(in crate::game) enum Survival {
+pub(crate) enum Survival {
     Skip,
     RequireWhen(Arc<AtomicBool>),
 }
@@ -119,7 +119,7 @@ impl ItemPart for Survival {
         }
     }
 }
-pub(in crate::game) struct Parts(pub(in crate::game) Arc<AtomicBool>);
+pub(crate) struct Parts(pub(crate) Arc<AtomicBool>);
 #[mod_api::__subscriptions]
 impl Hooks for Parts {
     fn register(&self, r: &mut dyn Registrar, _: &mod_api::RegistrationContext) {
@@ -422,7 +422,7 @@ fn item_parts_rewrite_or_refuse_context_and_control_survival_on_both_sides() {
     });
 }
 
-pub(in crate::game) struct Substitute(pub(in crate::game) &'static str);
+pub(crate) struct Substitute(pub(crate) &'static str);
 #[mod_api::sunrise_part]
 impl BlockPart for Substitute {
     fn state_for_placement(
@@ -434,7 +434,7 @@ impl BlockPart for Substitute {
         Some(level.block_state_id(self.0))
     }
 }
-pub(in crate::game) struct PlacementSubstitution;
+pub(crate) struct PlacementSubstitution;
 #[mod_api::__subscriptions]
 impl Hooks for PlacementSubstitution {
     fn register(&self, r: &mut dyn Registrar, _: &mod_api::RegistrationContext) {

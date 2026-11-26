@@ -39,7 +39,7 @@ use sunrise_protocol::{
     };
 
 /// A server game on a scratch world, as `levels.rs`'s tests open one.
-    pub(in crate::game) fn open_game<'a>(
+    pub(crate) fn open_game<'a>(
         resources: &'a mut Option<std::sync::Arc<sunrise_gameplay_common::game::Resources>>,
         root: &std::path::Path,
         home: &std::path::Path,

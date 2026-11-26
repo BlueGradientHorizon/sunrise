@@ -2,7 +2,7 @@
 
 #[cfg(test)]
 #[path = "tests/player_armor_weapon_tests.rs"]
-pub(in crate::game) mod player_armor_weapon_tests;
+pub(crate) mod player_armor_weapon_tests;
 
 #[cfg(test)]
 pub(crate) mod tests {

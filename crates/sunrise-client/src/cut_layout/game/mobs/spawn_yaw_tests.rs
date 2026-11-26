@@ -5,7 +5,7 @@
 //! `Mth.wrapDegrees`.
 use sunrise_gameplay_common::game::creatures::SpawnReason;
 use sunrise_gameplay_common::game::creatures::SpawnSite;
-use {crate::game::*, sunrise_gameplay_common::game::{Arc, Instant, Options, PathBuf, Progress, Resources, Settings, creatures, execution_role, load_resources}};
+use {crate::game::*, sunrise_gameplay_common::game::{Instant, Options, PathBuf, Progress, Resources, creatures, execution_role}};
 use std::sync::Arc;
 use sunrise_core::position::ChunkPos;
 use sunrise_level::chunk::Chunk;

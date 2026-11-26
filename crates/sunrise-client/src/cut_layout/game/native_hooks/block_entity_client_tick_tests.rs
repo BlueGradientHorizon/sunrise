@@ -18,36 +18,36 @@ use std::time::{Duration, Instant};
 use sunrise_core::nbt::{Compound, Tag};
 use sunrise_level::containers::BlockEntity;
 
-pub(in crate::game) const HUM: &str = "client_tick_probe:hum";
-pub(in crate::game) const QUIET: &str = "client_tick_probe:quiet";
+pub(crate) const HUM: &str = "client_tick_probe:hum";
+pub(crate) const QUIET: &str = "client_tick_probe:quiet";
 /// A mod block named as vanilla's shulker boxes are: its ticker is its own type's.
-pub(in crate::game) const CRATE: &str = "client_tick_probe:crate_shulker_box";
+pub(crate) const CRATE: &str = "client_tick_probe:crate_shulker_box";
 /// Chunk (100, 100): far from the spawn.
-pub(in crate::game) const CHUNK: (i32, i32) = (100, 100);
-pub(in crate::game) const HUMS: [[i32; 3]; 2] = [[1610, 70, 1613], [1601, 64, 1602]];
-pub(in crate::game) const QUIET_AT: [i32; 3] = [1605, 64, 1605];
+pub(crate) const CHUNK: (i32, i32) = (100, 100);
+pub(crate) const HUMS: [[i32; 3]; 2] = [[1610, 70, 1613], [1601, 64, 1602]];
+pub(crate) const QUIET_AT: [i32; 3] = [1605, 64, 1605];
 /// A hum in the next column, which stays.
-pub(in crate::game) const OTHER: [i32; 3] = [1620, 64, 1600];
-pub(in crate::game) const CRATE_AT: [i32; 3] = [1621, 64, 1600];
+pub(crate) const OTHER: [i32; 3] = [1620, 64, 1600];
+pub(crate) const CRATE_AT: [i32; 3] = [1621, 64, 1600];
 /// A spawner that arrives after the second hum and before the first.
-pub(in crate::game) const SPAWNER_AT: [i32; 3] = [1603, 64, 1608];
+pub(crate) const SPAWNER_AT: [i32; 3] = [1603, 64, 1608];
 
 /// What the probe heard, in order: the client tick's and level's brackets, each client tick
 /// (`tick`, its position and `rpm`) and each synced data notice (`data`).
-pub(in crate::game) static EVENTS: Mutex<Vec<String>> = Mutex::new(Vec::new());
+pub(crate) static EVENTS: Mutex<Vec<String>> = Mutex::new(Vec::new());
 /// How many particles the game had requested at each client tick told
 /// (`sunrise_client::particles::requested_count`), in order.
-pub(in crate::game) static TICK_PARTICLES: Mutex<Vec<u64>> = Mutex::new(Vec::new());
+pub(crate) static TICK_PARTICLES: Mutex<Vec<u64>> = Mutex::new(Vec::new());
 
-pub(in crate::game) fn note(event: String) {
+pub(crate) fn note(event: String) {
     EVENTS.lock().unwrap().push(event);
 }
 
-pub(in crate::game) fn take_events() -> Vec<String> {
+pub(crate) fn take_events() -> Vec<String> {
     std::mem::take(&mut *EVENTS.lock().unwrap())
 }
 
-pub(in crate::game) fn rpm_of(nbt: &Compound) -> i32 {
+pub(crate) fn rpm_of(nbt: &Compound) -> i32 {
     match nbt.get(&"rpm".into()) {
         Some(Tag::Int(rpm)) => *rpm,
         _ => -1,
@@ -56,7 +56,7 @@ pub(in crate::game) fn rpm_of(nbt: &Compound) -> i32 {
 
 /// A client tick's event, once its scoped view is checked to read its position and its state to
 /// be its block's.
-pub(in crate::game) fn record(event: &mut BlockEntityClientTickEvent<'_>) {
+pub(crate) fn record(event: &mut BlockEntityClientTickEvent<'_>) {
     let (handle, pos, block, id, rpm) = event
         .subject
         .with_view(|view| {
@@ -81,7 +81,7 @@ pub(in crate::game) fn record(event: &mut BlockEntityClientTickEvent<'_>) {
 }
 
 /// Declares client ticks.
-pub(in crate::game) struct Hum;
+pub(crate) struct Hum;
 #[mod_api::sunrise_part]
 impl BlockPart for Hum {}
 #[mod_api::sunrise_part]
@@ -106,7 +106,7 @@ impl BlockEntityPart for Hum {
 }
 
 /// Has a client tick but never declares one.
-pub(in crate::game) struct Quiet;
+pub(crate) struct Quiet;
 #[mod_api::sunrise_part]
 impl BlockPart for Quiet {}
 #[mod_api::sunrise_part]
@@ -116,7 +116,7 @@ impl BlockEntityPart for Quiet {
     }
 }
 
-pub(in crate::game) struct Probe;
+pub(crate) struct Probe;
 #[mod_api::__subscriptions]
 impl Hooks for Probe {
     fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
@@ -155,7 +155,7 @@ impl Hooks for Probe {
     }
 }
 
-pub(in crate::game) fn install() {
+pub(crate) fn install() {
     let mods: mod_api::Mods =
         vec![mod_api::ModEntry::new("client_tick_probe", Box::new(Probe))].into();
     mod_platform::__private::install(mods.clone());
@@ -163,7 +163,7 @@ pub(in crate::game) fn install() {
 }
 
 /// The prepared resources with the installed mods' content.
-pub(in crate::game) fn prepared_root() -> PathBuf {
+pub(crate) fn prepared_root() -> PathBuf {
     let base = PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
     sunrise_gameplay_common::game::mods::content_root(&base, &Default::default())
         .unwrap()
@@ -171,7 +171,7 @@ pub(in crate::game) fn prepared_root() -> PathBuf {
         .to_path_buf()
 }
 
-pub(in crate::game) fn rpm(rpm: i32) -> Compound {
+pub(crate) fn rpm(rpm: i32) -> Compound {
     let mut nbt = Compound::new();
     nbt.insert("rpm".into(), Tag::Int(rpm));
     nbt
@@ -179,21 +179,21 @@ pub(in crate::game) fn rpm(rpm: i32) -> Compound {
 
 /// One frame: what the server sent is handled (`update_world`, which a frame runs before its
 /// ticks), then `steps` client ticks. Returns what the probe heard.
-pub(in crate::game) fn frame(game: &mut sunrise_client_gameplay::game::ClientGame<'_>, steps: u32) -> Vec<String> {
+pub(crate) fn frame(game: &mut sunrise_client_gameplay::game::ClientGame<'_>, steps: u32) -> Vec<String> {
     game.side_update_world();
     game.client_tick_steps(steps, None).unwrap();
     take_events()
 }
 
 /// The events of one client tick that ticks the level, its client ticks being `ticks`.
-pub(in crate::game) fn ticked(ticks: &[([i32; 3], i32)]) -> Vec<String> {
+pub(crate) fn ticked(ticks: &[([i32; 3], i32)]) -> Vec<String> {
     let mut events = vec!["client_pre".to_owned(), "level_pre".to_owned()];
     events.extend(ticks.iter().map(|(pos, rpm)| format!("tick {pos:?} {rpm}")));
     events.extend(["level_post".to_owned(), "client_post".to_owned()]);
     events
 }
 
-pub(in crate::game) fn request(world: &Path) -> WorldRequest {
+pub(crate) fn request(world: &Path) -> WorldRequest {
     let rules = std::sync::Arc::new(sunrise_game_data::gamerules::RuleRegistry::vanilla());
     let options = sunrise_sim::world_options::WorldOptions {
         world_type: sunrise_sim::save::WorldPreset::Flat,

@@ -69,7 +69,7 @@ mod attachment_instruction_bench;
 mod baked_model_keys_tests;
 #[cfg(test)]
 #[path = "game/blocks/block_entity_reach_draw_tests.rs"]
-pub(in crate::game) mod block_entity_reach_draw_tests;
+pub(crate) mod block_entity_reach_draw_tests;
 #[cfg(test)]
 #[path = "game/blocks/block_part_tool_tests.rs"]
 mod block_part_tool_tests;

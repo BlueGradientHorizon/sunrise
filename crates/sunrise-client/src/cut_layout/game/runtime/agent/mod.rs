@@ -2,7 +2,7 @@
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "face_pick_tests.rs"]
-pub(in crate::game) mod face_pick_tests;
+pub(crate) mod face_pick_tests;
 
 #[cfg(test)]
 #[cfg(feature = "client")]

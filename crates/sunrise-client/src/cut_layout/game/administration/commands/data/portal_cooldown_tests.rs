@@ -65,7 +65,7 @@ fn a_mob_saves_its_live_portal_cooldown() {
     run_a_mob_saves_its_live_portal_cooldown();
 }
 
-pub(in crate::game) fn run_a_mob_saves_its_live_portal_cooldown() {
+pub(crate) fn run_a_mob_saves_its_live_portal_cooldown() {
     let witness = load_witness();
     assert_eq!(witness.minecraft, "26.3");
     let expected = &witness.expected;

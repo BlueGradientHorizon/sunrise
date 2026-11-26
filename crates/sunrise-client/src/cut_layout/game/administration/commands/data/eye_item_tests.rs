@@ -2,7 +2,7 @@ use {sunrise_gameplay::game::server_side::commands::data::DataRef, sunrise_gamep
 use std::path::PathBuf;
 use sunrise_core::nbt::{Tag, parse_snbt};
 
-pub(in crate::game) fn load_witness() -> String {
+pub(crate) fn load_witness() -> String {
     let raw = std::env::var_os("SUNRISE_EYE_ITEM_WITNESS").unwrap_or_else(|| {
         panic!(
             "SUNRISE_EYE_ITEM_WITNESS is unset; run tools/test_eye_item_parity.py, which records the witness"
@@ -22,7 +22,7 @@ pub(in crate::game) fn load_witness() -> String {
     })
 }
 
-pub(in crate::game) fn parse_exact_snbt(text: &str) -> Tag {
+pub(crate) fn parse_exact_snbt(text: &str) -> Tag {
     let (tag, used) = parse_snbt(text).expect("valid recorded 26.3 SNBT");
     assert_eq!(
         used,
@@ -32,7 +32,7 @@ pub(in crate::game) fn parse_exact_snbt(text: &str) -> Tag {
     tag
 }
 
-pub(in crate::game) fn saved_item(game: &mut sunrise_gameplay::game::ServerGame<'_>, id: u32) -> Tag {
+pub(crate) fn saved_item(game: &mut sunrise_gameplay::game::ServerGame<'_>, id: u32) -> Tag {
     let tag = game.data_of(&DataRef::Entity(Target::Other(id))).unwrap();
     tag.get("Item")
         .cloned()
@@ -47,4 +47,4 @@ fn a_summoned_eye_saves_its_normalised_item_live_and_after_a_reload() {
 }
 
 #[allow(unused_imports)]
-pub(in crate::game) use crate::game::server_side::commands_server::data::eye_item_tests::run_a_summoned_eye_saves_its_normalised_item_live_and_after_a_reload;
+pub(crate) use crate::game::server_side::commands_server::data::eye_item_tests::run_a_summoned_eye_saves_its_normalised_item_live_and_after_a_reload;

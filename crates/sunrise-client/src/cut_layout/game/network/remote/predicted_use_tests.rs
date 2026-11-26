@@ -1,9 +1,9 @@
 //! A native listener rewriting the real client prediction hand loop.
 use super::*;
 #[path = "predicted_use_tests/fixture.rs"]
-pub(in crate::game) mod fixture;
+pub(crate) mod fixture;
 
-pub(in crate::game) struct Native;
+pub(crate) struct Native;
 #[mod_api::__subscriptions]
 impl Hooks for Native {
     fn register(&self, registrar: &mut dyn Registrar, _: &mod_api::RegistrationContext) {
@@ -27,7 +27,7 @@ impl Hooks for Native {
 }
 
 #[allow(unused_imports)]
-pub(in crate::game) use crate::game::server_side::remote_server::interaction_event_tests::predicted_use_tests::matrix;
+pub(crate) use crate::game::server_side::remote_server::interaction_event_tests::predicted_use_tests::matrix;
 
 #[test]
 #[ignore = "daily"]

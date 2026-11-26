@@ -10,7 +10,7 @@ use sunrise_protocol::{
     },
 };
 
-pub(in crate::game) fn witness_json(name: &str) -> serde_json::Value {
+pub(crate) fn witness_json(name: &str) -> serde_json::Value {
     let dir = std::env::var("SUNRISE_NETWORK_WITNESS_DIR")
         .expect("SUNRISE_NETWORK_WITNESS_DIR must be set (run via tools/test_network_parity.py)");
     let path = std::path::Path::new(&dir).join(name);
@@ -19,11 +19,11 @@ pub(in crate::game) fn witness_json(name: &str) -> serde_json::Value {
     serde_json::from_str(&text).unwrap()
 }
 
-pub(in crate::game) fn bundle_witness() -> serde_json::Value {
+pub(crate) fn bundle_witness() -> serde_json::Value {
     witness_json("bundle.json")
 }
 
-pub(in crate::game) fn format_serverbound(packet: S) -> Option<String> {
+pub(crate) fn format_serverbound(packet: S) -> Option<String> {
     match packet {
         S::Pong(p) => Some(format!("pong:{}", p.id)),
         S::KeepAlive(k) => Some(format!("keep_alive:{}", k.id)),
@@ -36,7 +36,7 @@ pub(in crate::game) fn format_serverbound(packet: S) -> Option<String> {
     }
 }
 
-pub(in crate::game) fn json_strings(v: &serde_json::Value) -> Vec<String> {
+pub(crate) fn json_strings(v: &serde_json::Value) -> Vec<String> {
     v.as_array()
         .unwrap()
         .iter()
@@ -53,7 +53,7 @@ fn genpvp_ping_rotation_and_keepalive_bundle_apply_atomically_in_order_26_3() {
     );
 }
 
-pub(in crate::game) fn genpvp_ping_rotation_and_keepalive_bundle_body() {
+pub(crate) fn genpvp_ping_rotation_and_keepalive_bundle_body() {
     let witness = bundle_witness();
     let ping_rot = &witness["genpvp_ping_rotation_dispatch"];
     let expected_ping_rot = json_strings(&ping_rot["sent_after_process"]);
@@ -171,7 +171,7 @@ fn dependent_entity_bundle_never_splits_across_poll_or_tick_26_3() {
 }
 
 #[allow(unused_imports)]
-pub(in crate::game) use crate::game::client_side::remote_client::raw_ingress::bundle_parity_tests::dependent_entity_bundle_body;
+pub(crate) use crate::game::client_side::remote_client::raw_ingress::bundle_parity_tests::dependent_entity_bundle_body;
 
 #[test]
 #[ignore = "daily"]
@@ -193,13 +193,13 @@ fn entity_data_validation_inline_painting_and_pre_login_bundle_errors_26_3() {
     entity_data_validation_inline_painting_and_pre_login_bundle_case(&case_name);
 }
 
-pub(in crate::game) fn hex_bytes(hex: &str) -> Vec<u8> {
+pub(crate) fn hex_bytes(hex: &str) -> Vec<u8> {
     (0..hex.len() / 2)
         .map(|i| u8::from_str_radix(&hex[2 * i..2 * i + 2], 16).unwrap())
         .collect()
 }
 
-pub(in crate::game) fn wait_pong_in_game(
+pub(crate) fn wait_pong_in_game(
     game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
     peer: &mut sunrise_protocol::connection::Connection,
     ping_id: i32,
@@ -220,4 +220,4 @@ pub(in crate::game) fn wait_pong_in_game(
 }
 
 #[allow(unused_imports)]
-pub(in crate::game) use crate::game::client_side::remote_client::raw_ingress::bundle_parity_tests::entity_data_validation_inline_painting_and_pre_login_bundle_case;
+pub(crate) use crate::game::client_side::remote_client::raw_ingress::bundle_parity_tests::entity_data_validation_inline_painting_and_pre_login_bundle_case;

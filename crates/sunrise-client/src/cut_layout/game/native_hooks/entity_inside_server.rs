@@ -1,7 +1,7 @@
 
 
 #[cfg(test)]
-pub(in crate::game) mod sweep_tests {
+pub(crate) mod sweep_tests {
     use sunrise_gameplay_common::game::native_hooks::entity_inside::sweep_tests::InsidePart;
     use sunrise_gameplay_common::game::native_hooks::entity_inside::sweep_tests::install_inside_mod;
     use sunrise_gameplay::game::native_hooks::entity_inside::sweep_tests::item_at_blocks;

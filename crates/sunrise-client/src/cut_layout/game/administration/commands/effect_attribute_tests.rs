@@ -8,7 +8,7 @@
 use std::sync::Arc;
 use sunrise_level::chunk::Chunk;
 
-pub(in crate::game) fn with_game(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
+pub(crate) fn with_game(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
     sunrise_gameplay::game::native_entity_refs::tests::with_game(|game| {
         game.build_registries();
         game.set_allow_commands(true);
@@ -23,7 +23,7 @@ pub(in crate::game) fn with_game(test: impl FnOnce(&mut sunrise_gameplay::game::
 }
 
 #[allow(unused_imports)]
-pub(in crate::game) use crate::game::server_side::commands_server::world_cmds::effect_attribute_tests::read;
+pub(crate) use crate::game::server_side::commands_server::world_cmds::effect_attribute_tests::read;
 
 #[test]
 #[ignore = "daily"]

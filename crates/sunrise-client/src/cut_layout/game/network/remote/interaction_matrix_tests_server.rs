@@ -3,7 +3,7 @@ use crate::game::remote::interaction_event_tests::interaction_matrix_tests::adva
 use crate::game::remote::interaction_event_tests::interaction_matrix_tests::cases;
 use crate::game::remote::interaction_event_tests::interaction_matrix_tests::*;
 
-pub(in crate::game) fn matrix(mods: mod_api::Mods) {
+pub(crate) fn matrix(mods: mod_api::Mods) {
     fn run<S: InteractionSide>(game: &mut Game<'_, S>)
     where
         for<'__g> Game<'__g, S>: mod_api::Host,

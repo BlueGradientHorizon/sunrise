@@ -65,7 +65,7 @@ type Slot = Arc<OnceLock<std::result::Result<Arc<CachedEntry>, String>>>;
 const KEPT: usize = 4;
 static CACHE: Mutex<Vec<(CacheKey, Slot)>> = Mutex::new(Vec::new());
 
-pub(in crate::game) use sunrise_gameplay_common::game::test_fixtures::{
+pub(crate) use sunrise_gameplay_common::game::test_fixtures::{
     acquire_fresh_child_permit, acquire_in_process_load_permit,
 };
 
@@ -319,7 +319,7 @@ fn cached_language(
     .clone()
 }
 
-pub(in crate::game) fn cached_structure_spawns(
+pub(crate) fn cached_structure_spawns(
     root: &Path,
 ) -> sunrise_sim::mobs::spawn_selection::StructureSpawns {
     type SpawnKey = (PathBuf, FileStamp, FileStamp);
@@ -535,7 +535,7 @@ fn hydrate_hit(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(in crate::game) fn load(
+pub(crate) fn load(
     roots: packs::PackRoots,
     additional_data: Vec<Arc<sunrise_level::datapack::DataPack>>,
     launch_world: Option<&str>,

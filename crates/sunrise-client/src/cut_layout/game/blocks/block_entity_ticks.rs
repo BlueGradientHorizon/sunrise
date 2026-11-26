@@ -1,7 +1,7 @@
 
 
 #[cfg(test)]
-pub(in crate::game) mod jukebox_stop_tests {
+pub(crate) mod jukebox_stop_tests {
 
     use sunrise_items::items::ItemStack;
 
@@ -168,7 +168,7 @@ pub(in crate::game) mod jukebox_stop_tests {
 }
 
 #[cfg(test)]
-pub(in crate::game) mod add_blocks_tests {
+pub(crate) mod add_blocks_tests {
     use super::*;
     use mod_api::*;
     use std::sync::{Arc, OnceLock};
@@ -394,7 +394,7 @@ pub(in crate::game) mod add_blocks_tests {
 }
 
 #[cfg(test)]
-pub(in crate::game) mod furnace_changed_tests {
+pub(crate) mod furnace_changed_tests {
     use {sunrise_gameplay::game::game_tests::tests::server_game, sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases};
     use std::{
         collections::HashMap,
@@ -749,7 +749,7 @@ pub(in crate::game) mod furnace_changed_tests {
 }
 
 #[cfg(test)]
-pub(in crate::game) mod slot_guard_tests {
+pub(crate) mod slot_guard_tests {
     use {sunrise_gameplay::game::server_side::block_entity_ticks::BlockEntityTick, sunrise_gameplay::game::server_side::block_entity_ticks::BlockEntityTickSlot, sunrise_gameplay::game::server_side::block_entity_ticks::TickedKind};
     use sunrise_gameplay::game::game_tests::tests::server_game;
     use {sunrise_gameplay_common::game::published_loops::Attributed, sunrise_gameplay_common::game::published_loops::LoopFlow, sunrise_gameplay_common::game::published_loops::LoopMod, sunrise_gameplay_common::game::published_loops::LoopSlots};
@@ -806,7 +806,7 @@ pub(in crate::game) mod slot_guard_tests {
 
 /// What a slot that changes the block entities does to the pass (`BlockEntityTickSlot`'s docs).
 #[cfg(test)]
-pub(in crate::game) mod slot_mutation_tests {
+pub(crate) mod slot_mutation_tests {
     use {sunrise_gameplay::game::server_side::block_entity_ticks::BlockEntityTick, sunrise_gameplay::game::server_side::block_entity_ticks::BlockEntityTickSlot};
 
     use sunrise_gameplay::game::game_tests::tests::server_game;

@@ -1,7 +1,7 @@
 
 
 #[cfg(test)]
-pub(in crate::game) mod select_on_a_server_tests {
+pub(crate) mod select_on_a_server_tests {
 
     /// Picking a trade on a server moves payment locally, sends SelectTrade, and leaves effects to server.
     #[test]

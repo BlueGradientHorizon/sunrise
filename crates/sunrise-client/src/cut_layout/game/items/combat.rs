@@ -2,10 +2,10 @@
 
 #[cfg(test)]
 #[path = "tests/infested_roll_tests.rs"]
-pub(in crate::game) mod infested_roll_tests;
+pub(crate) mod infested_roll_tests;
 
 #[cfg(test)]
-pub(in crate::game) mod pet_credit_tests {
+pub(crate) mod pet_credit_tests {
     use std::sync::Arc;
     use sunrise_core::geometry::Vec3;
     use sunrise_sim::lan::playerdata::uuid_ints;
@@ -44,7 +44,7 @@ pub(in crate::game) mod pet_credit_tests {
 }
 
 #[cfg(test)]
-pub(in crate::game) mod guest_hit_tests {
+pub(crate) mod guest_hit_tests {
     use sunrise_core::geometry::Vec3;
     use sunrise_sim::mobs::{Damage, DamageKind, Mob, MobEvent, Species, Who};
     use sunrise_sim::motion::PlayerMotion;
@@ -101,4 +101,4 @@ pub(in crate::game) mod guest_hit_tests {
 
 #[cfg(test)]
 #[path = "combat/zombie_ignite_tests.rs"]
-pub(in crate::game) mod zombie_ignite_tests;
+pub(crate) mod zombie_ignite_tests;

@@ -2,7 +2,7 @@
 
 #[cfg(feature = "client")]
 #[cfg(test)]
-pub(in crate::game) mod shriek_capture_tests {
+pub(crate) mod shriek_capture_tests {
     use super::*;
     use {sunrise_gameplay_common::game::Audio, sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
     use std::sync::Arc;
@@ -211,5 +211,5 @@ pub(in crate::game) mod shriek_capture_tests {
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "tests/farm_animal_interaction_tests.rs"]
-pub(in crate::game) mod farm_animal_interaction_tests;
+pub(crate) mod farm_animal_interaction_tests;
 use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

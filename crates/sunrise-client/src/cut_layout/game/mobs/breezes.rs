@@ -1,7 +1,7 @@
 
 
 #[cfg(test)]
-pub(in crate::game) mod tests {
+pub(crate) mod tests {
     /// `Entity.getOnPos(1.0E-5F)` keeps a fence's, a wall's or a fence gate's
     /// own cell while the feet rest on its 1.5-block collision; on a full block
     /// it is the block below the feet. Reading 0.2 below the feet, as the dust
@@ -61,7 +61,7 @@ pub(in crate::game) mod tests {
     use sunrise_core::random::LegacyRandom;
 
     #[allow(unused_imports)]
-    pub(in crate::game) use {crate::game::client_side::breezes_client::tests::game_with_breeze, sunrise_client_gameplay::game::client_side::breezes_client::tests::made_block_particles};
+    pub(crate) use {crate::game::client_side::breezes_client::tests::game_with_breeze, sunrise_client_gameplay::game::client_side::breezes_client::tests::made_block_particles};
 
     /// A breeze standing on a fence rests its feet at 64 + 1.5, where its own
     /// cell is air: `Breeze.emitGroundParticles` asks `getBlockStateOn` for the

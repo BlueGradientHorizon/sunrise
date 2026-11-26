@@ -4,7 +4,7 @@ use sunrise_core::geometry::Vec3;
 use sunrise_sim::motion::PlayerMotion;
 
 #[allow(unused_imports)]
-pub(in crate::game) use crate::game::client_side::remote_client::fall_sound::tests::heard_stone_fall;
+pub(crate) use crate::game::client_side::remote_client::fall_sound::tests::heard_stone_fall;
 
 #[test]
 #[ignore = "daily"]

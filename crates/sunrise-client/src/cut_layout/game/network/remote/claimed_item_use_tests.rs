@@ -7,10 +7,10 @@ use sunrise_core::nbt::{JavaString, Tag};
 use sunrise_items::items::ItemStack;
 use sunrise_level::chunk::Chunk;
 
-pub(in crate::game) const OWNER: &str = "client_use_fixture";
-pub(in crate::game) const SHIELD: &str = "minecraft:shield";
-pub(in crate::game) const STICK: &str = "minecraft:stick";
-pub(in crate::game) const CUSTOM_DATA: &str = "minecraft:custom_data";
+pub(crate) const OWNER: &str = "client_use_fixture";
+pub(crate) const SHIELD: &str = "minecraft:shield";
+pub(crate) const STICK: &str = "minecraft:stick";
+pub(crate) const CUSTOM_DATA: &str = "minecraft:custom_data";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(in crate::game) enum Phase {
@@ -33,7 +33,7 @@ pub(in crate::game) struct Call {
 pub(in crate::game) struct Calls(pub(in crate::game) Arc<Mutex<Vec<Call>>>);
 
 impl Calls {
-    pub(in crate::game) fn take(&self) -> Vec<Call> {
+    pub(crate) fn take(&self) -> Vec<Call> {
         std::mem::take(&mut *self.0.lock().unwrap())
     }
 }
@@ -54,13 +54,13 @@ impl Hooks for Calls {
     }
 }
 
-pub(in crate::game) struct RecordUse {
-    pub(in crate::game) registered_for: &'static str,
-    pub(in crate::game) calls: Calls,
+pub(crate) struct RecordUse {
+    pub(crate) registered_for: &'static str,
+    pub(crate) calls: Calls,
 }
 
 impl RecordUse {
-    pub(in crate::game) fn record(&self, phase: Phase, stack: &mod_api::ItemStack, slot: u32) {
+    pub(crate) fn record(&self, phase: Phase, stack: &mod_api::ItemStack, slot: u32) {
         let call = mod_api::content::crash::current_native_call().unwrap();
         assert_eq!(call.id, OWNER);
         assert_eq!(
@@ -113,7 +113,7 @@ impl ClientItemUseBehavior for RecordUse {
     }
 }
 
-pub(in crate::game) fn with_owner(test: impl FnOnce(&Calls)) {
+pub(crate) fn with_owner(test: impl FnOnce(&Calls)) {
     let calls = Calls::default();
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new(OWNER, Box::new(calls.clone()))].into();
     sunrise_gameplay_common::game::api_values::install_parts(&mods).unwrap();

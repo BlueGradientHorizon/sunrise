@@ -8,7 +8,7 @@ use sunrise_core::geometry::Vec3;
 use sunrise_core::nbt::Tag;
 use sunrise_sim::motion::PlayerMotion;
 
-pub(in crate::game) fn with_game(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
+pub(crate) fn with_game(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
     sunrise_gameplay::game::native_entity_refs::tests::with_game(|game| {
         game.build_registries();
         game.set_allow_commands(true);
@@ -17,10 +17,10 @@ pub(in crate::game) fn with_game(test: impl FnOnce(&mut sunrise_gameplay::game::
 }
 
 #[allow(unused_imports)]
-pub(in crate::game) use sunrise_gameplay::game::server_side::commands_server::world_cmds::attribute_tests::say;
+pub(crate) use sunrise_gameplay::game::server_side::commands_server::world_cmds::attribute_tests::say;
 
 /// The `attributes` list the next save writes for the player.
-pub(in crate::game) fn saved_attributes(game: &mut sunrise_gameplay::game::ServerGame<'_>) -> Tag {
+pub(crate) fn saved_attributes(game: &mut sunrise_gameplay::game::ServerGame<'_>) -> Tag {
     game.sync_level();
     game.level
         .player_extra

@@ -5,7 +5,7 @@ use mod_api::{ClientHost, Hooks, MovementInputUpdateEvent};
 use sunrise_sim::motion::PlayerMotion;
 use winit::keyboard::KeyCode;
 
-pub(in crate::game) struct Native;
+pub(crate) struct Native;
 #[mod_api::__subscriptions]
 impl Hooks for Native {
     fn movement_input_update(&self, _: &dyn ClientHost, event: &mut MovementInputUpdateEvent<'_>) {
@@ -33,7 +33,7 @@ impl Hooks for Native {
     }
 }
 
-pub(in crate::game) fn reset_player(game: &mut sunrise_client_gameplay::game::ClientGame<'_>, food: i32) {
+pub(crate) fn reset_player(game: &mut sunrise_client_gameplay::game::ClientGame<'_>, food: i32) {
     let mut player = PlayerMotion::new(game.motion, Vec3::new(8.0, 64.0, 8.0)).unwrap();
     player.client_side = true;
     player.health.food.food = food;
@@ -48,9 +48,9 @@ pub(in crate::game) fn reset_player(game: &mut sunrise_client_gameplay::game::Cl
 }
 
 #[allow(unused_imports)]
-pub(in crate::game) use crate::game::client_side::remote_client::movement_input_tests::connect;
+pub(crate) use crate::game::client_side::remote_client::movement_input_tests::connect;
 
-pub(in crate::game) fn tick(game: &mut sunrise_client_gameplay::game::ClientGame<'_>) {
+pub(crate) fn tick(game: &mut sunrise_client_gameplay::game::ClientGame<'_>) {
     if let Some(input) = game.tick_local_player(Vec::new(), 7, None).unwrap() {
         game.remote_send_state(input);
     }
@@ -211,7 +211,7 @@ fn movement_input_disabled_listener_keeps_vanilla_keys() {
 }
 
 #[path = "local_rotation_tests.rs"]
-pub(in crate::game) mod local_rotation_tests;
+pub(crate) mod local_rotation_tests;
 
 /// LocalPlayer.isShiftKeyDown is the input's sneak while the player rides too, so the
 /// sneak held to get off already counts on the first tick out of the vehicle.

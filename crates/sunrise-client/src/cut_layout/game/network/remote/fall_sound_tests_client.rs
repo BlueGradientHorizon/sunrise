@@ -6,7 +6,7 @@ use sunrise_sim::motion::PlayerMotion;
 
 /// The `minecraft:block.stone.fall` sounds the landing player's own client plays
 /// for a 5-block fall onto stone, as (volume, pitch).
-pub(in crate::game) fn heard_stone_fall(silent: bool) -> Vec<(f32, f32)> {
+pub(crate) fn heard_stone_fall(silent: bool) -> Vec<(f32, f32)> {
     let mut out = Vec::new();
     mod_platform::testing::with_mods(Vec::new().into(), || {
         with_client_game(|game| {

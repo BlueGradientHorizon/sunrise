@@ -302,7 +302,7 @@ fn the_hosts_kill_hands_the_host_as_the_attacker() {
     });
 }
 
-pub(in crate::game) fn zombie(game: &mut sunrise_gameplay::game::ServerGame<'_>, damage: Damage) -> Mob {
+pub(crate) fn zombie(game: &mut sunrise_gameplay::game::ServerGame<'_>, damage: Damage) -> Mob {
     game.side.next_entity += 1;
     let kind = game
         .res

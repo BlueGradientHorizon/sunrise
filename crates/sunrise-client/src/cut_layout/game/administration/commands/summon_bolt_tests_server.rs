@@ -9,7 +9,7 @@ use sunrise_core::position::ChunkPos;
 use sunrise_core::random::RandomSource;
 use sunrise_sim::motion::PlayerMotion;
 
-pub(in crate::game) fn run_a_bolt_summoned_with_nbt_strikes_and_goes() {
+pub(crate) fn run_a_bolt_summoned_with_nbt_strikes_and_goes() {
     let witness_path = std::env::var_os("SUNRISE_SUMMON_BOLT_NBT_WITNESS").unwrap_or_else(|| {
         panic!("SUNRISE_SUMMON_BOLT_NBT_WITNESS is unset; run tools/test_summon_bolt_nbt_parity.py")
     });

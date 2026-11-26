@@ -1,7 +1,7 @@
 
 
 #[cfg(test)]
-pub(in crate::game) mod nested_spawn_tests {
+pub(crate) mod nested_spawn_tests {
     use crate::game::server_side::entity_server::taken_pass_tests;
 
     #[test]
@@ -23,7 +23,7 @@ pub(in crate::game) mod nested_spawn_tests {
 }
 
 #[cfg(test)]
-pub(in crate::game) mod pickup_tests {
+pub(crate) mod pickup_tests {
     use super::*;
     use sunrise_gameplay::game::game_tests::tests::server_game;
     use sunrise_sim::advancements as adv;

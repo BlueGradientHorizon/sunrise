@@ -1,7 +1,7 @@
 
 
 #[cfg(test)]
-pub(in crate::game) mod tests {
+pub(crate) mod tests {
     use {crate::game::host::draw::*, sunrise_client_gameplay::game::host::draw::{EngineTooltipFont, label_layout, label_layout_with}};
     use std::collections::BTreeMap;
 

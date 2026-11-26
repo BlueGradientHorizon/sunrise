@@ -3,7 +3,7 @@ use sunrise_gameplay::game::commands::data::eye_item_tests::parse_exact_snbt;
 use sunrise_gameplay::game::commands::data::eye_item_tests::saved_item;
 use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 
-pub(in crate::game) fn run_a_summoned_eye_saves_its_normalised_item_live_and_after_a_reload() {
+pub(crate) fn run_a_summoned_eye_saves_its_normalised_item_live_and_after_a_reload() {
     let witness = load_witness();
     assert!(
         witness.contains("# minecraft_version\t26.3"),

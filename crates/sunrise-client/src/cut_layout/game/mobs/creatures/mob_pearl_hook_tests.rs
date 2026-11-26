@@ -6,10 +6,10 @@ use std::sync::{
     atomic::{AtomicU8, Ordering},
 };
 
-pub(in crate::game) struct PearlProbe {
+pub(crate) struct PearlProbe {
     pub mode: Arc<AtomicU8>,
-    pub(in crate::game) owners: Arc<Mutex<Vec<u32>>>,
-    pub(in crate::game) command_teleports: Arc<Mutex<Vec<u32>>>,
+    pub(crate) owners: Arc<Mutex<Vec<u32>>>,
+    pub(crate) command_teleports: Arc<Mutex<Vec<u32>>>,
 }
 #[mod_api::__subscriptions]
 impl Hooks for PearlProbe {
@@ -48,7 +48,7 @@ impl Hooks for PearlProbe {
     }
 }
 
-pub(in crate::game) struct PlayerPearlProbe(pub(in crate::game) Arc<AtomicU8>);
+pub(crate) struct PlayerPearlProbe(pub(crate) Arc<AtomicU8>);
 #[mod_api::__subscriptions]
 impl Hooks for PlayerPearlProbe {
     fn ender_pearl_teleport(
@@ -85,7 +85,7 @@ fn player_pearl_keeps_acting_context_cancellation_and_mutable_damage() {
 }
 
 #[allow(unused_imports)]
-pub(in crate::game) use crate::game::server_side::creatures_server::mob_pearl_hook_tests::run_player_pearl_keeps_acting_context_cancellation_and_mutable_damage;
+pub(crate) use crate::game::server_side::creatures_server::mob_pearl_hook_tests::run_player_pearl_keeps_acting_context_cancellation_and_mutable_damage;
 
 #[test]
 #[ignore = "daily"]
@@ -93,7 +93,7 @@ fn mob_pearls_use_the_hook_and_recheck_listener_writes_without_player_side_effec
     run_mob_pearls_use_the_hook_and_recheck_listener_writes_without_player_side_effects();
 }
 
-pub(in crate::game) fn run_mob_pearls_use_the_hook_and_recheck_listener_writes_without_player_side_effects()
+pub(crate) fn run_mob_pearls_use_the_hook_and_recheck_listener_writes_without_player_side_effects()
  {
     let mode = Arc::new(AtomicU8::new(0));
     let owners = Arc::new(Mutex::new(Vec::new()));

@@ -1,7 +1,7 @@
 
 
 #[cfg(test)]
-pub(in crate::game) mod tests {
+pub(crate) mod tests {
     use super::*;
     use sunrise_gameplay_common::game::remote::general::tests::Declare;
     use sunrise_gameplay_common::game::remote::general::tests::spawn;

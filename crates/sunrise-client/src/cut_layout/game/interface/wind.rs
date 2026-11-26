@@ -1,11 +1,11 @@
 
 #[cfg(test)]
 #[path = "tests/wind_charged_tests.rs"]
-pub(in crate::game) mod wind_charged_tests;
+pub(crate) mod wind_charged_tests;
 
 #[cfg(test)]
 #[path = "tests/wind_dragon_tests.rs"]
-pub(in crate::game) mod wind_dragon_tests;
+pub(crate) mod wind_dragon_tests;
 
 #[cfg(test)]
 pub(crate) mod tests {

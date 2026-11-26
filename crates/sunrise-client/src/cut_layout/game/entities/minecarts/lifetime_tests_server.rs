@@ -28,7 +28,7 @@ fn a_bound_cart_survives_the_parked_level_swap() {
     });
 }
 
-pub(in crate::game) fn bound_cart_case(
+pub(crate) fn bound_cart_case(
     kind: CartKind,
     action: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>),
 ) {

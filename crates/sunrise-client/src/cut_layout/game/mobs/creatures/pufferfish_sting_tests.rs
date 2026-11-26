@@ -3,12 +3,12 @@
 //! silent; the poison follows it.
 
 #[allow(unused_imports)]
-pub(in crate::game) use crate::game::server_side::creatures_server::pufferfish_player::pufferfish_sting_tests::with_fish;
+pub(crate) use crate::game::server_side::creatures_server::pufferfish_player::pufferfish_sting_tests::with_fish;
 
 #[allow(unused_imports)]
-pub(in crate::game) use crate::game::server_side::creatures_server::pufferfish_player::pufferfish_sting_tests::stings;
+pub(crate) use crate::game::server_side::creatures_server::pufferfish_player::pufferfish_sting_tests::stings;
 
-pub(in crate::game) fn health(game: &sunrise_gameplay::game::ServerGame<'_>) -> f32 {
+pub(crate) fn health(game: &sunrise_gameplay::game::ServerGame<'_>) -> f32 {
     game.player.as_ref().unwrap().health.health()
 }
 

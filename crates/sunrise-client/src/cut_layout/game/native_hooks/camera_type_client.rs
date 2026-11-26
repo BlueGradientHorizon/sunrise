@@ -1,7 +1,7 @@
 
 
 #[cfg(test)]
-pub(in crate::game) mod camera_type_tests {
+pub(crate) mod camera_type_tests {
     use sunrise_gameplay_common::game::native_hooks::camera_type::camera_type_tests::Calls;
     use sunrise_gameplay_common::game::native_hooks::camera_type::camera_type_tests::NoFront;
     use sunrise_gameplay_common::game::native_hooks::camera_type::camera_type_tests::SharedCamera;

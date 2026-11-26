@@ -90,7 +90,7 @@ fn weather_follows_the_dimension_type_not_the_id() {
     assert!(!w(true, false, true)); // the End is named by id
 }
 
-use {crate::game::*, sunrise_gameplay_common::game::{Aabb, Arc, BlockPos, BlockStateId, CollisionContext, CollisionEntity, Duration, EntityIdentity, FallingBlock, HashSet, Hit, Instant, Level, Mob, Options, PackResources, PathBuf, PlayerMotion, Progress, Resources, Screen, Vec3, WorldRestLoader, block_outline_drawn, clip_start_source, creatures, debug_crosshair_drawn, drop_held_behind_dialog, entity, execution_role, falling_block_visible, game_dir, gameplay_has_keyboard, glfw_button, glfw_modifiers, hit, host, in_own_process, interact_location, item_actions, keyboard_button, level_can_have_weather, load_resources, mods, outline_stop, ray_box, tick_sleep_timer, unclean_start_recovery, vanilla_tool_state, write_level_for_role}};
+use {crate::game::*, sunrise_gameplay_common::game::{Aabb, Arc, BlockPos, BlockStateId, CollisionContext, CollisionEntity, Duration, EntityIdentity, FallingBlock, HashSet, Hit, Instant, Level, Mob, Options, PackResources, PathBuf, PlayerMotion, Progress, Resources, Screen, Vec3, WorldRestLoader, clip_start_source, creatures, entity, execution_role, falling_block_visible, game_dir, hit, host, in_own_process, interact_location, item_actions, level_can_have_weather, mods, outline_stop, ray_box, tick_sleep_timer, vanilla_tool_state, write_level_for_role}};
 use sunrise_client::container_screen::{Button, Clicks, Release, Target};
 use sunrise_client::{creative::Creative, hud_layout, hud_overlays, settings::Settings};
 use sunrise_client_gameplay::game::select_creative_tab;

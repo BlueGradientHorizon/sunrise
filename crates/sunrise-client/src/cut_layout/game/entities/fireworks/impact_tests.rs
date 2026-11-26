@@ -3,7 +3,7 @@ use {crate::game::fireworks::impact::*};
 use {sunrise_gameplay::game::native_projectiles::impact_probe::Action, sunrise_gameplay::game::native_projectiles::impact_probe::point, sunrise_gameplay::game::native_projectiles::impact_probe::with_probe};
 use sunrise_sim::mobs::Mob;
 
-pub(in crate::game) fn launch(game: &mut sunrise_gameplay::game::ServerGame<'_>, lifetime: i32) {
+pub(crate) fn launch(game: &mut sunrise_gameplay::game::ServerGame<'_>, lifetime: i32) {
     let mut r = Rocket::remote(71, Vec3::new(0.5, 64.5, 0.5), Vec3::new(4.0, 0.0, 0.0));
     r.angled = true;
     r.owner = Some(Who::Player);

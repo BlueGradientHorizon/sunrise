@@ -17,10 +17,10 @@ use sunrise_world::{
     registry::{BlockRegistry, BlockStateId},
 };
 
-pub(in crate::game) struct ReactionPart {
+pub(crate) struct ReactionPart {
     pub enabled: Arc<AtomicBool>,
-    pub(in crate::game) reaction: Option<PushReaction>,
-    pub(in crate::game) unbreakable: Option<Arc<AtomicU8>>,
+    pub(crate) reaction: Option<PushReaction>,
+    pub(crate) unbreakable: Option<Arc<AtomicU8>>,
 }
 #[mod_api::sunrise_part]
 impl BlockPart for ReactionPart {
@@ -47,10 +47,10 @@ impl BlockPart for ReactionPart {
         })
     }
 }
-pub(in crate::game) struct User {
+pub(crate) struct User {
     pub enabled: Arc<AtomicBool>,
-    pub(in crate::game) parts: bool,
-    pub(in crate::game) unbreakable: Arc<AtomicU8>,
+    pub(crate) parts: bool,
+    pub(crate) unbreakable: Arc<AtomicU8>,
 }
 #[mod_api::__subscriptions]
 impl Hooks for User {
@@ -86,11 +86,11 @@ impl Hooks for User {
         event.register(fixed).unwrap();
     }
 }
-pub(in crate::game) struct Level {
+pub(crate) struct Level {
     pub blocks: HashMap<BlockPos, BlockStateId>,
-    pub(in crate::game) air: BlockStateId,
-    pub(in crate::game) time: i64,
-    pub(in crate::game) random: LegacyRandom,
+    pub(crate) air: BlockStateId,
+    pub(crate) time: i64,
+    pub(crate) random: LegacyRandom,
 }
 impl BlockEntityNeighbors for Level {}
 impl LevelAccess for Level {
@@ -110,7 +110,7 @@ impl LevelAccess for Level {
         self.time
     }
 }
-pub(in crate::game) fn state(
+pub(crate) fn state(
     registry: &BlockRegistry,
     name: &str,
     props: &[(&str, &str)],
@@ -125,7 +125,7 @@ pub(in crate::game) fn state(
         })
         .unwrap()
 }
-pub(in crate::game) fn exercise(
+pub(crate) fn exercise(
     b: &Behaviours,
     registry: &BlockRegistry,
     block: BlockStateId,
@@ -439,10 +439,10 @@ fn piston_push_reaction_parts_cache_reload_and_replay() {
     });
 }
 
-pub(in crate::game) struct PayloadPart {
+pub(crate) struct PayloadPart {
     pub reaction: PushReaction,
-    pub(in crate::game) carry: Option<bool>,
-    pub(in crate::game) asks: Arc<std::sync::atomic::AtomicUsize>,
+    pub(crate) carry: Option<bool>,
+    pub(crate) asks: Arc<std::sync::atomic::AtomicUsize>,
 }
 #[mod_api::sunrise_part]
 impl BlockPart for PayloadPart {
@@ -458,10 +458,10 @@ impl BlockPart for PayloadPart {
         self.carry
     }
 }
-pub(in crate::game) struct PayloadUser {
+pub(crate) struct PayloadUser {
     pub reaction: PushReaction,
-    pub(in crate::game) carry: Option<bool>,
-    pub(in crate::game) asks: Arc<std::sync::atomic::AtomicUsize>,
+    pub(crate) carry: Option<bool>,
+    pub(crate) asks: Arc<std::sync::atomic::AtomicUsize>,
 }
 #[mod_api::__subscriptions]
 impl Hooks for PayloadUser {
@@ -682,7 +682,7 @@ fn piston_push_reaction_real_block_entity_payload_lifecycle() {
     });
 }
 
-pub(in crate::game) struct TagUser;
+pub(crate) struct TagUser;
 #[mod_api::__subscriptions]
 impl Hooks for TagUser {
     fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {

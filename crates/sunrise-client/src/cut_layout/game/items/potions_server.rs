@@ -1,14 +1,14 @@
 
 
 #[cfg(test)]
-pub(in crate::game) mod tests {
+pub(crate) mod tests {
     use super::*;
     use sunrise_gameplay_common::game::client_side::potions::tests::FoodEffectMod;
     use sunrise_gameplay_common::game::client_side::potions::tests::OtherEffectMod;
     use sunrise_gameplay_common::game::client_side::potions::tests::effect_test_mod;
     use sunrise_sim::motion::PlayerMotion;
 
-    pub(in crate::game) fn cloud_spawns_during_pass(potion_pass: bool) {
+    pub(crate) fn cloud_spawns_during_pass(potion_pass: bool) {
         sunrise_gameplay::game::native_entity_refs::tests::with_game(|game| {
             game.breath_clouds.clear();
             for _ in 0..2 {
@@ -542,10 +542,10 @@ pub(in crate::game) mod tests {
 
 #[cfg(test)]
 #[path = "potions/cloud_water_tests_server.rs"]
-pub(in crate::game) mod cloud_water_tests;
+pub(crate) mod cloud_water_tests;
 
 #[cfg(test)]
-pub(in crate::game) mod sound_on_added_tests {
+pub(crate) mod sound_on_added_tests {
     use sunrise_level::effects::EffectInstance;
 
     /// `LivingEntity.addEffect` → `MobEffect.onEffectAdded`: Bad Omen, Trial
@@ -590,7 +590,7 @@ pub(in crate::game) mod sound_on_added_tests {
 }
 
 #[cfg(test)]
-pub(in crate::game) mod xp_bottle_tests {
+pub(crate) mod xp_bottle_tests {
     use super::*;
 
     /// `ThrownExperienceBottle.onHit` uses `awardWithDirection`: every fresh
@@ -638,10 +638,10 @@ pub(in crate::game) mod xp_bottle_tests {
 
 #[cfg(test)]
 #[path = "potions/potion_contents_tests.rs"]
-pub(in crate::game) mod potion_contents_tests;
+pub(crate) mod potion_contents_tests;
 
 #[cfg(test)]
-pub(in crate::game) mod mob_absorption_max_tests {
+pub(crate) mod mob_absorption_max_tests {
     use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
     use std::sync::Arc;
     use sunrise_core::{geometry::Vec3, position::ChunkPos};
@@ -814,7 +814,7 @@ pub(in crate::game) mod mob_absorption_max_tests {
 }
 
 #[cfg(test)]
-pub(in crate::game) mod mob_health_boost_tests {
+pub(crate) mod mob_health_boost_tests {
     use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
     use std::sync::Arc;
     use sunrise_core::{geometry::Vec3, position::ChunkPos};
@@ -1066,7 +1066,7 @@ pub(in crate::game) mod mob_health_boost_tests {
 }
 
 #[cfg(test)]
-pub(in crate::game) mod depleted_absorption_tests {
+pub(crate) mod depleted_absorption_tests {
     use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, crate::game::commands::Target, sunrise_gameplay_common::game::load_resources};
     use std::sync::Arc;
     use sunrise_core::{geometry::Vec3, position::ChunkPos};
@@ -1327,7 +1327,7 @@ pub(in crate::game) mod depleted_absorption_tests {
 }
 
 #[cfg(test)]
-pub(in crate::game) mod arrow_contents {
+pub(crate) mod arrow_contents {
     //! Actual in-memory Game potion paths. No run loop, world load or server startup.
     use super::*;
     use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::execution_role, sunrise_gameplay_common::game::load_resources};

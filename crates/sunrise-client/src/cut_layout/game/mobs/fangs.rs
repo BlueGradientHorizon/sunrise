@@ -1,10 +1,10 @@
 
 #[cfg(test)]
 #[path = "fangs/current_tests.rs"]
-pub(in crate::game) mod current_tests;
+pub(crate) mod current_tests;
 
 #[cfg(test)]
-pub(in crate::game) mod tests {
+pub(crate) mod tests {
     use {sunrise_gameplay::game::server_side::fangs::Party, sunrise_gameplay::game::server_side::fangs::fangs_allied};
     use sunrise_client_gameplay::game::client_side::fangs_client::fang_crit;
     use sunrise_gameplay_common::game::fangs_common::fang_attack_pitch;
@@ -118,4 +118,4 @@ pub(in crate::game) mod tests {
 
 #[cfg(test)]
 #[path = "fangs/ticking_tests.rs"]
-pub(in crate::game) mod ticking_tests;
+pub(crate) mod ticking_tests;

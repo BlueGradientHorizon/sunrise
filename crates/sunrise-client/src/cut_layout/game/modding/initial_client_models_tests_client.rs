@@ -18,7 +18,7 @@ fn a_client_start_joins_the_world_rest_worker_before_it_resolves_the_renderers()
     });
 }
 
-pub(in crate::game) fn with_loading_client(run: impl FnOnce(&mut sunrise_client_gameplay::game::ClientGame<'_>)) {
+pub(crate) fn with_loading_client(run: impl FnOnce(&mut sunrise_client_gameplay::game::ClientGame<'_>)) {
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
     let settings = Settings::default();
     let mut gui = None;

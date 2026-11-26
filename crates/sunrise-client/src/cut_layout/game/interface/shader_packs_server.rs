@@ -1,5 +1,5 @@
 #[cfg(test)]
-pub(in crate::game) mod player_status_tests {
+pub(crate) mod player_status_tests {
     use sunrise_gameplay_common::game::client_side::shader_packs::player_status_tests::rain_on_the_player;
     use sunrise_gameplay_common::game::client_side::shader_packs::player_status_tests::stand_player;
     use sunrise_level::effects::EffectInstance;

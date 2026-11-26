@@ -4,7 +4,7 @@ use sunrise_sim::mobs::Mob;
 use sunrise_sim::motion::PlayerMotion;
 
 /// The game events the stung player's client was sent, as `(event, parameter)`.
-pub(in crate::game) fn stings(game: &sunrise_gameplay::game::ServerGame<'_>) -> Vec<(u8, f32)> {
+pub(crate) fn stings(game: &sunrise_gameplay::game::ServerGame<'_>) -> Vec<(u8, f32)> {
     game.side
         .guest_packets
         .iter()
@@ -18,7 +18,7 @@ pub(in crate::game) fn stings(game: &sunrise_gameplay::game::ServerGame<'_>) -> 
 /// A game whose window player touches one puffed (state 2) pufferfish. The
 /// server acts for the guest `lan_acting`: `playerTouch` runs there, and the
 /// event it sends reaches that player's own client.
-pub(in crate::game) fn with_fish(
+pub(crate) fn with_fish(
     silent: bool,
     test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>),
 ) {

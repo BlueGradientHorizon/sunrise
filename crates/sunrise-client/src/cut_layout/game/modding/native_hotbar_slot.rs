@@ -2,7 +2,7 @@
 
 #[cfg(feature = "client")]
 #[cfg(test)]
-pub(in crate::game) mod hotbar_slot_tests {
+pub(crate) mod hotbar_slot_tests {
     use super::*;
     use crate::game::server_side::native_entity_refs::tests::with_client_game;
     use crate::game::remote::tests::connect_menu_test;
@@ -11,7 +11,7 @@ pub(in crate::game) mod hotbar_slot_tests {
     use sunrise_protocol::packets::play::{self, Clientbound as C, Serverbound as S};
 
     /// What the window sent since the last call, as play packets.
-    pub(in crate::game) fn sent(reader: &mut ConnReader) -> Vec<S> {
+    pub(crate) fn sent(reader: &mut ConnReader) -> Vec<S> {
         reader
             .set_read_timeout(Some(std::time::Duration::from_millis(200)))
             .unwrap();
@@ -52,7 +52,7 @@ pub(in crate::game) mod hotbar_slot_tests {
 
     /// A window logged in to the overworld at (0.5, 65, 0.5), its player made by the server's
     /// position packet, with everything the login sent already drained.
-    pub(in crate::game) fn logged_in(game: &mut sunrise_client_gameplay::game::ClientGame<'_>) -> ConnReader {
+    pub(crate) fn logged_in(game: &mut sunrise_client_gameplay::game::ClientGame<'_>) -> ConnReader {
         let (mut reader, _writer) = connect_menu_test(game);
         game.handle_packet(C::Login(login_packet())).unwrap();
         game.handle_packet(C::PlayerPosition(play::PlayerPosition {

@@ -3,15 +3,15 @@ use sunrise_items::items::ItemStack;
 use sunrise_protocol::packets::{Empty, play, play::Serverbound as S};
 use sunrise_sim::lan::guest::InboxItem;
 
-pub(in crate::game) const NAME: &str = "GuestBodyTest";
+pub(crate) const NAME: &str = "GuestBodyTest";
 /// `fall_from_height` with no condition, then with a fall of at most 1 block, and of 5.
-pub(in crate::game) const CRITERIA: [&str; 3] = ["any", "short", "five"];
+pub(crate) const CRITERIA: [&str; 3] = ["any", "short", "five"];
 
 #[allow(unused_imports)]
-pub(in crate::game) use crate::game::server_side::lan_actions_server::guest_body::tests::fall_reset::scene;
+pub(crate) use crate::game::server_side::lan_actions_server::guest_body::tests::fall_reset::scene;
 
 /// One server packet drain; put a client-tick marker between reports.
-pub(in crate::game) fn drain_moves(
+pub(crate) fn drain_moves(
     g: &mut sunrise_gameplay::game::ServerGame<'_>,
     reports: impl IntoIterator<Item = (f64, u8)>,
 ) {
@@ -38,7 +38,7 @@ pub(in crate::game) fn drain_moves(
 }
 
 /// One server tick in which the guest's client sent these airborne positions.
-pub(in crate::game) fn tick_with_moves(
+pub(crate) fn tick_with_moves(
     g: &mut sunrise_gameplay::game::ServerGame<'_>,
     heights: &[f64],
     before_level: (f64, Option<[f64; 3]>, [bool; 3]),
@@ -52,7 +52,7 @@ pub(in crate::game) fn tick_with_moves(
 }
 
 /// The guest's fall distance, where its tracked fall began, and which criteria it has.
-pub(in crate::game) fn fall(g: &sunrise_gameplay::game::ServerGame<'_>) -> (f64, Option<[f64; 3]>, [bool; 3]) {
+pub(crate) fn fall(g: &sunrise_gameplay::game::ServerGame<'_>) -> (f64, Option<[f64; 3]>, [bool; 3]) {
     let host = g.side.lan.as_ref().unwrap();
     let guest = &host.hub.guests[0];
     let done = CRITERIA.map(|name| {
@@ -173,7 +173,7 @@ fn entering_water_ends_a_tracked_fall_before_the_next_move() {
     );
 }
 
-pub(in crate::game) fn lethal_landing(totem: bool) {
+pub(crate) fn lethal_landing(totem: bool) {
     let mut resources = None;
     let scratch = tempfile::tempdir().unwrap();
     let mut g = scene(&mut resources, scratch.path());

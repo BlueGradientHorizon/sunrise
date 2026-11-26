@@ -226,7 +226,7 @@ fn portal_arrival_effects_mod_items_merge_immediately() {
     run_portal_arrival_effects_mod_items_merge_immediately();
 }
 
-pub(in crate::game) fn run_portal_arrival_effects_mod_items_merge_immediately() {
+pub(crate) fn run_portal_arrival_effects_mod_items_merge_immediately() {
     with_game(|game| {
         game.native_lifecycle.world_open_ready().unwrap();
         game.spawn_item_own(
@@ -270,7 +270,7 @@ fn portal_arrival_effects_explicit_tnt_teleports_protect_portals() {
     run_portal_arrival_effects_explicit_tnt_teleports_protect_portals();
 }
 
-pub(in crate::game) fn run_portal_arrival_effects_explicit_tnt_teleports_protect_portals() {
+pub(crate) fn run_portal_arrival_effects_explicit_tnt_teleports_protect_portals() {
     for command in [false, true] {
         with_game(|game| {
             game.build_registries();

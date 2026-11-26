@@ -10,13 +10,13 @@ use std::sync::Mutex;
 use sunrise_items::items::ItemStack;
 
 /// What the part answers: `None` leaves vanilla's answer.
-pub(in crate::game) static REEQUIP: Mutex<Option<bool>> = Mutex::new(None);
-pub(in crate::game) static RESET: Mutex<Option<bool>> = Mutex::new(None);
+pub(crate) static REEQUIP: Mutex<Option<bool>> = Mutex::new(None);
+pub(crate) static RESET: Mutex<Option<bool>> = Mutex::new(None);
 /// What the part was asked: `(old count, stack count, hand, slot changed)`
 /// and, for a break, whether the break's stack had components.
-pub(in crate::game) static REEQUIP_ASKED: Mutex<Vec<(Option<u32>, u32, mod_api::Hand, bool)>> =
+pub(crate) static REEQUIP_ASKED: Mutex<Vec<(Option<u32>, u32, mod_api::Hand, bool)>> =
     Mutex::new(Vec::new());
-pub(in crate::game) static RESET_ASKED: Mutex<Vec<bool>> = Mutex::new(Vec::new());
+pub(crate) static RESET_ASKED: Mutex<Vec<bool>> = Mutex::new(Vec::new());
 
 #[derive(Clone)]
 pub(in crate::game) struct Stick;
@@ -51,7 +51,7 @@ impl ItemPart for Stick {
         }
     }
 }
-pub(in crate::game) struct Parts;
+pub(crate) struct Parts;
 #[mod_api::__subscriptions]
 impl Hooks for Parts {
     fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
@@ -61,7 +61,7 @@ impl Hooks for Parts {
 }
 
 /// Runs `body` on a game whose stick has the part.
-pub(in crate::game) fn with_stick_part(body: impl FnOnce(&mut sunrise_client_gameplay::game::ClientGame<'_>)) {
+pub(crate) fn with_stick_part(body: impl FnOnce(&mut sunrise_client_gameplay::game::ClientGame<'_>)) {
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new("hands", Box::new(Parts))].into();
     mod_platform::testing::with_mods(mods.clone(), || {
         sunrise_gameplay_common::game::api_values::install_parts(&mods).unwrap();

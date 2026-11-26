@@ -28,7 +28,7 @@ pub(in crate::game) enum EffectWrite {
     ReplaceTransient,
 }
 
-pub(in crate::game) const SPEED: &str = "minecraft:movement_speed";
+pub(crate) const SPEED: &str = "minecraft:movement_speed";
 
 #[derive(Clone, Default)]
 pub(in crate::game) struct Script {
@@ -64,7 +64,7 @@ pub(in sunrise_gameplay::game::server_side) fn script(value: Script) {
     IN_ACTION.with(|a| a.borrow_mut().clear());
     super::decided_action::DECIDED.set(0);
 }
-pub(in crate::game) struct Mod;
+pub(crate) struct Mod;
 #[mod_api::__subscriptions]
 impl Hooks for Mod {
     fn trade_with_villager(
@@ -84,7 +84,7 @@ impl Hooks for Mod {
     }
 }
 /// The same trade listener, also hearing `item_stacked_on_other`: the result pickup is both.
-pub(in crate::game) struct Both;
+pub(crate) struct Both;
 #[mod_api::__subscriptions]
 impl Hooks for Both {
     fn trade_with_villager(
@@ -104,7 +104,7 @@ impl Hooks for Both {
     }
 }
 
-pub(in crate::game) struct Stacked;
+pub(crate) struct Stacked;
 #[mod_api::__subscriptions]
 impl Hooks for Stacked {
     fn item_stacked_on_other(&self, _: HostSide, event: &mut ItemStackedOnOtherEvent<'_>) -> Flow {
@@ -247,7 +247,7 @@ pub(in sunrise_gameplay::game::server_side) fn with_both(test: impl FnOnce()) {
     mod_platform::testing::with_mods(mods, test);
 }
 
-pub(in crate::game) fn open(
+pub(crate) fn open(
     game: &mut sunrise_gameplay::game::ServerGame<'_>,
     payment: u32,
 ) -> ContainerClick {
@@ -300,10 +300,10 @@ pub(in crate::game) fn open(
         carried: None,
     }
 }
-pub(in crate::game) const WORK_TICK: i64 = 3_000;
+pub(crate) const WORK_TICK: i64 = 3_000;
 
 /// A loaded composter with an adult farmer close enough to start work on its next AI tick.
-pub(in crate::game) fn prepare_work(
+pub(crate) fn prepare_work(
     game: &mut sunrise_gameplay::game::ServerGame<'_>,
     save: &std::path::Path,
 ) {
@@ -338,7 +338,7 @@ pub(in crate::game) fn prepare_work(
     villager_brain::init(mob, WORK_TICK, WORK_TICK, 40);
 }
 
-pub(in crate::game) fn tick_work(game: &mut sunrise_gameplay::game::ServerGame<'_>) {
+pub(crate) fn tick_work(game: &mut sunrise_gameplay::game::ServerGame<'_>) {
     let worked_at = |game: &sunrise_gameplay::game::ServerGame<'_>| {
         sunrise_sim::mobs::villager::ext(game.mob_object(40).unwrap())
             .unwrap()
@@ -354,7 +354,7 @@ pub(in crate::game) fn tick_work(game: &mut sunrise_gameplay::game::ServerGame<'
     assert_eq!(worked_at(game), Some(WORK_TICK));
 }
 
-pub(in crate::game) fn work_screen<'a>(
+pub(crate) fn work_screen<'a>(
     game: &'a sunrise_gameplay::game::ServerGame<'_>,
 ) -> &'a sunrise_gameplay_common::game::lan_menu_data::GuestMerchant {
     game.side.lan.as_ref().unwrap().menus[&12]
@@ -363,7 +363,7 @@ pub(in crate::game) fn work_screen<'a>(
         .unwrap()
 }
 
-pub(in crate::game) fn work_screen_mut<'a>(
+pub(crate) fn work_screen_mut<'a>(
     game: &'a mut sunrise_gameplay::game::ServerGame<'_>,
 ) -> &'a mut sunrise_gameplay_common::game::lan_menu_data::GuestMerchant {
     game.side
@@ -461,8 +461,8 @@ fn a_restock_while_a_guest_trades_reaches_the_screen_the_save_and_the_mob() {
 }
 
 /// A guest trading with the villager loses Hero of the Village in its named Pre or Post.
-pub(in crate::game) struct RemoveHero {
-    pub(in crate::game) before_work: bool,
+pub(crate) struct RemoveHero {
+    pub(crate) before_work: bool,
 }
 
 impl RemoveHero {
@@ -521,10 +521,10 @@ fn a_restock_uses_price_changes_made_in_pre() {
 }
 
 #[allow(unused_imports)]
-pub(in crate::game) use sunrise_gameplay::game::client_side::lan_trade_decisions_tests_client::restock_after_hero_change;
+pub(crate) use sunrise_gameplay::game::client_side::lan_trade_decisions_tests_client::restock_after_hero_change;
 
 /// Edits the restocked first offer in the villager's own named `EntityTick.Post`.
-pub(in crate::game) struct EditInPost;
+pub(crate) struct EditInPost;
 #[mod_api::__subscriptions]
 impl Hooks for EditInPost {
     fn register(&self, registrar: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
@@ -648,7 +648,7 @@ fn an_unused_offer_stays_unchanged_when_the_villager_starts_work() {
     );
 }
 
-pub(in crate::game) struct FishBreath(pub(in crate::game) Arc<std::sync::atomic::AtomicBool>);
+pub(crate) struct FishBreath(pub(crate) Arc<std::sync::atomic::AtomicBool>);
 #[mod_api::__subscriptions]
 impl Hooks for FishBreath {
     fn living_breathe(&self, host: &mut dyn ServerHost, event: &mut mod_api::LivingBreatheEvent) {

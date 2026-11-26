@@ -28,7 +28,7 @@ pub(in sunrise_gameplay::game::server_side) fn alive_124(
     }
 }
 
-pub(in crate::game) fn run_witness_firework_rocket_targets_124() {
+pub(crate) fn run_witness_firework_rocket_targets_124() {
     let witness = load_witness();
     let mut resources = None;
     let mut game = setup_game(&mut resources);
@@ -286,6 +286,6 @@ pub(in crate::game) fn run_witness_firework_rocket_targets_124() {
     );
 }
 
-pub(in crate::game) fn clear_others(game: &mut sunrise_gameplay::game::ServerGame<'_>) {
+pub(crate) fn clear_others(game: &mut sunrise_gameplay::game::ServerGame<'_>) {
     game.side.others.0.clear();
 }

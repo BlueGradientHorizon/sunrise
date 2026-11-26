@@ -42,7 +42,7 @@ pub(in crate::game) struct Seen {
     pub projectile_pos: [f64; 3],
 }
 
-pub(in crate::game) type SectionCrossing = (u32, [i32; 3], [i32; 3]);
+pub(crate) type SectionCrossing = (u32, [i32; 3], [i32; 3]);
 
 /// Listener observations, including any incorrectly triggered catch.
 #[derive(Default)]
@@ -219,7 +219,7 @@ impl Hooks for Probe {
 }
 
 /// Run a real server tick fixture with a live player and listener installed.
-pub(in crate::game) fn with_probe(
+pub(crate) fn with_probe(
     action: Action,
     hears: bool,
     test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>, &Observed),
@@ -263,7 +263,7 @@ pub(in crate::game) fn with_probe(
 }
 
 /// Compare a geometric point against an independently specified expectation.
-pub(in crate::game) fn point(actual: [f64; 3], expected: [f64; 3]) {
+pub(crate) fn point(actual: [f64; 3], expected: [f64; 3]) {
     for axis in 0..3 {
         assert!(
             (actual[axis] - expected[axis]).abs() < 1.0e-6,

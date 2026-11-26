@@ -1,7 +1,7 @@
 
 
 #[cfg(test)]
-pub(in crate::game) mod tests {
+pub(crate) mod tests {
     use super::*;
 
     /// `BaseSpawner.serverTick` with a player in range: a running delay only

@@ -1,7 +1,7 @@
 use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
 
 /// A game on the prepared resources with a creative player (as `crossbow.rs`).
-pub(in crate::game) fn game_with_player<'a>(
+pub(crate) fn game_with_player<'a>(
     resources: &'a mut Option<std::sync::Arc<sunrise_gameplay_common::game::Resources>>,
     root: &std::path::Path,
 ) -> sunrise_gameplay::game::ServerGame<'a> {

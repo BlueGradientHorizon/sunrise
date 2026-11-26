@@ -64,7 +64,7 @@ pub(in crate::game) struct DropSnap {
     pub(in crate::game) count: u32,
 }
 
-pub(in crate::game) fn load_witness() -> Witness {
+pub(crate) fn load_witness() -> Witness {
     let dir = std::env::var_os("SUNRISE_PROJECTILE_WITNESS_DIR").unwrap_or_else(|| {
         panic!(
             "SUNRISE_PROJECTILE_WITNESS_DIR is unset; run tools/test_projectile_targets_parity.py"
@@ -82,15 +82,15 @@ pub(in crate::game) fn load_witness() -> Witness {
     witness
 }
 
-pub(in crate::game) fn bits(v: f64) -> String {
+pub(crate) fn bits(v: f64) -> String {
     format!("{:016x}", v.to_bits())
 }
 
-pub(in crate::game) fn vec_bits(v: Vec3) -> [String; 3] {
+pub(crate) fn vec_bits(v: Vec3) -> [String; 3] {
     [bits(v.x), bits(v.y), bits(v.z)]
 }
 
-pub(in crate::game) fn setup_game<'a>(
+pub(crate) fn setup_game<'a>(
     resources: &'a mut Option<std::sync::Arc<sunrise_gameplay_common::game::Resources>>,
 ) -> sunrise_gameplay::game::ServerGame<'a> {
     let mut game = sunrise_gameplay::game::game_tests::tests::server_game(resources);
@@ -119,9 +119,9 @@ pub(in crate::game) fn setup_game<'a>(
 }
 
 #[allow(unused_imports)]
-pub(in crate::game) use sunrise_gameplay::game::server_side::creatures_server::projectile_targets_tests::clear_entities;
+pub(crate) use sunrise_gameplay::game::server_side::creatures_server::projectile_targets_tests::clear_entities;
 
-pub(in crate::game) fn reset_arena(game: &mut sunrise_gameplay::game::ServerGame<'_>, target: &str) {
+pub(crate) fn reset_arena(game: &mut sunrise_gameplay::game::ServerGame<'_>, target: &str) {
     clear_entities(game);
     let _ = game.run_command("fill 0 63 0 9 63 9 minecraft:stone");
     let _ = game.run_command("fill 0 64 0 9 70 9 minecraft:air");
@@ -143,7 +143,7 @@ pub(in crate::game) fn reset_arena(game: &mut sunrise_gameplay::game::ServerGame
     game.tick_server(false).unwrap();
 }
 
-pub(in crate::game) use sunrise_gameplay::game::server_side::creatures_server::projectile_targets_tests::TrackedTarget;
+pub(crate) use sunrise_gameplay::game::server_side::creatures_server::projectile_targets_tests::TrackedTarget;
 
 #[derive(Clone, Copy)]
 pub(in crate::game) enum TrackedProj {
@@ -152,12 +152,12 @@ pub(in crate::game) enum TrackedProj {
 }
 
 #[allow(unused_imports)]
-pub(in crate::game) use sunrise_gameplay::game::server_side::creatures_server::projectile_targets_tests::summon_target;
+pub(crate) use sunrise_gameplay::game::server_side::creatures_server::projectile_targets_tests::summon_target;
 
 #[allow(unused_imports)]
-pub(in crate::game) use sunrise_gameplay::game::server_side::creatures_server::projectile_targets_tests::target_bounds;
+pub(crate) use sunrise_gameplay::game::server_side::creatures_server::projectile_targets_tests::target_bounds;
 
-pub(in crate::game) fn summon_projectile(
+pub(crate) fn summon_projectile(
     game: &mut sunrise_gameplay::game::ServerGame<'_>,
     proj: &str,
     y0: f64,
@@ -243,9 +243,9 @@ pub(in crate::game) fn summon_projectile(
 }
 
 #[allow(unused_imports)]
-pub(in crate::game) use sunrise_gameplay::game::server_side::creatures_server::projectile_targets_tests::target_alive;
+pub(crate) use sunrise_gameplay::game::server_side::creatures_server::projectile_targets_tests::target_alive;
 
-pub(in crate::game) fn check_case(
+pub(crate) fn check_case(
     game: &mut sunrise_gameplay::game::ServerGame<'_>,
     case: &Case,
     proj_seed: i64,
@@ -528,7 +528,7 @@ pub(in crate::game) fn check_case(
     errors
 }
 
-pub(in crate::game) fn run_family(filter: impl Fn(&str) -> bool) {
+pub(crate) fn run_family(filter: impl Fn(&str) -> bool) {
     let witness = load_witness();
     let mut resources = None;
     let mut game = setup_game(&mut resources);
@@ -558,7 +558,7 @@ fn witness_armor_stand_targets() {
     run_witness_armor_stand_targets();
 }
 
-pub(in crate::game) fn run_witness_armor_stand_targets() {
+pub(crate) fn run_witness_armor_stand_targets() {
     run_family(|t| t.starts_with("armor_stand"));
 }
 
@@ -568,7 +568,7 @@ fn witness_painting_and_cushion_targets() {
     run_witness_painting_and_cushion_targets();
 }
 
-pub(in crate::game) fn run_witness_painting_and_cushion_targets() {
+pub(crate) fn run_witness_painting_and_cushion_targets() {
     run_family(|t| t == "painting" || t == "cushion");
 }
 
@@ -578,7 +578,7 @@ fn witness_item_frame_targets() {
     run_witness_item_frame_targets();
 }
 
-pub(in crate::game) fn run_witness_item_frame_targets() {
+pub(crate) fn run_witness_item_frame_targets() {
     run_family(|t| t.starts_with("item_frame") || t.starts_with("glow_item_frame"));
 }
 
@@ -588,7 +588,7 @@ fn witness_leash_knot_targets() {
     run_witness_leash_knot_targets();
 }
 
-pub(in crate::game) fn run_witness_leash_knot_targets() {
+pub(crate) fn run_witness_leash_knot_targets() {
     run_family(|t| t.starts_with("leash_knot"));
 }
 
@@ -598,7 +598,7 @@ fn witness_falling_block_targets() {
     run_witness_falling_block_targets();
 }
 
-pub(in crate::game) fn run_witness_falling_block_targets() {
+pub(crate) fn run_witness_falling_block_targets() {
     run_family(|t| t == "falling_block");
 }
 

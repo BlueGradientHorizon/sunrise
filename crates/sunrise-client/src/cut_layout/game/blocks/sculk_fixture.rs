@@ -1,7 +1,7 @@
 
 
 #[cfg(test)]
-pub(in crate::game) mod tests {
+pub(crate) mod tests {
     #[test]
     #[ignore = "daily"]
     fn fixture_death_outside_catalyst_range_drops_experience() {

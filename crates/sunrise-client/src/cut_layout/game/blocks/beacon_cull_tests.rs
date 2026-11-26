@@ -13,7 +13,7 @@ fn game<'a>(resources: &'a mut Option<Arc<sunrise_gameplay_common::game::Resourc
 
 /// A game loaded from the prepared resources as `role`: a client also loads what it draws with
 /// (the GUI and item atlas, baked block models).
-pub(in crate::game) fn game_as_client<'a>(
+pub(crate) fn game_as_client<'a>(
     resources: &'a mut Option<Arc<sunrise_gameplay_common::game::Resources>>,
     role: execution_role::ExecutionRole,
 ) -> sunrise_client_gameplay::game::ClientGame<'a> {

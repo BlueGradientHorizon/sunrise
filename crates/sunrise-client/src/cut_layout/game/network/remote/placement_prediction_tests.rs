@@ -8,11 +8,11 @@ use mod_api::{
 };
 
 /// Every answer below is a client's: the hooks are asked by its placement prediction.
-pub(in crate::game) fn client(level: LevelSide<'_>) {
+pub(crate) fn client(level: LevelSide<'_>) {
     assert!(matches!(level, LevelSide::Client(_)));
 }
 
-pub(in crate::game) struct Refuse;
+pub(crate) struct Refuse;
 #[mod_api::sunrise_part]
 impl BlockPart for Refuse {
     fn state_for_placement(
@@ -25,7 +25,7 @@ impl BlockPart for Refuse {
     }
 }
 
-pub(in crate::game) struct Fall;
+pub(crate) struct Fall;
 #[mod_api::sunrise_part]
 impl BlockPart for Fall {
     fn can_survive(&self, level: LevelSide<'_>, _: &mut CanSurviveEvent) -> Option<bool> {
@@ -34,7 +34,7 @@ impl BlockPart for Fall {
     }
 }
 
-pub(in crate::game) struct Soil;
+pub(crate) struct Soil;
 #[mod_api::sunrise_part]
 impl BlockPart for Soil {
     fn can_sustain_plant(
@@ -47,7 +47,7 @@ impl BlockPart for Soil {
     }
 }
 
-pub(in crate::game) struct Hardy;
+pub(crate) struct Hardy;
 #[mod_api::sunrise_part]
 impl BlockPart for Hardy {
     fn may_place_on(&self, level: LevelSide<'_>, _: &mut MayPlaceOnEvent) -> Option<bool> {
@@ -56,7 +56,7 @@ impl BlockPart for Hardy {
     }
 }
 
-pub(in crate::game) struct PlaceMod;
+pub(crate) struct PlaceMod;
 #[mod_api::__subscriptions]
 impl Hooks for PlaceMod {
     fn register(&self, r: &mut dyn Registrar, _: &mod_api::RegistrationContext) {
@@ -73,7 +73,7 @@ impl Hooks for PlaceMod {
 
 /// `test` on a survival-mode client game with `mods`' parts, connected to a server and with
 /// chunk (0, 0) loaded and empty.
-pub(in crate::game) fn on_a_client(
+pub(crate) fn on_a_client(
     mods: mod_api::Mods,
     test: impl FnOnce(&mut sunrise_client_gameplay::game::ClientGame<'_>),
 ) {
@@ -97,7 +97,7 @@ pub(in crate::game) fn on_a_client(
 }
 
 /// The click at the top of `[x, 64, z]`.
-pub(in crate::game) fn top_of(x: i32, z: i32) -> sunrise_gameplay_common::game::Hit {
+pub(crate) fn top_of(x: i32, z: i32) -> sunrise_gameplay_common::game::Hit {
     sunrise_gameplay_common::game::Hit {
         pos: [x, 64, z],
         face: [0, 1, 0],
@@ -135,7 +135,7 @@ fn client_placement_prediction_asks_placement_and_survival_parts() {
     });
 }
 
-pub(in crate::game) struct StorageFacing;
+pub(crate) struct StorageFacing;
 #[mod_api::sunrise_part]
 impl BlockPart for StorageFacing {
     fn state_for_placement(
@@ -154,7 +154,7 @@ impl BlockPart for StorageFacing {
     }
 }
 
-pub(in crate::game) struct StoragePort;
+pub(crate) struct StoragePort;
 impl mod_api::ResourceHandler<mod_api::ItemResource> for StoragePort {
     fn size(&self, _: &mut dyn mod_api::ServerHost) -> usize {
         0
@@ -195,7 +195,7 @@ impl mod_api::ResourceHandler<mod_api::ItemResource> for StoragePort {
     }
 }
 
-pub(in crate::game) struct PlacementStorageMod;
+pub(crate) struct PlacementStorageMod;
 #[mod_api::__subscriptions]
 impl Hooks for PlacementStorageMod {
     fn register(&self, r: &mut dyn Registrar, _: &mod_api::RegistrationContext) {
@@ -372,7 +372,7 @@ fn placement_and_prediction_choose_from_their_local_item_providers() {
     });
 }
 
-pub(in crate::game) struct BedInstead;
+pub(crate) struct BedInstead;
 #[mod_api::sunrise_part]
 impl BlockPart for BedInstead {
     fn state_for_placement(
@@ -387,7 +387,7 @@ impl BlockPart for BedInstead {
     }
 }
 
-pub(in crate::game) struct BedPlacementMod;
+pub(crate) struct BedPlacementMod;
 #[mod_api::__subscriptions]
 impl Hooks for BedPlacementMod {
     fn register(&self, r: &mut dyn Registrar, _: &mod_api::RegistrationContext) {
@@ -439,7 +439,7 @@ fn predicts_the_selected_beds_component_adjusted_head() {
 }
 
 /// A dandelion that stands while a cobblestone is east of it, as its level shows it.
-pub(in crate::game) struct BesideCobblestone;
+pub(crate) struct BesideCobblestone;
 #[mod_api::sunrise_part]
 impl BlockPart for BesideCobblestone {
     fn can_survive(&self, level: LevelSide<'_>, event: &mut CanSurviveEvent) -> Option<bool> {
@@ -451,7 +451,7 @@ impl BlockPart for BesideCobblestone {
     }
 }
 
-pub(in crate::game) struct NeighbourMod;
+pub(crate) struct NeighbourMod;
 #[mod_api::__subscriptions]
 impl Hooks for NeighbourMod {
     fn register(&self, r: &mut dyn Registrar, _: &mod_api::RegistrationContext) {
@@ -460,7 +460,7 @@ impl Hooks for NeighbourMod {
     }
 }
 
-pub(in crate::game) type BreakRead = (
+pub(crate) type BreakRead = (
     sunrise_core::position::BlockPos,
     Option<BlockState>,
     Option<BlockState>,
@@ -489,7 +489,7 @@ impl BlockPart for BreakObserver {
     }
 }
 
-pub(in crate::game) struct BreakMod(pub(in crate::game) BreakObserver);
+pub(crate) struct BreakMod(pub(crate) BreakObserver);
 #[mod_api::__subscriptions]
 impl Hooks for BreakMod {
     fn register(&self, r: &mut dyn Registrar, context: &mod_api::RegistrationContext) {
@@ -727,10 +727,10 @@ fn a_denied_break_restores_wall_sign_text_and_synced_attachments() {
     });
 }
 
-pub(in crate::game) static GUIDE_ASKS: std::sync::atomic::AtomicUsize =
+pub(crate) static GUIDE_ASKS: std::sync::atomic::AtomicUsize =
     std::sync::atomic::AtomicUsize::new(0);
 
-pub(in crate::game) struct Counted;
+pub(crate) struct Counted;
 #[mod_api::sunrise_part]
 impl BlockPart for Counted {
     fn state_for_placement(
@@ -744,7 +744,7 @@ impl BlockPart for Counted {
 }
 
 /// A dandelion's survival, asked from a neighbour's shape update.
-pub(in crate::game) struct CountedSurvival;
+pub(crate) struct CountedSurvival;
 #[mod_api::sunrise_part]
 impl BlockPart for CountedSurvival {
     fn can_survive(&self, _: LevelSide<'_>, _: &mut CanSurviveEvent) -> Option<bool> {
@@ -753,7 +753,7 @@ impl BlockPart for CountedSurvival {
     }
 }
 
-pub(in crate::game) struct CountedWall;
+pub(crate) struct CountedWall;
 #[mod_api::sunrise_part]
 impl BlockPart for CountedWall {
     fn fence_gate_in_wall(
@@ -767,7 +767,7 @@ impl BlockPart for CountedWall {
     }
 }
 
-pub(in crate::game) struct GuideMod;
+pub(crate) struct GuideMod;
 #[mod_api::__subscriptions]
 impl Hooks for GuideMod {
     fn register(&self, r: &mut dyn Registrar, _: &mod_api::RegistrationContext) {
@@ -863,11 +863,11 @@ fn the_guide_s_look_asks_no_placement_or_survival_part_and_the_click_does() {
 }
 
 /// The comparator east of the clicked block's spot and what its part read of its signal.
-pub(in crate::game) const COMPARATOR: [i32; 3] = [2, 65, 0];
-pub(in crate::game) static COMPARATOR_READS: std::sync::Mutex<Vec<Option<i32>>> =
+pub(crate) const COMPARATOR: [i32; 3] = [2, 65, 0];
+pub(crate) static COMPARATOR_READS: std::sync::Mutex<Vec<Option<i32>>> =
     std::sync::Mutex::new(Vec::new());
 
-pub(in crate::game) struct ReadsComparator;
+pub(crate) struct ReadsComparator;
 #[mod_api::sunrise_part]
 impl BlockPart for ReadsComparator {
     fn can_survive(&self, level: LevelSide<'_>, _: &mut CanSurviveEvent) -> Option<bool> {
@@ -880,7 +880,7 @@ impl BlockPart for ReadsComparator {
     }
 }
 
-pub(in crate::game) struct ComparatorMod;
+pub(crate) struct ComparatorMod;
 #[mod_api::__subscriptions]
 impl Hooks for ComparatorMod {
     fn register(&self, r: &mut dyn Registrar, _: &mod_api::RegistrationContext) {

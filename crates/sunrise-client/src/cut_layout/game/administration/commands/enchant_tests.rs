@@ -2,10 +2,10 @@ use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise
 use sunrise_items::items::ItemStack;
 use sunrise_sim::mobs::finalize::{MAINHAND, item_stack};
 
-pub(in crate::game) const TRIDENT: &str = "minecraft:trident";
-pub(in crate::game) const RIPTIDE: &str = "minecraft:riptide";
+pub(crate) const TRIDENT: &str = "minecraft:trident";
+pub(crate) const RIPTIDE: &str = "minecraft:riptide";
 
-pub(in crate::game) fn riptide(stack: Option<&ItemStack>) -> u32 {
+pub(crate) fn riptide(stack: Option<&ItemStack>) -> u32 {
     let stack = stack.expect("held stack");
     assert_eq!(&*stack.item, TRIDENT);
     stack.enchantment_level(RIPTIDE)
@@ -66,6 +66,6 @@ fn enchant_reports_single_target_errors_and_counts_only_compatible_living_target
 }
 
 #[allow(unused_imports)]
-pub(in crate::game) use sunrise_gameplay::game::server_side::commands_server::enchant_tests::enchant_outcome;
+pub(crate) use sunrise_gameplay::game::server_side::commands_server::enchant_tests::enchant_outcome;
 
 use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

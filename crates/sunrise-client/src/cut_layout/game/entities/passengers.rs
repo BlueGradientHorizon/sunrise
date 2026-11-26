@@ -1,7 +1,7 @@
 
 
 #[cfg(test)]
-pub(in crate::game) mod off_level_tests {
+pub(crate) mod off_level_tests {
     use super::*;
     use {sunrise_gameplay_common::game::boats_common::Boat, sunrise_gameplay_common::game::entity_memory::OffLevel, sunrise_gameplay::game::server_side::minecarts_server::CartHit};
     use sunrise_sim::mobs::Mob;
@@ -1756,7 +1756,7 @@ fn live_cancels(cross_level: bool) {
 
 
 #[cfg(test)]
-pub(in crate::game) mod content_seat_tests {
+pub(crate) mod content_seat_tests {
     use super::*;
 
     #[test]

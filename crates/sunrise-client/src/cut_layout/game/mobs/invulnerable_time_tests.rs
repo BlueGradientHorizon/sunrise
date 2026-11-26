@@ -2,7 +2,7 @@
 //! a `/data` edit keeps it; `invulnerable_time` is `Entity.invulnerableTime`,
 //! another field (tools/test_invulnerable_time_parity.py measures the same on
 //! vanilla 26.3).
-use {crate::game::*, sunrise_gameplay_common::game::{Arc, Instant, Mob, Options, PathBuf, Progress, Resources, Settings, entity, execution_role, hit, load_resources}};
+use {crate::game::*, sunrise_gameplay_common::game::{Instant, Mob, Options, PathBuf, Progress, Resources, entity, execution_role, hit}};
 use std::sync::Arc;
 use sunrise_core::position::ChunkPos;
 use sunrise_level::chunk::Chunk;

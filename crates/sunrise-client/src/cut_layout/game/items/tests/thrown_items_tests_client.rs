@@ -1,7 +1,7 @@
 use {sunrise_gameplay_common::game::Audio, sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
 
 /// The one sound `event` played since the last call, with its volume.
-pub(in crate::game) fn sound(game: &mut sunrise_client_gameplay::game::ClientGame<'_>, event: &str) -> (f32, f32) {
+pub(crate) fn sound(game: &mut sunrise_client_gameplay::game::ClientGame<'_>, event: &str) -> (f32, f32) {
     let heard = game
         .side
         .audio
@@ -18,7 +18,7 @@ pub(in crate::game) fn sound(game: &mut sunrise_client_gameplay::game::ClientGam
 
 /// A window joined to a server through memory, with the sounds it plays
 /// recorded: the client half of a pickup (`ClientPacketListener`).
-pub(in crate::game) fn with_remote_game<R>(
+pub(crate) fn with_remote_game<R>(
     f: impl FnOnce(&mut sunrise_client_gameplay::game::ClientGame<'_>) -> R,
 ) -> R {
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());

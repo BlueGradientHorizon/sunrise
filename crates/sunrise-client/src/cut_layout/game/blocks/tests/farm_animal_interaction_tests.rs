@@ -2,7 +2,7 @@
 //! pitch is fixed at 1.0 (`AbstractCow.mobInteract`, `Goat.mobInteract`,
 //! `MushroomCow.mobInteract`) and shearing posts `GameEvent.SHEAR` with the
 //! player (`Sheep.mobInteract`, `MushroomCow.mobInteract`).
-use {crate::game::*, sunrise_gameplay_common::game::{Arc, Instant, InteractTarget, ItemStack, Mob, Options, PathBuf, PlayerMotion, Progress, Resources, Settings, Side, Vec3, api_values, entity, execution_role, load_resources}};
+use {crate::game::*, sunrise_gameplay_common::game::{Instant, InteractTarget, ItemStack, Options, PathBuf, Progress, Resources, Side, api_values, entity, execution_role}};
 use std::sync::Arc;
 use sunrise_core::{geometry::Vec3, position::ChunkPos};
 use sunrise_level::chunk::Chunk;

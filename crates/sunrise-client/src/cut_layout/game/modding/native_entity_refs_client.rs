@@ -1,7 +1,7 @@
 
 
 #[cfg(test)]
-pub(in crate::game) mod tests {
+pub(crate) mod tests {
     use crate::game::server_side::native_entity_refs::tests::collect_entities_in;
     use crate::game::server_side::native_entity_refs::tests::run_fresh_cases;
     use crate::game::server_side::native_entity_refs::tests::with_client_game;

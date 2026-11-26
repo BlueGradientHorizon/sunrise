@@ -1,6 +1,6 @@
 //! A farmland part answers `is_fertile` and `can_be_hydrated` (`IBlockExtension.isFertile`,
 //! `canBeHydrated`) through the game's level, on an authoritative server only.
-use {crate::game::*, sunrise_gameplay_common::game::{BlockPos, LevelAccess, api_values, execution_role, mods}};
+use {crate::game::*, sunrise_gameplay_common::game::{BlockPos, api_values, execution_role, mods}};
 use mod_api::{BlockPart, CanBeHydratedEvent, Hooks, IsFertileEvent, LevelHost, Registrar};
 use sunrise_world::level::LevelAccess;
 

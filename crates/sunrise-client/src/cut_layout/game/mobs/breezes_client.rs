@@ -16,7 +16,7 @@ use sunrise_sim::mobs::Mob;
 /// A game on the prepared resources with an empty chunk at (0, 0), the
     /// window's player (the camera the dust needs) and one breeze standing
     /// with its feet at `feet`.
-    pub(in crate::game) fn game_with_breeze<'a>(
+    pub(crate) fn game_with_breeze<'a>(
         resources: &'a mut Option<std::sync::Arc<sunrise_gameplay_common::game::Resources>>,
         feet: Vec3,
     ) -> sunrise_client_gameplay::game::ClientGame<'a> {

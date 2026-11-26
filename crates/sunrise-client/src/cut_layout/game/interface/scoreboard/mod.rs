@@ -1,15 +1,15 @@
 
 
 #[cfg(test)]
-pub(in crate::game) mod criterion_tests;
+pub(crate) mod criterion_tests;
 
 #[cfg(test)]
-pub(in crate::game) mod empty_tag_tests;
+pub(crate) mod empty_tag_tests;
 #[cfg(test)]
-pub(in crate::game) mod guest_advancement_tests;
+pub(crate) mod guest_advancement_tests;
 
 #[cfg(test)]
-pub(in crate::game) mod source_holder_tests;
+pub(crate) mod source_holder_tests;
 
 #[cfg(test)]
-pub(in crate::game) mod selector_option_tests;
+pub(crate) mod selector_option_tests;

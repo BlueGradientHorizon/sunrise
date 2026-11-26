@@ -5,123 +5,123 @@ pub(crate) use super::server_side::native_entity_refs;
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "blocks/beacon_cull_tests.rs"]
-pub(in crate::game) mod beacon_cull_tests;
+pub(crate) mod beacon_cull_tests;
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "entities/crosshair_pick_tests.rs"]
-pub(in crate::game) mod crosshair_pick_tests;
+pub(crate) mod crosshair_pick_tests;
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "interface/dragon_boss_bar_name_tests.rs"]
-pub(in crate::game) mod dragon_boss_bar_name_tests;
+pub(crate) mod dragon_boss_bar_name_tests;
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "blocks/enchant_power_beam_tests.rs"]
-pub(in crate::game) mod enchant_power_beam_tests;
+pub(crate) mod enchant_power_beam_tests;
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "modding/gui_layer_tests.rs"]
-pub(in crate::game) mod gui_layer_tests;
+pub(crate) mod gui_layer_tests;
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "items/hand_part_tests.rs"]
-pub(in crate::game) mod hand_part_tests;
+pub(crate) mod hand_part_tests;
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "interface/highlight_tip_tests.rs"]
-pub(in crate::game) mod highlight_tip_tests;
+pub(crate) mod highlight_tip_tests;
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "modding/mod_menu_decisions_tests.rs"]
-pub(in crate::game) mod mod_menu_decisions_tests;
+pub(crate) mod mod_menu_decisions_tests;
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "modding/mod_raycast_tests.rs"]
-pub(in crate::game) mod mod_raycast_tests;
+pub(crate) mod mod_raycast_tests;
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "interface/mod_recipe_property_tests.rs"]
-pub(in crate::game) mod mod_recipe_property_tests;
+pub(crate) mod mod_recipe_property_tests;
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "modding/native_general_renderers_tests.rs"]
-pub(in crate::game) mod native_general_renderers_tests;
+pub(crate) mod native_general_renderers_tests;
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "modding/native_key_mappings_tests.rs"]
-pub(in crate::game) mod native_key_mappings_tests;
+pub(crate) mod native_key_mappings_tests;
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "modding/native_scene_live_tests.rs"]
-pub(in crate::game) mod native_scene_live_tests;
+pub(crate) mod native_scene_live_tests;
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "modding/native_small_reads_tests.rs"]
-pub(in crate::game) mod native_small_reads_tests;
+pub(crate) mod native_small_reads_tests;
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "interface/options_close_tests.rs"]
-pub(in crate::game) mod options_close_tests;
+pub(crate) mod options_close_tests;
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "interface/polytone_frame_tests.rs"]
-pub(in crate::game) mod polytone_frame_tests;
+pub(crate) mod polytone_frame_tests;
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "interface/recipe_properties_tests.rs"]
-pub(in crate::game) mod recipe_properties_tests;
+pub(crate) mod recipe_properties_tests;
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "interface/screen_render_phase_tests.rs"]
-pub(in crate::game) mod screen_render_phase_tests;
+pub(crate) mod screen_render_phase_tests;
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "interface/tests/sign_chain_tests.rs"]
-pub(in crate::game) mod sign_chain_tests;
+pub(crate) mod sign_chain_tests;
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "mobs/spawner_client_tick_tests.rs"]
-pub(in crate::game) mod spawner_client_tick_tests;
+pub(crate) mod spawner_client_tick_tests;
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "blocks/sulfur_bucket_tests.rs"]
-pub(in crate::game) mod sulfur_bucket_tests;
+pub(crate) mod sulfur_bucket_tests;
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "runtime/core_tests_client.rs"]
-pub(in crate::game) mod core_tests_client;
+pub(crate) mod core_tests_client;
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "modding/disabled_block_tests_client.rs"]
-pub(in crate::game) mod disabled_block_tests_client;
+pub(crate) mod disabled_block_tests_client;
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "modding/initial_client_models_tests_client.rs"]
-pub(in crate::game) mod initial_client_models_tests_client;
+pub(crate) mod initial_client_models_tests_client;
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "modding/native_guest_turn_tests_client.rs"]
-pub(in crate::game) mod native_guest_turn_tests_client;
+pub(crate) mod native_guest_turn_tests_client;
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "modding/native_level_sound_except_tests_client.rs"]
-pub(in crate::game) mod native_level_sound_except_tests_client;
+pub(crate) mod native_level_sound_except_tests_client;
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "items/projectile_spawned_tests_client.rs"]
-pub(in crate::game) mod projectile_spawned_tests_client;
+pub(crate) mod projectile_spawned_tests_client;
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "modding/stacked_on_other_tests_client.rs"]
-pub(in crate::game) mod stacked_on_other_tests_client;
+pub(crate) mod stacked_on_other_tests_client;
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "entities/vehicle_removal_tests_client.rs"]
-pub(in crate::game) mod vehicle_removal_tests_client;
+pub(crate) mod vehicle_removal_tests_client;
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "blocks/world_fluids_tests_client.rs"]
-pub(in crate::game) mod world_fluids_tests_client;
+pub(crate) mod world_fluids_tests_client;
 #[cfg(feature = "client")]
 #[path = "world/server_packs.rs"]
 pub(crate) mod server_packs;

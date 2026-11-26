@@ -8,9 +8,9 @@ use sunrise_core::position::ChunkPos;
 use sunrise_level::chunk::Chunk;
 use sunrise_sim::mobs::Who;
 
-pub(in crate::game) const PIG: &str = "00000251-0000-0000-0000-000000000001";
+pub(crate) const PIG: &str = "00000251-0000-0000-0000-000000000001";
 
-pub(in crate::game) fn game(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
+pub(crate) fn game(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
     sunrise_gameplay::game::native_entity_refs::tests::with_game(|game| {
         game.build_registries();
         game.load_server_loot();
@@ -34,7 +34,7 @@ pub(in crate::game) fn game(test: impl FnOnce(&mut sunrise_gameplay::game::Serve
 }
 
 /// Runs `command`: whether it succeeded and what it said.
-pub(in crate::game) fn run(
+pub(crate) fn run(
     game: &mut sunrise_gameplay::game::ServerGame<'_>,
     command: &str,
 ) -> (bool, Vec<String>) {
@@ -50,7 +50,7 @@ pub(in crate::game) fn run(
 }
 
 /// The `entity_die` events posted while `f` runs.
-pub(in crate::game) fn deaths(
+pub(crate) fn deaths(
     game: &mut sunrise_gameplay::game::ServerGame<'_>,
     f: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>),
 ) -> Vec<([f64; 3], Option<Who>)> {

@@ -161,10 +161,10 @@ pub(in crate::game) struct ReviewEntitySnap {
     pub(in crate::game) leashed: Option<bool>,
 }
 
-pub(in crate::game) const STAR_FIREWORK_ITEM: &str = r#"{id:"minecraft:firework_rocket",count:1,components:{"minecraft:fireworks":{flight_duration:1,explosions:[{shape:"small_ball",colors:[I;11743532]}]}}}"#;
-pub(in crate::game) const PLAIN_FIREWORK_ITEM: &str = r#"{id:"minecraft:firework_rocket",count:1}"#;
+pub(crate) const STAR_FIREWORK_ITEM: &str = r#"{id:"minecraft:firework_rocket",count:1,components:{"minecraft:fireworks":{flight_duration:1,explosions:[{shape:"small_ball",colors:[I;11743532]}]}}}"#;
+pub(crate) const PLAIN_FIREWORK_ITEM: &str = r#"{id:"minecraft:firework_rocket",count:1}"#;
 
-pub(in crate::game) fn load_witness() -> Witness {
+pub(crate) fn load_witness() -> Witness {
     let dir = std::env::var_os("SUNRISE_PROJECTILE_WITNESS_DIR").unwrap_or_else(|| {
         panic!(
             "SUNRISE_PROJECTILE_WITNESS_DIR is unset; run tools/test_projectile_targets_parity.py"
@@ -182,19 +182,19 @@ pub(in crate::game) fn load_witness() -> Witness {
     witness
 }
 
-pub(in crate::game) fn bits(v: f64) -> String {
+pub(crate) fn bits(v: f64) -> String {
     format!("{:016x}", v.to_bits())
 }
 
-pub(in crate::game) fn fbits(v: f32) -> String {
+pub(crate) fn fbits(v: f32) -> String {
     format!("{:08x}", v.to_bits())
 }
 
-pub(in crate::game) fn vec_bits(v: Vec3) -> [String; 3] {
+pub(crate) fn vec_bits(v: Vec3) -> [String; 3] {
     [bits(v.x), bits(v.y), bits(v.z)]
 }
 
-pub(in crate::game) fn setup_game<'a>(
+pub(crate) fn setup_game<'a>(
     resources: &'a mut Option<std::sync::Arc<sunrise_gameplay_common::game::Resources>>,
 ) -> sunrise_gameplay::game::ServerGame<'a> {
     let mut game = sunrise_gameplay::game::game_tests::tests::server_game(resources);
@@ -264,7 +264,7 @@ pub(in crate::game) fn setup_game<'a>(
     game
 }
 
-pub(in crate::game) fn clear_arena(game: &mut sunrise_gameplay::game::ServerGame<'_>, backstop_x: i32) {
+pub(crate) fn clear_arena(game: &mut sunrise_gameplay::game::ServerGame<'_>, backstop_x: i32) {
     if game.riding.is_some() {
         game.stop_riding();
     }
@@ -323,12 +323,12 @@ pub(in crate::game) fn clear_arena(game: &mut sunrise_gameplay::game::ServerGame
     game.tick_server(false).unwrap();
 }
 
-pub(in crate::game) fn player_uuid_nbt(game: &sunrise_gameplay::game::ServerGame<'_>) -> String {
+pub(crate) fn player_uuid_nbt(game: &sunrise_gameplay::game::ServerGame<'_>) -> String {
     let arr = game.level.player_uuid.unwrap_or([0, 0, 0, 1]);
     format!("[I;{},{},{},{}]", arr[0], arr[1], arr[2], arr[3])
 }
 
-pub(in crate::game) fn adv_done(game: &sunrise_gameplay::game::ServerGame<'_>, id: &str) -> bool {
+pub(crate) fn adv_done(game: &sunrise_gameplay::game::ServerGame<'_>, id: &str) -> bool {
     game.adv
         .tree
         .find_id(id)
@@ -336,9 +336,9 @@ pub(in crate::game) fn adv_done(game: &sunrise_gameplay::game::ServerGame<'_>, i
 }
 
 #[allow(unused_imports)]
-pub(in crate::game) use sunrise_gameplay::game::client_side::creatures_client::projectiles_120_124_tests::step_recording;
+pub(crate) use sunrise_gameplay::game::client_side::creatures_client::projectiles_120_124_tests::step_recording;
 
-pub(in crate::game) fn land_positions_match(
+pub(crate) fn land_positions_match(
     events: &[(&'static str, [f64; 3], Option<Who>)],
     expected: &[GameEventSnap],
 ) -> Result<(), String> {
@@ -368,7 +368,7 @@ fn witness_spectator_player_120() {
     run_witness_spectator_player_120();
 }
 
-pub(in crate::game) fn run_witness_spectator_player_120() {
+pub(crate) fn run_witness_spectator_player_120() {
     let witness = load_witness();
     let mut resources = None;
     let mut game = setup_game(&mut resources);
@@ -499,7 +499,7 @@ fn witness_wind_charge_end_crystal_121() {
     run_witness_wind_charge_end_crystal_121();
 }
 
-pub(in crate::game) fn run_witness_wind_charge_end_crystal_121() {
+pub(crate) fn run_witness_wind_charge_end_crystal_121() {
     let witness = load_witness();
     let mut resources = None;
     let mut game = setup_game(&mut resources);
@@ -608,7 +608,7 @@ fn witness_trident_enderman_dodge_122() {
     run_witness_trident_enderman_dodge_122();
 }
 
-pub(in crate::game) fn run_witness_trident_enderman_dodge_122() {
+pub(crate) fn run_witness_trident_enderman_dodge_122() {
     let witness = load_witness();
     let mut resources = None;
     let mut game = setup_game(&mut resources);
@@ -884,7 +884,7 @@ fn witness_piercing_arrow_multihit_123() {
     run_witness_piercing_arrow_multihit_123();
 }
 
-pub(in crate::game) fn run_witness_piercing_arrow_multihit_123() {
+pub(crate) fn run_witness_piercing_arrow_multihit_123() {
     let witness = load_witness();
     let mut resources = None;
     let mut game = setup_game(&mut resources);
@@ -1144,7 +1144,7 @@ fn witness_firework_rocket_targets_124() {
 }
 
 #[allow(unused_imports)]
-pub(in crate::game) use crate::game::server_side::creatures_server::projectiles_120_124_tests::run_witness_firework_rocket_targets_124;
+pub(crate) use crate::game::server_side::creatures_server::projectiles_120_124_tests::run_witness_firework_rocket_targets_124;
 
 #[derive(Clone, Copy)]
 pub(in crate::game) enum ReviewTracked {
@@ -1159,7 +1159,7 @@ pub(in crate::game) enum ReviewTracked {
     Rocket(u32),
 }
 
-pub(in crate::game) fn summon_mob_seeded(
+pub(crate) fn summon_mob_seeded(
     game: &mut sunrise_gameplay::game::ServerGame<'_>,
     cmd: &str,
     seed: i64,
@@ -1171,7 +1171,7 @@ pub(in crate::game) fn summon_mob_seeded(
     id
 }
 
-pub(in crate::game) fn summon_proj_seeded(
+pub(crate) fn summon_proj_seeded(
     game: &mut sunrise_gameplay::game::ServerGame<'_>,
     cmd: &str,
     seed: i64,
@@ -1185,7 +1185,7 @@ pub(in crate::game) fn summon_proj_seeded(
     id
 }
 
-pub(in crate::game) fn summon_trident_seeded(
+pub(crate) fn summon_trident_seeded(
     game: &mut sunrise_gameplay::game::ServerGame<'_>,
     cmd: &str,
     seed: i64,
@@ -1199,7 +1199,7 @@ pub(in crate::game) fn summon_trident_seeded(
     id
 }
 
-pub(in crate::game) fn summon_rocket_seeded(
+pub(crate) fn summon_rocket_seeded(
     game: &mut sunrise_gameplay::game::ServerGame<'_>,
     cmd: &str,
     seed: i64,
@@ -1213,7 +1213,7 @@ pub(in crate::game) fn summon_rocket_seeded(
     id
 }
 
-pub(in crate::game) fn check_review_entity(
+pub(crate) fn check_review_entity(
     game: &sunrise_gameplay::game::ServerGame<'_>,
     label: &str,
     tick: usize,
@@ -1492,7 +1492,7 @@ fn witness_review_round1_regressions() {
     run_witness_review_round1_regressions();
 }
 
-pub(in crate::game) fn run_witness_review_round1_regressions() {
+pub(crate) fn run_witness_review_round1_regressions() {
     let witness = load_witness();
     let mut resources = None;
     let mut game = setup_game(&mut resources);

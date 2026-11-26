@@ -2,7 +2,7 @@
 //! a guest teleported, killed or put in spectator mode in the middle of the
 //! tick blocks placement where it is now, as when each turn built the boxes
 //! afresh, not at its box from the start of the tick.
-use {crate::game::*, sunrise_gameplay_common::game::{Arc, Dim, Instant, Options, PathBuf, PlayerMotion, Progress, Resources, Settings, Vec3, execution_role, load_resources}};
+use {crate::game::*, sunrise_gameplay_common::game::{Dim, Instant, Options, PathBuf, Progress, Resources, Vec3, execution_role}};
 use std::sync::{Arc, atomic::AtomicI32, mpsc};
 use sunrise_level::chunk::Chunk;
 use sunrise_protocol::packets::configuration::ClientInformation;

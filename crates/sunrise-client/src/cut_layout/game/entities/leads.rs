@@ -1,7 +1,7 @@
 
 
 #[cfg(test)]
-pub(in crate::game) mod attach_tests {
+pub(crate) mod attach_tests {
     use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
     use sunrise_core::geometry::Vec3;
 
@@ -139,4 +139,4 @@ pub(in crate::game) mod attach_tests {
 
 #[cfg(test)]
 #[path = "tests/leash_knot_uuid_tests.rs"]
-pub(in crate::game) mod leash_knot_uuid_tests;
+pub(crate) mod leash_knot_uuid_tests;

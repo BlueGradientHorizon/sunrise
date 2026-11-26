@@ -1,6 +1,6 @@
 //! ContainerOpenersCounter timing, including lost openers.
 #[cfg(test)]
-pub(in crate::game) mod tests {
+pub(crate) mod tests {
     use super::super::{lan_actions::MenuOpen, native_entity_refs::tests::run_fresh_cases};
     use mod_api::{
         BlockState, BlockUpdateFlags, Flow, Hooks, HostBlockStates, MenuReplace,
@@ -14,10 +14,10 @@ pub(in crate::game) mod tests {
     };
     use sunrise_sim::lan::menu::Slots;
 
-    pub(in crate::game) const POS: (i32, i32, i32) = (3, 64, 4);
-    pub(in crate::game) const AT: [i32; 3] = [POS.0, POS.1, POS.2];
+    pub(crate) const POS: (i32, i32, i32) = (3, 64, 4);
+    pub(crate) const AT: [i32; 3] = [POS.0, POS.1, POS.2];
 
-    pub(in crate::game) fn with_container(
+    pub(crate) fn with_container(
         block: &str,
         test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>),
     ) {

@@ -2,7 +2,7 @@
 //! ticks and `world_clocks.dat` saves (`ServerClockManager.getInstance`).
 use {sunrise_gameplay_common::game::Dim, sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::execution_role, sunrise_gameplay_common::game::load_resources};
 
-pub(in crate::game) fn game<'a>(
+pub(crate) fn game<'a>(
     resources: &'a mut Option<std::sync::Arc<sunrise_gameplay_common::game::Resources>>,
 ) -> sunrise_gameplay::game::ServerGame<'a> {
     let root = std::path::PathBuf::from(

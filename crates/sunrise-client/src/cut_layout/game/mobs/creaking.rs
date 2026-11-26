@@ -2,10 +2,10 @@
 
 #[cfg(test)]
 #[path = "tests/creaking_heart_events_tests.rs"]
-pub(in crate::game) mod creaking_heart_events_tests;
+pub(crate) mod creaking_heart_events_tests;
 
 #[cfg(test)]
-pub(in crate::game) mod nested_spawn_tests {
+pub(crate) mod nested_spawn_tests {
     use super::*;
     use crate::game::server_side::entity_server::taken_pass_tests;
 

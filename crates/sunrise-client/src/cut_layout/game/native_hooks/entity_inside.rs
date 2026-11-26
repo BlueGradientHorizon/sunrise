@@ -1,7 +1,7 @@
 
 
 #[cfg(test)]
-pub(in crate::game) mod entity_inside_tests {
+pub(crate) mod entity_inside_tests {
     use {crate::game::native_hooks::entity_inside::*};
 
     /// Landing writes reach the level at the batch end, in the order asked, and only

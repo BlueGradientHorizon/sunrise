@@ -1,7 +1,7 @@
 
 
 #[cfg(test)]
-pub(in crate::game) mod tests {
+pub(crate) mod tests {
     use sunrise_gameplay_common::game::api_values::TryIntoApi;
     use sunrise_gameplay::game::lan_actions::tests::StopMenu;
 
@@ -856,7 +856,7 @@ pub(in crate::game) mod tests {
 }
 
 #[cfg(test)]
-pub(in crate::game) mod respawn_world_point_tests {
+pub(crate) mod respawn_world_point_tests {
     use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
     use std::sync::{Arc, atomic::AtomicI32, mpsc};
     use sunrise_core::geometry::Vec3;
@@ -1001,7 +1001,7 @@ pub(in crate::game) mod respawn_world_point_tests {
 }
 
 #[cfg(test)]
-pub(in crate::game) mod guest_close_listener_tests {
+pub(crate) mod guest_close_listener_tests {
     use super::*;
     use sunrise_gameplay_common::game::lan_actions::guest_close_listener_tests::close;
     use sunrise_gameplay_common::game::lan_actions::guest_close_listener_tests::open;
@@ -1272,11 +1272,11 @@ pub(in crate::game) mod guest_close_listener_tests {
 
 #[cfg(test)]
 #[path = "tests/boat_holder_movement_tests_server.rs"]
-pub(in crate::game) mod boat_holder_movement_tests;
+pub(crate) mod boat_holder_movement_tests;
 
 #[cfg(test)]
 #[path = "tests/crack_feedback_tests_server.rs"]
-pub(in crate::game) mod crack_feedback_tests;
+pub(crate) mod crack_feedback_tests;
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
 use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

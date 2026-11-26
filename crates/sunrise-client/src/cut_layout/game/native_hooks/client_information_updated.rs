@@ -1,7 +1,7 @@
 
 
 #[cfg(test)]
-pub(in crate::game) mod client_information_updated_tests {
+pub(crate) mod client_information_updated_tests {
     use mod_api::{
         ChatVisibility, ClientInfo, ClientInformationUpdatedEvent, Hooks, MainHand, ModEntry,
         ParticleStatus, PlayerLoggedInEvent, ServerHost,

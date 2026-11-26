@@ -1,7 +1,7 @@
 
 
 #[cfg(test)]
-pub(in crate::game) fn with_headless_game(run: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
+pub(crate) fn with_headless_game(run: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
     use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::execution_role::ExecutionRole, sunrise_gameplay_common::game::load_resources};
 
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
@@ -37,7 +37,7 @@ pub(in crate::game) fn with_headless_game(run: impl FnOnce(&mut sunrise_gameplay
 }
 
 #[cfg(test)]
-pub(in crate::game) mod hatch_tests {
+pub(crate) mod hatch_tests {
     use super::with_headless_game;
     use sunrise_gameplay_common::game::LevelEvent;
     use sunrise_core::{nbt::Tag, position::BlockPos};
@@ -75,7 +75,7 @@ pub(in crate::game) mod hatch_tests {
 }
 
 #[cfg(test)]
-pub(in crate::game) mod item_collision_tests {
+pub(crate) mod item_collision_tests {
     use super::with_headless_game;
     use std::sync::Arc;
     use sunrise_core::position::ChunkPos;

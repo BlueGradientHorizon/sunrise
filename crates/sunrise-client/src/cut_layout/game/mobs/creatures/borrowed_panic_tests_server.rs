@@ -37,7 +37,7 @@ use sunrise_sim::join_seq::residency::{
 
 /// One tick of a zombie with 100 air and an iron sword: the air it listened to, then the air
 /// and the sword's damage the tick left.
-pub(in crate::game) fn breathing_tick(meddle: bool) -> (Vec<i32>, i32, i32) {
+pub(crate) fn breathing_tick(meddle: bool) -> (Vec<i32>, i32, i32) {
     crate::entry::install_client_hooks();
     let _ = sunrise_sim::block_contact::HOOKS.set(sunrise_gameplay_common::game::native_hooks::BLOCK_CONTACT_HOOKS);
     let scratch = Scratch(std::env::temp_dir().join(format!(
@@ -180,7 +180,7 @@ fn retained_stale_push_target() {
     });
 }
 
-pub(in crate::game) fn run_fixture(family: Family, output: Output, dim: Dim) {
+pub(crate) fn run_fixture(family: Family, output: Output, dim: Dim) {
     crate::entry::install_client_hooks();
     let _ = sunrise_sim::block_contact::HOOKS.set(sunrise_gameplay_common::game::native_hooks::BLOCK_CONTACT_HOOKS);
     if family == Family::Knockback {
@@ -595,7 +595,7 @@ pub(in crate::game) fn run_fixture(family: Family, output: Output, dim: Dim) {
     });
 }
 
-pub(in crate::game) fn with_consumer_game(
+pub(crate) fn with_consumer_game(
     dim: Dim,
     test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>, &ConsumerProbe),
 ) {

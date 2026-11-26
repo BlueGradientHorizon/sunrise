@@ -117,7 +117,7 @@ pub(in sunrise_gameplay::game::server_side) fn run_consumption_hook_keeps_the_st
 
 
 #[cfg(test)]
-pub(in crate::game) mod fox_consumption_hook_tests {
+pub(crate) mod fox_consumption_hook_tests {
     use super::*;
     use sunrise_gameplay_common::game::api_values::test_snapshot;
     use sunrise_gameplay::game::native_entity_refs::tests::with_game;

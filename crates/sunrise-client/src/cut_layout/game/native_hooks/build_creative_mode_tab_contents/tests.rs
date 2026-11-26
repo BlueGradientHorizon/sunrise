@@ -12,13 +12,13 @@ pub(in crate::game) struct Seen {
     pub(in crate::game) token: Option<CreativeTabEdit>,
 }
 
-pub(in crate::game) struct Edit(pub(in crate::game) Arc<Mutex<Seen>>);
+pub(crate) struct Edit(pub(crate) Arc<Mutex<Seen>>);
 
-pub(in crate::game) fn stack(id: &str, count: u32) -> mod_api::ItemStack {
+pub(crate) fn stack(id: &str, count: u32) -> mod_api::ItemStack {
     mod_api::ItemStack::new(mod_api::__private::item_key(id).unwrap(), count).unwrap()
 }
 
-pub(in crate::game) fn stone_key(max_stack: i32) -> mod_api::ItemStack {
+pub(crate) fn stone_key(max_stack: i32) -> mod_api::ItemStack {
     let mut stone = stack("minecraft:stone", 42);
     stone
         .set_components(Compound::from([(
@@ -145,7 +145,7 @@ impl Hooks for Edit {
     }
 }
 
-pub(in crate::game) struct Observe;
+pub(crate) struct Observe;
 
 #[mod_api::__subscriptions]
 impl Hooks for Observe {
@@ -188,7 +188,7 @@ impl Hooks for Observe {
     }
 }
 
-pub(in crate::game) fn definition(max_level: i32) -> serde_json::Value {
+pub(crate) fn definition(max_level: i32) -> serde_json::Value {
     serde_json::json!({
         "description": {"text":"Fixture levels"}, "supported_items":"minecraft:iron_sword",
         "weight": 1, "anvil_cost": 1, "max_level": max_level,
@@ -198,9 +198,9 @@ pub(in crate::game) fn definition(max_level: i32) -> serde_json::Value {
 }
 
 #[allow(unused_imports)]
-pub(in crate::game) use crate::game::server_side::native_hooks_server::build_creative_mode_tab_contents::tests::install_dedicated_holders;
+pub(crate) use crate::game::server_side::native_hooks_server::build_creative_mode_tab_contents::tests::install_dedicated_holders;
 
-pub(in crate::game) fn replace_client_definition(
+pub(crate) fn replace_client_definition(
     game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
     max_level: i32,
 ) {
@@ -217,7 +217,7 @@ pub(in crate::game) fn replace_client_definition(
     game.set_registries(Arc::new(registries));
 }
 
-pub(in crate::game) fn book_level(snapshot: &CreativeModeTabs) -> i32 {
+pub(crate) fn book_level(snapshot: &CreativeModeTabs) -> i32 {
     let books = &snapshot.tab("test:holders").unwrap().display_items;
     let levels: Vec<_> = books
         .iter()

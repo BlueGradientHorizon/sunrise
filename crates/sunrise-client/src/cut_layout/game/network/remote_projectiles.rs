@@ -2,7 +2,7 @@
 
 #[cfg(feature = "client")]
 #[cfg(test)]
-pub(in crate::game) mod entity_tick_tests {
+pub(crate) mod entity_tick_tests {
     use std::sync::{Arc, Mutex};
 
     /// The tick hooks a listener heard: whether on a client, the phase, entities and kinds.

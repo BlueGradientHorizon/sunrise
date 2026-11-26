@@ -4,7 +4,7 @@
 use sunrise_items::items::ItemStack;
 
 #[allow(unused_imports)]
-pub(in crate::game) use crate::game::client_side::use_hand_client::bow_enchantment_tests::game_with_player;
+pub(crate) use crate::game::client_side::use_hand_client::bow_enchantment_tests::game_with_player;
 
 /// The horizontal heading `p` was shot with, in degrees:
 /// `Projectile.shootFromRotation` sends it along `(-sin(yaw), ..., cos(yaw))`.

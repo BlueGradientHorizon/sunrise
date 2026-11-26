@@ -15,7 +15,7 @@ use crate::game::remote::abilities::gamemode_split_tests::run_local_tick;
 use crate::game::remote::abilities::gamemode_split_tests::spawn_info;
 use sunrise_protocol::connection::ConnReader;
 
-pub(in crate::game) fn run_resolved_player_info_retains_identity_across_remove_and_readd_26_3() {
+pub(crate) fn run_resolved_player_info_retains_identity_across_remove_and_readd_26_3() {
     sunrise_gameplay_common::game::in_own_process(
         "game::remote::abilities::gamemode_split_tests::resolved_player_info_retains_identity_across_remove_and_readd_26_3",
         || {
@@ -126,7 +126,7 @@ pub(in crate::game) fn run_resolved_player_info_retains_identity_across_remove_a
     );
 }
 
-pub(in crate::game) fn run_split_local_and_player_info_physics_matrix_26_3() {
+pub(crate) fn run_split_local_and_player_info_physics_matrix_26_3() {
     sunrise_gameplay_common::game::in_own_process(
         "game::remote::abilities::gamemode_split_tests::split_local_and_player_info_physics_matrix_26_3",
         || {
@@ -252,7 +252,7 @@ pub(in crate::game) fn run_split_local_and_player_info_physics_matrix_26_3() {
     );
 }
 
-pub(in crate::game) fn setup_client(
+pub(crate) fn setup_client(
     game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
     local_mode: i32,
     previous_mode: Option<i32>,

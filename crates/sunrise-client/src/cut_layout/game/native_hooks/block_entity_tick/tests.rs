@@ -18,16 +18,16 @@ use sunrise_level::{
 };
 use sunrise_sim::motion::PlayerMotion;
 
-pub(in crate::game) const POS: Pos = (1, 64, 1);
-pub(in crate::game) const CHUNK: (i32, i32) = (0, 0);
-pub(in crate::game) const AT: [i32; 3] = [POS.0, POS.1, POS.2];
-pub(in crate::game) const KIND: &str = "view_tick:subscribed";
-pub(in crate::game) const UNSUBSCRIBED: &str = "view_tick:unsubscribed";
-pub(in crate::game) const MACHINE: &str = "view_tick:machine";
-pub(in crate::game) const CONTAINER_MACHINE: &str = "view_tick:container_machine";
-pub(in crate::game) const UNSUBSCRIBED_MACHINE: &str = "view_tick:unsubscribed_machine";
+pub(crate) const POS: Pos = (1, 64, 1);
+pub(crate) const CHUNK: (i32, i32) = (0, 0);
+pub(crate) const AT: [i32; 3] = [POS.0, POS.1, POS.2];
+pub(crate) const KIND: &str = "view_tick:subscribed";
+pub(crate) const UNSUBSCRIBED: &str = "view_tick:unsubscribed";
+pub(crate) const MACHINE: &str = "view_tick:machine";
+pub(crate) const CONTAINER_MACHINE: &str = "view_tick:container_machine";
+pub(crate) const UNSUBSCRIBED_MACHINE: &str = "view_tick:unsubscribed_machine";
 
-pub(in crate::game) fn row(kind: &str, value: i32) -> BlockEntity {
+pub(crate) fn row(kind: &str, value: i32) -> BlockEntity {
     BlockEntity::Mod(Box::new(EngineBlockEntity::new(
         kind.into(),
         ModBlockEntityFields {
@@ -37,7 +37,7 @@ pub(in crate::game) fn row(kind: &str, value: i32) -> BlockEntity {
     )))
 }
 
-pub(in crate::game) fn place_subject(
+pub(crate) fn place_subject(
     game: &mut sunrise_gameplay::game::ServerGame<'_>,
     kind: &str,
 ) -> BlockEntityRef {
@@ -57,14 +57,14 @@ pub(in crate::game) fn place_subject(
     game.block_entity(level, [POS.0, POS.1, POS.2]).unwrap()
 }
 
-pub(in crate::game) fn access<'a, 'g>(
+pub(crate) fn access<'a, 'g>(
     game: &'a mut sunrise_gameplay::game::ServerGame<'g>,
     subject: BlockEntityRef,
 ) -> ResidentBlockEntityAccess<'a, 'g> {
     ResidentBlockEntityAccess::new(game, Some(subject), Loan::Tick(None))
 }
 
-pub(in crate::game) fn enable_block_ticks(game: &mut sunrise_gameplay::game::ServerGame<'_>) {
+pub(crate) fn enable_block_ticks(game: &mut sunrise_gameplay::game::ServerGame<'_>) {
     game.player = Some(
         sunrise_sim::motion::PlayerMotion::new(
             game.motion,
@@ -390,7 +390,7 @@ fn aborted_block_entity_edits_preserve_a_queued_client_update() {
     });
 }
 
-pub(in crate::game) fn check_edit_then_replace(commit: bool, observer: Option<ModEntry>) {
+pub(crate) fn check_edit_then_replace(commit: bool, observer: Option<ModEntry>) {
     with_ticker_mods(observer, |game, _| {
         let subject = place_subject(game, KIND);
         let original = game.world.block(POS.0, POS.1, POS.2);
@@ -1089,11 +1089,11 @@ impl Hooks for Effects {
     }
 }
 
-pub(in crate::game) fn with_ticker(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>, &Effects)) {
+pub(crate) fn with_ticker(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>, &Effects)) {
     with_ticker_mods(None, test);
 }
 
-pub(in crate::game) fn with_ticker_mods(
+pub(crate) fn with_ticker_mods(
     observer: Option<ModEntry>,
     test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>, &Effects),
 ) {

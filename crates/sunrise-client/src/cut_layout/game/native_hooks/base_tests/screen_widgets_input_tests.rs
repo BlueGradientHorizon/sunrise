@@ -39,7 +39,7 @@ pub(in crate::game) struct State {
     pub(in crate::game) seen: Vec<Seen>,
 }
 
-pub(in crate::game) struct Declining(pub(in crate::game) Arc<Mutex<State>>);
+pub(crate) struct Declining(pub(crate) Arc<Mutex<State>>);
 impl ScreenWidget for Declining {
     fn bounds(&self) -> [f32; 4] {
         [10.0, 20.0, 90.0, 20.0]
@@ -77,7 +77,7 @@ impl ScreenWidget for Declining {
     }
 }
 
-pub(in crate::game) struct Observe(pub(in crate::game) Arc<Mutex<State>>);
+pub(crate) struct Observe(pub(crate) Arc<Mutex<State>>);
 
 #[mod_api::__subscriptions]
 impl Hooks for Observe {
@@ -229,11 +229,11 @@ impl Hooks for Observe {
     }
 }
 
-pub(in crate::game) fn flow(cancel: bool) -> Flow {
+pub(crate) fn flow(cancel: bool) -> Flow {
     if cancel { Flow::Cancel } else { Flow::Continue }
 }
 
-pub(in crate::game) fn with_input_game(
+pub(crate) fn with_input_game(
     test: impl FnOnce(&mut sunrise_client_gameplay::game::ClientGame<'_>, WindowId, &Mutex<State>),
 ) {
     let state = Arc::new(Mutex::new(State::default()));
@@ -255,11 +255,11 @@ pub(in crate::game) fn with_input_game(
     });
 }
 
-pub(in crate::game) fn take(state: &Mutex<State>) -> Vec<Seen> {
+pub(crate) fn take(state: &Mutex<State>) -> Vec<Seen> {
     std::mem::take(&mut state.lock().unwrap().seen)
 }
 
-pub(in crate::game) fn send(
+pub(crate) fn send(
     game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
     id: WindowId,
     event: WindowEvent,
@@ -269,7 +269,7 @@ pub(in crate::game) fn send(
 
 /// Winit's KeyEvent platform field is private. Feed its normalized input to
 /// the production window-key adapter, not directly to the screen hooks.
-pub(in crate::game) fn key(
+pub(crate) fn key(
     game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
     key: KeyCode,
     state: ElementState,

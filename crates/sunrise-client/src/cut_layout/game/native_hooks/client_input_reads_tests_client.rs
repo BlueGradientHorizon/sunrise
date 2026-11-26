@@ -1,5 +1,5 @@
 #[cfg(test)]
-pub(in crate::game) mod tests {
+pub(crate) mod tests {
     use {sunrise_gameplay_common::game::Screen, crate::game::server_side::native_entity_refs::tests::with_client_game};
     use mod_api::MappingError;
     use sunrise_core::geometry::Vec3;

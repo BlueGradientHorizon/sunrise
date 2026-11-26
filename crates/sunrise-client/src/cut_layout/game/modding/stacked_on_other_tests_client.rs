@@ -3,7 +3,7 @@ use mod_api::{ModEntry, Mods};
 use sunrise_items::items::ItemStack;
 use sunrise_sim::menu::Input;
 
-pub(in crate::game) mod item_part_tests {
+pub(crate) mod item_part_tests {
     use super::*;
     use sunrise_gameplay::game::stacked_on_other_tests::item_part_tests::GlobalAndPartMod;
     use sunrise_gameplay::game::stacked_on_other_tests::item_part_tests::PartScript;

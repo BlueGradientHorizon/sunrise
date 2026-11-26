@@ -10,14 +10,14 @@ use mod_api::{
 use std::sync::OnceLock;
 
 #[path = "input_burst_tests.rs"]
-pub(in crate::game) mod input_burst_tests;
+pub(crate) mod input_burst_tests;
 
 /// The packets the client sends, and the hands the interaction hook hears.
-pub(in crate::game) struct Heard {
-    pub(in crate::game) packets: Arc<Mutex<Vec<String>>>,
-    pub(in crate::game) triggered: Arc<Mutex<Vec<Hand>>>,
-    pub(in crate::game) click_in_callback: Arc<std::sync::atomic::AtomicBool>,
-    pub(in crate::game) attack_mapping: Arc<OnceLock<VanillaKeyMappingRef>>,
+pub(crate) struct Heard {
+    pub(crate) packets: Arc<Mutex<Vec<String>>>,
+    pub(crate) triggered: Arc<Mutex<Vec<Hand>>>,
+    pub(crate) click_in_callback: Arc<std::sync::atomic::AtomicBool>,
+    pub(crate) attack_mapping: Arc<OnceLock<VanillaKeyMappingRef>>,
 }
 #[mod_api::__subscriptions]
 impl Hooks for Heard {
@@ -47,7 +47,7 @@ impl Hooks for Heard {
 
 /// A survival player on a server's client, playing with nothing open, the tick's first packets
 /// (the held slot) sent: `test` gets the game, the packets sent since and the hands triggered.
-pub(in crate::game) fn with_pressing_game(
+pub(crate) fn with_pressing_game(
     test: impl FnOnce(&mut sunrise_client_gameplay::game::ClientGame<'_>, &Mutex<Vec<String>>, &Mutex<Vec<Hand>>),
 ) {
     with_callback_game(false, |game, packets, triggered, _| {
@@ -55,15 +55,15 @@ pub(in crate::game) fn with_pressing_game(
     });
 }
 #[allow(unused_imports)]
-pub(in crate::game) use crate::game::client_side::remote_client::interaction_event_tests::mapping_press_tests::with_callback_game;
+pub(crate) use crate::game::client_side::remote_client::interaction_event_tests::mapping_press_tests::with_callback_game;
 
 /// What was sent since the last call.
-pub(in crate::game) fn sent(packets: &Mutex<Vec<String>>) -> Vec<String> {
+pub(crate) fn sent(packets: &Mutex<Vec<String>>) -> Vec<String> {
     std::mem::take(&mut *packets.lock().unwrap())
 }
 
 #[allow(unused_imports)]
-pub(in crate::game) use crate::game::server_side::remote_server::interaction_event_tests::mapping_press_tests::stone_under_the_crosshair;
+pub(crate) use crate::game::server_side::remote_server::interaction_event_tests::mapping_press_tests::stone_under_the_crosshair;
 
 /// Holding use with a bow drawn starts one use and repeats nothing while the bow is in use;
 /// letting go releases it, as letting go of the key does.

@@ -1,13 +1,13 @@
 
 
 #[cfg(test)]
-pub(in crate::game) mod tests {
+pub(crate) mod tests {
     use super::*;
 
     pub use sunrise_gameplay::game::game_tests::tests::server_game;
 
     /// Puts the process-wide block namespaces back as it found them.
-    pub(in crate::game) struct Published(Option<Vec<String>>);
+    pub(crate) struct Published(Option<Vec<String>>);
     impl Drop for Published {
         fn drop(&mut self) {
             sunrise_sim::save::level_mods::set_block_namespaces(self.0.take());
@@ -18,7 +18,7 @@ pub(in crate::game) mod tests {
     /// process-wide language and UI metadata alone (its rest tables load on a
     /// worker joined here), with the block namespaces it publishes put back
     /// when the returned guard drops. Bind the guard before the game.
-    pub(in crate::game) fn isolated_server_game<'a>(
+    pub(crate) fn isolated_server_game<'a>(
         resources: &'a mut Option<std::sync::Arc<sunrise_gameplay_common::game::Resources>>,
     ) -> (Published, sunrise_gameplay::game::ServerGame<'a>) {
         let published = Published(sunrise_sim::save::level_mods::block_namespaces());

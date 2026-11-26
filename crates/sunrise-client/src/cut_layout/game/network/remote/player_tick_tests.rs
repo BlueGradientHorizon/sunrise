@@ -15,9 +15,9 @@ pub(in crate::game) struct Snapshot {
     pub(in crate::game) cooldown: Option<i32>,
 }
 
-pub(in crate::game) struct Log(pub(in crate::game) Arc<Mutex<Vec<Snapshot>>>);
+pub(crate) struct Log(pub(crate) Arc<Mutex<Vec<Snapshot>>>);
 impl Log {
-    pub(in crate::game) fn record(
+    pub(crate) fn record(
         &self,
         side: HostSide<'_>,
         player: PlayerRef,
@@ -262,8 +262,8 @@ fn guest_tick_brackets_sleep_cooldowns_pickups_and_death() {
 
 // `player_name_format` on the name tag over a player (`Player.getDisplayName`).
 /// Renames "Steve" and counts how often the hook is asked.
-pub(in crate::game) struct Captain(
-    pub(in crate::game) std::sync::Arc<std::sync::atomic::AtomicUsize>,
+pub(crate) struct Captain(
+    pub(crate) std::sync::Arc<std::sync::atomic::AtomicUsize>,
 );
 
 #[mod_api::__subscriptions]
@@ -281,7 +281,7 @@ impl mod_api::Hooks for Captain {
 }
 
 /// A client game with Steve (entity 66) in the level, and the names its tags show.
-pub(in crate::game) fn tags_over_steve(mods: mod_api::Mods) -> Vec<String> {
+pub(crate) fn tags_over_steve(mods: mod_api::Mods) -> Vec<String> {
     let mut shown = Vec::new();
     mod_platform::testing::with_mods(mods, || {
         crate::entry::install_client_hooks();

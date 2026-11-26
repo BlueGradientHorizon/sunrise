@@ -10,7 +10,7 @@ use sunrise_core::geometry::Vec3;
 use sunrise_core::position::ChunkPos;
 use sunrise_sim::motion::PlayerMotion;
 
-pub(in crate::game) fn run_a_cloud_in_water_resets_its_fall_distance_and_a_dry_one_keeps_it() {
+pub(crate) fn run_a_cloud_in_water_resets_its_fall_distance_and_a_dry_one_keeps_it() {
     let witness = read_witness();
     let witness: Value = serde_json::from_str(&witness).unwrap();
     assert_eq!(witness["minecraft"].as_str(), Some("26.3"));

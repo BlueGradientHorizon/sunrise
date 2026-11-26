@@ -41,7 +41,7 @@ fn block_crumble_draws_the_block_it_names() {
 }
 
 /// The one particle the server queues for `command`, decoded into client `ParticleOptions`.
-pub(in crate::game) fn drawn(
+pub(crate) fn drawn(
     game: &mut sunrise_gameplay::game::ServerGame<'_>,
     command: &str,
 ) -> ParticleOptions {

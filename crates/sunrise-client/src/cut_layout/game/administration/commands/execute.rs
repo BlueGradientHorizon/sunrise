@@ -2,17 +2,17 @@
 
 #[cfg(test)]
 #[path = "execute_facing_tests.rs"]
-pub(in crate::game) mod execute_facing_tests;
+pub(crate) mod execute_facing_tests;
 
 #[cfg(test)]
-pub(in crate::game) mod terminal_fork_tests {
+pub(crate) mod terminal_fork_tests {
     use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
     use std::sync::Arc;
     use sunrise_core::position::ChunkPos;
     use sunrise_level::chunk::Chunk;
 
     #[allow(unused_imports)]
-pub(in crate::game) use sunrise_gameplay::game::server_side::commands_server::execute::terminal_fork_tests::capture;
+pub(crate) use sunrise_gameplay::game::server_side::commands_server::execute::terminal_fork_tests::capture;
 
     #[test]
     #[ignore = "daily"]
@@ -130,10 +130,10 @@ pub(in crate::game) use sunrise_gameplay::game::server_side::commands_server::ex
 }
 
 #[cfg(test)]
-pub(in crate::game) mod score_condition_tests {
+pub(crate) mod score_condition_tests {
     use sunrise_gameplay::game::game_tests::tests::server_game;
 
-    pub(in crate::game) fn game(
+    pub(crate) fn game(
         resources: &mut Option<std::sync::Arc<sunrise_gameplay_common::game::Resources>>,
     ) -> sunrise_gameplay::game::ServerGame<'_> {
         let mut game = server_game(resources);
@@ -143,7 +143,7 @@ pub(in crate::game) mod score_condition_tests {
     }
 
     #[allow(unused_imports)]
-pub(in crate::game) use sunrise_gameplay::game::server_side::commands_server::execute::score_condition_tests::say;
+pub(crate) use sunrise_gameplay::game::server_side::commands_server::execute::score_condition_tests::say;
 
     /// `checkScore` resolves the source holder and objective before it reads
     /// the target's score, so a terminal condition names the bad objective
