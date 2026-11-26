@@ -518,7 +518,7 @@ def build(name, force=False):
     try:
         try:
             if legacy_scene:
-                scene12.populate(server, JoinedBot, port, protocol, BOT, problems)
+                scene12.populate(server, JoinedBot, port, protocol, BOT, problems, mcstring=mcstring)
                 save_on_stop = False  # a second save would overwrite the transient states in the last explicit save
             else:
                 build_scene(server, run, JoinedBot, port, protocol, props, era, data_version, states)

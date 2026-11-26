@@ -249,7 +249,7 @@ class BuildFlatCleanupTests(unittest.TestCase):
             def stop(self, *, save):
                 events.append('stopped')
 
-        def populate(server, Bot, *args):
+        def populate(server, Bot, *args, **kwargs):
             Bot(1, 340, 'x')
             raise ValueError('populate failed')
 
@@ -281,6 +281,7 @@ class LegacyBuildTests(unittest.TestCase):
 
         def start(*args, cwd, **kwargs):
             (cwd / 'world').mkdir()
+            process.returncode = None
             return process
 
         self.process = process = mock.Mock(stdout=['Done (\n'], returncode=None)
@@ -299,9 +300,9 @@ class LegacyBuildTests(unittest.TestCase):
             subprocess=SimpleNamespace(Popen=start, PIPE=subprocess.PIPE, STDOUT=subprocess.STDOUT),
             Server=RecordingServer, time=SimpleNamespace(sleep=lambda seconds: None, time=worlds.time.time)))
         self.lab_actions = mock.Mock()
+        self.batch = mock.Mock(return_value=[['Time is 12'], ['Time is 12']])
         self.enterContext(mock.patch.multiple(
-            worlds.scene12, LAST={}, time=worlds.time, lab_actions=self.lab_actions,
-            batch=mock.Mock(return_value=[['Time is 12'], ['Time is 12']]),
+            worlds.scene12, time=worlds.time, lab_actions=self.lab_actions, batch=self.batch,
             make_player=lambda *args: lambda *args: mock.Mock()))
 
     def assert_saved_shutdown(self):
@@ -318,6 +319,18 @@ class LegacyBuildTests(unittest.TestCase):
     def test_flat_world_owner_ends_the_server_once_without_resaving(self):
         worlds.scene12.build_flat(worlds)
         self.assert_saved_shutdown()
+
+    def test_older_world_does_not_change_the_next_worlds_origin_or_items(self):
+        worlds.server_jar.side_effect = [(Path('server.jar'), 922, 316), (Path('server.jar'), 1343, 340)]
+        with mock.patch.multiple(worlds.scene12, spawn_origin=lambda *args: (-32, 96), probe_items=lambda *args: {'stick'}):
+            worlds.build('1.11.2')
+            worlds.build('1.12.2')
+        commands = [command for call in self.batch.call_args_list for command in call.args[1]]
+        self.assertEqual([c for c in commands if c.startswith('spawnpoint ')],
+                         ['spawnpoint Upgrader -32 100 96', 'spawnpoint Upgrader 144 100 144'])
+        self.assertEqual([c for c in commands if c.startswith('replaceitem entity Upgrader slot.hotbar.0 ')],
+                         ['replaceitem entity Upgrader slot.hotbar.0 minecraft:stick 1 0',
+                          'replaceitem entity Upgrader slot.hotbar.0 minecraft:map 1 0'])
 
     def test_lab_actions_oserror_reaches_the_caller(self):
         self.lab_actions.side_effect = ConnectionResetError('lab bot disconnected')
