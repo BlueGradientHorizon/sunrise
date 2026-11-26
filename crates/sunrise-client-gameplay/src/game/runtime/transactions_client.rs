@@ -41,11 +41,12 @@ impl ClientGame<'_> {
             .game
             .transactions
             .close_retained_originals(level.frame, commit);
-        match (commit, guard.game.transactions.levels.last_mut()) {
+        let transactions = &mut guard.game.common.transactions;
+        match (commit, transactions.levels.last_mut()) {
             (true, Some(outer)) => {
                 outer.merge_level_writes(&mut level);
                 for (id, kept) in level.scratch_kept {
-                    if guard.game.transactions.scratch.contains_key(&id) {
+                    if transactions.scratch.contains_key(&id) {
                         outer.scratch_kept.entry(id).or_insert(kept);
                     }
                 }

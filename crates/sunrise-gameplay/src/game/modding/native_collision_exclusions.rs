@@ -4,15 +4,8 @@
 //! side sends its set to the other: a mod sets both.
 use super::commands::Target;
 use mod_api::{CollisionExclusionsError, EntityRef};
+use sunrise_gameplay_common::game::native_collision_exclusions::refused;
 use sunrise_world::collision_exclusions::Refused;
-
-fn refused(why: Refused) -> CollisionExclusionsError {
-    match why {
-        Refused::TooMany => CollisionExclusionsError::TooMany,
-        Refused::NotFinite => CollisionExclusionsError::NotFinite,
-        Refused::Inverted => CollisionExclusionsError::Inverted,
-    }
-}
 
 impl crate::game::ServerGame<'_> {
     /// For a server mod: the player's collision exclusions, in place of the last ones (the

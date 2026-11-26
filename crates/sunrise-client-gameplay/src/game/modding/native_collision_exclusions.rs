@@ -1,4 +1,5 @@
 use mod_api::CollisionExclusionsError;
+use sunrise_gameplay_common::game::native_collision_exclusions::refused;
 
 #[cfg(feature = "client")]
 impl crate::game::ClientGame<'_> {

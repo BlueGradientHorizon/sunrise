@@ -52,3 +52,27 @@ macro_rules! server_game_side {
         )
     }};
 }
+
+macro_rules! world_items {
+    ($s:ident) => {
+        server_world_items!($s)
+    };
+}
+
+macro_rules! world_recipes {
+    ($s:ident) => {
+        server_world_recipes!($s)
+    };
+}
+
+macro_rules! world_stations {
+    ($s:ident) => {
+        server_world_stations!($s)
+    };
+}
+
+macro_rules! game_side {
+    ($s:expr) => {
+        server_game_side!($s)
+    };
+}

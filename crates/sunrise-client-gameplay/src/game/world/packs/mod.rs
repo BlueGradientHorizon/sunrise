@@ -712,7 +712,7 @@ impl crate::game::ClientGame<'_> {
             // and the packs' sprite sets, or every particle draws a stale region.
             if !game.is_logical_server() {
                 game.client.particles.0.reload(
-                    &game.pack.source,
+                    &game.common.pack.source,
                     &game.client.gui.atlas.sprites,
                     &game.client.gui.atlas.translucent,
                 );
@@ -768,7 +768,7 @@ impl crate::game::ClientGame<'_> {
             // Book search terms and resolved result icons belong to these resources.
             game.client.recipe_ui.0.reset_screen();
             game.refresh_remote_language();
-            game.client.audio.0.reload_with(&game.pack.source, sounds);
+            game.client.audio.0.reload_with(&game.common.pack.source, sounds);
             game.clear_lod();
             // A pack that may replace leaf models falls back to `Off` before the
             // reload marks every section dirty.
@@ -776,7 +776,7 @@ impl crate::game::ClientGame<'_> {
             let context = game.worker_context();
             game.client
                 .streaming
-                .reload_resources(&mut game.world, context);
+                .reload_resources(&mut game.common.world, context);
             game.client.pending_uploads.0.clear();
             game.install_model_upload(upload);
             if has_renderer {

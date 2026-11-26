@@ -410,6 +410,8 @@ pub mod native_chunk_generator;
 pub mod native_collision_shape;
 #[path = "game/modding/native_components.rs"]
 pub mod native_components;
+#[path = "game/modding/native_collision_exclusions.rs"]
+pub mod native_collision_exclusions;
 #[path = "game/modding/native_configs.rs"]
 pub mod native_configs;
 #[path = "game/modding/native_content_items.rs"]

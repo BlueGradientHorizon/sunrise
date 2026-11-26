@@ -1239,9 +1239,10 @@ impl crate::game::ServerGame<'_> {
         }
         for ((dim, id), changes) in std::mem::take(&mut level.modifier_changes) {
             let _ = self.with_effect_level(dim, |game| {
-                if let Some(mob) = game.mobs.iter_mut().find(|m| m.id == id && !m.removed) {
+                let common = &mut game.common;
+                if let Some(mob) = common.mobs.iter_mut().find(|m| m.id == id && !m.removed) {
                     super::living_attributes::undo_mob_modifiers(
-                        &game.motion.attributes,
+                        &common.motion.attributes,
                         mob,
                         changes,
                     );
