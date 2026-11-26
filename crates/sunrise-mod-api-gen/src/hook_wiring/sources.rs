@@ -141,6 +141,10 @@ impl<'a> Sources<'a> {
     }
 
     pub(super) fn index<'s>(&'s mut self, build: &'s Build) -> Index<'s> {
+        self.binding_index(build, false)
+    }
+
+    pub(super) fn binding_index<'s>(&'s mut self, build: &'s Build, types: bool) -> Index<'s> {
         Index::new(self.root, &[], CRATES)
             .loading_functions(move |krate, path| {
                 let path = path.join("::");
@@ -151,6 +155,9 @@ impl<'a> Sources<'a> {
                     .filter_map(|item| match item {
                         Item::Fn(item) => Some(Item::Fn(item.clone())),
                         Item::Struct(item) => Some(Item::Struct(item.clone())),
+                        Item::Enum(_) | Item::Union(_) | Item::Type(_) if types => {
+                            Some(item.clone())
+                        }
                         Item::Use(item) => Some(Item::Use(item.clone())),
                         Item::Mod(item) => Some(Item::Mod(syn::ItemMod {
                             vis: item.vis.clone(),
@@ -168,6 +175,9 @@ impl<'a> Sources<'a> {
             .filtering_items(move |item| match item {
                 Item::Fn(item) => build.enabled(&item.attrs),
                 Item::Struct(item) => build.enabled(&item.attrs),
+                Item::Enum(item) => build.enabled(&item.attrs),
+                Item::Union(item) => build.enabled(&item.attrs),
+                Item::Type(item) => build.enabled(&item.attrs),
                 Item::Use(item) => build.enabled(&item.attrs),
                 Item::Mod(item) => build.enabled(&item.attrs),
                 _ => true,

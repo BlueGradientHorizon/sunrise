@@ -138,6 +138,43 @@ fn owner_matches(item: &syn::ItemImpl, expected: &str) -> bool {
     }
 }
 
+fn check_gameplay_owner(
+    index: &mut mod_source::index::Index<'_>,
+    mut scope: usize,
+    package: &str,
+    owner: &syn::Path,
+) -> Result<(), String> {
+    use mod_source::index::{Binding, Found};
+    let mut path = owner.clone();
+    let mut aliases = std::collections::HashSet::new();
+    loop {
+        let words = path
+            .segments
+            .iter()
+            .map(|segment| segment.ident.to_string())
+            .collect::<Vec<_>>();
+        let Binding::Found(Found::Item(id)) =
+            index.resolve_type_binding(scope, &words, path.leading_colon.is_some())?
+        else {
+            return Err("inherent receiver owner is unresolved".into());
+        };
+        if index.modules[id.module].krate != package {
+            return Err("inherent receiver owner belongs to another package".into());
+        }
+        match index.item(id) {
+            Item::Struct(_) | Item::Enum(_) | Item::Union(_) => return Ok(()),
+            Item::Type(alias) if aliases.insert(id) => {
+                let Type::Path(ty) = &*alias.ty else {
+                    return Err("inherent receiver alias does not name a nominal type".into());
+                };
+                path = ty.path.clone();
+                scope = id.module;
+            }
+            _ => return Err("inherent receiver owner is unresolved".into()),
+        }
+    }
+}
+
 fn check_gameplay_target(
     sources: &mut Sources<'_>,
     hook: &Hook,
@@ -146,7 +183,7 @@ fn check_gameplay_target(
 ) -> Result<bool, String> {
     use crate::catalog::BindingKind;
     if binding.package == crate::GameplayPackage::Client
-        && build.is_disabled("feature = \"client\"")
+        && build.evaluate("feature = \"client\"") == Some(false)
     {
         return Ok(false);
     }
@@ -155,6 +192,7 @@ fn check_gameplay_target(
         .items(build, package, &binding.module)?
         .ok_or("binding module is absent")?;
     let mut bodies = Vec::new();
+    let mut owners = Vec::new();
     let receiver_ok = |sig: &syn::Signature| {
         sig.receiver().is_some_and(|receiver| {
             receiver.reference.is_some()
@@ -201,6 +239,7 @@ fn check_gameplay_target(
                         && build.enabled(&method.attrs)
                         && receiver_ok(&method.sig)
                     {
+                        owners.push(ty.path.clone());
                         bodies.push(method.block.clone());
                     }
                 }
@@ -228,9 +267,16 @@ fn check_gameplay_target(
     if bodies.is_empty() {
         return Err("target definition with the declared receiver form not found".into());
     }
-    let mut index = sources.index(build);
+    if bodies.len() != 1 {
+        return Err("several definitions match the declared gameplay binding".into());
+    }
+    let mut index = sources.binding_index(build, true);
+    let module: Vec<_> = binding.module.split("::").map(str::to_owned).collect();
+    let scope = index.module(package, &module)?;
+    for owner in owners {
+        check_gameplay_owner(&mut index, scope, package, &owner)?;
+    }
     let mut routes = Routes::new(&mut index, build);
-    let scope = routes.module(package, &binding.module)?;
     let bodies = bodies
         .iter()
         .map(|body| routes.calls(scope).in_block(body))
@@ -615,6 +661,75 @@ mod tests {
         );
         hook.name = "item_picked_up".into();
         hook
+    }
+
+    #[test]
+    fn split_wiring_refuses_foreign_receivers_and_competing_definitions() {
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path();
+        for package in ["sunrise-gameplay", "sunrise-gameplay-common"] {
+            fixture(
+                root,
+                &format!("{package}/Cargo.toml"),
+                &format!("[package]\nname = '{package}'\n"),
+            );
+        }
+        fixture(
+            root,
+            "sunrise-gameplay-common/src/lib.rs",
+            "pub mod game { pub struct View; }",
+        );
+        let mut hook = Hook::sample(
+            "sunrise_gameplay::game::native_hooks::View::native_check",
+            Side::Server,
+        );
+        hook.name = "check".into();
+        hook.receiver = crate::catalog::Receiver::Read;
+        hook.host = Some(crate::HostAccess::Read);
+        hook.dispatch = DispatchStyle::Flat;
+        fixture(
+            root,
+            "sunrise-gameplay/src/lib.rs",
+            r#"
+            mod game { mod native_hooks {
+                use sunrise_gameplay_common::game::View;
+                impl View { fn native_check(&self) { self.fire_check(); } }
+            } }
+        "#,
+        );
+        let error = super::check(root, std::slice::from_ref(&hook)).unwrap_err();
+        assert!(
+            error.contains("inherent receiver owner belongs to another package"),
+            "{error}"
+        );
+        fixture(
+            root,
+            "sunrise-gameplay/src/lib.rs",
+            r#"
+            mod game { mod native_hooks {
+                struct View;
+                impl View { fn native_check(&self) { self.fire_check(); } }
+                impl View { fn native_check(&self) { self.fire_check(); } }
+            } }
+        "#,
+        );
+        let error = super::check(root, std::slice::from_ref(&hook)).unwrap_err();
+        assert!(
+            error.contains("several definitions match the declared gameplay binding"),
+            "{error}"
+        );
+        fixture(
+            root,
+            "sunrise-gameplay/src/lib.rs",
+            r#"
+            mod game { mod native_hooks {
+                struct Local;
+                type View = Local;
+                impl View { fn native_check(&self) { self.fire_check(); } }
+            } }
+        "#,
+        );
+        super::check(root, &[hook]).unwrap();
     }
 
     #[test]
