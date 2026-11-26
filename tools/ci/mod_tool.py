@@ -26,9 +26,11 @@ TAG = "mod-tool"
 TOOL = "cargo-sunrise-mod"
 INFO = "tool.json"
 # What builds the tool besides its crates: the lock and the manifest every crate resolves through, the pinned compiler,
-# and the files that build, pack, sign and publish it.
-BUILD_INPUTS = ("Cargo.toml", "Cargo.lock", "tools/ci/rust-version", "tools/prebuilt_game.py", "tools/ci/mod_tool.py",
-                "tools/ci/sign_release.sh", ".github/workflows/mod-tool.yml")
+# and the files that sign and publish it. The Python that builds and packs it is `BUILD_PROGRAM` and the tools/ modules
+# it imports, found by `build_inputs`.
+BUILD_FILES = ("Cargo.toml", "Cargo.lock", "tools/ci/rust-version", "tools/ci/mod_tool.py", "tools/ci/sign_release.sh",
+               ".github/workflows/mod-tool.yml")
+BUILD_PROGRAM = "tools/prebuilt_game.py"
 CONTRACT_SOURCE = "crates/sunrise-native-build/src/contract.rs"
 RELEASE_CONTRACT_SOURCE = "crates/sunrise-mod-package/src/page.rs"
 
@@ -61,6 +63,24 @@ def crates(metadata: dict | None = None) -> list[str]:
     return sorted(Path(packages[id]["manifest_path"]).parent.relative_to(root).as_posix() for id in seen)
 
 
+def build_inputs() -> list[str]:
+    """`BUILD_FILES`, `BUILD_PROGRAM` and every tools/ module it imports, transitively (`from tools import x`,
+    `import x` or `from x import y` where tools/x.py exists), so a module the build starts to use is watched without
+    anyone editing a list here."""
+    found, todo = set(), [BUILD_PROGRAM]
+    while todo:
+        path = todo.pop()
+        if path in found:
+            continue
+        found.add(path)
+        for line in (ROOT / path).read_text().splitlines():
+            if not (match := re.match(r"\s*(?:from tools import ([\w, ]+)|import (\w+)|from (\w+) import)", line)):
+                continue
+            names = match.group(1).replace(" ", "").split(",") if match.group(1) else [match.group(2) or match.group(3)]
+            todo.extend(f"tools/{name}.py" for name in names if (ROOT / f"tools/{name}.py").is_file())
+    return sorted({*BUILD_FILES, *found})
+
+
 def previous() -> str:
     """The commit the published `mod-tool` holds (its tool.json), or "" when there is none yet. Only decides whether to
     build; what a user trusts is the signature, which the publish job checks."""
@@ -85,7 +105,7 @@ def changed(since: str, head: str) -> list[str]:
     folders = crates()
     if not since or not is_ancestor(since, head):
         return folders
-    paths = [*(folder + "/" for folder in folders), *BUILD_INPUTS]
+    paths = [*(folder + "/" for folder in folders), *build_inputs()]
     return [line for line in run("git", "diff", "--name-only", since, head, "--", *paths).splitlines() if line]
 
 
