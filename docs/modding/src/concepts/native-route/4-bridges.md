@@ -65,7 +65,7 @@ function without `self`.
 
 Name a field bridge's struct by the module that declares it, without lifetimes (`sunrise_gameplay_common::game::CommonGame`, `sunrise_gameplay::game::ServerGame`, or `sunrise_client_gameplay::game::ClientGame`).
 Types and methods live in their gameplay crate (`sunrise_gameplay_common`, `sunrise_gameplay`, or `sunrise_client_gameplay`), under `server_side` or `client_side` where mounted there
-(see [Repinning native targets for gameplay crates](../../how-to/native-mods/16-repinning-side-module-targets.md)).
+(see [Repinning native targets for gameplay crates](../../how-to/native-mods/16-repinning-side-module-targets.md) and [Moving a native mod to the gameplay crates](../../how-to/native-mods/17-moving-to-the-gameplay-crates.md)).
 Mixin helpers on functions in the same gameplay crate can call the method. Your mod's own crate cannot, so
 read the value in a helper and pass it to your crate.
 

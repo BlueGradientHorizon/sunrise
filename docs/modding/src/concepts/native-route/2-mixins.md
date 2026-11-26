@@ -133,7 +133,7 @@ under `src/game/` such as `world/`, with a `#[path]`, and an area is not a modul
 So `crates/sunrise-gameplay/src/game/world/autosave_server.rs` is `sunrise_gameplay::game::server_side::autosave_server` (`world/` is an area).
 By contrast, `crates/sunrise-gameplay/src/game/native_hooks/` is a module declared with `mod native_hooks;` in `game.rs`, so
 `crates/sunrise-gameplay/src/game/native_hooks/base_server.rs` is `sunrise_gameplay::game::native_hooks::base`.
-See [Repinning native targets for gameplay crates](../../how-to/native-mods/16-repinning-side-module-targets.md) for the canonical path rule and repin steps.
+See [Repinning native targets for gameplay crates](../../how-to/native-mods/16-repinning-side-module-targets.md) for the canonical path rule and [Moving a native mod to the gameplay crates](../../how-to/native-mods/17-moving-to-the-gameplay-crates.md) for the step-by-step migration guide.
 
 Any function in the `game` module of those three gameplay crates can take a mixin. A function in a crate below them, such as `sunrise_world`, needs
 the marker `#[sunrise_mod_api_macros::replaceable]` in its source. Otherwise, target a replaceable caller or callee.

@@ -39,7 +39,7 @@ helpers call `pub`. The module may call your mod's crate; your mod's crate canno
 | Field | Required | Meaning |
 | --- | --- | --- |
 | `id` | yes | The row's name, unique in the mod. |
-| `file` | yes | The game source file whose module is mirrored, relative to the repository root: `crates/sunrise-gameplay-common/src/…`, `crates/sunrise-gameplay/src/…`, or `crates/sunrise-client-gameplay/src/…`. State files are `crates/sunrise-gameplay/src/game/server_side.rs` and `crates/sunrise-client-gameplay/src/game/client_side.rs` (see [Repinning native targets for gameplay crates](../../how-to/native-mods/16-repinning-side-module-targets.md)). |
+| `file` | yes | The game source file whose module is mirrored, relative to the repository root: `crates/sunrise-gameplay-common/src/…`, `crates/sunrise-gameplay/src/…`, or `crates/sunrise-client-gameplay/src/…`. State files are `crates/sunrise-gameplay/src/game/server_side.rs` and `crates/sunrise-client-gameplay/src/game/client_side.rs` (see [Repinning native targets for gameplay crates](../../how-to/native-mods/16-repinning-side-module-targets.md) and [Moving a native mod to the gameplay crates](../../how-to/native-mods/17-moving-to-the-gameplay-crates.md)). |
 | `name` | yes | The module's Rust name. Pick one the destination module does not use, with a prefix of your own, such as `fnr_`. |
 | `source` | yes | Your file under `src/` with the module's items. |
 | `visibility` | no | The module's visibility: `"pub(crate)"` (the default, enough for your helpers) or `"pub"`. |

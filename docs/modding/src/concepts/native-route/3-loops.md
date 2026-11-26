@@ -173,7 +173,7 @@ Its saved data is `entity.nbt`, its item slots `entity.items` and its menu data 
 The loop's entry is `sunrise_gameplay::game::server_side::block_entity_ticks::ServerGame<'_>::tick_block_entities`. A `HEAD` or
 `RETURN` mixin on it runs around the loop. To change a place inside the loop,
 target the loop's body, `…::tick_block_entities_with`. Such a mixin does not apply when the loop runs
-without slots, from inside a slot or after a panic.
+without slots, from inside a slot or after a panic. See [Moving a native mod to the gameplay crates](../../how-to/native-mods/17-moving-to-the-gameplay-crates.md) when updating native targets from the single-crate layout.
 
 ## Errors
 

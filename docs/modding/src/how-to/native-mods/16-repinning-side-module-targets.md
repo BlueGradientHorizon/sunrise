@@ -1,6 +1,6 @@
 # Repinning native targets for gameplay crates
 
-Gameplay code lives in three crates so each side's private state stays behind Rust's crate boundary: `sunrise_gameplay_common` (shared gameplay), `sunrise_gameplay` (server gameplay), and `sunrise_client_gameplay` (client gameplay). Manifest target strings and SDK catalogs resolve against the declaring crate, module, and `impl` receiver type, and require the canonical path.
+Gameplay code lives in three crates so each side's private state stays behind Rust's crate boundary: `sunrise_gameplay_common` (shared gameplay), `sunrise_gameplay` (server gameplay), and `sunrise_client_gameplay` (client gameplay). Manifest target strings and SDK catalogs resolve against the declaring crate, module, and `impl` receiver type, and require the canonical path. For a full step-by-step migration walkthrough with before/after rewrites, target-map lookups, and removed slots, see [Moving a native mod to the gameplay crates](17-moving-to-the-gameplay-crates.md).
 
 ## Canonical paths
 
