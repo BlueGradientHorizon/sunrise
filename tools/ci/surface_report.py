@@ -128,7 +128,8 @@ def tree_tool(tree: Path, work: Path) -> list[str]:
     copy keeps another audit's build from replacing the binary before this one has its copy."""
     target = ROOT / "target" / "surface-base"
     target.mkdir(parents=True, exist_ok=True)
-    tool = work / f"base-stage-{len(list(work.glob('base-stage-*')))}"
+    suffix = ".exe" if sys.platform == "win32" else ""  # Cargo names the program so on Windows, and Windows runs only that
+    tool = work / f"base-stage-{len(list(work.glob('base-stage-*')))}{suffix}"
     with open(target / "surface-report.lock", "a") as lock:
         file_lock.lock(lock)
         built = subprocess.run([*lab.CARGO, "build", "--locked", "--profile", "test",
@@ -136,7 +137,7 @@ def tree_tool(tree: Path, work: Path) -> list[str]:
                                cwd=tree, capture_output=True, text=True)
         if built.returncode != 0:
             raise RuntimeError(f"building that tree's sunrise-stage failed: {last_line(built.stderr)}")
-        shutil.copy2(target / "debug" / "sunrise-stage", tool)
+        shutil.copy2(target / "debug" / f"sunrise-stage{suffix}", tool)
     return [str(tool)]
 
 
