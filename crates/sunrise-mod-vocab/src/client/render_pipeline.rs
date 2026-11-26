@@ -2432,6 +2432,12 @@ pub enum BufferError {
     InvalidAlignment,
     /// `byte_offset + bytes.len()` exceeds the buffer's capacity.
     OutOfRange,
+    /// A readback of a storage buffer created without
+    /// [`StorageBufferDescriptor::copy_src`](crate::StorageBufferDescriptor::copy_src).
+    NotReadable,
+    /// A readback was requested outside a frame-graph compute node's `record` callback, the
+    /// only place a copy is recorded.
+    NotInFrame,
     /// Requested buffer size exceeds the active device's uniform/buffer binding limit.
     ExceedsDeviceLimit,
     /// A storage buffer range is longer than the device's `max_storage_buffer_binding_size`.
@@ -2450,6 +2456,10 @@ impl std::fmt::Display for BufferError {
             Self::Empty => "buffer size must be non-zero",
             Self::InvalidAlignment => "buffer offset and byte length must be 4-byte aligned",
             Self::OutOfRange => "buffer write exceeds buffer capacity",
+            Self::NotReadable => "storage buffer was not created with copy_src",
+            Self::NotInFrame => {
+                "a readback is recorded only inside a compute node's record callback"
+            }
             Self::ExceedsDeviceLimit => "buffer size exceeds active device limit",
             Self::ExceedsBindingLimit => "buffer range exceeds the device's storage binding limit",
             Self::BelowMinSize => "buffer range is shorter than the binding's min_size",

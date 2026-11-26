@@ -652,3 +652,35 @@ The command buffer must have been created with `indirect: true`, its offset be a
 `indirect_offset + max_count * stride` lie inside it. A stale or foreign buffer is
 `PipelineDrawError::Buffer`, any other misuse `PipelineDrawError::InvalidIndirect`, and nothing is
 recorded.
+
+## Reading a storage buffer back
+
+A mod that needs a compute pass's result on the CPU (a request queue, visibility counts) reads it
+back without waiting, as vanilla does: `CommandEncoder.copyToBuffer(source, target)` into a
+`USAGE_MAP_READ` buffer, then `GpuBuffer.map(read)` once its fence has signalled. Create the buffer
+with `StorageBufferDescriptor::new(size).copy_src()` (vanilla's `USAGE_COPY_SRC`; off by default),
+request the copy inside the compute node that writes it, and poll over the following frames:
+
+```rust,ignore
+// in the `record` callback of `add_compute_pass`
+ctx.dispatch(pipeline, &bindings, [groups, 1, 1])?;
+let ticket = counts.request_readback(host, 0, 16)?;
+// kept by the mod; each later frame:
+if let Some(bytes) = ticket.poll_readback(host)? {
+    // the 16 bytes the dispatch above wrote
+}
+```
+
+- **Where the copy happens.** `request_readback` records the copy at the call's place in the node:
+  it sees the writes of the dispatches recorded before it and none recorded after. It is allowed
+  only inside a frame-graph compute node's `record` callback; anywhere else it is
+  `BufferError::NotInFrame`.
+- **No waiting.** `poll_readback` is `Ok(None)` while the copy is in flight, then `Ok(Some(bytes))`
+  once, and the staging buffer is freed with it. The map starts after the frame is submitted.
+- **Bounds.** `offset` and `len` are multiples of 4, `len` is not zero, the range lies inside the
+  buffer and the buffer has `copy_src` (`BufferError::{InvalidAlignment, Empty, OutOfRange,
+  NotReadable}`), all refused before the GPU is touched. There is no cap on tickets beyond the
+  device's memory: running out is `BufferError::ExceedsDeviceLimit`.
+- **Letting go.** `ticket.release(host)` drops a ticket you no longer want; unpolled tickets are freed
+  when the mod unloads. A spent or unknown ticket, a node the frame did not run, and a lost device
+  are `BufferError::Unavailable`.

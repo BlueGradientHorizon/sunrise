@@ -1091,6 +1091,8 @@ impl FrameGraphContext for GameFrameGraphContext<'_, '_> {
             sunrise_client::gfx::mod_frame_graph::RecordedFramePass::from_compute_descriptor(
                 desc, owner,
             );
+        // Readbacks are accepted only while the node records: they are copies at its place.
+        let readbacks = renderer.begin_readback_recording();
         {
             let mut ctx = GameComputeDispatchContext {
                 game: self.game,
@@ -1099,6 +1101,7 @@ impl FrameGraphContext for GameFrameGraphContext<'_, '_> {
             };
             record(&mut ctx);
         }
+        recorded.readbacks = readbacks.finish();
         Ok(self.surface.graph.push_pass(recorded))
     }
 }

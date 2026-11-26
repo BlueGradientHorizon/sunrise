@@ -62,6 +62,9 @@ pub struct RecordedFramePass {
     pub owner: Option<&'static str>,
     /// The dispatches of a compute node (`None` for a render pass).
     pub dispatches: Option<Vec<super::mod_compute::RecordedDispatch>>,
+    /// The storage buffer copies a compute node requested, each encoded between the dispatches
+    /// recorded before and after its request.
+    pub readbacks: Vec<super::mod_readback::RecordedReadback>,
 }
 
 impl RecordedFramePass {
@@ -87,6 +90,7 @@ impl RecordedFramePass {
             texel_data: Vec::new(),
             owner,
             dispatches: None,
+            readbacks: Vec::new(),
         }
     }
 
@@ -115,6 +119,7 @@ impl RecordedFramePass {
             texel_data: Vec::new(),
             owner,
             dispatches: Some(Vec::new()),
+            readbacks: Vec::new(),
         }
     }
 }
@@ -762,7 +767,8 @@ pub struct FrameGraphRunner {
     /// Scratch for a compute node's dispatches that bind a transient target, reused across
     /// passes and frames.
     dispatch_scratch: Vec<super::mod_compute::RecordedDispatch>,
-    dispatch_plan: Vec<DispatchPick>,
+    /// Each planned dispatch with its index among the node's recorded dispatches.
+    dispatch_plan: Vec<(usize, DispatchPick)>,
 }
 
 /// Where a compute node's dispatch to record comes from.
@@ -854,15 +860,37 @@ impl FrameGraphRunner {
                     &mut self.dispatch_scratch,
                     &mut self.dispatch_plan,
                 );
-                let scratch = &self.dispatch_scratch;
-                world_primitives.pipelines.compute.record(
-                    device,
-                    encoder,
-                    self.dispatch_plan.iter().map(|pick| match *pick {
-                        DispatchPick::Recorded(i) => &dispatches[i],
-                        DispatchPick::Scratch(i) => &scratch[i],
-                    }),
-                );
+                // Each readback is encoded after the dispatches recorded before its request.
+                let mut start = 0;
+                for readback in pass.readbacks.iter().map(Some).chain([None]) {
+                    let end = match readback {
+                        Some(readback) => {
+                            start
+                                + self.dispatch_plan[start..]
+                                    .iter()
+                                    .take_while(|(index, _)| *index < readback.after)
+                                    .count()
+                        }
+                        None => self.dispatch_plan.len(),
+                    };
+                    if start < end {
+                        let scratch = &self.dispatch_scratch;
+                        world_primitives.pipelines.compute.record(
+                            device,
+                            encoder,
+                            self.dispatch_plan[start..end]
+                                .iter()
+                                .map(|(_, pick)| match *pick {
+                                    DispatchPick::Recorded(i) => &dispatches[i],
+                                    DispatchPick::Scratch(i) => &scratch[i],
+                                }),
+                        );
+                    }
+                    start = end;
+                    if let Some(readback) = readback {
+                        readback.encode(encoder);
+                    }
+                }
             }
             let resolved_target = match pass.target {
                 Some(FrameTarget::Mod(rt)) => {
@@ -975,7 +1003,7 @@ fn resolve_dispatch_transients(
     dispatches: &[super::mod_compute::RecordedDispatch],
     active_transients: &HashMap<TransientTargetId, PooledTransientTarget>,
     scratch: &mut Vec<super::mod_compute::RecordedDispatch>,
-    plan: &mut Vec<DispatchPick>,
+    plan: &mut Vec<(usize, DispatchPick)>,
 ) {
     scratch.clear();
     plan.clear();
@@ -987,7 +1015,7 @@ fn resolve_dispatch_transients(
             )
         });
         if !binds_transient {
-            plan.push(DispatchPick::Recorded(index));
+            plan.push((index, DispatchPick::Recorded(index)));
             continue;
         }
         let mut cloned = dispatch.clone();
@@ -1017,7 +1045,7 @@ fn resolve_dispatch_transients(
             }
         }
         if ok {
-            plan.push(DispatchPick::Scratch(scratch.len()));
+            plan.push((index, DispatchPick::Scratch(scratch.len())));
             scratch.push(cloned);
         }
     }
