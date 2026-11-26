@@ -32,9 +32,13 @@ fn real_packs_read() {
             let start = Instant::now();
             let pack = Pack::open(&f.path).unwrap();
             // The macros the game reads the pack's programs with: the standard set, the renderer's
-            // (at Mipmap Levels 4), then the features the pack turns on.
+            // (at Mipmap Levels 4, and with `SUBGROUPS` set those of a device with subgroup
+            // operations), then the features the pack turns on, which those may reach.
             let mut macros = Macros::standard();
             macros.define_renderer(4);
+            if std::env::var_os("SUBGROUPS").is_some() {
+                macros.define_subgroups();
+            }
             let (shaders, feature_notes) = sunrise_shaders::read_properties(&pack, &mut macros);
             let ids: Vec<Properties> = ["block", "item", "entity", "dimension"]
                 .iter()
@@ -233,10 +237,6 @@ fn real_packs_read() {
                 interface_limits: RADV,
                 mod_programs: Vec::new(),
             };
-                let mut macros = macros.clone();
-                if std::env::var_os("SUBGROUPS").is_some() {
-                    macros.define_subgroups();
-                }
                 for note in &feature_notes {
                     println!("    {note}");
                 }
