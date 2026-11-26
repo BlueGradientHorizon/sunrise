@@ -184,6 +184,7 @@ pub fn start(
         sunrise_world::native_worldgen_hooks::NativeWorldgenHooks {
             alter_ground: crate::game::api_values::alter_ground,
             on_tree_grow: crate::game::native_tree_grow::on_tree_grow,
+            mirror: crate::game::native_rotate::mirror,
             rotate: crate::game::native_rotate::rotate,
             feature: crate::game::native_worldgen_parts::feature,
         },
