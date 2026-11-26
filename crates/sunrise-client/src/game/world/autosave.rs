@@ -9,18 +9,6 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         }
         Ok(())
     }
-
-    /// `MinecraftServer.computeNextAutosaveInterval`: three hundred seconds
-    /// of ticks at the rate the server runs at now - its measured rate while
-    /// a `/tick sprint` runs - never fewer than a hundred.
-    pub(in crate::game) fn next_autosave_interval(&self) -> i64 {
-        let rate = if self.clock.sprinting() {
-            1.0e9 / (self.clock.average_nanos() + 1) as f32
-        } else {
-            self.clock.rate()
-        };
-        autosave_interval(rate)
-    }
 }
 
 impl<__Side: crate::game::Side> Game<'_, __Side> {

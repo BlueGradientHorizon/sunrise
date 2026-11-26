@@ -14,7 +14,7 @@ mixins = "MIXINS"
 
 [[native.module]]
 id = "runtime"
-file = "crates/sunrise-client/src/game/world/autosave.rs"
+file = "crates/sunrise-client/src/game/world/autosave_server.rs"
 name = "fnr_runtime"
 source = "src/runtime.rs"
 
@@ -29,4 +29,4 @@ id = "head"
 target = "sunrise_client::game::server_side::autosave_server::Game<'_>::on_tick_rate_changed"
 kind = "HEAD"
 helper = "src/mixins/head.rs"
-bindings = [{ name = "game", ty = "&mut Game<'_>", value = "&mut *self" }]
+bindings = [{ name = "game", ty = "&mut Game<'_, crate::game::server_side::ServerState>", value = "&mut *self" }]

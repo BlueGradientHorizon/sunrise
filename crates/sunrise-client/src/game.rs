@@ -5783,11 +5783,6 @@ pub(super) const MOTION_BLOCK_ENTITY: u64 = 5 << 32;
 /// The player's own model (third person, and a shader pack's shadow pass).
 pub(super) const MOTION_OWN_PLAYER: u64 = 7 << 32;
 
-/// `computeNextAutosaveInterval`'s arithmetic: `Math.max(100, (int)(rate * 300.0F))`.
-fn autosave_interval(rate: f32) -> i64 {
-    i64::from((rate * 300.0) as i32).max(100)
-}
-
 /// winit's events for a window's game, with any loop: a headless client (#4951) has no
 /// winit loop and calls these from its own.
 impl<__Side: crate::game::Side> Game<'_, __Side> {}

@@ -16,7 +16,7 @@ calls a [support module](5-support-modules.md) of the same mod, so the example k
 ```toml
 [[native.module]]
 id = "runtime"
-file = "crates/sunrise-client/src/game/world/autosave.rs"
+file = "crates/sunrise-client/src/game/world/autosave_server.rs"
 name = "fnr_runtime"
 source = "src/runtime.rs"
 
@@ -31,15 +31,15 @@ id = "head"
 target = "sunrise_client::game::server_side::autosave_server::Game<'_>::on_tick_rate_changed"
 kind = "HEAD"
 helper = "src/mixins/head.rs"
-bindings = [{ name = "game", ty = "&mut Game<'_>", value = "&mut *self" }]
+bindings = [{ name = "game", ty = "&mut Game<'_, crate::game::server_side::ServerState>", value = "&mut *self" }]
 ```
 
 `src/mixins/head.rs`:
 
 ```rust,ignore
-fn head(game: &mut Game<'_>) {
-    let ticks = game.server.__horizon_mixins_fnr_support_ticks();
-    *ticks = crate::game::autosave::fnr_runtime::bumped(*ticks);
+fn head(game: &mut Game<'_, crate::game::server_side::ServerState>) {
+    let ticks = game.side.__horizon_mixins_fnr_support_ticks();
+    *ticks = crate::game::server_side::autosave_server::fnr_runtime::bumped(*ticks);
     fnr_support::note(&format!("module and bridge: ticks_until_autosave {}", *ticks));
 }
 ```

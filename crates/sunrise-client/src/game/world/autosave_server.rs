@@ -1,5 +1,10 @@
 use super::*;
 
+/// `computeNextAutosaveInterval`'s arithmetic: `Math.max(100, (int)(rate * 300.0F))`.
+pub(in crate::game) fn autosave_interval(rate: f32) -> i64 {
+    i64::from((rate * 300.0) as i32).max(100)
+}
+
 impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn finish_player_autosaves(&mut self, wait: bool) -> Result<bool> {
         let saved = self.side.player_autosaves.0.completed(wait);
@@ -11,6 +16,18 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
         self.side.player_autosaves.0.writes_finished()
     }
+    /// `MinecraftServer.computeNextAutosaveInterval`: three hundred seconds
+    /// of ticks at the rate the server runs at now - its measured rate while
+    /// a `/tick sprint` runs - never fewer than a hundred.
+    pub(in crate::game) fn next_autosave_interval(&self) -> i64 {
+        let rate = if self.clock.sprinting() {
+            1.0e9 / (self.clock.average_nanos() + 1) as f32
+        } else {
+            self.clock.rate()
+        };
+        autosave_interval(rate)
+    }
+
     /// `MinecraftServer.onTickRateChanged`: mods hear of it, then a rate that
     /// asks for a shorter wait than the one already running shortens it.
     pub(in crate::game) fn on_tick_rate_changed(&mut self) {

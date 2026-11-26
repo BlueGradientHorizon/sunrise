@@ -56,7 +56,7 @@ pub fn eligible(attrs: &[syn::Attribute], sig: &syn::Signature) -> bool {
 }
 
 pub(crate) enum CandidateExclusion {
-    Signature,
+    Signature(&'static str),
     GenericImpl,
 }
 
@@ -74,8 +74,8 @@ pub(crate) fn candidate_exclusion(
     } else {
         sig
     };
-    if !eligible(attrs, sig) {
-        return Some(CandidateExclusion::Signature);
+    if let Some(reason) = signature_exclusion(attrs, sig) {
+        return Some(CandidateExclusion::Signature(reason));
     }
     if !loop_generic && owner.is_some_and(|block| !lifetimes_only(&block.generics)) {
         return Some(CandidateExclusion::GenericImpl);
@@ -604,11 +604,14 @@ pub(crate) fn marked(
                                 source::owner(&block.self_ty),
                                 f.sig.ident
                             ));
-                            let reason = signature_exclusion(&f.attrs, &f.sig)
-                                .or_else(|| {
-                                    (!lifetimes_only(&block.generics))
-                                        .then_some("impl type/const generics")
-                                })
+                            let reason =
+                                match candidate_exclusion(&f.attrs, &f.sig, Some(block), false) {
+                                    Some(CandidateExclusion::Signature(reason)) => Some(reason),
+                                    Some(CandidateExclusion::GenericImpl) => {
+                                        Some("impl type/const generics")
+                                    }
+                                    None => None,
+                                }
                                 .or_else(|| {
                                     mod_source::modules::gated(&block.attrs)
                                         .then_some("conditional impl")
@@ -1507,12 +1510,12 @@ mod tests {
     #[test]
     fn other_crates_traits_generic_impls_and_test_modules_get_no_slot() {
         let file = syn::parse_file(
-            "impl Clone for A { fn clone(&self) -> Self { A } }\nimpl<T> B<T> { fn f(&self) {} }\n#[cfg(test)] mod tests { fn t() {} }\nmod inner { fn kept() {} }\nfn free() {}\n",
+            "impl Clone for A { fn clone(&self) -> Self { A } }\nimpl<T> B<T> { fn f(&self) {} }\nimpl<const N: usize> C<N> { fn f(&self) {} }\nimpl B<u8> { fn concrete(&self) {} fn generic<T>(&self) {} }\n#[cfg(test)] mod tests { fn t() {} }\nmod inner { fn kept() {} }\nfn free() {}\n",
         )
         .unwrap();
         assert_eq!(
             targets("k", &file, &OwnerTypes::default()),
-            ["k::inner::kept", "k::free"]
+            ["k::B<u8>::concrete", "k::inner::kept", "k::free"]
         );
     }
 

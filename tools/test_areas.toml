@@ -198,6 +198,7 @@ paths = [
   "crates/sunrise-sim/src/save.rs", "crates/sunrise-sim/src/save/*", "crates/sunrise-sim/src/entity_nbt.rs",
   "crates/sunrise-client/src/game/world/saving.rs", "crates/sunrise-client/src/game/world/persist*",
   "crates/sunrise-client/src/game/world/storage.rs", "crates/sunrise-client/src/game/world/autosave.rs",
+  "crates/sunrise-client/src/game/world/autosave_server.rs",
   "crates/sunrise-world/src/region.rs", "crates/sunrise-world/src/datafix/*", "crates/sunrise-core/src/nbt.rs",
   "crates/sunrise-world/src/crash_fixture.rs", "tools/save_fault_harness.py",
   "crates/sunrise-game-data/src/block_entity_nbt.rs",

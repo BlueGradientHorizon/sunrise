@@ -1,4 +1,6 @@
 //! Core gameplay regression tests.
+use super::server_side::autosave_server::autosave_interval;
+
 #[test]
 #[ignore = "daily"]
 fn client_option_snapshots_follow_settings() {

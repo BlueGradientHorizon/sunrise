@@ -814,7 +814,7 @@ pub(crate) fn replaceable_with_binding(
         found.owner.as_ref(),
         loop_generic,
     ) {
-        Some(CandidateExclusion::Signature) => {
+        Some(CandidateExclusion::Signature(_)) => {
             return Err("it is not replaceable: `const`, `async`, `unsafe`, \
                  `self` by value, `impl Trait` or `!` in its signature, `#[inline(always)]`, or \
                  compiled only under a `cfg`"
@@ -2200,8 +2200,11 @@ mod tests {
             "::mod_render::render"
         );
         assert_eq!(
-            original_path(&source.libraries, "sunrise_client::game::autosave"),
-            "::sunrise_client::game::autosave"
+            original_path(
+                &source.libraries,
+                "sunrise_client::game::server_side::autosave_server"
+            ),
+            "::sunrise_client::game::server_side::autosave_server"
         );
     }
 
@@ -2247,21 +2250,21 @@ mod tests {
     #[ignore = "daily"]
     fn a_method_moves_into_a_trait_of_its_own_type() {
         let crate_ = generate_here(
-            &["sunrise_client::game::autosave::Game<'_>::next_autosave_interval".into()],
+            &["sunrise_client::game::server_side::autosave_server::Game<'_>::next_autosave_interval".into()],
             &Extras::default(),
         )
         .unwrap();
         assert_eq!(
             crate_.patched[0].id,
-            "sunrise_patch::game::autosave::<Game<'_> as __Fnr_Game_next_autosave_interval>::next_autosave_interval"
+            "sunrise_patch::game::server_side::autosave_server::<Game<'_,crate::game::server_side::ServerState> as __Fnr_Game_next_autosave_interval>::next_autosave_interval"
         );
-        assert!(crate_.libs[0].1.contains("pub mod autosave"));
-        assert!(
-            crate_.libs[0]
-                .1
-                .contains("impl __Fnr_Game_next_autosave_interval for Game<'_>")
-        );
-        assert!(crate_.libs[0].1.contains("self.clock.sprinting()"));
+        let lib = &crate_.libs[0].1;
+        assert!(lib.contains("pub mod server_side {"));
+        assert!(lib.contains("pub mod autosave_server {"));
+        assert!(lib.replace(char::is_whitespace, "").contains(
+            "impl__Fnr_Game_next_autosave_intervalforGame<'_,crate::game::server_side::ServerState>"
+        ));
+        assert!(lib.contains("self.clock.sprinting()"));
     }
 
     #[test]
@@ -2269,7 +2272,8 @@ mod tests {
     fn refusals_are_named() {
         let error = generate_here(
             &[
-                "sunrise_client::game::autosave::Game<'_>::no_such_function".into(),
+                "sunrise_client::game::server_side::autosave_server::Game<'_>::no_such_function"
+                    .into(),
                 "sunrise_no_such_crate::f".into(),
             ],
             &Extras::default(),
@@ -2284,7 +2288,7 @@ mod tests {
     fn a_lower_crate_function_gets_a_patch_crate_of_its_own() {
         let crate_ = generate_here(
             &[
-                "sunrise_client::game::autosave::Game<'_>::next_autosave_interval".into(),
+                "sunrise_client::game::server_side::autosave_server::Game<'_>::next_autosave_interval".into(),
                 "sunrise_sim::clock::FixedStep::advance".into(),
             ],
             &Extras::default(),
@@ -2808,7 +2812,7 @@ mod tests {
         let extras = Extras {
             modules: vec![SupportModule {
                 id: "support".into(),
-                file: "crates/sunrise-client/src/game/world/autosave.rs".into(),
+                file: "crates/sunrise-client/src/game/world/autosave_server.rs".into(),
                 name: "fnr_support".into(),
                 text: "pub fn twice(n: i64) -> i64 { n * 2 }".into(),
                 public: false,
@@ -2817,7 +2821,7 @@ mod tests {
                 id: "ticks".into(),
                 method: "__horizon_mixins_m_ticks".into(),
                 kind: "GET_MUT".into(),
-                target: "sunrise_client::game::Game".into(),
+                target: "sunrise_client::game::server_side::ServerState".into(),
                 member: Some("ticks_until_autosave".into()),
             }],
             idents: BTreeSet::new(),
@@ -2825,7 +2829,7 @@ mod tests {
             loops: Vec::new(),
         };
         let crate_ = generate_here(
-            &["sunrise_client::game::autosave::Game<'_>::next_autosave_interval".into()],
+            &["sunrise_client::game::server_side::autosave_server::Game<'_>::next_autosave_interval".into()],
             &extras,
         )
         .unwrap();
@@ -2842,7 +2846,7 @@ mod tests {
         );
         assert!(lib.contains("{&mutself.ticks_until_autosave}"));
         assert!(lib.contains(
-            "pubmod__fnr_bridges{pubusecrate::game::__Fnr_Bridge___horizon_mixins_m_ticks;}"
+            "pubmod__fnr_bridges{pubusecrate::game::server_side::__Fnr_Bridge___horizon_mixins_m_ticks;}"
         ));
         assert!(lib.contains("usecrate::__fnr_bridges::__Fnr_Bridge___horizon_mixins_m_ticksas_;"));
         assert!(!lib.contains("__fnr_bridges::*"));

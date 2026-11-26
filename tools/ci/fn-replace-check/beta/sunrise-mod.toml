@@ -14,7 +14,7 @@ mixins = "MIXINS"
 
 [[native.mixin]]
 id = "plus_one"
-target = "sunrise_client::game::autosave::Game<'_>::next_autosave_interval"
+target = "sunrise_client::game::server_side::autosave_server::Game<'_>::next_autosave_interval"
 kind = "MODIFY_EXPRESSION_VALUE"
 selector = "autosave_interval(rate)"
 require = 1
@@ -25,7 +25,7 @@ bindings = [{ name = "value", ty = "i64", value = "$value" }]
 
 [[native.mixin]]
 id = "wrapped"
-target = "sunrise_client::game::autosave::Game<'_>::next_autosave_interval"
+target = "sunrise_client::game::server_side::autosave_server::Game<'_>::next_autosave_interval"
 kind = "WRAP_OPERATION"
 selector = "autosave_interval"
 require = 1
@@ -44,4 +44,4 @@ selector = "self.next_autosave_interval"
 require = 1
 ordinal = 0
 helper = "src/mixins/before.rs"
-bindings = [{ name = "game", ty = "&Game<'_>", value = "&*self" }]
+bindings = [{ name = "game", ty = "&Game<'_, crate::game::server_side::ServerState>", value = "&*self" }]

@@ -5,6 +5,10 @@ const GAME: &str = r#"use std::fmt;
 pub struct Game<'a> {
     ticks: &'a u32,
 }
+pub struct Generic<T>(T);
+impl<T> Generic<T> {
+    pub fn generic_owner(&self) {}
+}
 pub trait Tick {
     fn tick(&self) -> u32;
 }
@@ -127,6 +131,9 @@ fn the_index_lists_each_function_with_its_text_or_its_refusal() {
         "{}",
         generic.why
     );
+    let generic_owner = refused("sunrise_client::game::Generic::generic_owner");
+    assert_eq!(generic_owner.code, Code::NotReplaceable);
+    assert!(generic_owner.why.contains("it is generic over types"));
     // The stager's own trait rule: a trait of another crate has no installer.
     let display = refused("sunrise_client::game::<Game as Display>::fmt");
     assert_eq!(
@@ -901,8 +908,8 @@ fn a_target_key_drops_generics_spaces_and_the_traits_path() {
         "sunrise_client::game::level_access::<GameLevel as LevelAccess>::block_state"
     );
     assert_eq!(
-        key("sunrise_client::game::autosave::Game<'_>::next_autosave_interval"),
-        "sunrise_client::game::autosave::Game::next_autosave_interval"
+        key("sunrise_client::game::server_side::autosave_server::Game<'_>::next_autosave_interval"),
+        "sunrise_client::game::server_side::autosave_server::Game::next_autosave_interval"
     );
 }
 

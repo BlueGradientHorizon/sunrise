@@ -1,3 +1,6 @@
-fn head(game: &mut Game<'_>) {
-    fnr_registry::note("HEAD on_tick_rate_changed, ticks_until_autosave", game.server.ticks_until_autosave);
+fn head(game: &mut Game<'_, crate::game::server_side::ServerState>) {
+    fnr_registry::note(
+        "HEAD on_tick_rate_changed, ticks_until_autosave",
+        game.side.ticks_until_autosave,
+    );
 }

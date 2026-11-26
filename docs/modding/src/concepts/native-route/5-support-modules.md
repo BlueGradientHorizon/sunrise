@@ -15,7 +15,7 @@ it are on [Bridges](4-bridges.md#example).
 ```toml
 [[native.module]]
 id = "runtime"
-file = "crates/sunrise-client/src/game/world/autosave.rs"
+file = "crates/sunrise-client/src/game/world/autosave_server.rs"
 name = "fnr_runtime"
 source = "src/runtime.rs"
 ```
@@ -28,8 +28,8 @@ pub fn bumped(ticks: i64) -> i64 {
 }
 ```
 
-A helper calls it by its path in the game crate: `crate::game::autosave::fnr_runtime::bumped(*ticks)`. That
-file is the module `game::autosave`, because `world/` is an area ([Naming the target](2-mixins.md#naming-the-target)).
+A helper calls it by its path in the game crate: `crate::game::server_side::autosave_server::fnr_runtime::bumped(*ticks)`. That
+file is mounted as `game::server_side::autosave_server` ([Naming the target](2-mixins.md#naming-the-target)).
 
 Inside the module, `super::` is the game module that received it, such as `super::Game`. Make the items that
 helpers call `pub`. The module may call your mod's crate; your mod's crate cannot call the module.
