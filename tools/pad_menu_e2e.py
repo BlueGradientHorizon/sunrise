@@ -61,7 +61,7 @@ Cases:
 - shell_choice_step: on Graphics, Left and Right on a focused choice (Preset) step it back and on, from the D-pad
   and the arrow keys alike, and the focus stays; up and down leave the row, and LB goes to the page list.
 - sunrise_bumpers: at GUI scale 4, where Sunrise Settings' page list scrolls, RB walks every page in order (those out of
-  view too) and wraps, and LB walks back.
+  view too) and wraps, and LB walks back; skipped in a window where every page fits.
 - shader_screens: Sunrise Settings' Shaders page lists a pack of more screens than a page list has rows for; Undo
   shows once it is picked; on its Shader Options the screens collapse into one `‹ Name ›` strip, RB walks every one
   and round, and LB undoes an RB.
@@ -73,7 +73,9 @@ Cases:
 - osk_chat_suggestions: over chat with the keyboard open, RT fills in the selected command suggestion (Tab) and the
   right stick picks another first (Up and Down), without closing the keyboard.
 Needs built fast binaries (`cargo build --profile fast -p sunrise-game -p sunrise-client-lib --bins`)
-and prepared resources in .local/sunrise-client/26.3. Exit status 0 when every case passes.
+and prepared resources in .local/sunrise-client/26.3. A case that can't run in this window (sunrise_bumpers where every
+page fits) prints `skip` with the reason and counts as skipped. Exit status 0 when no case fails and at least one ran,
+1 when one fails, 2 when every case was skipped.
 - radial_commit: holding the opener shows the overlay and pauses nothing; the stick selects; releasing runs the action once.
 - radial_no_selection: a release with nothing selected, after retention ran out, or on an empty slot runs nothing.
 - radial_retention: a stick let go just before the release still commits.
@@ -283,6 +285,10 @@ class Game:
         time.sleep(SETTLE)
         single = min((r for r in buttons if r[2] == widest), key=lambda r: r[1])
         return single, pair[0], pair[-1]
+
+
+class Skipped(Exception):
+    """A case that can't run in this environment (the window it got, say): reported as skipped, with the reason."""
 
 
 class Check:
@@ -1908,9 +1914,10 @@ def sunrise_bumpers(args, name):
         ids = {page: page.lower().replace(' ', '-') for page in SUNRISE_PAGES}
         shown = [page for page in SUNRISE_PAGES if any(w['id'] == ids[page] for w in game.widgets())]
         # The scale is held to what the window fits (vanilla's), so a tall window shows every page: the case needs
-        # the 16:9 window the script asks for.
-        check(len(shown) < len(SUNRISE_PAGES),
-              f'every page fits at {game.ctl("ui")["gui_size"]} GUI px: the list never scrolls in this window')
+        # the 16:9 window the script asks for, and has nothing to walk in one where every page fits.
+        if len(shown) == len(SUNRISE_PAGES):
+            raise Skipped(f'every page fits at {game.ctl("ui")["gui_size"]} GUI px: the list never scrolls in this '
+                          f'window')
         check(open_tab(game) == SUNRISE_PAGES[0], f'it opened on {open_tab(game)}')
         for bumper, order in (('rb', SUNRISE_PAGES[1:] + SUNRISE_PAGES[:1]),
                               ('lb', tuple(reversed(SUNRISE_PAGES)))):
@@ -4813,23 +4820,43 @@ def main():
     parser.add_argument('--jobs', type=int, default=1, help='cases at once; each has its own game and home')
     args = parser.parse_args()
     args.game, args.ctl, args.resources = args.game.resolve(), args.ctl.resolve(), args.resources.resolve()
+    sys.exit(run_cases(CASES, args.only or list(CASES), args.jobs, args))
+
+
+def run_cases(cases, names, jobs, args):
+    """Runs the named cases, prints a line for each and a summary, and gives the exit status: 1 when one failed,
+    2 when none failed but none ran either (every one skipped), 0 otherwise."""
     def run(name):
         # A case that dies takes only itself down, and leaves no game behind it.
         try:
-            return name, CASES[name](args, name)
+            return name, cases[name](args, name)
+        except Skipped as skip:
+            return name, skip
         except Exception as error:
             return name, [f'{type(error).__name__}: {error}']
 
-    failed = []
-    with ThreadPoolExecutor(args.jobs) as pool:
-        for name, failures in pool.map(run, args.only or CASES):
-            for failure in failures:
+    passed, failed, skipped = [], [], []
+    with ThreadPoolExecutor(jobs) as pool:
+        for name, outcome in pool.map(run, names):
+            if isinstance(outcome, Skipped):
+                print(f'skip {name}: {outcome}', flush=True)
+                skipped.append(name)
+                continue
+            for failure in outcome:
                 print(f'FAIL {name}: {failure}', flush=True)
-            if failures:
+            if outcome:
                 failed.append(name)
             else:
                 print(f'ok   {name}', flush=True)
-    sys.exit(1 if failed else 0)
+                passed.append(name)
+    print(f'{len(passed)} ok, {len(failed)} failed, {len(skipped)} skipped'
+          + (f' ({", ".join(skipped)})' if skipped else ''), flush=True)
+    if failed:
+        return 1
+    if not passed:
+        print('nothing ran', flush=True)
+        return 2
+    return 0
 
 
 if __name__ == '__main__':
