@@ -189,6 +189,14 @@ jobs:
         run: |
           sudo apt-get update && sudo apt-get install -y --no-install-recommends libasound2-dev libudev-dev
           dpkg-query -W libasound2-dev libudev-dev
+      # A Dyna runner keeps its target between jobs: the source snapshot stays true, and the build runs at the runner's
+      # size, not the host's (tools/ci/source_mtimes.py, tools/ci/cargo_jobs.py).
+      - name: Restore unchanged source timestamps
+        if: env.CROSS == 'on'
+        run: python3 tools/ci/source_mtimes.py "${CARGO_TARGET_DIR:-target}/ci-source-mtimes-v2.json"
+      - name: Cap build parallelism to the runner
+        if: env.CROSS == 'on'
+        run: python3 tools/ci/cargo_jobs.py --job-mib 3072 --cap
       - name: Build the official game, sunrise-ctl, sunrise-prepare, sunrise-server and sunrise-port-pack
         run: |
           cargo build --release --locked --timings ${TARGET:+--target "$TARGET"} \
