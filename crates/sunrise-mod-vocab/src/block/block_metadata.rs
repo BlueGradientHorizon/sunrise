@@ -86,15 +86,12 @@ pub trait BlockMetadata {
     ) -> Result<BlockState, BlockStateError>;
     /// Visit each property of `state` with its serialized value (names and values as `property`
     /// reads them), in name order as vanilla's `StateDefinition` keeps them. A block with no
-    /// properties visits nothing. `Unavailable` from a metadata source that cannot enumerate.
+    /// properties visits nothing.
     fn visit_properties(
         &self,
         state: BlockState,
         visit: &mut dyn FnMut(&str, &str),
-    ) -> Result<(), BlockStateError> {
-        let _ = (state, visit);
-        Err(BlockStateError::Unavailable)
-    }
+    ) -> Result<(), BlockStateError>;
 }
 
 impl BlockMetadata for sunrise_mod_runtime::block_definitions::Blocks {
