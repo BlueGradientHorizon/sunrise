@@ -1702,11 +1702,11 @@ impl Loader<'_> {
     /// Stage file `path` through the preprocessor; the pack's images declared without a format
     /// (GLSL lets a write-only image omit it) get the one `image.*` gives them.
     fn preprocess(&self, path: &str) -> Preprocessed {
-        let mut pp = preprocess(self.pack, path, self.macros);
-        if self.post.images.is_empty() || !pp.code.contains("image") {
+        let pp = preprocess(self.pack, path, self.macros);
+        if self.post.images.is_empty() || !pp.code().contains("image") {
             return pp;
         }
-        let source: Vec<&str> = pp.code.split('\n').collect();
+        let source: Vec<&str> = pp.code().split('\n').collect();
         let lines: Vec<String> = source
             .iter()
             .enumerate()
@@ -1742,8 +1742,7 @@ impl Loader<'_> {
                 }
             })
             .collect();
-        pp.code = lines.join("\n");
-        pp
+        pp.with_code(lines.join("\n"))
     }
 
     /// A program with a geometry stage, folded into its vertex stage.
