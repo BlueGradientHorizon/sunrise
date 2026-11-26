@@ -1,0 +1,3 @@
+ids = ["method:prelude::ConfigHost::mods"]
+why = "#5494: ConfigHost::mods gives any hook, on either side, the startup package inventory registration reads through RegistrationContext::mods (NeoForge's ModList.get()): an installed package's manifest name, version and description by id. New method only."
+migrate = "Nothing to change. A mod that hard-coded other mods' names reads host.mods().get(id) instead."

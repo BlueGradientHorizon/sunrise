@@ -986,7 +986,7 @@ impl LoadedMods {
         Self { entries, authority }
     }
 
-    fn enabled_at_startup() -> Self {
+    pub(crate) fn enabled_at_startup() -> Self {
         crate::dispatch_scope::backend()
             .and_then(|backend| (backend.visible_packages)())
             .unwrap_or_else(Self::new)
@@ -1503,6 +1503,35 @@ pub(crate) fn with_test_package_inventory<R>(
 
 #[cfg(test)]
 pub(crate) use crate::testing::TestReader;
+
+/// `ConfigHost::mods` reads the startup inventory at run time: an installed package's
+/// manifest name and version (`IModInfo.getDisplayName`, `getVersion`), and nothing for an id
+/// no package has.
+#[test]
+fn a_host_reads_an_installed_packages_name_and_version() {
+    let packages = vec![
+        PackageInfo::new(
+            "machines".to_owned(),
+            "2.1.0".to_owned(),
+            PackageKind::Code,
+            crate::Side::Both,
+            vec!["machines".to_owned()],
+            vec![],
+        )
+        .with_details(crate::PackageDetails {
+            name: "Machines".to_owned(),
+            ..Default::default()
+        }),
+    ];
+    with_test_package_inventory(packages, || {
+        let host = crate::testing::FakeHost::new();
+        let mods = crate::prelude::ConfigHost::mods(&host);
+        let machines = mods.get("machines").unwrap();
+        assert_eq!((machines.name(), machines.version()), ("Machines", "2.1.0"));
+        assert!(mods.get("minecraft").is_none());
+        assert!(mods.get("missing").is_none());
+    });
+}
 
 #[test]
 fn the_registration_context_lists_installed_packages_with_their_details() {

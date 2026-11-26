@@ -62,6 +62,17 @@ pub trait ConfigHost {
     /// Side: both.
     /// Read a colour setting (`0xRRGGBB`) through its owner-bound [`SettingKey`].
     fn setting_color(&self, key: SettingKey) -> Result<u32, SettingAccessError>;
+    /// Side: both.
+    /// The packages enabled and admitted at startup, in dispatch order (NeoForge's
+    /// `ModList.get()`): the view registration reads through
+    /// [`RegistrationContext::mods`](crate::RegistrationContext::mods). `mods().get(id)` is one
+    /// package's manifest facts, its [`name`](crate::PackageInfo::name) and
+    /// [`version`](crate::PackageInfo::version) among them (`IModInfo.getDisplayName` and
+    /// `getVersion`); `None` for a package that isn't installed or was off at startup. The game
+    /// itself is not a package: its version is [`game_version`](Self::game_version). The view
+    /// is shared: cloning it copies no package.
+    #[published(startup_mods)]
+    fn mods(&self) -> LoadedMods;
 }
 /// The server host's methods of the `config` area, implemented by the game and reached through [`ServerHost`].
 #[sunrise_mod_api_macros::host_area]
